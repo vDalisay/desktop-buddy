@@ -1,3 +1,12 @@
-# Godot 4+ specific ignores
-.godot/
-/android/
+node_modules/
+.pnpm-store/
+dist/
+out/
+release/
+tmp/
+*.log
+*.tmp
+.env
+.env.local
+.DS_Store
+Thumbs.db
