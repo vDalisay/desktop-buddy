@@ -1,0 +1,22 @@
+{
+  "id": "lab_spawn_settle",
+  "description": "Milestone 1 lab: compose the real six-body scene and settle into a stable standing pose.",
+  "milestone": 1,
+  "setup": {
+    "scene": "buddy_lab",
+    "seed": 1,
+    "save": "fresh",
+    "window": "default",
+    "zoom": 100,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "startup_ok", "equals": true },
+    { "predicate": "lab_composed", "equals": true },
+    { "predicate": "lab_six_body", "equals": true },
+    { "predicate": "lab_finite", "equals": true },
+    { "predicate": "lab_settled", "equals": true },
+    { "predicate": "lab_telemetry_visible", "equals": true }
+  ]
+}

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Laboratory;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -26,6 +27,28 @@ public sealed class LaboratoryControlsScenario : IScenario
         tree.Root.AddChild(lab);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         lab.Controls.Reseed(seed);
+
+        lab.TelemetryPanel.RefreshNow();
+        LaboratoryTelemetrySnapshot telemetry = lab.TelemetryPanel.Snapshot;
+        bool telemetryComposed = lab.TelemetryPanel.IsInitialized &&
+                                 lab.BoundaryVisualizer.IsInitialized &&
+                                 telemetry.AutonomySeed == seed &&
+                                 telemetry.RoomWidth >= 360.0 &&
+                                 telemetry.RoomHeight >= 270.0 &&
+                                 lab.TelemetryPanel.InstructionsLabel.Text.Contains("PHYSICS LAB", System.StringComparison.Ordinal);
+        checks.Add(new StartupCheck(
+            "lab_guidance_and_telemetry_composed",
+            telemetryComposed,
+            $"seed={telemetry.AutonomySeed} room={telemetry.RoomWidth:F0}x{telemetry.RoomHeight:F0}"));
+
+        await SendKey(tree, Key.H);
+        bool panelHidden = !lab.TelemetryPanel.Visible;
+        await SendKey(tree, Key.H);
+        bool panelRestored = lab.TelemetryPanel.Visible;
+        checks.Add(new StartupCheck(
+            "lab_help_panel_toggles_from_real_input",
+            panelHidden && panelRestored,
+            $"hidden={panelHidden} restored={panelRestored}"));
 
         await SendKey(tree, Key.P);
         long pausedAtTick = lab.Controls.RoutedPhysicsTicks;

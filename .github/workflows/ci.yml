@@ -81,3 +81,6 @@ jobs:
 
       - name: Room resize and zoom scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=room_resize_zoom --seed=1
+
+      - name: Lab spawn and settle journey
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_spawn_settle --seed=1

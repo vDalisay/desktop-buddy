@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using Godot;
@@ -15,8 +16,8 @@ namespace DesktopBuddy.Testing;
 /// <c>--journey=&lt;id&gt;</c> entrypoint (AGENT_VERIFICATION_AND_E2E.md Section 3).
 /// Journeys assert on read-only state with an explicit timeout; there are no
 /// fixed sleeps and no retries. Milestone 0 ships the boot smoke journey and a
-/// minimal predicate set (<c>startup_ok</c>, <c>sandbox_composed</c>); the step
-/// vocabulary grows with the milestones that need it.
+/// initial predicate set plus the Milestone 1 buddy-lab spawn/settle journey;
+/// the step vocabulary grows with the milestones that need it.
 /// </summary>
 public partial class JourneyRunner : Node
 {
@@ -59,7 +60,7 @@ public partial class JourneyRunner : Node
             ulong seed = ResolveSeed(root);
             Log.Info("Journey", $"Running journey '{id}' seed={seed}.");
 
-            Dictionary<string, bool> state = await ComputeStateAsync();
+            Dictionary<string, bool> state = await ComputeStateAsync(root, seed);
 
             var checks = new List<StartupCheck>();
             bool passed = true;
@@ -115,7 +116,9 @@ public partial class JourneyRunner : Node
         return 0;
     }
 
-    private async System.Threading.Tasks.Task<Dictionary<string, bool>> ComputeStateAsync()
+    private async System.Threading.Tasks.Task<Dictionary<string, bool>> ComputeStateAsync(
+        JsonElement root,
+        ulong seed)
     {
         var state = new Dictionary<string, bool>(StringComparer.Ordinal);
 
@@ -125,6 +128,29 @@ public partial class JourneyRunner : Node
 
         StartupReport report = StartupValidator.Validate();
         state["startup_ok"] = report.Ok;
+
+        string scene = "sandbox";
+        int timeoutPhysicsTicks = 720;
+        if (root.TryGetProperty("setup", out JsonElement setup))
+        {
+            if (setup.TryGetProperty("scene", out JsonElement sceneElement))
+            {
+                scene = sceneElement.GetString() ?? scene;
+            }
+
+            if (setup.TryGetProperty("timeout_physics_ticks", out JsonElement timeoutElement) &&
+                timeoutElement.TryGetInt32(out int configuredTimeout) &&
+                configuredTimeout > 0)
+            {
+                timeoutPhysicsTicks = configuredTimeout;
+            }
+        }
+
+        if (string.Equals(scene, "buddy_lab", StringComparison.Ordinal))
+        {
+            await ComputeBuddyLabStateAsync(state, seed, timeoutPhysicsTicks);
+            return state;
+        }
 
         var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
         bool composed = false;
@@ -139,6 +165,54 @@ public partial class JourneyRunner : Node
 
         state["sandbox_composed"] = composed;
         return state;
+    }
+
+    private async System.Threading.Tasks.Task ComputeBuddyLabStateAsync(
+        Dictionary<string, bool> state,
+        ulong seed,
+        int timeoutPhysicsTicks)
+    {
+        PackedScene? packed = GD.Load<PackedScene>("res://scenes/buddy_lab.tscn");
+        if (packed is null)
+        {
+            state["lab_composed"] = false;
+            state["lab_six_body"] = false;
+            state["lab_finite"] = false;
+            state["lab_settled"] = false;
+            state["lab_telemetry_visible"] = false;
+            return;
+        }
+
+        BuddyLab lab = packed.Instantiate<BuddyLab>();
+        GetTree().Root.AddChild(lab);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        lab.Controls.Reseed(seed);
+
+        bool finite = true;
+        bool settled = false;
+        for (int tick = 0; tick < timeoutPhysicsTicks; tick++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            finite &= lab.Buddy.Rig.AllBodiesFinite();
+            if (lab.Buddy.Standing.Snapshot.IsStable)
+            {
+                settled = true;
+                break;
+            }
+        }
+
+        bool linkTelemetryFinite = true;
+        foreach (LinkTelemetry link in lab.Buddy.Constraints.Telemetry)
+        {
+            linkTelemetryFinite &= float.IsFinite(link.Strain) && link.ForceOnA.IsFinite();
+        }
+
+        state["lab_composed"] = lab.IsInsideTree() && lab.Buddy.IsInitialized;
+        state["lab_six_body"] = lab.Buddy.Rig.Parts.Count == PuppetRigProfile.RequiredPartCount;
+        state["lab_finite"] = finite && linkTelemetryFinite;
+        state["lab_settled"] = settled;
+        state["lab_telemetry_visible"] = lab.TelemetryPanel.IsInitialized && lab.TelemetryPanel.Visible;
+        lab.QueueFree();
     }
 
     private void Fail(string id, ulong seed, Stopwatch stopwatch, string check, string detail, int exitCode)

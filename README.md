@@ -65,6 +65,21 @@ Four-project solution (`DesktopBuddy.sln`), per [ARCHITECTURE.md](docs/ARCHITECT
 - `tests/DesktopBuddy.Domain.Tests` — xUnit tests for the domain library.
 - `DesktopBuddy.Steam` — optional Steam adapter, added in Milestone 6.
 
+## Testing the Physics Lab in Godot
+
+Do not run `scenes/buddy/puppet.tscn` by itself: it is the reusable six-body actor and intentionally has no room boundaries or fixed-tick lab router, so gravity makes it fall forever.
+
+From the Godot editor:
+
+1. Open `scenes/buddy_lab.tscn` in the FileSystem dock.
+2. Press **F6** (Run Current Scene), not F5.
+3. Use left-drag to grab/throw a body part, right-click to drop, `P` to pause, `.` to advance one physics tick, `U` to toggle limp/unconscious mode, `Shift+U` to reseed autonomy, and `1`/`2`/`3`/`4` for `0.25x`/`0.5x`/`1x`/`2x` simulation speed.
+4. Press `H` to hide or restore the development telemetry panel.
+
+For one-click launch outside the editor, run [`tools/play_buddy_lab.bat`](tools/play_buddy_lab.bat). It uses `GODOT_PATH` when set and otherwise checks the pinned Godot 4.6.1 .NET editor in the current user's Downloads folder.
+
+For a fast automated check, run [`tools/quick_validate.bat`](tools/quick_validate.bat). It builds the solution, runs domain tests, imports the project, runs the lab-controls, grab/release, and room-resize/zoom scenarios, and finishes with the lab spawn/settle journey.
+
 ## Building and Testing
 
 The project exposes one command per test layer (see [TEST_PLAN.md](docs/TEST_PLAN.md)). Replace `<godot>` with the pinned editor binary.
@@ -88,7 +103,7 @@ dotnet test
 
 Milestone 0 ships the `boot_smoke` scenario and journey. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the build, domain tests, headless import, and both boot smoke runs on every push — with no Steam SDK required.
 
-Milestone 1 additionally runs `passive_rig`, `standing_recovery`, `autonomous_motion`, `laboratory_controls`, `grab_release`, `grab_resistance`, `grab_hard_recovery`, and `room_resize_zoom`. Together they cover six-body composition, collision-layer isolation, required rigid-body runtime settings, finite force telemetry, bounded strain, physical standing measurements, exact recovery timing, force-driven self-righting, immediate escaped/invalid-state recovery, seeded bidirectional walking, whole-body jumping, passive unconscious physics, the lab input surface, elastic acquisition/release, fearful resistance, hard-recovery cleanup, physics-boundary wall rebuilds, zoom clamping, representative aspect ratios, and safe containment correction.
+Milestone 1 additionally runs the `lab_spawn_settle` journey and the `passive_rig`, `standing_recovery`, `autonomous_motion`, `laboratory_controls`, `grab_release`, `grab_resistance`, `grab_hard_recovery`, and `room_resize_zoom` scenarios. Together they cover six-body composition, collision-layer isolation, required rigid-body runtime settings, finite force telemetry, bounded strain, physical standing measurements, exact recovery timing, force-driven self-righting, immediate escaped/invalid-state recovery, seeded bidirectional walking, whole-body jumping, passive unconscious physics, the lab input surface, elastic acquisition/release, fearful resistance, hard-recovery cleanup, physics-boundary wall rebuilds, zoom clamping, representative aspect ratios, and safe containment correction.
 
 The development-only laboratory controls are keyboard-accessible in `buddy_lab.tscn`: `P` pauses/resumes, `.` advances one fixed physics tick while paused, `U` toggles consciousness, `Shift+U` advances to the next autonomy seed, and `1`/`2`/`3`/`4` select `0.25x`/`0.5x`/`1x`/`2x` time scale. The `laboratory_controls` scenario exercises the same input path.
 

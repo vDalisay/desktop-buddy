@@ -26,15 +26,19 @@ public partial class BuddyLab : Node2D
     [Export] public LabPointerGrabComponent Pointer { get; set; } = null!;
     [Export] public BoundaryController Boundaries { get; set; } = null!;
     [Export] public PuppetRoomContainmentComponent Containment { get; set; } = null!;
+    [Export] public LaboratoryTelemetryPanel TelemetryPanel { get; set; } = null!;
+    [Export] public LaboratoryBoundaryVisualizer BoundaryVisualizer { get; set; } = null!;
 
     public override void _Ready()
     {
         if (!GodotObject.IsInstanceValid(Buddy) || !GodotObject.IsInstanceValid(Controls) ||
             !GodotObject.IsInstanceValid(Grab) || !GodotObject.IsInstanceValid(Pointer) ||
-            !GodotObject.IsInstanceValid(Boundaries) || !GodotObject.IsInstanceValid(Containment))
+            !GodotObject.IsInstanceValid(Boundaries) || !GodotObject.IsInstanceValid(Containment) ||
+            !GodotObject.IsInstanceValid(TelemetryPanel) ||
+            !GodotObject.IsInstanceValid(BoundaryVisualizer))
         {
             throw new InvalidOperationException(
-                "BuddyLab requires injected buddy, controls, grab, pointer, boundaries, and containment.");
+                "BuddyLab requires injected buddy, controls, grab, pointer, boundaries, containment, telemetry, and boundary visualization.");
         }
 
         Controls.Initialize();
@@ -55,6 +59,8 @@ public partial class BuddyLab : Node2D
         }
 
         Boundaries.Initialize(clientSize, 1.0);
+        BoundaryVisualizer.Initialize();
+        TelemetryPanel.Initialize();
 
         // DECISIONS.md "Fail-safe cleanup": a hard recovery releases the active
         // grab as part of clearing transient state. The tether lives at lab level
