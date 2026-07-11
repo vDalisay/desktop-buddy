@@ -69,3 +69,12 @@ jobs:
 
       - name: Laboratory controls scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=laboratory_controls --seed=1
+
+      - name: Grab tether release scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grab_release --seed=1
+
+      - name: Grab fear resistance scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grab_resistance --seed=1
+
+      - name: Grab hard-recovery cleanup scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grab_hard_recovery --seed=1

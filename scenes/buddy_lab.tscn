@@ -1,8 +1,11 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
 [ext_resource type="Script" path="res://src/Laboratory/LaboratoryControlComponent.cs" id="3_controls"]
+[ext_resource type="Script" path="res://src/Grab/GrabTetherController.cs" id="4_grab"]
+[ext_resource type="Resource" path="res://data/buddy/lab_grab_tether.tres" id="5_grab_profile"]
+[ext_resource type="Script" path="res://src/Laboratory/LabPointerGrabComponent.cs" id="6_pointer"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -10,17 +13,19 @@ size = Vector2(480, 16)
 [sub_resource type="RectangleShape2D" id="VerticalBoundary"]
 size = Vector2(16, 360)
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
+Grab = NodePath("GrabTetherController")
+Pointer = NodePath("LabPointerGrab")
 
 [node name="Buddy" parent="." instance=ExtResource("2_buddy")]
 position = Vector2(240, 260)
 
 [node name="RoomBounds" type="StaticBody2D" parent="."]
 collision_layer = 1
-collision_mask = 2
+collision_mask = 30
 
 [node name="Floor" type="CollisionShape2D" parent="RoomBounds"]
 position = Vector2(240, 352)
@@ -41,3 +46,11 @@ shape = SubResource("VerticalBoundary")
 [node name="LaboratoryControlComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy")]
 script = ExtResource("3_controls")
 Buddy = NodePath("../Buddy")
+
+[node name="GrabTetherController" type="Node2D" parent="."]
+script = ExtResource("4_grab")
+Profile = ExtResource("5_grab_profile")
+
+[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab")]
+script = ExtResource("6_pointer")
+Grab = NodePath("../GrabTetherController")

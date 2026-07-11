@@ -1,5 +1,4 @@
 using System;
-using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using Godot;
 
@@ -24,6 +23,7 @@ public partial class ActiveDriveComponent : Node
     public Vector2 LastLocomotionForce { get; private set; }
     public Vector2 LastGaitForce { get; private set; }
     public float LastJumpImpulse { get; private set; }
+    public Vector2 LastResistanceForce { get; private set; }
     public int JumpImpulseCount { get; private set; }
     public bool ActiveOutputsEnabled { get; private set; }
     public bool IsInitialized { get; private set; }
@@ -46,13 +46,14 @@ public partial class ActiveDriveComponent : Node
         IsInitialized = true;
     }
 
-    public void PhysicsTick(Consciousness consciousness, AutonomousMotionIntent motionIntent)
+    public void PhysicsTick(Consciousness consciousness, DriveIntent intent)
     {
         LastUprightTorque = 0.0f;
         LastBalanceForce = Vector2.Zero;
         LastLocomotionForce = Vector2.Zero;
         LastGaitForce = Vector2.Zero;
         LastJumpImpulse = 0.0f;
+        LastResistanceForce = Vector2.Zero;
 
         ConsciousnessDriveProfile mode = consciousness == Consciousness.Conscious
             ? ConsciousProfile
@@ -74,8 +75,15 @@ public partial class ActiveDriveComponent : Node
             return;
         }
 
-        ApplyLocomotion(motionIntent.WalkDirection, mode);
-        if (motionIntent.JumpRequested)
+        if (intent.ResistanceStrength > 0.0f)
+        {
+            ApplyResistance(intent, mode);
+            _gaitTick = 0;
+            return;
+        }
+
+        ApplyLocomotion(intent.WalkDirection, mode);
+        if (intent.JumpRequested)
         {
             ApplyJump(mode);
         }
@@ -155,6 +163,20 @@ public partial class ActiveDriveComponent : Node
         Rig.LeftFoot.ApplyCentralForce(-LastGaitForce);
         Rig.RightFoot.ApplyCentralForce(LastGaitForce);
         _gaitTick++;
+    }
+
+    private void ApplyResistance(DriveIntent intent, ConsciousnessDriveProfile mode)
+    {
+        float direction = Mathf.Clamp(intent.ResistanceDirection, -1.0f, 1.0f);
+        float strength = Mathf.Clamp(intent.ResistanceStrength, 0.0f, 1.0f);
+        float totalForce = Profile.GrabResistanceForce * direction * strength * mode.LocomotionScale;
+        LastResistanceForce = new Vector2(totalForce, 0.0f);
+
+        float totalMass = TotalMass();
+        foreach (PuppetPartBody body in Rig.Parts)
+        {
+            body.ApplyCentralForce(LastResistanceForce * (body.Mass / totalMass));
+        }
     }
 
     private void ApplyJump(ConsciousnessDriveProfile mode)

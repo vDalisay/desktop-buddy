@@ -18,6 +18,7 @@ MaximumWalkSpeed = 55.0
 GaitForce = 100.0
 GaitHalfCycleTicks = 18
 JumpImpulse = 1800.0
+GrabResistanceForce = 3500.0
 MaximumStandingTorsoTilt = 0.45
 MinimumHeadAboveTorso = 8.0
 MinimumFeetBelowTorso = 12.0

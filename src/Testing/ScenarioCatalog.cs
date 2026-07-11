@@ -17,6 +17,9 @@ public static class ScenarioCatalog
         ["standing_recovery"] = () => new StandingRecoveryScenario(),
         ["autonomous_motion"] = () => new AutonomousMotionScenario(),
         ["laboratory_controls"] = () => new LaboratoryControlsScenario(),
+        ["grab_release"] = () => new GrabReleaseScenario(),
+        ["grab_resistance"] = () => new GrabResistanceScenario(),
+        ["grab_hard_recovery"] = () => new GrabHardRecoveryScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

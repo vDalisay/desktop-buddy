@@ -1,6 +1,7 @@
 using System;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using Godot;
 
@@ -21,6 +22,7 @@ public partial class BuddyRoot : Node2D
     [Export] public RecoveryComponent Recovery { get; set; } = null!;
     [Export] public AutonomousMotionComponent AutonomousMotion { get; set; } = null!;
     [Export] public ActiveDriveComponent ActiveDrive { get; set; } = null!;
+    [Export] public GrabResistanceComponent GrabResistance { get; set; } = null!;
 
     public event Action<Consciousness>? ConsciousnessChanged;
 
@@ -32,7 +34,8 @@ public partial class BuddyRoot : Node2D
         if (!GodotObject.IsInstanceValid(Rig) || !GodotObject.IsInstanceValid(Constraints) ||
             !GodotObject.IsInstanceValid(Standing) || !GodotObject.IsInstanceValid(Recovery) ||
             !GodotObject.IsInstanceValid(AutonomousMotion) ||
-            !GodotObject.IsInstanceValid(ActiveDrive))
+            !GodotObject.IsInstanceValid(ActiveDrive) ||
+            !GodotObject.IsInstanceValid(GrabResistance))
         {
             throw new InvalidOperationException("BuddyRoot requires every injected physics and behavior component.");
         }
@@ -43,6 +46,7 @@ public partial class BuddyRoot : Node2D
         Recovery.Initialize();
         AutonomousMotion.Initialize(DefaultAutonomySeed);
         ActiveDrive.Initialize();
+        GrabResistance.Initialize();
         Recovery.HardRecovered += _ => SetConsciousness(Consciousness.Conscious);
         IsInitialized = true;
     }
@@ -57,8 +61,23 @@ public partial class BuddyRoot : Node2D
         Standing.PhysicsTick();
         Recovery.PhysicsTick(CurrentConsciousness == Consciousness.Conscious);
         AutonomousMotion.PhysicsTick(CurrentConsciousness, Recovery.State);
-        ActiveDrive.PhysicsTick(CurrentConsciousness, AutonomousMotion.Intent);
+        GrabResistance.PhysicsTick(CurrentConsciousness);
+        ActiveDrive.PhysicsTick(CurrentConsciousness, BuildDriveIntent());
         Constraints.PhysicsTick();
+    }
+
+    // Minimal actuation arbitration until the full BehaviorArbiter lands: a
+    // player-constraint fear response supersedes ambient autonomy.
+    private DriveIntent BuildDriveIntent()
+    {
+        GrabResistanceIntent resistance = GrabResistance.Intent;
+        if (resistance.Active)
+        {
+            return new DriveIntent(0.0f, false, resistance.Direction, resistance.Strength);
+        }
+
+        AutonomousMotionIntent motion = AutonomousMotion.Intent;
+        return new DriveIntent(motion.WalkDirection, motion.JumpRequested, 0.0f, 0.0f);
     }
 
     public void SetConsciousness(Consciousness consciousness)

@@ -25,6 +25,9 @@ public partial class ActiveDriveProfile : GameResource
     [Export(PropertyHint.Range, "1,240,1")] public int GaitHalfCycleTicks { get; set; } = 18;
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float JumpImpulse { get; set; } = 1_800.0f;
 
+    /// <summary>Bounded whole-body force a fearful buddy applies to resist a grab (RAGDOLL Section 6).</summary>
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float GrabResistanceForce { get; set; } = 3_500.0f;
+
     [Export(PropertyHint.Range, "0.01,3.14,0.01")] public float MaximumStandingTorsoTilt { get; set; } = 0.45f;
     [Export(PropertyHint.Range, "0,128,0.1")] public float MinimumHeadAboveTorso { get; set; } = 8.0f;
     [Export(PropertyHint.Range, "0,128,0.1")] public float MinimumFeetBelowTorso { get; set; } = 12.0f;
@@ -51,6 +54,7 @@ public partial class ActiveDriveProfile : GameResource
             errors.Add($"{nameof(GaitHalfCycleTicks)} must be positive");
         }
         ValidateNonNegative(errors, JumpImpulse, nameof(JumpImpulse));
+        ValidateNonNegative(errors, GrabResistanceForce, nameof(GrabResistanceForce));
         ValidatePositive(errors, MaximumStandingTorsoTilt, nameof(MaximumStandingTorsoTilt));
         ValidateNonNegative(errors, MinimumHeadAboveTorso, nameof(MinimumHeadAboveTorso));
         ValidateNonNegative(errors, MinimumFeetBelowTorso, nameof(MinimumFeetBelowTorso));

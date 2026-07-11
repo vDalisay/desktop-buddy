@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="GrabTetherProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Grab/GrabTetherProfile.cs" id="1_grab"]
+
+[resource]
+resource_name = "ProvisionalLabGrabTether"
+script = ExtResource("1_grab")
+Stiffness = 220.0
+Damping = 20.0
+MaximumForce = 6000.0
+ThrowSpeedCap = 900.0

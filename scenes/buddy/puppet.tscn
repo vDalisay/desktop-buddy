@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://src/Buddy/BuddyRoot.cs" id="1_root"]
 [ext_resource type="Script" path="res://src/Buddy/Physics/PuppetRig.cs" id="2_rig"]
@@ -13,6 +13,7 @@
 [ext_resource type="Resource" path="res://data/buddy/lab_autonomous_motion.tres" id="11_autonomy_profile"]
 [ext_resource type="Resource" path="res://data/buddy/lab_conscious_drive.tres" id="12_conscious_profile"]
 [ext_resource type="Resource" path="res://data/buddy/lab_unconscious_drive.tres" id="13_unconscious_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Behavior/GrabResistanceComponent.cs" id="14_resistance"]
 
 [sub_resource type="CircleShape2D" id="HeadShape"]
 radius = 24.0
@@ -32,7 +33,7 @@ radius = 17.0
 [sub_resource type="CircleShape2D" id="FootShapeRight"]
 radius = 17.0
 
-[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "AutonomousMotion", "ActiveDrive")]
+[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "AutonomousMotion", "ActiveDrive", "GrabResistance")]
 script = ExtResource("1_root")
 Rig = NodePath("PuppetRig")
 Constraints = NodePath("PuppetConstraintComponent")
@@ -40,6 +41,7 @@ Standing = NodePath("StandingDetector")
 Recovery = NodePath("RecoveryComponent")
 AutonomousMotion = NodePath("AutonomousMotionComponent")
 ActiveDrive = NodePath("ActiveDriveComponent")
+GrabResistance = NodePath("GrabResistanceComponent")
 
 [node name="PuppetRig" type="Node" parent="." node_paths=PackedStringArray("Head", "Torso", "LeftHand", "RightHand", "LeftFoot", "RightFoot")]
 script = ExtResource("2_rig")
@@ -163,3 +165,7 @@ Recovery = NodePath("../RecoveryComponent")
 Profile = ExtResource("9_drive_profile")
 ConsciousProfile = ExtResource("12_conscious_profile")
 UnconsciousProfile = ExtResource("13_unconscious_profile")
+
+[node name="GrabResistanceComponent" type="Node" parent="." node_paths=PackedStringArray("Rig")]
+script = ExtResource("14_resistance")
+Rig = NodePath("../PuppetRig")
