@@ -1,0 +1,131 @@
+[gd_resource type="Resource" script_class="PuppetRigProfile" load_steps=14 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetRigProfile.cs" id="1_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetPartDefinition.cs" id="2_part"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetLinkDefinition.cs" id="3_link"]
+
+[sub_resource type="Resource" id="PartHead"]
+script = ExtResource("2_part")
+PartId = 0
+Radius = 24.0
+Mass = 1.4
+LinearDamp = 2.0
+AngularDamp = 4.0
+RestPosition = Vector2(0, -50)
+FillColor = Color(0.478, 0.78, 1, 1)
+
+[sub_resource type="Resource" id="PartTorso"]
+script = ExtResource("2_part")
+PartId = 1
+Radius = 28.0
+Mass = 2.5
+LinearDamp = 2.0
+AngularDamp = 4.0
+RestPosition = Vector2(0, 0)
+FillColor = Color(0.27, 0.64, 0.88, 1)
+
+[sub_resource type="Resource" id="PartLeftHand"]
+script = ExtResource("2_part")
+PartId = 2
+Radius = 15.0
+Mass = 0.7
+LinearDamp = 2.0
+AngularDamp = 4.0
+RestPosition = Vector2(-38, -5)
+FillColor = Color(0.56, 0.83, 1, 1)
+
+[sub_resource type="Resource" id="PartRightHand"]
+script = ExtResource("2_part")
+PartId = 3
+Radius = 15.0
+Mass = 0.7
+LinearDamp = 2.0
+AngularDamp = 4.0
+RestPosition = Vector2(38, -5)
+FillColor = Color(0.56, 0.83, 1, 1)
+
+[sub_resource type="Resource" id="PartLeftFoot"]
+script = ExtResource("2_part")
+PartId = 4
+Radius = 17.0
+Mass = 1.0
+LinearDamp = 2.0
+AngularDamp = 4.0
+RestPosition = Vector2(-22, 55)
+FillColor = Color(0.38, 0.72, 0.94, 1)
+
+[sub_resource type="Resource" id="PartRightFoot"]
+script = ExtResource("2_part")
+PartId = 5
+Radius = 17.0
+Mass = 1.0
+LinearDamp = 2.0
+AngularDamp = 4.0
+RestPosition = Vector2(22, 55)
+FillColor = Color(0.38, 0.72, 0.94, 1)
+
+[sub_resource type="Resource" id="LinkHead"]
+script = ExtResource("3_link")
+LinkId = &"torso_head"
+PartA = 1
+PartB = 0
+RestOffset = Vector2(0, -50)
+Stiffness = 180.0
+Damping = 18.0
+MaximumDistance = 70.0
+LimitStiffness = 900.0
+MaximumForce = 18000.0
+
+[sub_resource type="Resource" id="LinkLeftHand"]
+script = ExtResource("3_link")
+LinkId = &"torso_left_hand"
+PartA = 1
+PartB = 2
+RestOffset = Vector2(-38, -5)
+Stiffness = 150.0
+Damping = 15.0
+MaximumDistance = 55.0
+LimitStiffness = 800.0
+MaximumForce = 14000.0
+
+[sub_resource type="Resource" id="LinkRightHand"]
+script = ExtResource("3_link")
+LinkId = &"torso_right_hand"
+PartA = 1
+PartB = 3
+RestOffset = Vector2(38, -5)
+Stiffness = 150.0
+Damping = 15.0
+MaximumDistance = 55.0
+LimitStiffness = 800.0
+MaximumForce = 14000.0
+
+[sub_resource type="Resource" id="LinkLeftFoot"]
+script = ExtResource("3_link")
+LinkId = &"torso_left_foot"
+PartA = 1
+PartB = 4
+RestOffset = Vector2(-22, 55)
+Stiffness = 190.0
+Damping = 20.0
+MaximumDistance = 78.0
+LimitStiffness = 1000.0
+MaximumForce = 20000.0
+
+[sub_resource type="Resource" id="LinkRightFoot"]
+script = ExtResource("3_link")
+LinkId = &"torso_right_foot"
+PartA = 1
+PartB = 5
+RestOffset = Vector2(22, 55)
+Stiffness = 190.0
+Damping = 20.0
+MaximumDistance = 78.0
+LimitStiffness = 1000.0
+MaximumForce = 20000.0
+
+[resource]
+resource_name = "ProvisionalLabPuppetRig"
+script = ExtResource("1_profile")
+Parts = Array[ExtResource("2_part")]([SubResource("PartHead"), SubResource("PartTorso"), SubResource("PartLeftHand"), SubResource("PartRightHand"), SubResource("PartLeftFoot"), SubResource("PartRightFoot")])
+Links = Array[ExtResource("3_link")]([SubResource("LinkHead"), SubResource("LinkLeftHand"), SubResource("LinkRightHand"), SubResource("LinkLeftFoot"), SubResource("LinkRightFoot")])

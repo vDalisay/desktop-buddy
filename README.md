@@ -6,7 +6,7 @@ The project is a clean-room spiritual successor to the interaction loop of *Inte
 
 ## Project Status
 
-Requirements and architecture are specified; runtime implementation has not started on the checked-out baseline. The first engineering target is the physics laboratory, not the shop or content catalogue.
+Milestone 0 foundation is complete and Milestone 1 physics-laboratory work is in progress. The current lab contains the typed provisional six-body rig, passive spring/damper/max-stretch solver, physical standing/recovery, and seeded autonomous walk/jump drive with explicit conscious/unconscious profiles. Its coefficients remain laboratory data until the full physics gate accepts a tuning profile. Economy, shop, and content work have not started.
 
 Target stack:
 
@@ -87,6 +87,10 @@ dotnet test
 ```
 
 Milestone 0 ships the `boot_smoke` scenario and journey. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the build, domain tests, headless import, and both boot smoke runs on every push — with no Steam SDK required.
+
+Milestone 1 additionally runs `passive_rig`, `standing_recovery`, `autonomous_motion`, and `laboratory_controls`, covering six-body composition, collision-layer isolation, required rigid-body runtime settings, finite force telemetry, bounded strain, physical standing measurements, exact recovery timing, force-driven self-righting, immediate escaped/invalid-state recovery, seeded bidirectional walking, whole-body jumping, passive unconscious physics, and the lab input surface.
+
+The development-only laboratory controls are keyboard-accessible in `buddy_lab.tscn`: `P` pauses/resumes, `.` advances one fixed physics tick while paused, `U` toggles consciousness, `Shift+U` advances to the next autonomy seed, and `1`/`2`/`3`/`4` select `0.25x`/`0.5x`/`1x`/`2x` time scale. The `laboratory_controls` scenario exercises the same input path.
 
 ## Interactive Verification (Godot MCP)
 

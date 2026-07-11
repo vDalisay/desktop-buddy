@@ -57,3 +57,15 @@ jobs:
 
       - name: Boot smoke journey
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=boot_smoke --seed=1
+
+      - name: Passive rig scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=passive_rig --seed=1
+
+      - name: Standing and recovery scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=standing_recovery --seed=1
+
+      - name: Seeded autonomous motion scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=autonomous_motion --seed=1
+
+      - name: Laboratory controls scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=laboratory_controls --seed=1

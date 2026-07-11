@@ -1,4 +1,7 @@
+using System;
+using DesktopBuddy.Buddy;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Laboratory;
 using Godot;
 
 namespace DesktopBuddy.App;
@@ -13,8 +16,26 @@ namespace DesktopBuddy.App;
 /// </summary>
 public partial class BuddyLab : Node2D
 {
+    [Export] public BuddyRoot Buddy { get; set; } = null!;
+    [Export] public LaboratoryControlComponent Controls { get; set; } = null!;
+
     public override void _Ready()
     {
-        Log.Info("BuddyLab", "BuddyLab composed (Milestone 1 fills the rig).");
+        if (!GodotObject.IsInstanceValid(Buddy) || !GodotObject.IsInstanceValid(Controls))
+        {
+            throw new InvalidOperationException("BuddyLab requires injected buddy and laboratory controls.");
+        }
+
+        Controls.Initialize();
+        Log.Info("BuddyLab", "BuddyLab composed with seeded six-body active puppet.");
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (Controls.BeginPhysicsTick())
+        {
+            Buddy.PhysicsTick();
+            Controls.NotifyPhysicsTickRouted();
+        }
     }
 }

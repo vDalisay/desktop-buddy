@@ -1,0 +1,165 @@
+[gd_scene load_steps=21 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/BuddyRoot.cs" id="1_root"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetRig.cs" id="2_rig"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetPartBody.cs" id="3_body"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetConstraintComponent.cs" id="4_constraints"]
+[ext_resource type="Resource" path="res://data/buddy/lab_puppet_rig.tres" id="5_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/StandingDetector.cs" id="6_standing"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/RecoveryComponent.cs" id="7_recovery"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/ActiveDriveComponent.cs" id="8_drive"]
+[ext_resource type="Resource" path="res://data/buddy/lab_active_drive.tres" id="9_drive_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Behavior/AutonomousMotionComponent.cs" id="10_autonomy"]
+[ext_resource type="Resource" path="res://data/buddy/lab_autonomous_motion.tres" id="11_autonomy_profile"]
+[ext_resource type="Resource" path="res://data/buddy/lab_conscious_drive.tres" id="12_conscious_profile"]
+[ext_resource type="Resource" path="res://data/buddy/lab_unconscious_drive.tres" id="13_unconscious_profile"]
+
+[sub_resource type="CircleShape2D" id="HeadShape"]
+radius = 24.0
+
+[sub_resource type="CircleShape2D" id="TorsoShape"]
+radius = 28.0
+
+[sub_resource type="CircleShape2D" id="HandShapeLeft"]
+radius = 15.0
+
+[sub_resource type="CircleShape2D" id="HandShapeRight"]
+radius = 15.0
+
+[sub_resource type="CircleShape2D" id="FootShapeLeft"]
+radius = 17.0
+
+[sub_resource type="CircleShape2D" id="FootShapeRight"]
+radius = 17.0
+
+[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "AutonomousMotion", "ActiveDrive")]
+script = ExtResource("1_root")
+Rig = NodePath("PuppetRig")
+Constraints = NodePath("PuppetConstraintComponent")
+Standing = NodePath("StandingDetector")
+Recovery = NodePath("RecoveryComponent")
+AutonomousMotion = NodePath("AutonomousMotionComponent")
+ActiveDrive = NodePath("ActiveDriveComponent")
+
+[node name="PuppetRig" type="Node" parent="." node_paths=PackedStringArray("Head", "Torso", "LeftHand", "RightHand", "LeftFoot", "RightFoot")]
+script = ExtResource("2_rig")
+Profile = ExtResource("5_profile")
+Head = NodePath("Head")
+Torso = NodePath("Torso")
+LeftHand = NodePath("LeftHand")
+RightHand = NodePath("RightHand")
+LeftFoot = NodePath("LeftFoot")
+RightFoot = NodePath("RightFoot")
+
+[node name="Head" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(0, -50)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 0
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/Head"]
+shape = SubResource("HeadShape")
+
+[node name="Torso" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 1
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/Torso"]
+shape = SubResource("TorsoShape")
+
+[node name="LeftHand" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(-38, -5)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 2
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/LeftHand"]
+shape = SubResource("HandShapeLeft")
+
+[node name="RightHand" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(38, -5)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 3
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/RightHand"]
+shape = SubResource("HandShapeRight")
+
+[node name="LeftFoot" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(-22, 55)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 4
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/LeftFoot"]
+shape = SubResource("FootShapeLeft")
+
+[node name="RightFoot" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(22, 55)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 5
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/RightFoot"]
+shape = SubResource("FootShapeRight")
+
+[node name="PuppetConstraintComponent" type="Node" parent="." node_paths=PackedStringArray("Rig")]
+script = ExtResource("4_constraints")
+Rig = NodePath("../PuppetRig")
+
+[node name="StandingDetector" type="Node" parent="." node_paths=PackedStringArray("Rig")]
+script = ExtResource("6_standing")
+Rig = NodePath("../PuppetRig")
+Profile = ExtResource("9_drive_profile")
+
+[node name="RecoveryComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Standing")]
+script = ExtResource("7_recovery")
+Rig = NodePath("../PuppetRig")
+Standing = NodePath("../StandingDetector")
+SafeBounds = Rect2(0, 0, 480, 360)
+SafePoseOrigin = Vector2(240, 260)
+
+[node name="AutonomousMotionComponent" type="Node" parent="." node_paths=PackedStringArray("Standing")]
+script = ExtResource("10_autonomy")
+Standing = NodePath("../StandingDetector")
+Profile = ExtResource("11_autonomy_profile")
+
+[node name="ActiveDriveComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Standing", "Recovery")]
+script = ExtResource("8_drive")
+Rig = NodePath("../PuppetRig")
+Standing = NodePath("../StandingDetector")
+Recovery = NodePath("../RecoveryComponent")
+Profile = ExtResource("9_drive_profile")
+ConsciousProfile = ExtResource("12_conscious_profile")
+UnconsciousProfile = ExtResource("13_unconscious_profile")

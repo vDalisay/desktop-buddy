@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ConsciousnessDriveProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Physics/ConsciousnessDriveProfile.cs" id="1_profile"]
+
+[resource]
+resource_name = "ProvisionalLabConsciousDrive"
+script = ExtResource("1_profile")
+ActiveDriveEnabled = true
+UprightScale = 1.0
+BalanceScale = 1.0
+LocomotionScale = 1.0
+JumpScale = 1.0
+RecoveryScale = 1.0

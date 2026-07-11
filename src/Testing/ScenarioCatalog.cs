@@ -13,6 +13,10 @@ public static class ScenarioCatalog
     private static readonly Dictionary<string, Func<IScenario>> Factories = new(StringComparer.Ordinal)
     {
         ["boot_smoke"] = () => new BootSmokeScenario(),
+        ["passive_rig"] = () => new PassiveRigScenario(),
+        ["standing_recovery"] = () => new StandingRecoveryScenario(),
+        ["autonomous_motion"] = () => new AutonomousMotionScenario(),
+        ["laboratory_controls"] = () => new LaboratoryControlsScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;
