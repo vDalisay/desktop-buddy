@@ -47,6 +47,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 7. **FR-001.7:** WHEN no prior zoom preference exists THEN the game SHALL use `100%` zoom.
 8. **FR-001.8:** WHEN a saved position, monitor, size, or DPI context is no longer valid THEN the game SHALL clamp the window into a usable monitor area.
 9. **FR-001.9:** WHEN no prior topmost preference exists THEN Always on Top SHALL be enabled; WHEN the player changes it THEN the game SHALL apply and retain the chosen value.
+10. **FR-001.10:** WHEN the current window size cannot support a zoom level without reducing the sandbox below `360x270` world units THEN that zoom level SHALL be unavailable and the effective zoom SHALL be clamped to the largest supported level, while the stored zoom preference is retained.
 
 ### FR-002 — Work Mode, Play Mode, and Pointer Routing
 
@@ -148,6 +149,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 6. **FR-009.6:** WHILE the player holds primary input and drags backward during a pullback launch THEN the game SHALL display a predicted trajectory.
 7. **FR-009.7:** WHEN the player releases a pullback launch THEN the object SHALL launch opposite the drag vector.
 8. **FR-009.8:** WHEN the player presses secondary input during a held or aimed interaction THEN the game SHALL cancel or drop that interaction without changing the selected tool.
+9. **FR-009.9:** WHILE any tool is selected, the operating-system cursor SHALL remain visible; tool actors SHALL render beneath it and SHALL NOT hide or replace it.
 
 ### FR-010 — Firearms, Grenade, Fire, and Burning
 
@@ -185,6 +187,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 13. **FR-011.13:** WHEN an accepted harmful event produces pain THEN mood SHALL decrease by `min(10, pain x 0.1)`; Burning pain ticks SHALL use the same rule and knockout SHALL add no separate mood penalty.
 14. **FR-011.14:** WHEN knockout begins THEN the rolling pain window SHALL clear; WHILE unconscious, accepted hits SHALL still pay and affect mood but SHALL NOT accumulate toward the next knockout; WHEN the buddy wakes THEN the rolling window SHALL be empty.
 15. **FR-011.15:** WHEN currency is stored THEN it SHALL use signed 64-bit milli-credits with `1000` minor units per displayed credit; fractional rewards SHALL accumulate, while the HUD, shop prices, and balances SHALL display whole credits.
+16. **FR-011.16:** WHEN a launched or thrown object impacts the buddy before it has first come to rest and before any reassigning interaction THEN the impact SHALL attribute to the originating tool/throw; WHEN it impacts after coming to rest or after reassignment THEN it SHALL attribute to the generic loose-object source; boundary bounces alone SHALL NOT clear attribution.
 
 ### FR-012 — Passive Income and Economy Rules
 
@@ -243,6 +246,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 5. **FR-016.5:** WHEN the player selects Reset Buddy THEN the live buddy SHALL return to a safe state without implying a progression reset.
 6. **FR-016.6:** WHEN the player selects Save & Quit THEN the game SHALL flush dirty progress before a clean exit.
 7. **FR-016.7:** WHEN no Windows-startup preference exists THEN Launch with Windows SHALL be disabled; WHEN enabled by the player THEN the game SHALL retain that preference.
+8. **FR-016.8:** WHEN the Windows session is locked THEN mood drift and passive income SHALL continue as running time without a clock-discontinuity exclusion; WHEN the session unlocks THEN the game SHALL restore its prior presentation state.
 
 ### FR-017 — Settings and Feedback
 
@@ -256,6 +260,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 6. **FR-017.6:** WHEN no saved presentation settings exist THEN V-sync SHALL be On, anti-aliasing SHALL be `2x` MSAA, Master and SFX volume SHALL each be `50%`, Mute in Work Mode SHALL be On, Screen Shake SHALL be On, Reduced Motion and Reduced Particles SHALL be Off, and Photosensitivity-Safe Effects SHALL be On.
 7. **FR-017.7:** WHEN the anti-aliasing setting is opened THEN it SHALL offer Off, `2x`, `4x`, and `8x` MSAA; WHEN the V-sync setting is opened THEN it SHALL offer On and Off.
 8. **FR-017.8:** WHEN screen shake occurs THEN it SHALL affect only rendered game content and SHALL NOT move the operating-system window.
+9. **FR-017.9:** WHEN player-facing text is implemented THEN it SHALL resolve through externalized translation resources with stable keys; the first release SHALL ship English as the only locale.
 
 ### FR-018 — Steam Integration, Statistics, and Achievements
 
@@ -325,6 +330,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 | Initial desktop offset | `16 px` from lower-right usable edge | FR-001.2 |
 | Default mode hotkey | `Ctrl+Shift+B` | FR-002.10 |
 | Zoom choices | `75/100/125/150/175/200%`; default `100%` | FR-001.6–FR-001.7 |
+| Minimum sandbox room | `360x270` world units | FR-001.10 |
 | Fixed physics frequency | `120 Hz` | NFR-002.1 |
 | Foreground render target | `>=60 FPS` | NFR-002.2 |
 | Foreground reference budget | `<5% CPU`, `<300 MB RAM` | NFR-002.3 |

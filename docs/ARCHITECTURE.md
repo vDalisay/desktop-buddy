@@ -93,7 +93,7 @@ The buddy root connects component events and passes commands. It contains no per
 
 ## 5. Core Types and Interfaces
 
-Stable IDs must not depend on scene node names.
+Stable IDs must not depend on scene node names. Stable content IDs (tools, statuses, achievements, attribution sources) cross every domain seam as plain `string` values. `StringName`, `Rid`, `GodotObject`, and other native-backed Godot types are banned from domain records and domain-facing interfaces: they require a running engine, so they would crash the pure-test assembly (Section 22). Managed Godot structs such as `Vector2` are acceptable in domain payloads.
 
 ```csharp
 public enum BuddyPartId { Head, Torso, LeftArm, RightArm, LeftLeg, RightLeg }
@@ -105,7 +105,7 @@ public enum ToolUseMode { DirectStroke, GrabTether, SwingBody, CursorWeapon, Pul
 
 public readonly record struct ImpactSample(
     ulong InteractionId,
-    StringName ToolId,
+    string ToolId,
     BuddyPartId Part,
     Vector2 Point,
     Vector2 Normal,
@@ -117,14 +117,14 @@ public readonly record struct ImpactSample(
 
 public readonly record struct AcceptedPainEvent(
     ulong InteractionId,
-    StringName ToolId,
+    string ToolId,
     BuddyPartId Part,
     double Time,
     double Pain,
     bool IsUnconscious);
 
 public readonly record struct RewardEvent(
-    StringName SourceId,
+    string SourceId,
     BuddyPartId Part,
     long AmountMinorUnits,
     double Pain,
@@ -157,8 +157,8 @@ public interface IPlatformService
 {
     bool IsAvailable { get; }
     Task InitializeAsync(CancellationToken token);
-    void SetStat(StringName id, long value);
-    void UnlockAchievement(StringName id);
+    void SetStat(string id, long value);
+    void UnlockAchievement(string id);
     void PumpCallbacks();
     Task FlushAsync(CancellationToken token);
 }
@@ -169,7 +169,7 @@ Tool behaviors implement a focused lifecycle rather than a giant tool switch:
 ```csharp
 public interface IToolBehavior
 {
-    StringName ToolId { get; }
+    string ToolId { get; }
     void Select(ToolContext context);
     void HandleInput(in ToolInputFrame input);
     void PhysicsTick(double delta);
@@ -189,7 +189,7 @@ Static data is represented by C# `Resource` subclasses and `.tres` assets:
 - `ActiveDriveProfile`: drive gains/limits for normal, fearful resistance, unconscious, and recovery modes.
 - `PainProfile`: accepted source categories and empirical impulse/effect-to-pain curves.
 - `MoodEconomyProfile`: bands, drift, care values, passive curve, cash-per-pain, and calibrated price table.
-- `ToolDefinition`: stable ID, display metadata, unlock price/order, use mode, PackedScene references, cooldown/ammo/fuse/status data.
+- `ToolDefinition`: stable ID, display metadata as translation keys plus icon references, unlock price/order, use mode, PackedScene references, cooldown/ammo/fuse/status data.
 - `StatusDefinition`: duration/refresh cap and semantic tick policy.
 - `AchievementDefinition`: stable Steam API ID and local trigger ID.
 
@@ -288,7 +288,7 @@ Use two versioned files under `user://`:
 - global hotkey binding and launch-at-login preference;
 - last input/window mode where safe to restore.
 
-The save coordinator is the single writer. It snapshots state on the main thread, serializes off-thread without Godot objects, writes a temp file, flushes, rotates one backup, and atomically replaces the primary. It serializes concurrent requests and coalesces the 30-second dirty autosave. Purchases, unlocks, focus loss, and clean exit request an immediate flush.
+The save coordinator is the single writer. It snapshots state on the main thread, serializes off-thread without Godot objects, writes a temp file, flushes, rotates one backup, and atomically replaces the primary. On Windows this means .NET file APIs: a durable flush (`FileStream.Flush(true)`) on the temp file before `File.Replace` performs the atomic swap and backup rotation in one call. Godot `FileAccess` does not guarantee durable flush semantics and is not used for save writes. It serializes concurrent requests and coalesces the 30-second dirty autosave. Purchases, unlocks, focus loss, and clean exit request an immediate flush.
 
 Load order is primary, backup, defaults. A malformed file is renamed with a `.corrupt-<timestamp>` suffix before fallback. Stable catalog IDs are validated; unknown future IDs are preserved in an extension bucket where safe but are not activated. Migrations are sequential, tested functions from version N to N+1.
 
@@ -296,7 +296,7 @@ Never serialize nodes, Resources, RID/instance IDs, transforms, velocities, loos
 
 ## 13. Steam Adapter
 
-The main assembly references only `IPlatformService`. `LocalPlatformService` is always available. Steamworks-specific types live in an optional adapter assembly/module built from authorized dependencies; a factory loads it when present and otherwise returns local mode. Development and CI must build/test without proprietary native binaries.
+The main assembly references only `IPlatformService`. `LocalPlatformService` is always available. Steamworks-specific types live in an optional adapter assembly built on Steamworks.NET, the authorized binding; a factory loads it when present and otherwise returns local mode. Development and CI must build/test without proprietary native binaries.
 
 Achievements and stats are emitted as idempotent semantic operations with stable IDs. The local queue records pending operations before attempted submission, deduplicates achievement IDs, keeps maximum/total semantics per stat definition, and removes an operation only after confirmed flush. Steam callbacks are pumped by the platform coordinator on the main thread.
 
@@ -311,6 +311,8 @@ HUD/panels use Godot Control containers, minimum sizes, anchors, and theme scali
 The HUD and shop render whole-credit balances/prices. A reward presenter groups damage rewards over `0.25` seconds and renders brief `+$N.N` feedback without exposing pain. Default presentation settings are V-sync On, `2x` MSAA, Master/SFX `50%`, Work Mode mute On, Screen Shake On, Reduced Motion/Particles Off, and Photosensitivity-Safe Effects On. AA choices are Off/`2x`/`4x`/`8x`; V-sync choices are On/Off. Camera shake moves only game content, never the native window.
 
 Audio consumes semantic events through an `AudioPresenter`, applies master/SFX/Work-Mode mute policy, and never participates in gameplay timing.
+
+The operating-system cursor is never hidden or replaced; cursor-attached tool actors render beneath it. All player-facing text resolves through Godot translation resources with stable keys — no display literals in code, scenes, or typed definitions. The first release ships English only; adding a locale must require only a new translation resource.
 
 ## 15. Object and Projectile Lifecycle
 
@@ -332,7 +334,7 @@ Development telemetry must expose spring strain/force, body speed/rotation, supp
 
 ## 17. Testing Boundaries
 
-- Pure C# tests: formulas, timers, state machines, economy, saves/migrations, stats/achievements, queue idempotency.
+- Pure C# tests: formulas, timers, state machines, economy, saves/migrations, stats/achievements, queue idempotency. These compile against the Godot-free domain assembly (Section 22) and run with plain `dotnet test`.
 - Headless Godot scenarios: scene validation, spring/drive behavior, tools, contacts, resize/zoom, recovery, soak, tolerance envelopes.
 - Standalone Windows: native handle/hit test, transparency, focus, tray, global hotkey, DPI/multi-monitor, Steam overlay.
 - Performance: allocations, 120 Hz budget, projectile/object pools, visible/hidden targets.
@@ -363,3 +365,68 @@ res://
 ```
 
 Create directories only when their milestone introduces code; do not scaffold empty abstractions for deferred features.
+
+## 20. Godot Engine and Project Configuration
+
+Baseline `project.godot` requirements, established in Milestone 0:
+
+- `physics/common/physics_ticks_per_second = 120`.
+- `physics/common/max_physics_steps_per_frame` set explicitly (recommend `4`–`6`; final value is tuning data). This bounds post-stall catch-up: after a modal window move/resize loop, driver stall, or resume, at most that many ticks run in one rendered frame and excess accumulated time is dropped by the engine. Combined with tick-counted gameplay timers this implements the no-simulation-burst rule; brief slow-motion under heavy stall is the accepted trade-off, never a burst.
+- `physics/common/physics_interpolation = true`.
+- `display/window/size/viewport_width = 480`, `viewport_height = 360`, `borderless = true`, `transparent = true`, `always_on_top = true`, and `display/window/per_pixel_transparency/allowed = true`. The `per_pixel_transparency/allowed` flag cannot be enabled at runtime; a build missing it silently loses transparency in release.
+- Stretch mode `disabled`. The game owns zoom and responsive layout (Section 21); engine stretch must not fight them.
+- Renderer: `gl_compatibility` is the primary choice for the UHD 630-class budget. The template leftovers `physics/3d/physics_engine="Jolt Physics"` (no 3D physics is used) and `rendering_device/driver.windows="d3d12"` (inapplicable under Compatibility, misleading to readers) are removed. Per-pixel transparency, `msaa_2d`, and V-sync are validated together on Windows 10/11 hardware at the start of Milestone 2; if Compatibility fails that spike, Forward+ (Vulkan) is the fallback and the decision is recorded before HUD work begins.
+- `application/config/custom_user_dir_name` is chosen in Milestone 0 and never changed after release; save paths and Steam Auto-Cloud file patterns depend on it.
+- Named 2D physics layers. Starting proposal, validated by the collision-layer tests (the buddy-never-self row is contractual; the rest is lab-adjustable):
+
+| # | Layer | Collides with |
+| --- | --- | --- |
+| 1 | RoomBounds | 2, 3, 4, 5 |
+| 2 | BuddyParts | 1, 3, 4, 5 — never 2 |
+| 3 | LooseObjects | 1, 2, 3, 4, 5 |
+| 4 | Projectiles | 1, 2, 3 (no projectile–projectile, no projectile–tool) |
+| 5 | PhysicalTools | 1, 2, 3 |
+| 6 | InteractionSense | detection-only areas; scans 3 |
+
+## 21. Zoom, Room Size, and View Ownership
+
+Zoom is a view transform, never a physics change. `Camera2D` zoom scales world rendering; Control theme scale handles UI. RigidBody2D shapes, masses, springs, and all accepted tuning are zoom-invariant; rescaling physics bodies per zoom level would invalidate the physics laboratory results.
+
+The sandbox room size in world units is derived: `window client size / zoom`. Window resize and zoom change both rebuild boundaries through the same boundary-controller path; nothing else may resize the room.
+
+The sandbox floor is `360x270` world units — the minimum window at `100%` zoom — so zoom introduces no room smaller than the smallest already-supported window. Zoom levels whose room would fall below the floor for the current window are unavailable: the stored preference is retained, the effective zoom clamps to the largest supported level, and settings present unsupported levels as disabled for the current window. Stability validation therefore covers rooms from `360x270` world units upward.
+
+## 22. Assembly Layout, Test Harness, and CI
+
+Four C# projects under one solution:
+
+- `DesktopBuddy.Domain` — plain .NET class library, no `Godot.NET.Sdk` reference. Owns formulas, pain window, knockout timing, mood/trust rules, economy, statistics windows, save DTOs/migrations, platform-operation queue logic, and tick-count timers.
+- `DesktopBuddy` — the Godot game assembly (root `.csproj`), references Domain. Because `Godot.NET.Sdk` globs `**/*.cs` under the project directory, the root project excludes the nested project folders via `DefaultItemExcludes`.
+- `DesktopBuddy.Domain.Tests` — xUnit against Domain only; runs with `dotnet test` and no Godot runtime.
+- `DesktopBuddy.Steam` — the optional Steam adapter assembly (Milestone 6), loaded through the platform factory.
+
+Headless Godot scenarios use a dedicated runner scene invoked as `godot --headless -- --scenario=<id> --seed=<n>`, emitting machine-readable JSON verdicts and envelope metrics for CI. That invocation protocol is the contract CI depends on; a framework such as gdUnit4 may be adopted later behind it.
+
+CI from Milestone 0: `dotnet build`, Domain unit tests, headless editor import, and one smoke scenario on every push, with no proprietary Steam binaries required. The standalone Windows matrix in `TEST_PLAN.md` Section 5 remains manual. Toolchain is pinned: `global.json` for the .NET SDK; the exact Godot 4.6.1 editor and export-template versions documented in `README.md`.
+
+Release export presets exclude test scenes, laboratory scenes, and debug telemetry content via export filters; the no-selectable-placeholder rule applies to shipped builds only because those scenes never ship.
+
+## 23. Physics Integration Details
+
+- One fixed-tick entry point. `SandboxRoot` owns the only gameplay `_PhysicsProcess`; it drives the Section 7 order through explicit method calls (`BuddyRoot` routes the buddy-internal portion). Components do not register their own `_PhysicsProcess`: Godot offers no useful cross-sibling ordering guarantee, and 120 Hz × N marshaled callbacks is measurable overhead.
+- Buddy parts set `CanSleep = false` — the spring solver must never fight the sleep heuristic. Loose objects keep sleeping enabled; the 24-object CPU budget assumes settled objects sleep, and registry/eviction logic must handle sleeping bodies.
+- Contact reporting is explicit configuration: the six parts (and anything else the `ImpactRouter` samples) need `ContactMonitor = true` and `MaxContactsReported` sized generously (≥ 8), because both contact signals and `PhysicsDirectBodyState2D` contact queries require it. Forgetting this yields silent zero-contact behavior, so a startup validation check asserts it.
+- Contact data visible during `_IntegrateForces`/direct state reflects the previously completed solver pass; accepted pain therefore trails physical contact by one 120 Hz tick. This is accepted reality — tolerance and exact-timer assertions already treat one tick as the base uncertainty; implementations must not fight it with same-tick hacks.
+- Exact durations (4 s knockout, 4/8 s Burning, 0.15 s debounce, weapon cadence, care cooldowns) count integer ticks at 120 Hz rather than accumulating floats.
+- Allocation policy: steady-state physics ticks allocate zero managed heap. Hot-path events are plain C# delegates/interfaces carrying `readonly record struct` payloads; Godot signals are reserved for low-frequency semantic/UI events. The published view snapshot is double-buffered, not rebuilt per tick. LINQ, closures, boxing, and `params` arrays are banned from tick paths. A performance test measures allocation deltas across a scripted active scene.
+- Seeded randomness: components never call engine or global RNG directly. An injectable random source is provided per consumer family, with the behavior/decision stream isolated from presentation-only streams so envelope repeatability never depends on VFX. Headless scenarios inject fixed seeds; production seeds from entropy.
+- Behavior arbiter cadence: intents recompute every tick, but goal switches pass a hysteresis/commitment rule (tuning data) so autonomy cannot flip-flop at 120 Hz.
+- Non-contact damage entry: explosions and fire produce no solver contact. The grenade explosion applies its radial impulses physically and submits synthetic attributed `ImpactSample`s through the same `ImpactRouter` thresholding; the Fire Sprayer detects buddy contact through a cone/area query owned by its tool behavior and applies Burning, whose pain then flows through attributed status ticks. VFX particles remain non-gameplay in both cases.
+
+## 24. Windows Lifecycle Messages, Tray, and Hidden Mode
+
+The Windows adapter observes and forwards, at minimum: `WM_ENTERSIZEMOVE`/`WM_EXITSIZEMOVE` (modal move/size loop; the post-loop frame must obey the Section 20 no-burst bound), `WM_DPICHANGED`, `WM_DISPLAYCHANGE` and work-area `WM_SETTINGCHANGE` (monitor topology and taskbar changes feed the same clamping path as startup restore), `WM_POWERBROADCAST` (suspend/resume drives the lifecycle discontinuity rule), and session lock/unlock via `WTSRegisterSessionNotification`. Session lock continues accrual as normal running time and is never a clock discontinuity; while locked, the game may drop into the hidden-style low-cost mode below and restore the prior presentation state on unlock.
+
+Tray: Godot's `DisplayServer` status-indicator API covers the icon and click callback; the menu is either a Godot popup positioned at the cursor or a native adapter menu. Validate on Windows 10/11 during Milestone 2 and keep the choice inside the adapter.
+
+Hidden-to-tray is implemented concretely as: hide the window, `SceneTree.Paused = true`, `RenderingServer.RenderLoopEnabled = false`, and `Engine.MaxFps` throttled to roughly 10 iterations per second. A single lifecycle-coordinator node with `ProcessMode.Always` performs mood drift and passive-income accrual from the monotonic application clock at that low cadence. Showing the window reverses the settings, resets physics interpolation, and resumes the frozen visible state. Foreground play never uses `OS.low_processor_usage_mode`; it would jitter the 120 Hz loop.

@@ -65,6 +65,7 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - Never exceed the configured maximum-stretch bound.
 - Walk left/right, jump, land, and remain recognizable without self-collision instability.
 - Run the same scenario repeatedly and keep outcome metrics inside the approved envelopes.
+- Buddy parts never enter physics sleep; settled loose objects do sleep, and eviction/registry behavior stays correct on sleeping bodies.
 
 ### Grab and Recovery
 
@@ -85,14 +86,17 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
+- A thrown object that bounces off a boundary before striking the buddy still credits the originating throw; the same object striking after coming to rest, or after the buddy tosses/discards it, attributes to the generic loose-object source.
 - Spawning object 25 removes the oldest eligible safe/unheld object and never removes a protected object.
 
 ### Resize and Zoom
 
 - Exercise minimum, default, and monitor-sized rooms at `4:3`, `16:10`, `16:9`, and `21:9`.
 - Resizing rebuilds containment safely on a physics boundary and does not stretch assets or bodies.
-- Zoom changes world/UI scale but not the OS window dimensions.
+- Zoom changes world/UI scale but not the OS window dimensions, and never rescales physics bodies or invalidates accepted tuning.
 - Objects forced outside new bounds are corrected without an impulse explosion.
+- An OS modal move/size loop followed by release produces no physics catch-up burst beyond the configured maximum physics steps per frame, and tick-counted gameplay timers do not jump.
+- Exercise the smallest legal room (`360x270` world units) for stability, and verify zoom levels that would shrink the room below that floor are unavailable while the stored zoom preference survives clamping.
 
 ## 4. Economy Simulation
 
@@ -119,6 +123,7 @@ Run outside the embedded Godot editor window.
 - `Escape`, default `Ctrl+Shift+B`, remapped global hotkey, and tray recovery from every focus state.
 - Window move/resize persistence and off-screen recovery after monitor removal.
 - Show/hide, Windows-startup toggle, Reset Buddy, and Save & Quit tray actions.
+- Session lock/unlock: mood/passive accrual continues while locked, no clock discontinuity is recorded, and the prior presentation state restores on unlock.
 - First-run presentation defaults and AA Off/2x/4x/8x plus V-sync On/Off apply correctly; screen shake never moves the OS window.
 
 ## 6. Steam Acceptance
@@ -138,6 +143,7 @@ On an i5-8400/UHD 630-class reference machine at `480x360` with 24 loose objects
 - Target less than 5% total CPU and 300 MB resident memory during the representative active scene.
 - Target less than 0.5% CPU while hidden to tray.
 - Complete a four-hour visible soak and eight-hour hidden soak without unbounded memory, object, timer, save-queue, or Steam-event growth.
+- Steady-state physics ticks allocate zero managed heap memory during a scripted active scene, measured through allocation-delta sampling; soak runs show no GC-driven frame-time spikes.
 
 If the active budget is missed, optimize VFX, rendering, allocations, collision layers, and sleeping. Do not silently reduce the physics tick rate.
 

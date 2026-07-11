@@ -186,7 +186,7 @@ Physics contact is captured from Godot's authoritative contact data during fixed
 - whether the buddy is unconscious and/or player-grabbed at acceptance time;
 - status/source attribution for periodic effects such as Burning.
 
-Configured room boundaries, loose objects, projectiles, and physical weapons enter the pain pipeline when their calibrated impact threshold is exceeded. Attribution follows the originating tool/throw whenever that relationship is available. Low-energy contacts below the shared configured threshold produce no accepted pain event.
+Configured room boundaries, loose objects, projectiles, and physical weapons enter the pain pipeline when their calibrated impact threshold is exceeded. Attribution follows the originating tool/throw whenever that relationship is available. That relationship expires when the object first comes to rest (physics sleep or sustained sub-threshold speed) or when a new interaction reassigns it (player grab-throw, buddy toss/discard); boundary bounces alone never clear it. Post-expiry impacts attribute to the generic loose-object source, and explosion samples always attribute to the grenade. Low-energy contacts below the shared configured threshold produce no accepted pain event.
 
 ### 7.2 Deduplication and pain conversion
 

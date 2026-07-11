@@ -26,6 +26,7 @@ Target stack:
 - [Test plan](docs/TEST_PLAN.md)
 - [Implementation roadmap](docs/ROADMAP.md)
 - [Reference research](docs/REFERENCE_RESEARCH.md)
+- [Open questions](docs/OPEN_QUESTIONS.md)
 
 ## First Implementation Gate
 

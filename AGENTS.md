@@ -10,6 +10,7 @@ Read these before changing code, in this order:
 4. `docs/ARCHITECTURE.md` — ownership, interfaces, data flow, and failure behavior.
 5. `docs/TEST_PLAN.md` and `docs/ROADMAP.md` — verification and milestone order.
 6. `docs/REFERENCE_RESEARCH.md` — clean-room reference evidence and technical sources.
+7. `docs/OPEN_QUESTIONS.md` — decisions awaiting owner confirmation; do not implement behavior an open question affects until it is resolved into `DECISIONS.md`.
 
 If documents conflict, stop and ask the project owner. If product behavior is not specified, do not invent it. Engineering coefficients explicitly assigned to the physics/economy laboratory may be tuned through the documented acceptance process.
 

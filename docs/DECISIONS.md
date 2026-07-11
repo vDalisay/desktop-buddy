@@ -32,6 +32,7 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **Graphics choices:** V-sync exposes On/Off; anti-aliasing exposes Off/`2x`/`4x`/`8x` MSAA.
 - **Shake boundary:** Screen shake moves only rendered game content and never the operating-system window.
 - **Launch inputs:** Mouse and keyboard only.
+- **Localization:** The first release ships English only. All player-facing text is externalized behind stable translation keys from the first implementation; no player-facing string literals live in code or scenes, and typed content definitions carry translation keys rather than display literals so additional languages can be added without code changes.
 - **Physics frequency:** Active simulation runs at a fixed `120 Hz` and never dynamically lowers its physics tick rate.
 - **Rendering:** Physics interpolation is enabled; foreground play targets at least `60` rendered FPS with user-configurable V-sync.
 - **Reference performance budget:** At `480x360` with `24` loose objects, target less than `5%` CPU and `300 MB` RAM on an Intel i5-8400/UHD 630-class PC.
@@ -74,6 +75,7 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **Resize semantics:** Resizing changes sandbox boundaries and available room area; it does not stretch the buddy, items, effects, or UI.
 - **Zoom:** A separate setting scales all UI elements and world objects proportionally without changing the window dimensions.
 - **Zoom values:** Supported live zoom levels are `75%`, `100%`, `125%`, `150%`, `175%`, and `200%`; the default is `100%`.
+- **Zoom clamping:** The sandbox may never be smaller than `360x270` world units — the minimum window at `100%` zoom. Zoom levels that would produce a smaller room for the current window size are unavailable; the stored zoom preference is retained and the effective zoom is clamped to the largest supported level for the current window.
 - **Initial placement:** First launch positions the window `16` pixels from the lower-right edge of the monitor's usable work area.
 - **Window persistence:** Position, size, monitor, and DPI context are saved. Invalid or off-screen positions are clamped back into a usable monitor area.
 - **Topmost behavior:** Always-on-top is enabled by default and may be disabled in settings.
@@ -87,6 +89,7 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **Pullback launcher:** Balls, care items, and grenades spawn on primary press. Holding and dragging backward displays a predicted trajectory; release launches the object opposite the drag vector in an Angry Birds-style interaction.
 - **Secondary action:** Right mouse cancels or drops the current held/aimed interaction without changing the selected tool.
 - **Firearm trigger/reload:** Pistol and Shotgun fire once per primary press, reload manually with `R`, and automatically begin reloading when fired empty.
+- **Cursor visibility:** The operating-system cursor is never hidden or replaced. In Play Mode it remains visible above cursor-attached tool actors.
 
 ## Weapon and Status Defaults
 
@@ -114,6 +117,7 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **Currency representation:** Currency is stored as signed 64-bit milli-credits (`1000` minor units per displayed credit), so fractional rewards accumulate without floating-point save drift. HUD and prices display whole credits.
 - **Reward feedback:** Damage earnings are coalesced over `0.25` seconds and shown briefly as `+$N.N`; the pain value itself remains hidden.
 - **Damage sources:** Calibrated impacts with room boundaries, loose objects, projectiles, and physical weapons may all cause pain; attribution follows the originating tool/throw when available.
+- **Attribution expiry:** A launched or thrown object credits its originating tool/throw until it first comes to rest (physics sleep or sustained sub-threshold speed) or until a new interaction reassigns it (player grab-throw, buddy toss/discard). Boundary bounces alone never clear attribution. After expiry, impacts attribute to the generic loose-object source. Explosion damage always attributes to the grenade. Payout thresholds and contact deduplication are unaffected by attribution.
 - **Mood loss from harm:** Each accepted harmful event reduces mood by `min(10, pain x 0.1)`. Burning pain ticks use the same rule and knockout adds no separate mood penalty.
 - **Knockout-window reset:** The rolling pain window clears when knockout begins. Hits during unconsciousness still pay and affect mood but do not accumulate toward a later knockout; waking starts with an empty window.
 
@@ -173,12 +177,14 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **Steam features:** The first Steam release includes Steam achievements, Steam stats, and Steam Cloud for progression data.
 - **Local settings:** Machine-specific window position, monitor, size, DPI context, and local settings are excluded from Steam Cloud.
 - **Steam fallback:** Failure or absence of Steam initialization never prevents local play or local saves.
+- **Steam binding:** The optional Steam adapter uses Steamworks.NET as the authorized C# binding. Its native `steam_api64.dll` ships only through the release export path and never enters development commits.
 - **Save format:** Progress uses versioned JSON, atomic replacement, one rolling backup, and quarantine of corrupt files before fallback recovery.
 - **Autosave:** Dirty progress flushes every `30` seconds and immediately after purchases, unlocks, focus loss, and clean exit.
 - **Tray controls:** Show/Hide, Work/Play Mode, Always on Top, Return to Bottom-Right, Reset Buddy, Settings, and Save & Quit.
 - **Windows startup:** Launch with Windows is optional and disabled by default.
 - **Hidden operation:** While hidden to the tray, rendering and ragdoll physics are suspended; mood timers and passive income continue at low cost.
 - **No catch-up:** Closing the app, Windows sleep/suspend, or a large clock discontinuity grants no mood or income catch-up. On resume, the physics accumulator is cleared to prevent a simulation burst.
+- **Session lock:** Locking the Windows session counts as normal running time: mood drift and passive income continue and no clock discontinuity is recorded. While locked, the game may enter the hidden-style low-cost mode (suspended rendering/ragdoll physics) and restore the prior state on unlock; locked time accrues as hidden-passive time when that mode engages.
 - **Tracked stats:** Total money earned; best earnings over `1`, `3`, and `10` seconds; total running, active-interaction, and hidden-passive time; total pain; knockouts; successful catches; highest/lowest mood; and per-tool uses/pain.
 - **Offline Steam queue:** Achievement and stat updates earned without Steam connectivity are queued locally and synchronized after reconnection.
 - **Launch achievements:** First Impression (first damage money), Lights Out (first knockout), Retail Therapy (first purchase), Full Toybox (full launch catalogue), Best Friends (mood `+100`), Forgiven (harmful-history reset at mood `60`), Nice Catch (`25` catches), Variety Hour (all launch interactions used), Fire Drill (Burning cleared with Repair Kit), and Desktop Shift (`2` running hours).
