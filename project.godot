@@ -9,31 +9,26 @@
 config_version=5
 
 [application]
-run/main_scene="res://scenes/bootstrap.tscn"
 
 config/name="desktop-buddy"
-config/features=PackedStringArray("4.6", "GL Compatibility")
-config/icon="res://icon.svg"
+run/main_scene="res://scenes/bootstrap.tscn"
 config/use_custom_user_dir=true
 config/custom_user_dir_name="DesktopBuddy"
+config/features=PackedStringArray("4.6", "C#", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[display]
+
+window/size/viewport_width=480
+window/size/viewport_height=360
+window/size/borderless=true
+window/size/always_on_top=true
+window/size/transparent=true
+window/per_pixel_transparency/allowed=true
 
 [dotnet]
 
 project/assembly_name="DesktopBuddy"
-
-[display]
-
-; Transparent, borderless, always-on-top desktop sandbox (ARCHITECTURE.md Section 20).
-; per_pixel_transparency/allowed cannot be toggled at runtime; a build missing it
-; silently loses transparency in release, so it is pinned here from Milestone 0.
-window/size/viewport_width=480
-window/size/viewport_height=360
-window/size/borderless=true
-window/size/transparent=true
-window/size/always_on_top=true
-window/per_pixel_transparency/allowed=true
-; The game owns zoom and responsive layout; engine stretch must not fight them.
-window/stretch/mode="disabled"
 
 [input]
 
@@ -69,21 +64,11 @@ toggle_input_mode={
 
 [physics]
 
-; Fixed 120 Hz active simulation with physics interpolation (NFR-002.1, ARCHITECTURE.md Section 20).
-; max_physics_steps_per_frame bounds post-stall catch-up so a modal move/resize loop or resume
-; produces brief slow-motion, never a simulation burst. Value is tuning-adjustable (recommended 4-6).
 common/physics_ticks_per_second=120
 common/max_physics_steps_per_frame=6
 common/physics_interpolation=true
 
 [rendering]
 
-; gl_compatibility is the primary renderer for the UHD 630-class budget. The Milestone 0
-; Jolt-3D and d3d12 template leftovers are removed: no 3D physics is used, and the d3d12
-; device driver is inapplicable under Compatibility. The transparency/MSAA/V-sync spike at
-; the start of Milestone 2 may switch this to Forward+ and records that decision first.
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-
-[autoload]
-
