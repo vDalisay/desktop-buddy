@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "godot-mcp": {
+      "command": "node",
+      "args": ["${GODOT_MCP_SERVER}"],
+      "env": {
+        "GODOT_PATH": "${GODOT_PATH}"
+      }
+    }
+  }
+}

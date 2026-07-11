@@ -1,3 +1,31 @@
 # Godot 4+ specific ignores
 .godot/
 /android/
+
+# .NET / C# build output
+bin/
+obj/
+*.user
+*.suo
+
+# Godot .NET mono artifacts / crash dumps
+.mono/
+mono_crash.*.json
+
+# Export / build output (produced by the Windows export preset)
+/build/
+/export/
+
+# Diagnostics: logs and headless runner artifacts
+*.log
+/logs/
+/artifacts/
+
+# Development Steam app id — never committed; ships only via the release export path
+steam_appid.txt
+
+# Godot MCP runtime-control server injects this script at run time (dev-only, not ours)
+mcp_interaction_server.gd
+mcp_interaction_server.gd.uid
+
+# NOTE: per-asset *.import files (e.g. icon.svg.import) are intentionally tracked.

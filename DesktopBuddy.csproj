@@ -1,0 +1,27 @@
+<Project Sdk="Godot.NET.Sdk/4.6.1">
+
+  <!--
+    DesktopBuddy — the Godot game assembly (ARCHITECTURE.md Section 22).
+    Godot.NET.Sdk globs **/*.cs under the project directory (the repo root),
+    so the Godot-free Domain library and the pure xUnit test project are
+    excluded here via DefaultItemExcludes; they build as their own assemblies.
+    Godot scenario/journey *scenes* and *.json journeys under tests/ are data,
+    not compiled here.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <RootNamespace>DesktopBuddy</RootNamespace>
+    <AssemblyName>DesktopBuddy</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Nested standalone projects are their own assemblies; keep their .cs out of the game glob. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);domain/**/*;tests/DesktopBuddy.Domain.Tests/**/*</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="domain\DesktopBuddy.Domain\DesktopBuddy.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

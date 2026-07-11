@@ -1,0 +1,21 @@
+<Project>
+  <!--
+    Shared C# language configuration for every assembly in the solution
+    (game, domain, tests). Godot.NET.Sdk imports this automatically, so the
+    root game project inherits the same nullable/lang settings as the
+    Godot-free projects. Keep this free of Godot- or gameplay-specific props.
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+      Nullable violations are hard errors so the "no lost input / actionable
+      warnings" discipline in AGENTS.md is enforced at build time. Other
+      warnings (incl. Godot source-generator noise) stay warnings so a clean
+      clone still builds in CI.
+    -->
+    <WarningsAsErrors>Nullable</WarningsAsErrors>
+  </PropertyGroup>
+</Project>

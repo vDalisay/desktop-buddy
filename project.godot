@@ -9,21 +9,81 @@
 config_version=5
 
 [application]
+run/main_scene="res://scenes/bootstrap.tscn"
 
 config/name="desktop-buddy"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
+config/use_custom_user_dir=true
+config/custom_user_dir_name="DesktopBuddy"
 
 [dotnet]
 
-project/assembly_name="desktop-buddy"
+project/assembly_name="DesktopBuddy"
+
+[display]
+
+; Transparent, borderless, always-on-top desktop sandbox (ARCHITECTURE.md Section 20).
+; per_pixel_transparency/allowed cannot be toggled at runtime; a build missing it
+; silently loses transparency in release, so it is pinned here from Milestone 0.
+window/size/viewport_width=480
+window/size/viewport_height=360
+window/size/borderless=true
+window/size/transparent=true
+window/size/always_on_top=true
+window/per_pixel_transparency/allowed=true
+; The game owns zoom and responsive layout; engine stretch must not fight them.
+window/stretch/mode="disabled"
+
+[input]
+
+buddy_primary={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":1,"canceled":false,"pressed":false,"double_click":false,"script":null)
+]
+}
+buddy_secondary={
+"deadzone": 0.5,
+"events": [Object(InputEventMouseButton,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"button_mask":0,"position":Vector2(0, 0),"global_position":Vector2(0, 0),"factor":1.0,"button_index":2,"canceled":false,"pressed":false,"double_click":false,"script":null)
+]
+}
+buddy_reload={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":82,"key_label":0,"unicode":114,"location":0,"echo":false,"script":null)
+]
+}
+toggle_input_mode={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":true,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":66,"key_label":0,"unicode":98,"location":0,"echo":false,"script":null)
+]
+}
+
+[layer_names]
+
+2d_physics/layer_1="RoomBounds"
+2d_physics/layer_2="BuddyParts"
+2d_physics/layer_3="LooseObjects"
+2d_physics/layer_4="Projectiles"
+2d_physics/layer_5="PhysicalTools"
+2d_physics/layer_6="InteractionSense"
 
 [physics]
 
-3d/physics_engine="Jolt Physics"
+; Fixed 120 Hz active simulation with physics interpolation (NFR-002.1, ARCHITECTURE.md Section 20).
+; max_physics_steps_per_frame bounds post-stall catch-up so a modal move/resize loop or resume
+; produces brief slow-motion, never a simulation burst. Value is tuning-adjustable (recommended 4-6).
+common/physics_ticks_per_second=120
+common/max_physics_steps_per_frame=6
+common/physics_interpolation=true
 
 [rendering]
 
-rendering_device/driver.windows="d3d12"
+; gl_compatibility is the primary renderer for the UHD 630-class budget. The Milestone 0
+; Jolt-3D and d3d12 template leftovers are removed: no 3D physics is used, and the d3d12
+; device driver is inapplicable under Compatibility. The transparency/MSAA/V-sync spike at
+; the start of Milestone 2 may switch this to Forward+ and records that decision first.
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+
+[autoload]
+

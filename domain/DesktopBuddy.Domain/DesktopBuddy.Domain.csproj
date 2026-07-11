@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    DesktopBuddy.Domain — plain .NET class library. No Godot.NET.Sdk reference.
+    Owns formulas, pain window, knockout timing, mood/trust rules, economy,
+    statistics windows, save DTOs/migrations, platform-operation queue logic,
+    tick-count timers, and the headless runner-argument contract.
+    It must remain runnable under `dotnet test` with no Godot runtime, so no
+    Godot native-backed types (StringName, Rid, GodotObject) may appear here.
+    (ARCHITECTURE.md Sections 5 and 22.)
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>DesktopBuddy.Domain</RootNamespace>
+    <AssemblyName>DesktopBuddy.Domain</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,59 @@
+name: CI
+
+# Milestone 0 CI gate (ROADMAP.md, ARCHITECTURE.md Section 22):
+# dotnet build, domain unit tests, headless editor import, and the boot smoke
+# scenario/journey on every push and PR. The build must be green from a clean
+# clone with no locally installed Steam SDK; no proprietary Steam binaries are
+# required or referenced here. The standalone Windows matrix (TEST_PLAN.md
+# Section 5) and the MCP interactive tier are manual and never run in CI.
+
+on:
+  push:
+  pull_request:
+
+env:
+  # Pinned engine version. Must match README.md and the editor/export templates.
+  GODOT_VERSION: 4.6.1-stable
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build solution
+        run: dotnet build DesktopBuddy.sln -c Debug
+
+      - name: Domain unit tests
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
+
+      - name: Fail if any Steam SDK binary is present
+        run: |
+          if git ls-files | grep -iE 'steam_api(64)?\.(dll|so|dylib)|steam_appid\.txt'; then
+            echo "Proprietary/dev Steam files must not be committed."; exit 1;
+          fi
+
+      - name: Download pinned Godot (.NET/mono, Linux)
+        run: |
+          set -euo pipefail
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          curl -fL --retry 3 -o godot.zip "$URL"
+          unzip -q godot.zip
+          echo "GODOT_BIN=$PWD/${NAME}/${NAME}" >> "$GITHUB_ENV"
+
+      - name: Headless editor import
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
+
+      - name: Boot smoke scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
+
+      - name: Boot smoke journey
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=boot_smoke --seed=1

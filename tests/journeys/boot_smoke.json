@@ -1,0 +1,16 @@
+{
+  "id": "boot_smoke",
+  "description": "Milestone 0 boot smoke: launch to sandbox composition, startup validation passes, clean exit.",
+  "milestone": 0,
+  "setup": {
+    "seed": 1,
+    "save": "fresh",
+    "window": "default",
+    "zoom": 100
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "startup_ok", "equals": true },
+    { "predicate": "sandbox_composed", "equals": true }
+  ]
+}

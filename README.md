@@ -44,3 +44,55 @@ See [the roadmap](docs/ROADMAP.md) and [test plan](docs/TEST_PLAN.md) for the co
 ## Scope Boundary
 
 The current launch plan contains one buddy, one save, fourteen interactions/tools, a two-hour unlock curve, mood-scaled run-time passive income, and non-graphic slapstick feedback. Bleeding, painting, cosmetics, Workshop/custom buddies, multiple buddies, profiles, multiplayer, and non-Windows platforms are deferred.
+
+## Toolchain Versions
+
+These are pinned; a mismatch (especially export templates vs. editor) breaks C# builds or transparency.
+
+| Component | Version |
+| --- | --- |
+| Godot editor | `4.6.1.stable.mono` (Windows build: `Godot_v4.6.1-stable_mono_win64`) |
+| Godot export templates | `4.6.1.stable.mono` — must match the editor exactly |
+| .NET SDK | Pinned by [`global.json`](global.json) (`8.0.204`); targets .NET 8 |
+| Target runtime | Windows 10/11 x86_64 |
+
+## Solution Layout
+
+Four-project solution (`DesktopBuddy.sln`), per [ARCHITECTURE.md](docs/ARCHITECTURE.md) Section 22:
+
+- `DesktopBuddy.csproj` — the Godot game assembly (`Godot.NET.Sdk/4.6.1`); source under `src/`, scenes under `scenes/`, typed data under `data/`.
+- `domain/DesktopBuddy.Domain` — Godot-free .NET class library (rules, formulas, timers, save DTOs, runner-argument contract).
+- `tests/DesktopBuddy.Domain.Tests` — xUnit tests for the domain library.
+- `DesktopBuddy.Steam` — optional Steam adapter, added in Milestone 6.
+
+## Building and Testing
+
+The project exposes one command per test layer (see [TEST_PLAN.md](docs/TEST_PLAN.md)). Replace `<godot>` with the pinned editor binary.
+
+```sh
+# Build everything (also places the game assembly where Godot loads it).
+dotnet build DesktopBuddy.sln
+
+# Layer 1 — pure C# unit tests (no Godot runtime).
+dotnet test
+
+# One-time / after adding assets — headless import.
+<godot> --headless --path . --import
+
+# Layer 2 — headless seeded Godot scenarios (JSON verdict, exit 0 pass / 1 fail).
+<godot> --headless --path . -- --scenario=<id> --seed=<n> [--artifacts=<dir>]
+
+# Layer 3 — end-to-end journeys through the real input path.
+<godot> --headless --path . -- --journey=<id> --seed=<n> [--artifacts=<dir>]
+```
+
+Milestone 0 ships the `boot_smoke` scenario and journey. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the build, domain tests, headless import, and both boot smoke runs on every push — with no Steam SDK required.
+
+## Interactive Verification (Godot MCP)
+
+Tier 1 interactive verification uses a Godot MCP server (baseline [Coding-Solo/godot-mcp](https://github.com/Coding-Solo/godot-mcp); an extended runtime-control server is acceptable). The committed [`.mcp.json`](.mcp.json) resolves the server and engine from two environment variables so no machine-specific path is checked in:
+
+- `GODOT_MCP_SERVER` — path to the MCP server entrypoint (e.g. the server's `dist/index.js`).
+- `GODOT_PATH` — path to the pinned Godot 4.6.1 mono binary.
+
+The MCP tier is development-only, bound to localhost, never gating, and excluded from release exports; it never runs in CI.
