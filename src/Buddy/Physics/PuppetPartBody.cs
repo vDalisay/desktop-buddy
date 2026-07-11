@@ -20,8 +20,10 @@ public partial class PuppetPartBody : RigidBody2D
 
     public float Radius { get; private set; } = 16.0f;
     public Color FillColor { get; private set; } = new("7ac7ff");
+    public bool HasSupportContact { get; private set; }
+    public int SupportContactCount { get; private set; }
 
-    public void Configure(PuppetPartDefinition definition)
+    public void Configure(PuppetPartDefinition definition, Vector2 globalOrigin)
     {
         if (definition.PartId != PartId)
         {
@@ -38,8 +40,8 @@ public partial class PuppetPartBody : RigidBody2D
         Mass = definition.Mass;
         LinearDamp = definition.LinearDamp;
         AngularDamp = definition.AngularDamp;
-        Position = definition.RestPosition;
-        Rotation = 0.0f;
+        GlobalPosition = globalOrigin + definition.RestPosition;
+        GlobalRotation = 0.0f;
         LinearVelocity = Vector2.Zero;
         AngularVelocity = 0.0f;
 
@@ -57,6 +59,29 @@ public partial class PuppetPartBody : RigidBody2D
         LinearVelocity.IsFinite() &&
         float.IsFinite(GlobalRotation) &&
         float.IsFinite(AngularVelocity);
+
+    public override void _IntegrateForces(PhysicsDirectBodyState2D state)
+    {
+        HasSupportContact = false;
+        SupportContactCount = 0;
+        int contactCount = state.GetContactCount();
+        for (int index = 0; index < contactCount; index++)
+        {
+            GodotObject? colliderObject = state.GetContactColliderObject(index);
+            if (colliderObject is not CollisionObject2D collider ||
+                (collider.CollisionLayer & CollisionLayers.RoomBounds) == 0)
+            {
+                continue;
+            }
+
+            Vector2 worldNormal = state.GetContactLocalNormal(index).Rotated(GlobalRotation);
+            if (Mathf.Abs(worldNormal.Y) > 0.45f)
+            {
+                HasSupportContact = true;
+                SupportContactCount++;
+            }
+        }
+    }
 
     public override void _Draw()
     {

@@ -14,6 +14,7 @@ public static class ScenarioCatalog
     {
         ["boot_smoke"] = () => new BootSmokeScenario(),
         ["passive_rig"] = () => new PassiveRigScenario(),
+        ["standing_recovery"] = () => new StandingRecoveryScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

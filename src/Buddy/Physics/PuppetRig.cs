@@ -21,7 +21,7 @@ public partial class PuppetRig : Node
     public bool IsInitialized { get; private set; }
     public IReadOnlyList<PuppetPartBody> Parts => _parts;
 
-    public void Initialize()
+    public void Initialize(Vector2 globalOrigin)
     {
         if (IsInitialized)
         {
@@ -51,7 +51,7 @@ public partial class PuppetRig : Node
             PuppetPartBody body = _parts[index];
             PuppetPartDefinition definition = Profile.FindPart((BuddyPartId)index)
                 ?? throw new InvalidOperationException($"Missing definition for {(BuddyPartId)index}.");
-            body.Configure(definition);
+            body.Configure(definition, globalOrigin);
         }
 
         IsInitialized = true;
@@ -79,6 +79,27 @@ public partial class PuppetRig : Node
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Centralized fail-safe pose reset. This is never called by ordinary drive;
+    /// <see cref="RecoveryComponent"/> is the sole runtime owner of this seam.
+    /// </summary>
+    public void ResetToSafePose(Vector2 globalOrigin)
+    {
+        for (int index = 0; index < _parts.Length; index++)
+        {
+            PuppetPartBody body = _parts[index];
+            PuppetPartDefinition definition = Profile.FindPart((BuddyPartId)index)
+                ?? throw new InvalidOperationException($"Missing definition for {(BuddyPartId)index}.");
+            body.Freeze = false;
+            body.GlobalPosition = globalOrigin + definition.RestPosition;
+            body.GlobalRotation = 0.0f;
+            body.LinearVelocity = Vector2.Zero;
+            body.AngularVelocity = 0.0f;
+            body.Sleeping = false;
+            body.ResetPhysicsInterpolation();
+        }
     }
 
     private void Assign(BuddyPartId expected, PuppetPartBody body)

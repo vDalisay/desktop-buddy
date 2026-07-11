@@ -60,3 +60,6 @@ jobs:
 
       - name: Passive rig scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=passive_rig --seed=1
+
+      - name: Standing and recovery scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=standing_recovery --seed=1

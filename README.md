@@ -88,7 +88,7 @@ dotnet test
 
 Milestone 0 ships the `boot_smoke` scenario and journey. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the build, domain tests, headless import, and both boot smoke runs on every push — with no Steam SDK required.
 
-Milestone 1 additionally runs the `passive_rig` scenario, which verifies six-body composition, collision-layer isolation, required rigid-body runtime settings, finite force telemetry, bounded strain, and settling after an impulse.
+Milestone 1 additionally runs `passive_rig` and `standing_recovery`, covering six-body composition, collision-layer isolation, required rigid-body runtime settings, finite force telemetry, bounded strain, physical standing measurements, exact recovery timing, force-driven self-righting, and immediate escaped/invalid-state recovery.
 
 ## Interactive Verification (Godot MCP)
 

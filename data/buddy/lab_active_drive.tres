@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="ActiveDriveProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Physics/ActiveDriveProfile.cs" id="1_profile"]
+
+[resource]
+resource_name = "ProvisionalLabActiveDrive"
+script = ExtResource("1_profile")
+UprightStiffness = 900.0
+UprightDamping = 140.0
+MaximumUprightTorque = 8000.0
+AssistedTorqueMultiplier = 3.0
+BalanceStiffness = 100.0
+BalanceDamping = 25.0
+MaximumBalanceForce = 3000.0
+SelfRightForce = 2400.0
+MaximumStandingTorsoTilt = 0.45
+MinimumHeadAboveTorso = 8.0
+MinimumFeetBelowTorso = 12.0
+MaximumCenterOfMassError = 42.0
+MaximumStandingSpeed = 24.0
+StableStandingTicks = 18

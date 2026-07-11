@@ -1,10 +1,14 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://src/Buddy/BuddyRoot.cs" id="1_root"]
 [ext_resource type="Script" path="res://src/Buddy/Physics/PuppetRig.cs" id="2_rig"]
 [ext_resource type="Script" path="res://src/Buddy/Physics/PuppetPartBody.cs" id="3_body"]
 [ext_resource type="Script" path="res://src/Buddy/Physics/PuppetConstraintComponent.cs" id="4_constraints"]
 [ext_resource type="Resource" path="res://data/buddy/lab_puppet_rig.tres" id="5_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/StandingDetector.cs" id="6_standing"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/RecoveryComponent.cs" id="7_recovery"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/ActiveDriveComponent.cs" id="8_drive"]
+[ext_resource type="Resource" path="res://data/buddy/lab_active_drive.tres" id="9_drive_profile"]
 
 [sub_resource type="CircleShape2D" id="HeadShape"]
 radius = 24.0
@@ -24,10 +28,13 @@ radius = 17.0
 [sub_resource type="CircleShape2D" id="FootShapeRight"]
 radius = 17.0
 
-[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints")]
+[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "ActiveDrive")]
 script = ExtResource("1_root")
 Rig = NodePath("PuppetRig")
 Constraints = NodePath("PuppetConstraintComponent")
+Standing = NodePath("StandingDetector")
+Recovery = NodePath("RecoveryComponent")
+ActiveDrive = NodePath("ActiveDriveComponent")
 
 [node name="PuppetRig" type="Node" parent="." node_paths=PackedStringArray("Head", "Torso", "LeftHand", "RightHand", "LeftFoot", "RightFoot")]
 script = ExtResource("2_rig")
@@ -125,3 +132,22 @@ shape = SubResource("FootShapeRight")
 [node name="PuppetConstraintComponent" type="Node" parent="." node_paths=PackedStringArray("Rig")]
 script = ExtResource("4_constraints")
 Rig = NodePath("../PuppetRig")
+
+[node name="StandingDetector" type="Node" parent="." node_paths=PackedStringArray("Rig")]
+script = ExtResource("6_standing")
+Rig = NodePath("../PuppetRig")
+Profile = ExtResource("9_drive_profile")
+
+[node name="RecoveryComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Standing")]
+script = ExtResource("7_recovery")
+Rig = NodePath("../PuppetRig")
+Standing = NodePath("../StandingDetector")
+SafeBounds = Rect2(0, 0, 480, 360)
+SafePoseOrigin = Vector2(240, 260)
+
+[node name="ActiveDriveComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Standing", "Recovery")]
+script = ExtResource("8_drive")
+Rig = NodePath("../PuppetRig")
+Standing = NodePath("../StandingDetector")
+Recovery = NodePath("../RecoveryComponent")
+Profile = ExtResource("9_drive_profile")

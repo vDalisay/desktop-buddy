@@ -1,11 +1,37 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
+
+[sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
+size = Vector2(480, 16)
+
+[sub_resource type="RectangleShape2D" id="VerticalBoundary"]
+size = Vector2(16, 360)
 
 [node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 
 [node name="Buddy" parent="." instance=ExtResource("2_buddy")]
-position = Vector2(240, 140)
+position = Vector2(240, 260)
+
+[node name="RoomBounds" type="StaticBody2D" parent="."]
+collision_layer = 1
+collision_mask = 2
+
+[node name="Floor" type="CollisionShape2D" parent="RoomBounds"]
+position = Vector2(240, 352)
+shape = SubResource("HorizontalBoundary")
+
+[node name="Ceiling" type="CollisionShape2D" parent="RoomBounds"]
+position = Vector2(240, 8)
+shape = SubResource("HorizontalBoundary")
+
+[node name="LeftWall" type="CollisionShape2D" parent="RoomBounds"]
+position = Vector2(8, 180)
+shape = SubResource("VerticalBoundary")
+
+[node name="RightWall" type="CollisionShape2D" parent="RoomBounds"]
+position = Vector2(472, 180)
+shape = SubResource("VerticalBoundary")
