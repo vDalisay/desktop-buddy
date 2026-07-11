@@ -20,13 +20,15 @@ mono_crash.*.json
 *.log
 /logs/
 /artifacts/
+/.artifacts/
 
 # Development Steam app id — never committed; ships only via the release export path
 steam_appid.txt
 
 # Vendored Godot MCP runtime server with its own .git, node_modules, and dist/.
-# Dev-only tooling; not tracked in this repo. .mcp.json points at its built entrypoint.
-/Mcp/
+# Dev-only tooling; only the Godot scan marker is tracked in this repo.
+/Mcp/*
+!/Mcp/.gdignore
 
 # Godot MCP server may inject this script at run time (dev-only, not ours)
 mcp_interaction_server.gd
