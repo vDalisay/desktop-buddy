@@ -66,3 +66,6 @@ jobs:
 
       - name: Seeded autonomous motion scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=autonomous_motion --seed=1
+
+      - name: Laboratory controls scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=laboratory_controls --seed=1

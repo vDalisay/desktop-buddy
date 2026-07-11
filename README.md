@@ -88,7 +88,9 @@ dotnet test
 
 Milestone 0 ships the `boot_smoke` scenario and journey. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the build, domain tests, headless import, and both boot smoke runs on every push — with no Steam SDK required.
 
-Milestone 1 additionally runs `passive_rig`, `standing_recovery`, and `autonomous_motion`, covering six-body composition, collision-layer isolation, required rigid-body runtime settings, finite force telemetry, bounded strain, physical standing measurements, exact recovery timing, force-driven self-righting, immediate escaped/invalid-state recovery, seeded bidirectional walking, whole-body jumping, and passive unconscious physics.
+Milestone 1 additionally runs `passive_rig`, `standing_recovery`, `autonomous_motion`, and `laboratory_controls`, covering six-body composition, collision-layer isolation, required rigid-body runtime settings, finite force telemetry, bounded strain, physical standing measurements, exact recovery timing, force-driven self-righting, immediate escaped/invalid-state recovery, seeded bidirectional walking, whole-body jumping, passive unconscious physics, and the lab input surface.
+
+The development-only laboratory controls are keyboard-accessible in `buddy_lab.tscn`: `P` pauses/resumes, `.` advances one fixed physics tick while paused, `U` toggles consciousness, `Shift+U` advances to the next autonomy seed, and `1`/`2`/`3`/`4` select `0.25x`/`0.5x`/`1x`/`2x` time scale. The `laboratory_controls` scenario exercises the same input path.
 
 ## Interactive Verification (Godot MCP)
 
