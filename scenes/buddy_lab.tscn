@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -6,6 +6,9 @@
 [ext_resource type="Script" path="res://src/Grab/GrabTetherController.cs" id="4_grab"]
 [ext_resource type="Resource" path="res://data/buddy/lab_grab_tether.tres" id="5_grab_profile"]
 [ext_resource type="Script" path="res://src/Laboratory/LabPointerGrabComponent.cs" id="6_pointer"]
+[ext_resource type="Script" path="res://src/Sandbox/BoundaryController.cs" id="7_boundary"]
+[ext_resource type="Resource" path="res://data/buddy/lab_boundary.tres" id="8_boundary_profile"]
+[ext_resource type="Script" path="res://src/Sandbox/PuppetRoomContainmentComponent.cs" id="9_containment"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -13,19 +16,32 @@ size = Vector2(480, 16)
 [sub_resource type="RectangleShape2D" id="VerticalBoundary"]
 size = Vector2(16, 360)
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
 Grab = NodePath("GrabTetherController")
 Pointer = NodePath("LabPointerGrab")
+Boundaries = NodePath("RoomBounds")
+Containment = NodePath("PuppetRoomContainmentComponent")
 
 [node name="Buddy" parent="." instance=ExtResource("2_buddy")]
 position = Vector2(240, 260)
 
-[node name="RoomBounds" type="StaticBody2D" parent="."]
+[node name="WorldCamera" type="Camera2D" parent="."]
+position = Vector2(240, 180)
+process_callback = 0
+
+[node name="RoomBounds" type="StaticBody2D" parent="." node_paths=PackedStringArray("Floor", "Ceiling", "LeftWall", "RightWall", "WorldCamera")]
 collision_layer = 1
 collision_mask = 30
+script = ExtResource("7_boundary")
+Profile = ExtResource("8_boundary_profile")
+Floor = NodePath("Floor")
+Ceiling = NodePath("Ceiling")
+LeftWall = NodePath("LeftWall")
+RightWall = NodePath("RightWall")
+WorldCamera = NodePath("../WorldCamera")
 
 [node name="Floor" type="CollisionShape2D" parent="RoomBounds"]
 position = Vector2(240, 352)
@@ -54,3 +70,9 @@ Profile = ExtResource("5_grab_profile")
 [node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab")]
 script = ExtResource("6_pointer")
 Grab = NodePath("../GrabTetherController")
+
+[node name="PuppetRoomContainmentComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Recovery")]
+script = ExtResource("9_containment")
+Rig = NodePath("../Buddy/PuppetRig")
+Recovery = NodePath("../Buddy/RecoveryComponent")
+Profile = ExtResource("8_boundary_profile")

@@ -78,3 +78,6 @@ jobs:
 
       - name: Grab hard-recovery cleanup scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grab_hard_recovery --seed=1
+
+      - name: Room resize and zoom scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=room_resize_zoom --seed=1

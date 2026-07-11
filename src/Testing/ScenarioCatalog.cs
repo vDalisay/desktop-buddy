@@ -20,6 +20,7 @@ public static class ScenarioCatalog
         ["grab_release"] = () => new GrabReleaseScenario(),
         ["grab_resistance"] = () => new GrabResistanceScenario(),
         ["grab_hard_recovery"] = () => new GrabHardRecoveryScenario(),
+        ["room_resize_zoom"] = () => new RoomResizeZoomScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

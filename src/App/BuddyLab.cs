@@ -2,8 +2,10 @@ using System;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Laboratory;
+using DesktopBuddy.Sandbox;
 using Godot;
 
 namespace DesktopBuddy.App;
@@ -22,19 +24,37 @@ public partial class BuddyLab : Node2D
     [Export] public LaboratoryControlComponent Controls { get; set; } = null!;
     [Export] public GrabTetherController Grab { get; set; } = null!;
     [Export] public LabPointerGrabComponent Pointer { get; set; } = null!;
+    [Export] public BoundaryController Boundaries { get; set; } = null!;
+    [Export] public PuppetRoomContainmentComponent Containment { get; set; } = null!;
 
     public override void _Ready()
     {
         if (!GodotObject.IsInstanceValid(Buddy) || !GodotObject.IsInstanceValid(Controls) ||
-            !GodotObject.IsInstanceValid(Grab) || !GodotObject.IsInstanceValid(Pointer))
+            !GodotObject.IsInstanceValid(Grab) || !GodotObject.IsInstanceValid(Pointer) ||
+            !GodotObject.IsInstanceValid(Boundaries) || !GodotObject.IsInstanceValid(Containment))
         {
             throw new InvalidOperationException(
-                "BuddyLab requires injected buddy, laboratory controls, grab tether, and pointer harness.");
+                "BuddyLab requires injected buddy, controls, grab, pointer, boundaries, and containment.");
         }
 
         Controls.Initialize();
         Grab.Initialize();
         Pointer.Initialize();
+        Containment.Initialize();
+        Boundaries.LayoutApplied += Containment.ApplyLayout;
+        Vector2 viewportSize = GetViewport().GetVisibleRect().Size;
+        var clientSize = new Vector2I((int)viewportSize.X, (int)viewportSize.Y);
+        if (clientSize.X < RoomLayoutPolicy.MinimumRoomWidth ||
+            clientSize.Y < RoomLayoutPolicy.MinimumRoomHeight)
+        {
+            // Headless scenario viewports can report zero before their first
+            // render frame; use the confirmed default client size in that case.
+            clientSize = new Vector2I(
+                RoomLayoutPolicy.DefaultClientWidth,
+                RoomLayoutPolicy.DefaultClientHeight);
+        }
+
+        Boundaries.Initialize(clientSize, 1.0);
 
         // DECISIONS.md "Fail-safe cleanup": a hard recovery releases the active
         // grab as part of clearing transient state. The tether lives at lab level
@@ -52,6 +72,9 @@ public partial class BuddyLab : Node2D
 
         if (Controls.BeginPhysicsTick())
         {
+            // Window/zoom requests rebuild containment at a physics boundary.
+            Boundaries.PhysicsTick();
+
             // Grab force and buddy drive/constraint forces accumulate into the
             // same physics step; ordering between them does not matter.
             Grab.PhysicsTick(delta);
@@ -69,6 +92,11 @@ public partial class BuddyLab : Node2D
         if (GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Buddy.Recovery))
         {
             Buddy.Recovery.HardRecovered -= OnHardRecovered;
+        }
+
+        if (GodotObject.IsInstanceValid(Boundaries) && GodotObject.IsInstanceValid(Containment))
+        {
+            Boundaries.LayoutApplied -= Containment.ApplyLayout;
         }
     }
 

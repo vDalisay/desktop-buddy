@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BoundaryProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Sandbox/BoundaryProfile.cs" id="1_profile"]
+
+[resource]
+resource_name = "ProvisionalLabBoundary"
+script = ExtResource("1_profile")
+WallThickness = 16.0
+SafePoseFloorClearance = 12.0
