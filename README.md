@@ -90,9 +90,12 @@ Milestone 0 ships the `boot_smoke` scenario and journey. CI ([`.github/workflows
 
 ## Interactive Verification (Godot MCP)
 
-Tier 1 interactive verification uses a Godot MCP server (baseline [Coding-Solo/godot-mcp](https://github.com/Coding-Solo/godot-mcp); an extended runtime-control server is acceptable). The committed [`.mcp.json`](.mcp.json) resolves the server and engine from two environment variables so no machine-specific path is checked in:
+Tier 1 interactive verification uses the runtime-enabled [godot-mcp-runtime](https://github.com/Erodenn/godot-mcp-runtime) server. The committed [`.mcp.json`](.mcp.json) points at the git-ignored checkout under `Mcp/godot-mcp-runtime/` (its own `.git`, `node_modules`, and `dist` are not tracked). Set it up once per machine:
 
-- `GODOT_MCP_SERVER` — path to the MCP server entrypoint (e.g. the server's `dist/index.js`).
-- `GODOT_PATH` — path to the pinned Godot 4.6.1 mono binary.
+```sh
+git clone https://github.com/Erodenn/godot-mcp-runtime.git Mcp/godot-mcp-runtime
+npm --prefix Mcp/godot-mcp-runtime install
+npm --prefix Mcp/godot-mcp-runtime run build   # produces Mcp/godot-mcp-runtime/dist/index.js
+```
 
-The MCP tier is development-only, bound to localhost, never gating, and excluded from release exports; it never runs in CI.
+The only environment variable needed is `GODOT_PATH`, pointing at the pinned Godot 4.6.1 mono binary. The MCP tier is development-only, bound to localhost, never gating, and excluded from release exports; it never runs in CI.

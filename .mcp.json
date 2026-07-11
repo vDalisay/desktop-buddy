@@ -2,7 +2,7 @@
   "mcpServers": {
     "godot-mcp": {
       "command": "node",
-      "args": ["${GODOT_MCP_SERVER}"],
+      "args": ["Mcp/godot-mcp-runtime/dist/index.js"],
       "env": {
         "GODOT_PATH": "${GODOT_PATH}"
       }
