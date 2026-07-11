@@ -6,7 +6,7 @@ The project is a clean-room spiritual successor to the interaction loop of *Inte
 
 ## Project Status
 
-Requirements and architecture are specified; runtime implementation has not started on the checked-out baseline. The first engineering target is the physics laboratory, not the shop or content catalogue.
+Milestone 0 foundation is complete and Milestone 1 physics-laboratory work is in progress. The current lab contains the typed provisional six-body rig and passive spring/damper/max-stretch solver; its coefficients remain laboratory data until the full physics gate accepts a tuning profile. Economy, shop, and content work have not started.
 
 Target stack:
 
@@ -87,6 +87,8 @@ dotnet test
 ```
 
 Milestone 0 ships the `boot_smoke` scenario and journey. CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the build, domain tests, headless import, and both boot smoke runs on every push — with no Steam SDK required.
+
+Milestone 1 additionally runs the `passive_rig` scenario, which verifies six-body composition, collision-layer isolation, required rigid-body runtime settings, finite force telemetry, bounded strain, and settling after an impulse.
 
 ## Interactive Verification (Godot MCP)
 

@@ -1,0 +1,127 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/BuddyRoot.cs" id="1_root"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetRig.cs" id="2_rig"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetPartBody.cs" id="3_body"]
+[ext_resource type="Script" path="res://src/Buddy/Physics/PuppetConstraintComponent.cs" id="4_constraints"]
+[ext_resource type="Resource" path="res://data/buddy/lab_puppet_rig.tres" id="5_profile"]
+
+[sub_resource type="CircleShape2D" id="HeadShape"]
+radius = 24.0
+
+[sub_resource type="CircleShape2D" id="TorsoShape"]
+radius = 28.0
+
+[sub_resource type="CircleShape2D" id="HandShapeLeft"]
+radius = 15.0
+
+[sub_resource type="CircleShape2D" id="HandShapeRight"]
+radius = 15.0
+
+[sub_resource type="CircleShape2D" id="FootShapeLeft"]
+radius = 17.0
+
+[sub_resource type="CircleShape2D" id="FootShapeRight"]
+radius = 17.0
+
+[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints")]
+script = ExtResource("1_root")
+Rig = NodePath("PuppetRig")
+Constraints = NodePath("PuppetConstraintComponent")
+
+[node name="PuppetRig" type="Node" parent="." node_paths=PackedStringArray("Head", "Torso", "LeftHand", "RightHand", "LeftFoot", "RightFoot")]
+script = ExtResource("2_rig")
+Profile = ExtResource("5_profile")
+Head = NodePath("Head")
+Torso = NodePath("Torso")
+LeftHand = NodePath("LeftHand")
+RightHand = NodePath("RightHand")
+LeftFoot = NodePath("LeftFoot")
+RightFoot = NodePath("RightFoot")
+
+[node name="Head" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(0, -50)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 0
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/Head"]
+shape = SubResource("HeadShape")
+
+[node name="Torso" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 1
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/Torso"]
+shape = SubResource("TorsoShape")
+
+[node name="LeftHand" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(-38, -5)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 2
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/LeftHand"]
+shape = SubResource("HandShapeLeft")
+
+[node name="RightHand" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(38, -5)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 3
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/RightHand"]
+shape = SubResource("HandShapeRight")
+
+[node name="LeftFoot" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(-22, 55)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 4
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/LeftFoot"]
+shape = SubResource("FootShapeLeft")
+
+[node name="RightFoot" type="RigidBody2D" parent="PuppetRig" node_paths=PackedStringArray("Collider")]
+position = Vector2(22, 55)
+collision_layer = 2
+collision_mask = 29
+can_sleep = false
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("3_body")
+PartId = 5
+Collider = NodePath("CollisionShape2D")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="PuppetRig/RightFoot"]
+shape = SubResource("FootShapeRight")
+
+[node name="PuppetConstraintComponent" type="Node" parent="." node_paths=PackedStringArray("Rig")]
+script = ExtResource("4_constraints")
+Rig = NodePath("../PuppetRig")

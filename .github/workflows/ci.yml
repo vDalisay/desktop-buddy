@@ -57,3 +57,6 @@ jobs:
 
       - name: Boot smoke journey
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=boot_smoke --seed=1
+
+      - name: Passive rig scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=passive_rig --seed=1

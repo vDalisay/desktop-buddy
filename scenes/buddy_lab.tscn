@@ -1,6 +1,11 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
+[ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
 
-[node name="BuddyLab" type="Node2D"]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy")]
 script = ExtResource("1_lab")
+Buddy = NodePath("Buddy")
+
+[node name="Buddy" parent="." instance=ExtResource("2_buddy")]
+position = Vector2(240, 140)

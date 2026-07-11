@@ -1,3 +1,5 @@
+using System;
+using DesktopBuddy.Buddy;
 using DesktopBuddy.Diagnostics;
 using Godot;
 
@@ -13,8 +15,20 @@ namespace DesktopBuddy.App;
 /// </summary>
 public partial class BuddyLab : Node2D
 {
+    [Export] public BuddyRoot Buddy { get; set; } = null!;
+
     public override void _Ready()
     {
-        Log.Info("BuddyLab", "BuddyLab composed (Milestone 1 fills the rig).");
+        if (!GodotObject.IsInstanceValid(Buddy))
+        {
+            throw new InvalidOperationException("BuddyLab requires an injected BuddyRoot.");
+        }
+
+        Log.Info("BuddyLab", "BuddyLab composed with passive six-body rig.");
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        Buddy.PhysicsTick();
     }
 }
