@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3]
+[gd_scene load_steps=21 format=3]
 
 [ext_resource type="Script" path="res://src/Buddy/BuddyRoot.cs" id="1_root"]
 [ext_resource type="Script" path="res://src/Buddy/Physics/PuppetRig.cs" id="2_rig"]
@@ -9,6 +9,10 @@
 [ext_resource type="Script" path="res://src/Buddy/Physics/RecoveryComponent.cs" id="7_recovery"]
 [ext_resource type="Script" path="res://src/Buddy/Physics/ActiveDriveComponent.cs" id="8_drive"]
 [ext_resource type="Resource" path="res://data/buddy/lab_active_drive.tres" id="9_drive_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Behavior/AutonomousMotionComponent.cs" id="10_autonomy"]
+[ext_resource type="Resource" path="res://data/buddy/lab_autonomous_motion.tres" id="11_autonomy_profile"]
+[ext_resource type="Resource" path="res://data/buddy/lab_conscious_drive.tres" id="12_conscious_profile"]
+[ext_resource type="Resource" path="res://data/buddy/lab_unconscious_drive.tres" id="13_unconscious_profile"]
 
 [sub_resource type="CircleShape2D" id="HeadShape"]
 radius = 24.0
@@ -28,12 +32,13 @@ radius = 17.0
 [sub_resource type="CircleShape2D" id="FootShapeRight"]
 radius = 17.0
 
-[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "ActiveDrive")]
+[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "AutonomousMotion", "ActiveDrive")]
 script = ExtResource("1_root")
 Rig = NodePath("PuppetRig")
 Constraints = NodePath("PuppetConstraintComponent")
 Standing = NodePath("StandingDetector")
 Recovery = NodePath("RecoveryComponent")
+AutonomousMotion = NodePath("AutonomousMotionComponent")
 ActiveDrive = NodePath("ActiveDriveComponent")
 
 [node name="PuppetRig" type="Node" parent="." node_paths=PackedStringArray("Head", "Torso", "LeftHand", "RightHand", "LeftFoot", "RightFoot")]
@@ -145,9 +150,16 @@ Standing = NodePath("../StandingDetector")
 SafeBounds = Rect2(0, 0, 480, 360)
 SafePoseOrigin = Vector2(240, 260)
 
+[node name="AutonomousMotionComponent" type="Node" parent="." node_paths=PackedStringArray("Standing")]
+script = ExtResource("10_autonomy")
+Standing = NodePath("../StandingDetector")
+Profile = ExtResource("11_autonomy_profile")
+
 [node name="ActiveDriveComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Standing", "Recovery")]
 script = ExtResource("8_drive")
 Rig = NodePath("../PuppetRig")
 Standing = NodePath("../StandingDetector")
 Recovery = NodePath("../RecoveryComponent")
 Profile = ExtResource("9_drive_profile")
+ConsciousProfile = ExtResource("12_conscious_profile")
+UnconsciousProfile = ExtResource("13_unconscious_profile")

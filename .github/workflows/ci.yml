@@ -63,3 +63,6 @@ jobs:
 
       - name: Standing and recovery scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=standing_recovery --seed=1
+
+      - name: Seeded autonomous motion scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=autonomous_motion --seed=1

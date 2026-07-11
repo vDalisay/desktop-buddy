@@ -24,7 +24,7 @@ public partial class BuddyLab : Node2D
             throw new InvalidOperationException("BuddyLab requires an injected BuddyRoot.");
         }
 
-        Log.Info("BuddyLab", "BuddyLab composed with passive six-body rig.");
+        Log.Info("BuddyLab", "BuddyLab composed with seeded six-body active puppet.");
     }
 
     public override void _PhysicsProcess(double delta)

@@ -19,6 +19,11 @@ public partial class ActiveDriveProfile : GameResource
     [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float BalanceDamping { get; set; } = 25.0f;
     [Export(PropertyHint.Range, "0.1,100000,0.1,or_greater")] public float MaximumBalanceForce { get; set; } = 3_000.0f;
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float SelfRightForce { get; set; } = 2_400.0f;
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float WalkForce { get; set; } = 600.0f;
+    [Export(PropertyHint.Range, "0,1000,0.1,or_greater")] public float MaximumWalkSpeed { get; set; } = 55.0f;
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float GaitForce { get; set; } = 100.0f;
+    [Export(PropertyHint.Range, "1,240,1")] public int GaitHalfCycleTicks { get; set; } = 18;
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float JumpImpulse { get; set; } = 1_800.0f;
 
     [Export(PropertyHint.Range, "0.01,3.14,0.01")] public float MaximumStandingTorsoTilt { get; set; } = 0.45f;
     [Export(PropertyHint.Range, "0,128,0.1")] public float MinimumHeadAboveTorso { get; set; } = 8.0f;
@@ -38,6 +43,14 @@ public partial class ActiveDriveProfile : GameResource
         ValidateNonNegative(errors, BalanceDamping, nameof(BalanceDamping));
         ValidatePositive(errors, MaximumBalanceForce, nameof(MaximumBalanceForce));
         ValidateNonNegative(errors, SelfRightForce, nameof(SelfRightForce));
+        ValidateNonNegative(errors, WalkForce, nameof(WalkForce));
+        ValidateNonNegative(errors, MaximumWalkSpeed, nameof(MaximumWalkSpeed));
+        ValidateNonNegative(errors, GaitForce, nameof(GaitForce));
+        if (GaitHalfCycleTicks <= 0)
+        {
+            errors.Add($"{nameof(GaitHalfCycleTicks)} must be positive");
+        }
+        ValidateNonNegative(errors, JumpImpulse, nameof(JumpImpulse));
         ValidatePositive(errors, MaximumStandingTorsoTilt, nameof(MaximumStandingTorsoTilt));
         ValidateNonNegative(errors, MinimumHeadAboveTorso, nameof(MinimumHeadAboveTorso));
         ValidateNonNegative(errors, MinimumFeetBelowTorso, nameof(MinimumFeetBelowTorso));

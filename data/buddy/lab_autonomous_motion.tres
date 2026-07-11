@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="AutonomousMotionProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Behavior/AutonomousMotionProfile.cs" id="1_profile"]
+
+[resource]
+resource_name = "ProvisionalLabAutonomousMotion"
+script = ExtResource("1_profile")
+MinimumIdleTicks = 60
+MaximumIdleTicks = 120
+MinimumWalkTicks = 120
+MaximumWalkTicks = 240
+MinimumJumpIntervalTicks = 240
+MaximumJumpIntervalTicks = 480
+IdleWeight = 2
+WalkLeftWeight = 3
+WalkRightWeight = 3
