@@ -24,6 +24,7 @@ Target stack:
 - [Architecture](docs/ARCHITECTURE.md)
 - [Ragdoll and gameplay specification](docs/RAGDOLL_AND_GAMEPLAY_SPEC.md)
 - [Test plan](docs/TEST_PLAN.md)
+- [Agent verification and end-to-end journeys](docs/AGENT_VERIFICATION_AND_E2E.md)
 - [Implementation roadmap](docs/ROADMAP.md)
 - [Reference research](docs/REFERENCE_RESEARCH.md)
 - [Open questions](docs/OPEN_QUESTIONS.md)

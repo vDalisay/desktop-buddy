@@ -6,14 +6,17 @@ Status: Handoff specification. Tests are implemented alongside the milestone tha
 
 No milestone is complete until its automated tests pass, its required Windows checks pass, and its changed behavior is reflected in the project documentation. Physics feel is a release-blocking feature, not a polish task.
 
-The test strategy has four layers:
+The test strategy has five layers:
 
 1. **Pure C# unit tests** for mood, pain windows, payouts, economy, saves, statistics, unlocks, and state-transition policy.
 2. **Headless Godot scenario tests** for rigid-body behavior, spring constraints, tools, containment, and scene wiring.
-3. **Standalone Windows tests** for transparency, input passthrough, focus, tray, DPI, monitor placement, and global hotkey behavior.
-4. **Steam/depot tests** for startup fallback, Cloud boundaries, statistics, achievements, and the Steam overlay.
+3. **End-to-end journey tests** that play the running game through the real input path via the first-party automation layer, per `AGENT_VERIFICATION_AND_E2E.md`; each milestone's journeys join its exit criteria.
+4. **Standalone Windows tests** for transparency, input passthrough, focus, tray, DPI, monitor placement, and global hotkey behavior.
+5. **Steam/depot tests** for startup fallback, Cloud boundaries, statistics, achievements, and the Steam overlay.
 
-The implementation must expose one command for pure tests and one command for headless Godot scenarios, and document both in `README.md` when the test runners exist.
+Interactive agent verification through the configured Godot MCP server is a required development workflow but is never a gate; its findings must be promoted into layers 1–3 (`AGENT_VERIFICATION_AND_E2E.md` Section 4).
+
+The implementation must expose one command for pure tests, one command for headless Godot scenarios, and one command for end-to-end journeys, and document all three in `README.md` when the test runners exist.
 
 ## 2. Unit-Test Coverage
 

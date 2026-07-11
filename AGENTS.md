@@ -9,8 +9,9 @@ Read these before changing code, in this order:
 3. `docs/RAGDOLL_AND_GAMEPLAY_SPEC.md` — physics/gameplay contract.
 4. `docs/ARCHITECTURE.md` — ownership, interfaces, data flow, and failure behavior.
 5. `docs/TEST_PLAN.md` and `docs/ROADMAP.md` — verification and milestone order.
-6. `docs/REFERENCE_RESEARCH.md` — clean-room reference evidence and technical sources.
-7. `docs/OPEN_QUESTIONS.md` — decisions awaiting owner confirmation; do not implement behavior an open question affects until it is resolved into `DECISIONS.md`.
+6. `docs/AGENT_VERIFICATION_AND_E2E.md` — interactive verification workflow and end-to-end journey suite.
+7. `docs/REFERENCE_RESEARCH.md` — clean-room reference evidence and technical sources.
+8. `docs/OPEN_QUESTIONS.md` — decisions awaiting owner confirmation; do not implement behavior an open question affects until it is resolved into `DECISIONS.md`.
 
 If documents conflict, stop and ask the project owner. If product behavior is not specified, do not invent it. Engineering coefficients explicitly assigned to the physics/economy laboratory may be tuned through the documented acceptance process.
 
@@ -34,7 +35,8 @@ If documents conflict, stop and ask the project owner. If product behavior is no
 ## Implementation Discipline
 
 - Implement only the current milestone and its tests; do not prebuild deferred features.
-- Add tests with each behavior and run the relevant unit, headless, and standalone checks before handoff.
+- Add tests with each behavior and run the relevant unit, headless, journey, and standalone checks before handoff.
+- Verify changed behavior interactively in the running game through the configured Godot MCP server (launch, drive the behavior through real input, inspect semantic state, capture evidence), then promote that interaction into a committed journey or scenario test per `docs/AGENT_VERIFICATION_AND_E2E.md`. Interactive verification never substitutes for automated coverage.
 - Never silently change confirmed numbers or scope. Update `DECISIONS.md` only after owner confirmation.
 - Keep debug visualizers and tuning panels behind development-build guards.
 - Treat warnings, missing Resource references, invalid catalog IDs, save migration failures, NaN physics, and lost input recovery as actionable failures.
