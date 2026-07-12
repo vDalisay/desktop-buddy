@@ -46,6 +46,23 @@ public static class StartupValidator
         bool perPixelAllowed = (bool)ProjectSettings.GetSetting("display/window/per_pixel_transparency/allowed", false);
         report.Expect("per_pixel_transparency_allowed", perPixelAllowed, $"allowed={perPixelAllowed}");
 
+        // Window baseline the desktop shell depends on (DECISIONS.md "Overlay and
+        // Interface"; ARCHITECTURE.md §20). These are the transparent borderless
+        // topmost box defaults; a build that silently flips one loses the shell.
+        bool borderless = (bool)ProjectSettings.GetSetting("display/window/size/borderless", false);
+        report.Expect("window_borderless", borderless, $"borderless={borderless}");
+
+        bool alwaysOnTop = (bool)ProjectSettings.GetSetting("display/window/size/always_on_top", false);
+        report.Expect("window_always_on_top", alwaysOnTop, $"always_on_top={alwaysOnTop}");
+
+        bool transparent = (bool)ProjectSettings.GetSetting("display/window/size/transparent", false);
+        report.Expect("window_transparent", transparent, $"transparent={transparent}");
+
+        int viewportWidth = (int)ProjectSettings.GetSetting("display/window/size/viewport_width", 0);
+        int viewportHeight = (int)ProjectSettings.GetSetting("display/window/size/viewport_height", 0);
+        report.Expect("window_default_size_480x360", viewportWidth == 480 && viewportHeight == 360,
+            $"viewport={viewportWidth}x{viewportHeight}");
+
         var stretch = ProjectSettings.GetSetting("display/window/stretch/mode", "").AsString();
         report.Expect("stretch_disabled", stretch == "disabled", $"stretch/mode='{stretch}'");
 
