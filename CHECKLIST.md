@@ -4,9 +4,10 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-12 (branch `opus`), after the owner's first hands-on feel
-review. **Start here: `docs/M1_FEEL_AND_GAIT_PLAN.md`** — the review rejected the
-current feel; that plan is the active work.
+Last updated: 2026-07-12 (branch `opus`), after the M1 feel tuning was accepted
+and Milestone 2 kicked off. **Start here: `docs/M2_DESKTOP_SHELL_PLAN.md`** — the
+active work is the Windows desktop shell; its Tasks 1–3 (headless-testable
+foundation) have landed.
 
 ## 1. Current position
 
@@ -105,14 +106,21 @@ Gotchas that WILL fail a run if you forget them:
 
 ## 5. Suggested next step
 
-The feel/gait plan is complete and the tuning is locked (owner-accepted 2026-07-12).
-The §8 physics-lab gate is functionally met; only two owner-manual items remain
-(transparent-window 150% DPI pass; windowed automated journeys, which are blocked by
-the windowed-journey-hang bug — chip `task_6f8d585a`). Neither blocks starting the
-next milestone's engineering. Per ROADMAP, Milestone 2 (Windows desktop shell) is the
-next build; its first task is the renderer decision (validate per-pixel transparency
-+ MSAA + V-sync on the Compatibility renderer) which dovetails with the pending 150%
-DPI spike check.
+Milestone 2 (Windows desktop shell) is underway — see `docs/M2_DESKTOP_SHELL_PLAN.md`
+for the ordered task breakdown. Landed so far (headless-testable foundation, suite
+green):
+- Task 1 `WindowPlacementPolicy` (Domain): first-launch lower-right, off-screen
+  recovery, monitor clamping. xUnit-covered.
+- Task 2 `InputModeStateMachine` (Domain): Work/Play transition rules. xUnit-covered.
+- Task 3 window-service seam (`IDesktopWindowService`, `WindowSettings`,
+  `IWindowsDesktopAdapter`, `EmulatedWindowsDesktopAdapter`, `DesktopWindowController`):
+  builds green; native adapter deferred to Task 4.
+
+Next agent slices: Task 5 (compose the shell into the sandbox boot + resize→boundary
+rebuild) and Task 6 (headless mode-transition journeys). Owner-manual gates: Task 0
+renderer visual matrix (150% DPI pass still open), Task 4 native Windows adapter
+verification, Task 7 the `TEST_PLAN.md` §5 standalone matrix. The renderer decision
+still blocks HUD work and dovetails with the pending 150% DPI spike check.
 
 ## 6. Ground rules (from the plans — still apply)
 
