@@ -2,7 +2,7 @@
   "id": "lab_idle_soak", "milestone": 1,
   "description": "Thirty simulated minutes of seeded idle/autonomous laboratory stability.",
   "setup": { "scene": "buddy_lab", "exercise": "idle_soak", "seed": 1, "advance_ticks": 216000, "timeout_physics_ticks": 216000 },
-  "steps": [{ "step": "advance_time", "ticks": 216000 }],
+  "_documentation": [{ "step": "advance_time", "ticks": 216000 }],
   "assertions": [
     { "predicate": "soak_finite" }, { "predicate": "soak_awake" },
     { "predicate": "soak_connected" }, { "predicate": "soak_contained" },

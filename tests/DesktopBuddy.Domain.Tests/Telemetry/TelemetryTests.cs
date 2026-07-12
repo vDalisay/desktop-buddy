@@ -29,12 +29,13 @@ public sealed class TelemetryTests
     [Fact]
     public void JsonLinesAndEnvelopeRoundTrip()
     {
-        var frame = new TelemetryFrame(1, 0) { Tick = 42 };
+        var frame = new TelemetryFrame(1, 0) { Tick = 42, Consciousness = TelemetryConsciousness.Conscious };
         frame.Parts[0] = new PartTelemetry(0, 1, 2, 3, 4);
         using var lines = new MemoryStream();
         TelemetrySerializer.WriteFrame(lines, frame);
         Assert.EndsWith("\n", Encoding.UTF8.GetString(lines.ToArray()));
         Assert.Contains("\"tick\":42", Encoding.UTF8.GetString(lines.ToArray()));
+        Assert.Contains("\"consciousness\":\"conscious\"", Encoding.UTF8.GetString(lines.ToArray()));
         var expected = new TelemetryEnvelope(1, new(1, 2, 1.5), default, default, default, default, default, 1);
         using var summary = new MemoryStream();
         TelemetrySerializer.WriteEnvelope(summary, expected);

@@ -54,14 +54,24 @@ public partial class AutomationDriver : Node
         long tick = (long)Engine.GetPhysicsFrames();
         if (@event is InputEventMouseButton button)
         {
+            // Trace positions are world/sandbox coordinates: anchors compare against
+            // part GlobalPositions, and the journey step interpreter treats sandbox
+            // x/y as world before re-projecting through the canvas transform.
+            Vector2 world = ToWorld(button.Position);
             string kind = button.Pressed ? "pointer_press" : "pointer_release";
-            _trace.Add(new InputTraceEvent(tick, kind, ResolveAnchor(button.Position), button.Position.X, button.Position.Y, (int)button.ButtonIndex));
+            _trace.Add(new InputTraceEvent(tick, kind, ResolveAnchor(world), world.X, world.Y, (int)button.ButtonIndex));
         }
         else if (@event is InputEventMouseMotion motion)
-            _trace.Add(new InputTraceEvent(tick, "pointer_motion", ResolveAnchor(motion.Position), motion.Position.X, motion.Position.Y));
+        {
+            Vector2 world = ToWorld(motion.Position);
+            _trace.Add(new InputTraceEvent(tick, "pointer_motion", ResolveAnchor(world), world.X, world.Y));
+        }
         else if (@event is InputEventKey { Pressed: true, Echo: false } key)
             _trace.Add(new InputTraceEvent(tick, "key_press", "keyboard", 0, 0, 0, (int)key.PhysicalKeycode));
     }
+
+    private Vector2 ToWorld(Vector2 viewportPosition) =>
+        GetViewport().GetCanvasTransform().AffineInverse() * viewportPosition;
 
     public override void _ExitTree()
     {
@@ -71,14 +81,14 @@ public partial class AutomationDriver : Node
         File.WriteAllText(_args.TraceOut, JsonSerializer.Serialize(trace, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    private string ResolveAnchor(Vector2 position)
+    private string ResolveAnchor(Vector2 worldPosition)
     {
         PuppetPartBody? nearest = null;
         float distance = 32.0f;
         foreach (Node node in GetTree().GetNodesInGroup("buddy_parts"))
         {
             if (node is not PuppetPartBody part) continue;
-            float candidate = part.GlobalPosition.DistanceTo(position);
+            float candidate = part.GlobalPosition.DistanceTo(worldPosition);
             if (candidate <= distance) { distance = candidate; nearest = part; }
         }
         return nearest is null ? "sandbox" : $"buddy:{nearest.PartId}";

@@ -6,6 +6,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Laboratory;
 using Godot;
 using FileAccess = Godot.FileAccess;
 
@@ -64,13 +65,24 @@ public partial class JourneyRunner : Node
 
             var checks = new List<StartupCheck>();
             bool passed = true;
+            foreach (string interpreterCheck in new[] { "step_known", "anchor_known" })
+            {
+                if (state.TryGetValue(interpreterCheck, out bool interpreterOk) && !interpreterOk)
+                {
+                    checks.Add(new StartupCheck(interpreterCheck, false,
+                        state.TryGetValue($"{interpreterCheck}_detail", out _) ? "see journey log" : "step interpreter failure"));
+                    passed = false;
+                }
+            }
 
             if (root.TryGetProperty("assertions", out JsonElement assertions) &&
                 assertions.ValueKind == JsonValueKind.Array)
             {
                 foreach (JsonElement assertion in assertions.EnumerateArray())
                 {
-                    string predicate = assertion.GetProperty("predicate").GetString() ?? "";
+                    if (!assertion.TryGetProperty("predicate", out JsonElement predicateElement))
+                        continue;
+                    string predicate = predicateElement.GetString() ?? "";
                     bool expected = !assertion.TryGetProperty("equals", out JsonElement eq) || eq.GetBoolean();
 
                     if (!state.TryGetValue(predicate, out bool actual))
@@ -189,10 +201,11 @@ public partial class JourneyRunner : Node
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         lab.Controls.Reseed(seed);
 
-        string exercise = "settle";
-        if (journey.TryGetProperty("setup", out JsonElement exerciseSetup) &&
+        string? exercise = null;
+        journey.TryGetProperty("setup", out JsonElement exerciseSetup);
+        if (exerciseSetup.ValueKind == JsonValueKind.Object &&
             exerciseSetup.TryGetProperty("exercise", out JsonElement exerciseElement))
-            exercise = exerciseElement.GetString() ?? exercise;
+            exercise = exerciseElement.GetString();
 
         if (exercise == "grab_throw_all_parts")
         {
@@ -207,6 +220,11 @@ public partial class JourneyRunner : Node
             int ticks = IdleSoakScenario.FullTicks;
             if (exerciseSetup.TryGetProperty("advance_ticks", out JsonElement advance) && advance.TryGetInt32(out int configured)) ticks = configured;
             await ExerciseIdleSoakAsync(state, lab, ticks);
+        }
+        else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
+                 steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
+        {
+            await ExecuteStepsAsync(state, lab, steps);
         }
 
         bool finite = true;
@@ -242,16 +260,18 @@ public partial class JourneyRunner : Node
         foreach (PuppetPartBody part in lab.Buddy.Rig.Parts)
         {
             Vector2 start = part.GlobalPosition;
-            var press = new InputEventMouseButton { ButtonIndex = MouseButton.Left, ButtonMask = MouseButtonMask.Left, Pressed = true, Position = start, GlobalPosition = start };
+            Vector2 startViewport = GetViewport().GetCanvasTransform() * start;
+            var press = new InputEventMouseButton { ButtonIndex = MouseButton.Left, ButtonMask = MouseButtonMask.Left, Pressed = true, Position = startViewport, GlobalPosition = startViewport };
             Input.ParseInputEvent(press);
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
             acquired &= lab.Grab.CurrentGrab.Active && lab.Pointer.LastPickedPart == part.PartId;
             Vector2 end = new(Mathf.Clamp(start.X + 100, 60, 420), Mathf.Clamp(start.Y - 50, 60, 300));
-            Input.ParseInputEvent(new InputEventMouseMotion { Position = end, GlobalPosition = end, Relative = end - start, Velocity = (end - start) * 20 });
+            Vector2 endViewport = GetViewport().GetCanvasTransform() * end;
+            Input.ParseInputEvent(new InputEventMouseMotion { Position = endViewport, GlobalPosition = endViewport, Relative = endViewport - startViewport, Velocity = (endViewport - startViewport) * 20 });
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
-            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, ButtonMask = 0, Pressed = false, Position = end, GlobalPosition = end });
+            Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, ButtonMask = 0, Pressed = false, Position = endViewport, GlobalPosition = endViewport });
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
             capped &= lab.Grab.LastReleaseSpeed <= lab.Grab.Profile.ThrowSpeedCap + 0.01f;
@@ -263,13 +283,18 @@ public partial class JourneyRunner : Node
         state["all_parts_grabbed"] = lab.Pointer.SuccessfulPickCount == 6;
         state["pointer_input_received"] = lab.Pointer.ReceivedInputCount >= 18;
         state["release_velocity_capped"] = capped;
-        state["rig_connected_after_throws"] = maxStrain <= 1.1f;
+        EnvelopeBoundsProfile bounds = GD.Load<EnvelopeBoundsProfile>("res://data/buddy/lab_envelope_bounds.tres");
+        state["rig_connected_after_throws"] = maxStrain <= bounds.MaximumLinkStrain;
         state["standing_after_throws"] = lab.Buddy.Standing.Snapshot.IsStable;
         state["finite_after_throws"] = finite;
     }
 
-    private async System.Threading.Tasks.Task ExerciseWalkJumpAsync(Dictionary<string, bool> state, BuddyLab lab, int ticks)
+    private async System.Threading.Tasks.Task ExerciseWalkJumpAsync(Dictionary<string, bool> state, BuddyLab lab, int timeoutTicks)
     {
+        var profile = lab.Buddy.AutonomousMotion.Profile;
+        int derivedBudget = 8 * (profile.MaximumIdleTicks + profile.MaximumWalkTicks) +
+                            2 * profile.MaximumJumpIntervalTicks;
+        int ticks = Math.Min(derivedBudget, timeoutTicks);
         bool left = false, right = false, jumped = false, finite = true;
         for (int tick = 0; tick < ticks; tick++)
         {
@@ -287,21 +312,86 @@ public partial class JourneyRunner : Node
 
     private async System.Threading.Tasks.Task ExerciseIdleSoakAsync(Dictionary<string, bool> state, BuddyLab lab, int ticks)
     {
-        bool finite = true, awake = true; float strain = 0;
         if (!string.IsNullOrEmpty(_args.ArtifactsDir)) lab.EnableTelemetry(_args.ArtifactsDir, _args.JourneyId ?? "idle_soak");
-        for (int tick = 0; tick < ticks; tick++)
-        {
-            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
-            finite &= lab.Buddy.Rig.AllBodiesFinite();
-            foreach (PuppetPartBody part in lab.Buddy.Rig.Parts) awake &= !part.Sleeping;
-            foreach (LinkTelemetry link in lab.Buddy.Constraints.Telemetry) strain = Mathf.Max(strain, link.Strain);
-            if (!finite) break;
-        }
+        SoakProbeResult result = await SoakProbe.RunAsync(GetTree(), lab, ticks);
         lab.TelemetryRecorder?.Complete();
-        state["soak_finite"] = finite; state["soak_awake"] = awake;
-        state["soak_connected"] = strain <= 1.1f;
-        state["soak_contained"] = lab.Buddy.Recovery.AllBodiesInsideSafeBounds();
+        EnvelopeBoundsProfile bounds = GD.Load<EnvelopeBoundsProfile>("res://data/buddy/lab_envelope_bounds.tres");
+        state["soak_finite"] = result.Finite; state["soak_awake"] = result.Awake;
+        state["soak_connected"] = result.MaximumStrain <= bounds.MaximumLinkStrain;
+        state["soak_contained"] = result.Contained;
         state["soak_envelope_written"] = lab.TelemetryRecorder is not null && System.IO.File.Exists(lab.TelemetryRecorder.EnvelopePath);
+    }
+
+    private async System.Threading.Tasks.Task ExecuteStepsAsync(
+        Dictionary<string, bool> state, BuddyLab lab, JsonElement steps)
+    {
+        Vector2 lastViewport = Vector2.Zero;
+        state["step_known"] = true;
+        state["anchor_known"] = true;
+        foreach (JsonElement item in steps.EnumerateArray())
+        {
+            string step = item.TryGetProperty("step", out JsonElement kind) ? kind.GetString() ?? "" : "";
+            if (step is "pointer_press" or "drag")
+            {
+                if (!TryResolveAnchor(lab, item, out Vector2 world))
+                {
+                    state["anchor_known"] = false;
+                    GD.PushError($"Journey anchor_known=false target={item.GetProperty("target").GetString()}");
+                    return;
+                }
+                Vector2 viewport = GetViewport().GetCanvasTransform() * world;
+                if (step == "pointer_press")
+                    Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, ButtonMask = MouseButtonMask.Left, Pressed = true, Position = viewport, GlobalPosition = viewport });
+                else
+                    Input.ParseInputEvent(new InputEventMouseMotion { Position = viewport, GlobalPosition = viewport, Relative = viewport - lastViewport, Velocity = (viewport - lastViewport) * 120.0f });
+                lastViewport = viewport;
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            }
+            else if (step == "pointer_release")
+            {
+                Input.ParseInputEvent(new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = false, Position = lastViewport, GlobalPosition = lastViewport });
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            }
+            else if (step == "press_key" && item.TryGetProperty("key", out JsonElement key) && key.TryGetInt64(out long keyCode))
+            {
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = (Key)keyCode, Pressed = true });
+                Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = (Key)keyCode, Pressed = false });
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            }
+            else if (step == "advance_time" && item.TryGetProperty("ticks", out JsonElement ticksElement) && ticksElement.TryGetInt32(out int ticks) && ticks >= 0)
+            {
+                for (int tick = 0; tick < ticks; tick++)
+                    await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            }
+            else
+            {
+                state["step_known"] = false;
+                GD.PushError($"Journey step_known=false step={step}");
+                return;
+            }
+        }
+    }
+
+    private static bool TryResolveAnchor(BuddyLab lab, JsonElement step, out Vector2 world)
+    {
+        world = Vector2.Zero;
+        string target = step.TryGetProperty("target", out JsonElement targetElement) ? targetElement.GetString() ?? "" : "";
+        if (target.StartsWith("buddy:", StringComparison.Ordinal) &&
+            Enum.TryParse(target[6..], out BuddyPartId partId) && Enum.IsDefined(partId))
+        {
+            world = lab.Buddy.Rig.GetPart(partId).GlobalPosition;
+            return true;
+        }
+        if (target == "sandbox" && step.TryGetProperty("x", out JsonElement x) && x.TryGetSingle(out float px) &&
+            step.TryGetProperty("y", out JsonElement y) && y.TryGetSingle(out float py))
+        {
+            world = new Vector2(px, py);
+            return true;
+        }
+        return false;
     }
 
     private void Fail(string id, ulong seed, Stopwatch stopwatch, string check, string detail, int exitCode)

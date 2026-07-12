@@ -92,6 +92,9 @@ jobs:
       - name: Repeated-run envelope
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=repeat_envelope --seed=1
 
+      - name: Idle soak (three-minute variant)
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=idle_soak_ci --seed=1 --artifacts=.artifacts/idle_soak_ci
+
       - name: Dual-profile stability smoke
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=dual_profile_smoke --seed=1
 
@@ -102,8 +105,8 @@ jobs:
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_walk_jump --seed=1
 
   full-soak:
-    # The complete 30-minute fixed-step run is intentionally manual/nightly-scale;
-    # push CI remains bounded while preserving the exact 216,000-tick gate.
+    # Push CI runs the three-minute variant; workflow_dispatch runs both complete
+    # 216,000-tick entry points with fixed-fps fast-forward.
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -119,6 +122,6 @@ jobs:
           unzip -q godot.zip
           echo "GODOT_BIN=$PWD/${NAME}/${NAME}" >> "$GITHUB_ENV"
       - name: Full 30-minute idle soak scenario
-        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=idle_soak --seed=1 --artifacts=.artifacts/idle_soak
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=idle_soak --seed=1 --artifacts=.artifacts/idle_soak
       - name: Full 30-minute idle soak journey
-        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_idle_soak --seed=1 --artifacts=.artifacts/lab_idle_soak
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --journey=lab_idle_soak --seed=1 --artifacts=.artifacts/lab_idle_soak

@@ -11,8 +11,17 @@ public static class TracePromoter
     public static string Promote(InputTrace trace, string id = "TODO_trace_journey")
     {
         var steps = new List<Dictionary<string, object?>>();
-        foreach (InputTraceEvent sample in trace.Events)
+        for (int index = 0; index < trace.Events.Count; index++)
         {
+            InputTraceEvent sample = trace.Events[index];
+            if (sample.Kind == "pointer_motion")
+            {
+                InputTraceEvent final = sample;
+                while (index + 1 < trace.Events.Count && trace.Events[index + 1].Kind == "pointer_motion" &&
+                       trace.Events[index + 1].Target == final.Target)
+                    final = trace.Events[++index];
+                sample = final;
+            }
             string? step = sample.Kind switch
             {
                 "pointer_press" => "pointer_press",
@@ -37,7 +46,11 @@ public static class TracePromoter
             ["milestone"] = 1,
             ["setup"] = new Dictionary<string, object?> { ["scene"] = "buddy_lab", ["seed"] = trace.Seed, ["save"] = "fresh" },
             ["steps"] = steps,
-            ["assertions"] = new[] { new Dictionary<string, object?> { ["predicate"] = "TODO_add_semantic_assertion", ["equals"] = true } },
+            ["assertions"] = new[]
+            {
+                new Dictionary<string, object?> { ["predicate"] = "lab_finite", ["equals"] = true },
+                new Dictionary<string, object?> { ["_todo"] = "add semantic assertions" },
+            },
         };
         return JsonSerializer.Serialize(draft, new JsonSerializerOptions { WriteIndented = true });
     }

@@ -6,6 +6,6 @@
 resource_name = "ProvisionalMilestone1EnvelopeBounds"
 script = ExtResource("1")
 MaximumLinkStrain = 1.1
-MaximumFinalPoseSpread = 440.0
-MaximumSettleTicks = 720
-MaximumSettleTickSpread = 240.0
+MaximumFinalPoseSpread = 16.0
+MaximumSettleTicks = 180
+MaximumSettleTickSpread = 24.0

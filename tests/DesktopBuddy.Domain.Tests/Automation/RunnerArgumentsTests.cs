@@ -103,4 +103,35 @@ public sealed class RunnerArgumentsTests
     {
         Assert.Throws<ArgumentNullException>(() => RunnerArguments.Parse(null!));
     }
+
+    [Fact]
+    public void Parse_DevelopmentPathsAndProfiles_RoundTrip()
+    {
+        RunnerArguments result = RunnerArguments.Parse(new[]
+        {
+            "--trace-out=trace.json", "--profile-a=rig-a.tres", "--profile-b=rig-b.tres",
+            "--drive-a=drive-a.tres", "--drive-b=drive-b.tres"
+        });
+        Assert.Equal("trace.json", result.TraceOut);
+        Assert.Equal("rig-a.tres", result.ProfileA);
+        Assert.Equal("rig-b.tres", result.ProfileB);
+        Assert.Equal("drive-a.tres", result.DriveA);
+        Assert.Equal("drive-b.tres", result.DriveB);
+        Assert.True(result.AutomationRequested);
+    }
+
+    [Fact]
+    public void Parse_PromotionPair_RoundTripsAndRequestsAutomation()
+    {
+        RunnerArguments result = RunnerArguments.Parse(new[] { "--promote-trace=in.json", "--journey-out=out.json" });
+        Assert.Equal("in.json", result.PromoteTrace);
+        Assert.Equal("out.json", result.JourneyOut);
+        Assert.True(result.AutomationRequested);
+    }
+
+    [Theory]
+    [InlineData("--promote-trace=in.json")]
+    [InlineData("--journey-out=out.json")]
+    public void Parse_IncompletePromotionPair_Throws(string argument) =>
+        Assert.Throws<ArgumentException>(() => RunnerArguments.Parse(new[] { argument }));
 }

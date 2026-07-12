@@ -13,9 +13,9 @@ namespace DesktopBuddy.Laboratory;
 /// grab, drag, and throw the buddy or a loose object by hand while tuning — the
 /// same TryGrab/MoveCursor/Release path the Milestone 2 input layer will drive.
 ///
-/// It is inert unless this is a non-headless debug build: release/exported builds
-/// exclude the lab scene entirely, and headless scenarios drive the tether API
-/// directly, so the harness must not fight their scripted cursor. Picking a body
+/// It is inert outside debug builds: release/exported builds exclude the lab scene.
+/// Headless activation is intentional because journeys synthesize events through
+/// Godot's real input queue. Picking a body
 /// under the cursor is an input concern and stays here; the tether keeps its pure
 /// "acquire any body through one contract" role. The owning <see cref="App.BuddyLab"/>
 /// calls <see cref="ResolvePendingInput"/> from its single fixed tick, where the
@@ -35,7 +35,10 @@ public partial class LabPointerGrabComponent : Node2D
     private bool _pendingPress;
     private bool _pendingRelease;
     private bool _pendingCancel;
+    private bool _ownsGrab;
     private Vector2 _cursor;
+
+    public Func<RigidBody2D, bool>? PickFilter { get; set; }
 
     public bool IsActive => _active;
     public int ReceivedInputCount { get; private set; }
@@ -49,32 +52,36 @@ public partial class LabPointerGrabComponent : Node2D
             throw new InvalidOperationException("LabPointerGrabComponent requires an injected GrabTetherController.");
         }
 
-        // Live developer affordance only: never in release builds, and never
-        // headless (scenarios own the tether cursor there).
+        // Development affordance only. Headless journeys use the same queued-input path.
         _active = BuildInfo.IsDebugBuild;
         SetProcessInput(_active);
+        SetProcessUnhandledInput(_active);
     }
 
     public override void _Input(InputEvent @event)
     {
+        // Track all mouse motion so GUI-consumed events still keep the cursor truthful;
+        // gameplay actions are handled only after GUI has declined the event.
+        if (_active && @event is InputEventMouse mouse)
+            _cursor = mouse.Position;
+    }
+
+    public override void _UnhandledInput(InputEvent @event)
+    {
         if (!_active)
-        {
             return;
-        }
+
         ReceivedInputCount++;
 
-        if (@event is InputEventMouse mouse)
-            _cursor = mouse.Position;
-
-        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true })
+        if (@event.IsActionPressed(InputActions.Primary))
         {
             _pendingPress = true;
         }
-        else if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
+        else if (@event.IsActionReleased(InputActions.Primary))
         {
             _pendingRelease = true;
         }
-        else if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true })
+        else if (@event.IsActionPressed(InputActions.Secondary))
         {
             // Right mouse cancels/drops without changing the selected tool.
             _pendingCancel = true;
@@ -93,7 +100,10 @@ public partial class LabPointerGrabComponent : Node2D
             return;
         }
 
-        Vector2 cursor = DisplayServer.GetName() == "headless" ? _cursor : GetGlobalMousePosition();
+        if (!Grab.IsGrabbing)
+            _ownsGrab = false;
+
+        Vector2 cursor = GetViewport().GetCanvasTransform().AffineInverse() * _cursor;
 
         if (_pendingCancel)
         {
@@ -108,13 +118,16 @@ public partial class LabPointerGrabComponent : Node2D
             _pendingPress = false;
             if (!Grab.IsGrabbing && TryPick(cursor, out RigidBody2D? body))
             {
-                Grab.TryGrab(body!, cursor);
-                LastPickedPart = body is PuppetPartBody part ? part.PartId : null;
-                SuccessfulPickCount++;
+                if (Grab.TryGrab(body!, cursor))
+                {
+                    _ownsGrab = true;
+                    LastPickedPart = body is PuppetPartBody part ? part.PartId : null;
+                    SuccessfulPickCount++;
+                }
             }
         }
 
-        if (Grab.IsGrabbing)
+        if (_ownsGrab && Grab.IsGrabbing)
         {
             Grab.MoveCursor(cursor);
         }
@@ -147,27 +160,12 @@ public partial class LabPointerGrabComponent : Node2D
         {
             Grab.Release();
         }
+        _ownsGrab = false;
     }
 
     private bool TryPick(Vector2 world, out RigidBody2D? body)
     {
         body = null;
-        if (DisplayServer.GetName() == "headless")
-        {
-            float nearestDistance = float.MaxValue;
-            foreach (Node node in GetTree().GetNodesInGroup("buddy_parts"))
-            {
-                if (node is not RigidBody2D candidate) continue;
-                float candidateDistance = candidate.GlobalPosition.DistanceSquaredTo(world);
-                if (candidateDistance < nearestDistance)
-                {
-                    nearestDistance = candidateDistance;
-                    body = candidate;
-                }
-            }
-            return body is not null && nearestDistance <= Mathf.Pow(PickRadius + 24.0f, 2);
-        }
-
         PhysicsDirectSpaceState2D? space = GetWorld2D()?.DirectSpaceState;
         if (space is null)
         {
@@ -188,7 +186,8 @@ public partial class LabPointerGrabComponent : Node2D
         foreach (Godot.Collections.Dictionary hit in hits)
         {
             if (hit.TryGetValue("collider", out Variant colliderValue) &&
-                colliderValue.AsGodotObject() is RigidBody2D candidate)
+                colliderValue.AsGodotObject() is RigidBody2D candidate &&
+                (PickFilter is null || PickFilter(candidate)))
             {
                 float distance = candidate.GlobalPosition.DistanceSquaredTo(world);
                 if (distance < bestDistance)
@@ -199,6 +198,23 @@ public partial class LabPointerGrabComponent : Node2D
             }
         }
 
-        return body is not null;
+        if (body is not null)
+            return true;
+
+        // Some headless physics backends can return no overlap during the first
+        // synchronization frame. Fall back only when the real query found nothing.
+        float nearestDistance = float.MaxValue;
+        foreach (Node node in GetTree().GetNodesInGroup("buddy_parts"))
+        {
+            if (node is not RigidBody2D candidate || (PickFilter is not null && !PickFilter(candidate)))
+                continue;
+            float candidateDistance = candidate.GlobalPosition.DistanceSquaredTo(world);
+            if (candidateDistance < nearestDistance)
+            {
+                nearestDistance = candidateDistance;
+                body = candidate;
+            }
+        }
+        return body is not null && nearestDistance <= Mathf.Pow(PickRadius + 24.0f, 2);
     }
 }

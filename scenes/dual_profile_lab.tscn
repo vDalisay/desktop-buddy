@@ -1,7 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://src/Laboratory/DualProfileLab.cs" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2"]
+[ext_resource type="Script" path="res://src/Grab/GrabTetherController.cs" id="3_grab"]
+[ext_resource type="Resource" path="res://data/buddy/lab_grab_tether.tres" id="4_grab_profile"]
+[ext_resource type="Script" path="res://src/Laboratory/LabPointerGrabComponent.cs" id="5_pointer"]
 
 [sub_resource type="RectangleShape2D" id="Horizontal"]
 size = Vector2(480, 16)
@@ -9,18 +12,28 @@ size = Vector2(480, 16)
 [sub_resource type="RectangleShape2D" id="Vertical"]
 size = Vector2(16, 360)
 
-[node name="DualProfileLab" type="Node2D" node_paths=PackedStringArray("BuddyA", "BuddyB", "MetricsA", "MetricsB")]
+[node name="DualProfileLab" type="Node2D" node_paths=PackedStringArray("BuddyA", "BuddyB", "MetricsA", "MetricsB", "Grab", "Pointer")]
 script = ExtResource("1")
 BuddyA = NodePath("BuddyA")
 BuddyB = NodePath("BuddyB")
 MetricsA = NodePath("Ui/MetricsA")
 MetricsB = NodePath("Ui/MetricsB")
+Grab = NodePath("GrabTetherController")
+Pointer = NodePath("LabPointerGrab")
 
 [node name="BuddyA" parent="." instance=ExtResource("2")]
 position = Vector2(120, 260)
 
 [node name="BuddyB" parent="." instance=ExtResource("2")]
 position = Vector2(360, 260)
+
+[node name="GrabTetherController" type="Node2D" parent="."]
+script = ExtResource("3_grab")
+Profile = ExtResource("4_grab_profile")
+
+[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab")]
+script = ExtResource("5_pointer")
+Grab = NodePath("../GrabTetherController")
 
 [node name="TwoRooms" type="StaticBody2D" parent="."]
 collision_layer = 1

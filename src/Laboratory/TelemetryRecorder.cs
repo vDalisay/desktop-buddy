@@ -23,6 +23,7 @@ public sealed partial class TelemetryRecorder : Node
     private string _jsonlPath = "";
     private string _envelopePath = "";
     private int _completed;
+    private string[] _linkIds = Array.Empty<string>();
 
     public string JsonLinesPath => _jsonlPath;
     public string EnvelopePath => _envelopePath;
@@ -35,6 +36,9 @@ public sealed partial class TelemetryRecorder : Node
         _jsonlPath = Path.Combine(artifactsDirectory, $"telemetry_{id}.jsonl");
         _envelopePath = Path.Combine(artifactsDirectory, $"envelope_{id}.json");
         int links = buddy.Constraints.Telemetry.Count;
+        _linkIds = new string[links];
+        for (int i = 0; i < links; i++)
+            _linkIds[i] = buddy.Constraints.Telemetry[i].LinkId.ToString();
         for (int i = 0; i < PoolSize; i++) _available.Enqueue(new TelemetryFrame(6, links));
         _writer = new Thread(WriteLoop) { IsBackground = true, Name = "TelemetryWriter" };
         _writer.Start();
@@ -54,7 +58,7 @@ public sealed partial class TelemetryRecorder : Node
         for (int i = 0; i < frame.Links.Length; i++)
         {
             LinkTelemetry link = _buddy.Constraints.Telemetry[i];
-            frame.Links[i] = new LinkTelemetrySample(link.LinkId.ToString(), link.Separation, link.Strain);
+            frame.Links[i] = new LinkTelemetrySample(_linkIds[i], link.Separation, link.Strain);
         }
         StandingSnapshot standing = _buddy.Standing.Snapshot;
         frame.SupportContacts = standing.SupportContactCount;

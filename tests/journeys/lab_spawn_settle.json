@@ -10,7 +10,6 @@
     "zoom": 100,
     "timeout_physics_ticks": 720
   },
-  "steps": [],
   "assertions": [
     { "predicate": "startup_ok", "equals": true },
     { "predicate": "lab_composed", "equals": true },

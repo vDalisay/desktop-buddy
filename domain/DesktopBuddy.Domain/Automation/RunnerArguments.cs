@@ -64,6 +64,8 @@ public sealed record RunnerArguments
     public string? JourneyOut { get; init; }
     public string? ProfileA { get; init; }
     public string? ProfileB { get; init; }
+    public string? DriveA { get; init; }
+    public string? DriveB { get; init; }
 
     /// <summary>
     /// Whether the development-only <c>AutomationDriver</c> should be composed.
@@ -88,7 +90,7 @@ public sealed record RunnerArguments
         ulong? seed = null;
         string? artifactsDir = null;
         bool automationRequested = false;
-        string? traceOut = null, promoteTrace = null, journeyOut = null, profileA = null, profileB = null;
+        string? traceOut = null, promoteTrace = null, journeyOut = null, profileA = null, profileB = null, driveA = null, driveB = null;
 
         foreach (string raw in args)
         {
@@ -134,6 +136,8 @@ public sealed record RunnerArguments
                 case "journey-out": journeyOut = RequireValue(key, value); break;
                 case "profile-a": profileA = RequireValue(key, value); break;
                 case "profile-b": profileB = RequireValue(key, value); break;
+                case "drive-a": driveA = RequireValue(key, value); break;
+                case "drive-b": driveB = RequireValue(key, value); break;
                 default:
                     // Unknown flag: ignore (engine passthrough / forward compatibility).
                     break;
@@ -166,6 +170,8 @@ public sealed record RunnerArguments
             JourneyOut = journeyOut,
             ProfileA = profileA,
             ProfileB = profileB,
+            DriveA = driveA,
+            DriveB = driveB,
         };
     }
 
