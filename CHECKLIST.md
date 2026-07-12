@@ -30,7 +30,7 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 | Domain unit | `dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj` | 58/58 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
 | Scenarios (13) | `<godot> --headless --path . -- --scenario=<id> --seed=<n>` | all green, seeds 1 (+ 7 on soak & autonomous_motion) |
-| Journeys (4) | `<godot> --headless --path . -- --journey=<id> --seed=<n>` | all green headless |
+| Journeys (6) | `<godot> --headless --path . -- --journey=<id> --seed=<n>` | all green headless |
 
 Scenario ids: `boot_smoke, passive_rig, standing_recovery, autonomous_motion,
 laboratory_controls, grab_release, grab_resistance, grab_hard_recovery,
@@ -117,12 +117,17 @@ green):
   builds green; native adapter deferred to Task 4.
 
 Task 5 (compose the shell into the sandbox boot: `SandboxRoot` gained its gameplay
-tick + a real box boundary + `DesktopShellController`; `sandbox.tscn` rebuilt) and
-Task 6 (`tests/journeys/desktop_shell_modes.json`, 8 predicates green) are also done.
-Remaining are owner-manual gates only: Task 0 renderer visual matrix (150% DPI pass
-still open), Task 4 native Windows adapter verification (real P/Invoke), Task 7 the
-`TEST_PLAN.md` §5 standalone matrix. The renderer decision still blocks HUD work and
-dovetails with the pending 150% DPI spike check.
+tick + a real box boundary + `DesktopShellController`; `sandbox.tscn` rebuilt), Task 6
+(`tests/journeys/desktop_shell_modes.json`, 8 predicates green), and the Task 4 native
+adapter **skeleton** (`WindowsDesktopAdapter` + factory; WndProc `HTTRANSPARENT`
+hit-testing, monitor topology, per-monitor DPI; selected only on a real Windows run,
+emulated everywhere else) are done. Remaining is all owner-manual on real Windows:
+Task 0 renderer visual matrix (150% DPI pass still open), Task 4 verification + next
+cut (sandbox→client hit-region mapping, tray/hotkey/launch-at-login, §24 lifecycle
+messages), Task 7 the `TEST_PLAN.md` §5 standalone matrix. To verify Task 4: run the
+standalone build and look for `[WinAdapter] Native adapter attached …` +
+`DesktopWindowController ready (native=True …)`. The renderer decision still blocks
+HUD work and dovetails with the pending 150% DPI spike check.
 
 ## 6. Ground rules (from the plans — still apply)
 

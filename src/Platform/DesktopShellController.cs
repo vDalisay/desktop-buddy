@@ -45,6 +45,11 @@ public partial class DesktopShellController : Node
             throw new InvalidOperationException("DesktopShellController requires an injected window controller and boundary.");
         }
 
+        // Select the native Windows adapter on a real standalone run; headless,
+        // editor, and non-Windows runs get the emulated adapter. Must precede any
+        // window query (ResolvePlacement) below.
+        Window.Configure(WindowsDesktopAdapterFactory.Create());
+
         Window.ClientBoundsChanged += OnClientBoundsChanged;
         Window.WindowFocusLost += OnWindowFocusLost;
         Boundaries.LayoutApplied += OnLayoutApplied;

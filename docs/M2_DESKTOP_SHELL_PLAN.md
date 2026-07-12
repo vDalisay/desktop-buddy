@@ -53,11 +53,11 @@ Pure geometry in `DesktopBuddy.Domain`, no engine:
 - first-launch anchor 16 px inside the lower-right of the usable work area;
 - clamp a stored position/size back into a usable monitor rect (off-screen
   recovery after monitor removal / topology change);
-- enforce default `480x360`, minimum `360x270`, and monitor-usable maximum;
-- carry DPI context.
-Reuses `RoomLayoutPolicy` for zoom/room-floor clamping. xUnit coverage for
-first-launch, persisted-valid, fully-off-screen, partially-off-screen, monitor
-smaller than the window, and DPI-context cases.
+- enforce default `480x360`, minimum `360x270`, and monitor-usable maximum.
+DPI context is not part of this pure geometry; it is carried at the window-service
+seam (Task 3, `IWindowsDesktopAdapter.GetDpiScale`). Reuses `RoomLayoutPolicy` for
+zoom/room-floor clamping. xUnit coverage for first-launch, persisted-valid,
+fully-off-screen, partially-off-screen, and monitor-smaller-than-window cases.
 
 ### Task 2 — Input-mode state machine (Domain, headless-testable) — DONE
 Pure Work/Play transition rules (`DECISIONS.md` "Overlay and Interface"):
@@ -67,26 +67,46 @@ transition; input mode never changes from inactivity alone; transitions never
 synthesize primary input. xUnit coverage per trigger and per invariant.
 
 ### Task 3 — Desktop window-service seam + emulated adapter (headless-testable) — DONE
-`IDesktopWindowService` / `WindowSettings` (`ARCHITECTURE.md` §5), a
-`GodotDesktopWindowService` using Godot Window APIs first (transparent,
-borderless, topmost, size, position, usable-monitor rect) with a transparency
-availability probe and opaque bordered fallback, and an `EmulatedDesktopWindow
-Service` for headless/editor/CI. `IWindowsDesktopAdapter` abstracts the native
-work; the emulated adapter is the CI default. Startup validation asserts the
-window baseline. **Native adapter itself is Task 4.**
+`IDesktopWindowService` / `WindowSettings` (`ARCHITECTURE.md` §5), implemented by
+`DesktopWindowController` (a Godot `Node`) using Godot Window APIs first
+(transparent, borderless, topmost, size, position, usable-monitor rect) with a
+transparency availability probe and opaque fallback. Native work sits behind an
+injected `IWindowsDesktopAdapter`; `EmulatedWindowsDesktopAdapter` is the
+headless/editor/CI default and records hit-region/capture requests for the
+journeys to assert. Startup validation asserts the window baseline. **The native
+adapter itself is Task 4.**
 
-### Task 4 — Native Windows adapter (owner-manual verified)
-`WindowsDesktopAdapter : IWindowsDesktopAdapter` (`ARCHITECTURE.md` §9, §24):
-native handle, safe WndProc subclass/restore with a kept-alive delegate,
-Work-Mode hit testing (`HTTRANSPARENT` over transparent pixels; normal over
-buddy/menu/border/resize handles; whole-box in Play Mode), DPI screen/client
-conversion, tray icon + menu, global hotkey register/conflict-report, launch-at-
-login, and the §24 lifecycle messages (`WM_ENTERSIZEMOVE`/`EXITSIZEMOVE`,
-`WM_DPICHANGED`, `WM_DISPLAYCHANGE`, work-area `WM_SETTINGCHANGE`,
-`WM_POWERBROADCAST`, session lock/unlock). Restore the original procedure on
-shutdown and on window recreation; never `SetWindowRgn`. Failure falls back to an
-opaque/full-capture window with tray recovery. Verified on real Windows, then the
-findings promoted into the §5 matrix checklist.
+### Task 4 — Native Windows adapter (SKELETON LANDED, owner-manual verification pending)
+`WindowsDesktopAdapter : IWindowsDesktopAdapter` (`ARCHITECTURE.md` §9) is written
+and builds, selected by `WindowsDesktopAdapterFactory` only on a Windows standalone
+run with a live display server (headless/editor/non-Windows and any attach failure
+fall back to the emulated adapter, so CI never touches native code). First cut
+implements the current seam surface:
+- real HWND via `DisplayServer.WindowGetNativeHandle`;
+- safe WndProc subclass with a GC-rooted delegate, restored on `Shutdown`; never
+  `SetWindowRgn`;
+- Work-Mode `WM_NCHITTEST` → `HTTRANSPARENT` over non-region pixels, `HTCLIENT`
+  over the interactive regions; Play Mode captures the whole box;
+- `EnumDisplayMonitors` + `GetMonitorInfo` usable work-area rects; `GetDpiForMonitor`
+  per-monitor DPI; `DwmIsCompositionEnabled` transparency probe.
+
+**Known gaps / next cut** (all owner-testable on Windows):
+- Hit regions are treated as **client-pixel** rects, but the shell currently supplies
+  **sandbox-space** rects — the sandbox→client mapping lands with the InputCollector
+  coordinate layer (`ARCHITECTURE.md` §10). 1:1 only at 100% zoom with the camera at
+  the client origin until then.
+- Tray icon + menu, global hotkey register/conflict-report, launch-at-login, and the
+  §24 lifecycle messages (`WM_ENTERSIZEMOVE`/`EXITSIZEMOVE`, `WM_DPICHANGED`,
+  `WM_DISPLAYCHANGE`, work-area `WM_SETTINGCHANGE`, `WM_POWERBROADCAST`, session
+  lock/unlock) extend the seam in a follow-up slice — not in the current interface.
+- Window recreation re-subclass is not yet handled.
+
+**How to verify** (real Windows, outside the editor): run the standalone build; the
+log should show `[WinAdapter] Native adapter attached (hwnd=… monitors=N transparency=True)`
+and `DesktopWindowController ready (native=True …)`. Then walk the §5 matrix: Work-Mode
+passthrough over transparent pixels, box interaction entering Play, outside-click and
+Escape returning to Work, multi-monitor/DPI placement, and clean shutdown restoring the
+window procedure.
 
 ### Task 5 — Shell composition + resize→boundary integration — DONE
 `SandboxRoot` gained its single gameplay `_PhysicsProcess` and now composes
@@ -115,11 +135,10 @@ recovery from every focus state. This is the milestone exit gate.
 
 ## Progress
 
-Tasks 1–3 (foundation) and Tasks 5–6 (shell composition + mode-transition journey)
-are landed with the suite green (build 0/0, 92 domain tests, `boot_smoke` +
-`desktop_shell_modes` journeys exit 0). Remaining are the owner-manual gates:
-Task 0 renderer visual matrix (150% DPI still open), Task 4 native Windows adapter
-(the real P/Invoke — WndProc/hit-test/tray/hotkey, verifiable only on Win10/11), and
-Task 7 the `TEST_PLAN.md` §5 standalone matrix that is the milestone exit gate.
-</content>
-</invoke>
+Tasks 1–3 (foundation), Tasks 5–6 (shell composition + mode-transition journey), and
+the Task 4 native adapter **skeleton** are landed with the suite green (build 0/0, 92
+domain tests, `boot_smoke` + `desktop_shell_modes` journeys exit 0, headless confirmed
+`native=False`). Remaining is all owner-manual on real Windows: Task 0 renderer visual
+matrix (150% DPI still open), Task 4 verification + its next cut (coordinate mapping,
+tray/hotkey/launch-at-login, lifecycle messages), and Task 7 the `TEST_PLAN.md` §5
+standalone matrix that is the milestone exit gate.
