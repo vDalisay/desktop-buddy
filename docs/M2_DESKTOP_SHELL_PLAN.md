@@ -40,13 +40,15 @@ stay green with no Windows-only dependency.
 
 ## Tasks
 
-### Task 0 — Renderer decision spike (owner-manual gate, in progress)
+### Task 0 — Renderer decision spike (owner-manual gate, POSTPONED)
 `ARCHITECTURE.md` §20: validate per-pixel transparency + `msaa_2d` + V-sync
 together on the `gl_compatibility` renderer, Win10/11. Record the decision in
 `docs/DECISIONS.md` before HUD work. Status per `CHECKLIST.md`: 100% scale pass
-confirmed 2026-07-12; **remaining** = 150% DPI pass, corner-readout pointer
-checks, keep/delete of the spike scene, and the recorded decision. Blocks HUD
-features only, not the shell engineering below.
+confirmed 2026-07-12; **postponed by the owner on 2026-07-12** = 150% DPI pass,
+corner-readout pointer checks, keep/delete of the spike scene, and the recorded
+decision. Postponement is not acceptance: the renderer decision remains open and
+continues to block renderer-dependent HUD features, but not the shell engineering
+below.
 
 ### Task 1 — Window placement policy (Domain, headless-testable) — DONE
 Pure geometry in `DesktopBuddy.Domain`, no engine:
@@ -139,7 +141,7 @@ recovery from every focus state. This is the milestone exit gate.
 Tasks 1–3 (foundation), Tasks 5–6 (shell composition + mode-transition journey), and
 the Task 4 native adapter **skeleton** are landed with the suite green (build 0/0, 92
 domain tests, `boot_smoke` + `desktop_shell_modes` journeys exit 0, headless confirmed
-`native=False`). Remaining is all owner-manual on real Windows: Task 0 renderer visual
-matrix (150% DPI still open), Task 4 verification + its next cut (coordinate mapping,
-tray/hotkey/launch-at-login, lifecycle messages), and Task 7 the `TEST_PLAN.md` §5
-standalone matrix that is the milestone exit gate.
+`native=False`). Remaining is all owner-manual on real Windows: the postponed Task 0
+renderer visual matrix (150% DPI unverified), Task 4 verification + its next cut
+(coordinate mapping, tray/hotkey/launch-at-login, lifecycle messages), and Task 7 the
+`TEST_PLAN.md` §5 standalone matrix that is the milestone exit gate.
