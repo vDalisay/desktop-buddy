@@ -79,11 +79,15 @@ Gotchas that WILL fail a run if you forget them:
       owner confirmed 2026-07-12 "transparent window looks good" at current display
       scale. Still open: 150% DPI pass, corner-readout pointer checks, recording
       both in `docs/DECISIONS.md`, keep/delete decision.
-- [ ] **Side-by-side reference review** (§8 bullet 4): **performed 2026-07-12 and
-      REJECTED** — grab too heavy (can't hold aloft/fling), recovery sluggish,
-      walk slides instead of stepping. Remediation: `docs/M1_FEEL_AND_GAIT_PLAN.md`
-      (measured diagnosis: tether max force 6000 < rig weight ~7154; LinearDamp 2.0
-      honey; gait term invisible). Re-review via that plan's Task 6 A/B loop.
+- [ ] **Side-by-side reference review** (§8 bullet 4): first review 2026-07-12
+      REJECTED (too heavy, sluggish, slides). `docs/M1_FEEL_AND_GAIT_PLAN.md`
+      Tasks 1–5 are now **implemented, verified, and committed** (`5658621`,
+      `44a1452`, `6ad8472`, `28e8cdc`, `f6b0a2e`): damping de-honeyed, grab force
+      >rig weight (hold-aloft 90px clearance, fling 473px/s once airborne), stepping
+      gait (feet alternate + clear floor 6–12px), recovery ramp 5s→2s. All pinned by
+      fixtures (grab_hold_aloft, grab_fling, feet_step_clear, assisted_recovery_is_prompt).
+      **Task 6 = owner re-review of the new tuning is IN PROGRESS** — on acceptance,
+      drop "Provisional" from the `lab_*.tres` resource_names to lock it.
 - [ ] **Windowed journey pass** for the three interactive journeys (review-fixes
       exit criterion). **Blocked by a new bug found 2026-07-12:** windowed
       `--journey` runs compose the lab but never execute/complete (no verdict, no
