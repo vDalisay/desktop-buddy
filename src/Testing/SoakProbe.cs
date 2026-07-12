@@ -5,7 +5,8 @@ using Godot;
 
 namespace DesktopBuddy.Testing;
 
-public readonly record struct SoakProbeResult(int TickCount, bool Finite, bool Awake, float MaximumStrain, bool Contained);
+public readonly record struct SoakProbeResult(
+    int TickCount, bool Finite, bool Awake, float MaximumStrain, bool Contained, int HardRecoveries);
 
 public static class SoakProbe
 {
@@ -15,6 +16,11 @@ public static class SoakProbe
         bool awake = true;
         float maximumStrain = 0.0f;
         int ticks = 0;
+        // A healthy idle buddy never needs a hard reset: the standing detector must
+        // keep reporting foot support, so the recovery clock never reaches timeout.
+        // Any hard recovery during the soak means the deep-rest foot-contact blind
+        // spot (rotated contact normals) has regressed. See PuppetPartBody.
+        int hardRecoveriesAtStart = lab.Buddy.Recovery.HardRecoveryCount;
         for (; ticks < tickBudget; ticks++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
@@ -30,6 +36,7 @@ public static class SoakProbe
             }
         }
         return new SoakProbeResult(ticks, finite, awake, maximumStrain,
-            lab.Buddy.Recovery.AllBodiesInsideSafeBounds());
+            lab.Buddy.Recovery.AllBodiesInsideSafeBounds(),
+            lab.Buddy.Recovery.HardRecoveryCount - hardRecoveriesAtStart);
     }
 }

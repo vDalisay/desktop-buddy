@@ -33,10 +33,11 @@ public sealed class IdleSoakScenario : IScenario
         EnvelopeBoundsProfile bounds = GD.Load<EnvelopeBoundsProfile>("res://data/buddy/lab_envelope_bounds.tres");
         SoakProbeResult result = await SoakProbe.RunAsync(tree, lab, _ticks);
 
-        // "Standing-capable at soak end" must admit the designed fail-safe path:
-        // a deep-rest stall reports no foot contacts, so the buddy can only come
-        // back through the recovery clock's hard reset. Window = worst-case clock
-        // (assistance delay + hard-recovery delay) + the measured settle bound.
+        // "Standing-capable at soak end": the buddy may be mid-step/mid-jump on the
+        // final tick, so allow a settle window before sampling. Window = worst-case
+        // recovery clock (assistance delay + hard-recovery delay) + measured settle
+        // bound. It no longer has to absorb a deep-rest foot-contact stall — that was
+        // the rotated-normal bug fixed in PuppetPartBody, now guarded below.
         int recoveryWindow = RecoveryClock.AssistanceDelayTicks +
                              RecoveryClock.HardRecoveryDelayTicks +
                              bounds.MaximumSettleTicks;
@@ -54,6 +55,8 @@ public sealed class IdleSoakScenario : IScenario
         checks.Add(new StartupCheck("idle_soak_bodies_awake", result.Awake, "CanSleep=false"));
         checks.Add(new StartupCheck("idle_soak_connected", result.MaximumStrain <= bounds.MaximumLinkStrain, $"max_strain={result.MaximumStrain:F4} bound={bounds.MaximumLinkStrain:F4}"));
         checks.Add(new StartupCheck("idle_soak_contained", result.Contained, "all bodies inside room"));
+        checks.Add(new StartupCheck("idle_soak_no_hard_recovery", result.HardRecoveries == 0,
+            $"hard_recoveries_during_soak={result.HardRecoveries}"));
         checks.Add(new StartupCheck("idle_soak_standing_capable", standing,
             $"recovery_ticks={recoveryTicks}/{recoveryWindow} hard_recoveries={hardRecoveries}"));
         if (lab.TelemetryRecorder is not null)

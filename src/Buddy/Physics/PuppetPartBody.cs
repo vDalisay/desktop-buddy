@@ -75,7 +75,14 @@ public partial class PuppetPartBody : RigidBody2D
                 continue;
             }
 
-            Vector2 worldNormal = state.GetContactLocalNormal(index).Rotated(GlobalRotation);
+            // GetContactLocalNormal returns the normal in WORLD space in Godot 4
+            // (the "local" is legacy naming), verified on 4.6.1. Rotating it by the
+            // body's own rotation was a bug: a circular foot spins freely at rest,
+            // and once its rotation entered the ~63-117 degree band the floor normal
+            // was rotated out of the support cone, dropping HasSupportContact to false
+            // mid-idle. That starved the standing detector, ran the recovery clock to
+            // its 12 s timeout, and hard-reset-teleported the buddy on every soak seed.
+            Vector2 worldNormal = state.GetContactLocalNormal(index);
             if (Mathf.Abs(worldNormal.Y) > 0.45f)
             {
                 HasSupportContact = true;

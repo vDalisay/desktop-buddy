@@ -43,18 +43,31 @@ public sealed class AutonomousMotionScenario : IScenario
         bool sawLeftForce = false;
         bool sawRightForce = false;
         bool sawJumpImpulse = false;
+        // Keep observing for an apex window after the first jump impulse: the impulse
+        // becomes visible at takeoff, but the torso needs ~1 s of flight to reach its
+        // rise apex. Breaking the instant the impulse appears samples the launch pose,
+        // not the peak (this masked a real 8 px rise as 5.67 px once the standing-fix
+        // reordered the seeded schedule to make the jump the last condition met).
+        const int JumpApexWindowTicks = 150;
+        int jumpTick = -1;
         for (int tick = 0; tick < MotionObservationTicks; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             float locomotionX = lab.Buddy.ActiveDrive.LastLocomotionForce.X;
             sawLeftForce |= locomotionX < 0.0f;
             sawRightForce |= locomotionX > 0.0f;
+            if (lab.Buddy.ActiveDrive.LastJumpImpulse > 0.0f && jumpTick < 0)
+            {
+                jumpTick = tick;
+            }
+
             sawJumpImpulse |= lab.Buddy.ActiveDrive.LastJumpImpulse > 0.0f;
             Vector2 position = lab.Buddy.Rig.Torso.GlobalPosition;
             minimumTorsoY = Mathf.Min(minimumTorsoY, position.Y);
             maximumHorizontalDelta = Mathf.Max(maximumHorizontalDelta, Mathf.Abs(position.X - start.X));
 
-            if (sawLeftForce && sawRightForce && sawJumpImpulse && maximumHorizontalDelta >= 8.0f)
+            bool jumpApexCaptured = jumpTick >= 0 && tick >= jumpTick + JumpApexWindowTicks;
+            if (sawLeftForce && sawRightForce && jumpApexCaptured && maximumHorizontalDelta >= 8.0f)
             {
                 break;
             }
