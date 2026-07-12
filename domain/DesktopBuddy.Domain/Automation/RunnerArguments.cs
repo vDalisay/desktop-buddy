@@ -59,6 +59,11 @@ public sealed record RunnerArguments
     /// <see cref="AutomationEnabled"/>.
     /// </summary>
     public bool AutomationRequested { get; init; }
+    public string? TraceOut { get; init; }
+    public string? PromoteTrace { get; init; }
+    public string? JourneyOut { get; init; }
+    public string? ProfileA { get; init; }
+    public string? ProfileB { get; init; }
 
     /// <summary>
     /// Whether the development-only <c>AutomationDriver</c> should be composed.
@@ -83,6 +88,7 @@ public sealed record RunnerArguments
         ulong? seed = null;
         string? artifactsDir = null;
         bool automationRequested = false;
+        string? traceOut = null, promoteTrace = null, journeyOut = null, profileA = null, profileB = null;
 
         foreach (string raw in args)
         {
@@ -123,6 +129,11 @@ public sealed record RunnerArguments
                 case "automation":
                     automationRequested = true;
                     break;
+                case "trace-out": traceOut = RequireValue(key, value); automationRequested = true; break;
+                case "promote-trace": promoteTrace = RequireValue(key, value); automationRequested = true; break;
+                case "journey-out": journeyOut = RequireValue(key, value); break;
+                case "profile-a": profileA = RequireValue(key, value); break;
+                case "profile-b": profileB = RequireValue(key, value); break;
                 default:
                     // Unknown flag: ignore (engine passthrough / forward compatibility).
                     break;
@@ -134,6 +145,8 @@ public sealed record RunnerArguments
             throw new ArgumentException(
                 "--scenario and --journey are mutually exclusive.", nameof(args));
         }
+        if ((promoteTrace is null) != (journeyOut is null))
+            throw new ArgumentException("--promote-trace and --journey-out must be supplied together.", nameof(args));
 
         RunnerMode mode =
             scenarioId is not null ? RunnerMode.Scenario :
@@ -148,6 +161,11 @@ public sealed record RunnerArguments
             Seed = seed,
             ArtifactsDir = artifactsDir,
             AutomationRequested = automationRequested,
+            TraceOut = traceOut,
+            PromoteTrace = promoteTrace,
+            JourneyOut = journeyOut,
+            ProfileA = profileA,
+            ProfileB = profileB,
         };
     }
 

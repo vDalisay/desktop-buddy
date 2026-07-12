@@ -15,12 +15,14 @@ if not exist "%GODOT_EXE%" (
 )
 
 pushd "%PROJECT_ROOT%"
-"%GODOT_EXE%" --path "%PROJECT_ROOT%" res://scenes/buddy_lab.tscn
+set "LAB_SCENE=res://scenes/buddy_lab.tscn"
+if /I "%~1"=="--dual" set "LAB_SCENE=res://scenes/dual_profile_lab.tscn"
+"%GODOT_EXE%" --path "%PROJECT_ROOT%" %LAB_SCENE% %2 %3 %4 %5
 set "RESULT=%ERRORLEVEL%"
 popd
 exit /b %RESULT%
 
 :help
-echo Launches res://scenes/buddy_lab.tscn directly with Godot 4.6.1 .NET.
+echo Launches the lab directly; pass --dual for the side-by-side profile lab.
 echo Uses GODOT_PATH, or the pinned editor under your Downloads folder.
 exit /b 0

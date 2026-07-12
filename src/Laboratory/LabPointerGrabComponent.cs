@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Grab;
 using Godot;
@@ -34,8 +35,12 @@ public partial class LabPointerGrabComponent : Node2D
     private bool _pendingPress;
     private bool _pendingRelease;
     private bool _pendingCancel;
+    private Vector2 _cursor;
 
     public bool IsActive => _active;
+    public int ReceivedInputCount { get; private set; }
+    public BuddyPartId? LastPickedPart { get; private set; }
+    public int SuccessfulPickCount { get; private set; }
 
     public void Initialize()
     {
@@ -46,25 +51,30 @@ public partial class LabPointerGrabComponent : Node2D
 
         // Live developer affordance only: never in release builds, and never
         // headless (scenarios own the tether cursor there).
-        _active = BuildInfo.IsDebugBuild && DisplayServer.GetName() != "headless";
+        _active = BuildInfo.IsDebugBuild;
+        SetProcessInput(_active);
     }
 
-    public override void _UnhandledInput(InputEvent @event)
+    public override void _Input(InputEvent @event)
     {
         if (!_active)
         {
             return;
         }
+        ReceivedInputCount++;
 
-        if (@event.IsActionPressed(InputActions.Primary))
+        if (@event is InputEventMouse mouse)
+            _cursor = mouse.Position;
+
+        if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true })
         {
             _pendingPress = true;
         }
-        else if (@event.IsActionReleased(InputActions.Primary))
+        else if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
         {
             _pendingRelease = true;
         }
-        else if (@event.IsActionPressed(InputActions.Secondary))
+        else if (@event is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true })
         {
             // Right mouse cancels/drops without changing the selected tool.
             _pendingCancel = true;
@@ -83,7 +93,7 @@ public partial class LabPointerGrabComponent : Node2D
             return;
         }
 
-        Vector2 cursor = GetGlobalMousePosition();
+        Vector2 cursor = DisplayServer.GetName() == "headless" ? _cursor : GetGlobalMousePosition();
 
         if (_pendingCancel)
         {
@@ -99,6 +109,8 @@ public partial class LabPointerGrabComponent : Node2D
             if (!Grab.IsGrabbing && TryPick(cursor, out RigidBody2D? body))
             {
                 Grab.TryGrab(body!, cursor);
+                LastPickedPart = body is PuppetPartBody part ? part.PartId : null;
+                SuccessfulPickCount++;
             }
         }
 
@@ -140,6 +152,22 @@ public partial class LabPointerGrabComponent : Node2D
     private bool TryPick(Vector2 world, out RigidBody2D? body)
     {
         body = null;
+        if (DisplayServer.GetName() == "headless")
+        {
+            float nearestDistance = float.MaxValue;
+            foreach (Node node in GetTree().GetNodesInGroup("buddy_parts"))
+            {
+                if (node is not RigidBody2D candidate) continue;
+                float candidateDistance = candidate.GlobalPosition.DistanceSquaredTo(world);
+                if (candidateDistance < nearestDistance)
+                {
+                    nearestDistance = candidateDistance;
+                    body = candidate;
+                }
+            }
+            return body is not null && nearestDistance <= Mathf.Pow(PickRadius + 24.0f, 2);
+        }
+
         PhysicsDirectSpaceState2D? space = GetWorld2D()?.DirectSpaceState;
         if (space is null)
         {

@@ -1,0 +1,11 @@
+{
+  "id": "lab_grab_throw", "milestone": 1,
+  "description": "Grab and throw every semantic buddy part through the real input queue.",
+  "setup": { "scene": "buddy_lab", "exercise": "grab_throw_all_parts", "seed": 1, "timeout_physics_ticks": 720 },
+  "steps": [{ "step": "pointer_press/drag/release", "target": "each_buddy_part" }],
+  "assertions": [
+    { "predicate": "pointer_input_received" }, { "predicate": "all_parts_grabbed" }, { "predicate": "release_velocity_capped" },
+    { "predicate": "rig_connected_after_throws" }, { "predicate": "standing_after_throws" },
+    { "predicate": "finite_after_throws" }
+  ]
+}

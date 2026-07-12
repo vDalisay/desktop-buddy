@@ -1,0 +1,10 @@
+{
+  "id": "lab_walk_jump", "milestone": 1,
+  "description": "Observe seeded left/right walking and a jump followed by landing.",
+  "setup": { "scene": "buddy_lab", "exercise": "walk_jump", "seed": 1, "timeout_physics_ticks": 3600 },
+  "steps": [{ "step": "wait_predicate", "predicate": "seeded_walk_jump_complete" }],
+  "assertions": [
+    { "predicate": "walked_left" }, { "predicate": "walked_right" }, { "predicate": "jumped" },
+    { "predicate": "landed_standing" }, { "predicate": "motion_contained" }
+  ]
+}

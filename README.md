@@ -78,7 +78,17 @@ From the Godot editor:
 
 For one-click launch outside the editor, run [`tools/play_buddy_lab.bat`](tools/play_buddy_lab.bat). It uses `GODOT_PATH` when set and otherwise checks the pinned Godot 4.6.1 .NET editor in the current user's Downloads folder.
 
-For a fast automated check, run [`tools/quick_validate.bat`](tools/quick_validate.bat). It builds the solution, runs domain tests, imports the project, runs the lab-controls, grab/release, and room-resize/zoom scenarios, and finishes with the lab spawn/settle journey.
+For a fast automated check, run [`tools/quick_validate.bat`](tools/quick_validate.bat). It builds the solution, runs domain tests, imports the project, and exercises representative Milestone 1 scenarios and journeys.
+
+Telemetry-enabled scenarios write `telemetry_<id>.jsonl` and `envelope_<id>.json` when `--artifacts` is supplied. Run `idle_soak_ci` for the three-minute push check and `idle_soak` for the full 216,000-tick/30-minute gate. `repeat_envelope` compares five identical-seed and five varied-seed runs against [`lab_envelope_bounds.tres`](data/buddy/lab_envelope_bounds.tres).
+
+The Milestone 1 journeys are `lab_spawn_settle`, `lab_grab_throw`, `lab_walk_jump`, and `lab_idle_soak`. The latter is the full soak and is intended for nightly/manual gate validation.
+
+To compare tuning profiles side by side, run `tools\play_buddy_lab.bat --dual -- --profile-a=res://data/buddy/lab_puppet_rig.tres --profile-b=res://data/buddy/lab_puppet_rig.tres`. Both buddies receive the same seed and fixed-tick routing; `Tab` switches the designated interaction side. Review response delay, bounded stretch, whole-body impulse propagation, sideways collapse, and physics-driven recovery, then run `dual_profile_smoke` and the complete regression suite before accepting Resource changes.
+
+To record and promote input, launch a debug build with `--automation --trace-out=.artifacts/traces/session.json`, play through real mouse/keyboard input, then run with `--promote-trace=.artifacts/traces/session.json --journey-out=tests/journeys/draft.json`. Harden the draft per [`AGENT_VERIFICATION_AND_E2E.md`](docs/AGENT_VERIFICATION_AND_E2E.md): replace residual sandbox coordinates, set the fixture/seed, add semantic assertions, and commit only the hardened journey.
+
+The standalone pointer/transparency spike is `res://scenes/spike_transparent_window.tscn`. Run it on each target DPI scale and compare the on-window client readout with the OS pointer; it is development-only and export-excluded.
 
 ## Building and Testing
 

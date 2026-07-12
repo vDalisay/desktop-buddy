@@ -2,6 +2,11 @@
 
 Status: Living decision log for requirements and architecture planning.
 
+## Development Spike Observations (2026-07-12)
+
+- The Milestone 1 standalone transparency/pointer spike launches successfully on Windows 11 using Godot 4.6.1 .NET, the Compatibility/OpenGL renderer, and an NVIDIA RTX 3070; startup produced no renderer or scene errors.
+- Per-pixel transparency appearance and client-to-sandbox pointer accuracy at 100% and high-DPI scale still require the documented visible manual check. They are intentionally not recorded as accepted from the automated hidden launch alone; the Milestone 2 renderer decision remains open until that visual matrix is performed.
+
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
 ## Product and Platform

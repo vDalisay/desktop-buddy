@@ -79,6 +79,7 @@ public partial class Bootstrap : Node
         }
 
         var driver = new AutomationDriver { Name = nameof(AutomationDriver) };
+        driver.Configure(args);
         AddChild(driver);
     }
 

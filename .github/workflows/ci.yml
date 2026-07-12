@@ -10,6 +10,7 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
 
 env:
   # Pinned engine version. Must match README.md and the editor/export templates.
@@ -84,3 +85,40 @@ jobs:
 
       - name: Lab spawn and settle journey
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_spawn_settle --seed=1
+
+      - name: Telemetry export consumer
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=passive_rig --seed=1 --artifacts=.artifacts/passive_rig
+
+      - name: Repeated-run envelope
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=repeat_envelope --seed=1
+
+      - name: Dual-profile stability smoke
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=dual_profile_smoke --seed=1
+
+      - name: Grab-throw journey
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_grab_throw --seed=1
+
+      - name: Walk-jump journey
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_walk_jump --seed=1
+
+  full-soak:
+    # The complete 30-minute fixed-step run is intentionally manual/nightly-scale;
+    # push CI remains bounded while preserving the exact 216,000-tick gate.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet build DesktopBuddy.sln -c Debug
+      - name: Download pinned Godot
+        run: |
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          curl -fL -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          unzip -q godot.zip
+          echo "GODOT_BIN=$PWD/${NAME}/${NAME}" >> "$GITHUB_ENV"
+      - name: Full 30-minute idle soak scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=idle_soak --seed=1 --artifacts=.artifacts/idle_soak
+      - name: Full 30-minute idle soak journey
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_idle_soak --seed=1 --artifacts=.artifacts/lab_idle_soak

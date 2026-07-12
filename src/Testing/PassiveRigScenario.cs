@@ -29,6 +29,8 @@ public sealed class PassiveRigScenario : IScenario
         BuddyLab lab = packed!.Instantiate<BuddyLab>();
         tree.Root.AddChild(lab);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        if (!string.IsNullOrEmpty(ScenarioArtifacts.Directory))
+            lab.EnableTelemetry(ScenarioArtifacts.Directory, Id);
 
         PuppetRig rig = lab.Buddy.Rig;
         Godot.Collections.Array<string> profileErrors = rig.Profile.Validate();
@@ -89,6 +91,13 @@ public sealed class PassiveRigScenario : IScenario
         checks.Add(new StartupCheck("passive_rig_settles", settled,
             $"final_max_speed={finalMaximumSpeed:F3}"));
 
+        lab.TelemetryRecorder?.Complete();
+        if (lab.TelemetryRecorder is not null)
+        {
+            checks.Add(new StartupCheck("telemetry_jsonl_written", System.IO.File.Exists(lab.TelemetryRecorder.JsonLinesPath), lab.TelemetryRecorder.JsonLinesPath));
+            using var envelope = System.IO.File.OpenRead(lab.TelemetryRecorder.EnvelopePath);
+            checks.Add(new StartupCheck("telemetry_envelope_parses", DesktopBuddy.Domain.Telemetry.TelemetrySerializer.ReadEnvelope(envelope).FrameCount > 0, lab.TelemetryRecorder.EnvelopePath));
+        }
         lab.QueueFree();
         bool passed = true;
         foreach (StartupCheck check in checks)

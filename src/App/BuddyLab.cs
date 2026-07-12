@@ -28,6 +28,7 @@ public partial class BuddyLab : Node2D
     [Export] public PuppetRoomContainmentComponent Containment { get; set; } = null!;
     [Export] public LaboratoryTelemetryPanel TelemetryPanel { get; set; } = null!;
     [Export] public LaboratoryBoundaryVisualizer BoundaryVisualizer { get; set; } = null!;
+    public TelemetryRecorder? TelemetryRecorder { get; private set; }
 
     public override void _Ready()
     {
@@ -89,8 +90,21 @@ public partial class BuddyLab : Node2D
             Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
 
             Buddy.PhysicsTick();
+            TelemetryRecorder?.Capture(Controls.RoutedPhysicsTicks);
             Controls.NotifyPhysicsTickRouted();
         }
+    }
+
+    public void EnableTelemetry(string artifactsDirectory, string id)
+    {
+        if (TelemetryRecorder is not null)
+        {
+            throw new InvalidOperationException("Telemetry is already enabled for this lab.");
+        }
+
+        TelemetryRecorder = new TelemetryRecorder { Name = nameof(TelemetryRecorder) };
+        AddChild(TelemetryRecorder);
+        TelemetryRecorder.Initialize(Buddy, Grab, artifactsDirectory, id);
     }
 
     public override void _ExitTree()
@@ -104,6 +118,8 @@ public partial class BuddyLab : Node2D
         {
             Boundaries.LayoutApplied -= Containment.ApplyLayout;
         }
+
+        TelemetryRecorder?.Complete();
     }
 
     private void OnHardRecovered(HardRecoveryReason reason)

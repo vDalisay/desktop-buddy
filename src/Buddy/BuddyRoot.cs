@@ -28,6 +28,7 @@ public partial class BuddyRoot : Node2D
 
     public Consciousness CurrentConsciousness { get; private set; } = Consciousness.Conscious;
     public bool IsInitialized { get; private set; }
+    public DriveIntent CurrentDriveIntent { get; private set; }
 
     public override void _Ready()
     {
@@ -62,7 +63,8 @@ public partial class BuddyRoot : Node2D
         Recovery.PhysicsTick(CurrentConsciousness == Consciousness.Conscious);
         AutonomousMotion.PhysicsTick(CurrentConsciousness, Recovery.State);
         GrabResistance.PhysicsTick(CurrentConsciousness);
-        ActiveDrive.PhysicsTick(CurrentConsciousness, BuildDriveIntent());
+        CurrentDriveIntent = BuildDriveIntent();
+        ActiveDrive.PhysicsTick(CurrentConsciousness, CurrentDriveIntent);
         Constraints.PhysicsTick();
     }
 

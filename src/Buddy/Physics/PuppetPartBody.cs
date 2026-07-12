@@ -25,6 +25,7 @@ public partial class PuppetPartBody : RigidBody2D
 
     public void Configure(PuppetPartDefinition definition, Vector2 globalOrigin)
     {
+        AddToGroup("buddy_parts");
         if (definition.PartId != PartId)
         {
             throw new InvalidOperationException($"Body {PartId} received definition {definition.PartId}.");

@@ -47,6 +47,7 @@ public partial class ScenarioRunner : Node
         ScenarioResult result;
         try
         {
+            ScenarioArtifacts.Directory = _args.ArtifactsDir;
             result = await scenario.RunAsync(GetTree(), seed);
         }
         catch (Exception e)
@@ -59,6 +60,7 @@ public partial class ScenarioRunner : Node
             return;
         }
 
+        ScenarioArtifacts.Directory = null;
         stopwatch.Stop();
         VerdictWriter.Write("scenario", id, seed, result.Passed, result.Checks, result.Messages,
             stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
