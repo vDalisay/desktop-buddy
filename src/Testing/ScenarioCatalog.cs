@@ -18,6 +18,7 @@ public static class ScenarioCatalog
         ["autonomous_motion"] = () => new AutonomousMotionScenario(),
         ["laboratory_controls"] = () => new LaboratoryControlsScenario(),
         ["grab_release"] = () => new GrabReleaseScenario(),
+        ["grab_hold_aloft"] = () => new GrabHoldAloftScenario(),
         ["grab_resistance"] = () => new GrabResistanceScenario(),
         ["grab_hard_recovery"] = () => new GrabHardRecoveryScenario(),
         ["room_resize_zoom"] = () => new RoomResizeZoomScenario(),

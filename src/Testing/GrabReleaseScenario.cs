@@ -18,6 +18,7 @@ public sealed class GrabReleaseScenario : IScenario
     private const int SettleTimeoutTicks = 720;
     private const int PullTicks = 24;
     private const float MinimumStretch = 5.0f;
+    private const float FlingSpeedFloor = 300.0f; // calibrated from measured swipe peak
 
     public string Id => "grab_release";
 
@@ -107,6 +108,36 @@ public sealed class GrabReleaseScenario : IScenario
         float clampedRelease = lab.Grab.LastReleaseSpeed;
         checks.Add(new StartupCheck("release_velocity_clamped_to_cap",
             Mathf.Abs(clampedRelease - cap) < 1.0f, $"released={clampedRelease:F1} cap={cap:F1}"));
+
+        // Fling feel (M1_FEEL_AND_GAIT_PLAN target 2): a fast cursor swipe on the buddy
+        // must actually whip it fast, not sag heavily. Grab the torso and sweep the
+        // cursor quickly, then release; the buddy should carry a fast throw.
+        PuppetPartBody torso = lab.Buddy.Rig.Torso;
+        Vector2 grabAt = torso.GlobalPosition;
+        lab.Grab.TryGrab(torso, grabAt);
+        // Lift clear of the floor first (planted feet otherwise anchor the buddy
+        // through the leg links), then whip sideways: the owner's "hold him up, then
+        // fling" motion. Peak torso speed during the swipe is the fling metric.
+        var lifted = new Vector2(grabAt.X, 140.0f);
+        for (int i = 0; i < 40; i++)
+        {
+            lab.Grab.MoveCursor(lifted);
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+
+        float peakFlingSpeed = 0.0f;
+        for (int i = 0; i < 12; i++)
+        {
+            lab.Grab.MoveCursor(lifted + new Vector2((i + 1) * 52.0f, 0.0f));
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            peakFlingSpeed = Mathf.Max(peakFlingSpeed, torso.LinearVelocity.Length());
+        }
+
+        lab.Grab.Release();
+        // Provisional bound; calibrate from the measured peak, then pinch-test.
+        checks.Add(new StartupCheck("grab_fling_carries_fast_throw",
+            peakFlingSpeed >= FlingSpeedFloor,
+            $"peak={peakFlingSpeed:F1} cap={cap:F1} bound={FlingSpeedFloor:F1}"));
 
         lab.QueueFree();
         bool passed = true;

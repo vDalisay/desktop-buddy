@@ -10,4 +10,4 @@ MaximumFinalPoseSpread = 400.0
 MaximumSettleTicks = 180
 MaximumSettleTickSpread = 24.0
 AutonomyObservationTicks = 600
-MaximumSameSeedPoseSpread = 24.0
+MaximumSameSeedPoseSpread = 20.0
