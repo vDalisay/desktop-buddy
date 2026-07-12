@@ -79,15 +79,11 @@ Gotchas that WILL fail a run if you forget them:
       owner confirmed 2026-07-12 "transparent window looks good" at current display
       scale. Still open: 150% DPI pass, corner-readout pointer checks, recording
       both in `docs/DECISIONS.md`, keep/delete decision.
-- [ ] **Side-by-side reference review** (§8 bullet 4): first review 2026-07-12
-      REJECTED (too heavy, sluggish, slides). `docs/M1_FEEL_AND_GAIT_PLAN.md`
-      Tasks 1–5 are now **implemented, verified, and committed** (`5658621`,
-      `44a1452`, `6ad8472`, `28e8cdc`, `f6b0a2e`): damping de-honeyed, grab force
-      >rig weight (hold-aloft 90px clearance, fling 473px/s once airborne), stepping
-      gait (feet alternate + clear floor 6–12px), recovery ramp 5s→2s. All pinned by
-      fixtures (grab_hold_aloft, grab_fling, feet_step_clear, assisted_recovery_is_prompt).
-      **Task 6 = owner re-review of the new tuning is IN PROGRESS** — on acceptance,
-      drop "Provisional" from the `lab_*.tres` resource_names to lock it.
+- [x] **Side-by-side reference review** (§8 bullet 4): first review 2026-07-12
+      REJECTED; `docs/M1_FEEL_AND_GAIT_PLAN.md` Tasks 1–6 done; re-review 2026-07-12
+      **ACCEPTED** by the owner ("feels way better, I approve"). Tuning locked:
+      `lab_*.tres` profiles renamed `Provisional*` → `AcceptedM1*`; recorded in
+      `docs/DECISIONS.md`. This closes the last engineering item on the §8 gate.
 - [ ] **Windowed journey pass** for the three interactive journeys (review-fixes
       exit criterion). **Blocked by a new bug found 2026-07-12:** windowed
       `--journey` runs compose the lab but never execute/complete (no verdict, no
@@ -96,17 +92,27 @@ Gotchas that WILL fail a run if you forget them:
       instances, so rule that out first when debugging.
 
 ### Gate close-out
-- [ ] Lock the initial **accepted tuning Resource** once the reference review passes
-      (ROADMAP M1 exit criterion; tighten `data/buddy/lab_envelope_bounds.tres` and
-      drop the "provisional" marker).
+- [x] **Accepted tuning Resource locked** (2026-07-12): `lab_*.tres` profiles renamed
+      `AcceptedM1*` after the owner's feel acceptance. ROADMAP M1 exit criterion met.
+      (`lab_envelope_bounds.tres` stays provisional — regression tolerances, not a
+      feel profile.)
+
+### §8 gate remaining (owner-manual, not code)
+- [ ] Transparent-window 150% DPI pass + corner pointer checks (100% already
+      confirmed good) — record in `docs/DECISIONS.md`.
+- [ ] Windowed automated journey pass — blocked by the windowed-journey-hang bug
+      (chip `task_6f8d585a`); manual windowed play already exercised the grab path.
 
 ## 5. Suggested next step
 
-Work `docs/M1_FEEL_AND_GAIT_PLAN.md` in task order (damping → grab authority →
-stepping gait → recovery snap → fixtures → owner A/B loop). The feel review is the
-gate's critical path now; the spike 150% DPI pass and the windowed-journey-hang fix
-can ride along any session. Lock the tuning Resource only after the plan's Task 6
-owner acceptance.
+The feel/gait plan is complete and the tuning is locked (owner-accepted 2026-07-12).
+The §8 physics-lab gate is functionally met; only two owner-manual items remain
+(transparent-window 150% DPI pass; windowed automated journeys, which are blocked by
+the windowed-journey-hang bug — chip `task_6f8d585a`). Neither blocks starting the
+next milestone's engineering. Per ROADMAP, Milestone 2 (Windows desktop shell) is the
+next build; its first task is the renderer decision (validate per-pixel transparency
++ MSAA + V-sync on the Compatibility renderer) which dovetails with the pending 150%
+DPI spike check.
 
 ## 6. Ground rules (from the plans — still apply)
 

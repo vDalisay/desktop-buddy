@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://src/Grab/GrabTetherProfile.cs" id="1_grab"]
 
 [resource]
-resource_name = "ProvisionalLabGrabTether"
+resource_name = "AcceptedM1LabGrabTether"
 script = ExtResource("1_grab")
 Stiffness = 700.0
 Damping = 35.0

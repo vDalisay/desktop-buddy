@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://src/Buddy/Physics/ConsciousnessDriveProfile.cs" id="1_profile"]
 
 [resource]
-resource_name = "ProvisionalLabUnconsciousDrive"
+resource_name = "AcceptedM1LabUnconsciousDrive"
 script = ExtResource("1_profile")
 ActiveDriveEnabled = false
 UprightScale = 0.0

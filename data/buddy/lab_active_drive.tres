@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://src/Buddy/Physics/ActiveDriveProfile.cs" id="1_profile"]
 
 [resource]
-resource_name = "ProvisionalLabActiveDrive"
+resource_name = "AcceptedM1LabActiveDrive"
 script = ExtResource("1_profile")
 UprightStiffness = 900.0
 UprightDamping = 140.0

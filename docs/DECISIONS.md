@@ -10,6 +10,12 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - Per-pixel transparency appearance and client-to-sandbox pointer accuracy at 100% and high-DPI scale still require the documented visible manual check. At 100%, verify transparency, opaque shapes, topmost behavior, and pointer readout at all corners and center. At 150%, repeat pointer checks and record DPI, offset, blur, and renderer artifacts; then record the keep/delete decision. They are intentionally not recorded as accepted from the automated hidden launch alone; the Milestone 2 renderer decision remains open until that visual matrix is performed.
 - The physics laboratory deliberately has two development-only composition roots, `BuddyLab` and `DualProfileLab`. Both mirror pointer → grab → buddy fixed-tick routing; shared routing is deferred to Milestone 2 when `SandboxRoot` gains its gameplay tick, as tracked by the state-audit watch item.
 
+## Accepted Milestone 1 Feel Tuning (2026-07-12)
+
+- The owner performed the `TEST_PLAN.md` §8 side-by-side feel review of the tuning produced by `docs/M1_FEEL_AND_GAIT_PLAN.md` and **accepted it** ("this feels way better, I approve"). This satisfies the ROADMAP Milestone 1 exit criterion "lock an initial accepted tuning Resource." The accepted profiles are `data/buddy/lab_puppet_rig.tres`, `lab_grab_tether.tres`, `lab_active_drive.tres`, `lab_conscious_drive.tres`, `lab_unconscious_drive.tres`, `lab_autonomous_motion.tres`, and `lab_boundary.tres`, renamed from `Provisional*` to `AcceptedM1*` to mark the lock. Changing them now requires a new owner feel review.
+- Accepted feel direction, established against the v1.01 reference: low body damping (responsive falls), grab strong enough to lift the whole buddy clear of the floor and whip it once airborne, a phase-driven **stepping** gait (feet visibly alternate and clear the floor) implemented with per-foot target forces on the existing six circles — **no inverse-kinematics chains and no added rigid bodies** — and prompt (~2 s ramp) assisted recovery. The six-circle constraint and the ban on skeletal ragdoll/joint motors are unchanged.
+- `lab_envelope_bounds.tres` remains `Provisional`: it holds statistical regression tolerances, re-measured as later behaviors are tuned, not a feel-accepted profile.
+
 ## Product and Platform
 
 - **Engine and language:** Godot 4.6.1 .NET with C#.

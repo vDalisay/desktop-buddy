@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://src/Sandbox/BoundaryProfile.cs" id="1_profile"]
 
 [resource]
-resource_name = "ProvisionalLabBoundary"
+resource_name = "AcceptedM1LabBoundary"
 script = ExtResource("1_profile")
 WallThickness = 16.0
 SafePoseFloorClearance = 12.0

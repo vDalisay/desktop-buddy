@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://src/Buddy/Behavior/AutonomousMotionProfile.cs" id="1_profile"]
 
 [resource]
-resource_name = "ProvisionalLabAutonomousMotion"
+resource_name = "AcceptedM1LabAutonomousMotion"
 script = ExtResource("1_profile")
 MinimumIdleTicks = 60
 MaximumIdleTicks = 120
