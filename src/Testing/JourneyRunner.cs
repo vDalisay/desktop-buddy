@@ -7,8 +7,10 @@ using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Laboratory;
+using DesktopBuddy.Platform;
 using Godot;
 using FileAccess = Godot.FileAccess;
+using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
 
 namespace DesktopBuddy.Testing;
 
@@ -164,6 +166,14 @@ public partial class JourneyRunner : Node
             return state;
         }
 
+        if (root.TryGetProperty("setup", out JsonElement sandboxSetup) &&
+            sandboxSetup.TryGetProperty("exercise", out JsonElement sandboxExercise) &&
+            sandboxExercise.GetString() == "shell_modes")
+        {
+            await ComputeShellModeStateAsync(state);
+            return state;
+        }
+
         var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
         bool composed = false;
         if (packed is not null)
@@ -177,6 +187,86 @@ public partial class JourneyRunner : Node
 
         state["sandbox_composed"] = composed;
         return state;
+    }
+
+    /// <summary>
+    /// Milestone 2 mode-transition journey: drive the desktop shell through the
+    /// input paths in-process synthesis can reach (the mode hotkey action, Escape,
+    /// and clicks inside/outside the sandbox box) and assert Work/Play transitions
+    /// and control recovery. Native passthrough/tray/resize are the owner-manual
+    /// §5 matrix (AGENT_VERIFICATION_AND_E2E.md §6), not this journey.
+    /// </summary>
+    private async System.Threading.Tasks.Task ComputeShellModeStateAsync(Dictionary<string, bool> state)
+    {
+        var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
+        if (packed is null || packed.Instantiate() is not SandboxRoot sandbox)
+        {
+            state["shell_composed"] = false;
+            return;
+        }
+
+        GetTree().Root.AddChild(sandbox);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        DesktopShellController shell = sandbox.Shell;
+        state["shell_composed"] = shell is not null && sandbox.IsInsideTree();
+        state["shell_transparency_active"] = sandbox.Window.TransparencyActive;
+        state["starts_in_work"] = shell!.Mode == DomainInputMode.Work;
+
+        await ToggleAsync();
+        state["toggle_enters_play"] = shell.Mode == DomainInputMode.Play;
+
+        await EscapeAsync();
+        state["escape_returns_to_work"] = shell.Mode == DomainInputMode.Work;
+
+        Rect2 box = sandbox.Boundaries.InnerBounds;
+        await ClickWorldAsync(box.GetCenter());
+        state["click_inside_enters_play"] = shell.Mode == DomainInputMode.Play;
+
+        await ClickWorldAsync(new Vector2(box.Position.X - 8.0f, box.Position.Y - 8.0f));
+        state["click_outside_returns_to_work"] = shell.Mode == DomainInputMode.Work;
+
+        state["ends_in_work"] = shell.Mode == DomainInputMode.Work;
+        sandbox.QueueFree();
+    }
+
+    private async System.Threading.Tasks.Task ToggleAsync()
+    {
+        Input.ParseInputEvent(new InputEventAction { Action = InputActions.ToggleInputMode, Pressed = true });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventAction { Action = InputActions.ToggleInputMode, Pressed = false });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+    }
+
+    private async System.Threading.Tasks.Task EscapeAsync()
+    {
+        Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Escape, Pressed = true });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.Escape, Pressed = false });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+    }
+
+    private async System.Threading.Tasks.Task ClickWorldAsync(Vector2 world)
+    {
+        Vector2 viewport = GetViewport().GetCanvasTransform() * world;
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            ButtonMask = MouseButtonMask.Left,
+            Pressed = true,
+            Position = viewport,
+            GlobalPosition = viewport,
+        });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            ButtonMask = 0,
+            Pressed = false,
+            Position = viewport,
+            GlobalPosition = viewport,
+        });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
     private async System.Threading.Tasks.Task ComputeBuddyLabStateAsync(

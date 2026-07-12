@@ -1,0 +1,16 @@
+{
+  "id": "desktop_shell_modes",
+  "milestone": 2,
+  "description": "Milestone 2 desktop shell: the mode hotkey and Escape toggle Work/Play, clicks inside/outside the sandbox box enter Play / return to Work, and control always recovers to Work. Native passthrough/tray/resize are the owner-manual TEST_PLAN section 5 matrix.",
+  "setup": { "scene": "sandbox", "exercise": "shell_modes", "seed": 1, "window": "default", "zoom": 100 },
+  "assertions": [
+    { "predicate": "shell_composed" },
+    { "predicate": "shell_transparency_active" },
+    { "predicate": "starts_in_work" },
+    { "predicate": "toggle_enters_play" },
+    { "predicate": "escape_returns_to_work" },
+    { "predicate": "click_inside_enters_play" },
+    { "predicate": "click_outside_returns_to_work" },
+    { "predicate": "ends_in_work" }
+  ]
+}

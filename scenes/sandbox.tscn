@@ -1,6 +1,64 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
+[ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
+[ext_resource type="Script" path="res://src/Platform/DesktopShellController.cs" id="3_shell"]
+[ext_resource type="Script" path="res://src/Sandbox/BoundaryController.cs" id="4_boundary"]
+[ext_resource type="Resource" path="res://data/buddy/lab_boundary.tres" id="5_boundary_profile"]
+[ext_resource type="Script" path="res://src/Sandbox/SandboxBorder.cs" id="6_border"]
 
-[node name="Sandbox" type="Node2D"]
+[sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
+size = Vector2(480, 16)
+
+[sub_resource type="RectangleShape2D" id="VerticalBoundary"]
+size = Vector2(16, 360)
+
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries")]
 script = ExtResource("1_sandbox")
+Window = NodePath("DesktopWindowController")
+Shell = NodePath("DesktopShellController")
+Boundaries = NodePath("RoomBounds")
+
+[node name="DesktopWindowController" type="Node" parent="."]
+script = ExtResource("2_window")
+
+[node name="WorldCamera" type="Camera2D" parent="."]
+position = Vector2(240, 180)
+process_callback = 0
+
+[node name="RoomBounds" type="StaticBody2D" parent="." node_paths=PackedStringArray("Floor", "Ceiling", "LeftWall", "RightWall", "WorldCamera")]
+collision_layer = 1
+collision_mask = 30
+script = ExtResource("4_boundary")
+Profile = ExtResource("5_boundary_profile")
+Floor = NodePath("Floor")
+Ceiling = NodePath("Ceiling")
+LeftWall = NodePath("LeftWall")
+RightWall = NodePath("RightWall")
+WorldCamera = NodePath("../WorldCamera")
+
+[node name="Floor" type="CollisionShape2D" parent="RoomBounds"]
+position = Vector2(240, 352)
+shape = SubResource("HorizontalBoundary")
+
+[node name="Ceiling" type="CollisionShape2D" parent="RoomBounds"]
+position = Vector2(240, 8)
+shape = SubResource("HorizontalBoundary")
+
+[node name="LeftWall" type="CollisionShape2D" parent="RoomBounds"]
+position = Vector2(8, 180)
+shape = SubResource("VerticalBoundary")
+
+[node name="RightWall" type="CollisionShape2D" parent="RoomBounds"]
+position = Vector2(472, 180)
+shape = SubResource("VerticalBoundary")
+
+[node name="SandboxBorder" type="Node2D" parent="." node_paths=PackedStringArray("Boundaries")]
+z_index = -10
+script = ExtResource("6_border")
+Boundaries = NodePath("../RoomBounds")
+
+[node name="DesktopShellController" type="Node" parent="." node_paths=PackedStringArray("Window", "Boundaries")]
+script = ExtResource("3_shell")
+Window = NodePath("../DesktopWindowController")
+Boundaries = NodePath("../RoomBounds")

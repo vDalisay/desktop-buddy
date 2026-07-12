@@ -116,11 +116,13 @@ green):
   `IWindowsDesktopAdapter`, `EmulatedWindowsDesktopAdapter`, `DesktopWindowController`):
   builds green; native adapter deferred to Task 4.
 
-Next agent slices: Task 5 (compose the shell into the sandbox boot + resize→boundary
-rebuild) and Task 6 (headless mode-transition journeys). Owner-manual gates: Task 0
-renderer visual matrix (150% DPI pass still open), Task 4 native Windows adapter
-verification, Task 7 the `TEST_PLAN.md` §5 standalone matrix. The renderer decision
-still blocks HUD work and dovetails with the pending 150% DPI spike check.
+Task 5 (compose the shell into the sandbox boot: `SandboxRoot` gained its gameplay
+tick + a real box boundary + `DesktopShellController`; `sandbox.tscn` rebuilt) and
+Task 6 (`tests/journeys/desktop_shell_modes.json`, 8 predicates green) are also done.
+Remaining are owner-manual gates only: Task 0 renderer visual matrix (150% DPI pass
+still open), Task 4 native Windows adapter verification (real P/Invoke), Task 7 the
+`TEST_PLAN.md` §5 standalone matrix. The renderer decision still blocks HUD work and
+dovetails with the pending 150% DPI spike check.
 
 ## 6. Ground rules (from the plans — still apply)
 

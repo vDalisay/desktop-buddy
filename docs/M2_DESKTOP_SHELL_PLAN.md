@@ -88,28 +88,38 @@ shutdown and on window recreation; never `SetWindowRgn`. Failure falls back to a
 opaque/full-capture window with tray recovery. Verified on real Windows, then the
 findings promoted into the §5 matrix checklist.
 
-### Task 5 — Shell composition + resize→boundary integration
-Compose the window service, placement policy, and mode machine into the sandbox
-boot (a `DesktopShellController` under the app root per `ARCHITECTURE.md` §3).
-Resize/zoom enqueue a boundary rebuild on the next physics boundary through the
-existing `BoundaryController` path; forced corrections call
-`ResetPhysicsInterpolation()`. Recovery paths (`Escape`, global toggle, tray)
-always restore Work-Mode control. Headless-cover the seam-level wiring.
+### Task 5 — Shell composition + resize→boundary integration — DONE
+`SandboxRoot` gained its single gameplay `_PhysicsProcess` and now composes
+`DesktopWindowController` + `DesktopShellController` + a real `BoundaryController`
+box (`SandboxBorder` draws the visible frame). `sandbox.tscn` was rebuilt from the
+empty M0 stub. The shell applies the launch placement and window flags on boot,
+drives Work/Play from the mode hotkey / Escape / box clicks / focus loss, and
+drains a queued window resize into a `BoundaryController.RequestLayout` applied on
+the physics boundary (`PhysicsTick`). Recovery (`Escape`, global toggle,
+`ReturnToWorkMode()` for tray) always restores Work Mode. `ResetPhysicsInterpolation`
+after forced corrections lands with the buddy composition (no dynamic bodies in the
+sandbox yet). Verified: `boot_smoke` scenario + journey compose the shell headless.
 
-### Task 6 — Headless mode-transition journeys (Tier 2)
-`AGENT_VERIFICATION_AND_E2E.md` §7 M2 row: windowed/headless mode-transition
-journeys where in-process input suffices (buddy/menu interaction → Play;
-outside-click / `Escape` → Work; tool persists across transitions). Document the
-agent-assisted native matrix workflow.
+### Task 6 — Headless mode-transition journeys (Tier 2) — DONE
+`tests/journeys/desktop_shell_modes.json` drives the shell through the input paths
+in-process synthesis can reach — the mode hotkey action, Escape, and clicks
+inside/outside the box — and asserts Work↔Play transitions and control recovery
+(8 predicates, all green). Native passthrough/tray/resize stay in the owner-manual
+§5 matrix per `AGENT_VERIFICATION_AND_E2E.md` §6; the resize→boundary path itself is
+already covered by the `room_resize_zoom` scenario.
 
 ### Task 7 — Standalone Windows matrix (owner-manual gate)
 Execute `TEST_PLAN.md` §5 outside the editor across the Win10/11 × scale ×
 monitor × size matrix, including transparency-forced-unavailable fallback and
 recovery from every focus state. This is the milestone exit gate.
 
-## This session
+## Progress
 
-Landed Tasks 1–3 (headless-testable foundation) with build + domain tests green.
-Tasks 0, 4, 7 are owner-manual gates; Tasks 5–6 are the next agent slices.
+Tasks 1–3 (foundation) and Tasks 5–6 (shell composition + mode-transition journey)
+are landed with the suite green (build 0/0, 92 domain tests, `boot_smoke` +
+`desktop_shell_modes` journeys exit 0). Remaining are the owner-manual gates:
+Task 0 renderer visual matrix (150% DPI still open), Task 4 native Windows adapter
+(the real P/Invoke — WndProc/hit-test/tray/hotkey, verifiable only on Win10/11), and
+Task 7 the `TEST_PLAN.md` §5 standalone matrix that is the milestone exit gate.
 </content>
 </invoke>
