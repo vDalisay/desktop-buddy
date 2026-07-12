@@ -4,7 +4,9 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-12 (branch `opus`).
+Last updated: 2026-07-12 (branch `opus`), after the owner's first hands-on feel
+review. **Start here: `docs/M1_FEEL_AND_GAIT_PLAN.md`** — the review rejected the
+current feel; that plan is the active work.
 
 ## 1. Current position
 
@@ -73,15 +75,21 @@ Gotchas that WILL fail a run if you forget them:
       `autonomous_motion` jump check also hardened to sample the apex, not takeoff.
 
 ### Owner-in-the-loop (an agent can only prep/prompt, not sign off)
-- [ ] **Transparent-window spike matrix** (`docs/M1_REVIEW_FIXES_PLAN.md` Task 8):
-      run `scenes/spike_transparent_window.tscn` at 100% and 150% DPI, confirm
-      transparency + pointer mapping, record in `docs/DECISIONS.md`, keep/delete.
-- [ ] **Side-by-side reference review** (§8 bullet 4 + Task 6 verify): use the dual
-      lab (`tools/play_buddy_lab.bat --dual`), Tab-swap grab between buddies, accept
-      responsiveness / bounded stretch / whole-body impulse / sideways knockout /
-      recovery feel against the v1.01 reference.
+- [~] **Transparent-window spike matrix** (`docs/M1_REVIEW_FIXES_PLAN.md` Task 8):
+      owner confirmed 2026-07-12 "transparent window looks good" at current display
+      scale. Still open: 150% DPI pass, corner-readout pointer checks, recording
+      both in `docs/DECISIONS.md`, keep/delete decision.
+- [ ] **Side-by-side reference review** (§8 bullet 4): **performed 2026-07-12 and
+      REJECTED** — grab too heavy (can't hold aloft/fling), recovery sluggish,
+      walk slides instead of stepping. Remediation: `docs/M1_FEEL_AND_GAIT_PLAN.md`
+      (measured diagnosis: tether max force 6000 < rig weight ~7154; LinearDamp 2.0
+      honey; gait term invisible). Re-review via that plan's Task 6 A/B loop.
 - [ ] **Windowed journey pass** for the three interactive journeys (review-fixes
-      exit criterion).
+      exit criterion). **Blocked by a new bug found 2026-07-12:** windowed
+      `--journey` runs compose the lab but never execute/complete (no verdict, no
+      quit; buddy just idles). Headless is unaffected. Needs its own fix session;
+      note the memory gotcha — an open Godot editor may interact with second
+      instances, so rule that out first when debugging.
 
 ### Gate close-out
 - [ ] Lock the initial **accepted tuning Resource** once the reference review passes
@@ -90,13 +98,11 @@ Gotchas that WILL fail a run if you forget them:
 
 ## 5. Suggested next step
 
-Both known bugs are now fixed. **Every remaining §8 gate item is owner-in-the-loop**
-(spike DPI matrix, side-by-side reference review, windowed journey pass), then lock
-the tuning Resource. The useful agent prep left is to stage those so the owner can
-run them in one sitting: confirm `scenes/spike_transparent_window.tscn` launches,
-confirm `tools/play_buddy_lab.bat --dual` opens the dual lab with Tab-swap grab, and
-write the exact click-through steps into `docs/DECISIONS.md`. No further code should
-land against the gate until the owner has done the visual/feel reviews.
+Work `docs/M1_FEEL_AND_GAIT_PLAN.md` in task order (damping → grab authority →
+stepping gait → recovery snap → fixtures → owner A/B loop). The feel review is the
+gate's critical path now; the spike 150% DPI pass and the windowed-journey-hang fix
+can ride along any session. Lock the tuning Resource only after the plan's Task 6
+owner acceptance.
 
 ## 6. Ground rules (from the plans — still apply)
 
