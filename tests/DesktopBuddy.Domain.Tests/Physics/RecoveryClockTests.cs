@@ -19,7 +19,7 @@ public sealed class RecoveryClockTests
     }
 
     [Fact]
-    public void AssistanceRampsToFullOverFiveSeconds()
+    public void AssistanceRampsToFullOverTheRampWindow()
     {
         var clock = new RecoveryClock();
 

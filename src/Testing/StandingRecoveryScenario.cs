@@ -76,6 +76,12 @@ public sealed class StandingRecoveryScenario : IScenario
                                          lab.Buddy.Recovery.HardRecoveryCount == 0;
         checks.Add(new StartupCheck("assisted_self_righting_recovers", recoveredWithoutTeleport,
             $"max_ramp={assisted.MaximumRamp:F3} hard_count={lab.Buddy.Recovery.HardRecoveryCount}"));
+        // Feel target: assisted recovery should feel prompt, not limp. Assistance is
+        // already active when the tip pose is released, so ticks-to-stand measures
+        // time from assistance start; require <= 3 s (RecoveryClock ramp is 2 s).
+        checks.Add(new StartupCheck("assisted_recovery_is_prompt",
+            assisted.Standing && assisted.RecoveryTicks <= 3 * RecoveryClock.PhysicsTicksPerSecond,
+            $"recovery_ticks={assisted.RecoveryTicks} bound={3 * RecoveryClock.PhysicsTicksPerSecond}"));
 
         int priorHardRecoveries = lab.Buddy.Recovery.HardRecoveryCount;
         lab.Buddy.Rig.Head.GlobalPosition = new Vector2(-1_000, -1_000);
@@ -142,12 +148,12 @@ public sealed class StandingRecoveryScenario : IScenario
             maximumRamp = Mathf.Max(maximumRamp, lab.Buddy.Recovery.State.AssistanceRamp);
             if (lab.Buddy.Standing.Snapshot.IsStable)
             {
-                return new AssistedStandingResult(true, maximumRamp);
+                return new AssistedStandingResult(true, maximumRamp, tick + 1);
             }
         }
 
-        return new AssistedStandingResult(false, maximumRamp);
+        return new AssistedStandingResult(false, maximumRamp, timeoutTicks);
     }
 
-    private readonly record struct AssistedStandingResult(bool Standing, float MaximumRamp);
+    private readonly record struct AssistedStandingResult(bool Standing, float MaximumRamp, int RecoveryTicks);
 }

@@ -12,14 +12,17 @@ public readonly record struct RecoveryClockState(
 
 /// <summary>
 /// Exact tick-counted standing recovery clock. At 120 Hz assistance starts
-/// after two seconds, reaches full strength over five seconds, and permits a
-/// hard reset only after ten further seconds of failed assistance.
+/// after two seconds, reaches full strength over a further two seconds, and
+/// permits a hard reset only after ten further seconds of failed assistance.
+/// The spec (RAGDOLL 5) permits the ramp to reach full "over no more than five
+/// seconds"; a two-second ramp makes recovery feel responsive rather than limp
+/// (feel review). The 2 s start delay and 10 s hard-reset floor are spec-locked.
 /// </summary>
 public sealed class RecoveryClock
 {
     public const int PhysicsTicksPerSecond = 120;
     public const int AssistanceDelayTicks = 2 * PhysicsTicksPerSecond;
-    public const int AssistanceRampTicks = 5 * PhysicsTicksPerSecond;
+    public const int AssistanceRampTicks = 2 * PhysicsTicksPerSecond;
     public const int HardRecoveryDelayTicks = 10 * PhysicsTicksPerSecond;
 
     private int _unableTicks;
