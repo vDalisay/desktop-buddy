@@ -56,9 +56,14 @@ Gotchas that WILL fail a run if you forget them:
 ## 4. Remaining before the §8 gate
 
 ### Code work (agent-actionable)
-- [ ] **Bug: `repeat_envelope` seed-invariance.** It only measures the pre-autonomy
-      settle, so it can't catch drift once autonomous motion starts. Extend it to
-      sample across the autonomous phase. (Filed follow-up chip.)
+- [x] **Bug: `repeat_envelope` seed-invariance — FIXED this session.** It broke each
+      run at the first settle tick, sampling the pre-autonomy pose (near seed-invariant),
+      so the 5-same/5-different-seed design tested nothing. Now each run drives a
+      600-tick seeded autonomy window (`AutonomyObservationTicks`) after settle, then
+      splits **same-seed** repeatability (runs 0–4, must cluster — measured 0.05–1.7px,
+      bound 24) from **cross-seed** spread (measured 90–229px, bound 400) and adds a
+      per-run finite+contained guard. Non-vacuous proven by a bound-pinch test. Bounds
+      recorded in `data/buddy/lab_envelope_bounds.tres` (still provisional).
 - [x] **Bug: deep-rest foot-contact blind spot — FIXED this session.** Circular feet
       spin at idle; `PuppetPartBody._IntegrateForces` wrongly rotated the (already
       world-space) contact normal by the body rotation, so a spun foot fell out of
@@ -85,10 +90,13 @@ Gotchas that WILL fail a run if you forget them:
 
 ## 5. Suggested next step
 
-Take the `repeat_envelope` seed-invariance bug — it's the last agent-actionable
-correctness hole in the §8 stability bullet and needs no owner. Then the remaining
-gate items are all owner-in-the-loop; prep the spike matrix + dual-lab review so the
-owner can run them in one sitting.
+Both known bugs are now fixed. **Every remaining §8 gate item is owner-in-the-loop**
+(spike DPI matrix, side-by-side reference review, windowed journey pass), then lock
+the tuning Resource. The useful agent prep left is to stage those so the owner can
+run them in one sitting: confirm `scenes/spike_transparent_window.tscn` launches,
+confirm `tools/play_buddy_lab.bat --dual` opens the dual lab with Tab-swap grab, and
+write the exact click-through steps into `docs/DECISIONS.md`. No further code should
+land against the gate until the owner has done the visual/feel reviews.
 
 ## 6. Ground rules (from the plans — still apply)
 
