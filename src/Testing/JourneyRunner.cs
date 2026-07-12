@@ -213,6 +213,12 @@ public partial class JourneyRunner : Node
         state["shell_transparency_active"] = sandbox.Window.TransparencyActive;
         state["starts_in_work"] = shell!.Mode == DomainInputMode.Work;
 
+        // The Work-Mode hit region is the box projected into client pixels; at the
+        // default 480x360 room and 100% zoom that is the inner box (16,16,448,328).
+        IReadOnlyList<Rect2I> regions = shell.LastWorkModeHitRegions;
+        state["hit_region_is_client_box"] =
+            regions.Count == 1 && regions[0] == new Rect2I(16, 16, 448, 328);
+
         await ToggleAsync();
         state["toggle_enters_play"] = shell.Mode == DomainInputMode.Play;
 

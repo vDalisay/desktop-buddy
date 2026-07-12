@@ -91,10 +91,11 @@ implements the current seam surface:
   per-monitor DPI; `DwmIsCompositionEnabled` transparency probe.
 
 **Known gaps / next cut** (all owner-testable on Windows):
-- Hit regions are treated as **client-pixel** rects, but the shell currently supplies
-  **sandbox-space** rects — the sandbox→client mapping lands with the InputCollector
-  coordinate layer (`ARCHITECTURE.md` §10). 1:1 only at 100% zoom with the camera at
-  the client origin until then.
+- ~~Hit regions were sandbox-space but treated as client pixels.~~ **RESOLVED**: the
+  shell now projects the box through `SandboxProjection` (Domain, xUnit-covered) so
+  the adapter receives client-pixel rects at any zoom. **Remaining**: per-monitor DPI
+  is not yet folded into the hit test (logical pixels only) — that lands with the
+  InputCollector coordinate layer (`ARCHITECTURE.md` §10).
 - Tray icon + menu, global hotkey register/conflict-report, launch-at-login, and the
   §24 lifecycle messages (`WM_ENTERSIZEMOVE`/`EXITSIZEMOVE`, `WM_DPICHANGED`,
   `WM_DISPLAYCHANGE`, work-area `WM_SETTINGCHANGE`, `WM_POWERBROADCAST`, session

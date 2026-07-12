@@ -6,6 +6,7 @@
   "assertions": [
     { "predicate": "shell_composed" },
     { "predicate": "shell_transparency_active" },
+    { "predicate": "hit_region_is_client_box" },
     { "predicate": "starts_in_work" },
     { "predicate": "toggle_enters_play" },
     { "predicate": "escape_returns_to_work" },

@@ -87,10 +87,11 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
 
     public void SetWorkModeHitRegions(IReadOnlyList<Rect2I> regions)
     {
-        // Regions are treated as client-pixel rects. The shell currently supplies
-        // sandbox-space rects; the sandbox→client mapping lands with the
-        // InputCollector coordinate layer (`ARCHITECTURE.md` §10). Until then this
-        // is 1:1 only at 100% zoom with the camera at the client origin.
+        // Regions arrive already projected into client pixels by the shell
+        // (`SandboxProjection`), which is what WM_NCHITTEST needs. DPI is not yet
+        // folded in — the client rects are logical pixels; per-monitor DPI scaling
+        // of the hit test lands with the InputCollector coordinate layer
+        // (`ARCHITECTURE.md` §10).
         _hitRegions = new List<Rect2I>(regions);
         _workModeActive = true;
     }

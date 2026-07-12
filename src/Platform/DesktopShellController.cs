@@ -34,9 +34,13 @@ public partial class DesktopShellController : Node
     private Rect2 _innerBounds;
     private Vector2I? _pendingClientSize;
     private double _storedZoom = 1.0;
+    private double _effectiveZoom = 1.0;
 
     public DomainInputMode Mode => _mode.Current;
     public int ModeChangeCount { get; private set; }
+
+    /// <summary>The client-pixel Work-Mode hit regions last sent to the window service (test observability).</summary>
+    public IReadOnlyList<Rect2I> LastWorkModeHitRegions { get; private set; } = Array.Empty<Rect2I>();
 
     public override void _Ready()
     {
@@ -122,25 +126,29 @@ public partial class DesktopShellController : Node
     }
 
     /// <summary>
-    /// Work-Mode interactive regions. Until the buddy and menu panels compose
-    /// (later milestones), the visible box frame is the interactive region; the
-    /// transparent interior passes through. The native adapter (Task 4) turns
-    /// these into real HTTRANSPARENT hit testing.
+    /// Work-Mode interactive regions in <b>client pixels</b> (what the native
+    /// adapter's <c>WM_NCHITTEST</c> needs). The sandbox box is projected from
+    /// world units through the effective zoom (`SandboxProjection`). Until the
+    /// buddy and menu panels compose (later milestones), the visible box is the
+    /// interactive region and the transparent exterior passes through; sub-regions
+    /// (buddy, menu) are added when they exist.
     /// </summary>
     private IReadOnlyList<Rect2I> WorkModeHitRegions()
     {
         if (_innerBounds.Size == Vector2.Zero)
         {
-            return Array.Empty<Rect2I>();
+            LastWorkModeHitRegions = Array.Empty<Rect2I>();
+            return LastWorkModeHitRegions;
         }
 
-        // The whole box rect; sub-regions (buddy, menu) are added when they exist.
-        var box = new Rect2I(
-            (int)_innerBounds.Position.X,
-            (int)_innerBounds.Position.Y,
-            (int)_innerBounds.Size.X,
-            (int)_innerBounds.Size.Y);
-        return new[] { box };
+        PixelRect box = SandboxProjection.SandboxRectToClient(
+            _innerBounds.Position.X,
+            _innerBounds.Position.Y,
+            _innerBounds.Size.X,
+            _innerBounds.Size.Y,
+            _effectiveZoom);
+        LastWorkModeHitRegions = new[] { new Rect2I(box.X, box.Y, box.Width, box.Height) };
+        return LastWorkModeHitRegions;
     }
 
     private void OnClientBoundsChanged(Rect2I bounds) => _pendingClientSize = bounds.Size;
@@ -150,7 +158,8 @@ public partial class DesktopShellController : Node
     private void OnLayoutApplied(RoomLayout layout, Rect2 innerBounds)
     {
         _innerBounds = innerBounds;
-        // A resize/zoom rebuild re-derives the interactive region.
+        _effectiveZoom = layout.EffectiveZoom;
+        // A resize/zoom rebuild re-derives the interactive region in client pixels.
         Window.SetInputMode(_mode.Current, WorkModeHitRegions());
     }
 
