@@ -96,7 +96,7 @@ jobs:
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=idle_soak_ci --seed=1 --artifacts=.artifacts/idle_soak_ci
 
       - name: Dual-profile stability smoke
-        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=dual_profile_smoke --seed=1
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=dual_profile_smoke --seed=1 --artifacts=.artifacts/dual_profile_smoke
 
       - name: Grab-throw journey
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_grab_throw --seed=1

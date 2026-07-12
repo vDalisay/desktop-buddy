@@ -75,7 +75,13 @@ public partial class DualProfileLab : Node2D
 
     public override void _ExitTree()
     {
-        _recorderA?.Complete(); _recorderB?.Complete();
+        CompleteTelemetry();
+    }
+
+    public void CompleteTelemetry()
+    {
+        _recorderA?.Complete();
+        _recorderB?.Complete();
     }
 
     public override void _Input(InputEvent @event)

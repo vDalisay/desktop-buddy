@@ -35,10 +35,10 @@ public sealed partial class TelemetryRecorder : Node
         Directory.CreateDirectory(artifactsDirectory);
         _jsonlPath = Path.Combine(artifactsDirectory, $"telemetry_{id}.jsonl");
         _envelopePath = Path.Combine(artifactsDirectory, $"envelope_{id}.json");
-        int links = buddy.Constraints.Telemetry.Count;
+        int links = buddy.Rig.Profile.Links.Count;
         _linkIds = new string[links];
         for (int i = 0; i < links; i++)
-            _linkIds[i] = buddy.Constraints.Telemetry[i].LinkId.ToString();
+            _linkIds[i] = buddy.Rig.Profile.Links[i].LinkId.ToString();
         for (int i = 0; i < PoolSize; i++) _available.Enqueue(new TelemetryFrame(6, links));
         _writer = new Thread(WriteLoop) { IsBackground = true, Name = "TelemetryWriter" };
         _writer.Start();
