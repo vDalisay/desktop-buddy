@@ -5,7 +5,7 @@
 [resource]
 resource_name = "ProvisionalLabGrabTether"
 script = ExtResource("1_grab")
-Stiffness = 220.0
-Damping = 20.0
-MaximumForce = 6000.0
+Stiffness = 700.0
+Damping = 35.0
+MaximumForce = 18000.0
 ThrowSpeedCap = 900.0
