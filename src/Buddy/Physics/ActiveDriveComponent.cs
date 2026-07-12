@@ -1,6 +1,8 @@
 using System;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Physics;
 using Godot;
+using NumericsVector2 = System.Numerics.Vector2;
 
 namespace DesktopBuddy.Buddy.Physics;
 
@@ -29,6 +31,10 @@ public partial class ActiveDriveComponent : Node
     public bool IsInitialized { get; private set; }
 
     private int _gaitTick;
+    private bool _jumpPending;
+    private int _jumpCrouchRemaining;
+    private Vector2 _leftFootRest;
+    private Vector2 _rightFootRest;
 
     public void Initialize()
     {
@@ -42,6 +48,11 @@ public partial class ActiveDriveComponent : Node
         {
             throw new InvalidOperationException("ActiveDriveComponent dependencies are incomplete or invalid.");
         }
+
+        // Foot rest offsets relative to the torso, for the gait's step targets.
+        Vector2 torsoRest = Rig.Profile.FindPart(BuddyPartId.Torso)!.RestPosition;
+        _leftFootRest = Rig.Profile.FindPart(BuddyPartId.LeftFoot)!.RestPosition - torsoRest;
+        _rightFootRest = Rig.Profile.FindPart(BuddyPartId.RightFoot)!.RestPosition - torsoRest;
 
         IsInitialized = true;
     }
@@ -61,7 +72,7 @@ public partial class ActiveDriveComponent : Node
         ActiveOutputsEnabled = mode.ActiveDriveEnabled;
         if (!ActiveOutputsEnabled)
         {
-            _gaitTick = 0;
+            ResetGaitState();
             return;
         }
 
@@ -71,22 +82,37 @@ public partial class ActiveDriveComponent : Node
         if (assistanceRamp > 0.0f)
         {
             ApplySelfRightForce(assistanceRamp, mode);
-            _gaitTick = 0;
+            ResetGaitState();
             return;
         }
 
         if (intent.ResistanceStrength > 0.0f)
         {
             ApplyResistance(intent, mode);
-            _gaitTick = 0;
+            ResetGaitState();
+            return;
+        }
+
+        // Lab affordance: isolate the passive rig + upright/balance response from
+        // autonomous walking/jumping (used by passive-structure regressions).
+        if (SuppressLocomotion)
+        {
+            ResetGaitState();
             return;
         }
 
         ApplyLocomotion(intent.WalkDirection, mode);
-        if (intent.JumpRequested)
-        {
-            ApplyJump(mode);
-        }
+        UpdateJump(intent.JumpRequested, mode);
+    }
+
+    /// <summary>Development/test hook: hold ambient walk/jump gait off while keeping upright + balance.</summary>
+    public bool SuppressLocomotion { get; set; }
+
+    private void ResetGaitState()
+    {
+        _gaitTick = 0;
+        _jumpPending = false;
+        _jumpCrouchRemaining = 0;
     }
 
     private void ApplyUprightTorque(float assistanceRamp, ConsciousnessDriveProfile mode)
@@ -142,27 +168,85 @@ public partial class ActiveDriveComponent : Node
     private void ApplyLocomotion(float direction, ConsciousnessDriveProfile mode)
     {
         direction = Mathf.Clamp(direction, -1.0f, 1.0f);
-        if (Mathf.IsZeroApprox(direction) ||
-            (Rig.Torso.LinearVelocity.X * direction) >= Profile.MaximumWalkSpeed)
+        if (Mathf.IsZeroApprox(direction))
         {
             _gaitTick = 0;
             return;
         }
 
-        float totalForce = Profile.WalkForce * direction * mode.LocomotionScale;
-        LastLocomotionForce = new Vector2(totalForce, 0.0f);
-        float totalMass = TotalMass();
-        foreach (PuppetPartBody body in Rig.Parts)
+        // Phase-driven stepping: feet swing/plant toward gait targets (the visible
+        // motion), with a reduced whole-body force as a propulsion assist so the
+        // buddy reliably covers ground without "sliding" (RAGDOLL 3.3 limb-target).
+        float phase = (_gaitTick % Profile.GaitCycleTicks) / (float)Profile.GaitCycleTicks;
+        var tuning = new GaitTuning(Profile.StepLength, Profile.StepLift, Profile.TorsoBob, Profile.TorsoLean);
+        GaitSample gait = GaitCycle.Sample(phase, direction, tuning);
+
+        DriveFootToTarget(Rig.LeftFoot, _leftFootRest, gait.LeftFootOffset, mode);
+        DriveFootToTarget(Rig.RightFoot, _rightFootRest, gait.RightFootOffset, mode);
+
+        // Whole-body propulsion assist, capped at the walk-speed ceiling.
+        if ((Rig.Torso.LinearVelocity.X * direction) < Profile.MaximumWalkSpeed)
         {
-            body.ApplyCentralForce(LastLocomotionForce * (body.Mass / totalMass));
+            float assist = Profile.WalkForce * Profile.WalkAssistScale * direction * mode.LocomotionScale;
+            LastLocomotionForce = new Vector2(assist, 0.0f);
+            float totalMass = TotalMass();
+            foreach (PuppetPartBody body in Rig.Parts)
+            {
+                body.ApplyCentralForce(LastLocomotionForce * (body.Mass / totalMass));
+            }
+        }
+        else
+        {
+            LastLocomotionForce = Vector2.Zero;
         }
 
-        int halfCycle = (_gaitTick / Profile.GaitHalfCycleTicks) & 1;
-        float gait = Profile.GaitForce * mode.LocomotionScale * (halfCycle == 0 ? 1.0f : -1.0f);
-        LastGaitForce = new Vector2(0.0f, gait);
-        Rig.LeftFoot.ApplyCentralForce(-LastGaitForce);
-        Rig.RightFoot.ApplyCentralForce(LastGaitForce);
+        // Torso bob (upward lift on each footfall) and forward lean into travel.
+        float bobForceY = gait.TorsoBobOffset * Profile.TorsoBobStiffness * mode.LocomotionScale;
+        LastGaitForce = new Vector2(0.0f, bobForceY);
+        Rig.Torso.ApplyCentralForce(LastGaitForce);
+        Rig.Head.ApplyCentralForce(new Vector2(gait.TorsoLeanOffset * Profile.TorsoLeanForce * mode.LocomotionScale, 0.0f));
         _gaitTick++;
+    }
+
+    private void DriveFootToTarget(PuppetPartBody foot, Vector2 restOffset, NumericsVector2 gaitOffset, ConsciousnessDriveProfile mode)
+    {
+        Vector2 target = Rig.Torso.GlobalPosition + restOffset + new Vector2(gaitOffset.X, gaitOffset.Y);
+        Vector2 force = ((target - foot.GlobalPosition) * Profile.StepDriveStiffness) -
+                        (foot.LinearVelocity * Profile.StepDriveDamping);
+        force *= mode.LocomotionScale;
+        if (force.Length() > Profile.StepDriveMaxForce)
+        {
+            force = force.Normalized() * Profile.StepDriveMaxForce;
+        }
+
+        foot.ApplyCentralForce(force);
+    }
+
+    private void UpdateJump(bool jumpRequested, ConsciousnessDriveProfile mode)
+    {
+        if (jumpRequested && !_jumpPending)
+        {
+            _jumpPending = true;
+            _jumpCrouchRemaining = Profile.JumpCrouchTicks;
+        }
+
+        if (!_jumpPending)
+        {
+            return;
+        }
+
+        if (_jumpCrouchRemaining > 0)
+        {
+            // Anticipation: dip the torso/head to load the legs before launch.
+            float crouch = Profile.JumpCrouchForce * mode.JumpScale;
+            Rig.Torso.ApplyCentralForce(new Vector2(0.0f, crouch));
+            Rig.Head.ApplyCentralForce(new Vector2(0.0f, crouch * 0.4f));
+            _jumpCrouchRemaining--;
+            return;
+        }
+
+        ApplyJump(mode);
+        _jumpPending = false;
     }
 
     private void ApplyResistance(DriveIntent intent, ConsciousnessDriveProfile mode)

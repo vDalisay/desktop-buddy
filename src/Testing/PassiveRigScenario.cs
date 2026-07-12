@@ -29,6 +29,10 @@ public sealed class PassiveRigScenario : IScenario
         BuddyLab lab = packed!.Instantiate<BuddyLab>();
         tree.Root.AddChild(lab);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        // Isolate the passive-structure response: no autonomous walk/jump gait, so the
+        // hand-impulse perturbation settles through the springs and upright/balance
+        // rather than being re-excited by a step cycle.
+        lab.Buddy.ActiveDrive.SuppressLocomotion = true;
         if (!string.IsNullOrEmpty(ScenarioArtifacts.Directory))
             lab.EnableTelemetry(ScenarioArtifacts.Directory, Id);
 
@@ -76,10 +80,24 @@ public sealed class PassiveRigScenario : IScenario
             }
         }
 
+        // Measure speed relative to the center of mass: with gravity disabled the
+        // hand impulse leaves the whole rig gliding, and that rigid translation
+        // decays only at the (deliberately low, feel Task 1) linear damping rate.
+        // "Settled" here means the springs stopped oscillating, i.e. the bodies are
+        // at rest relative to the rig, not that the rig stopped translating.
+        Vector2 comVelocity = Vector2.Zero;
+        float totalRigMass = 0.0f;
+        foreach (PuppetPartBody body in rig.Parts)
+        {
+            comVelocity += body.LinearVelocity * body.Mass;
+            totalRigMass += body.Mass;
+        }
+        comVelocity = totalRigMass > 0.0f ? comVelocity / totalRigMass : Vector2.Zero;
+
         float finalMaximumSpeed = 0.0f;
         foreach (PuppetPartBody body in rig.Parts)
         {
-            finalMaximumSpeed = Mathf.Max(finalMaximumSpeed, body.LinearVelocity.Length());
+            finalMaximumSpeed = Mathf.Max(finalMaximumSpeed, (body.LinearVelocity - comVelocity).Length());
         }
 
         bool strainBounded = maximumStrain <= 1.10f;

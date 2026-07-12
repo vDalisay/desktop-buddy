@@ -50,6 +50,11 @@ public sealed class AutonomousMotionScenario : IScenario
         // reordered the seeded schedule to make the jump the last condition met).
         const int JumpApexWindowTicks = 150;
         int jumpTick = -1;
+        // Gait: while walking, the feet must visibly step — alternate support and
+        // lift clear of the floor — rather than slide flat (owner feel review).
+        bool leftLifted = false, leftPlanted = false, rightLifted = false, rightPlanted = false;
+        float leftMinY = float.PositiveInfinity, leftMaxY = float.NegativeInfinity;
+        float rightMinY = float.PositiveInfinity, rightMaxY = float.NegativeInfinity;
         for (int tick = 0; tick < MotionObservationTicks; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
@@ -66,12 +71,33 @@ public sealed class AutonomousMotionScenario : IScenario
             minimumTorsoY = Mathf.Min(minimumTorsoY, position.Y);
             maximumHorizontalDelta = Mathf.Max(maximumHorizontalDelta, Mathf.Abs(position.X - start.X));
 
+            if (lab.Buddy.AutonomousMotion.Intent.WalkDirection != 0.0f &&
+                lab.Buddy.ActiveDrive.LastJumpImpulse <= 0.0f)
+            {
+                PuppetPartBody lf = lab.Buddy.Rig.LeftFoot, rf = lab.Buddy.Rig.RightFoot;
+                leftLifted |= !lf.HasSupportContact; leftPlanted |= lf.HasSupportContact;
+                rightLifted |= !rf.HasSupportContact; rightPlanted |= rf.HasSupportContact;
+                leftMinY = Mathf.Min(leftMinY, lf.GlobalPosition.Y); leftMaxY = Mathf.Max(leftMaxY, lf.GlobalPosition.Y);
+                rightMinY = Mathf.Min(rightMinY, rf.GlobalPosition.Y); rightMaxY = Mathf.Max(rightMaxY, rf.GlobalPosition.Y);
+            }
+
+            bool feetAlternate = leftLifted && leftPlanted && rightLifted && rightPlanted;
             bool jumpApexCaptured = jumpTick >= 0 && tick >= jumpTick + JumpApexWindowTicks;
-            if (sawLeftForce && sawRightForce && jumpApexCaptured && maximumHorizontalDelta >= 8.0f)
+            if (sawLeftForce && sawRightForce && feetAlternate && jumpApexCaptured && maximumHorizontalDelta >= 8.0f)
             {
                 break;
             }
         }
+
+        bool feetAlternateSupport = leftLifted && leftPlanted && rightLifted && rightPlanted;
+        float leftLift = leftMaxY - leftMinY, rightLift = rightMaxY - rightMinY;
+        const float clearanceBound = 6.0f; // visible step lift (px), not a slide
+        checks.Add(new StartupCheck(
+            "seeded_autonomy_feet_alternate_support", feetAlternateSupport,
+            $"L(lift={leftLifted},plant={leftPlanted}) R(lift={rightLifted},plant={rightPlanted})"));
+        checks.Add(new StartupCheck(
+            "seeded_autonomy_feet_step_clear", leftLift >= clearanceBound && rightLift >= clearanceBound,
+            $"leftLift={leftLift:F1} rightLift={rightLift:F1} bound={clearanceBound:F1}"));
 
         checks.Add(new StartupCheck(
             "seeded_autonomy_walks_both_directions",
@@ -100,19 +126,24 @@ public sealed class AutonomousMotionScenario : IScenario
             $"enabled={lab.Buddy.ActiveDrive.ActiveOutputsEnabled} suppressed={lab.Buddy.AutonomousMotion.Intent.IsSuppressed}"));
 
         Vector2 beforeImpulse = lab.Buddy.Rig.Torso.GlobalPosition;
-        lab.Buddy.Rig.Torso.ApplyCentralImpulse(new Vector2(220.0f, -120.0f));
+        lab.Buddy.Rig.Torso.ApplyCentralImpulse(new Vector2(700.0f, -350.0f));
+        // Peak excursion, not final displacement: better-damped links (feel Task 1)
+        // let the impulse-driven torso swing out and settle back near its start, so
+        // the endpoint understates the passive response. Peak proves the rig is not
+        // frozen while unconscious.
+        float peakTravel = 0.0f;
         for (int tick = 0; tick < 30; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            peakTravel = Mathf.Max(peakTravel, lab.Buddy.Rig.Torso.GlobalPosition.DistanceTo(beforeImpulse));
         }
 
-        Vector2 afterImpulse = lab.Buddy.Rig.Torso.GlobalPosition;
-        bool passivePhysicsContinued = afterImpulse.DistanceTo(beforeImpulse) > 1.0f &&
+        bool passivePhysicsContinued = peakTravel > 1.0f &&
                                        lab.Buddy.Constraints.Telemetry.Count > 0;
         checks.Add(new StartupCheck(
             "unconscious_profile_preserves_passive_physics",
             passivePhysicsContinued,
-            $"travel={afterImpulse.DistanceTo(beforeImpulse):F2} links={lab.Buddy.Constraints.Telemetry.Count}"));
+            $"peak_travel={peakTravel:F2} links={lab.Buddy.Constraints.Telemetry.Count}"));
 
         lab.Buddy.SetConsciousness(Consciousness.Conscious);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);

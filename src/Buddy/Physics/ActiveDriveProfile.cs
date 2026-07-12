@@ -21,9 +21,35 @@ public partial class ActiveDriveProfile : GameResource
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float SelfRightForce { get; set; } = 2_400.0f;
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float WalkForce { get; set; } = 600.0f;
     [Export(PropertyHint.Range, "0,1000,0.1,or_greater")] public float MaximumWalkSpeed { get; set; } = 55.0f;
-    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float GaitForce { get; set; } = 100.0f;
-    [Export(PropertyHint.Range, "1,240,1")] public int GaitHalfCycleTicks { get; set; } = 18;
+
+    // --- Stepping gait (replaces the old whole-body-only push; feet visibly step) ---
+    /// <summary>Fraction of WalkForce kept as a whole-body propulsion assist; the rest of the motion comes from the feet.</summary>
+    [Export(PropertyHint.Range, "0,1,0.01")] public float WalkAssistScale { get; set; } = 0.4f;
+    /// <summary>Forward/back reach of a foot within one gait cycle (px).</summary>
+    [Export(PropertyHint.Range, "0,128,0.1,or_greater")] public float StepLength { get; set; } = 20.0f;
+    /// <summary>Peak height the swing foot lifts off the floor (px).</summary>
+    [Export(PropertyHint.Range, "0,128,0.1,or_greater")] public float StepLift { get; set; } = 14.0f;
+    /// <summary>Ticks for a full left+right gait cycle at 120 Hz.</summary>
+    [Export(PropertyHint.Range, "8,240,1")] public int GaitCycleTicks { get; set; } = 48;
+    /// <summary>Spring stiffness driving each foot toward its gait target.</summary>
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float StepDriveStiffness { get; set; } = 200.0f;
+    /// <summary>Damping on the foot-target drive.</summary>
+    [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float StepDriveDamping { get; set; } = 12.0f;
+    /// <summary>Bound on the per-foot gait drive force.</summary>
+    [Export(PropertyHint.Range, "0.1,100000,0.1,or_greater")] public float StepDriveMaxForce { get; set; } = 4_000.0f;
+    /// <summary>Force-per-px converting the gait torso-bob offset into an upward torso lift.</summary>
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float TorsoBob { get; set; } = 6.0f;
+    [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float TorsoBobStiffness { get; set; } = 90.0f;
+    /// <summary>Forward lean fraction and the head force that realizes it (leans into travel).</summary>
+    [Export(PropertyHint.Range, "0,1,0.01")] public float TorsoLean { get; set; } = 0.12f;
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float TorsoLeanForce { get; set; } = 2_400.0f;
+
+    // --- Jump ---
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float JumpImpulse { get; set; } = 1_800.0f;
+    /// <summary>Anticipation crouch before the jump impulse (ticks); 0 = instant pop.</summary>
+    [Export(PropertyHint.Range, "0,60,1")] public int JumpCrouchTicks { get; set; } = 14;
+    /// <summary>Downward torso / upward-relative foot force applied during the crouch.</summary>
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float JumpCrouchForce { get; set; } = 1_000.0f;
 
     /// <summary>Bounded whole-body force a fearful buddy applies to resist a grab (RAGDOLL Section 6).</summary>
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float GrabResistanceForce { get; set; } = 3_500.0f;
@@ -48,12 +74,26 @@ public partial class ActiveDriveProfile : GameResource
         ValidateNonNegative(errors, SelfRightForce, nameof(SelfRightForce));
         ValidateNonNegative(errors, WalkForce, nameof(WalkForce));
         ValidateNonNegative(errors, MaximumWalkSpeed, nameof(MaximumWalkSpeed));
-        ValidateNonNegative(errors, GaitForce, nameof(GaitForce));
-        if (GaitHalfCycleTicks <= 0)
+        ValidateNonNegative(errors, WalkAssistScale, nameof(WalkAssistScale));
+        ValidateNonNegative(errors, StepLength, nameof(StepLength));
+        ValidateNonNegative(errors, StepLift, nameof(StepLift));
+        if (GaitCycleTicks <= 0)
         {
-            errors.Add($"{nameof(GaitHalfCycleTicks)} must be positive");
+            errors.Add($"{nameof(GaitCycleTicks)} must be positive");
         }
+        ValidateNonNegative(errors, StepDriveStiffness, nameof(StepDriveStiffness));
+        ValidateNonNegative(errors, StepDriveDamping, nameof(StepDriveDamping));
+        ValidatePositive(errors, StepDriveMaxForce, nameof(StepDriveMaxForce));
+        ValidateNonNegative(errors, TorsoBob, nameof(TorsoBob));
+        ValidateNonNegative(errors, TorsoBobStiffness, nameof(TorsoBobStiffness));
+        ValidateNonNegative(errors, TorsoLean, nameof(TorsoLean));
+        ValidateNonNegative(errors, TorsoLeanForce, nameof(TorsoLeanForce));
         ValidateNonNegative(errors, JumpImpulse, nameof(JumpImpulse));
+        if (JumpCrouchTicks < 0)
+        {
+            errors.Add($"{nameof(JumpCrouchTicks)} must be non-negative");
+        }
+        ValidateNonNegative(errors, JumpCrouchForce, nameof(JumpCrouchForce));
         ValidateNonNegative(errors, GrabResistanceForce, nameof(GrabResistanceForce));
         ValidatePositive(errors, MaximumStandingTorsoTilt, nameof(MaximumStandingTorsoTilt));
         ValidateNonNegative(errors, MinimumHeadAboveTorso, nameof(MinimumHeadAboveTorso));
