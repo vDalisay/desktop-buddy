@@ -121,4 +121,20 @@ physical pain and never from merely pressing a tool button (ROADMAP M3 exit crit
 ## Progress
 
 Plan written 2026-07-13 on branch `m3-sol` (M2 Task 0 renderer gate closed same day, so
-HUD work in Tasks 10–11 is unblocked). Implementation begins at Task 1.
+HUD work in Tasks 10–11 is unblocked).
+
+**Tasks 1–8 DONE (2026-07-13)** — the entire pure-Domain, headless-testable damage/mood/
+economy core, suite green at **190/190** (was 102 pre-M3):
+- Task 1 `Interaction/ImpactRouter` — contact-episode dedup.
+- Task 2 `Damage/PainCurve` + `Damage/PayoutRegion` — impulse→pain + part→region.
+- Task 3 `Damage/PainKnockoutModel` — rolling 5 s window + fixed 4 s knockout.
+- Task 4 `Economy/RewardLedger` — payout formula, milli-credits, 0.25 s coalescing.
+- Task 5 `Mood/MoodModel` — persistent mood, harm reduction, drift, trust reset, history.
+- Task 6 `Mood/CareModel` — Pet/Tickle valid-contact cadence.
+- Task 7 `Economy/PassiveIncome` — mood multiplier + drift-free accrual.
+- Task 8 `Tools/ToolSelection` + `ToolCatalog` — M3 tool subset, Grab default, category map.
+
+**Remaining:** Task 9 Godot wiring (contacts→pipeline, Boxing Glove collider, Pet/Tickle
+stroke detection, headless scenarios), Task 10 reaction/expression/sound/fear resistance,
+Task 11 money HUD + debug panels, Task 12 owner-manual exit gate. Tasks 9–11 need the
+Godot assembly + headless runner (close any open editor first per the toolchain gotcha).

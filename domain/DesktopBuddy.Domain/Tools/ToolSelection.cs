@@ -1,0 +1,56 @@
+using System;
+using DesktopBuddy.Domain.Mood;
+
+namespace DesktopBuddy.Domain.Tools;
+
+/// <summary>The M3 tool subset (RAGDOLL §9 tool table). Grab ships already unlocked.</summary>
+public enum ToolId
+{
+    Grab = 0,
+    Pet = 1,
+    Tickle = 2,
+    BoxingGlove = 3,
+}
+
+/// <summary>How a tool physically acts on the buddy (RAGDOLL §9).</summary>
+public enum ToolCategory
+{
+    Grab,
+    Care,
+    Damage,
+}
+
+/// <summary>Structural tool facts shared by logic and the Godot layer.</summary>
+public static class ToolCatalog
+{
+    public static ToolCategory CategoryOf(ToolId tool) => tool switch
+    {
+        ToolId.Grab => ToolCategory.Grab,
+        ToolId.Pet or ToolId.Tickle => ToolCategory.Care,
+        ToolId.BoxingGlove => ToolCategory.Damage,
+        _ => throw new ArgumentOutOfRangeException(nameof(tool), tool, "Unknown tool."),
+    };
+
+    /// <summary>The care channel a tool feeds, or <c>null</c> for non-care tools.</summary>
+    public static CareKind? CareKindOf(ToolId tool) => tool switch
+    {
+        ToolId.Pet => CareKind.Pet,
+        ToolId.Tickle => CareKind.Tickle,
+        _ => null,
+    };
+}
+
+/// <summary>
+/// Holds the currently selected tool. A new save starts with <see cref="ToolId.Grab"/>
+/// selected (RAGDOLL §9). Selection changes only on an explicit pick and never from a
+/// Work/Play transition — the input-mode state machine models no tool, so a mode change
+/// cannot mutate this (RAGDOLL "Overlay and Interface", M2 invariant).
+/// </summary>
+public sealed class ToolSelection
+{
+    public const ToolId DefaultTool = ToolId.Grab;
+
+    public ToolId Selected { get; private set; } = DefaultTool;
+
+    public void Select(ToolId tool) => Selected = tool;
+}
