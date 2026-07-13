@@ -16,6 +16,19 @@ public readonly record struct PainKnockoutState(
     bool KnockoutActive);
 
 /// <summary>
+/// Result of registering one accepted pain event.
+/// <see cref="ConsciousnessAtAcceptance"/> is the state the hit landed in (RAGDOLL §7.1
+/// "at acceptance time") and drives the payout multiplier — the hit that triggers a
+/// knockout landed conscious and pays 1.0×, even though <see cref="State"/> already
+/// reports Unconscious. <see cref="KnockoutTriggered"/> is true exactly once per
+/// knockout, for the §7.3 semantic knockout event and statistics.
+/// </summary>
+public readonly record struct PainAcceptance(
+    PainKnockoutState State,
+    DamageConsciousness ConsciousnessAtAcceptance,
+    bool KnockoutTriggered);
+
+/// <summary>
 /// Maintains the rolling <c>5 s</c> accepted-pain window and the fixed <c>4 s</c>
 /// knockout (RAGDOLL §7.3). When the windowed pain sum reaches <c>100</c> while
 /// conscious the buddy enters Unconscious once, a monotonic 4 s timer starts, and the
@@ -38,11 +51,18 @@ public sealed class PainKnockoutModel
 
     /// <summary>
     /// Records an accepted-pain event. Only pain landed while conscious enters the
-    /// rolling window; unconscious hits are excluded (§7.3). Returns the resulting state.
+    /// rolling window; unconscious hits are excluded (§7.3). The returned
+    /// <see cref="PainAcceptance.ConsciousnessAtAcceptance"/> — not the post-transition
+    /// state — feeds the reward multiplier.
     /// </summary>
-    public PainKnockoutState RegisterPain(float pain, double now)
+    public PainAcceptance RegisterPain(float pain, double now)
     {
         WakeIfElapsed(now);
+
+        DamageConsciousness atAcceptance = _unconscious
+            ? DamageConsciousness.Unconscious
+            : DamageConsciousness.Conscious;
+        bool knockoutTriggered = false;
 
         if (!_unconscious)
         {
@@ -52,10 +72,11 @@ public sealed class PainKnockoutModel
             if (WindowedPain() >= KnockoutThreshold)
             {
                 EnterKnockout(now);
+                knockoutTriggered = true;
             }
         }
 
-        return StateAt(now);
+        return new PainAcceptance(StateAt(now), atAcceptance, knockoutTriggered);
     }
 
     /// <summary>Advances time without new pain: wakes at timer completion, prunes the window.</summary>

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.Domain.Damage;
 
 namespace DesktopBuddy.Domain.Economy;
@@ -37,6 +38,7 @@ public sealed class RewardLedger
     public const long MilliCreditsPerCredit = 1000;
 
     private readonly double _cashPerPain;
+    private readonly Queue<RewardFeedback> _completedBursts = new();
 
     private bool _burstOpen;
     private long _burstMilli;
@@ -79,6 +81,13 @@ public sealed class RewardLedger
         }
         else
         {
+            // An elapsed burst that was never polled is queued, not overwritten — a
+            // presentation hitch may delay a +$N.N toast but must never lose one.
+            if (_burstOpen)
+            {
+                _completedBursts.Enqueue(new RewardFeedback(_burstMilli, _burstStart));
+            }
+
             _burstOpen = true;
             _burstStart = now;
             _burstMilli = milli;
@@ -88,11 +97,31 @@ public sealed class RewardLedger
     }
 
     /// <summary>
+    /// Deposits already-earned milli-credits (passive income, RAGDOLL §8.3) directly
+    /// into the balance. Deposits produce no <c>+$N.N</c> feedback burst — coalesced
+    /// feedback is reserved for accepted damage rewards (§7.4).
+    /// </summary>
+    public void Deposit(long milliCredits)
+    {
+        if (milliCredits < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(milliCredits));
+        }
+
+        BalanceMilliCredits += milliCredits;
+    }
+
+    /// <summary>
     /// Returns a completed feedback burst once its 0.25 s interval has elapsed, else null.
     /// Presentation polls this each tick to surface a single coalesced <c>+$N.N</c>.
     /// </summary>
     public RewardFeedback? PollFeedback(double now)
     {
+        if (_completedBursts.Count > 0)
+        {
+            return _completedBursts.Dequeue();
+        }
+
         if (_burstOpen && now - _burstStart > CoalesceSeconds)
         {
             var feedback = new RewardFeedback(_burstMilli, _burstStart);

@@ -101,4 +101,45 @@ public sealed class RewardLedgerTests
         var ledger = Ledger();
         Assert.Null(ledger.PollFeedback(1.0));
     }
+
+    [Fact]
+    public void Accept_NeverDropsAnUnpolledBurst()
+    {
+        var ledger = Ledger();
+        ledger.Accept(10.0f, PayoutRegion.Torso, DamageConsciousness.Conscious, 0.0);
+
+        // A second accept beyond the interval, with no poll in between (presentation
+        // hitch): the first burst must survive as queued feedback, not be overwritten.
+        ledger.Accept(20.0f, PayoutRegion.Torso, DamageConsciousness.Conscious, 0.5);
+
+        RewardFeedback? first = ledger.PollFeedback(0.5);
+        Assert.NotNull(first);
+        Assert.Equal(10_000, first!.Value.MilliCredits);
+
+        RewardFeedback? second = ledger.PollFeedback(1.0);
+        Assert.NotNull(second);
+        Assert.Equal(20_000, second!.Value.MilliCredits);
+
+        Assert.Null(ledger.PollFeedback(2.0));
+        Assert.Equal(30_000, ledger.BalanceMilliCredits);
+    }
+
+    [Fact]
+    public void Deposit_AddsBalanceWithoutFeedbackBurst()
+    {
+        var ledger = Ledger();
+
+        ledger.Deposit(2_500); // e.g. accrued passive income
+
+        Assert.Equal(2_500, ledger.BalanceMilliCredits);
+        Assert.Equal(2, ledger.BalanceCredits);
+        Assert.Null(ledger.PollFeedback(10.0)); // deposits never make +$N.N toasts
+    }
+
+    [Fact]
+    public void Deposit_RejectsNegativeAmounts()
+    {
+        var ledger = Ledger();
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => ledger.Deposit(-1));
+    }
 }

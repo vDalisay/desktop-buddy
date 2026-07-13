@@ -101,6 +101,21 @@ tether pattern) and Pet/Tickle stroke detection over valid buddy contact. Headle
 scenarios: `impact_dedup`, `knockout_window`, `payout_by_region`, `pet_tickle_mood` —
 driven through the runner, asserting semantic events, not pixels.
 
+Wiring notes (2026-07-13 domain review):
+- The ledger multiplier uses `PainAcceptance.ConsciousnessAtAcceptance`, never the
+  post-transition state — the KO-triggering hit landed conscious and pays `1.0×`
+  (§7.1 "at acceptance time"). `KnockoutTriggered` drives the §7.3 semantic event.
+- Call `MoodModel.RegisterHarm` only for accepted events with `pain > 0`, or a
+  below-curve-floor contact marks a tool feared with zero mood loss.
+- Passive income credits the balance via `RewardLedger.Deposit` (silent — no `+$N.N`
+  burst). Per ROADMAP its wiring is M4 scope; the M3 exit gate does not need it.
+- Calibrate `ImpactRouter.MinimumImpulse` together with the §7.1 attribution-expiry
+  rule: below-threshold contacts do not keep an episode alive, so a resting object's
+  occasional above-threshold jitter (> 0.15 s apart) would re-score. The
+  `impact_dedup` scenario should include a resting-object case.
+- The `PainConversionData` and `ToolDefinition` tuning `Resource` assets promised in
+  Tasks 2/8 are Godot-side and land here (Domain classes take plain constructor data).
+
 ### Task 10 — Reaction, expression, sound, fear resistance (integration/presentation)
 Face emoticons on the head circle per consciousness/acute-state/mood-band priority (§ face
 rules), transient reaction state, nonverbal robot sounds, and fear-based grab resistance
@@ -116,7 +131,7 @@ the closed M2 Task 0 gate (`gl_compatibility` accepted).
 ### Task 12 — M3 exit gate (owner-manual)
 Owner verifies on real Windows: interactions stable and satisfying, payouts arise from
 physical pain and never from merely pressing a tool button (ROADMAP M3 exit criteria);
-`TEST_PLAN.md` §4 damage/economy assertions hold. Feel A/B as in M1 if tuning needs a pass.
+`TEST_PLAN.md` §2 damage/economy assertions hold. Feel A/B as in M1 if tuning needs a pass.
 
 ## Progress
 
@@ -133,6 +148,13 @@ economy core, suite green at **190/190** (was 102 pre-M3):
 - Task 6 `Mood/CareModel` — Pet/Tickle valid-contact cadence.
 - Task 7 `Economy/PassiveIncome` — mood multiplier + drift-free accrual.
 - Task 8 `Tools/ToolSelection` + `ToolCatalog` — M3 tool subset, Grab default, category map.
+
+**Review pass (2026-07-13):** Tasks 1–8 verified against RAGDOLL §7–§8 boundary by
+boundary. Three pre-Task-9 API seams fixed with tests (suite 195/195):
+`RegisterPain` now returns `PainAcceptance` (consciousness *at acceptance* for the
+payout multiplier + `KnockoutTriggered` edge for the semantic event);
+`RewardLedger.Deposit` added for passive income; an unpolled elapsed feedback burst is
+queued instead of overwritten. Wiring hazards recorded under Task 9.
 
 **Remaining:** Task 9 Godot wiring (contacts→pipeline, Boxing Glove collider, Pet/Tickle
 stroke detection, headless scenarios), Task 10 reaction/expression/sound/fear resistance,

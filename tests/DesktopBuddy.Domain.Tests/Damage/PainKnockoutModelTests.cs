@@ -10,10 +10,11 @@ public sealed class PainKnockoutModelTests
     {
         var model = new PainKnockoutModel();
 
-        PainKnockoutState state = model.RegisterPain(99.0f, 0.0);
+        PainAcceptance result = model.RegisterPain(99.0f, 0.0);
 
-        Assert.Equal(DamageConsciousness.Conscious, state.Consciousness);
-        Assert.Equal(99.0f, state.RollingPain);
+        Assert.Equal(DamageConsciousness.Conscious, result.State.Consciousness);
+        Assert.Equal(99.0f, result.State.RollingPain);
+        Assert.False(result.KnockoutTriggered);
         Assert.Equal(0, model.KnockoutCount);
     }
 
@@ -23,10 +24,38 @@ public sealed class PainKnockoutModelTests
         var model = new PainKnockoutModel();
         model.RegisterPain(60.0f, 0.0);
 
-        PainKnockoutState state = model.RegisterPain(40.0f, 1.0);
+        PainAcceptance result = model.RegisterPain(40.0f, 1.0);
 
-        Assert.Equal(DamageConsciousness.Unconscious, state.Consciousness);
-        Assert.True(state.KnockoutActive);
+        Assert.Equal(DamageConsciousness.Unconscious, result.State.Consciousness);
+        Assert.True(result.State.KnockoutActive);
+        Assert.True(result.KnockoutTriggered);
+        Assert.Equal(1, model.KnockoutCount);
+    }
+
+    [Fact]
+    public void TriggeringHit_LandedConscious_PaysAtConsciousRate()
+    {
+        var model = new PainKnockoutModel();
+        model.RegisterPain(60.0f, 0.0);
+
+        // The hit that trips the threshold was accepted while conscious (§7.1):
+        // it pays 1.0x even though the post-transition state is Unconscious.
+        PainAcceptance trigger = model.RegisterPain(40.0f, 1.0);
+
+        Assert.Equal(DamageConsciousness.Conscious, trigger.ConsciousnessAtAcceptance);
+        Assert.Equal(DamageConsciousness.Unconscious, trigger.State.Consciousness);
+    }
+
+    [Fact]
+    public void UnconsciousHit_ReportsUnconsciousAtAcceptance_WithoutTrigger()
+    {
+        var model = new PainKnockoutModel();
+        model.RegisterPain(100.0f, 0.0);
+
+        PainAcceptance during = model.RegisterPain(50.0f, 2.0);
+
+        Assert.Equal(DamageConsciousness.Unconscious, during.ConsciousnessAtAcceptance);
+        Assert.False(during.KnockoutTriggered);
         Assert.Equal(1, model.KnockoutCount);
     }
 
@@ -37,7 +66,7 @@ public sealed class PainKnockoutModelTests
         model.RegisterPain(60.0f, 0.0);
 
         // 6 s later the first event has fallen out of the 5 s window.
-        PainKnockoutState state = model.RegisterPain(60.0f, 6.0);
+        PainKnockoutState state = model.RegisterPain(60.0f, 6.0).State;
 
         Assert.Equal(DamageConsciousness.Conscious, state.Consciousness);
         Assert.Equal(60.0f, state.RollingPain);
@@ -83,7 +112,7 @@ public sealed class PainKnockoutModelTests
         Assert.Equal(0.0f, woken.RollingPain);
 
         // A single 90-pain hit after waking must not knock out (window was empty).
-        PainKnockoutState after = model.RegisterPain(90.0f, 4.1);
+        PainKnockoutState after = model.RegisterPain(90.0f, 4.1).State;
         Assert.Equal(DamageConsciousness.Conscious, after.Consciousness);
     }
 
@@ -123,7 +152,7 @@ public sealed class PainKnockoutModelTests
         model.ClearRollingPain();
 
         // Fresh 90 after clearing must not sum with the cleared 90 to knock out.
-        PainKnockoutState state = model.RegisterPain(90.0f, 0.1);
+        PainKnockoutState state = model.RegisterPain(90.0f, 0.1).State;
         Assert.Equal(DamageConsciousness.Conscious, state.Consciousness);
     }
 
