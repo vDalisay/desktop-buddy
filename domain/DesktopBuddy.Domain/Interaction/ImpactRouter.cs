@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DesktopBuddy.Domain.Buddy;
 
 namespace DesktopBuddy.Domain.Interaction;
 
@@ -9,7 +10,7 @@ namespace DesktopBuddy.Domain.Interaction;
 /// </summary>
 public readonly record struct ContactSample(
     int SourceInteractionId,
-    string TargetPartId,
+    BuddyPart TargetPart,
     float Impulse,
     float RelativeVelocity,
     double TimeSeconds);
@@ -17,11 +18,11 @@ public readonly record struct ContactSample(
 /// <summary>
 /// A deduplicated, attributed impact accepted from a contact episode. Carries the
 /// measured impulse/velocity the pain-conversion curve needs (RAGDOLL §7.1); the
-/// payout region is derived downstream from <see cref="TargetPartId"/> (Task 2).
+/// payout region is derived downstream from <see cref="TargetPart"/> (Task 2).
 /// </summary>
 public readonly record struct ImpactSample(
     int SourceInteractionId,
-    string TargetPartId,
+    BuddyPart TargetPart,
     float Impulse,
     float RelativeVelocity,
     double TimeSeconds);
@@ -40,7 +41,7 @@ public sealed class ImpactRouter
 {
     public const double DefaultReArmSeconds = 0.15;
 
-    private readonly Dictionary<(int, string), double> _lastContactTime = new();
+    private readonly Dictionary<(int, BuddyPart), double> _lastContactTime = new();
 
     public ImpactRouter(double reArmSeconds = DefaultReArmSeconds, float minimumImpulse = 0.0f)
     {
@@ -74,7 +75,7 @@ public sealed class ImpactRouter
             return null;
         }
 
-        var key = (sample.SourceInteractionId, sample.TargetPartId);
+        var key = (sample.SourceInteractionId, sample.TargetPart);
         bool newEpisode =
             !_lastContactTime.TryGetValue(key, out double lastTime) ||
             sample.TimeSeconds - lastTime >= ReArmSeconds;
@@ -90,7 +91,7 @@ public sealed class ImpactRouter
 
         return new ImpactSample(
             sample.SourceInteractionId,
-            sample.TargetPartId,
+            sample.TargetPart,
             sample.Impulse,
             sample.RelativeVelocity,
             sample.TimeSeconds);

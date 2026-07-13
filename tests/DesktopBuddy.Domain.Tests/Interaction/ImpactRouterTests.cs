@@ -1,3 +1,4 @@
+using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Interaction;
 using Xunit;
 
@@ -9,8 +10,8 @@ public sealed class ImpactRouterTests
         double time,
         float impulse = 50.0f,
         int source = 1,
-        string part = "head") =>
-        new(SourceInteractionId: source, TargetPartId: part, Impulse: impulse, RelativeVelocity: 300.0f, TimeSeconds: time);
+        BuddyPart part = BuddyPart.Head) =>
+        new(SourceInteractionId: source, TargetPart: part, Impulse: impulse, RelativeVelocity: 300.0f, TimeSeconds: time);
 
     [Fact]
     public void Offer_FirstContact_IsAcceptedOnce()
@@ -20,7 +21,7 @@ public sealed class ImpactRouterTests
         ImpactSample? accepted = router.Offer(Contact(0.0));
 
         Assert.NotNull(accepted);
-        Assert.Equal("head", accepted!.Value.TargetPartId);
+        Assert.Equal(BuddyPart.Head, accepted!.Value.TargetPart);
         Assert.Equal(50.0f, accepted.Value.Impulse);
     }
 
@@ -83,13 +84,13 @@ public sealed class ImpactRouterTests
     {
         var router = new ImpactRouter();
 
-        Assert.NotNull(router.Offer(Contact(0.0, source: 1, part: "head")));
-        Assert.NotNull(router.Offer(Contact(0.0, source: 1, part: "torso")));
-        Assert.NotNull(router.Offer(Contact(0.0, source: 2, part: "head")));
+        Assert.NotNull(router.Offer(Contact(0.0, source: 1, part: BuddyPart.Head)));
+        Assert.NotNull(router.Offer(Contact(0.0, source: 1, part: BuddyPart.Torso)));
+        Assert.NotNull(router.Offer(Contact(0.0, source: 2, part: BuddyPart.Head)));
 
         // Each key suppresses only its own repeats.
-        Assert.Null(router.Offer(Contact(0.01, source: 1, part: "head")));
-        Assert.NotNull(router.Offer(Contact(0.20, source: 1, part: "head")));
+        Assert.Null(router.Offer(Contact(0.01, source: 1, part: BuddyPart.Head)));
+        Assert.NotNull(router.Offer(Contact(0.20, source: 1, part: BuddyPart.Head)));
     }
 
     [Fact]
