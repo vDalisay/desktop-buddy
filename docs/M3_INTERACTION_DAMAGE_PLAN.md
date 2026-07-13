@@ -64,11 +64,12 @@ display floor.
 event reduces mood by `min(10, pain × 0.1)` (Burning ticks use the same; entering knockout
 adds no separate penalty, §7.2). Drift toward `0` at `0.5`/min while running (incl.
 hidden-to-tray), no catch-up across close/sleep/clock gaps (§8.1). Mood-band lookup
-(Fearful/Wary/Neutral/Content/Delighted). Mood-`60` upward-crossing trust reset (§ mood
-rules): fire once on cross from `<60` to `≥60`, re-arm only after mood later drops below
-`60`. Per-tool harmful history record. Transient channels (fear/pain/delight/curiosity/
-unconscious) decay independently. xUnit: clamp, reduction formula incl. cap at 10, drift
+(Fearful/Wary/Neutral/Content/Delighted). Mood-`60` upward-crossing trust reset (§4.1):
+fire once on cross from `<60` to `≥60`, re-arm only after mood later drops below `60`.
+Per-tool harmful history record. xUnit: clamp, reduction formula incl. cap at 10, drift
 rate + no-catch-up, band boundaries, trust-reset fire-once + re-arm, per-tool history.
+(Transient acute channels — fear/pain/delight/curiosity/unconscious — have no approved
+durations, so they land with the presentation tuning in Task 10, not here.)
 
 ### Task 6 — Care model: Pet/Tickle cadence (Domain, headless-testable)
 `CareModel` in `Domain/Mood`. Valid Pet/Tickle contact grants `+1` mood at most once per
