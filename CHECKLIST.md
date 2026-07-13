@@ -76,10 +76,11 @@ Gotchas that WILL fail a run if you forget them:
       `autonomous_motion` jump check also hardened to sample the apex, not takeoff.
 
 ### Owner-in-the-loop (an agent can only prep/prompt, not sign off)
-- [~] **Transparent-window spike matrix** (`docs/M1_REVIEW_FIXES_PLAN.md` Task 8):
-      owner confirmed 2026-07-12 "transparent window looks good" at current display
-      scale. Still open: 150% DPI pass, corner-readout pointer checks, recording
-      both in `docs/DECISIONS.md`, keep/delete decision.
+- [x] **Transparent-window spike matrix** (`docs/M1_REVIEW_FIXES_PLAN.md` Task 8):
+      owner confirmed 2026-07-12 "transparent window looks good" at 100% scale;
+      **150% DPI pass ACCEPTED 2026-07-13** (standalone GUI, `gl_compatibility`, owner
+      visual confirm). Recorded in `docs/DECISIONS.md`; keep/delete of the spike scene
+      is now discretionary.
 - [x] **Side-by-side reference review** (§8 bullet 4): first review 2026-07-12
       REJECTED; `docs/M1_FEEL_AND_GAIT_PLAN.md` Tasks 1–6 done; re-review 2026-07-12
       **ACCEPTED** by the owner ("feels way better, I approve"). Tuning locked:
@@ -99,8 +100,9 @@ Gotchas that WILL fail a run if you forget them:
       feel profile.)
 
 ### §8 gate remaining (owner-manual, not code)
-- [ ] Transparent-window 150% DPI pass + corner pointer checks (100% already
-      confirmed good) — record in `docs/DECISIONS.md`.
+- [x] Transparent-window 150% DPI pass + corner pointer checks — **ACCEPTED
+      2026-07-13**, recorded in `docs/DECISIONS.md`. Renderer decision gate closed;
+      `gl_compatibility` accepted, HUD work unblocked.
 - [ ] Windowed automated journey pass — blocked by the windowed-journey-hang bug
       (chip `task_6f8d585a`); manual windowed play already exercised the grab path.
 
@@ -121,13 +123,13 @@ tick + a real box boundary + `DesktopShellController`; `sandbox.tscn` rebuilt), 
 (`tests/journeys/desktop_shell_modes.json`, 8 predicates green), and the Task 4 native
 adapter **skeleton** (`WindowsDesktopAdapter` + factory; WndProc `HTTRANSPARENT`
 hit-testing, monitor topology, per-monitor DPI; selected only on a real Windows run,
-emulated everywhere else) are done. Remaining is all owner-manual on real Windows:
-Task 0 renderer visual matrix (150% DPI pass still open), Task 4 verification + next
-cut (sandbox→client hit-region mapping, tray/hotkey/launch-at-login, §24 lifecycle
-messages), Task 7 the `TEST_PLAN.md` §5 standalone matrix. To verify Task 4: run the
-standalone build and look for `[WinAdapter] Native adapter attached …` +
-`DesktopWindowController ready (native=True …)`. The renderer decision still blocks
-HUD work and dovetails with the pending 150% DPI spike check.
+emulated everywhere else) are done. Task 0 renderer decision is **closed** (150% DPI
+pass accepted 2026-07-13, `gl_compatibility` accepted, HUD work unblocked). Remaining
+owner-manual on real Windows: Task 4 verification + next cut (sandbox→client hit-region
+mapping, tray/hotkey/launch-at-login, §24 lifecycle messages), Task 7 the
+`TEST_PLAN.md` §5 standalone matrix. To verify Task 4: run the standalone build and look
+for `[WinAdapter] Native adapter attached …` +
+`DesktopWindowController ready (native=True …)`.
 
 ## 6. Ground rules (from the plans — still apply)
 
