@@ -2,7 +2,10 @@ using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
+using DesktopBuddy.Interaction;
+using DesktopBuddy.Tools;
 using Godot;
 
 namespace DesktopBuddy.Laboratory;
@@ -31,21 +34,33 @@ public partial class LabPointerGrabComponent : Node2D
 
     [Export] public GrabTetherController Grab { get; set; } = null!;
 
+    // Optional tool routing (buddy lab only; the dual-profile lab wires none of
+    // these and keeps the grab-only behavior). When present, the pointer feeds
+    // the selected tool instead of always grabbing: care strokes and the glove
+    // cursor follow real pointer input only, so headless scenarios that drive
+    // the tool APIs directly are never clobbered by a stale (0,0) cursor.
+    [Export] public InteractionDamageComponent? Pipeline { get; set; }
+    [Export] public BoxingGloveController? GloveTool { get; set; }
+    [Export] public CareStrokeComponent? CareTool { get; set; }
+
     private bool _active;
     private bool _pendingPress;
     private bool _pendingRelease;
     private bool _pendingCancel;
     private bool _ownsGrab;
+    private bool _sawPointerInput;
     private Vector2 _cursor;
 
     public Func<RigidBody2D, bool>? PickFilter { get; set; }
 
     public bool IsActive => _active;
+    public bool IsPrimaryHeld { get; private set; }
+    public Vector2 WorldCursor { get; private set; }
     public int ReceivedInputCount { get; private set; }
     public BuddyPartId? LastPickedPart { get; private set; }
     public int SuccessfulPickCount { get; private set; }
 
-    public void Initialize()
+    public void Initialize(bool developmentOnly = true)
     {
         if (!GodotObject.IsInstanceValid(Grab))
         {
@@ -53,7 +68,7 @@ public partial class LabPointerGrabComponent : Node2D
         }
 
         // Development affordance only. Headless journeys use the same queued-input path.
-        _active = BuildInfo.IsDebugBuild;
+        _active = !developmentOnly || BuildInfo.IsDebugBuild;
         SetProcessInput(_active);
         SetProcessUnhandledInput(_active);
     }
@@ -63,7 +78,10 @@ public partial class LabPointerGrabComponent : Node2D
         // Track all mouse motion so GUI-consumed events still keep the cursor truthful;
         // gameplay actions are handled only after GUI has declined the event.
         if (_active && @event is InputEventMouse mouse)
+        {
             _cursor = mouse.Position;
+            _sawPointerInput = true;
+        }
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -76,15 +94,32 @@ public partial class LabPointerGrabComponent : Node2D
         if (@event.IsActionPressed(InputActions.Primary))
         {
             _pendingPress = true;
+            IsPrimaryHeld = true;
+            _sawPointerInput = true;
         }
         else if (@event.IsActionReleased(InputActions.Primary))
         {
             _pendingRelease = true;
+            IsPrimaryHeld = false;
         }
         else if (@event.IsActionPressed(InputActions.Secondary))
         {
             // Right mouse cancels/drops without changing the selected tool.
             _pendingCancel = true;
+            IsPrimaryHeld = false;
+        }
+        else if (Pipeline is not null && GodotObject.IsInstanceValid(Pipeline) &&
+                 @event is InputEventKey { Pressed: true, Echo: false } key)
+        {
+            ToolId? selected = key.PhysicalKeycode switch
+            {
+                Key.G => ToolId.Grab,
+                Key.B => ToolId.BoxingGlove,
+                Key.F => ToolId.Pet,
+                Key.T => ToolId.Tickle,
+                _ => null,
+            };
+            if (selected.HasValue) Pipeline.SelectTool(selected.Value);
         }
     }
 
@@ -104,6 +139,27 @@ public partial class LabPointerGrabComponent : Node2D
             _ownsGrab = false;
 
         Vector2 cursor = GetViewport().GetCanvasTransform().AffineInverse() * _cursor;
+        WorldCursor = cursor;
+
+        ToolId tool = Pipeline is not null && GodotObject.IsInstanceValid(Pipeline)
+            ? Pipeline.SelectedTool
+            : ToolId.Grab;
+
+        // Forward pointer state to the non-grab tools only after real pointer
+        // input has been seen; scenarios drive the tool APIs directly instead.
+        if (_sawPointerInput)
+        {
+            if (GloveTool is not null && GodotObject.IsInstanceValid(GloveTool) &&
+                tool == ToolId.BoxingGlove)
+            {
+                GloveTool.MoveCursor(cursor);
+            }
+
+            if (CareTool is not null && GodotObject.IsInstanceValid(CareTool))
+            {
+                CareTool.SetStroke(IsPrimaryHeld && ToolCatalog.CareKindOf(tool) is not null, cursor);
+            }
+        }
 
         if (_pendingCancel)
         {
@@ -116,7 +172,7 @@ public partial class LabPointerGrabComponent : Node2D
         if (_pendingPress)
         {
             _pendingPress = false;
-            if (!Grab.IsGrabbing && TryPick(cursor, out RigidBody2D? body))
+            if (tool == ToolId.Grab && !Grab.IsGrabbing && TryPick(cursor, out RigidBody2D? body))
             {
                 if (Grab.TryGrab(body!, cursor))
                 {

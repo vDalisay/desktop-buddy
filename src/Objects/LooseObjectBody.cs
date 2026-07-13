@@ -1,4 +1,5 @@
 using DesktopBuddy.App;
+using DesktopBuddy.Interaction;
 using Godot;
 
 namespace DesktopBuddy.Objects;
@@ -7,16 +8,22 @@ namespace DesktopBuddy.Objects;
 /// Minimal loose physics-object prototype (ROADMAP.md Milestone 1: "loose-object
 /// prototype"). The full registry, 24-object cap/eviction, and per-tool presets
 /// arrive with the tool catalogue (Milestone 5); this is only enough to prove the
-/// grab tether acquires a non-buddy body through the same contract.
+/// grab tether acquires a non-buddy body through the same contract. Impacts
+/// attribute to the generic loose-object source until originating-throw
+/// attribution lands with the registry (RAGDOLL §7.1).
 /// </summary>
 [GlobalClass]
-public partial class LooseObjectBody : RigidBody2D
+public partial class LooseObjectBody : RigidBody2D, IImpactSource
 {
     private const float OutlineWidth = 2.0f;
     private static readonly Color OutlineColor = new("183042");
     private static readonly Color FillColor = new("ffd27a");
 
     public float Radius { get; private set; } = 12.0f;
+
+    public int InteractionId { get; } = InteractionIds.Next();
+
+    public int ContentId => ImpactContent.LooseObject;
 
     public void Configure(float radius, float mass)
     {

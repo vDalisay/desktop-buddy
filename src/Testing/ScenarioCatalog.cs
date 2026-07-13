@@ -26,6 +26,11 @@ public static class ScenarioCatalog
         ["idle_soak_ci"] = () => new IdleSoakScenario(3 * 60 * 120),
         ["repeat_envelope"] = () => new RepeatEnvelopeScenario(),
         ["dual_profile_smoke"] = () => new DualProfileSmokeScenario(),
+        ["impact_dedup"] = () => new ImpactDedupScenario(),
+        ["knockout_window"] = () => new KnockoutWindowScenario(),
+        ["payout_by_region"] = () => new PayoutByRegionScenario(),
+        ["pet_tickle_mood"] = () => new PetTickleMoodScenario(),
+        ["m3_presentation"] = () => new M3PresentationScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

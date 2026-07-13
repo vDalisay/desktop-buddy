@@ -156,7 +156,17 @@ payout multiplier + `KnockoutTriggered` edge for the semantic event);
 `RewardLedger.Deposit` added for passive income; an unpolled elapsed feedback burst is
 queued instead of overwritten. Wiring hazards recorded under Task 9.
 
-**Remaining:** Task 9 Godot wiring (contacts→pipeline, Boxing Glove collider, Pet/Tickle
-stroke detection, headless scenarios), Task 10 reaction/expression/sound/fear resistance,
-Task 11 money HUD + debug panels, Task 12 owner-manual exit gate. Tasks 9–11 need the
-Godot assembly + headless runner (close any open editor first per the toolchain gotcha).
+**Tasks 9–11 DONE (2026-07-13):** authoritative `RigidBody2D` contacts now flow through
+the shared router/pain/ledger/mood pipeline in both `BuddyLab` and the normal sandbox.
+The physical Boxing Glove, Pet/Tickle stroke detector, reaction priority, original PCM
+robot chirps, mood/tool-history fear resistance, compact money HUD, and development-only
+telemetry are composed through focused typed components. The committed Godot coverage is
+`impact_dedup`, `knockout_window`, `payout_by_region`, `pet_tickle_mood`, and
+`m3_presentation`; `m3_glove_strike` exercises tool selection and the strike through the
+real input queue and proves selection alone does not pay. Final verification: solution
+build 0 warnings/errors, domain suite 195/195, all listed scenarios, M1
+`grab_resistance`, normal `boot_smoke`, and the M3 journey pass on pinned Godot 4.6.1.
+
+**Remaining:** Task 12 owner-manual exit gate on real Windows. The owner must accept
+interaction feel and the compact HUD; this tuning/visual judgment is not replaced by the
+automated green suite.

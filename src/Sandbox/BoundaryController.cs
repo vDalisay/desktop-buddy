@@ -1,16 +1,20 @@
 using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Physics;
+using DesktopBuddy.Interaction;
 using Godot;
 
 namespace DesktopBuddy.Sandbox;
 
 /// <summary>
 /// Owns room wall geometry and the world camera. Resize/zoom requests are
-/// queued and applied only from the owning root's fixed-tick route.
+/// queued and applied only from the owning root's fixed-tick route. As an
+/// <see cref="IImpactSource"/>, hard wall/floor impacts above the calibrated
+/// threshold enter the pain pipeline attributed to the room boundary
+/// (RAGDOLL §7.1); all four walls are one body and share one episode source.
 /// </summary>
 [GlobalClass]
-public partial class BoundaryController : StaticBody2D
+public partial class BoundaryController : StaticBody2D, IImpactSource
 {
     [Export] public BoundaryProfile Profile { get; set; } = null!;
     [Export] public CollisionShape2D Floor { get; set; } = null!;
@@ -28,6 +32,10 @@ public partial class BoundaryController : StaticBody2D
     public Rect2 InnerBounds { get; private set; }
     public int AppliedLayoutCount { get; private set; }
     public bool IsInitialized { get; private set; }
+
+    public int InteractionId { get; } = InteractionIds.Next();
+
+    public int ContentId => ImpactContent.RoomBoundary;
 
     public void Initialize(Vector2I clientSize, double storedZoom)
     {

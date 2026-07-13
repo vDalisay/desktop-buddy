@@ -18,6 +18,7 @@ public enum CareKind
 public sealed class CareModel
 {
     public const double SecondsPerReward = 3.0;
+    private const double ThresholdEpsilon = 1e-9;
 
     private readonly double[] _accumulated = new double[2];
 
@@ -36,9 +37,13 @@ public sealed class CareModel
         _accumulated[index] += validContactSeconds;
 
         int awards = 0;
-        while (_accumulated[index] >= SecondsPerReward)
+        while (_accumulated[index] + ThresholdEpsilon >= SecondsPerReward)
         {
             _accumulated[index] -= SecondsPerReward;
+            if (_accumulated[index] < 0.0 && _accumulated[index] > -ThresholdEpsilon)
+            {
+                _accumulated[index] = 0.0;
+            }
             awards++;
         }
 

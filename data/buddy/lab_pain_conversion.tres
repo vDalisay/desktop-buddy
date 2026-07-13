@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="PainConversionProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Interaction/PainConversionProfile.cs" id="1_pain"]
+
+[resource]
+resource_name = "ProvisionalM3PainConversion"
+script = ExtResource("1_pain")
+ImpulseAnchors = PackedFloat32Array(350, 700, 1500, 3000)
+PainAnchors = PackedFloat32Array(0, 20, 55, 100)
+MinimumImpulse = 350.0
+CashPerPain = 1.0

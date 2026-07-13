@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="BoxingGloveProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/BoxingGloveProfile.cs" id="1_glove"]
+
+[resource]
+resource_name = "ProvisionalM3BoxingGlove"
+script = ExtResource("1_glove")
+Radius = 14.0
+Mass = 3.0
+Stiffness = 900.0
+Damping = 45.0
+MaximumForce = 30000.0
+LinearDamp = 1.0

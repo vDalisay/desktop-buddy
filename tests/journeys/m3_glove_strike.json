@@ -1,0 +1,19 @@
+{
+  "id": "m3_glove_strike",
+  "description": "Select the Boxing Glove through input, prove activation alone pays nothing, then swing through the buddy and observe semantic payout/HUD feedback.",
+  "milestone": 3,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m3_glove_strike",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "glove_selected" },
+    { "predicate": "tool_activation_does_not_pay" },
+    { "predicate": "glove_strike_paid" },
+    { "predicate": "money_hud_updated" },
+    { "predicate": "reward_feedback_visible" }
+  ]
+}

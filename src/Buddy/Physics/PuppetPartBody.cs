@@ -5,6 +5,19 @@ using Godot;
 namespace DesktopBuddy.Buddy.Physics;
 
 /// <summary>
+/// One raw solver contact observed on a part during the last completed physics
+/// step, before deduplication (RAGDOLL §7.1). The impact pipeline consumes these
+/// on the following fixed tick — accepted pain trails physical contact by one
+/// 120 Hz tick by design (ARCHITECTURE §23).
+/// </summary>
+public readonly record struct RawPartContact(
+    GodotObject? Collider,
+    float Impulse,
+    float RelativeSpeed,
+    Vector2 Point,
+    Vector2 Normal);
+
+/// <summary>
 /// One authoritative circular rigid body. It owns only body configuration and
 /// direct shape rendering; behavior and structural forces live in components.
 /// </summary>
@@ -13,7 +26,13 @@ public partial class PuppetPartBody : RigidBody2D
 {
     private const int CircleSegments = 40;
     private const float OutlineWidth = 2.0f;
+    // Must match MaxContactsReported: both contact signals and direct-state
+    // queries only see up to that many contacts (ARCHITECTURE §23).
+    private const int ContactBufferSize = 8;
     private static readonly Color OutlineColor = new("183042");
+
+    private readonly RawPartContact[] _pendingContacts = new RawPartContact[ContactBufferSize];
+    private string _face = string.Empty;
 
     [Export] public BuddyPartId PartId { get; set; }
     [Export] public CollisionShape2D Collider { get; set; } = null!;
@@ -22,6 +41,24 @@ public partial class PuppetPartBody : RigidBody2D
     public Color FillColor { get; private set; } = new("7ac7ff");
     public bool HasSupportContact { get; private set; }
     public int SupportContactCount { get; private set; }
+    public int PendingContactCount { get; private set; }
+
+    public RawPartContact GetPendingContact(int index) => _pendingContacts[index];
+
+    /// <summary>
+    /// Marks the buffered contacts consumed. The next completed physics step
+    /// refills the buffer; a frozen/paused body simply leaves it empty, so the
+    /// pipeline can never read the same step's contacts twice.
+    /// </summary>
+    public void ClearPendingContacts() => PendingContactCount = 0;
+
+    /// <summary>Presentation-only face text; gameplay state is owned elsewhere.</summary>
+    public void SetFace(string face)
+    {
+        if (_face == face) return;
+        _face = face;
+        QueueRedraw();
+    }
 
     public void Configure(PuppetPartDefinition definition, Vector2 globalOrigin)
     {
@@ -51,7 +88,7 @@ public partial class PuppetPartBody : RigidBody2D
         CollisionMask = CollisionLayers.MaskBuddyParts;
         CanSleep = false;
         ContactMonitor = true;
-        MaxContactsReported = 8;
+        MaxContactsReported = ContactBufferSize;
         QueueRedraw();
     }
 
@@ -65,10 +102,28 @@ public partial class PuppetPartBody : RigidBody2D
     {
         HasSupportContact = false;
         SupportContactCount = 0;
+        PendingContactCount = 0;
         int contactCount = state.GetContactCount();
         for (int index = 0; index < contactCount; index++)
         {
             GodotObject? colliderObject = state.GetContactColliderObject(index);
+
+            // Buffer every solver contact for the impact pipeline. Buddy parts
+            // never collide with each other (CollisionLayers), so each entry is
+            // an external source: room bounds, loose object, or physical tool.
+            if (PendingContactCount < ContactBufferSize)
+            {
+                float impulse = state.GetContactImpulse(index).Length();
+                float relativeSpeed =
+                    (state.GetContactColliderVelocityAtPosition(index) -
+                     state.GetContactLocalVelocityAtPosition(index)).Length();
+                Vector2 point = state.Transform * state.GetContactLocalPosition(index);
+                Vector2 normal = state.Transform.BasisXform(state.GetContactLocalNormal(index)).Normalized();
+                _pendingContacts[PendingContactCount] =
+                    new RawPartContact(colliderObject, impulse, relativeSpeed, point, normal);
+                PendingContactCount++;
+            }
+
             if (colliderObject is not CollisionObject2D collider ||
                 (collider.CollisionLayer & CollisionLayers.RoomBounds) == 0)
             {
@@ -95,5 +150,16 @@ public partial class PuppetPartBody : RigidBody2D
     {
         DrawCircle(Vector2.Zero, Radius, FillColor, true, -1.0f, true);
         DrawArc(Vector2.Zero, Radius, 0.0f, Mathf.Tau, CircleSegments, OutlineColor, OutlineWidth, true);
+        if (PartId == BuddyPartId.Head && !string.IsNullOrEmpty(_face))
+        {
+            DrawString(
+                ThemeDB.FallbackFont,
+                new Vector2(-Radius, 6.0f),
+                _face,
+                HorizontalAlignment.Center,
+                Radius * 2.0f,
+                14,
+                OutlineColor);
+        }
     }
 }

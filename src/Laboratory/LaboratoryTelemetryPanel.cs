@@ -53,6 +53,9 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
     [Export] public Label InstructionsLabel { get; set; } = null!;
     [Export] public Label TelemetryLabel { get; set; } = null!;
 
+    // Optional M3 interaction pipeline readout; the dual-profile lab leaves it unset.
+    [Export] public Interaction.InteractionDamageComponent? Pipeline { get; set; }
+
     public bool IsInitialized { get; private set; }
     public LaboratoryTelemetrySnapshot Snapshot { get; private set; }
 
@@ -75,6 +78,7 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             "Left-drag: grab / throw   Right-click: drop\n" +
             "P: pause   .: single tick   U: limp/wake\n" +
             "Shift+U: reseed   1/2/3/4: simulation speed\n" +
+            "G: grab  B: glove  F: pet  T: tickle\n" +
             "H: hide/show this panel";
         IsInitialized = true;
         RefreshNow();
@@ -137,8 +141,21 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             links strain {snapshot.MaximumLinkStrain:F3} | force {snapshot.MaximumLinkForce:F0}
             grab {grab} | stretch {snapshot.GrabExtension:F1} | force {snapshot.GrabForce:F0}
             release {snapshot.LastReleaseSpeed:F1} | corrections {snapshot.LastContainmentCorrections}
-            room {snapshot.RoomWidth:F0}x{snapshot.RoomHeight:F0} | zoom {snapshot.EffectiveZoom * 100.0:F0}%
+            room {snapshot.RoomWidth:F0}x{snapshot.RoomHeight:F0} | zoom {snapshot.EffectiveZoom * 100.0:F0}%{PipelineLine()}
             """);
+    }
+
+    private string PipelineLine()
+    {
+        if (Pipeline is null || !GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized)
+        {
+            return string.Empty;
+        }
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"\ntool {Pipeline.SelectedTool} | mood {Pipeline.Mood:F1} {Pipeline.MoodBand} | ${Pipeline.BalanceCredits}" +
+            $"\npain {Pipeline.LastKnockoutState.RollingPain:F0} | KO {Pipeline.KnockoutCount} | hits {Pipeline.ScoredImpactCount}");
     }
 
     private LaboratoryTelemetrySnapshot CaptureSnapshot()

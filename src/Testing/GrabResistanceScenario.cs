@@ -81,7 +81,7 @@ public sealed class GrabResistanceScenario : IScenario
     {
         PuppetPartBody torso = lab.Buddy.Rig.Torso;
         Vector2 cursor = torso.GlobalPosition + new Vector2(70.0f, 0.0f);
-        lab.Buddy.GrabResistance.FearLevel = fear;
+        lab.Reactions.FearOverride = fear;
         lab.Grab.TryGrab(torso, torso.GlobalPosition);
         lab.Grab.MoveCursor(cursor);
 
@@ -106,7 +106,7 @@ public sealed class GrabResistanceScenario : IScenario
 
         float finalExtension = lab.Grab.Telemetry.Extension;
         lab.Grab.Release();
-        lab.Buddy.GrabResistance.FearLevel = 0.0f;
+        lab.Reactions.FearOverride = null;
         return new HoldResult(finalExtension, minResistForceX, resistanceActive, broke);
     }
 

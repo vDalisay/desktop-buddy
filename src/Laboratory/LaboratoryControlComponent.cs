@@ -2,6 +2,8 @@ using System;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Interaction;
 using Godot;
 
 namespace DesktopBuddy.Laboratory;
@@ -30,6 +32,10 @@ public partial class LaboratoryControlComponent : Node
     private double _originalTimeScale = 1.0;
 
     [Export] public BuddyRoot Buddy { get; set; } = null!;
+
+    // Optional: tool-selection hotkeys route here when the owning lab wires the
+    // interaction pipeline (M3); the dual-profile lab leaves this unset.
+    [Export] public InteractionDamageComponent? Pipeline { get; set; }
 
     public bool IsInitialized { get; private set; }
     public bool IsPaused { get; private set; }
@@ -179,12 +185,26 @@ public partial class LaboratoryControlComponent : Node
             case Key.Key4:
                 SetTimeScale(2.0);
                 break;
+            case Key.G when HasPipeline:
+                Pipeline!.SelectTool(ToolId.Grab);
+                break;
+            case Key.B when HasPipeline:
+                Pipeline!.SelectTool(ToolId.BoxingGlove);
+                break;
+            case Key.T when HasPipeline:
+                Pipeline!.SelectTool(ToolId.Tickle);
+                break;
+            case Key.F when HasPipeline:
+                Pipeline!.SelectTool(ToolId.Pet);
+                break;
             default:
                 return;
         }
 
         GetViewport().SetInputAsHandled();
     }
+
+    private bool HasPipeline => Pipeline is not null && GodotObject.IsInstanceValid(Pipeline);
 
     public override void _ExitTree()
     {

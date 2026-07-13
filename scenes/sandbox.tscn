@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=22 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
@@ -6,6 +6,20 @@
 [ext_resource type="Script" path="res://src/Sandbox/BoundaryController.cs" id="4_boundary"]
 [ext_resource type="Resource" path="res://data/buddy/lab_boundary.tres" id="5_boundary_profile"]
 [ext_resource type="Script" path="res://src/Sandbox/SandboxBorder.cs" id="6_border"]
+[ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="7_buddy"]
+[ext_resource type="Script" path="res://src/Grab/GrabTetherController.cs" id="8_grab"]
+[ext_resource type="Resource" path="res://data/buddy/lab_grab_tether.tres" id="9_grab_profile"]
+[ext_resource type="Script" path="res://src/Laboratory/LabPointerGrabComponent.cs" id="10_pointer"]
+[ext_resource type="Script" path="res://src/Sandbox/PuppetRoomContainmentComponent.cs" id="11_containment"]
+[ext_resource type="Script" path="res://src/Interaction/InteractionDamageComponent.cs" id="12_pipeline"]
+[ext_resource type="Resource" path="res://data/buddy/lab_pain_conversion.tres" id="13_pain_profile"]
+[ext_resource type="Script" path="res://src/Tools/BoxingGloveController.cs" id="14_glove"]
+[ext_resource type="Resource" path="res://data/buddy/lab_boxing_glove.tres" id="15_glove_profile"]
+[ext_resource type="Script" path="res://src/Tools/CareStrokeComponent.cs" id="16_care"]
+[ext_resource type="Script" path="res://src/Buddy/Presentation/BuddyReactionComponent.cs" id="17_reactions"]
+[ext_resource type="Resource" path="res://data/buddy/lab_reaction.tres" id="18_reaction_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Presentation/ReactionAudioPresenter.cs" id="19_audio"]
+[ext_resource type="Script" path="res://src/UI/MoneyHudPresenter.cs" id="20_hud"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -13,11 +27,33 @@ size = Vector2(480, 16)
 [sub_resource type="RectangleShape2D" id="VerticalBoundary"]
 size = Vector2(16, 360)
 
-[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries")]
+[sub_resource type="StyleBoxFlat" id="MoneyHudStyle"]
+bg_color = Color(0.055, 0.09, 0.125, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.95, 0.75, 0.25, 0.9)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Glove", "CareStroke", "Reactions", "ReactionAudio", "MoneyHud")]
 script = ExtResource("1_sandbox")
 Window = NodePath("DesktopWindowController")
 Shell = NodePath("DesktopShellController")
 Boundaries = NodePath("RoomBounds")
+Buddy = NodePath("Buddy")
+Grab = NodePath("GrabTetherController")
+Pointer = NodePath("PointerToolInput")
+Containment = NodePath("PuppetRoomContainmentComponent")
+Pipeline = NodePath("InteractionPipeline")
+Glove = NodePath("BoxingGloveController")
+CareStroke = NodePath("CareStrokeComponent")
+Reactions = NodePath("BuddyReactionComponent")
+ReactionAudio = NodePath("ReactionAudioPresenter")
+MoneyHud = NodePath("OverlayUi/MoneyHud")
 
 [node name="DesktopWindowController" type="Node" parent="."]
 script = ExtResource("2_window")
@@ -25,6 +61,9 @@ script = ExtResource("2_window")
 [node name="WorldCamera" type="Camera2D" parent="."]
 position = Vector2(240, 180)
 process_callback = 0
+
+[node name="Buddy" parent="." instance=ExtResource("7_buddy")]
+position = Vector2(240, 260)
 
 [node name="RoomBounds" type="StaticBody2D" parent="." node_paths=PackedStringArray("Floor", "Ceiling", "LeftWall", "RightWall", "WorldCamera")]
 collision_layer = 1
@@ -58,7 +97,94 @@ z_index = -10
 script = ExtResource("6_border")
 Boundaries = NodePath("../RoomBounds")
 
+[node name="GrabTetherController" type="Node2D" parent="."]
+script = ExtResource("8_grab")
+Profile = ExtResource("9_grab_profile")
+
+[node name="PointerToolInput" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "GloveTool", "CareTool")]
+script = ExtResource("10_pointer")
+Grab = NodePath("../GrabTetherController")
+Pipeline = NodePath("../InteractionPipeline")
+GloveTool = NodePath("../BoxingGloveController")
+CareTool = NodePath("../CareStrokeComponent")
+
+[node name="InteractionPipeline" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Grab")]
+script = ExtResource("12_pipeline")
+Buddy = NodePath("../Buddy")
+Grab = NodePath("../GrabTetherController")
+Profile = ExtResource("13_pain_profile")
+
+[node name="BoxingGloveController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline")]
+script = ExtResource("14_glove")
+Profile = ExtResource("15_glove_profile")
+Pipeline = NodePath("../InteractionPipeline")
+
+[node name="CareStrokeComponent" type="Node" parent="." node_paths=PackedStringArray("Pipeline")]
+script = ExtResource("16_care")
+Pipeline = NodePath("../InteractionPipeline")
+
+[node name="BuddyReactionComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Pipeline")]
+script = ExtResource("17_reactions")
+Buddy = NodePath("../Buddy")
+Pipeline = NodePath("../InteractionPipeline")
+Profile = ExtResource("18_reaction_profile")
+
+[node name="ReactionAudioPresenter" type="Node" parent="." node_paths=PackedStringArray("Pipeline", "Player")]
+script = ExtResource("19_audio")
+Pipeline = NodePath("../InteractionPipeline")
+Profile = ExtResource("18_reaction_profile")
+Player = NodePath("AudioStreamPlayer")
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ReactionAudioPresenter"]
+
+[node name="PuppetRoomContainmentComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Recovery")]
+script = ExtResource("11_containment")
+Rig = NodePath("../Buddy/PuppetRig")
+Recovery = NodePath("../Buddy/RecoveryComponent")
+Profile = ExtResource("5_boundary_profile")
+
 [node name="DesktopShellController" type="Node" parent="." node_paths=PackedStringArray("Window", "Boundaries")]
 script = ExtResource("3_shell")
 Window = NodePath("../DesktopWindowController")
 Boundaries = NodePath("../RoomBounds")
+
+[node name="OverlayUi" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="MoneyHud" type="PanelContainer" parent="OverlayUi" node_paths=PackedStringArray("Pipeline", "BalanceLabel", "RewardLabel")]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -112.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 62.0
+grow_horizontal = 0
+theme_override_styles/panel = SubResource("MoneyHudStyle")
+script = ExtResource("20_hud")
+Pipeline = NodePath("../../InteractionPipeline")
+BalanceLabel = NodePath("Margin/VBox/Balance")
+RewardLabel = NodePath("Margin/VBox/Reward")
+
+[node name="Margin" type="MarginContainer" parent="OverlayUi/MoneyHud"]
+layout_mode = 2
+theme_override_constants/margin_left = 8
+theme_override_constants/margin_top = 5
+theme_override_constants/margin_right = 8
+theme_override_constants/margin_bottom = 5
+
+[node name="VBox" type="VBoxContainer" parent="OverlayUi/MoneyHud/Margin"]
+layout_mode = 2
+
+[node name="Balance" type="Label" parent="OverlayUi/MoneyHud/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.9, 0.45, 1)
+theme_override_font_sizes/font_size = 16
+text = "$0"
+horizontal_alignment = 2
+
+[node name="Reward" type="Label" parent="OverlayUi/MoneyHud/Margin/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.45, 1, 0.65, 1)
+text = "+$0.0"
+horizontal_alignment = 2

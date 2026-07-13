@@ -317,6 +317,10 @@ public partial class JourneyRunner : Node
             if (exerciseSetup.TryGetProperty("advance_ticks", out JsonElement advance) && advance.TryGetInt32(out int configured)) ticks = configured;
             await ExerciseIdleSoakAsync(state, lab, ticks);
         }
+        else if (exercise == "m3_glove_strike")
+        {
+            await ExerciseM3GloveStrikeAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -416,6 +420,58 @@ public partial class JourneyRunner : Node
         state["soak_connected"] = result.MaximumStrain <= bounds.MaximumLinkStrain;
         state["soak_contained"] = result.Contained;
         state["soak_envelope_written"] = lab.TelemetryRecorder is not null && System.IO.File.Exists(lab.TelemetryRecorder.EnvelopePath);
+    }
+
+    private async System.Threading.Tasks.Task ExerciseM3GloveStrikeAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.B, Pressed = true });
+        Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.B, Pressed = false });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        for (int tick = 0; tick < 12; tick++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        state["glove_selected"] = lab.Pipeline.SelectedTool == DesktopBuddy.Domain.Tools.ToolId.BoxingGlove;
+        state["tool_activation_does_not_pay"] = lab.Pipeline.BalanceMilliCredits == 0;
+
+        Vector2 previous = new(32.0f, lab.Buddy.Rig.Head.GlobalPosition.Y);
+        await MovePointerAsync(previous, Vector2.Zero);
+        for (int tick = 0; tick < 120; tick++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        for (int pass = 0; pass < 6 && lab.Pipeline.ScoredImpactCount == 0; pass++)
+        {
+            float x = pass % 2 == 0 ? 448.0f : 32.0f;
+            Vector2 to = new(x, lab.Buddy.Rig.Head.GlobalPosition.Y);
+            await MovePointerAsync(to, to - previous);
+            previous = to;
+            for (int tick = 0; tick < 90 && lab.Pipeline.ScoredImpactCount == 0; tick++)
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+        for (int tick = 0; tick < 40 && !lab.MoneyHud.RewardLabel.Visible; tick++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+        state["glove_strike_paid"] = lab.Pipeline.ScoredImpactCount > 0 && lab.Pipeline.BalanceMilliCredits > 0;
+        state["money_hud_updated"] = lab.MoneyHud.BalanceLabel.Text == "$" + lab.Pipeline.BalanceCredits;
+        state["reward_feedback_visible"] = lab.MoneyHud.RewardLabel.Visible;
+        Log.Info("Journey", $"M3 glove raw={lab.Pipeline.RawContactCount} accepted={lab.Pipeline.AcceptedEpisodeCount} " +
+            $"scored={lab.Pipeline.ScoredImpactCount} maxImpulse={lab.Pipeline.MaxRawImpulse:F1} " +
+            $"active={lab.Glove.IsActive} position={lab.Glove.Glove?.GlobalPosition}");
+
+        async System.Threading.Tasks.Task MovePointerAsync(Vector2 world, Vector2 relative)
+        {
+            Vector2 viewport = GetViewport().GetCanvasTransform() * world;
+            Input.ParseInputEvent(new InputEventMouseMotion
+            {
+                Position = viewport,
+                GlobalPosition = viewport,
+                Relative = relative,
+                Velocity = relative * 120.0f,
+            });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
     }
 
     private async System.Threading.Tasks.Task ExecuteStepsAsync(

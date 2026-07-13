@@ -10,16 +10,16 @@ public sealed class CareModelTests
     {
         var care = new CareModel();
 
-        // Feed in ~1/120 s ticks up to just under 3 s: no award yet.
+        // Feed 359 exact 1/120 s ticks: no award yet.
         int awards = 0;
-        for (double t = 0.0; t < 2.999; t += 1.0 / 120.0)
+        for (int tick = 0; tick < 359; tick++)
         {
             awards += care.AccumulateValidContact(CareKind.Pet, 1.0 / 120.0);
         }
 
         Assert.Equal(0, awards);
 
-        // The tick that crosses 3 s of valid contact yields exactly one +1.
+        // Tick 360 reaches exactly 3 s and yields one +1 despite binary-float noise.
         awards += care.AccumulateValidContact(CareKind.Pet, 1.0 / 120.0);
         Assert.Equal(1, awards);
     }
