@@ -1,0 +1,18 @@
+{
+  "id": "m35_presentation_toggle",
+  "description": "Toggle the frontal 3D presentation through the real laboratory V-key input path and restore the legacy comparison view.",
+  "milestone": 3.5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m35_presentation_toggle",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "presentation_starts_legacy" },
+    { "predicate": "presentation_toggle_enters_mii3d" },
+    { "predicate": "presentation_toggle_restores_legacy" },
+    { "predicate": "lab_finite" }
+  ]
+}

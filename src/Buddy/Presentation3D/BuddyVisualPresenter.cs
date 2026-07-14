@@ -211,6 +211,7 @@ public partial class BuddyVisualPresenter : Node3D
                 {
                     Name = "Face",
                     FontSize = Profile.FaceTextSize,
+                    PixelSize = Profile.FacePixelSize,
                     Modulate = Profile.FaceColor,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,

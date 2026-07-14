@@ -3,12 +3,15 @@ using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Platform;
+using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Sandbox;
 using DesktopBuddy.Tools;
 using DesktopBuddy.UI;
@@ -42,6 +45,9 @@ public partial class SandboxRoot : Node2D
     [Export] public ReactionAudioPresenter ReactionAudio { get; set; } = null!;
     [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
     [Export] public MoneyHudPresenter MoneyHud { get; set; } = null!;
+    [Export] public BuddyVisualPresenter VisualPresenter { get; set; } = null!;
+    [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
+    [Export] public PresentationMode Mode { get; set; } = PresentationMode.LegacyCircles;
 
     public override void _Ready()
     {
@@ -54,7 +60,9 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
             !GodotObject.IsInstanceValid(ImpactFeedback) ||
-            !GodotObject.IsInstanceValid(MoneyHud))
+            !GodotObject.IsInstanceValid(MoneyHud) ||
+            !GodotObject.IsInstanceValid(VisualPresenter) ||
+            !GodotObject.IsInstanceValid(GloveVisual))
         {
             throw new InvalidOperationException(
                 "SandboxRoot requires an injected window controller, shell controller, and boundary.");
@@ -71,10 +79,20 @@ public partial class SandboxRoot : Node2D
         ReactionAudio.Initialize();
         ImpactFeedback.Initialize();
         MoneyHud.Initialize();
+        VisualPresenter.Initialize();
+        GloveVisual.Initialize(
+            Glove.Profile.Radius,
+            Glove.Profile.VisualColor,
+            Glove.Profile.VisualDepthOffset);
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Buddy.Recovery.HardRecovered += OnHardRecovered;
         Pipeline.ToolChanged += OnToolChanged;
+        Glove.BodySpawned += OnGloveBodySpawned;
+        Glove.BodyDespawned += OnGloveBodyDespawned;
+
+        ApplyRunnerPresentationOverride();
+        SetPresentationMode(Mode);
 
         Log.Info("Sandbox", "SandboxRoot composed with desktop shell.");
     }
@@ -82,6 +100,8 @@ public partial class SandboxRoot : Node2D
     public override void _PhysicsProcess(double delta)
     {
         Pointer.ResolvePendingInput();
+        VisualPresenter.CaptureTickSnapshot();
+        GloveVisual.CaptureTickSnapshot();
         // Shell drains a queued resize into a boundary request; the boundary
         // applies pending layout changes on this physics boundary.
         Shell.PhysicsTick();
@@ -104,6 +124,11 @@ public partial class SandboxRoot : Node2D
         if (GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Buddy.Recovery))
             Buddy.Recovery.HardRecovered -= OnHardRecovered;
         if (GodotObject.IsInstanceValid(Pipeline)) Pipeline.ToolChanged -= OnToolChanged;
+        if (GodotObject.IsInstanceValid(Glove))
+        {
+            Glove.BodySpawned -= OnGloveBodySpawned;
+            Glove.BodyDespawned -= OnGloveBodyDespawned;
+        }
     }
 
     private void OnHardRecovered(HardRecoveryReason reason)
@@ -115,4 +140,32 @@ public partial class SandboxRoot : Node2D
     {
         if (previous == ToolId.Grab && Grab.IsGrabbing) Grab.Release();
     }
+
+    public void SetPresentationMode(PresentationMode mode)
+    {
+        Mode = mode;
+        bool show3D = mode == PresentationMode.Mii3D;
+        foreach (PuppetPartBody part in Buddy.Rig.Parts)
+        {
+            part.Visible = !show3D;
+        }
+
+        VisualPresenter.Visible = show3D;
+        GloveVisual.SetPresentationActive(show3D);
+    }
+
+    private void ApplyRunnerPresentationOverride()
+    {
+        RunnerPresentation? presentation = RunnerArguments.Parse(OS.GetCmdlineUserArgs()).Presentation;
+        if (presentation is not null)
+        {
+            Mode = presentation == RunnerPresentation.Mii3D
+                ? PresentationMode.Mii3D
+                : PresentationMode.LegacyCircles;
+        }
+    }
+
+    private void OnGloveBodySpawned(BoxingGloveBody body) => GloveVisual.Attach(body);
+
+    private void OnGloveBodyDespawned(BoxingGloveBody body) => GloveVisual.Detach(body);
 }

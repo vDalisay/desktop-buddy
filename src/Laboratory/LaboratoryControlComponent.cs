@@ -31,6 +31,8 @@ public partial class LaboratoryControlComponent : Node
     private bool _freezeAfterStep;
     private double _originalTimeScale = 1.0;
 
+    public event Action? PresentationToggleRequested;
+
     [Export] public BuddyRoot Buddy { get; set; } = null!;
 
     // Optional: tool-selection hotkeys route here when the owning lab wires the
@@ -196,6 +198,9 @@ public partial class LaboratoryControlComponent : Node
                 break;
             case Key.F when HasPipeline:
                 Pipeline!.SelectTool(ToolId.Pet);
+                break;
+            case Key.V:
+                PresentationToggleRequested?.Invoke();
                 break;
             default:
                 return;

@@ -30,6 +30,9 @@ public partial class BoxingGloveController : Node2D
     private bool _hasCursor;
     private float _armingTravel;
 
+    public event Action<BoxingGloveBody>? BodySpawned;
+    public event Action<BoxingGloveBody>? BodyDespawned;
+
     public bool IsInitialized { get; private set; }
     public bool IsActive => GodotObject.IsInstanceValid(_glove);
     public BoxingGloveBody? Glove => GodotObject.IsInstanceValid(_glove) ? _glove : null;
@@ -122,13 +125,16 @@ public partial class BoxingGloveController : Node2D
         _previousCursor = _cursor;
         _armingTravel = 0.0f;
         _glove = glove;
+        BodySpawned?.Invoke(glove);
     }
 
     private void Despawn()
     {
         if (GodotObject.IsInstanceValid(_glove))
         {
-            _glove!.QueueFree();
+            BoxingGloveBody glove = _glove!;
+            BodyDespawned?.Invoke(glove);
+            glove.QueueFree();
         }
 
         _glove = null;

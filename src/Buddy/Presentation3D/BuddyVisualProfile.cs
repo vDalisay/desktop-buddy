@@ -23,6 +23,8 @@ public partial class BuddyVisualProfile : GameResource
     public float ConnectorMinimumLength { get; set; } = 1.0f;
     [Export(PropertyHint.Range, "1,128,1,or_greater")]
     public int FaceTextSize { get; set; } = 14;
+    [Export(PropertyHint.Range, "0.001,4,0.001,or_greater")]
+    public float FacePixelSize { get; set; } = 1.0f;
     [Export] public Color FaceColor { get; set; } = new("183042");
     [Export(PropertyHint.Range, "0.001,16,0.001,or_greater")]
     public float FaceDepthEpsilon { get; set; } = 0.1f;
@@ -140,9 +142,10 @@ public partial class BuddyVisualProfile : GameResource
             errors.Add("connector minimum length must be finite and positive");
         }
 
-        if (FaceTextSize <= 0 || !IsFiniteColor(FaceColor) || !IsFinitePositive(FaceDepthEpsilon))
+        if (FaceTextSize <= 0 || !IsFinitePositive(FacePixelSize) ||
+            !IsFiniteColor(FaceColor) || !IsFinitePositive(FaceDepthEpsilon))
         {
-            errors.Add("face text size, color, and depth epsilon are invalid");
+            errors.Add("face text size, pixel size, color, and depth epsilon are invalid");
         }
 
         return errors;

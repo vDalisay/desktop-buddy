@@ -21,6 +21,16 @@ public enum RunnerMode
 }
 
 /// <summary>
+/// Optional presentation override for automated comparison runs. The normal
+/// scene-authored default remains authoritative when no override is supplied.
+/// </summary>
+public enum RunnerPresentation
+{
+    Legacy,
+    Mii3D,
+}
+
+/// <summary>
 /// Parsed form of the headless runner / automation command-line contract
 /// (ROADMAP.md Milestone 0, AGENT_VERIFICATION_AND_E2E.md Sections 2-3):
 /// <code>
@@ -66,6 +76,7 @@ public sealed record RunnerArguments
     public string? ProfileB { get; init; }
     public string? DriveA { get; init; }
     public string? DriveB { get; init; }
+    public RunnerPresentation? Presentation { get; init; }
 
     /// <summary>
     /// Whether the development-only <c>AutomationDriver</c> should be composed.
@@ -91,6 +102,7 @@ public sealed record RunnerArguments
         string? artifactsDir = null;
         bool automationRequested = false;
         string? traceOut = null, promoteTrace = null, journeyOut = null, profileA = null, profileB = null, driveA = null, driveB = null;
+        RunnerPresentation? presentation = null;
 
         foreach (string raw in args)
         {
@@ -138,6 +150,7 @@ public sealed record RunnerArguments
                 case "profile-b": profileB = RequireValue(key, value); break;
                 case "drive-a": driveA = RequireValue(key, value); break;
                 case "drive-b": driveB = RequireValue(key, value); break;
+                case "presentation": presentation = ParsePresentation(RequireValue(key, value)); break;
                 default:
                     // Unknown flag: ignore (engine passthrough / forward compatibility).
                     break;
@@ -172,6 +185,7 @@ public sealed record RunnerArguments
             ProfileB = profileB,
             DriveA = driveA,
             DriveB = driveB,
+            Presentation = presentation,
         };
     }
 
@@ -195,4 +209,12 @@ public sealed record RunnerArguments
 
         return seed;
     }
+
+    private static RunnerPresentation ParsePresentation(string value) => value switch
+    {
+        "legacy" => RunnerPresentation.Legacy,
+        "mii3d" => RunnerPresentation.Mii3D,
+        _ => throw new ArgumentException(
+            $"--presentation must be 'legacy' or 'mii3d', got '{value}'.", nameof(value)),
+    };
 }

@@ -20,6 +20,9 @@ namespace DesktopBuddy.Platform;
 public partial class DesktopWindowController : Node, IDesktopWindowService
 {
     private const string Category = "Window";
+    // V-sync already caps rendering at the display rate. With V-sync disabled,
+    // cap this always-on overlay so it cannot free-spin a desktop GPU.
+    private const int VsyncOffMaximumFps = 240;
 
     private IWindowsDesktopAdapter _adapter = new EmulatedWindowsDesktopAdapter();
     private bool _headless;
@@ -139,6 +142,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         DisplayServer.WindowSetVsyncMode(settings.Vsync
             ? DisplayServer.VSyncMode.Enabled
             : DisplayServer.VSyncMode.Disabled);
+        Engine.MaxFps = settings.Vsync ? 0 : VsyncOffMaximumFps;
     }
 
     private void MoveTo(PixelRect rect)

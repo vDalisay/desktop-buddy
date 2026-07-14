@@ -13,3 +13,5 @@ MaximumForce = 80000.0
 LinearDamp = 0.5
 MinimumArmingTravel = 8.0
 WallClearance = 2.0
+VisualColor = Color(0.878431, 0.356863, 0.294118, 1)
+VisualDepthOffset = 144.0

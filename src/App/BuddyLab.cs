@@ -3,12 +3,15 @@ using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Laboratory;
+using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Sandbox;
 using DesktopBuddy.Tools;
 using DesktopBuddy.UI;
@@ -43,6 +46,9 @@ public partial class BuddyLab : Node2D
     [Export] public ReactionAudioPresenter ReactionAudio { get; set; } = null!;
     [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
     [Export] public MoneyHudPresenter MoneyHud { get; set; } = null!;
+    [Export] public BuddyVisualPresenter VisualPresenter { get; set; } = null!;
+    [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
+    [Export] public PresentationMode Mode { get; set; } = PresentationMode.LegacyCircles;
     public TelemetryRecorder? TelemetryRecorder { get; private set; }
 
     public override void _Ready()
@@ -56,7 +62,9 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
             !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
             !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
-            !GodotObject.IsInstanceValid(MoneyHud))
+            !GodotObject.IsInstanceValid(MoneyHud) ||
+            !GodotObject.IsInstanceValid(VisualPresenter) ||
+            !GodotObject.IsInstanceValid(GloveVisual))
         {
             throw new InvalidOperationException(
                 "BuddyLab requires injected buddy, controls, grab, pointer, boundaries, containment, telemetry, boundary visualization, and the interaction pipeline/tools.");
@@ -74,6 +82,11 @@ public partial class BuddyLab : Node2D
         ReactionAudio.Initialize();
         ImpactFeedback.Initialize();
         MoneyHud.Initialize();
+        VisualPresenter.Initialize();
+        GloveVisual.Initialize(
+            Glove.Profile.Radius,
+            Glove.Profile.VisualColor,
+            Glove.Profile.VisualDepthOffset);
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Vector2 viewportSize = GetViewport().GetVisibleRect().Size;
@@ -100,6 +113,12 @@ public partial class BuddyLab : Node2D
         // Leaving Grab drops the current interaction without changing selection
         // rules (RAGDOLL §9.1); the pipeline owns selection, the lab owns the tether.
         Pipeline.ToolChanged += OnToolChanged;
+        Controls.PresentationToggleRequested += OnPresentationToggleRequested;
+        Glove.BodySpawned += OnGloveBodySpawned;
+        Glove.BodyDespawned += OnGloveBodyDespawned;
+
+        ApplyRunnerPresentationOverride();
+        SetPresentationMode(Mode);
 
         Log.Info("BuddyLab", "BuddyLab composed with seeded six-body active puppet.");
     }
@@ -109,6 +128,10 @@ public partial class BuddyLab : Node2D
         // Pointer acquisition/cursor tracking stays responsive even while paused;
         // the tether only integrates force on a routed tick. Inert when headless.
         Pointer.ResolvePendingInput();
+        // Capture every engine tick, including paused lab ticks, so the manual
+        // 3D interpolation pair stays adjacent and cannot shimmer while frozen.
+        VisualPresenter.CaptureTickSnapshot();
+        GloveVisual.CaptureTickSnapshot();
 
         if (Controls.BeginPhysicsTick())
         {
@@ -167,6 +190,16 @@ public partial class BuddyLab : Node2D
             Pipeline.ToolChanged -= OnToolChanged;
         }
 
+        if (GodotObject.IsInstanceValid(Controls))
+        {
+            Controls.PresentationToggleRequested -= OnPresentationToggleRequested;
+        }
+        if (GodotObject.IsInstanceValid(Glove))
+        {
+            Glove.BodySpawned -= OnGloveBodySpawned;
+            Glove.BodyDespawned -= OnGloveBodyDespawned;
+        }
+
         TelemetryRecorder?.Complete();
     }
 
@@ -185,4 +218,37 @@ public partial class BuddyLab : Node2D
             Grab.Release();
         }
     }
+
+    public void SetPresentationMode(PresentationMode mode)
+    {
+        Mode = mode;
+        bool show3D = mode == PresentationMode.Mii3D;
+        foreach (PuppetPartBody part in Buddy.Rig.Parts)
+        {
+            part.Visible = !show3D;
+        }
+
+        VisualPresenter.Visible = show3D;
+        GloveVisual.SetPresentationActive(show3D);
+    }
+
+    private void OnPresentationToggleRequested() => SetPresentationMode(
+        Mode == PresentationMode.LegacyCircles
+            ? PresentationMode.Mii3D
+            : PresentationMode.LegacyCircles);
+
+    private void ApplyRunnerPresentationOverride()
+    {
+        RunnerPresentation? presentation = RunnerArguments.Parse(OS.GetCmdlineUserArgs()).Presentation;
+        if (presentation is not null)
+        {
+            Mode = presentation == RunnerPresentation.Mii3D
+                ? PresentationMode.Mii3D
+                : PresentationMode.LegacyCircles;
+        }
+    }
+
+    private void OnGloveBodySpawned(BoxingGloveBody body) => GloveVisual.Attach(body);
+
+    private void OnGloveBodyDespawned(BoxingGloveBody body) => GloveVisual.Detach(body);
 }

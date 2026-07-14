@@ -418,6 +418,39 @@ retain the midpoint), and the hard-recovery subscription is paired across tree e
 exit so a removed and re-added presenter cannot lose teleport snapping. Both cases have
 focused `m3_presentation` regression checks; the full quick suite remains green.
 
+**Task 5 (scene composition + presentation toggle) DONE (2026-07-14).** The laboratory
+and sandbox now compose the orthographic world camera, `BuddyVisualPresenter`, and a
+typed `PresentationMode` route without moving gameplay ownership out of the scene
+roots. The laboratory `V` key and the automation-only `--presentation=legacy|mii3d`
+override swap the legacy circles and 3D presenter symmetrically; both scene roots take
+the required unconditional physics snapshots even while laboratory simulation is
+paused. The committed `m35_presentation_toggle` journey drives the real `V` input and
+proves both visibility transitions while the rig remains finite. Defaults remain
+`LegacyCircles` pending Task 8's owner gate.
+
+**Task 6 (dynamic glove visual + frame policy) DONE (2026-07-14).** Added the reusable
+`Body2DVisual3D` dynamic-body tracker and routed the boxing glove controller's real
+spawn/despawn lifecycle into it. The glove's typed resource now owns its visual color
+and depth lane, while a narrow pulse source preserves the accepted impact squash and
+rotation without putting gameplay mutation in rendering. Visibility swaps hide the
+legacy glove only while its 3D counterpart is active. The desktop render policy now
+keeps the 120 Hz physics clock independent from rendering: V-sync is uncapped and the
+V-sync-Off fallback is capped at 240 fps.
+
+**Task 7 (parity verification) DONE (2026-07-14).** Added the `presentation_3d`
+scenario covering startup validation, six-part/five-connector construction, semantic
+face round-trip, supported and clamped camera projection, mode-independent strike
+mutation, and dynamic glove attach/pulse/detach. The scenario reports 0.0000 px maximum
+camera error. The real-input `m3_tool_feel` journey now also asserts that the pet `:3`
+face is screen-upright through the 2D-to-3D Y-flip. Explicit Mii3D reruns of the Task 7
+scenario/journey matrix passed, including the 21,600-tick high-refresh idle soak and
+ten-run repeat envelope. Final verification: build 0 warnings/errors, domain suite
+205/205, focused presentation scenario, both promoted journeys, full nine-step quick
+suite, and an MCP-driven Windows pass through `V` toggle, grab, glove strike/guard,
+knockout, and face states. The tiny default `Label3D` pixel scale found interactively
+was promoted into typed `FacePixelSize` data and a regression assertion. **Next: Task 8
+owner-manual A/B gate; no default flip or legacy demotion has been performed.**
+
 Amended 2026-07-14 after a code-verified review. Substantive changes: the 2D
 interpolated-transform API does not exist in the pinned 4.6.1 GodotSharp, so Task 4's
 manual snapshot path is the primary design with an exact pairing contract

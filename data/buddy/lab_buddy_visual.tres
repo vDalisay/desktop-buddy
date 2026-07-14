@@ -112,5 +112,6 @@ Connectors = Array[ExtResource("3_connector")]([SubResource("ConnectorHead"), Su
 CapsuleHeightScale = 2.5
 ConnectorMinimumLength = 1.0
 FaceTextSize = 14
+FacePixelSize = 1.0
 FaceColor = Color(0.094, 0.188, 0.259, 1)
 FaceDepthEpsilon = 0.1

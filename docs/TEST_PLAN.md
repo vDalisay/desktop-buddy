@@ -108,6 +108,11 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - An OS modal move/size loop followed by release produces no physics catch-up burst beyond the configured maximum physics steps per frame, and tick-counted gameplay timers do not jump.
 - Exercise the smallest legal room (`360x270` world units) for stability, and verify zoom levels that would shrink the room below that floor are unavailable while the stored zoom preference survives clamping.
 
+### Frontal 3D Presentation
+
+- The `presentation_3d` scenario validates the visual profile through startup validation, builds exactly six part meshes plus the configured connector graph and face, round-trips semantic face changes, and holds 2D/3D camera alignment below `0.5 px` across every supported zoom plus a resized client.
+- Runtime `LegacyCircles`/`Mii3D` toggles swap visibility without changing accepted pain, and the dynamic Boxing Glove counterpart attaches/despawns with its physical actor while preserving the accepted impact squash/recoil transform.
+
 ## 4. Economy Simulation
 
 Create deterministic benchmark input traces for a representative mixed active/passive player. Tune prices and cash-per-pain together until median target purchases occur near cumulative minutes `3`, `6`, `20`, `30`, `40`, `50`, `65`, `80`, `100`, and `120` in the approved order.

@@ -1,6 +1,7 @@
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Presentation3D;
 using Godot;
 using System;
 
@@ -14,12 +15,12 @@ namespace DesktopBuddy.Tools;
 /// impulse through the shared curve.
 /// </summary>
 [GlobalClass]
-public partial class BoxingGloveBody : RigidBody2D, IImpactSource
+public partial class BoxingGloveBody : RigidBody2D, IImpactSource, IBody2DVisualPulseSource
 {
     private const int CircleSegments = 32;
     private const float OutlineWidth = 2.0f;
     private static readonly Color OutlineColor = new("5c1a1a");
-    private static readonly Color GloveColor = new("e05b4b");
+    private Color _gloveColor = new("e05b4b");
 
     public float Radius { get; private set; } = 14.0f;
     private ulong _pulseStartedUsec;
@@ -32,10 +33,20 @@ public partial class BoxingGloveBody : RigidBody2D, IImpactSource
     public int ContentId => (int)ToolId.BoxingGlove;
     public bool IsImpactPulsing { get; private set; }
     public bool IsImpactArmed { get; private set; }
+    public Vector2 VisualScale2D
+    {
+        get
+        {
+            float pulse = CurrentPulseStrength();
+            return new Vector2(1.0f - pulse * 0.24f, 1.0f + pulse * 0.18f);
+        }
+    }
+    public float VisualRotation2D => IsImpactPulsing ? _pulseAngle : 0.0f;
 
     public void Configure(BoxingGloveProfile profile)
     {
         Radius = profile.Radius;
+        _gloveColor = profile.VisualColor;
         Mass = profile.Mass;
         LinearDamp = profile.LinearDamp;
         AddChild(new CollisionShape2D { Shape = new CircleShape2D { Radius = profile.Radius } });
@@ -60,15 +71,13 @@ public partial class BoxingGloveBody : RigidBody2D, IImpactSource
     {
         if (IsImpactPulsing)
         {
-            double elapsed = (Time.GetTicksUsec() - _pulseStartedUsec) / 1_000_000.0;
-            float decay = Mathf.Clamp(1.0f - (float)(elapsed / _pulseSeconds), 0.0f, 1.0f);
-            float pulse = _pulseIntensity * decay;
+            float pulse = CurrentPulseStrength();
             DrawSetTransform(
                 Vector2.Zero,
                 _pulseAngle,
                 new Vector2(1.0f - pulse * 0.24f, 1.0f + pulse * 0.18f));
         }
-        DrawCircle(Vector2.Zero, Radius, GloveColor, true, -1.0f, true);
+        DrawCircle(Vector2.Zero, Radius, _gloveColor, true, -1.0f, true);
         DrawArc(Vector2.Zero, Radius, 0.0f, Mathf.Tau, CircleSegments, OutlineColor, OutlineWidth, true);
     }
 
@@ -80,6 +89,18 @@ public partial class BoxingGloveBody : RigidBody2D, IImpactSource
         if (elapsed >= _pulseSeconds)
             IsImpactPulsing = false;
         QueueRedraw();
+    }
+
+    private float CurrentPulseStrength()
+    {
+        if (!IsImpactPulsing)
+        {
+            return 0.0f;
+        }
+
+        double elapsed = (Time.GetTicksUsec() - _pulseStartedUsec) / 1_000_000.0;
+        float decay = Mathf.Clamp(1.0f - (float)(elapsed / _pulseSeconds), 0.0f, 1.0f);
+        return _pulseIntensity * decay;
     }
 
     public void PulseImpact(Vector2 normal, float intensity, double seconds)

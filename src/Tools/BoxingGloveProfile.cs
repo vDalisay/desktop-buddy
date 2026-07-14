@@ -20,6 +20,8 @@ public partial class BoxingGloveProfile : GameResource
     [Export(PropertyHint.Range, "0,100,0.01,or_greater")] public float LinearDamp { get; set; } = 1.0f;
     [Export(PropertyHint.Range, "0.1,128,0.1,or_greater")] public float MinimumArmingTravel { get; set; } = 8.0f;
     [Export(PropertyHint.Range, "0,32,0.1")] public float WallClearance { get; set; } = 2.0f;
+    [Export] public Color VisualColor { get; set; } = new("e05b4b");
+    [Export] public float VisualDepthOffset { get; set; } = 144.0f;
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -62,6 +64,11 @@ public partial class BoxingGloveProfile : GameResource
         if (!float.IsFinite(WallClearance) || WallClearance < 0.0f)
         {
             errors.Add($"{nameof(WallClearance)} must be finite and non-negative");
+        }
+
+        if (!float.IsFinite(VisualDepthOffset))
+        {
+            errors.Add($"{nameof(VisualDepthOffset)} must be finite");
         }
 
         return errors;

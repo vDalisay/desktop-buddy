@@ -8,6 +8,7 @@ using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Platform;
+using DesktopBuddy.Presentation3D;
 using Godot;
 using FileAccess = Godot.FileAccess;
 using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
@@ -325,6 +326,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM3ToolFeelAsync(state, lab);
         }
+        else if (exercise == "m35_presentation_toggle")
+        {
+            await ExerciseM35PresentationToggleAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -356,6 +361,45 @@ public partial class JourneyRunner : Node
         state["lab_settled"] = settled;
         state["lab_telemetry_visible"] = lab.TelemetryPanel.IsInitialized && lab.TelemetryPanel.Visible;
         lab.QueueFree();
+    }
+
+    private async System.Threading.Tasks.Task ExerciseM35PresentationToggleAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        state["presentation_starts_legacy"] =
+            lab.Mode == PresentationMode.LegacyCircles &&
+            !lab.VisualPresenter.Visible && AllPartVisibility(lab, true);
+
+        await PressVAsync();
+        state["presentation_toggle_enters_mii3d"] =
+            lab.Mode == PresentationMode.Mii3D &&
+            lab.VisualPresenter.Visible && AllPartVisibility(lab, false);
+
+        await PressVAsync();
+        state["presentation_toggle_restores_legacy"] =
+            lab.Mode == PresentationMode.LegacyCircles &&
+            !lab.VisualPresenter.Visible && AllPartVisibility(lab, true);
+
+        async System.Threading.Tasks.Task PressVAsync()
+        {
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.V, Pressed = true });
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.V, Pressed = false });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+
+        static bool AllPartVisibility(BuddyLab source, bool expected)
+        {
+            foreach (PuppetPartBody part in source.Buddy.Rig.Parts)
+            {
+                if (part.Visible != expected)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     private async System.Threading.Tasks.Task ExerciseGrabThrowAsync(Dictionary<string, bool> state, BuddyLab lab)
@@ -496,6 +540,7 @@ public partial class JourneyRunner : Node
         await SetPrimaryAsync(pointer, true);
         bool petHandVisible = false;
         bool petFaceSeen = false;
+        bool pet3DFaceUpright = false;
         for (int tick = 0; tick < 380 && lab.Pipeline.CareAwardCount == careBefore; tick++)
         {
             Vector2 next = lab.Buddy.Rig.Head.GlobalPosition + Vector2.Right * (tick % 2 == 0 ? -8.0f : 8.0f);
@@ -503,9 +548,16 @@ public partial class JourneyRunner : Node
             pointer = next;
             petHandVisible |= lab.CareCursor.IsHandVisible;
             petFaceSeen |= lab.Reactions.CurrentFace == ":3";
+            pet3DFaceUpright |=
+                lab.Reactions.CurrentFace == ":3" &&
+                lab.VisualPresenter.FaceLabel.Text == ":3" &&
+                Mathf.Abs(Mathf.AngleDifference(
+                    lab.VisualPresenter.FaceLabel.GlobalRotation.Z,
+                    -Mathf.Pi * 0.5f)) < 0.01f;
         }
         state["pet_hand_visible"] = petHandVisible;
         state["pet_rub_face_seen"] = petFaceSeen;
+        state["pet_3d_face_upright"] = pet3DFaceUpright;
         state["pet_rewarded"] = lab.Pipeline.CareAwardCount == careBefore + 1;
         state["pet_completion_smile"] = lab.Reactions.CurrentFace == ":)";
         await SetPrimaryAsync(pointer, false);

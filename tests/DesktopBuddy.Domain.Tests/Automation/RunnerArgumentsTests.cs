@@ -130,6 +130,26 @@ public sealed class RunnerArgumentsTests
     }
 
     [Theory]
+    [InlineData("legacy", RunnerPresentation.Legacy)]
+    [InlineData("mii3d", RunnerPresentation.Mii3D)]
+    public void Parse_PresentationOverride_RoundTrips(
+        string value,
+        RunnerPresentation expected)
+    {
+        RunnerArguments result = RunnerArguments.Parse(new[] { $"--presentation={value}" });
+
+        Assert.Equal(expected, result.Presentation);
+        Assert.Equal(RunnerMode.Normal, result.Mode);
+    }
+
+    [Theory]
+    [InlineData("--presentation=")]
+    [InlineData("--presentation=Mii3D")]
+    [InlineData("--presentation=unknown")]
+    public void Parse_InvalidPresentation_Throws(string argument) =>
+        Assert.Throws<ArgumentException>(() => RunnerArguments.Parse(new[] { argument }));
+
+    [Theory]
     [InlineData("--promote-trace=in.json")]
     [InlineData("--journey-out=out.json")]
     public void Parse_IncompletePromotionPair_Throws(string argument) =>
