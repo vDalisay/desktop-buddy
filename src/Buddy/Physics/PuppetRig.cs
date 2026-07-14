@@ -21,7 +21,7 @@ public partial class PuppetRig : Node
     public bool IsInitialized { get; private set; }
     public IReadOnlyList<PuppetPartBody> Parts => _parts;
 
-    public void Initialize(Vector2 globalOrigin)
+    public void Initialize(Vector2 globalOrigin, IReadOnlyList<Color> fillColors)
     {
         if (IsInitialized)
         {
@@ -39,6 +39,12 @@ public partial class PuppetRig : Node
             throw new InvalidOperationException($"Invalid puppet rig profile: {string.Join("; ", errors)}");
         }
 
+        if (fillColors.Count != PuppetRigProfile.RequiredPartCount)
+        {
+            throw new InvalidOperationException(
+                $"PuppetRig requires exactly {PuppetRigProfile.RequiredPartCount} plain fill colors.");
+        }
+
         Assign(BuddyPartId.Head, Head);
         Assign(BuddyPartId.Torso, Torso);
         Assign(BuddyPartId.LeftHand, LeftHand);
@@ -51,7 +57,7 @@ public partial class PuppetRig : Node
             PuppetPartBody body = _parts[index];
             PuppetPartDefinition definition = Profile.FindPart((BuddyPartId)index)
                 ?? throw new InvalidOperationException($"Missing definition for {(BuddyPartId)index}.");
-            body.Configure(definition, globalOrigin);
+            body.Configure(definition, fillColors[index], globalOrigin);
         }
 
         IsInitialized = true;

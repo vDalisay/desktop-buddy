@@ -1,6 +1,7 @@
 using System;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using Godot;
@@ -17,6 +18,7 @@ public partial class BuddyRoot : Node2D
     private const ulong DefaultAutonomySeed = 1;
 
     [Export] public PuppetRig Rig { get; set; } = null!;
+    [Export] public BuddyVisualProfile VisualProfile { get; set; } = null!;
     [Export] public PuppetConstraintComponent Constraints { get; set; } = null!;
     [Export] public StandingDetector Standing { get; set; } = null!;
     [Export] public RecoveryComponent Recovery { get; set; } = null!;
@@ -33,16 +35,32 @@ public partial class BuddyRoot : Node2D
 
     public override void _Ready()
     {
-        if (!GodotObject.IsInstanceValid(Rig) || !GodotObject.IsInstanceValid(Constraints) ||
+        if (!GodotObject.IsInstanceValid(Rig) || !GodotObject.IsInstanceValid(VisualProfile) ||
+            !GodotObject.IsInstanceValid(Constraints) ||
             !GodotObject.IsInstanceValid(Standing) || !GodotObject.IsInstanceValid(Recovery) ||
             !GodotObject.IsInstanceValid(AutonomousMotion) ||
             !GodotObject.IsInstanceValid(ActiveDrive) ||
             !GodotObject.IsInstanceValid(GrabResistance))
         {
-            throw new InvalidOperationException("BuddyRoot requires every injected physics and behavior component.");
+            throw new InvalidOperationException(
+                "BuddyRoot requires its visual profile and every injected physics and behavior component.");
         }
 
-        Rig.Initialize(GlobalPosition);
+        Godot.Collections.Array<string> visualErrors = VisualProfile.Validate();
+        if (visualErrors.Count > 0)
+        {
+            throw new InvalidOperationException($"Invalid buddy visual profile: {string.Join("; ", visualErrors)}");
+        }
+
+        var fillColors = new Color[PuppetRigProfile.RequiredPartCount];
+        for (int index = 0; index < fillColors.Length; index++)
+        {
+            PartVisualDefinition part = VisualProfile.FindPart((BuddyPartId)index)
+                ?? throw new InvalidOperationException($"Missing visual definition for {(BuddyPartId)index}.");
+            fillColors[index] = part.Color;
+        }
+
+        Rig.Initialize(GlobalPosition, fillColors);
         Constraints.Initialize();
         Standing.Initialize();
         Recovery.Initialize();

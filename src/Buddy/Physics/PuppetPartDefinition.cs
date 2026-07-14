@@ -2,7 +2,7 @@ using Godot;
 
 namespace DesktopBuddy.Buddy.Physics;
 
-/// <summary>Static physics and direct-drawing data for one puppet circle.</summary>
+/// <summary>Static physics data for one puppet circle.</summary>
 [GlobalClass]
 public partial class PuppetPartDefinition : Resource
 {
@@ -12,5 +12,4 @@ public partial class PuppetPartDefinition : Resource
     [Export(PropertyHint.Range, "0,100,0.01,or_greater")] public float LinearDamp { get; set; } = 2.0f;
     [Export(PropertyHint.Range, "0,100,0.01,or_greater")] public float AngularDamp { get; set; } = 4.0f;
     [Export] public Vector2 RestPosition { get; set; }
-    [Export] public Color FillColor { get; set; } = new("7ac7ff");
 }
