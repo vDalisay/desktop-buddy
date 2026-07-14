@@ -22,3 +22,11 @@ Status: owner requirements confirmed 2026-07-14. This slice follows the committe
 ## Deferred next slice
 
 At new-save creation, sample a buddy-specific ambient jump propensity and store it in versioned progress JSON. Reloads retain it; starting a new game samples a new value. The later M4 behavior arbiter will combine that trait with obstacle/situation evidence so ambient jumping is reduced and predictable. No persistence schema or obstacle-aware jumping is implemented here.
+
+## Owner review remediation (2026-07-14)
+
+- Applied the quarter-turn only to sideways-authored colon faces (`:)`, `:(`, `:/`, `:|`, `:3`, `>:(`). Already-front-facing faces (`x_x`, `o_o`, `>_<`, `^_^`) retain a zero-degree world basis while every face still counter-rotates against the physical head.
+- Window mouse-exit now invalidates the cursor anchor and immediately despawns the physical Boxing Glove without changing tool selection. Fresh pointer input respawns it with its full collider radius plus `2 px` clearance inside the room bounds so it cannot reappear embedded in an edge.
+- Boxing Glove defense now uses a provisional typed `180 px` entry / `220 px` release hysteresis band. Defensive flee remains committed through that band instead of alternating with ambient autonomy at one distance boundary.
+- The provisional learned-glove flee scale is `1.6`; unconscious drive remains disabled for the confirmed four-second knockout, then the buddy resumes a stronger escape away from a nearby glove. Gait foot-target forces now apply an equal torso reaction, preventing a displaced post-knockout foot from towing the puppet against its flee direction.
+- `tool_feel_reactions` covers both face-layout classes, immediate pointer-exit cleanup and edge-safe resume, mirrored left/right flee displacement, post-knockout rightward escape from a glove on the left, guard-force neutrality, and sustained enter/exit hysteresis.

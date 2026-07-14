@@ -2,6 +2,7 @@ using System;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Sandbox;
 using Godot;
 using NumericsVector2 = System.Numerics.Vector2;
 
@@ -21,6 +22,7 @@ public partial class BoxingGloveController : Node2D
 {
     [Export] public BoxingGloveProfile Profile { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
+    [Export] public BoundaryController Boundaries { get; set; } = null!;
 
     private BoxingGloveBody? _glove;
     private Vector2 _cursor;
@@ -41,9 +43,9 @@ public partial class BoxingGloveController : Node2D
             throw new InvalidOperationException("BoxingGloveController requires a valid BoxingGloveProfile.");
         }
 
-        if (!GodotObject.IsInstanceValid(Pipeline))
+        if (!GodotObject.IsInstanceValid(Pipeline) || !GodotObject.IsInstanceValid(Boundaries))
         {
-            throw new InvalidOperationException("BoxingGloveController requires the interaction pipeline.");
+            throw new InvalidOperationException("BoxingGloveController requires the interaction pipeline and room boundaries.");
         }
 
         IsInitialized = true;
@@ -52,15 +54,27 @@ public partial class BoxingGloveController : Node2D
     /// <summary>Move the cursor anchor the glove is tethered to (sandbox coordinates).</summary>
     public void MoveCursor(Vector2 worldPoint)
     {
-        _cursor = worldPoint;
+        _cursor = ClampToPlayableBounds(worldPoint);
         _hasCursor = true;
+    }
+
+    /// <summary>
+    /// Invalidates the cursor anchor when the real pointer leaves the play
+    /// window. The selected tool is preserved, but its physical actor must not
+    /// remain pinned to the last in-bounds corner.
+    /// </summary>
+    public void ClearCursor()
+    {
+        _hasCursor = false;
+        if (IsActive)
+            Despawn();
     }
 
     /// <summary>Called only from the owning root's routed fixed tick.</summary>
     public void PhysicsTick(double delta)
     {
         RequireInitialized();
-        bool wantActive = Pipeline.SelectedTool == ToolId.BoxingGlove;
+        bool wantActive = Pipeline.SelectedTool == ToolId.BoxingGlove && _hasCursor;
         if (wantActive && _hasCursor && !IsActive)
         {
             Spawn();
@@ -127,6 +141,25 @@ public partial class BoxingGloveController : Node2D
         {
             throw new InvalidOperationException("BoxingGloveController used before initialization.");
         }
+    }
+
+    private Vector2 ClampToPlayableBounds(Vector2 worldPoint)
+    {
+        Rect2 bounds = Boundaries.InnerBounds;
+        if (!bounds.HasArea())
+            return worldPoint;
+
+        float inset = Profile.Radius + Profile.WallClearance;
+        float minimumX = bounds.Position.X + inset;
+        float maximumX = bounds.End.X - inset;
+        float minimumY = bounds.Position.Y + inset;
+        float maximumY = bounds.End.Y - inset;
+        if (maximumX < minimumX || maximumY < minimumY)
+            return bounds.GetCenter();
+
+        return new Vector2(
+            Mathf.Clamp(worldPoint.X, minimumX, maximumX),
+            Mathf.Clamp(worldPoint.Y, minimumY, maximumY));
     }
 
     private static NumericsVector2 ToNumerics(Vector2 value) => new(value.X, value.Y);

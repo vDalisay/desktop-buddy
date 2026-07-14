@@ -86,6 +86,40 @@ public partial class LabPointerGrabComponent : Node2D
         }
     }
 
+    public override void _Notification(int what)
+    {
+        if (_active && what == NotificationWMMouseExit)
+        {
+            NotifyPointerExitedPlayArea();
+        }
+    }
+
+    /// <summary>
+    /// Ends cursor-owned presentation/physics when Windows reports that the
+    /// pointer left the client play area. Selection remains unchanged, so the
+    /// same tool resumes only after a fresh in-window pointer event.
+    /// </summary>
+    public void NotifyPointerExitedPlayArea()
+    {
+        _sawPointerInput = false;
+        IsPrimaryHeld = false;
+        _pendingPress = false;
+        _pendingRelease = false;
+        _pendingCancel = false;
+
+        if (GloveTool is not null && GodotObject.IsInstanceValid(GloveTool))
+            GloveTool.ClearCursor();
+        if (CareTool is not null && GodotObject.IsInstanceValid(CareTool))
+            CareTool.SetStroke(false, WorldCursor);
+        if (CareCursor is not null && GodotObject.IsInstanceValid(CareCursor))
+        {
+            ToolId tool = Pipeline is not null && GodotObject.IsInstanceValid(Pipeline)
+                ? Pipeline.SelectedTool
+                : ToolId.Grab;
+            CareCursor.SetPointerState(tool, WorldCursor, false);
+        }
+    }
+
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!_active)

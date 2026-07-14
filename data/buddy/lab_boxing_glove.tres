@@ -12,3 +12,4 @@ Damping = 160.0
 MaximumForce = 80000.0
 LinearDamp = 0.5
 MinimumArmingTravel = 8.0
+WallClearance = 2.0

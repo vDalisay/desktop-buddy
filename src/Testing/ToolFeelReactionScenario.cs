@@ -41,12 +41,30 @@ public sealed class ToolFeelReactionScenario : IScenario
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
         var head = careLab.Buddy.Rig.Head;
+        head.SetFace(":)");
         head.Freeze = true;
         head.GlobalRotation = 0.9f;
-        checks.Add(new StartupCheck("head_rotates_while_emoticon_stays_upright",
+        float sidewaysFaceWorldRotation = Mathf.Wrap(
+            head.GlobalRotation + head.FaceDrawRotation,
+            -Mathf.Pi,
+            Mathf.Pi);
+        head.SetFace("x_x");
+        float frontFacingFaceWorldRotation = Mathf.Wrap(
+            head.GlobalRotation + head.FaceDrawRotation,
+            -Mathf.Pi,
+            Mathf.Pi);
+        checks.Add(new StartupCheck("sideways_ascii_face_is_rotated_into_world_upright_basis",
             Math.Abs(head.GlobalRotation) > 0.8f &&
-            Math.Abs(Mathf.Wrap(head.GlobalRotation + head.FaceDrawRotation, -Mathf.Pi, Mathf.Pi)) < 0.001f,
-            $"head={head.GlobalRotation:F3} faceDraw={head.FaceDrawRotation:F3}"));
+            Math.Abs(Mathf.Wrap(sidewaysFaceWorldRotation - Mathf.Pi * 0.5f, -Mathf.Pi, Mathf.Pi)) < 0.001f &&
+            PuppetPartBody.UsesSidewaysAsciiLayout(">:("),
+            $"head={head.GlobalRotation:F3} world={sidewaysFaceWorldRotation:F3}"));
+        checks.Add(new StartupCheck("front_facing_ascii_art_faces_keep_zero_world_rotation",
+            Math.Abs(frontFacingFaceWorldRotation) < 0.001f &&
+            !PuppetPartBody.UsesSidewaysAsciiLayout("x_x") &&
+            !PuppetPartBody.UsesSidewaysAsciiLayout("o_o") &&
+            !PuppetPartBody.UsesSidewaysAsciiLayout(">_<") &&
+            !PuppetPartBody.UsesSidewaysAsciiLayout("^_^"),
+            $"head={head.GlobalRotation:F3} world={frontFacingFaceWorldRotation:F3}"));
         head.Freeze = false;
 
         careLab.CareCursor.SetPointerState(ToolId.Pet, head.GlobalPosition, true);
@@ -142,9 +160,13 @@ public sealed class ToolFeelReactionScenario : IScenario
             Pressed = false,
             Strength = 0.0f,
         });
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        for (int frame = 0;
+             frame < 30 && (careLab.CareCursor.IsFavoriteSparkleActive || careLab.CareCursor.ActiveSparkleCount > 0);
+             frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
         checks.Add(new StartupCheck("favorite_sparkles_stop_without_held_contact",
             !careLab.CareCursor.IsFavoriteSparkleActive && careLab.CareCursor.ActiveSparkleCount == 0,
             $"active={careLab.CareCursor.IsFavoriteSparkleActive} particles={careLab.CareCursor.ActiveSparkleCount}"));
@@ -169,6 +191,32 @@ public sealed class ToolFeelReactionScenario : IScenario
         checks.Add(new StartupCheck("boxing_glove_tracks_cursor_promptly",
             gloveLag <= 40.0f,
             $"lag={gloveLag:F2}px after 0.1s"));
+
+        gloveLab.Pointer.NotifyPointerExitedPlayArea();
+        bool despawnedImmediately = !gloveLab.Glove.IsActive;
+        for (int tick = 0; tick < 3; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool stayedDespawnedOutside = !gloveLab.Glove.IsActive;
+        checks.Add(new StartupCheck("boxing_glove_despawns_when_pointer_leaves_play_area",
+            gloveLab.Pipeline.SelectedTool == ToolId.BoxingGlove &&
+            !gloveLab.Glove.HasCursor && despawnedImmediately && stayedDespawnedOutside,
+            $"selected={gloveLab.Pipeline.SelectedTool} hasCursor={gloveLab.Glove.HasCursor} immediate={despawnedImmediately} active={gloveLab.Glove.IsActive}"));
+        Rect2 gloveBounds = gloveLab.Boundaries.InnerBounds;
+        gloveLab.Glove.MoveCursor(gloveBounds.Position - new Vector2(100.0f, 100.0f));
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        float gloveInset = gloveLab.Glove.Profile.Radius + gloveLab.Glove.Profile.WallClearance;
+        Vector2 edgeSafeMinimum = gloveBounds.Position + new Vector2(gloveInset, gloveInset);
+        checks.Add(new StartupCheck("boxing_glove_respawns_clear_of_room_edges",
+            gloveLab.Glove.HasCursor && gloveLab.Glove.IsActive &&
+            gloveLab.Glove.Cursor.IsEqualApprox(edgeSafeMinimum) &&
+            gloveLab.Glove.Glove is { } respawnedGlove &&
+            respawnedGlove.GlobalPosition.X >= edgeSafeMinimum.X - 0.25f &&
+            respawnedGlove.GlobalPosition.Y >= edgeSafeMinimum.Y - 0.25f &&
+            respawnedGlove.GlobalPosition.X <= gloveBounds.End.X - gloveInset + 0.25f &&
+            respawnedGlove.GlobalPosition.Y <= gloveBounds.End.Y - gloveInset + 0.25f,
+            $"cursor={gloveLab.Glove.Cursor} minimum={edgeSafeMinimum} glove={gloveLab.Glove.Glove?.GlobalPosition}"));
+        gloveLab.Glove.MoveCursor(new Vector2(160.0f, 60.0f));
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
 
         AcceptedImpact? slow = await ScenarioSteps.StrikePartAtSpeed(
             tree, gloveLab, gloveLab.Buddy.Rig.Torso, 250.0f);
@@ -196,6 +244,7 @@ public sealed class ToolFeelReactionScenario : IScenario
         {
             physicalGlove.CollisionLayer = 0;
             physicalGlove.CollisionMask = 0;
+            physicalGlove.Freeze = true;
         }
 
         foreach (PuppetPartBody part in gloveLab.Buddy.Rig.Parts)
@@ -204,6 +253,7 @@ public sealed class ToolFeelReactionScenario : IScenario
             (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
         Vector2 threatRight = defenseCenter + Vector2.Right * 100.0f;
         gloveLab.Glove.MoveCursor(threatRight);
+        if (physicalGlove is not null) physicalGlove.GlobalPosition = threatRight;
         float fleeStartX = gloveLab.Buddy.Rig.Torso.GlobalPosition.X;
         for (int tick = 0; tick < 24; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
@@ -223,7 +273,12 @@ public sealed class ToolFeelReactionScenario : IScenario
             $"fleeDx={fleeDeltaX:F2} nearestHandGlove={nearestHandToGlove:F2} walk={gloveLab.Buddy.CurrentDriveIntent.WalkDirection:F1}"));
 
         Vector2 currentCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
-        gloveLab.Glove.MoveCursor(currentCenter - desiredBeforeTurn * 100.0f);
+        Vector2 threatLeft = currentCenter - desiredBeforeTurn * 100.0f;
+        gloveLab.Glove.MoveCursor(threatLeft);
+        if (physicalGlove is not null) physicalGlove.GlobalPosition = threatLeft;
+        foreach (PuppetPartBody part in gloveLab.Buddy.Rig.Parts)
+            part.LinearVelocity = Vector2.Zero;
+        float rightFleeStartX = gloveLab.Buddy.Rig.Torso.GlobalPosition.X;
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         Vector2 guardAfterOneTick = gloveLab.ToolReactions.GuardDirection;
         float guardReach = gloveLab.ToolReactions.GuardCenter.DistanceTo(
@@ -238,6 +293,54 @@ public sealed class ToolFeelReactionScenario : IScenario
             Math.Abs(guardReach - gloveLab.ToolReactions.Profile.GuardReach) <= 1.0f &&
             guardNetForce.Length() <= 0.1f,
             $"aligned={guardBeforeTurn.Dot(desiredBeforeTurn):F2} retained={guardAfterOneTick.Dot(desiredBeforeTurn):F2} reach={guardReach:F2} net={guardNetForce.Length():F3}"));
+
+        for (int tick = 1; tick < 24; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        float rightFleeDeltaX = gloveLab.Buddy.Rig.Torso.GlobalPosition.X - rightFleeStartX;
+        float leftFleeDistance = -fleeDeltaX;
+        float rightFleeDistance = rightFleeDeltaX;
+        float fleeParity = Math.Min(leftFleeDistance, rightFleeDistance) /
+                           Math.Max(0.001f, Math.Max(leftFleeDistance, rightFleeDistance));
+        checks.Add(new StartupCheck("glove_defense_flees_both_directions_without_ambient_countermand",
+            leftFleeDistance > 8.0f && rightFleeDistance > 8.0f && fleeParity >= 0.5f &&
+            gloveLab.Buddy.CurrentDriveIntent.WalkDirection > 0.0f,
+            $"left={leftFleeDistance:F2} right={rightFleeDistance:F2} parity={fleeParity:F2} walk={gloveLab.Buddy.CurrentDriveIntent.WalkDirection:F1}"));
+
+        bool stayedDefensiveInBand = true;
+        float hysteresisDistance =
+            (gloveLab.ToolReactions.Profile.DefenseRange + gloveLab.ToolReactions.Profile.DefenseReleaseRange) * 0.5f;
+        for (int tick = 0; tick < 30; tick++)
+        {
+            Vector2 center = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+            Vector2 inBand = center + Vector2.Right * hysteresisDistance;
+            gloveLab.Glove.MoveCursor(inBand);
+            if (physicalGlove is not null) physicalGlove.GlobalPosition = inBand;
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            stayedDefensiveInBand &= gloveLab.ToolReactions.IsDefending;
+        }
+
+        Vector2 releaseCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+        Vector2 beyondRelease = releaseCenter + Vector2.Right * (gloveLab.ToolReactions.Profile.DefenseReleaseRange + 5.0f);
+        gloveLab.Glove.MoveCursor(beyondRelease);
+        if (physicalGlove is not null) physicalGlove.GlobalPosition = beyondRelease;
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool releasedOutside = !gloveLab.ToolReactions.IsDefending;
+
+        Vector2 reentryCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+        Vector2 bandReentry = reentryCenter + Vector2.Right * hysteresisDistance;
+        gloveLab.Glove.MoveCursor(bandReentry);
+        if (physicalGlove is not null) physicalGlove.GlobalPosition = bandReentry;
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool stayedCalmInBand = !gloveLab.ToolReactions.IsDefending;
+
+        Vector2 reacquireCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+        Vector2 insideDefense = reacquireCenter + Vector2.Right * (gloveLab.ToolReactions.Profile.DefenseRange - 5.0f);
+        gloveLab.Glove.MoveCursor(insideDefense);
+        if (physicalGlove is not null) physicalGlove.GlobalPosition = insideDefense;
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        checks.Add(new StartupCheck("glove_defense_uses_enter_exit_hysteresis_without_face_thrashing",
+            stayedDefensiveInBand && releasedOutside && stayedCalmInBand && gloveLab.ToolReactions.IsDefending,
+            $"held={stayedDefensiveInBand} released={releasedOutside} calmBand={stayedCalmInBand} reacquired={gloveLab.ToolReactions.IsDefending}"));
 
         int absorptionBefore = gloveLab.Buddy.ActiveDrive.GuardAbsorptionCount;
         AcceptedImpact? guarded = await ScenarioSteps.StrikePartAtSpeed(
@@ -306,6 +409,55 @@ public sealed class ToolFeelReactionScenario : IScenario
             !hitStopLab.ImpactFeedback.IsHitStopActive &&
             Math.Abs(Engine.TimeScale - 1.0) < 0.001,
             $"active={hitStopLab.ImpactFeedback.IsHitStopActive} scale={Engine.TimeScale:F3}"));
+
+        hitStopLab.Pipeline.SelectTool(ToolId.BoxingGlove);
+        Vector2 knockoutCenter =
+            (hitStopLab.Buddy.Rig.Head.GlobalPosition + hitStopLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+        hitStopLab.Glove.MoveCursor(knockoutCenter - Vector2.Right * 100.0f);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        BoxingGloveBody? knockoutGlove = hitStopLab.Glove.Glove;
+        if (knockoutGlove is not null)
+        {
+            knockoutGlove.CollisionLayer = 0;
+            knockoutGlove.CollisionMask = 0;
+            knockoutGlove.Freeze = true;
+        }
+
+        bool stayedPassiveWhileUnconscious = true;
+        for (int tick = 0;
+             tick < 600 && hitStopLab.Buddy.CurrentConsciousness != Consciousness.Conscious;
+             tick++)
+        {
+            Vector2 center =
+                (hitStopLab.Buddy.Rig.Head.GlobalPosition + hitStopLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+            Vector2 threat = center - Vector2.Right * 100.0f;
+            hitStopLab.Glove.MoveCursor(threat);
+            if (knockoutGlove is not null) knockoutGlove.GlobalPosition = threat;
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            stayedPassiveWhileUnconscious &= !hitStopLab.Buddy.ActiveDrive.ActiveOutputsEnabled;
+        }
+
+        bool wokeNaturally = hitStopLab.Buddy.CurrentConsciousness == Consciousness.Conscious;
+        foreach (PuppetPartBody part in hitStopLab.Buddy.Rig.Parts)
+            part.LinearVelocity = Vector2.Zero;
+        float postKnockoutStartX = hitStopLab.Buddy.Rig.Torso.GlobalPosition.X;
+        for (int tick = 0; tick < 48; tick++)
+        {
+            Vector2 center =
+                (hitStopLab.Buddy.Rig.Head.GlobalPosition + hitStopLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+            Vector2 threat = center - Vector2.Right * 100.0f;
+            hitStopLab.Glove.MoveCursor(threat);
+            if (knockoutGlove is not null) knockoutGlove.GlobalPosition = threat;
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+        float postKnockoutFleeDistance =
+            hitStopLab.Buddy.Rig.Torso.GlobalPosition.X - postKnockoutStartX;
+        checks.Add(new StartupCheck("post_knockout_buddy_flees_promptly_from_glove_on_left",
+            stayedPassiveWhileUnconscious && wokeNaturally &&
+            hitStopLab.ToolReactions.IsDefending &&
+            hitStopLab.Buddy.CurrentDriveIntent.WalkDirection > 0.0f &&
+            postKnockoutFleeDistance > 8.0f,
+            $"passive={stayedPassiveWhileUnconscious} woke={wokeNaturally} defending={hitStopLab.ToolReactions.IsDefending} walk={hitStopLab.Buddy.CurrentDriveIntent.WalkDirection:F1} dx={postKnockoutFleeDistance:F2}"));
 
         hitStopLab.QueueFree();
         bool passed = AllPassed(checks);

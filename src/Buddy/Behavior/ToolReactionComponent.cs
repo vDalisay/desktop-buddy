@@ -44,6 +44,7 @@ public partial class ToolReactionComponent : Node
     private Vector2 _guardDirection = Vector2.Right;
     private Vector2 _guardAimPoint;
     private bool _guardAimInitialized;
+    private bool _gloveDefenseLatched;
 
     public ToolReactionIntent Intent { get; private set; }
     public bool IsInitialized { get; private set; }
@@ -81,9 +82,11 @@ public partial class ToolReactionComponent : Node
         if (!IsInitialized)
             throw new InvalidOperationException("ToolReactionComponent used before initialization.");
 
-        Intent = Buddy.CurrentConsciousness == Consciousness.Conscious
-            ? ResolveIntent(delta)
-            : default;
+        bool canReact = Buddy.CurrentConsciousness == Consciousness.Conscious;
+        if (!canReact || Pipeline.SelectedTool != ToolId.BoxingGlove)
+            _gloveDefenseLatched = false;
+
+        Intent = canReact ? ResolveIntent(delta) : default;
         if (!Intent.GuardActive)
             _guardAimInitialized = false;
         Buddy.SetToolReactionIntent(Intent);
@@ -127,13 +130,28 @@ public partial class ToolReactionComponent : Node
     {
         BoxingGloveBody? glove = Glove.Glove;
         if (glove is null || !Pipeline.IsToolHarmful((int)ToolId.BoxingGlove))
+        {
+            _gloveDefenseLatched = false;
             return default;
+        }
 
         Vector2 protectedCenter = (Buddy.Rig.Head.GlobalPosition + Buddy.Rig.Torso.GlobalPosition) * 0.5f;
         Vector2 towardGlove = glove.GlobalPosition - protectedCenter;
         float distance = towardGlove.Length();
-        if (distance > Profile.DefenseRange)
-            return default;
+        if (_gloveDefenseLatched)
+        {
+            if (distance > Profile.DefenseReleaseRange)
+            {
+                _gloveDefenseLatched = false;
+                return default;
+            }
+        }
+        else
+        {
+            if (distance > Profile.DefenseRange)
+                return default;
+            _gloveDefenseLatched = true;
+        }
 
         Vector2 threatPoint = Glove.HasCursor ? Glove.Cursor : glove.GlobalPosition;
         if (!_guardAimInitialized)

@@ -125,10 +125,11 @@ Grab = NodePath("../GrabTetherController")
 Profile = ExtResource("13_pain_profile")
 CareProfile = ExtResource("21_care_profile")
 
-[node name="BoxingGloveController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline")]
+[node name="BoxingGloveController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
 script = ExtResource("14_glove")
 Profile = ExtResource("15_glove_profile")
 Pipeline = NodePath("../InteractionPipeline")
+Boundaries = NodePath("../RoomBounds")
 
 [node name="CareStrokeComponent" type="Node" parent="." node_paths=PackedStringArray("Pipeline")]
 script = ExtResource("16_care")

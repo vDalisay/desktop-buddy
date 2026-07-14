@@ -12,6 +12,7 @@ public partial class ToolReactionProfile : GameResource
     [Export(PropertyHint.Range, "0,2,0.01")] public float AngryJumpScale { get; set; } = 1.35f;
     [Export(PropertyHint.Range, "0,1,0.01")] public float TickleJumpHorizontalRatio { get; set; } = 0.45f;
     [Export(PropertyHint.Range, "0,512,1")] public float DefenseRange { get; set; } = 180.0f;
+    [Export(PropertyHint.Range, "0,512,1")] public float DefenseReleaseRange { get; set; } = 220.0f;
     [Export(PropertyHint.Range, "0,128,1")] public float GuardReach { get; set; } = 42.0f;
     [Export(PropertyHint.Range, "0,128,1")] public float GuardHandSeparation { get; set; } = 24.0f;
     [Export(PropertyHint.Range, "0,2,0.01")] public float DefenseFleeScale { get; set; } = 0.75f;
@@ -29,6 +30,9 @@ public partial class ToolReactionProfile : GameResource
         ValidateRange(errors, AngryJumpScale, 0, 2, nameof(AngryJumpScale));
         ValidateRange(errors, TickleJumpHorizontalRatio, 0, 1, nameof(TickleJumpHorizontalRatio));
         ValidateRange(errors, DefenseRange, 0, 512, nameof(DefenseRange));
+        ValidateRange(errors, DefenseReleaseRange, 0, 512, nameof(DefenseReleaseRange));
+        if (DefenseReleaseRange < DefenseRange)
+            errors.Add($"{nameof(DefenseReleaseRange)} must be greater than or equal to {nameof(DefenseRange)}");
         ValidateRange(errors, GuardReach, 0, 128, nameof(GuardReach));
         ValidateRange(errors, GuardHandSeparation, 0, 128, nameof(GuardHandSeparation));
         ValidateRange(errors, DefenseFleeScale, 0, 2, nameof(DefenseFleeScale));

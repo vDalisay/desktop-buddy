@@ -228,8 +228,16 @@ public partial class ActiveDriveComponent : Node
         var tuning = new GaitTuning(Profile.StepLength, Profile.StepLift, Profile.TorsoBob, Profile.TorsoLean);
         GaitSample gait = GaitCycle.Sample(phase, direction, tuning);
 
-        DriveFootToTarget(Rig.LeftFoot, _leftFootRest, gait.LeftFootOffset, mode);
-        DriveFootToTarget(Rig.RightFoot, _rightFootRest, gait.RightFootOffset, mode);
+        Vector2 leftFootDrive = DriveFootToTarget(
+            Rig.LeftFoot, _leftFootRest, gait.LeftFootOffset, mode);
+        Vector2 rightFootDrive = DriveFootToTarget(
+            Rig.RightFoot, _rightFootRest, gait.RightFootOffset, mode);
+
+        // Foot targeting is internal puppet actuation. Apply the equal reaction
+        // to the torso so a displaced ragdoll foot cannot tow the whole buddy in
+        // the wrong direction after knockout; deliberate translation remains
+        // owned by the bounded propulsion assist and real floor contacts.
+        Rig.Torso.ApplyCentralForce(-(leftFootDrive + rightFootDrive));
 
         // Whole-body propulsion assist, capped at the walk-speed ceiling.
         if ((Rig.Torso.LinearVelocity.X * direction) < Profile.MaximumWalkSpeed * intentScale)
@@ -256,7 +264,11 @@ public partial class ActiveDriveComponent : Node
         _gaitTick++;
     }
 
-    private void DriveFootToTarget(PuppetPartBody foot, Vector2 restOffset, NumericsVector2 gaitOffset, ConsciousnessDriveProfile mode)
+    private Vector2 DriveFootToTarget(
+        PuppetPartBody foot,
+        Vector2 restOffset,
+        NumericsVector2 gaitOffset,
+        ConsciousnessDriveProfile mode)
     {
         Vector2 target = Rig.Torso.GlobalPosition + restOffset + new Vector2(gaitOffset.X, gaitOffset.Y);
         Vector2 force = ((target - foot.GlobalPosition) * Profile.StepDriveStiffness) -
@@ -268,6 +280,7 @@ public partial class ActiveDriveComponent : Node
         }
 
         foot.ApplyCentralForce(force);
+        return force;
     }
 
     private void UpdateJump(DriveIntent intent, ConsciousnessDriveProfile mode)

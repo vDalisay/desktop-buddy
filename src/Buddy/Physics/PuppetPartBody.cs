@@ -29,10 +29,12 @@ public partial class PuppetPartBody : RigidBody2D
     // Must match MaxContactsReported: both contact signals and direct-state
     // queries only see up to that many contacts (ARCHITECTURE §23).
     private const int ContactBufferSize = 8;
+    private const float QuarterTurn = Mathf.Pi * 0.5f;
     private static readonly Color OutlineColor = new("183042");
 
     private readonly RawPartContact[] _pendingContacts = new RawPartContact[ContactBufferSize];
     private string _face = string.Empty;
+    private bool _faceUsesSidewaysAsciiLayout;
 
     [Export] public BuddyPartId PartId { get; set; }
     [Export] public CollisionShape2D Collider { get; set; } = null!;
@@ -43,7 +45,9 @@ public partial class PuppetPartBody : RigidBody2D
     public int SupportContactCount { get; private set; }
     public int PendingContactCount { get; private set; }
     public string Face => _face;
-    public float FaceDrawRotation => PartId == BuddyPartId.Head ? -GlobalRotation : 0.0f;
+    public float FaceDrawRotation => PartId == BuddyPartId.Head
+        ? (_faceUsesSidewaysAsciiLayout ? QuarterTurn : 0.0f) - GlobalRotation
+        : 0.0f;
 
     public RawPartContact GetPendingContact(int index) => _pendingContacts[index];
 
@@ -59,8 +63,12 @@ public partial class PuppetPartBody : RigidBody2D
     {
         if (_face == face) return;
         _face = face;
+        _faceUsesSidewaysAsciiLayout = UsesSidewaysAsciiLayout(face);
         QueueRedraw();
     }
+
+    public static bool UsesSidewaysAsciiLayout(string face) => face is
+        ":)" or ":(" or ":/" or ":|" or ":3" or ">:(";
 
     public void Configure(PuppetPartDefinition definition, Vector2 globalOrigin)
     {
@@ -158,8 +166,9 @@ public partial class PuppetPartBody : RigidBody2D
         DrawArc(Vector2.Zero, Radius, 0.0f, Mathf.Tau, CircleSegments, OutlineColor, OutlineWidth, true);
         if (PartId == BuddyPartId.Head && !string.IsNullOrEmpty(_face))
         {
-            // The physical head remains free to spin; only the emoticon is
-            // counter-rotated so it stays readable in world/screen space.
+            // Colon-style emoticons are authored sideways and need a quarter
+            // turn; already-front-facing glyphs such as x_x and o_o do not. Both
+            // layouts still counter-rotate the freely spinning physical head.
             DrawSetTransform(Vector2.Zero, FaceDrawRotation, Vector2.One);
             DrawString(
                 ThemeDB.FallbackFont,
