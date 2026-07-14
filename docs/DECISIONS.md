@@ -11,6 +11,36 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **2026-07-13 — 150% DPI pass ACCEPTED.** The `spike_transparent_window.tscn` scene was launched standalone (GUI, `gl_compatibility`, no `--headless`/`--editor`) on Windows 11 / Godot 4.6.1 mono / RTX 3070 with the display at 150% scale; startup log confirmed the Compatibility/OpenGL renderer with no renderer or scene errors. The owner visually confirmed the 150% pass "looks good" (per-pixel transparency, opaque shapes, topmost, and corner pointer readout). **This closes the Milestone 2 Task 0 renderer decision gate: `gl_compatibility` is the accepted renderer for the desktop shell, and renderer-dependent HUD work is unblocked.** The throwaway spike scene may now be kept or deleted at will.
 - The physics laboratory deliberately has two development-only composition roots, `BuddyLab` and `DualProfileLab`. Both mirror pointer → grab → buddy fixed-tick routing; shared routing is deferred to Milestone 2 when `SandboxRoot` gains its gameplay tick, as tracked by the state-audit watch item.
 
+### M3.5 Task 1 — Renderer spike (2026-07-14, partial)
+
+- **Transparent-safe 3D configuration pinned.** `spike_transparent_window.tscn` /
+  `TransparentWindowSpike.cs` now runs an orthographic `Camera3D` (`Size = 360`,
+  `KeepAspect = Height`, at `(240, −180, +500)` looking −Z, matching the Task 2 mapping
+  `(x, y) → (x, −y, 0)`) plus unshaded `SphereMesh`/`CapsuleMesh`/`QuadMesh` primitives in
+  the same viewport as the 2D pass. The pinned transparent-safe recipe is: **no
+  `WorldEnvironment` and no `Camera3D.Environment`** (any sky/opaque clear paints over the
+  desktop and kills the shell), `Viewport.TransparentBg = true`, all materials
+  `StandardMaterial3D` `ShadingMode = Unshaded`. 3D nodes live directly under the `Node2D`
+  root and share the viewport `World3D` — no `SubViewport`, no scene restructure.
+- **Automated confirmations (Godot MCP launch, Windows 11 / Godot 4.6.1 mono /
+  `gl_compatibility` / OpenGL 3.3 / NVIDIA RTX A2000 Laptop GPU).** Launch produced no
+  renderer or scene errors from the spike. 3D primitives composite in the 2D viewport and
+  land on the mapping-predicted screen pixels (sphere ≈ screen (180,180), capsule ≈
+  (300,180)). **Color parity PASS on `gl_compatibility`:** a reference color drawn as a 2D
+  rect and as an adjacent 3D unshaded quad render as one seamless block with no color seam,
+  confirming the exit-gate A/B assumption that 2D and 3D print identical profile colors.
+  `forward_plus` was not exercised (project renders `gl_compatibility`); no tonemap/linear
+  shift to record.
+- **Owner real-hardware matrix PASS (2026-07-14).** The owner ran the spike standalone on
+  real Windows (Godot 4.6.1 mono, `gl_compatibility`) and confirmed every matrix item:
+  desktop visible through empty alpha with the 3D content composited over it; `Msaa3D` at
+  Off/2×/4×/8× (keys `0/2/4/8`, mirrored onto `Msaa2D`) with progressively smoother edges
+  and transparency intact at every level; V-sync both states (key `S`); DPI 100–200%; and
+  the 480×360 default plus the 700×520 resize (key `R`). **Task 1 is complete — the
+  transparent-safe orthographic-3D pass over the desktop shell is proven on the target
+  renderer, and M3.5 Task 2 is unblocked.** The spike stays development-only and
+  export-excluded.
+
 ## Accepted Milestone 1 Feel Tuning (2026-07-12)
 
 - The owner performed the `TEST_PLAN.md` §8 side-by-side feel review of the tuning produced by `docs/M1_FEEL_AND_GAIT_PLAN.md` and **accepted it** ("this feels way better, I approve"). This satisfies the ROADMAP Milestone 1 exit criterion "lock an initial accepted tuning Resource." The accepted profiles are `data/buddy/lab_puppet_rig.tres`, `lab_grab_tether.tres`, `lab_active_drive.tres`, `lab_conscious_drive.tres`, `lab_unconscious_drive.tres`, `lab_autonomous_motion.tres`, and `lab_boundary.tres`, renamed from `Provisional*` to `AcceptedM1*` to mark the lock. Changing them now requires a new owner feel review.

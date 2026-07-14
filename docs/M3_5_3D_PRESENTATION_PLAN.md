@@ -358,9 +358,20 @@ tools\quick_validate.bat                 # before any handoff
 ## Progress
 
 Plan refined for agent handoff 2026-07-14 on the analysis worktree (baseline `m3-sol`
-`80fb22b`). No tasks started. The M3 Task 12 owner feel/HUD gate is still open: Task 1
-(spike) may proceed in parallel, but Tasks 2+ should follow the M3 gate so owner feel
-judgments stay uncoupled.
+`80fb22b`).
+
+**2026-07-14 — M3 Task 12 owner gate ACCEPTED** (recorded in
+`docs/M3_INTERACTION_DAMAGE_PLAN.md`), so Tasks 2+ are unblocked and owner feel judgments
+stay uncoupled from M3's.
+
+**Task 1 (renderer spike) DONE (2026-07-14).** `TransparentWindowSpike.cs` extended with
+the orthographic `Camera3D`, unshaded primitives, the transparent-safe config, a 2D/3D
+color-parity pair, and interactive MSAA/V-sync/resize controls. Build clean (0/0), MCP
+launch produced no spike errors, 3D composites in the 2D viewport at mapping-predicted
+pixels, and color parity passes on `gl_compatibility`. The owner ran the real-hardware
+matrix (desktop-through-alpha, DPI 100–200%, `Msaa3D` Off/2×/4×/8×, V-sync both states,
+resize) and **confirmed a full pass** — outcome recorded in `DECISIONS.md`. **Task 2 is
+unblocked.**
 
 Amended 2026-07-14 after a code-verified review. Substantive changes: the 2D
 interpolated-transform API does not exist in the pinned 4.6.1 GodotSharp, so Task 4's

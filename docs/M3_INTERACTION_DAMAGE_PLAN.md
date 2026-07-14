@@ -167,6 +167,9 @@ real input queue and proves selection alone does not pay. Final verification: so
 build 0 warnings/errors, domain suite 195/195, all listed scenarios, M1
 `grab_resistance`, normal `boot_smoke`, and the M3 journey pass on pinned Godot 4.6.1.
 
-**Remaining:** Task 12 owner-manual exit gate on real Windows. The owner must accept
-interaction feel and the compact HUD; this tuning/visual judgment is not replaced by the
-automated green suite.
+**Task 12 ACCEPTED (2026-07-14).** The owner approved the M3 exit gate: interaction feel
+and the compact money HUD are accepted, payouts arise from physical pain (never from tool
+selection), and the M3 `TEST_PLAN.md` §2 damage/economy assertions hold. **This closes
+Milestone 3.** Per `docs/M3_5_3D_PRESENTATION_PLAN.md` the gate closure uncouples the
+M3.5 feel judgments from M3's, so M3.5 Tasks 2+ are now unblocked (Task 1 spike could
+already proceed in parallel).
