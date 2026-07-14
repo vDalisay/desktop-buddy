@@ -70,7 +70,7 @@ public partial class PuppetPartBody : RigidBody2D
     public static bool UsesSidewaysAsciiLayout(string face) => face is
         ":)" or ":(" or ":/" or ":|" or ":3" or ">:(";
 
-    public void Configure(PuppetPartDefinition definition, Vector2 globalOrigin)
+    public void Configure(PuppetPartDefinition definition, Color fill, Vector2 globalOrigin)
     {
         AddToGroup("buddy_parts");
         if (definition.PartId != PartId)
@@ -84,7 +84,7 @@ public partial class PuppetPartBody : RigidBody2D
         }
 
         Radius = definition.Radius;
-        FillColor = definition.FillColor;
+        FillColor = fill;
         Mass = definition.Mass;
         LinearDamp = definition.LinearDamp;
         AngularDamp = definition.AngularDamp;

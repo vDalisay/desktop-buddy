@@ -381,7 +381,42 @@ lockstep with the `Camera2D` (orthographic, `KeepAspect = Height`, `Size = RoomH
 `(W/2, −H/2, +500)` looking −Z, `PhysicsInterpolationMode = Off`).
 `DesktopWindowController.ApplyRenderSettings` sets `Msaa3D` beside `Msaa2D`. Build 0/0,
 domain suite 200/200. Alignment assertions land with the Task 7 scenario as planned.
-**Next: Task 3** (`BuddyVisualProfile` + physics/visual field split).
+
+**Task 3 (`BuddyVisualProfile` + physics/visual field split) DONE (2026-07-14).** Added
+the typed visual-only profile and per-part/connector sub-resources, including the six
+unique-part and endpoint validation, bounded torso capsule ratio, rotation policies,
+velocity orientation values, draw-order depth lanes, connector geometry, and face data.
+`lab_buddy_visual.tres` transcribes the six accepted legacy colors and mirrors the five
+physics links. `FillColor` is removed from `PuppetPartDefinition` and the rig asset;
+`BuddyRoot` now resolves the injected visual profile to six plain `Color` values before
+calling `PuppetRig.Initialize`, so `src/Buddy/Physics` has no dependency on the visual
+profile type while the legacy circles retain exact color parity. Godot import, build
+0/0, domain suite 200/200, the quick validation suite, the promoted
+`m3_presentation` profile-to-legacy color check, and an MCP-driven real-input grab pass
+are green. **Next: Task 4** (`BuddyVisualPresenter`).
+
+**Task 4 (`BuddyVisualPresenter`) DONE (2026-07-14).** Added the read-only 3D presenter
+and its injectable `IBuddyVisualTransformSource` seam, with the live implementation
+wrapping the initialized six-body rig. The presenter builds the stable
+`PresenterRoot → BodyYaw → six sockets` hierarchy once, creates profile-sized sphere/
+torso-capsule meshes and the five cached connector capsules with unshaded profile
+materials, preserves the profile Z lanes, and owns the replaceable `Label3D` parity
+face. Its allocation-free render path manually interpolates preallocated previous/
+current samples, applies physics/screen-upright/wrap-aware velocity rotation policies,
+holds connector orientation across coincident endpoints, and snaps both interpolation
+samples on `Recovery.HardRecovered`. It intentionally registers no `_PhysicsProcess`;
+the unconditional scene-root capture wiring lands with Task 5 when the presenter nodes
+and mode toggle are composed. The existing `m3_presentation` scenario now constructs
+the presenter through its public composition seam and verifies six sockets, five
+connectors, and semantic face tracking. Build 0/0, domain suite 200/200, quick validation,
+focused scenario, and an MCP-driven real-input grab regression are green. **Next: Task 5**
+(lab/sandbox composition and presentation toggle).
+
+**Task 4 review fixes (2026-07-14).** Unequal-radius connectors now center on the
+surface-to-surface gap instead of the part-center midpoint (minimum-length overlap nubs
+retain the midpoint), and the hard-recovery subscription is paired across tree entry/
+exit so a removed and re-added presenter cannot lose teleport snapping. Both cases have
+focused `m3_presentation` regression checks; the full quick suite remains green.
 
 Amended 2026-07-14 after a code-verified review. Substantive changes: the 2D
 interpolated-transform API does not exist in the pinned 4.6.1 GodotSharp, so Task 4's

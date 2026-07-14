@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://src/Buddy/BuddyRoot.cs" id="1_root"]
 [ext_resource type="Script" path="res://src/Buddy/Physics/PuppetRig.cs" id="2_rig"]
@@ -14,6 +14,7 @@
 [ext_resource type="Resource" path="res://data/buddy/lab_conscious_drive.tres" id="12_conscious_profile"]
 [ext_resource type="Resource" path="res://data/buddy/lab_unconscious_drive.tres" id="13_unconscious_profile"]
 [ext_resource type="Script" path="res://src/Buddy/Behavior/GrabResistanceComponent.cs" id="14_resistance"]
+[ext_resource type="Resource" path="res://data/buddy/lab_buddy_visual.tres" id="15_visual_profile"]
 
 [sub_resource type="CircleShape2D" id="HeadShape"]
 radius = 24.0
@@ -36,6 +37,7 @@ radius = 17.0
 [node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "AutonomousMotion", "ActiveDrive", "GrabResistance")]
 script = ExtResource("1_root")
 Rig = NodePath("PuppetRig")
+VisualProfile = ExtResource("15_visual_profile")
 Constraints = NodePath("PuppetConstraintComponent")
 Standing = NodePath("StandingDetector")
 Recovery = NodePath("RecoveryComponent")
