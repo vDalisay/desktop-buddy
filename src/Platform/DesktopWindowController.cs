@@ -135,6 +135,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             _ => Viewport.Msaa.Disabled,
         };
         GetViewport().Msaa2D = msaa;
+        GetViewport().Msaa3D = msaa; // M3.5: 3D presentation pass shares the MSAA setting.
         DisplayServer.WindowSetVsyncMode(settings.Vsync
             ? DisplayServer.VSyncMode.Enabled
             : DisplayServer.VSyncMode.Disabled);

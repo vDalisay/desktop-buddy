@@ -23,6 +23,15 @@ public partial class BoundaryController : StaticBody2D, IImpactSource
     [Export] public CollisionShape2D RightWall { get; set; } = null!;
     [Export] public Camera2D WorldCamera { get; set; } = null!;
 
+    // Optional 3D presentation camera (M3.5). Null-safe: scenes without a 3D camera
+    // (e.g. dual_profile_lab.tscn) stay valid. Driven in lockstep with WorldCamera.
+    [Export] public Camera3D? WorldCamera3D { get; set; }
+
+    // View-plumbing constant: the orthographic camera's Z distance is provably invisible
+    // to the orthographic result (only near/far clipping depends on it), so it is a code
+    // constant rather than a visual-profile value.
+    private const float CameraDistance = 500f;
+
     private RoomLayout _pendingLayout;
     private bool _hasPendingLayout;
 
@@ -119,6 +128,20 @@ public partial class BoundaryController : StaticBody2D, IImpactSource
 
         WorldCamera.Position = new Vector2(width * 0.5f, height * 0.5f);
         WorldCamera.Zoom = Vector2.One * (float)layout.EffectiveZoom;
+
+        if (GodotObject.IsInstanceValid(WorldCamera3D))
+        {
+            // Match the Camera2D framing through WorldPlaneMapping: (x, y) -> (x, -y, 0),
+            // camera at (W/2, -H/2, +CameraDistance) looking -Z, vertical extent = RoomHeight.
+            WorldCamera3D!.Projection = Camera3D.ProjectionType.Orthogonal;
+            WorldCamera3D.KeepAspect = Camera3D.KeepAspectEnum.Height;
+            WorldCamera3D.Size = height;
+            WorldCamera3D.Position = new Vector3(width * 0.5f, -height * 0.5f, CameraDistance);
+            WorldCamera3D.Rotation = Vector3.Zero; // identity basis looks down -Z
+            // Global constraint 6: presenter-driven 3D nodes and this camera opt out of
+            // engine interpolation so a queued layout change snaps exactly like the 2D camera.
+            WorldCamera3D.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+        }
 
         CurrentLayout = layout;
         InnerBounds = new Rect2(
