@@ -7,8 +7,12 @@ buddy painting/coloring, cosmetics, and Steam Workshop/custom buddy packages, an
 owner schedules this milestone and resolves the decisions in the last section into
 `docs/DECISIONS.md`.** Dependencies: the M3.5 slice must be complete and accepted
 (`docs/M3_5_3D_PRESENTATION_PLAN.md` — the `BuddyVisualProfile` seam and
-`BuddyVisualPresenter` are this plan's rendering substrate); Phase C additionally requires
-the Milestone 6 Steam adapter.
+`BuddyVisualPresenter` are this plan's rendering substrate, and M3.5 Task 4's injectable
+transform-source seam is what lets Task A6 drive the presenter with fixed rest-pose
+transforms and no physics); the M3.6 expressive slice
+(`docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md`) must also be complete — it builds the
+face compositor and `FaceExpressionMap` that Phase A parameterizes; Phase C additionally
+requires the Milestone 6 Steam adapter.
 
 **Prime invariants, every phase:** customization is visual-only forever (M3.5 decision) —
 no schema field, package, or editor control may reference rig, drive, mass, collision, or
@@ -49,7 +53,10 @@ through Steam Workshop plus a file-based fallback. Three independently shippable
    is the visual-profile surface and nothing else, so a malicious or buggy document
    physically cannot reach physics.
 2. **Data-only packages with hard caps**: manifest ≤ 64 KB; textures PNG, ≤ 512×512,
-   ≤ 1 MB each; whole package ≤ 6 MB. Violations reject at validation, never at render.
+   ≤ 1 MB each; whole package ≤ 8 MB (six fully painted parts at the per-texture cap
+   plus manifest and preview must still fit — a 6 MB package cap would reject a
+   maximally painted but otherwise legal character). Violations reject at validation,
+   never at render.
 3. **Safe-boundary swaps**: activating a character applies at the scene root's next fixed
    tick (the queued-request pattern `BoundaryController` already uses), never mid-tick.
    Swap is a pure view change; a scenario witnesses accepted-pain equality across a swap.
@@ -84,17 +91,23 @@ name length/character limits.
 ### Task A2 — Feature atlas and part compositor (integration/presentation)
 Original robot feature art (eyes, brows, mouths, and robot accents) drawn procedurally
 in-engine (`CanvasItem` draw into the compositor viewport — consistent with the M3.5
-procedural-asset decision; no external art pipeline). The compositor renders base color →
-(Phase B paint slot) → features into a per-part `ImageTexture`, assigned as the Unshaded
-material's albedo texture on the M3.5 meshes. Re-render triggers: document change,
-expression change. The head texture replaces the M3.5 `Label3D` emoticon **for parametric
-characters**; the built-in default buddy keeps its accepted `Label3D` face until the
-Phase A exit gate accepts parametric parity, after which one pipeline remains.
+procedural-asset decision; no external art pipeline). The compositor core and its
+re-render-on-change discipline ship in M3.6 for the built-in face; this task extends
+them: a parametric feature atlas, per-document parameters, and full-part compositing —
+base color → (Phase B paint slot) → features — into per-part `ImageTexture`s assigned
+as the Unshaded material's albedo on the M3.5 meshes. Re-render triggers: document
+change, expression change. The M3.6 face mounting (feature layer on a head-front quad)
+either migrates into the head albedo here or stays a quad above it — resolve at the
+Phase A exit gate; the M3.5 `Label3D` emoticon is already retired by M3.6.
 
 ### Task A3 — Face expression map (integration/presentation)
-`FaceExpressionMap`: face-state string → feature pose (eye/mouth variants and offsets)
-for every state the reaction component emits — consciousness `"x_x"`, pain `">_<"`, pet
-and delight smiles, and the mood-band idle set. The reaction component and its priority
+`FaceExpressionMap` ships in M3.6 for the built-in face (face-state string → feature
+pose for every state the reaction component emits, driven by the authoritative
+face-state constant exported beside the resolver — currently ten strings: `":|"`,
+`"x_x"`, `">_<"`, `">:("`, `"o_o"`, `":)"`, `":3"`, `"^_^"`, `":("`, `":/"`). This task
+extends the same map to parametric characters: every per-document feature variant must
+resolve a pose for every state, and the coverage scenario iterates the same constant so
+a future face string cannot silently bypass the map into the A4 fallback. The reaction component and its priority
 rules do not change; `BuddyReactionComponent` keeps writing strings and the presenter
 resolves them. Scenario-checkable without pixels: the map lookup result and the
 compositor's last-rendered state are exposed as semantic properties.
@@ -103,7 +116,10 @@ compositor's last-rendered state are exposed as semantic properties.
 Pure function `CharacterCompiler.Compile(CharacterDocument) → compiled visual data`
 consumed by `BuddyVisualPresenter` exactly where `BuddyVisualProfile` data flows today.
 Compile failures (invalid document at load) follow §16: log, quarantine the file, fall
-back to the built-in buddy, never crash.
+back to the built-in buddy, never crash. Compile and validate are CPU-only by
+construction: a headless/renderless compositor failure is an environment condition, not
+document invalidity, and must never trigger quarantine — CI runs every scenario without
+a GPU.
 
 ### Task A5 — Character library persistence (integration)
 `user://characters/<guid>/character.json` with the atomic write/backup discipline;
@@ -115,10 +131,12 @@ character reverts to built-in.
 ### Task A6 — Editor UI (integration/presentation)
 `scenes/editor/character_editor.tscn`: part selector, parameter controls, color pickers,
 seeded randomize (injectable RNG per §23 — presentation stream), name entry, library
-panel, and a live preview that reuses `BuddyVisualPresenter` fed **fixed rest-pose
-transforms** — the preview runs no physics. Entry from the settings/panel surface;
-sandbox paused while open; window sizing per owner decision 2. Every string is a
-translation key.
+panel, and a live preview that reuses `BuddyVisualPresenter` through the M3.5 Task 4
+transform-source seam, fed **fixed rest-pose transforms** — the preview runs no physics.
+Entry from the settings/panel surface; sandbox paused while open — and because that
+pause suspends the tree, the editor branch itself must run with `ProcessMode`
+Always/WhenPaused or the editor UI freezes with the sandbox; window sizing per owner
+decision 2. Every string is a translation key.
 
 ### Task A7 — Phase A scenarios and journey (integration/testing)
 Scenarios: `editor_document_roundtrip` (create → save → load → compile → applied at a
@@ -159,9 +177,12 @@ save and at load (oversize on load → quarantine). Document schema minor bump; 
 adds empty paint set to older documents.
 
 ### Task B5 — Phase B scenarios (integration/testing)
-`paint_stroke_applies` (stroke changes the part texture hash), `paint_undo_restores`
-(hash returns), `paint_roundtrip` (save/load pixel-identical), `paint_oversize_rejected`,
-`expression_over_paint` (paint fully covering the face still shows the knockout state).
+`paint_stroke_applies` (stroke changes the hash of the CPU-side paint `Image` — never
+the composited `SubViewport` output, which is empty headless), `paint_undo_restores`
+(hash returns), `paint_roundtrip` (save/load pixel-identical on the paint `Image`),
+`paint_oversize_rejected`, `expression_over_paint` (paint fully covering the face still
+shows the knockout state — asserted through the A3 semantic layer-order properties, not
+pixels, so it holds headless).
 
 **Phase B exit gate (owner-manual):** brush feel and paint→game fidelity accepted.
 
@@ -171,9 +192,14 @@ adds empty paint set to older documents.
 Versioned package: `manifest.json` (schema version, minimum app version, embedded
 character document, per-file SHA-256 checksums, author metadata) plus texture PNGs.
 Validator enforces constraint 2 caps, checksums, schema/app-version gates, and part
-completeness. The same format is the local `.buddychar` import/export file. xUnit:
-happy path, tampered checksum, oversize, future-major rejection, minimum-app-version
-gate, checksum-of-missing-file.
+completeness — plus filesystem hygiene: zip entry names validate against a strict
+whitelist (`manifest.json` and the manifest-declared PNG names only; reject `../`,
+absolute paths, and anything unexpected — zip-slip), the character id must parse as a
+GUID before it is ever used as a `user://characters/<guid>/` path segment, and PNG byte
+caps are enforced before decode with dimension caps after. The same format is the local
+`.buddychar` import/export file. xUnit: happy path, tampered checksum, oversize,
+future-major rejection, minimum-app-version gate, checksum-of-missing-file, zip-slip
+entry name, non-GUID id.
 
 ### Task C2 — `IWorkshopService` seam (integration)
 Interface in `src/Platform` with a fully functional emulated implementation (local
@@ -191,9 +217,12 @@ stat operations; no partial packages ever upload (validate before submit).
 
 ### Task C4 — Subscribe/import flow (integration)
 Enumerate subscribed items → download → C1 validation → import as **read-only** library
-entries ("duplicate to edit" creates a local copy). Invalid downloads quarantine with a
-visible reason. Unsubscribing removes the cached entry (and reverts to built-in if it
-was active). Startup revalidates cached subscriptions.
+entries keyed by Workshop item id, never by the embedded document GUID alone — a
+subscribed item whose GUID collides with a local character (duplicate or malicious) must
+not shadow it or hijack the active-GUID resolution; "duplicate to edit" creates a local
+copy under a freshly generated GUID. Invalid downloads quarantine with a visible reason.
+Unsubscribing removes the cached entry (and reverts to built-in if it was active).
+Startup revalidates cached subscriptions.
 
 ### Task C5 — Moderation and policy (integration + docs)
 Content policy document (what the game surfaces vs. what Steam moderates); in-app
@@ -241,6 +270,20 @@ shippable.
 
 Deferred-feature plan written 2026-07-14 at owner request, on the analysis worktree
 (baseline `m3-sol` `80fb22b`). Not scheduled; no tasks started; the ROADMAP deferred
-status is unchanged. The only near-term obligation this plan creates is already inside
-M3.5: keep the `BuddyVisualProfile` seam clean, because every phase here compiles into
-it.
+status is unchanged. The near-term obligations this plan creates are already inside
+M3.5: keep the `BuddyVisualProfile` seam clean, and keep the presenter's transform
+source injectable (M3.5 Task 4), because every phase here compiles into the former and
+the A6 preview drives the latter.
+
+Amended 2026-07-14 after a code-verified review: package cap arithmetic fixed (8 MB
+whole-package so six max-size textures fit), zip-slip/GUID-path validation added to C1,
+Workshop GUID-collision policy added to C4, the headless GPU boundary made explicit
+(A4/B5 assert against CPU-side data only), the authoritative face-state list pinned to
+the resolver's actual ten states (A3), and the editor branch's `ProcessMode` under
+sandbox pause noted (A6).
+
+Amended again 2026-07-14 for the owner's expressiveness direction: the face compositor
+and `FaceExpressionMap` now build first in the M3.6 expressive slice
+(`docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md`) for the built-in buddy; Phase A here
+parameterizes them per character document instead of building them, and M3.6 joins
+M3.5 as a hard dependency.
