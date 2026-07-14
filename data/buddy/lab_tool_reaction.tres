@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ToolReactionProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Behavior/ToolReactionProfile.cs" id="1_reaction"]
+
+[resource]
+resource_name = "ProvisionalM3ToolReaction"
+script = ExtResource("1_reaction")
+AngryFleeScale = 1.5
+FriendlyJumpScale = 1.15
+AngryJumpScale = 1.35
+TickleJumpHorizontalRatio = 0.45
+DefenseRange = 180.0
+GuardReach = 42.0
+GuardHandSeparation = 24.0
+DefenseFleeScale = 1.25
+GuardAimLagSeconds = 0.12
+GuardAbsorption = 0.5
+GuardStiffness = 1600.0
+GuardDamping = 70.0
+GuardMaximumForce = 16000.0

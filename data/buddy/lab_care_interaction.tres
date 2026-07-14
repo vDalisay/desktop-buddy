@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="CareInteractionProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/CareInteractionProfile.cs" id="1_care"]
+
+[resource]
+resource_name = "ConfirmedM3CareInteraction"
+script = ExtResource("1_care")
+PetDistancePerReward = 180.0
+FavoriteSpotMultiplier = 1.2
+SecondsPerReward = 3.0
+TickleFriendlySeconds = 6.0
+TickleCooldownSeconds = 8.0
+FriendlyHopIntervalSeconds = 1.5
+AngryHopIntervalSeconds = 0.75
+MaximumStrokeDistancePerTick = 32.0

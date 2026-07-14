@@ -1,8 +1,11 @@
 using System;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Mood;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Tools;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Presentation;
@@ -17,10 +20,13 @@ public partial class BuddyReactionComponent : Node
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public ReactionProfile Profile { get; set; } = null!;
+    [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
+    [Export] public ToolReactionComponent ToolReaction { get; set; } = null!;
 
     private int _painTicks;
     private int _delightTicks;
     private int _fearTicks;
+    private int _petSmileTicks;
 
     public bool IsInitialized { get; private set; }
     public string CurrentFace { get; private set; } = ":|";
@@ -36,7 +42,9 @@ public partial class BuddyReactionComponent : Node
     {
         if (!GodotObject.IsInstanceValid(Buddy) || !Buddy.IsInitialized ||
             !GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
-            !GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
+            !GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0 ||
+            !GodotObject.IsInstanceValid(CareStroke) || !CareStroke.IsInitialized ||
+            !GodotObject.IsInstanceValid(ToolReaction) || !ToolReaction.IsInitialized)
             throw new InvalidOperationException("BuddyReactionComponent requires buddy, pipeline, and valid reaction tuning.");
         Pipeline.ImpactAccepted += OnImpact;
         Pipeline.CareAwarded += OnCare;
@@ -50,6 +58,7 @@ public partial class BuddyReactionComponent : Node
         if (_painTicks > 0) _painTicks--;
         if (_delightTicks > 0) _delightTicks--;
         if (_fearTicks > 0) _fearTicks--;
+        if (_petSmileTicks > 0) _petSmileTicks--;
         Resolve();
     }
 
@@ -66,7 +75,13 @@ public partial class BuddyReactionComponent : Node
         _fearTicks = SecondsToTicks(Profile.AcuteFearSeconds);
     }
 
-    private void OnCare(CareKind kind) => _delightTicks = SecondsToTicks(Profile.DelightFaceSeconds);
+    private void OnCare(CareKind kind)
+    {
+        if (kind == CareKind.Pet)
+            _petSmileTicks = SecondsToTicks(Profile.PetCompletionFaceSeconds);
+        else
+            _delightTicks = SecondsToTicks(Profile.DelightFaceSeconds);
+    }
 
     private void Resolve()
     {
@@ -85,7 +100,13 @@ public partial class BuddyReactionComponent : Node
 
         CurrentFace = Buddy.CurrentConsciousness == Consciousness.Unconscious ? "x_x" :
             _painTicks > 0 ? ">_<" :
+            Pipeline.SelectedTool == ToolId.Tickle &&
+            CareStroke.TickleDisposition == TickleDisposition.Angry ? ">:(" :
+            ToolReaction.IsDefending ? ">:(" :
             _fearTicks > 0 || selectedToolFeared ? "o_o" :
+            _petSmileTicks > 0 ? ":)" :
+            CareStroke.IsPetRubbing ? ":3" :
+            CareStroke.IsTickleContact ? "^_^" :
             _delightTicks > 0 ? "^_^" :
             Pipeline.MoodBand switch
             {

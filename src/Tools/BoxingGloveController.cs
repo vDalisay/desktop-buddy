@@ -26,10 +26,13 @@ public partial class BoxingGloveController : Node2D
     private Vector2 _cursor;
     private Vector2 _previousCursor;
     private bool _hasCursor;
+    private float _armingTravel;
 
     public bool IsInitialized { get; private set; }
     public bool IsActive => GodotObject.IsInstanceValid(_glove);
     public BoxingGloveBody? Glove => GodotObject.IsInstanceValid(_glove) ? _glove : null;
+    public bool HasCursor => _hasCursor;
+    public Vector2 Cursor => _cursor;
 
     public void Initialize()
     {
@@ -74,6 +77,12 @@ public partial class BoxingGloveController : Node2D
 
         BoxingGloveBody glove = _glove!;
         float dt = (float)delta;
+        if (!glove.IsImpactArmed)
+        {
+            _armingTravel += _cursor.DistanceTo(_previousCursor);
+            if (_armingTravel >= Profile.MinimumArmingTravel)
+                glove.ArmImpacts();
+        }
         Vector2 cursorVelocity = dt > 0.0f ? (_cursor - _previousCursor) / dt : Vector2.Zero;
         Vector2 error = _cursor - glove.GlobalPosition;
         Vector2 relativeVelocity = glove.LinearVelocity - cursorVelocity;
@@ -97,6 +106,7 @@ public partial class BoxingGloveController : Node2D
         glove.GlobalPosition = _cursor;
         glove.LinearVelocity = Vector2.Zero;
         _previousCursor = _cursor;
+        _armingTravel = 0.0f;
         _glove = glove;
     }
 
@@ -108,6 +118,7 @@ public partial class BoxingGloveController : Node2D
         }
 
         _glove = null;
+        _armingTravel = 0.0f;
     }
 
     private void RequireInitialized()

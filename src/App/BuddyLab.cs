@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Buddy;
+using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Diagnostics;
@@ -36,8 +37,11 @@ public partial class BuddyLab : Node2D
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public BoxingGloveController Glove { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
+    [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
+    [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
     [Export] public BuddyReactionComponent Reactions { get; set; } = null!;
     [Export] public ReactionAudioPresenter ReactionAudio { get; set; } = null!;
+    [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
     [Export] public MoneyHudPresenter MoneyHud { get; set; } = null!;
     public TelemetryRecorder? TelemetryRecorder { get; private set; }
 
@@ -49,8 +53,10 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(TelemetryPanel) ||
             !GodotObject.IsInstanceValid(BoundaryVisualizer) ||
             !GodotObject.IsInstanceValid(Pipeline) || !GodotObject.IsInstanceValid(Glove) ||
-            !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(Reactions) ||
-            !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(MoneyHud))
+            !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
+            !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
+            !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
+            !GodotObject.IsInstanceValid(MoneyHud))
         {
             throw new InvalidOperationException(
                 "BuddyLab requires injected buddy, controls, grab, pointer, boundaries, containment, telemetry, boundary visualization, and the interaction pipeline/tools.");
@@ -62,8 +68,11 @@ public partial class BuddyLab : Node2D
         Pipeline.Initialize();
         Glove.Initialize();
         CareStroke.Initialize();
+        CareCursor.Initialize();
+        ToolReactions.Initialize();
         Reactions.Initialize();
         ReactionAudio.Initialize();
+        ImpactFeedback.Initialize();
         MoneyHud.Initialize();
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
@@ -115,6 +124,7 @@ public partial class BuddyLab : Node2D
 
             Glove.PhysicsTick(delta);
             CareStroke.PhysicsTick(delta);
+            ToolReactions.PhysicsTick(delta);
             Reactions.PhysicsTick();
 
             Buddy.PhysicsTick();

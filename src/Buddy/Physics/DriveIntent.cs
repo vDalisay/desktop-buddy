@@ -1,15 +1,25 @@
+using Godot;
+
 namespace DesktopBuddy.Buddy.Physics;
 
 /// <summary>
-/// Resolved actuation request handed to <see cref="ActiveDriveComponent"/> for
-/// one tick. The buddy root arbitrates its sources: a player-constraint fear
-/// response (priority 4) supersedes ambient autonomy (priority 7), so when
-/// <see cref="ResistanceStrength"/> is positive the drive applies bounded
-/// opposing force instead of walking/jumping. The drive only applies the
-/// resolved intent; it never chooses it.
+/// One resolved bounded actuation request. Behavior components choose intent;
+/// <see cref="ActiveDriveComponent"/> alone applies locomotion, jump, resistance,
+/// and defensive hand-target forces.
 /// </summary>
 public readonly record struct DriveIntent(
     float WalkDirection,
+    float LocomotionScale,
     bool JumpRequested,
+    float JumpDirection,
+    float JumpScale,
+    float JumpHorizontalRatio,
     float ResistanceDirection,
-    float ResistanceStrength);
+    float ResistanceStrength,
+    bool GuardActive,
+    Vector2 LeftGuardTarget,
+    Vector2 RightGuardTarget,
+    float GuardStiffness,
+    float GuardDamping,
+    float GuardMaximumForce,
+    float GuardAbsorption);

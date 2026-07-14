@@ -78,6 +78,7 @@ Deliver:
 
 - Autonomous approach/flee/catch/hold/consume/toss decisions.
 - Persistent tool history and the mood-60 trust reset.
+- Per-save ambient jump propensity sampled only when starting anew, combined with obstacle/situation evidence so ordinary jumping is reduced and predictable across reloads.
 - Passive-income service, mood decay, care gains/cooldowns, and hidden-to-tray low-cost clock.
 - Versioned atomic saves, backup/quarantine recovery, one save slot, safe-pose resume, and no catch-up across close/sleep.
 

@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Buddy;
+using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Diagnostics;
@@ -35,8 +36,11 @@ public partial class SandboxRoot : Node2D
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public BoxingGloveController Glove { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
+    [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
+    [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
     [Export] public BuddyReactionComponent Reactions { get; set; } = null!;
     [Export] public ReactionAudioPresenter ReactionAudio { get; set; } = null!;
+    [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
     [Export] public MoneyHudPresenter MoneyHud { get; set; } = null!;
 
     public override void _Ready()
@@ -47,7 +51,9 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(Grab) || !GodotObject.IsInstanceValid(Pointer) ||
             !GodotObject.IsInstanceValid(Containment) || !GodotObject.IsInstanceValid(Pipeline) ||
             !GodotObject.IsInstanceValid(Glove) || !GodotObject.IsInstanceValid(CareStroke) ||
+            !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
+            !GodotObject.IsInstanceValid(ImpactFeedback) ||
             !GodotObject.IsInstanceValid(MoneyHud))
         {
             throw new InvalidOperationException(
@@ -59,8 +65,11 @@ public partial class SandboxRoot : Node2D
         Pipeline.Initialize();
         Glove.Initialize();
         CareStroke.Initialize();
+        CareCursor.Initialize();
+        ToolReactions.Initialize();
         Reactions.Initialize();
         ReactionAudio.Initialize();
+        ImpactFeedback.Initialize();
         MoneyHud.Initialize();
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
@@ -82,6 +91,7 @@ public partial class SandboxRoot : Node2D
         Buddy.GrabResistance.SetGrabContext(grab.Active && grab.Target is PuppetPartBody, grab.CursorAnchor);
         Glove.PhysicsTick(delta);
         CareStroke.PhysicsTick(delta);
+        ToolReactions.PhysicsTick(delta);
         Reactions.PhysicsTick();
         Buddy.PhysicsTick();
         Pipeline.PhysicsTick();

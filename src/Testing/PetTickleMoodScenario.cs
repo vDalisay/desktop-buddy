@@ -33,14 +33,16 @@ public sealed class PetTickleMoodScenario : IScenario
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
         lab.Pipeline.SelectTool(ToolId.Pet);
-        await StrokeHeadValidTicks(tree, lab, CadenceTicks - 1);
+        await RubHeadValidTicks(tree, lab, CadenceTicks - 1);
         checks.Add(new StartupCheck("pet_waits_for_three_valid_seconds",
             lab.Pipeline.CareAwardCount == 0,
-            $"awards={lab.Pipeline.CareAwardCount} progress={lab.Pipeline.CareProgressSeconds(CareKind.Pet):F6}"));
-        await StrokeHeadValidTicks(tree, lab, 1);
+            $"awards={lab.Pipeline.CareAwardCount} distance={lab.Pipeline.PetDistanceProgress:F3} seconds={lab.Pipeline.PetValidSecondsProgress:F6}"));
+        await RubHeadValidTicks(tree, lab, 1);
         checks.Add(new StartupCheck("pet_awards_at_three_valid_seconds",
-            lab.Pipeline.CareAwardCount == 1,
-            $"awards={lab.Pipeline.CareAwardCount} mood={lab.Pipeline.Mood:F4}"));
+            lab.Pipeline.CareAwardCount == 1 &&
+            lab.Pipeline.PetDistanceProgress < 0.001 &&
+            lab.Pipeline.PetValidSecondsProgress < 1.0 / 120.0,
+            $"awards={lab.Pipeline.CareAwardCount} mood={lab.Pipeline.Mood:F4} distance={lab.Pipeline.PetDistanceProgress:F3} seconds={lab.Pipeline.PetValidSecondsProgress:F6}"));
 
         lab.CareStroke.SetStroke(true, new Vector2(-1000.0f, -1000.0f));
         long validBeforeEmpty = lab.CareStroke.ValidContactTicks;
@@ -53,12 +55,12 @@ public sealed class PetTickleMoodScenario : IScenario
             $"awards={lab.Pipeline.CareAwardCount} validTicks={lab.CareStroke.ValidContactTicks - validBeforeEmpty}"));
 
         lab.Pipeline.SelectTool(ToolId.Tickle);
-        await StrokeHeadValidTicks(tree, lab, CadenceTicks);
+        await HoldHeadValidTicks(tree, lab, CadenceTicks);
         checks.Add(new StartupCheck("tickle_has_independent_cadence",
             lab.Pipeline.CareAwardCount == 2 &&
-            lab.Pipeline.CareProgressSeconds(CareKind.Pet) < 1.0 / 120.0 &&
-            lab.Pipeline.CareProgressSeconds(CareKind.Tickle) < 1.0 / 120.0,
-            $"awards={lab.Pipeline.CareAwardCount} pet={lab.Pipeline.CareProgressSeconds(CareKind.Pet):F6} tickle={lab.Pipeline.CareProgressSeconds(CareKind.Tickle):F6}"));
+            lab.Pipeline.PetValidSecondsProgress < 1.0 / 120.0 &&
+            lab.Pipeline.TickleContactSeconds >= 3.0 - 1e-6,
+            $"awards={lab.Pipeline.CareAwardCount} pet={lab.Pipeline.PetValidSecondsProgress:F6} tickle={lab.Pipeline.TickleContactSeconds:F6}"));
         checks.Add(new StartupCheck("care_never_pays_money",
             lab.Pipeline.BalanceMilliCredits == 0,
             $"balance={lab.Pipeline.BalanceMilliCredits}"));
@@ -66,10 +68,30 @@ public sealed class PetTickleMoodScenario : IScenario
         lab.CareStroke.SetStroke(false, Vector2.Zero);
         messages.Add($"mood={lab.Pipeline.Mood:F4} awards={lab.Pipeline.CareAwardCount} validTicks={lab.CareStroke.ValidContactTicks}");
         lab.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return new ScenarioResult(AllPassed(checks), checks, messages);
     }
 
-    private static async Task StrokeHeadValidTicks(SceneTree tree, BuddyLab lab, int ticks)
+    private static async Task RubHeadValidTicks(SceneTree tree, BuddyLab lab, int ticks)
+    {
+        long target = lab.CareStroke.ValidContactTicks + ticks;
+        int timeout = ticks + 8;
+        for (int iteration = 0;
+             iteration < timeout && lab.CareStroke.ValidContactTicks < target;
+             iteration++)
+        {
+            float offset = iteration % 2 == 0 ? -8.0f : 8.0f;
+            lab.CareStroke.SetStroke(true, lab.Buddy.Rig.Head.GlobalPosition + Vector2.Right * offset);
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+
+        // physics_frame resumes before node _PhysicsProcess callbacks. Clearing
+        // here prevents the signal frame used to observe the target count from
+        // adding an unintended extra valid-contact tick.
+        lab.CareStroke.SetStroke(false, Vector2.Zero);
+    }
+
+    private static async Task HoldHeadValidTicks(SceneTree tree, BuddyLab lab, int ticks)
     {
         long target = lab.CareStroke.ValidContactTicks + ticks;
         int timeout = ticks + 8;
@@ -81,9 +103,6 @@ public sealed class PetTickleMoodScenario : IScenario
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         }
 
-        // physics_frame resumes before node _PhysicsProcess callbacks. Clearing
-        // here prevents the signal frame used to observe the target count from
-        // adding an unintended extra valid-contact tick.
         lab.CareStroke.SetStroke(false, Vector2.Zero);
     }
 

@@ -26,6 +26,11 @@ public partial class ActiveDriveComponent : Node
     public Vector2 LastGaitForce { get; private set; }
     public float LastJumpImpulse { get; private set; }
     public Vector2 LastResistanceForce { get; private set; }
+    public Vector2 LastLeftGuardForce { get; private set; }
+    public Vector2 LastRightGuardForce { get; private set; }
+    public Vector2 LastGuardReactionForce { get; private set; }
+    public Vector2 LastGuardCounterImpulse { get; private set; }
+    public int GuardAbsorptionCount { get; private set; }
     public int JumpImpulseCount { get; private set; }
     public bool ActiveOutputsEnabled { get; private set; }
     public bool IsInitialized { get; private set; }
@@ -33,6 +38,9 @@ public partial class ActiveDriveComponent : Node
     private int _gaitTick;
     private bool _jumpPending;
     private int _jumpCrouchRemaining;
+    private float _pendingJumpDirection;
+    private float _pendingJumpScale = 1.0f;
+    private float _pendingJumpHorizontalRatio;
     private Vector2 _leftFootRest;
     private Vector2 _rightFootRest;
 
@@ -65,6 +73,9 @@ public partial class ActiveDriveComponent : Node
         LastGaitForce = Vector2.Zero;
         LastJumpImpulse = 0.0f;
         LastResistanceForce = Vector2.Zero;
+        LastLeftGuardForce = Vector2.Zero;
+        LastRightGuardForce = Vector2.Zero;
+        LastGuardReactionForce = Vector2.Zero;
 
         ConsciousnessDriveProfile mode = consciousness == Consciousness.Conscious
             ? ConsciousProfile
@@ -76,7 +87,7 @@ public partial class ActiveDriveComponent : Node
             return;
         }
 
-        float assistanceRamp = Recovery.State.AssistanceRamp;
+        float assistanceRamp = SuppressRecovery ? 0.0f : Recovery.State.AssistanceRamp;
         ApplyUprightTorque(assistanceRamp, mode);
         ApplyBalanceForce(mode);
         if (assistanceRamp > 0.0f)
@@ -101,18 +112,53 @@ public partial class ActiveDriveComponent : Node
             return;
         }
 
-        ApplyLocomotion(intent.WalkDirection, mode);
-        UpdateJump(intent.JumpRequested, mode);
+        ApplyLocomotion(intent.WalkDirection, intent.LocomotionScale, mode);
+        if (intent.GuardActive)
+            ApplyGuardHands(intent, mode);
+        UpdateJump(intent, mode);
     }
 
     /// <summary>Development/test hook: hold ambient walk/jump gait off while keeping upright + balance.</summary>
     public bool SuppressLocomotion { get; set; }
+
+    /// <summary>Development/test hook for isolated passive-structure probes that deliberately remove all support.</summary>
+    public bool SuppressRecovery { get; set; }
+
+    /// <summary>
+    /// Cancels the guarded fraction of a real Boxing Glove solver impulse on a
+    /// braced hand. The pipeline has already confirmed attribution and the 0.5x
+    /// absorption coefficient; this physics component alone applies the matching
+    /// counter-impulse on the authoritative clock.
+    /// </summary>
+    public void AbsorbGuardedImpact(
+        BuddyPart part,
+        Vector2 contactNormal,
+        float rawImpulse,
+        float acceptedFraction)
+    {
+        if (!IsInitialized || part is not (BuddyPart.LeftHand or BuddyPart.RightHand) ||
+            !contactNormal.IsFinite() || !float.IsFinite(rawImpulse) || rawImpulse <= 0.0f ||
+            !float.IsFinite(acceptedFraction))
+        {
+            return;
+        }
+
+        float cancelledFraction = 1.0f - Mathf.Clamp(acceptedFraction, 0.0f, 1.0f);
+        Vector2 normal = contactNormal.IsZeroApprox() ? Vector2.Zero : contactNormal.Normalized();
+        LastGuardCounterImpulse = -normal * rawImpulse * cancelledFraction;
+        PuppetPartBody hand = part == BuddyPart.LeftHand ? Rig.LeftHand : Rig.RightHand;
+        hand.ApplyCentralImpulse(LastGuardCounterImpulse);
+        GuardAbsorptionCount++;
+    }
 
     private void ResetGaitState()
     {
         _gaitTick = 0;
         _jumpPending = false;
         _jumpCrouchRemaining = 0;
+        _pendingJumpDirection = 0.0f;
+        _pendingJumpScale = 1.0f;
+        _pendingJumpHorizontalRatio = 0.0f;
     }
 
     private void ApplyUprightTorque(float assistanceRamp, ConsciousnessDriveProfile mode)
@@ -165,9 +211,10 @@ public partial class ActiveDriveComponent : Node
         Rig.RightFoot.ApplyCentralForce(footReaction);
     }
 
-    private void ApplyLocomotion(float direction, ConsciousnessDriveProfile mode)
+    private void ApplyLocomotion(float direction, float intentScale, ConsciousnessDriveProfile mode)
     {
         direction = Mathf.Clamp(direction, -1.0f, 1.0f);
+        intentScale = Mathf.Clamp(intentScale, 0.0f, 2.0f);
         if (Mathf.IsZeroApprox(direction))
         {
             _gaitTick = 0;
@@ -185,9 +232,10 @@ public partial class ActiveDriveComponent : Node
         DriveFootToTarget(Rig.RightFoot, _rightFootRest, gait.RightFootOffset, mode);
 
         // Whole-body propulsion assist, capped at the walk-speed ceiling.
-        if ((Rig.Torso.LinearVelocity.X * direction) < Profile.MaximumWalkSpeed)
+        if ((Rig.Torso.LinearVelocity.X * direction) < Profile.MaximumWalkSpeed * intentScale)
         {
-            float assist = Profile.WalkForce * Profile.WalkAssistScale * direction * mode.LocomotionScale;
+            float assist = Profile.WalkForce * Profile.WalkAssistScale * direction *
+                           intentScale * mode.LocomotionScale;
             LastLocomotionForce = new Vector2(assist, 0.0f);
             float totalMass = TotalMass();
             foreach (PuppetPartBody body in Rig.Parts)
@@ -222,12 +270,15 @@ public partial class ActiveDriveComponent : Node
         foot.ApplyCentralForce(force);
     }
 
-    private void UpdateJump(bool jumpRequested, ConsciousnessDriveProfile mode)
+    private void UpdateJump(DriveIntent intent, ConsciousnessDriveProfile mode)
     {
-        if (jumpRequested && !_jumpPending)
+        if (intent.JumpRequested && !_jumpPending)
         {
             _jumpPending = true;
             _jumpCrouchRemaining = Profile.JumpCrouchTicks;
+            _pendingJumpDirection = Mathf.Clamp(intent.JumpDirection, -1.0f, 1.0f);
+            _pendingJumpScale = Mathf.Clamp(intent.JumpScale, 0.0f, 2.0f);
+            _pendingJumpHorizontalRatio = Mathf.Clamp(intent.JumpHorizontalRatio, 0.0f, 1.0f);
         }
 
         if (!_jumpPending)
@@ -245,7 +296,7 @@ public partial class ActiveDriveComponent : Node
             return;
         }
 
-        ApplyJump(mode);
+        ApplyJump(mode, _pendingJumpDirection, _pendingJumpScale, _pendingJumpHorizontalRatio);
         _jumpPending = false;
     }
 
@@ -263,17 +314,56 @@ public partial class ActiveDriveComponent : Node
         }
     }
 
-    private void ApplyJump(ConsciousnessDriveProfile mode)
+    private void ApplyJump(
+        ConsciousnessDriveProfile mode,
+        float direction,
+        float intentScale,
+        float horizontalRatio)
     {
-        float totalImpulse = Profile.JumpImpulse * mode.JumpScale;
+        float totalImpulse = Profile.JumpImpulse * mode.JumpScale * intentScale;
         LastJumpImpulse = totalImpulse;
         float totalMass = TotalMass();
         foreach (PuppetPartBody body in Rig.Parts)
         {
-            body.ApplyCentralImpulse(new Vector2(0.0f, -totalImpulse * (body.Mass / totalMass)));
+            float share = body.Mass / totalMass;
+            body.ApplyCentralImpulse(new Vector2(
+                totalImpulse * horizontalRatio * direction * share,
+                -totalImpulse * share));
         }
 
         JumpImpulseCount++;
+    }
+
+    private void ApplyGuardHands(DriveIntent intent, ConsciousnessDriveProfile mode)
+    {
+        Vector2 targetVelocity = Rig.Torso.LinearVelocity;
+        LastLeftGuardForce = DriveHandToGuardTarget(
+            Rig.LeftHand, intent.LeftGuardTarget, targetVelocity, intent, mode);
+        LastRightGuardForce = DriveHandToGuardTarget(
+            Rig.RightHand, intent.RightGuardTarget, targetVelocity, intent, mode);
+
+        // Guarding is internal actuation. Cancel its net external force on the
+        // torso so reaching for the body-relative targets cannot tow the puppet
+        // toward the pointer; locomotion remains the only deliberate translation.
+        LastGuardReactionForce = -(LastLeftGuardForce + LastRightGuardForce);
+        Rig.Torso.ApplyCentralForce(LastGuardReactionForce);
+    }
+
+    private static Vector2 DriveHandToGuardTarget(
+        PuppetPartBody hand,
+        Vector2 target,
+        Vector2 targetVelocity,
+        DriveIntent intent,
+        ConsciousnessDriveProfile mode)
+    {
+        Vector2 force = ((target - hand.GlobalPosition) * intent.GuardStiffness) -
+                        ((hand.LinearVelocity - targetVelocity) * intent.GuardDamping);
+        force *= mode.LocomotionScale;
+        float maximum = Mathf.Max(0.0f, intent.GuardMaximumForce);
+        if (force.Length() > maximum)
+            force = force.Normalized() * maximum;
+        hand.ApplyCentralForce(force);
+        return force;
     }
 
     private float TotalMass()

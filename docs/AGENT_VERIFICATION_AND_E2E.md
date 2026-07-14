@@ -67,7 +67,7 @@ Journeys land with the milestone that introduces the behavior and join that mile
 | 0 | Boot smoke: launch to sandbox composition, assert startup validation passed, clean exit code |
 | 1 | Lab: spawn/settle within envelopes; grab-throw each part; walk/jump observation; time-accelerated 30-minute idle soak |
 | 2 | Windowed mode-transition journeys where in-process input suffices; agent-assisted native matrix workflow documented |
-| 3 | Damage slice: glove strike pays through HUD; knockout at threshold; dedup under continuous contact; grab-payout neutrality |
+| 3 | Damage/tool-feel slice: glove strike pays through HUD; activation alone does not pay; Pet rubbing and Tickle escalation/cooldown use real input; learned glove defense raises; knockout at threshold; dedup under continuous contact; grab-payout neutrality |
 | 4 | Care and persistence: meal consumption grants mood and starts cooldown; failed use starts none; save → relaunch → safe standing resume with semantic state intact |
 | 5 | Shop: earn → purchase → permanent unlock across relaunch; one journey per tool's happy path plus its cancel/secondary path |
 | 6 | Platform fake: offline queue accrual, reconnect idempotency, local fallback boot |

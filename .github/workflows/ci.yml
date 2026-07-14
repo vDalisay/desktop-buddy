@@ -104,6 +104,24 @@ jobs:
       - name: Walk-jump journey
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_walk_jump --seed=1
 
+      - name: M3 impact deduplication scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=impact_dedup --seed=1
+
+      - name: M3 Pet and Tickle cadence scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=pet_tickle_mood --seed=1
+
+      - name: M3 presentation scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=m3_presentation --seed=1
+
+      - name: M3 tool feel and reactions scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=tool_feel_reactions --seed=1
+
+      - name: M3 glove strike journey
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --journey=m3_glove_strike --seed=1
+
+      - name: M3 full tool feel journey
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --journey=m3_tool_feel --seed=1
+
   full-soak:
     # Push CI runs the three-minute variant; workflow_dispatch runs both complete
     # 216,000-tick entry points with fixed-fps fast-forward.

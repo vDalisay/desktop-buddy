@@ -42,6 +42,8 @@ public partial class PuppetPartBody : RigidBody2D
     public bool HasSupportContact { get; private set; }
     public int SupportContactCount { get; private set; }
     public int PendingContactCount { get; private set; }
+    public string Face => _face;
+    public float FaceDrawRotation => PartId == BuddyPartId.Head ? -GlobalRotation : 0.0f;
 
     public RawPartContact GetPendingContact(int index) => _pendingContacts[index];
 
@@ -117,8 +119,12 @@ public partial class PuppetPartBody : RigidBody2D
                 float relativeSpeed =
                     (state.GetContactColliderVelocityAtPosition(index) -
                      state.GetContactLocalVelocityAtPosition(index)).Length();
-                Vector2 point = state.Transform * state.GetContactLocalPosition(index);
-                Vector2 normal = state.Transform.BasisXform(state.GetContactLocalNormal(index)).Normalized();
+                // Despite the legacy "local" method names, Godot 4.6 reports
+                // both values in the global physics coordinate system. Applying
+                // this body's transform again displaced impact VFX far away from
+                // the actual solver contact and rotated its presentation rays.
+                Vector2 point = state.GetContactLocalPosition(index);
+                Vector2 normal = state.GetContactLocalNormal(index).Normalized();
                 _pendingContacts[PendingContactCount] =
                     new RawPartContact(colliderObject, impulse, relativeSpeed, point, normal);
                 PendingContactCount++;
@@ -152,6 +158,9 @@ public partial class PuppetPartBody : RigidBody2D
         DrawArc(Vector2.Zero, Radius, 0.0f, Mathf.Tau, CircleSegments, OutlineColor, OutlineWidth, true);
         if (PartId == BuddyPartId.Head && !string.IsNullOrEmpty(_face))
         {
+            // The physical head remains free to spin; only the emoticon is
+            // counter-rotated so it stays readable in world/screen space.
+            DrawSetTransform(Vector2.Zero, FaceDrawRotation, Vector2.One);
             DrawString(
                 ThemeDB.FallbackFont,
                 new Vector2(-Radius, 6.0f),
@@ -161,5 +170,13 @@ public partial class PuppetPartBody : RigidBody2D
                 14,
                 OutlineColor);
         }
+    }
+
+    public override void _Process(double delta)
+    {
+        // Draw commands cache their local counter-rotation, so refresh only the
+        // one head circle while it physically rotates.
+        if (PartId == BuddyPartId.Head && !string.IsNullOrEmpty(_face))
+            QueueRedraw();
     }
 }

@@ -33,6 +33,7 @@ public sealed class PassiveRigScenario : IScenario
         // hand-impulse perturbation settles through the springs and upright/balance
         // rather than being re-excited by a step cycle.
         lab.Buddy.ActiveDrive.SuppressLocomotion = true;
+        lab.Buddy.ActiveDrive.SuppressRecovery = true;
         if (!string.IsNullOrEmpty(ScenarioArtifacts.Directory))
             lab.EnableTelemetry(ScenarioArtifacts.Directory, Id);
 

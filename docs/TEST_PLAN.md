@@ -41,7 +41,9 @@ The implementation must expose one command for pure tests, one command for headl
 - Mood-band boundaries are tested at every endpoint.
 - Passive multiplier passes through `0.25x` at `-100`, `1.0x` at neutral, and `2.0x` at `100`.
 - Peak passive income remains approximately 25% of the approved active-play benchmark.
-- Pet/Tickle, catch, Meal, Drink, and Repair Kit gains and cooldowns match the confirmed values.
+- Pet requires both the hidden distance threshold and three valid-contact seconds, resets without carrying excess, and applies `1.2x` distance only on the current per-selection favorite part.
+- Tickle grants friendly mood at three/six valid-contact seconds, then applies negative mood every further three seconds while Angry; hop cadences and the eight-second no-contact reset match the confirmed values.
+- Catch, Meal, Drink, and Repair Kit gains and cooldowns match the confirmed values.
 - Care cooldowns start on successful consumption/use and remain available after cancel, miss, drop, or rejected spawn.
 - Crossing upward to mood `60+` clears every harmful-history and per-tool fear record exactly once per crossing.
 - Falling below 60 and crossing again permits another reset.
@@ -76,6 +78,7 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - The tether stretches under fearful resistance but does not break solely from resistance.
 - Release velocity is preserved and capped.
 - After two seconds unable to stand, assisted recovery begins; hard recovery does not occur before ten seconds unless state is invalid/out of bounds.
+- Assisted recovery reaches full strength in one second and restores standing within the accepted `1.5`-second physical scenario bound.
 - After knockout expires, active drive ramps back without a teleport.
 - NaN, infinite, or escaped-body injection triggers immediate safe recovery.
 - Hard recovery releases grabs/held objects, clears transient physics/pain/knockout/status state, and preserves persistent progress.
@@ -83,6 +86,10 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 ### Tools and Collision Attribution
 
 - Glove and bat damage comes from physical contact rather than tool activation.
+- Boxing Glove cursor lag remains within the accepted response envelope; faster real strikes increase measured impulse/pain; the impact marker is centered on the solver contact point; maximum-pain/knockout hit-stop has a visibly slow early curve, is non-stacking, and restores the prior time scale.
+- Learned Boxing Glove harm raises both real hand bodies into a body-relative guard while the buddy travels away from the pointer. The guard direction follows pointer changes with bounded lag, never attaches to the physical glove, and applies an equal reaction so guard actuation cannot pull the puppet toward the threat. Guard-hand contact applies `0.5x` accepted impulse plus a matching physical counter-impulse; strikes around the hands remain unmodified.
+- The physical head rotates while the emoticon remains upright; Pet/Tickle cursor hands follow real pointer input instantly beneath the visible OS cursor.
+- Favorite-spot Pet contact emits small sparkles around the Pet hand only while held rubbing contact remains valid.
 - Pistol/shotgun cadence, magazine, reload, pellet count, and CCD behavior match the specification.
 - Pistol/shotgun fire once per primary press, reload with `R`, and auto-reload after an attempted empty shot.
 - Grenade fuse begins on release and expires after 2.5 seconds within one physics tick.

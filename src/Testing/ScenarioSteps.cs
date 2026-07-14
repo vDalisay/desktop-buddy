@@ -56,6 +56,16 @@ internal static class ScenarioSteps
         return await StrikePart(tree, lab, target, (int)tool, null, ControlledImpactSpeed);
     }
 
+    public static async Task<AcceptedImpact?> StrikePartAtSpeed(
+        SceneTree tree,
+        BuddyLab lab,
+        PuppetPartBody target,
+        float speed,
+        ToolId tool = ToolId.BoxingGlove)
+    {
+        return await StrikePart(tree, lab, target, (int)tool, null, speed);
+    }
+
     /// <summary>
     /// Controlled strike with explicit attribution. Reusing an interaction ID
     /// across replacement probes models a separated contact episode for the same
@@ -121,7 +131,8 @@ internal static class ScenarioSteps
     /// </summary>
     public static async Task<BuddyLab?> CreateControlledImpactLab(
         SceneTree tree,
-        float maximumPain)
+        float maximumPain,
+        float maximumImpulse = 40.0f)
     {
         PackedScene? packed = GD.Load<PackedScene>("res://scenes/buddy_lab.tscn");
         if (packed is null)
@@ -133,7 +144,7 @@ internal static class ScenarioSteps
         lab.Pipeline.Profile = new PainConversionProfile
         {
             ResourceName = "ScenarioControlledPainConversion",
-            ImpulseAnchors = new[] { 10.0f, 40.0f },
+            ImpulseAnchors = new[] { 10.0f, maximumImpulse },
             PainAnchors = new[] { 0.0f, maximumPain },
             MinimumImpulse = 10.0f,
             CashPerPain = 1.0,

@@ -321,6 +321,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM3GloveStrikeAsync(state, lab);
         }
+        else if (exercise == "m3_tool_feel")
+        {
+            await ExerciseM3ToolFeelAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -426,6 +430,8 @@ public partial class JourneyRunner : Node
         Dictionary<string, bool> state,
         BuddyLab lab)
     {
+        long balanceBeforeSelection = lab.Pipeline.BalanceMilliCredits;
+        long scoredBeforeSelection = lab.Pipeline.ScoredImpactCount;
         Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.B, Pressed = true });
         Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = Key.B, Pressed = false });
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -433,26 +439,30 @@ public partial class JourneyRunner : Node
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
 
         state["glove_selected"] = lab.Pipeline.SelectedTool == DesktopBuddy.Domain.Tools.ToolId.BoxingGlove;
-        state["tool_activation_does_not_pay"] = lab.Pipeline.BalanceMilliCredits == 0;
+        state["tool_activation_does_not_pay"] =
+            lab.Pipeline.BalanceMilliCredits == balanceBeforeSelection &&
+            lab.Pipeline.ScoredImpactCount == scoredBeforeSelection;
 
         Vector2 previous = new(32.0f, lab.Buddy.Rig.Head.GlobalPosition.Y);
         await MovePointerAsync(previous, Vector2.Zero);
         for (int tick = 0; tick < 120; tick++)
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
 
-        for (int pass = 0; pass < 6 && lab.Pipeline.ScoredImpactCount == 0; pass++)
+        for (int pass = 0; pass < 6 && lab.Pipeline.ScoredImpactCount == scoredBeforeSelection; pass++)
         {
             float x = pass % 2 == 0 ? 448.0f : 32.0f;
             Vector2 to = new(x, lab.Buddy.Rig.Head.GlobalPosition.Y);
             await MovePointerAsync(to, to - previous);
             previous = to;
-            for (int tick = 0; tick < 90 && lab.Pipeline.ScoredImpactCount == 0; tick++)
+            for (int tick = 0; tick < 90 && lab.Pipeline.ScoredImpactCount == scoredBeforeSelection; tick++)
                 await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
         }
         for (int tick = 0; tick < 40 && !lab.MoneyHud.RewardLabel.Visible; tick++)
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
 
-        state["glove_strike_paid"] = lab.Pipeline.ScoredImpactCount > 0 && lab.Pipeline.BalanceMilliCredits > 0;
+        state["glove_strike_paid"] =
+            lab.Pipeline.ScoredImpactCount > scoredBeforeSelection &&
+            lab.Pipeline.BalanceMilliCredits > balanceBeforeSelection;
         state["money_hud_updated"] = lab.MoneyHud.BalanceLabel.Text == "$" + lab.Pipeline.BalanceCredits;
         state["reward_feedback_visible"] = lab.MoneyHud.RewardLabel.Visible;
         Log.Info("Journey", $"M3 glove raw={lab.Pipeline.RawContactCount} accepted={lab.Pipeline.AcceptedEpisodeCount} " +
@@ -468,6 +478,119 @@ public partial class JourneyRunner : Node
                 GlobalPosition = viewport,
                 Relative = relative,
                 Velocity = relative * 120.0f,
+            });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+    }
+
+    private async System.Threading.Tasks.Task ExerciseM3ToolFeelAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        await PressToolKeyAsync(Key.F);
+        state["pet_selected"] = lab.Pipeline.SelectedTool == DesktopBuddy.Domain.Tools.ToolId.Pet;
+        int careBefore = (int)lab.Pipeline.CareAwardCount;
+        Vector2 pointer = lab.Buddy.Rig.Head.GlobalPosition;
+        await MovePointerAsync(pointer, Vector2.Zero, false);
+        await SetPrimaryAsync(pointer, true);
+        bool petHandVisible = false;
+        bool petFaceSeen = false;
+        for (int tick = 0; tick < 380 && lab.Pipeline.CareAwardCount == careBefore; tick++)
+        {
+            Vector2 next = lab.Buddy.Rig.Head.GlobalPosition + Vector2.Right * (tick % 2 == 0 ? -8.0f : 8.0f);
+            await MovePointerAsync(next, next - pointer, true);
+            pointer = next;
+            petHandVisible |= lab.CareCursor.IsHandVisible;
+            petFaceSeen |= lab.Reactions.CurrentFace == ":3";
+        }
+        state["pet_hand_visible"] = petHandVisible;
+        state["pet_rub_face_seen"] = petFaceSeen;
+        state["pet_rewarded"] = lab.Pipeline.CareAwardCount == careBefore + 1;
+        state["pet_completion_smile"] = lab.Reactions.CurrentFace == ":)";
+        await SetPrimaryAsync(pointer, false);
+
+        await PressToolKeyAsync(Key.T);
+        state["tickle_selected"] = lab.Pipeline.SelectedTool == DesktopBuddy.Domain.Tools.ToolId.Tickle;
+        pointer = lab.Buddy.Rig.Head.GlobalPosition;
+        await MovePointerAsync(pointer, Vector2.Zero, false);
+        await SetPrimaryAsync(pointer, true);
+        bool fled = false;
+        int tickleStartAwards = (int)lab.Pipeline.CareAwardCount;
+        for (int tick = 0; tick < 740 && lab.Pipeline.TickleDisposition != DesktopBuddy.Domain.Mood.TickleDisposition.Angry; tick++)
+        {
+            Vector2 next = lab.Buddy.Rig.Head.GlobalPosition;
+            await MovePointerAsync(next, next - pointer, true);
+            pointer = next;
+            fled |= lab.ToolReactions.IsTickleFleeing;
+        }
+        fled |= lab.ToolReactions.IsTickleFleeing;
+        state["tickle_two_friendly_rewards"] = lab.Pipeline.CareAwardCount == tickleStartAwards + 2;
+        state["tickle_became_angry"] = lab.Pipeline.TickleDisposition == DesktopBuddy.Domain.Mood.TickleDisposition.Angry &&
+                                         lab.Reactions.CurrentFace == ">:(";
+        state["tickle_fled"] = fled;
+        await SetPrimaryAsync(pointer, false);
+        for (int tick = 0; tick < 8 * Engine.PhysicsTicksPerSecond + 2; tick++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        state["tickle_cooldown_reset"] = lab.Pipeline.TickleDisposition == DesktopBuddy.Domain.Mood.TickleDisposition.Friendly;
+
+        await ExerciseM3GloveStrikeAsync(state, lab);
+        // The deliberately forceful strike may knock the buddy out. Despawn the
+        // glove, let the fixed four-second window end, then approach afresh so
+        // the conscious learned-defense behavior is what this journey observes.
+        await PressToolKeyAsync(Key.F);
+        for (int tick = 0;
+             tick < 600 && lab.Buddy.CurrentConsciousness != DesktopBuddy.Domain.Buddy.Consciousness.Conscious;
+             tick++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+        pointer = new Vector2(60.0f, 60.0f);
+        await MovePointerAsync(pointer, Vector2.Zero, false);
+        await PressToolKeyAsync(Key.B);
+        Vector2 protectedCenter = (lab.Buddy.Rig.Head.GlobalPosition + lab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+        await MovePointerAsync(protectedCenter, protectedCenter - pointer, false);
+        bool defended = false;
+        for (int tick = 0; tick < 90; tick++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            defended |= lab.ToolReactions.IsDefending && lab.Buddy.CurrentDriveIntent.GuardActive;
+        }
+        state["glove_defense_raised"] = lab.Pipeline.IsToolHarmful((int)DesktopBuddy.Domain.Tools.ToolId.BoxingGlove) && defended;
+
+        async System.Threading.Tasks.Task PressToolKeyAsync(Key key)
+        {
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = key, Pressed = true });
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = key, Pressed = false });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+
+        async System.Threading.Tasks.Task MovePointerAsync(Vector2 world, Vector2 relative, bool held)
+        {
+            Vector2 viewport = GetViewport().GetCanvasTransform() * world;
+            Input.ParseInputEvent(new InputEventMouseMotion
+            {
+                ButtonMask = held ? MouseButtonMask.Left : 0,
+                Position = viewport,
+                GlobalPosition = viewport,
+                Relative = relative,
+                Velocity = relative * 120.0f,
+            });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+
+        async System.Threading.Tasks.Task SetPrimaryAsync(Vector2 world, bool pressed)
+        {
+            Vector2 viewport = GetViewport().GetCanvasTransform() * world;
+            Input.ParseInputEvent(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                ButtonMask = pressed ? MouseButtonMask.Left : 0,
+                Pressed = pressed,
+                Position = viewport,
+                GlobalPosition = viewport,
             });
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);

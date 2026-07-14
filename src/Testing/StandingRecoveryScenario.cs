@@ -76,12 +76,12 @@ public sealed class StandingRecoveryScenario : IScenario
                                          lab.Buddy.Recovery.HardRecoveryCount == 0;
         checks.Add(new StartupCheck("assisted_self_righting_recovers", recoveredWithoutTeleport,
             $"max_ramp={assisted.MaximumRamp:F3} hard_count={lab.Buddy.Recovery.HardRecoveryCount}"));
-        // Feel target: assisted recovery should feel prompt, not limp. Assistance is
-        // already active when the tip pose is released, so ticks-to-stand measures
-        // time from assistance start; require <= 3 s (RecoveryClock ramp is 2 s).
+        // Owner-confirmed feel target: halve the prior assisted stand-up time.
+        // Assistance is already active when the tip pose is released, so this
+        // measures the physical self-righting interval, bounded at 1.5 seconds.
         checks.Add(new StartupCheck("assisted_recovery_is_prompt",
-            assisted.Standing && assisted.RecoveryTicks <= 3 * RecoveryClock.PhysicsTicksPerSecond,
-            $"recovery_ticks={assisted.RecoveryTicks} bound={3 * RecoveryClock.PhysicsTicksPerSecond}"));
+            assisted.Standing && assisted.RecoveryTicks <= 3 * RecoveryClock.PhysicsTicksPerSecond / 2,
+            $"recovery_ticks={assisted.RecoveryTicks} bound={3 * RecoveryClock.PhysicsTicksPerSecond / 2}"));
 
         int priorHardRecoveries = lab.Buddy.Recovery.HardRecoveryCount;
         lab.Buddy.Rig.Head.GlobalPosition = new Vector2(-1_000, -1_000);

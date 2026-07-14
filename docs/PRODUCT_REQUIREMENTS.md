@@ -72,15 +72,17 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 2. **FR-003.2:** WHEN the player opens tools, shop, or settings THEN the game SHALL present those controls in a retractable in-window panel.
 3. **FR-003.3:** WHILE mood changes, the game SHALL communicate it through the buddy's head-circle emoticons, posture, movement, and reactions and SHALL NOT expose a permanent numeric mood meter.
 4. **FR-003.4:** WHEN damage rewards occur within a `0.25`-second interval THEN the game SHALL coalesce them into brief `+$N.N` feedback while keeping the pain value hidden.
+5. **FR-003.5:** WHEN a Boxing Glove impact reaches maximum pain or triggers knockout THEN the game SHALL present the confirmed brief hit-stop with a visibly slow early portion, an impact flash/ring centered on the solver-reported world contact point, canvas-only jolt, glove recoil, face, and nonverbal sound feedback without moving the operating-system window.
 
 ### FR-004 — Buddy Identity, Safety, and Physical Form
 
 **Linked stories:** US-02, US-04
 
 1. **FR-004.1:** WHEN the buddy is rendered THEN it SHALL use an original minimalist robot/mannequin design with a readable six-circle silhouette and simple emoticons, including expressions such as `:)` and `:(`, drawn directly on the head circle.
-2. **FR-004.2:** WHILE physical interactions occur, the buddy SHALL remain immortal and SHALL NOT die, dismember, or display blood or realistic wounds.
-3. **FR-004.3:** WHEN the buddy is struck, burned, grabbed, knocked down, or knocked unconscious THEN feedback SHALL remain non-graphic and slapstick.
-4. **FR-004.4:** WHEN the buddy interacts autonomously THEN it SHALL NOT directly attack the player.
+2. **FR-004.2:** WHILE the physical head rotates THEN its emoticon SHALL remain upright in world/screen space without constraining the head body's rotation.
+3. **FR-004.3:** WHILE physical interactions occur, the buddy SHALL remain immortal and SHALL NOT die, dismember, or display blood or realistic wounds.
+4. **FR-004.4:** WHEN the buddy is struck, burned, grabbed, knocked down, or knocked unconscious THEN feedback SHALL remain non-graphic and slapstick.
+5. **FR-004.5:** WHEN the buddy interacts autonomously THEN it SHALL NOT directly attack the player.
 
 ### FR-005 — Active-Puppet Simulation and Agency
 
@@ -92,7 +94,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 4. **FR-005.4:** WHEN the buddy receives a safe object and its current behavior selects a catch or inspection response THEN it SHALL be capable of catching, holding, and inspecting that object.
 5. **FR-005.5:** WHEN the buddy receives food or drink and its current behavior selects consumption THEN it SHALL be capable of consuming the item.
 6. **FR-005.6:** WHEN the buddy has learned that an object is hazardous THEN it SHALL attempt to drop, discard, or flee that object rather than treating it as safe.
-7. **FR-005.7:** WHEN the buddy has been unable to stand for `2` continuous seconds THEN assisted self-righting SHALL begin and SHALL ramp for up to `5` seconds.
+7. **FR-005.7:** WHEN the buddy has been unable to stand for `2` continuous seconds THEN assisted self-righting SHALL begin and SHALL ramp to full strength over `1` second.
 8. **FR-005.8:** WHEN self-righting has failed for `10` seconds THEN the game MAY hard-reposition the buddy into a safe state.
 9. **FR-005.9:** WHEN a buddy physics state is invalid or outside the sandbox THEN the game MAY hard-reposition it immediately into a safe state.
 10. **FR-005.10:** WHEN neither FR-005.8 nor FR-005.9 is true THEN the game SHALL NOT use hard repositioning as normal recovery.
@@ -127,7 +129,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 **Linked stories:** US-03, US-04, US-05
 
 1. **FR-008.1:** WHILE Pet or Tickle is selected, held click-and-drag strokes over buddy body parts SHALL constitute the interaction input.
-2. **FR-008.2:** WHEN Pet or Tickle maintains valid contact THEN it SHALL grant `+1` mood no more than once per `3` seconds of valid interaction.
+2. **FR-008.2:** WHEN Pet satisfies its distance/time gate OR friendly Tickle reaches its `3`-second cadence THEN it SHALL grant `+1` mood no more than once per `3` seconds of valid interaction; Angry Tickle follows FR-008.13 instead.
 3. **FR-008.3:** WHEN the buddy completes a catch of a safely thrown object THEN it SHALL grant `+1` mood once for that throw/catch event.
 4. **FR-008.4:** WHEN the buddy successfully uses a Meal outside its reuse cooldown THEN the Meal SHALL grant `+10` mood and SHALL have a `60`-second reuse cooldown.
 5. **FR-008.5:** WHEN the buddy successfully uses a Drink outside its reuse cooldown THEN the Drink SHALL grant `+5` mood and SHALL have a `60`-second reuse cooldown.
@@ -136,6 +138,11 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 8. **FR-008.8:** WHEN Pet, Tickle, catch, Meal, Drink, or Repair Kit grants care benefits THEN it SHALL award no immediate money.
 9. **FR-008.9:** WHEN a mood-granting action would exceed `+100` or a mood-loss action would fall below `-100` THEN the stored mood SHALL remain clamped to its confirmed bounds.
 10. **FR-008.10:** WHEN a Meal, Drink, or Repair Kit is cancelled, dropped without successful use, or otherwise fails to be consumed/used THEN its reuse cooldown SHALL NOT begin; successful consumption/use SHALL begin the cooldown.
+11. **FR-008.11:** WHILE Pet is held over the buddy THEN satisfaction SHALL accumulate from cursor distance travelled over buddy bodies; WHEN the hidden satisfaction threshold is full AND at least `3` valid-contact seconds have elapsed since the previous Pet reward THEN Pet SHALL grant `+1` mood and reset satisfaction.
+12. **FR-008.12:** WHEN Pet becomes selected THEN one of the six body parts SHALL become the favorite spot for that selection; distance travelled over it SHALL contribute `1.2x` Pet satisfaction while the favorite remains hidden and is communicated through expression.
+13. **FR-008.13:** WHEN cumulative valid Tickle contact reaches `6` seconds THEN Tickle SHALL enter Angry, cease positive mood awards, apply `-1` mood per further `3` valid-contact seconds, and request angry expression/flee behavior; WHEN `8` seconds elapse without valid Tickle contact THEN tolerance and anger SHALL reset.
+14. **FR-008.14:** WHILE friendly Tickle contact continues THEN the buddy MAY hop away from the pointer no more often than once per `1.5` seconds; WHILE Angry Tickle contact continues THEN it MAY hop away no more often than once per `0.75` seconds.
+15. **FR-008.15:** WHILE the held Pet hand is rubbing the current favorite spot THEN small original sparkle particles SHALL appear around the Pet hand and SHALL stop when favorite contact, held input, or Pet selection ends.
 
 ### FR-009 — Tool Input Conventions
 
@@ -150,6 +157,8 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 7. **FR-009.7:** WHEN the player releases a pullback launch THEN the object SHALL launch opposite the drag vector.
 8. **FR-009.8:** WHEN the player presses secondary input during a held or aimed interaction THEN the game SHALL cancel or drop that interaction without changing the selected tool.
 9. **FR-009.9:** WHILE any tool is selected, the operating-system cursor SHALL remain visible; tool actors SHALL render beneath it and SHALL NOT hide or replace it.
+10. **FR-009.10:** WHILE primary input is held with Pet or Tickle selected THEN an original animated hand actor SHALL follow the pointer without physical lag beneath the visible operating-system cursor.
+11. **FR-009.11:** WHEN the Boxing Glove has been learned as harmful AND approaches a conscious buddy THEN the buddy SHALL flee away from the pointer while placing its physical hand bodies between the threat direction and head/torso; the guard direction SHALL follow the pointer with bounded lag, its targets SHALL remain body-relative rather than attaching to the physical glove, and guard actuation SHALL NOT pull the puppet toward the pointer. WHEN the glove contacts an actively guarding hand THEN the guarded event SHALL use the confirmed `0.5x` absorption factor, while a bypassing strike SHALL remain unmodified.
 
 ### FR-010 — Firearms, Grenade, Fire, and Burning
 

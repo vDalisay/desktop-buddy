@@ -1,4 +1,4 @@
-[gd_scene load_steps=24 format=3]
+[gd_scene load_steps=30 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -20,6 +20,12 @@
 [ext_resource type="Resource" path="res://data/buddy/lab_reaction.tres" id="18_reaction_profile"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation/ReactionAudioPresenter.cs" id="19_audio"]
 [ext_resource type="Script" path="res://src/UI/MoneyHudPresenter.cs" id="20_hud"]
+[ext_resource type="Resource" path="res://data/buddy/lab_care_interaction.tres" id="21_care_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Behavior/ToolReactionComponent.cs" id="22_tool_reaction"]
+[ext_resource type="Resource" path="res://data/buddy/lab_tool_reaction.tres" id="23_tool_reaction_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Presentation/ToolCursorPresenter.cs" id="24_care_cursor"]
+[ext_resource type="Script" path="res://src/Buddy/Presentation/ImpactFeedbackPresenter.cs" id="25_impact_feedback"]
+[ext_resource type="Resource" path="res://data/buddy/lab_impact_feedback.tres" id="26_impact_feedback_profile"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -51,7 +57,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Glove", "CareStroke", "Reactions", "ReactionAudio", "MoneyHud")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -64,8 +70,11 @@ BoundaryVisualizer = NodePath("LaboratoryBoundaryVisualizer")
 Pipeline = NodePath("InteractionPipeline")
 Glove = NodePath("BoxingGloveController")
 CareStroke = NodePath("CareStrokeComponent")
+ToolReactions = NodePath("ToolReactionComponent")
+CareCursor = NodePath("ToolCursorPresenter")
 Reactions = NodePath("BuddyReactionComponent")
 ReactionAudio = NodePath("ReactionAudioPresenter")
+ImpactFeedback = NodePath("ImpactFeedbackPresenter")
 MoneyHud = NodePath("LabUi/MoneyHud")
 
 [node name="Buddy" parent="." instance=ExtResource("2_buddy")]
@@ -116,18 +125,20 @@ Pipeline = NodePath("../InteractionPipeline")
 script = ExtResource("4_grab")
 Profile = ExtResource("5_grab_profile")
 
-[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "GloveTool", "CareTool")]
+[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "GloveTool", "CareTool", "CareCursor")]
 script = ExtResource("6_pointer")
 Grab = NodePath("../GrabTetherController")
 Pipeline = NodePath("../InteractionPipeline")
 GloveTool = NodePath("../BoxingGloveController")
 CareTool = NodePath("../CareStrokeComponent")
+CareCursor = NodePath("../ToolCursorPresenter")
 
 [node name="InteractionPipeline" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Grab")]
 script = ExtResource("12_pipeline")
 Buddy = NodePath("../Buddy")
 Grab = NodePath("../GrabTetherController")
 Profile = ExtResource("13_pain_profile")
+CareProfile = ExtResource("21_care_profile")
 
 [node name="BoxingGloveController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline")]
 script = ExtResource("14_glove")
@@ -137,12 +148,27 @@ Pipeline = NodePath("../InteractionPipeline")
 [node name="CareStrokeComponent" type="Node" parent="." node_paths=PackedStringArray("Pipeline")]
 script = ExtResource("16_care")
 Pipeline = NodePath("../InteractionPipeline")
+Profile = ExtResource("21_care_profile")
 
-[node name="BuddyReactionComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Pipeline")]
+[node name="ToolReactionComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Pipeline", "CareStroke", "Glove")]
+script = ExtResource("22_tool_reaction")
+Buddy = NodePath("../Buddy")
+Pipeline = NodePath("../InteractionPipeline")
+CareStroke = NodePath("../CareStrokeComponent")
+Glove = NodePath("../BoxingGloveController")
+Profile = ExtResource("23_tool_reaction_profile")
+
+[node name="ToolCursorPresenter" type="Node2D" parent="." node_paths=PackedStringArray("CareStroke")]
+script = ExtResource("24_care_cursor")
+CareStroke = NodePath("../CareStrokeComponent")
+
+[node name="BuddyReactionComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Pipeline", "CareStroke", "ToolReaction")]
 script = ExtResource("17_reactions")
 Buddy = NodePath("../Buddy")
 Pipeline = NodePath("../InteractionPipeline")
 Profile = ExtResource("18_reaction_profile")
+CareStroke = NodePath("../CareStrokeComponent")
+ToolReaction = NodePath("../ToolReactionComponent")
 
 [node name="ReactionAudioPresenter" type="Node" parent="." node_paths=PackedStringArray("Pipeline", "Player")]
 script = ExtResource("19_audio")
@@ -151,6 +177,12 @@ Profile = ExtResource("18_reaction_profile")
 Player = NodePath("AudioStreamPlayer")
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ReactionAudioPresenter"]
+
+[node name="ImpactFeedbackPresenter" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Glove")]
+script = ExtResource("25_impact_feedback")
+Pipeline = NodePath("../InteractionPipeline")
+Glove = NodePath("../BoxingGloveController")
+Profile = ExtResource("26_impact_feedback_profile")
 
 [node name="PuppetRoomContainmentComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Recovery")]
 script = ExtResource("9_containment")

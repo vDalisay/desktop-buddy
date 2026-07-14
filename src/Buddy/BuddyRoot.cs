@@ -29,6 +29,7 @@ public partial class BuddyRoot : Node2D
     public Consciousness CurrentConsciousness { get; private set; } = Consciousness.Conscious;
     public bool IsInitialized { get; private set; }
     public DriveIntent CurrentDriveIntent { get; private set; }
+    public ToolReactionIntent CurrentToolReactionIntent { get; private set; }
 
     public override void _Ready()
     {
@@ -75,12 +76,41 @@ public partial class BuddyRoot : Node2D
         GrabResistanceIntent resistance = GrabResistance.Intent;
         if (resistance.Active)
         {
-            return new DriveIntent(0.0f, false, resistance.Direction, resistance.Strength);
+            return new DriveIntent(
+                0.0f, 0.0f, false, 0.0f, 1.0f, 0.0f,
+                resistance.Direction, resistance.Strength,
+                false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f);
+        }
+
+        ToolReactionIntent reaction = CurrentToolReactionIntent;
+        if (reaction.Active)
+        {
+            return new DriveIntent(
+                reaction.WalkDirection,
+                reaction.LocomotionScale,
+                reaction.JumpRequested,
+                reaction.JumpDirection,
+                reaction.JumpScale,
+                reaction.JumpHorizontalRatio,
+                0.0f,
+                0.0f,
+                reaction.GuardActive,
+                reaction.LeftGuardTarget,
+                reaction.RightGuardTarget,
+                reaction.GuardStiffness,
+                reaction.GuardDamping,
+                reaction.GuardMaximumForce,
+                reaction.GuardAbsorption);
         }
 
         AutonomousMotionIntent motion = AutonomousMotion.Intent;
-        return new DriveIntent(motion.WalkDirection, motion.JumpRequested, 0.0f, 0.0f);
+        return new DriveIntent(
+            motion.WalkDirection, 1.0f, motion.JumpRequested, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f);
     }
+
+    /// <summary>Pushed by the focused tool-reaction worker before this buddy ticks.</summary>
+    public void SetToolReactionIntent(ToolReactionIntent intent) => CurrentToolReactionIntent = intent;
 
     public void SetConsciousness(Consciousness consciousness)
     {

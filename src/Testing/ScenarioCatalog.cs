@@ -31,6 +31,7 @@ public static class ScenarioCatalog
         ["payout_by_region"] = () => new PayoutByRegionScenario(),
         ["pet_tickle_mood"] = () => new PetTickleMoodScenario(),
         ["m3_presentation"] = () => new M3PresentationScenario(),
+        ["tool_feel_reactions"] = () => new ToolFeelReactionScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

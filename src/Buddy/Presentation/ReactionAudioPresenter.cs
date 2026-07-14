@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Domain.Mood;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using Godot;
 
@@ -30,17 +31,24 @@ public partial class ReactionAudioPresenter : Node
         Pipeline.CareAwarded -= OnCare;
     }
 
-    private void OnImpact(AcceptedImpact impact) => PlayChirp(Profile.PainChirpHz);
-    private void OnCare(CareKind kind) => PlayChirp(Profile.CareChirpHz);
+    private void OnImpact(AcceptedImpact impact)
+    {
+        bool glove = impact.ContentId == (int)ToolId.BoxingGlove;
+        float normalized = Mathf.Clamp(impact.Pain / 100.0f, 0.0f, 1.0f);
+        PlayChirp(
+            Profile.PainChirpHz * Mathf.Lerp(1.15f, 0.72f, normalized),
+            glove ? Profile.GloveImpactAmplitude : 7_000.0f);
+    }
+    private void OnCare(CareKind kind) => PlayChirp(Profile.CareChirpHz, 7_000.0f);
 
-    private void PlayChirp(float frequency)
+    private void PlayChirp(float frequency, float amplitude)
     {
         int samples = Math.Max(1, (int)(MixRate * Profile.ChirpSeconds));
         var bytes = new byte[samples * 2];
         for (int i = 0; i < samples; i++)
         {
             double envelope = 1.0 - (double)i / samples;
-            short value = (short)(Math.Sin(Math.Tau * frequency * i / MixRate) * envelope * 7000.0);
+            short value = (short)(Math.Sin(Math.Tau * frequency * i / MixRate) * envelope * amplitude);
             bytes[i * 2] = (byte)(value & 0xff);
             bytes[i * 2 + 1] = (byte)((value >> 8) & 0xff);
         }

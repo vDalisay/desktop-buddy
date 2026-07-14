@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ImpactFeedbackProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Presentation/ImpactFeedbackProfile.cs" id="1_feedback"]
+
+[resource]
+resource_name = "ConfirmedM3ImpactFeedback"
+script = ExtResource("1_feedback")
+HitStopScale = 0.15
+HitStopSeconds = 0.12
+MaximumPain = 100.0
+RingSeconds = 0.22
+GloveSquashSeconds = 0.16
+CanvasJoltPixels = 4.0

@@ -6,8 +6,9 @@
 resource_name = "ProvisionalM3BoxingGlove"
 script = ExtResource("1_glove")
 Radius = 14.0
-Mass = 3.0
-Stiffness = 900.0
-Damping = 45.0
-MaximumForce = 30000.0
-LinearDamp = 1.0
+Mass = 4.0
+Stiffness = 3200.0
+Damping = 160.0
+MaximumForce = 80000.0
+LinearDamp = 0.5
+MinimumArmingTravel = 8.0

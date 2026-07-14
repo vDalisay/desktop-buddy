@@ -1,0 +1,28 @@
+{
+  "id": "m3_tool_feel",
+  "setup": {
+    "scene": "buddy_lab",
+    "seed": 1,
+    "exercise": "m3_tool_feel",
+    "timeout_physics_ticks": 720
+  },
+  "assertions": [
+    { "predicate": "lab_composed", "equals": true },
+    { "predicate": "lab_finite", "equals": true },
+    { "predicate": "pet_selected", "equals": true },
+    { "predicate": "pet_hand_visible", "equals": true },
+    { "predicate": "pet_rub_face_seen", "equals": true },
+    { "predicate": "pet_rewarded", "equals": true },
+    { "predicate": "pet_completion_smile", "equals": true },
+    { "predicate": "tickle_selected", "equals": true },
+    { "predicate": "tickle_two_friendly_rewards", "equals": true },
+    { "predicate": "tickle_became_angry", "equals": true },
+    { "predicate": "tickle_fled", "equals": true },
+    { "predicate": "tickle_cooldown_reset", "equals": true },
+    { "predicate": "glove_selected", "equals": true },
+    { "predicate": "tool_activation_does_not_pay", "equals": true },
+    { "predicate": "glove_strike_paid", "equals": true },
+    { "predicate": "money_hud_updated", "equals": true },
+    { "predicate": "glove_defense_raised", "equals": true }
+  ]
+}

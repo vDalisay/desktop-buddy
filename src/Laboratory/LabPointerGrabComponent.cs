@@ -3,6 +3,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Tools;
@@ -42,6 +43,7 @@ public partial class LabPointerGrabComponent : Node2D
     [Export] public InteractionDamageComponent? Pipeline { get; set; }
     [Export] public BoxingGloveController? GloveTool { get; set; }
     [Export] public CareStrokeComponent? CareTool { get; set; }
+    [Export] public ToolCursorPresenter? CareCursor { get; set; }
 
     private bool _active;
     private bool _pendingPress;
@@ -144,6 +146,9 @@ public partial class LabPointerGrabComponent : Node2D
         ToolId tool = Pipeline is not null && GodotObject.IsInstanceValid(Pipeline)
             ? Pipeline.SelectedTool
             : ToolId.Grab;
+
+        if (CareCursor is not null && GodotObject.IsInstanceValid(CareCursor))
+            CareCursor.SetPointerState(tool, cursor, _sawPointerInput && IsPrimaryHeld);
 
         // Forward pointer state to the non-grab tools only after real pointer
         // input has been seen; scenarios drive the tool APIs directly instead.

@@ -31,6 +31,9 @@ public sealed class M3PresentationScenario : IScenario
         checks.Add(new StartupCheck("pain_chirp_generated",
             lab.ReactionAudio.GetNode<AudioStreamPlayer>("AudioStreamPlayer").Stream is AudioStreamWav,
             "semantic impact produced original PCM chirp"));
+        checks.Add(new StartupCheck("ordinary_glove_hit_has_feedback_without_hit_stop",
+            lab.ImpactFeedback.FeedbackCount == 1 && lab.ImpactFeedback.HitStopTriggerCount == 0,
+            $"feedback={lab.ImpactFeedback.FeedbackCount} hitStops={lab.ImpactFeedback.HitStopTriggerCount}"));
         checks.Add(new StartupCheck("money_hud_uses_whole_credits",
             lab.MoneyHud.BalanceLabel.Text == "$12",
             $"text={lab.MoneyHud.BalanceLabel.Text}"));

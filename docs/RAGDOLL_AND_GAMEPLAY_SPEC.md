@@ -120,7 +120,7 @@ The arbiter resolves actuation in this strict priority order:
 
 Priority 0 is a safety exception, not a normal behavior. Priorities 1–7 may not hard-set transforms. A higher-priority layer suppresses conflicting lower-priority drive but should not erase persistent mood, memory, statistics, or externally applied physics.
 
-Expression is resolved separately with consciousness and acute danger above ambient mood. At minimum, unconscious feedback overrides other faces; acute pain/Burning/fear/delight can temporarily override the persistent mood-band face; otherwise the face and posture communicate the current band. Exact emoticon set and transient-emotion durations are presentation tuning, not approved constants.
+Expression is resolved separately with consciousness and acute danger above ambient mood. At minimum, unconscious feedback overrides other faces; acute pain/Burning/fear/delight can temporarily override the persistent mood-band face; otherwise the face and posture communicate the current band. The physical head may rotate freely, but the emoticon is counter-rotated to remain upright in world/screen space. Exact emoticon set and other transient-emotion durations are presentation tuning unless confirmed in `DECISIONS.md`.
 
 The buddy never directly attacks the player. It may resist a grab, flee, discard a hazard, or toss a safe object, but those actions are defensive/autonomous rather than retaliatory targeting.
 
@@ -145,7 +145,7 @@ While conscious, maintain an accumulated `unable-to-stand` duration:
 
 - Reset it only after the configured stable-standing criteria are satisfied.
 - At `2` continuous seconds unable to stand, begin assisted self-righting.
-- Ramp self-righting assistance over no more than `5` seconds; no routine teleport is allowed during this ramp.
+- Ramp self-righting assistance to full over `1` second; no routine teleport is allowed during this ramp.
 - If self-righting has failed for `10` seconds, a hard reposition is permitted.
 - Invalid numeric physics state or a body outside the sandbox permits immediate hard reposition without waiting.
 
@@ -192,7 +192,7 @@ Configured room boundaries, loose objects, projectiles, and physical weapons ent
 
 Use `(source interaction ID, target buddy part ID)` as the contact-episode key. The first valid contact in an episode may produce one accepted pain/reward event. Repeated callbacks from resting/sliding physics contact are suppressed. A new episode cannot begin until that key has been separated/inactive for at least `0.15` seconds.
 
-The accepted measured impulse is converted to non-negative pain by the configured empirical curve. Do not attach hidden payout multipliers to tools. Tool differences must arise from their actual physical contact and the shared pain conversion, aside from the explicit region and consciousness multipliers.
+The accepted measured impulse is converted to non-negative pain by the configured empirical curve. Do not attach hidden payout multipliers to tools. Tool differences must arise from their actual physical contact and the shared pain conversion, aside from the explicit region and consciousness multipliers. The confirmed active glove-defense state is a documented target-side exception: contact with an actively guarding hand scales accepted impulse by `0.5` before pain/reward/mood handling, while bypassing strikes remain unmodified.
 
 Accepted events update total pain, per-tool uses/pain statistics, visual/audio feedback, and harmful-history attribution. Each accepted harmful event reduces persistent mood by `min(10, pain x 0.1)`. Burning pain ticks use the same formula and entering knockout adds no separate mood penalty.
 
@@ -256,14 +256,15 @@ Care gives no immediate money. It increases mood and therefore passive earning p
 
 | Event | Mood | Reuse/cadence |
 | --- | ---: | ---: |
-| Valid Pet contact | `+1` | At most once per `3` valid-contact seconds |
-| Valid Tickle contact | `+1` | At most once per `3` valid-contact seconds |
+| Valid Pet rubbing | `+1` | Hidden distance threshold filled and at most once per `3` valid-contact seconds |
+| Friendly Tickle contact | `+1` | At `3` and `6` cumulative valid-contact seconds before Angry |
+| Angry Tickle contact | `-1` | Every further `3` valid-contact seconds until the `8`-second no-contact reset |
 | Completed safe throw/catch | `+1` | Once per completed throw/catch event |
 | Meal successfully consumed | `+10` | `60` seconds |
 | Drink successfully consumed | `+5` | `60` seconds |
 | Repair Kit successfully applied | `+20` | `120` seconds |
 
-Pet/Tickle cadence counts valid contact, not merely held input over empty space. A catch can reward only once for its originating throw. Repair Kit clears transient pain and harmful statuses, including Burning, but does not shorten knockout.
+Pet/Tickle cadence counts valid contact, not merely held input over empty space. Pet satisfaction counts cursor distance over buddy bodies, with a hidden `1.2x` favorite body part reselected whenever Pet is selected. Active rubbing contact with that favorite emits small presentation-only sparkles around the Pet hand; the particles stop immediately when the valid favorite contact ends. Tickle becomes Angry after `6` cumulative valid-contact seconds, stops granting positive care, and resets after `8` seconds without valid contact. A catch can reward only once for its originating throw. Repair Kit clears transient pain and harmful statuses, including Burning, but does not shorten knockout.
 
 Meal, Drink, and Repair Kit cooldowns begin only after successful consumption/use. Cancelling, dropping, missing, or otherwise failing to use the item does not start its cooldown.
 
@@ -298,9 +299,9 @@ Every purchased tool is permanently unlocked for unlimited use. There is one ear
 | Tool | Availability target | Required behavior |
 | --- | ---: | --- |
 | Grab | Starting | Acquire any buddy part or eligible loose object with the damped elastic tether in section 6. Fearful conscious buddies resist; release preserves capped throw motion. |
-| Pet | Starting | Held stroke over valid buddy contact. Friendly feedback and `+1` mood per `3` valid-contact seconds; no immediate cash. |
-| Tickle | Starting | Held stroke over valid buddy contact. Reactive friendly feedback and `+1` mood per `3` valid-contact seconds; no immediate cash. Distinct animation/sound timing remains presentation tuning. |
-| Boxing Glove | Starting | Cursor-tethered physical collider. A strike is paid only through accepted measured impacts; it has no hidden tool payout multiplier. |
+| Pet | Starting | Held rubbing stroke over valid buddy contact. Hidden distance satisfaction plus the `3`-second cadence gates `+1` mood; a per-selection favorite part contributes `1.2x`. `:3` rubbing and brief completion smile communicate progress; no immediate cash. |
+| Tickle | Starting | Held stroke over valid buddy contact. Friendly for `6` cumulative seconds, then Angry with negative mood/flee behavior until `8` seconds without contact. Distinct hand animation, expression, sound, and away-hop timing are confirmed in `DECISIONS.md`. |
+| Boxing Glove | Starting | Low-lag cursor-tethered physical collider. Real swing speed/impulse drives pain with no glove multiplier. Learned harm can trigger physical hand guarding while the buddy flees: the body-relative guard direction follows the pointer with bounded lag and does not attach to the glove or inject net pull toward it. Guarded-hand contact uses the documented target-side `0.5x` absorption factor. Maximum-pain/knockout strikes use the confirmed brief hit-stop with a visibly slow early portion and contact-centered impact feedback. |
 | Baseball | `3` minutes | Pullback-launched loose physical object. It may be caught, held, inspected, or tossed; a completed safe catch grants `+1` mood. Final physical preset is empirical. |
 | Meal | `6` minutes | Pullback-launched care object. Successful consumption grants `+10` mood, then enforces a `60`-second reuse cooldown. |
 | Baseball Bat | `20` minutes | Cursor-tethered physical collider. Swing velocity and contact impulse determine pain through the shared pipeline. |

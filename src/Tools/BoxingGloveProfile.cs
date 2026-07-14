@@ -18,6 +18,7 @@ public partial class BoxingGloveProfile : GameResource
     [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float Damping { get; set; } = 45.0f;
     [Export(PropertyHint.Range, "0.1,200000,0.1,or_greater")] public float MaximumForce { get; set; } = 30_000.0f;
     [Export(PropertyHint.Range, "0,100,0.01,or_greater")] public float LinearDamp { get; set; } = 1.0f;
+    [Export(PropertyHint.Range, "0.1,128,0.1,or_greater")] public float MinimumArmingTravel { get; set; } = 8.0f;
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -50,6 +51,11 @@ public partial class BoxingGloveProfile : GameResource
         if (!float.IsFinite(LinearDamp) || LinearDamp < 0.0f)
         {
             errors.Add($"{nameof(LinearDamp)} must be finite and non-negative");
+        }
+
+        if (!float.IsFinite(MinimumArmingTravel) || MinimumArmingTravel <= 0.0f)
+        {
+            errors.Add($"{nameof(MinimumArmingTravel)} must be finite and positive");
         }
 
         return errors;

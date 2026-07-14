@@ -9,6 +9,7 @@ using DesktopBuddy.Domain.Interaction;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
+using DesktopBuddy.Tools;
 using Godot;
 
 namespace DesktopBuddy.Interaction;
@@ -19,6 +20,7 @@ public readonly record struct AcceptedImpact(
     int ContentId,
     BuddyPart Part,
     PayoutRegion Region,
+    float RawImpulse,
     float Impulse,
     float RelativeSpeed,
     Vector2 Point,
@@ -26,6 +28,7 @@ public readonly record struct AcceptedImpact(
     float Pain,
     long MilliCredits,
     DamageConsciousness ConsciousnessAtAcceptance,
+    bool Guarded,
     bool IsBuddyGrabbed,
     bool KnockoutTriggered,
     double TimeSeconds);
@@ -78,6 +81,7 @@ public partial class InteractionDamageComponent : Node
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public GrabTetherController Grab { get; set; } = null!;
     [Export] public PainConversionProfile Profile { get; set; } = null!;
+    [Export] public CareInteractionProfile CareProfile { get; set; } = null!;
 
     public event Action<AcceptedContactEpisode>? EpisodeAccepted;
     public event Action<AcceptedImpact>? ImpactAccepted;
@@ -85,6 +89,7 @@ public partial class InteractionDamageComponent : Node
     public event Action<double>? KnockoutEnded;
     public event Action<RewardFeedback>? RewardFeedbackEmitted;
     public event Action<CareKind>? CareAwarded;
+    public event Action<CareKind, int>? CareMoodChanged;
     public event Action<ToolId, ToolId>? ToolChanged;
 
     public bool IsInitialized { get; private set; }
@@ -96,6 +101,7 @@ public partial class InteractionDamageComponent : Node
     public long ScoredImpactCount { get; private set; }
     public long FeedbackCount { get; private set; }
     public long CareAwardCount { get; private set; }
+    public long CarePenaltyCount { get; private set; }
     public float MaxRawImpulse { get; private set; }
     public AcceptedImpact LastImpact { get; private set; }
     public AcceptedContactEpisode LastEpisode { get; private set; }
@@ -111,7 +117,10 @@ public partial class InteractionDamageComponent : Node
 
     public bool IsToolHarmful(int contentId) => _mood.IsToolHarmful(contentId);
 
-    public double CareProgressSeconds(CareKind kind) => _care.ProgressSeconds(kind);
+    public double PetDistanceProgress => _care.PetDistanceProgress;
+    public double PetValidSecondsProgress => _care.PetValidSecondsProgress;
+    public double TickleContactSeconds => _care.TickleContactSeconds;
+    public TickleDisposition TickleDisposition => _care.TickleDisposition;
 
     public void Initialize()
     {
@@ -122,10 +131,11 @@ public partial class InteractionDamageComponent : Node
                 "InteractionDamageComponent requires an initialized buddy composition and grab tether.");
         }
 
-        if (!GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
+        if (!GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0 ||
+            !GodotObject.IsInstanceValid(CareProfile) || CareProfile.Validate().Count > 0)
         {
             throw new InvalidOperationException(
-                "InteractionDamageComponent requires a valid PainConversionProfile.");
+                "InteractionDamageComponent requires valid pain and care profiles.");
         }
 
         _router = new ImpactRouter(ImpactRouter.DefaultReArmSeconds, Profile.MinimumImpulse);
@@ -133,7 +143,7 @@ public partial class InteractionDamageComponent : Node
         _knockout = new PainKnockoutModel();
         _ledger = new RewardLedger(Profile.CashPerPain);
         _mood = new MoodModel();
-        _care = new CareModel();
+        _care = new CareModel(CareProfile.ToTuning());
         _tools = new ToolSelection();
         _fixedDelta = 1.0 / Engine.PhysicsTicksPerSecond;
 
@@ -230,18 +240,46 @@ public partial class InteractionDamageComponent : Node
     }
 
     /// <summary>
-    /// Adds valid Pet/Tickle contact seconds (fed by the care stroke component) and
-    /// applies any crossed <c>+1</c> mood awards. Care never awards money (§8.2).
+    /// Adds weighted Pet distance plus valid-contact time and applies completion mood.
     /// </summary>
-    public void AccumulateCare(CareKind kind, double validContactSeconds)
+    public PetCareResult AccumulatePet(
+        double travelledDistance,
+        bool favoriteSpot,
+        double validContactSeconds)
     {
         RequireInitialized();
-        int awards = _care.AccumulateValidContact(kind, validContactSeconds);
-        for (int index = 0; index < awards; index++)
+        PetCareResult result = _care.AccumulatePet(
+            travelledDistance,
+            favoriteSpot,
+            validContactSeconds);
+        ApplyCareMood(CareKind.Pet, result.PositiveMoodAwards, 0);
+        return result;
+    }
+
+    /// <summary>Advances friendly/angry Tickle contact and its no-contact cooldown.</summary>
+    public TickleCareResult TickTickle(bool validContact, double elapsedSeconds)
+    {
+        RequireInitialized();
+        TickleCareResult result = _care.TickTickle(validContact, elapsedSeconds);
+        ApplyCareMood(CareKind.Tickle, result.PositiveMoodAwards, result.NegativeMoodAwards);
+        return result;
+    }
+
+    private void ApplyCareMood(CareKind kind, int positiveAwards, int negativeAwards)
+    {
+        for (int index = 0; index < positiveAwards; index++)
         {
             CareAwardCount++;
             _mood.ApplyMoodDelta(1.0f);
             CareAwarded?.Invoke(kind);
+            CareMoodChanged?.Invoke(kind, 1);
+        }
+
+        for (int index = 0; index < negativeAwards; index++)
+        {
+            CarePenaltyCount++;
+            _mood.ApplyMoodDelta(-1.0f);
+            CareMoodChanged?.Invoke(kind, -1);
         }
     }
 
@@ -266,7 +304,13 @@ public partial class InteractionDamageComponent : Node
         PayoutRegion region,
         double now)
     {
-        float pain = _curve.PainFor(accepted.Impulse);
+        bool guarded = contentId == (int)ToolId.BoxingGlove &&
+                       accepted.TargetPart is BuddyPart.LeftHand or BuddyPart.RightHand &&
+                       Buddy.CurrentDriveIntent.GuardActive;
+        float effectiveImpulse = guarded
+            ? accepted.Impulse * Buddy.CurrentDriveIntent.GuardAbsorption
+            : accepted.Impulse;
+        float pain = _curve.PainFor(effectiveImpulse);
         if (pain <= 0.0f)
         {
             // Above the episode threshold but at/below the curve floor: a valid
@@ -289,12 +333,14 @@ public partial class InteractionDamageComponent : Node
             accepted.TargetPart,
             region,
             accepted.Impulse,
+            effectiveImpulse,
             accepted.RelativeVelocity,
             contact.Point,
             contact.Normal,
             pain,
             milli,
             acceptance.ConsciousnessAtAcceptance,
+            guarded,
             buddyPartGrabbed,
             acceptance.KnockoutTriggered,
             now);
