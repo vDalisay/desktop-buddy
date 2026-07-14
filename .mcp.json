@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "godot-mcp": {
-      "command": "node",
-      "args": ["Mcp/godot-mcp-runtime/dist/index.js"],
-      "env": {
-        "GODOT_PATH": "${GODOT_PATH}"
-      }
+      "command": "cmd.exe",
+      "args": ["/d", "/c", "tools\\start_godot_mcp.bat"]
     }
   }
 }

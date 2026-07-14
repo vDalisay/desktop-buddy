@@ -76,7 +76,7 @@ From the Godot editor:
 3. Select Grab/Pet/Tickle/Boxing Glove with `G`/`F`/`T`/`B`. Use left-drag or left-hold for the selected interaction and right-click to cancel/drop. `P` pauses, `.` advances one physics tick, `U` toggles limp/unconscious mode, `Shift+U` reseeds autonomy, and `1`/`2`/`3`/`4` select `0.25x`/`0.5x`/`1x`/`2x` simulation speed.
 4. Press `H` to hide or restore the development telemetry panel.
 
-For one-click launch outside the editor, run [`tools/play_buddy_lab.bat`](tools/play_buddy_lab.bat). It uses `GODOT_PATH` when set and otherwise checks the pinned Godot 4.6.1 .NET editor in the current user's Downloads folder.
+For one-click launch outside the editor, run [`tools/play_buddy_lab.bat`](tools/play_buddy_lab.bat). All Windows tools use [`tools/resolve_godot.bat`](tools/resolve_godot.bat): it honors `GODOT_PATH` first, then checks one- and two-level extracted `Godot_v4.6.1-stable_mono_win64` folders beside the repository and under the current user's Downloads folder, and finally checks `PATH`. This supports both a shared repository-adjacent editor and a per-user installation without committing a machine-specific path.
 
 For a fast automated check, run [`tools/quick_validate.bat`](tools/quick_validate.bat). It builds the solution, runs domain tests, imports the project, and exercises representative Milestone 1 scenarios and journeys.
 
@@ -121,12 +121,16 @@ The development-only laboratory controls are keyboard-accessible in `buddy_lab.t
 
 ## Interactive Verification (Godot MCP)
 
-Tier 1 interactive verification uses the runtime-enabled [godot-mcp-runtime](https://github.com/Erodenn/godot-mcp-runtime) server. The committed [`.mcp.json`](.mcp.json) points at the git-ignored checkout under `Mcp/godot-mcp-runtime/` (its own `.git`, `node_modules`, and `dist` are not tracked). Set it up once per machine:
+Tier 1 interactive verification uses a runtime-enabled Godot MCP server. The committed [`.mcp.json`](.mcp.json) launches [`tools/start_godot_mcp.bat`](tools/start_godot_mcp.bat), which prefers a shared checkout at `../mcp/godot-mcp/build/index.js` relative to this repository, then checks the git-ignored in-project `Mcp/godot-mcp/build/index.js` and `Mcp/godot-mcp-runtime/dist/index.js` fallbacks. Set `GODOT_MCP_PATH` to a built entrypoint or its checkout directory to override discovery.
+
+For the shared repository-adjacent [godot-mcp](https://github.com/tugcantopaloglu/godot-mcp) layout, set it up once per machine:
 
 ```sh
-git clone https://github.com/Erodenn/godot-mcp-runtime.git Mcp/godot-mcp-runtime
-npm --prefix Mcp/godot-mcp-runtime install
-npm --prefix Mcp/godot-mcp-runtime run build   # produces Mcp/godot-mcp-runtime/dist/index.js
+git clone https://github.com/tugcantopaloglu/godot-mcp.git ../mcp/godot-mcp
+npm --prefix ../mcp/godot-mcp install
+npm --prefix ../mcp/godot-mcp run build   # produces ../mcp/godot-mcp/build/index.js
 ```
 
-The only environment variable needed is `GODOT_PATH`, pointing at the pinned Godot 4.6.1 mono binary. The MCP tier is development-only, bound to localhost, never gating, and excluded from release exports; it never runs in CI.
+The committed MCP configuration uses the same Godot resolver as the Windows launch scripts, so `GODOT_PATH` is optional when the editor is in one of the documented locations. Set it to the pinned Godot 4.6.1 mono binary to explicitly override auto-discovery. The MCP tier is development-only, bound to localhost, never gating, and excluded from release exports; it never runs in CI.
+
+After cloning or switching machines, run `tools\check_local_toolchain.bat`. It prints the resolved .NET SDK, Godot executable, MCP entrypoint, and Node.js version, and exits nonzero with a targeted message when any prerequisite is missing.

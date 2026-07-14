@@ -21,8 +21,8 @@ foundation) have landed.
 
 ## 2. Green baseline (verify before you build on it)
 
-Godot: `%USERPROFILE%\Downloads\Godot_v4.6.1-stable_mono_win64\Godot_v4.6.1-stable_mono_win64_console.exe`
-(or `$GODOT_PATH`). **Close any `--editor` Godot on this project first** — it
+Godot: use `tools\resolve_godot.bat` (or set `GODOT_PATH` explicitly); the resolver
+supports repository-adjacent, Downloads, and `PATH` installs. **Close any `--editor` Godot on this project first** — it
 deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |

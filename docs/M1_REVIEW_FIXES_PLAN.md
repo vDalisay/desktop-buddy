@@ -33,8 +33,8 @@ Review evidence (reproduce any of these before touching code if you doubt the di
      (`lab_spawn_settle`, `lab_grab_throw`, `lab_walk_jump`) windowed (omit `--headless`).
      Windowed runs open a real window on this machine; that is expected. Do not move the
      physical mouse while one runs.
-- The pinned Godot is `%USERPROFILE%\Downloads\Godot_v4.6.1-stable_mono_win64\Godot_v4.6.1-stable_mono_win64_console.exe`
-  (or `GODOT_PATH`). Scenario/journey invocation shapes are in `README.md`.
+- Resolve the pinned Godot with `tools\resolve_godot.bat` (or set `GODOT_PATH`).
+  Repository-adjacent, Downloads, and `PATH` installs are supported; scenario/journey invocation shapes are in `README.md`.
 - Where this plan says "measure and record," put the numbers in the task's commit message
   body so the next reviewer can check your work without rerunning it.
 

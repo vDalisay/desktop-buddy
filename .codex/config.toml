@@ -1,0 +1,3 @@
+[mcp_servers.godot-mcp]
+command = "cmd.exe"
+args = ["/d", "/c", "tools\\start_godot_mcp.bat"]

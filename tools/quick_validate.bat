@@ -4,14 +4,8 @@ setlocal
 if /I "%~1"=="--help" goto :help
 
 set "PROJECT_ROOT=%~dp0.."
-set "GODOT_EXE=%GODOT_PATH%"
-if not defined GODOT_EXE set "GODOT_EXE=%USERPROFILE%\Downloads\Godot_v4.6.1-stable_mono_win64\Godot_v4.6.1-stable_mono_win64.exe"
-
-if not exist "%GODOT_EXE%" (
-  echo Godot 4.6.1 .NET was not found.
-  echo Set GODOT_PATH to the full Godot executable path, then run this file again.
-  exit /b 2
-)
+call "%~dp0resolve_godot.bat"
+if errorlevel 1 exit /b %ERRORLEVEL%
 
 set "GODOT_HEADLESS=%GODOT_EXE%"
 echo %GODOT_EXE% | findstr /I /R "_console\.exe$" >nul
@@ -68,5 +62,5 @@ exit /b 1
 
 :help
 echo Builds the project and runs the fast Milestone 1 unit/headless checks.
-echo Uses GODOT_PATH, or the pinned editor under your Downloads folder.
+echo Uses GODOT_PATH or auto-discovers the pinned editor. See README.md for the search order.
 exit /b 0
