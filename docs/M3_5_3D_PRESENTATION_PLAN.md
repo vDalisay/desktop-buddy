@@ -373,6 +373,16 @@ matrix (desktop-through-alpha, DPI 100–200%, `Msaa3D` Off/2×/4×/8×, V-sync 
 resize) and **confirmed a full pass** — outcome recorded in `DECISIONS.md`. **Task 2 is
 unblocked.**
 
+**Task 2 (plane mapping + world camera) DONE (2026-07-14).** `WorldPlaneMapping` static
+class added (`src/Presentation3D/WorldPlaneMapping.cs`): `To3D`/`To3DRotationZ` with the
+round-trip and boundary-crossing angle-sign contract documented. `BoundaryController` gains
+an optional null-safe `[Export] Camera3D WorldCamera3D` driven from `ApplyLayout` in
+lockstep with the `Camera2D` (orthographic, `KeepAspect = Height`, `Size = RoomHeight`, at
+`(W/2, −H/2, +500)` looking −Z, `PhysicsInterpolationMode = Off`).
+`DesktopWindowController.ApplyRenderSettings` sets `Msaa3D` beside `Msaa2D`. Build 0/0,
+domain suite 200/200. Alignment assertions land with the Task 7 scenario as planned.
+**Next: Task 3** (`BuddyVisualProfile` + physics/visual field split).
+
 Amended 2026-07-14 after a code-verified review. Substantive changes: the 2D
 interpolated-transform API does not exist in the pinned 4.6.1 GodotSharp, so Task 4's
 manual snapshot path is the primary design with an exact pairing contract
