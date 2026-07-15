@@ -49,7 +49,7 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   and restrained inverted-hull outline as the target; it does not authorize Nintendo
   assets, likenesses, UI, or trade dress.
 - Production shading uses built-in `StandardMaterial3D` on `gl_compatibility`:
-  Lambert-wrap diffuse, toon specular at `0.08`, roughness `1.0`, warm key/cool fill
+  Lambert diffuse, toon specular at `0.08`, roughness `1.0`, warm key/cool fill
   energies `0.75`/`0.70`, no `WorldEnvironment`, and shadows off. The accepted outline
   uses ink `#183042`, front-face culling, and grow amount `1.5` on the six part meshes;
   connectors remain unoutlined.

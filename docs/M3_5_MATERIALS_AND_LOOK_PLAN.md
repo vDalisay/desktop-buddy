@@ -8,7 +8,7 @@ lookdev scene.
 
 ## Accepted target
 
-- Soft matte toon shading from built-in `StandardMaterial3D`: Lambert-wrap diffuse,
+- Soft matte toon shading from built-in `StandardMaterial3D`: Lambert diffuse,
   toon specular, specular `0.08`, roughness `1.0`.
 - Transparent-safe two-light rig with no `WorldEnvironment`: warm key at energy `0.75`
   and cool camera-axis fill at energy `0.70`; shadows off.
@@ -62,7 +62,7 @@ Required look fields and accepted defaults:
 
 | Field | Accepted default |
 | --- | --- |
-| `DiffuseMode` | LambertWrap |
+| `DiffuseMode` | Lambert (serialized value `1`) |
 | `SpecularMode` | Toon |
 | `Specular` | `0.08` |
 | `Roughness` | `1.0` |
@@ -103,7 +103,7 @@ Godot material settings for validation and inspection.
 ### L2 — Cached soft-toon materials
 
 Add `BuddyLookMaterialLibrary`. Replace the presenter's unshaded part/connector
-materials with cached Standard materials using the accepted Lambert-wrap/toon settings;
+materials with cached Standard materials using the accepted Lambert/toon settings;
 base `AlbedoColor` continues to come from each part/connector visual definition. Build
 one shared unshaded ink material for outline shells. Assert no material or mesh Resource
 is created or mutated from `_Process`.
@@ -130,7 +130,7 @@ Extend `presentation_3d` or add a focused `presentation_look` scenario with:
 
 - `look_profile_valid` — accepted profile passes; missing/non-finite/negative fields
   fail with actionable names.
-- `soft_toon_material_contract` — six parts and five connectors have cached Lambert-wrap
+- `soft_toon_material_contract` — six parts and five connectors have cached Lambert
   materials with exact base albedos and accepted specular/roughness settings.
 - `transparent_safe_light_contract` — exactly two configured directional lights, no
   environment, shadows off.

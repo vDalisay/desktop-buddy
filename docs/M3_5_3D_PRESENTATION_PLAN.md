@@ -304,7 +304,7 @@ flipped, so only this pass can catch it.
 
 ### Task 7.5 — Production materials and look (owner direction accepted; unbuilt)
 
-Implement `docs/M3_5_MATERIALS_AND_LOOK_PLAN.md`: typed Lambert-wrap/toon look data,
+Implement `docs/M3_5_MATERIALS_AND_LOOK_PLAN.md`: typed Lambert/toon look data,
 the transparent-safe shadowless two-light rig, six cached inverted-hull part outlines,
 and camera-space depth lanes applied after pose/yaw. Normal M3.5 tracking remains
 frontal; a scenario and development-tier inspection prove the lane contract at ±30
@@ -335,7 +335,7 @@ collapse, and recovery. The owner explicitly accepts the look and confirms smoot
 parity with the 2D build at the display's native rate — judged on a 60 Hz monitor (the
 target baseline) and spot-checked on one high-refresh monitor when available. Known
 intentional differences to judge (not bugs): production 3D uses the accepted matte
-Lambert-wrap shading and 1.5-unit ink outline, so highlights/shadows do not match the
+Lambert shading and 1.5-unit ink outline, so highlights/shadows do not match the
 legacy 2D pixels exactly. Base albedos remain the typed palette. The owner judges
 Variant C shading, outline weight, and busy-background readability; automation verifies
 material structure and physics invariance but never substitutes for this judgment

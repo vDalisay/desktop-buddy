@@ -106,10 +106,10 @@ build has 2 px outlines).
 
 ### Material ladder (stop at the first rung that looks right)
 
-1. `StandardMaterial3D` with `diffuse_mode = LambertWrap`, `specular_mode = Toon`
-   with low specular, `roughness = 1`. Lambert-wrap's wraparound is the closest
-   built-in to Miitopia's soft falloff and cannot go pitch-black without ambient.
-2. `diffuse_mode = Toon` if wrap reads too flat — but expect it to be too harsh.
+1. `StandardMaterial3D` with `diffuse_mode = Lambert`, `specular_mode = Toon`
+   with low specular, `roughness = 1`. Under the two-light rig, Lambert provides the
+   accepted soft falloff without requiring an environment.
+2. `diffuse_mode = Toon` if Lambert reads too flat — but expect it to be too harsh.
 3. A custom spatial `.gdshader` (half-Lambert: `ndl * 0.5 + 0.5` pushed through a
    wide `smoothstep` band, shade floor ≈ 0.75 of albedo, optional ~0.15 rim):
    full control, no environment dependency. **Caveat to verify on this project's
@@ -162,11 +162,14 @@ fine; persist final values back into the `.tscn`.
 ## Outcome (2026-07-14)
 
 The spike stopped at **material ladder rung 1**. Godot 4.6.1's built-in
-`StandardMaterial3D` Lambert-wrap diffuse mode, toon specular mode with low specular,
-and full roughness produced the requested smooth matte falloff under the two-light rig.
-It rendered correctly on this project's `gl_compatibility` renderer (OpenGL 3.3,
-NVIDIA RTX A2000 Laptop GPU), so no custom shader or custom `light()` path was needed
-or exercised.
+`StandardMaterial3D` Lambert diffuse mode, toon specular mode with low specular, and
+full roughness produced the requested smooth matte falloff under the two-light rig. It
+rendered correctly on this project's `gl_compatibility` renderer (OpenGL 3.3, NVIDIA
+RTX A2000 Laptop GPU), so no custom shader or custom `light()` path was needed or
+exercised. This mode was re-verified after acceptance: the committed numeric
+`diffuse_mode = 1` is Lambert (the wrap variant is `2`), and a fresh Lambert capture
+was byte-identical to the accepted `abc_full_480x360.png` artifact. The wrap variant
+produces a materially different render and is not the accepted look.
 
 The retained key/fill setup uses energy `0.75`/`0.70`, warm/cool colors, and **shadows
 off**. The required shadow-on comparison introduced noticeably harder self-shadow
