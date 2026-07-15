@@ -1,6 +1,6 @@
 # Milestone 3.6 — Expressive 3D Presentation (Orientation, Activities, Dynamic Face)
 
-Status: pre-plan written 2026-07-14 on owner direction ("Nintendo-like" expressiveness:
+Status: pre-plan written 2026-07-14 on owner direction (friendly stylized expressiveness:
 the buddy turns and walks sideways, looks at things while walking, performs simple
 charming activities such as eating/sitting/jumping, and the face is composed features,
 not a text glyph). Scheduled intent: **after the M3.5 exit gate, before Milestone 4**;
@@ -38,7 +38,8 @@ reasons. M5's consumables (Meal, Drink) ride the item socket with zero animation
 
 ## Design intent
 
-Mii-like charm comes from three cheap ingredients, not from animation complexity:
+The accepted friendly stylized charm comes from three cheap ingredients, not from
+animation complexity:
 **orientation** (the buddy faces what it does), **tiny authored motions** layered over
 the physics (steps, bobs, glances — subtle, never busy), and an **expressive face**.
 The ragdoll stays the star for interactions: hits, grabs, throws, and knockouts drop
@@ -66,7 +67,7 @@ accepted pain is identical whichever mode was active when struck.
 | Worker | Home | Responsibility |
 | --- | --- | --- |
 | Pose pipeline | `src/Buddy/Presentation3D/BuddyPosePipeline.cs` | Mode arbitration, tracking↔performance blend, offset clamping, camera-space depth lanes. |
-| Facing controller | `src/Buddy/Presentation3D/FacingController.cs` | `BodyYaw` states (CameraFront/Left/Right), eased turns, hysteresis, interaction pull-to-camera. |
+| Facing controller | `src/Buddy/Presentation3D/FacingController.cs` | `BodyYaw` three-quarter left/right states (about ±30°), eased turns, hysteresis, interaction bias. |
 | Activity animator | `src/Buddy/Presentation3D/ActivityAnimator.cs` | `ActivityId` → clip playback on socket offset tracks; item socket; walk-cycle dressing. |
 | Head look-at | `src/Buddy/Presentation3D/HeadLookAtComponent.cs` | Interest-target priority, cone clamp, easing, suppression rules; feeds pupil offsets. |
 | Face compositor | `src/Buddy/Presentation3D/FaceCompositor.cs` | Composed eyes/brows/mouth features rendered to a texture on state change only. |
@@ -81,24 +82,26 @@ reproduces M3.5 output bit-for-bit (regression: the M3.5 scenario suite must sta
 with the pipeline inserted and performance disabled). Performance mode applies clamped
 offsets. **Depth lanes go camera-space:** the M3.5 `DepthOffset` painter lanes must be
 applied as world-Z additions *after* the yawed pose is resolved, never baked into
-socket-local positions — a lane in local space becomes a visible sideways shift at
-±90° yaw — and lane magnitude fades toward zero as yaw approaches ±90°, where true 3D
-depth ordering (near hand in front) takes over naturally.
+socket-local positions — the Variant C spike showed a visible sideways shift even at
+30° when a lane was local. M3.5 Task 7.5 establishes and tests this transform order;
+M3.6 consumes it without changing the accepted lane values.
 Scenarios: `pose_mode_arbitration` (drive each forcing state through real semantics →
 expected mode), `pose_offset_bounded` (soak: max |visual − body| ≤ cap on every part),
 `mode_blend_physics_invariant` (strike during each mode and mid-blend; accepted pain
 equal — extends the M3.5 toggle scenario).
 
 ### Task 2 — Facing controller (integration)
-Yaw states CameraFront/Left/Right with eased turns (profile duration/curve) around the
-`BodyYaw` socket. Sources, in priority order: active interaction (pet/tickle/tool
-cursor engaged → pull toward CameraFront), drive walk direction with hysteresis (a
-direction must persist a profile number of ticks before a turn commits, so autonomy
-jitter cannot flip-flop the model), seeded idle variety (occasional turn while idle).
-Walking left plays as the model yawed left, walking "forward" — locomotion physics is
-untouched. Owner-resolved: walking turns **full profile (90°)**. Scenario:
-`facing_follows_walk` (sustained drive left/right → committed yaw state within bounds;
-jitter seed → no commit).
+Stable yaw states `ThreeQuarterLeft`/`ThreeQuarterRight` use the owner-accepted roughly
+60-degree three-quarter read (about ±30° from dead-frontal), with eased turns through
+zero using the profile duration/curve around `BodyYaw`. Sources, in priority order:
+active interaction (pet/tickle/tool cursor engaged → bias toward the nearer readable
+three-quarter side), drive walk direction with hysteresis (a direction must persist a
+profile number of ticks before a turn commits, so autonomy jitter cannot flip-flop the
+model), seeded idle variety (occasional side change while idle). Walking left/right
+commits the matching three-quarter state; locomotion physics is untouched. This
+2026-07-15 Variant C decision supersedes the earlier full-profile 90° plan. Scenario:
+`facing_follows_walk` (sustained drive left/right → matching ±30° committed state
+within bounds; jitter seed → no commit; transition crosses zero without overshoot).
 
 ### Task 3 — Activity animator, item socket, walk dressing (integration/presentation)
 `ActivityId` enum + one `AnimationPlayer` playing typed clips that animate **socket
@@ -141,9 +144,9 @@ deterministic per seed; suppression states verified).
 Replaces the M3.5 `Label3D` parity face at this slice's gate. `FaceCompositor` draws
 eyes + brows + mouth as simple procedural features (`CanvasItem` draw into a small
 offscreen `SubViewport` → `ImageTexture`), mounted on a head-front quad parented to
-`HeadSocket` at surface + epsilon (edge-on at full profile yaw is correct Mii behavior;
+`HeadSocket` at surface + epsilon and remaining readable at both accepted ±30° states;
 whole-head albedo compositing stays with the character editor plan, which extends this
-same compositor). Re-render **on change only**: expression state, blink edge, pupil
+same compositor. Re-render **on change only**: expression state, blink edge, pupil
 quantum, chew frame. `FaceExpressionMap` translates the authoritative face-state list —
 exported beside `BuddyReactionComponent`, currently ten strings — into feature poses;
 the strings and the resolver do not change. Overlays: seeded blink timer (suppressed
@@ -168,7 +171,7 @@ gate.
 ## Exit gate (owner-manual)
 
 On real Windows with the transparent shell, at 60 Hz and one high-refresh monitor when
-available: idle (breathing, glances, blinks), walk with committed full-profile turns
+available: idle (breathing, glances, blinks), walk with committed three-quarter turns
 both ways, jump with anticipation/landing accents, eat with two different socketed
 items, a wave, pet/tickle with look-at engagement (and confirmation that plain idle
 ignores the cursor), glove hit → instant ragdoll cut, knockout collapse and recovery
@@ -176,9 +179,11 @@ easing back into performance. The judgment: **alive but never busy** — subtle,
 charming, cute; the ragdoll cut must feel like the same buddy. The owner accepts feel
 and confirms no physics behavior changed.
 
-## Owner-resolved scope (2026-07-14)
+## Owner-resolved scope (2026-07-14; amended 2026-07-15)
 
-- **Walk facing: full profile.** Walking turns the model fully sideways (90°).
+- **Facing: Variant C three-quarter.** Walking and stable idle facing use about ±30°
+  yaw from dead-frontal, producing the accepted roughly 60-degree three-quarter read.
+  This supersedes the earlier full-profile (90°) direction.
 - **Look-at: interactions only.** The buddy watches the cursor only while an
   interaction is engaged; idle glances are ambient and seeded, never cursor-tracking.
 - **Slice activity set: idle, walk dressing, jump accents, eat, wave.** Sit/sleep are
@@ -223,7 +228,8 @@ camera-space application of `DepthOffset` lanes (Task 1 here consumes all four).
 character-editor plan's face compositor and expression map now build here first and are
 parameterized there later.
 
-Owner resolved three scope decisions on 2026-07-14: full-profile (90°) walk facing;
-cursor look-at only during interactions; slice activity set idle/walk/jump/eat/wave
-with sit/sleep deferred to M4. The task text carries the answers and the open-decision
-list is down to four.
+Owner resolved three scope decisions on 2026-07-14: walk facing, cursor look-at only
+during interactions, and the idle/walk/jump/eat/wave activity set with sit/sleep
+deferred to M4. On 2026-07-15 the accepted Variant C look superseded the original 90°
+walk choice with ±30° three-quarter states. The task text carries the answers and the
+open-decision list is down to four.

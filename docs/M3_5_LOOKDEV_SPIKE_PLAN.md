@@ -1,9 +1,11 @@
 # M3.5 Look-Dev Spike — "Miitopia-style" Toon Presentation (owner decision aid)
 
-Status: **planned, unbuilt**. This spike exists so the owner can judge, from real
-in-engine renders, whether the 3D presentation can reach their visual target before
-deciding at the paused Task 8 gate (`docs/M3_5_3D_PRESENTATION_PLAN.md`) to either
-adopt `Mii3D` or stay with the 2D presentation.
+Status: **built; Variant C owner-accepted 2026-07-15**. This spike exists so the owner
+can judge, from real in-engine renders, whether the 3D presentation can reach their
+visual target before deciding at the paused Task 8 gate
+(`docs/M3_5_3D_PRESENTATION_PLAN.md`) to either adopt `Mii3D` or stay with the 2D
+presentation. The accepted result is productionized by
+`docs/M3_5_MATERIALS_AND_LOOK_PLAN.md`; the spike remains development-only.
 
 ## Owner direction being tested (2026-07-14)
 
@@ -188,3 +190,8 @@ criterion.
 Interactive evidence was captured at 480x360 under `artifacts/m35_lookdev/` (untracked):
 `abc_full_480x360.png` shows the complete A/B/C row across neutral and busy backdrops;
 `c_vision_close_480x360.png` is the close Variant C silhouette/face/outline inspection.
+
+**Owner decision (2026-07-15): ADOPT VARIANT C.** The production direction and its
+scope boundaries are recorded in `docs/DECISIONS.md`. Task 8 stays paused until the
+accepted materials, lighting, outline, and camera-space lane behavior are implemented
+and pass the real-game gate.
