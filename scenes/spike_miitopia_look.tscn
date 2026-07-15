@@ -1,0 +1,496 @@
+[gd_scene load_steps=25 format=3]
+
+[sub_resource type="StandardMaterial3D" id="BackdropNeutral"]
+shading_mode = 0
+cull_mode = 2
+albedo_color = Color(0.86, 0.88, 0.89, 1)
+
+[sub_resource type="StandardMaterial3D" id="BackdropBusy"]
+shading_mode = 0
+cull_mode = 2
+albedo_color = Color(0.14, 0.18, 0.25, 1)
+
+[sub_resource type="StandardMaterial3D" id="BusyCoral"]
+shading_mode = 0
+cull_mode = 2
+albedo_color = Color(0.93, 0.31, 0.32, 1)
+
+[sub_resource type="StandardMaterial3D" id="BusyGold"]
+shading_mode = 0
+cull_mode = 2
+albedo_color = Color(0.98, 0.72, 0.18, 1)
+
+[sub_resource type="StandardMaterial3D" id="BusyViolet"]
+shading_mode = 0
+cull_mode = 2
+albedo_color = Color(0.53, 0.3, 0.83, 1)
+
+[sub_resource type="StandardMaterial3D" id="BusyGreen"]
+shading_mode = 0
+cull_mode = 2
+albedo_color = Color(0.13, 0.68, 0.49, 1)
+
+[sub_resource type="StandardMaterial3D" id="HeadFlat"]
+shading_mode = 0
+albedo_color = Color(0.478, 0.78, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="TorsoFlat"]
+shading_mode = 0
+albedo_color = Color(0.27, 0.64, 0.88, 1)
+
+[sub_resource type="StandardMaterial3D" id="HandsFlat"]
+shading_mode = 0
+albedo_color = Color(0.56, 0.83, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="FeetFlat"]
+shading_mode = 0
+albedo_color = Color(0.38, 0.72, 0.94, 1)
+
+[sub_resource type="StandardMaterial3D" id="HeadToon"]
+diffuse_mode = 1
+specular_mode = 1
+metallic_specular = 0.08
+roughness = 1.0
+albedo_color = Color(0.478, 0.78, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="TorsoToon"]
+diffuse_mode = 1
+specular_mode = 1
+metallic_specular = 0.08
+roughness = 1.0
+albedo_color = Color(0.27, 0.64, 0.88, 1)
+
+[sub_resource type="StandardMaterial3D" id="HandsToon"]
+diffuse_mode = 1
+specular_mode = 1
+metallic_specular = 0.08
+roughness = 1.0
+albedo_color = Color(0.56, 0.83, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="FeetToon"]
+diffuse_mode = 1
+specular_mode = 1
+metallic_specular = 0.08
+roughness = 1.0
+albedo_color = Color(0.38, 0.72, 0.94, 1)
+
+[sub_resource type="StandardMaterial3D" id="Ink"]
+shading_mode = 0
+cull_mode = 1
+grow = true
+grow_amount = 1.5
+albedo_color = Color(0.094, 0.188, 0.259, 1)
+
+[sub_resource type="StandardMaterial3D" id="FaceInk"]
+shading_mode = 0
+albedo_color = Color(0.094, 0.188, 0.259, 1)
+
+[sub_resource type="QuadMesh" id="NeutralPanel"]
+material = SubResource("BackdropNeutral")
+size = Vector2(302, 340)
+
+[sub_resource type="QuadMesh" id="BusyPanel"]
+material = SubResource("BackdropBusy")
+size = Vector2(151, 340)
+
+[sub_resource type="QuadMesh" id="BusyBoxWide"]
+size = Vector2(118, 64)
+
+[sub_resource type="QuadMesh" id="BusyBoxTall"]
+size = Vector2(54, 142)
+
+[sub_resource type="SphereMesh" id="HeadMesh"]
+radius = 24.0
+height = 48.0
+radial_segments = 32
+rings = 16
+
+[sub_resource type="CapsuleMesh" id="TorsoMesh"]
+radius = 28.0
+height = 70.0
+radial_segments = 32
+rings = 12
+
+[sub_resource type="SphereMesh" id="HandMesh"]
+radius = 15.0
+height = 30.0
+radial_segments = 24
+rings = 12
+
+[sub_resource type="SphereMesh" id="FootMesh"]
+radius = 17.0
+height = 34.0
+radial_segments = 24
+rings = 12
+
+[sub_resource type="CapsuleMesh" id="HeadConnectorMesh"]
+radius = 5.0
+height = 50.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="CapsuleMesh" id="HandConnectorMesh"]
+radius = 5.0
+height = 38.33
+radial_segments = 16
+rings = 8
+
+[sub_resource type="CapsuleMesh" id="FootConnectorMesh"]
+radius = 6.0
+height = 59.24
+radial_segments = 16
+rings = 8
+
+[sub_resource type="SphereMesh" id="EyeMesh"]
+radius = 2.5
+height = 5.0
+radial_segments = 16
+rings = 8
+
+[sub_resource type="CapsuleMesh" id="MouthMesh"]
+radius = 1.5
+height = 8.0
+radial_segments = 16
+rings = 8
+
+[node name="MiitopiaLookdevSpike" type="Node3D"]
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 500)
+projection = 1
+current = true
+size = 340.0
+keep_aspect = 1
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.610865, -0.523599, 0)
+light_color = Color(1, 0.98, 0.94, 1)
+light_energy = 0.75
+shadow_enabled = false
+
+[node name="FillLight" type="DirectionalLight3D" parent="."]
+light_color = Color(0.85, 0.9, 1, 1)
+light_energy = 0.7
+shadow_enabled = false
+
+[node name="Backdrop" type="Node3D" parent="."]
+
+[node name="NeutralPanel" type="MeshInstance3D" parent="Backdrop"]
+position = Vector3(-75.5, 0, -200)
+mesh = SubResource("NeutralPanel")
+
+[node name="BusyPanel" type="MeshInstance3D" parent="Backdrop"]
+position = Vector3(151, 0, -200)
+mesh = SubResource("BusyPanel")
+
+[node name="CoralBlock" type="MeshInstance3D" parent="Backdrop"]
+position = Vector3(147, 104, -190)
+rotation = Vector3(0, 0, 0.18)
+material_override = SubResource("BusyCoral")
+mesh = SubResource("BusyBoxWide")
+
+[node name="GoldBlock" type="MeshInstance3D" parent="Backdrop"]
+position = Vector3(192, -8, -188)
+rotation = Vector3(0, 0, -0.22)
+material_override = SubResource("BusyGold")
+mesh = SubResource("BusyBoxTall")
+
+[node name="VioletBlock" type="MeshInstance3D" parent="Backdrop"]
+position = Vector3(120, -105, -186)
+rotation = Vector3(0, 0, -0.12)
+material_override = SubResource("BusyViolet")
+mesh = SubResource("BusyBoxWide")
+
+[node name="GreenBlock" type="MeshInstance3D" parent="Backdrop"]
+position = Vector3(211, 92, -184)
+rotation = Vector3(0, 0, 0.28)
+material_override = SubResource("BusyGreen")
+mesh = SubResource("BusyBoxTall")
+
+[node name="VariantA_Current" type="Node3D" parent="."]
+position = Vector3(-150, 0, 0)
+
+[node name="Connectors" type="Node3D" parent="VariantA_Current"]
+
+[node name="Head" type="MeshInstance3D" parent="VariantA_Current/Connectors"]
+position = Vector3(0, 25, -10)
+material_override = SubResource("TorsoFlat")
+mesh = SubResource("HeadConnectorMesh")
+
+[node name="LeftHand" type="MeshInstance3D" parent="VariantA_Current/Connectors"]
+position = Vector3(-19, 2.5, -10)
+rotation = Vector3(0, 0, 1.4399)
+material_override = SubResource("TorsoFlat")
+mesh = SubResource("HandConnectorMesh")
+
+[node name="RightHand" type="MeshInstance3D" parent="VariantA_Current/Connectors"]
+position = Vector3(19, 2.5, -10)
+rotation = Vector3(0, 0, -1.4399)
+material_override = SubResource("TorsoFlat")
+mesh = SubResource("HandConnectorMesh")
+
+[node name="LeftFoot" type="MeshInstance3D" parent="VariantA_Current/Connectors"]
+position = Vector3(-11, -27.5, -10)
+rotation = Vector3(0, 0, 2.76109)
+material_override = SubResource("TorsoFlat")
+mesh = SubResource("FootConnectorMesh")
+
+[node name="RightFoot" type="MeshInstance3D" parent="VariantA_Current/Connectors"]
+position = Vector3(11, -27.5, -10)
+rotation = Vector3(0, 0, -2.76109)
+material_override = SubResource("TorsoFlat")
+mesh = SubResource("FootConnectorMesh")
+
+[node name="Torso" type="MeshInstance3D" parent="VariantA_Current"]
+material_override = SubResource("TorsoFlat")
+mesh = SubResource("TorsoMesh")
+
+[node name="Head" type="MeshInstance3D" parent="VariantA_Current"]
+position = Vector3(0, 50, 30)
+material_override = SubResource("HeadFlat")
+mesh = SubResource("HeadMesh")
+
+[node name="Face" type="Label3D" parent="VariantA_Current/Head"]
+position = Vector3(0, 0, 24.1)
+rotation = Vector3(0, 0, -1.5708)
+pixel_size = 1.0
+modulate = Color(0.094, 0.188, 0.259, 1)
+font_size = 14
+outline_size = 0
+text = ":|"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="LeftHand" type="MeshInstance3D" parent="VariantA_Current"]
+position = Vector3(-38, 5, 20)
+material_override = SubResource("HandsFlat")
+mesh = SubResource("HandMesh")
+
+[node name="RightHand" type="MeshInstance3D" parent="VariantA_Current"]
+position = Vector3(38, 5, 20)
+material_override = SubResource("HandsFlat")
+mesh = SubResource("HandMesh")
+
+[node name="LeftFoot" type="MeshInstance3D" parent="VariantA_Current"]
+position = Vector3(-22, -55, -20)
+material_override = SubResource("FeetFlat")
+mesh = SubResource("FootMesh")
+
+[node name="RightFoot" type="MeshInstance3D" parent="VariantA_Current"]
+position = Vector3(22, -55, -20)
+material_override = SubResource("FeetFlat")
+mesh = SubResource("FootMesh")
+
+[node name="Caption" type="Label3D" parent="VariantA_Current"]
+position = Vector3(0, -100, 60)
+pixel_size = 1.0
+modulate = Color(0.094, 0.188, 0.259, 1)
+font_size = 11
+outline_size = 2
+text = "A  CURRENT"
+horizontal_alignment = 1
+
+[node name="VariantB_SoftToon" type="Node3D" parent="."]
+
+[node name="Connectors" type="Node3D" parent="VariantB_SoftToon"]
+
+[node name="Head" type="MeshInstance3D" parent="VariantB_SoftToon/Connectors"]
+position = Vector3(0, 25, -10)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("HeadConnectorMesh")
+
+[node name="LeftHand" type="MeshInstance3D" parent="VariantB_SoftToon/Connectors"]
+position = Vector3(-19, 2.5, -10)
+rotation = Vector3(0, 0, 1.4399)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("HandConnectorMesh")
+
+[node name="RightHand" type="MeshInstance3D" parent="VariantB_SoftToon/Connectors"]
+position = Vector3(19, 2.5, -10)
+rotation = Vector3(0, 0, -1.4399)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("HandConnectorMesh")
+
+[node name="LeftFoot" type="MeshInstance3D" parent="VariantB_SoftToon/Connectors"]
+position = Vector3(-11, -27.5, -10)
+rotation = Vector3(0, 0, 2.76109)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("FootConnectorMesh")
+
+[node name="RightFoot" type="MeshInstance3D" parent="VariantB_SoftToon/Connectors"]
+position = Vector3(11, -27.5, -10)
+rotation = Vector3(0, 0, -2.76109)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("FootConnectorMesh")
+
+[node name="Torso" type="MeshInstance3D" parent="VariantB_SoftToon"]
+material_override = SubResource("TorsoToon")
+mesh = SubResource("TorsoMesh")
+
+[node name="Head" type="MeshInstance3D" parent="VariantB_SoftToon"]
+position = Vector3(0, 50, 30)
+material_override = SubResource("HeadToon")
+mesh = SubResource("HeadMesh")
+
+[node name="LeftEye" type="MeshInstance3D" parent="VariantB_SoftToon/Head"]
+position = Vector3(-8, 4, 22.4)
+material_override = SubResource("FaceInk")
+mesh = SubResource("EyeMesh")
+
+[node name="RightEye" type="MeshInstance3D" parent="VariantB_SoftToon/Head"]
+position = Vector3(8, 4, 22.4)
+material_override = SubResource("FaceInk")
+mesh = SubResource("EyeMesh")
+
+[node name="Mouth" type="MeshInstance3D" parent="VariantB_SoftToon/Head"]
+position = Vector3(0, -6, 23.2)
+rotation = Vector3(0, 0, 1.5708)
+material_override = SubResource("FaceInk")
+mesh = SubResource("MouthMesh")
+
+[node name="LeftHand" type="MeshInstance3D" parent="VariantB_SoftToon"]
+position = Vector3(-38, 5, 20)
+material_override = SubResource("HandsToon")
+mesh = SubResource("HandMesh")
+
+[node name="RightHand" type="MeshInstance3D" parent="VariantB_SoftToon"]
+position = Vector3(38, 5, 20)
+material_override = SubResource("HandsToon")
+mesh = SubResource("HandMesh")
+
+[node name="LeftFoot" type="MeshInstance3D" parent="VariantB_SoftToon"]
+position = Vector3(-22, -55, -20)
+material_override = SubResource("FeetToon")
+mesh = SubResource("FootMesh")
+
+[node name="RightFoot" type="MeshInstance3D" parent="VariantB_SoftToon"]
+position = Vector3(22, -55, -20)
+material_override = SubResource("FeetToon")
+mesh = SubResource("FootMesh")
+
+[node name="Caption" type="Label3D" parent="VariantB_SoftToon"]
+position = Vector3(0, -100, 60)
+pixel_size = 1.0
+modulate = Color(0.094, 0.188, 0.259, 1)
+font_size = 11
+outline_size = 2
+text = "B  SOFT TOON"
+horizontal_alignment = 1
+
+[node name="VariantC_Vision" type="Node3D" parent="."]
+position = Vector3(150, 0, 0)
+rotation = Vector3(0, 0.523599, 0)
+
+[node name="Connectors" type="Node3D" parent="VariantC_Vision"]
+
+[node name="Head" type="MeshInstance3D" parent="VariantC_Vision/Connectors"]
+position = Vector3(0, 25, -10)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("HeadConnectorMesh")
+
+[node name="LeftHand" type="MeshInstance3D" parent="VariantC_Vision/Connectors"]
+position = Vector3(-19, 2.5, -10)
+rotation = Vector3(0, 0, 1.4399)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("HandConnectorMesh")
+
+[node name="RightHand" type="MeshInstance3D" parent="VariantC_Vision/Connectors"]
+position = Vector3(19, 2.5, -10)
+rotation = Vector3(0, 0, -1.4399)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("HandConnectorMesh")
+
+[node name="LeftFoot" type="MeshInstance3D" parent="VariantC_Vision/Connectors"]
+position = Vector3(-11, -27.5, -10)
+rotation = Vector3(0, 0, 2.76109)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("FootConnectorMesh")
+
+[node name="RightFoot" type="MeshInstance3D" parent="VariantC_Vision/Connectors"]
+position = Vector3(11, -27.5, -10)
+rotation = Vector3(0, 0, -2.76109)
+material_override = SubResource("TorsoToon")
+mesh = SubResource("FootConnectorMesh")
+
+[node name="TorsoOutline" type="MeshInstance3D" parent="VariantC_Vision"]
+material_override = SubResource("Ink")
+mesh = SubResource("TorsoMesh")
+
+[node name="Torso" type="MeshInstance3D" parent="VariantC_Vision"]
+material_override = SubResource("TorsoToon")
+mesh = SubResource("TorsoMesh")
+
+[node name="HeadOutline" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(0, 50, 30)
+material_override = SubResource("Ink")
+mesh = SubResource("HeadMesh")
+
+[node name="Head" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(0, 50, 30)
+material_override = SubResource("HeadToon")
+mesh = SubResource("HeadMesh")
+
+[node name="LeftEye" type="MeshInstance3D" parent="VariantC_Vision/Head"]
+position = Vector3(-8, 4, 22.4)
+material_override = SubResource("FaceInk")
+mesh = SubResource("EyeMesh")
+
+[node name="RightEye" type="MeshInstance3D" parent="VariantC_Vision/Head"]
+position = Vector3(8, 4, 22.4)
+material_override = SubResource("FaceInk")
+mesh = SubResource("EyeMesh")
+
+[node name="Mouth" type="MeshInstance3D" parent="VariantC_Vision/Head"]
+position = Vector3(0, -6, 23.2)
+rotation = Vector3(0, 0, 1.5708)
+material_override = SubResource("FaceInk")
+mesh = SubResource("MouthMesh")
+
+[node name="LeftHandOutline" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(-38, 5, 20)
+material_override = SubResource("Ink")
+mesh = SubResource("HandMesh")
+
+[node name="LeftHand" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(-38, 5, 20)
+material_override = SubResource("HandsToon")
+mesh = SubResource("HandMesh")
+
+[node name="RightHandOutline" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(38, 5, 20)
+material_override = SubResource("Ink")
+mesh = SubResource("HandMesh")
+
+[node name="RightHand" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(38, 5, 20)
+material_override = SubResource("HandsToon")
+mesh = SubResource("HandMesh")
+
+[node name="LeftFootOutline" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(-22, -55, -20)
+material_override = SubResource("Ink")
+mesh = SubResource("FootMesh")
+
+[node name="LeftFoot" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(-22, -55, -20)
+material_override = SubResource("FeetToon")
+mesh = SubResource("FootMesh")
+
+[node name="RightFootOutline" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(22, -55, -20)
+material_override = SubResource("Ink")
+mesh = SubResource("FootMesh")
+
+[node name="RightFoot" type="MeshInstance3D" parent="VariantC_Vision"]
+position = Vector3(22, -55, -20)
+material_override = SubResource("FeetToon")
+mesh = SubResource("FootMesh")
+
+[node name="Caption" type="Label3D" parent="VariantC_Vision"]
+position = Vector3(0, -100, 60)
+pixel_size = 1.0
+modulate = Color(0.91, 0.95, 1, 1)
+font_size = 11
+outline_size = 2
+text = "C  3/4 + OUTLINE"
+horizontal_alignment = 1

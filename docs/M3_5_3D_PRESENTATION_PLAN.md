@@ -1,4 +1,4 @@
-# Milestone 3.5 — Frontal 3D Presentation Conversion
+# Milestone 3.5 — 3D Presentation Conversion
 
 Authoritative scope: owner scope answers of 2026-07-14 (below) plus `docs/ROADMAP.md` and
 `docs/ARCHITECTURE.md` §14/§20–§21 (`docs/DECISIONS.md` wins on conflict). Baseline:
@@ -13,13 +13,15 @@ it, and never register `_PhysicsProcess` (ARCHITECTURE §23 single-entry rule).
 
 ## Owner-confirmed scope (2026-07-14)
 
-- **Flat stage, 3D look.** The buddy keeps moving on the 2D plane (left/right + jump,
-  facing the camera); no depth locomotion, no 3D physics.
+- **Flat stage, 3D look.** The buddy keeps moving on the 2D plane (left/right + jump);
+  no depth locomotion and no 3D physics. M3.5 tracking stays frontal; the owner-accepted
+  three-quarter target becomes dynamic in M3.6 after camera-space lane preparation.
 - **Floating parts.** Head, torso, and detached hand/foot meshes tracking the six bodies,
   plus thin connector capsules — no skeleton, no IK, no skinned mesh.
-- **Procedural in-engine assets.** Godot primitive meshes and unshaded materials; no
-  external art pipeline. Original character only (clean-room: "Mii-inspired" means
-  proportions and simplicity, never Nintendo trade dress, assets, or likeness).
+- **Procedural in-engine assets.** Godot primitive meshes with the owner-accepted soft
+  toon materials and outline; no external art pipeline. Original character only
+  (clean-room: inspiration means broad proportions and simplicity, never Nintendo
+  trade dress, assets, or likeness).
 - **One fixed character now; full character editor later.** The editor is deferred to its
   own milestone and must be enabled by the Task 3 seam: customization writes visual
   profiles only and can never touch rig/drive tuning, so it never re-opens the M1 gate.
@@ -29,13 +31,13 @@ it, and never register `_PhysicsProcess` (ARCHITECTURE §23 single-entry rule).
   rate the display provides, and the Task 4 interpolation contract makes motion smooth
   at every refresh rate. "60 fps" is a budget floor the app must comfortably exceed,
   never a render cap — capping at 60 on a 144 Hz panel would judder.
-- **Expressive presentation is the next slice, not this one.** The owner direction of
-  2026-07-14 (turning/facing, walk/eat/sit performances, head look-at, composed dynamic
-  face — "Nintendo-like") is pre-planned in `docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md`
-  and lands after this slice's exit gate. This slice stays the frontal parity
-  conversion, because its A/B gate compares against the 2D build — expressive motion
-  has no 2D baseline and needs its own feel gate. Tasks 3–4 must build the seams that
-  slice consumes (socket hierarchy, pose-source seam, replaceable face).
+- **Expressive presentation is the next slice, not this one.** Turning/facing,
+  walk/eat/sit performances, head look-at, and the composed dynamic face are pre-planned
+  in `docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md` and land after this slice's exit gate.
+  The 2026-07-15 Variant C decision sets M3.6's three-quarter target at about 30 degrees
+  yaw; M3.5 only fixes the depth-lane transform order and keeps normal tracking frontal.
+  Expressive motion has no 2D baseline and needs its own feel gate. Tasks 3–4 build the
+  seams that slice consumes (socket hierarchy, pose-source seam, replaceable face).
 
 ## Design seams
 
@@ -44,6 +46,7 @@ it, and never register `_PhysicsProcess` (ARCHITECTURE §23 single-entry rule).
 | Plane mapping | `src/Presentation3D/WorldPlaneMapping.cs` | The single 2D↔3D mapping authority: `(x, y) → (x, −y, 0)`, `rot3dZ = −rot2d`. |
 | World camera 3D | `src/Sandbox/BoundaryController.cs` | Orthographic `Camera3D` driven from `ApplyLayout` beside the existing `Camera2D`; boundary controller stays the only room/zoom authority. |
 | Visual profile | `src/Buddy/Presentation3D/BuddyVisualProfile.cs` + `data/buddy/lab_buddy_visual.tres` | Typed per-part visual data, connector graph, rotation policy; the future editor seam. |
+| Production look | `BuddyLookProfile` / `BuddyLookMaterialLibrary` / `BuddyLookLightingRig` | Accepted soft-toon data and cached materials; transparent-safe two-light ownership; detailed in `M3_5_MATERIALS_AND_LOOK_PLAN.md`. |
 | Buddy presenter | `src/Buddy/Presentation3D/BuddyVisualPresenter.cs` | Builds and tracks six part meshes, connectors, and the face; read-only. |
 | Generic tool visual | `src/Presentation3D/Body2DVisual3D.cs` | Reusable 2D-body→3D-mesh tracker (Boxing Glove now; M5 tool pattern later). |
 | Presentation toggle | `BuddyLab.cs` / `SandboxRoot.cs` scene roots | `LegacyCircles` / `Mii3D` mode switch; runtime-flippable in the lab for owner A/B. |
@@ -52,7 +55,8 @@ it, and never register `_PhysicsProcess` (ARCHITECTURE §23 single-entry rule).
 
 1. Zero per-frame managed allocation in tracking paths; cache mesh/label/material arrays
    at initialization (ARCHITECTURE §23 allocation policy applies to `_Process` here).
-2. Every new visual constant lives in `BuddyVisualProfile`, never as a literal in logic.
+2. Every new visual constant lives in `BuddyVisualProfile` or its required typed
+   `BuddyLookProfile`, never as a literal in logic.
    View-plumbing constants (camera Z distance, near/far) are code constants with an
    explanatory comment — they are provably invisible to the orthographic result.
 3. No new player-facing text (faces remain the existing data strings), so no new
@@ -203,7 +207,10 @@ radii (clamped ≥ a profile minimum) — never mutate `CapsuleMesh.Height` per 
 regenerates the mesh engine-side five times a frame; when separation ≈ 0 (overlapping
 parts are routine, Task 3) hold the last orientation instead of normalizing a zero
 vector into a NaN basis. Face: poll `Head.Face` and update `Label3D.Text` only on
-change.
+change. Tasks 1–7 intentionally use Unshaded materials for measurable parity; the
+owner-accepted production replacement is specified in
+`docs/M3_5_MATERIALS_AND_LOOK_PLAN.md` and lands before Task 8.
+
 **Interpolation contract:** perceived smoothness must match the 2D build at any display
 refresh rate — the physics tick stays 120 Hz and rendering floats with the monitor
 (owner scope, 2026-07-14). Verified against the pinned 4.6.1 GodotSharp package: `GetGlobalTransformInterpolated()` exists
@@ -295,13 +302,25 @@ including a named sideways-face orientation check (idle `":|"`, pet `":3"`, knoc
 `"x_x"`): the Task 4 quarter-turn sign error renders text-identical but visually
 flipped, so only this pass can catch it.
 
+### Task 7.5 — Production materials and look (owner direction accepted; unbuilt)
+
+Implement `docs/M3_5_MATERIALS_AND_LOOK_PLAN.md`: typed Lambert/toon look data,
+the transparent-safe shadowless two-light rig, six cached inverted-hull part outlines,
+and camera-space depth lanes applied after pose/yaw. Normal M3.5 tracking remains
+frontal; a scenario and development-tier inspection prove the lane contract at ±30
+degrees for M3.6. The Variant C dot face remains illustrative — composed procedural
+features are still M3.6. Task 8 cannot start until Task 7.5's automated matrix and
+owner-manual real-game look gate pass.
+
 ### Task 8 — Acceptance flip, demotion, and documentation (owner-gated)
-Only after the exit gate: flip the default `PresentationMode` to `Mii3D` in both scenes
+Only after the Task 7.5 exit gate: flip the default `PresentationMode` to `Mii3D` in
+both scenes
 and rerun `tools\quick_validate.bat` plus the full `idle_soak`; demote `LegacyCircles` to
 a lab-only debug view or delete it (owner choice recorded at the gate); amend
 `ARCHITECTURE.md` §14 (3D layer, mapping contract, visual/physics resource split, tool
 pattern), `ROADMAP.md` M7 wording, and `README.md` status; record in `DECISIONS.md`:
-(1) frontal 3D presentation replaces the 2D vector buddy, (2) customization is visual-only
+(1) soft-toon 3D presentation replaces the 2D vector buddy, (2) customization is
+visual-only
 forever — the future editor writes visual profiles and never rig/drive tuning,
 (3) the Task 1 renderer outcome, (4) the accepted torso-capsule silhouette exception
 with the shipped `CapsuleHeightScale`, (5) the frame-rate policy (120 Hz tick, uncapped
@@ -309,15 +328,17 @@ V-synced rendering, V-sync-Off ceiling). The default flip is its own commit.
 
 ## Exit gate (owner-manual)
 
-Side-by-side A/B via the lab `V` toggle at 100% and one clamped zoom, on real Windows with
+After Task 7.5, side-by-side A/B via the lab `V` toggle at 100% and one clamped zoom,
+on real Windows with
 the transparent shell: idle, walk, jump, grab/throw, glove hit including guard, knockout
 collapse, and recovery. The owner explicitly accepts the look and confirms smoothness
 parity with the 2D build at the display's native rate — judged on a 60 Hz monitor (the
 target baseline) and spot-checked on one high-refresh monitor when available. Known
-intentional difference to judge (not a bug):
-the 2D circles carry 2 px dark outlines; unshaded 3D spheres have none and read flatter
-against a busy desktop — if rejected, an inverted-hull outline shell is the
-Unshaded-compatible fix. The automated green suite never substitutes for this judgment
+intentional differences to judge (not bugs): production 3D uses the accepted matte
+Lambert shading and 1.5-unit ink outline, so highlights/shadows do not match the
+legacy 2D pixels exactly. Base albedos remain the typed palette. The owner judges
+Variant C shading, outline weight, and busy-background readability; automation verifies
+material structure and physics invariance but never substitutes for this judgment
 (AGENTS.md Definition of Done).
 
 ## Verification commands
@@ -352,8 +373,8 @@ tools\quick_validate.bat                 # before any handoff
   (nice-to-have, unscheduled).
 - Preset visual variants, cosmetic fake-depth lanes (distinct from the Task 3
   `DepthOffset` draw-order lanes, which are required parity infrastructure), 3D VFX,
-  lit or toon-shaded materials beyond Unshaded, 3D visuals for M5 tools beyond the
-  glove pattern, and any skinned-mesh or IK connector work.
+  further shader styles beyond the accepted soft toon, outlines for tools, 3D visuals
+  for M5 tools beyond the glove pattern, and any skinned-mesh or IK connector work.
 
 ## Progress
 
@@ -448,8 +469,15 @@ ten-run repeat envelope. Final verification: build 0 warnings/errors, domain sui
 205/205, focused presentation scenario, both promoted journeys, full nine-step quick
 suite, and an MCP-driven Windows pass through `V` toggle, grab, glove strike/guard,
 knockout, and face states. The tiny default `Label3D` pixel scale found interactively
-was promoted into typed `FacePixelSize` data and a regression assertion. **Next: Task 8
-owner-manual A/B gate; no default flip or legacy demotion has been performed.**
+was promoted into typed `FacePixelSize` data and a regression assertion. At that point
+Task 8 was next; the subsequent Variant C decision inserted Task 7.5 before it. No
+default flip or legacy demotion has been performed.
+
+**Variant C look direction ACCEPTED (2026-07-15).** The owner selected the soft-toon,
+outlined, three-quarter Variant C from the development-only lookdev spike. This
+supersedes exact rendered color parity and M3.6's earlier 90-degree profile-facing
+choice. Task 8 remains paused; **next is Task 7.5**, the production materials/look and
+camera-space lane plan in `docs/M3_5_MATERIALS_AND_LOOK_PLAN.md`.
 
 Amended 2026-07-14 after a code-verified review. Substantive changes: the 2D
 interpolated-transform API does not exist in the pinned 4.6.1 GodotSharp, so Task 4's

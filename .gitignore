@@ -19,7 +19,8 @@ mono_crash.*.json
 # Diagnostics: logs and headless runner artifacts
 *.log
 /logs/
-/artifacts/
+/artifacts/*
+!/artifacts/.gdignore
 /.artifacts/
 
 # Development Steam app id — never committed; ships only via the release export path

@@ -41,6 +41,33 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   renderer, and M3.5 Task 2 is unblocked.** The spike stays development-only and
   export-excluded.
 
+### M3.5 Variant C look direction — ACCEPTED (2026-07-15)
+
+- The owner reviewed the A/B/C render from `docs/M3_5_LOOKDEV_SPIKE_PLAN.md` and
+  explicitly selected **Variant C** as the production 3D direction. This accepts the
+  soft matte toon response, three-quarter silhouette, generic procedural face direction,
+  and restrained inverted-hull outline as the target; it does not authorize Nintendo
+  assets, likenesses, UI, or trade dress.
+- Production shading uses built-in `StandardMaterial3D` on `gl_compatibility`:
+  Lambert diffuse, toon specular at `0.08`, roughness `1.0`, warm key/cool fill
+  energies `0.75`/`0.70`, no `WorldEnvironment`, and shadows off. The accepted outline
+  uses ink `#183042`, front-face culling, and grow amount `1.5` on the six part meshes;
+  connectors remain unoutlined.
+- Visual-profile colors remain authoritative **base albedos**, but lit pixels may be
+  paler in highlights and deeper in shade. Exact per-pixel 2D/3D color parity is
+  superseded by the accepted art-directed shaded result. The legacy/unshaded control
+  remains useful only for comparison while the M3.5 gate is open.
+- The facing target is a roughly **60-degree three-quarter read**, implemented as about
+  `30°` yaw off dead-frontal. This supersedes the 2026-07-14 M3.6 full-profile (`90°`)
+  walking direction. Dynamic facing remains M3.6 scope; M3.5 first moves painter depth
+  lanes to camera-space after pose/yaw so they cannot create sideways displacement.
+- The lookdev dot face is illustrative, not the final face implementation. M3.5 keeps
+  the replaceable semantic face; M3.6 owns the composed procedural face and preserves
+  `Reactions.CurrentFace` as its semantic contract.
+- M3.5 Task 8 remains paused. The production materials/look task in
+  `docs/M3_5_MATERIALS_AND_LOOK_PLAN.md` and its real-game owner gate must pass before
+  the default can flip to `Mii3D`; `LegacyCircles` remains the default meanwhile.
+
 ## Accepted Milestone 1 Feel Tuning (2026-07-12)
 
 - The owner performed the `TEST_PLAN.md` §8 side-by-side feel review of the tuning produced by `docs/M1_FEEL_AND_GAIT_PLAN.md` and **accepted it** ("this feels way better, I approve"). This satisfies the ROADMAP Milestone 1 exit criterion "lock an initial accepted tuning Resource." The accepted profiles are `data/buddy/lab_puppet_rig.tres`, `lab_grab_tether.tres`, `lab_active_drive.tres`, `lab_conscious_drive.tres`, `lab_unconscious_drive.tres`, `lab_autonomous_motion.tres`, and `lab_boundary.tres`, renamed from `Provisional*` to `AcceptedM1*` to mark the lock. Changing them now requires a new owner feel review.
