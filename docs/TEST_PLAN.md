@@ -112,6 +112,7 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 
 - The `presentation_3d` scenario validates the visual profile through startup validation, builds exactly six part meshes plus the configured connector graph and face, round-trips semantic face changes, and holds 2D/3D camera alignment below `0.5 px` across every supported zoom plus a resized client.
 - Runtime `LegacyCircles`/`Mii3D` toggles swap visibility without changing accepted pain, and the dynamic Boxing Glove counterpart attaches/despawns with its physical actor while preserving the accepted impact squash/recoil transform.
+- The `presentation_look` scenario is the production-look gate: it confirms the accepted look profile validates (and named failure paths reject non-finite/negative/shadows/missing look), the six parts and five connectors carry cached soft-toon Lambert materials with the exact base albedos and specular/roughness, the transparent-safe rig has exactly two shadowless directional lights and no environment, the six inverted-hull outline shells share one front-face-culled grow-1.5 ink material with no connector outline, the camera-space depth lane leaves identity projection unchanged and adds under `0.5 px` screen-X at `±30°` yaw, mode/yaw/look changes do not change accepted pain or body transforms, and every socket/outline transform and material reference stays finite and constant through the 21,600-tick idle soak (`--fixed-fps 120`).
 
 ## 4. Economy Simulation
 

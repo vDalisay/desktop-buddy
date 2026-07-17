@@ -174,3 +174,52 @@ default flip remains its own commit.
 - Focused scenarios, M3.5 rerun matrix, soak, quick suite, and interactive evidence are
   green.
 - Owner accepts the production look; Task 8 remains the separate default-flip gate.
+
+## Progress
+
+Plan authored after the 2026-07-15 Variant C acceptance.
+
+**L1 (typed look profile + validation) DONE (2026-07-17, `db2b685`).** Added the pure-logic
+`BuddyLookData` (`domain/DesktopBuddy.Domain/Presentation/`) with finite/ranged validation and
+25 failure-path xUnit tests, the `BuddyLookProfile` Godot resource delegating its `Validate`
+into `BuddyLookData` (Lambert diffuse / toon specular / metallic-specular `0.08` / roughness
+`1.0`, warm key `(1,0.98,0.94)`/`0.75` at pitch `-35` yaw `-30`, cool camera-axis fill
+`(0.85,0.90,1.0)`/`0.70`, shadows off with validation rejecting `true`, outline `#183042` grow
+`1.5`), the accepted `data/buddy/lab_buddy_look.tres`, and a required `Look` reference on
+`BuddyVisualProfile` whose validation delegates into it. Build 0/0, domain 205→230, the
+`presentation_3d` `visual_profile_valid` check exercises the delegated look validation.
+
+**L2 (cached soft-toon materials) DONE (2026-07-17, `7348b0f`).** Added `BuddyLookMaterialLibrary`
+(no node ownership): soft-toon `StandardMaterial3D` cached per part/connector albedo and one
+shared unshaded ink outline material (front-face cull, grow `1.5`). The presenter builds the
+library once in `Initialize` and reads cached references on the render path; its previous
+unshaded part/connector materials are replaced with the cached lit materials.
+
+**L3 (transparent-safe two-light rig) DONE (2026-07-17, `9a4a231`).** Added `BuddyLookLightingRig`:
+exactly one warm key and one cool camera-axis fill `DirectionalLight3D`, shadows disabled,
+`PhysicsInterpolationMode = Off`, no `WorldEnvironment`, all from the injected look profile;
+startup fails loudly on a missing/invalid profile. Composed in `buddy_lab.tscn` and
+`sandbox.tscn` from the same `lab_buddy_look.tres`; `BuddyLab`/`SandboxRoot` validate and
+initialize it. `boot_smoke` (which instantiates `sandbox.tscn`) confirms the sandbox wiring.
+
+**L4 (outlines + camera-space depth lanes) DONE (2026-07-17, `93b3b8a`).** Built one cached
+inverted-hull outline shell per buddy part (head, torso, both hands, both feet) as a socket
+child sharing the same mesh Resource and the shared front-face-culled grow-`1.5` ink material;
+connectors and the face get no shell. Refactored final transform application to the
+yaw-before-lane contract: mapped 2D pose (Z=0) → BodyYaw about the torso pivot with no lane →
+`DepthOffset` added as a global camera-axis Z → identical transform to mesh and its shell.
+Identity yaw reproduces the current projection exactly (`m3_presentation` still asserts head
+socket global Z == `DepthOffset`). Added a development-only `SetDevelopmentYawDegrees` drive;
+BodyYaw stays identity in normal composition.
+
+**L5 (automated coverage + regression reruns) DONE (2026-07-17).** Added the `presentation_look`
+scenario (registered in `ScenarioCatalog`, documented in `TEST_PLAN.md`) with all seven checks
+green: `look_profile_valid`, `soft_toon_material_contract`, `transparent_safe_light_contract`,
+`outline_contract`, `camera_space_depth_lane` (identity `0.0000`, global-Z lane `0.0000`, screen-X
+`0.0000 px` at `±30°`), `look_toggle_physics_invariant`, and `look_idle_soak` through the
+21,600-tick soak. Full M3.5 Task 7 matrix rerun under `--presentation=mii3d`
+(`presentation_3d`, `room_resize_zoom`, `repeat_envelope`, `m3_presentation`,
+`tool_feel_reactions`, `idle_soak_ci`; journeys `lab_spawn_settle`, `m3_glove_strike`) all pass,
+and the legacy-default baseline of the same matrix is unchanged. `tools\quick_validate.bat`
+passes (9/9). Build 0/0, domain 230/230. **L6 (interactive owner acceptance) and Task 8
+(default flip) remain owner-gated and out of scope here.**
