@@ -32,6 +32,7 @@ public partial class BuddyVisualPresenter : Node3D
     private float[] _connectorAngles = Array.Empty<float>();
     private float[] _connectorAuthoringLengths = Array.Empty<float>();
     private IBuddyVisualTransformSource? _transformSource;
+    private BuddyLookMaterialLibrary _materials = null!;
     private string _displayedFace = string.Empty;
     private bool _subscribedToRecovery;
 
@@ -82,6 +83,10 @@ public partial class BuddyVisualPresenter : Node3D
             _transformSource = transformSource;
         }
         PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+
+        // Cache the soft-toon lit materials and the shared ink outline material once. The
+        // render path only reads these references; it never builds or mutates a material.
+        _materials = new BuddyLookMaterialLibrary(Profile.Look);
 
         BodyYaw = new Node3D
         {
@@ -199,7 +204,7 @@ public partial class BuddyVisualPresenter : Node3D
             {
                 Name = "Mesh",
                 Mesh = CreatePartMesh(id, radius),
-                MaterialOverride = CreateUnshadedMaterial(definition.Color),
+                MaterialOverride = _materials.GetLitMaterial(definition.Color),
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
             };
             socket.AddChild(meshInstance);
@@ -248,7 +253,7 @@ public partial class BuddyVisualPresenter : Node3D
             {
                 Name = $"Connector{index}",
                 Mesh = mesh,
-                MaterialOverride = CreateUnshadedMaterial(definition.Color),
+                MaterialOverride = _materials.GetLitMaterial(definition.Color),
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
             };
             BodyYaw.AddChild(instance);
@@ -415,12 +420,6 @@ public partial class BuddyVisualPresenter : Node3D
             Height = radius * 2.0f,
         };
     }
-
-    private static StandardMaterial3D CreateUnshadedMaterial(Color color) => new()
-    {
-        AlbedoColor = color,
-        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-    };
 
     private static string SocketName(BuddyPartId id) => id switch
     {
