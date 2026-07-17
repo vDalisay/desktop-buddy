@@ -47,6 +47,7 @@ public partial class BuddyLab : Node2D
     [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
     [Export] public MoneyHudPresenter MoneyHud { get; set; } = null!;
     [Export] public BuddyVisualPresenter VisualPresenter { get; set; } = null!;
+    [Export] public BuddyLookLightingRig LightingRig { get; set; } = null!;
     [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
     [Export] public PresentationMode Mode { get; set; } = PresentationMode.LegacyCircles;
     public TelemetryRecorder? TelemetryRecorder { get; private set; }
@@ -64,6 +65,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
             !GodotObject.IsInstanceValid(MoneyHud) ||
             !GodotObject.IsInstanceValid(VisualPresenter) ||
+            !GodotObject.IsInstanceValid(LightingRig) ||
             !GodotObject.IsInstanceValid(GloveVisual))
         {
             throw new InvalidOperationException(
@@ -83,6 +85,7 @@ public partial class BuddyLab : Node2D
         ImpactFeedback.Initialize();
         MoneyHud.Initialize();
         VisualPresenter.Initialize();
+        LightingRig.Initialize();
         GloveVisual.Initialize(
             Glove.Profile.Radius,
             Glove.Profile.VisualColor,
