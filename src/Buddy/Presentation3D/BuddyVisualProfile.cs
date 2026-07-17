@@ -17,6 +17,12 @@ public partial class BuddyVisualProfile : GameResource
 
     [Export] public Godot.Collections.Array<PartVisualDefinition> Parts { get; set; } = new();
     [Export] public Godot.Collections.Array<ConnectorVisualDefinition> Connectors { get; set; } = new();
+    /// <summary>
+    /// Required accepted production look (soft-toon materials, transparent-safe light rig,
+    /// ink outline). Validation delegates into it so missing or invalid look data fails
+    /// startup rather than silently reverting to the flat parity look.
+    /// </summary>
+    [Export] public BuddyLookProfile Look { get; set; } = null!;
     [Export(PropertyHint.Range, "2,3,0.01")]
     public float CapsuleHeightScale { get; set; } = 2.5f;
     [Export(PropertyHint.Range, "0.01,64,0.01,or_greater")]
@@ -146,6 +152,18 @@ public partial class BuddyVisualProfile : GameResource
             !IsFiniteColor(FaceColor) || !IsFinitePositive(FaceDepthEpsilon))
         {
             errors.Add("face text size, pixel size, color, and depth epsilon are invalid");
+        }
+
+        if (!GodotObject.IsInstanceValid(Look))
+        {
+            errors.Add("look profile is required");
+        }
+        else
+        {
+            foreach (string error in Look.Validate())
+            {
+                errors.Add($"look: {error}");
+            }
         }
 
         return errors;

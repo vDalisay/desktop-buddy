@@ -1,8 +1,9 @@
-[gd_resource type="Resource" script_class="BuddyVisualProfile" load_steps=15 format=3]
+[gd_resource type="Resource" script_class="BuddyVisualProfile" load_steps=16 format=3]
 
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyVisualProfile.cs" id="1_profile"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/PartVisualDefinition.cs" id="2_part"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/ConnectorVisualDefinition.cs" id="3_connector"]
+[ext_resource type="Resource" path="res://data/buddy/lab_buddy_look.tres" id="4_look"]
 
 [sub_resource type="Resource" id="PartHead"]
 script = ExtResource("2_part")
@@ -109,6 +110,7 @@ resource_name = "ProvisionalM35LabBuddyVisual"
 script = ExtResource("1_profile")
 Parts = Array[ExtResource("2_part")]([SubResource("PartHead"), SubResource("PartTorso"), SubResource("PartLeftHand"), SubResource("PartRightHand"), SubResource("PartLeftFoot"), SubResource("PartRightFoot")])
 Connectors = Array[ExtResource("3_connector")]([SubResource("ConnectorHead"), SubResource("ConnectorLeftHand"), SubResource("ConnectorRightHand"), SubResource("ConnectorLeftFoot"), SubResource("ConnectorRightFoot")])
+Look = ExtResource("4_look")
 CapsuleHeightScale = 2.5
 ConnectorMinimumLength = 1.0
 FaceTextSize = 14
