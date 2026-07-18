@@ -10,9 +10,9 @@
   },
   "steps": [],
   "assertions": [
-    { "predicate": "presentation_starts_legacy" },
-    { "predicate": "presentation_toggle_enters_mii3d" },
-    { "predicate": "presentation_toggle_restores_legacy" },
+    { "predicate": "presentation_starts_mii3d" },
+    { "predicate": "presentation_toggle_enters_legacy" },
+    { "predicate": "presentation_toggle_restores_mii3d" },
     { "predicate": "lab_finite" }
   ]
 }

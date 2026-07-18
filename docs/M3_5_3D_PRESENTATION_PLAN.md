@@ -500,3 +500,12 @@ V-synced; constraint 7 and the reworded exit gate carry the policy), and the exp
 direction (turning, activity animations, look-at, composed face) was pre-planned as its
 own slice in `docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md` — Task 4 now builds the socket
 hierarchy and replaceable face that slice requires, so nothing here is rebuilt later.
+
+**Task 8 (default flip) DONE (2026-07-18).** After the Task 7.5 production look landed
+(`docs/M3_5_MATERIALS_AND_LOOK_PLAN.md`, L1–L6 complete) and the owner accepted the L6
+interactive gate, the default presentation flipped to `Mii3D` in both scene roots. The
+owner's legacy disposition: `LegacyCircles` stays as a development/comparison view behind
+the `V` toggle and `--presentation=legacy`. The `m35_presentation_toggle` journey now
+asserts the Mii3D-first direction. Recorded in `docs/DECISIONS.md`. M3.5 is complete;
+next slice is `docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md` (dynamic three-quarter facing,
+composed procedural face, look-at, activity animation).

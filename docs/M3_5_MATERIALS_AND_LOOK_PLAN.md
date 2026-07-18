@@ -250,3 +250,14 @@ Minor cleanups in the same pass: dead `BodyYawDegrees`/`LitMaterialCount` access
 the redundant `_yawBasis` cache removed; bespoke `ColorsClose`/`CountNodesOfType` helpers
 replaced with `Color.IsEqualApprox`/`Node.FindChildren`. Verified: build 0/0, domain
 230/230, `presentation_look` + `presentation_3d` + `boot_smoke` seeds 1, quick suite 9/9.
+
+**L6 (interactive owner acceptance) DONE (2026-07-18).** The owner exercised the real
+laboratory windowed (idle, grab, glove strike, knockout; hand overlaps and limb junctions
+explicitly judged fine) and inspected a temporary 30-degree dev-yaw posed preview
+matching the accepted spike composition. Production values were verified identical to
+the spike (materials, both lights, outline). Owner verdict: accepted. The two gaps the
+owner noted — no three-quarter facing and the squished placeholder face — are the
+pre-planned M3.6 scope, recorded as accepted-at-flip in `docs/DECISIONS.md`. **Task 8
+executed the same day:** default `Mode` flipped to `Mii3D` in `BuddyLab`/`SandboxRoot`,
+`m35_presentation_toggle` journey updated to the new default direction
+(`starts_mii3d → legacy → restores_mii3d`), legacy view retained as a dev toggle.

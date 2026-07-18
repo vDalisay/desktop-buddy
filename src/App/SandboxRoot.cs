@@ -48,7 +48,9 @@ public partial class SandboxRoot : Node2D
     [Export] public BuddyVisualPresenter VisualPresenter { get; set; } = null!;
     [Export] public BuddyLookLightingRig LightingRig { get; set; } = null!;
     [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
-    [Export] public PresentationMode Mode { get; set; } = PresentationMode.LegacyCircles;
+    // Mii3D is the shipping default since the M3.5 Task 8 owner gate (2026-07-18); the
+    // legacy circles remain behind the V toggle / --presentation=legacy as a dev view.
+    [Export] public PresentationMode Mode { get; set; } = PresentationMode.Mii3D;
 
     public override void _Ready()
     {

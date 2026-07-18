@@ -68,6 +68,21 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   `docs/M3_5_MATERIALS_AND_LOOK_PLAN.md` and its real-game owner gate must pass before
   the default can flip to `Mii3D`; `LegacyCircles` remains the default meanwhile.
 
+### M3.5 production look — L6 owner gate ACCEPTED, default flipped to Mii3D (2026-07-18)
+
+- The owner reviewed the production Variant C implementation in the real laboratory
+  (interactive session: idle, grab, glove, knockout) plus a 30° dev-yaw posed preview,
+  and **accepted the look** ("looks good"): materials/lights/outline verified
+  value-identical to the accepted spike; hand overlaps and limb junctions judged fine.
+- **`Mii3D` is now the shipping default** in both the laboratory and the sandbox
+  (M3.5 Task 8). The owner's legacy-view disposition: `LegacyCircles` is RETAINED as a
+  development/comparison view behind the `V` toggle and `--presentation=legacy`;
+  deleting it needs a new owner decision.
+- Known and accepted at flip time (deferred, not defects): dead-frontal tracking and
+  the placeholder semantic `Label3D` face remain until M3.6 delivers dynamic
+  three-quarter facing and the composed procedural face. The flat frontal lighting
+  read is a consequence of the identity pose, not of the light rig.
+
 ## Accepted Milestone 1 Feel Tuning (2026-07-12)
 
 - The owner performed the `TEST_PLAN.md` §8 side-by-side feel review of the tuning produced by `docs/M1_FEEL_AND_GAIT_PLAN.md` and **accepted it** ("this feels way better, I approve"). This satisfies the ROADMAP Milestone 1 exit criterion "lock an initial accepted tuning Resource." The accepted profiles are `data/buddy/lab_puppet_rig.tres`, `lab_grab_tether.tres`, `lab_active_drive.tres`, `lab_conscious_drive.tres`, `lab_unconscious_drive.tres`, `lab_autonomous_motion.tres`, and `lab_boundary.tres`, renamed from `Provisional*` to `AcceptedM1*` to mark the lock. Changing them now requires a new owner feel review.

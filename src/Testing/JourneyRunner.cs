@@ -367,19 +367,19 @@ public partial class JourneyRunner : Node
         Dictionary<string, bool> state,
         BuddyLab lab)
     {
-        state["presentation_starts_legacy"] =
-            lab.Mode == PresentationMode.LegacyCircles &&
-            !lab.VisualPresenter.Visible && AllPartVisibility(lab, true);
-
-        await PressVAsync();
-        state["presentation_toggle_enters_mii3d"] =
+        state["presentation_starts_mii3d"] =
             lab.Mode == PresentationMode.Mii3D &&
             lab.VisualPresenter.Visible && AllPartVisibility(lab, false);
 
         await PressVAsync();
-        state["presentation_toggle_restores_legacy"] =
+        state["presentation_toggle_enters_legacy"] =
             lab.Mode == PresentationMode.LegacyCircles &&
             !lab.VisualPresenter.Visible && AllPartVisibility(lab, true);
+
+        await PressVAsync();
+        state["presentation_toggle_restores_mii3d"] =
+            lab.Mode == PresentationMode.Mii3D &&
+            lab.VisualPresenter.Visible && AllPartVisibility(lab, false);
 
         async System.Threading.Tasks.Task PressVAsync()
         {
