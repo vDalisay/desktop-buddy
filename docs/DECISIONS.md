@@ -83,6 +83,22 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   three-quarter facing and the composed procedural face. The flat frontal lighting
   read is a consequence of the identity pose, not of the light rig.
 
+### M3.6 expressive slice — SCHEDULED, owner decisions resolved (2026-07-18)
+
+- M3.6 (`docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md`) is scheduled now that the M3.5
+  gate closed. The four open owner decisions resolve as:
+  1. **Motion amplitude: very subtle.** Performance offsets stay well inside the
+     0.5 × part-radius cap; "alive but never busy" is the acceptance bar.
+  2. **Face feature art direction: mockup gate before Task 5.** The owner picks from
+     2–3 rendered face variants (spike-style minimal ink dots among them) in a
+     development-only preview before the composed face is implemented. Until then the
+     compositor architecture may proceed; feature art may not.
+  3. **Blink cadence and ambient glance frequency: delegated engineering defaults**
+     (seeded, order of blink ~2–6 s / glance ~4–10 s) recorded in
+     `lab_buddy_expression.tres`; the owner judges at the M3.6 exit gate.
+  4. **`LegacyCircles` view: retained** as a development/comparison view behind the
+     `V` toggle and `--presentation=legacy` (decided at the Task 8 flip, above).
+
 ## Accepted Milestone 1 Feel Tuning (2026-07-12)
 
 - The owner performed the `TEST_PLAN.md` §8 side-by-side feel review of the tuning produced by `docs/M1_FEEL_AND_GAIT_PLAN.md` and **accepted it** ("this feels way better, I approve"). This satisfies the ROADMAP Milestone 1 exit criterion "lock an initial accepted tuning Resource." The accepted profiles are `data/buddy/lab_puppet_rig.tres`, `lab_grab_tether.tres`, `lab_active_drive.tres`, `lab_conscious_drive.tres`, `lab_unconscious_drive.tres`, `lab_autonomous_motion.tres`, and `lab_boundary.tres`, renamed from `Provisional*` to `AcceptedM1*` to mark the lock. Changing them now requires a new owner feel review.

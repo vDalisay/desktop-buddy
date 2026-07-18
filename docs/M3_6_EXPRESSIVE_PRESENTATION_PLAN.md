@@ -1,6 +1,11 @@
 # Milestone 3.6 — Expressive 3D Presentation (Orientation, Activities, Dynamic Face)
 
-Status: pre-plan written 2026-07-14 on owner direction (friendly stylized expressiveness:
+Status: **SCHEDULED 2026-07-18** — M3.5 gate closed (Task 8 flip done), all four open
+owner decisions resolved into `docs/DECISIONS.md` (very subtle amplitude; face-art
+mockup gate before Task 5; blink/glance defaults delegated; LegacyCircles retained as
+dev view). Implementation may begin at Task 1. Original pre-plan follows.
+
+Pre-plan written 2026-07-14 on owner direction (friendly stylized expressiveness:
 the buddy turns and walks sideways, looks at things while walking, performs simple
 charming activities such as eating/sitting/jumping, and the face is composed features,
 not a text glyph). Scheduled intent: **after the M3.5 exit gate, before Milestone 4**;
