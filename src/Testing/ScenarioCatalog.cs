@@ -23,7 +23,7 @@ public static class ScenarioCatalog
         ["grab_hard_recovery"] = () => new GrabHardRecoveryScenario(),
         ["room_resize_zoom"] = () => new RoomResizeZoomScenario(),
         ["idle_soak"] = () => new IdleSoakScenario(),
-        ["idle_soak_ci"] = () => new IdleSoakScenario(3 * 60 * 120),
+        ["idle_soak_ci"] = () => new IdleSoakScenario(IdleSoakScenario.CiTicks),
         ["repeat_envelope"] = () => new RepeatEnvelopeScenario(),
         ["dual_profile_smoke"] = () => new DualProfileSmokeScenario(),
         ["impact_dedup"] = () => new ImpactDedupScenario(),

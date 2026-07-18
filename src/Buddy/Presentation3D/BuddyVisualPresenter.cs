@@ -45,7 +45,6 @@ public partial class BuddyVisualPresenter : Node3D
     // DepthOffset only changes projected depth, never screen-X (M3_5_MATERIALS_AND_LOOK_PLAN.md
     // transform contract).
     private float _yawRadians;
-    private Basis _yawBasis = Basis.Identity;
 
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public BuddyVisualProfile Profile { get; set; } = null!;
@@ -174,9 +173,6 @@ public partial class BuddyVisualPresenter : Node3D
     /// <summary>The shared unshaded ink material every outline shell uses.</summary>
     public StandardMaterial3D OutlineMaterial => _materials.OutlineMaterial;
 
-    /// <summary>Current BodyYaw in degrees; zero in normal M3.5 composition.</summary>
-    public float BodyYawDegrees => Mathf.RadToDeg(_yawRadians);
-
     /// <summary>
     /// Development/scenario-only yaw drive for the accepted ~30-degree three-quarter pose. It
     /// does not exist in normal composition and never touches physics — only the read-only
@@ -186,7 +182,6 @@ public partial class BuddyVisualPresenter : Node3D
     public void SetDevelopmentYawDegrees(float degrees)
     {
         _yawRadians = Mathf.DegToRad(degrees);
-        _yawBasis = new Basis(Vector3.Up, _yawRadians);
         if (IsInitialized)
         {
             UpdateVisuals(0.0, 1.0f);
@@ -194,11 +189,12 @@ public partial class BuddyVisualPresenter : Node3D
     }
 
     /// <summary>
-    /// Testing oracle: the part's yawed pose with no DepthOffset lane applied. The socket's
-    /// actual global position must equal this plus a pure global-Z DepthOffset, which proves
-    /// the lane is a camera-axis depth change applied after yaw.
+    /// The part's currently rendered (interpolated) 2D world pose — the exact input the
+    /// transform contract consumes. Scenarios use it to recompute the expected yawed/laned
+    /// socket transform with independent math instead of trusting the presenter's own
+    /// resolution as its oracle.
     /// </summary>
-    public Vector3 DebugYawedPoseWithoutLane(BuddyPartId partId)
+    public Vector2 RenderedPosition2D(BuddyPartId partId)
     {
         int index = (int)partId;
         if (!IsInitialized || index < 0 || index >= _rendered.Length)
@@ -206,7 +202,7 @@ public partial class BuddyVisualPresenter : Node3D
             throw new ArgumentOutOfRangeException(nameof(partId), partId, "Unknown part.");
         }
 
-        return ApplyBodyYaw(WorldPlaneMapping.To3D(_rendered[index].Position));
+        return _rendered[index].Position;
     }
 
     public override void _EnterTree() => TrySubscribeToRecovery();
@@ -275,7 +271,7 @@ public partial class BuddyVisualPresenter : Node3D
             {
                 Name = "Mesh",
                 Mesh = CreatePartMesh(id, radius),
-                MaterialOverride = _materials.GetLitMaterial(definition.Color),
+                MaterialOverride = _materials.CreateLitMaterial(definition.Color),
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
             };
             socket.AddChild(meshInstance);
@@ -339,7 +335,7 @@ public partial class BuddyVisualPresenter : Node3D
             {
                 Name = $"Connector{index}",
                 Mesh = mesh,
-                MaterialOverride = _materials.GetLitMaterial(definition.Color),
+                MaterialOverride = _materials.CreateLitMaterial(definition.Color),
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
             };
             BodyYaw.AddChild(instance);
@@ -424,7 +420,7 @@ public partial class BuddyVisualPresenter : Node3D
         }
 
         Vector3 pivot = WorldPlaneMapping.To3D(_rendered[(int)BuddyPartId.Torso].Position);
-        return pivot + _yawBasis * (poseWithZeroZ - pivot);
+        return pivot + new Basis(Vector3.Up, _yawRadians) * (poseWithZeroZ - pivot);
     }
 
     private float ResolveRotation(

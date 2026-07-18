@@ -17,6 +17,9 @@ namespace DesktopBuddy.Testing;
 public sealed class IdleSoakScenario : IScenario
 {
     public const int FullTicks = 30 * 60 * 120;
+    /// <summary>Three simulated minutes at 120 Hz — the CI soak length shared by every
+    /// scenario that soaks "as long as idle_soak_ci" (single source of truth).</summary>
+    public const int CiTicks = 3 * 60 * 120;
     private readonly int _ticks;
     public IdleSoakScenario(int ticks = FullTicks) => _ticks = ticks;
     public string Id => _ticks == FullTicks ? "idle_soak" : "idle_soak_ci";

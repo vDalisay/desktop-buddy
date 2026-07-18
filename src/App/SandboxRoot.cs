@@ -82,7 +82,8 @@ public partial class SandboxRoot : Node2D
         ImpactFeedback.Initialize();
         MoneyHud.Initialize();
         VisualPresenter.Initialize();
-        LightingRig.Initialize();
+        // Same Resource the presenter renders with: lights and materials share one look truth.
+        LightingRig.Initialize(VisualPresenter.Profile.Look);
         GloveVisual.Initialize(
             Glove.Profile.Radius,
             Glove.Profile.VisualColor,

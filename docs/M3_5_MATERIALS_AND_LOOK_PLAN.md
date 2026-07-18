@@ -223,3 +223,30 @@ green: `look_profile_valid`, `soft_toon_material_contract`, `transparent_safe_li
 and the legacy-default baseline of the same matrix is unchanged. `tools\quick_validate.bat`
 passes (9/9). Build 0/0, domain 230/230. **L6 (interactive owner acceptance) and Task 8
 (default flip) remain owner-gated and out of scope here.**
+
+**Post-L5 review fixes (2026-07-18).** An 8-angle code review of L1–L5 produced four
+substantive fixes, applied and verified:
+
+1. **Per-mesh material isolation.** `BuddyLookMaterialLibrary` no longer caches lit
+   materials by colour (the torso and all five connectors, and each L/R pair, silently
+   shared one instance — a future per-part tint would have bled across meshes).
+   `CreateLitMaterial` now returns one instance per mesh, still built only at
+   initialization. `soft_toon_material_contract` asserts isolation instead of sharing.
+2. **Single look wiring.** `BuddyLookLightingRig` lost its own `[Export] Look`; scene
+   roots now pass `VisualPresenter.Profile.Look` into `Initialize(look)`, so lights and
+   materials can never be configured from divergent look Resources. The scenes' second
+   `lab_buddy_look.tres` reference was removed.
+3. **Independent depth-lane oracle.** `camera_space_depth_lane` previously verified the
+   presenter against `DebugYawedPoseWithoutLane`, which called the same private yaw code
+   (true by construction under any pivot/sign regression). The scenario now recomputes
+   the expected transform itself from `RenderedPosition2D` (torso pivot, `Basis(Up, yaw)`,
+   then pure global-Z lane); `DebugYawedPoseWithoutLane` was deleted. Errors remain 0.0000.
+4. **Canonical soak.** `look_idle_soak` now runs through `SoakProbe.RunAsync` (new
+   optional per-tick observer) instead of a hand-rolled loop, gaining per-tick physics
+   finiteness, containment, and hard-recovery accounting; the tick budget is the shared
+   `IdleSoakScenario.CiTicks` constant instead of a duplicated literal.
+
+Minor cleanups in the same pass: dead `BodyYawDegrees`/`LitMaterialCount` accessors and
+the redundant `_yawBasis` cache removed; bespoke `ColorsClose`/`CountNodesOfType` helpers
+replaced with `Color.IsEqualApprox`/`Node.FindChildren`. Verified: build 0/0, domain
+230/230, `presentation_look` + `presentation_3d` + `boot_smoke` seeds 1, quick suite 9/9.

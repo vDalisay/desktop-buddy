@@ -1,4 +1,4 @@
-[gd_scene load_steps=35 format=3]
+[gd_scene load_steps=34 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -30,7 +30,6 @@
 [ext_resource type="Resource" path="res://data/buddy/lab_buddy_visual.tres" id="28_visual_profile"]
 [ext_resource type="Script" path="res://src/Presentation3D/Body2DVisual3D.cs" id="29_body_visual"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyLookLightingRig.cs" id="30_lighting"]
-[ext_resource type="Resource" path="res://data/buddy/lab_buddy_look.tres" id="31_look"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -110,7 +109,6 @@ script = ExtResource("29_body_visual")
 
 [node name="BuddyLookLightingRig" type="Node3D" parent="."]
 script = ExtResource("30_lighting")
-Look = ExtResource("31_look")
 
 [node name="LaboratoryBoundaryVisualizer" type="Node2D" parent="." node_paths=PackedStringArray("Boundaries")]
 z_index = -10

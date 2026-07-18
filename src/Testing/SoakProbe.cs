@@ -10,7 +10,13 @@ public readonly record struct SoakProbeResult(
 
 public static class SoakProbe
 {
-    public static async Task<SoakProbeResult> RunAsync(SceneTree tree, BuddyLab lab, int tickBudget)
+    /// <param name="onTick">
+    /// Optional per-tick observer (zero-based tick index), invoked after the probe's own
+    /// checks. Lets callers layer extra sampling (e.g. presentation-look visual stability)
+    /// over the one canonical soak loop instead of re-implementing it.
+    /// </param>
+    public static async Task<SoakProbeResult> RunAsync(
+        SceneTree tree, BuddyLab lab, int tickBudget, System.Action<int>? onTick = null)
     {
         bool finite = true;
         bool awake = true;
@@ -29,6 +35,7 @@ public static class SoakProbe
                 awake &= !part.Sleeping;
             foreach (LinkTelemetry link in lab.Buddy.Constraints.Telemetry)
                 maximumStrain = Mathf.Max(maximumStrain, link.Strain);
+            onTick?.Invoke(ticks);
             if (!finite)
             {
                 ticks++;
