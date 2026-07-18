@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Presentation3D;
 using Godot;
 
@@ -46,8 +47,17 @@ public partial class BuddyVisualPresenter : Node3D
     // transform contract).
     private float _yawRadians;
 
+    // M3.6 Task 1: per-part authored offsets (dev/scenario-driven until the activity
+    // animator lands) and the blend weight the pose pipeline resolved this frame. The
+    // final pose is tracked-body pose plus weight x clamped offset, applied before yaw
+    // so offsets rotate with the body; connectors keep following the raw part poses.
+    private readonly Vector3[] _developmentOffsets = new Vector3[PuppetRigProfile.RequiredPartCount];
+    private float _performanceWeight;
+
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public BuddyVisualProfile Profile { get; set; } = null!;
+    /// <summary>Optional M3.6 pose pipeline; when absent the presenter is pure M3.5 tracking.</summary>
+    [Export] public BuddyPosePipeline? PosePipeline { get; set; }
 
     public bool IsInitialized { get; private set; }
     public Node3D BodyYaw { get; private set; } = null!;
@@ -203,6 +213,36 @@ public partial class BuddyVisualPresenter : Node3D
         }
 
         return _rendered[index].Position;
+    }
+
+    /// <summary>The part's mesh radius — scenarios derive the offset cap (fraction x radius).</summary>
+    public float PartMeshRadius(BuddyPartId partId)
+    {
+        int index = (int)partId;
+        if (!IsInitialized || index < 0 || index >= _meshRadii.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(partId), partId, "Unknown part.");
+        }
+
+        return _meshRadii[index];
+    }
+
+    /// <summary>
+    /// Development/scenario-only authored offset for one part, in world units, pre-clamp.
+    /// The pipeline's blend weight and the profile's per-part cap are always applied on
+    /// top, so even a huge development offset cannot take the visual outside the bound.
+    /// Real offset sources (activities, look-at) land in later M3.6 tasks through this
+    /// same clamped path.
+    /// </summary>
+    public void SetDevelopmentOffset(BuddyPartId partId, Vector3 offset)
+    {
+        int index = (int)partId;
+        if (index < 0 || index >= _developmentOffsets.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(partId), partId, "Unknown part.");
+        }
+
+        _developmentOffsets[index] = offset;
     }
 
     public override void _EnterTree() => TrySubscribeToRecovery();
@@ -364,6 +404,9 @@ public partial class BuddyVisualPresenter : Node3D
 
     private void UpdateVisuals(double delta, float fraction)
     {
+        _performanceWeight = PosePipeline is { IsInitialized: true }
+            ? PosePipeline.Evaluate(delta)
+            : 0.0f;
         ReadSource(_current);
 
         // Resolve every part's interpolated pose first so the yaw pivot (the torso pose)
@@ -392,22 +435,49 @@ public partial class BuddyVisualPresenter : Node3D
         PartVisualDefinition definition = _partDefinitions[index];
         float rotation = ResolveRotation(index, definition, rendered, delta);
         Node3D socket = _sockets[index];
-        // (1) mapped 2D pose Z=0 -> (2) resolve pose + BodyYaw with no lane component ->
-        // (3) add DepthOffset as a global camera-axis Z addition -> (4) identical final
-        // transform to the primary mesh and its outline shell (both socket children).
-        socket.GlobalPosition = ResolveLanePosition(rendered.Position, definition.DepthOffset);
+        // (1) mapped 2D pose Z=0 -> (2) add the clamped performance offset, then resolve
+        // pose + BodyYaw with no lane component -> (3) add DepthOffset as a global
+        // camera-axis Z addition -> (4) identical final transform to the primary mesh and
+        // its outline shell (both socket children).
+        socket.GlobalPosition = ResolveLanePosition(
+            rendered.Position, definition.DepthOffset, ResolvePerformanceOffset(index));
         socket.GlobalRotation = new Vector3(0.0f, _yawRadians, rotation);
     }
 
     /// <summary>
-    /// Applies BodyYaw to the mapped pose (no lane), then adds the part's DepthOffset as a
-    /// global camera-axis Z. At identity yaw this is exactly <c>To3D(pose)</c> with
-    /// <c>Z = DepthOffset</c> — the current M3.5 projection. At a scenario yaw the lane stays
-    /// a pure depth change with no screen-X displacement.
+    /// The blended, cap-clamped authored offset for a part this frame; zero whenever the
+    /// pipeline holds Tracking. Clamped through the engine-free <see cref="BoundedOffset"/>
+    /// so the visual can never stray more than the profile fraction of the part radius
+    /// from the physics body (plan prime invariant 2).
     /// </summary>
-    private Vector3 ResolveLanePosition(Vector2 worldPose2D, float depthOffset)
+    private Vector3 ResolvePerformanceOffset(int index)
     {
-        Vector3 yawed = ApplyBodyYaw(WorldPlaneMapping.To3D(worldPose2D));
+        if (_performanceWeight <= 0.0f)
+        {
+            return Vector3.Zero;
+        }
+
+        Vector3 raw = _developmentOffsets[index];
+        if (raw == Vector3.Zero)
+        {
+            return Vector3.Zero;
+        }
+
+        float cap = PosePipeline!.Profile.OffsetCapRadiusFraction * _meshRadii[index];
+        (float x, float y, float z) = BoundedOffset.Clamp(raw.X, raw.Y, raw.Z, cap);
+        return new Vector3(x, y, z) * _performanceWeight;
+    }
+
+    /// <summary>
+    /// Applies BodyYaw to the mapped pose plus the performance offset (no lane), then adds
+    /// the part's DepthOffset as a global camera-axis Z. At identity yaw with a zero offset
+    /// this is exactly <c>To3D(pose)</c> with <c>Z = DepthOffset</c> — the M3.5 projection,
+    /// bit-for-bit. At a scenario yaw the lane stays a pure depth change with no screen-X
+    /// displacement.
+    /// </summary>
+    private Vector3 ResolveLanePosition(Vector2 worldPose2D, float depthOffset, Vector3 preYawOffset)
+    {
+        Vector3 yawed = ApplyBodyYaw(WorldPlaneMapping.To3D(worldPose2D) + preYawOffset);
         yawed.Z += depthOffset;
         return yawed;
     }
@@ -484,7 +554,7 @@ public partial class BuddyVisualPresenter : Node3D
             }
 
             MeshInstance3D connector = _connectorMeshes[index];
-            connector.GlobalPosition = ResolveLanePosition(center, definition.DepthOffset);
+            connector.GlobalPosition = ResolveLanePosition(center, definition.DepthOffset, Vector3.Zero);
             connector.GlobalRotation = new Vector3(0.0f, _yawRadians, _connectorAngles[index]);
             connector.Scale = new Vector3(1.0f, length / _connectorAuthoringLengths[index], 1.0f);
         }

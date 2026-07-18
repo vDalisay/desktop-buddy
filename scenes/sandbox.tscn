@@ -1,4 +1,4 @@
-[gd_scene load_steps=32 format=3]
+[gd_scene load_steps=34 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
@@ -30,6 +30,8 @@
 [ext_resource type="Resource" path="res://data/buddy/lab_buddy_visual.tres" id="28_visual_profile"]
 [ext_resource type="Script" path="res://src/Presentation3D/Body2DVisual3D.cs" id="29_body_visual"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyLookLightingRig.cs" id="30_lighting"]
+[ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyPosePipeline.cs" id="32_pose_pipeline"]
+[ext_resource type="Resource" path="res://data/buddy/lab_buddy_expression.tres" id="33_expression"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -49,7 +51,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "GloveVisual")]
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "GloveVisual")]
 script = ExtResource("1_sandbox")
 Window = NodePath("DesktopWindowController")
 Shell = NodePath("DesktopShellController")
@@ -69,6 +71,7 @@ ImpactFeedback = NodePath("ImpactFeedbackPresenter")
 MoneyHud = NodePath("OverlayUi/MoneyHud")
 VisualPresenter = NodePath("BuddyVisualPresenter")
 LightingRig = NodePath("BuddyLookLightingRig")
+PosePipeline = NodePath("BuddyPosePipeline")
 GloveVisual = NodePath("GloveVisual3D")
 
 [node name="DesktopWindowController" type="Node" parent="."]
@@ -84,11 +87,12 @@ projection = 1
 size = 360.0
 keep_aspect = 1
 
-[node name="BuddyVisualPresenter" type="Node3D" parent="." node_paths=PackedStringArray("Buddy")]
+[node name="BuddyVisualPresenter" type="Node3D" parent="." node_paths=PackedStringArray("Buddy", "PosePipeline")]
 visible = false
 script = ExtResource("27_visual_presenter")
 Buddy = NodePath("../Buddy")
 Profile = ExtResource("28_visual_profile")
+PosePipeline = NodePath("../BuddyPosePipeline")
 
 [node name="GloveVisual3D" type="Node3D" parent="."]
 visible = false
@@ -96,6 +100,13 @@ script = ExtResource("29_body_visual")
 
 [node name="BuddyLookLightingRig" type="Node3D" parent="."]
 script = ExtResource("30_lighting")
+
+[node name="BuddyPosePipeline" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Grab", "DamagePipeline")]
+script = ExtResource("32_pose_pipeline")
+Buddy = NodePath("../Buddy")
+Grab = NodePath("../GrabTetherController")
+DamagePipeline = NodePath("../InteractionPipeline")
+Profile = ExtResource("33_expression")
 
 [node name="Buddy" parent="." instance=ExtResource("7_buddy")]
 position = Vector2(240, 260)

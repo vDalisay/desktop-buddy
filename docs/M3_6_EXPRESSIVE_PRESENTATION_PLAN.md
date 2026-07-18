@@ -238,3 +238,26 @@ during interactions, and the idle/walk/jump/eat/wave activity set with sit/sleep
 deferred to M4. On 2026-07-15 the accepted Variant C look superseded the original 90°
 walk choice with ±30° three-quarter states. The task text carries the answers and the
 open-decision list is down to four.
+
+**Task 1 (pose pipeline: modes, blend, bounded offsets) DONE (2026-07-18).** Engine-free
+core in `domain/DesktopBuddy.Domain/Presentation/PosePipelineModel.cs`: `PoseModeArbiter`
+(the plan's forcing-state list verbatim), time-based `PerformanceBlend` (ease-in over the
+profile seconds, instant snap to zero on Tracking), `BoundedOffset` magnitude clamp, and
+`ExpressionTuningData` validation — 38 new xUnit tests (domain 268/268). Godot side:
+`BuddyExpressionProfile` + `data/buddy/lab_buddy_expression.tres` (blend 0.2 s, cooldown
+60 ticks, cap fraction 0.5), `BuddyPosePipeline` node (samples consciousness, recovery
+assistance, the live grab, the tool-reaction window, standing stability, and an
+`ImpactAccepted` physics-frame stamp; composed and validated in both scene roots), and the
+presenter applies weight x cap-clamped offsets *before* yaw per the Task 7.5 transform
+contract (offsets zero in normal composition; `SetDevelopmentOffset` is the dev drive until
+Tasks 3–4 provide real sources). Tracking output is bit-identical to M3.5 by construction
+(zero offset, identity yaw). New `pose_pipeline` scenario (registered, in `TEST_PLAN.md`):
+`pose_mode_arbitration` drives every forcing state through real semantics (tether grab,
+`SetConsciousness`, controlled strike + cooldown recovery, learned-harm glove guard),
+`pose_offset_bounded` proves requested 10x-cap offsets sit exactly at the cap at full blend,
+`mode_blend_physics_invariant` lands saturated strikes in Performance/Tracking/mid-blend
+(launch weight 0.042) with identical accepted pain 10.000. Scenario notes: the saturating
+pain profile makes glove-hover episodes max-pain, so the glove check runs last or the real
+rolling window KOs the buddy; strikes run at 2000 px/s so a recoiling torso stays above the
+saturation anchor. Verified: seeds 1 + 7, `presentation_look`/`presentation_3d`/toggle
+journey unchanged, quick suite 9/9, build 0/0.

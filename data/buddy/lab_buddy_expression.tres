@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="BuddyExpressionProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyExpressionProfile.cs" id="1_script"]
+
+[resource]
+script = ExtResource("1_script")
+PerformanceBlendSeconds = 0.2
+PostImpactCooldownTicks = 60
+OffsetCapRadiusFraction = 0.5
