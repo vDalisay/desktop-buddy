@@ -279,3 +279,27 @@ yaw-aware (rotation preserves offset magnitude about the torso pivot). New
 `facing_follows_walk` scenario (registered, in `TEST_PLAN.md`) green on seeds 1 + 7;
 full rerun green: `pose_pipeline`, `presentation_look`, `presentation_3d`, toggle
 journey, quick suite 9/9, build 0/0.
+
+**Task 3 (activity animator, item socket, walk dressing) DONE (2026-07-20).** Engine-free
+`ActivitySelector` (`domain/.../Presentation/ActivityModel.cs`): priority Eat > Wave >
+JumpAnticipation > WalkCycle > IdleBreathe, Tracking suppression to None (behavior
+countdowns keep running so a punched buddy never resumes a stale eat), and walk-cycle
+phase advanced by MEASURED horizontal travel (freezes at rest — feet cannot moonwalk);
+`ActivityTuningData` validates the selector timing plus the very-subtle clip amplitudes
+(≤6 px hard bound; the offset cap still clamps on top) — 21 new xUnit tests (domain
+316/316). Godot `ActivityAnimator`: one manual-mode `AnimationPlayer` whose value tracks
+animate six offset-proxy nodes (never a socket or body); the presenter reads proxy
+positions as authored offsets through the existing weight+cap clamp. Five clips —
+idle_breathe, walk_cycle (phase-seeked), jump_anticipation (squash from the real
+`JumpRequested`), wave, eat (looping hand-to-mouth + chew nod) — are built once at
+initialization from the typed profile amplitudes. **Plan deviation, recorded:** clips are
+authored programmatically from typed Resource data rather than hand-authored in-editor;
+same Animation/AnimationPlayer machinery, and amplitudes stay owner-tunable data.
+`SetActivity(ActivityId, duration)` is the semantic Class B seam (Eat ships now; None
+cancels; ambient ids rejected); `ItemSocket` under the right-hand socket carries any item
+VISUAL through any hand clip while the item's physics stays gameplay-owned; lab keys
+arrive with Task 6. New `activity_clips` scenario (registered, in `TEST_PLAN.md`) green
+seeds 1 + 7 — clip mapping complete, walk phase/travel ratio 1.000 with freeze outside
+walk, sphere and box items both rode the one eat clip. Full regression green:
+`pose_pipeline`, `facing_follows_walk`, `presentation_look`, `presentation_3d`, toggle
+journey, quick suite 9/9, build 0/0.

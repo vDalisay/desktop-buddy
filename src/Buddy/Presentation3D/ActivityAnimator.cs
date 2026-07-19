@@ -1,0 +1,360 @@
+using System;
+using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Domain.Presentation;
+using Godot;
+
+namespace DesktopBuddy.Buddy.Presentation3D;
+
+/// <summary>
+/// M3.6 Task 3 activity animator: one manual-mode <see cref="AnimationPlayer"/> playing
+/// typed clips whose value tracks animate six offset-proxy nodes — never a socket or a
+/// body. The presenter reads each proxy position as that part's authored offset and
+/// applies it through the pose pipeline's weight and cap clamp, so activities decorate
+/// the physics truth and can never leave it. Clips are built ONCE at initialization
+/// from the typed amplitudes in <see cref="BuddyExpressionProfile"/> (authored as data,
+/// not code literals; nothing is created per frame). Selection and walk-phase math live
+/// engine-free in <see cref="ActivitySelector"/>: walk dressing derives its cycle from
+/// MEASURED torso travel, so steps match speed and freeze at rest. `SetActivity` is the
+/// semantic Class B seam (the SetToolReactionIntent pattern) — Eat ships now; M4 wires
+/// the real consume reasons and sit/sleep arrive as new clips later.
+/// </summary>
+[GlobalClass]
+public partial class ActivityAnimator : Node3D
+{
+    private const float WalkClipLength = 1.0f;
+
+    [Export] public BuddyRoot Buddy { get; set; } = null!;
+    [Export] public BuddyVisualPresenter Presenter { get; set; } = null!;
+    [Export] public BuddyExpressionProfile Profile { get; set; } = null!;
+
+    private readonly Node3D[] _proxies = new Node3D[PuppetRigProfile.RequiredPartCount];
+    private AnimationPlayer _player = null!;
+    private ActivitySelector _selector = null!;
+
+    public bool IsInitialized { get; private set; }
+    public Node3D ItemSocket { get; private set; } = null!;
+    public ActivityId Current => IsInitialized ? _selector.Current : ActivityId.None;
+    public float WalkPhase => IsInitialized ? _selector.WalkPhase : 0.0f;
+    public string CurrentClipName => IsInitialized ? (string)_player.CurrentAnimation : string.Empty;
+
+    public void Initialize()
+    {
+        if (IsInitialized)
+        {
+            return;
+        }
+
+        if (!GodotObject.IsInstanceValid(Buddy) || !Buddy.IsInitialized ||
+            !GodotObject.IsInstanceValid(Presenter) || !Presenter.IsInitialized ||
+            !GodotObject.IsInstanceValid(Profile))
+        {
+            throw new InvalidOperationException("ActivityAnimator dependencies are incomplete.");
+        }
+
+        Godot.Collections.Array<string> errors = Profile.Validate();
+        if (errors.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Invalid buddy expression profile: {string.Join("; ", errors)}");
+        }
+
+        ActivityTuningData tuning = Profile.ToActivityData();
+        _selector = new ActivitySelector(tuning.ToActivityParameters());
+
+        PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
+        for (int index = 0; index < _proxies.Length; index++)
+        {
+            var proxy = new Node3D
+            {
+                Name = ProxyName((BuddyPartId)index),
+                PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+            };
+            AddChild(proxy);
+            _proxies[index] = proxy;
+        }
+
+        _player = new AnimationPlayer
+        {
+            Name = "ActivityPlayer",
+            CallbackModeProcess = AnimationMixer.AnimationCallbackModeProcess.Manual,
+        };
+        AddChild(_player);
+        var library = new AnimationLibrary();
+        library.AddAnimation(ClipNameFor(ActivityId.IdleBreathe), BuildBreatheClip(tuning));
+        library.AddAnimation(ClipNameFor(ActivityId.WalkCycle), BuildWalkClip(tuning));
+        library.AddAnimation(ClipNameFor(ActivityId.JumpAnticipation), BuildJumpClip(tuning));
+        library.AddAnimation(ClipNameFor(ActivityId.Wave), BuildWaveClip(tuning));
+        library.AddAnimation(ClipNameFor(ActivityId.Eat), BuildEatClip(tuning));
+        _player.AddAnimationLibrary(string.Empty, library);
+
+        // The consume/hold mount point: whatever item VISUAL is socketed rides the hand
+        // socket (and therefore every clip that moves the hand); the item's physics body
+        // stays wherever gameplay says. One eat clip, any food.
+        ItemSocket = new Node3D
+        {
+            Name = "ItemSocket",
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+        };
+        Presenter.GetPartSocket(BuddyPartId.RightHand).AddChild(ItemSocket);
+
+        IsInitialized = true;
+    }
+
+    /// <summary>Clip mapping used by scenarios: every real activity resolves to a clip.</summary>
+    public static string ClipNameFor(ActivityId activity) => activity switch
+    {
+        ActivityId.IdleBreathe => "idle_breathe",
+        ActivityId.WalkCycle => "walk_cycle",
+        ActivityId.JumpAnticipation => "jump_anticipation",
+        ActivityId.Wave => "wave",
+        ActivityId.Eat => "eat",
+        _ => string.Empty,
+    };
+
+    public bool HasClip(ActivityId activity) =>
+        IsInitialized && _player.HasAnimation(ClipNameFor(activity));
+
+    /// <summary>
+    /// Semantic Class B seam. Eat runs for the given duration (profile default when
+    /// non-positive); Wave is one-shot; None cancels pending requests. Ambient
+    /// activities (breathe, walk, jump anticipation) are selector-owned and rejected.
+    /// </summary>
+    public void SetActivity(ActivityId activity, double durationSeconds = 0.0)
+    {
+        if (!IsInitialized)
+        {
+            throw new InvalidOperationException("ActivityAnimator used before initialization.");
+        }
+
+        switch (activity)
+        {
+            case ActivityId.Eat:
+                _selector.RequestEat(
+                    durationSeconds > 0.0 ? durationSeconds : Profile.ActivityEatDefaultSeconds);
+                break;
+            case ActivityId.Wave:
+                _selector.RequestWave();
+                break;
+            case ActivityId.None:
+                _selector.CancelRequests();
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(
+                    nameof(activity), activity, "Only behavior-backed activities can be requested.");
+        }
+    }
+
+    /// <summary>Attaches an item visual to the hand's ItemSocket (replacing any current).</summary>
+    public void AttachItemVisual(Node3D visual)
+    {
+        if (!IsInitialized)
+        {
+            throw new InvalidOperationException("ActivityAnimator used before initialization.");
+        }
+
+        ClearItemVisual();
+        visual.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit;
+        ItemSocket.AddChild(visual);
+    }
+
+    public void ClearItemVisual()
+    {
+        if (!IsInitialized)
+        {
+            return;
+        }
+
+        foreach (Node child in ItemSocket.GetChildren())
+        {
+            child.QueueFree();
+        }
+    }
+
+    /// <summary>The authored (pre-clamp) offset for a part this frame.</summary>
+    public Vector3 OffsetFor(int partIndex) => _proxies[partIndex].Position;
+
+    /// <summary>
+    /// Advances selection and clip playback for this rendered frame. Called by the
+    /// presenter before it resolves offsets; allocation-free after initialization.
+    /// </summary>
+    public void Evaluate(double deltaSeconds, bool performanceActive)
+    {
+        if (!IsInitialized)
+        {
+            throw new InvalidOperationException("ActivityAnimator used before initialization.");
+        }
+
+        var inputs = new ActivityInputs(
+            performanceActive,
+            MathF.Abs(Buddy.Rig.Torso.LinearVelocity.X),
+            Buddy.CurrentDriveIntent.JumpRequested);
+        ActivityId activity = _selector.Update(inputs, deltaSeconds);
+
+        if (activity == ActivityId.None)
+        {
+            if (!string.IsNullOrEmpty(_player.CurrentAnimation))
+            {
+                _player.Stop();
+            }
+
+            for (int index = 0; index < _proxies.Length; index++)
+            {
+                _proxies[index].Position = Vector3.Zero;
+            }
+
+            return;
+        }
+
+        string clip = ClipNameFor(activity);
+        if (_player.CurrentAnimation != clip)
+        {
+            _player.Play(clip);
+        }
+
+        if (activity == ActivityId.WalkCycle)
+        {
+            // Phase-seeked, not time-advanced: the cycle position is measured travel.
+            _player.Seek(_selector.WalkPhase * WalkClipLength, update: true);
+        }
+        else
+        {
+            _player.Advance(deltaSeconds);
+        }
+    }
+
+    private static string ProxyName(BuddyPartId id) => id switch
+    {
+        BuddyPartId.Head => "ProxyHead",
+        BuddyPartId.Torso => "ProxyTorso",
+        BuddyPartId.LeftHand => "ProxyLeftHand",
+        BuddyPartId.RightHand => "ProxyRightHand",
+        BuddyPartId.LeftFoot => "ProxyLeftFoot",
+        BuddyPartId.RightFoot => "ProxyRightFoot",
+        _ => throw new ArgumentOutOfRangeException(nameof(id), id, "Unknown part."),
+    };
+
+    private static string TrackPath(BuddyPartId id) => $"{ProxyName(id)}:position";
+
+    private static int AddPositionTrack(Animation animation, BuddyPartId id)
+    {
+        int track = animation.AddTrack(Animation.TrackType.Value);
+        animation.TrackSetPath(track, TrackPath(id));
+        animation.TrackSetInterpolationType(track, Animation.InterpolationType.Cubic);
+        return track;
+    }
+
+    private static void Key(Animation animation, int track, double time, float x, float y)
+        => animation.TrackInsertKey(track, time, new Vector3(x, y, 0.0f));
+
+    /// <summary>Slow torso/head rise-and-fall; the quiet default sign of life.</summary>
+    private static Animation BuildBreatheClip(in ActivityTuningData tuning)
+    {
+        float amplitude = tuning.BreatheAmplitude;
+        double length = tuning.BreatheSeconds;
+        var animation = new Animation { Length = (float)length, LoopMode = Animation.LoopModeEnum.Linear };
+        int torso = AddPositionTrack(animation, BuddyPartId.Torso);
+        Key(animation, torso, 0.0, 0.0f, 0.0f);
+        Key(animation, torso, length * 0.5, 0.0f, amplitude);
+        Key(animation, torso, length, 0.0f, 0.0f);
+        int head = AddPositionTrack(animation, BuddyPartId.Head);
+        Key(animation, head, 0.0, 0.0f, 0.0f);
+        Key(animation, head, length * 0.55, 0.0f, amplitude * 0.6f);
+        Key(animation, head, length, 0.0f, 0.0f);
+        return animation;
+    }
+
+    /// <summary>Alternating foot lifts, a double torso bob, and light counter-swinging
+    /// hands over one normalized cycle; the phase (measured travel) picks the pose.</summary>
+    private static Animation BuildWalkClip(in ActivityTuningData tuning)
+    {
+        float amplitude = tuning.WalkBobAmplitude;
+        var animation = new Animation { Length = WalkClipLength, LoopMode = Animation.LoopModeEnum.Linear };
+
+        int leftFoot = AddPositionTrack(animation, BuddyPartId.LeftFoot);
+        Key(animation, leftFoot, 0.0, 0.0f, 0.0f);
+        Key(animation, leftFoot, 0.25, 0.0f, amplitude);
+        Key(animation, leftFoot, 0.5, 0.0f, 0.0f);
+        Key(animation, leftFoot, 1.0, 0.0f, 0.0f);
+
+        int rightFoot = AddPositionTrack(animation, BuddyPartId.RightFoot);
+        Key(animation, rightFoot, 0.0, 0.0f, 0.0f);
+        Key(animation, rightFoot, 0.5, 0.0f, 0.0f);
+        Key(animation, rightFoot, 0.75, 0.0f, amplitude);
+        Key(animation, rightFoot, 1.0, 0.0f, 0.0f);
+
+        int torso = AddPositionTrack(animation, BuddyPartId.Torso);
+        Key(animation, torso, 0.0, 0.0f, 0.0f);
+        Key(animation, torso, 0.25, 0.0f, amplitude * 0.5f);
+        Key(animation, torso, 0.5, 0.0f, 0.0f);
+        Key(animation, torso, 0.75, 0.0f, amplitude * 0.5f);
+        Key(animation, torso, 1.0, 0.0f, 0.0f);
+
+        int leftHand = AddPositionTrack(animation, BuddyPartId.LeftHand);
+        Key(animation, leftHand, 0.0, 0.0f, 0.0f);
+        Key(animation, leftHand, 0.25, amplitude * 0.4f, 0.0f);
+        Key(animation, leftHand, 0.75, amplitude * -0.4f, 0.0f);
+        Key(animation, leftHand, 1.0, 0.0f, 0.0f);
+
+        int rightHand = AddPositionTrack(animation, BuddyPartId.RightHand);
+        Key(animation, rightHand, 0.0, 0.0f, 0.0f);
+        Key(animation, rightHand, 0.25, amplitude * -0.4f, 0.0f);
+        Key(animation, rightHand, 0.75, amplitude * 0.4f, 0.0f);
+        Key(animation, rightHand, 1.0, 0.0f, 0.0f);
+        return animation;
+    }
+
+    /// <summary>Pre-liftoff squash: torso and head dip before the real physical jump;
+    /// the flight itself stays pure Tracking.</summary>
+    private static Animation BuildJumpClip(in ActivityTuningData tuning)
+    {
+        float squash = tuning.JumpSquashAmplitude;
+        double length = tuning.JumpAnticipationSeconds;
+        var animation = new Animation { Length = (float)length };
+        int torso = AddPositionTrack(animation, BuddyPartId.Torso);
+        Key(animation, torso, 0.0, 0.0f, 0.0f);
+        Key(animation, torso, length * 0.6, 0.0f, -squash);
+        Key(animation, torso, length, 0.0f, -squash * 0.4f);
+        int head = AddPositionTrack(animation, BuddyPartId.Head);
+        Key(animation, head, 0.0, 0.0f, 0.0f);
+        Key(animation, head, length * 0.6, 0.0f, -squash * 0.7f);
+        Key(animation, head, length, 0.0f, -squash * 0.3f);
+        return animation;
+    }
+
+    /// <summary>One-shot right-hand wave: raise, two side beats, settle.</summary>
+    private static Animation BuildWaveClip(in ActivityTuningData tuning)
+    {
+        float amplitude = tuning.WaveAmplitude;
+        double length = tuning.WaveSeconds;
+        var animation = new Animation { Length = (float)length };
+        int hand = AddPositionTrack(animation, BuddyPartId.RightHand);
+        Key(animation, hand, 0.0, 0.0f, 0.0f);
+        Key(animation, hand, length * 0.25, amplitude * 0.3f, amplitude);
+        Key(animation, hand, length * 0.45, amplitude * 0.8f, amplitude);
+        Key(animation, hand, length * 0.65, amplitude * -0.2f, amplitude);
+        Key(animation, hand, length * 0.8, amplitude * 0.5f, amplitude);
+        Key(animation, hand, length, 0.0f, 0.0f);
+        return animation;
+    }
+
+    /// <summary>Looping hand-to-mouth arc with a small head chew nod. Item-agnostic:
+    /// whatever visual sits in the ItemSocket rides the hand.</summary>
+    private static Animation BuildEatClip(in ActivityTuningData tuning)
+    {
+        float chew = tuning.ChewAmplitude;
+        const float loop = 0.8f;
+        var animation = new Animation { Length = loop, LoopMode = Animation.LoopModeEnum.Linear };
+        int hand = AddPositionTrack(animation, BuddyPartId.RightHand);
+        Key(animation, hand, 0.0, 0.0f, 0.0f);
+        Key(animation, hand, loop * 0.35, chew * 1.5f, chew * 2.0f);
+        Key(animation, hand, loop * 0.6, chew * 1.5f, chew * 2.0f);
+        Key(animation, hand, loop, 0.0f, 0.0f);
+        int head = AddPositionTrack(animation, BuddyPartId.Head);
+        Key(animation, head, 0.0, 0.0f, 0.0f);
+        Key(animation, head, loop * 0.45, 0.0f, -chew * 0.5f);
+        Key(animation, head, loop * 0.6, 0.0f, -chew * 0.2f);
+        Key(animation, head, loop * 0.75, 0.0f, -chew * 0.5f);
+        Key(animation, head, loop, 0.0f, 0.0f);
+        return animation;
+    }
+}

@@ -61,6 +61,8 @@ public partial class BuddyVisualPresenter : Node3D
     [Export] public BuddyPosePipeline? PosePipeline { get; set; }
     /// <summary>Optional M3.6 facing controller; when absent BodyYaw stays identity.</summary>
     [Export] public FacingController? Facing { get; set; }
+    /// <summary>Optional M3.6 activity animator; when absent authored offsets are zero.</summary>
+    [Export] public ActivityAnimator? Activities { get; set; }
 
     public bool IsInitialized { get; private set; }
     public Node3D BodyYaw { get; private set; } = null!;
@@ -417,6 +419,11 @@ public partial class BuddyVisualPresenter : Node3D
         float facingYawDegrees = Facing is { IsInitialized: true } ? Facing.Evaluate(delta) : 0.0f;
         _yawRadians = _developmentYawRadians +
             (Mathf.DegToRad(facingYawDegrees) * _performanceWeight);
+        if (Activities is { IsInitialized: true })
+        {
+            Activities.Evaluate(delta, _performanceWeight > 0.0f);
+        }
+
         ReadSource(_current);
 
         // Resolve every part's interpolated pose first so the yaw pivot (the torso pose)
@@ -468,6 +475,11 @@ public partial class BuddyVisualPresenter : Node3D
         }
 
         Vector3 raw = _developmentOffsets[index];
+        if (Activities is { IsInitialized: true })
+        {
+            raw += Activities.OffsetFor(index);
+        }
+
         if (raw == Vector3.Zero)
         {
             return Vector3.Zero;

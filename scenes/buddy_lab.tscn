@@ -1,4 +1,4 @@
-[gd_scene load_steps=37 format=3]
+[gd_scene load_steps=38 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -33,6 +33,7 @@
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyPosePipeline.cs" id="32_pose_pipeline"]
 [ext_resource type="Resource" path="res://data/buddy/lab_buddy_expression.tres" id="33_expression"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/FacingController.cs" id="34_facing"]
+[ext_resource type="Script" path="res://src/Buddy/Presentation3D/ActivityAnimator.cs" id="35_activities"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -64,7 +65,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "GloveVisual")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "GloveVisual")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -87,6 +88,7 @@ VisualPresenter = NodePath("BuddyVisualPresenter")
 LightingRig = NodePath("BuddyLookLightingRig")
 PosePipeline = NodePath("BuddyPosePipeline")
 Facing = NodePath("FacingController")
+Activities = NodePath("ActivityAnimator")
 GloveVisual = NodePath("GloveVisual3D")
 
 [node name="Buddy" parent="." instance=ExtResource("2_buddy")]
@@ -102,13 +104,14 @@ projection = 1
 size = 360.0
 keep_aspect = 1
 
-[node name="BuddyVisualPresenter" type="Node3D" parent="." node_paths=PackedStringArray("Buddy", "PosePipeline", "Facing")]
+[node name="BuddyVisualPresenter" type="Node3D" parent="." node_paths=PackedStringArray("Buddy", "PosePipeline", "Facing", "Activities")]
 visible = false
 script = ExtResource("27_visual_presenter")
 Buddy = NodePath("../Buddy")
 Profile = ExtResource("28_visual_profile")
 PosePipeline = NodePath("../BuddyPosePipeline")
 Facing = NodePath("../FacingController")
+Activities = NodePath("../ActivityAnimator")
 
 [node name="GloveVisual3D" type="Node3D" parent="."]
 visible = false
@@ -130,6 +133,12 @@ Buddy = NodePath("../Buddy")
 DamagePipeline = NodePath("../InteractionPipeline")
 CareStroke = NodePath("../CareStrokeComponent")
 Glove = NodePath("../BoxingGloveController")
+Profile = ExtResource("33_expression")
+
+[node name="ActivityAnimator" type="Node3D" parent="." node_paths=PackedStringArray("Buddy", "Presenter")]
+script = ExtResource("35_activities")
+Buddy = NodePath("../Buddy")
+Presenter = NodePath("../BuddyVisualPresenter")
 Profile = ExtResource("33_expression")
 
 [node name="LaboratoryBoundaryVisualizer" type="Node2D" parent="." node_paths=PackedStringArray("Boundaries")]
