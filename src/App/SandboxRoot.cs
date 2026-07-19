@@ -48,6 +48,7 @@ public partial class SandboxRoot : Node2D
     [Export] public BuddyVisualPresenter VisualPresenter { get; set; } = null!;
     [Export] public BuddyLookLightingRig LightingRig { get; set; } = null!;
     [Export] public BuddyPosePipeline PosePipeline { get; set; } = null!;
+    [Export] public FacingController Facing { get; set; } = null!;
     [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
     // Mii3D is the shipping default since the M3.5 Task 8 owner gate (2026-07-18); the
     // legacy circles remain behind the V toggle / --presentation=legacy as a dev view.
@@ -68,6 +69,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(VisualPresenter) ||
             !GodotObject.IsInstanceValid(LightingRig) ||
             !GodotObject.IsInstanceValid(PosePipeline) ||
+            !GodotObject.IsInstanceValid(Facing) ||
             !GodotObject.IsInstanceValid(GloveVisual))
         {
             throw new InvalidOperationException(
@@ -89,6 +91,7 @@ public partial class SandboxRoot : Node2D
         // Same Resource the presenter renders with: lights and materials share one look truth.
         LightingRig.Initialize(VisualPresenter.Profile.Look);
         PosePipeline.Initialize();
+        Facing.Initialize();
         GloveVisual.Initialize(
             Glove.Profile.Radius,
             Glove.Profile.VisualColor,

@@ -25,6 +25,7 @@ public static class ScenarioCatalog
         ["idle_soak"] = () => new IdleSoakScenario(),
         ["idle_soak_ci"] = () => new IdleSoakScenario(IdleSoakScenario.CiTicks),
         ["pose_pipeline"] = () => new PosePipelineScenario(),
+        ["facing_follows_walk"] = () => new FacingScenario(),
         ["repeat_envelope"] = () => new RepeatEnvelopeScenario(),
         ["dual_profile_smoke"] = () => new DualProfileSmokeScenario(),
         ["impact_dedup"] = () => new ImpactDedupScenario(),

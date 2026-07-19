@@ -261,3 +261,21 @@ pain profile makes glove-hover episodes max-pain, so the glove check runs last o
 rolling window KOs the buddy; strikes run at 2000 px/s so a recoiling torso stays above the
 saturation anchor. Verified: seeds 1 + 7, `presentation_look`/`presentation_3d`/toggle
 journey unchanged, quick suite 9/9, build 0/0.
+
+**Task 2 (facing controller) DONE (2026-07-19).** Engine-free `FacingModel`
+(`domain/.../Presentation/FacingModel.cs`): priority arbitration (engaged interaction
+side immediately; walk direction only after the hysteresis streak so autonomy jitter
+never flip-flops; seeded idle variety flips the side on its own salted stream), plus a
+monotonic smoothstep ease start-to-target that crosses zero and cannot overshoot — 27
+new xUnit tests (domain 295/295). `ExpressionTuningData` gained the six facing fields
+(accepted 30 degrees, turn 0.5 s, commit 36 ticks, deadband 0.05, idle flip 720–1920
+ticks) with validation. Godot: `FacingController` node (samples the care/glove cursor
+side and `CurrentDriveIntent.WalkDirection`; reseeds from the new
+`BuddyRoot.AutonomyReseeded` event with a facing-stream salt), composed in both scene
+roots; the presenter applies development yaw + facing yaw x performance weight, so a
+Tracking cut snaps the displayed yaw to zero while the committed side survives —
+`AppliedYawDegrees` is the scenario oracle input. The `pose_pipeline` offset check went
+yaw-aware (rotation preserves offset magnitude about the torso pivot). New
+`facing_follows_walk` scenario (registered, in `TEST_PLAN.md`) green on seeds 1 + 7;
+full rerun green: `pose_pipeline`, `presentation_look`, `presentation_3d`, toggle
+journey, quick suite 9/9, build 0/0.

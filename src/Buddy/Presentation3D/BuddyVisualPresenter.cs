@@ -39,13 +39,14 @@ public partial class BuddyVisualPresenter : Node3D
     private string _displayedFace = string.Empty;
     private bool _subscribedToRecovery;
 
-    // BodyYaw stays identity in normal M3.5 composition (front tracking). This is a
-    // development/scenario-only drive that exercises the accepted ~30-degree three-quarter
-    // pose so the camera-space depth-lane contract can be proved for M3.6. It is applied to
-    // the resolved pose *before* the global camera-axis Z lane, so changing a part's
-    // DepthOffset only changes projected depth, never screen-X (M3_5_MATERIALS_AND_LOOK_PLAN.md
-    // transform contract).
+    // Applied BodyYaw this frame = the development/scenario drive plus the facing
+    // controller's eased three-quarter yaw scaled by the performance blend weight (so a
+    // Tracking cut snaps the displayed yaw to zero without losing the committed side).
+    // Yaw is applied to the resolved pose *before* the global camera-axis Z lane, so
+    // changing a part's DepthOffset only changes projected depth, never screen-X
+    // (M3_5_MATERIALS_AND_LOOK_PLAN.md transform contract).
     private float _yawRadians;
+    private float _developmentYawRadians;
 
     // M3.6 Task 1: per-part authored offsets (dev/scenario-driven until the activity
     // animator lands) and the blend weight the pose pipeline resolved this frame. The
@@ -58,6 +59,8 @@ public partial class BuddyVisualPresenter : Node3D
     [Export] public BuddyVisualProfile Profile { get; set; } = null!;
     /// <summary>Optional M3.6 pose pipeline; when absent the presenter is pure M3.5 tracking.</summary>
     [Export] public BuddyPosePipeline? PosePipeline { get; set; }
+    /// <summary>Optional M3.6 facing controller; when absent BodyYaw stays identity.</summary>
+    [Export] public FacingController? Facing { get; set; }
 
     public bool IsInitialized { get; private set; }
     public Node3D BodyYaw { get; private set; } = null!;
@@ -191,12 +194,16 @@ public partial class BuddyVisualPresenter : Node3D
     /// </summary>
     public void SetDevelopmentYawDegrees(float degrees)
     {
-        _yawRadians = Mathf.DegToRad(degrees);
+        _developmentYawRadians = Mathf.DegToRad(degrees);
         if (IsInitialized)
         {
             UpdateVisuals(0.0, 1.0f);
         }
     }
+
+    /// <summary>The total BodyYaw applied this frame (development + weighted facing),
+    /// in degrees — the value scenarios feed their independent transform oracles.</summary>
+    public float AppliedYawDegrees => Mathf.RadToDeg(_yawRadians);
 
     /// <summary>
     /// The part's currently rendered (interpolated) 2D world pose — the exact input the
@@ -407,6 +414,9 @@ public partial class BuddyVisualPresenter : Node3D
         _performanceWeight = PosePipeline is { IsInitialized: true }
             ? PosePipeline.Evaluate(delta)
             : 0.0f;
+        float facingYawDegrees = Facing is { IsInitialized: true } ? Facing.Evaluate(delta) : 0.0f;
+        _yawRadians = _developmentYawRadians +
+            (Mathf.DegToRad(facingYawDegrees) * _performanceWeight);
         ReadSource(_current);
 
         // Resolve every part's interpolated pose first so the yaw pivot (the torso pose)

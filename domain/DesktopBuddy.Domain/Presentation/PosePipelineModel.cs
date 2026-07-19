@@ -134,7 +134,13 @@ public static class BoundedOffset
 public readonly record struct ExpressionTuningData(
     float PerformanceBlendSeconds,
     int PostImpactCooldownTicks,
-    float OffsetCapRadiusFraction)
+    float OffsetCapRadiusFraction,
+    float FacingYawDegrees,
+    float FacingTurnSeconds,
+    int FacingWalkCommitTicks,
+    float FacingWalkDeadband,
+    int FacingIdleFlipMinimumTicks,
+    int FacingIdleFlipMaximumTicks)
 {
     /// <summary>Plan prime invariant 2: the per-part offset cap may never exceed half the part radius.</summary>
     public const float MaximumOffsetCapRadiusFraction = 0.5f;
@@ -145,6 +151,19 @@ public readonly record struct ExpressionTuningData(
     // Generous garbage bound only: ten seconds of forced tracking after a poke would
     // make performance mode effectively unreachable during play.
     public const int MaximumPostImpactCooldownTicks = 10 * 120;
+
+    // The owner-accepted three-quarter read is about 30 degrees; anything approaching
+    // a full profile (90) contradicts the 2026-07-15 Variant C decision.
+    public const float MaximumFacingYawDegrees = 45.0f;
+
+    // A turn slower than this reads as broken, not eased.
+    public const float MaximumFacingTurnSeconds = 2.0f;
+
+    // Hysteresis beyond five seconds would make walking feel unacknowledged.
+    public const int MaximumFacingWalkCommitTicks = 5 * 120;
+
+    // Idle side flips are ambient variety; anything past two minutes is effectively off.
+    public const int MaximumFacingIdleFlipTicks = 120 * 120;
 
     public IReadOnlyList<string> Validate()
     {
@@ -169,6 +188,48 @@ public readonly record struct ExpressionTuningData(
             errors.Add($"offset cap radius fraction must be finite within (0-{MaximumOffsetCapRadiusFraction:0.0}]");
         }
 
+        if (!float.IsFinite(FacingYawDegrees) ||
+            FacingYawDegrees <= 0.0f ||
+            FacingYawDegrees > MaximumFacingYawDegrees)
+        {
+            errors.Add($"facing yaw degrees must be finite within (0-{MaximumFacingYawDegrees:0})");
+        }
+
+        if (!float.IsFinite(FacingTurnSeconds) ||
+            FacingTurnSeconds <= 0.0f ||
+            FacingTurnSeconds > MaximumFacingTurnSeconds)
+        {
+            errors.Add($"facing turn seconds must be finite within (0-{MaximumFacingTurnSeconds:0.0}]");
+        }
+
+        if (FacingWalkCommitTicks < 1 || FacingWalkCommitTicks > MaximumFacingWalkCommitTicks)
+        {
+            errors.Add($"facing walk commit ticks must be within 1-{MaximumFacingWalkCommitTicks}");
+        }
+
+        if (!float.IsFinite(FacingWalkDeadband) ||
+            FacingWalkDeadband < 0.0f ||
+            FacingWalkDeadband >= 1.0f)
+        {
+            errors.Add("facing walk deadband must be finite within [0-1)");
+        }
+
+        if (FacingIdleFlipMinimumTicks < 1 ||
+            FacingIdleFlipMaximumTicks <= FacingIdleFlipMinimumTicks ||
+            FacingIdleFlipMaximumTicks > MaximumFacingIdleFlipTicks)
+        {
+            errors.Add($"facing idle flip ticks must satisfy 1 <= minimum < maximum <= {MaximumFacingIdleFlipTicks}");
+        }
+
         return errors;
     }
+
+    /// <summary>The facing subset consumed by the pure <see cref="FacingModel"/>.</summary>
+    public FacingParameters ToFacingParameters() => new(
+        FacingYawDegrees,
+        FacingTurnSeconds,
+        FacingWalkCommitTicks,
+        FacingWalkDeadband,
+        FacingIdleFlipMinimumTicks,
+        FacingIdleFlipMaximumTicks);
 }

@@ -27,6 +27,9 @@ public partial class BuddyRoot : Node2D
     [Export] public GrabResistanceComponent GrabResistance { get; set; } = null!;
 
     public event Action<Consciousness>? ConsciousnessChanged;
+    /// <summary>Raised on every autonomy reseed so seeded presentation streams
+    /// (facing idle variety) can re-derive their own stream from the same seed.</summary>
+    public event Action<ulong>? AutonomyReseeded;
 
     public Consciousness CurrentConsciousness { get; private set; } = Consciousness.Conscious;
     public bool IsInitialized { get; private set; }
@@ -141,5 +144,9 @@ public partial class BuddyRoot : Node2D
         ConsciousnessChanged?.Invoke(consciousness);
     }
 
-    public void ReseedAutonomy(ulong seed) => AutonomousMotion.Reseed(seed);
+    public void ReseedAutonomy(ulong seed)
+    {
+        AutonomousMotion.Reseed(seed);
+        AutonomyReseeded?.Invoke(seed);
+    }
 }

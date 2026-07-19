@@ -193,11 +193,20 @@ public sealed class PosePipelineScenario : IScenario
             }
 
             validSamples++;
+            // The facing controller may have committed a three-quarter yaw, so the
+            // no-offset expectation applies the same independent yaw math the look
+            // scenario uses (torso pivot, Up axis) at the presenter's applied yaw;
+            // rotation preserves the offset magnitude, so the distance to that
+            // expectation is exactly the applied clamped offset.
+            var yawBasis = new Basis(Vector3.Up, Mathf.DegToRad(presenter.AppliedYawDegrees));
+            Vector3 pivot = WorldPlaneMapping.To3D(
+                presenter.RenderedPosition2D(BuddyPartId.Torso));
             for (int index = 0; index < PuppetRigProfile.RequiredPartCount; index++)
             {
                 var id = (BuddyPartId)index;
                 float depth = lab.Buddy.VisualProfile.FindPart(id)!.DepthOffset;
-                Vector3 tracked = WorldPlaneMapping.To3D(presenter.RenderedPosition2D(id)) +
+                Vector3 mapped = WorldPlaneMapping.To3D(presenter.RenderedPosition2D(id));
+                Vector3 tracked = pivot + (yawBasis * (mapped - pivot)) +
                     new Vector3(0.0f, 0.0f, depth);
                 float offset = presenter.GetPartSocket(id).GlobalPosition.DistanceTo(tracked);
                 float cap = capFraction * presenter.PartMeshRadius(id);

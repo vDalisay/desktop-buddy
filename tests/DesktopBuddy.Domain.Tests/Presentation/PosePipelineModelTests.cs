@@ -166,7 +166,13 @@ public sealed class ExpressionTuningDataTests
     private static readonly ExpressionTuningData Accepted = new(
         PerformanceBlendSeconds: 0.2f,
         PostImpactCooldownTicks: 60,
-        OffsetCapRadiusFraction: 0.5f);
+        OffsetCapRadiusFraction: 0.5f,
+        FacingYawDegrees: 30.0f,
+        FacingTurnSeconds: 0.5f,
+        FacingWalkCommitTicks: 36,
+        FacingWalkDeadband: 0.05f,
+        FacingIdleFlipMinimumTicks: 720,
+        FacingIdleFlipMaximumTicks: 1920);
 
     [Fact]
     public void AcceptedDefaults_Pass() => Assert.Empty(Accepted.Validate());
@@ -197,4 +203,64 @@ public sealed class ExpressionTuningDataTests
         Assert.Single(
             (Accepted with { OffsetCapRadiusFraction = fraction }).Validate(),
             error => error.Contains("offset cap"));
+
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(46.0f)]
+    [InlineData(float.NaN)]
+    public void InvalidFacingYaw_Fails(float degrees) =>
+        Assert.Single(
+            (Accepted with { FacingYawDegrees = degrees }).Validate(),
+            error => error.Contains("facing yaw"));
+
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(2.5f)]
+    [InlineData(float.PositiveInfinity)]
+    public void InvalidFacingTurnSeconds_Fails(float seconds) =>
+        Assert.Single(
+            (Accepted with { FacingTurnSeconds = seconds }).Validate(),
+            error => error.Contains("facing turn"));
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(601)]
+    public void InvalidFacingCommitTicks_Fails(int ticks) =>
+        Assert.Single(
+            (Accepted with { FacingWalkCommitTicks = ticks }).Validate(),
+            error => error.Contains("commit ticks"));
+
+    [Theory]
+    [InlineData(-0.1f)]
+    [InlineData(1.0f)]
+    [InlineData(float.NaN)]
+    public void InvalidFacingDeadband_Fails(float deadband) =>
+        Assert.Single(
+            (Accepted with { FacingWalkDeadband = deadband }).Validate(),
+            error => error.Contains("deadband"));
+
+    [Theory]
+    [InlineData(0, 1920)]
+    [InlineData(720, 720)]
+    [InlineData(720, 14401)]
+    public void InvalidFacingIdleFlipRange_Fails(int minimum, int maximum) =>
+        Assert.Single(
+            (Accepted with
+            {
+                FacingIdleFlipMinimumTicks = minimum,
+                FacingIdleFlipMaximumTicks = maximum,
+            }).Validate(),
+            error => error.Contains("idle flip"));
+
+    [Fact]
+    public void ToFacingParameters_ProjectsTheFacingSubset()
+    {
+        FacingParameters parameters = Accepted.ToFacingParameters();
+        Assert.Equal(30.0f, parameters.YawDegrees);
+        Assert.Equal(0.5f, parameters.TurnSeconds);
+        Assert.Equal(36, parameters.WalkCommitTicks);
+        Assert.Equal(0.05f, parameters.WalkDeadband);
+        Assert.Equal(720, parameters.IdleFlipMinimumTicks);
+        Assert.Equal(1920, parameters.IdleFlipMaximumTicks);
+    }
 }
