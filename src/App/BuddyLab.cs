@@ -51,6 +51,7 @@ public partial class BuddyLab : Node2D
     [Export] public BuddyPosePipeline PosePipeline { get; set; } = null!;
     [Export] public FacingController Facing { get; set; } = null!;
     [Export] public ActivityAnimator Activities { get; set; } = null!;
+    [Export] public HeadLookAtComponent HeadLookAt { get; set; } = null!;
     [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
     // Mii3D is the shipping default since the M3.5 Task 8 owner gate (2026-07-18); the
     // legacy circles remain behind the V toggle / --presentation=legacy as a dev view.
@@ -74,6 +75,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(PosePipeline) ||
             !GodotObject.IsInstanceValid(Facing) ||
             !GodotObject.IsInstanceValid(Activities) ||
+            !GodotObject.IsInstanceValid(HeadLookAt) ||
             !GodotObject.IsInstanceValid(GloveVisual))
         {
             throw new InvalidOperationException(
@@ -98,6 +100,8 @@ public partial class BuddyLab : Node2D
         PosePipeline.Initialize();
         Facing.Initialize();
         Activities.Initialize();
+        // After the animator: look-at reads the eat activity and its item socket.
+        HeadLookAt.Initialize();
         GloveVisual.Initialize(
             Glove.Profile.Radius,
             Glove.Profile.VisualColor,

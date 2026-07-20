@@ -27,6 +27,7 @@ public static class ScenarioCatalog
         ["pose_pipeline"] = () => new PosePipelineScenario(),
         ["facing_follows_walk"] = () => new FacingScenario(),
         ["activity_clips"] = () => new ActivityClipsScenario(),
+        ["lookat_priority_and_cone"] = () => new LookAtScenario(),
         ["repeat_envelope"] = () => new RepeatEnvelopeScenario(),
         ["dual_profile_smoke"] = () => new DualProfileSmokeScenario(),
         ["impact_dedup"] = () => new ImpactDedupScenario(),

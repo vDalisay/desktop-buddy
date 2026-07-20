@@ -28,6 +28,14 @@ public static class WorldPlaneMapping
     /// <summary>Maps a 2D world position (pixels, Y-down) to its 3D plane point (Y-up).</summary>
     public static Vector3 To3D(Vector2 p) => new(p.X, -p.Y, 0f);
 
+    /// <summary>
+    /// Maps a 3D plane point back to its 2D world position (the exact inverse of
+    /// <see cref="To3D"/>, discarding the camera-axis depth lane). Presentation-side
+    /// consumers that reason about a 3D socket in simulation units — the look-at item
+    /// target, for one — must route through here rather than copying components.
+    /// </summary>
+    public static Vector2 To2D(Vector3 p) => new(p.X, -p.Y);
+
     /// <summary>Maps a 2D rotation (radians about the 2D Z) to the 3D Z rotation.</summary>
     public static float To3DRotationZ(float rot2d) => -rot2d;
 }

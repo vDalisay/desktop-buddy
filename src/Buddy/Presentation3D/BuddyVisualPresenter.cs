@@ -48,6 +48,12 @@ public partial class BuddyVisualPresenter : Node3D
     private float _yawRadians;
     private float _developmentYawRadians;
 
+    // M3.6 Task 4: the head look-at angles applied on top of the body yaw, already scaled
+    // by the performance weight. Head socket only — rotation, never position — so the
+    // gaze is physics-free by construction and composes with any activity clip.
+    private float _headLookYawRadians;
+    private float _headLookPitchRadians;
+
     // M3.6 Task 1: per-part authored offsets (dev/scenario-driven until the activity
     // animator lands) and the blend weight the pose pipeline resolved this frame. The
     // final pose is tracked-body pose plus weight x clamped offset, applied before yaw
@@ -63,6 +69,8 @@ public partial class BuddyVisualPresenter : Node3D
     [Export] public FacingController? Facing { get; set; }
     /// <summary>Optional M3.6 activity animator; when absent authored offsets are zero.</summary>
     [Export] public ActivityAnimator? Activities { get; set; }
+    /// <summary>Optional M3.6 head look-at; when absent the head keeps its physics rotation.</summary>
+    [Export] public HeadLookAtComponent? HeadLookAt { get; set; }
 
     public bool IsInitialized { get; private set; }
     public Node3D BodyYaw { get; private set; } = null!;
@@ -424,6 +432,18 @@ public partial class BuddyVisualPresenter : Node3D
             Activities.Evaluate(delta, _performanceWeight > 0.0f);
         }
 
+        if (HeadLookAt is { IsInitialized: true })
+        {
+            LookAtAngles look = HeadLookAt.Evaluate(delta);
+            _headLookYawRadians = Mathf.DegToRad(look.YawDegrees) * _performanceWeight;
+            _headLookPitchRadians = Mathf.DegToRad(look.PitchDegrees) * _performanceWeight;
+        }
+        else
+        {
+            _headLookYawRadians = 0.0f;
+            _headLookPitchRadians = 0.0f;
+        }
+
         ReadSource(_current);
 
         // Resolve every part's interpolated pose first so the yaw pivot (the torso pose)
@@ -458,8 +478,26 @@ public partial class BuddyVisualPresenter : Node3D
         // its outline shell (both socket children).
         socket.GlobalPosition = ResolveLanePosition(
             rendered.Position, definition.DepthOffset, ResolvePerformanceOffset(index));
+
+        // The head additionally carries the weighted look-at: pitch about X, yaw added to
+        // the body yaw about Y. Nothing else changes — the physics Z rotation is intact,
+        // body yaw is untouched, and every other socket is exactly as before.
+        if (index == (int)BuddyPartId.Head)
+        {
+            socket.GlobalRotation = new Vector3(
+                _headLookPitchRadians, _yawRadians + _headLookYawRadians, rotation);
+            return;
+        }
+
         socket.GlobalRotation = new Vector3(0.0f, _yawRadians, rotation);
     }
+
+    /// <summary>The head look-at yaw applied this frame, in degrees — a scenario oracle
+    /// input (already scaled by the performance weight, so Tracking reads exactly zero).</summary>
+    public float AppliedHeadYawDegrees => Mathf.RadToDeg(_headLookYawRadians);
+
+    /// <summary>The head look-at pitch applied this frame, in degrees.</summary>
+    public float AppliedHeadPitchDegrees => Mathf.RadToDeg(_headLookPitchRadians);
 
     /// <summary>
     /// The blended, cap-clamped authored offset for a part this frame; zero whenever the

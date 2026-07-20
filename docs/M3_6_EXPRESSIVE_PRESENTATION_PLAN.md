@@ -145,6 +145,75 @@ walking). Feeds the face compositor a quantized pupil offset. Scenario:
 `lookat_priority_and_cone` (targets resolve by priority, angles stay clamped,
 deterministic per seed; suppression states verified).
 
+**Handoff detail (pinned 2026-07-20 against the Task 1–3 codebase):**
+
+- **Domain model first — `domain/DesktopBuddy.Domain/Presentation/LookAtModel.cs`,
+  `FacingModel` pattern.** Pure `LookAtModel` with an inputs record (`LookAtInputs`:
+  interaction engaged + cursor world point, item target valid + point, ticks since
+  last accepted impact + impact point, face-suppressed flag, head world position), a
+  parameters record (`LookAtParameters`), and
+  `Update(in inputs, ticksElapsed, deltaSeconds)` returning current yaw/pitch degrees.
+  The model owns: priority arbitration (engaged cursor within range → item target →
+  impact memory → seeded ambient glance → rest), cone clamping of the target angles
+  *before* easing, the monotonic smoothstep start→target ease (same shape as
+  `FacingModel` — it must cross zero without overshoot), and the seeded glance timer
+  (interval range + hold range; a glance is an angle pair sampled uniformly inside the
+  cone, never a world point). Constructor throws on invalid parameters, exactly the
+  `FacingModel` guard style. xUnit coverage: priority order including the range
+  cutoff, cone clamp at extreme targets, glance determinism per seed, suppression
+  easing to rest, tick/time independence.
+- **Target→angle convention.** Desired yaw = `atan2(dx, GazeDepth)`, pitch =
+  `atan2(dy, GazeDepth)`, where `(dx, dy)` = target − head position in 2D world units
+  and `GazeDepth` is a profile virtual distance along the camera axis. The scenario
+  oracle recomputes these angles with independent math.
+- **Tuning joins `ExpressionTuningData`** (with a `ToLookAtParameters()` subset like
+  facing's): cone yaw limit degrees (validation max 60), cone pitch limit degrees
+  (max 45), look ease seconds (max 1.0), gaze depth px (finite, positive), engagement
+  range px (finite, positive), impact memory ticks (max 600), glance interval
+  min/max ticks, glance hold min/max ticks, pupil quantization steps (2–8). Ambient
+  glance cadence defaults are owner-delegated: pick values inside the validation
+  bounds and record them in `DECISIONS.md`. Mirror the fields on
+  `BuddyExpressionProfile` and `data/buddy/lab_buddy_expression.tres`.
+- **Godot node `HeadLookAtComponent`** (`src/Buddy/Presentation3D/`),
+  `FacingController` pattern: exports `Buddy`, `DamagePipeline`, `CareStroke`,
+  `Glove`, `Activities`, `Reactions` (`BuddyReactionComponent`), `Profile`;
+  `Initialize()` validates dependencies + profile; reseeds from
+  `BuddyRoot.AutonomyReseeded` with its own stream salt (never the facing salt);
+  composed and initialized in both scene roots; `Evaluate(double)` allocation-free.
+  Per-frame sampling: engaged cursor exactly as `FacingController.Evaluate` (Pet/
+  Tickle via `CareStroke.IsHeld && LastContactValid`, glove via `Glove.HasCursor`)
+  plus the head-distance engagement-range check; item target = `ItemSocket` global
+  position while the eat activity is active with an attached visual (M4 widens this
+  to real held items later); impact memory = subscribe `ImpactAccepted`, stamp
+  `impact.Point` + the physics frame; face suppression = `Reactions.CurrentFace` in
+  the profile string list (default `">_<"`, `"x_x"`, `">:("`) → target rest through
+  the normal ease.
+- **Application seam — the presenter composes; the component never rotates a
+  socket.** The presenter overwrites every socket's `GlobalRotation` each frame in
+  `ApplyPartTransform`, so a component rotating `HeadSocket` directly would be
+  silently overwritten. Follow the facing pattern: optional
+  `[Export] HeadLookAtComponent? HeadLookAt` on `BuddyVisualPresenter`;
+  `UpdateVisuals` evaluates it once per rendered frame; `ApplyPartTransform` adds
+  (pitch X, yaw Y) × performance weight into the **head socket's** rotation only —
+  body yaw and the physics Z rotation unchanged, every other socket untouched.
+  Weight scaling makes the Tracking/unconscious suppression automatic and
+  snap-safe, identical to facing yaw. Presenter oracles for scenarios:
+  `AppliedHeadYawDegrees` / `AppliedHeadPitchDegrees`.
+- **Pupil seam for Task 5.** The component exposes a quantized `PupilOffset`
+  (Vector2): applied angles normalized by the cone limits to [−1, 1], then quantized
+  to the profile step count. Task 5 consumes it; the Task 4 scenario asserts it
+  directly (no face required).
+- **Scenario `lookat_priority_and_cone`** (registered in the scenario runner and
+  `TEST_PLAN.md`), seeds 1 + 7: pet-stroke engagement → head angles track the cursor
+  side within the cone; cursor beyond engagement range → ambient behavior resumes;
+  `SetActivity(Eat)` with a socketed item → item wins over ambient; controlled
+  strike → impact point watched, decays after memory ticks; idle → glance sequence
+  deterministic per seed with every applied angle inside the cone; forced Tracking
+  (post-strike cooldown) → applied head angles exactly zero; pain face → eased to
+  rest. Full regression rerun: `pose_pipeline`, `facing_follows_walk`,
+  `activity_clips`, `presentation_look`, `presentation_3d`, toggle journey, quick
+  suite, build 0/0.
+
 ### Task 5 — Composed dynamic face (integration/presentation)
 Replaces the M3.5 `Label3D` parity face at this slice's gate. `FaceCompositor` draws
 eyes + brows + mouth as simple procedural features (`CanvasItem` draw into a small
@@ -303,3 +372,44 @@ seeds 1 + 7 — clip mapping complete, walk phase/travel ratio 1.000 with freeze
 walk, sphere and box items both rode the one eat clip. Full regression green:
 `pose_pipeline`, `facing_follows_walk`, `presentation_look`, `presentation_3d`, toggle
 journey, quick suite 9/9, build 0/0.
+
+**Task 4 (head look-at and idle glances) DONE (2026-07-20).** Engine-free `LookAtModel`
+(`domain/.../Presentation/LookAtModel.cs`): priority arbitration (engaged cursor inside
+the engagement range > valid item target > impact memory > seeded ambient glance > rest,
+with a suppressed reaction face standing everything down to rest), target angles from the
+pinned convention `yaw = atan2(dx, GazeDepth)` / `pitch = atan2(dy, GazeDepth)` clamped
+into the cone BEFORE the smoothstep ease, and a seeded glance timer that alternates a rest
+interval with a held glance — a glance is an ANGLE PAIR sampled inside the cone, never a
+world point, so ambient idling can never be mistaken for cursor tracking. The ease restarts
+only on ACQUISITION (source change or a fresh glance): while a source is held the target
+keeps updating, so the head follows a moving cursor instead of stalling on a smoothstep
+that restarts every frame, and because both endpoints are in-cone the eased value provably
+never leaves the cone or overshoots. 47 new xUnit tests (domain 363/363), including the
+range cutoff, clamped extremes, zero-crossing side switches, glance determinism per seed,
+eased (not cut) suppression, pupil quantization, and tick/time step independence.
+`ExpressionTuningData` gained the eleven look fields with validation (cone yaw ≤ 60, cone
+pitch ≤ 45, ease ≤ 1 s, impact memory ≤ 600 ticks, pupil steps 2–8) and
+`ToLookAtParameters()`. Godot: `HeadLookAtComponent` (samples the care/glove cursor exactly
+as facing does, the `ItemSocket` while Eat is active with an attached visual, an
+`ImpactAccepted` point+frame stamp, and `Reactions.CurrentFace` against the profile
+suppression list; reseeds from `BuddyRoot.AutonomyReseeded` on its own salt, never the
+facing salt), composed and initialized in both scene roots after the animator. Application
+seam per the pinned handoff: the component rotates nothing — the presenter adds
+(pitch X, yaw Y) x performance weight into the HEAD socket's rotation only, so body yaw,
+the physics Z rotation, and every other socket are untouched and Tracking/unconscious
+suppression is automatic and snap-safe; `AppliedHeadYawDegrees`/`AppliedHeadPitchDegrees`
+are the scenario oracles and `PupilOffset` is the Task 5 seam. Owner-delegated glance
+cadence resolved and recorded in `DECISIONS.md` + `lab_buddy_expression.tres` (cone 28/18,
+ease 0.25 s, gaze depth 120 px, engagement range 220 px, impact memory 240 ticks, glance
+every 480–1200 ticks held 72–168, 4 pupil steps). `WorldPlaneMapping` gained the `To2D`
+inverse so the 3D item socket is read back in simulation units through the one mapping
+authority. New `lookat_priority_and_cone` scenario (registered, in `TEST_PLAN.md`) green on
+seeds 1 + 7 — the oracle recomputes every expected angle with independent `atan2` math.
+Scenario notes: the strike must run at 2000 px/s (900 never registers an accepted impact),
+and the glance-determinism check compresses the cadence to a scenario-local 24–60/24–48
+ticks and restores it afterwards, so proving the seeded stream costs seconds rather than
+the two minutes the shipping 4–10 s cadence would need. Full regression green:
+`pose_pipeline`, `facing_follows_walk`, `activity_clips`, `presentation_look`,
+`presentation_3d`, toggle journey, quick suite 9/9, build 0/0. (The `ObjectDB instances
+leaked at exit` warning on `presentation_3d`/`facing_follows_walk` was verified against a
+stashed tree to predate this task.)

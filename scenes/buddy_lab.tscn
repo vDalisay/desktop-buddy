@@ -1,4 +1,4 @@
-[gd_scene load_steps=38 format=3]
+[gd_scene load_steps=39 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -34,6 +34,7 @@
 [ext_resource type="Resource" path="res://data/buddy/lab_buddy_expression.tres" id="33_expression"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/FacingController.cs" id="34_facing"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/ActivityAnimator.cs" id="35_activities"]
+[ext_resource type="Script" path="res://src/Buddy/Presentation3D/HeadLookAtComponent.cs" id="36_lookat"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -65,7 +66,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "GloveVisual")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "GloveVisual")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -89,6 +90,7 @@ LightingRig = NodePath("BuddyLookLightingRig")
 PosePipeline = NodePath("BuddyPosePipeline")
 Facing = NodePath("FacingController")
 Activities = NodePath("ActivityAnimator")
+HeadLookAt = NodePath("HeadLookAtComponent")
 GloveVisual = NodePath("GloveVisual3D")
 
 [node name="Buddy" parent="." instance=ExtResource("2_buddy")]
@@ -104,7 +106,7 @@ projection = 1
 size = 360.0
 keep_aspect = 1
 
-[node name="BuddyVisualPresenter" type="Node3D" parent="." node_paths=PackedStringArray("Buddy", "PosePipeline", "Facing", "Activities")]
+[node name="BuddyVisualPresenter" type="Node3D" parent="." node_paths=PackedStringArray("Buddy", "PosePipeline", "Facing", "Activities", "HeadLookAt")]
 visible = false
 script = ExtResource("27_visual_presenter")
 Buddy = NodePath("../Buddy")
@@ -112,6 +114,7 @@ Profile = ExtResource("28_visual_profile")
 PosePipeline = NodePath("../BuddyPosePipeline")
 Facing = NodePath("../FacingController")
 Activities = NodePath("../ActivityAnimator")
+HeadLookAt = NodePath("../HeadLookAtComponent")
 
 [node name="GloveVisual3D" type="Node3D" parent="."]
 visible = false
@@ -139,6 +142,16 @@ Profile = ExtResource("33_expression")
 script = ExtResource("35_activities")
 Buddy = NodePath("../Buddy")
 Presenter = NodePath("../BuddyVisualPresenter")
+Profile = ExtResource("33_expression")
+
+[node name="HeadLookAtComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy", "DamagePipeline", "CareStroke", "Glove", "Activities", "Reactions")]
+script = ExtResource("36_lookat")
+Buddy = NodePath("../Buddy")
+DamagePipeline = NodePath("../InteractionPipeline")
+CareStroke = NodePath("../CareStrokeComponent")
+Glove = NodePath("../BoxingGloveController")
+Activities = NodePath("../ActivityAnimator")
+Reactions = NodePath("../BuddyReactionComponent")
 Profile = ExtResource("33_expression")
 
 [node name="LaboratoryBoundaryVisualizer" type="Node2D" parent="." node_paths=PackedStringArray("Boundaries")]
@@ -290,11 +303,11 @@ theme_override_colors/font_color = Color(0.45, 1, 0.65, 1)
 text = "+$0.0"
 horizontal_alignment = 2
 
-[node name="TelemetryPanel" type="PanelContainer" parent="LabUi" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Boundaries", "Containment", "InstructionsLabel", "TelemetryLabel", "Pipeline")]
+[node name="TelemetryPanel" type="PanelContainer" parent="LabUi" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Boundaries", "Containment", "InstructionsLabel", "TelemetryLabel", "Pipeline", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Presenter")]
 offset_left = 8.0
 offset_top = 8.0
 offset_right = 256.0
-offset_bottom = 244.0
+offset_bottom = 292.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("LabPanelStyle")
 script = ExtResource("10_telemetry")
@@ -306,6 +319,11 @@ Containment = NodePath("../../PuppetRoomContainmentComponent")
 InstructionsLabel = NodePath("Margin/VBox/Instructions")
 TelemetryLabel = NodePath("Margin/VBox/Telemetry")
 Pipeline = NodePath("../../InteractionPipeline")
+PosePipeline = NodePath("../../BuddyPosePipeline")
+Facing = NodePath("../../FacingController")
+Activities = NodePath("../../ActivityAnimator")
+HeadLookAt = NodePath("../../HeadLookAtComponent")
+Presenter = NodePath("../../BuddyVisualPresenter")
 
 [node name="Margin" type="MarginContainer" parent="LabUi/TelemetryPanel"]
 layout_mode = 2

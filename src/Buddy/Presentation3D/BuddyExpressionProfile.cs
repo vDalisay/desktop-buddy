@@ -81,9 +81,80 @@ public partial class BuddyExpressionProfile : GameResource
     [Export(PropertyHint.Range, "0.1,6,0.1")]
     public float ActivityJumpSquashAmplitude { get; set; } = 2.5f;
 
+    // Task 4 look-at tuning: the cone the head may turn inside, the acquisition ease, the
+    // virtual gaze depth the target angles are measured against, how close an engaged
+    // cursor must be to be worth watching, how long a hit stays interesting, the seeded
+    // ambient glance cadence (delegated defaults: glance every ~4-10 s, held ~0.6-1.4 s),
+    // and the pupil quantization Task 5's face consumes.
+    [Export(PropertyHint.Range, "1,60,0.5")]
+    public float LookConeYawDegrees { get; set; } = 28.0f;
+
+    [Export(PropertyHint.Range, "1,45,0.5")]
+    public float LookConePitchDegrees { get; set; } = 18.0f;
+
+    [Export(PropertyHint.Range, "0.02,1,0.01")]
+    public float LookEaseSeconds { get; set; } = 0.25f;
+
+    [Export(PropertyHint.Range, "10,600,1")]
+    public float LookGazeDepthPixels { get; set; } = 120.0f;
+
+    [Export(PropertyHint.Range, "10,1000,1")]
+    public float LookEngagementRangePixels { get; set; } = 220.0f;
+
+    [Export(PropertyHint.Range, "0,600,1")]
+    public int LookImpactMemoryTicks { get; set; } = 240;
+
+    [Export(PropertyHint.Range, "1,14400,1")]
+    public int LookGlanceIntervalMinimumTicks { get; set; } = 480;
+
+    [Export(PropertyHint.Range, "2,14400,1")]
+    public int LookGlanceIntervalMaximumTicks { get; set; } = 1200;
+
+    [Export(PropertyHint.Range, "1,600,1")]
+    public int LookGlanceHoldMinimumTicks { get; set; } = 72;
+
+    [Export(PropertyHint.Range, "2,600,1")]
+    public int LookGlanceHoldMaximumTicks { get; set; } = 168;
+
+    [Export(PropertyHint.Range, "2,8,1")]
+    public int LookPupilQuantizationSteps { get; set; } = 4;
+
+    /// <summary>
+    /// Reaction faces that suppress look-at (the gaze eases to rest while one is showing).
+    /// These are <c>Reactions.CurrentFace</c> strings — the semantic face contract is
+    /// unchanged; this list only names which of those faces own the head.
+    /// </summary>
+    [Export]
+    public Godot.Collections.Array<string> LookSuppressionFaces { get; set; } =
+        new() { ">_<", "x_x", ">:(" };
+
+    /// <summary>True when the current semantic face suppresses look-at.</summary>
+    public bool SuppressesLookAt(string face)
+    {
+        if (LookSuppressionFaces is null)
+        {
+            return false;
+        }
+
+        foreach (string suppressed in LookSuppressionFaces)
+        {
+            if (suppressed == face)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public override Godot.Collections.Array<string> Validate()
     {
         var errors = new Godot.Collections.Array<string>();
+        if (LookSuppressionFaces is null)
+        {
+            errors.Add("look suppression face list must be assigned");
+        }
+
         foreach (string error in ToData().Validate())
         {
             errors.Add(error);
@@ -121,5 +192,16 @@ public partial class BuddyExpressionProfile : GameResource
         FacingWalkCommitTicks,
         FacingWalkDeadband,
         FacingIdleFlipMinimumTicks,
-        FacingIdleFlipMaximumTicks);
+        FacingIdleFlipMaximumTicks,
+        LookConeYawDegrees,
+        LookConePitchDegrees,
+        LookEaseSeconds,
+        LookGazeDepthPixels,
+        LookEngagementRangePixels,
+        LookImpactMemoryTicks,
+        LookGlanceIntervalMinimumTicks,
+        LookGlanceIntervalMaximumTicks,
+        LookGlanceHoldMinimumTicks,
+        LookGlanceHoldMaximumTicks,
+        LookPupilQuantizationSteps);
 }

@@ -172,7 +172,18 @@ public sealed class ExpressionTuningDataTests
         FacingWalkCommitTicks: 36,
         FacingWalkDeadband: 0.05f,
         FacingIdleFlipMinimumTicks: 720,
-        FacingIdleFlipMaximumTicks: 1920);
+        FacingIdleFlipMaximumTicks: 1920,
+        LookConeYawDegrees: 28.0f,
+        LookConePitchDegrees: 18.0f,
+        LookEaseSeconds: 0.25f,
+        LookGazeDepthPixels: 120.0f,
+        LookEngagementRangePixels: 220.0f,
+        LookImpactMemoryTicks: 240,
+        LookGlanceIntervalMinimumTicks: 480,
+        LookGlanceIntervalMaximumTicks: 1200,
+        LookGlanceHoldMinimumTicks: 72,
+        LookGlanceHoldMaximumTicks: 168,
+        LookPupilQuantizationSteps: 4);
 
     [Fact]
     public void AcceptedDefaults_Pass() => Assert.Empty(Accepted.Validate());
@@ -262,5 +273,108 @@ public sealed class ExpressionTuningDataTests
         Assert.Equal(0.05f, parameters.WalkDeadband);
         Assert.Equal(720, parameters.IdleFlipMinimumTicks);
         Assert.Equal(1920, parameters.IdleFlipMaximumTicks);
+    }
+
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(61.0f)]
+    [InlineData(float.NaN)]
+    public void InvalidLookConeYaw_Fails(float degrees) =>
+        Assert.Single(
+            (Accepted with { LookConeYawDegrees = degrees }).Validate(),
+            error => error.Contains("look cone yaw"));
+
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(46.0f)]
+    [InlineData(float.PositiveInfinity)]
+    public void InvalidLookConePitch_Fails(float degrees) =>
+        Assert.Single(
+            (Accepted with { LookConePitchDegrees = degrees }).Validate(),
+            error => error.Contains("look cone pitch"));
+
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(1.01f)]
+    [InlineData(float.NaN)]
+    public void InvalidLookEaseSeconds_Fails(float seconds) =>
+        Assert.Single(
+            (Accepted with { LookEaseSeconds = seconds }).Validate(),
+            error => error.Contains("look ease"));
+
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(-10.0f)]
+    [InlineData(float.PositiveInfinity)]
+    public void InvalidLookGazeDepth_Fails(float pixels) =>
+        Assert.Single(
+            (Accepted with { LookGazeDepthPixels = pixels }).Validate(),
+            error => error.Contains("gaze depth"));
+
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(float.NaN)]
+    public void InvalidLookEngagementRange_Fails(float pixels) =>
+        Assert.Single(
+            (Accepted with { LookEngagementRangePixels = pixels }).Validate(),
+            error => error.Contains("engagement range"));
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(601)]
+    public void InvalidLookImpactMemory_Fails(int ticks) =>
+        Assert.Single(
+            (Accepted with { LookImpactMemoryTicks = ticks }).Validate(),
+            error => error.Contains("impact memory"));
+
+    [Theory]
+    [InlineData(0, 1200)]
+    [InlineData(480, 480)]
+    [InlineData(480, 14401)]
+    public void InvalidLookGlanceIntervalRange_Fails(int minimum, int maximum) =>
+        Assert.Single(
+            (Accepted with
+            {
+                LookGlanceIntervalMinimumTicks = minimum,
+                LookGlanceIntervalMaximumTicks = maximum,
+            }).Validate(),
+            error => error.Contains("glance interval"));
+
+    [Theory]
+    [InlineData(0, 168)]
+    [InlineData(72, 72)]
+    [InlineData(72, 601)]
+    public void InvalidLookGlanceHoldRange_Fails(int minimum, int maximum) =>
+        Assert.Single(
+            (Accepted with
+            {
+                LookGlanceHoldMinimumTicks = minimum,
+                LookGlanceHoldMaximumTicks = maximum,
+            }).Validate(),
+            error => error.Contains("glance hold"));
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(9)]
+    public void InvalidPupilQuantizationSteps_Fails(int steps) =>
+        Assert.Single(
+            (Accepted with { LookPupilQuantizationSteps = steps }).Validate(),
+            error => error.Contains("pupil quantization"));
+
+    [Fact]
+    public void ToLookAtParameters_ProjectsTheLookSubset()
+    {
+        LookAtParameters parameters = Accepted.ToLookAtParameters();
+        Assert.Equal(28.0f, parameters.ConeYawDegrees);
+        Assert.Equal(18.0f, parameters.ConePitchDegrees);
+        Assert.Equal(0.25f, parameters.EaseSeconds);
+        Assert.Equal(120.0f, parameters.GazeDepth);
+        Assert.Equal(220.0f, parameters.EngagementRange);
+        Assert.Equal(240, parameters.ImpactMemoryTicks);
+        Assert.Equal(480, parameters.GlanceIntervalMinimumTicks);
+        Assert.Equal(1200, parameters.GlanceIntervalMaximumTicks);
+        Assert.Equal(72, parameters.GlanceHoldMinimumTicks);
+        Assert.Equal(168, parameters.GlanceHoldMaximumTicks);
+        Assert.Equal(4, parameters.PupilQuantizationSteps);
     }
 }

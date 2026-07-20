@@ -98,6 +98,14 @@ This file records only decisions explicitly confirmed by the project owner. Unre
      `lab_buddy_expression.tres`; the owner judges at the M3.6 exit gate.
   4. **`LegacyCircles` view: retained** as a development/comparison view behind the
      `V` toggle and `--presentation=legacy` (decided at the Task 8 flip, above).
+- **Ambient idle-glance defaults (delegated, resolved at Task 4, 2026-07-20).** Recorded
+  in `lab_buddy_expression.tres`, inside the plan's validation bounds: glance cone
+  `28°` yaw / `18°` pitch, acquisition ease `0.25 s`, virtual gaze depth `120 px`,
+  cursor engagement range `220 px`, impact memory `240` ticks (`2 s`), a glance every
+  `480–1200` ticks (`4–10 s`) held `72–168` ticks (`0.6–1.4 s`), and `4` pupil
+  quantization steps. Look-at is suppressed while the semantic face is `">_<"`,
+  `"x_x"`, or `">:("`. Blink cadence stays open until Task 5. The owner judges the
+  cadence at the M3.6 exit gate.
 
 ## Accepted Milestone 1 Feel Tuning (2026-07-12)
 

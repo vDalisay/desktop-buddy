@@ -140,7 +140,18 @@ public readonly record struct ExpressionTuningData(
     int FacingWalkCommitTicks,
     float FacingWalkDeadband,
     int FacingIdleFlipMinimumTicks,
-    int FacingIdleFlipMaximumTicks)
+    int FacingIdleFlipMaximumTicks,
+    float LookConeYawDegrees,
+    float LookConePitchDegrees,
+    float LookEaseSeconds,
+    float LookGazeDepthPixels,
+    float LookEngagementRangePixels,
+    int LookImpactMemoryTicks,
+    int LookGlanceIntervalMinimumTicks,
+    int LookGlanceIntervalMaximumTicks,
+    int LookGlanceHoldMinimumTicks,
+    int LookGlanceHoldMaximumTicks,
+    int LookPupilQuantizationSteps)
 {
     /// <summary>Plan prime invariant 2: the per-part offset cap may never exceed half the part radius.</summary>
     public const float MaximumOffsetCapRadiusFraction = 0.5f;
@@ -164,6 +175,26 @@ public readonly record struct ExpressionTuningData(
 
     // Idle side flips are ambient variety; anything past two minutes is effectively off.
     public const int MaximumFacingIdleFlipTicks = 120 * 120;
+
+    // Task 4 look-at bounds. A head that turns further than this stops reading as a
+    // glance and starts reading as a neck injury; the plan pins both limits.
+    public const float MaximumLookConeYawDegrees = 60.0f;
+    public const float MaximumLookConePitchDegrees = 45.0f;
+
+    // The gaze must feel like attention, not like a slow pan.
+    public const float MaximumLookEaseSeconds = 1.0f;
+
+    // Five seconds of staring at where a hit landed is already a long memory.
+    public const int MaximumLookImpactMemoryTicks = 600;
+
+    // Ambient glance cadence shares the facing idle-variety ceiling; a hold longer than
+    // five seconds is a stare, not a glance.
+    public const int MaximumLookGlanceIntervalTicks = 120 * 120;
+    public const int MaximumLookGlanceHoldTicks = 600;
+
+    // Pupil quantization below two steps has no centre; above eight it is continuous.
+    public const int MinimumPupilQuantizationSteps = 2;
+    public const int MaximumPupilQuantizationSteps = 8;
 
     public IReadOnlyList<string> Validate()
     {
@@ -221,8 +252,79 @@ public readonly record struct ExpressionTuningData(
             errors.Add($"facing idle flip ticks must satisfy 1 <= minimum < maximum <= {MaximumFacingIdleFlipTicks}");
         }
 
+        if (!float.IsFinite(LookConeYawDegrees) ||
+            LookConeYawDegrees <= 0.0f ||
+            LookConeYawDegrees > MaximumLookConeYawDegrees)
+        {
+            errors.Add($"look cone yaw degrees must be finite within (0-{MaximumLookConeYawDegrees:0}]");
+        }
+
+        if (!float.IsFinite(LookConePitchDegrees) ||
+            LookConePitchDegrees <= 0.0f ||
+            LookConePitchDegrees > MaximumLookConePitchDegrees)
+        {
+            errors.Add($"look cone pitch degrees must be finite within (0-{MaximumLookConePitchDegrees:0}]");
+        }
+
+        if (!float.IsFinite(LookEaseSeconds) ||
+            LookEaseSeconds <= 0.0f ||
+            LookEaseSeconds > MaximumLookEaseSeconds)
+        {
+            errors.Add($"look ease seconds must be finite within (0-{MaximumLookEaseSeconds:0.0}]");
+        }
+
+        if (!float.IsFinite(LookGazeDepthPixels) || LookGazeDepthPixels <= 0.0f)
+        {
+            errors.Add("look gaze depth pixels must be finite and positive");
+        }
+
+        if (!float.IsFinite(LookEngagementRangePixels) || LookEngagementRangePixels <= 0.0f)
+        {
+            errors.Add("look engagement range pixels must be finite and positive");
+        }
+
+        if (LookImpactMemoryTicks < 0 || LookImpactMemoryTicks > MaximumLookImpactMemoryTicks)
+        {
+            errors.Add($"look impact memory ticks must be within 0-{MaximumLookImpactMemoryTicks}");
+        }
+
+        if (LookGlanceIntervalMinimumTicks < 1 ||
+            LookGlanceIntervalMaximumTicks <= LookGlanceIntervalMinimumTicks ||
+            LookGlanceIntervalMaximumTicks > MaximumLookGlanceIntervalTicks)
+        {
+            errors.Add($"look glance interval ticks must satisfy 1 <= minimum < maximum <= {MaximumLookGlanceIntervalTicks}");
+        }
+
+        if (LookGlanceHoldMinimumTicks < 1 ||
+            LookGlanceHoldMaximumTicks <= LookGlanceHoldMinimumTicks ||
+            LookGlanceHoldMaximumTicks > MaximumLookGlanceHoldTicks)
+        {
+            errors.Add($"look glance hold ticks must satisfy 1 <= minimum < maximum <= {MaximumLookGlanceHoldTicks}");
+        }
+
+        if (LookPupilQuantizationSteps < MinimumPupilQuantizationSteps ||
+            LookPupilQuantizationSteps > MaximumPupilQuantizationSteps)
+        {
+            errors.Add($"look pupil quantization steps must be within " +
+                $"{MinimumPupilQuantizationSteps}-{MaximumPupilQuantizationSteps}");
+        }
+
         return errors;
     }
+
+    /// <summary>The look-at subset consumed by the pure <see cref="LookAtModel"/>.</summary>
+    public LookAtParameters ToLookAtParameters() => new(
+        LookConeYawDegrees,
+        LookConePitchDegrees,
+        LookEaseSeconds,
+        LookGazeDepthPixels,
+        LookEngagementRangePixels,
+        LookImpactMemoryTicks,
+        LookGlanceIntervalMinimumTicks,
+        LookGlanceIntervalMaximumTicks,
+        LookGlanceHoldMinimumTicks,
+        LookGlanceHoldMaximumTicks,
+        LookPupilQuantizationSteps);
 
     /// <summary>The facing subset consumed by the pure <see cref="FacingModel"/>.</summary>
     public FacingParameters ToFacingParameters() => new(

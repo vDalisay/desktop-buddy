@@ -56,6 +56,15 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
     // Optional M3 interaction pipeline readout; the dual-profile lab leaves it unset.
     [Export] public Interaction.InteractionDamageComponent? Pipeline { get; set; }
 
+    // Optional M3.6 expressive-presentation readout. Head look-at is rotation-only on a
+    // sphere behind a screen-upright placeholder face, so until the Task 5 composed face
+    // lands this panel is the only way to SEE the gaze arbitration working.
+    [Export] public Buddy.Presentation3D.BuddyPosePipeline? PosePipeline { get; set; }
+    [Export] public Buddy.Presentation3D.FacingController? Facing { get; set; }
+    [Export] public Buddy.Presentation3D.ActivityAnimator? Activities { get; set; }
+    [Export] public Buddy.Presentation3D.HeadLookAtComponent? HeadLookAt { get; set; }
+    [Export] public Buddy.Presentation3D.BuddyVisualPresenter? Presenter { get; set; }
+
     public bool IsInitialized { get; private set; }
     public LaboratoryTelemetrySnapshot Snapshot { get; private set; }
 
@@ -141,8 +150,45 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             links strain {snapshot.MaximumLinkStrain:F3} | force {snapshot.MaximumLinkForce:F0}
             grab {grab} | stretch {snapshot.GrabExtension:F1} | force {snapshot.GrabForce:F0}
             release {snapshot.LastReleaseSpeed:F1} | corrections {snapshot.LastContainmentCorrections}
-            room {snapshot.RoomWidth:F0}x{snapshot.RoomHeight:F0} | zoom {snapshot.EffectiveZoom * 100.0:F0}%{PipelineLine()}
+            room {snapshot.RoomWidth:F0}x{snapshot.RoomHeight:F0} | zoom {snapshot.EffectiveZoom * 100.0:F0}%{PipelineLine()}{PresentationLine()}
             """);
+    }
+
+    /// <summary>Live M3.6 mode/facing/activity/gaze readout; empty when unwired.</summary>
+    private string PresentationLine()
+    {
+        if (PosePipeline is not { IsInitialized: true })
+        {
+            return string.Empty;
+        }
+
+        string facing = Facing is { IsInitialized: true }
+            ? $"{Facing.CommittedSide} {Facing.CurrentYawDegrees:F1}"
+            : "-";
+        string activity = Activities is { IsInitialized: true }
+            ? Activities.Current.ToString()
+            : "-";
+        string line = string.Create(
+            CultureInfo.InvariantCulture,
+            $"\nmode {PosePipeline.Mode} w{PosePipeline.PerformanceWeight:F2} | " +
+            $"facing {facing} | act {activity}");
+
+        if (HeadLookAt is not { IsInitialized: true })
+        {
+            return line;
+        }
+
+        // Model angles are what look-at WANTS; applied angles are what the presenter put on
+        // the head socket after the performance weight — they diverge exactly when a
+        // suppression (Tracking, unconsciousness) is doing its job.
+        string applied = Presenter is { IsInitialized: true }
+            ? $" | applied y{Presenter.AppliedHeadYawDegrees:F1} p{Presenter.AppliedHeadPitchDegrees:F1}"
+            : string.Empty;
+        return line + string.Create(
+            CultureInfo.InvariantCulture,
+            $"\ngaze {HeadLookAt.CurrentSource} y{HeadLookAt.CurrentYawDegrees:F1} " +
+            $"p{HeadLookAt.CurrentPitchDegrees:F1} | pupil " +
+            $"({HeadLookAt.PupilOffset.X:F2},{HeadLookAt.PupilOffset.Y:F2}){applied}");
     }
 
     private string PipelineLine()
