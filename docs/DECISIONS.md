@@ -123,6 +123,29 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - Task 5 feature art is now UNBLOCKED. The mockup spike stays in the tree as the
   style reference until Task 5 lands.
 
+### M3.6 Task 5 — composed dynamic face shipped, Label3D glyph retired (2026-07-20)
+
+- **Face mounting:** the composed face renders procedurally (CanvasItem draw into a
+  200x200 offscreen `SubViewport`, re-rendered ON CHANGE ONLY) onto a 40x40-world-unit
+  head-front quad parented to `HeadSocket` at surface + `FaceDepthEpsilon`. The plate
+  inherits the socket transform fully — a real face rotates with the head — so the M3.5
+  sideways-glyph counter-rotation is retired with the glyph. Face ink =
+  `lab_buddy_look.tres` `OutlineColor` (one ink authority with the outline shells).
+- **`Label3D` parity face RETIRED from composed scenes.** `BuddyVisualPresenter` builds
+  the compositor plate when a `FaceCompositor` is wired and keeps the `Label3D` only as
+  the fallback for uncomposed hosts (scenario-built bare presenters). The semantic face
+  contract (`Reactions.CurrentFace`, ten strings, resolver priorities) is unchanged;
+  `FaceExpressionMap`/`FaceExpressionCatalog` only translate it to feature poses.
+- **Blink cadence (delegated engineering defaults, judged at the M3.6 exit gate):** a
+  seeded blink every `240-720` ticks (`2-6 s`) held `14` ticks (~`0.12 s`), counted in
+  ROUTED ticks on its own salted stream (`0xB11B_FACE_2026_0720`), suppressed —
+  disarmed completely — while the face's eye pose is not blinkable (happy arcs, pain
+  scrunch, knockout crosses, startle wide). Chew overlay: `42` ticks per open/close
+  cycle during the eat activity, standing down under reaction-priority faces (the
+  look-at suppression list). Recorded in `lab_buddy_expression.tres`.
+- **Style seam:** the painter is selectable per `FaceStyleId` (the shop decision above);
+  only `SoftOvalFacePainter` exists in this slice.
+
 ### Ambient cadence calmed — supersedes part of the M1 autonomy tuning (2026-07-20)
 
 - Owner direction during the M3.6 Task 4 inspection: **"the buddy needs to be more chill

@@ -77,10 +77,19 @@ public partial class BuddyVisualPresenter : Node3D
     [Export] public ActivityAnimator? Activities { get; set; }
     /// <summary>Optional M3.6 head look-at; when absent the head keeps its physics rotation.</summary>
     [Export] public HeadLookAtComponent? HeadLookAt { get; set; }
+    /// <summary>Optional M3.6 face compositor. When wired the head carries the composed
+    /// face plate (Task 5) and the M3.5 <see cref="Label3D"/> parity glyph is retired;
+    /// when absent the glyph remains (uncomposed hosts, legacy tests).</summary>
+    [Export] public FaceCompositor? Face { get; set; }
 
     public bool IsInitialized { get; private set; }
     public Node3D BodyYaw { get; private set; } = null!;
     public Label3D FaceLabel { get; private set; } = null!;
+
+    /// <summary>The composed face plate (null when the Label3D fallback is active).</summary>
+    public MeshInstance3D? FacePlate { get; private set; }
+
+    private StandardMaterial3D? _facePlateMaterial;
     public int PartVisualCount => IsInitialized ? _partMeshes.Length : 0;
     public int ConnectorVisualCount => IsInitialized ? _connectorMeshes.Length : 0;
 
@@ -357,18 +366,7 @@ public partial class BuddyVisualPresenter : Node3D
 
             if (id == BuddyPartId.Head)
             {
-                FaceLabel = new Label3D
-                {
-                    Name = "Face",
-                    FontSize = Profile.FaceTextSize,
-                    PixelSize = Profile.FacePixelSize,
-                    Modulate = Profile.FaceColor,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Position = new Vector3(0.0f, 0.0f, radius + Profile.FaceDepthEpsilon),
-                    PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
-                };
-                socket.AddChild(FaceLabel);
+                BuildFace(socket, radius);
             }
         }
     }
@@ -643,8 +641,70 @@ public partial class BuddyVisualPresenter : Node3D
         }
     }
 
+    /// <summary>
+    /// Builds the head-front face: the Task 5 composed plate when a compositor is wired
+    /// (a quad at surface + epsilon that inherits the socket transform fully — a real face
+    /// rotates with the head, so the M3.5 sideways-glyph counter-rotation is retired with
+    /// the glyph), or the legacy Label3D parity glyph otherwise.
+    /// </summary>
+    private void BuildFace(Node3D socket, float radius)
+    {
+        if (Face is not null)
+        {
+            _facePlateMaterial = new StandardMaterial3D
+            {
+                ResourceName = "BuddyFacePlateMaterial",
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            };
+            FacePlate = new MeshInstance3D
+            {
+                Name = "FacePlate",
+                Mesh = new QuadMesh
+                {
+                    Size = new Vector2(FaceCompositor.PlateWorldSize, FaceCompositor.PlateWorldSize),
+                },
+                Position = new Vector3(0.0f, 0.0f, radius + Profile.FaceDepthEpsilon),
+                MaterialOverride = _facePlateMaterial,
+                PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+            };
+            socket.AddChild(FacePlate);
+            return;
+        }
+
+        FaceLabel = new Label3D
+        {
+            Name = "Face",
+            FontSize = Profile.FaceTextSize,
+            PixelSize = Profile.FacePixelSize,
+            Modulate = Profile.FaceColor,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Position = new Vector3(0.0f, 0.0f, radius + Profile.FaceDepthEpsilon),
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+        };
+        socket.AddChild(FaceLabel);
+    }
+
     private void UpdateFace()
     {
+        if (Face is { } compositor)
+        {
+            // The compositor initializes after this presenter (it needs the activity
+            // animator); until then the plate simply has no texture yet.
+            if (compositor.IsInitialized)
+            {
+                compositor.Evaluate();
+                if (_facePlateMaterial is { AlbedoTexture: null } &&
+                    compositor.OutputTexture is { } texture)
+                {
+                    _facePlateMaterial.AlbedoTexture = texture;
+                }
+            }
+
+            return;
+        }
+
         string face = _transformSource!.ReadFace();
         if (_displayedFace != face)
         {

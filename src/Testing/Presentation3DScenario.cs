@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Physics;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Presentation3D;
@@ -41,17 +42,16 @@ public sealed class Presentation3DScenario : IScenario
         checks.Add(new StartupCheck("visual_profile_valid", visualProfileValid,
             lab.Buddy.VisualProfile.ResourceName));
 
+        // Task 5: the composed face plate replaced the Label3D glyph in composed scenes.
         bool presenterBuilt =
             lab.VisualPresenter.PartVisualCount == PuppetRigProfile.RequiredPartCount &&
             lab.VisualPresenter.ConnectorVisualCount == lab.Buddy.VisualProfile.Connectors.Count &&
-            GodotObject.IsInstanceValid(lab.VisualPresenter.FaceLabel) &&
-            Mathf.IsEqualApprox(
-                lab.VisualPresenter.FaceLabel.PixelSize,
-                lab.Buddy.VisualProfile.FacePixelSize);
+            GodotObject.IsInstanceValid(lab.VisualPresenter.FacePlate) &&
+            lab.Face.IsInitialized;
         checks.Add(new StartupCheck("presenter_built", presenterBuilt,
             $"parts={lab.VisualPresenter.PartVisualCount} " +
             $"connectors={lab.VisualPresenter.ConnectorVisualCount} " +
-            $"face_pixel_size={lab.VisualPresenter.FaceLabel.PixelSize:F3}"));
+            $"face_plate={GodotObject.IsInstanceValid(lab.VisualPresenter.FacePlate)}"));
 
         lab.SetPresentationMode(PresentationMode.Mii3D);
         AcceptedImpact? faceImpact = await ScenarioSteps.StrikePart(
@@ -60,9 +60,10 @@ public sealed class Presentation3DScenario : IScenario
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         bool faceRoundtrip = faceImpact is not null &&
             lab.Reactions.CurrentFace == ">_<" &&
-            lab.VisualPresenter.FaceLabel.Text == lab.Reactions.CurrentFace;
+            lab.Face.LastComposedState.Eyes == FaceEyePose.Scrunch &&
+            lab.Face.LastComposedState.Mouth == FaceMouthPose.Squiggle;
         checks.Add(new StartupCheck("face_roundtrip", faceRoundtrip,
-            $"semantic={lab.Reactions.CurrentFace} label={lab.VisualPresenter.FaceLabel.Text}"));
+            $"semantic={lab.Reactions.CurrentFace} composed_eyes={lab.Face.LastComposedState.Eyes}"));
 
         bool cameraAligned = await CheckCameraAlignment(tree, lab, messages);
         checks.Add(new StartupCheck("camera_alignment", cameraAligned,

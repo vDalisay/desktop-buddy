@@ -151,7 +151,11 @@ public readonly record struct ExpressionTuningData(
     int LookGlanceIntervalMaximumTicks,
     int LookGlanceHoldMinimumTicks,
     int LookGlanceHoldMaximumTicks,
-    int LookPupilQuantizationSteps)
+    int LookPupilQuantizationSteps,
+    int BlinkIntervalMinimumTicks,
+    int BlinkIntervalMaximumTicks,
+    int BlinkClosedTicks,
+    int ChewCycleTicks)
 {
     /// <summary>Plan prime invariant 2: the per-part offset cap may never exceed half the part radius.</summary>
     public const float MaximumOffsetCapRadiusFraction = 0.5f;
@@ -195,6 +199,14 @@ public readonly record struct ExpressionTuningData(
     // Pupil quantization below two steps has no centre; above eight it is continuous.
     public const int MinimumPupilQuantizationSteps = 2;
     public const int MaximumPupilQuantizationSteps = 8;
+
+    // Task 5 blink/chew bounds. A blink rarer than twenty seconds reads as dead; a lid
+    // hold past half a second is a wince, not a blink; a chew cycle slower than two
+    // seconds stops reading as chewing.
+    public const int MaximumBlinkIntervalTicks = 20 * 120;
+    public const int MaximumBlinkClosedTicks = 60;
+    public const int MinimumChewCycleTicks = 12;
+    public const int MaximumChewCycleTicks = 240;
 
     public IReadOnlyList<string> Validate()
     {
@@ -309,6 +321,23 @@ public readonly record struct ExpressionTuningData(
                 $"{MinimumPupilQuantizationSteps}-{MaximumPupilQuantizationSteps}");
         }
 
+        if (BlinkIntervalMinimumTicks < 1 ||
+            BlinkIntervalMaximumTicks <= BlinkIntervalMinimumTicks ||
+            BlinkIntervalMaximumTicks > MaximumBlinkIntervalTicks)
+        {
+            errors.Add($"blink interval ticks must satisfy 1 <= minimum < maximum <= {MaximumBlinkIntervalTicks}");
+        }
+
+        if (BlinkClosedTicks < 1 || BlinkClosedTicks > MaximumBlinkClosedTicks)
+        {
+            errors.Add($"blink closed ticks must be within 1-{MaximumBlinkClosedTicks}");
+        }
+
+        if (ChewCycleTicks < MinimumChewCycleTicks || ChewCycleTicks > MaximumChewCycleTicks)
+        {
+            errors.Add($"chew cycle ticks must be within {MinimumChewCycleTicks}-{MaximumChewCycleTicks}");
+        }
+
         return errors;
     }
 
@@ -325,6 +354,12 @@ public readonly record struct ExpressionTuningData(
         LookGlanceHoldMinimumTicks,
         LookGlanceHoldMaximumTicks,
         LookPupilQuantizationSteps);
+
+    /// <summary>The blink subset consumed by the pure <see cref="BlinkModel"/>.</summary>
+    public BlinkParameters ToBlinkParameters() => new(
+        BlinkIntervalMinimumTicks,
+        BlinkIntervalMaximumTicks,
+        BlinkClosedTicks);
 
     /// <summary>The facing subset consumed by the pure <see cref="FacingModel"/>.</summary>
     public FacingParameters ToFacingParameters() => new(

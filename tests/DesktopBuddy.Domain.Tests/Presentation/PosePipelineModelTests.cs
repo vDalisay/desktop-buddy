@@ -183,7 +183,11 @@ public sealed class ExpressionTuningDataTests
         LookGlanceIntervalMaximumTicks: 1200,
         LookGlanceHoldMinimumTicks: 72,
         LookGlanceHoldMaximumTicks: 168,
-        LookPupilQuantizationSteps: 4);
+        LookPupilQuantizationSteps: 4,
+        BlinkIntervalMinimumTicks: 240,
+        BlinkIntervalMaximumTicks: 720,
+        BlinkClosedTicks: 14,
+        ChewCycleTicks: 42);
 
     [Fact]
     public void AcceptedDefaults_Pass() => Assert.Empty(Accepted.Validate());
@@ -376,5 +380,43 @@ public sealed class ExpressionTuningDataTests
         Assert.Equal(72, parameters.GlanceHoldMinimumTicks);
         Assert.Equal(168, parameters.GlanceHoldMaximumTicks);
         Assert.Equal(4, parameters.PupilQuantizationSteps);
+    }
+
+    [Theory]
+    [InlineData(0, 720)]
+    [InlineData(240, 240)]
+    [InlineData(240, 2401)]
+    public void InvalidBlinkInterval_Fails(int minimum, int maximum) =>
+        Assert.Single(
+            (Accepted with
+            {
+                BlinkIntervalMinimumTicks = minimum,
+                BlinkIntervalMaximumTicks = maximum,
+            }).Validate(),
+            error => error.Contains("blink interval"));
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(61)]
+    public void InvalidBlinkClosedTicks_Fails(int closed) =>
+        Assert.Single(
+            (Accepted with { BlinkClosedTicks = closed }).Validate(),
+            error => error.Contains("blink closed"));
+
+    [Theory]
+    [InlineData(11)]
+    [InlineData(241)]
+    public void InvalidChewCycleTicks_Fails(int chew) =>
+        Assert.Single(
+            (Accepted with { ChewCycleTicks = chew }).Validate(),
+            error => error.Contains("chew cycle"));
+
+    [Fact]
+    public void ToBlinkParameters_ProjectsTheBlinkSubset()
+    {
+        BlinkParameters parameters = Accepted.ToBlinkParameters();
+        Assert.Equal(240, parameters.IntervalMinimumTicks);
+        Assert.Equal(720, parameters.IntervalMaximumTicks);
+        Assert.Equal(14, parameters.ClosedTicks);
     }
 }

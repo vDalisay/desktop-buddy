@@ -483,6 +483,46 @@ work now).** Task 5 consequence: keep the compositor's feature-art painter selec
 style (the character-editor parameterization) but build/tune only B's art in this slice.
 Task 5 is fully unblocked.
 
+**Task 5 (composed dynamic face) DONE (2026-07-20).** Engine-free
+`domain/.../Presentation/FaceModel.cs`: `FaceExpressionCatalog` — the authoritative
+ten-string semantic-face → feature-pose map (eye/brow/mouth pose enums,
+variant-agnostic so every art style interprets the same contract; strings and resolver
+untouched, prime invariant 3), `BlinkModel` (seeded open-interval/closed-hold timer that
+DISARMS completely while the face's eyes are not blinkable and re-arms fresh on return),
+`ChewCycle` (two-frame overlay math), and `FaceComposer` producing `FaceRenderState` — the
+value-equatable RE-RENDER KEY that zeroes invisible components (pupils under closed lids,
+chew under reaction-priority faces) so an invisible change can never repaint — 40 new
+xUnit (domain 403/403). `ExpressionTuningData` gained blink interval/hold + chew cycle
+fields with validation (blink 2-6 s / hold 14 ticks / chew 42 delegated defaults recorded
+in DECISIONS.md + `lab_buddy_expression.tres`). Godot: `FaceExpressionMap` (named Godot
+seam over the catalog + reserved `FaceStyleId` ids for the shop cosmetics),
+`FaceCompositor` node (samples `Reactions.CurrentFace`/eat activity/Task 4 `PupilOffset`,
+counts blink+chew in ROUTED ticks, reseeds on `AutonomyReseeded` with salt
+`0xB11B_FACE_2026_0720`, repaints a 200x200 transparent SubViewport ONCE per state change,
+GPU path guarded off headless while the semantic oracles `LastComposedState`/`RenderCount`
+stay identical), `SoftOvalFacePainter` (the accepted mockup-B art: highlight-as-pupil
+ovals, arc/angled/worried brows, ten mouth poses incl. chew frames; ink =
+`lab_buddy_look.tres` OutlineColor — one ink authority). Presenter: builds the face PLATE
+(40x40 quad at surface + epsilon, inherits the socket transform fully — a real face
+rotates with the head, retiring the Label3D counter-rotation) when a compositor is wired;
+`Label3D` remains only as the uncomposed-host fallback (M3PresentationScenario's bare
+presenter). Composed + initialized in both scene roots after look-at; migrated
+`presentation_3d` (`presenter_built`/`face_roundtrip` now compositor-semantic) and the
+`m3_tool_feel` journey predicate `pet_3d_face_upright` → `pet_3d_face_composed` (there is
+no counter-rotation left to verify; the check is now semantic parity to the CatSmile
+pose). New `face_composition` scenario (registered, in `TEST_PLAN.md`) green seeds 1+7:
+map coverage, ZERO re-renders across 400 calm frames (blink+glance stretched), blink
+rises with plausible lid hold + full disarm during `x_x`, chew frames alternate and
+restore, head strike round-trips `>_<` to the scrunch/squiggle pain pose. Scenario
+gotchas: (1) after `SetConsciousness` wait for the semantic face on PHYSICS frames then
+the composed state on PROCESS frames — a fixed two-frame wait is seed-dependent (failed
+seed 7); (2) `--fixed-fps 120` is MANDATORY for the pacing-sensitive scenarios — without
+it `activity_clips`'s walk ratio fails at a constant 0.828 on every seed AND every
+commit, which reads exactly like a deterministic regression (it cost a three-commit
+bisect before the missing flag was spotted); measure scenario durations in
+`Buddy.RoutedTicks`, never rendered-frame counts (the blink-hold check was rewritten to
+ticks so it passes under any pacing).
+
 Also noted for Task 6: its rerun list names a scenario id `m3_glove_strike` that does not
 exist in the catalog; the real M3 ids are `m3_presentation` and `tool_feel_reactions`.
 Full rerun after all three: domain 363/363, `pose_pipeline` (with the new guard),

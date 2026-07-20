@@ -6,6 +6,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Presentation3D;
@@ -540,7 +541,7 @@ public partial class JourneyRunner : Node
         await SetPrimaryAsync(pointer, true);
         bool petHandVisible = false;
         bool petFaceSeen = false;
-        bool pet3DFaceUpright = false;
+        bool pet3DFaceComposed = false;
         for (int tick = 0; tick < 380 && lab.Pipeline.CareAwardCount == careBefore; tick++)
         {
             Vector2 next = lab.Buddy.Rig.Head.GlobalPosition + Vector2.Right * (tick % 2 == 0 ? -8.0f : 8.0f);
@@ -548,16 +549,17 @@ public partial class JourneyRunner : Node
             pointer = next;
             petHandVisible |= lab.CareCursor.IsHandVisible;
             petFaceSeen |= lab.Reactions.CurrentFace == ":3";
-            pet3DFaceUpright |=
+            // Task 5 replaced the upright-glyph check: the composed face plate has no
+            // counter-rotation to verify, so the 3D check is now semantic parity — the
+            // compositor's last composed state is the pet-rub pose while ":3" shows.
+            pet3DFaceComposed |=
                 lab.Reactions.CurrentFace == ":3" &&
-                lab.VisualPresenter.FaceLabel.Text == ":3" &&
-                Mathf.Abs(Mathf.AngleDifference(
-                    lab.VisualPresenter.FaceLabel.GlobalRotation.Z,
-                    -Mathf.Pi * 0.5f)) < 0.01f;
+                lab.Face.LastComposedState.Mouth == FaceMouthPose.CatSmile &&
+                lab.Face.LastComposedState.Eyes == FaceEyePose.Open;
         }
         state["pet_hand_visible"] = petHandVisible;
         state["pet_rub_face_seen"] = petFaceSeen;
-        state["pet_3d_face_upright"] = pet3DFaceUpright;
+        state["pet_3d_face_composed"] = pet3DFaceComposed;
         state["pet_rewarded"] = lab.Pipeline.CareAwardCount == careBefore + 1;
         state["pet_completion_smile"] = lab.Reactions.CurrentFace == ":)";
         await SetPrimaryAsync(pointer, false);

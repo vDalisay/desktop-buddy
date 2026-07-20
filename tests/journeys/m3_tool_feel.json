@@ -12,7 +12,7 @@
     { "predicate": "pet_selected", "equals": true },
     { "predicate": "pet_hand_visible", "equals": true },
     { "predicate": "pet_rub_face_seen", "equals": true },
-    { "predicate": "pet_3d_face_upright", "equals": true },
+    { "predicate": "pet_3d_face_composed", "equals": true },
     { "predicate": "pet_rewarded", "equals": true },
     { "predicate": "pet_completion_smile", "equals": true },
     { "predicate": "tickle_selected", "equals": true },

@@ -119,6 +119,21 @@ public partial class BuddyExpressionProfile : GameResource
     [Export(PropertyHint.Range, "2,8,1")]
     public int LookPupilQuantizationSteps { get; set; } = 4;
 
+    // Task 5 face tuning: the seeded blink cadence (delegated engineering defaults:
+    // a blink every ~2-6 s held ~0.12 s, judged at the exit gate) and the eat chew
+    // cycle the mouth overlay animates on. Blink counts ROUTED ticks so a pause holds it.
+    [Export(PropertyHint.Range, "1,2400,1")]
+    public int BlinkIntervalMinimumTicks { get; set; } = 240;
+
+    [Export(PropertyHint.Range, "2,2400,1")]
+    public int BlinkIntervalMaximumTicks { get; set; } = 720;
+
+    [Export(PropertyHint.Range, "1,60,1")]
+    public int BlinkClosedTicks { get; set; } = 14;
+
+    [Export(PropertyHint.Range, "12,240,1")]
+    public int ChewCycleTicks { get; set; } = 42;
+
     /// <summary>
     /// Reaction faces that suppress look-at (the gaze eases to rest while one is showing).
     /// These are <c>Reactions.CurrentFace</c> strings — the semantic face contract is
@@ -203,5 +218,9 @@ public partial class BuddyExpressionProfile : GameResource
         LookGlanceIntervalMaximumTicks,
         LookGlanceHoldMinimumTicks,
         LookGlanceHoldMaximumTicks,
-        LookPupilQuantizationSteps);
+        LookPupilQuantizationSteps,
+        BlinkIntervalMinimumTicks,
+        BlinkIntervalMaximumTicks,
+        BlinkClosedTicks,
+        ChewCycleTicks);
 }
