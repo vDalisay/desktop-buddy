@@ -475,8 +475,13 @@ delight `^_^`, pain `>_<`, startle `o_o`, with the startle column over a dark bu
 panel. Faces are drawn procedurally (CanvasItem → SubViewport texture) onto a head-front
 quad at surface + epsilon — the exact Task 5 FaceCompositor mounting — so the judged art is
 what ships. `Y` cycles yaw 0/+30/−30 (verified readable at ±30°, sideways-glyph hazard
-gone); `Esc` quits. MCP screenshot pass done at 0° and +30°. Once the owner picks a
-variant, record it in `DECISIONS.md` and Task 5 feature art is unblocked.
+gone); `Esc` quits. MCP screenshot pass done at 0° and +30°.
+
+**Gate RESOLVED same day (recorded in `DECISIONS.md`): Variant B "Soft Oval" ships as the
+default face; A and C are retained as future shop cosmetics (M5 economy scope, no shop
+work now).** Task 5 consequence: keep the compositor's feature-art painter selectable per
+style (the character-editor parameterization) but build/tune only B's art in this slice.
+Task 5 is fully unblocked.
 
 Also noted for Task 6: its rerun list names a scenario id `m3_glove_strike` that does not
 exist in the catalog; the real M3 ids are `m3_presentation` and `tool_feel_reactions`.

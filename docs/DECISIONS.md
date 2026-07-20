@@ -107,6 +107,22 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   `"x_x"`, or `">:("`. Blink cadence stays open until Task 5. The owner judges the
   cadence at the M3.6 exit gate.
 
+### Face feature art direction — mockup gate RESOLVED (2026-07-20)
+
+- The owner ran the face-art mockup preview (`scenes/spike_face_mockup.tscn`, three
+  variants x four expressions in the accepted look, judged frontal and at ±30° yaw)
+  and picked: **Variant B "Soft Oval" is the shipping default face** — filled vertical
+  oval eyes with a white highlight, subtle arc brows, rounded mouths, ink-only palette
+  (`OutlineColor` from `lab_buddy_look.tres` plus white highlights).
+- **Variants A "Ink Dots" and C "Bean + Blush" are retained as future shop items**, not
+  discarded: face style becomes a purchasable cosmetic when the shop exists (ROADMAP
+  M5 economy scope; no shop work now). Consequence for Task 5: the `FaceCompositor` /
+  `FaceExpressionMap` seam must keep the feature-art painter selectable per style
+  rather than hard-coding B — the same parameterization the character-editor plan
+  already requires — but only B's art is built and tuned in this slice.
+- Task 5 feature art is now UNBLOCKED. The mockup spike stays in the tree as the
+  style reference until Task 5 lands.
+
 ### Ambient cadence calmed — supersedes part of the M1 autonomy tuning (2026-07-20)
 
 - Owner direction during the M3.6 Task 4 inspection: **"the buddy needs to be more chill
