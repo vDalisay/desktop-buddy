@@ -26,8 +26,8 @@ public partial class BuddyPosePipeline : Node
     [Export] public BuddyExpressionProfile Profile { get; set; } = null!;
 
     private PerformanceBlend _blend = null!;
-    // Physics-frame stamp of the last accepted impact; long.MinValue = never hit.
-    private long _lastImpactFrame = long.MinValue;
+    // Routed-tick stamp of the last accepted impact; long.MinValue = never hit.
+    private long _lastImpactTick = long.MinValue;
 
     public PresentationPoseMode Mode { get; private set; } = PresentationPoseMode.Tracking;
     public float PerformanceWeight => IsInitialized ? _blend.Weight : 0.0f;
@@ -79,20 +79,21 @@ public partial class BuddyPosePipeline : Node
             throw new InvalidOperationException("BuddyPosePipeline used before initialization.");
         }
 
-        long framesSinceImpact = _lastImpactFrame == long.MinValue
+        // Routed ticks, not engine frames: a paused lab must not burn the cooldown.
+        long ticksSinceImpact = _lastImpactTick == long.MinValue
             ? long.MaxValue
-            : (long)Engine.GetPhysicsFrames() - _lastImpactFrame;
+            : Buddy.RoutedTicks - _lastImpactTick;
         var inputs = new PoseModeInputs(
             Buddy.CurrentConsciousness == Consciousness.Unconscious,
             Buddy.Recovery.State.AssistanceActive,
             Grab.CurrentGrab.Active && Grab.CurrentGrab.Target is PuppetPartBody,
             Buddy.CurrentToolReactionIntent.Active,
             Buddy.Standing.Snapshot.IsStable,
-            (int)Math.Clamp(framesSinceImpact, 0, int.MaxValue));
+            (int)Math.Clamp(ticksSinceImpact, 0, int.MaxValue));
         Mode = PoseModeArbiter.Evaluate(inputs, Profile.PostImpactCooldownTicks);
         return _blend.Update(deltaSeconds, Mode);
     }
 
     private void OnImpactAccepted(AcceptedImpact impact) =>
-        _lastImpactFrame = (long)Engine.GetPhysicsFrames();
+        _lastImpactTick = Buddy.RoutedTicks;
 }

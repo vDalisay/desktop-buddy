@@ -35,6 +35,10 @@ public partial class LaboratoryControlComponent : Node
 
     [Export] public BuddyRoot Buddy { get; set; } = null!;
 
+    // Optional: when present, the pause also holds the M3.6 performance layer so a paused
+    // buddy is visually still. Labs without a 3D presenter simply leave it unset.
+    [Export] public Buddy.Presentation3D.BuddyVisualPresenter? Presenter { get; set; }
+
     // Optional: tool-selection hotkeys route here when the owning lab wires the
     // interaction pipeline (M3); the dual-profile lab leaves this unset.
     [Export] public InteractionDamageComponent? Pipeline { get; set; }
@@ -115,6 +119,7 @@ public partial class LaboratoryControlComponent : Node
         _singleStepRequested = false;
         _freezeAfterStep = false;
         SetBodiesFrozen(paused);
+        HoldPresentation(paused);
     }
 
     public void RequestSingleStep()
@@ -222,6 +227,14 @@ public partial class LaboratoryControlComponent : Node
         if (IsPaused)
         {
             SetBodiesFrozen(false);
+        }
+    }
+
+    private void HoldPresentation(bool held)
+    {
+        if (Presenter is { IsInitialized: true })
+        {
+            Presenter.SetPresentationHeld(held);
         }
     }
 

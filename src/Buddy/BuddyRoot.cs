@@ -34,6 +34,16 @@ public partial class BuddyRoot : Node2D
     public Consciousness CurrentConsciousness { get; private set; } = Consciousness.Conscious;
     public bool IsInitialized { get; private set; }
     public DriveIntent CurrentDriveIntent { get; private set; }
+
+    /// <summary>
+    /// Gameplay ticks actually routed into this buddy — the simulation's own clock, which
+    /// is NOT the engine's physics-frame counter: a paused laboratory keeps ticking engine
+    /// frames while routing none of them. Presentation timers (facing hysteresis, look-at
+    /// glances and impact memory, the post-impact cooldown) count in this clock so they
+    /// hold still exactly when the simulation they decorate holds still, and advance by
+    /// exactly one on a single step. Read-only for everyone but this root.
+    /// </summary>
+    public long RoutedTicks { get; private set; }
     public ToolReactionIntent CurrentToolReactionIntent { get; private set; }
 
     public override void _Ready()
@@ -81,6 +91,7 @@ public partial class BuddyRoot : Node2D
             return;
         }
 
+        RoutedTicks++;
         Standing.PhysicsTick();
         Recovery.PhysicsTick(CurrentConsciousness == Consciousness.Conscious);
         AutonomousMotion.PhysicsTick(CurrentConsciousness, Recovery.State);

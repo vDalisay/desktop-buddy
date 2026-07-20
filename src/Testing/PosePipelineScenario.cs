@@ -61,6 +61,7 @@ public sealed class PosePipelineScenario : IScenario
         // in the arbitration check worth maximum pain, which legitimately knocks the
         // buddy out through the real rolling window. Run the strike-equality and offset
         // checks on a fresh pain window first; hover the guard-raising glove last.
+        checks.Add(await CheckPauseHoldsPresentation(tree, lab, messages));
         checks.Add(await CheckBlendPhysicsInvariant(tree, lab, messages));
         checks.Add(await CheckOffsetBounded(tree, lab, messages));
         checks.Add(await CheckModeArbitration(tree, lab, messages));
@@ -75,6 +76,65 @@ public sealed class PosePipelineScenario : IScenario
         }
 
         return new ScenarioResult(passed, checks, messages);
+    }
+
+    /// <summary>
+    /// A paused laboratory must be visually still. The performance layer is driven by the
+    /// RENDERED frame, which keeps arriving while the routed gameplay tick does not, so
+    /// without an explicit hold the buddy kept breathing, turning, and glancing behind a
+    /// frozen ragdoll — the "frozen but its head still moves" report from 2026-07-20.
+    /// </summary>
+    private static async Task<StartupCheck> CheckPauseHoldsPresentation(
+        SceneTree tree, BuddyLab lab, List<string> messages)
+    {
+        await ScenarioSteps.WaitForStanding(tree, lab, 1800);
+        for (int frame = 0; frame < 240 && lab.PosePipeline.PerformanceWeight < 1.0f; frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        }
+
+        lab.Controls.SetPaused(true);
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+        long ticksAtPause = lab.Buddy.RoutedTicks;
+        float yaw = lab.VisualPresenter.AppliedYawDegrees;
+        float headYaw = lab.VisualPresenter.AppliedHeadYawDegrees;
+        float headPitch = lab.VisualPresenter.AppliedHeadPitchDegrees;
+        Vector3 offset = lab.Activities.OffsetFor((int)BuddyPartId.Torso);
+
+        // Long enough that the seeded glance and idle-flip timers would both have fired.
+        bool stillYaw = true;
+        bool stillHead = true;
+        bool stillOffset = true;
+        for (int frame = 0; frame < 600; frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            stillYaw &= Mathf.Abs(lab.VisualPresenter.AppliedYawDegrees - yaw) < 0.0001f;
+            stillHead &=
+                Mathf.Abs(lab.VisualPresenter.AppliedHeadYawDegrees - headYaw) < 0.0001f &&
+                Mathf.Abs(lab.VisualPresenter.AppliedHeadPitchDegrees - headPitch) < 0.0001f;
+            stillOffset &= lab.Activities.OffsetFor((int)BuddyPartId.Torso)
+                .DistanceTo(offset) < 0.0001f;
+        }
+
+        bool simulationHeld = lab.Buddy.RoutedTicks == ticksAtPause;
+
+        // Releasing must restore motion rather than latch the hold.
+        lab.Controls.SetPaused(false);
+        bool resumed = false;
+        for (int frame = 0; frame < 600 && !resumed; frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            resumed = lab.Activities.OffsetFor((int)BuddyPartId.Torso).DistanceTo(offset) > 0.0001f ||
+                Mathf.Abs(lab.VisualPresenter.AppliedYawDegrees - yaw) > 0.0001f;
+        }
+
+        bool passed = simulationHeld && stillYaw && stillHead && stillOffset && resumed;
+        messages.Add($"pause_hold yaw_still={stillYaw} head_still={stillHead} " +
+            $"offset_still={stillOffset} resumed={resumed}");
+        return new StartupCheck("pause_holds_presentation", passed,
+            $"simulation_held={simulationHeld} yaw_still={stillYaw} head_still={stillHead} " +
+            $"offset_still={stillOffset} resumed_after_release={resumed}");
     }
 
     /// <summary>

@@ -32,7 +32,7 @@ public partial class FacingController : Node
     [Export] public BuddyExpressionProfile Profile { get; set; } = null!;
 
     private FacingModel _model = null!;
-    private ulong _lastPhysicsFrame;
+    private long _lastRoutedTick;
 
     public bool IsInitialized { get; private set; }
     public FacingSide CommittedSide => IsInitialized ? _model.CommittedSide : FacingSide.Frontal;
@@ -63,7 +63,7 @@ public partial class FacingController : Node
 
         Reseed(Buddy.AutonomousMotion.Seed);
         Buddy.AutonomyReseeded += Reseed;
-        _lastPhysicsFrame = Engine.GetPhysicsFrames();
+        _lastRoutedTick = Buddy.RoutedTicks;
         IsInitialized = true;
     }
 
@@ -91,9 +91,11 @@ public partial class FacingController : Node
             throw new InvalidOperationException("FacingController used before initialization.");
         }
 
-        ulong now = Engine.GetPhysicsFrames();
-        int ticksElapsed = (int)Math.Clamp(now - _lastPhysicsFrame, 0, int.MaxValue);
-        _lastPhysicsFrame = now;
+        // The simulation's routed clock, not the engine frame counter: a paused lab must
+        // not accumulate hysteresis or fire idle-variety flips behind a frozen buddy.
+        long now = Buddy.RoutedTicks;
+        int ticksElapsed = (int)Math.Clamp(now - _lastRoutedTick, 0, int.MaxValue);
+        _lastRoutedTick = now;
 
         bool engaged = false;
         float side = 0.0f;

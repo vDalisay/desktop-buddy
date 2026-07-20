@@ -413,3 +413,21 @@ the two minutes the shipping 4–10 s cadence would need. Full regression green:
 `presentation_3d`, toggle journey, quick suite 9/9, build 0/0. (The `ObjectDB instances
 leaked at exit` warning on `presentation_3d`/`facing_follows_walk` was verified against a
 stashed tree to predate this task.)
+
+**Task 4 owner inspection follow-up — pause regression, FIXED (2026-07-20).** The owner ran
+the lab and reported the buddy "frozen in place, only its head moving". The freeze itself was
+the `P` pause key, but it exposed a real regression: the M3.6 performance layer is driven by
+the RENDERED frame, while the laboratory pause freezes the bodies and stops routing gameplay
+ticks — rendering continues, so blend, facing, clips, and gaze kept animating behind a frozen
+ragdoll. Worse, the M3.6 timers counted `Engine.GetPhysicsFrames()`, which ignores the routing
+gate entirely, so idle-variety flips and ambient glances fired while paused. Root fix:
+**`BuddyRoot.RoutedTicks`** is now the simulation's own clock (incremented only on a routed
+tick; no behaviour change), and `FacingController`, `HeadLookAtComponent`, and
+`BuddyPosePipeline` count in it instead of engine frames — so a pause holds every timer, a
+single step advances each by exactly one, and the post-impact cooldown can no longer burn
+while paused. The seconds clock is held by `BuddyVisualPresenter.SetPresentationHeld(bool)`,
+called from `LaboratoryControlComponent.SetPaused` (optional export; the sandbox has no pause
+and never calls it). Tracking still renders every frame, so a single step shows the new pose.
+New `pause_holds_presentation` check in `pose_pipeline` guards it: yaw, head angles, and
+activity offsets all still for 600 frames while paused, motion resuming on release. Verified
+live before and after (paused at `facing Left 20.3`, unchanged nine seconds later).

@@ -61,6 +61,12 @@ public partial class BuddyVisualPresenter : Node3D
     private readonly Vector3[] _developmentOffsets = new Vector3[PuppetRigProfile.RequiredPartCount];
     private float _performanceWeight;
 
+    // Set while the owning root is holding the simulation (the laboratory pause). Tracking
+    // still renders every frame — a single step must show the new body pose — but the
+    // performance layer's SECONDS clock stops, so blends, eased turns, activity clips, and
+    // the gaze freeze with the buddy instead of animating behind a frozen ragdoll.
+    private bool _presentationHeld;
+
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public BuddyVisualProfile Profile { get; set; } = null!;
     /// <summary>Optional M3.6 pose pipeline; when absent the presenter is pure M3.5 tracking.</summary>
@@ -419,22 +425,39 @@ public partial class BuddyVisualPresenter : Node3D
         }
     }
 
+    /// <summary>
+    /// Holds or releases the performance layer's seconds clock. The laboratory pause calls
+    /// this so a paused buddy is visually still: the M3.6 layer is driven by the rendered
+    /// frame, which keeps arriving while the routed gameplay tick does not.
+    /// </summary>
+    public void SetPresentationHeld(bool held)
+    {
+        _presentationHeld = held;
+        if (IsInitialized)
+        {
+            UpdateVisuals(0.0, 1.0f);
+        }
+    }
+
     private void UpdateVisuals(double delta, float fraction)
     {
+        double performanceDelta = _presentationHeld ? 0.0 : delta;
         _performanceWeight = PosePipeline is { IsInitialized: true }
-            ? PosePipeline.Evaluate(delta)
+            ? PosePipeline.Evaluate(performanceDelta)
             : 0.0f;
-        float facingYawDegrees = Facing is { IsInitialized: true } ? Facing.Evaluate(delta) : 0.0f;
+        float facingYawDegrees = Facing is { IsInitialized: true }
+            ? Facing.Evaluate(performanceDelta)
+            : 0.0f;
         _yawRadians = _developmentYawRadians +
             (Mathf.DegToRad(facingYawDegrees) * _performanceWeight);
         if (Activities is { IsInitialized: true })
         {
-            Activities.Evaluate(delta, _performanceWeight > 0.0f);
+            Activities.Evaluate(performanceDelta, _performanceWeight > 0.0f);
         }
 
         if (HeadLookAt is { IsInitialized: true })
         {
-            LookAtAngles look = HeadLookAt.Evaluate(delta);
+            LookAtAngles look = HeadLookAt.Evaluate(performanceDelta);
             _headLookYawRadians = Mathf.DegToRad(look.YawDegrees) * _performanceWeight;
             _headLookPitchRadians = Mathf.DegToRad(look.PitchDegrees) * _performanceWeight;
         }

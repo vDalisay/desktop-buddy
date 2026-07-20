@@ -41,9 +41,9 @@ public partial class HeadLookAtComponent : Node
     [Export] public BuddyExpressionProfile Profile { get; set; } = null!;
 
     private LookAtModel _model = null!;
-    private ulong _lastPhysicsFrame;
-    // Physics-frame stamp and world point of the last accepted impact; MinValue = never.
-    private long _lastImpactFrame = long.MinValue;
+    private long _lastRoutedTick;
+    // Routed-tick stamp and world point of the last accepted impact; MinValue = never.
+    private long _lastImpactTick = long.MinValue;
     private Vector2 _lastImpactPoint;
 
     public bool IsInitialized { get; private set; }
@@ -88,7 +88,7 @@ public partial class HeadLookAtComponent : Node
         Reseed(Buddy.AutonomousMotion.Seed);
         Buddy.AutonomyReseeded += Reseed;
         DamagePipeline.ImpactAccepted += OnImpactAccepted;
-        _lastPhysicsFrame = Engine.GetPhysicsFrames();
+        _lastRoutedTick = Buddy.RoutedTicks;
         IsInitialized = true;
     }
 
@@ -126,9 +126,11 @@ public partial class HeadLookAtComponent : Node
             throw new InvalidOperationException("HeadLookAtComponent used before initialization.");
         }
 
-        ulong now = Engine.GetPhysicsFrames();
-        int ticksElapsed = (int)Math.Clamp(now - _lastPhysicsFrame, 0, int.MaxValue);
-        _lastPhysicsFrame = now;
+        // The simulation's routed clock, not the engine frame counter (see BuddyRoot):
+        // glance cadence and impact memory must hold still while the sim is held.
+        long now = Buddy.RoutedTicks;
+        int ticksElapsed = (int)Math.Clamp(now - _lastRoutedTick, 0, int.MaxValue);
+        _lastRoutedTick = now;
 
         // Engagement is sampled exactly as the facing controller samples it: the cursor is
         // watched only while an interaction is actually engaged (the owner-resolved rule —
@@ -156,9 +158,9 @@ public partial class HeadLookAtComponent : Node
             ? WorldPlaneMapping.To2D(Activities.ItemSocket.GlobalPosition)
             : Vector2.Zero;
 
-        long framesSinceImpact = _lastImpactFrame == long.MinValue
+        long ticksSinceImpact = _lastImpactTick == long.MinValue
             ? long.MaxValue
-            : (long)now - _lastImpactFrame;
+            : now - _lastImpactTick;
 
         Vector2 head = Buddy.Rig.Head.GlobalPosition;
         var inputs = new LookAtInputs(
@@ -166,7 +168,7 @@ public partial class HeadLookAtComponent : Node
             cursor.X, cursor.Y,
             itemValid,
             item.X, item.Y,
-            (int)Math.Clamp(framesSinceImpact, 0, int.MaxValue),
+            (int)Math.Clamp(ticksSinceImpact, 0, int.MaxValue),
             _lastImpactPoint.X, _lastImpactPoint.Y,
             Profile.SuppressesLookAt(Reactions.CurrentFace),
             head.X, head.Y);
@@ -175,7 +177,7 @@ public partial class HeadLookAtComponent : Node
 
     private void OnImpactAccepted(AcceptedImpact impact)
     {
-        _lastImpactFrame = (long)Engine.GetPhysicsFrames();
+        _lastImpactTick = Buddy.RoutedTicks;
         _lastImpactPoint = impact.Point;
     }
 }
