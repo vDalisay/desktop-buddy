@@ -461,6 +461,23 @@ buddy "frozen in place, only its head moving", plus too-busy ambient motion. Fou
    old comparison proved nothing). Other scenarios' single strikes still land; if another
    one starts missing after a tuning change, this is the reason.
 
+**Face-art mockup gate spike BUILT (2026-07-20), awaiting the owner pick.** The
+DECISIONS.md gate ("2–3 rendered face variants, spike-style minimal ink dots among them,
+in a development-only preview") is served by `scenes/spike_face_mockup.tscn` +
+`src/Laboratory/FaceMockupSpike.cs` (throwaway, export-irrelevant, `TransparentWindowSpike`
+pattern — not wired into any shipping scene). Launch:
+`Godot_console.exe --path . scenes/spike_face_mockup.tscn`. It shows a 3x4 grid of heads
+rendered with the ACCEPTED look (same `lab_buddy_look.tres` materials/outline/light rig the
+presenter ships): rows = variants **A INK DOTS** (spike-minimal dot eyes + line mouths),
+**B SOFT OVAL** (oval eyes w/ highlight, brows, rounded mouths), **C BEAN + BLUSH** (large
+bean eyes w/ sparkle highlights, cheek blush, expressive mouths); columns = neutral `:|`,
+delight `^_^`, pain `>_<`, startle `o_o`, with the startle column over a dark busy-desktop
+panel. Faces are drawn procedurally (CanvasItem → SubViewport texture) onto a head-front
+quad at surface + epsilon — the exact Task 5 FaceCompositor mounting — so the judged art is
+what ships. `Y` cycles yaw 0/+30/−30 (verified readable at ±30°, sideways-glyph hazard
+gone); `Esc` quits. MCP screenshot pass done at 0° and +30°. Once the owner picks a
+variant, record it in `DECISIONS.md` and Task 5 feature art is unblocked.
+
 Also noted for Task 6: its rerun list names a scenario id `m3_glove_strike` that does not
 exist in the catalog; the real M3 ids are `m3_presentation` and `tool_feel_reactions`.
 Full rerun after all three: domain 363/363, `pose_pipeline` (with the new guard),
