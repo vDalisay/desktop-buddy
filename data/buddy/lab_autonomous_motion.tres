@@ -14,3 +14,4 @@ MaximumJumpIntervalTicks = 1800
 IdleWeight = 6
 WalkLeftWeight = 3
 WalkRightWeight = 3
+AmbientJumpsEnabled = false

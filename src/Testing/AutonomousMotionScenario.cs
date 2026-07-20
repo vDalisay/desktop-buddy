@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
 using Godot;
@@ -27,6 +28,27 @@ public sealed class AutonomousMotionScenario : IScenario
         }
 
         BuddyLab lab = packed.Instantiate<BuddyLab>();
+
+        // The shipped profile has ambient jumping OFF (owner decision 2026-07-20), but the
+        // jump ACTUATION path is still live code that tool reactions and M4 behaviours
+        // drive, so this regression keeps exercising it through a scenario-local profile
+        // that re-enables the ambient timer. The shipped datum is asserted separately.
+        AutonomousMotionProfile shipped = lab.Buddy.AutonomousMotion.Profile;
+        bool shippedAmbientJumps = shipped.AmbientJumpsEnabled;
+        lab.Buddy.AutonomousMotion.Profile = new AutonomousMotionProfile
+        {
+            ResourceName = "ScenarioAmbientJumpsEnabled",
+            MinimumIdleTicks = shipped.MinimumIdleTicks,
+            MaximumIdleTicks = shipped.MaximumIdleTicks,
+            MinimumWalkTicks = shipped.MinimumWalkTicks,
+            MaximumWalkTicks = shipped.MaximumWalkTicks,
+            MinimumJumpIntervalTicks = shipped.MinimumJumpIntervalTicks,
+            MaximumJumpIntervalTicks = shipped.MaximumJumpIntervalTicks,
+            IdleWeight = shipped.IdleWeight,
+            WalkLeftWeight = shipped.WalkLeftWeight,
+            WalkRightWeight = shipped.WalkRightWeight,
+            AmbientJumpsEnabled = true,
+        };
         tree.Root.AddChild(lab);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         lab.Buddy.ReseedAutonomy(seed);
@@ -36,6 +58,11 @@ public sealed class AutonomousMotionScenario : IScenario
             "autonomy_starts_from_standing",
             initiallyStanding,
             $"stable_ticks={lab.Buddy.Standing.Snapshot.StableTicks}"));
+
+        checks.Add(new StartupCheck(
+            "shipped_profile_disables_ambient_jumping",
+            !shippedAmbientJumps,
+            $"ambient_jumps_enabled={shippedAmbientJumps}"));
 
         Vector2 start = lab.Buddy.Rig.Torso.GlobalPosition;
         float minimumTorsoY = start.Y;

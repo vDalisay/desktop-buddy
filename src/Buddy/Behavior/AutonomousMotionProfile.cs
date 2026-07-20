@@ -18,6 +18,10 @@ public partial class AutonomousMotionProfile : GameResource
     [Export(PropertyHint.Range, "0,100,1")] public int WalkLeftWeight { get; set; } = 3;
     [Export(PropertyHint.Range, "0,100,1")] public int WalkRightWeight { get; set; } = 3;
 
+    /// <summary>Ambient timer-driven jumping. Owner-disabled 2026-07-20 (see DECISIONS.md);
+    /// tool-reaction hops and future behaviour-driven jumps are unaffected.</summary>
+    [Export] public bool AmbientJumpsEnabled { get; set; } = true;
+
     public AutonomousMotionTuning ToTuning() => new(
         MinimumIdleTicks,
         MaximumIdleTicks,
@@ -27,7 +31,8 @@ public partial class AutonomousMotionProfile : GameResource
         MaximumJumpIntervalTicks,
         IdleWeight,
         WalkLeftWeight,
-        WalkRightWeight);
+        WalkRightWeight,
+        AmbientJumpsEnabled);
 
     public override Godot.Collections.Array<string> Validate()
     {

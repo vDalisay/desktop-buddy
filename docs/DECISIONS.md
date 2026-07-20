@@ -122,6 +122,17 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   `repeat_envelope` (position spread `331.97` within the `400` bound), `idle_soak`
   (216,000 ticks, zero hard recoveries), plus the full M3.5/M3.6 presentation list and
   the quick suite. The owner still judges the new cadence hands-on at the M3.6 exit gate.
+- **Ambient timer-driven jumping is OFF (2026-07-20).** The owner judged the random
+  timer jumps "a bit too random" and disabled them **for now** — a reversible data
+  switch, not a removal. `AutonomousMotionTuning.AmbientJumpsEnabled` (default `true` in
+  code, `false` in `lab_autonomous_motion.tres`) gates only the ambient jump timer: when
+  off it never requests a jump and draws nothing from the seeded stream. The jump
+  actuation path is untouched and still reachable — tool-reaction hops (tickle flee) and
+  Milestone 4's behaviour-driven jumps use the same `DriveIntent.JumpRequested`, as does
+  the M3.6 jump-anticipation activity. The interval range stays valid data so re-enabling
+  is a one-flag change. The `autonomous_motion` scenario keeps covering jump actuation
+  through a scenario-local jumps-enabled profile and separately asserts the shipped datum
+  is off.
 - Presentation-side calming applied at the same time in `lab_buddy_expression.tres`
   (M3.6-owned, not M1): facing walk commit `36` → `90` ticks, idle side flips
   `720-1920` → `1440-3600`, ambient glances `480-1200` → `720-1800`, breathing

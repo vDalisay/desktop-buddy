@@ -204,20 +204,38 @@ public sealed class FacingScenario : IScenario
         SceneTree tree, BuddyLab lab, List<string> messages)
     {
         FacingController facing = lab.Facing;
-        FacingSide sideBefore = facing.CommittedSide;
 
         // A controlled strike forces Tracking through the real impact cooldown: the
         // DISPLAYED yaw (facing scaled by the blend weight) must snap to zero on the
         // next rendered frame while the committed side survives the ragdoll cut.
-        AcceptedImpact? impact =
-            await ScenarioSteps.StrikePartAtSpeed(tree, lab, lab.Buddy.Rig.Torso, 2000.0f);
+        // The probe body spawns a fixed offset from the torso and is launched at it, which
+        // assumes a clear line. Where the limbs and the walking torso actually are when it
+        // fires depends on the autonomy stream, so a single attempt can legitimately miss —
+        // it did on both seeds after the 2026-07-20 cadence change, scoring no contact at
+        // all. Retry: this check is about what an ACCEPTED impact does to the displayed
+        // yaw, not about landing one on the first try.
+        AcceptedImpact? impact = null;
+        int attempts = 0;
+        while (impact is null && attempts < 5)
+        {
+            attempts++;
+            impact = await ScenarioSteps.StrikePartAtSpeed(tree, lab, lab.Buddy.Rig.Torso, 2000.0f);
+        }
+
+        // The side is captured at the CUT, not before the retry window: the buddy keeps
+        // walking between attempts and may legitimately re-commit to the other side, so a
+        // side sampled before the retries proves nothing. The invariant under test is that
+        // the ragdoll cut itself does not reset the model to Frontal.
+        FacingSide sideAtCut = facing.CommittedSide;
+        messages.Add($"strike_probe attempts={attempts} impact={impact is not null} " +
+            $"side_at_cut={sideAtCut}");
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
         bool tracking = lab.PosePipeline.Mode == PresentationPoseMode.Tracking;
         bool displayedSnapped = Mathf.Abs(lab.VisualPresenter.AppliedYawDegrees) < 0.001f;
-        bool sideRemembered = facing.CommittedSide == sideBefore &&
-            sideBefore != FacingSide.Frontal;
+        bool sideRemembered = facing.CommittedSide == sideAtCut &&
+            sideAtCut != FacingSide.Frontal;
 
         bool passed = impact is not null && tracking && displayedSnapped && sideRemembered;
         messages.Add($"tracking_snap displayed={lab.VisualPresenter.AppliedYawDegrees:F4} " +

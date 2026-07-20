@@ -83,6 +83,35 @@ public sealed class AutonomousMotionPlannerTests
         }
     }
 
+    [Fact]
+    public void AmbientJumpsEnabled_ByDefault_StillJumps()
+    {
+        var planner = new AutonomousMotionPlanner(new SeededRandomSource(3), Tuning);
+        List<AutonomousMotionIntent> trace = Capture(planner, 200);
+        Assert.Contains(trace, intent => intent.JumpRequested);
+    }
+
+    [Fact]
+    public void AmbientJumpsDisabled_NeverRequestsAJump()
+    {
+        var planner = new AutonomousMotionPlanner(
+            new SeededRandomSource(3), Tuning with { AmbientJumpsEnabled = false });
+        List<AutonomousMotionIntent> trace = Capture(planner, 2000);
+        Assert.DoesNotContain(trace, intent => intent.JumpRequested);
+    }
+
+    [Fact]
+    public void AmbientJumpsDisabled_StillWalksAndIdles()
+    {
+        // Disabling the jump timer must not stall ambient locomotion.
+        var planner = new AutonomousMotionPlanner(
+            new SeededRandomSource(3), Tuning with { AmbientJumpsEnabled = false });
+        List<AutonomousMotionIntent> trace = Capture(planner, 500);
+        Assert.Contains(trace, intent => intent.WalkDirection < 0.0f);
+        Assert.Contains(trace, intent => intent.WalkDirection > 0.0f);
+        Assert.Contains(trace, intent => intent.Goal == AutonomousMotionGoal.Idle);
+    }
+
     private static List<AutonomousMotionIntent> Capture(AutonomousMotionPlanner planner, int ticks)
     {
         var trace = new List<AutonomousMotionIntent>(ticks);

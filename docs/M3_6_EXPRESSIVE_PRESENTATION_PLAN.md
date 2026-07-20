@@ -415,7 +415,7 @@ leaked at exit` warning on `presentation_3d`/`facing_follows_walk` was verified 
 stashed tree to predate this task.)
 
 **Task 4 owner inspection follow-ups (2026-07-20).** The owner ran the lab and reported the
-buddy "frozen in place, only its head moving", plus too-busy ambient motion. Three outcomes:
+buddy "frozen in place, only its head moving", plus too-busy ambient motion. Four outcomes:
 
 1. **Pause regression, FIXED (the M3.6 layer animated through a laboratory pause).** The
    performance layer is driven by the RENDERED frame; the lab pause freezes the bodies and
@@ -440,6 +440,26 @@ buddy "frozen in place, only its head moving", plus too-busy ambient motion. Thr
    walk 120–240 → 240–480, jump interval 240–480 → 960–1800, idle weight 2 → 6. No envelope
    re-baseline was needed — `autonomous_motion`, `repeat_envelope`, and `idle_soak` stayed
    green as-is.
+
+4. **Ambient jumping disabled (2026-07-20, owner: "a bit too random").** New
+   `AmbientJumpsEnabled` switch on `AutonomousMotionTuning`/`AutonomousMotionProfile`
+   (default `true` in code, `false` in the shipped `.tres`) gates only the ambient jump
+   timer — when off it never requests a jump and draws nothing from the seeded stream.
+   Jump actuation is untouched: tool-reaction hops, M4 behaviour jumps, and the M3.6
+   jump-anticipation activity all still ride `DriveIntent.JumpRequested`. Three new domain
+   tests; `autonomous_motion` keeps covering jump actuation via a scenario-local
+   jumps-enabled profile (differing from shipped ONLY by the flag, so the seeded goal
+   stream is unchanged) and asserts the shipped datum is off.
+   **Fallout worth knowing:** turning ambient jumps off shifted where the buddy is standing
+   when `facing_follows_walk` fires its controlled strike, and the strike started missing
+   entirely (no contact scored at all, on both seeds). The cause is the shared
+   `ScenarioSteps.StrikePart` helper — it spawns a probe body a fixed offset from the
+   target and launches it, which assumes a clear line, so whether it connects depends on
+   where autonomy has put the limbs. Fixed in the scenario by retrying the strike up to
+   five times, and by capturing the committed facing side AT THE CUT rather than before the
+   retry window (the buddy walks between attempts and may legitimately re-commit, so the
+   old comparison proved nothing). Other scenarios' single strikes still land; if another
+   one starts missing after a tuning change, this is the reason.
 
 Also noted for Task 6: its rerun list names a scenario id `m3_glove_strike` that does not
 exist in the catalog; the real M3 ids are `m3_presentation` and `tool_feel_reactions`.

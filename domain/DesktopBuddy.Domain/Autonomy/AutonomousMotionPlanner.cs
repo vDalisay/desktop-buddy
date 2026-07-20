@@ -18,7 +18,12 @@ public readonly record struct AutonomousMotionTuning(
     int MaximumJumpIntervalTicks,
     int IdleWeight,
     int WalkLeftWeight,
-    int WalkRightWeight)
+    int WalkRightWeight,
+    // Owner switch (2026-07-20): ambient timer-driven jumping reads as random noise, so
+    // it ships off. The jump ACTUATION path is untouched and still reachable — tool
+    // reactions hop, and M4's behaviours will jump for reasons. The interval range stays
+    // valid data so re-enabling is a one-flag change.
+    bool AmbientJumpsEnabled = true)
 {
     public void Validate()
     {
@@ -76,7 +81,10 @@ public sealed class AutonomousMotionPlanner
         tuning.Validate();
         _tuning = tuning;
         SelectNextGoal();
-        ScheduleNextJump();
+        if (_tuning.AmbientJumpsEnabled)
+        {
+            ScheduleNextJump();
+        }
     }
 
     public AutonomousMotionGoal Goal => _goal;
@@ -96,15 +104,22 @@ public sealed class AutonomousMotionPlanner
         }
 
         _goalTicksRemaining--;
-        if (_jumpTicksRemaining > 0)
-        {
-            _jumpTicksRemaining--;
-        }
 
-        bool jumpRequested = canJump && _jumpTicksRemaining == 0;
-        if (jumpRequested)
+        // Disabled means the timer does not exist: no countdown, no draws from the seeded
+        // stream, never a request. Only the ambient timer is gated here.
+        bool jumpRequested = false;
+        if (_tuning.AmbientJumpsEnabled)
         {
-            ScheduleNextJump();
+            if (_jumpTicksRemaining > 0)
+            {
+                _jumpTicksRemaining--;
+            }
+
+            jumpRequested = canJump && _jumpTicksRemaining == 0;
+            if (jumpRequested)
+            {
+                ScheduleNextJump();
+            }
         }
 
         float direction = canWalk
