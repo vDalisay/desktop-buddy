@@ -107,6 +107,26 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   `"x_x"`, or `">:("`. Blink cadence stays open until Task 5. The owner judges the
   cadence at the M3.6 exit gate.
 
+### Ambient cadence calmed — supersedes part of the M1 autonomy tuning (2026-07-20)
+
+- Owner direction during the M3.6 Task 4 inspection: **"the buddy needs to be more chill
+  with less actions"**; walking "darted around too much". The cause was ambient autonomy,
+  not the M3.6 presentation layer. `lab_autonomous_motion.tres` (still
+  `AcceptedM1LabAutonomousMotion`, lineage kept) is **amended** with owner approval:
+  idle `60-120` → `240-600` ticks, walk `120-240` → `240-480`, jump interval `240-480` →
+  `960-1800`, idle selection weight `2` → `6` (walk weights unchanged at `3`/`3`). The
+  buddy now stands still most of the time, walks in longer deliberate stretches, and
+  jumps every ~8-15 s instead of every 2-4 s. Everything else in the 2026-07-12 accepted
+  M1 tuning (damping, grab authority, gait, recovery) is **untouched**.
+- Verified green without re-baselining `lab_envelope_bounds.tres`: `autonomous_motion`,
+  `repeat_envelope` (position spread `331.97` within the `400` bound), `idle_soak`
+  (216,000 ticks, zero hard recoveries), plus the full M3.5/M3.6 presentation list and
+  the quick suite. The owner still judges the new cadence hands-on at the M3.6 exit gate.
+- Presentation-side calming applied at the same time in `lab_buddy_expression.tres`
+  (M3.6-owned, not M1): facing walk commit `36` → `90` ticks, idle side flips
+  `720-1920` → `1440-3600`, ambient glances `480-1200` → `720-1800`, breathing
+  `3.2 s`/`1.2 px` → `4.4 s`/`0.8 px`, walk bob `1.5` → `1.0`.
+
 ## Accepted Milestone 1 Feel Tuning (2026-07-12)
 
 - The owner performed the `TEST_PLAN.md` §8 side-by-side feel review of the tuning produced by `docs/M1_FEEL_AND_GAIT_PLAN.md` and **accepted it** ("this feels way better, I approve"). This satisfies the ROADMAP Milestone 1 exit criterion "lock an initial accepted tuning Resource." The accepted profiles are `data/buddy/lab_puppet_rig.tres`, `lab_grab_tether.tres`, `lab_active_drive.tres`, `lab_conscious_drive.tres`, `lab_unconscious_drive.tres`, `lab_autonomous_motion.tres`, and `lab_boundary.tres`, renamed from `Provisional*` to `AcceptedM1*` to mark the lock. Changing them now requires a new owner feel review.

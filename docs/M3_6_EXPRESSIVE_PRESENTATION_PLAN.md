@@ -414,20 +414,37 @@ the two minutes the shipping 4–10 s cadence would need. Full regression green:
 leaked at exit` warning on `presentation_3d`/`facing_follows_walk` was verified against a
 stashed tree to predate this task.)
 
-**Task 4 owner inspection follow-up — pause regression, FIXED (2026-07-20).** The owner ran
-the lab and reported the buddy "frozen in place, only its head moving". The freeze itself was
-the `P` pause key, but it exposed a real regression: the M3.6 performance layer is driven by
-the RENDERED frame, while the laboratory pause freezes the bodies and stops routing gameplay
-ticks — rendering continues, so blend, facing, clips, and gaze kept animating behind a frozen
-ragdoll. Worse, the M3.6 timers counted `Engine.GetPhysicsFrames()`, which ignores the routing
-gate entirely, so idle-variety flips and ambient glances fired while paused. Root fix:
-**`BuddyRoot.RoutedTicks`** is now the simulation's own clock (incremented only on a routed
-tick; no behaviour change), and `FacingController`, `HeadLookAtComponent`, and
-`BuddyPosePipeline` count in it instead of engine frames — so a pause holds every timer, a
-single step advances each by exactly one, and the post-impact cooldown can no longer burn
-while paused. The seconds clock is held by `BuddyVisualPresenter.SetPresentationHeld(bool)`,
-called from `LaboratoryControlComponent.SetPaused` (optional export; the sandbox has no pause
-and never calls it). Tracking still renders every frame, so a single step shows the new pose.
-New `pause_holds_presentation` check in `pose_pipeline` guards it: yaw, head angles, and
-activity offsets all still for 600 frames while paused, motion resuming on release. Verified
-live before and after (paused at `facing Left 20.3`, unchanged nine seconds later).
+**Task 4 owner inspection follow-ups (2026-07-20).** The owner ran the lab and reported the
+buddy "frozen in place, only its head moving", plus too-busy ambient motion. Three outcomes:
+
+1. **Pause regression, FIXED (the M3.6 layer animated through a laboratory pause).** The
+   performance layer is driven by the RENDERED frame; the lab pause freezes the bodies and
+   stops routing gameplay ticks but rendering continues, so blend, facing, clips, and gaze
+   kept running behind a frozen ragdoll — and because the M3.6 timers counted
+   `Engine.GetPhysicsFrames()`, which ignores the routing gate, idle-variety flips and
+   glances fired while paused. Root fix: **`BuddyRoot.RoutedTicks`** is now the simulation's
+   own clock (incremented only on a routed tick, no behaviour change), and
+   `FacingController`, `HeadLookAtComponent`, and `BuddyPosePipeline` count in it instead of
+   engine frames — so a pause holds every timer, a single step advances each by exactly one,
+   and the post-impact cooldown can no longer burn while paused. The seconds clock is held
+   by `BuddyVisualPresenter.SetPresentationHeld(bool)`, called from
+   `LaboratoryControlComponent.SetPaused` (optional export; the sandbox has no pause and
+   never calls it). Tracking still renders every frame, so a single step shows the new pose.
+   New `pause_holds_presentation` check in `pose_pipeline` guards it (yaw, head angles, and
+   activity offsets all still for 600 frames while paused; motion resumes on release).
+2. **Presentation calmed** in `lab_buddy_expression.tres` — facing walk commit 36 → 90 ticks
+   (short autonomy walk bursts no longer trigger a turn), idle flips 720–1920 → 1440–3600,
+   glances 480–1200 → 720–1800, breathing 3.2 s/1.2 px → 4.4 s/0.8 px, walk bob 1.5 → 1.0.
+3. **The "darting" was ambient autonomy, not this slice.** `lab_autonomous_motion.tres`
+   amended with explicit owner approval (recorded in `DECISIONS.md`): idle 60–120 → 240–600,
+   walk 120–240 → 240–480, jump interval 240–480 → 960–1800, idle weight 2 → 6. No envelope
+   re-baseline was needed — `autonomous_motion`, `repeat_envelope`, and `idle_soak` stayed
+   green as-is.
+
+Also noted for Task 6: its rerun list names a scenario id `m3_glove_strike` that does not
+exist in the catalog; the real M3 ids are `m3_presentation` and `tool_feel_reactions`.
+Full rerun after all three: domain 363/363, `pose_pipeline` (with the new guard),
+`facing_follows_walk`, `activity_clips`, `lookat_priority_and_cone`, `presentation_look`,
+`presentation_3d`, `m3_presentation`, `tool_feel_reactions`, `knockout_window`,
+`autonomous_motion`, `repeat_envelope`, `idle_soak`, toggle journey, quick suite 9/9,
+build 0/0.

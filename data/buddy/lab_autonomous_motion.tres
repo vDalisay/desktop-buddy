@@ -5,12 +5,12 @@
 [resource]
 resource_name = "AcceptedM1LabAutonomousMotion"
 script = ExtResource("1_profile")
-MinimumIdleTicks = 60
-MaximumIdleTicks = 120
-MinimumWalkTicks = 120
-MaximumWalkTicks = 240
-MinimumJumpIntervalTicks = 240
-MaximumJumpIntervalTicks = 480
-IdleWeight = 2
+MinimumIdleTicks = 240
+MaximumIdleTicks = 600
+MinimumWalkTicks = 240
+MaximumWalkTicks = 480
+MinimumJumpIntervalTicks = 960
+MaximumJumpIntervalTicks = 1800
+IdleWeight = 6
 WalkLeftWeight = 3
 WalkRightWeight = 3
