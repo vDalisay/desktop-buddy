@@ -1,0 +1,27 @@
+{
+  "id": "m36_expressive",
+  "description": "M3.6 composition pass: walk dressing while the seeded autonomy walks, committed three-quarter turn-arounds both ways through the laboratory facing keys, and eat with a socketed item plus a wave. Presentation-only assertions.",
+  "milestone": 3,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m36_expressive",
+    "seed": 1,
+    "timeout_physics_ticks": 3600
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "expressive_layer_composed" },
+    { "predicate": "walked_during_journey" },
+    { "predicate": "walk_dressing_plays" },
+    { "predicate": "facing_turns_left" },
+    { "predicate": "facing_turns_right" },
+    { "predicate": "facing_turn_is_eased" },
+    { "predicate": "facing_release_returns_to_autonomy" },
+    { "predicate": "eat_key_attaches_item" },
+    { "predicate": "eat_clip_plays_with_item" },
+    { "predicate": "eat_key_clears_item" },
+    { "predicate": "wave_key_plays_wave" },
+    { "predicate": "lab_composed" },
+    { "predicate": "lab_finite" }
+  ]
+}
