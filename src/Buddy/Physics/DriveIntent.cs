@@ -5,7 +5,7 @@ namespace DesktopBuddy.Buddy.Physics;
 /// <summary>
 /// One resolved bounded actuation request. Behavior components choose intent;
 /// <see cref="ActiveDriveComponent"/> alone applies locomotion, jump, resistance,
-/// and defensive hand-target forces.
+/// defensive hand-target forces, and behavior-backed physical reaches.
 /// </summary>
 public readonly record struct DriveIntent(
     float WalkDirection,
@@ -22,4 +22,9 @@ public readonly record struct DriveIntent(
     float GuardStiffness,
     float GuardDamping,
     float GuardMaximumForce,
-    float GuardAbsorption);
+    float GuardAbsorption,
+    bool StationaryActive,
+    bool ActivityHandReachActive,
+    float ActivityReachLift,
+    Vector2 LeftActivityHandTarget,
+    Vector2 RightActivityHandTarget);

@@ -56,6 +56,7 @@ AppRoot (Node; composition only)
 │   │   ├── BehaviorArbiter
 │   │   ├── ObjectInteractionComponent
 │   │   ├── GrabResistanceComponent
+│   │   ├── BehaviorActivityComponent
 │   │   ├── PainKnockoutComponent
 │   │   ├── MoodMemoryComponent
 │   │   ├── StatusEffectComponent
@@ -78,8 +79,9 @@ Names may change, but ownership may not collapse into `AppRoot`, `BuddyRoot`, or
 | Component | Owns | Must not own |
 | --- | --- | --- |
 | `PuppetRig` | Six typed bodies, part IDs, collision setup, measurements, tuning reference | Behavior selection, mood, money |
-| `PuppetConstraintComponent` | Equal/opposite spring/damping, stretch correction, strain telemetry in fixed integration | AI goals, transform teleporting |
+| `PuppetConstraintComponent` | Equal/opposite spring/damping, stretch correction, strain telemetry in fixed integration; typed passive topology retention while an unsupported grab translates the rig | AI goals, active upright/locomotion drive, transform teleporting |
 | `ActiveDriveComponent` | Bounded upright/balance/walk/jump/recovery/object-action forces from an intent | Choosing intent, saving state |
+| `BehaviorActivityComponent` | Fixed-tick duration and gameplay intent for behavior-backed activities (Eat now) | Visual clips, applying forces |
 | `BehaviorArbiter` | Priority resolution and immutable actuation/object intents | Applying forces or changing money |
 | `ObjectInteractionComponent` | Candidate sensing and catch/hold/inspect/consume/discard/toss action lifecycle | General locomotion or store ownership |
 | `GrabTetherController` | Acquisition, elastic cursor force, strain, release/cancel, velocity cap | Fear decision or damage calculation |
@@ -304,7 +306,34 @@ Steam Cloud synchronizes `progress.json` only. `settings.json`, backups, quarant
 
 ## 14. Presentation and Audio
 
-Buddy visuals attach directly to each physical body; do not depend on the experimental `SkeletonModification2DPhysicalBones`. Limb connector drawing reads body positions but never drives them. The face presenter resolves consciousness/acute reaction above persistent mood and draws the resulting emoticon on the head.
+Buddy visuals attach directly to each physical body; do not depend on the experimental `SkeletonModification2DPhysicalBones`. Limb connector drawing reads body positions but never drives them. The face presenter resolves consciousness/acute reaction above persistent mood; since M3.6 Task 5 that resolved expression is composed from typed features onto a face plate rather than drawn as an emoticon glyph (see 14.1).
+
+### 14.1 Presentation modes and the expressive layer (M3.5 / M3.6)
+
+Two presentation modes render the same physics truth: `Mii3D` (the shipping default since the M3.5 Task 8 gate) and `LegacyCircles` (a development view kept behind the laboratory `V` key and `--presentation=legacy`). Mode selection is a rendering choice only — every scenario and journey verdict must be identical in both modes.
+
+The M3.6 expressive layer decorates that truth; it never replaces it. `BuddyPosePipeline` arbitrates the pose mode (`Performance` while the buddy behaves, `Tracking` while physics owns the read — grabs, knockouts, hard recoveries) and blends a performance weight between them. Every expressive contributor emits a **bounded offset**, and the presenter clamps the combined offset to `0.5 x part radius` before applying it, so a performance can never move a part far enough to misreport the physics pose. A Tracking cut sets the weight to zero, which snaps all display-only rotation (body yaw, head look-at) to zero in one frame while the committed semantic state (facing side) is remembered.
+
+Contributors, all engine-free models under `DesktopBuddy.Domain.Presentation` with thin Godot nodes:
+
+- **Facing** (`FacingModel` / `FacingController`) — a committed three-quarter side (about `+/-30` degrees yaw) arbitrated as engaged-interaction side > sustained walk direction (hysteresis streak) > seeded idle variety, eased on a monotonic smoothstep that cannot overshoot. Eat temporarily overrides only the presented target to frontal so the buddy faces the food; the committed side remains intact and eases back after Eat.
+- **Activities** (`BehaviorActivityComponent` / `ActivitySelector` / `ActivityAnimator`) —
+  gameplay requests route through `BuddyRoot.SetBehaviorActivity` into a fixed-tick semantic
+  activity; presentation observes its change event. One manual-mode `AnimationPlayer`
+  animates six offset proxies, never sockets or bodies. Priority
+  `Eat > Wave > JumpAnticipation > WalkCycle > IdleBreathe`; walk phase derives from
+  measured torso travel, so steps match speed and freeze at rest. Eat's typed fixed-tick
+  sequence emits exactly five bite events. `ActiveDriveComponent` holds both physical
+  hands around a shared upper-chest-to-mouth target while a presentation-only item socket
+  follows their midpoint and shrinks once per authoritative bite. The fifth cycle lowers
+  the shared hand target to the ordinary limb-rest height and holds it for `30` routed
+  ticks so the physical hands arrive before reach releases. Grounded
+  zero-walk intent applies a bounded whole-rig horizontal brake; airborne momentum is not
+  affected by this idle-stop path.
+- **Look-at** (`LookAtModel` / `HeadLookAtComponent`) — priority engaged cursor > item target > impact memory > seeded ambient glance > rest. The component rotates nothing: the presenter adds pitch/yaw into the head socket only.
+- **Face** (`FaceComposer` / `FaceCompositor`) — features composed procedurally into a `SubViewport` and mounted as a plate on the head front, inheriting the socket transform. The `Label3D` emoticon glyph is retired and survives only as a fallback for hosts that compose no compositor.
+
+All expressive clocks count `BuddyRoot.RoutedTicks` (the simulation's own routed-tick clock), never engine frames, and the presenter honours `SetPresentationHeld` so a paused laboratory shows a visually still buddy. Presentation code never reads or writes gameplay state.
 
 HUD/panels use Godot Control containers, minimum sizes, anchors, and theme scaling. Responsive layouts are verified at the documented aspect ratios and zooms. Presentation settings alter rendering only and must not affect physics results.
 

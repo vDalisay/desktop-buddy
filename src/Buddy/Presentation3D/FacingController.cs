@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
@@ -33,10 +34,14 @@ public partial class FacingController : Node
 
     private FacingModel _model = null!;
     private long _lastRoutedTick;
+    private int _developmentSide;
 
     public bool IsInitialized { get; private set; }
     public FacingSide CommittedSide => IsInitialized ? _model.CommittedSide : FacingSide.Frontal;
     public float CurrentYawDegrees => IsInitialized ? _model.CurrentYawDegrees : 0.0f;
+
+    /// <summary>-1/+1 while a development override stands in for an engaged cursor, else 0.</summary>
+    public int DevelopmentSide => _developmentSide;
 
     public void Initialize()
     {
@@ -81,6 +86,22 @@ public partial class FacingController : Node
         Profile.ToData().ToFacingParameters());
 
     /// <summary>
+    /// Development-only drive (laboratory keys, debug builds): stands in for an engaged
+    /// cursor on the given side so a turn can be triggered without a tool. Pass 0 to hand
+    /// arbitration back to the real inputs; the model itself is untouched, so easing,
+    /// hysteresis, and priority stay exactly the shipping ones.
+    /// </summary>
+    public void SetDevelopmentSide(int side)
+    {
+        if (!BuildInfo.IsDebugBuild)
+        {
+            return;
+        }
+
+        _developmentSide = Math.Sign(side);
+    }
+
+    /// <summary>
     /// Samples current semantics and advances the model; returns the eased yaw in
     /// degrees. Called by the presenter once per rendered frame; allocation-free.
     /// </summary>
@@ -101,7 +122,12 @@ public partial class FacingController : Node
         float side = 0.0f;
         float torsoX = Buddy.Rig.Torso.GlobalPosition.X;
         ToolId tool = DamagePipeline.SelectedTool;
-        if ((tool == ToolId.Pet || tool == ToolId.Tickle) &&
+        if (_developmentSide != 0)
+        {
+            engaged = true;
+            side = _developmentSide;
+        }
+        else if ((tool == ToolId.Pet || tool == ToolId.Tickle) &&
             CareStroke.IsHeld && CareStroke.LastContactValid)
         {
             engaged = true;
@@ -113,7 +139,12 @@ public partial class FacingController : Node
             side = MathF.Sign(Glove.Cursor.X - torsoX);
         }
 
-        var inputs = new FacingInputs(engaged, side, Buddy.CurrentDriveIntent.WalkDirection);
+        bool eatFacesFront = Buddy.Activity.Current == ActivityId.Eat;
+        var inputs = new FacingInputs(
+            engaged,
+            side,
+            Buddy.CurrentDriveIntent.WalkDirection,
+            ForceFrontal: eatFacesFront);
         return _model.Update(inputs, ticksElapsed, deltaSeconds);
     }
 }

@@ -88,6 +88,8 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             "P: pause   .: single tick   U: limp/wake\n" +
             "Shift+U: reseed   1/2/3/4: simulation speed\n" +
             "G: grab  B: glove  F: pet  T: tickle\n" +
+            "V: presentation  E: eat item  Q: wave\n" +
+            "Z/X: face left/right  C: release facing\n" +
             "H: hide/show this panel";
         IsInitialized = true;
         RefreshNow();

@@ -21,6 +21,7 @@ public partial class ActiveDriveComponent : Node
     [Export] public ConsciousnessDriveProfile UnconsciousProfile { get; set; } = null!;
 
     public float LastUprightTorque { get; private set; }
+    public float LastHeadUprightTorque { get; private set; }
     public Vector2 LastBalanceForce { get; private set; }
     public Vector2 LastLocomotionForce { get; private set; }
     public Vector2 LastGaitForce { get; private set; }
@@ -30,6 +31,13 @@ public partial class ActiveDriveComponent : Node
     public Vector2 LastRightGuardForce { get; private set; }
     public Vector2 LastGuardReactionForce { get; private set; }
     public Vector2 LastGuardCounterImpulse { get; private set; }
+    public Vector2 LastRightHandReachForce { get; private set; }
+    public Vector2 LastLeftHandReachForce { get; private set; }
+    public Vector2 LastRightHandReachReactionForce { get; private set; }
+    public Vector2 LastActivityHeadReactionForce { get; private set; }
+    public Vector2 LastActivityTorsoReactionForce { get; private set; }
+    public Vector2 LastStationaryForce { get; private set; }
+    public int HeadRightingDelayTicksRemaining { get; private set; }
     public int GuardAbsorptionCount { get; private set; }
     public int JumpImpulseCount { get; private set; }
     public bool ActiveOutputsEnabled { get; private set; }
@@ -65,9 +73,13 @@ public partial class ActiveDriveComponent : Node
         IsInitialized = true;
     }
 
-    public void PhysicsTick(Consciousness consciousness, DriveIntent intent)
+    public void PhysicsTick(
+        Consciousness consciousness,
+        DriveIntent intent,
+        bool buddyPartGrabbed)
     {
         LastUprightTorque = 0.0f;
+        LastHeadUprightTorque = 0.0f;
         LastBalanceForce = Vector2.Zero;
         LastLocomotionForce = Vector2.Zero;
         LastGaitForce = Vector2.Zero;
@@ -76,6 +88,15 @@ public partial class ActiveDriveComponent : Node
         LastLeftGuardForce = Vector2.Zero;
         LastRightGuardForce = Vector2.Zero;
         LastGuardReactionForce = Vector2.Zero;
+        LastRightHandReachForce = Vector2.Zero;
+        LastLeftHandReachForce = Vector2.Zero;
+        LastRightHandReachReactionForce = Vector2.Zero;
+        LastActivityHeadReactionForce = Vector2.Zero;
+        LastActivityTorsoReactionForce = Vector2.Zero;
+        LastStationaryForce = Vector2.Zero;
+
+        if (HeadRightingDelayTicksRemaining > 0)
+            HeadRightingDelayTicksRemaining--;
 
         ConsciousnessDriveProfile mode = consciousness == Consciousness.Conscious
             ? ConsciousProfile
@@ -87,8 +108,19 @@ public partial class ActiveDriveComponent : Node
             return;
         }
 
-        float assistanceRamp = SuppressRecovery ? 0.0f : Recovery.State.AssistanceRamp;
+        bool dangled = buddyPartGrabbed && Standing.Snapshot.SupportContactCount == 0;
+        float assistanceRamp = SuppressRecovery || dangled ? 0.0f : Recovery.State.AssistanceRamp;
+        if (dangled)
+        {
+            // Airborne grab is a passive ragdoll, exactly like unconscious drive.
+            // Awareness/reactions resume as soon as any support contact returns.
+            ActiveOutputsEnabled = false;
+            ResetGaitState();
+            return;
+        }
+
         ApplyUprightTorque(assistanceRamp, mode);
+        ApplyHeadUprightTorque(mode);
         ApplyBalanceForce(mode);
         if (assistanceRamp > 0.0f)
         {
@@ -112,10 +144,46 @@ public partial class ActiveDriveComponent : Node
             return;
         }
 
-        ApplyLocomotion(intent.WalkDirection, intent.LocomotionScale, mode);
+        bool groundedIdle = Mathf.IsZeroApprox(intent.WalkDirection) &&
+            Standing.Snapshot.SupportContactCount > 0 && !intent.JumpRequested;
+        if (intent.StationaryActive || groundedIdle)
+        {
+            ApplyStationaryBrake(mode);
+            ResetGaitState();
+        }
+        else
+        {
+            ApplyLocomotion(intent.WalkDirection, intent.LocomotionScale, mode);
+        }
         if (intent.GuardActive)
             ApplyGuardHands(intent, mode);
+        else if (intent.ActivityHandReachActive)
+            ApplyActivityHandReach(intent, mode);
         UpdateJump(intent, mode);
+    }
+
+    private void ApplyStationaryBrake(ConsciousnessDriveProfile mode)
+    {
+        float totalMass = TotalMass();
+        float centerVelocityX = 0.0f;
+        foreach (PuppetPartBody body in Rig.Parts)
+            centerVelocityX += body.LinearVelocity.X * (body.Mass / totalMass);
+
+        float forceX = Mathf.Clamp(
+            -centerVelocityX * Profile.StationaryHorizontalDamping * mode.LocomotionScale,
+            -Profile.MaximumStationaryForce,
+            Profile.MaximumStationaryForce);
+        LastStationaryForce = new Vector2(forceX, 0.0f);
+        foreach (PuppetPartBody body in Rig.Parts)
+            body.ApplyCentralForce(LastStationaryForce * (body.Mass / totalMass));
+    }
+
+    /// <summary>Re-arms the calm window after an accepted head impact or live head grab.</summary>
+    public void NotifyHeadDisturbed()
+    {
+        if (!IsInitialized)
+            return;
+        HeadRightingDelayTicksRemaining = Profile.HeadRightingDelayTicks;
     }
 
     /// <summary>Development/test hook: hold ambient walk/jump gait off while keeping upright + balance.</summary>
@@ -174,6 +242,23 @@ public partial class ActiveDriveComponent : Node
             -Profile.MaximumUprightTorque,
             Profile.MaximumUprightTorque);
         torso.ApplyTorque(LastUprightTorque);
+    }
+
+    private void ApplyHeadUprightTorque(ConsciousnessDriveProfile mode)
+    {
+        if (HeadRightingDelayTicksRemaining > 0)
+            return;
+
+        PuppetPartBody head = Rig.Head;
+        float error = Mathf.Wrap(-head.GlobalRotation, -Mathf.Pi, Mathf.Pi);
+        float torque = (error * Profile.HeadUprightStiffness) -
+                       (head.AngularVelocity * Profile.HeadUprightDamping);
+        torque *= mode.UprightScale;
+        LastHeadUprightTorque = Mathf.Clamp(
+            torque,
+            -Profile.MaximumHeadUprightTorque,
+            Profile.MaximumHeadUprightTorque);
+        head.ApplyTorque(LastHeadUprightTorque);
     }
 
     private void ApplyBalanceForce(ConsciousnessDriveProfile mode)
@@ -350,10 +435,12 @@ public partial class ActiveDriveComponent : Node
     private void ApplyGuardHands(DriveIntent intent, ConsciousnessDriveProfile mode)
     {
         Vector2 targetVelocity = Rig.Torso.LinearVelocity;
-        LastLeftGuardForce = DriveHandToGuardTarget(
-            Rig.LeftHand, intent.LeftGuardTarget, targetVelocity, intent, mode);
-        LastRightGuardForce = DriveHandToGuardTarget(
-            Rig.RightHand, intent.RightGuardTarget, targetVelocity, intent, mode);
+        LastLeftGuardForce = DriveHandToTarget(
+            Rig.LeftHand, intent.LeftGuardTarget, targetVelocity,
+            intent.GuardStiffness, intent.GuardDamping, intent.GuardMaximumForce, mode);
+        LastRightGuardForce = DriveHandToTarget(
+            Rig.RightHand, intent.RightGuardTarget, targetVelocity,
+            intent.GuardStiffness, intent.GuardDamping, intent.GuardMaximumForce, mode);
 
         // Guarding is internal actuation. Cancel its net external force on the
         // torso so reaching for the body-relative targets cannot tow the puppet
@@ -362,17 +449,52 @@ public partial class ActiveDriveComponent : Node
         Rig.Torso.ApplyCentralForce(LastGuardReactionForce);
     }
 
-    private static Vector2 DriveHandToGuardTarget(
+    private void ApplyActivityHandReach(DriveIntent intent, ConsciousnessDriveProfile mode)
+    {
+        Vector2 targetVelocity = (Rig.Torso.LinearVelocity + Rig.Head.LinearVelocity) * 0.5f;
+        LastLeftHandReachForce = DriveHandToTarget(
+            Rig.LeftHand,
+            intent.LeftActivityHandTarget,
+            targetVelocity,
+            Profile.ActivityHandStiffness,
+            Profile.ActivityHandDamping,
+            Profile.ActivityHandMaximumForce,
+            mode);
+        LastRightHandReachForce = DriveHandToTarget(
+            Rig.RightHand,
+            intent.RightActivityHandTarget,
+            targetVelocity,
+            Profile.ActivityHandStiffness,
+            Profile.ActivityHandDamping,
+            Profile.ActivityHandMaximumForce,
+            mode);
+
+        // The mouth-relative target is attached to the head. Equal reaction keeps
+        // this reach internal instead of letting a hand target tow the whole puppet.
+        LastRightHandReachReactionForce = -(LastLeftHandReachForce + LastRightHandReachForce);
+        // While first gathering the food at the chest, only one quarter of the
+        // internal reaction reaches the head (half the old initial displacement).
+        // The share rises smoothly to one half as the hands reach the mouth.
+        float headShare = Mathf.Lerp(0.25f, 0.5f, Mathf.Clamp(intent.ActivityReachLift, 0.0f, 1.0f));
+        LastActivityHeadReactionForce = LastRightHandReachReactionForce * headShare;
+        LastActivityTorsoReactionForce = LastRightHandReachReactionForce * (1.0f - headShare);
+        Rig.Torso.ApplyCentralForce(LastActivityTorsoReactionForce);
+        Rig.Head.ApplyCentralForce(LastActivityHeadReactionForce);
+    }
+
+    private static Vector2 DriveHandToTarget(
         PuppetPartBody hand,
         Vector2 target,
         Vector2 targetVelocity,
-        DriveIntent intent,
+        float stiffness,
+        float damping,
+        float maximumForce,
         ConsciousnessDriveProfile mode)
     {
-        Vector2 force = ((target - hand.GlobalPosition) * intent.GuardStiffness) -
-                        ((hand.LinearVelocity - targetVelocity) * intent.GuardDamping);
+        Vector2 force = ((target - hand.GlobalPosition) * stiffness) -
+                        ((hand.LinearVelocity - targetVelocity) * damping);
         force *= mode.LocomotionScale;
-        float maximum = Mathf.Max(0.0f, intent.GuardMaximumForce);
+        float maximum = Mathf.Max(0.0f, maximumForce);
         if (force.Length() > maximum)
             force = force.Normalized() * maximum;
         hand.ApplyCentralForce(force);

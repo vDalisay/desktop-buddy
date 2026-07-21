@@ -18,6 +18,14 @@ public partial class AutonomousMotionProfile : GameResource
     [Export(PropertyHint.Range, "0,100,1")] public int WalkLeftWeight { get; set; } = 3;
     [Export(PropertyHint.Range, "0,100,1")] public int WalkRightWeight { get; set; } = 3;
 
+    /// <summary>Clearance kept between the foremost body circle and a wall.</summary>
+    [Export(PropertyHint.Range, "0,512,0.5")]
+    public float WallAvoidMarginPixels { get; set; } = 12.0f;
+
+    /// <summary>Forward velocity projection used to begin braking before contact.</summary>
+    [Export(PropertyHint.Range, "0,2,0.01")]
+    public float WallLookAheadSeconds { get; set; } = 0.3f;
+
     /// <summary>Ambient timer-driven jumping. Owner-disabled 2026-07-20 (see DECISIONS.md);
     /// tool-reaction hops and future behaviour-driven jumps are unaffected.</summary>
     [Export] public bool AmbientJumpsEnabled { get; set; } = true;
@@ -45,6 +53,13 @@ public partial class AutonomousMotionProfile : GameResource
         {
             errors.Add(exception.Message);
         }
+
+        if (!float.IsFinite(WallAvoidMarginPixels) || WallAvoidMarginPixels < 0.0f)
+        {
+            errors.Add("wall avoid margin pixels must be finite and non-negative");
+        }
+        if (!float.IsFinite(WallLookAheadSeconds) || WallLookAheadSeconds < 0.0f)
+            errors.Add("wall look-ahead seconds must be finite and non-negative");
 
         return errors;
     }

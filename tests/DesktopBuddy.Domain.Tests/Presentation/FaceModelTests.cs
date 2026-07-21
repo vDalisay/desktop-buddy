@@ -54,6 +54,15 @@ public sealed class FaceExpressionCatalogTests
         Assert.Equal(FaceEyePose.Cross, FaceExpressionCatalog.Resolve("x_x").Eyes);
         Assert.Equal(FaceEyePose.HappyArc, FaceExpressionCatalog.Resolve("^_^").Eyes);
     }
+
+    [Fact]
+    public void PetRub_UsesReadableHappyEyesAndCatSmile()
+    {
+        FaceFeaturePose pose = FaceExpressionCatalog.Resolve(":3");
+        Assert.Equal(FaceEyePose.HappyArc, pose.Eyes);
+        Assert.Equal(FaceBrowPose.None, pose.Brows);
+        Assert.Equal(FaceMouthPose.CatSmile, pose.Mouth);
+    }
 }
 
 public sealed class BlinkModelTests

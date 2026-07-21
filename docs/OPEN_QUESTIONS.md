@@ -1,6 +1,7 @@
 # Desktop Buddy — Open Questions for the Project Owner
 
-Status: No open questions are currently outstanding.
+Status: No outstanding owner questions. OQ-7 through OQ-10 were resolved by the owner
+on 2026-07-20 and recorded in `docs/DECISIONS.md`.
 
 OQ-1 through OQ-6 (thrown-object attribution expiry, zoom room floor, localization scope, session-lock treatment, OS cursor presentation, and the Steamworks binding) were resolved by the owner on 2026-07-11 and recorded in `docs/DECISIONS.md`.
 

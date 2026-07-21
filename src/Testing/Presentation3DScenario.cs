@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
@@ -53,6 +54,8 @@ public sealed class Presentation3DScenario : IScenario
             $"connectors={lab.VisualPresenter.ConnectorVisualCount} " +
             $"face_plate={GodotObject.IsInstanceValid(lab.VisualPresenter.FacePlate)}"));
 
+        checks.Add(CheckYawOwnsHandDepthSorting(lab, messages));
+
         lab.SetPresentationMode(PresentationMode.Mii3D);
         AcceptedImpact? faceImpact = await ScenarioSteps.StrikePart(
             tree, lab, lab.Buddy.Rig.Head);
@@ -95,6 +98,43 @@ public sealed class Presentation3DScenario : IScenario
             passed &= check.Passed;
         }
         return new ScenarioResult(passed, checks, messages);
+    }
+
+    private static StartupCheck CheckYawOwnsHandDepthSorting(
+        BuddyLab lab,
+        List<string> messages)
+    {
+        BuddyVisualPresenter presenter = lab.VisualPresenter;
+        PartVisualDefinition leftDefinition =
+            lab.Buddy.VisualProfile.FindPart(BuddyPartId.LeftHand)!;
+        PartVisualDefinition rightDefinition =
+            lab.Buddy.VisualProfile.FindPart(BuddyPartId.RightHand)!;
+
+        presenter.SetDevelopmentYawDegrees(0.0f);
+        float leftIdentityDepth = presenter.GetPartSocket(BuddyPartId.LeftHand).GlobalPosition.Z;
+        float rightIdentityDepth = presenter.GetPartSocket(BuddyPartId.RightHand).GlobalPosition.Z;
+        bool identityPreserved = Mathf.Abs(leftIdentityDepth - leftDefinition.DepthOffset) < 0.001f &&
+            Mathf.Abs(rightIdentityDepth - rightDefinition.DepthOffset) < 0.001f;
+
+        float committedYaw = lab.Facing.Profile.FacingYawDegrees;
+        presenter.SetDevelopmentYawDegrees(committedYaw);
+        float torsoAtRight = presenter.GetPartSocket(BuddyPartId.Torso).GlobalPosition.Z;
+        float rightAtRight = presenter.GetPartSocket(BuddyPartId.RightHand).GlobalPosition.Z;
+        bool rightFarBehind = rightAtRight < torsoAtRight;
+
+        presenter.SetDevelopmentYawDegrees(-committedYaw);
+        float torsoAtLeft = presenter.GetPartSocket(BuddyPartId.Torso).GlobalPosition.Z;
+        float leftAtLeft = presenter.GetPartSocket(BuddyPartId.LeftHand).GlobalPosition.Z;
+        bool leftFarBehind = leftAtLeft < torsoAtLeft;
+        presenter.SetDevelopmentYawDegrees(0.0f);
+
+        messages.Add($"hand_depth identity={leftIdentityDepth:F2}/{rightIdentityDepth:F2} " +
+            $"right_turn={rightAtRight:F2}<{torsoAtRight:F2} " +
+            $"left_turn={leftAtLeft:F2}<{torsoAtLeft:F2}");
+        return new StartupCheck(
+            "yaw_owns_far_hand_depth_sorting",
+            identityPreserved && rightFarBehind && leftFarBehind,
+            $"identity={identityPreserved} right_far={rightFarBehind} left_far={leftFarBehind}");
     }
 
     private static async Task<bool> CheckCameraAlignment(

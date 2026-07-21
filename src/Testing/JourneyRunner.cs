@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.Json;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Presentation;
@@ -331,6 +333,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM35PresentationToggleAsync(state, lab);
         }
+        else if (exercise == "m36_expressive")
+        {
+            await ExerciseM36ExpressiveAsync(state, lab, timeoutPhysicsTicks);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -403,6 +409,130 @@ public partial class JourneyRunner : Node
         }
     }
 
+    /// <summary>
+    /// M3.6 Task 6 composition journey: the expressive layer driven end-to-end through
+    /// the laboratory's own dev keys — a walk turn-around in both directions, walk
+    /// dressing while the buddy actually walks, and eat with a socketed item plus a wave.
+    /// Everything asserted here is presentation state; no gameplay predicate moves.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM36ExpressiveAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab,
+        int timeoutPhysicsTicks)
+    {
+        // Deliberately mode-agnostic: the expressive layer is driven by the presenter's
+        // process frame whether or not the 3D meshes are the visible presentation, so this
+        // journey must produce identical verdicts under `--presentation=mii3d` and
+        // `--presentation=legacy`. Asserting the MODE here would break that rule.
+        state["expressive_layer_composed"] =
+            lab.VisualPresenter.IsInitialized && lab.PosePipeline.IsInitialized &&
+            lab.Facing.IsInitialized && lab.Activities.IsInitialized &&
+            lab.HeadLookAt.IsInitialized && lab.Face.IsInitialized;
+
+        // Walk dressing: wait for the seeded autonomy to actually walk, then the animator
+        // must be on the walk clip with a phase that advanced from the frozen rest value.
+        bool walked = false;
+        bool walkClip = false;
+        float phaseAtStart = lab.Activities.WalkPhase;
+        bool phaseAdvanced = false;
+        for (int tick = 0; tick < timeoutPhysicsTicks && !(walkClip && phaseAdvanced); tick++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            walked |= MathF.Abs(lab.Buddy.CurrentDriveIntent.WalkDirection) > 0.05f;
+            if (lab.Activities.Current == ActivityId.WalkCycle)
+            {
+                walkClip = true;
+                walkClip &= lab.Activities.CurrentClipName == ActivityAnimator.ClipNameFor(ActivityId.WalkCycle);
+                phaseAdvanced |= !Mathf.IsEqualApprox(lab.Activities.WalkPhase, phaseAtStart);
+            }
+        }
+
+        state["walked_during_journey"] = walked;
+        state["walk_dressing_plays"] = walkClip && phaseAdvanced;
+
+        // Turn-around, both ways, through the dev facing keys. The eased yaw must pass
+        // through an intermediate magnitude: a snap would fail `facing_turn_is_eased`.
+        (bool committed, bool eased) left = await TurnAsync(Key.Z, FacingSide.Left);
+        (bool committed, bool eased) right = await TurnAsync(Key.X, FacingSide.Right);
+        state["facing_turns_left"] = left.committed;
+        state["facing_turns_right"] = right.committed;
+        state["facing_turn_is_eased"] = left.eased && right.eased;
+
+        await PressKeyAsync(Key.C);
+        state["facing_release_returns_to_autonomy"] = lab.Facing.DevelopmentSide == 0;
+
+        // Eat with an item in the hand: the key attaches the item visual, the eat clip
+        // runs, the item rides the hand socket, and a second press clears both.
+        await PressKeyAsync(Key.E);
+        bool eating = false;
+        bool itemRode = true;
+        Node3D handSocket = lab.VisualPresenter.GetPartSocket(BuddyPartId.RightHand);
+        for (int frame = 0; frame < 240 && !eating; frame++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            if (lab.Activities.Current != ActivityId.Eat)
+            {
+                continue;
+            }
+
+            eating = lab.Activities.CurrentClipName == ActivityAnimator.ClipNameFor(ActivityId.Eat);
+            Node3D leftHandSocket = lab.VisualPresenter.GetPartSocket(BuddyPartId.LeftHand);
+            Vector3 handMidpoint = (leftHandSocket.GlobalPosition + handSocket.GlobalPosition) * 0.5f;
+            itemRode &= lab.Activities.ItemSocket.GetChildCount() == 1 &&
+                lab.Activities.ItemSocket.GlobalPosition.DistanceTo(handMidpoint) < 0.01f;
+        }
+
+        state["eat_key_attaches_item"] = lab.Controls.IsEatKeyItemAttached && itemRode;
+        state["eat_clip_plays_with_item"] = eating;
+
+        await PressKeyAsync(Key.E);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        state["eat_key_clears_item"] =
+            !lab.Controls.IsEatKeyItemAttached && lab.Activities.Current != ActivityId.Eat;
+
+        await PressKeyAsync(Key.Q);
+        bool waved = false;
+        for (int frame = 0; frame < 240 && !waved; frame++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            waved = lab.Activities.Current == ActivityId.Wave &&
+                lab.Activities.CurrentClipName == ActivityAnimator.ClipNameFor(ActivityId.Wave);
+        }
+
+        state["wave_key_plays_wave"] = waved;
+
+        async System.Threading.Tasks.Task<(bool committed, bool eased)> TurnAsync(Key key, FacingSide side)
+        {
+            float before = lab.Facing.CurrentYawDegrees;
+            await PressKeyAsync(key);
+            bool sawIntermediate = false;
+            bool arrived = false;
+            float target = side == FacingSide.Right
+                ? lab.Facing.Profile.FacingYawDegrees
+                : -lab.Facing.Profile.FacingYawDegrees;
+            for (int frame = 0; frame < 240 && !arrived; frame++)
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                float yaw = lab.Facing.CurrentYawDegrees;
+                // Strictly between the start and the target: proof the turn interpolated
+                // rather than jumping in a single frame.
+                sawIntermediate |= (yaw - before) * (target - yaw) > 0.0001f;
+                arrived = lab.Facing.CommittedSide == side && Mathf.IsEqualApprox(yaw, target, 0.01f);
+            }
+
+            return (arrived, sawIntermediate);
+        }
+
+        async System.Threading.Tasks.Task PressKeyAsync(Key key)
+        {
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = key, Pressed = true });
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = key, Pressed = false });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
+    }
+
     private async System.Threading.Tasks.Task ExerciseGrabThrowAsync(Dictionary<string, bool> state, BuddyLab lab)
     {
         bool acquired = true, capped = true, finite = true;
@@ -440,7 +570,30 @@ public partial class JourneyRunner : Node
 
     private async System.Threading.Tasks.Task ExerciseWalkJumpAsync(Dictionary<string, bool> state, BuddyLab lab, int timeoutTicks)
     {
-        var profile = lab.Buddy.AutonomousMotion.Profile;
+        // The shipped profile has ambient jumping OFF (owner decision 2026-07-20), but the
+        // jump ACTUATION path is live code that tool reactions and M4 behaviours drive, so
+        // this journey keeps exercising takeoff/landing end-to-end through a journey-local
+        // profile that differs from the shipped one ONLY by the flag. The shipped datum is
+        // asserted separately, exactly as `autonomous_motion` does.
+        AutonomousMotionProfile shipped = lab.Buddy.AutonomousMotion.Profile;
+        state["shipped_profile_disables_ambient_jumping"] = !shipped.AmbientJumpsEnabled;
+        lab.Buddy.AutonomousMotion.Profile = new AutonomousMotionProfile
+        {
+            ResourceName = "JourneyAmbientJumpsEnabled",
+            MinimumIdleTicks = shipped.MinimumIdleTicks,
+            MaximumIdleTicks = shipped.MaximumIdleTicks,
+            MinimumWalkTicks = shipped.MinimumWalkTicks,
+            MaximumWalkTicks = shipped.MaximumWalkTicks,
+            MinimumJumpIntervalTicks = shipped.MinimumJumpIntervalTicks,
+            MaximumJumpIntervalTicks = shipped.MaximumJumpIntervalTicks,
+            IdleWeight = shipped.IdleWeight,
+            WalkLeftWeight = shipped.WalkLeftWeight,
+            WalkRightWeight = shipped.WalkRightWeight,
+            AmbientJumpsEnabled = true,
+        };
+        lab.Controls.Reseed(lab.Controls.AutonomySeed);
+
+        AutonomousMotionProfile profile = lab.Buddy.AutonomousMotion.Profile;
         int derivedBudget = 8 * (profile.MaximumIdleTicks + profile.MaximumWalkTicks) +
                             2 * profile.MaximumJumpIntervalTicks;
         int ticks = Math.Min(derivedBudget, timeoutTicks);
@@ -555,7 +708,7 @@ public partial class JourneyRunner : Node
             pet3DFaceComposed |=
                 lab.Reactions.CurrentFace == ":3" &&
                 lab.Face.LastComposedState.Mouth == FaceMouthPose.CatSmile &&
-                lab.Face.LastComposedState.Eyes == FaceEyePose.Open;
+                lab.Face.LastComposedState.Eyes == FaceEyePose.HappyArc;
         }
         state["pet_hand_visible"] = petHandVisible;
         state["pet_rub_face_seen"] = petFaceSeen;

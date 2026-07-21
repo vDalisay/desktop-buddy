@@ -4,20 +4,39 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-12 (branch `opus`), after the M1 feel tuning was accepted
-and Milestone 2 kicked off. **Start here: `docs/M2_DESKTOP_SHELL_PLAN.md`** — the
-active work is the Windows desktop shell; its Tasks 1–3 (headless-testable
-foundation) have landed.
+Last updated: 2026-07-21, after M3.6 Task 6 and the owner feedback rework were accepted.
+**Start here: `docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md`** — read its
+Progress section, which is the authoritative per-task status.
 
 ## 1. Current position
 
 - **Milestone 0 (Foundation): complete.**
-- **Milestone 1 (Physics Laboratory): in progress**, closing on the `TEST_PLAN.md`
-  §8 exit gate. The remediation + review-fixes plans
-  (`docs/M1_REMEDIATION_PLAN.md`, `docs/M1_REVIEW_FIXES_PLAN.md`) are **implemented
-  and committed** (`8065632`, `d261fa3`, `356bc8e`).
-- Economy/shop work (M5) is **blocked** until every §8 gate bullet is true and an
-  initial accepted tuning Resource is locked. Do not start it early.
+- **Milestone 1 (Physics Laboratory): complete**, feel tuning owner-ACCEPTED
+  2026-07-12 (`AcceptedM1*` profiles). Sections 3–4 below are M1 history.
+- **Milestone 2 (Windows desktop shell): code complete; remaining work is
+  owner-manual** — native adapter verification and the `TEST_PLAN.md` §5 standalone
+  matrix.
+- **Milestone 3 (Interaction and damage): complete, owner gate ACCEPTED.**
+- **Milestone 3.5 (3D presentation): complete.** Mii3D is the shipping default
+  since the Task 8 flip (`52b42b5`); `LegacyCircles` survives as a dev view behind
+  `V` / `--presentation=legacy`.
+- **Milestone 3.6 (expressive presentation): complete; owner accepted 2026-07-21.**
+  Pose pipeline, facing, activities + item socket, head look-at, composed face,
+  composition/regression/docs, and the owner feedback rework are complete.
+- Milestone 4 behavior is next; economy/shop work remains Milestone 5 scope.
+
+### Known red, and NOT caused by the current slice
+
+Verified 2026-07-20 against `5b52365` and `ff99731~1`, with and without
+`--fixed-fps 120` — these three predate M3.6 Task 6 and each has its own follow-up:
+
+- `standing_recovery` → `assisted_recovery_is_prompt` (228 ticks vs the 180 bound).
+- `impact_dedup` → `ball_settles` (probe ball still at ~37 px/s).
+- `desktop_shell_modes` → `click_inside_enters_play` (and
+  `click_outside_returns_to_work` passes only vacuously).
+
+Do not "fix" these by relaxing bounds; they guard owner-locked M1 feel tuning, the
+M3 attribution calibration, and the M2 shell input path respectively.
 
 ## 2. Green baseline (verify before you build on it)
 
@@ -27,16 +46,20 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj` | 58/58 green |
+| Domain unit | `dotnet test` | 407/407 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (13) | `<godot> --headless --path . -- --scenario=<id> --seed=<n>` | all green, seeds 1 (+ 7 on soak & autonomous_motion) |
-| Journeys (6) | `<godot> --headless --path . -- --journey=<id> --seed=<n>` | all green headless |
+| Scenarios (31) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | green except the two known-red above |
+| Journeys (10) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | green except `desktop_shell_modes` |
+| Quick suite | `tools\quick_validate.bat` | 9/9 |
 
-Scenario ids: `boot_smoke, passive_rig, standing_recovery, autonomous_motion,
-laboratory_controls, grab_release, grab_resistance, grab_hard_recovery,
-room_resize_zoom, idle_soak, idle_soak_ci, repeat_envelope, dual_profile_smoke`.
+Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the
+filenames in `tests/journeys/`. Every scenario and journey is also rerun under
+`--presentation=mii3d` and `--presentation=legacy`; the verdicts must match.
 
 Gotchas that WILL fail a run if you forget them:
+- **`--fixed-fps 120` is mandatory** for the presentation scenarios. Without it
+  `activity_clips` fails at a rock-steady walk ratio 0.828 on every seed and every
+  commit, which reads exactly like a deterministic code regression.
 - **Soak** (`idle_soak`, `idle_soak_ci`, `lab_idle_soak`) needs `--fixed-fps 120`
   to free-run, else it takes wall-clock minutes.
 - **`lab_idle_soak` journey needs `--artifacts=<dir>`** — it asserts
@@ -108,7 +131,15 @@ Gotchas that WILL fail a run if you forget them:
 
 ## 5. Suggested next step
 
-Milestone 2 (Windows desktop shell) is underway — see `docs/M2_DESKTOP_SHELL_PLAN.md`
+**Milestone 4 behavior.** M3.6 Task 6 and the owner-feedback rework are complete and
+owner-accepted. The final pass includes the real `E` Eat interaction, two-hand five-bite
+motion, frontal food facing, final hand lowering, passive airborne grabs, full-body wall
+detection, immediate grounded stopping, and sub-0.5-second head recovery after the calm
+delay. See `docs/OWNER_FEEDBACK_2026_07_20_FIX_PLAN.md` for the checked-off acceptance list.
+
+### Older milestone history (kept for context)
+
+Milestone 2 (Windows desktop shell) — see `docs/M2_DESKTOP_SHELL_PLAN.md`
 for the ordered task breakdown. Landed so far (headless-testable foundation, suite
 green):
 - Task 1 `WindowPlacementPolicy` (Domain): first-launch lower-right, off-screen

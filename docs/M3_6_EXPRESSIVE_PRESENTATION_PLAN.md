@@ -1,6 +1,6 @@
 # Milestone 3.6 — Expressive 3D Presentation (Orientation, Activities, Dynamic Face)
 
-Status: **SCHEDULED 2026-07-18** — M3.5 gate closed (Task 8 flip done), all four open
+Status: **COMPLETE — OWNER ACCEPTED 2026-07-21.** M3.5 gate closed (Task 8 flip done), all four open
 owner decisions resolved into `docs/DECISIONS.md` (very subtle amplitude; face-art
 mockup gate before Task 5; blink/glance defaults delegated; LegacyCircles retained as
 dev view). Implementation may begin at Task 1. Original pre-plan follows.
@@ -119,7 +119,8 @@ architectural:
   a physics write), so step rate always matches travel and feet cannot moonwalk; zero
   speed stops the cycle.
 - **Class B — behavior-backed**, the gameplay layer owns the state and duration and
-  pushes it through a semantic `SetActivity(...)` API (the `SetToolReactionIntent`
+  pushes it through the semantic `BuddyRoot.SetBehaviorActivity(...)` API (the
+  `SetToolReactionIntent`
   pattern). Owner-resolved slice set: **eat ships now** (triggerable from lab keys and
   scenarios; M4's consume decisions wire the real reasons, and drink/hold later reuse
   the same item-socket clips); **sit/sleep ship with their M4 behaviors** as new clips
@@ -206,7 +207,7 @@ deterministic per seed; suppression states verified).
 - **Scenario `lookat_priority_and_cone`** (registered in the scenario runner and
   `TEST_PLAN.md`), seeds 1 + 7: pet-stroke engagement → head angles track the cursor
   side within the cone; cursor beyond engagement range → ambient behavior resumes;
-  `SetActivity(Eat)` with a socketed item → item wins over ambient; controlled
+  `SetBehaviorActivity(Eat)` with a socketed item → item wins over ambient; controlled
   strike → impact point watched, decays after memory ticks; idle → glance sequence
   deterministic per seed with every applied angle inside the cone; forced Tracking
   (post-strike cooldown) → applied head angles exactly zero; pain face → eased to
@@ -364,7 +365,8 @@ idle_breathe, walk_cycle (phase-seeked), jump_anticipation (squash from the real
 initialization from the typed profile amplitudes. **Plan deviation, recorded:** clips are
 authored programmatically from typed Resource data rather than hand-authored in-editor;
 same Animation/AnimationPlayer machinery, and amplitudes stay owner-tunable data.
-`SetActivity(ActivityId, duration)` is the semantic Class B seam (Eat ships now; None
+`BuddyRoot.SetBehaviorActivity(ActivityId, duration)` is the semantic Class B seam (Eat
+ships now; None
 cancels; ambient ids rejected); `ItemSocket` under the right-hand socket carries any item
 VISUAL through any hand clip while the item's physics stays gameplay-owned; lab keys
 arrive with Task 6. New `activity_clips` scenario (registered, in `TEST_PLAN.md`) green
@@ -530,3 +532,52 @@ Full rerun after all three: domain 363/363, `pose_pipeline` (with the new guard)
 `presentation_3d`, `m3_presentation`, `tool_feel_reactions`, `knockout_window`,
 `autonomous_motion`, `repeat_envelope`, `idle_soak`, toggle journey, quick suite 9/9,
 build 0/0.
+
+**Task 6 (composition, regression, documentation) DONE — OWNER ACCEPTED (2026-07-21).** Laboratory
+expressive keys landed beside `V`, guarded by `BuildInfo.IsDebugBuild` and wired through
+optional `[Export]`s on `LaboratoryControlComponent` (labs without the expressive chain
+simply leave them unset): `E` eat with a throwaway socketed item (second press cancels
+and clears), `Q` wave, `Z`/`X` force the facing side, `C` releases the override.
+`FacingController.SetDevelopmentSide` stands in for an engaged cursor and feeds the REAL
+arbitration — there is no bypass around `FacingModel`, so easing, hysteresis, and
+priority stay the shipping ones. The telemetry panel lists the new keys.
+
+New `m36_expressive` journey (registered, in `TEST_PLAN.md`) green on seeds 1 + 7: the
+composed 3D presentation is active, the seeded autonomy walks and the walk dressing plays
+with an advancing phase, both turn-arounds commit through the keys with an intermediate
+eased frame (a snap would fail `facing_turn_is_eased`), releasing hands facing back to
+autonomy, the eat key attaches an item that rides the hand `ItemSocket` while the eat clip
+plays and a second press clears both, and the wave key plays the wave clip. This is the
+"journeys extended" item: rather than bolting expressive assertions onto the M1
+`lab_walk_jump` journey, the expressive pass got its own journey and `lab_walk_jump` kept
+its M1 scope.
+
+**Regression sweep found four red verdicts, one of them ours to fix.** Running the WHOLE
+catalogue (26 scenarios + 10 journeys) rather than a curated list exposed:
+
+1. `lab_walk_jump` — FIXED here. The journey asserts `jumped`, but commit `e604e66`
+   switched ambient timer-driven jumping off in the shipped profile, so the assertion
+   could never pass again. The journey now asserts the shipped datum
+   (`shipped_profile_disables_ambient_jumping`) and re-enables the flag journey-locally to
+   keep exercising real takeoff/landing, exactly as `autonomous_motion` already did.
+   Green seeds 1 + 7.
+2. `standing_recovery` (`assisted_recovery_is_prompt`, 228 ticks vs the 180-tick bound),
+   `impact_dedup` (`ball_settles`, speed 36.8), and `desktop_shell_modes`
+   (`click_inside_enters_play`) all fail identically at `5b52365` and at `ff99731~1`, with
+   and without `--fixed-fps 120` — they PREDATE this slice and are not presentation
+   regressions. They touch owner-locked M1 feel tuning, M3 attribution calibration, and
+   the M2 shell input path respectively, so they are filed as separate follow-ups rather
+   than retuned inside a presentation slice.
+
+Documentation amended: `ARCHITECTURE.md` §14.1 (presentation modes, the Tracking cut, the
+`0.5 x radius` offset cap, the four contributor systems, the routed-tick clock rule),
+`TEST_PLAN.md` (the `m36_expressive` journey and the both-modes rerun rule), and
+`DECISIONS.md` (pose-mode arbitration, offset cap, one-clock rule, mode parity as a test
+rule, the laboratory key map).
+
+The follow-up owner feel pass is recorded in
+`OWNER_FEEDBACK_2026_07_20_FIX_PLAN.md`: all presentation corrections and the approved
+physics-backed Eat, grab-dangle, wall-stop, walk-stop, and head-righting refinements are
+implemented. The final build passes 407 domain tests, the 9/9 quick suite, focused seeds
+1 and 7, windowed screenshot inspection, and an error-free interactive Buddy Lab launch.
+The owner accepted the result on 2026-07-21, closing the M3.6 exit gate.

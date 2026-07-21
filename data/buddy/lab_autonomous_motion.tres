@@ -14,4 +14,6 @@ MaximumJumpIntervalTicks = 1800
 IdleWeight = 6
 WalkLeftWeight = 3
 WalkRightWeight = 3
+WallAvoidMarginPixels = 12.0
+WallLookAheadSeconds = 0.3
 AmbientJumpsEnabled = false

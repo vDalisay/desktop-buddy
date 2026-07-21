@@ -48,11 +48,13 @@ public partial class BuddyVisualPresenter : Node3D
     private float _yawRadians;
     private float _developmentYawRadians;
 
-    // M3.6 Task 4: the head look-at angles applied on top of the body yaw, already scaled
-    // by the performance weight. Head socket only — rotation, never position — so the
-    // gaze is physics-free by construction and composes with any activity clip.
+    // M3.6 Task 4: the head look-at angles applied on top of the body yaw, scaled by the
+    // resolved gaze weight (normal performance, plus the explicit defend exception).
+    // Head socket only — rotation, never position — so the gaze is physics-free by
+    // construction and composes with any activity clip.
     private float _headLookYawRadians;
     private float _headLookPitchRadians;
+    private PerformanceBlend? _defendGazeBlend;
 
     // M3.6 Task 1: per-part authored offsets (dev/scenario-driven until the activity
     // animator lands) and the blend weight the pose pipeline resolved this frame. The
@@ -456,8 +458,10 @@ public partial class BuddyVisualPresenter : Node3D
         if (HeadLookAt is { IsInitialized: true })
         {
             LookAtAngles look = HeadLookAt.Evaluate(performanceDelta);
-            _headLookYawRadians = Mathf.DegToRad(look.YawDegrees) * _performanceWeight;
-            _headLookPitchRadians = Mathf.DegToRad(look.PitchDegrees) * _performanceWeight;
+            float defendGazeWeight = ResolveDefendGazeWeight(performanceDelta);
+            float gazeWeight = Mathf.Max(_performanceWeight, defendGazeWeight);
+            _headLookYawRadians = Mathf.DegToRad(look.YawDegrees) * gazeWeight;
+            _headLookPitchRadians = Mathf.DegToRad(look.PitchDegrees) * gazeWeight;
         }
         else
         {
@@ -484,6 +488,9 @@ public partial class BuddyVisualPresenter : Node3D
             ApplyPartTransform(index, _rendered[index], delta);
         }
 
+        if (Activities is { IsInitialized: true })
+            Activities.SyncItemSocket();
+
         UpdateConnectors();
         UpdateFace();
     }
@@ -493,12 +500,21 @@ public partial class BuddyVisualPresenter : Node3D
         PartVisualDefinition definition = _partDefinitions[index];
         float rotation = ResolveRotation(index, definition, rendered, delta);
         Node3D socket = _sockets[index];
+        bool eatingHand = Activities is { IsInitialized: true, Current: ActivityId.Eat } &&
+            index is (int)BuddyPartId.LeftHand or (int)BuddyPartId.RightHand;
+        // Eating is a frontal two-hand performance: both hands sit beyond the face
+        // plate and do not inherit far-limb sorting at three-quarter yaw.
+        float depthOffset = eatingHand ? Profile.EatHandDepthOffset : definition.DepthOffset;
+        float laneYawFade = eatingHand ? 0.0f : definition.LaneYawFade;
         // (1) mapped 2D pose Z=0 -> (2) add the clamped performance offset, then resolve
         // pose + BodyYaw with no lane component -> (3) add DepthOffset as a global
         // camera-axis Z addition -> (4) identical final transform to the primary mesh and
         // its outline shell (both socket children).
         socket.GlobalPosition = ResolveLanePosition(
-            rendered.Position, definition.DepthOffset, ResolvePerformanceOffset(index));
+            rendered.Position,
+            depthOffset,
+            ResolvePerformanceOffset(index),
+            laneYawFade);
 
         // The head additionally carries the weighted look-at: pitch about X, yaw added to
         // the body yaw about Y. Nothing else changes — the physics Z rotation is intact,
@@ -514,7 +530,7 @@ public partial class BuddyVisualPresenter : Node3D
     }
 
     /// <summary>The head look-at yaw applied this frame, in degrees — a scenario oracle
-    /// input (already scaled by the performance weight, so Tracking reads exactly zero).</summary>
+    /// input (already scaled by the resolved gaze weight).</summary>
     public float AppliedHeadYawDegrees => Mathf.RadToDeg(_headLookYawRadians);
 
     /// <summary>The head look-at pitch applied this frame, in degrees.</summary>
@@ -556,11 +572,53 @@ public partial class BuddyVisualPresenter : Node3D
     /// bit-for-bit. At a scenario yaw the lane stays a pure depth change with no screen-X
     /// displacement.
     /// </summary>
-    private Vector3 ResolveLanePosition(Vector2 worldPose2D, float depthOffset, Vector3 preYawOffset)
+    private Vector3 ResolveLanePosition(
+        Vector2 worldPose2D,
+        float depthOffset,
+        Vector3 preYawOffset,
+        float laneYawFade = 0.0f)
     {
         Vector3 yawed = ApplyBodyYaw(WorldPlaneMapping.To3D(worldPose2D) + preYawOffset);
-        yawed.Z += depthOffset;
+        yawed.Z += depthOffset * ResolveLaneMultiplier(laneYawFade);
         return yawed;
+    }
+
+    private float ResolveLaneMultiplier(float laneYawFade)
+    {
+        if (laneYawFade <= 0.0f || Mathf.IsZeroApprox(_yawRadians))
+        {
+            return 1.0f;
+        }
+
+        float yawDegrees = Mathf.Abs(Mathf.RadToDeg(_yawRadians));
+        float committedYawDegrees = Facing is { IsInitialized: true }
+            ? Facing.Profile.FacingYawDegrees
+            : yawDegrees;
+        float progress = committedYawDegrees > 0.0f
+            ? Mathf.Clamp(yawDegrees / committedYawDegrees, 0.0f, 1.0f)
+            : 0.0f;
+        float eased = progress * progress * (3.0f - (2.0f * progress));
+        return 1.0f - (laneYawFade * eased);
+    }
+
+    /// <summary>
+    /// Defending is a physics-dominated Tracking pose, but the angry buddy still watches
+    /// the engaged glove. This independent weight eases in over the normal profile blend
+    /// and cuts immediately when defense ends, so grab, pain/impact, and knockout forcing
+    /// states retain the existing zero-gaze contract.
+    /// </summary>
+    private float ResolveDefendGazeWeight(double deltaSeconds)
+    {
+        if (PosePipeline is not { IsInitialized: true })
+        {
+            return 0.0f;
+        }
+
+        _defendGazeBlend ??= new PerformanceBlend(PosePipeline.Profile.PerformanceBlendSeconds);
+        PresentationPoseMode mode = Buddy.CurrentToolReactionIntent.GuardActive
+            ? PresentationPoseMode.Performance
+            : PresentationPoseMode.Tracking;
+        return _defendGazeBlend.Update(deltaSeconds, mode);
     }
 
     private Vector3 ApplyBodyYaw(Vector3 poseWithZeroZ)

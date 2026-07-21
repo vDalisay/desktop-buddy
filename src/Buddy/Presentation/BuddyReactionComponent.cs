@@ -29,7 +29,7 @@ public partial class BuddyReactionComponent : Node
     private int _petSmileTicks;
 
     public bool IsInitialized { get; private set; }
-    public string CurrentFace { get; private set; } = ":|";
+    public string CurrentFace { get; private set; } = ":)";
     public float CurrentFear { get; private set; }
 
     /// <summary>
@@ -114,7 +114,7 @@ public partial class BuddyReactionComponent : Node
                 MoodBand.Wary => ":/",
                 MoodBand.Content => ":)",
                 MoodBand.Delighted => "^_^",
-                _ => ":|",
+                _ => ":)",
             };
         Buddy.Rig.Head.SetFace(CurrentFace);
     }

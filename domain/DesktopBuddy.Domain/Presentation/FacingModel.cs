@@ -19,7 +19,8 @@ public enum FacingSide
 public readonly record struct FacingInputs(
     bool InteractionEngaged,
     float InteractionSide,
-    float WalkDirection);
+    float WalkDirection,
+    bool ForceFrontal = false);
 
 /// <summary>Facing tuning subset consumed by the pure model.</summary>
 public readonly record struct FacingParameters(
@@ -83,7 +84,13 @@ public sealed class FacingModel
         }
 
         FacingSide wanted = CommittedSide;
-        if (inputs.InteractionEngaged)
+        if (inputs.ForceFrontal)
+        {
+            _walkStreakTicks = 0;
+            _walkStreakSign = 0.0f;
+            _idleTimerArmed = false;
+        }
+        else if (inputs.InteractionEngaged)
         {
             if (inputs.InteractionSide > 0.0f)
             {
@@ -141,13 +148,23 @@ public sealed class FacingModel
             }
         }
 
-        if (wanted != CommittedSide)
+        if (!inputs.ForceFrontal && wanted != CommittedSide)
         {
             CommittedSide = wanted;
+        }
+
+        float desiredYawDegrees = inputs.ForceFrontal
+            ? 0.0f
+            : CommittedSide switch
+            {
+                FacingSide.Right => _parameters.YawDegrees,
+                FacingSide.Left => -_parameters.YawDegrees,
+                _ => 0.0f,
+            };
+        if (MathF.Abs(desiredYawDegrees - _targetYawDegrees) > 0.0001f)
+        {
             _startYawDegrees = CurrentYawDegrees;
-            _targetYawDegrees = wanted == FacingSide.Right
-                ? _parameters.YawDegrees
-                : -_parameters.YawDegrees;
+            _targetYawDegrees = desiredYawDegrees;
             _turnProgress = 0.0;
         }
 

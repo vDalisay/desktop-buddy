@@ -12,7 +12,10 @@ namespace DesktopBuddy.Testing;
 public sealed class AutonomousMotionScenario : IScenario
 {
     private const int SettleTimeoutTicks = 720;
-    private const int MotionObservationTicks = 1_800;
+    // Wall-aware autonomy can legitimately spend several long calm goals idling at an
+    // edge before the seeded draw selects the away direction. Keep the observation long
+    // enough for both accepted seeds without weakening the two-direction requirement.
+    private const int MotionObservationTicks = 3_600;
 
     public string Id => "autonomous_motion";
 
@@ -82,6 +85,13 @@ public sealed class AutonomousMotionScenario : IScenario
         bool leftLifted = false, leftPlanted = false, rightLifted = false, rightPlanted = false;
         float leftMinY = float.PositiveInfinity, leftMaxY = float.NegativeInfinity;
         float rightMinY = float.PositiveInfinity, rightMaxY = float.NegativeInfinity;
+        float previousWalkDirection = 0.0f;
+        int idleStopTicks = -1;
+        float idleStopOriginX = 0.0f;
+        float idleStopMaximumTravel = 0.0f;
+        float idleStopFinalSpeed = float.PositiveInfinity;
+        bool idleStopObserved = false;
+        bool idleStopBounded = false;
         for (int tick = 0; tick < MotionObservationTicks; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
@@ -98,7 +108,29 @@ public sealed class AutonomousMotionScenario : IScenario
             minimumTorsoY = Mathf.Min(minimumTorsoY, position.Y);
             maximumHorizontalDelta = Mathf.Max(maximumHorizontalDelta, Mathf.Abs(position.X - start.X));
 
-            if (lab.Buddy.AutonomousMotion.Intent.WalkDirection != 0.0f &&
+            float walkDirection = lab.Buddy.AutonomousMotion.Intent.WalkDirection;
+            bool grounded = lab.Buddy.Standing.Snapshot.SupportContactCount > 0;
+            if (!idleStopObserved && idleStopTicks < 0 && !Mathf.IsZeroApprox(previousWalkDirection) &&
+                Mathf.IsZeroApprox(walkDirection) && grounded)
+            {
+                idleStopObserved = true;
+                idleStopTicks = 0;
+                idleStopOriginX = MassCenterX(lab.Buddy.Rig);
+            }
+            if (idleStopTicks >= 0)
+            {
+                idleStopMaximumTravel = Mathf.Max(idleStopMaximumTravel,
+                    Mathf.Abs(MassCenterX(lab.Buddy.Rig) - idleStopOriginX));
+                idleStopFinalSpeed = Mathf.Abs(MassCenterVelocityX(lab.Buddy.Rig));
+                if (++idleStopTicks >= 4)
+                {
+                    idleStopBounded = idleStopMaximumTravel <= 1.25f && idleStopFinalSpeed <= 2.0f;
+                    idleStopTicks = -2;
+                }
+            }
+            previousWalkDirection = walkDirection;
+
+            if (walkDirection != 0.0f &&
                 lab.Buddy.ActiveDrive.LastJumpImpulse <= 0.0f)
             {
                 PuppetPartBody lf = lab.Buddy.Rig.LeftFoot, rf = lab.Buddy.Rig.RightFoot;
@@ -110,7 +142,8 @@ public sealed class AutonomousMotionScenario : IScenario
 
             bool feetAlternate = leftLifted && leftPlanted && rightLifted && rightPlanted;
             bool jumpApexCaptured = jumpTick >= 0 && tick >= jumpTick + JumpApexWindowTicks;
-            if (sawLeftForce && sawRightForce && feetAlternate && jumpApexCaptured && maximumHorizontalDelta >= 8.0f)
+            if (sawLeftForce && sawRightForce && feetAlternate && jumpApexCaptured &&
+                maximumHorizontalDelta >= 8.0f && idleStopBounded)
             {
                 break;
             }
@@ -138,6 +171,11 @@ public sealed class AutonomousMotionScenario : IScenario
             "seeded_autonomy_moves_physical_rig",
             maximumHorizontalDelta >= 8.0f,
             $"max_dx={maximumHorizontalDelta:F2}"));
+        checks.Add(new StartupCheck(
+            "grounded_walk_stops_without_coast",
+            idleStopObserved && idleStopBounded,
+            $"observed={idleStopObserved} travel_4_ticks={idleStopMaximumTravel:F2} " +
+            $"final_speed={idleStopFinalSpeed:F2}"));
 
         lab.Buddy.SetConsciousness(Consciousness.Unconscious);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
@@ -201,5 +239,29 @@ public sealed class AutonomousMotionScenario : IScenario
         }
 
         return false;
+    }
+
+    private static float MassCenterX(PuppetRig rig)
+    {
+        float weighted = 0.0f;
+        float totalMass = 0.0f;
+        foreach (PuppetPartBody part in rig.Parts)
+        {
+            weighted += part.GlobalPosition.X * part.Mass;
+            totalMass += part.Mass;
+        }
+        return weighted / totalMass;
+    }
+
+    private static float MassCenterVelocityX(PuppetRig rig)
+    {
+        float weighted = 0.0f;
+        float totalMass = 0.0f;
+        foreach (PuppetPartBody part in rig.Parts)
+        {
+            weighted += part.LinearVelocity.X * part.Mass;
+            totalMass += part.Mass;
+        }
+        return weighted / totalMass;
     }
 }

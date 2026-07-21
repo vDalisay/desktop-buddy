@@ -146,6 +146,33 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **Style seam:** the painter is selectable per `FaceStyleId` (the shop decision above);
   only `SoftOvalFacePainter` exists in this slice.
 
+### M3.6 Task 6 — expressive layer composed, contracts recorded (2026-07-20)
+
+- **Pose-mode arbitration (the rule the whole layer hangs off):** the buddy performs only
+  while physics is not the story. `Performance` requires a calm, stable, conscious buddy;
+  any of a live buddy-part grab, unconsciousness, an accepted impact inside the cooldown,
+  or the learned-harm hand guard forces `Tracking`. Tracking is a CUT, not a fade — the
+  performance weight goes to zero immediately, taking body yaw, head look-at, and every
+  activity offset with it, so a hit always reads as the ragdoll's own pose. Returning to
+  Performance blends back over the profile blend time. Committed SEMANTIC state (the
+  facing side) survives a cut; only displayed values snap.
+- **Offset cap:** every expressive contributor emits a bounded offset and the presenter
+  clamps the combined result to `0.5 x part radius` before applying it. The cap is the
+  guarantee that a performance can never misreport the physics pose; the shipping
+  amplitudes sit well inside it (owner-chosen "very subtle" direction).
+- **One clock:** all expressive timers count `BuddyRoot.RoutedTicks`, never engine frames,
+  and the presenter honours `SetPresentationHeld`, so a paused laboratory shows a visually
+  still buddy (the Task 4 pause regression is a permanent rule, not a one-off fix).
+- **Presentation-mode parity is a test rule:** `Mii3D` and `LegacyCircles` must produce
+  IDENTICAL scenario and journey verdicts; the full catalogue is rerun under
+  `--presentation=` in both modes as part of the slice gate.
+- **Laboratory expressive keys (development builds only):** `E` eat with a throwaway
+  socketed item (press again to clear), `Q` wave, `Z`/`X` force the facing side left/right,
+  `C` release the override back to autonomy. The facing override stands in for an engaged
+  cursor and feeds the real arbitration — no bypass path exists around the model. These
+  join `V` (presentation toggle) and the M1/M3 lab keys, and are guarded by
+  `BuildInfo.IsDebugBuild`.
+
 ### Ambient cadence calmed — supersedes part of the M1 autonomy tuning (2026-07-20)
 
 - Owner direction during the M3.6 Task 4 inspection: **"the buddy needs to be more chill
@@ -386,6 +413,53 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **Data assets:** Typed Godot `Resource` assets define physics tuning, tools, mood profiles, economy data, and content metadata. Runtime saves remain versioned JSON.
 - **Determinism boundary:** Bit-exact deterministic replay is not required.
 - **Automated verification:** Pure C# unit tests cover domain rules. Headless Godot scenarios use seeded inputs and tolerance envelopes to validate maximum stretch, recovery timing, damage attribution, repeated-run stability, and other physics behavior.
+
+## Owner Feedback Fix Decisions (2026-07-20)
+
+- **Grab dangle:** a grabbed buddy that still has floor support keeps active standing.
+  Once a buddy-part grab has no support, standing/recovery actuation yields so the body
+  hangs from the grab point; conscious fear-resistance struggle remains enabled.
+- **Pet face:** the calm/default face is `:)`. Active valid Pet rubbing overrides it with
+  `:3`; Pet completion returns to `:)`. No additional completion-face string is added.
+- **Head righting:** after a head impact or head-grab release, a gentle bounded physical
+  head-righting torque may begin after two seconds of calm. At the fixed 120 Hz domain
+  clock this is `240` routed ticks (correcting the original draft's mistaken "120 ticks = 2 s"
+  parenthetical). The owner judges final speed at the grouped feel pass. A future animation
+  in which the buddy straightens its head with its hands remains an M4+ candidate.
+- **Physical gestures:** Eat may move the authoritative right-hand body through a bounded
+  physics target while the existing visual-offset cap remains unchanged. The same seam is
+  reserved for a later physical Wave reach; Eat ships first.
+
+### Owner feel-pass corrections (2026-07-21; supersede the affected bullets above)
+
+- **Eat sequence:** Eat is a stationary five-bite action. Both authoritative hand bodies
+  hold the food at the upper-chest center, lift it toward the head in a repeated bopping
+  motion, and return it between bites. The head makes one small downward bob per bite.
+  The centered item visual shrinks by one fifth at each bob and disappears on bite five.
+  Both hands render in front of the torso throughout Eat, including at three-quarter yaw.
+  During the initial chest hold, the head receives half the downward displacement of the
+  first implementation before the repeated bite bobs begin.
+  At the mouth, both hands also render in front of the face plate, with their upper edges
+  sitting just below the mouth for readability; the food may be presentation-offset
+  upward from the two-hand midpoint so it still meets the mouth.
+  Eat temporarily eases the body presentation to a frontal face-to-food pose, preserving
+  the committed walking side for restoration afterward. After bite five, the hands make
+  one final downward return to their normal rest height before the reach releases and
+  they move horizontally to their side positions.
+- **Grab dangle:** an unsupported buddy-part grab is fully passive, matching unconscious
+  ragdoll behavior while consciousness and facial state remain conscious. No fear-driven
+  resistance force is applied in the air. A supported grab retains normal standing and
+  conscious reactions. “Passive” disables active drive only: the ordinary structural
+  springs remain enabled exactly as they do while unconscious, preserving each part's
+  relative place instead of allowing every unheld part to slide to the lowest limit.
+- **Wall stopping:** ambient locomotion senses the foremost body edge in its travel
+  direction, includes bounded velocity look-ahead, cuts the into-wall goal, and brakes to
+  a stop before contact. Torso-center-only avoidance is insufficient.
+- **Walk-to-idle stopping:** when grounded autonomy changes from walking to no walk
+  intent, bounded active braking stops horizontal motion without a visible coast. This
+  does not erase airborne/throw momentum.
+- **Head-righting speed:** the two-second calm delay remains, but once righting begins the
+  head must settle within at most `60` routed ticks (`0.5 s` at 120 Hz).
 
 ## Planning Rule
 

@@ -34,6 +34,15 @@ public partial class BuddyVisualProfile : GameResource
     [Export] public Color FaceColor { get; set; } = new("183042");
     [Export(PropertyHint.Range, "0.001,16,0.001,or_greater")]
     public float FaceDepthEpsilon { get; set; } = 0.1f;
+    /// <summary>Camera-space lane used by both hands only while eating.</summary>
+    [Export(PropertyHint.Range, "0,512,1")]
+    public float EatHandDepthOffset { get; set; } = 144.0f;
+    /// <summary>Upward visual offset from the hand midpoint at full mouth reach.</summary>
+    [Export(PropertyHint.Range, "0,64,0.5")]
+    public float EatItemLiftPixels { get; set; } = 20.0f;
+    /// <summary>Camera-space offset keeping food readable above the two hands.</summary>
+    [Export(PropertyHint.Range, "0,128,0.5")]
+    public float EatItemFrontOffset { get; set; } = 24.0f;
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -80,6 +89,12 @@ public partial class BuddyVisualProfile : GameResource
             if (!float.IsFinite(part.DepthOffset))
             {
                 errors.Add($"{part.PartId} depth offset must be finite");
+            }
+
+            if (!float.IsFinite(part.LaneYawFade) ||
+                part.LaneYawFade < 0.0f || part.LaneYawFade > 1.0f)
+            {
+                errors.Add($"{part.PartId} lane yaw fade must be finite within 0-1");
             }
 
             if (!Enum.IsDefined(part.RotationPolicy))
@@ -152,6 +167,12 @@ public partial class BuddyVisualProfile : GameResource
             !IsFiniteColor(FaceColor) || !IsFinitePositive(FaceDepthEpsilon))
         {
             errors.Add("face text size, pixel size, color, and depth epsilon are invalid");
+        }
+        if (!float.IsFinite(EatHandDepthOffset) || EatHandDepthOffset <= 0.0f ||
+            !float.IsFinite(EatItemLiftPixels) || EatItemLiftPixels < 0.0f ||
+            !float.IsFinite(EatItemFrontOffset) || EatItemFrontOffset < 0.0f)
+        {
+            errors.Add("eat hand depth and item lift must be finite and valid");
         }
 
         if (!GodotObject.IsInstanceValid(Look))

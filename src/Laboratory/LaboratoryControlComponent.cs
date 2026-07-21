@@ -1,7 +1,10 @@
 using System;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using Godot;
@@ -42,6 +45,12 @@ public partial class LaboratoryControlComponent : Node
     // Optional: tool-selection hotkeys route here when the owning lab wires the
     // interaction pipeline (M3); the dual-profile lab leaves this unset.
     [Export] public InteractionDamageComponent? Pipeline { get; set; }
+
+    // Optional (M3.6 Task 6): expressive-performance trigger keys. Debug builds only —
+    // these drive presentation seams (Class B activity requests, the facing development
+    // side), never gameplay state.
+    [Export] public Buddy.Presentation3D.ActivityAnimator? Activities { get; set; }
+    [Export] public Buddy.Presentation3D.FacingController? Facing { get; set; }
 
     public bool IsInitialized { get; private set; }
     public bool IsPaused { get; private set; }
@@ -207,6 +216,21 @@ public partial class LaboratoryControlComponent : Node
             case Key.V:
                 PresentationToggleRequested?.Invoke();
                 break;
+            case Key.E when HasActivities:
+                ToggleEat();
+                break;
+            case Key.Q when HasActivities:
+                Buddy.SetBehaviorActivity(ActivityId.Wave);
+                break;
+            case Key.Z when HasFacing:
+                Facing!.SetDevelopmentSide(-1);
+                break;
+            case Key.X when HasFacing:
+                Facing!.SetDevelopmentSide(1);
+                break;
+            case Key.C when HasFacing:
+                Facing!.SetDevelopmentSide(0);
+                break;
             default:
                 return;
         }
@@ -215,6 +239,43 @@ public partial class LaboratoryControlComponent : Node
     }
 
     private bool HasPipeline => Pipeline is not null && GodotObject.IsInstanceValid(Pipeline);
+
+    private bool HasActivities => BuildInfo.IsDebugBuild &&
+        Activities is { IsInitialized: true } && GodotObject.IsInstanceValid(Activities);
+
+    private bool HasFacing => BuildInfo.IsDebugBuild &&
+        Facing is { IsInitialized: true } && GodotObject.IsInstanceValid(Facing);
+
+    /// <summary>
+    /// Eat needs something in the hand to be legible, so the lab key owns a throwaway
+    /// item visual: first press attaches it and requests the clip, second press cancels
+    /// the request and clears the socket.
+    /// </summary>
+    public void ToggleEat()
+    {
+        if (!HasActivities)
+        {
+            return;
+        }
+
+        ActivityAnimator activities = Activities!;
+        if (Buddy.Activity.Current == ActivityId.Eat)
+        {
+            Buddy.SetBehaviorActivity(ActivityId.None);
+            activities.ClearItemVisual();
+            return;
+        }
+
+        activities.AttachItemVisual(new MeshInstance3D
+        {
+            Name = "LabEatItemVisual",
+            Mesh = new SphereMesh { Radius = 3.0f, Height = 6.0f },
+        });
+        Buddy.SetBehaviorActivity(ActivityId.Eat);
+    }
+
+    /// <summary>True while the eat key's throwaway item visual sits in the hand socket.</summary>
+    public bool IsEatKeyItemAttached => HasActivities && Activities!.ItemSocket.GetChildCount() > 0;
 
     public override void _ExitTree()
     {

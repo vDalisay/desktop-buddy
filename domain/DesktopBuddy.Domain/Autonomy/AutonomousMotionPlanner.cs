@@ -80,7 +80,7 @@ public sealed class AutonomousMotionPlanner
         _random = random ?? throw new ArgumentNullException(nameof(random));
         tuning.Validate();
         _tuning = tuning;
-        SelectNextGoal();
+        SelectNextGoal(blockedLeft: false, blockedRight: false);
         if (_tuning.AmbientJumpsEnabled)
         {
             ScheduleNextJump();
@@ -91,16 +91,24 @@ public sealed class AutonomousMotionPlanner
     public int GoalTicksRemaining => _goalTicksRemaining;
     public int JumpTicksRemaining => _jumpTicksRemaining;
 
-    public AutonomousMotionIntent Tick(bool enabled, bool canWalk, bool canJump)
+    public AutonomousMotionIntent Tick(
+        bool enabled,
+        bool canWalk,
+        bool canJump,
+        bool blockedLeft = false,
+        bool blockedRight = false)
     {
         if (!enabled)
         {
             return new AutonomousMotionIntent(_goal, 0.0f, false, true);
         }
 
-        if (_goalTicksRemaining <= 0)
+        bool currentGoalBlocked =
+            (_goal == AutonomousMotionGoal.WalkLeft && blockedLeft) ||
+            (_goal == AutonomousMotionGoal.WalkRight && blockedRight);
+        if (_goalTicksRemaining <= 0 || currentGoalBlocked)
         {
-            SelectNextGoal();
+            SelectNextGoal(blockedLeft, blockedRight);
         }
 
         _goalTicksRemaining--;
@@ -134,9 +142,21 @@ public sealed class AutonomousMotionPlanner
         return new AutonomousMotionIntent(_goal, direction, jumpRequested, false);
     }
 
-    private void SelectNextGoal()
+    private void SelectNextGoal(bool blockedLeft, bool blockedRight)
     {
-        int totalWeight = _tuning.IdleWeight + _tuning.WalkLeftWeight + _tuning.WalkRightWeight;
+        int leftWeight = blockedLeft ? 0 : _tuning.WalkLeftWeight;
+        int rightWeight = blockedRight ? 0 : _tuning.WalkRightWeight;
+        int totalWeight = _tuning.IdleWeight + leftWeight + rightWeight;
+        if (totalWeight <= 0)
+        {
+            // Both directions are unavailable and the profile has no idle weight. The
+            // safe fallback is still idle; wall avoidance may never manufacture motion.
+            _goal = AutonomousMotionGoal.Idle;
+            _goalTicksRemaining = SampleInclusive(
+                _tuning.MinimumIdleTicks, _tuning.MaximumIdleTicks);
+            return;
+        }
+
         int selection = _random.NextInt(0, totalWeight);
 
         if (selection < _tuning.IdleWeight)
@@ -147,7 +167,7 @@ public sealed class AutonomousMotionPlanner
         }
 
         selection -= _tuning.IdleWeight;
-        if (selection < _tuning.WalkLeftWeight)
+        if (selection < leftWeight)
         {
             _goal = AutonomousMotionGoal.WalkLeft;
         }

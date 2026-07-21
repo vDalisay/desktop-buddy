@@ -345,6 +345,9 @@ public partial class InteractionDamageComponent : Node
             acceptance.KnockoutTriggered,
             now);
         LastImpact = impact;
+        if (accepted.TargetPart == BuddyPart.Head)
+            Buddy.ActiveDrive.NotifyHeadDisturbed();
+        Buddy.InterruptBehaviorActivity();
         ImpactAccepted?.Invoke(impact);
 
         if (acceptance.KnockoutTriggered)

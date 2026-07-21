@@ -123,3 +123,5 @@ resource_name = "AcceptedM1LabPuppetRig"
 script = ExtResource("1_profile")
 Parts = Array[ExtResource("2_part")]([SubResource("PartHead"), SubResource("PartTorso"), SubResource("PartLeftHand"), SubResource("PartRightHand"), SubResource("PartLeftFoot"), SubResource("PartRightFoot")])
 Links = Array[ExtResource("3_link")]([SubResource("LinkHead"), SubResource("LinkLeftHand"), SubResource("LinkRightHand"), SubResource("LinkLeftFoot"), SubResource("LinkRightFoot")])
+AirborneGrabStiffnessMultiplier = 5.0
+AirborneGrabDampingMultiplier = 2.0

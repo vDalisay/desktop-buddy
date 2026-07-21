@@ -48,7 +48,7 @@ public partial class PuppetConstraintComponent : Node
         IsInitialized = true;
     }
 
-    public void PhysicsTick()
+    public void PhysicsTick(bool airborneGrab = false)
     {
         if (!IsInitialized)
         {
@@ -65,13 +65,19 @@ public partial class PuppetConstraintComponent : Node
             Vector2 actualOffset = anchorB - anchorA;
             Vector2 relativeVelocity = VelocityAt(link.B, anchorB) - VelocityAt(link.A, anchorA);
             Vector2 restOffset = definition.RestOffset.Rotated(link.A.GlobalRotation);
+            float stiffnessMultiplier = airborneGrab
+                ? Rig.Profile.AirborneGrabStiffnessMultiplier
+                : 1.0f;
+            float dampingMultiplier = airborneGrab
+                ? Rig.Profile.AirborneGrabDampingMultiplier
+                : 1.0f;
 
             var input = new PassiveSpringInput(
                 ToNumerics(actualOffset),
                 ToNumerics(relativeVelocity),
                 ToNumerics(restOffset),
-                definition.Stiffness,
-                definition.Damping,
+                definition.Stiffness * stiffnessMultiplier,
+                definition.Damping * dampingMultiplier,
                 definition.MaximumDistance,
                 definition.LimitStiffness,
                 definition.MaximumForce);

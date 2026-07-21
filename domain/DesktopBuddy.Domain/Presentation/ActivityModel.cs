@@ -6,8 +6,8 @@ namespace DesktopBuddy.Domain.Presentation;
 /// <summary>
 /// Presentation activities (M3_6_EXPRESSIVE_PRESENTATION_PLAN.md Task 3). None means the
 /// performance layer is idle-suppressed (Tracking). Class P activities are triggered by
-/// the selector itself; Eat is the slice's Class B activity, pushed through the semantic
-/// SetActivity seam (M4 wires the real consume reasons later).
+/// the selector itself; Eat is the slice's Class B activity, observed from the
+/// gameplay-owned behavior-activity seam (M4 wires the real consume reasons later).
 /// </summary>
 public enum ActivityId
 {

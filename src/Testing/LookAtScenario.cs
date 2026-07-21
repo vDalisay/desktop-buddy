@@ -46,6 +46,7 @@ public sealed class LookAtScenario : IScenario
         checks.Add(await CheckBeyondRangeReleasesTheCursor(tree, lab, messages));
         checks.Add(await CheckItemTargetWins(tree, lab, messages));
         checks.Add(await CheckAmbientGlanceDeterminism(tree, lab, seed, messages));
+        checks.Add(await CheckDefendGazeTracksGlove(tree, lab, messages));
         // Last: the strike leaves real pain, fear, and harmful memory behind.
         checks.Add(await CheckImpactSuppressionAndMemory(tree, lab, messages));
 
@@ -192,7 +193,7 @@ public sealed class LookAtScenario : IScenario
         bool coned = true;
         for (int frame = 0; frame < 600 && !matched; frame++)
         {
-            lab.Activities.SetActivity(ActivityId.Eat, 1.0);
+            lab.Buddy.SetBehaviorActivity(ActivityId.Eat);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             coned &= InsideCone(look);
             if (look.CurrentSource != LookAtSource.Item)
@@ -210,7 +211,7 @@ public sealed class LookAtScenario : IScenario
             matched = Mathf.Abs(look.CurrentYawDegrees - expectedYaw) < 1.0f;
         }
 
-        lab.Activities.SetActivity(ActivityId.None);
+        lab.Buddy.SetBehaviorActivity(ActivityId.None);
         lab.Activities.ClearItemVisual();
 
         bool passed = acquired && matched && coned;
@@ -299,6 +300,89 @@ public sealed class LookAtScenario : IScenario
         }
 
         return (angles, coned, quantized);
+    }
+
+    /// <summary>
+    /// The defend stance keeps the body in Tracking but owns an explicit gaze exception:
+    /// the angry buddy watches the engaged glove. Pain still resolves the look model to
+    /// rest, and knockout removes the exception immediately.
+    /// </summary>
+    private static async Task<StartupCheck> CheckDefendGazeTracksGlove(
+        SceneTree tree, BuddyLab lab, List<string> messages)
+    {
+        lab.Pipeline.SelectTool(ToolId.BoxingGlove);
+        Vector2 protectedCenter =
+            (lab.Buddy.Rig.Head.GlobalPosition + lab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+        Vector2 cursor = protectedCenter + new Vector2(100.0f, -20.0f);
+        lab.Glove.MoveCursor(cursor);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        if (lab.Glove.Glove is { } glove)
+        {
+            // The scenario's controlled impact body establishes harmful memory. Keep the
+            // cursor actor present for attention/defense, but prevent incidental contacts.
+            glove.CollisionLayer = 0;
+            glove.CollisionMask = 0;
+        }
+
+        AcceptedImpact? learned = await ScenarioSteps.StrikePartAtSpeed(
+            tree, lab, lab.Buddy.Rig.Torso, 2000.0f, ToolId.BoxingGlove);
+
+        bool trackedWhileDefending = false;
+        bool coned = true;
+        bool angryFaceSeen = false;
+        for (int frame = 0; frame < 240 && !trackedWhileDefending; frame++)
+        {
+            protectedCenter =
+                (lab.Buddy.Rig.Head.GlobalPosition + lab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+            cursor = protectedCenter + new Vector2(100.0f, -20.0f);
+            lab.Glove.MoveCursor(cursor);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            coned &= InsideCone(lab.HeadLookAt);
+            angryFaceSeen |= lab.Reactions.CurrentFace == ">:(";
+            trackedWhileDefending =
+                lab.ToolReactions.IsDefending &&
+                lab.PosePipeline.Mode == PresentationPoseMode.Tracking &&
+                lab.HeadLookAt.CurrentSource == LookAtSource.Cursor &&
+                lab.VisualPresenter.AppliedHeadYawDegrees > 2.0f;
+        }
+
+        AcceptedImpact? pain = await ScenarioSteps.StrikePartAtSpeed(
+            tree, lab, lab.Buddy.Rig.Torso, 2000.0f, ToolId.BoxingGlove);
+        bool painFaceSeen = false;
+        bool easedToRest = false;
+        for (int frame = 0; frame < 120 && !easedToRest; frame++)
+        {
+            lab.Glove.MoveCursor(cursor);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            painFaceSeen |= lab.Reactions.CurrentFace == ">_<";
+            easedToRest = painFaceSeen &&
+                lab.HeadLookAt.CurrentSource == LookAtSource.Rest &&
+                Mathf.Abs(lab.VisualPresenter.AppliedHeadYawDegrees) < 0.5f &&
+                Mathf.Abs(lab.VisualPresenter.AppliedHeadPitchDegrees) < 0.5f;
+        }
+
+        lab.Buddy.SetConsciousness(DesktopBuddy.Domain.Buddy.Consciousness.Unconscious);
+        bool knockoutZero = false;
+        for (int frame = 0; frame < 10 && !knockoutZero; frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            knockoutZero =
+                Mathf.Abs(lab.VisualPresenter.AppliedHeadYawDegrees) < 0.0001f &&
+                Mathf.Abs(lab.VisualPresenter.AppliedHeadPitchDegrees) < 0.0001f;
+        }
+        lab.Buddy.SetConsciousness(DesktopBuddy.Domain.Buddy.Consciousness.Conscious);
+        lab.Pipeline.SelectTool(ToolId.Grab);
+
+        bool passed = learned is not null && pain is not null && angryFaceSeen &&
+            trackedWhileDefending && painFaceSeen && easedToRest && knockoutZero && coned;
+        messages.Add($"defend_gaze tracked={trackedWhileDefending} angry={angryFaceSeen} " +
+            $"pain_rest={easedToRest} knockout_zero={knockoutZero}");
+        return new StartupCheck("lookat_defend_tracks_glove", passed,
+            $"learned={learned is not null} tracked={trackedWhileDefending} " +
+            $"angry={angryFaceSeen} pain={painFaceSeen}/{easedToRest} " +
+            $"knockout={knockoutZero} coned={coned}");
     }
 
     /// <summary>

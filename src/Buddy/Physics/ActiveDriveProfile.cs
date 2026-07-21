@@ -14,6 +14,11 @@ public partial class ActiveDriveProfile : GameResource
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float UprightStiffness { get; set; } = 900.0f;
     [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float UprightDamping { get; set; } = 140.0f;
     [Export(PropertyHint.Range, "0.1,100000,0.1,or_greater")] public float MaximumUprightTorque { get; set; } = 8_000.0f;
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float HeadUprightStiffness { get; set; } = 500.0f;
+    [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float HeadUprightDamping { get; set; } = 110.0f;
+    [Export(PropertyHint.Range, "0.1,100000,0.1,or_greater")] public float MaximumHeadUprightTorque { get; set; } = 1_600.0f;
+    /// <summary>Two calm seconds on the authoritative 120 Hz clock.</summary>
+    [Export(PropertyHint.Range, "0,1200,1")] public int HeadRightingDelayTicks { get; set; } = 240;
     [Export(PropertyHint.Range, "0,10,0.01,or_greater")] public float AssistedTorqueMultiplier { get; set; } = 3.0f;
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float BalanceStiffness { get; set; } = 100.0f;
     [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float BalanceDamping { get; set; } = 25.0f;
@@ -54,6 +59,17 @@ public partial class ActiveDriveProfile : GameResource
     /// <summary>Bounded whole-body force a fearful buddy applies to resist a grab (RAGDOLL Section 6).</summary>
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float GrabResistanceForce { get; set; } = 3_500.0f;
 
+    // --- Behavior-backed hand reach (Eat now; Wave may reuse this seam later) ---
+    [Export] public Vector2 EatChestTargetOffset { get; set; } = new(0.0f, -24.0f);
+    [Export] public Vector2 EatMouthTargetOffset { get; set; } = new(0.0f, 31.0f);
+    [Export] public Vector2 EatFinalLowerTargetOffset { get; set; } = new(0.0f, -5.0f);
+    [Export(PropertyHint.Range, "0,64,0.5")] public float EatHandHalfSeparation { get; set; } = 16.0f;
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float ActivityHandStiffness { get; set; } = 1_600.0f;
+    [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float ActivityHandDamping { get; set; } = 70.0f;
+    [Export(PropertyHint.Range, "0.1,200000,0.1,or_greater")] public float ActivityHandMaximumForce { get; set; } = 16_000.0f;
+    [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float StationaryHorizontalDamping { get; set; } = 600.0f;
+    [Export(PropertyHint.Range, "0.1,100000,0.1,or_greater")] public float MaximumStationaryForce { get; set; } = 30_000.0f;
+
     [Export(PropertyHint.Range, "0.01,3.14,0.01")] public float MaximumStandingTorsoTilt { get; set; } = 0.45f;
     [Export(PropertyHint.Range, "0,128,0.1")] public float MinimumHeadAboveTorso { get; set; } = 8.0f;
     [Export(PropertyHint.Range, "0,128,0.1")] public float MinimumFeetBelowTorso { get; set; } = 12.0f;
@@ -67,6 +83,13 @@ public partial class ActiveDriveProfile : GameResource
         ValidatePositive(errors, UprightStiffness, nameof(UprightStiffness));
         ValidateNonNegative(errors, UprightDamping, nameof(UprightDamping));
         ValidatePositive(errors, MaximumUprightTorque, nameof(MaximumUprightTorque));
+        ValidateNonNegative(errors, HeadUprightStiffness, nameof(HeadUprightStiffness));
+        ValidateNonNegative(errors, HeadUprightDamping, nameof(HeadUprightDamping));
+        ValidatePositive(errors, MaximumHeadUprightTorque, nameof(MaximumHeadUprightTorque));
+        if (HeadRightingDelayTicks < 0)
+        {
+            errors.Add($"{nameof(HeadRightingDelayTicks)} must be non-negative");
+        }
         ValidateNonNegative(errors, AssistedTorqueMultiplier, nameof(AssistedTorqueMultiplier));
         ValidateNonNegative(errors, BalanceStiffness, nameof(BalanceStiffness));
         ValidateNonNegative(errors, BalanceDamping, nameof(BalanceDamping));
@@ -95,6 +118,15 @@ public partial class ActiveDriveProfile : GameResource
         }
         ValidateNonNegative(errors, JumpCrouchForce, nameof(JumpCrouchForce));
         ValidateNonNegative(errors, GrabResistanceForce, nameof(GrabResistanceForce));
+        if (!EatChestTargetOffset.IsFinite()) errors.Add($"{nameof(EatChestTargetOffset)} must be finite");
+        if (!EatMouthTargetOffset.IsFinite()) errors.Add($"{nameof(EatMouthTargetOffset)} must be finite");
+        if (!EatFinalLowerTargetOffset.IsFinite()) errors.Add($"{nameof(EatFinalLowerTargetOffset)} must be finite");
+        ValidateNonNegative(errors, EatHandHalfSeparation, nameof(EatHandHalfSeparation));
+        ValidateNonNegative(errors, ActivityHandStiffness, nameof(ActivityHandStiffness));
+        ValidateNonNegative(errors, ActivityHandDamping, nameof(ActivityHandDamping));
+        ValidatePositive(errors, ActivityHandMaximumForce, nameof(ActivityHandMaximumForce));
+        ValidateNonNegative(errors, StationaryHorizontalDamping, nameof(StationaryHorizontalDamping));
+        ValidatePositive(errors, MaximumStationaryForce, nameof(MaximumStationaryForce));
         ValidatePositive(errors, MaximumStandingTorsoTilt, nameof(MaximumStandingTorsoTilt));
         ValidateNonNegative(errors, MinimumHeadAboveTorso, nameof(MinimumHeadAboveTorso));
         ValidateNonNegative(errors, MinimumFeetBelowTorso, nameof(MinimumFeetBelowTorso));

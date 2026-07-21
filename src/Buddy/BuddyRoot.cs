@@ -4,6 +4,7 @@ using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Presentation;
 using Godot;
 
 namespace DesktopBuddy.Buddy;
@@ -25,11 +26,13 @@ public partial class BuddyRoot : Node2D
     [Export] public AutonomousMotionComponent AutonomousMotion { get; set; } = null!;
     [Export] public ActiveDriveComponent ActiveDrive { get; set; } = null!;
     [Export] public GrabResistanceComponent GrabResistance { get; set; } = null!;
+    [Export] public BehaviorActivityComponent Activity { get; set; } = null!;
 
     public event Action<Consciousness>? ConsciousnessChanged;
     /// <summary>Raised on every autonomy reseed so seeded presentation streams
     /// (facing idle variety) can re-derive their own stream from the same seed.</summary>
     public event Action<ulong>? AutonomyReseeded;
+    public event Action<ActivityId>? BehaviorActivityChanged;
 
     public Consciousness CurrentConsciousness { get; private set; } = Consciousness.Conscious;
     public bool IsInitialized { get; private set; }
@@ -53,7 +56,8 @@ public partial class BuddyRoot : Node2D
             !GodotObject.IsInstanceValid(Standing) || !GodotObject.IsInstanceValid(Recovery) ||
             !GodotObject.IsInstanceValid(AutonomousMotion) ||
             !GodotObject.IsInstanceValid(ActiveDrive) ||
-            !GodotObject.IsInstanceValid(GrabResistance))
+            !GodotObject.IsInstanceValid(GrabResistance) ||
+            !GodotObject.IsInstanceValid(Activity))
         {
             throw new InvalidOperationException(
                 "BuddyRoot requires its visual profile and every injected physics and behavior component.");
@@ -80,11 +84,13 @@ public partial class BuddyRoot : Node2D
         AutonomousMotion.Initialize(DefaultAutonomySeed);
         ActiveDrive.Initialize();
         GrabResistance.Initialize();
+        Activity.Initialize();
+        Activity.ActivityChanged += OnBehaviorActivityChanged;
         Recovery.HardRecovered += _ => SetConsciousness(Consciousness.Conscious);
         IsInitialized = true;
     }
 
-    public void PhysicsTick()
+    public void PhysicsTick(bool buddyPartGrabbed, bool headGrabbed = false)
     {
         if (!IsInitialized)
         {
@@ -93,12 +99,23 @@ public partial class BuddyRoot : Node2D
 
         RoutedTicks++;
         Standing.PhysicsTick();
-        Recovery.PhysicsTick(CurrentConsciousness == Consciousness.Conscious);
-        AutonomousMotion.PhysicsTick(CurrentConsciousness, Recovery.State);
+        bool dangled = buddyPartGrabbed && Standing.Snapshot.SupportContactCount == 0;
+        // An airborne grab is the same passive body state as unconsciousness while
+        // leaving the buddy's awareness intact. Ground contact keeps normal drive.
+        Recovery.PhysicsTick(CurrentConsciousness == Consciousness.Conscious && !dangled);
+        Activity.PhysicsTick();
+        AutonomousMotion.PhysicsTick(
+            CurrentConsciousness,
+            Recovery.State,
+            behaviorEnabled: !Activity.IsStationary && !dangled);
         GrabResistance.PhysicsTick(CurrentConsciousness);
         CurrentDriveIntent = BuildDriveIntent();
-        ActiveDrive.PhysicsTick(CurrentConsciousness, CurrentDriveIntent);
-        Constraints.PhysicsTick();
+        if (headGrabbed)
+            ActiveDrive.NotifyHeadDisturbed();
+        ActiveDrive.PhysicsTick(CurrentConsciousness, CurrentDriveIntent, buddyPartGrabbed);
+        // Passive structure never turns off: unconsciousness and airborne grabs
+        // disable active drive, not the springs that preserve the six-part topology.
+        Constraints.PhysicsTick(airborneGrab: dangled);
     }
 
     // Minimal actuation arbitration until the full BehaviorArbiter lands: a
@@ -111,7 +128,8 @@ public partial class BuddyRoot : Node2D
             return new DriveIntent(
                 0.0f, 0.0f, false, 0.0f, 1.0f, 0.0f,
                 resistance.Direction, resistance.Strength,
-                false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f);
+                false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f,
+                false, false, 0.0f, Vector2.Zero, Vector2.Zero);
         }
 
         ToolReactionIntent reaction = CurrentToolReactionIntent;
@@ -132,17 +150,52 @@ public partial class BuddyRoot : Node2D
                 reaction.GuardStiffness,
                 reaction.GuardDamping,
                 reaction.GuardMaximumForce,
-                reaction.GuardAbsorption);
+                reaction.GuardAbsorption,
+                false,
+                false,
+                0.0f,
+                Vector2.Zero,
+                Vector2.Zero);
         }
 
         AutonomousMotionIntent motion = AutonomousMotion.Intent;
+        bool reach = Activity.EatReachActive;
+        Vector2 chestCenter = Rig.Torso.GlobalPosition + ActiveDrive.Profile.EatChestTargetOffset;
+        Vector2 finalLowerCenter = Rig.Torso.GlobalPosition +
+            ActiveDrive.Profile.EatFinalLowerTargetOffset;
+        Vector2 returnCenter = chestCenter.Lerp(finalLowerCenter, Activity.EatFinalLowering);
+        Vector2 mouthCenter = Rig.Head.GlobalPosition + ActiveDrive.Profile.EatMouthTargetOffset;
+        Vector2 reachCenter = reach
+            ? returnCenter.Lerp(mouthCenter, Activity.EatLift)
+            : Vector2.Zero;
+        Vector2 handSeparation = new(ActiveDrive.Profile.EatHandHalfSeparation, 0.0f);
         return new DriveIntent(
             motion.WalkDirection, 1.0f, motion.JumpRequested, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f);
+            0.0f, 0.0f, false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f,
+            Activity.IsStationary || AutonomousMotion.IsWallStopping,
+            reach,
+            Activity.EatLift,
+            reachCenter - handSeparation,
+            reachCenter + handSeparation);
     }
 
     /// <summary>Pushed by the focused tool-reaction worker before this buddy ticks.</summary>
     public void SetToolReactionIntent(ToolReactionIntent intent) => CurrentToolReactionIntent = intent;
+
+    /// <summary>Gameplay-owned Class B activity command; presentation observes the event.</summary>
+    public void SetBehaviorActivity(ActivityId activity) => Activity.SetActivity(activity);
+
+    /// <summary>Accepted physical disruption cancels a behavior-backed gesture immediately.</summary>
+    public void InterruptBehaviorActivity() => Activity.Interrupt();
+
+    private void OnBehaviorActivityChanged(ActivityId activity) =>
+        BehaviorActivityChanged?.Invoke(activity);
+
+    public override void _ExitTree()
+    {
+        if (GodotObject.IsInstanceValid(Activity))
+            Activity.ActivityChanged -= OnBehaviorActivityChanged;
+    }
 
     public void SetConsciousness(Consciousness consciousness)
     {

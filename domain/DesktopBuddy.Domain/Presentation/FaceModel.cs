@@ -87,7 +87,7 @@ public static class FaceExpressionCatalog
         // Pet completion smile / content band.
         [":)"] = new FaceFeaturePose(FaceEyePose.Open, FaceBrowPose.Neutral, FaceMouthPose.Smile),
         // Pet rubbing.
-        [":3"] = new FaceFeaturePose(FaceEyePose.Open, FaceBrowPose.Neutral, FaceMouthPose.CatSmile),
+        [":3"] = new FaceFeaturePose(FaceEyePose.HappyArc, FaceBrowPose.None, FaceMouthPose.CatSmile),
         // Tickle contact / delight / delighted band.
         ["^_^"] = new FaceFeaturePose(FaceEyePose.HappyArc, FaceBrowPose.None, FaceMouthPose.OpenSmile),
         // Fearful band.

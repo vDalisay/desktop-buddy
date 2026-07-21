@@ -15,6 +15,11 @@ public partial class PuppetRigProfile : GameResource
 
     [Export] public Godot.Collections.Array<PuppetPartDefinition> Parts { get; set; } = new();
     [Export] public Godot.Collections.Array<PuppetLinkDefinition> Links { get; set; } = new();
+    /// <summary>Passive spring gain while a grab lifts the entire rig off support.</summary>
+    [Export(PropertyHint.Range, "1,12,0.1")]
+    public float AirborneGrabStiffnessMultiplier { get; set; } = 5.0f;
+    [Export(PropertyHint.Range, "1,8,0.1")]
+    public float AirborneGrabDampingMultiplier { get; set; } = 2.0f;
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -80,6 +85,14 @@ public partial class PuppetRigProfile : GameResource
         if (Links.Count == 0)
         {
             errors.Add("at least one structural link is required");
+        }
+
+        if (!float.IsFinite(AirborneGrabStiffnessMultiplier) ||
+            AirborneGrabStiffnessMultiplier < 1.0f ||
+            !float.IsFinite(AirborneGrabDampingMultiplier) ||
+            AirborneGrabDampingMultiplier < 1.0f)
+        {
+            errors.Add("airborne grab structural multipliers must be finite and at least one");
         }
 
         var linkIds = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);

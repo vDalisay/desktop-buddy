@@ -26,9 +26,16 @@ public partial class ReactionAudioPresenter : Node
 
     public override void _ExitTree()
     {
-        if (!GodotObject.IsInstanceValid(Pipeline)) return;
-        Pipeline.ImpactAccepted -= OnImpact;
-        Pipeline.CareAwarded -= OnCare;
+        if (GodotObject.IsInstanceValid(Pipeline))
+        {
+            Pipeline.ImpactAccepted -= OnImpact;
+            Pipeline.CareAwarded -= OnCare;
+        }
+        if (GodotObject.IsInstanceValid(Player))
+        {
+            Player.Stop();
+            Player.Stream = null;
+        }
     }
 
     private void OnImpact(AcceptedImpact impact)

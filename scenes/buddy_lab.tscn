@@ -199,11 +199,13 @@ shape = SubResource("VerticalBoundary")
 position = Vector2(472, 180)
 shape = SubResource("VerticalBoundary")
 
-[node name="LaboratoryControlComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Presenter", "Pipeline")]
+[node name="LaboratoryControlComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Presenter", "Pipeline", "Activities", "Facing")]
 script = ExtResource("3_controls")
 Buddy = NodePath("../Buddy")
 Presenter = NodePath("../BuddyVisualPresenter")
 Pipeline = NodePath("../InteractionPipeline")
+Activities = NodePath("../ActivityAnimator")
+Facing = NodePath("../FacingController")
 
 [node name="GrabTetherController" type="Node2D" parent="."]
 script = ExtResource("4_grab")

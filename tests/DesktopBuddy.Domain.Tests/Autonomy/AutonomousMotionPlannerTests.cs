@@ -112,6 +112,57 @@ public sealed class AutonomousMotionPlannerTests
         Assert.Contains(trace, intent => intent.Goal == AutonomousMotionGoal.Idle);
     }
 
+    [Fact]
+    public void BlockedDirections_AreExcludedFromEveryNewGoal()
+    {
+        var leftBlocked = new AutonomousMotionPlanner(new SeededRandomSource(19), Tuning);
+        var rightBlocked = new AutonomousMotionPlanner(new SeededRandomSource(19), Tuning);
+
+        for (int tick = 0; tick < 2000; tick++)
+        {
+            AutonomousMotionIntent left = leftBlocked.Tick(
+                enabled: true, canWalk: true, canJump: false, blockedLeft: true);
+            AutonomousMotionIntent right = rightBlocked.Tick(
+                enabled: true, canWalk: true, canJump: false, blockedRight: true);
+            Assert.NotEqual(AutonomousMotionGoal.WalkLeft, left.Goal);
+            Assert.True(left.WalkDirection >= 0.0f);
+            Assert.NotEqual(AutonomousMotionGoal.WalkRight, right.Goal);
+            Assert.True(right.WalkDirection <= 0.0f);
+        }
+    }
+
+    [Fact]
+    public void CurrentWalkGoal_EndsImmediatelyWhenItsSideBecomesBlocked()
+    {
+        AutonomousMotionPlanner? planner = null;
+        bool blockLeft = false;
+        for (ulong seed = 1; seed < 1000 && planner is null; seed++)
+        {
+            var candidate = new AutonomousMotionPlanner(new SeededRandomSource(seed), Tuning);
+            if (candidate.Goal == AutonomousMotionGoal.WalkLeft)
+            {
+                planner = candidate;
+                blockLeft = true;
+            }
+            else if (candidate.Goal == AutonomousMotionGoal.WalkRight)
+            {
+                planner = candidate;
+            }
+        }
+
+        Assert.NotNull(planner);
+        AutonomousMotionGoal blockedGoal = blockLeft
+            ? AutonomousMotionGoal.WalkLeft
+            : AutonomousMotionGoal.WalkRight;
+        AutonomousMotionIntent intent = planner!.Tick(
+            enabled: true,
+            canWalk: true,
+            canJump: false,
+            blockedLeft: blockLeft,
+            blockedRight: !blockLeft);
+        Assert.NotEqual(blockedGoal, intent.Goal);
+    }
+
     private static List<AutonomousMotionIntent> Capture(AutonomousMotionPlanner planner, int ticks)
     {
         var trace = new List<AutonomousMotionIntent>(ticks);

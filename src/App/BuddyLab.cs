@@ -113,6 +113,7 @@ public partial class BuddyLab : Node2D
             Glove.Profile.VisualDepthOffset);
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
+        Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
         Vector2 viewportSize = GetViewport().GetVisibleRect().Size;
         var clientSize = new Vector2I((int)viewportSize.X, (int)viewportSize.Y);
         if (clientSize.X < RoomLayoutPolicy.MinimumRoomWidth ||
@@ -126,6 +127,7 @@ public partial class BuddyLab : Node2D
         }
 
         Boundaries.Initialize(clientSize, 1.0);
+        Buddy.AutonomousMotion.SetWalkableBounds(Boundaries.InnerBounds);
         BoundaryVisualizer.Initialize();
         TelemetryPanel.Initialize();
 
@@ -167,6 +169,7 @@ public partial class BuddyLab : Node2D
             Grab.PhysicsTick(delta);
             GrabState grab = Grab.CurrentGrab;
             bool buddyPartGrabbed = grab.Active && grab.Target is PuppetPartBody;
+            bool headGrabbed = grab.Active && grab.Target == Buddy.Rig.Head;
             Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
 
             Glove.PhysicsTick(delta);
@@ -174,7 +177,7 @@ public partial class BuddyLab : Node2D
             ToolReactions.PhysicsTick(delta);
             Reactions.PhysicsTick();
 
-            Buddy.PhysicsTick();
+            Buddy.PhysicsTick(buddyPartGrabbed, headGrabbed);
 
             // ARCHITECTURE §7 steps 7-8: the pipeline consumes the previous
             // step's authoritative contacts after the buddy routed its tick.
@@ -207,6 +210,7 @@ public partial class BuddyLab : Node2D
         if (GodotObject.IsInstanceValid(Boundaries) && GodotObject.IsInstanceValid(Containment))
         {
             Boundaries.LayoutApplied -= Containment.ApplyLayout;
+            Boundaries.LayoutApplied -= OnBoundaryLayoutApplied;
         }
 
         if (GodotObject.IsInstanceValid(Pipeline))
@@ -226,6 +230,9 @@ public partial class BuddyLab : Node2D
 
         TelemetryRecorder?.Complete();
     }
+
+    private void OnBoundaryLayoutApplied(RoomLayout _layout, Rect2 innerBounds) =>
+        Buddy.AutonomousMotion.SetWalkableBounds(innerBounds);
 
     private void OnHardRecovered(HardRecoveryReason reason)
     {

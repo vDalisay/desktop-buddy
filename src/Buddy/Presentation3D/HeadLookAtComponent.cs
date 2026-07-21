@@ -12,9 +12,9 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 
 /// <summary>
 /// M3.6 Task 4 head look-at: owns what the buddy is watching and the eased head yaw/pitch
-/// the presenter applies to the HEAD socket only (scaled by the pose pipeline's
-/// performance weight, so a Tracking cut, unconsciousness, or any other forcing state
-/// suppresses the gaze for free and snap-safely). Arbitration, cone clamping, easing, and
+/// the presenter applies to the HEAD socket only (normally scaled by the pose pipeline's
+/// performance weight; the presenter owns the explicit defend-gaze exception while the
+/// body remains in Tracking). Arbitration, cone clamping, easing, and
 /// the seeded ambient glance timer live engine-free in <see cref="LookAtModel"/>; this
 /// node only samples real semantics — the engaged care/glove cursor, an eaten item in the
 /// hand socket, the last accepted impact point, the current reaction face — and re-derives

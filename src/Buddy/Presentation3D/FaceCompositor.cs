@@ -337,8 +337,8 @@ public sealed class SoftOvalFacePainter : IFaceStylePainter
                 OpenSmile(canvas, 0.0f, -5.0f, 4.0f);
                 break;
             case FaceMouthPose.CatSmile:
-                SmileArc(canvas, -1.8f, -6.8f, 2.0f, 1.6f);
-                SmileArc(canvas, 1.8f, -6.8f, 2.0f, 1.6f);
+                SmileArc(canvas, -2.4f, -6.5f, 3.0f, 2.3f);
+                SmileArc(canvas, 2.4f, -6.5f, 3.0f, 2.3f);
                 break;
             case FaceMouthPose.Frown:
                 FrownArc(canvas, 0.0f, -8.5f, 4.0f, 2.0f);

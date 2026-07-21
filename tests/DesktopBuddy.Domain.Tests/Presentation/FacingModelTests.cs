@@ -135,6 +135,24 @@ public sealed class FacingModelTests
     }
 
     [Fact]
+    public void ForcedFrontal_TurnsToZeroAndRestoresCommittedSideAfterRelease()
+    {
+        FacingModel model = NewModel();
+        model.Update(WalkRight, 40, 0.6);
+        Assert.Equal(FacingSide.Right, model.CommittedSide);
+        Assert.Equal(30.0f, model.CurrentYawDegrees, 3);
+
+        var forced = new FacingInputs(false, 0.0f, 0.0f, ForceFrontal: true);
+        model.Update(forced, 1, 0.5);
+        Assert.Equal(FacingSide.Right, model.CommittedSide);
+        Assert.Equal(0.0f, model.CurrentYawDegrees, 3);
+
+        model.Update(Idle, 1, 0.5);
+        Assert.Equal(FacingSide.Right, model.CommittedSide);
+        Assert.Equal(30.0f, model.CurrentYawDegrees, 3);
+    }
+
+    [Fact]
     public void IdleVariety_FlipsSideOnSeededScheduleOnly()
     {
         // Scripted stream: first interval 720 ticks, initial side pick Right, next interval 720.

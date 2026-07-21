@@ -43,6 +43,9 @@ public sealed class FaceCompositionScenario : IScenario
         await ScenarioSteps.WaitForStanding(tree, lab, 1800);
 
         checks.Add(CheckExpressionMapCoverage(lab));
+        checks.Add(new StartupCheck("calm_default_face_is_smile",
+            lab.Reactions.CurrentFace == ":)",
+            $"face={lab.Reactions.CurrentFace}"));
         checks.Add(await CheckRerenderOnChangeOnly(tree, lab, seed, messages));
         checks.Add(await CheckBlinkRunsAndSuppresses(tree, lab, seed, messages));
         checks.Add(await CheckChewOverlay(tree, lab, messages));
@@ -238,7 +241,7 @@ public sealed class FaceCompositionScenario : IScenario
         bool onlyChewMouths = true;
         for (int frame = 0; frame < 240 && !(sawOpen && sawClosed); frame++)
         {
-            lab.Activities.SetActivity(ActivityId.Eat, 1.0);
+            lab.Buddy.SetBehaviorActivity(ActivityId.Eat);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             if (lab.Activities.Current != ActivityId.Eat)
             {
@@ -251,7 +254,7 @@ public sealed class FaceCompositionScenario : IScenario
             onlyChewMouths &= mouth is FaceMouthPose.ChewOpen or FaceMouthPose.ChewClosed;
         }
 
-        lab.Activities.SetActivity(ActivityId.None);
+        lab.Buddy.SetBehaviorActivity(ActivityId.None);
         lab.Activities.ClearItemVisual();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);

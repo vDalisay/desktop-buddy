@@ -6,6 +6,7 @@ using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
@@ -110,6 +111,8 @@ public partial class SandboxRoot : Node2D
             Glove.Profile.VisualDepthOffset);
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
+        Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
+        Buddy.AutonomousMotion.SetWalkableBounds(Boundaries.InnerBounds);
         Buddy.Recovery.HardRecovered += OnHardRecovered;
         Pipeline.ToolChanged += OnToolChanged;
         Glove.BodySpawned += OnGloveBodySpawned;
@@ -132,19 +135,23 @@ public partial class SandboxRoot : Node2D
         Boundaries.PhysicsTick();
         Grab.PhysicsTick(delta);
         GrabState grab = Grab.CurrentGrab;
-        Buddy.GrabResistance.SetGrabContext(grab.Active && grab.Target is PuppetPartBody, grab.CursorAnchor);
+        bool buddyPartGrabbed = grab.Active && grab.Target is PuppetPartBody;
+        Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
         Glove.PhysicsTick(delta);
         CareStroke.PhysicsTick(delta);
         ToolReactions.PhysicsTick(delta);
         Reactions.PhysicsTick();
-        Buddy.PhysicsTick();
+        Buddy.PhysicsTick(buddyPartGrabbed, grab.Active && grab.Target == Buddy.Rig.Head);
         Pipeline.PhysicsTick();
     }
 
     public override void _ExitTree()
     {
         if (GodotObject.IsInstanceValid(Boundaries) && GodotObject.IsInstanceValid(Containment))
+        {
             Boundaries.LayoutApplied -= Containment.ApplyLayout;
+            Boundaries.LayoutApplied -= OnBoundaryLayoutApplied;
+        }
         if (GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Buddy.Recovery))
             Buddy.Recovery.HardRecovered -= OnHardRecovered;
         if (GodotObject.IsInstanceValid(Pipeline)) Pipeline.ToolChanged -= OnToolChanged;
@@ -154,6 +161,9 @@ public partial class SandboxRoot : Node2D
             Glove.BodyDespawned -= OnGloveBodyDespawned;
         }
     }
+
+    private void OnBoundaryLayoutApplied(RoomLayout _layout, Rect2 innerBounds) =>
+        Buddy.AutonomousMotion.SetWalkableBounds(innerBounds);
 
     private void OnHardRecovered(HardRecoveryReason reason)
     {

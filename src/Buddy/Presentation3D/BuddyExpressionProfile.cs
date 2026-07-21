@@ -141,7 +141,7 @@ public partial class BuddyExpressionProfile : GameResource
     /// </summary>
     [Export]
     public Godot.Collections.Array<string> LookSuppressionFaces { get; set; } =
-        new() { ">_<", "x_x", ">:(" };
+        new() { ">_<", "x_x" };
 
     /// <summary>True when the current semantic face suppresses look-at.</summary>
     public bool SuppressesLookAt(string face)

@@ -1,9 +1,10 @@
 {
   "id": "lab_walk_jump", "milestone": 1,
-  "description": "Observe seeded left/right walking and a jump followed by landing; timeout_physics_ticks is a hard cap over the autonomy-profile-derived budget.",
+  "description": "Observe seeded left/right walking and a jump followed by landing; timeout_physics_ticks is a hard cap over the autonomy-profile-derived budget. Ambient jumping is OFF in the shipped profile (owner decision 2026-07-20), so the journey asserts that datum and re-enables the flag journey-locally to keep exercising real takeoff/landing.",
   "setup": { "scene": "buddy_lab", "exercise": "walk_jump", "seed": 1, "timeout_physics_ticks": 3600 },
   "_documentation": [{ "step": "wait_predicate", "predicate": "seeded_walk_jump_complete" }],
   "assertions": [
+    { "predicate": "shipped_profile_disables_ambient_jumping" },
     { "predicate": "walked_left" }, { "predicate": "walked_right" }, { "predicate": "jumped" },
     { "predicate": "landed_standing" }, { "predicate": "motion_contained" }
   ]
