@@ -135,13 +135,14 @@ public partial class SandboxRoot : Node2D
         Boundaries.PhysicsTick();
         Grab.PhysicsTick(delta);
         GrabState grab = Grab.CurrentGrab;
-        bool buddyPartGrabbed = grab.Active && grab.Target is PuppetPartBody;
+        PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
+        bool buddyPartGrabbed = grabbedBody is not null;
         Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
         Glove.PhysicsTick(delta);
         CareStroke.PhysicsTick(delta);
         ToolReactions.PhysicsTick(delta);
         Reactions.PhysicsTick();
-        Buddy.PhysicsTick(buddyPartGrabbed, grab.Active && grab.Target == Buddy.Rig.Head);
+        Buddy.PhysicsTick(grabbedBody?.PartId, grab.CursorAnchor);
         Pipeline.PhysicsTick();
     }
 

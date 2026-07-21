@@ -21,6 +21,7 @@ public partial class ActiveDriveComponent : Node
     [Export] public ConsciousnessDriveProfile UnconsciousProfile { get; set; } = null!;
 
     public float LastUprightTorque { get; private set; }
+    public float LastHangAlignTorque { get; private set; }
     public float LastHeadUprightTorque { get; private set; }
     public Vector2 LastBalanceForce { get; private set; }
     public Vector2 LastLocomotionForce { get; private set; }
@@ -51,6 +52,9 @@ public partial class ActiveDriveComponent : Node
     private float _pendingJumpHorizontalRatio;
     private Vector2 _leftFootRest;
     private Vector2 _rightFootRest;
+    private readonly Vector2[] _hangRestDirections =
+        new Vector2[PuppetRigProfile.RequiredPartCount];
+    private float _totalMass;
 
     public void Initialize()
     {
@@ -70,15 +74,32 @@ public partial class ActiveDriveComponent : Node
         _leftFootRest = Rig.Profile.FindPart(BuddyPartId.LeftFoot)!.RestPosition - torsoRest;
         _rightFootRest = Rig.Profile.FindPart(BuddyPartId.RightFoot)!.RestPosition - torsoRest;
 
+        Vector2 restCenterOfMass = Vector2.Zero;
+        _totalMass = 0.0f;
+        for (int index = 0; index < PuppetRigProfile.RequiredPartCount; index++)
+        {
+            PuppetPartDefinition part = Rig.Profile.FindPart((BuddyPartId)index)!;
+            restCenterOfMass += part.RestPosition * part.Mass;
+            _totalMass += part.Mass;
+        }
+        restCenterOfMass /= _totalMass;
+        for (int index = 0; index < PuppetRigProfile.RequiredPartCount; index++)
+        {
+            PuppetPartDefinition part = Rig.Profile.FindPart((BuddyPartId)index)!;
+            _hangRestDirections[index] = restCenterOfMass - part.RestPosition;
+        }
+
         IsInitialized = true;
     }
 
     public void PhysicsTick(
         Consciousness consciousness,
         DriveIntent intent,
-        bool buddyPartGrabbed)
+        BuddyPartId? grabbedPart,
+        Vector2 grabWorldAnchor)
     {
         LastUprightTorque = 0.0f;
+        LastHangAlignTorque = 0.0f;
         LastHeadUprightTorque = 0.0f;
         LastBalanceForce = Vector2.Zero;
         LastLocomotionForce = Vector2.Zero;
@@ -101,20 +122,20 @@ public partial class ActiveDriveComponent : Node
         ConsciousnessDriveProfile mode = consciousness == Consciousness.Conscious
             ? ConsciousProfile
             : UnconsciousProfile;
-        ActiveOutputsEnabled = mode.ActiveDriveEnabled;
-        if (!ActiveOutputsEnabled)
-        {
-            ResetGaitState();
-            return;
-        }
-
-        bool dangled = buddyPartGrabbed && Standing.Snapshot.SupportContactCount == 0;
+        bool dangled = grabbedPart is not null && Standing.Snapshot.SupportContactCount == 0;
+        ActiveOutputsEnabled = mode.ActiveDriveEnabled && !dangled;
         float assistanceRamp = SuppressRecovery || dangled ? 0.0f : Recovery.State.AssistanceRamp;
         if (dangled)
         {
             // Airborne grab is a passive ragdoll, exactly like unconscious drive.
-            // Awareness/reactions resume as soon as any support contact returns.
-            ActiveOutputsEnabled = false;
+            // The one bounded torque below emulates the rotation that off-center
+            // structural anchors would create; every ordinary active output stays off.
+            ApplyHangAlignment(grabbedPart!.Value, grabWorldAnchor);
+            ResetGaitState();
+            return;
+        }
+        if (!ActiveOutputsEnabled)
+        {
             ResetGaitState();
             return;
         }
@@ -242,6 +263,44 @@ public partial class ActiveDriveComponent : Node
             -Profile.MaximumUprightTorque,
             Profile.MaximumUprightTorque);
         torso.ApplyTorque(LastUprightTorque);
+    }
+
+    private void ApplyHangAlignment(BuddyPartId grabbedPart, Vector2 grabWorldAnchor)
+    {
+        if (!grabWorldAnchor.IsFinite())
+            return;
+
+        Vector2 worldCenterOfMass = Vector2.Zero;
+        for (int index = 0; index < PuppetRigProfile.RequiredPartCount; index++)
+        {
+            PuppetPartBody body = Rig.Parts[index];
+            worldCenterOfMass += body.GlobalPosition * body.Mass;
+        }
+        worldCenterOfMass /= _totalMass;
+
+        Vector2 restDirection = _hangRestDirections[(int)grabbedPart];
+        Vector2 actualDirection = worldCenterOfMass - grabWorldAnchor;
+        HangFrameResult hang = HangFrame.Evaluate(new HangFrameInput(
+            new NumericsVector2(restDirection.X, restDirection.Y),
+            new NumericsVector2(actualDirection.X, actualDirection.Y)));
+        if (!hang.IsValid)
+            return;
+
+        PuppetPartBody torso = Rig.Torso;
+        float error = HangFrame.WrapAngle(hang.Angle - torso.GlobalRotation);
+        PendulumTorqueResult pendulum = PendulumTorque.Evaluate(new PendulumTorqueInput(
+            error,
+            _totalMass,
+            actualDirection.Length(),
+            Profile.HangGravityGain,
+            torso.AngularVelocity,
+            Profile.HangSwingDamping,
+            Profile.MaximumHangAlignTorque));
+        if (!pendulum.IsValid)
+            return;
+
+        LastHangAlignTorque = pendulum.Torque;
+        torso.ApplyTorque(LastHangAlignTorque);
     }
 
     private void ApplyHeadUprightTorque(ConsciousnessDriveProfile mode)
@@ -501,14 +560,5 @@ public partial class ActiveDriveComponent : Node
         return force;
     }
 
-    private float TotalMass()
-    {
-        float total = 0.0f;
-        foreach (PuppetPartBody body in Rig.Parts)
-        {
-            total += body.Mass;
-        }
-
-        return total;
-    }
+    private float TotalMass() => _totalMass;
 }

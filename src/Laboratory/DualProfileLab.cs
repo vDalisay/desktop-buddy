@@ -59,15 +59,16 @@ public partial class DualProfileLab : Node2D
         GrabState grab = Grab.CurrentGrab;
         BuddyRoot active = ActiveBuddy;
         BuddyRoot inactive = InteractiveBuddyIndex == 0 ? BuddyB : BuddyA;
-        bool activePartGrabbed = grab.Active && grab.Target is PuppetPartBody;
+        PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
+        bool activePartGrabbed = grabbedBody is not null;
         active.GrabResistance.SetGrabContext(activePartGrabbed, grab.CursorAnchor);
         inactive.GrabResistance.SetGrabContext(false, Vector2.Zero);
         BuddyA.PhysicsTick(
-            ReferenceEquals(active, BuddyA) && activePartGrabbed,
-            ReferenceEquals(active, BuddyA) && grab.Target == BuddyA.Rig.Head);
+            ReferenceEquals(active, BuddyA) ? grabbedBody?.PartId : null,
+            ReferenceEquals(active, BuddyA) ? grab.CursorAnchor : default);
         BuddyB.PhysicsTick(
-            ReferenceEquals(active, BuddyB) && activePartGrabbed,
-            ReferenceEquals(active, BuddyB) && grab.Target == BuddyB.Rig.Head);
+            ReferenceEquals(active, BuddyB) ? grabbedBody?.PartId : null,
+            ReferenceEquals(active, BuddyB) ? grab.CursorAnchor : default);
         _recorderA?.Capture(_tick); _recorderB?.Capture(_tick); _tick++;
     }
 

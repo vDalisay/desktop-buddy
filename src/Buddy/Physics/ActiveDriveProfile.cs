@@ -14,6 +14,13 @@ public partial class ActiveDriveProfile : GameResource
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float UprightStiffness { get; set; } = 900.0f;
     [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float UprightDamping { get; set; } = 140.0f;
     [Export(PropertyHint.Range, "0.1,100000,0.1,or_greater")] public float MaximumUprightTorque { get; set; } = 8_000.0f;
+    /// <summary>
+    /// Gravity-style gain that lets the center-anchored spring frame swing
+    /// around an unsupported grabbed part rather than servoing into position.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float HangGravityGain { get; set; } = 980.0f;
+    [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float HangSwingDamping { get; set; } = 0.0f;
+    [Export(PropertyHint.Range, "0.1,100000,0.1,or_greater")] public float MaximumHangAlignTorque { get; set; } = 48_000.0f;
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float HeadUprightStiffness { get; set; } = 500.0f;
     [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float HeadUprightDamping { get; set; } = 110.0f;
     [Export(PropertyHint.Range, "0.1,100000,0.1,or_greater")] public float MaximumHeadUprightTorque { get; set; } = 1_600.0f;
@@ -83,6 +90,9 @@ public partial class ActiveDriveProfile : GameResource
         ValidatePositive(errors, UprightStiffness, nameof(UprightStiffness));
         ValidateNonNegative(errors, UprightDamping, nameof(UprightDamping));
         ValidatePositive(errors, MaximumUprightTorque, nameof(MaximumUprightTorque));
+        ValidateNonNegative(errors, HangGravityGain, nameof(HangGravityGain));
+        ValidateNonNegative(errors, HangSwingDamping, nameof(HangSwingDamping));
+        ValidatePositive(errors, MaximumHangAlignTorque, nameof(MaximumHangAlignTorque));
         ValidateNonNegative(errors, HeadUprightStiffness, nameof(HeadUprightStiffness));
         ValidateNonNegative(errors, HeadUprightDamping, nameof(HeadUprightDamping));
         ValidatePositive(errors, MaximumHeadUprightTorque, nameof(MaximumHeadUprightTorque));

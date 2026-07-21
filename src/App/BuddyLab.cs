@@ -168,8 +168,8 @@ public partial class BuddyLab : Node2D
             // the same physics step; ordering between them does not matter.
             Grab.PhysicsTick(delta);
             GrabState grab = Grab.CurrentGrab;
-            bool buddyPartGrabbed = grab.Active && grab.Target is PuppetPartBody;
-            bool headGrabbed = grab.Active && grab.Target == Buddy.Rig.Head;
+            PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
+            bool buddyPartGrabbed = grabbedBody is not null;
             Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
 
             Glove.PhysicsTick(delta);
@@ -177,7 +177,7 @@ public partial class BuddyLab : Node2D
             ToolReactions.PhysicsTick(delta);
             Reactions.PhysicsTick();
 
-            Buddy.PhysicsTick(buddyPartGrabbed, headGrabbed);
+            Buddy.PhysicsTick(grabbedBody?.PartId, grab.CursorAnchor);
 
             // ARCHITECTURE §7 steps 7-8: the pipeline consumes the previous
             // step's authoritative contacts after the buddy routed its tick.

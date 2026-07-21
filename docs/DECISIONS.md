@@ -461,6 +461,18 @@ This file records only decisions explicitly confirmed by the project owner. Unre
 - **Head-righting speed:** the two-second calm delay remains, but once righting begins the
   head must settle within at most `60` routed ticks (`0.5 s` at 120 Hz).
 
+### Grab-hang pendulum feel ACCEPTED (2026-07-22)
+
+- The owner tested the v2 unsupported foot grab interactively, including whipping the
+  cursor side to side, and accepted the result ("omg yes thanks way better"). Unsupported
+  grabs therefore use the bounded gravity-style pendulum torque rather than the rejected
+  overdamped angle servo. The accepted active-drive values are `HangGravityGain = 980`,
+  `HangSwingDamping = 0`, and `MaximumHangAlignTorque = 48000`.
+- Airborne-grab passive structure is accepted at `1.25x` spring stiffness and `1.0x`
+  damping. The ordinary structural springs and maximum-distance limits remain active, so
+  limbs lag and flex without returning to the rejected limit-only slide. The corresponding
+  `grab_dangle` regression bound is `48 px` (measured `42.8 px` plus margin).
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

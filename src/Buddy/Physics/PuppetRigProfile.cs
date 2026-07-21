@@ -17,9 +17,9 @@ public partial class PuppetRigProfile : GameResource
     [Export] public Godot.Collections.Array<PuppetLinkDefinition> Links { get; set; } = new();
     /// <summary>Passive spring gain while a grab lifts the entire rig off support.</summary>
     [Export(PropertyHint.Range, "1,12,0.1")]
-    public float AirborneGrabStiffnessMultiplier { get; set; } = 5.0f;
+    public float AirborneGrabStiffnessMultiplier { get; set; } = 1.25f;
     [Export(PropertyHint.Range, "1,8,0.1")]
-    public float AirborneGrabDampingMultiplier { get; set; } = 2.0f;
+    public float AirborneGrabDampingMultiplier { get; set; } = 1.0f;
 
     public override Godot.Collections.Array<string> Validate()
     {

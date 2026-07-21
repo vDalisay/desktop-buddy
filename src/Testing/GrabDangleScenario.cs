@@ -13,7 +13,10 @@ public sealed class GrabDangleScenario : IScenario
 {
     private const int HoldTicks = 180;
     private const int MeasureStartTick = 90;
-    private const float MaximumAcceptedLinkError = 24.0f;
+    // Re-measured at 42.8 px after the accepted loose-hang multiplier moved
+    // from 5x to 1.25x; the margin catches a return to limit-only sliding
+    // without pinning the old welded stiffness.
+    private const float MaximumAcceptedLinkError = 48.0f;
 
     public string Id => "grab_dangle";
 

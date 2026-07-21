@@ -90,7 +90,7 @@ public partial class BuddyRoot : Node2D
         IsInitialized = true;
     }
 
-    public void PhysicsTick(bool buddyPartGrabbed, bool headGrabbed = false)
+    public void PhysicsTick(BuddyPartId? grabbedPart = null, Vector2 grabWorldAnchor = default)
     {
         if (!IsInitialized)
         {
@@ -99,6 +99,7 @@ public partial class BuddyRoot : Node2D
 
         RoutedTicks++;
         Standing.PhysicsTick();
+        bool buddyPartGrabbed = grabbedPart is not null;
         bool dangled = buddyPartGrabbed && Standing.Snapshot.SupportContactCount == 0;
         // An airborne grab is the same passive body state as unconsciousness while
         // leaving the buddy's awareness intact. Ground contact keeps normal drive.
@@ -110,9 +111,13 @@ public partial class BuddyRoot : Node2D
             behaviorEnabled: !Activity.IsStationary && !dangled);
         GrabResistance.PhysicsTick(CurrentConsciousness);
         CurrentDriveIntent = BuildDriveIntent();
-        if (headGrabbed)
+        if (grabbedPart == BuddyPartId.Head)
             ActiveDrive.NotifyHeadDisturbed();
-        ActiveDrive.PhysicsTick(CurrentConsciousness, CurrentDriveIntent, buddyPartGrabbed);
+        ActiveDrive.PhysicsTick(
+            CurrentConsciousness,
+            CurrentDriveIntent,
+            grabbedPart,
+            grabWorldAnchor);
         // Passive structure never turns off: unconsciousness and airborne grabs
         // disable active drive, not the springs that preserve the six-part topology.
         Constraints.PhysicsTick(airborneGrab: dangled);
