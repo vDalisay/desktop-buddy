@@ -6,11 +6,14 @@
   "assertions": [
     { "predicate": "shell_composed" },
     { "predicate": "shell_transparency_active" },
-    { "predicate": "hit_region_is_client_box" },
+    { "predicate": "hit_regions_track_buddy" },
     { "predicate": "starts_in_work" },
     { "predicate": "toggle_enters_play" },
     { "predicate": "escape_returns_to_work" },
     { "predicate": "click_inside_enters_play" },
+    { "predicate": "grab_cursor_follows_drag" },
+    { "predicate": "buddy_follows_drag" },
+    { "predicate": "transparent_space_is_passthrough_region" },
     { "predicate": "click_outside_returns_to_work" },
     { "predicate": "ends_in_work" }
   ]

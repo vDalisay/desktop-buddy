@@ -6,4 +6,5 @@
 resource_name = "ProvisionalM3Reaction"
 script = ExtResource("1_reaction")
 PetCompletionFaceSeconds = 0.75
+LearnedThreatFaceTailSeconds = 5.0
 GloveImpactAmplitude = 12000.0

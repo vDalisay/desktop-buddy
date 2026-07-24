@@ -24,6 +24,8 @@ public sealed class ImpactDedupScenario : IScenario
     private const int RestWindowTicks = 300;
     private const float BallRadius = 10.0f;
     private const float BallMass = 2.0f;
+    private const float BallLinearDamp = 1.5f;
+    private const float BallAngularDamp = 2.0f;
     private const float StrikeSpeed = 550.0f;
 
     public string Id => "impact_dedup";
@@ -72,7 +74,7 @@ public sealed class ImpactDedupScenario : IScenario
 
         // Phase B — first drop: one real hit opens exactly one scoring episode.
         var ball = new LooseObjectBody();
-        ball.Configure(BallRadius, BallMass);
+        ball.Configure(BallRadius, BallMass, BallLinearDamp, BallAngularDamp);
         lab.AddChild(ball);
         pipeline.EpisodeAccepted += OnEpisodeAccepted;
         pipeline.ImpactAccepted += OnImpactAccepted;
@@ -94,9 +96,11 @@ public sealed class ImpactDedupScenario : IScenario
 
         // Phase C — the settled ball's resting stream must never score and its
         // episode accepts must stay bounded (buddy may nudge it while walking).
-        bool ballSettled = await WaitForBallRest(tree, ball, RestSettleTimeoutTicks);
-        checks.Add(new StartupCheck("ball_settles", ballSettled,
-            $"speed={ball.LinearVelocity.Length():F1}"));
+        BallRestResult ballRest = await WaitForBallRest(tree, ball, RestSettleTimeoutTicks);
+        checks.Add(new StartupCheck("ball_settles", ballRest.Settled,
+            $"ticks={ballRest.ElapsedTicks} calm={ballRest.CalmTicks} " +
+            $"speed={ballRest.FinalSpeed:F1} min={ballRest.MinimumSpeed:F1} " +
+            $"angular={ballRest.FinalAngularSpeed:F1} sleeping={ballRest.ObservedSleeping}"));
 
         int restScoredBefore = ballImpacts.Count;
         for (int tick = 0; tick < RestWindowTicks; tick++)
@@ -183,19 +187,50 @@ public sealed class ImpactDedupScenario : IScenario
         ball.ApplyCentralImpulse(Vector2.Down * (ball.Mass * speed));
     }
 
-    private static async Task<bool> WaitForBallRest(SceneTree tree, LooseObjectBody ball, int timeoutTicks)
+    private static async Task<BallRestResult> WaitForBallRest(
+        SceneTree tree,
+        LooseObjectBody ball,
+        int timeoutTicks)
     {
         int calmTicks = 0;
+        float minimumSpeed = float.PositiveInfinity;
+        bool observedSleeping = false;
         for (int tick = 0; tick < timeoutTicks; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-            calmTicks = ball.LinearVelocity.Length() < 5.0f ? calmTicks + 1 : 0;
+            float speed = ball.LinearVelocity.Length();
+            minimumSpeed = Mathf.Min(minimumSpeed, speed);
+            observedSleeping |= ball.Sleeping;
+            calmTicks = speed < 5.0f ? calmTicks + 1 : 0;
             if (calmTicks >= 60)
             {
-                return true;
+                return new BallRestResult(
+                    true,
+                    tick + 1,
+                    calmTicks,
+                    speed,
+                    minimumSpeed,
+                    Mathf.Abs(ball.AngularVelocity),
+                    observedSleeping);
             }
         }
 
-        return false;
+        return new BallRestResult(
+            false,
+            timeoutTicks,
+            calmTicks,
+            ball.LinearVelocity.Length(),
+            minimumSpeed,
+            Mathf.Abs(ball.AngularVelocity),
+            observedSleeping);
     }
+
+    private readonly record struct BallRestResult(
+        bool Settled,
+        int ElapsedTicks,
+        int CalmTicks,
+        float FinalSpeed,
+        float MinimumSpeed,
+        float FinalAngularSpeed,
+        bool ObservedSleeping);
 }

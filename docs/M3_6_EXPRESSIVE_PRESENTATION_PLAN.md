@@ -569,6 +569,9 @@ catalogue (26 scenarios + 10 journeys) rather than a curated list exposed:
    the M2 shell input path respectively, so they are filed as separate follow-ups rather
    than retuned inside a presentation slice.
 
+Follow-up status (2026-07-24): the owner hands-on accepted the 228-tick assisted
+stand-up, so its regression ceiling is 240 ticks with no tuning change.
+
 Documentation amended: `ARCHITECTURE.md` §14.1 (presentation modes, the Tracking cut, the
 `0.5 x radius` offset cap, the four contributor systems, the routed-tick clock rule),
 `TEST_PLAN.md` (the `m36_expressive` journey and the both-modes rerun rule), and

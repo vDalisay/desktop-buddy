@@ -45,7 +45,8 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     private IntPtr _originalWndProc = IntPtr.Zero;
     private bool _subclassed;
 
-    private List<Rect2I> _hitRegions = new();
+    private Rect2I[] _hitRegions = new Rect2I[16];
+    private int _hitRegionCount;
     private bool _workModeActive;
 
     public bool IsNative => true;
@@ -92,7 +93,11 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
         // folded in — the client rects are logical pixels; per-monitor DPI scaling
         // of the hit test lands with the InputCollector coordinate layer
         // (`ARCHITECTURE.md` §10).
-        _hitRegions = new List<Rect2I>(regions);
+        if (regions.Count > _hitRegions.Length)
+            Array.Resize(ref _hitRegions, regions.Count);
+        for (int index = 0; index < regions.Count; index++)
+            _hitRegions[index] = regions[index];
+        _hitRegionCount = regions.Count;
         _workModeActive = true;
     }
 
@@ -149,8 +154,9 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
 
     private bool PointInAnyRegion(int x, int y)
     {
-        foreach (Rect2I region in _hitRegions)
+        for (int index = 0; index < _hitRegionCount; index++)
         {
+            Rect2I region = _hitRegions[index];
             if (x >= region.Position.X && x < region.Position.X + region.Size.X &&
                 y >= region.Position.Y && y < region.Position.Y + region.Size.Y)
             {

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
@@ -7,6 +8,7 @@ using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Physics;
+using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
@@ -30,6 +32,11 @@ namespace DesktopBuddy.App;
 /// </summary>
 public partial class SandboxRoot : Node2D
 {
+    private readonly Rect2I[] _buddyWorkModeHitRegions =
+        new Rect2I[PuppetRigProfile.RequiredPartCount];
+    private readonly Rect2[] _buddyWorkModeWorldRegions =
+        new Rect2[PuppetRigProfile.RequiredPartCount];
+
     [Export] public DesktopWindowController Window { get; set; } = null!;
     [Export] public DesktopShellController Shell { get; set; } = null!;
     [Export] public BoundaryController Boundaries { get; set; } = null!;
@@ -113,6 +120,7 @@ public partial class SandboxRoot : Node2D
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
         Buddy.AutonomousMotion.SetWalkableBounds(Boundaries.InnerBounds);
+        RefreshWorkModeHitRegions();
         Buddy.Recovery.HardRecovered += OnHardRecovered;
         Pipeline.ToolChanged += OnToolChanged;
         Glove.BodySpawned += OnGloveBodySpawned;
@@ -144,6 +152,7 @@ public partial class SandboxRoot : Node2D
         Reactions.PhysicsTick();
         Buddy.PhysicsTick(grabbedBody?.PartId, grab.CursorAnchor);
         Pipeline.PhysicsTick();
+        RefreshWorkModeHitRegions();
     }
 
     public override void _ExitTree()
@@ -165,6 +174,32 @@ public partial class SandboxRoot : Node2D
 
     private void OnBoundaryLayoutApplied(RoomLayout _layout, Rect2 innerBounds) =>
         Buddy.AutonomousMotion.SetWalkableBounds(innerBounds);
+
+    private void RefreshWorkModeHitRegions()
+    {
+        double zoom = Shell.EffectiveZoom;
+        IReadOnlyList<PuppetPartBody> parts = Buddy.Rig.Parts;
+        for (int index = 0; index < parts.Count; index++)
+        {
+            PuppetPartBody part = parts[index];
+            float diameter = part.Radius * 2.0f;
+            _buddyWorkModeWorldRegions[index] = new Rect2(
+                part.GlobalPosition - Vector2.One * part.Radius,
+                Vector2.One * diameter);
+            PixelRect projected = SandboxProjection.SandboxRectToClient(
+                part.GlobalPosition.X - part.Radius,
+                part.GlobalPosition.Y - part.Radius,
+                diameter,
+                diameter,
+                zoom);
+            _buddyWorkModeHitRegions[index] =
+                new Rect2I(projected.X, projected.Y, projected.Width, projected.Height);
+        }
+
+        Shell.UpdateWorkModeHitRegions(
+            _buddyWorkModeWorldRegions,
+            _buddyWorkModeHitRegions);
+    }
 
     private void OnHardRecovered(HardRecoveryReason reason)
     {

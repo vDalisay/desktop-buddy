@@ -204,8 +204,30 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   `720-1920` → `1440-3600`, ambient glances `480-1200` → `720-1800`, breathing
   `3.2 s`/`1.2 px` → `4.4 s`/`0.8 px`, walk bob `1.5` → `1.0`.
 
+### Owner runtime fixes — threat face and Work Mode routing (2026-07-24)
+
+- **Learned Boxing Glove threat face:** persistent harmful-tool memory remains
+  persistent, but it no longer pins the visible `o_o` face merely because Boxing
+  Glove stays selected. An on-screen learned-harm glove refreshes a five-second
+  routed-tick face tail; after the pointer leaves the play area, the startle face
+  expires after exactly `600` ticks and presentation returns to the ordinary
+  reaction/mood face. Fear memory and future defense behavior remain intact.
+- **Work Mode interaction surface:** the six live buddy-body bounds, rather than
+  the whole sandbox rectangle, are the current Work Mode hit regions. A buddy
+  press is observed by the shell before gameplay consumes it, enters Play Mode,
+  and preserves that same press for the selected tool. Play Mode captures drag
+  motion; `Escape` restores Work Mode; transparent pixels outside the moving
+  buddy regions pass through to desktop applications.
+
 ## Accepted Milestone 1 Feel Tuning (2026-07-12)
 
+- **Assisted stand-up duration accepted (2026-07-24).** The owner hands-on checked
+  the current assisted recovery after the fixed two-second unable-to-stand delay
+  and accepted its duration as feeling right. The deterministic
+  `standing_recovery` scenario measures `228` routed ticks (about `1.9 s`) from
+  already-active assistance to stable standing; its regression ceiling is now
+  `240` ticks (`2.0 s`). This records acceptance of the existing forces and
+  motion—no recovery tuning changed.
 - The owner performed the `TEST_PLAN.md` §8 side-by-side feel review of the tuning produced by `docs/M1_FEEL_AND_GAIT_PLAN.md` and **accepted it** ("this feels way better, I approve"). This satisfies the ROADMAP Milestone 1 exit criterion "lock an initial accepted tuning Resource." The accepted profiles are `data/buddy/lab_puppet_rig.tres`, `lab_grab_tether.tres`, `lab_active_drive.tres`, `lab_conscious_drive.tres`, `lab_unconscious_drive.tres`, `lab_autonomous_motion.tres`, and `lab_boundary.tres`, renamed from `Provisional*` to `AcceptedM1*` to mark the lock. Changing them now requires a new owner feel review.
 - Accepted feel direction, established against the v1.01 reference: low body damping (responsive falls), grab strong enough to lift the whole buddy clear of the floor and whip it once airborne, a phase-driven **stepping** gait (feet visibly alternate and clear the floor) implemented with per-foot target forces on the existing six circles — **no inverse-kinematics chains and no added rigid bodies** — and prompt (~2 s ramp) assisted recovery. The six-circle constraint and the ban on skeletal ragdoll/joint motors are unchanged.
 - `lab_envelope_bounds.tres` remains `Provisional`: it holds statistical regression tolerances, re-measured as later behaviors are tuned, not a feel-accepted profile.

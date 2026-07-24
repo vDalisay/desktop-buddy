@@ -87,7 +87,7 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   bounded head-righting torque begins only after it, restores a conscious head, re-arms on
   a new impact, and never runs while unconscious.
 - After two seconds unable to stand, assisted recovery begins; hard recovery does not occur before ten seconds unless state is invalid/out of bounds.
-- Assisted recovery reaches full strength in one second and restores standing within the accepted `1.5`-second physical scenario bound.
+- Assisted recovery reaches full strength in one second and restores standing within the owner-accepted `2.0`-second physical scenario bound.
 - After knockout expires, active drive ramps back without a teleport.
 - NaN, infinite, or escaped-body injection triggers immediate safe recovery.
 - Hard recovery releases grabs/held objects, clears transient physics/pain/knockout/status state, and preserves persistent progress.
@@ -97,6 +97,7 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - Glove and bat damage comes from physical contact rather than tool activation.
 - Boxing Glove cursor lag remains within the accepted response envelope; faster real strikes increase measured impulse/pain; the impact marker is centered on the solver contact point; maximum-pain/knockout hit-stop has a visibly slow early curve, is non-stacking, and restores the prior time scale.
 - Learned Boxing Glove harm raises both real hand bodies into a body-relative guard while the buddy travels away from the pointer. The guard direction follows pointer changes with bounded lag, never attaches to the physical glove, and applies an equal reaction so guard actuation cannot pull the puppet toward the threat. Guard-hand contact applies `0.5x` accepted impulse plus a matching physical counter-impulse; strikes around the hands remain unmodified.
+- After a learned-harm Boxing Glove pointer leaves the play area, its `o_o` threat face persists for exactly five seconds (`600` routed ticks) and then returns to the ordinary reaction/mood face without clearing harmful-tool memory.
 - The physical head rotates while the emoticon remains upright; Pet/Tickle cursor hands follow real pointer input instantly beneath the visible OS cursor.
 - Favorite-spot Pet contact emits small sparkles around the Pet hand only while held rubbing contact remains valid.
 - Pistol/shotgun cadence, magazine, reload, pellet count, and CCD behavior match the specification.
@@ -105,6 +106,11 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
+- The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
+  consecutive routed ticks within its `600`-tick settling window. Its verdict
+  reports elapsed ticks, calm ticks, minimum/final linear speed, final angular
+  speed, and whether physics sleep was observed; the bound must not be relaxed
+  to hide missing rolling resistance.
 - A thrown object that bounces off a boundary before striking the buddy still credits the originating throw; the same object striking after coming to rest, or after the buddy tosses/discards it, attributes to the generic loose-object source.
 - Spawning object 25 removes the oldest eligible safe/unheld object and never removes a protected object.
 

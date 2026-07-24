@@ -35,9 +35,13 @@ public partial class DesktopShellController : Node
     private Vector2I? _pendingClientSize;
     private double _storedZoom = 1.0;
     private double _effectiveZoom = 1.0;
+    private IReadOnlyList<Rect2I>? _dynamicWorkModeHitRegions;
+    private IReadOnlyList<Rect2>? _dynamicWorkModeWorldHitRegions;
+    private readonly Rect2I[] _fallbackWorkModeHitRegion = new Rect2I[1];
 
     public DomainInputMode Mode => _mode.Current;
     public int ModeChangeCount { get; private set; }
+    public double EffectiveZoom => _effectiveZoom;
 
     /// <summary>The client-pixel Work-Mode hit regions last sent to the window service (test observability).</summary>
     public IReadOnlyList<Rect2I> LastWorkModeHitRegions { get; private set; } = Array.Empty<Rect2I>();
@@ -81,7 +85,7 @@ public partial class DesktopShellController : Node
         }
     }
 
-    public override void _UnhandledInput(InputEvent @event)
+    public override void _Input(InputEvent @event)
     {
         if (@event.IsActionPressed(InputActions.ToggleInputMode))
         {
@@ -99,13 +103,33 @@ public partial class DesktopShellController : Node
 
         if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click)
         {
-            bool insideBox = _innerBounds.HasPoint(ToWorld(click.Position));
-            Apply(insideBox ? ShellInputEvent.BuddyInteraction : ShellInputEvent.OutsideClick);
+            bool interactive = PointInWorkModeHitRegions(click.Position);
+            Apply(interactive ? ShellInputEvent.BuddyInteraction : ShellInputEvent.OutsideClick);
         }
     }
 
     /// <summary>Return control to Work Mode from a tray action or any recovery path.</summary>
     public void ReturnToWorkMode() => Apply(ShellInputEvent.TrayReturnToWork);
+
+    /// <summary>
+    /// Replaces the coarse startup box with live client-pixel interaction regions.
+    /// The sandbox root supplies a stable preallocated list; the native adapter
+    /// copies its values so moving bodies cannot race a Win32 hit-test callback.
+    /// </summary>
+    public void UpdateWorkModeHitRegions(
+        IReadOnlyList<Rect2> worldRegions,
+        IReadOnlyList<Rect2I> clientRegions)
+    {
+        _dynamicWorkModeWorldHitRegions =
+            worldRegions ?? throw new ArgumentNullException(nameof(worldRegions));
+        _dynamicWorkModeHitRegions =
+            clientRegions ?? throw new ArgumentNullException(nameof(clientRegions));
+        if (worldRegions.Count != clientRegions.Count)
+            throw new ArgumentException("World and client hit-region counts must match.");
+        LastWorkModeHitRegions = clientRegions;
+        if (_mode.Current == DomainInputMode.Work)
+            Window.SetInputMode(_mode.Current, clientRegions);
+    }
 
     private void Apply(ShellInputEvent input)
     {
@@ -135,6 +159,12 @@ public partial class DesktopShellController : Node
     /// </summary>
     private IReadOnlyList<Rect2I> WorkModeHitRegions()
     {
+        if (_dynamicWorkModeHitRegions is { Count: > 0 } dynamicRegions)
+        {
+            LastWorkModeHitRegions = dynamicRegions;
+            return dynamicRegions;
+        }
+
         if (_innerBounds.Size == Vector2.Zero)
         {
             LastWorkModeHitRegions = Array.Empty<Rect2I>();
@@ -147,8 +177,36 @@ public partial class DesktopShellController : Node
             _innerBounds.Size.X,
             _innerBounds.Size.Y,
             _effectiveZoom);
-        LastWorkModeHitRegions = new[] { new Rect2I(box.X, box.Y, box.Width, box.Height) };
+        _fallbackWorkModeHitRegion[0] = new Rect2I(box.X, box.Y, box.Width, box.Height);
+        LastWorkModeHitRegions = _fallbackWorkModeHitRegion;
         return LastWorkModeHitRegions;
+    }
+
+    private bool PointInWorkModeHitRegions(Vector2 clientPoint)
+    {
+        if (_dynamicWorkModeWorldHitRegions is { Count: > 0 } worldRegions)
+        {
+            Vector2 worldPoint =
+                GetViewport().GetCanvasTransform().AffineInverse() * clientPoint;
+            for (int index = 0; index < worldRegions.Count; index++)
+            {
+                if (worldRegions[index].HasPoint(worldPoint))
+                    return true;
+            }
+
+            return false;
+        }
+
+        IReadOnlyList<Rect2I> regions = WorkModeHitRegions();
+        int x = Mathf.RoundToInt(clientPoint.X);
+        int y = Mathf.RoundToInt(clientPoint.Y);
+        for (int index = 0; index < regions.Count; index++)
+        {
+            if (regions[index].HasPoint(new Vector2I(x, y)))
+                return true;
+        }
+
+        return false;
     }
 
     private void OnClientBoundsChanged(Rect2I bounds) => _pendingClientSize = bounds.Size;
@@ -175,8 +233,6 @@ public partial class DesktopShellController : Node
 
         return size;
     }
-
-    private Vector2 ToWorld(Vector2 viewportPoint) => GetViewport().GetCanvasTransform().AffineInverse() * viewportPoint;
 
     public override void _ExitTree()
     {

@@ -50,6 +50,15 @@ public partial class ToolReactionComponent : Node
     public bool IsInitialized { get; private set; }
     public bool IsDefending => Intent.GuardActive;
     public bool IsTickleFleeing => Intent.Active && !Intent.GuardActive && Intent.WalkDirection != 0.0f;
+    /// <summary>
+    /// True while a learned-harm glove is an immediate on-screen threat. Persistent
+    /// harmful memory remains owned by the damage/mood pipeline; presentation uses
+    /// this narrower semantic so a selected but off-screen glove cannot pin the face.
+    /// </summary>
+    public bool IsLearnedGloveThreatActive =>
+        Pipeline.SelectedTool == ToolId.BoxingGlove &&
+        Pipeline.IsToolHarmful((int)ToolId.BoxingGlove) &&
+        Glove.HasCursor;
     public Vector2 GuardDirection => _guardDirection;
     public Vector2 GuardAimPoint => _guardAimPoint;
     public Vector2 GuardCenter => Intent.GuardActive

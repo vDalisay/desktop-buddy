@@ -4,7 +4,9 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-21, after M3.6 Task 6 and the owner feedback rework were accepted.
+Last updated: 2026-07-24, after owner runtime verification of recovery,
+Boxing Glove pointer-exit reactions, and Work/Play routing, plus closure of the
+loose-ball settling regression.
 **Start here: `docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md`** — read its
 Progress section, which is the authoritative per-task status.
 
@@ -25,18 +27,23 @@ Progress section, which is the authoritative per-task status.
   composition/regression/docs, and the owner feedback rework are complete.
 - Milestone 4 behavior is next; economy/shop work remains Milestone 5 scope.
 
-### Known red, and NOT caused by the current slice
+### Known red
 
-Verified 2026-07-20 against `5b52365` and `ff99731~1`, with and without
-`--fixed-fps 120` — these three predate M3.6 Task 6 and each has its own follow-up:
+Current targeted verification leaves no known red.
 
-- `standing_recovery` → `assisted_recovery_is_prompt` (228 ticks vs the 180 bound).
-- `impact_dedup` → `ball_settles` (probe ball still at ~37 px/s).
-- `desktop_shell_modes` → `click_inside_enters_play` (and
-  `click_outside_returns_to_work` passes only vacuously).
+Resolved 2026-07-24:
 
-Do not "fix" these by relaxing bounds; they guard owner-locked M1 feel tuning, the
-M3 attribution calibration, and the M2 shell input path respectively.
+- `impact_dedup`: the loose-object prototype now receives explicit replacement
+  linear/angular damping (`1.5` / `2.0`) from its scenario configuration rather
+  than inheriting insufficient project damping. The strict `<5 px/s` for 60
+  consecutive ticks oracle is unchanged; seeds 1 and 7 in both presentation
+  modes settle in 225 ticks at 2.5 px/s, while first-hit, resting-contact, reward,
+  and re-arm checks remain green.
+- `standing_recovery`: owner accepted the measured 228-tick assisted stand-up;
+  the documented regression ceiling is now 240 ticks with no tuning change.
+- `desktop_shell_modes`: live six-body Work Mode hit regions, early shell input
+  observation, Play capture, drag following, Escape recovery, and transparent
+  passthrough are covered by the now-green journey (seeds 1 and 7).
 
 ## 2. Green baseline (verify before you build on it)
 
@@ -46,10 +53,10 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test` | 407/407 green |
+| Domain unit | `dotnet test` | 429/429 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (31) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | green except the two known-red above |
-| Journeys (10) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | green except `desktop_shell_modes` |
+| Scenarios (31) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | targeted gates green |
+| Journeys (10) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | targeted `desktop_shell_modes` green |
 | Quick suite | `tools\quick_validate.bat` | 9/9 |
 
 Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the
@@ -131,7 +138,10 @@ Gotchas that WILL fail a run if you forget them:
 
 ## 5. Suggested next step
 
-**Milestone 4 behavior.** M3.6 Task 6 and the owner-feedback rework are complete and
+**Milestone 4 behavior.** Detailed architecture and task breakdown now live in
+`docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` (pre-plan, 2026-07-24): Task 0 is
+decision-free prep; Tasks 1+ wait on the owner decisions listed at its end.
+M3.6 Task 6 and the owner-feedback rework are complete and
 owner-accepted. The final pass includes the real `E` Eat interaction, two-hand five-bite
 motion, frontal food facing, final hand lowering, passive airborne grabs, full-body wall
 detection, immediate grounded stopping, and sub-0.5-second head recovery after the calm

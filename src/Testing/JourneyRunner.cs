@@ -8,6 +8,7 @@ using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Platform;
@@ -217,11 +218,26 @@ public partial class JourneyRunner : Node
         state["shell_transparency_active"] = sandbox.Window.TransparencyActive;
         state["starts_in_work"] = shell!.Mode == DomainInputMode.Work;
 
-        // The Work-Mode hit region is the box projected into client pixels; at the
-        // default 480x360 room and 100% zoom that is the inner box (16,16,448,328).
+        // Work Mode exposes only the six moving buddy bodies. Transparent client
+        // space is deliberately absent so the native adapter can pass it through.
         IReadOnlyList<Rect2I> regions = shell.LastWorkModeHitRegions;
-        state["hit_region_is_client_box"] =
-            regions.Count == 1 && regions[0] == new Rect2I(16, 16, 448, 328);
+        bool tracksBuddy = regions.Count == PuppetRigProfile.RequiredPartCount;
+        for (int index = 0; index < regions.Count && index < sandbox.Buddy.Rig.Parts.Count; index++)
+        {
+            PuppetPartBody part = sandbox.Buddy.Rig.Parts[index];
+            PixelRect projected = SandboxProjection.SandboxRectToClient(
+                part.GlobalPosition.X,
+                part.GlobalPosition.Y,
+                0.0,
+                0.0,
+                shell.EffectiveZoom);
+            var clientPoint = new Vector2I(
+                projected.X,
+                projected.Y);
+            bool contains = regions[index].HasPoint(clientPoint);
+            tracksBuddy &= contains;
+        }
+        state["hit_regions_track_buddy"] = tracksBuddy;
 
         await ToggleAsync();
         state["toggle_enters_play"] = shell.Mode == DomainInputMode.Play;
@@ -229,11 +245,38 @@ public partial class JourneyRunner : Node
         await EscapeAsync();
         state["escape_returns_to_work"] = shell.Mode == DomainInputMode.Work;
 
-        Rect2 box = sandbox.Boundaries.InnerBounds;
-        await ClickWorldAsync(box.GetCenter());
+        Vector2 torsoStart = sandbox.Buddy.Rig.Torso.GlobalPosition;
+        await PressWorldAsync(torsoStart);
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
         state["click_inside_enters_play"] = shell.Mode == DomainInputMode.Play;
 
-        await ClickWorldAsync(new Vector2(box.Position.X - 8.0f, box.Position.Y - 8.0f));
+        Rect2 box = sandbox.Boundaries.InnerBounds;
+        Vector2 dragTarget = new(
+            Mathf.Clamp(torsoStart.X + 80.0f, box.Position.X + 24.0f, box.End.X - 24.0f),
+            Mathf.Clamp(torsoStart.Y - 40.0f, box.Position.Y + 24.0f, box.End.Y - 24.0f));
+        await MoveWorldAsync(dragTarget, dragTarget - torsoStart);
+        for (int tick = 0; tick < 30; tick++)
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        state["grab_cursor_follows_drag"] =
+            sandbox.Grab.CurrentGrab.Active &&
+            sandbox.Grab.CurrentGrab.CursorAnchor.DistanceTo(dragTarget) < 1.0f;
+        state["buddy_follows_drag"] =
+            sandbox.Buddy.Rig.Torso.GlobalPosition.DistanceTo(torsoStart) > 4.0f;
+        await ReleaseWorldAsync(dragTarget);
+
+        await EscapeAsync();
+        Vector2 transparentPoint = box.Position + new Vector2(12.0f, 12.0f);
+        Vector2I transparentClient = new(
+            Mathf.RoundToInt(transparentPoint.X * (float)shell.EffectiveZoom),
+            Mathf.RoundToInt(transparentPoint.Y * (float)shell.EffectiveZoom));
+        bool transparentCovered = false;
+        regions = shell.LastWorkModeHitRegions;
+        for (int index = 0; index < regions.Count; index++)
+            transparentCovered |= regions[index].HasPoint(transparentClient);
+        state["transparent_space_is_passthrough_region"] = !transparentCovered;
+
+        await ToggleAsync();
+        await ClickWorldAsync(transparentPoint);
         state["click_outside_returns_to_work"] = shell.Mode == DomainInputMode.Work;
 
         state["ends_in_work"] = shell.Mode == DomainInputMode.Work;
@@ -258,6 +301,12 @@ public partial class JourneyRunner : Node
 
     private async System.Threading.Tasks.Task ClickWorldAsync(Vector2 world)
     {
+        await PressWorldAsync(world);
+        await ReleaseWorldAsync(world);
+    }
+
+    private async System.Threading.Tasks.Task PressWorldAsync(Vector2 world)
+    {
         Vector2 viewport = GetViewport().GetCanvasTransform() * world;
         Input.ParseInputEvent(new InputEventMouseButton
         {
@@ -268,6 +317,26 @@ public partial class JourneyRunner : Node
             GlobalPosition = viewport,
         });
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+    }
+
+    private async System.Threading.Tasks.Task MoveWorldAsync(Vector2 world, Vector2 relative)
+    {
+        Vector2 viewport = GetViewport().GetCanvasTransform() * world;
+        Input.ParseInputEvent(new InputEventMouseMotion
+        {
+            ButtonMask = MouseButtonMask.Left,
+            Position = viewport,
+            GlobalPosition = viewport,
+            Relative = relative,
+            Velocity = relative * 120.0f,
+        });
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+    }
+
+    private async System.Threading.Tasks.Task ReleaseWorldAsync(Vector2 world)
+    {
+        Vector2 viewport = GetViewport().GetCanvasTransform() * world;
         Input.ParseInputEvent(new InputEventMouseButton
         {
             ButtonIndex = MouseButton.Left,

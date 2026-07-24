@@ -25,10 +25,14 @@ public partial class LooseObjectBody : RigidBody2D, IImpactSource
 
     public int ContentId => ImpactContent.LooseObject;
 
-    public void Configure(float radius, float mass)
+    public void Configure(float radius, float mass, float linearDamp, float angularDamp)
     {
         Radius = radius;
         Mass = mass;
+        LinearDamp = linearDamp;
+        AngularDamp = angularDamp;
+        LinearDampMode = DampMode.Replace;
+        AngularDampMode = DampMode.Replace;
         AddChild(new CollisionShape2D { Shape = new CircleShape2D { Radius = radius } });
         CollisionLayer = CollisionLayers.LooseObjects;
         CollisionMask = CollisionLayers.MaskLooseObjects;

@@ -19,6 +19,8 @@ public sealed class GrabReleaseScenario : IScenario
     private const int PullTicks = 24;
     private const float MinimumStretch = 5.0f;
     private const float FlingSpeedFloor = 300.0f; // calibrated from measured swipe peak
+    private const float LooseObjectLinearDamp = 1.5f;
+    private const float LooseObjectAngularDamp = 2.0f;
 
     public string Id => "grab_release";
 
@@ -49,7 +51,11 @@ public sealed class GrabReleaseScenario : IScenario
         }
 
         var loose = new LooseObjectBody();
-        loose.Configure(12.0f, 1.0f);
+        loose.Configure(
+            12.0f,
+            1.0f,
+            LooseObjectLinearDamp,
+            LooseObjectAngularDamp);
         lab.AddChild(loose);
         loose.GlobalPosition = new Vector2(120.0f, 300.0f);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);

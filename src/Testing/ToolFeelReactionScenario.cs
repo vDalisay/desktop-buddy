@@ -84,7 +84,7 @@ public sealed class ToolFeelReactionScenario : IScenario
             careLab.Reactions.CurrentFace == ":)",
             $"awards={careLab.Pipeline.CareAwardCount} face={careLab.Reactions.CurrentFace}"));
         int petSmileFrames = 0;
-        while (petSmileFrames < 100 && careLab.Reactions.CurrentFace == ":)")
+        while (petSmileFrames < 100 && careLab.Reactions.PetSmileTicksRemaining > 0)
         {
             petSmileFrames++;
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
@@ -460,6 +460,54 @@ public sealed class ToolFeelReactionScenario : IScenario
             $"passive={stayedPassiveWhileUnconscious} woke={wokeNaturally} defending={hitStopLab.ToolReactions.IsDefending} walk={hitStopLab.Buddy.CurrentDriveIntent.WalkDirection:F1} dx={postKnockoutFleeDistance:F2}"));
 
         hitStopLab.QueueFree();
+
+        // Owner regression 2026-07-24: persistent harmful memory must not pin the
+        // visible startle face forever after the glove pointer leaves the window.
+        BuddyLab? faceTailLab = await ScenarioSteps.CreateControlledImpactLab(tree, 10.0f, 500.0f);
+        if (faceTailLab is null)
+        {
+            checks.Add(new StartupCheck(
+                "learned_glove_face_reverts_five_seconds_after_pointer_exit",
+                false,
+                "face-tail lab failed to compose"));
+        }
+        else
+        {
+            faceTailLab.Pipeline.SelectTool(ToolId.BoxingGlove);
+            faceTailLab.Glove.MoveCursor(faceTailLab.Buddy.Rig.Head.GlobalPosition);
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            _ = await ScenarioSteps.StrikePartAtSpeed(
+                tree,
+                faceTailLab,
+                faceTailLab.Buddy.Rig.Torso,
+                500.0f);
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+            faceTailLab.Pointer.NotifyPointerExitedPlayArea();
+            int threatTailTicks = (int)Math.Round(
+                faceTailLab.Reactions.Profile.LearnedThreatFaceTailSeconds *
+                Engine.PhysicsTicksPerSecond,
+                MidpointRounding.AwayFromZero);
+            bool startleSeenDuringTail = false;
+            for (int tick = 0; tick < threatTailTicks - 1; tick++)
+            {
+                await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+                startleSeenDuringTail |= faceTailLab.Reactions.CurrentFace == "o_o";
+            }
+            bool tailHeldUntilLastTick =
+                faceTailLab.Reactions.LearnedThreatFaceTicksRemaining == 1;
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            bool faceRevertedAfterTail =
+                faceTailLab.Reactions.LearnedThreatFaceTicksRemaining == 0 &&
+                faceTailLab.Reactions.CurrentFace != "o_o";
+            checks.Add(new StartupCheck("learned_glove_face_reverts_five_seconds_after_pointer_exit",
+                startleSeenDuringTail && tailHeldUntilLastTick && faceRevertedAfterTail,
+                $"seen={startleSeenDuringTail} before={tailHeldUntilLastTick} " +
+                $"remaining={faceTailLab.Reactions.LearnedThreatFaceTicksRemaining} " +
+                $"face={faceTailLab.Reactions.CurrentFace} ticks={threatTailTicks}"));
+            faceTailLab.QueueFree();
+        }
+
         bool passed = AllPassed(checks);
         return new ScenarioResult(passed, checks, messages);
     }

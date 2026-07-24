@@ -55,8 +55,9 @@ Verification: build is warning-free; 407 domain tests and the 9/9 quick suite pa
 Grab release/hold/resistance/hard-recovery regressions pass both modes. The Group B
 regression set passes seeds 1 and 7 in both modes for `autonomous_motion`,
 `repeat_envelope`, the full 216,000-tick `idle_soak`, and `knockout_window`.
-`standing_recovery` remains its documented pre-existing red at 228 ticks versus the
-180-tick bound in every run (unchanged, not worsened). The configured Godot integration
+`standing_recovery` measured 228 ticks versus the then-current 180-tick bound in every
+run (unchanged, not worsened). On 2026-07-24 the owner hands-on accepted that duration;
+the regression ceiling is now 240 ticks without changing recovery tuning. The configured Godot integration
 also launches the composed Buddy Lab on the RTX 3070 GL Compatibility renderer with no
 debug errors.
 

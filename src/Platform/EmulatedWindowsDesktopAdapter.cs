@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using DesktopBuddy.Diagnostics;
 using Godot;
@@ -16,12 +17,15 @@ public sealed class EmulatedWindowsDesktopAdapter : IWindowsDesktopAdapter
 {
     private readonly List<Rect2I> _monitors;
     private readonly float _dpiScale;
+    private Rect2I[] _hitRegions = new Rect2I[16];
+    private int _hitRegionCount;
 
     public bool IsNative => false;
     public bool TransparencyAvailable { get; }
 
     /// <summary>Regions from the last <see cref="SetWorkModeHitRegions"/> call (test observability).</summary>
-    public IReadOnlyList<Rect2I> LastWorkModeHitRegions { get; private set; } = System.Array.Empty<Rect2I>();
+    public IReadOnlyList<Rect2I> LastWorkModeHitRegions => new ArraySegment<Rect2I>(
+        _hitRegions, 0, _hitRegionCount);
 
     /// <summary>True after the last Play-Mode capture request (test observability).</summary>
     public bool PlayModeCaptured { get; private set; }
@@ -44,7 +48,11 @@ public sealed class EmulatedWindowsDesktopAdapter : IWindowsDesktopAdapter
 
     public void SetWorkModeHitRegions(IReadOnlyList<Rect2I> regions)
     {
-        LastWorkModeHitRegions = new List<Rect2I>(regions);
+        if (regions.Count > _hitRegions.Length)
+            System.Array.Resize(ref _hitRegions, regions.Count);
+        for (int index = 0; index < regions.Count; index++)
+            _hitRegions[index] = regions[index];
+        _hitRegionCount = regions.Count;
         PlayModeCaptured = false;
     }
 

@@ -27,10 +27,13 @@ public partial class BuddyReactionComponent : Node
     private int _delightTicks;
     private int _fearTicks;
     private int _petSmileTicks;
+    private int _learnedThreatFaceTicks;
 
     public bool IsInitialized { get; private set; }
     public string CurrentFace { get; private set; } = ":)";
     public float CurrentFear { get; private set; }
+    public int PetSmileTicksRemaining => _petSmileTicks;
+    public int LearnedThreatFaceTicksRemaining => _learnedThreatFaceTicks;
 
     /// <summary>
     /// Development/scenario seam for measuring resistance independently of mood.
@@ -59,6 +62,10 @@ public partial class BuddyReactionComponent : Node
         if (_delightTicks > 0) _delightTicks--;
         if (_fearTicks > 0) _fearTicks--;
         if (_petSmileTicks > 0) _petSmileTicks--;
+        if (ToolReaction.IsLearnedGloveThreatActive)
+            _learnedThreatFaceTicks = SecondsToTicks(Profile.LearnedThreatFaceTailSeconds);
+        else if (_learnedThreatFaceTicks > 0)
+            _learnedThreatFaceTicks--;
         Resolve();
     }
 
@@ -103,7 +110,7 @@ public partial class BuddyReactionComponent : Node
             Pipeline.SelectedTool == ToolId.Tickle &&
             CareStroke.TickleDisposition == TickleDisposition.Angry ? ">:(" :
             ToolReaction.IsDefending ? ">:(" :
-            _fearTicks > 0 || selectedToolFeared ? "o_o" :
+            _fearTicks > 0 || _learnedThreatFaceTicks > 0 ? "o_o" :
             _petSmileTicks > 0 ? ":)" :
             CareStroke.IsPetRubbing ? ":3" :
             CareStroke.IsTickleContact ? "^_^" :
