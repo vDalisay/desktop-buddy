@@ -219,6 +219,41 @@ This file records only decisions explicitly confirmed by the project owner. Unre
   motion; `Escape` restores Work Mode; transparent pixels outside the moving
   buddy regions pass through to desktop applications.
 
+### Milestone 4 pre-plan — owner decisions resolved (2026-07-24)
+
+Answers to the decision list at the end of
+`docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md`. All six decisions are resolved;
+implementation of every M4 task is unblocked.
+
+1. **Band-visible behavior vocabulary — ACCEPTED as proposed.** Fearful — keeps
+   maximum cursor distance, flees approach, guards; wary — keeps moderate
+   distance, never approaches, does not catch thrown objects; neutral — current
+   ambient behavior; content — occasional cursor approach, catches willingly,
+   occasional wave; delighted — eager approach, eager catch, frequent
+   waves/glances. Exact distances and cadences are delegated engineering tuning,
+   judged at the M4 owner exit gate.
+2. **Jump personality — CONFIRMED.** Per-save propensity sampled uniformly in an
+   engineering-chosen range, mapped to obstacle-hop eagerness only. Pure-timer
+   ambient jumps remain OFF (2026-07-20 decision stands).
+3. **Approach target — BOTH cursor and objects.** Architectural resolution of
+   relative priority: a committed object action is arbiter priority 5 and social
+   cursor approach is priority 6, so an engaged object naturally outranks cursor
+   approach; when no object action is committed, the social layer may approach
+   either per band vocabulary. No extra product rule needed.
+4. **M4 consumable scope — CONFIRMED.** Consume/cooldown machinery ships against
+   the laboratory food item; Meal/Drink/Repair Kit arrive as M5 catalogue entries
+   on that machinery. The M4 journey-map "meal consumption" row is satisfied by
+   the M4 food item and re-verified in M5 with the real Meal.
+5. **Provisional base passive rate — DELEGATED to engineering (2026-07-24).**
+   The agent picks a sensible placeholder (order of ~1 credit/minute at neutral
+   mood), ships it clearly marked provisional in the `MoodEconomyProfile`
+   resource, and it is replaced during M5 calibration against the FR-012.3
+   peak-passive ≈ 25%-of-active target. The owner is not asked again until the
+   M5 calibration gate.
+6. **Laboratory save policy — CONFIRMED.** Laboratories and scenario runs stay
+   saveless (in-memory store); only the sandbox/standalone boot touches
+   `user://`.
+
 ## Accepted Milestone 1 Feel Tuning (2026-07-12)
 
 - **Assisted stand-up duration accepted (2026-07-24).** The owner hands-on checked

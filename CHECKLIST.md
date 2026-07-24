@@ -139,8 +139,8 @@ Gotchas that WILL fail a run if you forget them:
 ## 5. Suggested next step
 
 **Milestone 4 behavior.** Detailed architecture and task breakdown now live in
-`docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` (pre-plan, 2026-07-24): Task 0 is
-decision-free prep; Tasks 1+ wait on the owner decisions listed at its end.
+`docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` (2026-07-24): all six owner
+decisions are resolved in `docs/DECISIONS.md`; implementation begins at Task 0.
 M3.6 Task 6 and the owner-feedback rework are complete and
 owner-accepted. The final pass includes the real `E` Eat interaction, two-hand five-bite
 motion, frontal food facing, final hand lowering, passive airborne grabs, full-body wall
