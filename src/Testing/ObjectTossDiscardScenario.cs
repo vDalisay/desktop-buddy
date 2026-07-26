@@ -46,9 +46,19 @@ public sealed class ObjectTossDiscardScenario : IScenario
             !snapshot.BuddyHeld && snapshot.ThrowToken == 0 &&
             !lab.Buddy.ObjectInteraction.CollisionExceptionsActive;
         int driveCount = lab.Buddy.ActiveDrive.ObjectTossCount;
-        bool passed = held && tossed && released && impulse.Length() > 0.0f && driveCount == 1;
+        // The return throw goes *toward* the player, reversing the earlier away-from-cursor
+        // policy (owner instruction 2026-07-26). Discard keeps the away release.
+        float towardCursor = Mathf.Sign(
+            lab.Pointer.WorldCursor.X - lab.Buddy.Rig.Torso.GlobalPosition.X);
+        bool aimedAtCursor = Mathf.IsZeroApprox(towardCursor) ||
+            Mathf.Sign(impulse.X) == towardCursor;
+        bool passed = held && tossed && released && impulse.Length() > 0.0f &&
+            driveCount == 1 && aimedAtCursor;
         string detail = $"toss held={held} tossed={tossed} released={released} " +
-            $"impulse={impulse.Length():F1} drive_count={driveCount}";
+            $"impulse={impulse.Length():F1} drive_count={driveCount} aimed_at_cursor={aimedAtCursor} " +
+            $"impulse_x={impulse.X:F1} toward={towardCursor:F0} " +
+            $"phase={lab.Buddy.ObjectInteraction.Phase} drops={lab.Buddy.ObjectInteraction.DropCount} " +
+            $"attached={lab.Buddy.ObjectInteraction.IsAttached} mood={lab.Progress.Mood:F1}";
         await M4ObjectScenarioSupport.Cleanup(tree, lab);
         return (passed, detail);
     }

@@ -74,14 +74,19 @@ public readonly record struct ObjectCandidate(
 /// <param name="CatchTimeoutTicks">A catch attempt that never lands aborts after this.</param>
 /// <param name="HoldTicks">How long a held object is kept before inspecting.</param>
 /// <param name="InspectTicks">Inspection duration before the outcome is chosen.</param>
+/// <param name="TossTicks">
+/// How long the toss gesture holds priority 5. A return throw is a two-beat motion — draw
+/// back, then release — so the phase must outlive a single tick for the runtime to play it.
+/// </param>
 public readonly record struct ObjectInteractionTuning(
     float CatchDistance,
     float ApproachDistance,
     int CatchTimeoutTicks,
     int HoldTicks,
-    int InspectTicks)
+    int InspectTicks,
+    int TossTicks = 20)
 {
-    public static ObjectInteractionTuning Default => new(46.0f, 220.0f, 90, 120, 150);
+    public static ObjectInteractionTuning Default => new(46.0f, 220.0f, 90, 120, 150, 20);
 }
 
 /// <summary>The model's resolved intent for one routed tick.</summary>
@@ -214,9 +219,10 @@ public sealed class ObjectInteractionModel
 
         ObjectCandidate tracked = Find(candidates, _runtimeId);
 
-        // A held object stops being sensed by the candidate scanner; holding phases trust
-        // the runtime's hold confirmation instead of candidate presence.
-        if (!tracked.IsValid && !IsHolding)
+        // Only the phases that are still chasing something need it to be visible. Once the
+        // object is in hand — or on its way out of it — the candidate scanner deliberately
+        // stops reporting it, so requiring presence there aborts a release mid-gesture.
+        if (!tracked.IsValid && _phase is ObjectPhase.Approach or ObjectPhase.Catch)
         {
             return AbortTo(ObjectAbortReason.CandidateLost);
         }
@@ -312,6 +318,12 @@ public sealed class ObjectInteractionModel
                 return Emit(ObjectCommand.Consume);
 
             case ObjectPhase.Toss:
+                // The throw keeps priority 5 for its whole gesture so the runtime can draw
+                // the hand back and then release; it is not a one-tick impulse.
+                return _phaseTicks >= _tuning.TossTicks
+                    ? Complete()
+                    : Emit(ObjectCommand.Toss);
+
             case ObjectPhase.Discard:
             case ObjectPhase.Drop:
                 // One-shot releases: the runtime applies the impulse on the tick it sees the

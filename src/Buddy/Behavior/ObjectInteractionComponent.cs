@@ -35,6 +35,14 @@ public partial class ObjectInteractionComponent : Area2D
     private bool _directLabConsume;
     private bool _collisionExceptionsActive;
     private bool _skipNextCooldownTick;
+    private int _catchTicks;
+    private int _throwWindupTicks;
+    private bool _throwReleased;
+    private bool _pendingLeftHandAttach;
+    private bool _attachedToLeftHand;
+    private float _heldLinearDamp;
+    private float _heldAngularDamp;
+    private Vector2 _cursorWorldPosition;
 
     [Export] public PuppetRig Rig { get; set; } = null!;
     [Export] public BehaviorActivityComponent Activity { get; set; } = null!;
@@ -63,6 +71,26 @@ public partial class ObjectInteractionComponent : Area2D
     public ConsumeRejection LastConsumeRejection { get; private set; }
     public ObjectDriveCommand CurrentDriveCommand { get; private set; }
     public Vector2 LastReleaseImpulse { get; private set; }
+
+    /// <summary>True while the held object is attached to a hand socket.</summary>
+    public bool IsAttached { get; private set; }
+
+    /// <summary>Largest distance any commanded hand target sat from the reach origin.</summary>
+    public float MaximumCommandedReach { get; private set; }
+
+    /// <summary>
+    /// Registry-backed obstacle evidence: a resting object sitting in the committed path
+    /// below the torso. The layer-3 ray misses a ball the buddy is already touching, so
+    /// this is the reliable half of the hop gate (owner correction 2026-07-26).
+    /// </summary>
+    public bool RestingObstacleLeft { get; private set; }
+    public bool RestingObstacleRight { get; private set; }
+
+    public bool RestingObstacleInPath(float direction) =>
+        direction < 0.0f ? RestingObstacleLeft :
+        direction > 0.0f && RestingObstacleRight;
+
+    private Vector2 ReachOrigin => Rig.Torso.GlobalPosition + Profile.ReachOriginOffset;
 
     public int CooldownTicksRemaining(string contentId) =>
         _consumables.CooldownTicksRemaining(contentId);
@@ -129,6 +157,8 @@ public partial class ObjectInteractionComponent : Area2D
 
         GlobalPosition = Rig.Torso.GlobalPosition;
         FleeBiasRequested = false;
+        _cursorWorldPosition = cursorWorldPosition;
+        FollowAttachedHand();
         if (_directLabConsume)
         {
             if (suppressed || !conscious || !HoldStillIntact())
@@ -143,9 +173,7 @@ public partial class ObjectInteractionComponent : Area2D
         }
 
         int count = BuildCandidates();
-        bool holdConfirmed = IsHolding
-            ? HoldStillIntact()
-            : CatchHandsReady(_registry.FindBody(_model.TrackedRuntimeId));
+        bool holdConfirmed = IsHolding ? HoldStillIntact() : ResolveCatch();
 
         ObjectIntent intent = _model.Tick(
             _candidates.AsSpan(0, count),
@@ -200,7 +228,10 @@ public partial class ObjectInteractionComponent : Area2D
 
         LastConsumeRejection = ConsumeRejection.None;
         _directLabConsume = true;
-        BeginHold(body);
+        BeginHold(
+            body,
+            Rig.LeftHand.GlobalPosition.DistanceTo(body.GlobalPosition) <=
+                Rig.RightHand.GlobalPosition.DistanceTo(body.GlobalPosition));
         Activity.SetActivity(ActivityId.Eat);
         ConsumeStarted?.Invoke(body);
         Log.Info("ObjectInteraction",
@@ -224,12 +255,24 @@ public partial class ObjectInteractionComponent : Area2D
         _consumables.Reset();
         Array.Clear(_sensed);
         SensedCount = 0;
+        _catchTicks = 0;
+        _throwWindupTicks = 0;
+        _throwReleased = false;
+        RestingObstacleLeft = false;
+        RestingObstacleRight = false;
+        MaximumCommandedReach = 0.0f;
     }
+
+    /// <summary>Clears the reach telemetry high-water mark between scenario phases.</summary>
+    public void ResetReachTelemetry() => MaximumCommandedReach = 0.0f;
 
     private int BuildCandidates()
     {
         int count = 0;
-        float torsoX = Rig.Torso.GlobalPosition.X;
+        Vector2 origin = ReachOrigin;
+        float torsoY = Rig.Torso.GlobalPosition.Y;
+        RestingObstacleLeft = false;
+        RestingObstacleRight = false;
         for (int index = 0; index < _sensed.Length; index++)
         {
             LooseObjectBody? body = _sensed[index];
@@ -249,17 +292,70 @@ public partial class ObjectInteractionComponent : Area2D
                 continue;
             }
 
-            float offsetX = body.GlobalPosition.X - torsoX;
+            Vector2 offset = body.GlobalPosition - origin;
+            // A true 2D reach distance. Scoring on |dx| alone admitted an object 46 px
+            // sideways and arbitrarily far above, which is how the arms ended up stretched
+            // across the room (owner correction 2026-07-26).
             _candidates[count++] = new ObjectCandidate(
                 snapshot.RuntimeId,
                 snapshot.ContentId,
                 snapshot.ThrowToken,
-                Mathf.Abs(offsetX),
-                Mathf.IsZeroApprox(offsetX) ? 1.0f : Mathf.Sign(offsetX),
+                offset.Length(),
+                Mathf.IsZeroApprox(offset.X) ? 1.0f : Mathf.Sign(offset.X),
                 snapshot.Consumable,
                 snapshot.AtRest);
+
+            if (snapshot.AtRest &&
+                body.GlobalPosition.Y > torsoY &&
+                Mathf.Abs(offset.X) <= Profile.ObstacleForwardWindow)
+            {
+                if (offset.X < 0.0f)
+                    RestingObstacleLeft = true;
+                else
+                    RestingObstacleRight = true;
+            }
         }
         return count;
+    }
+
+    /// <summary>
+    /// Decides whether the tracked object is caught this tick. An airborne object confirms
+    /// when it physically touches a hand; a resting one confirms at the end of the scoop dip.
+    /// The rest state comes from the registry, so the domain lifecycle stays flavour-agnostic.
+    /// </summary>
+    private bool IsRestingCandidate(LooseObjectBody? body) =>
+        GodotObject.IsInstanceValid(body) &&
+        _registry.TryGetSnapshot(body!.RuntimeId, out LooseObjectSnapshot snapshot) &&
+        snapshot.AtRest;
+
+    private bool ResolveCatch()
+    {
+        LooseObjectBody? tracked = _registry.FindBody(_model.TrackedRuntimeId);
+        if (!GodotObject.IsInstanceValid(tracked))
+        {
+            _catchTicks = 0;
+            return false;
+        }
+
+        bool atRest = _registry.TryGetSnapshot(tracked!.RuntimeId, out LooseObjectSnapshot snapshot) &&
+            snapshot.AtRest;
+        if (atRest)
+        {
+            // Scoop: walk up, dip, and the object then relocates into the hand.
+            _catchTicks++;
+            if (_catchTicks < Profile.ScoopTicks)
+                return false;
+            _catchTicks = 0;
+            _pendingLeftHandAttach = Rig.LeftHand.GlobalPosition.DistanceTo(tracked.GlobalPosition) <=
+                Rig.RightHand.GlobalPosition.DistanceTo(tracked.GlobalPosition);
+            return true;
+        }
+
+        _catchTicks = 0;
+        bool touched = CatchTouchedHand(tracked, out bool leftHand);
+        if (touched)
+            _pendingLeftHandAttach = leftHand;
+        return touched;
     }
 
     private void HandleIntent(in ObjectIntent intent, Vector2 cursorWorldPosition)
@@ -269,21 +365,27 @@ public partial class ObjectInteractionComponent : Area2D
         {
             case ObjectCommand.None:
                 ApproachDirection = 0.0f;
+                _catchTicks = 0;
+                _throwWindupTicks = 0;
+                _throwReleased = false;
                 CurrentDriveCommand = ObjectDriveCommand.None;
                 break;
             case ObjectCommand.Approach:
                 ApproachDirection = intent.ApproachDirection;
+                _catchTicks = 0;
                 CurrentDriveCommand = ObjectDriveCommand.None;
                 break;
             case ObjectCommand.Catch:
                 ApproachDirection = 0.0f;
-                CurrentDriveCommand = BuildCatchCommand(body);
+                CurrentDriveCommand = IsRestingCandidate(body)
+                    ? BuildScoopCommand(body)
+                    : BuildCatchCommand(body);
                 break;
             case ObjectCommand.Hold:
             case ObjectCommand.Inspect:
                 ApproachDirection = 0.0f;
                 if (!IsHolding && GodotObject.IsInstanceValid(body))
-                    BeginHold(body!);
+                    BeginHold(body!, _pendingLeftHandAttach);
                 CurrentDriveCommand = BuildHoldCommand(_heldBody, ObjectDriveAction.Hold);
                 if (intent.GrantsCatchCare)
                 {
@@ -295,13 +397,27 @@ public partial class ObjectInteractionComponent : Area2D
             case ObjectCommand.Consume:
                 ApproachDirection = 0.0f;
                 if (!IsHolding && GodotObject.IsInstanceValid(body))
-                    BeginHold(body!);
+                    BeginHold(body!, _pendingLeftHandAttach);
                 CurrentDriveCommand = BuildHoldCommand(_heldBody, ObjectDriveAction.Hold);
                 if (intent.RequestsConsume)
                     TryBeginConsume();
                 break;
             case ObjectCommand.Toss:
                 ApproachDirection = 0.0f;
+                // Wind up first, release on the forward beat: a slight hand motion is what
+                // makes the return read as a throw (owner instruction 2026-07-26).
+                if (_throwReleased)
+                {
+                    CurrentDriveCommand = ObjectDriveCommand.None;
+                    break;
+                }
+                if (_throwWindupTicks < Profile.ThrowWindupTicks && IsHolding)
+                {
+                    _throwWindupTicks++;
+                    CurrentDriveCommand = BuildThrowWindupCommand(_heldBody);
+                    break;
+                }
+                _throwReleased = true;
                 ReleaseWithImpulse(body, cursorWorldPosition, discard: false);
                 break;
             case ObjectCommand.Discard:
@@ -398,13 +514,33 @@ public partial class ObjectInteractionComponent : Area2D
             ConsumeCancelled?.Invoke(_heldBody!);
     }
 
-    private void BeginHold(LooseObjectBody body)
+    /// <summary>
+    /// Sticks the object to a hand. It is relocated onto the socket and frozen kinematic, so
+    /// from here it rides the hand exactly instead of being sprung toward it — the owner's
+    /// "the ball should stick to its hand" and "relocate directly to the buddy's hand".
+    ///
+    /// <para>This hard placement does not breach ARCHITECTURE §23: that invariant governs the
+    /// buddy rig, whose bodies are still only ever driven by bounded forces. A carried object
+    /// is cargo for as long as it is held, not a simulated participant.</para>
+    /// </summary>
+    private void BeginHold(LooseObjectBody body, bool leftHand)
     {
         _heldBody = body;
+        _attachedToLeftHand = leftHand;
         _registry.SetBuddyHeld(body, true);
         for (int index = 0; index < Rig.Parts.Count; index++)
             body.AddCollisionExceptionWith(Rig.Parts[index]);
         _collisionExceptionsActive = true;
+
+        _heldLinearDamp = body.LinearDamp;
+        _heldAngularDamp = body.AngularDamp;
+        body.LinearVelocity = Vector2.Zero;
+        body.AngularVelocity = 0.0f;
+        body.Sleeping = false;
+        body.FreezeMode = RigidBody2D.FreezeModeEnum.Kinematic;
+        body.Freeze = true;
+        IsAttached = true;
+        FollowAttachedHand();
     }
 
     private void EndHold(LooseObjectBody body)
@@ -413,6 +549,32 @@ public partial class ObjectInteractionComponent : Area2D
         for (int index = 0; index < Rig.Parts.Count; index++)
             body.RemoveCollisionExceptionWith(Rig.Parts[index]);
         _collisionExceptionsActive = false;
+        if (IsAttached)
+        {
+            body.Freeze = false;
+            body.FreezeMode = RigidBody2D.FreezeModeEnum.Static;
+            body.LinearDamp = _heldLinearDamp;
+            body.AngularDamp = _heldAngularDamp;
+            // Hand it the carrying hand's own motion so a release continues the gesture
+            // instead of dropping the object dead in the air.
+            body.LinearVelocity = AttachedHand.LinearVelocity;
+            body.ResetPhysicsInterpolation();
+            IsAttached = false;
+        }
+    }
+
+    private PuppetPartBody AttachedHand => _attachedToLeftHand ? Rig.LeftHand : Rig.RightHand;
+
+    /// <summary>Keeps an attached object glued to its hand socket for this routed tick.</summary>
+    private void FollowAttachedHand()
+    {
+        if (!IsAttached || !GodotObject.IsInstanceValid(_heldBody))
+            return;
+        PuppetPartBody hand = AttachedHand;
+        float offset = hand.Radius + _heldBody!.Radius - Profile.CatchHandClearance;
+        _heldBody.GlobalPosition = hand.GlobalPosition + new Vector2(0.0f, -offset);
+        _heldBody.LinearVelocity = Vector2.Zero;
+        _heldBody.AngularVelocity = 0.0f;
     }
 
     private void ReleaseHeld(ObjectDriveAction action, Vector2 impulse)
@@ -445,12 +607,24 @@ public partial class ObjectInteractionComponent : Area2D
             return;
         }
 
-        float away = Mathf.Sign(Rig.Torso.GlobalPosition.X - cursorWorldPosition.X);
-        if (Mathf.IsZeroApprox(away))
-            away = 1.0f;
-        Vector2 impulse = discard
-            ? new Vector2(away * Profile.DiscardImpulse, -Profile.DiscardLiftImpulse)
-            : new Vector2(away * Profile.TossImpulse, -Profile.TossLiftImpulse);
+        // A toss now returns the ball *to* the player, reversing the earlier cursor-safe
+        // away-from-cursor policy (owner instruction 2026-07-26). Discard keeps the low
+        // energy away-release, because its whole point is getting rid of something.
+        Vector2 impulse;
+        if (discard)
+        {
+            float away = Mathf.Sign(Rig.Torso.GlobalPosition.X - cursorWorldPosition.X);
+            if (Mathf.IsZeroApprox(away))
+                away = 1.0f;
+            impulse = new Vector2(away * Profile.DiscardImpulse, -Profile.DiscardLiftImpulse);
+        }
+        else
+        {
+            Vector2 toward = ThrowDirection();
+            impulse = (toward * Profile.TossImpulse) +
+                new Vector2(0.0f, -Profile.TossLiftImpulse);
+        }
+
         ReleaseHeld(
             discard ? ObjectDriveAction.Discard : ObjectDriveAction.Toss,
             impulse);
@@ -460,18 +634,54 @@ public partial class ObjectInteractionComponent : Area2D
             TossCount++;
     }
 
+    /// <summary>
+    /// Clamps any desired hand position into the reach envelope. This is the single place
+    /// that guarantees the arms never stretch further than a minimal extension past their
+    /// natural length, however far away the object is.
+    /// </summary>
+    private Vector2 ClampToReach(Vector2 desired)
+    {
+        Vector2 origin = ReachOrigin;
+        Vector2 offset = desired - origin;
+        float length = offset.Length();
+        float limit = Profile.MaximumReach;
+        Vector2 result = length <= limit || Mathf.IsZeroApprox(length)
+            ? desired
+            : origin + (offset / length * limit);
+        MaximumCommandedReach = Mathf.Max(MaximumCommandedReach, result.DistanceTo(origin));
+        return result;
+    }
+
+    /// <summary>
+    /// Reach toward an incoming object, clamped to arm's length. The object is never pulled
+    /// in; the catch happens when it arrives and touches a hand.
+    /// </summary>
     private ObjectDriveCommand BuildCatchCommand(LooseObjectBody? body)
     {
         if (!GodotObject.IsInstanceValid(body))
             return ObjectDriveCommand.None;
         float half = body!.Radius + Profile.CatchHandClearance;
         Vector2 separation = new(half, 0.0f);
-        return BuildDriveCommand(
+        return BuildHandCommand(
             ObjectDriveAction.Catch,
             body,
             body.GlobalPosition - separation,
+            body.GlobalPosition + separation);
+    }
+
+    /// <summary>Lower the hands onto a resting object and dip the body slightly.</summary>
+    private ObjectDriveCommand BuildScoopCommand(LooseObjectBody? body)
+    {
+        if (!GodotObject.IsInstanceValid(body))
+            return ObjectDriveCommand.None;
+        float half = body!.Radius + Profile.CatchHandClearance;
+        Vector2 separation = new(half, 0.0f);
+        return BuildHandCommand(
+            ObjectDriveAction.Scoop,
+            body,
+            body.GlobalPosition - separation,
             body.GlobalPosition + separation,
-            body.GlobalPosition);
+            Profile.ScoopDipForce);
     }
 
     private ObjectDriveCommand BuildHoldCommand(LooseObjectBody? body, ObjectDriveAction action)
@@ -480,12 +690,25 @@ public partial class ObjectInteractionComponent : Area2D
             return ObjectDriveCommand.None;
         Vector2 center = Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
         Vector2 separation = new(Profile.HoldHandHalfSeparation, 0.0f);
-        return BuildDriveCommand(
-            action,
+        return BuildHandCommand(action, body!, center - separation, center + separation);
+    }
+
+    /// <summary>
+    /// The wind-up beat of the return throw: the hands draw back away from the cursor so the
+    /// release that follows reads as a throw rather than a drop.
+    /// </summary>
+    private ObjectDriveCommand BuildThrowWindupCommand(LooseObjectBody? body)
+    {
+        if (!GodotObject.IsInstanceValid(body))
+            return ObjectDriveCommand.None;
+        Vector2 center = Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
+        Vector2 back = ThrowDirection() * -Profile.HoldHandHalfSeparation;
+        Vector2 separation = new(Profile.HoldHandHalfSeparation, 0.0f);
+        return BuildHandCommand(
+            ObjectDriveAction.ThrowWindup,
             body!,
-            center - separation,
-            center + separation,
-            center);
+            center + back - separation,
+            center + back + separation);
     }
 
     private ObjectDriveCommand BuildReleaseCommand(
@@ -497,58 +720,59 @@ public partial class ObjectInteractionComponent : Area2D
             body,
             Vector2.Zero,
             Vector2.Zero,
-            Vector2.Zero,
             impulse,
             Profile.HandStiffness,
             Profile.HandDamping,
-            Profile.MaximumHandForce,
-            Profile.ObjectStiffness,
-            Profile.ObjectDamping,
-            Profile.MaximumObjectForce);
+            Profile.MaximumHandForce);
 
-    private ObjectDriveCommand BuildDriveCommand(
+    private ObjectDriveCommand BuildHandCommand(
         ObjectDriveAction action,
         LooseObjectBody body,
         Vector2 left,
         Vector2 right,
-        Vector2 target) =>
+        float dipForce = 0.0f) =>
         new(
             action,
             body,
-            left,
-            right,
-            target,
+            ClampToReach(left),
+            ClampToReach(right),
             Vector2.Zero,
             Profile.HandStiffness,
             Profile.HandDamping,
             Profile.MaximumHandForce,
-            Profile.ObjectStiffness,
-            Profile.ObjectDamping,
-            Profile.MaximumObjectForce);
+            dipForce);
 
-    /// <summary>
-    /// Physical hold feedback. The bounded hold force can lose an object to a hard enough
-    /// disturbance; when it does, the model takes its <c>Drop</c> path and any open consume
-    /// token is cancelled without starting a cooldown (FR-008.10).
-    /// </summary>
-    private bool HoldStillIntact()
+    /// <summary>Unit direction from the carry pose toward the player's cursor.</summary>
+    private Vector2 ThrowDirection()
     {
-        if (!GodotObject.IsInstanceValid(_heldBody))
-            return false;
-        Vector2 center = Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
-        return center.DistanceTo(_heldBody!.GlobalPosition) <= Profile.HoldReleaseDistance;
+        Vector2 toCursor = _cursorWorldPosition -
+            (Rig.Torso.GlobalPosition + Profile.HoldCenterOffset);
+        return toCursor.LengthSquared() < 1.0f ? Vector2.Right : toCursor.Normalized();
     }
 
-    private bool CatchHandsReady(LooseObjectBody? body)
+    /// <summary>An attached object cannot drift, so the grip only breaks if it detaches.</summary>
+    private bool HoldStillIntact() => GodotObject.IsInstanceValid(_heldBody) && IsAttached;
+
+    /// <summary>
+    /// The catch confirms on physical contact: the object has arrived and touched a hand.
+    /// Waiting for both hands to be positioned around the object is what let the arms chase
+    /// something they could never meet.
+    /// </summary>
+    private bool CatchTouchedHand(LooseObjectBody? body, out bool leftHand)
     {
+        leftHand = false;
         if (!GodotObject.IsInstanceValid(body))
             return false;
-        float half = body!.Radius + Profile.CatchHandClearance;
-        Vector2 separation = new(half, 0.0f);
-        return Rig.LeftHand.GlobalPosition.DistanceTo(body.GlobalPosition - separation) <=
-                Profile.CatchConfirmDistance &&
-            Rig.RightHand.GlobalPosition.DistanceTo(body.GlobalPosition + separation) <=
-                Profile.CatchConfirmDistance;
+        float slack = body!.Radius + Profile.CatchContactTolerance;
+        float toLeft = Rig.LeftHand.GlobalPosition.DistanceTo(body.GlobalPosition);
+        float toRight = Rig.RightHand.GlobalPosition.DistanceTo(body.GlobalPosition);
+        if (toLeft <= Rig.LeftHand.Radius + slack && toLeft <= toRight)
+        {
+            leftHand = true;
+            return true;
+        }
+
+        return toRight <= Rig.RightHand.Radius + slack;
     }
 
     private void OnBodyEntered(Node2D node)

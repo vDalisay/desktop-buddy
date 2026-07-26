@@ -685,6 +685,37 @@ and part of owner decision 1. These are owner instructions, not engineering choi
   buddy immediately walks back to collect, overriding whatever the operator does next —
   it was preempting the wave gesture in `m36_expressive`.
 
+## M4 Object Handling Feel (2026-07-26)
+
+Owner instructions after seeing the buddy stretch both arms most of the room's width to
+reach a ball. Full detail in `docs/M4_OBJECT_HANDLING_FEEL_PLAN.md`.
+
+- **Reach is bounded and measured in 2D.** Candidate distance was horizontal only, so
+  `CatchDistance = 46` admitted an object 46 px sideways and arbitrarily far above — the
+  diagonal stretch the owner saw. Distance is now a true 2D reach from
+  `ReachOriginOffset`, and every hand target is clamped into
+  `ReachRadius + MaximumReachExtension` (`44 + 6 px`). `MaximumHandForce` drops
+  `18000 → 6000`. `CatchDistance` above the reach limit is now a validation error.
+- **Objects are never sprung toward the buddy.** The object spring is deleted. A catch
+  confirms when the object physically touches a hand, and the object then **attaches**:
+  frozen kinematic, placed on the hand socket each routed tick. This hard placement is the
+  owner's explicit request ("the ball should stick to its hand", "relocate directly to the
+  buddy's hand"). It does not breach ARCHITECTURE §23, which governs the buddy rig — those
+  bodies are still driven only by bounded forces. A carried object is cargo while held.
+- **Ground pickup is a scoop**, not a grab from range: walk to the object, dip the torso and
+  head with a bounded force while the hands lower, then the object relocates into the hand.
+  The runtime chooses scoop or catch from the registry's rest state, so the domain lifecycle
+  gained no new phase.
+- **The return throw goes toward the cursor**, reversing the earlier cursor-safe
+  away-from-cursor toss. `ThrowWindupTicks` draws the hands back first so the release reads
+  as a throw. `TossTicks` was added to the domain tuning because a two-beat gesture cannot
+  live in a single tick. Discard keeps its low-energy away release and flee bias.
+- **Obstacle detection has two independent sources.** `RayCast2D.HitFromInside` defaults to
+  false, so once the buddy was touching a ball the probe origin sat inside it and reported
+  nothing — precisely the case the hop exists for, which is why detection was intermittent.
+  `HitFromInside` is now true, and a registry-backed check (resting object within
+  `ObstacleForwardWindow` ahead and below the torso) is OR'd in.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

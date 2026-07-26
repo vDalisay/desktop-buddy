@@ -144,8 +144,11 @@ public partial class BehaviorArbiter : Node
             AmbientDriveActive: true,
             AmbientWalkDirection: ambient.WalkDirection,
             AmbientLocomotionScale: 1.0f,
+            // Two independent sources on purpose: the layer-3 ray, and the registry's own
+            // view of resting objects in the path. The ray alone was intermittent.
             ObstacleInCommittedPath:
-                AutonomousMotion.ObstacleInCommittedPath(ambient.WalkDirection),
+                AutonomousMotion.ObstacleInCommittedPath(ambient.WalkDirection) ||
+                ObjectInteraction.RestingObstacleInPath(ambient.WalkDirection),
             HasSupportContact: supportContact,
             SocialReactionPresent: socialReaction);
 

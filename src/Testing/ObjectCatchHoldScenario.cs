@@ -38,11 +38,30 @@ public sealed class ObjectCatchHoldScenario : IScenario
             lab.Objects.TryGetSnapshot(runtimeId, out LooseObjectSnapshot heldSnapshot) &&
             heldSnapshot.BuddyHeld;
         bool physical = lab.Buddy.ActiveDrive.LastLeftObjectHandForce.Length() > 0.0f ||
-            lab.Buddy.ActiveDrive.LastRightObjectHandForce.Length() > 0.0f ||
-            lab.Buddy.ActiveDrive.LastObjectForce.Length() > 0.0f;
+            lab.Buddy.ActiveDrive.LastRightObjectHandForce.Length() > 0.0f;
         bool careOnce = lab.Buddy.ObjectInteraction.CatchCareCount == 1 &&
             Mathf.Abs(lab.Progress.Mood - (moodBefore + 1.0f)) < 0.01f;
         bool exceptions = lab.Buddy.ObjectInteraction.CollisionExceptionsActive;
+
+        // The arms must never stretch past a minimal extension, and a caught object must be
+        // stuck to the hand rather than sprung toward the buddy (owner correction 2026-07-26).
+        float reachLimit = lab.Buddy.ObjectInteraction.Profile.MaximumReach;
+        float commandedReach = lab.Buddy.ObjectInteraction.MaximumCommandedReach;
+        bool attached = lab.Buddy.ObjectInteraction.IsAttached &&
+            GodotObject.IsInstanceValid(ball) && ball!.Freeze;
+        float handGap = attached
+            ? Mathf.Min(
+                lab.Buddy.Rig.LeftHand.GlobalPosition.DistanceTo(ball!.GlobalPosition),
+                lab.Buddy.Rig.RightHand.GlobalPosition.DistanceTo(ball.GlobalPosition))
+            : float.MaxValue;
+        checks.Add(new StartupCheck(
+            "hands_stay_inside_the_reach_envelope",
+            commandedReach > 0.0f && commandedReach <= reachLimit + 0.01f,
+            $"commanded={commandedReach:F2} limit={reachLimit:F2}"));
+        checks.Add(new StartupCheck(
+            "caught_object_sticks_to_a_hand",
+            attached && handGap <= reachLimit,
+            $"attached={attached} hand_gap={handGap:F2}"));
 
         LooseObjectBody? firstEvictable = null;
         int firstEvictableId = 0;

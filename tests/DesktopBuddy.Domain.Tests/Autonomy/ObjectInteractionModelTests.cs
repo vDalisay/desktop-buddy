@@ -475,6 +475,63 @@ public sealed class ObjectInteractionModelTests
         Assert.Equal(ObjectPhase.Idle, model.Phase);
     }
 
+    /// <summary>
+    /// A return throw is a two-beat gesture — draw back, then release — so the toss phase
+    /// must hold priority 5 for its whole duration instead of ending after one tick.
+    /// </summary>
+    [Fact]
+    public void Toss_HoldsItsPhaseForTheWholeGesture()
+    {
+        var tuning = Fast with { TossTicks = 6 };
+        var model = new ObjectInteractionModel(tuning);
+        Step(model, Ball());
+        Step(model, Ball(), holdConfirmed: true);
+        for (int tick = 0; tick < 40 && model.Phase != ObjectPhase.Toss; tick++)
+            Step(model, Ball(distance: 5.0f), holdConfirmed: true);
+        Assert.Equal(ObjectPhase.Toss, model.Phase);
+
+        for (int tick = 1; tick < tuning.TossTicks; tick++)
+        {
+            ObjectIntent during = Step(model, Ball(distance: 5.0f), holdConfirmed: true);
+            Assert.Equal(ObjectCommand.Toss, during.Command);
+            Assert.True(model.IsCommitted);
+        }
+
+        ObjectIntent finished = Step(model, Ball(distance: 5.0f), holdConfirmed: true);
+        Assert.Equal(ObjectCommand.None, finished.Command);
+        Assert.Equal(ObjectPhase.Idle, model.Phase);
+    }
+
+    /// <summary>
+    /// A held object is deliberately absent from the candidate scan, and it stays absent
+    /// while it is being released. Requiring candidate presence during the toss aborted the
+    /// gesture on its second tick, leaving the object stuck in the buddy's hand forever.
+    /// </summary>
+    [Fact]
+    public void Toss_SurvivesTheTrackedObjectLeavingTheCandidateScan()
+    {
+        var tuning = Fast with { TossTicks = 6 };
+        var model = new ObjectInteractionModel(tuning);
+        Step(model, Ball());
+        Step(model, Ball(), holdConfirmed: true);
+        for (int tick = 0; tick < 40 && model.Phase != ObjectPhase.Toss; tick++)
+            Step(model, Ball(distance: 5.0f), holdConfirmed: true);
+        Assert.Equal(ObjectPhase.Toss, model.Phase);
+
+        // No candidates at all from here: the object is held by the buddy.
+        for (int tick = 1; tick < tuning.TossTicks; tick++)
+        {
+            ObjectIntent during = Step(model, candidate: null, holdConfirmed: true);
+            Assert.Equal(ObjectCommand.Toss, during.Command);
+            Assert.Equal(ObjectAbortReason.None, during.Abort);
+        }
+
+        ObjectIntent finished = Step(model, candidate: null, holdConfirmed: true);
+        Assert.Equal(ObjectCommand.None, finished.Command);
+        Assert.Equal(ObjectPhase.Idle, model.Phase);
+        Assert.Equal(ObjectAbortReason.None, model.LastAbort);
+    }
+
     /// <summary>A meal on the floor is still worth picking up.</summary>
     [Fact]
     public void RestingConsumable_IsStillEngaged()
