@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using Godot;
@@ -65,7 +66,7 @@ public sealed class HeadRightingScenario : IScenario
 
         lab.Pipeline.SelectTool(ToolId.BoxingGlove);
         AcceptedImpact? impact = await ScenarioSteps.StrikePart(
-            tree, lab, head, (int)ToolId.BoxingGlove, 730_001);
+            tree, lab, head, ContentIds.ToolBoxingGlove, 730_001);
         bool impactRearmed = impact is { Part: BuddyPart.Head } &&
             lab.Buddy.ActiveDrive.HeadRightingDelayTicksRemaining > 0;
 

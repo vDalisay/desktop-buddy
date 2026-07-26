@@ -6,8 +6,10 @@ using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Economy;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Laboratory;
@@ -38,6 +40,12 @@ public partial class BuddyLab : Node2D
     [Export] public LaboratoryTelemetryPanel TelemetryPanel { get; set; } = null!;
     [Export] public LaboratoryBoundaryVisualizer BoundaryVisualizer { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
+
+    /// <summary>The single per-run persistent semantic state (ARCHITECTURE §12).</summary>
+    public BuddyProgressState Progress { get; private set; } = null!;
+
+    /// <summary>The sole currency/unlock mutator for this run (ARCHITECTURE §11).</summary>
+    public EconomyService Economy { get; private set; } = null!;
     [Export] public BoxingGloveController Glove { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
@@ -87,7 +95,12 @@ public partial class BuddyLab : Node2D
         Controls.Initialize();
         Grab.Initialize();
         Pointer.Initialize();
-        Pipeline.Initialize();
+        // One BuddyProgressState and one EconomyService per run: persistent semantic state
+        // must outlive every node that reads it (ARCHITECTURE §12), and currency has exactly
+        // one mutator (§11). A save-backed store replaces the fresh state in Task 4.
+        Progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
+        Economy = new EconomyService(Progress);
+        Pipeline.Initialize(Progress, Economy);
         Glove.Initialize();
         CareStroke.Initialize();
         CareCursor.Initialize();

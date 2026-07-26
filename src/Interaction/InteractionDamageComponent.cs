@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Damage;
 using DesktopBuddy.Domain.Economy;
 using DesktopBuddy.Domain.Interaction;
 using DesktopBuddy.Domain.Mood;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Economy;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Tools;
 using Godot;
@@ -17,7 +20,7 @@ namespace DesktopBuddy.Interaction;
 /// <summary>One fully scored damage event, published after the ledger and mood applied it.</summary>
 public readonly record struct AcceptedImpact(
     int InteractionId,
-    int ContentId,
+    string ContentId,
     BuddyPart Part,
     PayoutRegion Region,
     float RawImpulse,
@@ -40,7 +43,7 @@ public readonly record struct AcceptedImpact(
 /// </summary>
 public readonly record struct AcceptedContactEpisode(
     int InteractionId,
-    int ContentId,
+    string ContentId,
     BuddyPart Part,
     PayoutRegion Region,
     float Impulse,
@@ -51,9 +54,13 @@ public readonly record struct AcceptedContactEpisode(
 
 /// <summary>
 /// The contact→pain→money/mood pipeline (RAGDOLL §7–§8, ARCHITECTURE §7 steps 7–8,
-/// §11). Owns the Domain workers — impact router, pain curve, knockout window,
-/// reward ledger, mood/care models, tool selection — and runs them on the owning
-/// root's fixed tick. Consumes the raw solver contacts each <see cref="PuppetPartBody"/>
+/// §11). Owns the <b>transient</b> Domain workers — impact router, pain curve, knockout
+/// window, care cadence — and runs them on the owning root's fixed tick. Persistent
+/// semantic state (mood, harmful history, balance, selected tool, statistics) lives in the
+/// injected per-run <see cref="BuddyProgressState"/>, and currency changes go through the
+/// injected <see cref="EconomyService"/>: nothing here may outlive or privately own
+/// progress, or it would die with the node. Consumes the raw solver contacts each
+/// <see cref="PuppetPartBody"/>
 /// buffered during the previous physics step (one-tick trail accepted per §23),
 /// resolves source attribution, and applies accepted events in spec order: the
 /// payout multiplier uses consciousness <b>at acceptance time</b>, harm marks the
@@ -65,15 +72,14 @@ public readonly record struct AcceptedContactEpisode(
 [GlobalClass]
 public partial class InteractionDamageComponent : Node
 {
-    private readonly Dictionary<ulong, (int InteractionId, int ContentId)> _untaggedSources = new();
+    private readonly Dictionary<ulong, (int InteractionId, string ContentId)> _untaggedSources = new();
 
     private ImpactRouter _router = null!;
     private PainCurve _curve = null!;
     private PainKnockoutModel _knockout = null!;
-    private RewardLedger _ledger = null!;
-    private MoodModel _mood = null!;
+    private BuddyProgressState _progress = null!;
+    private EconomyService _economy = null!;
     private CareModel _care = null!;
-    private ToolSelection _tools = null!;
     private double _fixedDelta;
     private long _ticks;
     private bool _knockoutDrivenUnconscious;
@@ -109,21 +115,55 @@ public partial class InteractionDamageComponent : Node
     public PainKnockoutState LastKnockoutState { get; private set; }
 
     public int KnockoutCount => _knockout.KnockoutCount;
-    public long BalanceMilliCredits => _ledger.BalanceMilliCredits;
-    public long BalanceCredits => _ledger.BalanceCredits;
-    public float Mood => _mood.Mood;
-    public MoodBand MoodBand => _mood.Band;
-    public ToolId SelectedTool => _tools.Selected;
 
-    public bool IsToolHarmful(int contentId) => _mood.IsToolHarmful(contentId);
+    // Compatibility telemetry: scenarios, the lab panel, and the M3 HUD read progress
+    // through the pipeline today. These forward to the injected per-run state; callers
+    // migrate to BuddyProgressState/EconomyService as later M4 tasks touch them.
+    public long BalanceMilliCredits => _progress.BalanceMilliCredits;
+    public long BalanceCredits => _progress.BalanceCredits;
+    public float Mood => _progress.Mood;
+    public MoodBand MoodBand => _progress.MoodBand;
+    public ToolId SelectedTool => _progress.SelectedTool;
+
+    /// <summary>The per-run persistent state this pipeline mutates.</summary>
+    public BuddyProgressState Progress => _progress;
+
+    /// <summary>The sole currency/unlock mutator for this run.</summary>
+    public EconomyService Economy => _economy;
+
+    public bool IsToolHarmful(string contentId) => _progress.IsContentHarmful(contentId);
+
+    /// <summary>Convenience overload for the tool subset (ARCHITECTURE §5 mapping).</summary>
+    public bool IsToolHarmful(ToolId tool) => _progress.IsContentHarmful(ContentIds.ForTool(tool));
 
     public double PetDistanceProgress => _care.PetDistanceProgress;
     public double PetValidSecondsProgress => _care.PetValidSecondsProgress;
     public double TickleContactSeconds => _care.TickleContactSeconds;
     public TickleDisposition TickleDisposition => _care.TickleDisposition;
 
-    public void Initialize()
+    /// <summary>
+    /// Validates and returns the pain profile so a composition root can read approved
+    /// economy tuning (<c>CashPerPain</c>) before it builds the per-run progress state,
+    /// without duplicating the validation error.
+    /// </summary>
+    public PainConversionProfile RequirePainProfile()
     {
+        if (!GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
+        {
+            throw new InvalidOperationException(
+                "InteractionDamageComponent requires a valid pain profile.");
+        }
+
+        return Profile;
+    }
+
+    /// <param name="progress">The single per-run persistent state owned by the composition root.</param>
+    /// <param name="economy">The sole currency/unlock mutator for this run.</param>
+    public void Initialize(BuddyProgressState progress, EconomyService economy)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        ArgumentNullException.ThrowIfNull(economy);
+
         if (!GodotObject.IsInstanceValid(Buddy) || !Buddy.IsInitialized ||
             !GodotObject.IsInstanceValid(Grab))
         {
@@ -131,20 +171,20 @@ public partial class InteractionDamageComponent : Node
                 "InteractionDamageComponent requires an initialized buddy composition and grab tether.");
         }
 
-        if (!GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0 ||
-            !GodotObject.IsInstanceValid(CareProfile) || CareProfile.Validate().Count > 0)
+        if (!GodotObject.IsInstanceValid(CareProfile) || CareProfile.Validate().Count > 0)
         {
             throw new InvalidOperationException(
-                "InteractionDamageComponent requires valid pain and care profiles.");
+                "InteractionDamageComponent requires a valid care profile.");
         }
+
+        RequirePainProfile();
 
         _router = new ImpactRouter(ImpactRouter.DefaultReArmSeconds, Profile.MinimumImpulse);
         _curve = Profile.BuildCurve();
         _knockout = new PainKnockoutModel();
-        _ledger = new RewardLedger(Profile.CashPerPain);
-        _mood = new MoodModel();
+        _progress = progress;
+        _economy = economy;
         _care = new CareModel(CareProfile.ToTuning());
-        _tools = new ToolSelection();
         _fixedDelta = 1.0 / Engine.PhysicsTicksPerSecond;
 
         // Centralized hard reposition releases contacts and restores a safe pose:
@@ -182,13 +222,14 @@ public partial class InteractionDamageComponent : Node
                     MaxRawImpulse = contact.Impulse;
                 }
 
-                if (!TryResolveSource(contact.Collider, out int interactionId, out int contentId))
+                if (!TryResolveSource(contact.Collider, out int interactionId, out string contentId))
                 {
                     continue;
                 }
 
                 var sample = new ContactSample(
                     interactionId,
+                    contentId,
                     (BuddyPart)(int)part.PartId,
                     contact.Impulse,
                     contact.RelativeSpeed,
@@ -203,7 +244,7 @@ public partial class InteractionDamageComponent : Node
                 PayoutRegion region = PayoutRegions.Of(accepted.Value.TargetPart);
                 var episode = new AcceptedContactEpisode(
                     accepted.Value.SourceInteractionId,
-                    contentId,
+                    accepted.Value.ContentId,
                     accepted.Value.TargetPart,
                     region,
                     accepted.Value.Impulse,
@@ -213,7 +254,7 @@ public partial class InteractionDamageComponent : Node
                     now);
                 LastEpisode = episode;
                 EpisodeAccepted?.Invoke(episode);
-                ApplyAcceptedImpact(accepted.Value, contact, contentId, region, now);
+                ApplyAcceptedImpact(accepted.Value, contact, region, now);
             }
 
             part.ClearPendingContacts();
@@ -228,9 +269,11 @@ public partial class InteractionDamageComponent : Node
             KnockoutEnded?.Invoke(now);
         }
 
-        _mood.Drift(_fixedDelta);
+        // Task 5 moves drift onto the LifecycleCoordinator's monotonic clock; until then it
+        // stays exactly where M3 had it so this refactor changes no observable behavior.
+        _progress.DriftMood(_fixedDelta);
 
-        RewardFeedback? feedback = _ledger.PollFeedback(now);
+        RewardFeedback? feedback = _economy.PollFeedback(now);
         if (feedback is RewardFeedback burst)
         {
             LastFeedback = burst;
@@ -270,7 +313,7 @@ public partial class InteractionDamageComponent : Node
         for (int index = 0; index < positiveAwards; index++)
         {
             CareAwardCount++;
-            _mood.ApplyMoodDelta(1.0f);
+            _progress.ApplyCareMood(1.0f);
             CareAwarded?.Invoke(kind);
             CareMoodChanged?.Invoke(kind, 1);
         }
@@ -278,7 +321,7 @@ public partial class InteractionDamageComponent : Node
         for (int index = 0; index < negativeAwards; index++)
         {
             CarePenaltyCount++;
-            _mood.ApplyMoodDelta(-1.0f);
+            _progress.ApplyCareMood(-1.0f);
             CareMoodChanged?.Invoke(kind, -1);
         }
     }
@@ -287,24 +330,22 @@ public partial class InteractionDamageComponent : Node
     public void SelectTool(ToolId tool)
     {
         RequireInitialized();
-        ToolId previous = _tools.Selected;
-        if (previous == tool)
+        ToolId previous = _progress.SelectedTool;
+        if (!_progress.SelectTool(tool))
         {
             return;
         }
 
-        _tools.Select(tool);
         ToolChanged?.Invoke(previous, tool);
     }
 
     private void ApplyAcceptedImpact(
         in ImpactSample accepted,
         in RawPartContact contact,
-        int contentId,
         PayoutRegion region,
         double now)
     {
-        bool guarded = contentId == (int)ToolId.BoxingGlove &&
+        bool guarded = accepted.ContentId == ContentIds.ToolBoxingGlove &&
                        accepted.TargetPart is BuddyPart.LeftHand or BuddyPart.RightHand &&
                        Buddy.CurrentDriveIntent.GuardActive;
         float effectiveImpulse = guarded
@@ -320,8 +361,14 @@ public partial class InteractionDamageComponent : Node
         }
 
         PainAcceptance acceptance = _knockout.RegisterPain(pain, now);
-        long milli = _ledger.Accept(pain, region, acceptance.ConsciousnessAtAcceptance, now);
-        _mood.RegisterHarm(contentId, pain);
+        // Payout, harmful memory, and statistics move together through the economy service
+        // so the balance has exactly one mutator (ARCHITECTURE §11).
+        long milli = _economy.AcceptDamage(
+            accepted.ContentId,
+            pain,
+            region,
+            acceptance.ConsciousnessAtAcceptance,
+            now);
         ScoredImpactCount++;
 
         GrabState grab = Grab.CurrentGrab;
@@ -329,7 +376,7 @@ public partial class InteractionDamageComponent : Node
 
         var impact = new AcceptedImpact(
             accepted.SourceInteractionId,
-            contentId,
+            accepted.ContentId,
             accepted.TargetPart,
             region,
             accepted.Impulse,
@@ -353,15 +400,16 @@ public partial class InteractionDamageComponent : Node
         if (acceptance.KnockoutTriggered)
         {
             _knockoutDrivenUnconscious = true;
+            _progress.RecordKnockout();
             Buddy.SetConsciousness(Consciousness.Unconscious);
             KnockoutStarted?.Invoke(now);
         }
     }
 
-    private bool TryResolveSource(GodotObject? collider, out int interactionId, out int contentId)
+    private bool TryResolveSource(GodotObject? collider, out int interactionId, out string contentId)
     {
         interactionId = 0;
-        contentId = 0;
+        contentId = ContentIds.LooseObject;
         if (collider is null || !GodotObject.IsInstanceValid(collider))
         {
             return false;
@@ -379,9 +427,9 @@ public partial class InteractionDamageComponent : Node
             // Untagged physical bodies (e.g. scenario props) attribute to the
             // generic loose-object source, one stable interaction ID per instance.
             ulong instanceId = body.GetInstanceId();
-            if (!_untaggedSources.TryGetValue(instanceId, out (int InteractionId, int ContentId) mapped))
+            if (!_untaggedSources.TryGetValue(instanceId, out (int InteractionId, string ContentId) mapped))
             {
-                mapped = (InteractionIds.Next(), ImpactContent.LooseObject);
+                mapped = (InteractionIds.Next(), ContentIds.LooseObject);
                 _untaggedSources[instanceId] = mapped;
             }
 

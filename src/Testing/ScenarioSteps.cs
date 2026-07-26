@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using Godot;
@@ -53,7 +54,7 @@ internal static class ScenarioSteps
         PuppetPartBody target,
         ToolId tool = ToolId.BoxingGlove)
     {
-        return await StrikePart(tree, lab, target, (int)tool, null, ControlledImpactSpeed);
+        return await StrikePart(tree, lab, target, ContentIds.ForTool(tool), null, ControlledImpactSpeed);
     }
 
     public static async Task<AcceptedImpact?> StrikePartAtSpeed(
@@ -63,7 +64,7 @@ internal static class ScenarioSteps
         float speed,
         ToolId tool = ToolId.BoxingGlove)
     {
-        return await StrikePart(tree, lab, target, (int)tool, null, speed);
+        return await StrikePart(tree, lab, target, ContentIds.ForTool(tool), null, speed);
     }
 
     /// <summary>
@@ -75,7 +76,7 @@ internal static class ScenarioSteps
         SceneTree tree,
         BuddyLab lab,
         PuppetPartBody target,
-        int contentId,
+        string contentId,
         int interactionId)
     {
         return await StrikePart(tree, lab, target, contentId, (int?)interactionId, 2000.0f);
@@ -85,7 +86,7 @@ internal static class ScenarioSteps
         SceneTree tree,
         BuddyLab lab,
         PuppetPartBody target,
-        int contentId,
+        string contentId,
         int? interactionId,
         float speed)
     {

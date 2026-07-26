@@ -1,3 +1,4 @@
+using DesktopBuddy.Domain.Content;
 using System;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
@@ -131,7 +132,7 @@ public partial class ImpactFeedbackPresenter : Node2D
 
     private void OnImpact(AcceptedImpact impact)
     {
-        if (impact.ContentId != (int)ToolId.BoxingGlove)
+        if (impact.ContentId != ContentIds.ToolBoxingGlove)
             return;
 
         _feedbackStartedUsec = Time.GetTicksUsec();

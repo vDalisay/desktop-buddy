@@ -234,10 +234,10 @@ public sealed class ToolFeelReactionScenario : IScenario
         for (int tick = 0; tick < 30 && !gloveLab.ToolReactions.IsDefending; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         checks.Add(new StartupCheck("learned_harm_raises_real_hand_guard",
-            gloveLab.Pipeline.IsToolHarmful((int)ToolId.BoxingGlove) &&
+            gloveLab.Pipeline.IsToolHarmful(ToolId.BoxingGlove) &&
             gloveLab.ToolReactions.IsDefending &&
             gloveLab.Buddy.CurrentDriveIntent.GuardActive,
-            $"harmful={gloveLab.Pipeline.IsToolHarmful((int)ToolId.BoxingGlove)} defending={gloveLab.ToolReactions.IsDefending}"));
+            $"harmful={gloveLab.Pipeline.IsToolHarmful(ToolId.BoxingGlove)} defending={gloveLab.ToolReactions.IsDefending}"));
 
         BoxingGloveBody? physicalGlove = gloveLab.Glove.Glove;
         if (physicalGlove is not null)

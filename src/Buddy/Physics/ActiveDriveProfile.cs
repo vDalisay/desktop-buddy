@@ -66,6 +66,34 @@ public partial class ActiveDriveProfile : GameResource
     /// <summary>Bounded whole-body force a fearful buddy applies to resist a grab (RAGDOLL Section 6).</summary>
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float GrabResistanceForce { get; set; } = 3_500.0f;
 
+    // --- Grab resistance: walking and panic hands (owner feel notes 2026-07-25) ---
+    // A resisting buddy must *walk* away, not slide: locomotion runs during resistance so the
+    // gait drives the feet, and the whole-body resistance force becomes a strain assist on top.
+    /// <summary>Locomotion scale applied while resisting a grab; 0 disables stepping.</summary>
+    [Export(PropertyHint.Range, "0,2,0.01")] public float GrabResistanceWalkScale { get; set; } = 0.9f;
+
+    /// <summary>Shoulder anchor (torso-relative) the panic hands thrash around.</summary>
+    [Export] public Vector2 PanicHandOriginOffset { get; set; } = new(0.0f, -14.0f);
+    /// <summary>Horizontal sweep of each flailing hand at full fear.</summary>
+    [Export(PropertyHint.Range, "0,128,0.5")] public float PanicFlailAmplitude { get; set; } = 34.0f;
+    /// <summary>Vertical span of the flail arc at full fear.</summary>
+    [Export(PropertyHint.Range, "0,128,0.5")] public float PanicFlailLift { get; set; } = 26.0f;
+    /// <summary>
+    /// Routed ticks for one full sweep. Long on purpose: fear widens the reach, never speeds
+    /// it up, because a fast cycle reads as random twitching rather than flailing.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,480,1")] public int PanicFlailCycleTicks { get; set; } = 132;
+    /// <summary>Phase offset between the hands so they never mirror each other exactly.</summary>
+    [Export(PropertyHint.Range, "0,1,0.01")] public float PanicFlailAsymmetry { get; set; } = 0.55f;
+    /// <summary>
+    /// How far the flail arc anchors toward the direction the buddy is straining, so a free
+    /// hand reaches away from the grab point as if pulling itself loose.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,128,0.5")] public float PanicFlailReachBias { get; set; } = 24.0f;
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float PanicHandStiffness { get; set; } = 2_200.0f;
+    [Export(PropertyHint.Range, "0,10000,0.1,or_greater")] public float PanicHandDamping { get; set; } = 55.0f;
+    [Export(PropertyHint.Range, "0.1,200000,0.1,or_greater")] public float PanicHandMaximumForce { get; set; } = 18_000.0f;
+
     // --- Behavior-backed hand reach (Eat now; Wave may reuse this seam later) ---
     [Export] public Vector2 EatChestTargetOffset { get; set; } = new(0.0f, -24.0f);
     [Export] public Vector2 EatMouthTargetOffset { get; set; } = new(0.0f, 31.0f);
@@ -128,6 +156,19 @@ public partial class ActiveDriveProfile : GameResource
         }
         ValidateNonNegative(errors, JumpCrouchForce, nameof(JumpCrouchForce));
         ValidateNonNegative(errors, GrabResistanceForce, nameof(GrabResistanceForce));
+        ValidateNonNegative(errors, GrabResistanceWalkScale, nameof(GrabResistanceWalkScale));
+        if (!PanicHandOriginOffset.IsFinite()) errors.Add($"{nameof(PanicHandOriginOffset)} must be finite");
+        ValidateNonNegative(errors, PanicFlailAmplitude, nameof(PanicFlailAmplitude));
+        ValidateNonNegative(errors, PanicFlailLift, nameof(PanicFlailLift));
+        if (PanicFlailCycleTicks <= 0)
+        {
+            errors.Add($"{nameof(PanicFlailCycleTicks)} must be positive");
+        }
+        ValidateNonNegative(errors, PanicFlailAsymmetry, nameof(PanicFlailAsymmetry));
+        ValidateNonNegative(errors, PanicFlailReachBias, nameof(PanicFlailReachBias));
+        ValidateNonNegative(errors, PanicHandStiffness, nameof(PanicHandStiffness));
+        ValidateNonNegative(errors, PanicHandDamping, nameof(PanicHandDamping));
+        ValidatePositive(errors, PanicHandMaximumForce, nameof(PanicHandMaximumForce));
         if (!EatChestTargetOffset.IsFinite()) errors.Add($"{nameof(EatChestTargetOffset)} must be finite");
         if (!EatMouthTargetOffset.IsFinite()) errors.Add($"{nameof(EatMouthTargetOffset)} must be finite");
         if (!EatFinalLowerTargetOffset.IsFinite()) errors.Add($"{nameof(EatFinalLowerTargetOffset)} must be finite");

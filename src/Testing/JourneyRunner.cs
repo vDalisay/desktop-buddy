@@ -832,7 +832,7 @@ public partial class JourneyRunner : Node
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
             defended |= lab.ToolReactions.IsDefending && lab.Buddy.CurrentDriveIntent.GuardActive;
         }
-        state["glove_defense_raised"] = lab.Pipeline.IsToolHarmful((int)DesktopBuddy.Domain.Tools.ToolId.BoxingGlove) && defended;
+        state["glove_defense_raised"] = lab.Pipeline.IsToolHarmful(DesktopBuddy.Domain.Tools.ToolId.BoxingGlove) && defended;
 
         async System.Threading.Tasks.Task PressToolKeyAsync(Key key)
         {

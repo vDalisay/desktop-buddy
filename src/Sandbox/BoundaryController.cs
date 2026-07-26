@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Interaction;
 using Godot;
@@ -44,7 +45,7 @@ public partial class BoundaryController : StaticBody2D, IImpactSource
 
     public int InteractionId { get; } = InteractionIds.Next();
 
-    public int ContentId => ImpactContent.RoomBoundary;
+    public string ContentId => ContentIds.RoomBoundary;
 
     public void Initialize(Vector2I clientSize, double storedZoom)
     {

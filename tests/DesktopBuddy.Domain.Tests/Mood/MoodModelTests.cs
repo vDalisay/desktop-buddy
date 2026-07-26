@@ -1,3 +1,5 @@
+using System;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Mood;
 using Xunit;
 
@@ -26,10 +28,10 @@ public sealed class MoodModelTests
     {
         var model = new MoodModel(0.0f);
 
-        model.RegisterHarm(toolId: 7, pain: 50.0f); // 50 * 0.1 = 5
+        model.RegisterHarm(ContentIds.ToolBoxingGlove, pain: 50.0f); // 50 * 0.1 = 5
 
         Assert.Equal(-5.0f, model.Mood, Tolerance);
-        Assert.True(model.IsToolHarmful(7));
+        Assert.True(model.IsToolHarmful(ContentIds.ToolBoxingGlove));
     }
 
     [Fact]
@@ -37,7 +39,7 @@ public sealed class MoodModelTests
     {
         var model = new MoodModel(0.0f);
 
-        model.RegisterHarm(toolId: 1, pain: 500.0f); // 50 uncapped → capped to 10
+        model.RegisterHarm(ContentIds.ToolBoxingGlove, pain: 500.0f); // 50 uncapped → capped to 10
 
         Assert.Equal(-10.0f, model.Mood, Tolerance);
     }
@@ -46,7 +48,7 @@ public sealed class MoodModelTests
     public void Mood_ClampsToBounds()
     {
         var low = new MoodModel(-100.0f);
-        low.RegisterHarm(1, 200.0f);
+        low.RegisterHarm(ContentIds.LooseObject, 200.0f);
         Assert.Equal(-100.0f, low.Mood, Tolerance);
 
         var high = new MoodModel(100.0f);
@@ -81,13 +83,13 @@ public sealed class MoodModelTests
     public void TrustReset_FiresOnceOnUpwardCrossOfSixty()
     {
         var model = new MoodModel(59.0f);
-        model.RegisterHarm(toolId: 3, pain: 100.0f); // mood 59 → 49, tool 3 harmful
-        Assert.True(model.IsToolHarmful(3));
+        model.RegisterHarm(ContentIds.ToolBoxingGlove, pain: 100.0f); // mood 59 → 49, glove harmful
+        Assert.True(model.IsToolHarmful(ContentIds.ToolBoxingGlove));
 
         bool reset = model.ApplyMoodDelta(11.0f); // 49 → 60, crosses upward
 
         Assert.True(reset);
-        Assert.False(model.IsToolHarmful(3));
+        Assert.False(model.IsToolHarmful(ContentIds.ToolBoxingGlove));
         Assert.Empty(model.HarmfulTools);
     }
 
@@ -110,11 +112,11 @@ public sealed class MoodModelTests
         Assert.True(model.ApplyMoodDelta(10.0f)); // 55 → 65, first cross fires
 
         model.ApplyMoodDelta(-20.0f); // 65 → 45, below 60 again (re-arm)
-        model.RegisterHarm(9, 100.0f); // record a fresh harmful tool at mood 35
+        model.RegisterHarm(ContentIds.LooseObject, 100.0f); // record a fresh harmful source at mood 35
 
         bool refire = model.ApplyMoodDelta(30.0f); // 35 → 65, crosses upward again
         Assert.True(refire);
-        Assert.False(model.IsToolHarmful(9));
+        Assert.False(model.IsToolHarmful(ContentIds.LooseObject));
     }
 
     [Fact]
@@ -123,6 +125,28 @@ public sealed class MoodModelTests
         // Sanity: starting delighted with a pre-seeded harmful tool would need the
         // save layer; here we assert construction itself performs no crossing.
         var model = new MoodModel(80.0f);
+        Assert.False(model.ApplyMoodDelta(0.0f));
+    }
+
+    [Fact]
+    public void RegisterHarm_RequiresAStableContentId()
+    {
+        var model = new MoodModel();
+
+        Assert.Throws<ArgumentException>(() => model.RegisterHarm(string.Empty, 10.0f));
+        Assert.Throws<ArgumentException>(() => model.RegisterHarm("  ", 10.0f));
+    }
+
+    [Fact]
+    public void Construction_RestoresPersistedHarmfulHistoryWithoutCrossing()
+    {
+        // A delighted save with recorded harm is a restore, not a trust event: the
+        // crossing rule must not fire and must not wipe the loaded history.
+        var model = new MoodModel(80.0f, new[] { ContentIds.ToolBoxingGlove, ContentIds.LooseObject });
+
+        Assert.True(model.IsToolHarmful(ContentIds.ToolBoxingGlove));
+        Assert.True(model.IsToolHarmful(ContentIds.LooseObject));
+        Assert.Equal(2, model.HarmfulTools.Count);
         Assert.False(model.ApplyMoodDelta(0.0f));
     }
 }

@@ -1,4 +1,5 @@
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Interaction;
 using Godot;
 
@@ -23,7 +24,7 @@ public partial class LooseObjectBody : RigidBody2D, IImpactSource
 
     public int InteractionId { get; } = InteractionIds.Next();
 
-    public int ContentId => ImpactContent.LooseObject;
+    public string ContentId => ContentIds.LooseObject;
 
     public void Configure(float radius, float mass, float linearDamp, float angularDamp)
     {

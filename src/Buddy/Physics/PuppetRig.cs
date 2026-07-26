@@ -60,6 +60,15 @@ public partial class PuppetRig : Node
             body.Configure(definition, fillColors[index], globalOrigin);
         }
 
+        // Every non-torso part hangs off the torso for the elastic stretch limit.
+        for (int index = 0; index < _parts.Length; index++)
+        {
+            if ((BuddyPartId)index != BuddyPartId.Torso)
+            {
+                _parts[index].SetStretchAnchor(Torso);
+            }
+        }
+
         IsInitialized = true;
     }
 

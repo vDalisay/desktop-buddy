@@ -109,6 +109,12 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 3. **FR-006.3:** WHEN fear resistance is applied THEN resistance alone SHALL NOT break the grab tether.
 4. **FR-006.4:** WHEN the player releases a grabbed target THEN the game SHALL preserve its release velocity subject to a calibrated safe maximum.
 5. **FR-006.5:** WHEN a held buddy part receives an otherwise-valid damaging impact THEN the game SHALL award the full normal conscious payout; the grab tether SHALL NOT itself reduce that payout.
+6. **FR-006.6:** WHILE a leashed buddy part (any part except the torso) is grabbed THEN its extension from the torso SHALL be clamped to `5` hand widths, where one hand width is twice the grabbed part's radius.
+7. **FR-006.7:** WHILE a grabbed limb is held at its stretch limit THEN it SHALL visibly strain and vibrate for `3` seconds, and the vibration SHALL escalate in amplitude and rate over the final `1` second so the release is telegraphed.
+8. **FR-006.8:** WHEN the `3`-second strain elapses THEN the limb SHALL snap back to the body, the grab SHALL release, and the buddy SHALL be launched along the stretch direction with an impulse that scales with the peak distance the player pulled beyond the limit, subject to a calibrated maximum.
+9. **FR-006.9:** WHEN the player eases the cursor back inside the stretch limit by the confirmed hysteresis margin before the strain elapses THEN the strain countdown and stored launch energy SHALL reset and no snap SHALL occur.
+10. **FR-006.10:** WHEN the grabbed target is the torso or a loose object THEN no stretch limit, strain, or snap SHALL apply, and the plain tether behavior of FR-006.1 SHALL govern.
+11. **FR-006.11:** WHEN FR-006.3 forbids resistance from breaking the tether THEN that prohibition SHALL apply to buddy-generated resistance only; the FR-006.8 snap is player-caused overpull and is the sole sanctioned tether break.
 
 ### FR-007 — Mood, Transient Emotion, and Harmful Memory
 
@@ -215,9 +221,9 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 **Linked stories:** US-03, US-06
 
 1. **FR-013.1:** WHEN a new save is created THEN money SHALL be `0`, Grab SHALL be selected, and Grab, Pet, Tickle, and Boxing Glove SHALL be available immediately.
-2. **FR-013.2:** WHEN the launch catalogue is complete THEN it SHALL contain Grab, Pet, Tickle, Boxing Glove, Baseball, Soccer Ball, Baseball Bat, Pistol, Shotgun, Grenade, Fire Sprayer, Meal, Drink, and Repair Kit.
+2. **FR-013.2:** WHEN the launch catalogue is complete THEN it SHALL contain Grab, Pet, Tickle, Boxing Glove, Baseball, Soccer Ball, Baseball Bat, Pistol, Shotgun, Grenade, Fire Sprayer, Meal, Drink, Repair Kit, and the Strength Upgrade of FR-019 (`15` entries).
 3. **FR-013.3:** WHEN the player purchases an item THEN ownership SHALL become immediate and permanent, use SHALL be unlimited subject to confirmed cooldowns/cadence, and the item SHALL NOT be sellable or refundable.
-4. **FR-013.4:** WHEN prices and income coefficients are calibrated using the approved cumulative-play benchmark THEN the expected purchase sequence SHALL target Baseball at `3` minutes, Meal at `6`, Baseball Bat at `20`, Pistol at `30`, Grenade at `40`, Fire Sprayer at `50`, Soccer Ball at `65`, Drink at `80`, Shotgun at `100`, and Repair Kit at `120` minutes.
+4. **FR-013.4:** WHEN prices and income coefficients are calibrated using the approved cumulative-play benchmark THEN the expected purchase sequence SHALL target Baseball at `3` minutes, Meal at `6`, Baseball Bat at `20`, Pistol at `30`, Grenade at `40`, Fire Sprayer at `50`, Soccer Ball at `65`, Drink at `80`, Shotgun at `100`, and Repair Kit at `120` minutes. The Strength Upgrade has no confirmed slot in this schedule; its position is a Milestone 5 calibration decision (see FR-019.7).
 5. **FR-013.5:** WHEN progression calibration is accepted THEN the complete current interaction catalogue SHALL be affordable in approximately `2` hours of cumulative play under the approved active/passive play mix.
 6. **FR-013.6:** WHEN the player requests progression reset THEN the game SHALL require explicit confirmation before erasing progress.
 
@@ -291,6 +297,31 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 14. **FR-018.14:** WHEN total running time reaches `2` hours THEN the game SHALL unlock **Desktop Shift**.
 
 ## 5. Non-Functional Requirements
+
+### FR-019 — Strength Upgrade (Milestone 5 shop item)
+
+**Linked stories:** US-03, US-06
+
+Owner-requested 2026-07-25. This is the catalogue's first **passive permanent upgrade** rather
+than a selectable tool: it is purchased once and then modifies how Grab behaves, so it occupies
+a shop slot but never appears in tool selection.
+
+1. **FR-019.1:** WHEN the player owns the Strength Upgrade THEN the grab tether's pull force and force ceiling SHALL increase by a calibrated factor, giving the player more control over the buddy.
+2. **FR-019.2:** WHEN the player owns the Strength Upgrade THEN the FR-006.6 stretch limit SHALL increase by a calibrated factor, so a limb can be pulled visibly further than an unupgraded grab allows.
+3. **FR-019.3:** WHEN the player owns the Strength Upgrade THEN the FR-006.8 snap-back SHALL NOT occur: a strained limb SHALL continue to strain for as long as the player holds it, and the buddy SHALL NOT be able to break free of the grab by snapping its limb back.
+4. **FR-019.4:** WHEN the player owns the Strength Upgrade THEN the FR-006.4 release velocity SHALL be scaled by a calibrated yank factor, subject to its own calibrated safe maximum, so throws are stronger.
+5. **FR-019.5:** WHEN the Strength Upgrade is owned THEN buddy fear resistance (FR-006.2) SHALL still be generated and still be visible; the upgrade increases the player's authority over the outcome and SHALL NOT remove the buddy's reaction.
+6. **FR-019.6:** WHEN the Strength Upgrade is owned THEN it SHALL grant no damage, payout, or mood modifier of its own; its economic effect SHALL arrive only through the stronger manipulation it enables.
+7. **FR-019.7:** WHEN Milestone 5 economy calibration is performed THEN the Strength Upgrade's price and its slot in the FR-013.4 progression schedule SHALL be set, and the FR-013.5 two-hour affordability target SHALL be re-validated against the enlarged `15`-entry catalogue.
+
+**Open questions for the owner (do not infer):**
+
+- **Name.** "Strength Upgrade" is a working label, not a confirmed product name.
+- **Tiers.** One purchase, or several escalating tiers? FR-019 currently specifies exactly one.
+- **Snap immunity scope.** FR-019.3 removes snap-back entirely. The alternative is a longer strain
+  window rather than true immunity, which keeps the mechanic alive at high upgrade levels.
+- **Magnitudes.** Every "calibrated factor" above is deliberately unset; they are Milestone 5
+  tuning, judged against FR-013.4/13.5.
 
 ### NFR-001 — Platform and Release Compatibility
 

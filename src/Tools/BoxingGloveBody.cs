@@ -1,4 +1,5 @@
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Presentation3D;
@@ -30,7 +31,7 @@ public partial class BoxingGloveBody : RigidBody2D, IImpactSource, IBody2DVisual
 
     public int InteractionId { get; } = InteractionIds.Next();
 
-    public int ContentId => (int)ToolId.BoxingGlove;
+    public string ContentId => ContentIds.ToolBoxingGlove;
     public bool IsImpactPulsing { get; private set; }
     public bool IsImpactArmed { get; private set; }
     public Vector2 VisualScale2D

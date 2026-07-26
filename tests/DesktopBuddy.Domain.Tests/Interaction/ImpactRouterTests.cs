@@ -1,4 +1,5 @@
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Interaction;
 using Xunit;
 
@@ -11,7 +12,13 @@ public sealed class ImpactRouterTests
         float impulse = 50.0f,
         int source = 1,
         BuddyPart part = BuddyPart.Head) =>
-        new(SourceInteractionId: source, TargetPart: part, Impulse: impulse, RelativeVelocity: 300.0f, TimeSeconds: time);
+        new(
+            SourceInteractionId: source,
+            ContentId: ContentIds.ToolBoxingGlove,
+            TargetPart: part,
+            Impulse: impulse,
+            RelativeVelocity: 300.0f,
+            TimeSeconds: time);
 
     [Fact]
     public void Offer_FirstContact_IsAcceptedOnce()

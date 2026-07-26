@@ -1,3 +1,4 @@
+using DesktopBuddy.Domain.Content;
 using System;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
@@ -40,7 +41,7 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnImpact(AcceptedImpact impact)
     {
-        bool glove = impact.ContentId == (int)ToolId.BoxingGlove;
+        bool glove = impact.ContentId == ContentIds.ToolBoxingGlove;
         float normalized = Mathf.Clamp(impact.Pain / 100.0f, 0.0f, 1.0f);
         PlayChirp(
             Profile.PainChirpHz * Mathf.Lerp(1.15f, 0.72f, normalized),

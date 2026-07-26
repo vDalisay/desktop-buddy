@@ -40,6 +40,22 @@ public partial class PuppetPartBody : RigidBody2D
     [Export] public CollisionShape2D Collider { get; set; } = null!;
 
     public float Radius { get; private set; } = 16.0f;
+
+    /// <summary>
+    /// The part this one hangs from, for the elastic stretch limit (owner feel request
+    /// 2026-07-25). Null on the torso, which anchors the puppet and therefore has no leash:
+    /// dragging the torso moves the whole buddy instead of stretching a limb.
+    /// </summary>
+    public PuppetPartBody? StretchAnchor { get; private set; }
+
+    public bool HasStretchLeash => GodotObject.IsInstanceValid(StretchAnchor);
+
+    /// <summary>Where the leash is anchored this tick.</summary>
+    public Vector2 StretchAnchorWorld =>
+        HasStretchLeash ? StretchAnchor!.GlobalPosition : GlobalPosition;
+
+    /// <summary>Wired once by <see cref="PuppetRig"/> during initialization.</summary>
+    public void SetStretchAnchor(PuppetPartBody anchor) => StretchAnchor = anchor;
     public Color FillColor { get; private set; } = new("7ac7ff");
     public bool HasSupportContact { get; private set; }
     public int SupportContactCount { get; private set; }

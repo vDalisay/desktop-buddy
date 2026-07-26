@@ -29,9 +29,16 @@ public partial class GrabResistanceComponent : Node
 
     private bool _buddyPartGrabbed;
     private Vector2 _cursorAnchor;
+    private int _resistTicks;
 
     public GrabResistanceIntent Intent { get; private set; }
     public bool IsInitialized { get; private set; }
+
+    /// <summary>
+    /// Routed ticks the current resistance episode has lasted, reset when it ends. Drives the
+    /// deterministic panic-flail phase; never a rendered-frame count (pacing-proof).
+    /// </summary>
+    public int ResistTicks => _resistTicks;
 
     public void Initialize()
     {
@@ -56,9 +63,12 @@ public partial class GrabResistanceComponent : Node
         bool active = consciousness == Consciousness.Conscious && _buddyPartGrabbed && fear > 0.0f;
         if (!active)
         {
+            _resistTicks = 0;
             Intent = new GrabResistanceIntent(false, 0.0f, 0.0f);
             return;
         }
+
+        _resistTicks++;
 
         // Move away from the cursor horizontally; deterministic tiebreak when aligned.
         float away = Rig.Torso.GlobalPosition.X >= _cursorAnchor.X ? 1.0f : -1.0f;

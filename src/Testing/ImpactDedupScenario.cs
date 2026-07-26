@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
 using Godot;
@@ -127,7 +128,7 @@ public sealed class ImpactDedupScenario : IScenario
             tree,
             lab,
             lab.Buddy.Rig.Head,
-            ImpactContent.LooseObject,
+            ContentIds.LooseObject,
             originalInteractionId);
 
         int reDropScored = ballImpacts.Count - reDropScoredBefore;

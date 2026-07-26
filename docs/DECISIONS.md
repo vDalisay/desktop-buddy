@@ -4,6 +4,47 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Owner Feel Pass and Shop Addition (2026-07-25)
+
+Recorded from a live owner review session in the buddy laboratory.
+
+**Grab resistance feel — three defects confirmed and fixed.**
+
+1. **Resistance was too weak.** The owner judged a fearful buddy's opposition insufficient.
+   `GrabResistanceForce` raised `11000` → `17000`; measured fearful tether extension went
+   `15.8` → `30.1` against an unchanged calm baseline of `13.4`. This also closed a
+   pre-existing red: the `grab_resistance` scenario's `fearful_resists_more_than_calm` check
+   had been failing on `main` (margin `2.4`, required `>5`) and now passes at `16.7`. The
+   assertion was **not** relaxed — the game was genuinely too weak, as the owner said.
+2. **Resistance slid instead of walking.** `ActiveDriveComponent` applied the resistance force
+   and returned early, resetting the gait, so the buddy was shoved sideways as one lump with
+   dead feet. Resistance now falls through into locomotion and the buddy walks away while
+   straining. The M4 `BehaviorArbiterModel` priority-4 branch was corrected to match, so the
+   arbiter integration cannot reintroduce the slide.
+3. **Hands were not panicky.** Added a deterministic panic-flail reach. First attempt was
+   rejected by the owner as "spamming and moving seemingly randomly": it used a third
+   harmonic and shortened its cycle with fear. Corrected to one slow sweeping arc per axis
+   (cycle `26` → `132` ticks) with fear scaling reach only, never rate. The free hand now
+   anchors its arc toward the escape direction because the buddy is pulling itself free, and
+   a grabbed hand is left to the tether rather than fought by a spring.
+
+**Elastic limb — new mechanic, owner-specified.** A grabbed limb stretches to `5` hand widths,
+strains and vibrates for `3` seconds with the vibration escalating over the final `1` second,
+then snaps back, releases the grab, and launches the buddy along the stretch direction with an
+impulse scaling from the peak overpull. Easing back inside the limit cancels it. Documented as
+FR-006.6–FR-006.11. Delegated engineering choices: the mechanic applies to every non-torso part
+(the owner said "the arm"; head and feet were generalized for consistency and the owner was
+told), the torso and loose objects are exempt, and the impulse is applied to the torso so the
+limbs trail through the passive constraints.
+
+**Strength Upgrade — new shop item, owner-requested.** The catalogue gains a purchasable item
+that increases player strength: more control over the buddy, a larger stretch limit, a stronger
+yank, and immunity from the buddy snapping its limb back to escape. Specified as FR-019 and
+added to Milestone 5. It is the catalogue's first passive permanent upgrade rather than a
+selectable tool, which is a new shop category. **Still open and not to be inferred:** the
+product name, whether it has tiers, whether snap immunity is absolute or merely a longer strain
+window, and every magnitude — all deferred to Milestone 5 calibration.
+
 ## Development Spike Observations (2026-07-12)
 
 - The Milestone 1 standalone transparency/pointer spike launches successfully on Windows 11 using Godot 4.6.1 .NET, the Compatibility/OpenGL renderer, and an NVIDIA RTX 3070; startup produced no renderer or scene errors.

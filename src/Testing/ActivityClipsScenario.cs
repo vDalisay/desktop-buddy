@@ -365,7 +365,7 @@ public sealed class ActivityClipsScenario : IScenario
             tree,
             lab,
             lab.Buddy.Rig.Head,
-            (int)DesktopBuddy.Domain.Tools.ToolId.BoxingGlove,
+            DesktopBuddy.Domain.Content.ContentIds.ToolBoxingGlove,
             730_002);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         bool cut = lab.Buddy.Activity.Current == ActivityId.None &&

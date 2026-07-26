@@ -10,6 +10,7 @@ namespace DesktopBuddy.Domain.Interaction;
 /// </summary>
 public readonly record struct ContactSample(
     int SourceInteractionId,
+    string ContentId,
     BuddyPart TargetPart,
     float Impulse,
     float RelativeVelocity,
@@ -17,11 +18,13 @@ public readonly record struct ContactSample(
 
 /// <summary>
 /// A deduplicated, attributed impact accepted from a contact episode. Carries the
-/// measured impulse/velocity the pain-conversion curve needs (RAGDOLL §7.1); the
-/// payout region is derived downstream from <see cref="TargetPart"/> (Task 2).
+/// measured impulse/velocity the pain-conversion curve needs (RAGDOLL §7.1) and the
+/// stable content ID harmful memory and statistics key on (ARCHITECTURE §5); the
+/// payout region is derived downstream from <see cref="TargetPart"/>.
 /// </summary>
 public readonly record struct ImpactSample(
     int SourceInteractionId,
+    string ContentId,
     BuddyPart TargetPart,
     float Impulse,
     float RelativeVelocity,
@@ -91,6 +94,7 @@ public sealed class ImpactRouter
 
         return new ImpactSample(
             sample.SourceInteractionId,
+            sample.ContentId,
             sample.TargetPart,
             sample.Impulse,
             sample.RelativeVelocity,

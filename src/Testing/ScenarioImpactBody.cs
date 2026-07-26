@@ -1,4 +1,5 @@
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Interaction;
 using Godot;
 
@@ -13,10 +14,10 @@ internal sealed partial class ScenarioImpactBody : RigidBody2D, IImpactSource
 {
     public int InteractionId { get; private set; } = InteractionIds.Next();
 
-    public int ContentId { get; private set; }
+    public string ContentId { get; private set; } = ContentIds.LooseObject;
 
     public void Configure(
-        int contentId,
+        string contentId,
         float radius = 8.0f,
         float mass = 0.25f,
         int? interactionId = null)

@@ -98,7 +98,7 @@ public partial class BuddyReactionComponent : Node
             MoodBand.Wary => Profile.WaryResistance,
             _ => 0.0f,
         };
-        bool selectedToolFeared = Pipeline.IsToolHarmful((int)Pipeline.SelectedTool);
+        bool selectedToolFeared = Pipeline.IsToolHarmful(Pipeline.SelectedTool);
         float resolvedFear = Mathf.Max(
             bandFear,
             _fearTicks > 0 || selectedToolFeared ? Profile.AcuteFearResistance : 0.0f);

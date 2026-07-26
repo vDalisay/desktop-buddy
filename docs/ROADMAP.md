@@ -101,8 +101,19 @@ Deliver tools in the confirmed progression order:
 8. Drink
 9. Shotgun
 10. Repair Kit
+11. Strength Upgrade (owner-requested 2026-07-25; unscheduled in the FR-013.4 sequence
+    pending calibration — see FR-019)
 
-Also deliver the retractable tool/shop/settings panel, pullback trajectory launcher, cursor-direction guns, object budget, permanent purchases, and reset confirmation.
+Also deliver the retractable tool/shop/settings panel, pullback trajectory launcher,
+cursor-direction guns, object budget, permanent purchases, and reset confirmation.
+
+The Strength Upgrade is the catalogue's first **passive permanent upgrade** rather than a
+selectable tool, so Milestone 5 must additionally deliver:
+
+- A shop entry that is purchasable but never enters tool selection.
+- An owned-upgrade modifier path into the grab tether (force, force ceiling, stretch limit,
+  release velocity) with the FR-006.8 snap-back disabled while owned.
+- Re-validation of the FR-013.5 two-hour affordability target against `15` catalogue entries.
 
 Exit criteria:
 

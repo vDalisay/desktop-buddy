@@ -57,7 +57,7 @@ public partial class ToolReactionComponent : Node
     /// </summary>
     public bool IsLearnedGloveThreatActive =>
         Pipeline.SelectedTool == ToolId.BoxingGlove &&
-        Pipeline.IsToolHarmful((int)ToolId.BoxingGlove) &&
+        Pipeline.IsToolHarmful(ToolId.BoxingGlove) &&
         Glove.HasCursor;
     public Vector2 GuardDirection => _guardDirection;
     public Vector2 GuardAimPoint => _guardAimPoint;
@@ -138,7 +138,7 @@ public partial class ToolReactionComponent : Node
     private ToolReactionIntent ResolveGloveDefense(double delta)
     {
         BoxingGloveBody? glove = Glove.Glove;
-        if (glove is null || !Pipeline.IsToolHarmful((int)ToolId.BoxingGlove))
+        if (glove is null || !Pipeline.IsToolHarmful(ToolId.BoxingGlove))
         {
             _gloveDefenseLatched = false;
             return default;

@@ -32,6 +32,8 @@ public partial class ActiveDriveComponent : Node
     public Vector2 LastRightGuardForce { get; private set; }
     public Vector2 LastGuardReactionForce { get; private set; }
     public Vector2 LastGuardCounterImpulse { get; private set; }
+    public Vector2 LastLeftPanicHandForce { get; private set; }
+    public Vector2 LastRightPanicHandForce { get; private set; }
     public Vector2 LastRightHandReachForce { get; private set; }
     public Vector2 LastLeftHandReachForce { get; private set; }
     public Vector2 LastRightHandReachReactionForce { get; private set; }
@@ -109,6 +111,8 @@ public partial class ActiveDriveComponent : Node
         LastLeftGuardForce = Vector2.Zero;
         LastRightGuardForce = Vector2.Zero;
         LastGuardReactionForce = Vector2.Zero;
+        LastLeftPanicHandForce = Vector2.Zero;
+        LastRightPanicHandForce = Vector2.Zero;
         LastRightHandReachForce = Vector2.Zero;
         LastLeftHandReachForce = Vector2.Zero;
         LastRightHandReachReactionForce = Vector2.Zero;
@@ -152,9 +156,12 @@ public partial class ActiveDriveComponent : Node
 
         if (intent.ResistanceStrength > 0.0f)
         {
+            // Strain against the tether, then fall through to locomotion and the panic hands.
+            // This used to return early and reset the gait, which is why a resisting buddy
+            // slid sideways as one lump with dead feet (owner feel note 2026-07-25). The
+            // whole-body force is now a strain assist on top of real stepping, not a
+            // replacement for it.
             ApplyResistance(intent, mode);
-            ResetGaitState();
-            return;
         }
 
         // Lab affordance: isolate the passive rig + upright/balance response from
@@ -178,6 +185,8 @@ public partial class ActiveDriveComponent : Node
         }
         if (intent.GuardActive)
             ApplyGuardHands(intent, mode);
+        else if (intent.PanicLeftHandActive || intent.PanicRightHandActive)
+            ApplyPanicHands(intent, mode);
         else if (intent.ActivityHandReachActive)
             ApplyActivityHandReach(intent, mode);
         UpdateJump(intent, mode);
@@ -506,6 +515,41 @@ public partial class ActiveDriveComponent : Node
         // toward the pointer; locomotion remains the only deliberate translation.
         LastGuardReactionForce = -(LastLeftGuardForce + LastRightGuardForce);
         Rig.Torso.ApplyCentralForce(LastGuardReactionForce);
+    }
+
+    /// <summary>
+    /// Drives the hands to the frantic thrash targets of a frightened, grabbed buddy. Same
+    /// bounded spring machinery as the guard and Eat reaches, and the same torso-reaction
+    /// cancellation: thrashing is internal actuation and may not tow the puppet anywhere.
+    /// </summary>
+    private void ApplyPanicHands(DriveIntent intent, ConsciousnessDriveProfile mode)
+    {
+        Vector2 targetVelocity = Rig.Torso.LinearVelocity;
+        if (intent.PanicLeftHandActive)
+        {
+            LastLeftPanicHandForce = DriveHandToTarget(
+                Rig.LeftHand,
+                intent.LeftPanicHandTarget,
+                targetVelocity,
+                Profile.PanicHandStiffness,
+                Profile.PanicHandDamping,
+                Profile.PanicHandMaximumForce,
+                mode);
+        }
+
+        if (intent.PanicRightHandActive)
+        {
+            LastRightPanicHandForce = DriveHandToTarget(
+                Rig.RightHand,
+                intent.RightPanicHandTarget,
+                targetVelocity,
+                Profile.PanicHandStiffness,
+                Profile.PanicHandDamping,
+                Profile.PanicHandMaximumForce,
+                mode);
+        }
+
+        Rig.Torso.ApplyCentralForce(-(LastLeftPanicHandForce + LastRightPanicHandForce));
     }
 
     private void ApplyActivityHandReach(DriveIntent intent, ConsciousnessDriveProfile mode)

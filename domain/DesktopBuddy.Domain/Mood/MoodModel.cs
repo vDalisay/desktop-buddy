@@ -32,28 +32,54 @@ public sealed class MoodModel
     public const float MaxHarmReduction = 10.0f;
     public const double DriftPointsPerMinute = 0.5;
 
-    private readonly HashSet<int> _harmfulTools = new();
+    private readonly HashSet<string> _harmfulTools = new(StringComparer.Ordinal);
 
-    public MoodModel(float initialMood = 0.0f)
+    /// <param name="initialMood">Persisted mood, or <c>0</c> for a new save.</param>
+    /// <param name="harmfulTools">
+    /// Persisted harmful-history content IDs, restored without re-running the crossing
+    /// rule — loading a delighted save with recorded harm is a restore, not a trust event.
+    /// </param>
+    public MoodModel(float initialMood = 0.0f, IEnumerable<string>? harmfulTools = null)
     {
         Mood = Math.Clamp(initialMood, Min, Max);
+
+        if (harmfulTools is null)
+        {
+            return;
+        }
+
+        foreach (string contentId in harmfulTools)
+        {
+            if (!string.IsNullOrWhiteSpace(contentId))
+            {
+                _harmfulTools.Add(contentId);
+            }
+        }
     }
 
     public float Mood { get; private set; }
 
     public MoodBand Band => BandFor(Mood);
 
-    public IReadOnlyCollection<int> HarmfulTools => _harmfulTools;
+    /// <summary>Stable content IDs recorded as harmful (ARCHITECTURE §5).</summary>
+    public IReadOnlyCollection<string> HarmfulTools => _harmfulTools;
 
-    public bool IsToolHarmful(int toolId) => _harmfulTools.Contains(toolId);
+    public bool IsToolHarmful(string contentId) => _harmfulTools.Contains(contentId);
 
     /// <summary>
-    /// Applies an accepted harmful event: records the tool as harmful and lowers mood by
+    /// Applies an accepted harmful event: records the source as harmful and lowers mood by
     /// <c>min(10, pain × 0.1)</c>. Harm can only push mood down, so it never trust-resets.
     /// </summary>
-    public void RegisterHarm(int toolId, float pain)
+    public void RegisterHarm(string contentId, float pain)
     {
-        _harmfulTools.Add(toolId);
+        if (string.IsNullOrWhiteSpace(contentId))
+        {
+            throw new ArgumentException(
+                "Harmful history requires a stable content ID (ARCHITECTURE §5).",
+                nameof(contentId));
+        }
+
+        _harmfulTools.Add(contentId);
         float reduction = Math.Min(MaxHarmReduction, Math.Max(0.0f, pain) * 0.1f);
         SetMood(Mood - reduction);
     }

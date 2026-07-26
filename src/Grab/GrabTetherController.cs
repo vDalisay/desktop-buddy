@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Physics;
 using Godot;
 using NumericsVector2 = System.Numerics.Vector2;
@@ -23,6 +24,8 @@ public partial class GrabTetherController : Node2D
     [Export] public GrabTetherProfile Profile { get; set; } = null!;
 
     private RigidBody2D? _target;
+    private PuppetPartBody? _leashedPart;
+    private GrabStretchLimiter _stretch = new();
     private Vector2 _localGrabPoint;
     private Vector2 _cursorAnchor;
     private Vector2 _previousCursor;
@@ -33,6 +36,20 @@ public partial class GrabTetherController : Node2D
     public GrabTelemetry Telemetry { get; private set; }
     public float LastReleaseSpeed { get; private set; }
 
+    // --- Elastic limb telemetry (owner request 2026-07-25) ---
+    /// <summary>Phase of the stretch → strain → snap sequence for the held limb.</summary>
+    public GrabStretchState StretchState { get; private set; }
+    /// <summary>Routed ticks left before a strained limb snaps back; 0 when not straining.</summary>
+    public int StretchTicksRemaining { get; private set; }
+    /// <summary>How far past the limit the cursor currently is, in px.</summary>
+    public float StretchOverpull { get; private set; }
+    /// <summary>Largest overpull of the current strain — what the fling scales from.</summary>
+    public float PeakStretchOverpull => _stretch.PeakOverpull;
+    /// <summary>Impulse applied by the most recent snap-back fling.</summary>
+    public float LastSnapImpulse { get; private set; }
+    /// <summary>Snap-back flings since this controller was initialized.</summary>
+    public int SnapCount { get; private set; }
+
     public void Initialize()
     {
         if (!GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
@@ -40,6 +57,17 @@ public partial class GrabTetherController : Node2D
             throw new InvalidOperationException("GrabTetherController requires a valid GrabTetherProfile.");
         }
 
+        _stretch = new GrabStretchLimiter(new GrabStretchTuning(
+            Profile.StretchLimitHandWidths,
+            Profile.StretchShakeTicks,
+            Profile.StretchShakeAmplitude,
+            Profile.StretchShakeCycleTicks,
+            Profile.StretchShakeRampTicks,
+            Profile.StretchShakeRampMultiplier,
+            Profile.StretchReleaseHysteresis,
+            Profile.SnapImpulseBase,
+            Profile.SnapImpulsePerOverpullPixel,
+            Profile.MaximumSnapImpulse));
         IsInitialized = true;
     }
 
@@ -53,6 +81,13 @@ public partial class GrabTetherController : Node2D
         }
 
         _target = target;
+        // Only a leashed buddy part stretches: a loose object has no arm, and the torso is
+        // the anchor itself, so both keep the plain unlimited tether.
+        _leashedPart = target as PuppetPartBody is { HasStretchLeash: true } part ? part : null;
+        _stretch.Reset();
+        StretchState = GrabStretchState.Slack;
+        StretchTicksRemaining = 0;
+        StretchOverpull = 0.0f;
         _localGrabPoint = target.ToLocal(worldPoint);
         _cursorAnchor = worldPoint;
         _previousCursor = worldPoint;
@@ -79,7 +114,31 @@ public partial class GrabTetherController : Node2D
         float dt = (float)delta;
         Vector2 cursorVelocity = dt > 0.0f ? (_cursorAnchor - _previousCursor) / dt : Vector2.Zero;
         Vector2 pointVelocity = VelocityAt(_target, grabWorld);
-        Vector2 error = _cursorAnchor - grabWorld;
+
+        // A leashed limb may only be pulled to the stretch limit; past that it strains in
+        // place, buzzes, and eventually snaps back and flings the buddy after the hand.
+        Vector2 pullTarget = _cursorAnchor;
+        if (_leashedPart is not null && GodotObject.IsInstanceValid(_leashedPart))
+        {
+            GrabStretchResult stretch = _stretch.Tick(
+                ToNumerics(_leashedPart.StretchAnchorWorld),
+                ToNumerics(_cursorAnchor),
+                _leashedPart.Radius);
+
+            StretchState = stretch.State;
+            StretchTicksRemaining = stretch.ShakeTicksRemaining;
+            StretchOverpull = stretch.Overpull;
+
+            if (stretch.State == GrabStretchState.Snapped)
+            {
+                SnapBack(stretch);
+                return;
+            }
+
+            pullTarget = ToGodot(stretch.ClampedTarget + stretch.ShakeOffset);
+        }
+
+        Vector2 error = pullTarget - grabWorld;
         Vector2 relativeVelocity = pointVelocity - cursorVelocity;
 
         var input = new GrabTetherInput(
@@ -98,6 +157,26 @@ public partial class GrabTetherController : Node2D
         Telemetry = new GrabTelemetry(true, result.Extension, force, result.ForceClamped, LastReleaseSpeed);
     }
 
+    /// <summary>
+    /// The limb snapped: fling the anchor body along the stretch direction, then let go. The
+    /// impulse goes to the anchor (the torso) so the whole buddy is launched and the limbs
+    /// trail through the passive constraints, rather than one hand flicking off on its own.
+    /// </summary>
+    private void SnapBack(in GrabStretchResult stretch)
+    {
+        PuppetPartBody? anchor = _leashedPart?.StretchAnchor;
+        if (anchor is not null && GodotObject.IsInstanceValid(anchor))
+        {
+            anchor.ApplyCentralImpulse(ToGodot(stretch.SnapDirection) * stretch.SnapImpulse);
+        }
+
+        LastSnapImpulse = stretch.SnapImpulse;
+        SnapCount++;
+        StretchState = GrabStretchState.Snapped;
+        StretchTicksRemaining = 0;
+        Release();
+    }
+
     /// <summary>Release the target, preserving its motion capped to the throw-speed cap.</summary>
     public void Release()
     {
@@ -110,6 +189,10 @@ public partial class GrabTetherController : Node2D
         }
 
         _target = null;
+        _leashedPart = null;
+        _stretch.Reset();
+        StretchTicksRemaining = 0;
+        StretchOverpull = 0.0f;
         CurrentGrab = default;
         Telemetry = new GrabTelemetry(false, 0.0f, Vector2.Zero, false, LastReleaseSpeed);
     }

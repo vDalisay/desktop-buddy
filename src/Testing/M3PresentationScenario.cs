@@ -124,9 +124,9 @@ public sealed class M3PresentationScenario : IScenario
         for (int tick = 0; tick < 3; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         checks.Add(new StartupCheck("harmful_tool_history_drives_physical_grab_resistance",
-            lab.Pipeline.IsToolHarmful((int)ToolId.BoxingGlove) &&
+            lab.Pipeline.IsToolHarmful(ToolId.BoxingGlove) &&
             lab.Reactions.CurrentFear > 0.0f && lab.Buddy.GrabResistance.Intent.Active,
-            $"remembered={lab.Pipeline.IsToolHarmful((int)ToolId.BoxingGlove)} " +
+            $"remembered={lab.Pipeline.IsToolHarmful(ToolId.BoxingGlove)} " +
             $"fear={lab.Reactions.CurrentFear:F2} active={lab.Buddy.GrabResistance.Intent.Active}"));
         lab.Grab.Release();
 
