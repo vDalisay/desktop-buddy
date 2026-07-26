@@ -1,3 +1,4 @@
+using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using Godot;
@@ -36,6 +37,7 @@ public partial class TestRunner : Node
 
             default:
                 Log.Warn("TestRunner", "TestRunner started without a scenario/journey mode; nothing to run.");
+                GodotInteropShutdown.PrepareForQuit();
                 GetTree().Quit(0);
                 break;
         }

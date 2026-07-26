@@ -35,7 +35,7 @@ public partial class Bootstrap : Node
         catch (ArgumentException e)
         {
             Log.Error(Category, $"Invalid runner arguments: {e.Message}");
-            GetTree().Quit(2);
+            QuitSafely(2);
             return;
         }
 
@@ -63,7 +63,7 @@ public partial class Bootstrap : Node
         if (packed is null)
         {
             Log.Error(Category, "Missing res://scenes/test_runner.tscn; cannot run scenario/journey.");
-            GetTree().Quit(2);
+            QuitSafely(2);
             return;
         }
 
@@ -128,7 +128,7 @@ public partial class Bootstrap : Node
         catch (Exception exception)
         {
             Log.Error(Category, $"Progress load failed: {exception.Message}");
-            GetTree().Quit(3);
+            QuitSafely(3);
             return;
         }
 
@@ -136,7 +136,7 @@ public partial class Bootstrap : Node
         {
             // Never quarantine, replace, or downgrade a save created by a newer build.
             Log.Error(Category, $"Progress is from a newer build: {progressLoad.Detail}");
-            GetTree().Quit(3);
+            QuitSafely(3);
             return;
         }
 
@@ -180,6 +180,12 @@ public partial class Bootstrap : Node
             settings,
             progressLoad.Status));
         AddChild(sandbox);
+    }
+
+    private void QuitSafely(int exitCode)
+    {
+        GodotInteropShutdown.PrepareForQuit();
+        GetTree().Quit(exitCode);
     }
 
     private static BuddyProgressState CreateNewProgress(double cashPerPain)

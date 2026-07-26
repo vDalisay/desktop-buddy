@@ -18,6 +18,7 @@ namespace DesktopBuddy.Buddy.Behavior;
 [GlobalClass]
 public partial class BehaviorArbiter : Node
 {
+    private bool _allocationProbeEnabled;
     private BehaviorArbiterModel _model = null!;
     private BuddyProgressState? _progress;
     private BuddyTraits _savelessTraits = BuddyTraits.Default;
@@ -94,6 +95,10 @@ public partial class BehaviorArbiter : Node
         Vector2 cursorWorldPosition,
         bool socialTargetValid)
     {
+        long allocationBefore = _allocationProbeEnabled
+            ? GC.GetAllocatedBytesForCurrentThread()
+            : 0;
+
         if (!IsInitialized)
             throw new InvalidOperationException("BehaviorArbiter was ticked before per-run injection.");
 
@@ -179,8 +184,26 @@ public partial class BehaviorArbiter : Node
         }
 
         DriveIntent = BuildDriveIntent(grabbedPart, toolReaction);
+        if (_allocationProbeEnabled)
+        {
+            AllocationSamples++;
+            AllocatedBytes +=
+                GC.GetAllocatedBytesForCurrentThread() - allocationBefore;
+        }
         return DriveIntent;
     }
+
+    public int AllocationSamples { get; private set; }
+    public long AllocatedBytes { get; private set; }
+
+    public void BeginAllocationProbe()
+    {
+        AllocationSamples = 0;
+        AllocatedBytes = 0;
+        _allocationProbeEnabled = true;
+    }
+
+    public void EndAllocationProbe() => _allocationProbeEnabled = false;
 
     public void Reset()
     {
@@ -303,12 +326,19 @@ public partial class BehaviorArbiter : Node
     private DriveIntent BuildObjectIntent()
     {
         bool reach = Activity.EatReachActive;
-        Vector2 chest = Rig.Torso.GlobalPosition + ActiveDrive.Profile.EatChestTargetOffset;
-        Vector2 lower = Rig.Torso.GlobalPosition + ActiveDrive.Profile.EatFinalLowerTargetOffset;
-        Vector2 returnCenter = chest.Lerp(lower, Activity.EatFinalLowering);
-        Vector2 mouth = Rig.Head.GlobalPosition + ActiveDrive.Profile.EatMouthTargetOffset;
-        Vector2 reachCenter = reach ? returnCenter.Lerp(mouth, Activity.EatLift) : Vector2.Zero;
-        Vector2 separation = new(ActiveDrive.Profile.EatHandHalfSeparation, 0.0f);
+        Vector2 leftTarget = Vector2.Zero;
+        Vector2 rightTarget = Vector2.Zero;
+        if (reach)
+        {
+            Vector2 chest = Rig.Torso.GlobalPosition + ActiveDrive.Profile.EatChestTargetOffset;
+            Vector2 lower = Rig.Torso.GlobalPosition + ActiveDrive.Profile.EatFinalLowerTargetOffset;
+            Vector2 returnCenter = chest.Lerp(lower, Activity.EatFinalLowering);
+            Vector2 mouth = Rig.Head.GlobalPosition + ActiveDrive.Profile.EatMouthTargetOffset;
+            Vector2 reachCenter = returnCenter.Lerp(mouth, Activity.EatLift);
+            Vector2 separation = new(ActiveDrive.Profile.EatHandHalfSeparation, 0.0f);
+            leftTarget = reachCenter - separation;
+            rightTarget = reachCenter + separation;
+        }
 
         return new DriveIntent(
             Intent.WalkDirection,
@@ -319,8 +349,8 @@ public partial class BehaviorArbiter : Node
             Activity.IsStationary || ObjectInteraction.Phase != ObjectPhase.Approach,
             reach,
             Activity.EatLift,
-            reachCenter - separation,
-            reachCenter + separation,
+            leftTarget,
+            rightTarget,
             false,
             false,
             Vector2.Zero,

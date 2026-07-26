@@ -35,6 +35,8 @@ namespace DesktopBuddy.App;
 /// </summary>
 public partial class BuddyLab : Node2D
 {
+    private bool _allocationProbeEnabled;
+
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public LaboratoryControlComponent Controls { get; set; } = null!;
     [Export] public GrabTetherController Grab { get; set; } = null!;
@@ -200,7 +202,16 @@ public partial class BuddyLab : Node2D
             // the same physics step; ordering between them does not matter.
             Grab.PhysicsTick(delta);
             GrabState grab = Grab.CurrentGrab;
+            long registryAllocationBefore = _allocationProbeEnabled
+                ? GC.GetAllocatedBytesForCurrentThread()
+                : 0;
             Objects.PhysicsTick(grab);
+            if (_allocationProbeEnabled)
+            {
+                PhysicsRegistryAllocationSamples++;
+                PhysicsRegistryAllocatedBytes +=
+                    GC.GetAllocatedBytesForCurrentThread() - registryAllocationBefore;
+            }
             PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
             bool buddyPartGrabbed = grabbedBody is not null;
             Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
@@ -223,6 +234,23 @@ public partial class BuddyLab : Node2D
             TelemetryRecorder?.Capture(Controls.RoutedPhysicsTicks);
             Controls.NotifyPhysicsTickRouted();
         }
+    }
+
+    public int PhysicsRegistryAllocationSamples { get; private set; }
+    public long PhysicsRegistryAllocatedBytes { get; private set; }
+
+    public void BeginPhysicsAllocationProbe()
+    {
+        PhysicsRegistryAllocationSamples = 0;
+        PhysicsRegistryAllocatedBytes = 0;
+        Buddy.Arbiter.BeginAllocationProbe();
+        _allocationProbeEnabled = true;
+    }
+
+    public void EndPhysicsAllocationProbe()
+    {
+        _allocationProbeEnabled = false;
+        Buddy.Arbiter.EndAllocationProbe();
     }
 
     public void EnableTelemetry(string artifactsDirectory, string id)

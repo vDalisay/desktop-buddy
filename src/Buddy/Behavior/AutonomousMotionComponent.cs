@@ -139,8 +139,9 @@ public partial class AutonomousMotionComponent : Node
         float rightEdge = float.NegativeInfinity;
         float totalMass = 0.0f;
         float velocityX = 0.0f;
-        foreach (PuppetPartBody part in Rig.Parts)
+        for (int index = 0; index < Rig.Parts.Count; index++)
         {
+            PuppetPartBody part = Rig.Parts[index];
             leftEdge = Mathf.Min(leftEdge, part.GlobalPosition.X - part.Radius);
             rightEdge = Mathf.Max(rightEdge, part.GlobalPosition.X + part.Radius);
             totalMass += part.Mass;

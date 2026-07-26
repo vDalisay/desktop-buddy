@@ -33,7 +33,7 @@ public partial class ScenarioRunner : Node
             VerdictWriter.Write("scenario", id, seed, false,
                 new[] { new StartupCheck("scenario_known", false, id) },
                 new[] { "unknown scenario id" }, stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
-            GetTree().Quit(3);
+            QuitSafely(3);
             return;
         }
 
@@ -56,7 +56,7 @@ public partial class ScenarioRunner : Node
             VerdictWriter.Write("scenario", id, seed, false,
                 new[] { new StartupCheck("scenario_threw", false, e.Message) },
                 new[] { e.GetType().Name }, stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
-            GetTree().Quit(1);
+            QuitSafely(1);
             return;
         }
 
@@ -65,6 +65,12 @@ public partial class ScenarioRunner : Node
         VerdictWriter.Write("scenario", id, seed, result.Passed, result.Checks, result.Messages,
             stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
         Log.Info("Scenario", $"Scenario '{id}' {(result.Passed ? "PASSED" : "FAILED")}.");
-        GetTree().Quit(result.Passed ? 0 : 1);
+        QuitSafely(result.Passed ? 0 : 1);
+    }
+
+    private void QuitSafely(int exitCode)
+    {
+        GodotInteropShutdown.PrepareForQuit();
+        GetTree().Quit(exitCode);
     }
 }

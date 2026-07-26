@@ -55,8 +55,8 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 | --- | --- | --- |
 | Domain unit | `dotnet test` | 611/611 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (41) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | targeted gates green |
-| Journeys (11) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | targeted gates green |
+| Scenarios (41) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | 80/80 valid headless presentation runs green; window-only visual gate pending owner |
+| Journeys (11) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | 21/21 valid presentation runs green |
 | Quick suite | `tools\quick_validate.bat` | 15/15 |
 
 Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the

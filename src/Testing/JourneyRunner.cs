@@ -148,7 +148,7 @@ public partial class JourneyRunner : Node
             VerdictWriter.Write("journey", verdictId, seed, passed, checks, new[] { $"seed={seed}" },
                 stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
             Log.Info("Journey", $"Journey '{verdictId}' {(passed ? "PASSED" : "FAILED")}.");
-            GetTree().Quit(passed ? 0 : 1);
+            QuitSafely(passed ? 0 : 1);
         }
     }
 
@@ -245,7 +245,7 @@ public partial class JourneyRunner : Node
             stopwatch.ElapsedMilliseconds,
             _args.ArtifactsDir);
         Log.Info("Journey", $"Phased journey '{id}' {(passed ? "PASSED" : "FAILED")}.");
-        GetTree().Quit(passed ? 0 : 1);
+        QuitSafely(passed ? 0 : 1);
     }
 
     private ulong ResolveSeed(JsonElement root)
@@ -711,6 +711,9 @@ public partial class JourneyRunner : Node
         state["lab_settled"] = settled;
         state["lab_telemetry_visible"] = lab.TelemetryPanel.IsInitialized && lab.TelemetryPanel.Visible;
         lab.QueueFree();
+        // QueueFree completes on the next idle frame. Let component teardown run
+        // before the runner writes its verdict and quits.
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
     private async System.Threading.Tasks.Task ExerciseM35PresentationToggleAsync(
@@ -1225,6 +1228,12 @@ public partial class JourneyRunner : Node
         VerdictWriter.Write("journey", id, seed, false,
             new[] { new StartupCheck(check, false, detail) },
             new[] { "journey setup failure" }, stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
+        QuitSafely(exitCode);
+    }
+
+    private void QuitSafely(int exitCode)
+    {
+        GodotInteropShutdown.PrepareForQuit();
         GetTree().Quit(exitCode);
     }
 }

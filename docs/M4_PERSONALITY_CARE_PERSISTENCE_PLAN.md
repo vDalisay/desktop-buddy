@@ -563,20 +563,35 @@ Authoritative per-task status. Update after each task lands with its suite run.
       `quick_validate` **11/11**; `hidden_clock_accrual` and
       `suspend_no_catchup` **8/8** across seeds 1/7 and both presentations.
       The catalog is now **41 scenarios** and **11 journeys**.
-- [ ] Task 6 — Composition, regression, docs, owner gate
+- [ ] **Task 6 — Composition, regression, docs, owner gate** (automated work
+      complete 2026-07-26; owner feel gate pending).
+      Scene composition, the 41-scenario/11-journey catalogs, the 15-step quick
+      suite, delegated-default decisions, and the owner script are complete.
+      The full valid headless matrix passed **80/80 scenario runs** (40 runnable
+      scenarios in Mii3D and legacy; the window-only visual gate excluded) and
+      **21/21 journey runs** (both presentations except the documented
+      Mii3D-only presentation-toggle journey). Full `idle_soak` scenarios and
+      full `lab_idle_soak` journeys passed in both presentations. Final gates:
+      build clean with zero warnings; `dotnet test` **611/611**;
+      `quick_validate` **15/15**. The warmed 240-tick live registry/object/arbiter
+      allocation probe reports zero managed bytes; its first run exposed and
+      removed an interface-enumerator allocation in wall sensing. A Godot 4.6
+      Windows shutdown race was also
+      hardened by draining pending managed interop finalizers before every
+      application/test-runner quit; the two formerly affected Mii3D journeys
+      now exit cleanly after passing. Milestone acceptance remains pending until
+      the owner performs `docs/M4_OWNER_GATE.md`.
 
 ### Known pre-existing red (found during the Task 0 gate, 2026-07-25)
 
 The plan header's "no known red" claim was wrong. Recorded here so later tasks are not
 blamed for it:
 
-1. **`grab_resistance` / `fearful_resists_more_than_calm` FAILS on `main`.** The check
-   wants `fearful.FinalExtension > calm.FinalExtension + 5.0`; the run produces
-   `calm=13.4 fearful=15.8`, a 2.4 margin. Reproduced **byte-identically on a clean
-   stashed baseline**, with and without `--fixed-fps 120`, in both presentations — it is
-   deterministic, not a flake, and predates M4. Either the tuning drifted below the
-   threshold or the `5.0` margin is too strict for the current profile. Needs an owner
-   or tuning decision; do not silently relax the assertion.
+1. **RESOLVED 2026-07-26 — `grab_resistance` /
+   `fearful_resists_more_than_calm`.** The assertion itself was not relaxed.
+   The owner-approved resistance feel pass raised the force to `17000` and made
+   resistance walk-driven; the full M4 matrix now produces
+   `calm=13.4`, `fearful=29.8` and passes identically in both presentations.
 2. **`owner_feedback_visual` cannot run headless.** It calls
    `tree.Root.GetTexture().GetImage()`, which NREs without a window. `TEST_PLAN.md:138`
    already describes it as the *windowed* screenshot scenario, so headless matrix runs

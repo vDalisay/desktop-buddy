@@ -286,6 +286,7 @@ public partial class SandboxRoot : Node2D
             // Closing is still honored so the app cannot trap the user.
             Log.Error("Persistence", $"Save & Quit failed: {exception.Message}");
         }
+        GodotInteropShutdown.PrepareForQuit();
         GetTree().Quit();
     }
 

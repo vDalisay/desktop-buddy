@@ -1,8 +1,10 @@
 # Milestone 4 Owner Feel Gate
 
-Automated prerequisites: `dotnet test` is green, `tools\quick_validate.bat` passes
-all 15 checks, and `care_persistence` passes in both presentations. This review is
-windowed; do not run `owner_feedback_visual` headless.
+Automated prerequisites completed 2026-07-26: `dotnet test` is green at 611/611,
+`tools\quick_validate.bat` passes all 15 checks, the valid headless scenario
+matrix is 80/80, the valid journey matrix is 21/21, and full scenario/journey
+soaks pass in both presentations. This review is windowed; do not run
+`owner_feedback_visual` headless.
 
 1. Launch `scenes/buddy_lab.tscn` windowed at the default Mii3D presentation.
    Move the cursor near and away from the buddy while using safe objects. Drive

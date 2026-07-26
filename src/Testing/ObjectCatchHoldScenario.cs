@@ -68,6 +68,21 @@ public sealed class ObjectCatchHoldScenario : IScenario
             lab.Objects.FindBody(firstEvictableId) is null &&
             lab.Objects.EvictionCount >= 1;
 
+        // Let deferred eviction/scene changes settle, then measure the real
+        // routed lab tick with arbiter, object sensor/registry, progress, and
+        // presentation all live after warm-up.
+        for (int tick = 0; tick < 30; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        lab.BeginPhysicsAllocationProbe();
+        for (int tick = 0; tick < 240; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        lab.EndPhysicsAllocationProbe();
+        bool allocationFree =
+            lab.PhysicsRegistryAllocationSamples == 240 &&
+            lab.PhysicsRegistryAllocatedBytes == 0 &&
+            lab.Buddy.Arbiter.AllocationSamples == 240 &&
+            lab.Buddy.Arbiter.AllocatedBytes == 0;
+
         checks.Add(new StartupCheck(
             "object_catch_two_hand_hold",
             ball is not null && sensed && held && registered && physical && exceptions,
@@ -82,6 +97,13 @@ public sealed class ObjectCatchHoldScenario : IScenario
             heldSurvivedCap && oldestEligibleEvicted,
             $"count={lab.Objects.Count} evictions={lab.Objects.EvictionCount} " +
             $"held_survived={heldSurvivedCap} oldest_safe_evicted={oldestEligibleEvicted}"));
+        checks.Add(new StartupCheck(
+            "m4_live_tick_zero_managed_allocation",
+            allocationFree,
+            $"registry_samples={lab.PhysicsRegistryAllocationSamples} " +
+            $"registry_bytes={lab.PhysicsRegistryAllocatedBytes} " +
+            $"arbiter_samples={lab.Buddy.Arbiter.AllocationSamples} " +
+            $"arbiter_bytes={lab.Buddy.Arbiter.AllocatedBytes}"));
 
         messages.Add(
             $"catch runtime={runtimeId} sensed={sensed} phase={lab.Buddy.ObjectInteraction.Phase} " +

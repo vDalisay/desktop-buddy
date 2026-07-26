@@ -116,7 +116,9 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - The `object_catch_hold` scenario drives a registered safe object through the real
   player grab/release bridge, then verifies layer-6→layer-3 sensing, bounded
   two-hand catch/hold forces, held collision exceptions, exactly-once catch care,
-  and protection from fixed-registry eviction (`--fixed-fps 120`, seeds 1 and 7).
+  protection from fixed-registry eviction, and zero managed allocation across a
+  240-tick warmed live registry/object/arbiter route (`--fixed-fps 120`, seeds 1
+  and 7).
 - The `object_toss_discard` scenario verifies a held safe object receives one
   bounded toss impulse and clears buddy-held/throw attribution, while newly
   learned harmful memory instead produces one lower-energy discard, clears
