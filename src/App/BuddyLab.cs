@@ -172,6 +172,8 @@ public partial class BuddyLab : Node2D
         Grab.Released += OnGrabReleased;
         Controls.PresentationToggleRequested += OnPresentationToggleRequested;
         Controls.EatToggleRequested += OnEatToggleRequested;
+        Controls.LooseObjectSpawnRequested += OnLooseObjectSpawnRequested;
+        Controls.LooseObjectClearRequested += OnLooseObjectClearRequested;
         Buddy.ObjectInteraction.ConsumeStarted += OnObjectConsumeStarted;
         Buddy.ObjectInteraction.ConsumeCancelled += OnObjectConsumeCancelled;
         Glove.BodySpawned += OnGloveBodySpawned;
@@ -291,6 +293,8 @@ public partial class BuddyLab : Node2D
         {
             Controls.PresentationToggleRequested -= OnPresentationToggleRequested;
             Controls.EatToggleRequested -= OnEatToggleRequested;
+            Controls.LooseObjectSpawnRequested -= OnLooseObjectSpawnRequested;
+            Controls.LooseObjectClearRequested -= OnLooseObjectClearRequested;
         }
         if (GodotObject.IsInstanceValid(Buddy) &&
             GodotObject.IsInstanceValid(Buddy.ObjectInteraction))
@@ -399,6 +403,46 @@ public partial class BuddyLab : Node2D
         if (playerThrown)
             Objects.MarkPlayerThrown(body);
         return body;
+    }
+
+    /// <summary>
+    /// Drops a safe loose object at the cursor, or on the floor ahead of the buddy when
+    /// the pointer has not been used yet. The owner needs objects in the room to judge
+    /// catching, tossing, and obstacle hops at all; the Eat key only ever puts food
+    /// directly into the hand.
+    /// </summary>
+    private void OnLooseObjectSpawnRequested()
+    {
+        float floorY = Boundaries.InnerBounds.End.Y - SafeObjectProfile.Radius - 1.0f;
+        Vector2 spawn = Pointer.HasPointerInput
+            ? Pointer.WorldCursor
+            : new Vector2(Buddy.Rig.Torso.GlobalPosition.X + 70.0f, floorY);
+        spawn = new Vector2(
+            Mathf.Clamp(
+                spawn.X,
+                Boundaries.InnerBounds.Position.X + SafeObjectProfile.Radius,
+                Boundaries.InnerBounds.End.X - SafeObjectProfile.Radius),
+            Mathf.Min(spawn.Y, floorY));
+        if (SpawnLooseObject(SafeObjectProfile, spawn) is null)
+            Log.Warn("Laboratory", "Loose-object spawn refused; registry is full of protected objects.");
+    }
+
+    private void OnLooseObjectClearRequested()
+    {
+        for (int index = GetChildCount() - 1; index >= 0; index--)
+        {
+            if (GetChild(index) is not LooseObjectBody body)
+                continue;
+            if (Buddy.ObjectInteraction.IsHolding &&
+                Buddy.ObjectInteraction.TrackedRuntimeId == body.RuntimeId)
+            {
+                Buddy.ObjectInteraction.CancelActiveInteraction();
+            }
+            if (Grab.IsGrabbing)
+                Grab.Release(countsAsThrow: false);
+            Objects.Unregister(body);
+            body.QueueFree();
+        }
     }
 
     private void OnEatToggleRequested()

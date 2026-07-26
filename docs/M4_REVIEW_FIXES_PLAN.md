@@ -375,11 +375,24 @@ journey). The affected scenarios additionally passed on seeds 1 and 7 in both mo
       duplicate-safe sensor admission with slot/count recovery, retained
       known-but-locked selection, `IsInitialized` guards on the suspend/resume
       notifications, and an unconditional economy unsubscribe in the money HUD.
+- [x] **Task L — the laboratory could not spawn a loose object** (found while writing
+      the owner-gate instructions, 2026-07-26). `SpawnLooseObject` had exactly two
+      callers: scenarios, and the Eat key, which puts food straight into the hand. No
+      key put an object into the room, so *every* object-interaction behaviour —
+      approach, catch, hold, inspect, toss, discard, and the newly live obstacle hop —
+      was unreachable by a human, and gate steps 1–3 were not performable as written.
+      Added `O` (drop a safe object at the cursor, clamped inside the room and never
+      below the floor line) and `Shift+O` (clear all), wired through
+      `LaboratoryControlComponent` events so the lab root keeps owning the factory.
+      `laboratory_controls` asserts spawn placement and clearing
+      (`before=0 spawned=2 inside=True cleared=0`).
 - [x] **Task K — documentation and gate refresh.** `DECISIONS.md` "M4 Review Fixes",
       a rewritten `M4_OWNER_GATE.md` (new obstacle-hop step, honest hide/restore step,
       native power/session listed as owner-manual), corrected Task 3 and Task 5
       Progress entries in the M4 plan, and `CHECKLIST.md` counts refreshed to 638 tests
-      and 78 scenario runs.
+      and 78 scenario runs. `README.md` documents the complete laboratory key surface
+      and the three sandbox shell hotkeys, and the owner gate lists the keys each step
+      needs instead of assuming them.
 
 ### Not changed, and why
 

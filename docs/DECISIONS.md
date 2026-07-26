@@ -648,6 +648,12 @@ landed and defects the automated gates did not catch.
 - **One arbitration ladder.** Object suppression is derived from
   `BehaviorArbiterModel.SuppressesVoluntaryAction`, replacing a hand-rolled copy of
   priorities 0–4 in the runtime arbiter that had to be kept in sync by hand.
+- **The laboratory can spawn loose objects**: `O` drops one safe object at the cursor,
+  `Shift+O` clears them all. Every object-interaction feature — approach, catch, hold,
+  inspect, toss, discard, obstacle hop — was unreachable by hand because the only
+  object the lab could create was the Eat key's food, which goes straight into the
+  hand. The owner gate steps that judge those behaviours were not performable before
+  this key existed; `laboratory_controls` now covers it.
 
 ## Planning Rule
 

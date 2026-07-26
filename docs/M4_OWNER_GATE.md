@@ -7,17 +7,27 @@ is 78/78 (39 runnable scenarios in both presentations; the window-only visual ga
 excluded and the 30-minute soak run as `idle_soak_ci`), and the valid journey matrix
 is 21/21. This review is windowed; do not run `owner_feedback_visual` headless.
 
+**Laboratory keys used below.** `O` drops one safe loose object at the cursor
+(or on the floor ahead of the buddy before the pointer has been used); `Shift+O`
+clears every loose object. `G`/`F`/`T`/`B` select Grab/Pet/Tickle/Boxing Glove, `E`
+starts or cancels a lab-food consume, `P` pauses, `1`–`4` set time scale, `U`
+toggles consciousness, `Shift+U` advances the autonomy seed, `V` toggles
+presentation. With Grab selected, drag an object with the mouse and let go to throw
+it — that release is what mints the throw token catch care is paid against.
+
 1. Launch `scenes/buddy_lab.tscn` windowed at the default Mii3D presentation.
-   Move the cursor near and away from the buddy while using safe objects. Drive
-   mood through Fearful, Wary, Neutral, Content, and Delighted using the lab
-   controls/scenarios. Confirm all five read differently without a visible meter,
-   especially the delegated standoff/approach and greeting cadences. A content or
-   delighted buddy should keep ambling between waves rather than standing still
-   near the cursor.
-2. Drop safe objects on the floor in front of a walking buddy and watch it hop over
-   them. The probe now fires just above the floor line, so obstacle-hop personality
-   is live for the first time; confirm high-propensity saves hop and that hops still
-   read as deliberate rather than random. Timer-driven ambient jumping stays off.
+   Press `O` a few times to put objects in the room. Move the cursor near and away
+   from the buddy. Drive mood through Fearful, Wary, Neutral, Content, and Delighted
+   using the lab controls/scenarios. Confirm all five read differently without a
+   visible meter, especially the delegated standoff/approach and greeting cadences. A
+   content or delighted buddy should keep ambling between waves rather than standing
+   still near the cursor, and should walk over to a thrown object and catch it while a
+   fearful one refuses.
+2. Press `O` to drop objects on the floor in front of a walking buddy and watch it hop
+   over them. The probe now fires just above the floor line, so obstacle-hop
+   personality is live for the first time; confirm hops read as deliberate rather than
+   random. Timer-driven ambient jumping stays off. `Shift+U` re-rolls the autonomy seed
+   if the buddy will not commit to a walk toward the object.
 3. Consume the laboratory food through the real Eat choreography. Confirm care
    improves behavior/mood but grants no immediate money burst. Leave the app
    running and confirm its economic effect arrives only through passive income.

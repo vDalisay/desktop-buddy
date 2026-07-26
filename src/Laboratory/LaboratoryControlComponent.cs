@@ -37,6 +37,16 @@ public partial class LaboratoryControlComponent : Node
     public event Action? PresentationToggleRequested;
     public event Action? EatToggleRequested;
 
+    /// <summary>
+    /// Drop one safe loose object into the room. Without this the laboratory has no way
+    /// to introduce an object at all — the Eat key puts food straight into the hand — so
+    /// catch, hold, toss, and obstacle-hop behaviour was unreachable by hand.
+    /// </summary>
+    public event Action? LooseObjectSpawnRequested;
+
+    /// <summary>Remove every loose object, for repeating a spawn cleanly.</summary>
+    public event Action? LooseObjectClearRequested;
+
     [Export] public BuddyRoot Buddy { get; set; } = null!;
 
     // Optional: when present, the pause also holds the M3.6 performance layer so a paused
@@ -219,6 +229,12 @@ public partial class LaboratoryControlComponent : Node
                 break;
             case Key.E when HasActivities:
                 ToggleEat();
+                break;
+            case Key.O when key.ShiftPressed:
+                LooseObjectClearRequested?.Invoke();
+                break;
+            case Key.O:
+                LooseObjectSpawnRequested?.Invoke();
                 break;
             case Key.Q when HasActivities:
                 Buddy.SetBehaviorActivity(ActivityId.Wave);

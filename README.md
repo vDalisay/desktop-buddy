@@ -119,7 +119,9 @@ Milestone 3 adds `impact_dedup`, `knockout_window`, `payout_by_region`, `pet_tic
 
 Milestone 4 brings the catalog to 41 scenarios and 11 journeys. Its focused gates cover object catch/hold/toss/consume, the priority-0–7 behavior arbiter and five mood bands, persisted obstacle-hop traits, versioned atomic progress with backup/quarantine recovery, monotonic no-catch-up lifecycle timing, hidden passive accrual with frozen physics, and the phased `care_persistence` save→fresh-process→safe-resume journey.
 
-The development-only laboratory controls are keyboard-accessible in `buddy_lab.tscn`: `P` pauses/resumes, `.` advances one fixed physics tick while paused, `U` toggles consciousness, `Shift+U` advances to the next autonomy seed, and `1`/`2`/`3`/`4` select `0.25x`/`0.5x`/`1x`/`2x` time scale. The `laboratory_controls` scenario exercises the same input path.
+The development-only laboratory controls are keyboard-accessible in `buddy_lab.tscn`: `P` pauses/resumes, `.` advances one fixed physics tick while paused, `U` toggles consciousness, `Shift+U` advances to the next autonomy seed, and `1`/`2`/`3`/`4` select `0.25x`/`0.5x`/`1x`/`2x` time scale. Tool selection is `G` Grab, `F` Pet, `T` Tickle, `B` Boxing Glove; `V` toggles presentation, `Q` waves, and `E` starts/cancels a lab-food consume. `O` drops a safe loose object at the cursor (or on the floor ahead of the buddy before the pointer has been used) and `Shift+O` clears every loose object — that is the only way to introduce objects for catch, toss, and obstacle-hop review, since `E` puts food straight into the hand. The `laboratory_controls` scenario exercises the same input path.
+
+In the normal sandbox, `Ctrl+Shift+B` toggles Work/Play mode, `Ctrl+Shift+H` hides to tray, and `Ctrl+Shift+Q` saves and quits. Restoring a hidden window needs the native tray icon or OS-global hotkey, which is Milestone 6 scope (FR-016.1).
 
 ## Interactive Verification (Godot MCP)
 
