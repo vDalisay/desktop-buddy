@@ -226,6 +226,58 @@ public sealed class ProgressSavePolicyTests
         Assert.Equal(45, state.Mood);
     }
 
+    /// <summary>
+    /// A v1 payload is written by an older build, so a wrong-typed legacy field is
+    /// corruption to be classified and quarantined — never an exception that escapes
+    /// <see cref="ProgressSavePolicy.Decode"/> and takes the launch down with it.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"schemaVersion":1,"selectedTool":"grab"}""")]
+    [InlineData("""{"schemaVersion":1,"revision":"eight"}""")]
+    [InlineData("""{"schemaVersion":1,"balanceMilliCredits":true}""")]
+    [InlineData("""{"schemaVersion":1,"mood":"sad"}""")]
+    [InlineData("""{"schemaVersion":1,"obstacleHopPropensity":"high"}""")]
+    [InlineData("""{"schemaVersion":1,"unlockedTools":["grab"]}""")]
+    [InlineData("""{"schemaVersion":1,"harmfulTools":[{"id":3}]}""")]
+    [InlineData("""{"schemaVersion":1,"selectedTool":99999999999999999999}""")]
+    public void WrongTypedLegacyFields_AreMalformedNotThrown(string legacy)
+    {
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode(legacy);
+
+        Assert.Equal(SaveDecodeStatus.Malformed, decoded.Status);
+        Assert.Null(decoded.Save);
+    }
+
+    [Fact]
+    public void V1PayloadWithoutOptionalFields_StillMigrates()
+    {
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode("""{"schemaVersion":1}""");
+
+        Assert.Equal(SaveDecodeStatus.Valid, decoded.Status);
+        Assert.Equal(ContentIds.ToolGrab, decoded.Save!.SelectedToolId);
+        Assert.Equal([ContentIds.ToolGrab], decoded.Save.UnlockedToolIds);
+        Assert.Equal(0.0f, decoded.Save.Mood);
+    }
+
+    /// <summary>
+    /// "This build cannot activate that selection" covers a known tool that is simply not
+    /// unlocked, so the original value is retained rather than silently discarded.
+    /// </summary>
+    [Fact]
+    public void KnownButLockedSelection_FallsBackToGrabAndIsRetained()
+    {
+        var save = new ProgressSave
+        {
+            UnlockedToolIds = [ContentIds.ToolGrab],
+            SelectedToolId = ContentIds.ToolBoxingGlove,
+        };
+
+        BuddyProgressState state = ProgressSavePolicy.CreateState(save, CashPerPain);
+
+        Assert.Equal(ToolId.Grab, state.SelectedTool);
+        Assert.Equal(ContentIds.ToolBoxingGlove, state.Extensions!.UnknownSelectedToolId);
+    }
+
     [Fact]
     public void ProgressAndLocalSettings_AreSeparateDtos()
     {

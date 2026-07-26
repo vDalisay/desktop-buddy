@@ -8,3 +8,4 @@ NeutralCreditsPerMinute = 1.0
 ForegroundUpdateSeconds = 1.0
 HiddenUpdateSeconds = 0.1
 DiscontinuitySeconds = 5.0
+HiddenMaxFps = 10

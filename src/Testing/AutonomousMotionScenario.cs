@@ -103,10 +103,15 @@ public sealed class AutonomousMotionScenario : IScenario
                 lab.Buddy.Standing.Snapshot.IsStable &&
                 !Mathf.IsZeroApprox(walkDirection))
             {
+                // On the floor line, where a loose object actually rests, not at torso
+                // height: the obstacle probe sits just above the floor so that a real
+                // resting object is what provides hop evidence. Frozen so a mid-loop
+                // insert stays deterministic.
                 hopObstacle = lab.SpawnLooseObject(
                     lab.SafeObjectProfile,
-                    lab.Buddy.Rig.Torso.GlobalPosition +
-                        new Vector2(Mathf.Sign(walkDirection) * 50.0f, 0.0f));
+                    new Vector2(
+                        position.X + (Mathf.Sign(walkDirection) * 50.0f),
+                        lab.Boundaries.InnerBounds.End.Y - lab.SafeObjectProfile.Radius - 1.0f));
                 if (hopObstacle is not null)
                     hopObstacle.Freeze = true;
             }

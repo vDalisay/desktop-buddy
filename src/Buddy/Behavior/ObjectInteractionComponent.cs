@@ -131,7 +131,7 @@ public partial class ObjectInteractionComponent : Area2D
         FleeBiasRequested = false;
         if (_directLabConsume)
         {
-            if (suppressed || !conscious)
+            if (suppressed || !conscious || !HoldStillIntact())
             {
                 CancelActiveInteraction();
                 TickCooldowns();
@@ -144,7 +144,7 @@ public partial class ObjectInteractionComponent : Area2D
 
         int count = BuildCandidates();
         bool holdConfirmed = IsHolding
-            ? GodotObject.IsInstanceValid(_heldBody)
+            ? HoldStillIntact()
             : CatchHandsReady(_registry.FindBody(_model.TrackedRuntimeId));
 
         ObjectIntent intent = _model.Tick(
@@ -217,8 +217,17 @@ public partial class ObjectInteractionComponent : Area2D
         for (int index = 0; index < _sensed.Length; index++)
         {
             LooseObjectBody? body = _sensed[index];
-            if (body is null || !GodotObject.IsInstanceValid(body) ||
-                !_registry.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) ||
+            if (body is null)
+                continue;
+            if (!GodotObject.IsInstanceValid(body))
+            {
+                // Consumed or evicted without an exit signal; release the slot here so
+                // capacity and SensedCount cannot drift over a long session.
+                _sensed[index] = null;
+                SensedCount = Mathf.Max(0, SensedCount - 1);
+                continue;
+            }
+            if (!_registry.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) ||
                 snapshot.PlayerHeld || snapshot.BuddyHeld)
             {
                 continue;
@@ -501,6 +510,19 @@ public partial class ObjectInteractionComponent : Area2D
             Profile.ObjectDamping,
             Profile.MaximumObjectForce);
 
+    /// <summary>
+    /// Physical hold feedback. The bounded hold force can lose an object to a hard enough
+    /// disturbance; when it does, the model takes its <c>Drop</c> path and any open consume
+    /// token is cancelled without starting a cooldown (FR-008.10).
+    /// </summary>
+    private bool HoldStillIntact()
+    {
+        if (!GodotObject.IsInstanceValid(_heldBody))
+            return false;
+        Vector2 center = Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
+        return center.DistanceTo(_heldBody!.GlobalPosition) <= Profile.HoldReleaseDistance;
+    }
+
     private bool CatchHandsReady(LooseObjectBody? body)
     {
         if (!GodotObject.IsInstanceValid(body))
@@ -517,17 +539,32 @@ public partial class ObjectInteractionComponent : Area2D
     {
         if (node is not LooseObjectBody body || body.RuntimeId == 0)
             return;
+
+        // Two passes on purpose: a single pass that inserts at the first free slot can
+        // pass over an existing entry at a higher index and admit the same body twice,
+        // which would double-score it in the candidate buffer.
+        int free = -1;
         for (int index = 0; index < _sensed.Length; index++)
         {
-            if (_sensed[index] == body)
+            LooseObjectBody? sensed = _sensed[index];
+            if (sensed == body)
                 return;
-            if (_sensed[index] is null || !GodotObject.IsInstanceValid(_sensed[index]))
+            if (free < 0 && (sensed is null || !GodotObject.IsInstanceValid(sensed)))
             {
-                _sensed[index] = body;
-                SensedCount++;
-                return;
+                free = index;
+                if (sensed is not null)
+                {
+                    // A freed body that never raised BodyExited: reclaim its accounting.
+                    _sensed[index] = null;
+                    SensedCount = Mathf.Max(0, SensedCount - 1);
+                }
             }
         }
+
+        if (free < 0)
+            return;
+        _sensed[free] = body;
+        SensedCount++;
     }
 
     private void OnBodyExited(Node2D node)

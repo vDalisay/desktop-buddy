@@ -420,6 +420,79 @@ public sealed class ObjectInteractionModelTests
         Assert.True(Step(model, Ball(throwToken: 4), holdConfirmed: true).GrantsCatchCare);
     }
 
+    /// <summary>
+    /// A thrown object is a moment the buddy can miss; an idle prop is not. Distance alone
+    /// let a nearer resting object steal the commitment and lose the FR-008.3 catch.
+    /// </summary>
+    [Fact]
+    public void Commit_PrefersAnAirborneCandidateOverANearerRestingOne()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        ObjectCandidate[] candidates =
+        [
+            Food(distance: 10.0f),
+            Ball(distance: 120.0f),
+        ];
+
+        model.Tick(candidates, MoodBand.Content, NothingHarmful, false, true, false, false);
+
+        Assert.Equal(11, model.TrackedRuntimeId);
+        Assert.Equal(ObjectPhase.Approach, model.Phase);
+    }
+
+    [Fact]
+    public void Commit_UsesDistanceWhenEveryCandidateSharesTheSameRestState()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        ObjectCandidate[] candidates =
+        [
+            Ball(distance: 120.0f) with { RuntimeId = 21 },
+            Ball(distance: 60.0f) with { RuntimeId = 22 },
+        ];
+
+        model.Tick(candidates, MoodBand.Content, NothingHarmful, false, true, false, false);
+
+        Assert.Equal(22, model.TrackedRuntimeId);
+    }
+
+    /// <summary>
+    /// The runtime now reports a physically separated object as a lost grip, so this branch
+    /// is reachable: an interrupted meal drops and must start no cooldown (FR-008.10).
+    /// </summary>
+    [Fact]
+    public void ConsumeInterruptedByAGripLoss_DropsAndRequestsNoConsume()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        DriveToConsume(model);
+
+        ObjectIntent dropped = Step(model, Food(), holdConfirmed: false);
+
+        Assert.Equal(ObjectCommand.Drop, dropped.Command);
+        Assert.False(dropped.RequestsConsume);
+        Assert.Equal(ObjectAbortReason.None, dropped.Abort);
+        Assert.False(model.IsHolding);
+    }
+
+    /// <summary>
+    /// A phase change is not an abort. Reporting the previous abort reason on an ordinary
+    /// transition made the runtime cancel a live consume token mid-meal.
+    /// </summary>
+    [Fact]
+    public void TransitionAfterAnAbort_ReportsNoAbortReason()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        Step(model, Ball());
+        Assert.Equal(ObjectAbortReason.CandidateLost, Step(model, candidate: null).Abort);
+
+        ObjectIntent committed = Step(model, Ball(distance: 120.0f));
+        Assert.Equal(ObjectPhase.Approach, committed.Phase);
+        Assert.Equal(ObjectAbortReason.None, committed.Abort);
+
+        ObjectIntent caught = Step(model, Ball(distance: 10.0f));
+        Assert.Equal(ObjectPhase.Catch, caught.Phase);
+        Assert.Equal(ObjectAbortReason.None, caught.Abort);
+    }
+
     [Fact]
     public void Tick_RejectsANullMemoryPredicate() =>
         Assert.Throws<ArgumentNullException>(() =>

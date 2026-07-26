@@ -595,6 +595,60 @@ decisions. They are implemented and test-covered, but are not owner feel accepta
 - The minimal M4 tray scope is Show/Hide plus Save & Quit. The complete FR-016.1
   tray menu remains Milestone 6 scope.
 
+## M4 Review Fixes (2026-07-26)
+
+Raised by the pre-acceptance implementation/code review of all six M4 tasks
+(`docs/M4_REVIEW_FIXES_PLAN.md`). These correct plan deliverables that had not
+landed and defects the automated gates did not catch.
+
+- **Obstacle probe height is `64 px` below the torso centre**
+  (`AutonomousMotionProfile.ObstacleProbeHeightOffset`). The probe used to fire at
+  torso height, roughly `48 px` above the top of any loose object resting on the
+  floor, so the persisted obstacle-hop trait could never fire in real play. The
+  `jump_trait_gate` and `autonomous_motion` scenarios previously supplied a frozen
+  torso-height prop; both now use ordinary floor-resting objects, so the gate
+  exercises the shipped path.
+- **Hidden mode throttles presentation**: `MoodEconomyProfile.HiddenMaxFps = 10`
+  plus `RenderingServer.RenderLoopEnabled = false` while hidden. Pausing the tree
+  never stopped the main loop, so the process kept rendering behind an invisible
+  window. Show restores both and re-anchors physics interpolation across the rig and
+  every registered loose object; the step accumulator itself stays bounded by the
+  existing `physics/common/max_physics_steps_per_frame = 6` project setting, which is
+  the FR-015.10 answer rather than a nonexistent engine accumulator API.
+- **Restoring from hidden is a Milestone 6 dependency.** M4 ships the tray command
+  surface — `toggle_hide_to_tray` (`Ctrl+Shift+H`) and `save_and_quit`
+  (`Ctrl+Shift+Q`) through `TrayCommandComponent` — but Godot delivers no input to an
+  invisible unfocused window, so the *restore* stimulus needs the native tray icon or
+  OS-global hotkey that FR-016.1 already scopes to M6. The state machine and the
+  command seam are complete and the native adapter binds the same events.
+- **Suspend/resume/session lock travel through `IWindowsDesktopAdapter`**
+  (`SystemSuspending`, `SystemResumed`, `SessionLockChanged`). The emulated adapter
+  raises them deterministically for `suspend_no_catchup`; the native adapter declares
+  them and its `WM_POWERBROADCAST`/session hooks join the M2 owner-manual Windows
+  matrix. A locked session accrues as hidden **running** time with no clock reset and
+  no discontinuity exclusion (FR-016.8).
+- **Held objects can be physically lost**:
+  `ObjectInteractionProfile.HoldReleaseDistance = 72 px`. Hold confirmation used to be
+  unconditional, so nothing could knock an object out of the buddy's hands and the
+  interrupted-meal drop path was unreachable. A lost grip drops and starts no
+  cooldown (FR-008.10).
+- **Candidate scoring prefers airborne over resting objects.** A thrown object is a
+  moment the buddy can miss; distance alone let a nearer idle prop steal the
+  commitment and lose the FR-008.3 catch.
+- **Greeting owns one tick per cadence, not the whole approach envelope.** A content
+  or delighted buddy inside `170`/`110 px` of the cursor used to hold priority 6
+  continuously with no drive, freezing ambient autonomy between waves.
+- **Save & Quit and clean exit force the flush.** Coalescing callers still join an
+  in-flight write and leave newer state dirty; the quit paths run at most one extra
+  pass, bounded so continuously advancing running-time revisions cannot trap the exit.
+- **Legacy save corruption quarantines instead of crashing.** The v1 migration read
+  integer fields with throwing accessors, and `Decode` caught neither
+  `InvalidOperationException` nor `FormatException`, so a wrong-typed legacy field
+  exited the app instead of recovering through the backup/defaults chain.
+- **One arbitration ladder.** Object suppression is derived from
+  `BehaviorArbiterModel.SuppressesVoluntaryAction`, replacing a hand-rolled copy of
+  priorities 0–4 in the runtime arbiter that had to be kept in sync by hand.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

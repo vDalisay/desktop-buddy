@@ -20,6 +20,13 @@ public partial class ObjectInteractionProfile : GameResource
 
     [Export(PropertyHint.Range, "0,128,0.5")] public float CatchHandClearance { get; set; } = 3.0f;
     [Export(PropertyHint.Range, "0,128,0.5")] public float CatchConfirmDistance { get; set; } = 12.0f;
+    /// <summary>
+    /// How far a held object may separate from the hold centre before the grip counts as
+    /// physically lost. Without this the hold is unconditional and nothing — a glove
+    /// strike, a shove, a fall — can knock an object out of the buddy's hands, which also
+    /// makes the model's interrupted-meal drop path unreachable (FR-008.10).
+    /// </summary>
+    [Export(PropertyHint.Range, "1,512,0.5")] public float HoldReleaseDistance { get; set; } = 72.0f;
     [Export] public Vector2 HoldCenterOffset { get; set; } = new(0.0f, -24.0f);
     [Export(PropertyHint.Range, "0,64,0.5")] public float HoldHandHalfSeparation { get; set; } = 15.0f;
 
@@ -49,6 +56,7 @@ public partial class ObjectInteractionProfile : GameResource
         CatchTimeoutTicks > 0 && HoldTicks > 0 && InspectTicks > 0 &&
         float.IsFinite(CatchHandClearance) && CatchHandClearance >= 0.0f &&
         float.IsFinite(CatchConfirmDistance) && CatchConfirmDistance >= 0.0f &&
+        float.IsFinite(HoldReleaseDistance) && HoldReleaseDistance > CatchConfirmDistance &&
         HoldCenterOffset.IsFinite() &&
         float.IsFinite(HoldHandHalfSeparation) && HoldHandHalfSeparation >= 0.0f &&
         float.IsFinite(HandStiffness) && HandStiffness >= 0.0f &&
@@ -76,6 +84,12 @@ public partial class ObjectInteractionProfile : GameResource
         if (InspectTicks <= 0) errors.Add($"{nameof(InspectTicks)} must be positive");
         NonNegative(errors, CatchHandClearance, nameof(CatchHandClearance));
         NonNegative(errors, CatchConfirmDistance, nameof(CatchConfirmDistance));
+        if (!float.IsFinite(HoldReleaseDistance) || HoldReleaseDistance <= CatchConfirmDistance)
+        {
+            errors.Add(
+                $"{nameof(HoldReleaseDistance)} must be finite and greater than " +
+                $"{nameof(CatchConfirmDistance)}");
+        }
         if (!HoldCenterOffset.IsFinite()) errors.Add($"{nameof(HoldCenterOffset)} must be finite");
         NonNegative(errors, HoldHandHalfSeparation, nameof(HoldHandHalfSeparation));
         NonNegative(errors, HandStiffness, nameof(HandStiffness));

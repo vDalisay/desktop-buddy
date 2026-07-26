@@ -13,6 +13,7 @@ HoldTicks = 120
 InspectTicks = 150
 CatchHandClearance = 3.0
 CatchConfirmDistance = 12.0
+HoldReleaseDistance = 72.0
 HoldCenterOffset = Vector2(0, -24)
 HoldHandHalfSeparation = 15.0
 HandStiffness = 1800.0

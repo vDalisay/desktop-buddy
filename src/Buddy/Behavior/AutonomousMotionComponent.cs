@@ -116,7 +116,10 @@ public partial class AutonomousMotionComponent : Node
 
     private void UpdateObstacleSensing()
     {
-        Vector2 torso = Rig.Torso.GlobalPosition;
+        // Probe just above the floor line, not at torso height: the objects the buddy
+        // would hop over rest on the ground, so a chest-height ray sees none of them.
+        Vector2 torso = Rig.Torso.GlobalPosition +
+            new Vector2(0.0f, Profile.ObstacleProbeHeightOffset);
         LeftObstacleCast.GlobalPosition = torso;
         RightObstacleCast.GlobalPosition = torso;
         LeftObstacleCast.ForceRaycastUpdate();

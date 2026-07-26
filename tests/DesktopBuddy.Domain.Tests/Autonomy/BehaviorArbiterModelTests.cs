@@ -423,6 +423,83 @@ public sealed class BehaviorArbiterModelTests
         Assert.True(arbiter.Resolve(Close(interval), NeverHops).GreetRequested);
     }
 
+    /// <summary>
+    /// Greeting is punctuation, not a posture. If it held priority 6 for as long as the
+    /// cursor stayed inside the approach envelope, a content buddy would stand frozen at
+    /// the cursor between waves with ambient autonomy suppressed the whole time.
+    /// </summary>
+    [Fact]
+    public void Greet_OwnsOnlyItsOwnTickAndLeavesAmbientRunningBetweenWaves()
+    {
+        var arbiter = new BehaviorArbiterModel(
+            new BehaviorArbiterTuning(CommitTicks: 0, HopPropensityThreshold: 35));
+        int interval = SocialBandTuning.Delighted.GreetIntervalTicks;
+
+        BehaviorSnapshot Close(int tick) => Ambient(tick) with
+        {
+            MoodBand = MoodBand.Delighted,
+            SocialTargetValid = true,
+            SocialTargetDirection = 1.0f,
+            SocialTargetDistance = SocialBandTuning.Delighted.ApproachDistance - 10.0f,
+            AmbientWalkDirection = 1.0f,
+            AmbientLocomotionScale = 1.0f,
+        };
+
+        ActuationIntent greeting = arbiter.Resolve(Close(0), NeverHops);
+        Assert.Equal(BehaviorPriority.Social, greeting.Owner);
+        Assert.True(greeting.GreetRequested);
+
+        for (int tick = 1; tick < interval; tick++)
+        {
+            ActuationIntent between = arbiter.Resolve(Close(tick), NeverHops);
+            Assert.Equal(BehaviorPriority.Ambient, between.Owner);
+            Assert.False(between.GreetRequested);
+            Assert.False(arbiter.Diagnostics.AmbientSuppressed);
+        }
+
+        Assert.Equal(BehaviorPriority.Social, arbiter.Resolve(Close(interval), NeverHops).Owner);
+    }
+
+    /// <summary>
+    /// The runtime must know whether a priority above 5 is eligible before it ticks the
+    /// object worker, which happens before the full snapshot exists. That early answer has
+    /// to come from the same ladder <see cref="BehaviorArbiterModel.Resolve"/> walks.
+    /// </summary>
+    [Theory]
+    [InlineData(BehaviorPriority.Failsafe, true)]
+    [InlineData(BehaviorPriority.Unconscious, true)]
+    [InlineData(BehaviorPriority.SelfRighting, true)]
+    [InlineData(BehaviorPriority.Hazard, true)]
+    [InlineData(BehaviorPriority.GrabResistance, true)]
+    [InlineData(BehaviorPriority.ObjectAction, false)]
+    [InlineData(BehaviorPriority.Social, false)]
+    [InlineData(BehaviorPriority.Ambient, false)]
+    public void SuppressesVoluntaryAction_MatchesTheArbitrationLadder(
+        BehaviorPriority priority,
+        bool expected)
+    {
+        BehaviorSnapshot snapshot = With(priority);
+
+        Assert.Equal(expected, BehaviorArbiterModel.SuppressesVoluntaryAction(snapshot));
+    }
+
+    [Fact]
+    public void SuppressesVoluntaryAction_AgreesWithResolvedOwnership()
+    {
+        var arbiter = new BehaviorArbiterModel(
+            new BehaviorArbiterTuning(CommitTicks: 0, HopPropensityThreshold: 35));
+
+        foreach (BehaviorPriority priority in System.Enum.GetValues<BehaviorPriority>())
+        {
+            BehaviorSnapshot snapshot = With(priority);
+            bool suppressed = BehaviorArbiterModel.SuppressesVoluntaryAction(snapshot);
+            BehaviorPriority owner = arbiter.Resolve(snapshot, NeverHops).Owner;
+
+            Assert.Equal(owner < BehaviorPriority.ObjectAction, suppressed);
+            arbiter.Reset();
+        }
+    }
+
     [Fact]
     public void AmbientHop_RequiresPropensityObstacleSupportAndACommittedPath()
     {

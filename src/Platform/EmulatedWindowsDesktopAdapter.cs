@@ -23,6 +23,18 @@ public sealed class EmulatedWindowsDesktopAdapter : IWindowsDesktopAdapter
     public bool IsNative => false;
     public bool TransparencyAvailable { get; }
 
+    public event Action? SystemSuspending;
+    public event Action? SystemResumed;
+    public event Action<bool>? SessionLockChanged;
+
+    /// <summary>Deterministic §24 stimuli so headless scenarios drive the real seam
+    /// instead of calling the lifecycle coordinator directly.</summary>
+    public void RaiseSuspending() => SystemSuspending?.Invoke();
+
+    public void RaiseResumed() => SystemResumed?.Invoke();
+
+    public void RaiseSessionLockChanged(bool locked) => SessionLockChanged?.Invoke(locked);
+
     /// <summary>Regions from the last <see cref="SetWorkModeHitRegions"/> call (test observability).</summary>
     public IReadOnlyList<Rect2I> LastWorkModeHitRegions => new ArraySegment<Rect2I>(
         _hitRegions, 0, _hitRegionCount);

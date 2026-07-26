@@ -72,6 +72,14 @@ public static class ProgressSavePolicy
         {
             return new SaveDecodeResult(SaveDecodeStatus.Invalid, null, exception.Message);
         }
+        catch (Exception exception) when (
+            exception is InvalidOperationException or FormatException or OverflowException)
+        {
+            // A wrong-typed field inside a legacy payload is corruption, not a crash:
+            // it must quarantine and recover like any other malformed save, never
+            // escape to the composition root and take the launch down with it.
+            return new SaveDecodeResult(SaveDecodeStatus.Malformed, null, exception.Message);
+        }
     }
 
     public static void Validate(ProgressSave save)
@@ -118,7 +126,10 @@ public static class ProgressSavePolicy
         if (!selectedKnown ||
             !save.UnlockedToolIds.Contains(ContentIds.ForTool(parsed), StringComparer.Ordinal))
         {
-            unknownSelected = selectedKnown ? null : selected;
+            // Both cases are "this build cannot activate that selection". Retain the
+            // original either way: a tool this build knows but has not unlocked is
+            // still data a later build (or a repaired unlock list) must not lose.
+            unknownSelected = selected;
             selected = ContentIds.ToolGrab;
         }
 
@@ -168,12 +179,15 @@ public static class ProgressSavePolicy
             extensions);
     }
 
+    /// <summary>
+    /// Migrates the pre-Task-0 integer-ID payload. Every legacy field is read through a
+    /// <c>Try*</c> accessor: a v1 save is by definition written by an older build, so a
+    /// wrong-typed field is corruption to be quarantined, never an exception to escape.
+    /// </summary>
     private static ProgressSave MigrateV1(JsonElement root)
     {
         var unknown = new List<string>();
-        int legacySelected = root.TryGetProperty("selectedTool", out JsonElement selectedElement)
-            ? selectedElement.GetInt32()
-            : 0;
+        int legacySelected = ReadInt32(root, "selectedTool", 0);
         string? mappedSelected = LegacyToolId(legacySelected, unknown);
         string selected = mappedSelected ?? ContentIds.ToolGrab;
         string? unknownSelected = mappedSelected is null ? $"legacy.tool.{legacySelected}" : null;
@@ -189,11 +203,12 @@ public static class ProgressSavePolicy
             BalanceMilliCredits = ReadInt64(root, "balanceMilliCredits"),
             SelectedToolId = selected,
             UnlockedToolIds = unlocks,
-            Mood = root.TryGetProperty("mood", out JsonElement mood) ? mood.GetSingle() : 0.0f,
+            Mood = ReadSingle(root, "mood"),
             HarmfulContentIds = harmful,
-            ObstacleHopPropensity = root.TryGetProperty("obstacleHopPropensity", out JsonElement trait)
-                ? trait.GetInt32()
-                : BuddyTraits.Default.ObstacleHopPropensity,
+            ObstacleHopPropensity = ReadInt32(
+                root,
+                "obstacleHopPropensity",
+                BuddyTraits.Default.ObstacleHopPropensity),
             Extensions = new ProgressExtensionsSave
             {
                 UnknownSelectedToolId = unknownSelected,
@@ -213,7 +228,9 @@ public static class ProgressSavePolicy
             return result;
         foreach (JsonElement element in array.EnumerateArray())
         {
-            string? id = LegacyToolId(element.GetInt32(), unknown);
+            if (element.ValueKind != JsonValueKind.Number || !element.TryGetInt32(out int legacy))
+                throw new JsonException($"{property} contains a non-integer legacy ID.");
+            string? id = LegacyToolId(legacy, unknown);
             if (id is not null)
                 result.Add(id);
         }
@@ -229,8 +246,32 @@ public static class ProgressSavePolicy
         return null;
     }
 
-    private static long ReadInt64(JsonElement root, string property) =>
-        root.TryGetProperty(property, out JsonElement value) ? value.GetInt64() : 0;
+    private static long ReadInt64(JsonElement root, string property)
+    {
+        if (!root.TryGetProperty(property, out JsonElement value))
+            return 0;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt64(out long result))
+            throw new JsonException($"Legacy field '{property}' is not an integer.");
+        return result;
+    }
+
+    private static int ReadInt32(JsonElement root, string property, int fallback)
+    {
+        if (!root.TryGetProperty(property, out JsonElement value))
+            return fallback;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetInt32(out int result))
+            throw new JsonException($"Legacy field '{property}' is not an integer.");
+        return result;
+    }
+
+    private static float ReadSingle(JsonElement root, string property)
+    {
+        if (!root.TryGetProperty(property, out JsonElement value))
+            return 0.0f;
+        if (value.ValueKind != JsonValueKind.Number || !value.TryGetSingle(out float result))
+            throw new JsonException($"Legacy field '{property}' is not a number.");
+        return result;
+    }
 
     private static void ValidateIds(IEnumerable<string> ids, string name)
     {

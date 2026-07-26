@@ -100,6 +100,17 @@ public partial class PuppetRig : Node
     /// Centralized fail-safe pose reset. This is never called by ordinary drive;
     /// <see cref="RecoveryComponent"/> is the sole runtime owner of this seam.
     /// </summary>
+    /// <summary>
+    /// Re-anchors interpolation to the current pose without moving anything. Used when the
+    /// render loop restarts after hidden mode so the first visible frame cannot interpolate
+    /// from a stale pre-hide transform (FR-015.10).
+    /// </summary>
+    public void ResetInterpolation()
+    {
+        for (int index = 0; index < _parts.Length; index++)
+            _parts[index].ResetPhysicsInterpolation();
+    }
+
     public void ResetToSafePose(Vector2 globalOrigin)
     {
         for (int index = 0; index < _parts.Length; index++)

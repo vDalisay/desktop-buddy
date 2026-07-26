@@ -229,6 +229,20 @@ public partial class LooseObjectRegistry : Node
         }
     }
 
+    /// <summary>
+    /// Re-anchors interpolation for every live object. Called when the render loop restarts
+    /// after hidden mode so no object visually snaps from its pre-hide transform (FR-015.10).
+    /// </summary>
+    public void ResetInterpolation()
+    {
+        for (int index = 0; index < Capacity; index++)
+        {
+            LooseObjectBody? body = _entries[index].Body;
+            if (body is not null && GodotObject.IsInstanceValid(body))
+                body.ResetPhysicsInterpolation();
+        }
+    }
+
     private int FindFreeSlot()
     {
         for (int index = 0; index < Capacity; index++)

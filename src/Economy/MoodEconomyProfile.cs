@@ -18,9 +18,18 @@ public partial class MoodEconomyProfile : Resource
     [Export(PropertyHint.Range, "1,30,0.5")]
     public double DiscontinuitySeconds { get; set; } = 5.0;
 
+    /// <summary>
+    /// Frame cap while hidden to tray (ARCHITECTURE §24). Pausing the tree stops gameplay
+    /// but not the main loop, so without this the process keeps rendering at full rate
+    /// behind an invisible window and the hidden-CPU target is unreachable.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,60,1")]
+    public int HiddenMaxFps { get; set; } = 10;
+
     public bool IsRuntimeValid =>
         NeutralCreditsPerMinute >= 0.0 &&
         ForegroundUpdateSeconds > 0.0 &&
         HiddenUpdateSeconds > 0.0 &&
-        DiscontinuitySeconds > 0.0;
+        DiscontinuitySeconds > 0.0 &&
+        HiddenMaxFps > 0;
 }

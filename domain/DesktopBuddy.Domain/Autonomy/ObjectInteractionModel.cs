@@ -348,6 +348,7 @@ public sealed class ObjectInteractionModel
 
         int bestIndex = -1;
         float bestDistance = float.MaxValue;
+        bool bestIsAirborne = false;
 
         for (int index = 0; index < candidates.Length; index++)
         {
@@ -359,9 +360,20 @@ public sealed class ObjectInteractionModel
                 continue;
             }
 
-            if (candidate.Distance < bestDistance)
+            // Safety and memory are filters above; among what survives, an airborne
+            // object outranks any resting one. A thrown object is a moment the buddy
+            // can miss, so a nearer idle prop must never steal the catch (FR-008.3).
+            bool airborne = !candidate.AtRest;
+            if (bestIndex >= 0 && bestIsAirborne && !airborne)
+            {
+                continue;
+            }
+
+            bool betterClass = airborne && !bestIsAirborne;
+            if (bestIndex < 0 || betterClass || candidate.Distance < bestDistance)
             {
                 bestDistance = candidate.Distance;
+                bestIsAirborne = airborne;
                 bestIndex = index;
             }
         }
@@ -413,6 +425,8 @@ public sealed class ObjectInteractionModel
     {
         _phase = phase;
         _phaseTicks = 0;
+        // A transition is not an abort. Reporting the previous abort reason here made
+        // the runtime cancel a live consume token on an ordinary phase change.
         return new ObjectIntent(
             command,
             phase,
@@ -420,7 +434,7 @@ public sealed class ObjectInteractionModel
             direction,
             GrantsCatchCare: false,
             RequestsConsume: false,
-            LastAbort);
+            ObjectAbortReason.None);
     }
 
     private ObjectIntent Emit(ObjectCommand command, float direction = 0.0f) =>

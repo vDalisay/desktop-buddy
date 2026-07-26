@@ -164,7 +164,7 @@ public partial class Bootstrap : Node
             try
             {
                 // Persist identity immediately so a short first run cannot resample traits.
-                await saves.FlushProgressAsync();
+                await saves.FlushProgressAsync(force: true);
             }
             catch (Exception exception)
             {

@@ -32,6 +32,12 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     public DomainInputMode InputMode { get; private set; } = DomainInputMode.Work;
     public bool TransparencyActive { get; private set; }
 
+    /// <summary>
+    /// The configured platform adapter, so the composition root can bind the §24
+    /// suspend/resume/session-lock seam without owning adapter selection itself.
+    /// </summary>
+    public IWindowsDesktopAdapter Adapter => _adapter;
+
     public event Action<Rect2I>? ClientBoundsChanged;
     public event Action? WindowFocusLost;
 

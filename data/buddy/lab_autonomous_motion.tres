@@ -17,4 +17,5 @@ WalkRightWeight = 3
 WallAvoidMarginPixels = 12.0
 WallLookAheadSeconds = 0.3
 ObstacleProbeDistance = 56.0
+ObstacleProbeHeightOffset = 64.0
 AmbientJumpsEnabled = false
