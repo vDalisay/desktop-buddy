@@ -138,31 +138,36 @@ public sealed class ObjectInteractionModelTests
     [Fact]
     public void UnthrownObject_GrantsNoCatchCare()
     {
-        // FR-008.3 pays for catching a *thrown* object, not for picking one up.
+        // FR-008.3 pays for catching a *thrown* object, not for picking one up. Food is
+        // the reachable case: it is engaged off the floor with no throw token, and the
+        // mood it eventually pays comes from consuming it, never from the pickup.
         var model = new ObjectInteractionModel(Fast);
 
-        Step(model, Ball(throwToken: 0));
-        ObjectIntent hold = Step(model, Ball(throwToken: 0), holdConfirmed: true);
+        Step(model, Food());
+        ObjectIntent hold = Step(model, Food(), holdConfirmed: true);
 
         Assert.Equal(ObjectPhase.Hold, model.Phase);
         Assert.False(hold.GrantsCatchCare);
     }
 
-    [Theory]
-    [InlineData(MoodBand.Fearful)]
-    [InlineData(MoodBand.Wary)]
-    public void GuardedBands_NeverVoluntarilyEngage(MoodBand band)
+    /// <summary>
+    /// Owner correction 2026-07-26: only fear refuses outright. Declining to catch from
+    /// wary through neutral made a default-mood buddy ignore thrown objects entirely.
+    /// </summary>
+    [Fact]
+    public void FearfulBand_NeverVoluntarilyEngages()
     {
-        // Owner decision 1: fearful and wary do not catch thrown objects.
         var model = new ObjectInteractionModel(Fast);
 
-        ObjectIntent intent = Step(model, Ball(), band);
+        ObjectIntent intent = Step(model, Ball(), MoodBand.Fearful);
 
         Assert.Equal(ObjectCommand.None, intent.Command);
         Assert.Equal(ObjectPhase.Idle, model.Phase);
     }
 
     [Theory]
+    [InlineData(MoodBand.Wary)]
+    [InlineData(MoodBand.Neutral)]
     [InlineData(MoodBand.Content)]
     [InlineData(MoodBand.Delighted)]
     public void WillingBands_Engage(MoodBand band)
@@ -343,8 +348,14 @@ public sealed class ObjectInteractionModelTests
         Assert.Equal(ObjectPhase.Drop, model.Phase);
     }
 
-    [Fact]
-    public void NonConsumableInAGuardedBand_IsPutDownNotTossed()
+    /// <summary>
+    /// Catching and playing are still separate: a wary or neutral buddy accepts a thrown
+    /// object but puts it down rather than tossing it back for fun.
+    /// </summary>
+    [Theory]
+    [InlineData(MoodBand.Wary)]
+    [InlineData(MoodBand.Neutral)]
+    public void NonConsumableInAGuardedBand_IsPutDownNotTossed(MoodBand band)
     {
         var model = new ObjectInteractionModel(Fast);
         // Commit while content, then let the mood fall before the outcome is chosen.
@@ -354,7 +365,7 @@ public sealed class ObjectInteractionModelTests
         ObjectIntent outcome = ObjectIntent.None;
         for (int tick = 0; tick < 40 && model.Phase != ObjectPhase.Drop && model.Phase != ObjectPhase.Toss; tick++)
         {
-            outcome = Step(model, Ball(distance: 5.0f), MoodBand.Wary, holdConfirmed: true);
+            outcome = Step(model, Ball(distance: 5.0f), band, holdConfirmed: true);
         }
 
         Assert.Equal(ObjectCommand.Drop, outcome.Command);
@@ -364,11 +375,12 @@ public sealed class ObjectInteractionModelTests
     public void ClosestEligibleCandidateWins()
     {
         var model = new ObjectInteractionModel(Fast);
+        // All airborne: this test is about distance scoring, not rest state.
         ObjectCandidate[] candidates =
         {
-            new(RuntimeId: 1, ContentIds.LooseObject, 1, 180.0f, 1.0f, false, true),
-            new(RuntimeId: 2, ContentIds.LooseObject, 1, 60.0f, -1.0f, false, true),
-            new(RuntimeId: 3, ContentIds.LooseObject, 1, 120.0f, 1.0f, false, true),
+            new(RuntimeId: 1, ContentIds.LooseObject, 1, 180.0f, 1.0f, false, false),
+            new(RuntimeId: 2, ContentIds.LooseObject, 1, 60.0f, -1.0f, false, false),
+            new(RuntimeId: 3, ContentIds.LooseObject, 1, 120.0f, 1.0f, false, false),
         };
 
         model.Tick(candidates, MoodBand.Content, NothingHarmful, false, true, false, false);
@@ -380,10 +392,11 @@ public sealed class ObjectInteractionModelTests
     public void HarmfulCandidatesAreSkippedInFavourOfASafeFartherOne()
     {
         var model = new ObjectInteractionModel(Fast);
+        // All airborne: this test is about harmful memory, not rest state.
         ObjectCandidate[] candidates =
         {
-            new(RuntimeId: 1, ContentIds.ToolBoxingGlove, 1, 30.0f, 1.0f, false, true),
-            new(RuntimeId: 2, ContentIds.LooseObject, 1, 150.0f, -1.0f, false, true),
+            new(RuntimeId: 1, ContentIds.ToolBoxingGlove, 1, 30.0f, 1.0f, false, false),
+            new(RuntimeId: 2, ContentIds.LooseObject, 1, 150.0f, -1.0f, false, false),
         };
 
         model.Tick(candidates, MoodBand.Content, GloveHarmful, false, true, false, false);
@@ -438,6 +451,37 @@ public sealed class ObjectInteractionModelTests
 
         Assert.Equal(11, model.TrackedRuntimeId);
         Assert.Equal(ObjectPhase.Approach, model.Phase);
+    }
+
+    /// <summary>
+    /// Scenery is not a catch target: neither a ball lying on the floor nor one the buddy
+    /// just kicked with its own foot. "Moving" is not "thrown" — the throw token is what
+    /// separates them. Without this, priority 5 claimed every object in the walking path
+    /// and the priority 7 obstacle hop could never fire.
+    /// </summary>
+    [Theory]
+    [InlineData(true, 5)]
+    [InlineData(true, 0)]
+    [InlineData(false, 0)]
+    public void UnthrownNonConsumable_IsNotACatchTarget(bool atRest, int throwToken)
+    {
+        var model = new ObjectInteractionModel(Fast);
+
+        ObjectIntent intent = Step(
+            model,
+            Ball(throwToken: throwToken) with { AtRest = atRest });
+
+        Assert.Equal(ObjectCommand.None, intent.Command);
+        Assert.Equal(ObjectPhase.Idle, model.Phase);
+    }
+
+    /// <summary>A meal on the floor is still worth picking up.</summary>
+    [Fact]
+    public void RestingConsumable_IsStillEngaged()
+    {
+        var model = new ObjectInteractionModel(Fast);
+
+        Assert.Equal(ObjectCommand.Catch, Step(model, Food()).Command);
     }
 
     [Fact]

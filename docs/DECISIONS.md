@@ -655,6 +655,36 @@ landed and defects the automated gates did not catch.
   hand. The owner gate steps that judge those behaviours were not performable before
   this key existed; `laboratory_controls` now covers it.
 
+## M4 Owner Tuning Corrections (2026-07-26)
+
+Owner feel corrections made after hands-on play, overriding earlier delegated defaults
+and part of owner decision 1. These are owner instructions, not engineering choices.
+
+- **Jump impulse doubled, `1800` → `3600`** (`ActiveDriveProfile.JumpImpulse`). The old
+  value produced roughly a `35 px` torso rise, which did not reliably carry the feet over
+  a resting loose object. This only became visible once obstacle hops could fire at all.
+- **Wary and Neutral now catch thrown objects**, revising owner decision 1's "wary — no
+  approach or catch". Only Fearful refuses outright. A new save sits at mood `0`
+  (Neutral), so declining there meant the buddy ignored everything thrown at it, which
+  read as broken rather than as guarded. Keeping distance from the cursor and accepting a
+  thrown ball are separate impulses: Wary still holds its `150 px` standoff and still
+  never approaches the cursor, and neither Wary nor Neutral tosses an object back for fun.
+- **Only a real player throw is a catch target.** A voluntary commitment now requires the
+  candidate to be airborne *and* carry a throw token from `MarkPlayerThrown`; consumables
+  are exempt. This was forced by the two changes above interacting: object action is
+  priority 5 and the obstacle hop is priority 7, so once Neutral caught, every resting
+  ball in the walking path was claimed for a pickup and hopping silently stopped working
+  again — including balls the buddy had just kicked with its own foot, since "moving" is
+  not "thrown". The split also matches the long-documented meaning of
+  `ObjectCandidate.AtRest` and keeps food pickable off the floor.
+- **Cooldown outranks hand state in the lab-food rejection reason.** A cooldown belongs to
+  the content ID, not to what the hands are doing, so `OnCooldown` is reported whenever it
+  applies instead of being hidden behind `UnknownConsumable`.
+- **The laboratory `E` key removes the food it spawned when the consume is cancelled.**
+  Otherwise a cancelled meal leaves a consumable on the floor that a neutral-or-better
+  buddy immediately walks back to collect, overriding whatever the operator does next —
+  it was preempting the wave gesture in `m36_expressive`.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

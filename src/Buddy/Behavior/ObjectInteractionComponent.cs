@@ -167,7 +167,23 @@ public partial class ObjectInteractionComponent : Area2D
     public bool TryBeginLaboratoryFoodConsume(LooseObjectBody body)
     {
         if (!IsInitialized || !GodotObject.IsInstanceValid(body) ||
-            body.SemanticContentId != ContentIds.CareLabFood || IsHolding ||
+            body.SemanticContentId != ContentIds.CareLabFood)
+        {
+            LastConsumeRejection = ConsumeRejection.UnknownConsumable;
+            return false;
+        }
+
+        // Cooldown is a property of the content ID, not of what the hands happen to be
+        // doing, so it is the answer whenever it applies. Reporting the hand state first
+        // hid the real reason behind UnknownConsumable once the buddy started engaging
+        // objects on its own.
+        if (_consumables.IsOnCooldown(ContentIds.CareLabFood))
+        {
+            LastConsumeRejection = ConsumeRejection.OnCooldown;
+            return false;
+        }
+
+        if (IsHolding ||
             !_registry.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) ||
             !snapshot.Consumable)
         {

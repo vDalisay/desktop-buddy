@@ -68,14 +68,26 @@ public readonly record struct SocialBandTuning(
     float LocomotionScale,
     int GreetIntervalTicks)
 {
-    /// <summary>Fearful: maximum distance, flees approach, never catches.</summary>
+    /// <summary>
+    /// Fearful: maximum distance, flees approach, never catches. Only fear refuses a
+    /// thrown object outright (owner correction 2026-07-26 — see <see cref="Wary"/>).
+    /// </summary>
     public static SocialBandTuning Fearful => new(260.0f, 0.0f, 24.0f, false, false, 1.0f, 0);
 
-    /// <summary>Wary: moderate standoff, never approaches, no catches.</summary>
-    public static SocialBandTuning Wary => new(150.0f, 0.0f, 18.0f, false, false, 0.8f, 0);
+    /// <summary>
+    /// Wary: moderate standoff, never approaches the cursor, but <b>does</b> catch.
+    /// Owner correction 2026-07-26: refusing catches from wary through neutral made a
+    /// default-mood buddy ignore thrown objects entirely, which read as broken rather
+    /// than as guarded. Keeping distance from the hand and accepting a thrown ball are
+    /// separate impulses.
+    /// </summary>
+    public static SocialBandTuning Wary => new(150.0f, 0.0f, 18.0f, false, true, 0.8f, 0);
 
-    /// <summary>Neutral: current ambient baseline — the social layer stands down.</summary>
-    public static SocialBandTuning Neutral => new(0.0f, 0.0f, 12.0f, false, false, 0.0f, 0);
+    /// <summary>
+    /// Neutral: the ambient baseline for cursor distance, and the band a new save spends
+    /// most of its time in, so it catches (owner correction 2026-07-26).
+    /// </summary>
+    public static SocialBandTuning Neutral => new(0.0f, 0.0f, 12.0f, false, true, 0.0f, 0);
 
     /// <summary>Content: occasional approach, willing catches, occasional wave.</summary>
     public static SocialBandTuning Content => new(0.0f, 170.0f, 14.0f, true, true, 0.7f, 900);

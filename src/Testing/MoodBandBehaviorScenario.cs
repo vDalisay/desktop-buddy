@@ -81,10 +81,12 @@ public sealed class MoodBandBehaviorScenario : IScenario
             $"owner={lab.Buddy.Arbiter.Intent.Owner}"));
 
         SocialTuningSet tuning = lab.Buddy.Arbiter.SocialTuning;
+        // Owner correction 2026-07-26: only fear refuses a thrown object. Keeping cursor
+        // distance and accepting a catch are separate impulses, so wary and neutral catch.
         bool catchGate =
             !tuning.Fearful.WillCatch &&
-            !tuning.Wary.WillCatch &&
-            !tuning.Neutral.WillCatch &&
+            tuning.Wary.WillCatch &&
+            tuning.Neutral.WillCatch &&
             tuning.Content.WillCatch &&
             tuning.Delighted.WillCatch;
         bool cadence =

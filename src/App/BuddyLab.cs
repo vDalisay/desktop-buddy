@@ -449,9 +449,19 @@ public partial class BuddyLab : Node2D
     {
         if (Buddy.Activity.Current == ActivityId.Eat)
         {
+            LooseObjectBody? cancelled = Objects.FindBody(Buddy.ObjectInteraction.TrackedRuntimeId);
             Buddy.ObjectInteraction.CancelActiveInteraction();
             Buddy.SetBehaviorActivity(ActivityId.None);
             Activities.ClearItemVisual();
+            // The E key spawned this food, so the E key removes it. Leaving a dropped
+            // consumable in the room means a neutral-or-better buddy walks straight back
+            // to pick it up, which overrides whatever the operator does next.
+            if (GodotObject.IsInstanceValid(cancelled) &&
+                cancelled!.SemanticContentId == ContentIds.CareLabFood)
+            {
+                Objects.Unregister(cancelled);
+                cancelled.QueueFree();
+            }
             return;
         }
 

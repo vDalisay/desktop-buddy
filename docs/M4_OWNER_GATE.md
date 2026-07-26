@@ -21,13 +21,15 @@ it — that release is what mints the throw token catch care is paid against.
    using the lab controls/scenarios. Confirm all five read differently without a
    visible meter, especially the delegated standoff/approach and greeting cadences. A
    content or delighted buddy should keep ambling between waves rather than standing
-   still near the cursor, and should walk over to a thrown object and catch it while a
-   fearful one refuses.
+   still near the cursor. Throwing an object should draw a catch from every band except
+   Fearful — including the default Neutral mood — while a resting ball is ignored as
+   scenery and a wary buddy still keeps its distance from the cursor itself.
 2. Press `O` to drop objects on the floor in front of a walking buddy and watch it hop
-   over them. The probe now fires just above the floor line, so obstacle-hop
-   personality is live for the first time; confirm hops read as deliberate rather than
-   random. Timer-driven ambient jumping stays off. `Shift+U` re-rolls the autonomy seed
-   if the buddy will not commit to a walk toward the object.
+   over them. The probe now fires just above the floor line and the jump impulse is
+   doubled, so obstacle-hop personality is live for the first time; confirm the hop
+   actually clears the ball and reads as deliberate rather than random. Timer-driven
+   ambient jumping stays off. `Shift+U` re-rolls the autonomy seed if the buddy will not
+   commit to a walk toward the object.
 3. Consume the laboratory food through the real Eat choreography. Confirm care
    improves behavior/mood but grants no immediate money burst. Leave the app
    running and confirm its economic effect arrives only through passive income.

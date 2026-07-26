@@ -57,7 +57,10 @@ public partial class ActiveDriveProfile : GameResource
     [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float TorsoLeanForce { get; set; } = 2_400.0f;
 
     // --- Jump ---
-    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float JumpImpulse { get; set; } = 1_800.0f;
+    // Doubled from 1800 at owner request 2026-07-26: the previous impulse produced a
+    // ~35 px torso rise, which did not reliably carry the feet over a resting loose
+    // object now that obstacle hops actually fire.
+    [Export(PropertyHint.Range, "0,100000,0.1,or_greater")] public float JumpImpulse { get; set; } = 3_600.0f;
     /// <summary>Anticipation crouch before the jump impulse (ticks); 0 = instant pop.</summary>
     [Export(PropertyHint.Range, "0,60,1")] public int JumpCrouchTicks { get; set; } = 14;
     /// <summary>Downward torso / upward-relative foot force applied during the crouch.</summary>

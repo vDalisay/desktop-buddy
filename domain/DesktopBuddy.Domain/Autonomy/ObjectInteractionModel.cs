@@ -109,9 +109,15 @@ public readonly record struct ObjectIntent(
 ///
 /// <para><b>Memory gating.</b> A candidate whose content ID is in harmful history is never
 /// approached or caught voluntarily; if it is already held when the memory applies, the
-/// machine goes straight to Discard — the §4 "drop held hazards" rule. Fearful and wary
-/// bands refuse voluntary catches entirely (owner decision 1), so a scared buddy does not
-/// reach for thrown objects even when they are safe.</para>
+/// machine goes straight to Discard — the §4 "drop held hazards" rule. The fearful band
+/// refuses voluntary catches entirely, so a scared buddy does not reach for thrown objects
+/// even when they are safe. Wary through delighted all catch (owner correction 2026-07-26:
+/// declining from wary through neutral made a default-mood buddy ignore thrown objects).</para>
+///
+/// <para><b>Only a real throw is an invitation.</b> A voluntary catch target must be
+/// airborne <i>and</i> carry a player throw token. A ball at rest — or one the buddy just
+/// kicked with its own foot — is scenery the priority 7 obstacle hop may step over.
+/// Consumables are exempt, because a meal on the floor is still worth picking up.</para>
 ///
 /// <para><b>Catch care is once per throw.</b> <see cref="ObjectCandidate.ThrowToken"/> is
 /// remembered on the tick the catch completes, so re-catching the same object after a drop
@@ -356,6 +362,17 @@ public sealed class ObjectInteractionModel
             if (!candidate.IsValid ||
                 candidate.Distance > _tuning.ApproachDistance ||
                 isHarmful(candidate.ContentId))
+            {
+                continue;
+            }
+
+            // Only a live player throw is an invitation. A ball lying on the floor is
+            // scenery, and — critically — so is a ball the buddy just kicked with its own
+            // foot: "moving" is not the same as "thrown", and the throw token is what
+            // distinguishes them. Without this, any resting object in the walking path is
+            // claimed by priority 5 the moment it is nudged, so the priority 7 obstacle
+            // hop can never fire. Food is exempt: a meal on the floor is worth picking up.
+            if (!candidate.Consumable && (candidate.AtRest || candidate.ThrowToken == 0))
             {
                 continue;
             }

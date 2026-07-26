@@ -7,4 +7,5 @@ resource_name = "WarySocialBand"
 script = ExtResource("1_profile")
 StandoffDistance = 150.0
 Hysteresis = 18.0
+WillCatch = true
 LocomotionScale = 0.8
