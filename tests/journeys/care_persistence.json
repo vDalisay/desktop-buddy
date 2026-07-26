@@ -1,0 +1,48 @@
+{
+  "id": "care_persistence",
+  "description": "Consume care, earn damage rewards, save semantic state, then relaunch into a safe transient-free pose.",
+  "milestone": 4,
+  "setup": {
+    "seed": 424242
+  },
+  "phases": [
+    {
+      "id": "write",
+      "setup": {
+        "scene": "sandbox",
+        "exercise": "care_persistence_write",
+        "timeout_physics_ticks": 720
+      },
+      "assertions": [
+        { "predicate": "fixture_configured" },
+        { "predicate": "sandbox_composed" },
+        { "predicate": "care_consumed" },
+        { "predicate": "damage_earned" },
+        { "predicate": "harm_memory_recorded" },
+        { "predicate": "selection_changed" },
+        { "predicate": "trait_sampled" },
+        { "predicate": "fixture_saved" }
+      ]
+    },
+    {
+      "id": "resume",
+      "setup": {
+        "scene": "sandbox",
+        "exercise": "care_persistence_resume",
+        "timeout_physics_ticks": 720
+      },
+      "assertions": [
+        { "predicate": "fixture_configured" },
+        { "predicate": "sandbox_composed" },
+        { "predicate": "progress_loaded" },
+        { "predicate": "balance_restored" },
+        { "predicate": "mood_restored" },
+        { "predicate": "memory_restored" },
+        { "predicate": "selection_restored" },
+        { "predicate": "trait_restored" },
+        { "predicate": "safe_standing_resume" },
+        { "predicate": "transient_state_absent" }
+      ]
+    }
+  ]
+}

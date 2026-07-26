@@ -80,4 +80,9 @@ public static class ContentIds
 
     /// <summary>True when the ID names a tool known to this build.</summary>
     public static bool IsTool(string? contentId) => TryParseTool(contentId, out _);
+
+    /// <summary>True when this build can safely activate the persisted content ID.</summary>
+    public static bool IsKnown(string? contentId) =>
+        IsTool(contentId) ||
+        contentId is LooseObject or RoomBoundary or CareLabFood;
 }

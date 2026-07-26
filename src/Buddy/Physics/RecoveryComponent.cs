@@ -27,6 +27,7 @@ public partial class RecoveryComponent : Node
     [Export] public Vector2 SafePoseOrigin { get; set; } = new(240, 260);
 
     public event Action<HardRecoveryReason>? HardRecovered;
+    public event Action? SessionResumed;
 
     public RecoveryClockState State => _clock.State;
     public int HardRecoveryCount { get; private set; }
@@ -80,6 +81,21 @@ public partial class RecoveryComponent : Node
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Starts a loaded session from the ordinary safe standing pose and asks
+    /// transient-state owners to clear themselves. This is not a hard recovery:
+    /// it increments no recovery statistic and emits no recovery reason.
+    /// </summary>
+    public void ResetForSessionResume()
+    {
+        if (!IsInitialized)
+            throw new InvalidOperationException("RecoveryComponent is not initialized.");
+        _clock.Reset();
+        Standing.Reset();
+        Rig.ResetToSafePose(SafePoseOrigin);
+        SessionResumed?.Invoke();
     }
 
     private HardRecoveryReason? FindImmediateRecoveryReason()

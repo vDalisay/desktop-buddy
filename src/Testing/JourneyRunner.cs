@@ -1,16 +1,26 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
+using System.Threading;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Damage;
+using DesktopBuddy.Domain.Mood;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Presentation;
+using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Economy;
 using DesktopBuddy.Laboratory;
+using DesktopBuddy.Persistence;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Presentation3D;
 using Godot;
@@ -68,7 +78,31 @@ public partial class JourneyRunner : Node
             ulong seed = ResolveSeed(root);
             Log.Info("Journey", $"Running journey '{id}' seed={seed}.");
 
-            Dictionary<string, bool> state = await ComputeStateAsync(root, seed);
+            if (root.TryGetProperty("phases", out JsonElement phases) &&
+                phases.ValueKind == JsonValueKind.Array &&
+                _args.JourneyPhase is null)
+            {
+                await RunPhaseProcessesAsync(id, seed, phases, stopwatch);
+                return;
+            }
+
+            JsonElement executionRoot = root;
+            string verdictId = id;
+            if (_args.JourneyPhase is int phaseIndex)
+            {
+                if (!root.TryGetProperty("phases", out phases) ||
+                    phases.ValueKind != JsonValueKind.Array ||
+                    phaseIndex < 0 ||
+                    phaseIndex >= phases.GetArrayLength())
+                {
+                    Fail(id, seed, stopwatch, "journey_phase_exists", phaseIndex.ToString(), 3);
+                    return;
+                }
+                executionRoot = phases[phaseIndex];
+                verdictId = $"{id}_phase_{phaseIndex + 1}";
+            }
+
+            Dictionary<string, bool> state = await ComputeStateAsync(executionRoot, seed);
 
             var checks = new List<StartupCheck>();
             bool passed = true;
@@ -82,7 +116,7 @@ public partial class JourneyRunner : Node
                 }
             }
 
-            if (root.TryGetProperty("assertions", out JsonElement assertions) &&
+            if (executionRoot.TryGetProperty("assertions", out JsonElement assertions) &&
                 assertions.ValueKind == JsonValueKind.Array)
             {
                 foreach (JsonElement assertion in assertions.EnumerateArray())
@@ -111,11 +145,107 @@ public partial class JourneyRunner : Node
             }
 
             stopwatch.Stop();
-            VerdictWriter.Write("journey", id, seed, passed, checks, new[] { $"seed={seed}" },
+            VerdictWriter.Write("journey", verdictId, seed, passed, checks, new[] { $"seed={seed}" },
                 stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
-            Log.Info("Journey", $"Journey '{id}' {(passed ? "PASSED" : "FAILED")}.");
+            Log.Info("Journey", $"Journey '{verdictId}' {(passed ? "PASSED" : "FAILED")}.");
             GetTree().Quit(passed ? 0 : 1);
         }
+    }
+
+    private async System.Threading.Tasks.Task RunPhaseProcessesAsync(
+        string id,
+        ulong seed,
+        JsonElement phases,
+        Stopwatch stopwatch)
+    {
+        string projectRoot = ProjectSettings.GlobalizePath("res://");
+        string artifacts = Path.GetFullPath(
+            _args.ArtifactsDir ?? Path.Combine(projectRoot, ".artifacts", "journeys", id));
+        string fixtureDirectory = Path.Combine(artifacts, "fixture");
+        Directory.CreateDirectory(fixtureDirectory);
+        string fixture = _args.SaveFixture ??
+            Path.Combine(fixtureDirectory, "progress.json");
+        var checks = new List<StartupCheck>();
+        bool passed = true;
+
+        for (int index = 0; index < phases.GetArrayLength(); index++)
+        {
+            string phaseName = phases[index].TryGetProperty("id", out JsonElement name)
+                ? name.GetString() ?? $"phase_{index + 1}"
+                : $"phase_{index + 1}";
+            string logPath = Path.Combine(artifacts, $"{id}_{phaseName}.log");
+            var start = new ProcessStartInfo(OS.GetExecutablePath())
+            {
+                UseShellExecute = false,
+                WorkingDirectory = projectRoot,
+            };
+            if (DisplayServer.GetName() == "headless")
+                start.ArgumentList.Add("--headless");
+            start.ArgumentList.Add("--fixed-fps");
+            start.ArgumentList.Add("120");
+            start.ArgumentList.Add("--path");
+            start.ArgumentList.Add(projectRoot);
+            start.ArgumentList.Add("--rendering-driver");
+            start.ArgumentList.Add("opengl3");
+            start.ArgumentList.Add("--log-file");
+            start.ArgumentList.Add(logPath);
+            start.ArgumentList.Add("--");
+            start.ArgumentList.Add($"--journey={id}");
+            start.ArgumentList.Add($"--journey-phase={index}");
+            start.ArgumentList.Add($"--seed={seed}");
+            start.ArgumentList.Add($"--artifacts={artifacts}");
+            start.ArgumentList.Add($"--save-fixture={fixture}");
+            if (_args.Presentation is RunnerPresentation presentation)
+            {
+                start.ArgumentList.Add(
+                    presentation == RunnerPresentation.Legacy
+                        ? "--presentation=legacy"
+                        : "--presentation=mii3d");
+            }
+
+            using var process = Process.Start(start);
+            if (process is null)
+            {
+                checks.Add(new StartupCheck($"phase:{phaseName}", false, "process failed to start"));
+                passed = false;
+                break;
+            }
+
+            try
+            {
+                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+                await process.WaitForExitAsync(timeout.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                process.Kill(entireProcessTree: true);
+                checks.Add(new StartupCheck($"phase:{phaseName}", false, "90 second hard timeout"));
+                passed = false;
+                break;
+            }
+
+            bool phasePassed = process.ExitCode == 0;
+            checks.Add(new StartupCheck(
+                $"phase:{phaseName}",
+                phasePassed,
+                $"exit={process.ExitCode} log={logPath}"));
+            passed &= phasePassed;
+            if (!phasePassed)
+                break;
+        }
+
+        stopwatch.Stop();
+        VerdictWriter.Write(
+            "journey",
+            id,
+            seed,
+            passed,
+            checks,
+            new[] { $"seed={seed}", $"fixture={fixture}" },
+            stopwatch.ElapsedMilliseconds,
+            _args.ArtifactsDir);
+        Log.Info("Journey", $"Phased journey '{id}' {(passed ? "PASSED" : "FAILED")}.");
+        GetTree().Quit(passed ? 0 : 1);
     }
 
     private ulong ResolveSeed(JsonElement root)
@@ -165,6 +295,16 @@ public partial class JourneyRunner : Node
             }
         }
 
+        string? exercise = setup.ValueKind == JsonValueKind.Object &&
+            setup.TryGetProperty("exercise", out JsonElement exerciseElement)
+                ? exerciseElement.GetString()
+                : null;
+        if (exercise is "care_persistence_write" or "care_persistence_resume")
+        {
+            await ComputeCarePersistenceStateAsync(state, seed, exercise);
+            return state;
+        }
+
         if (string.Equals(scene, "buddy_lab", StringComparison.Ordinal))
         {
             await ComputeBuddyLabStateAsync(state, seed, timeoutPhysicsTicks, root);
@@ -192,6 +332,140 @@ public partial class JourneyRunner : Node
 
         state["sandbox_composed"] = composed;
         return state;
+    }
+
+    private async System.Threading.Tasks.Task ComputeCarePersistenceStateAsync(
+        Dictionary<string, bool> state,
+        ulong seed,
+        string exercise)
+    {
+        if (string.IsNullOrWhiteSpace(_args.SaveFixture))
+        {
+            state["fixture_configured"] = false;
+            return;
+        }
+
+        string fixture = Path.GetFullPath(_args.SaveFixture);
+        string settingsFixture = fixture + ".settings";
+        var store = new JsonProgressStore(fixture, settingsFixture);
+        var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
+        if (packed is null || packed.Instantiate() is not SandboxRoot sandbox)
+        {
+            state["sandbox_composed"] = false;
+            return;
+        }
+
+        double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
+        BuddyTraits expectedTraits = BuddyTraits.Sample(
+            new SeededRandomSource(seed ^ 0xA18E_5EED_D15C_A11FUL));
+        BuddyProgressState progress;
+        SaveLoadStatus loadStatus;
+        long savedRevision;
+        if (exercise == "care_persistence_write")
+        {
+            progress = new BuddyProgressState(cashPerPain, traits: expectedTraits);
+            loadStatus = SaveLoadStatus.NewSave;
+            savedRevision = -1;
+        }
+        else
+        {
+            LoadResult<ProgressSave> loaded =
+                await store.LoadProgressAsync(CancellationToken.None);
+            state["progress_loaded"] = loaded.Status is
+                SaveLoadStatus.Loaded or SaveLoadStatus.BackupRecovered;
+            if (loaded.Value is null)
+                return;
+            progress = ProgressSavePolicy.CreateState(loaded.Value, cashPerPain);
+            loadStatus = loaded.Status;
+            savedRevision = progress.Revision;
+        }
+
+        var economy = new EconomyService(progress);
+        var saves = new SaveCoordinator(progress, store, savedRevision);
+        sandbox.Configure(new RunContext(
+            progress,
+            economy,
+            store,
+            saves,
+            new LocalSettingsSave(),
+            loadStatus));
+        GetTree().Root.AddChild(sandbox);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        state["sandbox_composed"] = sandbox.IsInsideTree();
+        state["fixture_configured"] = true;
+
+        if (exercise == "care_persistence_write")
+        {
+            // Freeze routed simulation while constructing the exact phase-one
+            // semantic checkpoint; the relaunch is testing persistence, not a
+            // race against cumulative-time accounting.
+            sandbox.SetPhysicsProcess(false);
+            var care = new CareConsumableModel();
+            bool began = care.TryBegin(
+                ContentIds.CareLabFood,
+                out int careToken,
+                out ConsumeRejection rejection);
+            ConsumeResult result = care.Complete(careToken, CareConsumableTuning.LabFood);
+            if (result.Applied)
+            {
+                progress.ApplyCareMood(result.MoodGain);
+                progress.RecordContentUse(ContentIds.CareLabFood);
+            }
+
+            long earned = economy.AcceptDamage(
+                ContentIds.ToolBoxingGlove,
+                20.0f,
+                PayoutRegion.Torso,
+                DamageConsciousness.Conscious,
+                0.0);
+            progress.SelectTool(ToolId.Tickle);
+
+            // Deliberately dirty live state: the second process must not restore it.
+            sandbox.Buddy.Rig.Torso.LinearVelocity = new Vector2(500.0f, -250.0f);
+            sandbox.Buddy.Rig.Torso.AngularVelocity = 8.0f;
+            sandbox.Buddy.SetConsciousness(DesktopBuddy.Domain.Buddy.Consciousness.Unconscious);
+
+            await saves.FlushProgressAsync();
+            state["care_consumed"] =
+                began && rejection == ConsumeRejection.None && result.Applied &&
+                result.MoodGain == CareConsumableTuning.LabFood.MoodGain;
+            state["damage_earned"] = earned > 0 && progress.BalanceMilliCredits > 0;
+            state["harm_memory_recorded"] =
+                progress.IsContentHarmful(ContentIds.ToolBoxingGlove);
+            state["selection_changed"] = progress.SelectedTool == ToolId.Tickle;
+            state["trait_sampled"] = progress.Traits == expectedTraits;
+            state["fixture_saved"] = System.IO.File.Exists(fixture) && !saves.IsDirty;
+        }
+        else
+        {
+            bool safeBodies = sandbox.Buddy.Rig.AllBodiesFinite() &&
+                sandbox.Buddy.Recovery.AllBodiesInsideSafeBounds();
+            foreach (PuppetPartBody body in sandbox.Buddy.Rig.Parts)
+            {
+                safeBodies &= body.LinearVelocity.Length() < 100.0f;
+                safeBodies &= Math.Abs(body.AngularVelocity) < 2.0f;
+            }
+
+            state["balance_restored"] = progress.BalanceMilliCredits > 0;
+            state["mood_restored"] = progress.Mood > 0.0f;
+            state["memory_restored"] =
+                progress.IsContentHarmful(ContentIds.ToolBoxingGlove);
+            state["selection_restored"] = progress.SelectedTool == ToolId.Tickle;
+            state["trait_restored"] = progress.Traits == expectedTraits;
+            state["safe_standing_resume"] = safeBodies &&
+                sandbox.Buddy.Recovery.HardRecoveryCount == 0;
+            state["transient_state_absent"] =
+                !sandbox.Grab.IsGrabbing &&
+                sandbox.Objects.Count == 0 &&
+                !sandbox.Buddy.ObjectInteraction.IsHolding &&
+                sandbox.Buddy.CurrentConsciousness ==
+                    DesktopBuddy.Domain.Buddy.Consciousness.Conscious &&
+                sandbox.Buddy.ObjectInteraction.CooldownTicksRemaining(
+                    ContentIds.CareLabFood) == 0;
+        }
+
+        sandbox.QueueFree();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
     /// <summary>

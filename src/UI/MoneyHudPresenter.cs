@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using DesktopBuddy.Domain.Economy;
+using DesktopBuddy.Economy;
 using DesktopBuddy.Interaction;
 using Godot;
 
@@ -16,15 +17,18 @@ public partial class MoneyHudPresenter : PanelContainer
     [Export(PropertyHint.Range, "0.1,5,0.1")] public double FeedbackSeconds { get; set; } = 1.0;
 
     private double _remaining;
+    private EconomyService _economy = null!;
     public bool IsInitialized { get; private set; }
 
-    public void Initialize()
+    public void Initialize(EconomyService economy)
     {
         if (!GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
             !GodotObject.IsInstanceValid(BalanceLabel) || !GodotObject.IsInstanceValid(RewardLabel))
             throw new InvalidOperationException("MoneyHudPresenter requires an initialized pipeline and labels.");
+        _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         Pipeline.ImpactAccepted += OnImpact;
         Pipeline.RewardFeedbackEmitted += OnFeedback;
+        _economy.BalanceChanged += OnBalanceChanged;
         RewardLabel.Visible = false;
         RefreshBalance();
         IsInitialized = true;
@@ -42,9 +46,12 @@ public partial class MoneyHudPresenter : PanelContainer
         if (!GodotObject.IsInstanceValid(Pipeline)) return;
         Pipeline.ImpactAccepted -= OnImpact;
         Pipeline.RewardFeedbackEmitted -= OnFeedback;
+        if (_economy is not null)
+            _economy.BalanceChanged -= OnBalanceChanged;
     }
 
     private void OnImpact(AcceptedImpact impact) => RefreshBalance();
+    private void OnBalanceChanged(long _) => RefreshBalance();
 
     private void OnFeedback(RewardFeedback feedback)
     {

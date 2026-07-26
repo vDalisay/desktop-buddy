@@ -45,14 +45,19 @@ public sealed class RewardLedger
     private double _burstStart;
 
     /// <param name="cashPerPain">Credits awarded per unit of pain (approved tuning).</param>
-    public RewardLedger(double cashPerPain)
+    public RewardLedger(double cashPerPain, long initialBalanceMilliCredits = 0)
     {
         if (cashPerPain < 0.0)
         {
             throw new ArgumentOutOfRangeException(nameof(cashPerPain));
         }
+        if (initialBalanceMilliCredits < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(initialBalanceMilliCredits));
+        }
 
         _cashPerPain = cashPerPain;
+        BalanceMilliCredits = initialBalanceMilliCredits;
     }
 
     public long BalanceMilliCredits { get; private set; }

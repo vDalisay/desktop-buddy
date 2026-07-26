@@ -1,7 +1,14 @@
 using System;
+using System.Security.Cryptography;
+using System.Threading;
+using System.Threading.Tasks;
 using DesktopBuddy.Automation;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Economy;
+using DesktopBuddy.Persistence;
 using DesktopBuddy.Testing;
 using Godot;
 
@@ -18,7 +25,7 @@ public partial class Bootstrap : Node
 {
     private const string Category = "Bootstrap";
 
-    public override void _Ready()
+    public override async void _Ready()
     {
         RunnerArguments args;
         try
@@ -45,7 +52,7 @@ public partial class Bootstrap : Node
                 break;
 
             default:
-                BootSandbox();
+                await BootSandboxAsync();
                 break;
         }
     }
@@ -83,7 +90,7 @@ public partial class Bootstrap : Node
         AddChild(driver);
     }
 
-    private void BootSandbox()
+    private async Task BootSandboxAsync()
     {
         StartupReport report = StartupValidator.Validate();
         if (!report.Ok)
@@ -100,6 +107,86 @@ public partial class Bootstrap : Node
             return;
         }
 
-        AddChild(packed.Instantiate());
+        var sandbox = packed.Instantiate<SandboxRoot>();
+        double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
+        string progressPath = ProjectSettings.GlobalizePath("user://progress.json");
+        string settingsPath = ProjectSettings.GlobalizePath("user://settings.json");
+        var store = new JsonProgressStore(progressPath, settingsPath);
+
+        LoadResult<ProgressSave> progressLoad;
+        LoadResult<LocalSettingsSave> settingsLoad;
+        try
+        {
+            Task<LoadResult<ProgressSave>> progressTask =
+                store.LoadProgressAsync(CancellationToken.None);
+            Task<LoadResult<LocalSettingsSave>> settingsTask =
+                store.LoadSettingsAsync(CancellationToken.None);
+            await Task.WhenAll(progressTask, settingsTask);
+            progressLoad = await progressTask;
+            settingsLoad = await settingsTask;
+        }
+        catch (Exception exception)
+        {
+            Log.Error(Category, $"Progress load failed: {exception.Message}");
+            GetTree().Quit(3);
+            return;
+        }
+
+        if (progressLoad.Status == SaveLoadStatus.UnsupportedFutureVersion)
+        {
+            // Never quarantine, replace, or downgrade a save created by a newer build.
+            Log.Error(Category, $"Progress is from a newer build: {progressLoad.Detail}");
+            GetTree().Quit(3);
+            return;
+        }
+
+        bool newSemanticState = progressLoad.Status is
+            SaveLoadStatus.NewSave or SaveLoadStatus.DefaultsRecovered;
+        BuddyProgressState progress = newSemanticState
+            ? CreateNewProgress(cashPerPain)
+            : ProgressSavePolicy.CreateState(
+                progressLoad.Value ?? throw new InvalidOperationException("Load returned no progress."),
+                cashPerPain);
+        var economy = new EconomyService(progress);
+        var saves = new SaveCoordinator(
+            progress,
+            store,
+            newSemanticState ? -1 : progress.Revision);
+        var settings = settingsLoad.Value ?? new LocalSettingsSave();
+
+        if (progressLoad.QuarantinedPath is not null)
+            Log.Warn(Category, $"Corrupt progress quarantined at {progressLoad.QuarantinedPath}.");
+        if (settingsLoad.QuarantinedPath is not null)
+            Log.Warn(Category, $"Corrupt settings quarantined at {settingsLoad.QuarantinedPath}.");
+
+        if (newSemanticState)
+        {
+            try
+            {
+                // Persist identity immediately so a short first run cannot resample traits.
+                await saves.FlushProgressAsync();
+            }
+            catch (Exception exception)
+            {
+                Log.Error(Category, $"Initial progress save failed; state remains dirty: {exception.Message}");
+            }
+        }
+
+        sandbox.Configure(new RunContext(
+            progress,
+            economy,
+            store,
+            saves,
+            settings,
+            progressLoad.Status));
+        AddChild(sandbox);
+    }
+
+    private static BuddyProgressState CreateNewProgress(double cashPerPain)
+    {
+        ulong traitSeed = BitConverter.ToUInt64(
+            System.Security.Cryptography.RandomNumberGenerator.GetBytes(sizeof(ulong)));
+        BuddyTraits traits = BuddyTraits.Sample(new SeededRandomSource(traitSeed));
+        return new BuddyProgressState(cashPerPain, traits: traits);
     }
 }

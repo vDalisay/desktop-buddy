@@ -190,6 +190,7 @@ public partial class InteractionDamageComponent : Node
         // Centralized hard reposition releases contacts and restores a safe pose:
         // transient interaction state clears, persistent mood/history survive (§5, §8.1).
         Buddy.Recovery.HardRecovered += OnHardRecovered;
+        Buddy.Recovery.SessionResumed += OnSessionResumed;
         IsInitialized = true;
     }
 
@@ -198,6 +199,7 @@ public partial class InteractionDamageComponent : Node
         if (IsInitialized && GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Buddy.Recovery))
         {
             Buddy.Recovery.HardRecovered -= OnHardRecovered;
+            Buddy.Recovery.SessionResumed -= OnSessionResumed;
         }
     }
 
@@ -268,10 +270,6 @@ public partial class InteractionDamageComponent : Node
             Buddy.SetConsciousness(Consciousness.Conscious);
             KnockoutEnded?.Invoke(now);
         }
-
-        // Task 5 moves drift onto the LifecycleCoordinator's monotonic clock; until then it
-        // stays exactly where M3 had it so this refactor changes no observable behavior.
-        _progress.DriftMood(_fixedDelta);
 
         RewardFeedback? feedback = _economy.PollFeedback(now);
         if (feedback is RewardFeedback burst)
@@ -442,6 +440,17 @@ public partial class InteractionDamageComponent : Node
     }
 
     private void OnHardRecovered(HardRecoveryReason reason)
+    {
+        ResetTransientState();
+    }
+
+    private void OnSessionResumed()
+    {
+        ResetTransientState();
+        Buddy.SetConsciousness(Consciousness.Conscious);
+    }
+
+    private void ResetTransientState()
     {
         _router.Reset();
         _knockout.Reset();

@@ -532,8 +532,37 @@ Authoritative per-task status. Update after each task lands with its suite run.
       tool-feel, grab/dangle, wall, and autonomy regressions green. The catalog is
       now **39 scenarios** and **10 journeys**. Trait reload remains assigned to
       Task 4's `care_persistence` gate.
-- [ ] Task 4 — Persistence stack + phased journeys + resume
-- [ ] Task 5 — Clocks, passive income, hidden mode
+- [x] **Task 4 — Persistence stack + phased journeys + resume** (2026-07-26).
+      Added versioned semantic progress/settings DTOs, the real integer-ID v1→v2
+      migration, validation and forward-compatible unknown-ID retention, durable
+      JSON temp/flush/atomic-replace with rolling backup and corrupt quarantine,
+      the hermetic in-memory store, and a revision-based single save coordinator.
+      Normal boot loads before sandbox composition, samples traits only for a new
+      save, injects one run context, and resumes through a non-recovery safe-pose
+      reset; labs and scenarios remain in-memory. Focus loss, unlock/purchase, clean
+      close, and Save & Quit have immediate save seams, while later mutations remain
+      dirty instead of starving a flush. Journey arguments and `JourneyRunner` now
+      support ordered hard-timeout child-process phases with artifact-local fixtures.
+      Gates: build clean with zero warnings; `dotnet test` **605/605**;
+      `quick_validate` **11/11**; `care_persistence` passed fresh-process write→resume
+      in both Mii3D and legacy presentations, restoring balance, mood, harmful
+      memory, selection, and trait while proving safe pose and transient-state
+      absence. The suite is now **39 scenarios** and **11 journeys**.
+- [x] **Task 5 — Clocks, passive income, hidden mode** (2026-07-26).
+      Added the pure monotonic span filter and injected `GameClock`; first,
+      non-forward, suspended, and over-`5 s` discontinuity spans award nothing.
+      `LifecycleCoordinator` is now the sole runtime owner of mood drift,
+      mood-scaled passive income, cumulative run/active/hidden time, and its
+      autosave cadence. Hidden-to-tray pauses the gameplay tree and rendering
+      while the always-running low-frequency lifecycle path continues; show and
+      resume reset the clock baseline so skipped physics is never replayed.
+      Added the provisional typed `MoodEconomyProfile` at `1` neutral
+      credit/minute, routed passive deposits through `EconomyService`, and made
+      the HUD observe all balance changes. Removed physics-tick mood drift.
+      Gates: build clean with zero warnings; `dotnet test` **611/611**;
+      `quick_validate` **11/11**; `hidden_clock_accrual` and
+      `suspend_no_catchup` **8/8** across seeds 1/7 and both presentations.
+      The catalog is now **41 scenarios** and **11 journeys**.
 - [ ] Task 6 — Composition, regression, docs, owner gate
 
 ### Known pre-existing red (found during the Task 0 gate, 2026-07-25)

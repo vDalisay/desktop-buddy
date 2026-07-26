@@ -18,6 +18,7 @@ using DesktopBuddy.Interaction;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Platform;
+using DesktopBuddy.Persistence;
 using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Sandbox;
 using DesktopBuddy.Tools;
@@ -56,6 +57,10 @@ public partial class SandboxRoot : Node2D
 
     /// <summary>The sole currency/unlock mutator for this run (ARCHITECTURE §11).</summary>
     public EconomyService Economy { get; private set; } = null!;
+    public SaveCoordinator Saves { get; private set; } = null!;
+    public LocalSettingsSave Settings { get; private set; } = null!;
+    private RunContext? _runContext;
+    private bool _quitSaveStarted;
     [Export] public BoxingGloveController Glove { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
@@ -72,9 +77,19 @@ public partial class SandboxRoot : Node2D
     [Export] public HeadLookAtComponent HeadLookAt { get; set; } = null!;
     [Export] public FaceCompositor Face { get; set; } = null!;
     [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
+    [Export] public MoodEconomyProfile MoodEconomy { get; set; } = null!;
+    public LifecycleCoordinator Lifecycle { get; private set; } = null!;
     // Mii3D is the shipping default since the M3.5 Task 8 owner gate (2026-07-18); the
     // legacy circles remain behind the V toggle / --presentation=legacy as a dev view.
     [Export] public PresentationMode Mode { get; set; } = PresentationMode.Mii3D;
+
+    /// <summary>Inject the normal-run context before adding this scene to the tree.</summary>
+    public void Configure(RunContext context)
+    {
+        if (IsInsideTree())
+            throw new InvalidOperationException("Sandbox run context must be configured before _Ready.");
+        _runContext = context ?? throw new ArgumentNullException(nameof(context));
+    }
 
     public override void _Ready()
     {
@@ -96,7 +111,8 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(Activities) ||
             !GodotObject.IsInstanceValid(HeadLookAt) ||
             !GodotObject.IsInstanceValid(Face) ||
-            !GodotObject.IsInstanceValid(GloveVisual))
+            !GodotObject.IsInstanceValid(GloveVisual) ||
+            !GodotObject.IsInstanceValid(MoodEconomy))
         {
             throw new InvalidOperationException(
                 "SandboxRoot requires an injected window controller, shell controller, and boundary.");
@@ -104,11 +120,13 @@ public partial class SandboxRoot : Node2D
 
         Grab.Initialize();
         Pointer.Initialize(developmentOnly: false);
-        // One BuddyProgressState and one EconomyService per run: persistent semantic state
-        // must outlive every node that reads it (ARCHITECTURE §12), and currency has exactly
-        // one mutator (§11). A save-backed store replaces the fresh state in Task 4.
-        Progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
-        Economy = new EconomyService(Progress);
+        // Direct scene runs and scenario fixtures deliberately stay saveless.
+        // Normal boot injects a disk-backed context from Bootstrap.
+        _runContext ??= CreateInMemoryRunContext();
+        Progress = _runContext.Progress;
+        Economy = _runContext.Economy;
+        Saves = _runContext.Saves;
+        Settings = _runContext.Settings;
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
         Buddy.Arbiter.Initialize(Progress);
@@ -120,7 +138,7 @@ public partial class SandboxRoot : Node2D
         Reactions.Initialize();
         ReactionAudio.Initialize();
         ImpactFeedback.Initialize();
-        MoneyHud.Initialize();
+        MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();
         // Same Resource the presenter renders with: lights and materials share one look truth.
         LightingRig.Initialize(VisualPresenter.Profile.Look);
@@ -142,10 +160,31 @@ public partial class SandboxRoot : Node2D
         Buddy.AutonomousMotion.SetWalkableBounds(Boundaries.InnerBounds);
         RefreshWorkModeHitRegions();
         Buddy.Recovery.HardRecovered += OnHardRecovered;
+        Buddy.Recovery.SessionResumed += OnSessionResumed;
         Pipeline.ToolChanged += OnToolChanged;
         Grab.Released += OnGrabReleased;
         Glove.BodySpawned += OnGloveBodySpawned;
         Glove.BodyDespawned += OnGloveBodyDespawned;
+        Window.WindowFocusLost += OnWindowFocusLost;
+        Lifecycle = new LifecycleCoordinator { Name = nameof(LifecycleCoordinator) };
+        Lifecycle.Configure(
+            Progress,
+            Economy,
+            Saves,
+            MoodEconomy,
+            () => Grab.IsGrabbing || Glove.IsActive || CareStroke.IsHeld ||
+                  Buddy.ObjectInteraction.IsHolding,
+            _runContext.TimeSource);
+        AddChild(Lifecycle);
+        if (DisplayServer.GetName() != "headless")
+        {
+            GetTree().AutoAcceptQuit = false;
+            GetWindow().CloseRequested += OnCloseRequested;
+        }
+
+        // Save data never contains pose or transient gameplay state. Every launch,
+        // including backup/default recovery, begins from this safe reset seam.
+        Buddy.Recovery.ResetForSessionResume();
 
         ApplyRunnerPresentationOverride();
         SetPresentationMode(Mode);
@@ -189,13 +228,78 @@ public partial class SandboxRoot : Node2D
             Boundaries.LayoutApplied -= OnBoundaryLayoutApplied;
         }
         if (GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Buddy.Recovery))
+        {
             Buddy.Recovery.HardRecovered -= OnHardRecovered;
+            Buddy.Recovery.SessionResumed -= OnSessionResumed;
+        }
         if (GodotObject.IsInstanceValid(Pipeline)) Pipeline.ToolChanged -= OnToolChanged;
         if (GodotObject.IsInstanceValid(Grab)) Grab.Released -= OnGrabReleased;
         if (GodotObject.IsInstanceValid(Glove))
         {
             Glove.BodySpawned -= OnGloveBodySpawned;
             Glove.BodyDespawned -= OnGloveBodyDespawned;
+        }
+        if (GodotObject.IsInstanceValid(Window))
+            Window.WindowFocusLost -= OnWindowFocusLost;
+        if (DisplayServer.GetName() != "headless" && IsInsideTree())
+            GetWindow().CloseRequested -= OnCloseRequested;
+
+        if (Saves is not null && Saves.IsDirty)
+            _ = ObserveSaveAsync(Saves.FlushProgressAsync(), "Exit save");
+    }
+
+    private RunContext CreateInMemoryRunContext()
+    {
+        var progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
+        var economy = new EconomyService(progress);
+        var store = new InMemoryProgressStore();
+        return new RunContext(
+            progress,
+            economy,
+            store,
+            new SaveCoordinator(progress, store),
+            new LocalSettingsSave(),
+            SaveLoadStatus.NewSave);
+    }
+
+    private void OnWindowFocusLost() =>
+        _ = ObserveSaveAsync(Saves.FlushProgressAsync(), "Focus-loss save");
+
+    /// <summary>Tray/UI command seam for Task 6's Save &amp; Quit surface.</summary>
+    public void RequestSaveAndQuit() => OnCloseRequested();
+    public void SetHiddenToTray(bool hidden) => Lifecycle.SetHiddenToTray(hidden);
+
+    private async void OnCloseRequested()
+    {
+        if (_quitSaveStarted)
+            return;
+        _quitSaveStarted = true;
+        SetPhysicsProcess(false);
+        try
+        {
+            await Saves.FlushProgressAsync();
+            await Saves.SaveSettingsAsync(Settings);
+        }
+        catch (Exception exception)
+        {
+            // A failed write remains dirty and the prior primary/backup survive.
+            // Closing is still honored so the app cannot trap the user.
+            Log.Error("Persistence", $"Save & Quit failed: {exception.Message}");
+        }
+        GetTree().Quit();
+    }
+
+    private static async System.Threading.Tasks.Task ObserveSaveAsync(
+        System.Threading.Tasks.Task operation,
+        string label)
+    {
+        try
+        {
+            await operation;
+        }
+        catch (Exception exception)
+        {
+            Log.Error("Persistence", $"{label} failed; progress remains dirty: {exception.Message}");
         }
     }
 
@@ -232,6 +336,13 @@ public partial class SandboxRoot : Node2D
     {
         Buddy.ObjectInteraction.Reset();
         if (Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
+    }
+
+    private void OnSessionResumed()
+    {
+        Buddy.ObjectInteraction.Reset();
+        if (Grab.IsGrabbing)
+            Grab.Release(countsAsThrow: false);
     }
 
     private void OnToolChanged(ToolId previous, ToolId selected)

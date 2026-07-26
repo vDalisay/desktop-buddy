@@ -1,0 +1,274 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.Json;
+using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Tools;
+
+namespace DesktopBuddy.Domain.Persistence;
+
+public enum SaveDecodeStatus
+{
+    Valid,
+    Malformed,
+    UnsupportedFutureVersion,
+    Invalid,
+}
+
+public readonly record struct SaveDecodeResult(
+    SaveDecodeStatus Status,
+    ProgressSave? Save,
+    string? Detail = null);
+
+public static class ProgressSavePolicy
+{
+    private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+    };
+
+    public static string Serialize(ProgressSave save)
+    {
+        ArgumentNullException.ThrowIfNull(save);
+        Validate(save);
+        return JsonSerializer.Serialize(save, Options);
+    }
+
+    public static SaveDecodeResult Decode(string json)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("schemaVersion", out JsonElement schemaElement) ||
+                !schemaElement.TryGetInt32(out int schema))
+            {
+                return new SaveDecodeResult(SaveDecodeStatus.Malformed, null, "Missing schemaVersion.");
+            }
+            if (schema > ProgressSave.CurrentSchemaVersion)
+            {
+                return new SaveDecodeResult(
+                    SaveDecodeStatus.UnsupportedFutureVersion,
+                    null,
+                    $"Schema {schema} is newer than {ProgressSave.CurrentSchemaVersion}.");
+            }
+
+            ProgressSave save = schema switch
+            {
+                1 => MigrateV1(document.RootElement),
+                ProgressSave.CurrentSchemaVersion =>
+                    JsonSerializer.Deserialize<ProgressSave>(json, Options)
+                    ?? throw new JsonException("Progress payload was null."),
+                _ => throw new JsonException($"Unsupported legacy schema {schema}."),
+            };
+            Validate(save);
+            return new SaveDecodeResult(SaveDecodeStatus.Valid, save);
+        }
+        catch (JsonException exception)
+        {
+            return new SaveDecodeResult(SaveDecodeStatus.Malformed, null, exception.Message);
+        }
+        catch (ArgumentException exception)
+        {
+            return new SaveDecodeResult(SaveDecodeStatus.Invalid, null, exception.Message);
+        }
+    }
+
+    public static void Validate(ProgressSave save)
+    {
+        ArgumentNullException.ThrowIfNull(save);
+        if (save.SchemaVersion != ProgressSave.CurrentSchemaVersion)
+            throw new ArgumentException("Progress schema is not current.", nameof(save));
+        if (save.UnlockedToolIds is null ||
+            save.HarmfulContentIds is null ||
+            save.Statistics is null ||
+            save.Times is null ||
+            save.Extensions is null ||
+            save.Extensions.UnknownContentIds is null ||
+            save.Extensions.Values is null ||
+            save.Statistics.ToolUses is null ||
+            save.Statistics.ToolPainMilli is null)
+        {
+            throw new ArgumentException(
+                "Progress payload is missing a required semantic collection.",
+                nameof(save));
+        }
+        if (save.Revision < 0 || save.BalanceMilliCredits < 0)
+            throw new ArgumentException("Revision and balance must be non-negative.", nameof(save));
+        if (!float.IsFinite(save.Mood) || save.Mood is < -100.0f or > 100.0f)
+            throw new ArgumentException("Mood must be finite and within [-100, 100].", nameof(save));
+        if (save.ObstacleHopPropensity is < 0 or > 100)
+            throw new ArgumentException("Obstacle hop propensity must be within [0, 100].", nameof(save));
+        ValidateSeconds(save.Times.RunSeconds, nameof(save.Times.RunSeconds));
+        ValidateSeconds(save.Times.ActiveSeconds, nameof(save.Times.ActiveSeconds));
+        ValidateSeconds(save.Times.HiddenSeconds, nameof(save.Times.HiddenSeconds));
+        ValidateIds(save.UnlockedToolIds, nameof(save.UnlockedToolIds));
+        ValidateIds(save.HarmfulContentIds, nameof(save.HarmfulContentIds));
+        ValidateCounters(save.Statistics);
+        if (string.IsNullOrWhiteSpace(save.SelectedToolId))
+            throw new ArgumentException("Selected tool ID is required.", nameof(save));
+    }
+
+    public static BuddyProgressState CreateState(ProgressSave save, double cashPerPain)
+    {
+        Validate(save);
+        string selected = save.SelectedToolId;
+        string? unknownSelected = null;
+        bool selectedKnown = ContentIds.TryParseTool(selected, out ToolId parsed);
+        if (!selectedKnown ||
+            !save.UnlockedToolIds.Contains(ContentIds.ForTool(parsed), StringComparer.Ordinal))
+        {
+            unknownSelected = selectedKnown ? null : selected;
+            selected = ContentIds.ToolGrab;
+        }
+
+        var activeUnlocks = save.UnlockedToolIds
+            .Where(ContentIds.IsTool)
+            .ToArray();
+        var activeHarmful = save.HarmfulContentIds
+            .Where(ContentIds.IsKnown)
+            .ToArray();
+        var unknownIds = save.Extensions.UnknownContentIds
+            .Concat(save.UnlockedToolIds.Where(id => !ContentIds.IsTool(id)))
+            .Concat(save.HarmfulContentIds.Where(id => !ContentIds.IsKnown(id)))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var extensions = new ProgressExtensionData(
+            unknownSelected ?? save.Extensions.UnknownSelectedToolId,
+            unknownIds,
+            new Dictionary<string, string>(save.Extensions.Values, StringComparer.Ordinal));
+        return new BuddyProgressState(
+            cashPerPain,
+            save.Mood,
+            activeHarmful,
+            activeUnlocks,
+            BuddyTraits.FromPersisted(save.ObstacleHopPropensity),
+            new ProgressStatistics(
+                save.Statistics.ScoredImpacts,
+                save.Statistics.Knockouts,
+                save.Statistics.CareAwards,
+                save.Statistics.TrustResets,
+                save.Statistics.EarnedMilliCredits,
+                save.Statistics.SuccessfulCatches,
+                save.Statistics.TotalPainMilli,
+                save.Statistics.BestOneSecondMilliCredits,
+                save.Statistics.BestThreeSecondMilliCredits,
+                save.Statistics.BestTenSecondMilliCredits,
+                save.Statistics.HighestMood,
+                save.Statistics.LowestMood,
+                save.Statistics.ToolUses,
+                save.Statistics.ToolPainMilli),
+            new CumulativeTimes(
+                save.Times.RunSeconds,
+                save.Times.ActiveSeconds,
+                save.Times.HiddenSeconds),
+            save.Revision,
+            save.BalanceMilliCredits,
+            selected,
+            extensions);
+    }
+
+    private static ProgressSave MigrateV1(JsonElement root)
+    {
+        var unknown = new List<string>();
+        int legacySelected = root.TryGetProperty("selectedTool", out JsonElement selectedElement)
+            ? selectedElement.GetInt32()
+            : 0;
+        string? mappedSelected = LegacyToolId(legacySelected, unknown);
+        string selected = mappedSelected ?? ContentIds.ToolGrab;
+        string? unknownSelected = mappedSelected is null ? $"legacy.tool.{legacySelected}" : null;
+        List<string> unlocks = LegacyArray(root, "unlockedTools", unknown);
+        List<string> harmful = LegacyArray(root, "harmfulTools", unknown);
+        if (!unlocks.Contains(ContentIds.ToolGrab, StringComparer.Ordinal))
+            unlocks.Add(ContentIds.ToolGrab);
+
+        return new ProgressSave
+        {
+            SchemaVersion = ProgressSave.CurrentSchemaVersion,
+            Revision = ReadInt64(root, "revision"),
+            BalanceMilliCredits = ReadInt64(root, "balanceMilliCredits"),
+            SelectedToolId = selected,
+            UnlockedToolIds = unlocks,
+            Mood = root.TryGetProperty("mood", out JsonElement mood) ? mood.GetSingle() : 0.0f,
+            HarmfulContentIds = harmful,
+            ObstacleHopPropensity = root.TryGetProperty("obstacleHopPropensity", out JsonElement trait)
+                ? trait.GetInt32()
+                : BuddyTraits.Default.ObstacleHopPropensity,
+            Extensions = new ProgressExtensionsSave
+            {
+                UnknownSelectedToolId = unknownSelected,
+                UnknownContentIds = unknown,
+            },
+        };
+    }
+
+    private static List<string> LegacyArray(
+        JsonElement root,
+        string property,
+        List<string> unknown)
+    {
+        var result = new List<string>();
+        if (!root.TryGetProperty(property, out JsonElement array) ||
+            array.ValueKind != JsonValueKind.Array)
+            return result;
+        foreach (JsonElement element in array.EnumerateArray())
+        {
+            string? id = LegacyToolId(element.GetInt32(), unknown);
+            if (id is not null)
+                result.Add(id);
+        }
+        return result;
+    }
+
+    private static string? LegacyToolId(int value, List<string> unknown)
+    {
+        if (Enum.IsDefined(typeof(ToolId), value))
+            return ContentIds.ForTool((ToolId)value);
+        string retained = $"legacy.tool.{value}";
+        unknown.Add(retained);
+        return null;
+    }
+
+    private static long ReadInt64(JsonElement root, string property) =>
+        root.TryGetProperty(property, out JsonElement value) ? value.GetInt64() : 0;
+
+    private static void ValidateIds(IEnumerable<string> ids, string name)
+    {
+        if (ids.Any(string.IsNullOrWhiteSpace))
+            throw new ArgumentException($"{name} contains a blank ID.");
+    }
+
+    private static void ValidateSeconds(double value, string name)
+    {
+        if (!double.IsFinite(value) || value < 0.0)
+            throw new ArgumentException($"{name} must be finite and non-negative.");
+    }
+
+    private static void ValidateCounters(ProgressStatisticsSave statistics)
+    {
+        long[] counters =
+        [
+            statistics.ScoredImpacts,
+            statistics.Knockouts,
+            statistics.CareAwards,
+            statistics.TrustResets,
+            statistics.EarnedMilliCredits,
+            statistics.SuccessfulCatches,
+            statistics.TotalPainMilli,
+            statistics.BestOneSecondMilliCredits,
+            statistics.BestThreeSecondMilliCredits,
+            statistics.BestTenSecondMilliCredits,
+        ];
+        if (counters.Any(value => value < 0) ||
+            statistics.ToolUses.Any(pair => string.IsNullOrWhiteSpace(pair.Key) || pair.Value < 0) ||
+            statistics.ToolPainMilli.Any(pair =>
+                string.IsNullOrWhiteSpace(pair.Key) || pair.Value < 0) ||
+            !float.IsFinite(statistics.HighestMood) ||
+            !float.IsFinite(statistics.LowestMood) ||
+            statistics.HighestMood is < -100.0f or > 100.0f ||
+            statistics.LowestMood is < -100.0f or > 100.0f)
+        {
+            throw new ArgumentException("Progress statistics payload is invalid.");
+        }
+    }
+}

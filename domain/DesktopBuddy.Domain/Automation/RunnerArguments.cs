@@ -62,6 +62,8 @@ public sealed record RunnerArguments
 
     /// <summary>Directory for machine-readable verdicts, telemetry, and traces.</summary>
     public string? ArtifactsDir { get; init; }
+    public int? JourneyPhase { get; init; }
+    public string? SaveFixture { get; init; }
 
     /// <summary>
     /// True when <c>--automation</c> was passed explicitly. The automation
@@ -100,6 +102,8 @@ public sealed record RunnerArguments
         string? journeyId = null;
         ulong? seed = null;
         string? artifactsDir = null;
+        int? journeyPhase = null;
+        string? saveFixture = null;
         bool automationRequested = false;
         string? traceOut = null, promoteTrace = null, journeyOut = null, profileA = null, profileB = null, driveA = null, driveB = null;
         RunnerPresentation? presentation = null;
@@ -136,6 +140,12 @@ public sealed record RunnerArguments
                     break;
                 case "artifacts":
                     artifactsDir = RequireValue(key, value);
+                    break;
+                case "journey-phase":
+                    journeyPhase = ParseNonNegativeInt(key, RequireValue(key, value));
+                    break;
+                case "save-fixture":
+                    saveFixture = RequireValue(key, value);
                     break;
                 case "seed":
                     seed = ParseSeed(RequireValue(key, value));
@@ -177,6 +187,8 @@ public sealed record RunnerArguments
             JourneyId = journeyId,
             Seed = seed,
             ArtifactsDir = artifactsDir,
+            JourneyPhase = journeyPhase,
+            SaveFixture = saveFixture,
             AutomationRequested = automationRequested,
             TraceOut = traceOut,
             PromoteTrace = promoteTrace,
@@ -208,6 +220,13 @@ public sealed record RunnerArguments
         }
 
         return seed;
+    }
+
+    private static int ParseNonNegativeInt(string key, string value)
+    {
+        if (!int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out int result))
+            throw new ArgumentException($"--{key} must be a non-negative integer.", nameof(value));
+        return result;
     }
 
     private static RunnerPresentation ParsePresentation(string value) => value switch

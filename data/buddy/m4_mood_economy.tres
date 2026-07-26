@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="MoodEconomyProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Economy/MoodEconomyProfile.cs" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+NeutralCreditsPerMinute = 1.0
+ForegroundUpdateSeconds = 1.0
+HiddenUpdateSeconds = 0.1
+DiscontinuitySeconds = 5.0

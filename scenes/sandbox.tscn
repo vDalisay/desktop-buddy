@@ -1,4 +1,4 @@
-[gd_scene load_steps=38 format=3]
+[gd_scene load_steps=39 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
@@ -37,6 +37,7 @@
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/HeadLookAtComponent.cs" id="36_lookat"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/FaceCompositor.cs" id="37_face"]
 [ext_resource type="Script" path="res://src/Objects/LooseObjectRegistry.cs" id="38_object_registry"]
+[ext_resource type="Resource" path="res://data/buddy/m4_mood_economy.tres" id="39_mood_economy"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -83,6 +84,7 @@ Activities = NodePath("ActivityAnimator")
 HeadLookAt = NodePath("HeadLookAtComponent")
 Face = NodePath("FaceCompositor")
 GloveVisual = NodePath("GloveVisual3D")
+MoodEconomy = ExtResource("39_mood_economy")
 
 [node name="DesktopWindowController" type="Node" parent="."]
 script = ExtResource("2_window")

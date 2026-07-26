@@ -263,6 +263,7 @@ public partial class ObjectInteractionComponent : Area2D
                 if (intent.GrantsCatchCare)
                 {
                     _progress.ApplyCareMood(1.0f);
+                    _progress.RecordSuccessfulCatch();
                     CatchCareCount++;
                 }
                 break;

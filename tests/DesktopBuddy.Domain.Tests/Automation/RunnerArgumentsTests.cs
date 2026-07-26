@@ -45,6 +45,20 @@ public sealed class RunnerArgumentsTests
     }
 
     [Fact]
+    public void Parse_PhasedJourney_RoundTripsPhaseAndExplicitFixture()
+    {
+        RunnerArguments result = RunnerArguments.Parse(new[]
+        {
+            "--journey=care_persistence",
+            "--journey-phase=1",
+            @"--save-fixture=C:\fixtures\care\progress.json",
+        });
+
+        Assert.Equal(1, result.JourneyPhase);
+        Assert.Equal(@"C:\fixtures\care\progress.json", result.SaveFixture);
+    }
+
+    [Fact]
     public void Parse_AutomationFlagAlone_IsNormalModeButAutomationEnabled()
     {
         RunnerArguments result = RunnerArguments.Parse(new[] { "--automation" });
@@ -84,6 +98,8 @@ public sealed class RunnerArgumentsTests
     [InlineData("--seed=-1")]
     [InlineData("--seed=3.5")]
     [InlineData("--seed=")]
+    [InlineData("--journey-phase=-1")]
+    [InlineData("--journey-phase=nope")]
     public void Parse_InvalidSeed_Throws(string arg)
     {
         Assert.Throws<ArgumentException>(() => RunnerArguments.Parse(new[] { arg }));

@@ -15,7 +15,16 @@ public readonly record struct ProgressStatistics(
     long Knockouts,
     long CareAwards,
     long TrustResets,
-    long EarnedMilliCredits);
+    long EarnedMilliCredits,
+    long SuccessfulCatches = 0,
+    long TotalPainMilli = 0,
+    long BestOneSecondMilliCredits = 0,
+    long BestThreeSecondMilliCredits = 0,
+    long BestTenSecondMilliCredits = 0,
+    float HighestMood = 0.0f,
+    float LowestMood = 0.0f,
+    IReadOnlyDictionary<string, long>? ToolUses = null,
+    IReadOnlyDictionary<string, long>? ToolPainMilli = null);
 
 /// <summary>Cumulative wall-time accounting, in seconds (FR-015.1, FR-016.8).</summary>
 public readonly record struct CumulativeTimes(
@@ -33,7 +42,17 @@ public readonly record struct ProgressSnapshot(
     IReadOnlyList<string> HarmfulContentIds,
     BuddyTraits Traits,
     ProgressStatistics Statistics,
-    CumulativeTimes Times);
+    CumulativeTimes Times,
+    ProgressExtensionData? Extensions = null);
+
+/// <summary>
+/// Forward-compatible data retained but never activated by this build.
+/// Unknown selected/content IDs survive a load/save cycle here.
+/// </summary>
+public sealed record ProgressExtensionData(
+    string? UnknownSelectedToolId = null,
+    IReadOnlyList<string>? UnknownContentIds = null,
+    IReadOnlyDictionary<string, string>? Values = null);
 
 /// <summary>Why the semantic state changed, for low-frequency subscribers.</summary>
 public enum ProgressChange
@@ -82,6 +101,15 @@ public sealed class BuddyProgressState
     private long _careAwards;
     private long _trustResets;
     private long _earnedMilliCredits;
+    private long _successfulCatches;
+    private long _totalPainMilli;
+    private long _bestOneSecondMilliCredits;
+    private long _bestThreeSecondMilliCredits;
+    private long _bestTenSecondMilliCredits;
+    private float _highestMood;
+    private float _lowestMood;
+    private readonly Dictionary<string, long> _toolUses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _toolPainMilli = new(StringComparer.Ordinal);
 
     /// <param name="cashPerPain">Approved shared economy coefficient (FR-012.5).</param>
     /// <param name="initialMood">Persisted mood, or <c>0</c> for a new save.</param>
@@ -98,12 +126,16 @@ public sealed class BuddyProgressState
         BuddyTraits? traits = null,
         ProgressStatistics statistics = default,
         CumulativeTimes times = default,
-        long revision = 0)
+        long revision = 0,
+        long initialBalanceMilliCredits = 0,
+        string? selectedToolId = null,
+        ProgressExtensionData? extensions = null)
     {
         _mood = new MoodModel(initialMood, harmfulContentIds);
-        _ledger = new RewardLedger(cashPerPain);
+        _ledger = new RewardLedger(cashPerPain, initialBalanceMilliCredits);
         Traits = traits ?? BuddyTraits.Default;
         Revision = revision;
+        Extensions = extensions;
 
         if (unlockedToolIds is null)
         {
@@ -127,11 +159,34 @@ public sealed class BuddyProgressState
             _unlockedTools.Add(ContentIds.ToolGrab);
         }
 
+        if (ContentIds.TryParseTool(selectedToolId, out ToolId selected) &&
+            _unlockedTools.Contains(ContentIds.ForTool(selected)))
+        {
+            _tools.Select(selected);
+        }
+
         _scoredImpacts = statistics.ScoredImpacts;
         _knockouts = statistics.Knockouts;
         _careAwards = statistics.CareAwards;
         _trustResets = statistics.TrustResets;
         _earnedMilliCredits = statistics.EarnedMilliCredits;
+        _successfulCatches = statistics.SuccessfulCatches;
+        _totalPainMilli = statistics.TotalPainMilli;
+        _bestOneSecondMilliCredits = statistics.BestOneSecondMilliCredits;
+        _bestThreeSecondMilliCredits = statistics.BestThreeSecondMilliCredits;
+        _bestTenSecondMilliCredits = statistics.BestTenSecondMilliCredits;
+        _highestMood = statistics.HighestMood;
+        _lowestMood = statistics.LowestMood;
+        if (statistics.ToolUses is not null)
+        {
+            foreach ((string id, long count) in statistics.ToolUses)
+                _toolUses[id] = count;
+        }
+        if (statistics.ToolPainMilli is not null)
+        {
+            foreach ((string id, long pain) in statistics.ToolPainMilli)
+                _toolPainMilli[id] = pain;
+        }
         Times = times;
     }
 
@@ -154,13 +209,23 @@ public sealed class BuddyProgressState
 
     public BuddyTraits Traits { get; private set; }
     public CumulativeTimes Times { get; private set; }
+    public ProgressExtensionData? Extensions { get; private set; }
 
     public ProgressStatistics Statistics => new(
         _scoredImpacts,
         _knockouts,
         _careAwards,
         _trustResets,
-        _earnedMilliCredits);
+        _earnedMilliCredits,
+        _successfulCatches,
+        _totalPainMilli,
+        _bestOneSecondMilliCredits,
+        _bestThreeSecondMilliCredits,
+        _bestTenSecondMilliCredits,
+        _highestMood,
+        _lowestMood,
+        new Dictionary<string, long>(_toolUses, StringComparer.Ordinal),
+        new Dictionary<string, long>(_toolPainMilli, StringComparer.Ordinal));
 
     /// <summary>An immutable read of all persistent state for the save writer.</summary>
     public ProgressSnapshot Snapshot()
@@ -191,7 +256,8 @@ public sealed class BuddyProgressState
             harmful,
             Traits,
             Statistics,
-            Times);
+            Times,
+            Extensions);
     }
 
     /// <summary>Explicit tool pick. Returns <c>false</c> when the selection is unchanged.</summary>
@@ -203,6 +269,10 @@ public sealed class BuddyProgressState
         }
 
         _tools.Select(tool);
+        if (Extensions?.UnknownSelectedToolId is not null)
+        {
+            Extensions = Extensions with { UnknownSelectedToolId = null };
+        }
         Touch();
         Changed?.Invoke(ProgressChange.ToolSelected);
         return true;
@@ -241,6 +311,13 @@ public sealed class BuddyProgressState
         _mood.RegisterHarm(contentId, pain);
         _scoredImpacts++;
         _earnedMilliCredits += milli;
+        _totalPainMilli += (long)Math.Round(
+            pain * 1000.0f,
+            MidpointRounding.AwayFromZero);
+        _toolPainMilli.TryGetValue(contentId, out long priorPain);
+        _toolPainMilli[contentId] = priorPain + (long)Math.Round(
+            pain * 1000.0f,
+            MidpointRounding.AwayFromZero);
         Touch();
         if (milli != 0)
         {
@@ -278,6 +355,8 @@ public sealed class BuddyProgressState
             _trustResets++;
         }
 
+        _highestMood = Math.Max(_highestMood, _mood.Mood);
+        _lowestMood = Math.Min(_lowestMood, _mood.Mood);
         Touch();
         Changed?.Invoke(reset ? ProgressChange.TrustReset : ProgressChange.CareApplied);
         return reset;
@@ -287,6 +366,23 @@ public sealed class BuddyProgressState
     public void RecordKnockout()
     {
         _knockouts++;
+        Touch();
+    }
+
+    /// <summary>Records the once-per-throw care-bearing catch statistic.</summary>
+    public void RecordSuccessfulCatch()
+    {
+        _successfulCatches++;
+        Touch();
+    }
+
+    /// <summary>Records one semantic use for a known content/tool ID.</summary>
+    public void RecordContentUse(string contentId)
+    {
+        if (string.IsNullOrWhiteSpace(contentId))
+            throw new ArgumentException("A content use requires a stable ID.", nameof(contentId));
+        _toolUses.TryGetValue(contentId, out long prior);
+        _toolUses[contentId] = prior + 1;
         Touch();
     }
 

@@ -17,6 +17,7 @@ using DesktopBuddy.Interaction;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Presentation3D;
+using DesktopBuddy.Persistence;
 using DesktopBuddy.Sandbox;
 using DesktopBuddy.Tools;
 using DesktopBuddy.UI;
@@ -52,6 +53,7 @@ public partial class BuddyLab : Node2D
 
     /// <summary>The sole currency/unlock mutator for this run (ARCHITECTURE §11).</summary>
     public EconomyService Economy { get; private set; } = null!;
+    public SaveCoordinator Saves { get; private set; } = null!;
     [Export] public BoxingGloveController Glove { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
@@ -105,11 +107,11 @@ public partial class BuddyLab : Node2D
         Controls.Initialize();
         Grab.Initialize();
         Pointer.Initialize();
-        // One BuddyProgressState and one EconomyService per run: persistent semantic state
-        // must outlive every node that reads it (ARCHITECTURE §12), and currency has exactly
-        // one mutator (§11). A save-backed store replaces the fresh state in Task 4.
+        // Labs and scenarios are hermetic: never resolve or mutate user:// progress.
         Progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
         Economy = new EconomyService(Progress);
+        var progressStore = new InMemoryProgressStore();
+        Saves = new SaveCoordinator(Progress, progressStore);
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
         Buddy.Arbiter.Initialize(Progress);
@@ -121,7 +123,7 @@ public partial class BuddyLab : Node2D
         Reactions.Initialize();
         ReactionAudio.Initialize();
         ImpactFeedback.Initialize();
-        MoneyHud.Initialize();
+        MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();
         // Same Resource the presenter renders with: lights and materials share one look truth.
         LightingRig.Initialize(VisualPresenter.Profile.Look);
