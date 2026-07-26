@@ -240,13 +240,17 @@ public partial class BehaviorArbiter : Node
         {
             // Intent.WalkDirection, not the raw planner direction: the arbiter's wall
             // filter must reach every layer, or it silently applies to none of them.
+            //
+            // An obstacle hop carries forward momentum along the committed walk. Passing
+            // zero here made the hop purely vertical, so the buddy launched straight up and
+            // landed back on the same object (owner correction 2026-07-26).
             return new DriveIntent(
                 Intent.DriveActive ? Intent.WalkDirection : 0.0f,
                 Intent.LocomotionScale,
                 Intent.JumpRequested,
-                0.0f,
+                Intent.WalkDirection,
                 1.0f,
-                0.0f,
+                Profile.ObstacleHopHorizontalRatio,
                 0.0f,
                 0.0f,
                 false,

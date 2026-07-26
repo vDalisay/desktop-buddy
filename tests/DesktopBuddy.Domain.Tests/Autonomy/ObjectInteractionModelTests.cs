@@ -454,16 +454,14 @@ public sealed class ObjectInteractionModelTests
     }
 
     /// <summary>
-    /// Scenery is not a catch target: neither a ball lying on the floor nor one the buddy
-    /// just kicked with its own foot. "Moving" is not "thrown" — the throw token is what
-    /// separates them. Without this, priority 5 claimed every object in the walking path
-    /// and the priority 7 obstacle hop could never fire.
+    /// A resting ball IS a pickup target — the buddy walks over and scoops it. Excluding
+    /// resting objects to protect the obstacle hop removed ground pickup entirely, which is
+    /// the opposite of what was asked for.
     /// </summary>
     [Theory]
-    [InlineData(true, 5)]
     [InlineData(true, 0)]
-    [InlineData(false, 0)]
-    public void UnthrownNonConsumable_IsNotACatchTarget(bool atRest, int throwToken)
+    [InlineData(false, 5)]
+    public void RestingAndThrownObjects_AreBothEngaged(bool atRest, int throwToken)
     {
         var model = new ObjectInteractionModel(Fast);
 
@@ -471,8 +469,45 @@ public sealed class ObjectInteractionModelTests
             model,
             Ball(throwToken: throwToken) with { AtRest = atRest });
 
+        Assert.Equal(ObjectCommand.Catch, intent.Command);
+        Assert.Equal(atRest, model.TrackedAtRest);
+    }
+
+    /// <summary>
+    /// The ignore window is what lets both behaviours coexist: object action is priority 5
+    /// and the obstacle hop is priority 7, so without a cooling-off period after the buddy
+    /// puts something down it re-commits to the same ball forever and never steps over it.
+    /// </summary>
+    [Fact]
+    public void IgnoredCandidate_IsLeftAloneForTheObstacleHop()
+    {
+        var model = new ObjectInteractionModel(Fast);
+
+        ObjectIntent intent = Step(model, Ball() with { Ignored = true });
+
         Assert.Equal(ObjectCommand.None, intent.Command);
         Assert.Equal(ObjectPhase.Idle, model.Phase);
+    }
+
+    /// <summary>
+    /// A ground pickup is gated on being near the object, not on arm reach. The floor sits
+    /// well below the shoulders, so measuring it against catch reach made every resting
+    /// object permanently unreachable and the buddy simply walked into it.
+    /// </summary>
+    [Fact]
+    public void RestingObject_UsesTheWiderScoopGate()
+    {
+        var tuning = Fast with { CatchDistance = 40.0f, ScoopDistance = 80.0f };
+        var model = new ObjectInteractionModel(tuning);
+
+        ObjectIntent resting = Step(
+            model,
+            Ball(distance: 70.0f) with { AtRest = true, ThrowToken = 0 });
+        Assert.Equal(ObjectCommand.Catch, resting.Command);
+
+        model.Reset();
+        ObjectIntent airborne = Step(model, Ball(distance: 70.0f));
+        Assert.Equal(ObjectCommand.Approach, airborne.Command);
     }
 
     /// <summary>

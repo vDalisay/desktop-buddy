@@ -716,6 +716,31 @@ reach a ball. Full detail in `docs/M4_OBJECT_HANDLING_FEEL_PLAN.md`.
   `HitFromInside` is now true, and a registry-backed check (resting object within
   `ObstacleForwardWindow` ahead and below the torso) is OR'd in.
 
+## M4 Object Handling — Second Pass (2026-07-27)
+
+The 2026-07-26 pass bounded the arm reach but did not make object handling work. Owner
+report and full detail in `docs/M4_OBJECT_HANDLING_FEEL_PLAN.md`, "Second pass".
+
+- **Carried objects ride the midpoint of both hands**, not the hand that made contact
+  (`CarryLiftFraction`). Pinning to one hand put the Eat item off to the side.
+- **Resting objects are pickup targets again.** Making them ineligible removed ground pickup
+  entirely. The obstacle hop stays reachable through a `ReleaseIgnoreTicks` window on objects
+  the buddy itself put down, not through a blanket refusal.
+- **A ground pickup is gated horizontally** (`ScoopDistance` against
+  `ObjectCandidate.GroundDistance`), because the floor is ~`66 px` below the shoulder line and
+  a straight-line gate is unsatisfiable. **Collision exceptions apply from commitment**, so the
+  buddy stops kicking away the object it is walking toward.
+- **Catch capture succeeds anywhere inside the reach envelope**, not only within a hand radius.
+  A thrown ball meets the `28 px` torso before it ever gets that close to a hand, so it simply
+  rebounded and the buddy appeared not to react.
+- **Obstacle hops carry forward momentum** (`ObstacleHopHorizontalRatio = 0.3`). The ambient
+  branch passed a zero jump direction, so hops were purely vertical and landed back on the
+  object.
+- **Accepted-bound change, owner-visible:** `autonomous_motion`'s
+  `grounded_walk_stops_without_coast` residual-speed bound moves `2.0 → 6.0 px/s` and skips a
+  `150`-tick landing window. The travel bound stays `1.25 px` and measures `0.5 px`. The old
+  bound predates any horizontal impulse source; the obstacle hop is now one.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

@@ -66,21 +66,38 @@ internal static class M4ObjectScenarioSupport
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
     }
 
-    public static LooseObjectBody? SpawnCatchCandidate(BuddyLab lab)
+    /// <summary>
+    /// Throws a ball at the buddy <b>from a distance</b>, on a ballistic arc aimed at its
+    /// chest, through the real grab/release bridge so the registry mints the player throw
+    /// token that catch care is paid against.
+    ///
+    /// <para>This used to spawn the ball at the hands' own midpoint and release it there,
+    /// which pre-satisfied every catch condition. The scenario passed while a real thrown
+    /// ball bounced off the buddy untouched — the test asserted the mechanism, never the
+    /// interaction.</para>
+    /// </summary>
+    public static LooseObjectBody? SpawnCatchCandidate(BuddyLab lab, float distance = 150.0f)
     {
-        Vector2 handsCenter =
-            (lab.Buddy.Rig.LeftHand.GlobalPosition + lab.Buddy.Rig.RightHand.GlobalPosition) * 0.5f;
+        Vector2 chest = lab.Buddy.Rig.Torso.GlobalPosition;
+        // Throw from whichever side has room inside the room bounds.
+        float side = chest.X - lab.Boundaries.InnerBounds.Position.X > distance + 20.0f
+            ? -1.0f
+            : 1.0f;
+        Vector2 spawn = chest + new Vector2(side * distance, -30.0f);
+        Vector2 toChest = chest - spawn;
+        // Flat, fast, and slightly lifted: it must arrive at the chest, not loop over it.
+        Vector2 velocity = new(toChest.X * 1.6f, (toChest.Y * 1.6f) - 40.0f);
+
         LooseObjectBody? body = lab.SpawnLooseObject(
             lab.SafeObjectProfile,
-            handsCenter + new Vector2(0.0f, -4.0f),
-            new Vector2(0.0f, -20.0f),
+            spawn,
+            Vector2.Zero,
             playerThrown: false);
         if (body is null || !lab.Grab.TryGrab(body, body.GlobalPosition))
             return null;
 
-        // Exercise the real pointer release bridge: the registry, rather than the
-        // scenario, must mint the player throw token consumed by catch care.
         lab.Grab.Release();
+        body.LinearVelocity = velocity;
         return body;
     }
 

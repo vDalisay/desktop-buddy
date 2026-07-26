@@ -41,10 +41,15 @@ public sealed class ObjectTossDiscardScenario : IScenario
             tree, () => lab.Buddy.ObjectInteraction.TossCount == 1, 420);
 
         Vector2 impulse = lab.Buddy.ObjectInteraction.LastReleaseImpulse;
+        // The collision exception is held a little past the release on purpose, so a thrown
+        // ball does not immediately collide with the hand that just threw it. It must clear
+        // once the gesture ends, so assert that it does rather than reading a single frame.
+        bool exceptionsCleared = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => !lab.Buddy.ObjectInteraction.CollisionExceptionsActive, 240);
         bool released = body is not null &&
             lab.Objects.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) &&
             !snapshot.BuddyHeld && snapshot.ThrowToken == 0 &&
-            !lab.Buddy.ObjectInteraction.CollisionExceptionsActive;
+            exceptionsCleared;
         int driveCount = lab.Buddy.ActiveDrive.ObjectTossCount;
         // The return throw goes *toward* the player, reversing the earlier away-from-cursor
         // policy (owner instruction 2026-07-26). Discard keeps the away release.
@@ -85,15 +90,19 @@ public sealed class ObjectTossDiscardScenario : IScenario
         Vector2 impulse = lab.Buddy.ObjectInteraction.LastReleaseImpulse;
         bool lowEnergy = impulse.Length() > 0.0f &&
             impulse.Length() < lab.Buddy.ObjectInteraction.Profile.TossImpulse;
+        // Flee bias is a single-tick request, so latch it before advancing any further.
+        bool fleeBias = lab.Buddy.ObjectInteraction.FleeBiasRequested;
+        bool exceptionsCleared = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => !lab.Buddy.ObjectInteraction.CollisionExceptionsActive, 240);
         bool released = body is not null &&
             lab.Objects.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) &&
             !snapshot.BuddyHeld &&
-            !lab.Buddy.ObjectInteraction.CollisionExceptionsActive;
+            exceptionsCleared;
         bool passed = held && discarded && lowEnergy && released &&
-            lab.Buddy.ObjectInteraction.FleeBiasRequested &&
+            fleeBias &&
             lab.Buddy.ActiveDrive.ObjectDiscardCount == 1;
         string detail = $"discard held={held} discarded={discarded} released={released} " +
-            $"low_energy={lowEnergy} flee_bias={lab.Buddy.ObjectInteraction.FleeBiasRequested} " +
+            $"low_energy={lowEnergy} flee_bias={fleeBias} " +
             $"impulse={impulse.Length():F1} drive_count={lab.Buddy.ActiveDrive.ObjectDiscardCount}";
         await M4ObjectScenarioSupport.Cleanup(tree, lab);
         return (passed, detail);

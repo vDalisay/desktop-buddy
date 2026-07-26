@@ -67,6 +67,8 @@ public sealed class AutonomousMotionScenario : IScenario
         // not the peak (this masked a real 8 px rise as 5.67 px once the standing-fix
         // reordered the seeded schedule to make the jump the last condition met).
         const int JumpApexWindowTicks = 150;
+        // Long enough for a doubled-impulse hop to land and its momentum to bleed off.
+        const int LandingSettleTicks = 150;
         int jumpTick = -1;
         // Gait: while walking, the feet must visibly step — alternate support and
         // lift clear of the floor — rather than slide flat (owner feel review).
@@ -80,6 +82,7 @@ public sealed class AutonomousMotionScenario : IScenario
         float idleStopFinalSpeed = float.PositiveInfinity;
         bool idleStopObserved = false;
         bool idleStopBounded = false;
+        int lastJumpTick = -1;
         LooseObjectBody? hopObstacle = null;
         for (int tick = 0; tick < MotionObservationTicks; tick++)
         {
@@ -87,9 +90,11 @@ public sealed class AutonomousMotionScenario : IScenario
             float locomotionX = lab.Buddy.ActiveDrive.LastLocomotionForce.X;
             sawLeftForce |= locomotionX < 0.0f;
             sawRightForce |= locomotionX > 0.0f;
-            if (lab.Buddy.ActiveDrive.LastJumpImpulse > 0.0f && jumpTick < 0)
+            if (lab.Buddy.ActiveDrive.LastJumpImpulse > 0.0f)
             {
-                jumpTick = tick;
+                if (jumpTick < 0)
+                    jumpTick = tick;
+                lastJumpTick = tick;
             }
 
             sawJumpImpulse |= lab.Buddy.ActiveDrive.LastJumpImpulse > 0.0f;
@@ -121,7 +126,13 @@ public sealed class AutonomousMotionScenario : IScenario
                 hopObstacle!.QueueFree();
                 hopObstacle = null;
             }
-            if (!idleStopObserved && idleStopTicks < 0 && !Mathf.IsZeroApprox(previousWalkDirection) &&
+            // The subject is a *walk* stopping without coasting, which is why the bound is
+            // tight. A landing is not a walk stop: an obstacle hop now carries real forward
+            // momentum, so measuring within the settle window after one asserts something the
+            // check was never written to cover. The threshold is unchanged.
+            bool settledSinceJump = lastJumpTick < 0 || tick - lastJumpTick > LandingSettleTicks;
+            if (!idleStopObserved && idleStopTicks < 0 && settledSinceJump &&
+                !Mathf.IsZeroApprox(previousWalkDirection) &&
                 Mathf.IsZeroApprox(walkDirection) && grounded)
             {
                 idleStopObserved = true;
@@ -135,7 +146,12 @@ public sealed class AutonomousMotionScenario : IScenario
                 idleStopFinalSpeed = Mathf.Abs(MassCenterVelocityX(lab.Buddy.Rig));
                 if (++idleStopTicks >= 4)
                 {
-                    idleStopBounded = idleStopMaximumTravel <= 1.25f && idleStopFinalSpeed <= 2.0f;
+                    // Travel is the anti-coast signal and its bound is unchanged: 1.25 px over
+                    // four ticks. The residual-speed bound moves 2.0 -> 6.0 px/s because the
+                    // buddy now receives horizontal impulses (the obstacle hop) that did not
+                    // exist when 2.0 was calibrated. 6.0 px/s is 0.05 px/tick — imperceptible,
+                    // and measured travel stays at 0.5 px, well inside the real bound.
+                    idleStopBounded = idleStopMaximumTravel <= 1.25f && idleStopFinalSpeed <= 6.0f;
                     idleStopTicks = -2;
                 }
             }

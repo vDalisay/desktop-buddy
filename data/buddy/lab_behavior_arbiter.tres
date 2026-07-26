@@ -12,6 +12,7 @@ resource_name = "M4BehaviorArbiter"
 script = ExtResource("1_profile")
 CommitTicks = 36
 HopPropensityThreshold = 35
+ObstacleHopHorizontalRatio = 0.3
 Fearful = ExtResource("2_fearful")
 Wary = ExtResource("3_wary")
 Neutral = ExtResource("4_neutral")

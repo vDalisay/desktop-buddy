@@ -55,7 +55,22 @@ public enum ObjectCommand
 /// <param name="Distance">Horizontal distance from the buddy.</param>
 /// <param name="Direction">Signed direction toward the object (-1 or +1).</param>
 /// <param name="Consumable">Whether a successful hold can proceed to Consume.</param>
-/// <param name="AtRest">Idle objects are approachable; airborne ones are catchable.</param>
+/// <param name="AtRest">
+/// A resting object is scooped off the ground; an airborne one is caught out of the air.
+/// The two use different commit gates because the ground is further from the shoulders than
+/// an arm is long.
+/// </param>
+/// <param name="Ignored">
+/// Set while the runtime wants this object left alone — most importantly for a short window
+/// after the buddy itself put it down, so it walks over its own discard instead of picking
+/// the same object up forever.
+/// </param>
+/// <param name="GroundDistance">
+/// Horizontal distance only. A ground pickup is about standing <i>over</i> the object, not
+/// about how far it is from the shoulders: the floor is roughly `66 px` below the shoulder
+/// line, so a straight-line gate is only satisfiable once the buddy's feet are already
+/// kicking the object away.
+/// </param>
 public readonly record struct ObjectCandidate(
     int RuntimeId,
     string ContentId,
@@ -63,13 +78,27 @@ public readonly record struct ObjectCandidate(
     float Distance,
     float Direction,
     bool Consumable,
-    bool AtRest)
+    bool AtRest,
+    bool Ignored = false,
+    float GroundDistance = 0.0f)
 {
     public bool IsValid => RuntimeId != 0;
+
+    /// <summary>The distance this candidate's commit gate is measured against.</summary>
+    public float EngageDistance => AtRest ? GroundDistance : Distance;
 }
 
 /// <summary>Tuning for the object lifecycle. All durations are routed ticks.</summary>
-/// <param name="CatchDistance">Within this distance a catch may be attempted.</param>
+/// <param name="CatchDistance">
+/// Within this distance of the shoulders an airborne catch may be attempted. It is a
+/// <i>decision</i> gate, not an arm length — the runtime clamps how far the hands actually
+/// extend, so a generous value only means the buddy puts its hands up sooner.
+/// </param>
+/// <param name="ScoopDistance">
+/// Horizontal distance within which a resting object may be scooped, measured against
+/// <see cref="ObjectCandidate.GroundDistance"/>. It must leave room to stop before the feet
+/// reach the object, or the buddy kicks away the thing it is trying to pick up.
+/// </param>
 /// <param name="ApproachDistance">Beyond this distance the buddy must close first.</param>
 /// <param name="CatchTimeoutTicks">A catch attempt that never lands aborts after this.</param>
 /// <param name="HoldTicks">How long a held object is kept before inspecting.</param>
@@ -84,9 +113,14 @@ public readonly record struct ObjectInteractionTuning(
     int CatchTimeoutTicks,
     int HoldTicks,
     int InspectTicks,
-    int TossTicks = 20)
+    int TossTicks = 20,
+    float ScoopDistance = 26.0f)
 {
-    public static ObjectInteractionTuning Default => new(46.0f, 220.0f, 90, 120, 150, 20);
+    public static ObjectInteractionTuning Default =>
+        new(72.0f, 220.0f, 90, 120, 150, 20, 26.0f);
+
+    /// <summary>The commit gate for one candidate, by how it must be picked up.</summary>
+    public float EngageDistanceFor(bool atRest) => atRest ? ScoopDistance : CatchDistance;
 }
 
 /// <summary>The model's resolved intent for one routed tick.</summary>
@@ -119,10 +153,13 @@ public readonly record struct ObjectIntent(
 /// even when they are safe. Wary through delighted all catch (owner correction 2026-07-26:
 /// declining from wary through neutral made a default-mood buddy ignore thrown objects).</para>
 ///
-/// <para><b>Only a real throw is an invitation.</b> A voluntary catch target must be
-/// airborne <i>and</i> carry a player throw token. A ball at rest — or one the buddy just
-/// kicked with its own foot — is scenery the priority 7 obstacle hop may step over.
-/// Consumables are exempt, because a meal on the floor is still worth picking up.</para>
+/// <para><b>Rest state picks the flavour, not the eligibility.</b> A thrown object is caught
+/// out of the air against <see cref="ObjectInteractionTuning.CatchDistance"/>; a resting one is
+/// scooped off the floor against the horizontal
+/// <see cref="ObjectInteractionTuning.ScoopDistance"/>. Both are engaged. What keeps the
+/// priority 7 obstacle hop reachable is <see cref="ObjectCandidate.Ignored"/> — a cooling-off
+/// window after the buddy itself put something down — not a blanket refusal to pick things
+/// up, which simply removed ground pickup altogether.</para>
 ///
 /// <para><b>Catch care is once per throw.</b> <see cref="ObjectCandidate.ThrowToken"/> is
 /// remembered on the tick the catch completes, so re-catching the same object after a drop
@@ -148,6 +185,7 @@ public sealed class ObjectInteractionModel
     private int _throwToken;
     private int _phaseTicks;
     private bool _consumable;
+    private bool _trackedAtRest;
     private int _lastRewardedThrowToken;
 
     public ObjectInteractionModel(
@@ -160,6 +198,12 @@ public sealed class ObjectInteractionModel
     }
 
     public ObjectPhase Phase => _phase;
+
+    /// <summary>
+    /// True when the tracked object was resting when engaged, so the runtime should play a
+    /// ground scoop rather than an in-air catch.
+    /// </summary>
+    public bool TrackedAtRest => _trackedAtRest;
     public int TrackedRuntimeId => _runtimeId;
     public string TrackedContentId => _contentId;
     public int PhaseTicks => _phaseTicks;
@@ -240,7 +284,8 @@ public sealed class ObjectInteractionModel
         switch (_phase)
         {
             case ObjectPhase.Approach:
-                if (tracked.Distance <= _tuning.CatchDistance)
+                _trackedAtRest = tracked.AtRest;
+                if (tracked.EngageDistance <= _tuning.EngageDistanceFor(tracked.AtRest))
                 {
                     return Transition(ObjectPhase.Catch, ObjectCommand.Catch, tracked.Direction);
                 }
@@ -348,6 +393,7 @@ public sealed class ObjectInteractionModel
         _throwToken = 0;
         _phaseTicks = 0;
         _consumable = false;
+        _trackedAtRest = false;
         _lastRewardedThrowToken = 0;
         LastAbort = ObjectAbortReason.None;
     }
@@ -378,13 +424,12 @@ public sealed class ObjectInteractionModel
                 continue;
             }
 
-            // Only a live player throw is an invitation. A ball lying on the floor is
-            // scenery, and — critically — so is a ball the buddy just kicked with its own
-            // foot: "moving" is not the same as "thrown", and the throw token is what
-            // distinguishes them. Without this, any resting object in the walking path is
-            // claimed by priority 5 the moment it is nudged, so the priority 7 obstacle
-            // hop can never fire. Food is exempt: a meal on the floor is worth picking up.
-            if (!candidate.Consumable && (candidate.AtRest || candidate.ThrowToken == 0))
+
+            // Objects the runtime is deliberately leaving alone — chiefly one the buddy
+            // itself just put down. That window is what lets the priority 7 obstacle hop
+            // ever fire: without it, priority 5 reclaims the same ball forever and the
+            // buddy can never step over anything.
+            if (candidate.Ignored)
             {
                 continue;
             }
@@ -420,7 +465,8 @@ public sealed class ObjectInteractionModel
         _phaseTicks = 0;
         LastAbort = ObjectAbortReason.None;
 
-        return chosen.Distance <= _tuning.CatchDistance
+        _trackedAtRest = chosen.AtRest;
+        return chosen.EngageDistance <= _tuning.EngageDistanceFor(chosen.AtRest)
             ? Transition(ObjectPhase.Catch, ObjectCommand.Catch, chosen.Direction)
             : Transition(ObjectPhase.Approach, ObjectCommand.Approach, chosen.Direction);
     }

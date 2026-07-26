@@ -19,6 +19,8 @@ namespace DesktopBuddy.Testing;
 /// </summary>
 public sealed class JumpTraitGateScenario : IScenario
 {
+    /// <summary>Long enough to cover the whole observation, so the balls stay scenery.</summary>
+    private const int ScenerySettleTicks = 6000;
     private const int ProbeTimeoutTicks = 2400;
     private const int NoHopObservationTicks = 240;
     private const int HopTimeoutTicks = 600;
@@ -43,6 +45,16 @@ public sealed class JumpTraitGateScenario : IScenario
         LooseObjectBody? right = lab.SpawnLooseObject(
             lab.SafeObjectProfile, new Vector2(torsoX + 60.0f, floorY));
         bool spawned = left is not null && right is not null;
+
+        // Mark both as objects the buddy has just put down. That ignore window is the shipped
+        // mechanism by which an object becomes scenery rather than a pickup target, and it is
+        // the only configuration in which hopping can happen at all: object action is priority
+        // 5 and the hop is priority 7, so anything the buddy would pick up it picks up.
+        if (spawned)
+        {
+            lab.Objects.MarkBuddyReleased(left!, ScenerySettleTicks);
+            lab.Objects.MarkBuddyReleased(right!, ScenerySettleTicks);
+        }
 
         // Propensity 0 first: the probe must report an obstacle and the buddy must
         // still never hop, which separates "no evidence" from "no personality".

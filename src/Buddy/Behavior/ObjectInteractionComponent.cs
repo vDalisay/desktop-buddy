@@ -40,6 +40,7 @@ public partial class ObjectInteractionComponent : Area2D
     private bool _throwReleased;
     private bool _pendingLeftHandAttach;
     private bool _attachedToLeftHand;
+    private LooseObjectBody? _exceptionBody;
     private float _heldLinearDamp;
     private float _heldAngularDamp;
     private Vector2 _cursorWorldPosition;
@@ -185,6 +186,13 @@ public partial class ObjectInteractionComponent : Area2D
             _consumeCompleted);
         _consumeCompleted = false;
         HandleIntent(intent, cursorWorldPosition);
+
+        // Keep the buddy from colliding with whatever it is currently going for, and drop the
+        // exception the moment it stops caring about it.
+        ApplyCommitExceptions(
+            IsHolding
+                ? _heldBody
+                : _model.IsCommitted ? _registry.FindBody(_model.TrackedRuntimeId) : null);
         TickCooldowns();
     }
 
@@ -303,7 +311,9 @@ public partial class ObjectInteractionComponent : Area2D
                 offset.Length(),
                 Mathf.IsZeroApprox(offset.X) ? 1.0f : Mathf.Sign(offset.X),
                 snapshot.Consumable,
-                snapshot.AtRest);
+                snapshot.AtRest,
+                snapshot.Ignored,
+                Mathf.Abs(offset.X));
 
             if (snapshot.AtRest &&
                 body.GlobalPosition.Y > torsoY &&
@@ -323,10 +333,12 @@ public partial class ObjectInteractionComponent : Area2D
     /// when it physically touches a hand; a resting one confirms at the end of the scoop dip.
     /// The rest state comes from the registry, so the domain lifecycle stays flavour-agnostic.
     /// </summary>
-    private bool IsRestingCandidate(LooseObjectBody? body) =>
-        GodotObject.IsInstanceValid(body) &&
-        _registry.TryGetSnapshot(body!.RuntimeId, out LooseObjectSnapshot snapshot) &&
-        snapshot.AtRest;
+    /// <summary>
+    /// Whether the tracked object is being scooped off the ground rather than caught in the
+    /// air. The model decides this when it commits, so the flavour cannot flip mid-pickup
+    /// just because the buddy's own feet nudged the ball into motion.
+    /// </summary>
+    private bool IsScooping => _model.TrackedAtRest;
 
     private bool ResolveCatch()
     {
@@ -337,17 +349,15 @@ public partial class ObjectInteractionComponent : Area2D
             return false;
         }
 
-        bool atRest = _registry.TryGetSnapshot(tracked!.RuntimeId, out LooseObjectSnapshot snapshot) &&
-            snapshot.AtRest;
-        if (atRest)
+        if (IsScooping)
         {
-            // Scoop: walk up, dip, and the object then relocates into the hand.
+            // Scoop: dip for a beat, then the object relocates into the hands. It is a timed
+            // gesture, not a contact test — the floor is further down than an arm is long.
             _catchTicks++;
             if (_catchTicks < Profile.ScoopTicks)
                 return false;
             _catchTicks = 0;
-            _pendingLeftHandAttach = Rig.LeftHand.GlobalPosition.DistanceTo(tracked.GlobalPosition) <=
-                Rig.RightHand.GlobalPosition.DistanceTo(tracked.GlobalPosition);
+            _pendingLeftHandAttach = true;
             return true;
         }
 
@@ -377,7 +387,7 @@ public partial class ObjectInteractionComponent : Area2D
                 break;
             case ObjectCommand.Catch:
                 ApproachDirection = 0.0f;
-                CurrentDriveCommand = IsRestingCandidate(body)
+                CurrentDriveCommand = IsScooping
                     ? BuildScoopCommand(body)
                     : BuildCatchCommand(body);
                 break;
@@ -523,14 +533,39 @@ public partial class ObjectInteractionComponent : Area2D
     /// buddy rig, whose bodies are still only ever driven by bounded forces. A carried object
     /// is cargo for as long as it is held, not a simulated participant.</para>
     /// </summary>
+    /// <summary>
+    /// Makes the committed object non-colliding with the buddy for as long as the buddy is
+    /// going for it. Applied from <b>commitment</b>, not just from the hold: the feet reach a
+    /// floor-resting ball at about `51 px`, so any approach kicked away the very object it was
+    /// walking toward — the buddy shoved balls into a corner instead of picking them up.
+    /// </summary>
+    private void ApplyCommitExceptions(LooseObjectBody? body)
+    {
+        if (_exceptionBody == body)
+            return;
+
+        if (GodotObject.IsInstanceValid(_exceptionBody))
+        {
+            for (int index = 0; index < Rig.Parts.Count; index++)
+                _exceptionBody!.RemoveCollisionExceptionWith(Rig.Parts[index]);
+        }
+
+        _exceptionBody = GodotObject.IsInstanceValid(body) ? body : null;
+        if (_exceptionBody is not null)
+        {
+            for (int index = 0; index < Rig.Parts.Count; index++)
+                _exceptionBody.AddCollisionExceptionWith(Rig.Parts[index]);
+        }
+
+        _collisionExceptionsActive = _exceptionBody is not null;
+    }
+
     private void BeginHold(LooseObjectBody body, bool leftHand)
     {
         _heldBody = body;
         _attachedToLeftHand = leftHand;
         _registry.SetBuddyHeld(body, true);
-        for (int index = 0; index < Rig.Parts.Count; index++)
-            body.AddCollisionExceptionWith(Rig.Parts[index]);
-        _collisionExceptionsActive = true;
+        ApplyCommitExceptions(body);
 
         _heldLinearDamp = body.LinearDamp;
         _heldAngularDamp = body.AngularDamp;
@@ -546,9 +581,7 @@ public partial class ObjectInteractionComponent : Area2D
     private void EndHold(LooseObjectBody body)
     {
         _registry.SetBuddyHeld(body, false);
-        for (int index = 0; index < Rig.Parts.Count; index++)
-            body.RemoveCollisionExceptionWith(Rig.Parts[index]);
-        _collisionExceptionsActive = false;
+        ApplyCommitExceptions(null);
         if (IsAttached)
         {
             body.Freeze = false;
@@ -565,14 +598,27 @@ public partial class ObjectInteractionComponent : Area2D
 
     private PuppetPartBody AttachedHand => _attachedToLeftHand ? Rig.LeftHand : Rig.RightHand;
 
-    /// <summary>Keeps an attached object glued to its hand socket for this routed tick.</summary>
+    /// <summary>
+    /// Where a carried object sits: centred <b>between both hands</b>, not pinned to one of
+    /// them. Pinning it to the hand that happened to make contact put the Eat item off to one
+    /// side instead of in front of the mouth (owner correction 2026-07-26).
+    /// </summary>
+    private Vector2 CarrySocket()
+    {
+        Vector2 midpoint =
+            (Rig.LeftHand.GlobalPosition + Rig.RightHand.GlobalPosition) * 0.5f;
+        float lift = _heldBody is null
+            ? 0.0f
+            : Rig.LeftHand.Radius + _heldBody.Radius - Profile.CatchHandClearance;
+        return midpoint + new Vector2(0.0f, -lift * Profile.CarryLiftFraction);
+    }
+
+    /// <summary>Keeps an attached object glued to the two-hand carry socket this tick.</summary>
     private void FollowAttachedHand()
     {
         if (!IsAttached || !GodotObject.IsInstanceValid(_heldBody))
             return;
-        PuppetPartBody hand = AttachedHand;
-        float offset = hand.Radius + _heldBody!.Radius - Profile.CatchHandClearance;
-        _heldBody.GlobalPosition = hand.GlobalPosition + new Vector2(0.0f, -offset);
+        _heldBody!.GlobalPosition = CarrySocket();
         _heldBody.LinearVelocity = Vector2.Zero;
         _heldBody.AngularVelocity = 0.0f;
     }
@@ -589,7 +635,7 @@ public partial class ObjectInteractionComponent : Area2D
         }
 
         EndHold(body!);
-        _registry.MarkBuddyReleased(body!);
+        _registry.MarkBuddyReleased(body!, Profile.ReleaseIgnoreTicks);
         CurrentDriveCommand = BuildReleaseCommand(body!, action, impulse);
         LastReleaseImpulse = impulse;
         _heldBody = null;
@@ -754,25 +800,29 @@ public partial class ObjectInteractionComponent : Area2D
     private bool HoldStillIntact() => GodotObject.IsInstanceValid(_heldBody) && IsAttached;
 
     /// <summary>
-    /// The catch confirms on physical contact: the object has arrived and touched a hand.
-    /// Waiting for both hands to be positioned around the object is what let the arms chase
-    /// something they could never meet.
+    /// The catch confirms when the object arrives in the buddy's hands. Two ways, because a
+    /// thrown ball flies at the body and the torso is wider than the gap between the hands:
+    /// either it touches a hand, or it enters the reach envelope at all — which is outside
+    /// the torso surface, so the catch lands just before the ball would bounce off the belly.
+    /// Requiring a hand-centre hit alone meant thrown balls simply rebounded, which is why
+    /// the buddy appeared not to react to them.
     /// </summary>
     private bool CatchTouchedHand(LooseObjectBody? body, out bool leftHand)
     {
         leftHand = false;
         if (!GodotObject.IsInstanceValid(body))
             return false;
-        float slack = body!.Radius + Profile.CatchContactTolerance;
-        float toLeft = Rig.LeftHand.GlobalPosition.DistanceTo(body.GlobalPosition);
-        float toRight = Rig.RightHand.GlobalPosition.DistanceTo(body.GlobalPosition);
-        if (toLeft <= Rig.LeftHand.Radius + slack && toLeft <= toRight)
-        {
-            leftHand = true;
-            return true;
-        }
 
-        return toRight <= Rig.RightHand.Radius + slack;
+        float toLeft = Rig.LeftHand.GlobalPosition.DistanceTo(body!.GlobalPosition);
+        float toRight = Rig.RightHand.GlobalPosition.DistanceTo(body.GlobalPosition);
+        leftHand = toLeft <= toRight;
+
+        float slack = body.Radius + Profile.CatchContactTolerance;
+        if (toLeft <= Rig.LeftHand.Radius + slack || toRight <= Rig.RightHand.Radius + slack)
+            return true;
+
+        return ReachOrigin.DistanceTo(body.GlobalPosition) <=
+            Profile.MaximumReach + body.Radius;
     }
 
     private void OnBodyEntered(Node2D node)

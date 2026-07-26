@@ -128,7 +128,8 @@ public partial class LooseObjectRegistry : Node
             entry.PlayerHeld,
             entry.BuddyHeld,
             entry.ExplicitlyProtected,
-            entry.SpawnSequence);
+            entry.SpawnSequence,
+            entry.IgnoreTicks > 0);
         return true;
     }
 
@@ -151,8 +152,12 @@ public partial class LooseObjectRegistry : Node
         return entry.ThrowToken;
     }
 
-    /// <summary>Buddy toss/discard is not a player throw and cannot earn catch care.</summary>
-    public void MarkBuddyReleased(LooseObjectBody body)
+    /// <summary>
+    /// Buddy toss/discard is not a player throw and cannot earn catch care. It also starts an
+    /// ignore window: without one the buddy re-commits to the object it just put down, which
+    /// starves the priority 7 obstacle hop and reads as an obsessive pickup loop.
+    /// </summary>
+    public void MarkBuddyReleased(LooseObjectBody body, int ignoreTicks = 0)
     {
         int slot = SlotFor(body);
         if (slot < 0)
@@ -163,6 +168,7 @@ public partial class LooseObjectRegistry : Node
         entry.AtRest = false;
         entry.RestTicks = 0;
         entry.BuddyHeld = false;
+        entry.IgnoreTicks = Math.Max(0, ignoreTicks);
         body.SetImpactAttribution(ContentIds.LooseObject);
     }
 
@@ -201,7 +207,15 @@ public partial class LooseObjectRegistry : Node
             if (body is null || !GodotObject.IsInstanceValid(body))
                 continue;
 
+            if (entry.IgnoreTicks > 0)
+                entry.IgnoreTicks--;
+
             entry.PlayerHeld = body == playerHeld;
+            if (entry.PlayerHeld)
+            {
+                // Picking it back up is an invitation, so stop ignoring it immediately.
+                entry.IgnoreTicks = 0;
+            }
             if (entry.PlayerHeld || entry.BuddyHeld)
             {
                 entry.AtRest = false;
@@ -321,6 +335,7 @@ public partial class LooseObjectRegistry : Node
         public int ThrowToken;
         public ulong SpawnSequence;
         public int RestTicks;
+        public int IgnoreTicks;
         public bool AtRest;
         public bool PlayerHeld;
         public bool BuddyHeld;
@@ -338,4 +353,6 @@ public readonly record struct LooseObjectSnapshot(
     bool PlayerHeld,
     bool BuddyHeld,
     bool Protected,
-    ulong SpawnSequence);
+    ulong SpawnSequence,
+    /// <summary>True while a post-release ignore window is still counting down.</summary>
+    bool Ignored = false);

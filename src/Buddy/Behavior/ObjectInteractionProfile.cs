@@ -12,8 +12,33 @@ namespace DesktopBuddy.Buddy.Behavior;
 public partial class ObjectInteractionProfile : GameResource
 {
     [Export(PropertyHint.Range, "16,512,1")] public float SenseRadius { get; set; } = 220.0f;
-    [Export(PropertyHint.Range, "1,256,0.5")] public float CatchDistance { get; set; } = 46.0f;
+    /// <summary>
+    /// Decision gate for an in-air catch: how close a flying object must be before the buddy
+    /// puts its hands up. Not an arm length — <see cref="MaximumReach"/> bounds how far the
+    /// hands actually go, so a generous value only makes the buddy react sooner.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,256,0.5")] public float CatchDistance { get; set; } = 72.0f;
+
+    /// <summary>
+    /// Decision gate for a ground scoop, measured <b>horizontally</b>. The floor sits roughly
+    /// `66 px` below the shoulder line, so a straight-line gate is only satisfiable once the
+    /// feet are already kicking the object away — which is why the buddy used to shove balls
+    /// into a corner instead of picking them up. The buddy can now walk right over the object
+    /// it is committed to (collision exceptions apply from commitment), so this is a close
+    /// "standing over it" range rather than a stop-before-contact range.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,256,0.5")] public float ScoopDistance { get; set; } = 26.0f;
+
     [Export(PropertyHint.Range, "1,512,0.5")] public float ApproachDistance { get; set; } = 220.0f;
+
+    /// <summary>
+    /// How long an object the buddy just put down is left alone. Without this window the buddy
+    /// re-commits to its own discard forever and never steps over anything.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,1200,1")] public int ReleaseIgnoreTicks { get; set; } = 300;
+
+    /// <summary>How far above the hand midpoint a carried object rides, as a fraction.</summary>
+    [Export(PropertyHint.Range, "0,2,0.05")] public float CarryLiftFraction { get; set; } = 0.6f;
     [Export(PropertyHint.Range, "1,600,1")] public int CatchTimeoutTicks { get; set; } = 90;
     [Export(PropertyHint.Range, "1,1200,1")] public int HoldTicks { get; set; } = 120;
     [Export(PropertyHint.Range, "1,1200,1")] public int InspectTicks { get; set; } = 150;
@@ -86,7 +111,8 @@ public partial class ObjectInteractionProfile : GameResource
         CatchTimeoutTicks,
         HoldTicks,
         InspectTicks,
-        TossTicks);
+        TossTicks,
+        ScoopDistance);
 
     /// <summary>The absolute limit any hand target is clamped into.</summary>
     public float MaximumReach => ReachRadius + MaximumReachExtension;
@@ -94,12 +120,14 @@ public partial class ObjectInteractionProfile : GameResource
     public bool IsRuntimeValid =>
         float.IsFinite(SenseRadius) && SenseRadius > 0.0f &&
         float.IsFinite(CatchDistance) && CatchDistance > 0.0f &&
+        float.IsFinite(ScoopDistance) && ScoopDistance > 0.0f &&
         float.IsFinite(ApproachDistance) && ApproachDistance >= CatchDistance &&
         CatchTimeoutTicks > 0 && HoldTicks > 0 && InspectTicks > 0 &&
+        ReleaseIgnoreTicks >= 0 &&
+        float.IsFinite(CarryLiftFraction) && CarryLiftFraction >= 0.0f &&
         ReachOriginOffset.IsFinite() &&
         float.IsFinite(ReachRadius) && ReachRadius > 0.0f &&
         float.IsFinite(MaximumReachExtension) && MaximumReachExtension >= 0.0f &&
-        CatchDistance <= MaximumReach &&
         float.IsFinite(CatchContactTolerance) && CatchContactTolerance >= 0.0f &&
         ScoopTicks > 0 && ThrowWindupTicks > 0 && TossTicks > ThrowWindupTicks &&
         float.IsFinite(ScoopDipForce) && ScoopDipForce >= 0.0f &&
@@ -124,8 +152,14 @@ public partial class ObjectInteractionProfile : GameResource
         Positive(errors, SenseRadius, nameof(SenseRadius));
         Positive(errors, CatchDistance, nameof(CatchDistance));
         Positive(errors, ApproachDistance, nameof(ApproachDistance));
+        // ScoopDistance is horizontal and CatchDistance is straight-line, so they are not
+        // comparable; each only has to be positive.
+        Positive(errors, ScoopDistance, nameof(ScoopDistance));
         if (ApproachDistance < CatchDistance)
             errors.Add($"{nameof(ApproachDistance)} must be >= {nameof(CatchDistance)}");
+        if (ReleaseIgnoreTicks < 0)
+            errors.Add($"{nameof(ReleaseIgnoreTicks)} must be non-negative");
+        NonNegative(errors, CarryLiftFraction, nameof(CarryLiftFraction));
         if (CatchTimeoutTicks <= 0) errors.Add($"{nameof(CatchTimeoutTicks)} must be positive");
         if (HoldTicks <= 0) errors.Add($"{nameof(HoldTicks)} must be positive");
         if (InspectTicks <= 0) errors.Add($"{nameof(InspectTicks)} must be positive");
@@ -141,13 +175,6 @@ public partial class ObjectInteractionProfile : GameResource
         if (!ReachOriginOffset.IsFinite()) errors.Add($"{nameof(ReachOriginOffset)} must be finite");
         Positive(errors, ReachRadius, nameof(ReachRadius));
         NonNegative(errors, MaximumReachExtension, nameof(MaximumReachExtension));
-        if (CatchDistance > MaximumReach)
-        {
-            errors.Add(
-                $"{nameof(CatchDistance)} must not exceed {nameof(ReachRadius)} + " +
-                $"{nameof(MaximumReachExtension)} — the machine may not commit to a catch " +
-                "the arms cannot physically reach");
-        }
         NonNegative(errors, CatchContactTolerance, nameof(CatchContactTolerance));
         if (ScoopTicks <= 0) errors.Add($"{nameof(ScoopTicks)} must be positive");
         if (ThrowWindupTicks <= 0) errors.Add($"{nameof(ThrowWindupTicks)} must be positive");

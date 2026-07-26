@@ -32,7 +32,12 @@ public sealed class ObjectCatchHoldScenario : IScenario
         int runtimeId = ball?.RuntimeId ?? 0;
         bool sensed = await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.ObjectInteraction.SensedCount > 0, 120);
-        bool held = await M4ObjectScenarioSupport.WaitForPhase(tree, lab, ObjectPhase.Hold, 240);
+        // Wait on the attachment, not on catching a single frame of the Hold phase: the ball
+        // is thrown from across the room now, so the buddy may have to close on it first.
+        bool held = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Buddy.ObjectInteraction.IsHolding && lab.Buddy.ObjectInteraction.IsAttached,
+            900);
 
         bool registered = runtimeId != 0 &&
             lab.Objects.TryGetSnapshot(runtimeId, out LooseObjectSnapshot heldSnapshot) &&
@@ -128,8 +133,81 @@ public sealed class ObjectCatchHoldScenario : IScenario
             $"catch runtime={runtimeId} sensed={sensed} phase={lab.Buddy.ObjectInteraction.Phase} " +
             $"care={lab.Buddy.ObjectInteraction.CatchCareCount} object_count={lab.Objects.Count}");
         await M4ObjectScenarioSupport.Cleanup(tree, lab);
+
+        // Strictly after the first lab is gone: every lab instance shares one 2D physics
+        // space, so two live labs let one buddy shove the other's test objects around.
+        (bool scooped, string scoopDetail) = await RunGroundPickup(tree, seed);
+        checks.Add(new StartupCheck("resting_ball_is_scooped_off_the_floor", scooped, scoopDetail));
+        messages.Add(scoopDetail);
+
         bool passed = true;
         foreach (StartupCheck check in checks) passed &= check.Passed;
         return new ScenarioResult(passed, checks, messages);
+    }
+
+    /// <summary>
+    /// End-to-end ground pickup in a fresh lab: drop a ball on the floor beside the buddy,
+    /// let it settle, and require the buddy to walk over, scoop it, and end up holding it
+    /// with the object attached between its hands.
+    /// </summary>
+    private static async Task<(bool, string)> RunGroundPickup(SceneTree tree, ulong seed)
+    {
+        BuddyLab? lab = await M4ObjectScenarioSupport.LoadLab(tree, seed);
+        if (lab is null)
+            return (false, "ground pickup lab failed to load");
+
+        Rect2 room = lab.Boundaries.InnerBounds;
+        float floorY = room.End.Y - lab.SafeObjectProfile.Radius - 1.0f;
+        float torsoX = lab.Buddy.Rig.Torso.GlobalPosition.X;
+        // Drop it on whichever side has room, clamped inside the walls. Spawning blindly at
+        // torso+90 could land the ball at or past a wall, where the buddy is wall-blocked and
+        // can never close on it.
+        float side = room.End.X - torsoX > 110.0f ? 1.0f : -1.0f;
+        float spawnX = Mathf.Clamp(
+            torsoX + (side * 90.0f),
+            room.Position.X + lab.SafeObjectProfile.Radius + 4.0f,
+            room.End.X - lab.SafeObjectProfile.Radius - 4.0f);
+        LooseObjectBody? ball = lab.SpawnLooseObject(
+            lab.SafeObjectProfile,
+            new Vector2(spawnX, floorY));
+        bool rested = ball is not null && await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Objects.TryGetSnapshot(ball!.RuntimeId, out LooseObjectSnapshot s) && s.AtRest,
+            600);
+
+        float closest = float.MaxValue;
+        int trackedId = 0;
+        ObjectPhase deepest = ObjectPhase.Idle;
+        bool held = false;
+        for (int tick = 0; tick < 1800 && !held; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            held = lab.Buddy.ObjectInteraction.IsHolding && lab.Buddy.ObjectInteraction.IsAttached;
+            if (GodotObject.IsInstanceValid(ball))
+            {
+                closest = Mathf.Min(
+                    closest,
+                    Mathf.Abs(ball!.GlobalPosition.X - lab.Buddy.Rig.Torso.GlobalPosition.X));
+            }
+            if (lab.Buddy.ObjectInteraction.TrackedRuntimeId != 0)
+                trackedId = lab.Buddy.ObjectInteraction.TrackedRuntimeId;
+            if (lab.Buddy.ObjectInteraction.Phase > deepest)
+                deepest = lab.Buddy.ObjectInteraction.Phase;
+        }
+
+        Vector2 hands = (lab.Buddy.Rig.LeftHand.GlobalPosition +
+            lab.Buddy.Rig.RightHand.GlobalPosition) * 0.5f;
+        float offCentre = GodotObject.IsInstanceValid(ball)
+            ? Mathf.Abs(ball!.GlobalPosition.X - hands.X)
+            : float.MaxValue;
+        // Carried between the hands, not pinned off to one side.
+        bool centred = held && offCentre <= lab.Buddy.Rig.LeftHand.Radius;
+        bool passed = rested && held && centred;
+        string detail = $"rested={rested} held={held} centred={centred} " +
+            $"off_centre={offCentre:F1} phase={lab.Buddy.ObjectInteraction.Phase} " +
+            $"closest_dx={closest:F1} tracked={trackedId} ball={ball?.RuntimeId ?? 0} " +
+            $"deepest={deepest} scoop_gate={lab.Buddy.ObjectInteraction.Profile.ScoopDistance:F0}";
+        await M4ObjectScenarioSupport.Cleanup(tree, lab);
+        return (passed, detail);
     }
 }

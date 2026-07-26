@@ -6,8 +6,11 @@
 resource_name = "M4LabObjectInteraction"
 script = ExtResource("1")
 SenseRadius = 220.0
-CatchDistance = 46.0
+CatchDistance = 72.0
+ScoopDistance = 26.0
 ApproachDistance = 220.0
+ReleaseIgnoreTicks = 300
+CarryLiftFraction = 0.6
 CatchTimeoutTicks = 90
 HoldTicks = 120
 InspectTicks = 150

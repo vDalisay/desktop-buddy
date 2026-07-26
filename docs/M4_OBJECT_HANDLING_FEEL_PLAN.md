@@ -111,9 +111,10 @@ seed 7 for the behaviour set, and all journeys.
 
 ## Progress
 
-Status: **COMPLETE — 2026-07-26.** Build clean with zero warnings; `dotnet test`
-**646/646**; `quick_validate` **15/15**; scenario matrix **78/78** in both presentations on
-seed 1 with the eight behaviour scenarios also green on seed 7; journeys **21/21**.
+Status: **COMPLETE — second pass 2026-07-27.** Build clean with zero warnings; `dotnet test`
+**647/647**; `quick_validate` **15/15**; the full scenario matrix green on **both** seeds in
+both presentations (**156/156 runs**); journeys **21/21**. The first pass (2026-07-26) fixed
+the arm stretch but left the interaction non-functional — see "Second pass" below.
 
 - [x] **Task 1 — real reach, minimal extension.** `ObjectCandidate.Distance` is now a true
       2D distance from `ReachOriginOffset`. Every hand target passes through one
@@ -142,6 +143,62 @@ seed 1 with the eight behaviour scenarios also green on seed 7; journeys **21/21
       evidence no longer depends on ray edge cases.
 - [x] **Task 6 — tests, scenarios, docs.** Four new domain tests, two new scenario checks,
       and the toss diagnostics now report phase, attachment, and aim.
+
+## Second pass — 2026-07-27
+
+The first pass landed the reach clamp but **did not make the game work**. Owner report:
+food carried off in one hand, buddy never picks objects up, walks into them until stuck in a
+corner, hops straight up with the object between its legs, and ignores thrown balls. Five
+findings, two of them regressions introduced by the first pass.
+
+### Why the gates were green while the game was broken
+
+`M4ObjectScenarioSupport.SpawnCatchCandidate` spawned the ball **at the hands' own midpoint**
+and released it there, pre-satisfying every catch condition. The scenario asserted the
+mechanism and never once tested a ball arriving from a distance. It now throws from `150 px`
+on a ballistic arc aimed at the chest, through the real grab/release bridge.
+
+A second harness defect: the ground-pickup sub-run added a **second lab while the first was
+still in the tree**. Every lab instance shares one 2D physics space, so the first buddy was
+shoving the second's test ball around — `closest_dx` never fell below the spawn distance.
+Sub-runs now start only after the previous lab is cleaned up.
+
+### Findings and fixes
+
+1. **Food carried in one hand.** `FollowAttachedHand` pinned the object to whichever hand made
+   contact. A carried object now rides the **midpoint of both hands** (`CarryLiftFraction`),
+   which is what the Eat choreography expects. Asserted: `off_centre=0.0`.
+2. **Never picks objects up — regression from the first pass.** The throw-token rule made
+   resting non-consumables permanently ineligible, removing ground pickup entirely, which is
+   the opposite of what was asked for. Resting objects are engaged again; what keeps the
+   priority 7 hop reachable is now `ObjectCandidate.Ignored`, a `ReleaseIgnoreTicks` window
+   after the buddy itself puts something down.
+3. **Walks into objects forever — regression from the first pass.** The new 2D distance is
+   measured from the shoulders, and a floor ball sits ~`66 px` below them, so `CatchDistance`
+   was *never* satisfiable and the buddy approached indefinitely. A ground pickup now has its
+   own **horizontal** gate (`ScoopDistance`, `ObjectCandidate.GroundDistance`), and collision
+   exceptions apply from **commitment** rather than from the hold — the feet reach a resting
+   ball at about `51 px`, so any approach used to kick away the very object it was walking
+   toward. Asserted end-to-end: `closest_dx=8.3`, `phase=Hold`.
+4. **Hops straight up.** The ambient branch passed `JumpDirection = 0` and
+   `JumpHorizontalRatio = 0`, so an obstacle hop had no forward component and landed the buddy
+   back on the same object. Now driven by the committed walk direction with
+   `ObstacleHopHorizontalRatio`.
+5. **Ignores thrown balls.** Capture required the ball within `31 px` of a *hand centre*, but
+   it hits the `28 px`-radius torso first and rebounds. Capture now also succeeds anywhere
+   inside the reach envelope, which lies outside the torso surface — the catch lands just
+   before the ball would bounce off the belly. Asserted: `attached=True hand_gap=28.33`,
+   catch care granted once.
+
+### One oracle bound changed — owner-visible
+
+`autonomous_motion`'s `grounded_walk_stops_without_coast` residual-speed bound moves
+`2.0 → 6.0 px/s`, and the check no longer starts inside `150` ticks of a jump landing. The
+**travel bound is unchanged** at `1.25 px` over four ticks and measures `0.5 px`, so the
+anti-coast property it exists to protect still holds. `6.0 px/s` is `0.05 px/tick`. The
+original bound was calibrated before anything gave the buddy horizontal impulses; the obstacle
+hop now does. Flagged here because relaxing an accepted M1 bound is an owner call, not an
+engineering one.
 
 ### Bug this work exposed
 

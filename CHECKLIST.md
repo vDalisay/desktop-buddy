@@ -53,9 +53,9 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test` | 646/646 green |
+| Domain unit | `dotnet test` | 647/647 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (41) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | 78/78 valid headless presentation runs green (`idle_soak` run as `idle_soak_ci`); window-only visual gate pending owner |
+| Scenarios (41) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | 156/156 valid headless runs green across seeds 1 and 7 in both presentations (`idle_soak` run as `idle_soak_ci`); window-only visual gate pending owner |
 | Journeys (11) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | 21/21 valid presentation runs green |
 | Quick suite | `tools\quick_validate.bat` | 15/15 |
 

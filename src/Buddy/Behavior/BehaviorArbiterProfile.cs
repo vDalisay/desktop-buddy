@@ -13,6 +13,13 @@ public partial class BehaviorArbiterProfile : GameResource
 {
     [Export(PropertyHint.Range, "0,600,1")] public int CommitTicks { get; set; } = 36;
     [Export(PropertyHint.Range, "0,100,1")] public int HopPropensityThreshold { get; set; } = 35;
+
+    /// <summary>
+    /// How much of an obstacle hop's impulse goes forward along the committed walk. A purely
+    /// vertical hop lands the buddy back on the object it was trying to clear.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,1,0.05")]
+    public float ObstacleHopHorizontalRatio { get; set; } = 0.3f;
     [Export] public SocialBandProfile Fearful { get; set; } = null!;
     [Export] public SocialBandProfile Wary { get; set; } = null!;
     [Export] public SocialBandProfile Neutral { get; set; } = null!;
@@ -22,6 +29,8 @@ public partial class BehaviorArbiterProfile : GameResource
     public bool IsRuntimeValid =>
         CommitTicks >= 0 &&
         HopPropensityThreshold is >= 0 and <= 100 &&
+        float.IsFinite(ObstacleHopHorizontalRatio) &&
+        ObstacleHopHorizontalRatio is >= 0.0f and <= 1.0f &&
         Valid(Fearful) && Valid(Wary) && Valid(Neutral) &&
         Valid(Content) && Valid(Delighted);
 
@@ -41,6 +50,11 @@ public partial class BehaviorArbiterProfile : GameResource
         if (CommitTicks < 0) errors.Add($"{nameof(CommitTicks)} must be non-negative");
         if (HopPropensityThreshold is < 0 or > 100)
             errors.Add($"{nameof(HopPropensityThreshold)} must be within [0, 100]");
+        if (!float.IsFinite(ObstacleHopHorizontalRatio) ||
+            ObstacleHopHorizontalRatio is < 0.0f or > 1.0f)
+        {
+            errors.Add($"{nameof(ObstacleHopHorizontalRatio)} must be within [0, 1]");
+        }
         Require(errors, Fearful, nameof(Fearful));
         Require(errors, Wary, nameof(Wary));
         Require(errors, Neutral, nameof(Neutral));
