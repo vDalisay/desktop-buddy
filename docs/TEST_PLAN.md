@@ -141,8 +141,17 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   committed walk path and proves a zero-propensity save never hops, a
   high-propensity save does hop on probe evidence, unconsciousness suppresses
   the request, and timer-driven ambient jumping remains disabled. Trait reload
-  is intentionally deferred to Task 4's `care_persistence` scenario
+  is verified by Task 4's `care_persistence` journey
   (`--fixed-fps 120`, seeds 1 and 7).
+- The `hidden_clock_accrual` scenario advances an injected monotonic source while
+  the gameplay tree is paused, proving the ragdoll pose stays frozen while mood,
+  provisional passive income, hidden/run time, and the 30-second autosave advance.
+- The `suspend_no_catchup` scenario simulates a one-hour suspend plus a separate
+  over-five-second discontinuity, proving neither span awards time/income and
+  resume leaves finite physics with no replay burst.
+- The phased `care_persistence` journey writes care, damage earnings, harmful
+  memory, selection, and the sampled trait to an artifact-local fixture, launches
+  a fresh process, and verifies semantic restoration plus safe-pose/transient reset.
 
 ### Resize and Zoom
 

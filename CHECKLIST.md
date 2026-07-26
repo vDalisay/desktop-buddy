@@ -53,11 +53,11 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test` | 429/429 green |
+| Domain unit | `dotnet test` | 611/611 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (31) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | targeted gates green |
-| Journeys (10) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | targeted `desktop_shell_modes` green |
-| Quick suite | `tools\quick_validate.bat` | 9/9 |
+| Scenarios (41) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | targeted gates green |
+| Journeys (11) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | targeted gates green |
+| Quick suite | `tools\quick_validate.bat` | 15/15 |
 
 Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the
 filenames in `tests/journeys/`. Every scenario and journey is also rerun under

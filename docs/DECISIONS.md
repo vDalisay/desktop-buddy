@@ -571,6 +571,30 @@ implementation of every M4 task is unblocked.
   limbs lag and flex without returning to the rejected limit-only slide. The corresponding
   `grab_dangle` regression bound is `48 px` (measured `42.8 px` plus margin).
 
+## M4 Delegated Engineering Defaults (2026-07-26)
+
+These are provisional engineering choices delegated by the resolved M4 pre-plan
+decisions. They are implemented and test-covered, but are not owner feel acceptance:
+
+- Stable persisted IDs are `tool.grab`, `tool.pet`, `tool.tickle`,
+  `tool.boxing_glove`, `object.loose`, `boundary.room`, and `care.lab_food`.
+- The laboratory food borrows Meal's `+10` mood and `7200` routed-tick (`60 s`)
+  cooldown. Reuse cooldowns are transient and intentionally not saved, so relaunch
+  clears that window; revisit when the real purchasable Meal lands in M5.
+- The clock-discontinuity exclusion threshold is `5 s`. Neutral passive income is
+  provisionally `1` credit/minute in `MoodEconomyProfile`; M5 replaces it through
+  FR-012.3 economy calibration.
+- Obstacle-hop propensity is one uniformly sampled deterministic integer bucket in
+  `0–100`, created once per new save and then persisted exactly.
+- Five-band social tuning is: Fearful `260 px` standoff/`24 px` hysteresis; Wary
+  `150/18`; Neutral `0/12`; Content approaches to `170 px`, catches, and greets
+  every `900` ticks; Delighted approaches to `110 px`, catches, and greets every
+  `360` ticks. These distances/cadences remain subject to the M4 owner feel gate.
+- Object lifecycle defaults are a `220 px` sense/approach radius, `46 px` catch
+  distance, `90`-tick catch timeout, `120`-tick hold, and `150`-tick inspection.
+- The minimal M4 tray scope is Show/Hide plus Save & Quit. The complete FR-016.1
+  tray menu remains Milestone 6 scope.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.
