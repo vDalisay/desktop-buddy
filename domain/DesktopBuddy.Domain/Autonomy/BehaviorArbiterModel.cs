@@ -94,6 +94,59 @@ public readonly record struct SocialBandTuning(
     };
 }
 
+/// <summary>
+/// The complete typed five-band vocabulary for one runtime profile. Keeping the
+/// set explicit prevents behavior workers from quietly consulting different
+/// hard-coded values for the same save-state mood band.
+/// </summary>
+public readonly record struct SocialTuningSet(
+    SocialBandTuning Fearful,
+    SocialBandTuning Wary,
+    SocialBandTuning Neutral,
+    SocialBandTuning Content,
+    SocialBandTuning Delighted)
+{
+    public static SocialTuningSet Default => new(
+        SocialBandTuning.Fearful,
+        SocialBandTuning.Wary,
+        SocialBandTuning.Neutral,
+        SocialBandTuning.Content,
+        SocialBandTuning.Delighted);
+
+    public SocialBandTuning For(MoodBand band) => band switch
+    {
+        MoodBand.Fearful => Fearful,
+        MoodBand.Wary => Wary,
+        MoodBand.Neutral => Neutral,
+        MoodBand.Content => Content,
+        MoodBand.Delighted => Delighted,
+        _ => throw new ArgumentOutOfRangeException(nameof(band), band, "Unknown mood band."),
+    };
+
+    public void Validate()
+    {
+        ValidateBand(Fearful, nameof(Fearful));
+        ValidateBand(Wary, nameof(Wary));
+        ValidateBand(Neutral, nameof(Neutral));
+        ValidateBand(Content, nameof(Content));
+        ValidateBand(Delighted, nameof(Delighted));
+    }
+
+    private static void ValidateBand(in SocialBandTuning band, string name)
+    {
+        if (!float.IsFinite(band.StandoffDistance) || band.StandoffDistance < 0.0f ||
+            !float.IsFinite(band.ApproachDistance) || band.ApproachDistance < 0.0f ||
+            !float.IsFinite(band.Hysteresis) || band.Hysteresis < 0.0f ||
+            !float.IsFinite(band.LocomotionScale) ||
+            band.LocomotionScale is < 0.0f or > 2.0f ||
+            band.GreetIntervalTicks < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(band), $"{name} contains a negative or non-finite tuning value.");
+        }
+    }
+}
+
 /// <summary>Arbiter-wide tuning.</summary>
 /// <param name="CommitTicks">
 /// How long a chosen layer keeps actuation once selected. Equal-or-lower priority cannot
@@ -136,7 +189,17 @@ public readonly record struct BehaviorSnapshot(
     bool AmbientDriveActive,
     float AmbientWalkDirection,
     float AmbientLocomotionScale,
-    bool ObstacleInCommittedPath);
+    bool ObstacleInCommittedPath,
+    /// <summary>
+    /// Any supporting contact, distinct from the stability gate used by obstacle
+    /// hops. A dangling buddy stays physically tethered but cannot walk-resist.
+    /// </summary>
+    bool HasSupportContact = true,
+    /// <summary>
+    /// A transient non-hazard tool emotion (for example friendly/angry tickle)
+    /// requests priority 6 even when the current distance band stands down.
+    /// </summary>
+    bool SocialReactionPresent = false);
 
 /// <summary>One resolved actuation decision.</summary>
 public readonly record struct ActuationIntent(
@@ -188,18 +251,30 @@ public readonly record struct ArbiterDiagnostics(
 public sealed class BehaviorArbiterModel
 {
     private readonly BehaviorArbiterTuning _tuning;
+    private readonly SocialTuningSet _socialTuning;
 
     private BehaviorPriority _owner = BehaviorPriority.Ambient;
     private int _commitTicksRemaining;
     private int _lastGreetTick = int.MinValue;
+    private SocialStance _socialStance;
+    private MoodBand _socialBand;
 
-    public BehaviorArbiterModel(BehaviorArbiterTuning? tuning = null)
+    public BehaviorArbiterModel(
+        BehaviorArbiterTuning? tuning = null,
+        SocialTuningSet? socialTuning = null)
     {
         _tuning = tuning ?? BehaviorArbiterTuning.Default;
+        _socialTuning = socialTuning ?? SocialTuningSet.Default;
         if (_tuning.CommitTicks < 0)
         {
             throw new ArgumentOutOfRangeException(nameof(tuning), "CommitTicks must be >= 0.");
         }
+        if (_tuning.HopPropensityThreshold is < 0 or > 100)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(tuning), "HopPropensityThreshold must be between 0 and 100.");
+        }
+        _socialTuning.Validate();
     }
 
     public ArbiterDiagnostics Diagnostics { get; private set; }
@@ -213,9 +288,10 @@ public sealed class BehaviorArbiterModel
     /// </summary>
     public ActuationIntent Resolve(in BehaviorSnapshot snapshot, in BuddyTraits traits)
     {
-        BehaviorPriority eligible = HighestEligible(snapshot);
+        SocialStance socialStance = UpdateSocialStance(snapshot);
+        BehaviorPriority eligible = HighestEligible(snapshot, socialStance);
         bool committedStillEligible =
-            _commitTicksRemaining > 0 && IsEligible(snapshot, _owner);
+            _commitTicksRemaining > 0 && IsEligible(snapshot, socialStance, _owner);
 
         BehaviorPriority owner;
         bool preempted = false;
@@ -241,7 +317,7 @@ public sealed class BehaviorArbiterModel
             _commitTicksRemaining--;
         }
 
-        ActuationIntent intent = Actuate(snapshot, traits, owner);
+        ActuationIntent intent = Actuate(snapshot, traits, socialStance, owner);
 
         Diagnostics = new ArbiterDiagnostics(
             owner,
@@ -262,10 +338,15 @@ public sealed class BehaviorArbiterModel
         _owner = BehaviorPriority.Ambient;
         _commitTicksRemaining = 0;
         _lastGreetTick = int.MinValue;
+        _socialStance = SocialStance.None;
+        _socialBand = default;
         Diagnostics = default;
     }
 
-    private static bool IsEligible(in BehaviorSnapshot snapshot, BehaviorPriority priority) =>
+    private static bool IsEligible(
+        in BehaviorSnapshot snapshot,
+        SocialStance socialStance,
+        BehaviorPriority priority) =>
         priority switch
         {
             BehaviorPriority.Failsafe => snapshot.RequiresFailsafeReposition,
@@ -276,14 +357,18 @@ public sealed class BehaviorArbiterModel
             // afraid, supported buddy generates resistance (RAGDOLL §4 priority 4).
             BehaviorPriority.GrabResistance =>
                 snapshot.Grabbed && snapshot.AfraidOfGrab &&
-                snapshot.Consciousness == Consciousness.Conscious,
+                snapshot.Consciousness == Consciousness.Conscious &&
+                snapshot.HasSupportContact,
             BehaviorPriority.ObjectAction => snapshot.ObjectActionCommitted,
-            BehaviorPriority.Social => SocialStanceFor(snapshot) != SocialStance.None,
+            BehaviorPriority.Social =>
+                snapshot.SocialReactionPresent || socialStance != SocialStance.None,
             BehaviorPriority.Ambient => snapshot.AmbientDriveActive,
             _ => false,
         };
 
-    private static BehaviorPriority HighestEligible(in BehaviorSnapshot snapshot)
+    private static BehaviorPriority HighestEligible(
+        in BehaviorSnapshot snapshot,
+        SocialStance socialStance)
     {
         // Ordered walk, highest priority first. Ambient is the floor and is returned even
         // when inactive so the owner is always defined.
@@ -291,7 +376,7 @@ public sealed class BehaviorArbiterModel
              priority < BehaviorPriority.Ambient;
              priority++)
         {
-            if (IsEligible(snapshot, priority))
+            if (IsEligible(snapshot, socialStance, priority))
             {
                 return priority;
             }
@@ -300,48 +385,62 @@ public sealed class BehaviorArbiterModel
         return BehaviorPriority.Ambient;
     }
 
-    private static SocialStance SocialStanceFor(in BehaviorSnapshot snapshot)
+    private SocialStance UpdateSocialStance(in BehaviorSnapshot snapshot)
     {
         if (!snapshot.SocialTargetValid)
         {
-            return SocialStance.None;
+            _socialStance = SocialStance.None;
+            return _socialStance;
         }
 
-        SocialBandTuning band = SocialBandTuning.For(snapshot.MoodBand);
+        if (snapshot.MoodBand != _socialBand)
+        {
+            _socialBand = snapshot.MoodBand;
+            _socialStance = SocialStance.None;
+        }
+
+        SocialBandTuning band = _socialTuning.For(snapshot.MoodBand);
         float distance = snapshot.SocialTargetDistance;
 
         if (band.StandoffDistance > 0.0f)
         {
-            // Hysteresis: retreat starts inside the standoff distance and only stops once
-            // the buddy has cleared it by the dead band.
-            if (distance < band.StandoffDistance)
+            bool retreating = _socialStance is SocialStance.Flee or SocialStance.KeepDistance;
+            if (distance < band.StandoffDistance ||
+                (retreating && distance < band.StandoffDistance + band.Hysteresis))
             {
-                return snapshot.MoodBand == MoodBand.Fearful
+                _socialStance = snapshot.MoodBand == MoodBand.Fearful
                     ? SocialStance.Flee
                     : SocialStance.KeepDistance;
+                return _socialStance;
             }
 
-            return distance < band.StandoffDistance + band.Hysteresis
-                ? SocialStance.KeepDistance
-                : SocialStance.None;
+            _socialStance = SocialStance.None;
+            return _socialStance;
         }
 
-        if (band.WillApproach && distance > band.ApproachDistance + band.Hysteresis)
+        bool approaching = _socialStance == SocialStance.Approach;
+        if (band.WillApproach &&
+            (distance > band.ApproachDistance + band.Hysteresis ||
+             (approaching && distance > band.ApproachDistance)))
         {
-            return SocialStance.Approach;
+            _socialStance = SocialStance.Approach;
+            return _socialStance;
         }
 
         if (band.GreetIntervalTicks > 0 && distance <= band.ApproachDistance)
         {
-            return SocialStance.Greet;
+            _socialStance = SocialStance.Greet;
+            return _socialStance;
         }
 
-        return SocialStance.None;
+        _socialStance = SocialStance.None;
+        return _socialStance;
     }
 
     private ActuationIntent Actuate(
         in BehaviorSnapshot snapshot,
         in BuddyTraits traits,
+        SocialStance socialStance,
         BehaviorPriority owner)
     {
         switch (owner)
@@ -393,17 +492,18 @@ public sealed class BehaviorArbiterModel
                     GreetRequested: false);
 
             case BehaviorPriority.Social:
-                return SocialIntent(snapshot);
+                return SocialIntent(snapshot, socialStance);
 
             default:
                 return AmbientIntent(snapshot, traits);
         }
     }
 
-    private ActuationIntent SocialIntent(in BehaviorSnapshot snapshot)
+    private ActuationIntent SocialIntent(
+        in BehaviorSnapshot snapshot,
+        SocialStance stance)
     {
-        SocialStance stance = SocialStanceFor(snapshot);
-        SocialBandTuning band = SocialBandTuning.For(snapshot.MoodBand);
+        SocialBandTuning band = _socialTuning.For(snapshot.MoodBand);
 
         float direction = stance switch
         {

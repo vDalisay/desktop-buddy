@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ObjectInteractionProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Behavior/ObjectInteractionProfile.cs" id="1"]
+
+[resource]
+resource_name = "M4LabObjectInteraction"
+script = ExtResource("1")
+SenseRadius = 220.0
+CatchDistance = 46.0
+ApproachDistance = 220.0
+CatchTimeoutTicks = 90
+HoldTicks = 120
+InspectTicks = 150
+CatchHandClearance = 3.0
+CatchConfirmDistance = 12.0
+HoldCenterOffset = Vector2(0, -24)
+HoldHandHalfSeparation = 15.0
+HandStiffness = 1800.0
+HandDamping = 65.0
+MaximumHandForce = 18000.0
+ObjectStiffness = 1400.0
+ObjectDamping = 55.0
+MaximumObjectForce = 14000.0
+TossImpulse = 720.0
+TossLiftImpulse = 240.0
+DiscardImpulse = 180.0
+DiscardLiftImpulse = 40.0

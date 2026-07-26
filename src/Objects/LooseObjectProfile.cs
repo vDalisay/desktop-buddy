@@ -1,0 +1,60 @@
+using DesktopBuddy.App;
+using DesktopBuddy.Domain.Content;
+using Godot;
+
+namespace DesktopBuddy.Objects;
+
+/// <summary>
+/// Immutable authored metadata and physical tuning for one loose-object kind.
+/// Runtime ownership, throw tokens, hold/protection state, and rest tracking live
+/// in <see cref="LooseObjectRegistry"/>, never in this Resource.
+/// </summary>
+[GlobalClass]
+public partial class LooseObjectProfile : GameResource
+{
+    [Export] public string ContentId { get; set; } = ContentIds.LooseObject;
+    [Export] public bool Consumable { get; set; }
+    [Export] public bool Hazardous { get; set; }
+    [Export] public bool SafeToEvict { get; set; } = true;
+
+    [Export(PropertyHint.Range, "1,128,0.5")] public float Radius { get; set; } = 12.0f;
+    [Export(PropertyHint.Range, "0.01,100,0.01")] public float Mass { get; set; } = 1.0f;
+    [Export(PropertyHint.Range, "0,100,0.01")] public float LinearDamp { get; set; } = 1.5f;
+    [Export(PropertyHint.Range, "0,100,0.01")] public float AngularDamp { get; set; } = 2.0f;
+    [Export(PropertyHint.Range, "0,100,0.1")] public float RestSpeedThreshold { get; set; } = 5.0f;
+    [Export(PropertyHint.Range, "1,600,1")] public int RestTicksRequired { get; set; } = 60;
+    [Export] public Color FillColor { get; set; } = new("ffd27a");
+    [Export] public Color OutlineColor { get; set; } = new("183042");
+
+    public bool IsRuntimeValid =>
+        !string.IsNullOrWhiteSpace(ContentId) &&
+        float.IsFinite(Radius) && Radius > 0.0f &&
+        float.IsFinite(Mass) && Mass > 0.0f &&
+        float.IsFinite(LinearDamp) && LinearDamp >= 0.0f &&
+        float.IsFinite(AngularDamp) && AngularDamp >= 0.0f &&
+        float.IsFinite(RestSpeedThreshold) && RestSpeedThreshold >= 0.0f &&
+        RestTicksRequired > 0 &&
+        !(Hazardous && SafeToEvict);
+
+    public override Godot.Collections.Array<string> Validate()
+    {
+        var errors = new Godot.Collections.Array<string>();
+        if (string.IsNullOrWhiteSpace(ContentId))
+            errors.Add($"{nameof(ContentId)} must be a stable non-empty string");
+        if (!float.IsFinite(Radius) || Radius <= 0.0f)
+            errors.Add($"{nameof(Radius)} must be finite and positive");
+        if (!float.IsFinite(Mass) || Mass <= 0.0f)
+            errors.Add($"{nameof(Mass)} must be finite and positive");
+        if (!float.IsFinite(LinearDamp) || LinearDamp < 0.0f)
+            errors.Add($"{nameof(LinearDamp)} must be finite and non-negative");
+        if (!float.IsFinite(AngularDamp) || AngularDamp < 0.0f)
+            errors.Add($"{nameof(AngularDamp)} must be finite and non-negative");
+        if (!float.IsFinite(RestSpeedThreshold) || RestSpeedThreshold < 0.0f)
+            errors.Add($"{nameof(RestSpeedThreshold)} must be finite and non-negative");
+        if (RestTicksRequired <= 0)
+            errors.Add($"{nameof(RestTicksRequired)} must be positive");
+        if (Hazardous && SafeToEvict)
+            errors.Add("Hazardous loose objects cannot be marked safe to evict");
+        return errors;
+    }
+}

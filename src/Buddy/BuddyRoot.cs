@@ -2,7 +2,6 @@ using System;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
-using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Presentation;
@@ -28,6 +27,8 @@ public partial class BuddyRoot : Node2D
     [Export] public ActiveDriveComponent ActiveDrive { get; set; } = null!;
     [Export] public GrabResistanceComponent GrabResistance { get; set; } = null!;
     [Export] public BehaviorActivityComponent Activity { get; set; } = null!;
+    [Export] public ObjectInteractionComponent ObjectInteraction { get; set; } = null!;
+    [Export] public BehaviorArbiter Arbiter { get; set; } = null!;
 
     public event Action<Consciousness>? ConsciousnessChanged;
     /// <summary>Raised on every autonomy reseed so seeded presentation streams
@@ -58,7 +59,9 @@ public partial class BuddyRoot : Node2D
             !GodotObject.IsInstanceValid(AutonomousMotion) ||
             !GodotObject.IsInstanceValid(ActiveDrive) ||
             !GodotObject.IsInstanceValid(GrabResistance) ||
-            !GodotObject.IsInstanceValid(Activity))
+            !GodotObject.IsInstanceValid(Activity) ||
+            !GodotObject.IsInstanceValid(ObjectInteraction) ||
+            !GodotObject.IsInstanceValid(Arbiter))
         {
             throw new InvalidOperationException(
                 "BuddyRoot requires its visual profile and every injected physics and behavior component.");
@@ -91,7 +94,11 @@ public partial class BuddyRoot : Node2D
         IsInitialized = true;
     }
 
-    public void PhysicsTick(BuddyPartId? grabbedPart = null, Vector2 grabWorldAnchor = default)
+    public void PhysicsTick(
+        BuddyPartId? grabbedPart = null,
+        Vector2 grabWorldAnchor = default,
+        Vector2 cursorWorldPosition = default,
+        bool socialTargetValid = false)
     {
         if (!IsInitialized)
         {
@@ -104,14 +111,20 @@ public partial class BuddyRoot : Node2D
         bool dangled = buddyPartGrabbed && Standing.Snapshot.SupportContactCount == 0;
         // An airborne grab is the same passive body state as unconsciousness while
         // leaving the buddy's awareness intact. Ground contact keeps normal drive.
+        int hardRecoveryCountBefore = Recovery.HardRecoveryCount;
         Recovery.PhysicsTick(CurrentConsciousness == Consciousness.Conscious && !dangled);
+        bool hardRecoveredThisTick = Recovery.HardRecoveryCount != hardRecoveryCountBefore;
         Activity.PhysicsTick();
-        AutonomousMotion.PhysicsTick(
-            CurrentConsciousness,
-            Recovery.State,
-            behaviorEnabled: !Activity.IsStationary && !dangled);
         GrabResistance.PhysicsTick(CurrentConsciousness);
-        CurrentDriveIntent = BuildDriveIntent(grabbedPart);
+        CurrentDriveIntent = Arbiter.PhysicsTick(
+            RoutedTicks,
+            CurrentConsciousness,
+            CurrentToolReactionIntent,
+            grabbedPart,
+            dangled,
+            hardRecoveredThisTick,
+            cursorWorldPosition,
+            socialTargetValid);
         if (grabbedPart == BuddyPartId.Head)
             ActiveDrive.NotifyHeadDisturbed();
         ActiveDrive.PhysicsTick(
@@ -123,110 +136,6 @@ public partial class BuddyRoot : Node2D
         // disable active drive, not the springs that preserve the six-part topology.
         Constraints.PhysicsTick(airborneGrab: dangled);
     }
-
-    // Minimal actuation arbitration until the full BehaviorArbiter lands: a
-    // player-constraint fear response supersedes ambient autonomy.
-    private DriveIntent BuildDriveIntent(BuddyPartId? grabbedPart)
-    {
-        GrabResistanceIntent resistance = GrabResistanceIntentFor();
-        if (resistance.Active)
-        {
-            // A frightened buddy WALKS away from the tether and thrashes its hands; it does
-            // not slide as a lump with dead feet (owner feel notes 2026-07-25). Locomotion
-            // supplies the visible stepping, the resistance force supplies the strain, and
-            // the panic hands supply the frantic reads.
-            ActiveDriveProfile drive = ActiveDrive.Profile;
-            var flailTuning = new PanicFlailTuning(
-                drive.PanicFlailAmplitude,
-                drive.PanicFlailLift,
-                drive.PanicFlailCycleTicks,
-                drive.PanicFlailAsymmetry,
-                drive.PanicFlailReachBias);
-            // The arc anchors toward the direction the buddy is straining, so a free hand
-            // reaches AWAY from the grab point as if hauling itself loose.
-            PanicFlailSample flail = PanicFlail.Sample(
-                GrabResistance.ResistTicks,
-                resistance.Strength,
-                resistance.Direction,
-                flailTuning);
-            Vector2 shoulder = Rig.Torso.GlobalPosition + drive.PanicHandOriginOffset;
-
-            // A grabbed hand is the tether's; only the free hand reaches.
-            bool leftFree = grabbedPart != BuddyPartId.LeftHand;
-            bool rightFree = grabbedPart != BuddyPartId.RightHand;
-
-            return new DriveIntent(
-                resistance.Direction,
-                drive.GrabResistanceWalkScale,
-                false, 0.0f, 1.0f, 0.0f,
-                resistance.Direction, resistance.Strength,
-                false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f,
-                false, false, 0.0f, Vector2.Zero, Vector2.Zero,
-                PanicLeftHandActive: leftFree,
-                PanicRightHandActive: rightFree,
-                LeftPanicHandTarget: shoulder + ToGodot(flail.LeftHandOffset),
-                RightPanicHandTarget: shoulder + ToGodot(flail.RightHandOffset));
-        }
-
-        ToolReactionIntent reaction = CurrentToolReactionIntent;
-        if (reaction.Active)
-        {
-            return new DriveIntent(
-                reaction.WalkDirection,
-                reaction.LocomotionScale,
-                reaction.JumpRequested,
-                reaction.JumpDirection,
-                reaction.JumpScale,
-                reaction.JumpHorizontalRatio,
-                0.0f,
-                0.0f,
-                reaction.GuardActive,
-                reaction.LeftGuardTarget,
-                reaction.RightGuardTarget,
-                reaction.GuardStiffness,
-                reaction.GuardDamping,
-                reaction.GuardMaximumForce,
-                reaction.GuardAbsorption,
-                false,
-                false,
-                0.0f,
-                Vector2.Zero,
-                Vector2.Zero,
-                PanicLeftHandActive: false,
-                PanicRightHandActive: false,
-                LeftPanicHandTarget: Vector2.Zero,
-                RightPanicHandTarget: Vector2.Zero);
-        }
-
-        AutonomousMotionIntent motion = AutonomousMotion.Intent;
-        bool reach = Activity.EatReachActive;
-        Vector2 chestCenter = Rig.Torso.GlobalPosition + ActiveDrive.Profile.EatChestTargetOffset;
-        Vector2 finalLowerCenter = Rig.Torso.GlobalPosition +
-            ActiveDrive.Profile.EatFinalLowerTargetOffset;
-        Vector2 returnCenter = chestCenter.Lerp(finalLowerCenter, Activity.EatFinalLowering);
-        Vector2 mouthCenter = Rig.Head.GlobalPosition + ActiveDrive.Profile.EatMouthTargetOffset;
-        Vector2 reachCenter = reach
-            ? returnCenter.Lerp(mouthCenter, Activity.EatLift)
-            : Vector2.Zero;
-        Vector2 handSeparation = new(ActiveDrive.Profile.EatHandHalfSeparation, 0.0f);
-        return new DriveIntent(
-            motion.WalkDirection, 1.0f, motion.JumpRequested, 0.0f, 1.0f, 0.0f,
-            0.0f, 0.0f, false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f,
-            Activity.IsStationary || AutonomousMotion.IsWallStopping,
-            reach,
-            Activity.EatLift,
-            reachCenter - handSeparation,
-            reachCenter + handSeparation,
-            PanicLeftHandActive: false,
-            PanicRightHandActive: false,
-            LeftPanicHandTarget: Vector2.Zero,
-            RightPanicHandTarget: Vector2.Zero);
-    }
-
-    private GrabResistanceIntent GrabResistanceIntentFor() => GrabResistance.Intent;
-
-    /// <summary>Domain gait/flail math uses System.Numerics; the drive speaks Godot.</summary>
-    private static Vector2 ToGodot(System.Numerics.Vector2 value) => new(value.X, value.Y);
 
     /// <summary>Pushed by the focused tool-reaction worker before this buddy ticks.</summary>
     public void SetToolReactionIntent(ToolReactionIntent intent) => CurrentToolReactionIntent = intent;

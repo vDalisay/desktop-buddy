@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="SocialBandProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Behavior/SocialBandProfile.cs" id="1_profile"]
+
+[resource]
+resource_name = "ContentSocialBand"
+script = ExtResource("1_profile")
+ApproachDistance = 170.0
+Hysteresis = 14.0
+WillApproach = true
+WillCatch = true
+LocomotionScale = 0.7
+GreetIntervalTicks = 900

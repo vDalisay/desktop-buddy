@@ -35,6 +35,7 @@ public partial class LaboratoryControlComponent : Node
     private double _originalTimeScale = 1.0;
 
     public event Action? PresentationToggleRequested;
+    public event Action? EatToggleRequested;
 
     [Export] public BuddyRoot Buddy { get; set; } = null!;
 
@@ -255,6 +256,12 @@ public partial class LaboratoryControlComponent : Node
     {
         if (!HasActivities)
         {
+            return;
+        }
+
+        if (EatToggleRequested is not null)
+        {
+            EatToggleRequested.Invoke();
             return;
         }
 

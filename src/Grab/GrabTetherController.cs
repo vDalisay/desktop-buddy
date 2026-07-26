@@ -23,6 +23,13 @@ public partial class GrabTetherController : Node2D
 {
     [Export] public GrabTetherProfile Profile { get; set; } = null!;
 
+    /// <summary>
+    /// Raised after a target leaves the player tether. The flag distinguishes an
+    /// intentional primary-button throw from cancellation/recovery drops so object
+    /// memory cannot award catch care for a cancelled interaction.
+    /// </summary>
+    public event Action<RigidBody2D, bool>? Released;
+
     private RigidBody2D? _target;
     private PuppetPartBody? _leashedPart;
     private GrabStretchLimiter _stretch = new();
@@ -174,18 +181,24 @@ public partial class GrabTetherController : Node2D
         SnapCount++;
         StretchState = GrabStretchState.Snapped;
         StretchTicksRemaining = 0;
-        Release();
+        Release(countsAsThrow: false);
     }
 
     /// <summary>Release the target, preserving its motion capped to the throw-speed cap.</summary>
-    public void Release()
+    public void Release(bool countsAsThrow = true)
     {
+        RigidBody2D? released = GodotObject.IsInstanceValid(_target) ? _target : null;
         if (GodotObject.IsInstanceValid(_target))
         {
             NumericsVector2 capped = GrabTether.CapReleaseVelocity(
                 ToNumerics(_target.LinearVelocity), Profile.ThrowSpeedCap);
             _target.LinearVelocity = ToGodot(capped);
             LastReleaseSpeed = _target.LinearVelocity.Length();
+        }
+
+        if (released is not null)
+        {
+            Released?.Invoke(released, countsAsThrow);
         }
 
         _target = null;

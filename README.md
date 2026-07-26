@@ -121,7 +121,15 @@ The development-only laboratory controls are keyboard-accessible in `buddy_lab.t
 
 ## Interactive Verification (Godot MCP)
 
-Tier 1 interactive verification uses a runtime-enabled Godot MCP server. The committed [`.mcp.json`](.mcp.json) launches [`tools/start_godot_mcp.bat`](tools/start_godot_mcp.bat), which prefers a shared checkout at `../mcp/godot-mcp/build/index.js` relative to this repository, then checks the git-ignored in-project `Mcp/godot-mcp/build/index.js` and `Mcp/godot-mcp-runtime/dist/index.js` fallbacks. Set `GODOT_MCP_PATH` to a built entrypoint or its checkout directory to override discovery.
+Tier 1 interactive verification uses the project-unique
+`desktop-buddy-godot-mcp` server identity so concurrent Codex workspaces do not
+share one server's single active-project slot. The committed
+[`.mcp.json`](.mcp.json) launches
+[`tools/start_godot_mcp.bat`](tools/start_godot_mcp.bat), which prefers the
+runtime-control server at `Mcp/godot-mcp-runtime/dist/index.js`, then checks a
+shared runtime checkout, the shared `../mcp/godot-mcp/build/index.js` checkout,
+and the in-project basic-server fallback. Set `GODOT_MCP_PATH` to a built
+entrypoint or its checkout directory to override discovery.
 
 For the shared repository-adjacent [godot-mcp](https://github.com/tugcantopaloglu/godot-mcp) layout, set it up once per machine:
 

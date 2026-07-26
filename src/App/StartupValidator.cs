@@ -95,6 +95,25 @@ public static class StartupValidator
         return report;
     }
 
+    /// <summary>
+    /// Validates the exact Area2D wiring used by object interaction. Kept here
+    /// beside the named-layer checks so a layer-name change cannot leave a
+    /// seemingly healthy but inert sensor (M4 Task 2).
+    /// </summary>
+    public static StartupCheck ValidateInteractionSense(Area2D sensor)
+    {
+        bool valid = GodotObject.IsInstanceValid(sensor) &&
+            sensor.CollisionLayer == CollisionLayers.InteractionSense &&
+            sensor.CollisionMask == CollisionLayers.MaskInteractionSense &&
+            sensor.Monitoring &&
+            !sensor.Monitorable;
+        string detail = GodotObject.IsInstanceValid(sensor)
+            ? $"layer={sensor.CollisionLayer} mask={sensor.CollisionMask} " +
+              $"monitoring={sensor.Monitoring} monitorable={sensor.Monitorable}"
+            : "sensor invalid";
+        return new StartupCheck("object_interaction_sensor_wiring", valid, detail);
+    }
+
     private static void LogOutcome(StartupReport report)
     {
         if (report.Ok)

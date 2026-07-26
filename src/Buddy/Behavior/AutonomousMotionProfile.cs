@@ -26,6 +26,10 @@ public partial class AutonomousMotionProfile : GameResource
     [Export(PropertyHint.Range, "0,2,0.01")]
     public float WallLookAheadSeconds { get; set; } = 0.3f;
 
+    /// <summary>Forward loose-object probe used only for obstacle-hop evidence.</summary>
+    [Export(PropertyHint.Range, "1,256,0.5")]
+    public float ObstacleProbeDistance { get; set; } = 56.0f;
+
     /// <summary>Ambient timer-driven jumping. Owner-disabled 2026-07-20 (see DECISIONS.md);
     /// tool-reaction hops and future behaviour-driven jumps are unaffected.</summary>
     [Export] public bool AmbientJumpsEnabled { get; set; } = true;
@@ -41,6 +45,30 @@ public partial class AutonomousMotionProfile : GameResource
         WalkLeftWeight,
         WalkRightWeight,
         AmbientJumpsEnabled);
+
+    /// <summary>
+    /// Managed-only startup predicate used by the fixed-tick worker. Avoids
+    /// retaining a temporary native Godot Array until finalization after long
+    /// headless scenarios have begun engine teardown.
+    /// </summary>
+    public bool IsRuntimeValid
+    {
+        get
+        {
+            try
+            {
+                ToTuning().Validate();
+            }
+            catch (System.ArgumentException)
+            {
+                return false;
+            }
+
+            return float.IsFinite(WallAvoidMarginPixels) && WallAvoidMarginPixels >= 0.0f &&
+                float.IsFinite(WallLookAheadSeconds) && WallLookAheadSeconds >= 0.0f &&
+                float.IsFinite(ObstacleProbeDistance) && ObstacleProbeDistance > 0.0f;
+        }
+    }
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -60,6 +88,8 @@ public partial class AutonomousMotionProfile : GameResource
         }
         if (!float.IsFinite(WallLookAheadSeconds) || WallLookAheadSeconds < 0.0f)
             errors.Add("wall look-ahead seconds must be finite and non-negative");
+        if (!float.IsFinite(ObstacleProbeDistance) || ObstacleProbeDistance <= 0.0f)
+            errors.Add("obstacle probe distance must be finite and positive");
 
         return errors;
     }

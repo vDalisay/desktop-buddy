@@ -1,3 +1,4 @@
+using System;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Mood;
@@ -215,6 +216,24 @@ public sealed class BehaviorArbiterModelTests
     }
 
     [Fact]
+    public void GrabResistance_RequiresSupportContact()
+    {
+        var arbiter = new BehaviorArbiterModel();
+        BehaviorSnapshot dangled = Ambient() with
+        {
+            Grabbed = true,
+            AfraidOfGrab = true,
+            GrabFleeDirection = -1.0f,
+            HasSupportContact = false,
+        };
+
+        ActuationIntent intent = arbiter.Resolve(dangled, NeverHops);
+
+        Assert.Equal(BehaviorPriority.Ambient, intent.Owner);
+        Assert.False(intent.ResistGrab);
+    }
+
+    [Fact]
     public void Hazard_FleesAndGuards()
     {
         var arbiter = new BehaviorArbiterModel();
@@ -321,6 +340,71 @@ public sealed class BehaviorArbiterModelTests
     }
 
     [Fact]
+    public void ApproachEnvelope_HasHysteresisSoItCannotFlipFlop()
+    {
+        SocialBandTuning content = SocialBandTuning.Content;
+        var arbiter = new BehaviorArbiterModel(
+            new BehaviorArbiterTuning(CommitTicks: 0, HopPropensityThreshold: 35));
+
+        BehaviorSnapshot At(float distance) => Ambient() with
+        {
+            MoodBand = MoodBand.Content,
+            SocialTargetValid = true,
+            SocialTargetDirection = 1.0f,
+            SocialTargetDistance = distance,
+        };
+
+        Assert.Equal(
+            SocialStance.Approach,
+            arbiter.Resolve(
+                At(content.ApproachDistance + content.Hysteresis + 1.0f),
+                NeverHops).Stance);
+        Assert.Equal(
+            SocialStance.Approach,
+            arbiter.Resolve(At(content.ApproachDistance + 1.0f), NeverHops).Stance);
+        Assert.Equal(
+            SocialStance.Greet,
+            arbiter.Resolve(At(content.ApproachDistance - 1.0f), NeverHops).Stance);
+    }
+
+    [Fact]
+    public void InjectedSocialSet_IsTheSingleBandSource()
+    {
+        SocialTuningSet defaults = SocialTuningSet.Default;
+        SocialBandTuning customFearful = defaults.Fearful with
+        {
+            StandoffDistance = 50.0f,
+            Hysteresis = 5.0f,
+        };
+        var custom = defaults with { Fearful = customFearful };
+        var arbiter = new BehaviorArbiterModel(
+            new BehaviorArbiterTuning(0, 35),
+            custom);
+        BehaviorSnapshot target = Ambient() with
+        {
+            MoodBand = MoodBand.Fearful,
+            SocialTargetValid = true,
+            SocialTargetDirection = 1.0f,
+            SocialTargetDistance = 80.0f,
+        };
+
+        Assert.Equal(BehaviorPriority.Ambient, arbiter.Resolve(target, NeverHops).Owner);
+    }
+
+    [Fact]
+    public void TransientToolEmotion_ClaimsSocialLayerWithoutDistanceMovement()
+    {
+        var arbiter = new BehaviorArbiterModel();
+
+        ActuationIntent intent = arbiter.Resolve(
+            Ambient() with { SocialReactionPresent = true },
+            NeverHops);
+
+        Assert.Equal(BehaviorPriority.Social, intent.Owner);
+        Assert.Equal(SocialStance.None, intent.Stance);
+    }
+
+    [Fact]
     public void Greet_RespectsItsBandCadence()
     {
         var arbiter = new BehaviorArbiterModel(new BehaviorArbiterTuning(CommitTicks: 0, HopPropensityThreshold: 35));
@@ -418,6 +502,24 @@ public sealed class BehaviorArbiterModelTests
 
         Assert.Equal(BehaviorPriority.Ambient, intent.Owner);
         Assert.False(intent.DriveActive);
+    }
+
+    [Fact]
+    public void Resolve_AllocatesNothingOnTheFixedTickPath()
+    {
+        var arbiter = new BehaviorArbiterModel();
+        BehaviorSnapshot snapshot = Ambient();
+        _ = arbiter.Resolve(snapshot, EagerHopper);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int tick = 0; tick < 10_000; tick++)
+        {
+            snapshot = snapshot with { Tick = tick };
+            _ = arbiter.Resolve(snapshot, EagerHopper);
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
     }
 
     /// <summary>Turns on every layer that is active in either snapshot.</summary>

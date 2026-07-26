@@ -39,6 +39,8 @@ public partial class DualProfileLab : Node2D
             throw new InvalidOperationException("DualProfileLab requires two buddy compositions, one grab controller, and one pointer component.");
         Grab.Initialize();
         Pointer.Initialize();
+        BuddyA.Arbiter.InitializeSaveless();
+        BuddyB.Arbiter.InitializeSaveless();
         Pointer.PickFilter = body => body is PuppetPartBody part && ActiveBuddy.IsAncestorOf(part);
         ulong seed = _args.Seed ?? 1;
         BuddyA.ReseedAutonomy(seed); BuddyB.ReseedAutonomy(seed);
@@ -65,10 +67,14 @@ public partial class DualProfileLab : Node2D
         inactive.GrabResistance.SetGrabContext(false, Vector2.Zero);
         BuddyA.PhysicsTick(
             ReferenceEquals(active, BuddyA) ? grabbedBody?.PartId : null,
-            ReferenceEquals(active, BuddyA) ? grab.CursorAnchor : default);
+            ReferenceEquals(active, BuddyA) ? grab.CursorAnchor : default,
+            Pointer.WorldCursor,
+            Pointer.HasPointerInput);
         BuddyB.PhysicsTick(
             ReferenceEquals(active, BuddyB) ? grabbedBody?.PartId : null,
-            ReferenceEquals(active, BuddyB) ? grab.CursorAnchor : default);
+            ReferenceEquals(active, BuddyB) ? grab.CursorAnchor : default,
+            Pointer.WorldCursor,
+            Pointer.HasPointerInput);
         _recorderA?.Capture(_tick); _recorderB?.Capture(_tick); _tick++;
     }
 

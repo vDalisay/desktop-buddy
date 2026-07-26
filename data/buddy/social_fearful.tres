@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="SocialBandProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Behavior/SocialBandProfile.cs" id="1_profile"]
+
+[resource]
+resource_name = "FearfulSocialBand"
+script = ExtResource("1_profile")
+StandoffDistance = 260.0
+Hysteresis = 24.0
+LocomotionScale = 1.0

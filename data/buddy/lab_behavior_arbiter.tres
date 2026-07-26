@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="BehaviorArbiterProfile" load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://src/Buddy/Behavior/BehaviorArbiterProfile.cs" id="1_profile"]
+[ext_resource type="Resource" path="res://data/buddy/social_fearful.tres" id="2_fearful"]
+[ext_resource type="Resource" path="res://data/buddy/social_wary.tres" id="3_wary"]
+[ext_resource type="Resource" path="res://data/buddy/social_neutral.tres" id="4_neutral"]
+[ext_resource type="Resource" path="res://data/buddy/social_content.tres" id="5_content"]
+[ext_resource type="Resource" path="res://data/buddy/social_delighted.tres" id="6_delighted"]
+
+[resource]
+resource_name = "M4BehaviorArbiter"
+script = ExtResource("1_profile")
+CommitTicks = 36
+HopPropensityThreshold = 35
+Fearful = ExtResource("2_fearful")
+Wary = ExtResource("3_wary")
+Neutral = ExtResource("4_neutral")
+Content = ExtResource("5_content")
+Delighted = ExtResource("6_delighted")

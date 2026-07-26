@@ -113,6 +113,36 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   to hide missing rolling resistance.
 - A thrown object that bounces off a boundary before striking the buddy still credits the originating throw; the same object striking after coming to rest, or after the buddy tosses/discards it, attributes to the generic loose-object source.
 - Spawning object 25 removes the oldest eligible safe/unheld object and never removes a protected object.
+- The `object_catch_hold` scenario drives a registered safe object through the real
+  player grab/release bridge, then verifies layer-6→layer-3 sensing, bounded
+  two-hand catch/hold forces, held collision exceptions, exactly-once catch care,
+  and protection from fixed-registry eviction (`--fixed-fps 120`, seeds 1 and 7).
+- The `object_toss_discard` scenario verifies a held safe object receives one
+  bounded toss impulse and clears buddy-held/throw attribution, while newly
+  learned harmful memory instead produces one lower-energy discard, clears
+  collision exceptions, and requests flee bias (`--fixed-fps 120`, seeds 1 and 7).
+- The `consume_care_cooldown` scenario proves a cancelled real-food Eat grants no
+  care or cooldown, authoritative bite five applies `+10` mood exactly once and
+  starts exactly `7200` routed ticks while final hand-lowering continues, and an
+  immediate reuse is rejected without a second reward (`--fixed-fps 120`, seeds
+  1 and 7).
+- The `behavior_priority_ladder` scenario proves the complete §4 order `0–7`,
+  immediate higher-priority preemption inside a commitment window, and runtime
+  routing of fail-safe, unconscious, learned glove hazard, supported fearful
+  grab, committed object, social, and ambient producers. The supported grab
+  check retains the accepted walking resistance and deterministic panic hands
+  (`--fixed-fps 120`, seeds 1 and 7).
+- The `mood_band_behavior` scenario drives the per-run mood state through all
+  five bands and verifies fearful flee, wary standoff, neutral ambient baseline,
+  content approach, delighted approach, the exact voluntary-catch gate, and
+  content-versus-delighted greeting cadence from the typed shared resources
+  (`--fixed-fps 120`, seeds 1 and 7).
+- The `jump_trait_gate` scenario places a real frozen layer-3 object in a stable
+  committed walk path and proves a zero-propensity save never hops, a
+  high-propensity save does hop on probe evidence, unconsciousness suppresses
+  the request, and timer-driven ambient jumping remains disabled. Trait reload
+  is intentionally deferred to Task 4's `care_persistence` scenario
+  (`--fixed-fps 120`, seeds 1 and 7).
 
 ### Resize and Zoom
 
@@ -131,7 +161,7 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - The `pose_pipeline` scenario is the M3.6 Task 1 gate: pose-mode arbitration reaches Performance in a calm stable state and is forced back to Tracking by each real semantic (live buddy-part grab, unconsciousness, an accepted impact within the cooldown, and the learned-harm hand guard), the cooldown expiry re-allows Performance, every part's visual offset stays clamped to the profile fraction of its radius at full blend (and sits exactly at the cap when a larger offset is requested), and controlled strikes launched in Performance, Tracking, and mid-blend all accept identical saturated pain (`--fixed-fps 120`).
 - The `facing_follows_walk` scenario is the M3.6 Task 2 gate: a sustained seeded walk direction commits the matching three-quarter side only after the hysteresis streak and eases to the accepted yaw with no overshoot, an engaged care cursor flips the side deterministically with a single monotonic zero crossing, and a controlled strike snaps the displayed yaw to zero on the next rendered frame while the committed side is remembered (`--fixed-fps 120`).
 - The `activity_clips` scenario is the M3.6 Task 3 plus owner-fix B4 gate: every activity id resolves to a real clip in the animation library, walk-dressing phase advances proportionally to measured torso travel (ratio within 15% of 1.0) and freezes on every non-walk frame, and Eat pauses autonomy/settles horizontal travel while both authoritative hands move a shared item target from upper chest to mouth. Its fixed-clock gate requires a temporary frontal face-to-food turn that remembers and restores the committed side, exactly five bite events, item scales `0.8 / 0.6 / 0.4 / 0.2 / 0`, disappearance on bite five, both hands beyond the face depth with their upper edges just below the mouth, a final downward return that physically reaches normal hand-rest height during its `30`-tick hold before reach release, release on cancellation, and an immediate cut after a real accepted impact (`--fixed-fps 120`).
-- The `autonomous_motion` scenario requires a grounded walk-to-idle transition to reduce whole-rig horizontal motion to at most `2 px/s` with no more than `1.25 px` center-of-mass travel over four routed ticks. The check must not apply to airborne/throw motion and runs on seeds 1 and 7 (`--fixed-fps 120`).
+- The `autonomous_motion` scenario requires a grounded walk-to-idle transition to reduce whole-rig horizontal motion to at most `2 px/s` with no more than `1.25 px` center-of-mass travel over four routed ticks. Its jump-actuation regression uses the approved real obstacle plus high-propensity gate; it must never re-enable timer-driven ambient jumping. The stop check must not apply to airborne/throw motion and runs on seeds 1 and 7 (`--fixed-fps 120`).
 - The `grab_dangle` scenario lifts the buddy independently by head, torso, both hands, and both feet. Every unsupported case must disable all active drive and resistance while retaining passive structural topology within the calibrated `48 px` loose-hang bound (42.8 px measured plus margin); the same bound applies while unconscious, grounded grabs retain standing drive, every body remains finite, and release resumes drive (`--fixed-fps 120`).
 - The `grab_hang_orientation` scenario lifts both feet and one hand, then requires the grabbed part to become the highest body, a foot grab to place the head below the torso, and the torso to converge on the center-of-mass-derived hang frame while every ordinary active-drive output remains off. It also proves the bounded gravity-style alignment torque runs, crosses its target before settling, keeps all bodies finite, and resumes active drive and standing recovery on release (`--fixed-fps 120`).
 - The `grab_swing_pendulum` scenario lifts one foot and drives the cursor through a fixed horizontal sine. The center of mass must follow with measurable nonzero phase lag, structural links must flex without exceeding their configured maximum distances beyond the calibrated margin, all ordinary drive must remain passive, all bodies must remain finite, and release must recover standing (`--fixed-fps 120`).

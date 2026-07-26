@@ -129,6 +129,7 @@ public readonly record struct ObjectIntent(
 public sealed class ObjectInteractionModel
 {
     private readonly ObjectInteractionTuning _tuning;
+    private readonly SocialTuningSet _socialTuning;
 
     private ObjectPhase _phase = ObjectPhase.Idle;
     private int _runtimeId;
@@ -138,9 +139,13 @@ public sealed class ObjectInteractionModel
     private bool _consumable;
     private int _lastRewardedThrowToken;
 
-    public ObjectInteractionModel(ObjectInteractionTuning? tuning = null)
+    public ObjectInteractionModel(
+        ObjectInteractionTuning? tuning = null,
+        SocialTuningSet? socialTuning = null)
     {
         _tuning = tuning ?? ObjectInteractionTuning.Default;
+        _socialTuning = socialTuning ?? SocialTuningSet.Default;
+        _socialTuning.Validate();
     }
 
     public ObjectPhase Phase => _phase;
@@ -334,7 +339,7 @@ public sealed class ObjectInteractionModel
         MoodBand moodBand,
         Func<string, bool> isHarmful)
     {
-        SocialBandTuning band = SocialBandTuning.For(moodBand);
+        SocialBandTuning band = _socialTuning.For(moodBand);
         if (!band.WillCatch)
         {
             // Fearful and wary never voluntarily engage an object (owner decision 1).

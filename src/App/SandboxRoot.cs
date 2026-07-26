@@ -7,6 +7,7 @@ using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Platform;
@@ -15,6 +16,7 @@ using DesktopBuddy.Economy;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Laboratory;
+using DesktopBuddy.Objects;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Sandbox;
@@ -47,6 +49,7 @@ public partial class SandboxRoot : Node2D
     [Export] public LabPointerGrabComponent Pointer { get; set; } = null!;
     [Export] public PuppetRoomContainmentComponent Containment { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
+    [Export] public LooseObjectRegistry Objects { get; set; } = null!;
 
     /// <summary>The single per-run persistent semantic state (ARCHITECTURE §12).</summary>
     public BuddyProgressState Progress { get; private set; } = null!;
@@ -80,6 +83,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(Boundaries) || !GodotObject.IsInstanceValid(Buddy) ||
             !GodotObject.IsInstanceValid(Grab) || !GodotObject.IsInstanceValid(Pointer) ||
             !GodotObject.IsInstanceValid(Containment) || !GodotObject.IsInstanceValid(Pipeline) ||
+            !GodotObject.IsInstanceValid(Objects) ||
             !GodotObject.IsInstanceValid(Glove) || !GodotObject.IsInstanceValid(CareStroke) ||
             !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
@@ -106,6 +110,9 @@ public partial class SandboxRoot : Node2D
         Progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
         Economy = new EconomyService(Progress);
         Pipeline.Initialize(Progress, Economy);
+        Objects.Initialize();
+        Buddy.Arbiter.Initialize(Progress);
+        Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
         Glove.Initialize();
         CareStroke.Initialize();
         CareCursor.Initialize();
@@ -136,6 +143,7 @@ public partial class SandboxRoot : Node2D
         RefreshWorkModeHitRegions();
         Buddy.Recovery.HardRecovered += OnHardRecovered;
         Pipeline.ToolChanged += OnToolChanged;
+        Grab.Released += OnGrabReleased;
         Glove.BodySpawned += OnGloveBodySpawned;
         Glove.BodyDespawned += OnGloveBodyDespawned;
 
@@ -156,6 +164,7 @@ public partial class SandboxRoot : Node2D
         Boundaries.PhysicsTick();
         Grab.PhysicsTick(delta);
         GrabState grab = Grab.CurrentGrab;
+        Objects.PhysicsTick(grab);
         PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
         bool buddyPartGrabbed = grabbedBody is not null;
         Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
@@ -163,7 +172,11 @@ public partial class SandboxRoot : Node2D
         CareStroke.PhysicsTick(delta);
         ToolReactions.PhysicsTick(delta);
         Reactions.PhysicsTick();
-        Buddy.PhysicsTick(grabbedBody?.PartId, grab.CursorAnchor);
+        Buddy.PhysicsTick(
+            grabbedBody?.PartId,
+            grab.CursorAnchor,
+            Pointer.WorldCursor,
+            Pointer.HasPointerInput);
         Pipeline.PhysicsTick();
         RefreshWorkModeHitRegions();
     }
@@ -178,6 +191,7 @@ public partial class SandboxRoot : Node2D
         if (GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Buddy.Recovery))
             Buddy.Recovery.HardRecovered -= OnHardRecovered;
         if (GodotObject.IsInstanceValid(Pipeline)) Pipeline.ToolChanged -= OnToolChanged;
+        if (GodotObject.IsInstanceValid(Grab)) Grab.Released -= OnGrabReleased;
         if (GodotObject.IsInstanceValid(Glove))
         {
             Glove.BodySpawned -= OnGloveBodySpawned;
@@ -216,12 +230,24 @@ public partial class SandboxRoot : Node2D
 
     private void OnHardRecovered(HardRecoveryReason reason)
     {
-        if (Grab.IsGrabbing) Grab.Release();
+        Buddy.ObjectInteraction.Reset();
+        if (Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
     }
 
     private void OnToolChanged(ToolId previous, ToolId selected)
     {
-        if (previous == ToolId.Grab && Grab.IsGrabbing) Grab.Release();
+        if (previous == ToolId.Grab && Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
+    }
+
+    private void OnGrabReleased(RigidBody2D body, bool countsAsThrow)
+    {
+        if (body is not LooseObjectBody loose || loose.RuntimeId == 0)
+            return;
+
+        if (countsAsThrow)
+            Objects.MarkPlayerThrown(loose, ContentIds.ToolGrab);
+        else
+            Objects.MarkBuddyReleased(loose);
     }
 
     public void SetPresentationMode(PresentationMode mode)

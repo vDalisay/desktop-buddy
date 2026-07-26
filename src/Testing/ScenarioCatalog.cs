@@ -45,6 +45,12 @@ public static class ScenarioCatalog
         ["tool_feel_reactions"] = () => new ToolFeelReactionScenario(),
         ["presentation_3d"] = () => new Presentation3DScenario(),
         ["presentation_look"] = () => new PresentationLookScenario(),
+        ["object_catch_hold"] = () => new ObjectCatchHoldScenario(),
+        ["object_toss_discard"] = () => new ObjectTossDiscardScenario(),
+        ["consume_care_cooldown"] = () => new ConsumeCareCooldownScenario(),
+        ["behavior_priority_ladder"] = () => new BehaviorPriorityLadderScenario(),
+        ["mood_band_behavior"] = () => new MoodBandBehaviorScenario(),
+        ["jump_trait_gate"] = () => new JumpTraitGateScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

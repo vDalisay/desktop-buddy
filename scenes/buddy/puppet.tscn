@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3]
+[gd_scene load_steps=30 format=3]
 
 [ext_resource type="Script" path="res://src/Buddy/BuddyRoot.cs" id="1_root"]
 [ext_resource type="Script" path="res://src/Buddy/Physics/PuppetRig.cs" id="2_rig"]
@@ -17,6 +17,10 @@
 [ext_resource type="Resource" path="res://data/buddy/lab_buddy_visual.tres" id="15_visual_profile"]
 [ext_resource type="Script" path="res://src/Buddy/Behavior/BehaviorActivityComponent.cs" id="16_activity"]
 [ext_resource type="Resource" path="res://data/buddy/lab_behavior_activity.tres" id="17_activity_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Behavior/ObjectInteractionComponent.cs" id="18_object_interaction"]
+[ext_resource type="Resource" path="res://data/objects/lab_object_interaction.tres" id="19_object_interaction_profile"]
+[ext_resource type="Script" path="res://src/Buddy/Behavior/BehaviorArbiter.cs" id="20_arbiter"]
+[ext_resource type="Resource" path="res://data/buddy/lab_behavior_arbiter.tres" id="21_arbiter_profile"]
 
 [sub_resource type="CircleShape2D" id="HeadShape"]
 radius = 24.0
@@ -36,7 +40,10 @@ radius = 17.0
 [sub_resource type="CircleShape2D" id="FootShapeRight"]
 radius = 17.0
 
-[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "AutonomousMotion", "ActiveDrive", "GrabResistance", "Activity")]
+[sub_resource type="CircleShape2D" id="ObjectSenseShape"]
+radius = 220.0
+
+[node name="Buddy" type="Node2D" node_paths=PackedStringArray("Rig", "Constraints", "Standing", "Recovery", "AutonomousMotion", "ActiveDrive", "GrabResistance", "Activity", "ObjectInteraction", "Arbiter")]
 script = ExtResource("1_root")
 Rig = NodePath("PuppetRig")
 VisualProfile = ExtResource("15_visual_profile")
@@ -47,6 +54,8 @@ AutonomousMotion = NodePath("AutonomousMotionComponent")
 ActiveDrive = NodePath("ActiveDriveComponent")
 GrabResistance = NodePath("GrabResistanceComponent")
 Activity = NodePath("BehaviorActivityComponent")
+ObjectInteraction = NodePath("ObjectInteractionComponent")
+Arbiter = NodePath("BehaviorArbiter")
 
 [node name="PuppetRig" type="Node" parent="." node_paths=PackedStringArray("Head", "Torso", "LeftHand", "RightHand", "LeftFoot", "RightFoot")]
 script = ExtResource("2_rig")
@@ -157,11 +166,23 @@ Standing = NodePath("../StandingDetector")
 SafeBounds = Rect2(0, 0, 480, 360)
 SafePoseOrigin = Vector2(240, 260)
 
-[node name="AutonomousMotionComponent" type="Node" parent="." node_paths=PackedStringArray("Standing", "Rig")]
+[node name="AutonomousMotionComponent" type="Node" parent="." node_paths=PackedStringArray("Standing", "Rig", "LeftObstacleCast", "RightObstacleCast")]
 script = ExtResource("10_autonomy")
 Standing = NodePath("../StandingDetector")
 Rig = NodePath("../PuppetRig")
 Profile = ExtResource("11_autonomy_profile")
+LeftObstacleCast = NodePath("LeftObstacleCast")
+RightObstacleCast = NodePath("RightObstacleCast")
+
+[node name="LeftObstacleCast" type="RayCast2D" parent="AutonomousMotionComponent"]
+enabled = true
+target_position = Vector2(-56, 0)
+collision_mask = 4
+
+[node name="RightObstacleCast" type="RayCast2D" parent="AutonomousMotionComponent"]
+enabled = true
+target_position = Vector2(56, 0)
+collision_mask = 4
 
 [node name="ActiveDriveComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Standing", "Recovery")]
 script = ExtResource("8_drive")
@@ -179,3 +200,27 @@ Rig = NodePath("../PuppetRig")
 [node name="BehaviorActivityComponent" type="Node" parent="."]
 script = ExtResource("16_activity")
 Profile = ExtResource("17_activity_profile")
+
+[node name="ObjectInteractionComponent" type="Area2D" parent="." node_paths=PackedStringArray("Rig", "Activity")]
+collision_layer = 32
+collision_mask = 4
+monitorable = false
+script = ExtResource("18_object_interaction")
+Rig = NodePath("../PuppetRig")
+Activity = NodePath("../BehaviorActivityComponent")
+Profile = ExtResource("19_object_interaction_profile")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="ObjectInteractionComponent"]
+shape = SubResource("ObjectSenseShape")
+
+[node name="BehaviorArbiter" type="Node" parent="." node_paths=PackedStringArray("Rig", "Standing", "Recovery", "AutonomousMotion", "ActiveDrive", "GrabResistance", "Activity", "ObjectInteraction")]
+script = ExtResource("20_arbiter")
+Rig = NodePath("../PuppetRig")
+Standing = NodePath("../StandingDetector")
+Recovery = NodePath("../RecoveryComponent")
+AutonomousMotion = NodePath("../AutonomousMotionComponent")
+ActiveDrive = NodePath("../ActiveDriveComponent")
+GrabResistance = NodePath("../GrabResistanceComponent")
+Activity = NodePath("../BehaviorActivityComponent")
+ObjectInteraction = NodePath("../ObjectInteractionComponent")
+Profile = ExtResource("21_arbiter_profile")

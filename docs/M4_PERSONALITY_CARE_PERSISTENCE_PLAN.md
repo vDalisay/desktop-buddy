@@ -504,8 +504,34 @@ Authoritative per-task status. Update after each task lands with its suite run.
       save-creation stream, 0–100 bucket), `CareConsumableModel` (+10 / 7200 ticks,
       no cooldown on cancel/miss/drop/interrupt), `SocialBandTuning` five-band vocabulary.
       Gate: `dotnet test` **540/540** (429 at M3.6 baseline).
-- [ ] Task 2 — Object interaction integration
-- [ ] Task 3 — Arbiter integration + personality + jump trait
+- [x] **Task 2 — Object interaction integration** (2026-07-26).
+      Added the fixed-capacity `LooseObjectRegistry`, typed loose-object and
+      interaction profiles, exact layer-6→layer-3 sensing, bounded two-hand
+      catch/hold drive, one-shot toss/discard commands, held collision exceptions,
+      and real player-release throw attribution. Lab `E` now consumes a registered
+      food object through the existing Eat choreography; only authoritative bite
+      five applies care and starts the exact cooldown.
+      Gates: build clean with zero warnings; `dotnet test` **571/571**;
+      `quick_validate` **11/11**; `object_catch_hold`, `object_toss_discard`, and
+      `consume_care_cooldown` **12/12** across seeds 1/7 and both presentations;
+      targeted activity/grab/impact/autonomy regressions green. The catalog is now
+      **36 scenarios** and **10 journeys**.
+- [x] **Task 3 — Arbiter integration + personality + jump trait** (2026-07-26).
+      Added the thin runtime `BehaviorArbiter`, removed drive-intent construction
+      from `BuddyRoot`, and routed the complete §4 priority ladder through the
+      existing focused producers into `ActiveDriveComponent`. One typed
+      five-resource social vocabulary now drives both social intent and voluntary
+      object catching with stateful hysteresis; suppressed ambient planning pauses
+      its RNG stream. Two layer-3 ray probes provide real obstacle evidence, and
+      hopping now requires the per-run persisted propensity, a committed walk,
+      stable support, and no higher-priority owner while timer jumping remains off.
+      Gates: build clean with zero warnings; `dotnet test` **576/576**, including
+      a 10,000-tick zero-allocation arbiter check; `quick_validate` **11/11**;
+      `behavior_priority_ladder`, `mood_band_behavior`, and `jump_trait_gate`
+      **12/12** across seeds 1/7 and both presentations; focused object, Eat,
+      tool-feel, grab/dangle, wall, and autonomy regressions green. The catalog is
+      now **39 scenarios** and **10 journeys**. Trait reload remains assigned to
+      Task 4's `care_persistence` gate.
 - [ ] Task 4 — Persistence stack + phased journeys + resume
 - [ ] Task 5 — Clocks, passive income, hidden mode
 - [ ] Task 6 — Composition, regression, docs, owner gate

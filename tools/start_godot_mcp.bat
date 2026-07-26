@@ -18,13 +18,14 @@ if defined GODOT_MCP_PATH (
   )
 )
 
+if not defined MCP_ENTRY call :try "%PROJECT_ROOT%\Mcp\godot-mcp-runtime\dist\index.js"
+if not defined MCP_ENTRY call :try "%PROJECT_ROOT%\..\mcp\godot-mcp-runtime\dist\index.js"
 if not defined MCP_ENTRY call :try "%PROJECT_ROOT%\..\mcp\godot-mcp\build\index.js"
 if not defined MCP_ENTRY call :try "%PROJECT_ROOT%\Mcp\godot-mcp\build\index.js"
-if not defined MCP_ENTRY call :try "%PROJECT_ROOT%\Mcp\godot-mcp-runtime\dist\index.js"
 
 if not defined MCP_ENTRY (
   >&2 echo A built Godot MCP server was not found.
-  >&2 echo Checked the repository-adjacent mcp\godot-mcp checkout and the in-project Mcp fallbacks.
+  >&2 echo Checked the in-project runtime server and repository-adjacent/in-project fallbacks.
   >&2 echo Build the server or set GODOT_MCP_PATH, then try again. See README.md.
   exit /b 2
 )

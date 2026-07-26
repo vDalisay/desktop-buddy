@@ -40,6 +40,13 @@ public partial class ActiveDriveComponent : Node
     public Vector2 LastActivityHeadReactionForce { get; private set; }
     public Vector2 LastActivityTorsoReactionForce { get; private set; }
     public Vector2 LastStationaryForce { get; private set; }
+    public Vector2 LastLeftObjectHandForce { get; private set; }
+    public Vector2 LastRightObjectHandForce { get; private set; }
+    public Vector2 LastObjectForce { get; private set; }
+    public Vector2 LastObjectReactionForce { get; private set; }
+    public Vector2 LastObjectReleaseImpulse { get; private set; }
+    public int ObjectTossCount { get; private set; }
+    public int ObjectDiscardCount { get; private set; }
     public int HeadRightingDelayTicksRemaining { get; private set; }
     public int GuardAbsorptionCount { get; private set; }
     public int JumpImpulseCount { get; private set; }
@@ -119,6 +126,11 @@ public partial class ActiveDriveComponent : Node
         LastActivityHeadReactionForce = Vector2.Zero;
         LastActivityTorsoReactionForce = Vector2.Zero;
         LastStationaryForce = Vector2.Zero;
+        LastLeftObjectHandForce = Vector2.Zero;
+        LastRightObjectHandForce = Vector2.Zero;
+        LastObjectForce = Vector2.Zero;
+        LastObjectReactionForce = Vector2.Zero;
+        LastObjectReleaseImpulse = Vector2.Zero;
 
         if (HeadRightingDelayTicksRemaining > 0)
             HeadRightingDelayTicksRemaining--;
@@ -189,7 +201,69 @@ public partial class ActiveDriveComponent : Node
             ApplyPanicHands(intent, mode);
         else if (intent.ActivityHandReachActive)
             ApplyActivityHandReach(intent, mode);
+        else if (intent.ObjectCommand.Action is ObjectDriveAction.Catch or ObjectDriveAction.Hold)
+            ApplyObjectHandReach(intent.ObjectCommand, mode);
+        ApplyObjectBodyCommand(intent);
         UpdateJump(intent, mode);
+    }
+
+    private void ApplyObjectHandReach(
+        in ObjectDriveCommand command,
+        ConsciousnessDriveProfile mode)
+    {
+        Vector2 targetVelocity = Rig.Torso.LinearVelocity;
+        LastLeftObjectHandForce = DriveHandToTarget(
+            Rig.LeftHand,
+            command.LeftHandTarget,
+            targetVelocity,
+            command.HandStiffness,
+            command.HandDamping,
+            command.MaximumHandForce,
+            mode);
+        LastRightObjectHandForce = DriveHandToTarget(
+            Rig.RightHand,
+            command.RightHandTarget,
+            targetVelocity,
+            command.HandStiffness,
+            command.HandDamping,
+            command.MaximumHandForce,
+            mode);
+        Rig.Torso.ApplyCentralForce(-(LastLeftObjectHandForce + LastRightObjectHandForce));
+    }
+
+    private void ApplyObjectBodyCommand(in DriveIntent intent)
+    {
+        ObjectDriveCommand command = intent.ObjectCommand;
+        if (!command.Active || !GodotObject.IsInstanceValid(command.Body))
+            return;
+
+        if (command.Action is ObjectDriveAction.Toss or ObjectDriveAction.Discard)
+        {
+            command.Body!.ApplyCentralImpulse(command.ReleaseImpulse);
+            LastObjectReleaseImpulse = command.ReleaseImpulse;
+            if (command.Action == ObjectDriveAction.Toss)
+                ObjectTossCount++;
+            else
+                ObjectDiscardCount++;
+            return;
+        }
+
+        if (command.Action is not (ObjectDriveAction.Catch or ObjectDriveAction.Hold))
+            return;
+
+        Vector2 target = intent.ActivityHandReachActive
+            ? (intent.LeftActivityHandTarget + intent.RightActivityHandTarget) * 0.5f
+            : command.ObjectTarget;
+        Vector2 targetVelocity = (Rig.LeftHand.LinearVelocity + Rig.RightHand.LinearVelocity) * 0.5f;
+        Vector2 force = ((target - command.Body!.GlobalPosition) * command.ObjectStiffness) -
+                        ((command.Body.LinearVelocity - targetVelocity) * command.ObjectDamping);
+        if (force.Length() > command.MaximumObjectForce)
+            force = force.Normalized() * command.MaximumObjectForce;
+
+        LastObjectForce = force;
+        LastObjectReactionForce = -force;
+        command.Body.ApplyCentralForce(force);
+        Rig.Torso.ApplyCentralForce(LastObjectReactionForce);
     }
 
     private void ApplyStationaryBrake(ConsciousnessDriveProfile mode)

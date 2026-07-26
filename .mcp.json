@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "godot-mcp": {
+    "desktop-buddy-godot-mcp": {
       "command": "cmd.exe",
       "args": ["/d", "/c", "tools\\start_godot_mcp.bat"]
     }

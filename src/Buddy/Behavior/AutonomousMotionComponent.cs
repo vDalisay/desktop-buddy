@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
@@ -19,6 +20,8 @@ public partial class AutonomousMotionComponent : Node
     [Export] public StandingDetector Standing { get; set; } = null!;
     [Export] public PuppetRig Rig { get; set; } = null!;
     [Export] public AutonomousMotionProfile Profile { get; set; } = null!;
+    [Export] public RayCast2D LeftObstacleCast { get; set; } = null!;
+    [Export] public RayCast2D RightObstacleCast { get; set; } = null!;
 
     private Rect2 _walkableBounds;
     private bool _hasWalkableBounds;
@@ -29,6 +32,8 @@ public partial class AutonomousMotionComponent : Node
     public bool BlockedLeft { get; private set; }
     public bool BlockedRight { get; private set; }
     public bool IsWallStopping { get; private set; }
+    public bool ObstacleLeft { get; private set; }
+    public bool ObstacleRight { get; private set; }
     public float LeftWallClearance { get; private set; } = float.PositiveInfinity;
     public float RightWallClearance { get; private set; } = float.PositiveInfinity;
     public bool IsInitialized { get; private set; }
@@ -37,13 +42,17 @@ public partial class AutonomousMotionComponent : Node
     {
         if (!GodotObject.IsInstanceValid(Standing) || !Standing.IsInitialized ||
             !GodotObject.IsInstanceValid(Rig) || !Rig.IsInitialized ||
-            !GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
+            !GodotObject.IsInstanceValid(Profile) || !Profile.IsRuntimeValid ||
+            !GodotObject.IsInstanceValid(LeftObstacleCast) ||
+            !GodotObject.IsInstanceValid(RightObstacleCast))
         {
             throw new InvalidOperationException(
                 "AutonomousMotionComponent requires an initialized standing detector and valid profile.");
         }
 
         Reseed(seed);
+        ConfigureObstacleCast(LeftObstacleCast, -Profile.ObstacleProbeDistance);
+        ConfigureObstacleCast(RightObstacleCast, Profile.ObstacleProbeDistance);
         IsInitialized = true;
     }
 
@@ -84,11 +93,36 @@ public partial class AutonomousMotionComponent : Node
         bool canWalk = standing.SupportContactCount > 0;
         bool canJump = standing.IsStable;
         UpdateWallSensing();
+        UpdateObstacleSensing();
         Intent = _planner.Tick(enabled, canWalk, canJump, BlockedLeft, BlockedRight);
         if (Intent.JumpRequested)
         {
             JumpRequestCount++;
         }
+    }
+
+    public bool ObstacleInCommittedPath(float walkDirection) =>
+        walkDirection < 0.0f ? ObstacleLeft :
+        walkDirection > 0.0f && ObstacleRight;
+
+    private static void ConfigureObstacleCast(RayCast2D cast, float targetX)
+    {
+        cast.Enabled = true;
+        cast.CollisionMask = CollisionLayers.LooseObjects;
+        cast.CollideWithAreas = false;
+        cast.CollideWithBodies = true;
+        cast.TargetPosition = new Vector2(targetX, 0.0f);
+    }
+
+    private void UpdateObstacleSensing()
+    {
+        Vector2 torso = Rig.Torso.GlobalPosition;
+        LeftObstacleCast.GlobalPosition = torso;
+        RightObstacleCast.GlobalPosition = torso;
+        LeftObstacleCast.ForceRaycastUpdate();
+        RightObstacleCast.ForceRaycastUpdate();
+        ObstacleLeft = LeftObstacleCast.IsColliding();
+        ObstacleRight = RightObstacleCast.IsColliding();
     }
 
     private void UpdateWallSensing()

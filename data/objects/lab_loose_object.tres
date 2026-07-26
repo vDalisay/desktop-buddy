@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+
+[resource]
+resource_name = "M4LabSafeObject"
+script = ExtResource("1")
+ContentId = "object.loose"
+Consumable = false
+Hazardous = false
+SafeToEvict = true
+Radius = 12.0
+Mass = 1.0
+LinearDamp = 1.5
+AngularDamp = 2.0
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(1, 0.823529, 0.478431, 1)
+OutlineColor = Color(0.094118, 0.188235, 0.258824, 1)

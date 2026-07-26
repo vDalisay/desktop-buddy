@@ -56,6 +56,7 @@ public partial class LabPointerGrabComponent : Node2D
     public Func<RigidBody2D, bool>? PickFilter { get; set; }
 
     public bool IsActive => _active;
+    public bool HasPointerInput => _sawPointerInput;
     public bool IsPrimaryHeld { get; private set; }
     public Vector2 WorldCursor { get; private set; }
     public int ReceivedInputCount { get; private set; }
@@ -205,7 +206,7 @@ public partial class LabPointerGrabComponent : Node2D
             _pendingCancel = false;
             _pendingPress = false;
             _pendingRelease = false;
-            ReleaseIfGrabbing();
+            ReleaseIfGrabbing(countsAsThrow: false);
         }
 
         if (_pendingPress)
@@ -230,7 +231,7 @@ public partial class LabPointerGrabComponent : Node2D
         if (_pendingRelease)
         {
             _pendingRelease = false;
-            ReleaseIfGrabbing();
+            ReleaseIfGrabbing(countsAsThrow: true);
         }
 
         QueueRedraw();
@@ -249,11 +250,11 @@ public partial class LabPointerGrabComponent : Node2D
         DrawCircle(grab.CursorAnchor, 3.0f, TetherColor);
     }
 
-    private void ReleaseIfGrabbing()
+    private void ReleaseIfGrabbing(bool countsAsThrow)
     {
         if (Grab.IsGrabbing)
         {
-            Grab.Release();
+            Grab.Release(countsAsThrow);
         }
         _ownsGrab = false;
     }

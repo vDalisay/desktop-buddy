@@ -36,4 +36,5 @@ public readonly record struct DriveIntent(
     bool PanicLeftHandActive,
     bool PanicRightHandActive,
     Vector2 LeftPanicHandTarget,
-    Vector2 RightPanicHandTarget);
+    Vector2 RightPanicHandTarget,
+    ObjectDriveCommand ObjectCommand = default);

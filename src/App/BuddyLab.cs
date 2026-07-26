@@ -6,13 +6,16 @@ using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Physics;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Laboratory;
+using DesktopBuddy.Objects;
 using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Sandbox;
 using DesktopBuddy.Tools;
@@ -40,6 +43,9 @@ public partial class BuddyLab : Node2D
     [Export] public LaboratoryTelemetryPanel TelemetryPanel { get; set; } = null!;
     [Export] public LaboratoryBoundaryVisualizer BoundaryVisualizer { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
+    [Export] public LooseObjectRegistry Objects { get; set; } = null!;
+    [Export] public LooseObjectProfile LabFoodProfile { get; set; } = null!;
+    [Export] public LooseObjectProfile SafeObjectProfile { get; set; } = null!;
 
     /// <summary>The single per-run persistent semantic state (ARCHITECTURE §12).</summary>
     public BuddyProgressState Progress { get; private set; } = null!;
@@ -74,7 +80,11 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(Boundaries) || !GodotObject.IsInstanceValid(Containment) ||
             !GodotObject.IsInstanceValid(TelemetryPanel) ||
             !GodotObject.IsInstanceValid(BoundaryVisualizer) ||
-            !GodotObject.IsInstanceValid(Pipeline) || !GodotObject.IsInstanceValid(Glove) ||
+            !GodotObject.IsInstanceValid(Pipeline) ||
+            !GodotObject.IsInstanceValid(Objects) ||
+            !GodotObject.IsInstanceValid(LabFoodProfile) ||
+            !GodotObject.IsInstanceValid(SafeObjectProfile) ||
+            !GodotObject.IsInstanceValid(Glove) ||
             !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
             !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
             !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
@@ -101,6 +111,9 @@ public partial class BuddyLab : Node2D
         Progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
         Economy = new EconomyService(Progress);
         Pipeline.Initialize(Progress, Economy);
+        Objects.Initialize();
+        Buddy.Arbiter.Initialize(Progress);
+        Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
         Glove.Initialize();
         CareStroke.Initialize();
         CareCursor.Initialize();
@@ -152,7 +165,11 @@ public partial class BuddyLab : Node2D
         // Leaving Grab drops the current interaction without changing selection
         // rules (RAGDOLL §9.1); the pipeline owns selection, the lab owns the tether.
         Pipeline.ToolChanged += OnToolChanged;
+        Grab.Released += OnGrabReleased;
         Controls.PresentationToggleRequested += OnPresentationToggleRequested;
+        Controls.EatToggleRequested += OnEatToggleRequested;
+        Buddy.ObjectInteraction.ConsumeStarted += OnObjectConsumeStarted;
+        Buddy.ObjectInteraction.ConsumeCancelled += OnObjectConsumeCancelled;
         Glove.BodySpawned += OnGloveBodySpawned;
         Glove.BodyDespawned += OnGloveBodyDespawned;
 
@@ -181,6 +198,7 @@ public partial class BuddyLab : Node2D
             // the same physics step; ordering between them does not matter.
             Grab.PhysicsTick(delta);
             GrabState grab = Grab.CurrentGrab;
+            Objects.PhysicsTick(grab);
             PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
             bool buddyPartGrabbed = grabbedBody is not null;
             Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
@@ -190,7 +208,11 @@ public partial class BuddyLab : Node2D
             ToolReactions.PhysicsTick(delta);
             Reactions.PhysicsTick();
 
-            Buddy.PhysicsTick(grabbedBody?.PartId, grab.CursorAnchor);
+            Buddy.PhysicsTick(
+                grabbedBody?.PartId,
+                grab.CursorAnchor,
+                Pointer.WorldCursor,
+                Pointer.HasPointerInput);
 
             // ARCHITECTURE §7 steps 7-8: the pipeline consumes the previous
             // step's authoritative contacts after the buddy routed its tick.
@@ -230,10 +252,21 @@ public partial class BuddyLab : Node2D
         {
             Pipeline.ToolChanged -= OnToolChanged;
         }
+        if (GodotObject.IsInstanceValid(Grab))
+        {
+            Grab.Released -= OnGrabReleased;
+        }
 
         if (GodotObject.IsInstanceValid(Controls))
         {
             Controls.PresentationToggleRequested -= OnPresentationToggleRequested;
+            Controls.EatToggleRequested -= OnEatToggleRequested;
+        }
+        if (GodotObject.IsInstanceValid(Buddy) &&
+            GodotObject.IsInstanceValid(Buddy.ObjectInteraction))
+        {
+            Buddy.ObjectInteraction.ConsumeStarted -= OnObjectConsumeStarted;
+            Buddy.ObjectInteraction.ConsumeCancelled -= OnObjectConsumeCancelled;
         }
         if (GodotObject.IsInstanceValid(Glove))
         {
@@ -249,9 +282,10 @@ public partial class BuddyLab : Node2D
 
     private void OnHardRecovered(HardRecoveryReason reason)
     {
+        Buddy.ObjectInteraction.Reset();
         if (Grab.IsGrabbing)
         {
-            Grab.Release();
+            Grab.Release(countsAsThrow: false);
         }
     }
 
@@ -259,8 +293,19 @@ public partial class BuddyLab : Node2D
     {
         if (previous == ToolId.Grab && Grab.IsGrabbing)
         {
-            Grab.Release();
+            Grab.Release(countsAsThrow: false);
         }
+    }
+
+    private void OnGrabReleased(RigidBody2D body, bool countsAsThrow)
+    {
+        if (body is not LooseObjectBody loose || loose.RuntimeId == 0)
+            return;
+
+        if (countsAsThrow)
+            Objects.MarkPlayerThrown(loose, ContentIds.ToolGrab);
+        else
+            Objects.MarkBuddyReleased(loose);
     }
 
     public void SetPresentationMode(PresentationMode mode)
@@ -295,4 +340,72 @@ public partial class BuddyLab : Node2D
     private void OnGloveBodySpawned(BoxingGloveBody body) => GloveVisual.Attach(body);
 
     private void OnGloveBodyDespawned(BoxingGloveBody body) => GloveVisual.Detach(body);
+
+    /// <summary>Root-owned loose-object factory used by the lab and scenarios.</summary>
+    public LooseObjectBody? SpawnLooseObject(
+        LooseObjectProfile profile,
+        Vector2 worldPosition,
+        Vector2 velocity = default,
+        bool playerThrown = false)
+    {
+        bool profileValid = GodotObject.IsInstanceValid(profile) && profile.IsRuntimeValid;
+        if (!profileValid)
+            return null;
+
+        var body = new LooseObjectBody
+        {
+            Name = $"LooseObject_{Objects.Count + 1}",
+            GlobalPosition = worldPosition,
+            LinearVelocity = velocity,
+        };
+        body.Configure(profile);
+        AddChild(body);
+        if (!Objects.TryRegister(body, profile, out _))
+        {
+            body.QueueFree();
+            return null;
+        }
+
+        if (playerThrown)
+            Objects.MarkPlayerThrown(body);
+        return body;
+    }
+
+    private void OnEatToggleRequested()
+    {
+        if (Buddy.Activity.Current == ActivityId.Eat)
+        {
+            Buddy.ObjectInteraction.CancelActiveInteraction();
+            Buddy.SetBehaviorActivity(ActivityId.None);
+            Activities.ClearItemVisual();
+            return;
+        }
+
+        Vector2 spawn = (Buddy.Rig.LeftHand.GlobalPosition + Buddy.Rig.RightHand.GlobalPosition) * 0.5f;
+        LooseObjectBody? food = SpawnLooseObject(LabFoodProfile, spawn);
+        if (food is null || !Buddy.ObjectInteraction.TryBeginLaboratoryFoodConsume(food))
+        {
+            if (GodotObject.IsInstanceValid(food))
+            {
+                Objects.Unregister(food!);
+                food!.QueueFree();
+            }
+        }
+    }
+
+    private void OnObjectConsumeStarted(LooseObjectBody body)
+    {
+        Activities.AttachItemVisual(new MeshInstance3D
+        {
+            Name = "LabEatItemVisual",
+            Mesh = new SphereMesh
+            {
+                Radius = Mathf.Max(2.0f, body.Radius * 0.25f),
+                Height = Mathf.Max(4.0f, body.Radius * 0.5f),
+            },
+        });
+    }
+
+    private void OnObjectConsumeCancelled(LooseObjectBody _body) =>
+        Activities.ClearItemVisual();
 }

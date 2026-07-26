@@ -1,9 +1,12 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Objects;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -32,29 +35,14 @@ public sealed class AutonomousMotionScenario : IScenario
 
         BuddyLab lab = packed.Instantiate<BuddyLab>();
 
-        // The shipped profile has ambient jumping OFF (owner decision 2026-07-20), but the
-        // jump ACTUATION path is still live code that tool reactions and M4 behaviours
-        // drive, so this regression keeps exercising it through a scenario-local profile
-        // that re-enables the ambient timer. The shipped datum is asserted separately.
+        // The shipped profile has timer jumping OFF (owner decision 2026-07-20).
+        // Task 3 exercises jump actuation through the approved obstacle+trait gate instead.
         AutonomousMotionProfile shipped = lab.Buddy.AutonomousMotion.Profile;
         bool shippedAmbientJumps = shipped.AmbientJumpsEnabled;
-        lab.Buddy.AutonomousMotion.Profile = new AutonomousMotionProfile
-        {
-            ResourceName = "ScenarioAmbientJumpsEnabled",
-            MinimumIdleTicks = shipped.MinimumIdleTicks,
-            MaximumIdleTicks = shipped.MaximumIdleTicks,
-            MinimumWalkTicks = shipped.MinimumWalkTicks,
-            MaximumWalkTicks = shipped.MaximumWalkTicks,
-            MinimumJumpIntervalTicks = shipped.MinimumJumpIntervalTicks,
-            MaximumJumpIntervalTicks = shipped.MaximumJumpIntervalTicks,
-            IdleWeight = shipped.IdleWeight,
-            WalkLeftWeight = shipped.WalkLeftWeight,
-            WalkRightWeight = shipped.WalkRightWeight,
-            AmbientJumpsEnabled = true,
-        };
         tree.Root.AddChild(lab);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         lab.Buddy.ReseedAutonomy(seed);
+        lab.Progress.SeedTraits(new BuddyTraits(100));
 
         bool initiallyStanding = await WaitForStanding(tree, lab, SettleTimeoutTicks);
         checks.Add(new StartupCheck(
@@ -92,6 +80,7 @@ public sealed class AutonomousMotionScenario : IScenario
         float idleStopFinalSpeed = float.PositiveInfinity;
         bool idleStopObserved = false;
         bool idleStopBounded = false;
+        LooseObjectBody? hopObstacle = null;
         for (int tick = 0; tick < MotionObservationTicks; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
@@ -110,6 +99,23 @@ public sealed class AutonomousMotionScenario : IScenario
 
             float walkDirection = lab.Buddy.AutonomousMotion.Intent.WalkDirection;
             bool grounded = lab.Buddy.Standing.Snapshot.SupportContactCount > 0;
+            if (hopObstacle is null && jumpTick < 0 && grounded &&
+                lab.Buddy.Standing.Snapshot.IsStable &&
+                !Mathf.IsZeroApprox(walkDirection))
+            {
+                hopObstacle = lab.SpawnLooseObject(
+                    lab.SafeObjectProfile,
+                    lab.Buddy.Rig.Torso.GlobalPosition +
+                        new Vector2(Mathf.Sign(walkDirection) * 50.0f, 0.0f));
+                if (hopObstacle is not null)
+                    hopObstacle.Freeze = true;
+            }
+            if (jumpTick >= 0 && GodotObject.IsInstanceValid(hopObstacle))
+            {
+                lab.Objects.Unregister(hopObstacle!);
+                hopObstacle!.QueueFree();
+                hopObstacle = null;
+            }
             if (!idleStopObserved && idleStopTicks < 0 && !Mathf.IsZeroApprox(previousWalkDirection) &&
                 Mathf.IsZeroApprox(walkDirection) && grounded)
             {
@@ -218,6 +224,13 @@ public sealed class AutonomousMotionScenario : IScenario
             $"enabled={lab.Buddy.ActiveDrive.ActiveOutputsEnabled} suppressed={lab.Buddy.AutonomousMotion.Intent.IsSuppressed}"));
 
         lab.QueueFree();
+        // Let Godot release the scenario-local Resource and its native validation
+        // arrays before TestRunner quits the engine. Immediate process teardown can
+        // otherwise race a Godot.Collections.Array finalizer after a long run.
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
         bool passed = true;
         foreach (StartupCheck check in checks)
         {
