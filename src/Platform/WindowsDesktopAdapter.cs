@@ -52,6 +52,16 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     public bool IsNative => true;
     public bool TransparencyAvailable { get; }
 
+    // Declared so the lifecycle coordinator binds to one seam regardless of adapter.
+    // Raising them needs WM_POWERBROADCAST and WTSRegisterSessionNotification on the
+    // subclassed window procedure; that work joins the M2 owner-manual Windows matrix
+    // rather than blocking this milestone (M4 plan, Task 5).
+#pragma warning disable CS0067 // Event is never used: native power/session wiring is pending.
+    public event Action? SystemSuspending;
+    public event Action? SystemResumed;
+    public event Action<bool>? SessionLockChanged;
+#pragma warning restore CS0067
+
     public WindowsDesktopAdapter()
     {
         long handle = DisplayServer.WindowGetNativeHandle(DisplayServer.HandleType.WindowHandle);

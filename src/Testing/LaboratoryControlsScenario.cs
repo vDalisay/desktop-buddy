@@ -124,6 +124,35 @@ public sealed class LaboratoryControlsScenario : IScenario
             resumed,
             $"paused={lab.Controls.IsPaused} routed={lab.Controls.RoutedPhysicsTicks}"));
 
+        // O / Shift+O are the only way a human can put a loose object into the room and
+        // take it back out again — the Eat key puts food straight into the hand — so the
+        // owner gate's catch/toss/obstacle-hop steps depend on this key existing.
+        int objectsBefore = lab.Objects.Count;
+        await SendKey(tree, Key.O);
+        int afterFirst = lab.Objects.Count;
+        // One ball at a time: a second drop replaces the first rather than littering the room.
+        await SendKey(tree, Key.O);
+        int objectsAfterSpawn = lab.Objects.Count;
+        float roomFloor = lab.Boundaries.InnerBounds.End.Y;
+        bool insideRoom = true;
+        for (int index = 0; index < lab.GetChildCount(); index++)
+        {
+            if (lab.GetChild(index) is DesktopBuddy.Objects.LooseObjectBody spawned)
+            {
+                insideRoom &= spawned.GlobalPosition.Y <= roomFloor &&
+                    lab.Boundaries.InnerBounds.HasPoint(spawned.GlobalPosition);
+            }
+        }
+
+        await SendKey(tree, Key.O, shiftPressed: true);
+        int objectsAfterClear = lab.Objects.Count;
+        checks.Add(new StartupCheck(
+            "lab_spawns_one_ball_at_a_time_and_clears",
+            afterFirst == objectsBefore + 1 && objectsAfterSpawn == afterFirst &&
+            insideRoom && objectsAfterClear == 0,
+            $"before={objectsBefore} after_first={afterFirst} after_second={objectsAfterSpawn} " +
+            $"inside={insideRoom} cleared={objectsAfterClear}"));
+
         lab.Controls.SetTimeScale(1.0);
         lab.QueueFree();
         bool passed = true;

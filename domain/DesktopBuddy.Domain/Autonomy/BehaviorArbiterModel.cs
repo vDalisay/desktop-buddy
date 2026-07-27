@@ -68,14 +68,26 @@ public readonly record struct SocialBandTuning(
     float LocomotionScale,
     int GreetIntervalTicks)
 {
-    /// <summary>Fearful: maximum distance, flees approach, never catches.</summary>
+    /// <summary>
+    /// Fearful: maximum distance, flees approach, never catches. Only fear refuses a
+    /// thrown object outright (owner correction 2026-07-26 — see <see cref="Wary"/>).
+    /// </summary>
     public static SocialBandTuning Fearful => new(260.0f, 0.0f, 24.0f, false, false, 1.0f, 0);
 
-    /// <summary>Wary: moderate standoff, never approaches, no catches.</summary>
-    public static SocialBandTuning Wary => new(150.0f, 0.0f, 18.0f, false, false, 0.8f, 0);
+    /// <summary>
+    /// Wary: moderate standoff, never approaches the cursor, but <b>does</b> catch.
+    /// Owner correction 2026-07-26: refusing catches from wary through neutral made a
+    /// default-mood buddy ignore thrown objects entirely, which read as broken rather
+    /// than as guarded. Keeping distance from the hand and accepting a thrown ball are
+    /// separate impulses.
+    /// </summary>
+    public static SocialBandTuning Wary => new(150.0f, 0.0f, 18.0f, false, true, 0.8f, 0);
 
-    /// <summary>Neutral: current ambient baseline — the social layer stands down.</summary>
-    public static SocialBandTuning Neutral => new(0.0f, 0.0f, 12.0f, false, false, 0.0f, 0);
+    /// <summary>
+    /// Neutral: the ambient baseline for cursor distance, and the band a new save spends
+    /// most of its time in, so it catches (owner correction 2026-07-26).
+    /// </summary>
+    public static SocialBandTuning Neutral => new(0.0f, 0.0f, 12.0f, false, true, 0.0f, 0);
 
     /// <summary>Content: occasional approach, willing catches, occasional wave.</summary>
     public static SocialBandTuning Content => new(0.0f, 170.0f, 14.0f, true, true, 0.7f, 900);
@@ -343,6 +355,33 @@ public sealed class BehaviorArbiterModel
         Diagnostics = default;
     }
 
+    /// <summary>
+    /// True when a priority above <see cref="BehaviorPriority.ObjectAction"/> is eligible,
+    /// so no voluntary object decision may run this tick.
+    ///
+    /// <para>The runtime must know this <i>before</i> it ticks the object component, which
+    /// happens before the full snapshot exists. Exposing the same <see cref="IsEligible"/>
+    /// walk keeps that early answer and <see cref="Resolve"/> on one ladder: a future
+    /// priority change cannot desynchronise object suppression from arbitration. Only the
+    /// priority 0–4 fields of <paramref name="snapshot"/> are read.</para>
+    /// </summary>
+    public static bool SuppressesVoluntaryAction(in BehaviorSnapshot snapshot)
+    {
+        for (BehaviorPriority priority = BehaviorPriority.Failsafe;
+             priority < BehaviorPriority.ObjectAction;
+             priority++)
+        {
+            // Social stance is irrelevant here: every priority above ObjectAction is
+            // decided entirely by snapshot state.
+            if (IsEligible(snapshot, SocialStance.None, priority))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsEligible(
         in BehaviorSnapshot snapshot,
         SocialStance socialStance,
@@ -427,7 +466,12 @@ public sealed class BehaviorArbiterModel
             return _socialStance;
         }
 
-        if (band.GreetIntervalTicks > 0 && distance <= band.ApproachDistance)
+        // Greeting is a punctuation mark, not a posture. It claims priority 6 only on
+        // the tick its cadence comes due; between waves the stance stands down so
+        // ambient autonomy keeps the buddy alive instead of freezing it at the cursor.
+        if (band.GreetIntervalTicks > 0 &&
+            distance <= band.ApproachDistance &&
+            IsGreetDue(snapshot.Tick, band.GreetIntervalTicks))
         {
             _socialStance = SocialStance.Greet;
             return _socialStance;
@@ -436,6 +480,9 @@ public sealed class BehaviorArbiterModel
         _socialStance = SocialStance.None;
         return _socialStance;
     }
+
+    private bool IsGreetDue(int tick, int intervalTicks) =>
+        _lastGreetTick == int.MinValue || tick - _lastGreetTick >= intervalTicks;
 
     private ActuationIntent Actuate(
         in BehaviorSnapshot snapshot,
@@ -512,15 +559,12 @@ public sealed class BehaviorArbiterModel
             _ => 0.0f,
         };
 
-        bool greet = false;
-        if (stance == SocialStance.Greet)
+        // The stance itself is only produced when the cadence is due, so reaching this
+        // layer as a greet means the wave fires now and the interval restarts.
+        bool greet = stance == SocialStance.Greet;
+        if (greet)
         {
-            greet = _lastGreetTick == int.MinValue ||
-                    snapshot.Tick - _lastGreetTick >= band.GreetIntervalTicks;
-            if (greet)
-            {
-                _lastGreetTick = snapshot.Tick;
-            }
+            _lastGreetTick = snapshot.Tick;
         }
 
         return new ActuationIntent(

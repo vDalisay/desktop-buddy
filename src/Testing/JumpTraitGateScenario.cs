@@ -10,9 +10,21 @@ namespace DesktopBuddy.Testing;
 /// <summary>
 /// M4 Task 3 gate: obstacle hops require persisted propensity, a committed
 /// walking path, physical obstacle evidence, stable support, and no higher layer.
+///
+/// <para>The obstacles here are <b>real</b>: ordinary loose objects spawned on the floor
+/// line and allowed to settle under gravity, one on each side so whichever direction
+/// ambient autonomy commits to has something in it. A frozen torso-height prop would
+/// prove only that the gate chain fires, never that the shipped probe can see what the
+/// buddy actually walks into.</para>
 /// </summary>
 public sealed class JumpTraitGateScenario : IScenario
 {
+    /// <summary>Long enough to cover the whole observation, so the balls stay scenery.</summary>
+    private const int ScenerySettleTicks = 6000;
+    private const int ProbeTimeoutTicks = 2400;
+    private const int NoHopObservationTicks = 240;
+    private const int HopTimeoutTicks = 600;
+
     public string Id => "jump_trait_gate";
 
     public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
@@ -26,38 +38,52 @@ public sealed class JumpTraitGateScenario : IScenario
             return new ScenarioResult(false, checks, messages);
         }
 
-        bool committedWalk = await M4ObjectScenarioSupport.WaitFor(
-            tree,
-            () => lab.Buddy.Standing.Snapshot.IsStable &&
-                  !Mathf.IsZeroApprox(lab.Buddy.AutonomousMotion.Intent.WalkDirection),
-            1800);
-        float direction = Mathf.Sign(lab.Buddy.AutonomousMotion.Intent.WalkDirection);
-        Vector2 obstaclePosition = lab.Buddy.Rig.Torso.GlobalPosition +
-            new Vector2(direction * 50.0f, 0.0f);
-        LooseObjectBody? obstacle = lab.SpawnLooseObject(
-            lab.SafeObjectProfile,
-            obstaclePosition);
-        if (obstacle is not null)
-            obstacle.Freeze = true;
+        float floorY = lab.Boundaries.InnerBounds.End.Y - lab.SafeObjectProfile.Radius - 1.0f;
+        float torsoX = lab.Buddy.Rig.Torso.GlobalPosition.X;
+        LooseObjectBody? left = lab.SpawnLooseObject(
+            lab.SafeObjectProfile, new Vector2(torsoX - 60.0f, floorY));
+        LooseObjectBody? right = lab.SpawnLooseObject(
+            lab.SafeObjectProfile, new Vector2(torsoX + 60.0f, floorY));
+        bool spawned = left is not null && right is not null;
 
+        // Mark both as objects the buddy has just put down. That ignore window is the shipped
+        // mechanism by which an object becomes scenery rather than a pickup target, and it is
+        // the only configuration in which hopping can happen at all: object action is priority
+        // 5 and the hop is priority 7, so anything the buddy would pick up it picks up.
+        if (spawned)
+        {
+            lab.Objects.MarkBuddyReleased(left!, ScenerySettleTicks);
+            lab.Objects.MarkBuddyReleased(right!, ScenerySettleTicks);
+        }
+
+        // Propensity 0 first: the probe must report an obstacle and the buddy must
+        // still never hop, which separates "no evidence" from "no personality".
         lab.Progress.SeedTraits(new BuddyTraits(0));
         bool probeSeen = false;
+        bool committedWalk = false;
         bool lowTraitJumped = false;
-        for (int tick = 0; tick < 12; tick++)
+        for (int tick = 0; tick < ProbeTimeoutTicks && !probeSeen; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-            probeSeen |= lab.Buddy.AutonomousMotion.ObstacleInCommittedPath(direction);
+            float direction = lab.Buddy.AutonomousMotion.Intent.WalkDirection;
+            bool walking = !Mathf.IsZeroApprox(direction) && lab.Buddy.Standing.Snapshot.IsStable;
+            committedWalk |= walking;
+            probeSeen = walking && lab.Buddy.AutonomousMotion.ObstacleInCommittedPath(direction);
+            lowTraitJumped |= lab.Buddy.Arbiter.Intent.JumpRequested;
+        }
+
+        for (int tick = 0; tick < NoHopObservationTicks; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             lowTraitJumped |= lab.Buddy.Arbiter.Intent.JumpRequested;
         }
 
         lab.Progress.SeedTraits(new BuddyTraits(100));
         bool highTraitJumped = false;
-        for (int tick = 0; tick < 24; tick++)
+        for (int tick = 0; tick < HopTimeoutTicks && !highTraitJumped; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-            highTraitJumped |= lab.Buddy.Arbiter.Intent.JumpRequested;
-            if (highTraitJumped)
-                break;
+            highTraitJumped = lab.Buddy.Arbiter.Intent.JumpRequested;
         }
 
         lab.Buddy.SetConsciousness(DesktopBuddy.Domain.Buddy.Consciousness.Unconscious);
@@ -67,9 +93,10 @@ public sealed class JumpTraitGateScenario : IScenario
             !lab.Buddy.Arbiter.Intent.JumpRequested;
 
         checks.Add(new StartupCheck(
-            "jump_requires_committed_path_and_physical_obstacle",
-            committedWalk && obstacle is not null && probeSeen,
-            $"walk={committedWalk} direction={direction:F0} obstacle={obstacle is not null} probe={probeSeen}"));
+            "floor_resting_object_is_real_obstacle_evidence",
+            spawned && committedWalk && probeSeen,
+            $"spawned={spawned} walk={committedWalk} probe={probeSeen} " +
+            $"offset={lab.Buddy.AutonomousMotion.Profile.ObstacleProbeHeightOffset:F0}"));
         checks.Add(new StartupCheck(
             "jump_trait_propensity_gates_obstacle_hop",
             !lowTraitJumped && highTraitJumped,

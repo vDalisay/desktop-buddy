@@ -111,12 +111,19 @@ public partial class AutonomousMotionComponent : Node
         cast.CollisionMask = CollisionLayers.LooseObjects;
         cast.CollideWithAreas = false;
         cast.CollideWithBodies = true;
+        // Once the buddy is touching a ball, the probe origin can sit *inside* the ball's
+        // circle, and a ray that starts inside a shape reports nothing by default. That is
+        // exactly the case the hop is for, so it must still register.
+        cast.HitFromInside = true;
         cast.TargetPosition = new Vector2(targetX, 0.0f);
     }
 
     private void UpdateObstacleSensing()
     {
-        Vector2 torso = Rig.Torso.GlobalPosition;
+        // Probe just above the floor line, not at torso height: the objects the buddy
+        // would hop over rest on the ground, so a chest-height ray sees none of them.
+        Vector2 torso = Rig.Torso.GlobalPosition +
+            new Vector2(0.0f, Profile.ObstacleProbeHeightOffset);
         LeftObstacleCast.GlobalPosition = torso;
         RightObstacleCast.GlobalPosition = torso;
         LeftObstacleCast.ForceRaycastUpdate();

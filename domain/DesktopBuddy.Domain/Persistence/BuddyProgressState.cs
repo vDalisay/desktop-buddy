@@ -43,7 +43,9 @@ public readonly record struct ProgressSnapshot(
     BuddyTraits Traits,
     ProgressStatistics Statistics,
     CumulativeTimes Times,
-    ProgressExtensionData? Extensions = null);
+    ProgressExtensionData? Extensions = null,
+    /// <summary>Remaining novelty per fun activity; taste itself rides on Traits.</summary>
+    IReadOnlyList<FunActivityInterest>? FunInterest = null);
 
 /// <summary>
 /// Forward-compatible data retained but never activated by this build.
@@ -95,6 +97,7 @@ public sealed class BuddyProgressState
     private readonly RewardLedger _ledger;
     private readonly ToolSelection _tools = new();
     private readonly HashSet<string> _unlockedTools = new(StringComparer.Ordinal);
+    private readonly FunInterestModel _fun;
 
     private long _scoredImpacts;
     private long _knockouts;
@@ -129,13 +132,25 @@ public sealed class BuddyProgressState
         long revision = 0,
         long initialBalanceMilliCredits = 0,
         string? selectedToolId = null,
-        ProgressExtensionData? extensions = null)
+        ProgressExtensionData? extensions = null,
+        IEnumerable<FunActivityInterest>? funInterest = null)
     {
         _mood = new MoodModel(initialMood, harmfulContentIds);
         _ledger = new RewardLedger(cashPerPain, initialBalanceMilliCredits);
         Traits = traits ?? BuddyTraits.Default;
         Revision = revision;
         Extensions = extensions;
+
+        // Tastes ride on the traits, so the interest model is always constructed from the
+        // personality this save was created with. A new save starts at full novelty.
+        _fun = new FunInterestModel(Traits.Preferences);
+        if (funInterest is not null)
+        {
+            foreach (FunActivityInterest entry in funInterest)
+            {
+                _fun.RestoreInterest(entry.Activity, entry.Interest);
+            }
+        }
 
         if (unlockedToolIds is null)
         {
@@ -257,7 +272,8 @@ public sealed class BuddyProgressState
             Traits,
             Statistics,
             Times,
-            Extensions);
+            Extensions,
+            _fun.Snapshot());
     }
 
     /// <summary>Explicit tool pick. Returns <c>false</c> when the selection is unchanged.</summary>
@@ -376,6 +392,39 @@ public sealed class BuddyProgressState
         Touch();
     }
 
+    /// <summary>Remaining novelty in one activity, <c>0–100</c>.</summary>
+    public float InterestIn(FunActivityId activity) => _fun.InterestIn(activity);
+
+    /// <summary>Whether doing this right now would still be fun for this buddy.</summary>
+    public bool IsFun(FunActivityId activity) => _fun.IsFun(activity);
+
+    /// <summary>
+    /// Spends one engagement's worth of interest and reports whether the buddy enjoyed it.
+    /// The caller decides what enjoyment looks like — a laugh, a mood grant, nothing.
+    /// </summary>
+    public FunOutcome EngageFun(FunActivityId activity)
+    {
+        FunOutcome outcome = _fun.Engage(activity);
+        Touch();
+        return outcome;
+    }
+
+    /// <summary>
+    /// Recovers interest in every fun activity over a monotonic elapsed span. Fires no
+    /// <see cref="Changed"/> event for the same reason mood drift does not: it runs
+    /// continuously and the save coordinator already coalesces on <see cref="Revision"/>.
+    /// </summary>
+    public void RechargeFun(double elapsedSeconds)
+    {
+        if (elapsedSeconds <= 0.0)
+        {
+            return;
+        }
+
+        _fun.Recharge(elapsedSeconds);
+        Touch();
+    }
+
     /// <summary>Records one semantic use for a known content/tool ID.</summary>
     public void RecordContentUse(string contentId)
     {
@@ -421,6 +470,8 @@ public sealed class BuddyProgressState
     public void SeedTraits(BuddyTraits traits)
     {
         Traits = traits;
+        // Tastes are part of the personality, so re-seeding the traits re-tastes the buddy.
+        _fun.SetPreferences(traits.Preferences);
         Touch();
     }
 

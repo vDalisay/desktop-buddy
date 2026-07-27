@@ -79,6 +79,9 @@ public partial class SandboxRoot : Node2D
     [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
     [Export] public MoodEconomyProfile MoodEconomy { get; set; } = null!;
     public LifecycleCoordinator Lifecycle { get; private set; } = null!;
+
+    /// <summary>The minimal M4 Show/Hide + Save &amp; Quit command surface.</summary>
+    public TrayCommandComponent TrayCommands { get; private set; } = null!;
     // Mii3D is the shipping default since the M3.5 Task 8 owner gate (2026-07-18); the
     // legacy circles remain behind the V toggle / --presentation=legacy as a dev view.
     [Export] public PresentationMode Mode { get; set; } = PresentationMode.Mii3D;
@@ -174,8 +177,22 @@ public partial class SandboxRoot : Node2D
             MoodEconomy,
             () => Grab.IsGrabbing || Glove.IsActive || CareStroke.IsHeld ||
                   Buddy.ObjectInteraction.IsHolding,
-            _runContext.TimeSource);
+            _runContext.TimeSource,
+            ResetPresentationInterpolation);
         AddChild(Lifecycle);
+
+        TrayCommands = new TrayCommandComponent { Name = nameof(TrayCommandComponent) };
+        TrayCommands.HideShowToggled += OnTrayHideShowToggled;
+        TrayCommands.SaveAndQuitRequested += RequestSaveAndQuit;
+        AddChild(TrayCommands);
+
+        // §24 power/session stimuli reach the lifecycle clock through the platform
+        // adapter, so the emulated adapter can drive them deterministically headless
+        // and the native adapter binds the same seam when its message hooks land.
+        IWindowsDesktopAdapter adapter = Window.Adapter;
+        adapter.SystemSuspending += OnSystemSuspending;
+        adapter.SystemResumed += OnSystemResumed;
+        adapter.SessionLockChanged += OnSessionLockChanged;
         if (DisplayServer.GetName() != "headless")
         {
             GetTree().AutoAcceptQuit = false;
@@ -203,7 +220,7 @@ public partial class SandboxRoot : Node2D
         Boundaries.PhysicsTick();
         Grab.PhysicsTick(delta);
         GrabState grab = Grab.CurrentGrab;
-        Objects.PhysicsTick(grab);
+        Objects.PhysicsTick(grab, Boundaries.InnerBounds.End.Y);
         PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
         bool buddyPartGrabbed = grabbedBody is not null;
         Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
@@ -240,12 +257,23 @@ public partial class SandboxRoot : Node2D
             Glove.BodyDespawned -= OnGloveBodyDespawned;
         }
         if (GodotObject.IsInstanceValid(Window))
+        {
             Window.WindowFocusLost -= OnWindowFocusLost;
+            IWindowsDesktopAdapter adapter = Window.Adapter;
+            adapter.SystemSuspending -= OnSystemSuspending;
+            adapter.SystemResumed -= OnSystemResumed;
+            adapter.SessionLockChanged -= OnSessionLockChanged;
+        }
+        if (GodotObject.IsInstanceValid(TrayCommands))
+        {
+            TrayCommands.HideShowToggled -= OnTrayHideShowToggled;
+            TrayCommands.SaveAndQuitRequested -= RequestSaveAndQuit;
+        }
         if (DisplayServer.GetName() != "headless" && IsInsideTree())
             GetWindow().CloseRequested -= OnCloseRequested;
 
         if (Saves is not null && Saves.IsDirty)
-            _ = ObserveSaveAsync(Saves.FlushProgressAsync(), "Exit save");
+            _ = ObserveSaveAsync(Saves.FlushProgressAsync(force: true), "Exit save");
     }
 
     private RunContext CreateInMemoryRunContext()
@@ -265,9 +293,27 @@ public partial class SandboxRoot : Node2D
     private void OnWindowFocusLost() =>
         _ = ObserveSaveAsync(Saves.FlushProgressAsync(), "Focus-loss save");
 
-    /// <summary>Tray/UI command seam for Task 6's Save &amp; Quit surface.</summary>
+    /// <summary>Tray/UI command seam for the minimal M4 Save &amp; Quit surface.</summary>
     public void RequestSaveAndQuit() => OnCloseRequested();
     public void SetHiddenToTray(bool hidden) => Lifecycle.SetHiddenToTray(hidden);
+
+    private void OnTrayHideShowToggled() => SetHiddenToTray(!Lifecycle.IsHiddenToTray);
+
+    private void OnSystemSuspending() => Lifecycle.NotifySuspended();
+
+    private void OnSystemResumed() => Lifecycle.NotifyResumed(Lifecycle.IsHiddenToTray);
+
+    private void OnSessionLockChanged(bool locked) => Lifecycle.NotifySessionLock(locked);
+
+    /// <summary>
+    /// Re-anchors every interpolated body to its current transform. Called when the render
+    /// loop restarts after hidden mode so nothing tweens from a pre-hide pose (FR-015.10).
+    /// </summary>
+    private void ResetPresentationInterpolation()
+    {
+        Buddy.Rig.ResetInterpolation();
+        Objects.ResetInterpolation();
+    }
 
     private async void OnCloseRequested()
     {
@@ -277,7 +323,9 @@ public partial class SandboxRoot : Node2D
         SetPhysicsProcess(false);
         try
         {
-            await Saves.FlushProgressAsync();
+            // Forced: this is the last chance to write, so a mutation that landed during
+            // the flush must not be abandoned.
+            await Saves.FlushProgressAsync(force: true);
             await Saves.SaveSettingsAsync(Settings);
         }
         catch (Exception exception)

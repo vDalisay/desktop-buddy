@@ -525,6 +525,11 @@ Authoritative per-task status. Update after each task lands with its suite run.
       its RNG stream. Two layer-3 ray probes provide real obstacle evidence, and
       hopping now requires the per-run persisted propensity, a committed walk,
       stable support, and no higher-priority owner while timer jumping remains off.
+      **Corrected 2026-07-26 (review fixes):** those probes fired at torso height,
+      which is clear above any floor-resting object, so the trait could not fire in
+      real play. The probe height is now a profile value defaulting to `64 px` below
+      the torso and both affected scenarios use real floor-resting objects. See
+      `docs/M4_REVIEW_FIXES_PLAN.md` Task A.
       Gates: build clean with zero warnings; `dotnet test` **576/576**, including
       a 10,000-tick zero-allocation arbiter check; `quick_validate` **11/11**;
       `behavior_priority_ladder`, `mood_band_behavior`, and `jump_trait_gate`
@@ -553,9 +558,16 @@ Authoritative per-task status. Update after each task lands with its suite run.
       non-forward, suspended, and over-`5 s` discontinuity spans award nothing.
       `LifecycleCoordinator` is now the sole runtime owner of mood drift,
       mood-scaled passive income, cumulative run/active/hidden time, and its
-      autosave cadence. Hidden-to-tray pauses the gameplay tree and rendering
-      while the always-running low-frequency lifecycle path continues; show and
+      autosave cadence. Hidden-to-tray pauses the gameplay tree while the
+      always-running low-frequency lifecycle path continues; show and
       resume reset the clock baseline so skipped physics is never replayed.
+      **Corrected 2026-07-26 (review fixes):** as first landed this task paused only
+      the tree, not rendering, shipped no caller for the tray commands, and left the
+      suspend/resume/session-lock adapter seams unbuilt. Hidden mode now disables the
+      render loop and caps frames at `10`, show re-anchors interpolation, the
+      `Ctrl+Shift+H` / `Ctrl+Shift+Q` command surface exists (restore-from-hidden is
+      an explicit M6 dependency), and §24 stimuli travel through
+      `IWindowsDesktopAdapter`. See `docs/M4_REVIEW_FIXES_PLAN.md` Tasks B–D.
       Added the provisional typed `MoodEconomyProfile` at `1` neutral
       credit/minute, routed passive deposits through `EconomyService`, and made
       the HUD observe all balance changes. Removed physics-tick mood drift.
@@ -581,6 +593,13 @@ Authoritative per-task status. Update after each task lands with its suite run.
       application/test-runner quit; the two formerly affected Mii3D journeys
       now exit cleanly after passing. Milestone acceptance remains pending until
       the owner performs `docs/M4_OWNER_GATE.md`.
+
+      **Pre-acceptance review, 2026-07-26.** An implementation/code review of all six
+      tasks against this plan found eleven items, four of them plan deliverables that
+      had not landed. They are tracked and closed in
+      `docs/M4_REVIEW_FIXES_PLAN.md`; after that pass `dotnet test` is **638/638**,
+      `quick_validate` **15/15**, the scenario matrix **78/78**, and journeys
+      **21/21**.
 
 ### Known pre-existing red (found during the Task 0 gate, 2026-07-25)
 

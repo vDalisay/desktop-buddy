@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Tools;
 
 namespace DesktopBuddy.Domain.Content;
@@ -37,6 +38,22 @@ public static class ContentIds
     /// (owner decision 4, 2026-07-24). M5 replaces it with the catalogue Meal.
     /// </summary>
     public const string CareLabFood = "care.lab_food";
+
+    // The things a buddy can find fun. Each one carries its own interest meter and its own
+    // per-buddy taste (owner instruction 2026-07-27), so these IDs are persisted per save
+    // and fall under the same never-repurpose rule as every other content ID.
+
+    /// <summary>Catching a ball the player threw, before it touches the ground.</summary>
+    public const string FunCatch = "fun.catch";
+
+    /// <summary>Being petted.</summary>
+    public const string FunPet = "fun.pet";
+
+    /// <summary>Being tickled.</summary>
+    public const string FunTickle = "fun.tickle";
+
+    /// <summary>Eating a treat.</summary>
+    public const string FunTreat = "fun.treat";
 
     /// <summary>The total <see cref="ToolId"/> → stable ID mapping.</summary>
     public static string ForTool(ToolId tool) => tool switch
@@ -84,5 +101,42 @@ public static class ContentIds
     /// <summary>True when this build can safely activate the persisted content ID.</summary>
     public static bool IsKnown(string? contentId) =>
         IsTool(contentId) ||
-        contentId is LooseObject or RoomBoundary or CareLabFood;
+        contentId is LooseObject or RoomBoundary or CareLabFood or
+            FunCatch or FunPet or FunTickle or FunTreat;
+
+    /// <summary>The total <see cref="FunActivityId"/> → stable ID mapping.</summary>
+    public static string ForFun(FunActivityId activity) => activity switch
+    {
+        FunActivityId.Catch => FunCatch,
+        FunActivityId.Pet => FunPet,
+        FunActivityId.Tickle => FunTickle,
+        FunActivityId.Treat => FunTreat,
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(activity),
+            activity,
+            "Unknown fun activity: extend ContentIds.ForFun when adding a FunActivityId."),
+    };
+
+    /// <summary>The inverse mapping; <c>false</c> for anything this build cannot activate.</summary>
+    public static bool TryParseFun(string? contentId, out FunActivityId activity)
+    {
+        switch (contentId)
+        {
+            case FunCatch:
+                activity = FunActivityId.Catch;
+                return true;
+            case FunPet:
+                activity = FunActivityId.Pet;
+                return true;
+            case FunTickle:
+                activity = FunActivityId.Tickle;
+                return true;
+            case FunTreat:
+                activity = FunActivityId.Treat;
+                return true;
+            default:
+                activity = FunActivityId.Catch;
+                return false;
+        }
+    }
 }

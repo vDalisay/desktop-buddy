@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Godot;
 
@@ -16,6 +17,25 @@ public interface IWindowsDesktopAdapter
 {
     /// <summary>True only for the real native adapter; false for the emulated one.</summary>
     bool IsNative { get; }
+
+    /// <summary>
+    /// The machine is about to suspend. The lifecycle coordinator drops its clock
+    /// baseline so the sleep span is never handed to mood drift or passive income
+    /// (FR-012.4 / FR-015.9).
+    /// </summary>
+    event Action? SystemSuspending;
+
+    /// <summary>
+    /// The machine resumed. Presentation state is restored and no skipped physics is
+    /// replayed (FR-015.10).
+    /// </summary>
+    event Action? SystemResumed;
+
+    /// <summary>
+    /// The Windows session locked (<c>true</c>) or unlocked (<c>false</c>). A lock is
+    /// running hidden time, not a discontinuity (FR-016.8).
+    /// </summary>
+    event Action<bool>? SessionLockChanged;
 
     /// <summary>Whether per-pixel transparency is available on this display path.</summary>
     bool TransparencyAvailable { get; }

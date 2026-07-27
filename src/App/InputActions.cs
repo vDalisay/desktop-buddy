@@ -18,5 +18,24 @@ public static class InputActions
     public const string Reload = "buddy_reload";
     public const string ToggleInputMode = "toggle_input_mode";
 
-    public static readonly string[] All = { Primary, Secondary, Reload, ToggleInputMode };
+    /// <summary>
+    /// In-app hide-to-tray toggle (<c>Ctrl+Shift+H</c>). Hiding works from here;
+    /// <b>restoring</b> a hidden window cannot, because Godot delivers no input to an
+    /// invisible unfocused window — that path is the native tray icon / global hotkey
+    /// scoped to Milestone 6.
+    /// </summary>
+    public const string ToggleHideToTray = "toggle_hide_to_tray";
+
+    /// <summary>In-app Save &amp; Quit (<c>Ctrl+Shift+Q</c>): flush progress, then exit.</summary>
+    public const string SaveAndQuit = "save_and_quit";
+
+    public static readonly string[] All =
+    {
+        Primary,
+        Secondary,
+        Reload,
+        ToggleInputMode,
+        ToggleHideToTray,
+        SaveAndQuit,
+    };
 }

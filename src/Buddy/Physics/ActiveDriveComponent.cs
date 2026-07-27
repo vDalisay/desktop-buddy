@@ -42,8 +42,7 @@ public partial class ActiveDriveComponent : Node
     public Vector2 LastStationaryForce { get; private set; }
     public Vector2 LastLeftObjectHandForce { get; private set; }
     public Vector2 LastRightObjectHandForce { get; private set; }
-    public Vector2 LastObjectForce { get; private set; }
-    public Vector2 LastObjectReactionForce { get; private set; }
+    public Vector2 LastObjectScoopDipForce { get; private set; }
     public Vector2 LastObjectReleaseImpulse { get; private set; }
     public int ObjectTossCount { get; private set; }
     public int ObjectDiscardCount { get; private set; }
@@ -128,8 +127,7 @@ public partial class ActiveDriveComponent : Node
         LastStationaryForce = Vector2.Zero;
         LastLeftObjectHandForce = Vector2.Zero;
         LastRightObjectHandForce = Vector2.Zero;
-        LastObjectForce = Vector2.Zero;
-        LastObjectReactionForce = Vector2.Zero;
+        LastObjectScoopDipForce = Vector2.Zero;
         LastObjectReleaseImpulse = Vector2.Zero;
 
         if (HeadRightingDelayTicksRemaining > 0)
@@ -201,7 +199,7 @@ public partial class ActiveDriveComponent : Node
             ApplyPanicHands(intent, mode);
         else if (intent.ActivityHandReachActive)
             ApplyActivityHandReach(intent, mode);
-        else if (intent.ObjectCommand.Action is ObjectDriveAction.Catch or ObjectDriveAction.Hold)
+        else if (intent.ObjectCommand.DrivesHands)
             ApplyObjectHandReach(intent.ObjectCommand, mode);
         ApplyObjectBodyCommand(intent);
         UpdateJump(intent, mode);
@@ -229,41 +227,42 @@ public partial class ActiveDriveComponent : Node
             command.MaximumHandForce,
             mode);
         Rig.Torso.ApplyCentralForce(-(LastLeftObjectHandForce + LastRightObjectHandForce));
+
+        if (command.Action == ObjectDriveAction.Scoop && command.DipForce > 0.0f)
+        {
+            // A slight bend, not a squat: bounded force only, never a transform write.
+            LastObjectScoopDipForce = new Vector2(0.0f, command.DipForce * mode.LocomotionScale);
+            Rig.Torso.ApplyCentralForce(LastObjectScoopDipForce);
+            Rig.Head.ApplyCentralForce(LastObjectScoopDipForce * 0.4f);
+        }
+        else
+        {
+            LastObjectScoopDipForce = Vector2.Zero;
+        }
     }
 
+    /// <summary>
+    /// Only the one-shot release remains. A held object is attached at the hand by
+    /// <c>ObjectInteractionComponent</c>, so there is nothing to spring toward the buddy —
+    /// that spring is what made objects float in rather than being caught.
+    ///
+    /// <para>The launch assigns velocity rather than applying an impulse. The body is
+    /// unfrozen on this same tick, and an impulse queued against a body that has just left
+    /// its frozen state is dropped by the physics server, so thrown objects fell straight
+    /// down (owner correction 2026-07-27).</para>
+    /// </summary>
     private void ApplyObjectBodyCommand(in DriveIntent intent)
     {
         ObjectDriveCommand command = intent.ObjectCommand;
-        if (!command.Active || !GodotObject.IsInstanceValid(command.Body))
+        if (!command.Active || !GodotObject.IsInstanceValid(command.Body) || !command.Releases)
             return;
 
-        if (command.Action is ObjectDriveAction.Toss or ObjectDriveAction.Discard)
-        {
-            command.Body!.ApplyCentralImpulse(command.ReleaseImpulse);
-            LastObjectReleaseImpulse = command.ReleaseImpulse;
-            if (command.Action == ObjectDriveAction.Toss)
-                ObjectTossCount++;
-            else
-                ObjectDiscardCount++;
-            return;
-        }
-
-        if (command.Action is not (ObjectDriveAction.Catch or ObjectDriveAction.Hold))
-            return;
-
-        Vector2 target = intent.ActivityHandReachActive
-            ? (intent.LeftActivityHandTarget + intent.RightActivityHandTarget) * 0.5f
-            : command.ObjectTarget;
-        Vector2 targetVelocity = (Rig.LeftHand.LinearVelocity + Rig.RightHand.LinearVelocity) * 0.5f;
-        Vector2 force = ((target - command.Body!.GlobalPosition) * command.ObjectStiffness) -
-                        ((command.Body.LinearVelocity - targetVelocity) * command.ObjectDamping);
-        if (force.Length() > command.MaximumObjectForce)
-            force = force.Normalized() * command.MaximumObjectForce;
-
-        LastObjectForce = force;
-        LastObjectReactionForce = -force;
-        command.Body.ApplyCentralForce(force);
-        Rig.Torso.ApplyCentralForce(LastObjectReactionForce);
+        command.Body!.LinearVelocity = command.ReleaseVelocity;
+        LastObjectReleaseImpulse = command.ReleaseVelocity;
+        if (command.Action == ObjectDriveAction.Toss)
+            ObjectTossCount++;
+        else
+            ObjectDiscardCount++;
     }
 
     private void ApplyStationaryBrake(ConsciousnessDriveProfile mode)

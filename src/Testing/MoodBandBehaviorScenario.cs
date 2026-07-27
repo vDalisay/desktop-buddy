@@ -51,11 +51,42 @@ public sealed class MoodBandBehaviorScenario : IScenario
                 $"{item.Band}:{lab.Buddy.Arbiter.Intent.Owner}/{lab.Buddy.Arbiter.Intent.Stance}");
         }
 
+        // A content buddy standing next to the cursor must still live: greeting owns one
+        // tick per cadence, and ambient autonomy owns the gaps. A greet that held
+        // priority 6 for as long as the cursor stayed close froze the buddy in place.
+        SocialTuningSet bands = lab.Buddy.Arbiter.SocialTuning;
+        lab.Progress.ApplyCareMood(40.0f - lab.Progress.Mood);
+        lab.Buddy.Arbiter.Reset();
+        Vector2 near = lab.Buddy.Rig.Torso.GlobalPosition +
+            new Vector2(bands.Content.ApproachDistance - 20.0f, 0.0f);
+        lab.Buddy.PhysicsTick(cursorWorldPosition: near, socialTargetValid: true);
+        bool greetsOnce = lab.Buddy.Arbiter.Intent.Owner == BehaviorPriority.Social &&
+            lab.Buddy.Arbiter.Intent.GreetRequested;
+
+        bool ambientKeepsRunning = true;
+        for (int tick = 0; tick < 30; tick++)
+        {
+            near = lab.Buddy.Rig.Torso.GlobalPosition +
+                new Vector2(bands.Content.ApproachDistance - 20.0f, 0.0f);
+            lab.Buddy.PhysicsTick(cursorWorldPosition: near, socialTargetValid: true);
+            ambientKeepsRunning &=
+                lab.Buddy.Arbiter.Intent.Owner == BehaviorPriority.Ambient &&
+                !lab.Buddy.Arbiter.Diagnostics.AmbientSuppressed;
+        }
+
+        checks.Add(new StartupCheck(
+            "greeting_punctuates_without_freezing_ambient",
+            greetsOnce && ambientKeepsRunning,
+            $"greeted={greetsOnce} ambient_between={ambientKeepsRunning} " +
+            $"owner={lab.Buddy.Arbiter.Intent.Owner}"));
+
         SocialTuningSet tuning = lab.Buddy.Arbiter.SocialTuning;
+        // Owner correction 2026-07-26: only fear refuses a thrown object. Keeping cursor
+        // distance and accepting a catch are separate impulses, so wary and neutral catch.
         bool catchGate =
             !tuning.Fearful.WillCatch &&
-            !tuning.Wary.WillCatch &&
-            !tuning.Neutral.WillCatch &&
+            tuning.Wary.WillCatch &&
+            tuning.Neutral.WillCatch &&
             tuning.Content.WillCatch &&
             tuning.Delighted.WillCatch;
         bool cadence =

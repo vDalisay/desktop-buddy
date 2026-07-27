@@ -150,13 +150,19 @@ public partial class HeadLookAtComponent : Node
             cursor = Glove.Cursor;
         }
 
-        // The slice's only item target is the eaten item riding the hand socket. M4 widens
-        // this to real held/target items through the same input.
-        bool itemValid = Activities.Current == ActivityId.Eat &&
+        // Two item targets share this input: the eaten item riding the hand socket, and the
+        // loose object the buddy is currently committed to — including one the player is still
+        // carrying, so the head tracks the ball about to be thrown. Eating wins, because the
+        // item is already in the mouth.
+        bool eatingItem = Activities.Current == ActivityId.Eat &&
             Activities.ItemSocket.GetChildCount() > 0;
-        Vector2 item = itemValid
+        bool watchingObject = !eatingItem &&
+            GodotObject.IsInstanceValid(Buddy.ObjectInteraction) &&
+            Buddy.ObjectInteraction.HasWatchTarget;
+        bool itemValid = eatingItem || watchingObject;
+        Vector2 item = eatingItem
             ? WorldPlaneMapping.To2D(Activities.ItemSocket.GlobalPosition)
-            : Vector2.Zero;
+            : watchingObject ? Buddy.ObjectInteraction.WatchTargetPosition : Vector2.Zero;
 
         long ticksSinceImpact = _lastImpactTick == long.MinValue
             ? long.MaxValue

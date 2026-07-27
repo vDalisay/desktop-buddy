@@ -55,7 +55,22 @@ public enum ObjectCommand
 /// <param name="Distance">Horizontal distance from the buddy.</param>
 /// <param name="Direction">Signed direction toward the object (-1 or +1).</param>
 /// <param name="Consumable">Whether a successful hold can proceed to Consume.</param>
-/// <param name="AtRest">Idle objects are approachable; airborne ones are catchable.</param>
+/// <param name="AtRest">
+/// A resting object is scooped off the ground; an airborne one is caught out of the air.
+/// The two use different commit gates because the ground is further from the shoulders than
+/// an arm is long.
+/// </param>
+/// <param name="Ignored">
+/// Set while the runtime wants this object left alone — most importantly for a short window
+/// after the buddy itself put it down, so it walks over its own discard instead of picking
+/// the same object up forever.
+/// </param>
+/// <param name="GroundDistance">
+/// Horizontal distance only. A ground pickup is about standing <i>over</i> the object, not
+/// about how far it is from the shoulders: the floor is roughly `66 px` below the shoulder
+/// line, so a straight-line gate is only satisfiable once the buddy's feet are already
+/// kicking the object away.
+/// </param>
 public readonly record struct ObjectCandidate(
     int RuntimeId,
     string ContentId,
@@ -63,25 +78,55 @@ public readonly record struct ObjectCandidate(
     float Distance,
     float Direction,
     bool Consumable,
-    bool AtRest)
+    bool AtRest,
+    bool Ignored = false,
+    float GroundDistance = 0.0f,
+    /// <summary>
+    /// The player is currently carrying this object. The buddy may commit to it — that is what
+    /// makes it watch the ball and get its hands up before the throw — but the catch can never
+    /// confirm while the player still holds it.
+    /// </summary>
+    bool PlayerHeld = false)
 {
     public bool IsValid => RuntimeId != 0;
+
+    /// <summary>The distance this candidate's commit gate is measured against.</summary>
+    public float EngageDistance => AtRest && !PlayerHeld ? GroundDistance : Distance;
 }
 
 /// <summary>Tuning for the object lifecycle. All durations are routed ticks.</summary>
-/// <param name="CatchDistance">Within this distance a catch may be attempted.</param>
+/// <param name="CatchDistance">
+/// Within this distance of the shoulders an airborne catch may be attempted. It is a
+/// <i>decision</i> gate, not an arm length — the runtime clamps how far the hands actually
+/// extend, so a generous value only means the buddy puts its hands up sooner.
+/// </param>
+/// <param name="ScoopDistance">
+/// Horizontal distance within which a resting object may be scooped, measured against
+/// <see cref="ObjectCandidate.GroundDistance"/>. It must leave room to stop before the feet
+/// reach the object, or the buddy kicks away the thing it is trying to pick up.
+/// </param>
 /// <param name="ApproachDistance">Beyond this distance the buddy must close first.</param>
 /// <param name="CatchTimeoutTicks">A catch attempt that never lands aborts after this.</param>
 /// <param name="HoldTicks">How long a held object is kept before inspecting.</param>
 /// <param name="InspectTicks">Inspection duration before the outcome is chosen.</param>
+/// <param name="TossTicks">
+/// How long the toss gesture holds priority 5. A return throw is a two-beat motion — draw
+/// back, then release — so the phase must outlive a single tick for the runtime to play it.
+/// </param>
 public readonly record struct ObjectInteractionTuning(
     float CatchDistance,
     float ApproachDistance,
     int CatchTimeoutTicks,
     int HoldTicks,
-    int InspectTicks)
+    int InspectTicks,
+    int TossTicks = 20,
+    float ScoopDistance = 26.0f)
 {
-    public static ObjectInteractionTuning Default => new(46.0f, 220.0f, 90, 120, 150);
+    public static ObjectInteractionTuning Default =>
+        new(72.0f, 220.0f, 90, 120, 150, 20, 26.0f);
+
+    /// <summary>The commit gate for one candidate, by how it must be picked up.</summary>
+    public float EngageDistanceFor(bool atRest) => atRest ? ScoopDistance : CatchDistance;
 }
 
 /// <summary>The model's resolved intent for one routed tick.</summary>
@@ -109,9 +154,18 @@ public readonly record struct ObjectIntent(
 ///
 /// <para><b>Memory gating.</b> A candidate whose content ID is in harmful history is never
 /// approached or caught voluntarily; if it is already held when the memory applies, the
-/// machine goes straight to Discard — the §4 "drop held hazards" rule. Fearful and wary
-/// bands refuse voluntary catches entirely (owner decision 1), so a scared buddy does not
-/// reach for thrown objects even when they are safe.</para>
+/// machine goes straight to Discard — the §4 "drop held hazards" rule. The fearful band
+/// refuses voluntary catches entirely, so a scared buddy does not reach for thrown objects
+/// even when they are safe. Wary through delighted all catch (owner correction 2026-07-26:
+/// declining from wary through neutral made a default-mood buddy ignore thrown objects).</para>
+///
+/// <para><b>Rest state picks the flavour, not the eligibility.</b> A thrown object is caught
+/// out of the air against <see cref="ObjectInteractionTuning.CatchDistance"/>; a resting one is
+/// scooped off the floor against the horizontal
+/// <see cref="ObjectInteractionTuning.ScoopDistance"/>. Both are engaged. What keeps the
+/// priority 7 obstacle hop reachable is <see cref="ObjectCandidate.Ignored"/> — a cooling-off
+/// window after the buddy itself put something down — not a blanket refusal to pick things
+/// up, which simply removed ground pickup altogether.</para>
 ///
 /// <para><b>Catch care is once per throw.</b> <see cref="ObjectCandidate.ThrowToken"/> is
 /// remembered on the tick the catch completes, so re-catching the same object after a drop
@@ -137,6 +191,7 @@ public sealed class ObjectInteractionModel
     private int _throwToken;
     private int _phaseTicks;
     private bool _consumable;
+    private bool _trackedAtRest;
     private int _lastRewardedThrowToken;
 
     public ObjectInteractionModel(
@@ -149,6 +204,12 @@ public sealed class ObjectInteractionModel
     }
 
     public ObjectPhase Phase => _phase;
+
+    /// <summary>
+    /// True when the tracked object was resting when engaged, so the runtime should play a
+    /// ground scoop rather than an in-air catch.
+    /// </summary>
+    public bool TrackedAtRest => _trackedAtRest;
     public int TrackedRuntimeId => _runtimeId;
     public string TrackedContentId => _contentId;
     public int PhaseTicks => _phaseTicks;
@@ -208,9 +269,10 @@ public sealed class ObjectInteractionModel
 
         ObjectCandidate tracked = Find(candidates, _runtimeId);
 
-        // A held object stops being sensed by the candidate scanner; holding phases trust
-        // the runtime's hold confirmation instead of candidate presence.
-        if (!tracked.IsValid && !IsHolding)
+        // Only the phases that are still chasing something need it to be visible. Once the
+        // object is in hand — or on its way out of it — the candidate scanner deliberately
+        // stops reporting it, so requiring presence there aborts a release mid-gesture.
+        if (!tracked.IsValid && _phase is ObjectPhase.Approach or ObjectPhase.Catch)
         {
             return AbortTo(ObjectAbortReason.CandidateLost);
         }
@@ -228,7 +290,8 @@ public sealed class ObjectInteractionModel
         switch (_phase)
         {
             case ObjectPhase.Approach:
-                if (tracked.Distance <= _tuning.CatchDistance)
+                _trackedAtRest = tracked.AtRest;
+                if (tracked.EngageDistance <= _tuning.EngageDistanceFor(tracked.AtRest))
                 {
                     return Transition(ObjectPhase.Catch, ObjectCommand.Catch, tracked.Direction);
                 }
@@ -248,9 +311,17 @@ public sealed class ObjectInteractionModel
                     return intent with { GrantsCatchCare = grants };
                 }
 
-                if (_phaseTicks >= _tuning.CatchTimeoutTicks)
+                // Waiting on the player is not a failed catch. While they carry the ball the
+                // buddy holds its ready pose indefinitely, so that when the throw finally
+                // comes its hands are already up instead of starting to react.
+                if (_phaseTicks >= _tuning.CatchTimeoutTicks && !tracked.PlayerHeld)
                 {
                     return AbortTo(ObjectAbortReason.PhaseTimeout);
+                }
+
+                if (tracked.PlayerHeld)
+                {
+                    _phaseTicks = 0;
                 }
 
                 return Emit(ObjectCommand.Catch, tracked.IsValid ? tracked.Direction : 0.0f);
@@ -284,11 +355,13 @@ public sealed class ObjectInteractionModel
                     return consume with { RequestsConsume = true };
                 }
 
-                // Non-consumable: a content band tosses it playfully, a guarded band puts it
-                // down. Toss direction policy (away from the cursor) is a runtime concern.
-                return moodBand is MoodBand.Content or MoodBand.Delighted
-                    ? Transition(ObjectPhase.Toss, ObjectCommand.Toss)
-                    : Transition(ObjectPhase.Drop, ObjectCommand.Drop);
+                // Non-consumable: the return throw is the default outcome, neutral included —
+                // a fresh buddy sits at mood 0, so a throw gated to the content band never
+                // happened outside boosted tests and the ball just sat in the hand (owner
+                // correction 2026-07-27). Only the guarded bands put it down instead.
+                return moodBand is MoodBand.Fearful or MoodBand.Wary
+                    ? Transition(ObjectPhase.Drop, ObjectCommand.Drop)
+                    : Transition(ObjectPhase.Toss, ObjectCommand.Toss);
 
             case ObjectPhase.Consume:
                 if (consumeCompleted)
@@ -306,6 +379,12 @@ public sealed class ObjectInteractionModel
                 return Emit(ObjectCommand.Consume);
 
             case ObjectPhase.Toss:
+                // The throw keeps priority 5 for its whole gesture so the runtime can draw
+                // the hand back and then release; it is not a one-tick impulse.
+                return _phaseTicks >= _tuning.TossTicks
+                    ? Complete()
+                    : Emit(ObjectCommand.Toss);
+
             case ObjectPhase.Discard:
             case ObjectPhase.Drop:
                 // One-shot releases: the runtime applies the impulse on the tick it sees the
@@ -330,6 +409,7 @@ public sealed class ObjectInteractionModel
         _throwToken = 0;
         _phaseTicks = 0;
         _consumable = false;
+        _trackedAtRest = false;
         _lastRewardedThrowToken = 0;
         LastAbort = ObjectAbortReason.None;
     }
@@ -348,6 +428,7 @@ public sealed class ObjectInteractionModel
 
         int bestIndex = -1;
         float bestDistance = float.MaxValue;
+        bool bestIsAirborne = false;
 
         for (int index = 0; index < candidates.Length; index++)
         {
@@ -359,9 +440,30 @@ public sealed class ObjectInteractionModel
                 continue;
             }
 
-            if (candidate.Distance < bestDistance)
+
+            // Objects the runtime is deliberately leaving alone — chiefly one the buddy
+            // itself just put down. That window is what lets the priority 7 obstacle hop
+            // ever fire: without it, priority 5 reclaims the same ball forever and the
+            // buddy can never step over anything.
+            if (candidate.Ignored)
+            {
+                continue;
+            }
+
+            // Safety and memory are filters above; among what survives, an airborne
+            // object outranks any resting one. A thrown object is a moment the buddy
+            // can miss, so a nearer idle prop must never steal the catch (FR-008.3).
+            bool airborne = !candidate.AtRest;
+            if (bestIndex >= 0 && bestIsAirborne && !airborne)
+            {
+                continue;
+            }
+
+            bool betterClass = airborne && !bestIsAirborne;
+            if (bestIndex < 0 || betterClass || candidate.Distance < bestDistance)
             {
                 bestDistance = candidate.Distance;
+                bestIsAirborne = airborne;
                 bestIndex = index;
             }
         }
@@ -379,7 +481,8 @@ public sealed class ObjectInteractionModel
         _phaseTicks = 0;
         LastAbort = ObjectAbortReason.None;
 
-        return chosen.Distance <= _tuning.CatchDistance
+        _trackedAtRest = chosen.AtRest;
+        return chosen.EngageDistance <= _tuning.EngageDistanceFor(chosen.AtRest)
             ? Transition(ObjectPhase.Catch, ObjectCommand.Catch, chosen.Direction)
             : Transition(ObjectPhase.Approach, ObjectCommand.Approach, chosen.Direction);
     }
@@ -413,6 +516,8 @@ public sealed class ObjectInteractionModel
     {
         _phase = phase;
         _phaseTicks = 0;
+        // A transition is not an abort. Reporting the previous abort reason here made
+        // the runtime cancel a live consume token on an ordinary phase change.
         return new ObjectIntent(
             command,
             phase,
@@ -420,7 +525,7 @@ public sealed class ObjectInteractionModel
             direction,
             GrantsCatchCare: false,
             RequestsConsume: false,
-            LastAbort);
+            ObjectAbortReason.None);
     }
 
     private ObjectIntent Emit(ObjectCommand command, float direction = 0.0f) =>

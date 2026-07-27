@@ -12,6 +12,13 @@ public partial class ReactionProfile : GameResource
     [Export(PropertyHint.Range, "0,5,0.01")] public double AcuteFearSeconds { get; set; } = 1.0;
     [Export(PropertyHint.Range, "0,10,0.01")] public double LearnedThreatFaceTailSeconds { get; set; } = 5.0;
     [Export(PropertyHint.Range, "0,5,0.01")] public double PetCompletionFaceSeconds { get; set; } = 0.75;
+
+    /// <summary>
+    /// How long the buddy laughs after catching a thrown ball out of the air. Deliberately
+    /// longer than the ordinary delight blip: this is the reward for a good throw and it has
+    /// to be unmistakable (owner instruction 2026-07-27).
+    /// </summary>
+    [Export(PropertyHint.Range, "0,8,0.01")] public double LaughFaceSeconds { get; set; } = 1.8;
     [Export(PropertyHint.Range, "0,1,0.01")] public float FearfulResistance { get; set; } = 1.0f;
     [Export(PropertyHint.Range, "0,1,0.01")] public float WaryResistance { get; set; } = 0.5f;
     [Export(PropertyHint.Range, "0,1,0.01")] public float AcuteFearResistance { get; set; } = 0.65f;
@@ -24,7 +31,7 @@ public partial class ReactionProfile : GameResource
     {
         var errors = new Godot.Collections.Array<string>();
         if (PainFaceSeconds < 0 || DelightFaceSeconds < 0 || AcuteFearSeconds < 0 ||
-            LearnedThreatFaceTailSeconds < 0 ||
+            LearnedThreatFaceTailSeconds < 0 || LaughFaceSeconds < 0 ||
             PetCompletionFaceSeconds < 0)
             errors.Add("reaction durations must be non-negative");
         if (FearfulResistance is < 0 or > 1 || WaryResistance is < 0 or > 1 || AcuteFearResistance is < 0 or > 1)

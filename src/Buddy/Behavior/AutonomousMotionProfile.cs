@@ -30,6 +30,17 @@ public partial class AutonomousMotionProfile : GameResource
     [Export(PropertyHint.Range, "1,256,0.5")]
     public float ObstacleProbeDistance { get; set; } = 56.0f;
 
+    /// <summary>
+    /// Height of the obstacle probe below the torso centre, in world pixels. An object
+    /// the buddy would walk into rests on the floor, not at chest height: with the
+    /// shipped rig the floor line sits about <c>72 px</c> below the torso centre, so a
+    /// probe at torso height passes clear over everything. <c>64</c> keeps the ray
+    /// <c>8 px</c> above the floor, crossing any resting object of radius <c>6</c> or
+    /// more, while the layer-3 mask keeps the room floor and the buddy's own feet out.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,256,0.5")]
+    public float ObstacleProbeHeightOffset { get; set; } = 64.0f;
+
     /// <summary>Ambient timer-driven jumping. Owner-disabled 2026-07-20 (see DECISIONS.md);
     /// tool-reaction hops and future behaviour-driven jumps are unaffected.</summary>
     [Export] public bool AmbientJumpsEnabled { get; set; } = true;
@@ -66,7 +77,8 @@ public partial class AutonomousMotionProfile : GameResource
 
             return float.IsFinite(WallAvoidMarginPixels) && WallAvoidMarginPixels >= 0.0f &&
                 float.IsFinite(WallLookAheadSeconds) && WallLookAheadSeconds >= 0.0f &&
-                float.IsFinite(ObstacleProbeDistance) && ObstacleProbeDistance > 0.0f;
+                float.IsFinite(ObstacleProbeDistance) && ObstacleProbeDistance > 0.0f &&
+                float.IsFinite(ObstacleProbeHeightOffset) && ObstacleProbeHeightOffset >= 0.0f;
         }
     }
 
@@ -90,6 +102,8 @@ public partial class AutonomousMotionProfile : GameResource
             errors.Add("wall look-ahead seconds must be finite and non-negative");
         if (!float.IsFinite(ObstacleProbeDistance) || ObstacleProbeDistance <= 0.0f)
             errors.Add("obstacle probe distance must be finite and positive");
+        if (!float.IsFinite(ObstacleProbeHeightOffset) || ObstacleProbeHeightOffset < 0.0f)
+            errors.Add("obstacle probe height offset must be finite and non-negative");
 
         return errors;
     }

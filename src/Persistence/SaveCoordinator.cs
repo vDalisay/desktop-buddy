@@ -45,10 +45,32 @@ public sealed class SaveCoordinator
         _dirtyRunningSeconds += validRunningSeconds;
         if (_dirtyRunningSeconds < AutosaveSeconds)
             return Task.CompletedTask;
-        return FlushProgressAsync(token);
+        return RequestFlushAsync(token);
     }
 
-    public Task FlushProgressAsync(CancellationToken token = default)
+    /// <summary>
+    /// Requests a durable write. Coalescing callers (autosave, focus loss) join an
+    /// in-flight flush and let anything newer stay dirty for the next request.
+    /// </summary>
+    /// <param name="force">
+    /// Set only by paths that have no next request — Save &amp; Quit and clean exit. After
+    /// joining an in-flight flush it runs at most <b>one</b> additional pass to capture a
+    /// mutation that arrived during the durable write. Bounded to one pass on purpose:
+    /// continuously advancing running-time revisions must never trap the quit in a
+    /// catch-up loop.
+    /// </param>
+    public async Task FlushProgressAsync(bool force, CancellationToken token = default)
+    {
+        await RequestFlushAsync(token).ConfigureAwait(false);
+        if (!force || !IsDirty)
+            return;
+        await RequestFlushAsync(token).ConfigureAwait(false);
+    }
+
+    public Task FlushProgressAsync(CancellationToken token = default) =>
+        RequestFlushAsync(token);
+
+    private Task RequestFlushAsync(CancellationToken token)
     {
         lock (_sync)
         {

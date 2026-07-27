@@ -6,3 +6,4 @@
 resource_name = "NeutralSocialBand"
 script = ExtResource("1_profile")
 Hysteresis = 12.0
+WillCatch = true

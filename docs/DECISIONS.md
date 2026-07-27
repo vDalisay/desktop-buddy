@@ -595,6 +595,209 @@ decisions. They are implemented and test-covered, but are not owner feel accepta
 - The minimal M4 tray scope is Show/Hide plus Save & Quit. The complete FR-016.1
   tray menu remains Milestone 6 scope.
 
+## M4 Review Fixes (2026-07-26)
+
+Raised by the pre-acceptance implementation/code review of all six M4 tasks
+(`docs/M4_REVIEW_FIXES_PLAN.md`). These correct plan deliverables that had not
+landed and defects the automated gates did not catch.
+
+- **Obstacle probe height is `64 px` below the torso centre**
+  (`AutonomousMotionProfile.ObstacleProbeHeightOffset`). The probe used to fire at
+  torso height, roughly `48 px` above the top of any loose object resting on the
+  floor, so the persisted obstacle-hop trait could never fire in real play. The
+  `jump_trait_gate` and `autonomous_motion` scenarios previously supplied a frozen
+  torso-height prop; both now use ordinary floor-resting objects, so the gate
+  exercises the shipped path.
+- **Hidden mode throttles presentation**: `MoodEconomyProfile.HiddenMaxFps = 10`
+  plus `RenderingServer.RenderLoopEnabled = false` while hidden. Pausing the tree
+  never stopped the main loop, so the process kept rendering behind an invisible
+  window. Show restores both and re-anchors physics interpolation across the rig and
+  every registered loose object; the step accumulator itself stays bounded by the
+  existing `physics/common/max_physics_steps_per_frame = 6` project setting, which is
+  the FR-015.10 answer rather than a nonexistent engine accumulator API.
+- **Restoring from hidden is a Milestone 6 dependency.** M4 ships the tray command
+  surface — `toggle_hide_to_tray` (`Ctrl+Shift+H`) and `save_and_quit`
+  (`Ctrl+Shift+Q`) through `TrayCommandComponent` — but Godot delivers no input to an
+  invisible unfocused window, so the *restore* stimulus needs the native tray icon or
+  OS-global hotkey that FR-016.1 already scopes to M6. The state machine and the
+  command seam are complete and the native adapter binds the same events.
+- **Suspend/resume/session lock travel through `IWindowsDesktopAdapter`**
+  (`SystemSuspending`, `SystemResumed`, `SessionLockChanged`). The emulated adapter
+  raises them deterministically for `suspend_no_catchup`; the native adapter declares
+  them and its `WM_POWERBROADCAST`/session hooks join the M2 owner-manual Windows
+  matrix. A locked session accrues as hidden **running** time with no clock reset and
+  no discontinuity exclusion (FR-016.8).
+- **Held objects can be physically lost**:
+  `ObjectInteractionProfile.HoldReleaseDistance = 72 px`. Hold confirmation used to be
+  unconditional, so nothing could knock an object out of the buddy's hands and the
+  interrupted-meal drop path was unreachable. A lost grip drops and starts no
+  cooldown (FR-008.10).
+- **Candidate scoring prefers airborne over resting objects.** A thrown object is a
+  moment the buddy can miss; distance alone let a nearer idle prop steal the
+  commitment and lose the FR-008.3 catch.
+- **Greeting owns one tick per cadence, not the whole approach envelope.** A content
+  or delighted buddy inside `170`/`110 px` of the cursor used to hold priority 6
+  continuously with no drive, freezing ambient autonomy between waves.
+- **Save & Quit and clean exit force the flush.** Coalescing callers still join an
+  in-flight write and leave newer state dirty; the quit paths run at most one extra
+  pass, bounded so continuously advancing running-time revisions cannot trap the exit.
+- **Legacy save corruption quarantines instead of crashing.** The v1 migration read
+  integer fields with throwing accessors, and `Decode` caught neither
+  `InvalidOperationException` nor `FormatException`, so a wrong-typed legacy field
+  exited the app instead of recovering through the backup/defaults chain.
+- **One arbitration ladder.** Object suppression is derived from
+  `BehaviorArbiterModel.SuppressesVoluntaryAction`, replacing a hand-rolled copy of
+  priorities 0–4 in the runtime arbiter that had to be kept in sync by hand.
+- **The laboratory can spawn loose objects**: `O` drops one safe object at the cursor,
+  `Shift+O` clears them all. Every object-interaction feature — approach, catch, hold,
+  inspect, toss, discard, obstacle hop — was unreachable by hand because the only
+  object the lab could create was the Eat key's food, which goes straight into the
+  hand. The owner gate steps that judge those behaviours were not performable before
+  this key existed; `laboratory_controls` now covers it.
+
+## M4 Owner Tuning Corrections (2026-07-26)
+
+Owner feel corrections made after hands-on play, overriding earlier delegated defaults
+and part of owner decision 1. These are owner instructions, not engineering choices.
+
+- **Jump impulse doubled, `1800` → `3600`** (`ActiveDriveProfile.JumpImpulse`). The old
+  value produced roughly a `35 px` torso rise, which did not reliably carry the feet over
+  a resting loose object. This only became visible once obstacle hops could fire at all.
+- **Wary and Neutral now catch thrown objects**, revising owner decision 1's "wary — no
+  approach or catch". Only Fearful refuses outright. A new save sits at mood `0`
+  (Neutral), so declining there meant the buddy ignored everything thrown at it, which
+  read as broken rather than as guarded. Keeping distance from the cursor and accepting a
+  thrown ball are separate impulses: Wary still holds its `150 px` standoff and still
+  never approaches the cursor, and neither Wary nor Neutral tosses an object back for fun.
+- **Only a real player throw is a catch target.** A voluntary commitment now requires the
+  candidate to be airborne *and* carry a throw token from `MarkPlayerThrown`; consumables
+  are exempt. This was forced by the two changes above interacting: object action is
+  priority 5 and the obstacle hop is priority 7, so once Neutral caught, every resting
+  ball in the walking path was claimed for a pickup and hopping silently stopped working
+  again — including balls the buddy had just kicked with its own foot, since "moving" is
+  not "thrown". The split also matches the long-documented meaning of
+  `ObjectCandidate.AtRest` and keeps food pickable off the floor.
+- **Cooldown outranks hand state in the lab-food rejection reason.** A cooldown belongs to
+  the content ID, not to what the hands are doing, so `OnCooldown` is reported whenever it
+  applies instead of being hidden behind `UnknownConsumable`.
+- **The laboratory `E` key removes the food it spawned when the consume is cancelled.**
+  Otherwise a cancelled meal leaves a consumable on the floor that a neutral-or-better
+  buddy immediately walks back to collect, overriding whatever the operator does next —
+  it was preempting the wave gesture in `m36_expressive`.
+
+## M4 Object Handling Feel (2026-07-26)
+
+Owner instructions after seeing the buddy stretch both arms most of the room's width to
+reach a ball. Full detail in `docs/M4_OBJECT_HANDLING_FEEL_PLAN.md`.
+
+- **Reach is bounded and measured in 2D.** Candidate distance was horizontal only, so
+  `CatchDistance = 46` admitted an object 46 px sideways and arbitrarily far above — the
+  diagonal stretch the owner saw. Distance is now a true 2D reach from
+  `ReachOriginOffset`, and every hand target is clamped into
+  `ReachRadius + MaximumReachExtension` (`44 + 6 px`). `MaximumHandForce` drops
+  `18000 → 6000`. `CatchDistance` above the reach limit is now a validation error.
+- **Objects are never sprung toward the buddy.** The object spring is deleted. A catch
+  confirms when the object physically touches a hand, and the object then **attaches**:
+  frozen kinematic, placed on the hand socket each routed tick. This hard placement is the
+  owner's explicit request ("the ball should stick to its hand", "relocate directly to the
+  buddy's hand"). It does not breach ARCHITECTURE §23, which governs the buddy rig — those
+  bodies are still driven only by bounded forces. A carried object is cargo while held.
+- **Ground pickup is a scoop**, not a grab from range: walk to the object, dip the torso and
+  head with a bounded force while the hands lower, then the object relocates into the hand.
+  The runtime chooses scoop or catch from the registry's rest state, so the domain lifecycle
+  gained no new phase.
+- **The return throw goes toward the cursor**, reversing the earlier cursor-safe
+  away-from-cursor toss. `ThrowWindupTicks` draws the hands back first so the release reads
+  as a throw. `TossTicks` was added to the domain tuning because a two-beat gesture cannot
+  live in a single tick. Discard keeps its low-energy away release and flee bias.
+- **Obstacle detection has two independent sources.** `RayCast2D.HitFromInside` defaults to
+  false, so once the buddy was touching a ball the probe origin sat inside it and reported
+  nothing — precisely the case the hop exists for, which is why detection was intermittent.
+  `HitFromInside` is now true, and a registry-backed check (resting object within
+  `ObstacleForwardWindow` ahead and below the torso) is OR'd in.
+
+## M4 Object Handling — Second Pass (2026-07-27)
+
+The 2026-07-26 pass bounded the arm reach but did not make object handling work. Owner
+report and full detail in `docs/M4_OBJECT_HANDLING_FEEL_PLAN.md`, "Second pass".
+
+- **Carried objects ride the midpoint of both hands**, not the hand that made contact
+  (`CarryLiftFraction`). Pinning to one hand put the Eat item off to the side.
+- **Resting objects are pickup targets again.** Making them ineligible removed ground pickup
+  entirely. The obstacle hop stays reachable through a `ReleaseIgnoreTicks` window on objects
+  the buddy itself put down, not through a blanket refusal.
+- **A ground pickup is gated horizontally** (`ScoopDistance` against
+  `ObjectCandidate.GroundDistance`), because the floor is ~`66 px` below the shoulder line and
+  a straight-line gate is unsatisfiable. **Collision exceptions apply from commitment**, so the
+  buddy stops kicking away the object it is walking toward.
+- **Catch capture succeeds anywhere inside the reach envelope**, not only within a hand radius.
+  A thrown ball meets the `28 px` torso before it ever gets that close to a hand, so it simply
+  rebounded and the buddy appeared not to react.
+- **Obstacle hops carry forward momentum** (`ObstacleHopHorizontalRatio = 0.3`). The ambient
+  branch passed a zero jump direction, so hops were purely vertical and landed back on the
+  object.
+- **Accepted-bound change, owner-visible:** `autonomous_motion`'s
+  `grounded_walk_stops_without_coast` residual-speed bound moves `2.0 → 6.0 px/s` and skips a
+  `150`-tick landing window. The travel bound stays `1.25 px` and measures `0.5 px`. The old
+  bound predates any horizontal impulse source; the obstacle hop is now one.
+
+## M4 Object Handling — Third Pass (2026-07-27)
+
+- **One ball at a time.** A lab drop replaces the previous loose object rather than littering
+  the room. This is a *spawn policy*; `LooseObjectRegistry` keeps its full capacity and
+  eviction rules, which remain separately tested.
+- **The buddy watches a ball while the player carries it.** Player-held objects used to be
+  skipped entirely as candidates, so the buddy was blind to the ball until the instant of
+  release — far too late to react to a close throw, which is why it seemed to ignore thrown
+  balls. It now commits to a carried ball, holds the ready pose without timing out
+  (`CatchTimeoutTicks` does not run while `PlayerHeld`), and never takes it out of the player's
+  hand. `HeadLookAtComponent` feeds the committed object into the existing `Item` look-at
+  source, so the head tracks the ball too.
+- **Carry pose clears the head.** `HoldCenterOffset` moves `-24 → -8` and `CarryLiftFraction`
+  drops to `0`. The head spans roughly `-26` to `-74` from the torso, so the old carry position
+  put the ball inside it.
+- **The throw leaves from the throwing hand**, after that hand has swung forward.
+
+## M4 Object Carry and Throw Pose (2026-07-27)
+
+- **One-handed carry in a natural pose, object resting on top of the hand**
+  (`CarryHandOffset = (34, -2)`, `CarryLiftFraction = 1`). Carrying at the midpoint between
+  both hands clutched the object into the torso, and lifting it from there pushed it into the
+  head. On this rig the head's underside sits at `-26` and the torso's top at `-28`, so there
+  is no gap above the body — the only clear space is out to the side at roughly the hand's own
+  resting offset. The free hand mirrors the pose so it is never dragged across the body.
+- **The throw is a three-beat gesture**: the carrying hand draws back
+  (`ThrowWindupDistance`), swings forward past the carry pose (`ThrowForwardDistance` over
+  `ThrowForwardTicks`) with the object still riding it, and lets go at the forward extent.
+  `TossTicks` must exceed wind-up plus forward, which is now a validation error rather than a
+  silent truncation. Aim is taken from the throwing hand, not the torso.
+- **A released object stays non-colliding with the buddy for `ReleaseCollisionGraceTicks`
+  (`60`)**, so a thrown ball cannot clip the hand that threw it or the body it just left.
+  Collision exceptions therefore span the whole interaction: from commitment, through carry,
+  to shortly after the release.
+
+## M4 Throw Launch (2026-07-27)
+
+The throw gesture played but the ball never left — it dropped at the buddy's feet.
+
+- **The release assigns velocity instead of applying an impulse.** `EndHold` unfreezes the
+  body on the same tick the release command runs, and an impulse queued against a body that
+  has just left its frozen state is discarded by the physics server. Profile properties are
+  renamed accordingly: `TossImpulse`/`TossLiftImpulse`/`DiscardImpulse`/`DiscardLiftImpulse`
+  become `TossSpeed`/`TossLiftSpeed`/`DiscardSpeed`/`DiscardLiftSpeed`, since they are px/s
+  and a silently-changed meaning behind an old name is worse than a rename.
+- **The launch velocity is re-stated for `LaunchHoldTicks` (`3`).** A single assignment on the
+  frame a body resumes simulation can still be overwritten before it integrates. Owner
+  direction was explicitly to fake the throw rather than solve it through physics.
+- **The swing has its own force budget** (`ThrowHandForce = 24000`). The carry force is
+  deliberately gentle at `6000`, far too soft to move an arm in a handful of ticks, so the
+  wind-up barely registered and the release read as a drop.
+
+`object_toss_discard` previously asserted only that a release was *recorded* — an impulse
+value and a drive count. It never checked that the object moved, which is exactly how a throw
+that dropped straight down passed every gate. It now tracks the released body for 30 ticks and
+requires real flight: `flight_speed=938`, `flight_travel=213`.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

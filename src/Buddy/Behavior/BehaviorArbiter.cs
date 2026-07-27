@@ -108,19 +108,6 @@ public partial class BehaviorArbiter : Node
         GrabResistanceIntent resistance = GrabResistance.Intent;
         bool supportContact = Standing.Snapshot.SupportContactCount > 0;
         bool hazard = toolReaction.Active && toolReaction.GuardActive;
-        bool supportedFearfulGrab =
-            grabbedPart is not null && resistance.Active && supportContact;
-        bool suppressObject =
-            hardRecoveredThisTick ||
-            consciousness == Consciousness.Unconscious ||
-            Recovery.State.AssistanceActive ||
-            hazard ||
-            supportedFearfulGrab;
-
-        ObjectInteraction.PhysicsTick(
-            suppressObject,
-            consciousness == Consciousness.Conscious,
-            cursorWorldPosition);
 
         AutonomousMotionIntent ambient = AutonomousMotion.Intent;
         float targetOffsetX = cursorWorldPosition.X - Rig.Torso.GlobalPosition.X;
@@ -129,12 +116,12 @@ public partial class BehaviorArbiter : Node
             : Mathf.Sign(targetOffsetX);
         MoodBand moodBand = _progress?.MoodBand ?? _savelessMoodBand;
         BuddyTraits traits = _progress?.Traits ?? _savelessTraits;
-
-        bool objectCommitted =
-            ObjectInteraction.Phase != ObjectPhase.Idle ||
-            Activity.Current == ActivityId.Eat;
         bool socialReaction = toolReaction.Active && !toolReaction.GuardActive;
 
+        // Snapshot first, object decision second, arbitration third. The object worker
+        // must know whether a priority above 5 is eligible before it ticks, and asking
+        // the model that question keeps one ladder instead of a hand-rolled copy that
+        // must be kept in sync (the object fields below are filled in afterwards).
         var snapshot = new BehaviorSnapshot(
             Tick: unchecked((int)Math.Min(routedTick, int.MaxValue)),
             Consciousness: consciousness,
@@ -149,18 +136,34 @@ public partial class BehaviorArbiter : Node
             WallBlockedLeft: AutonomousMotion.BlockedLeft,
             WallBlockedRight: AutonomousMotion.BlockedRight,
             MoodBand: moodBand,
-            ObjectActionCommitted: objectCommitted,
-            ObjectApproachDirection: ObjectInteraction.ApproachDirection,
+            ObjectActionCommitted: false,
+            ObjectApproachDirection: 0.0f,
             SocialTargetValid: socialTargetValid,
             SocialTargetDirection: targetDirection,
             SocialTargetDistance: Mathf.Abs(targetOffsetX),
             AmbientDriveActive: true,
             AmbientWalkDirection: ambient.WalkDirection,
             AmbientLocomotionScale: 1.0f,
+            // Two independent sources on purpose: the layer-3 ray, and the registry's own
+            // view of resting objects in the path. The ray alone was intermittent.
             ObstacleInCommittedPath:
-                AutonomousMotion.ObstacleInCommittedPath(ambient.WalkDirection),
+                AutonomousMotion.ObstacleInCommittedPath(ambient.WalkDirection) ||
+                ObjectInteraction.RestingObstacleInPath(ambient.WalkDirection),
             HasSupportContact: supportContact,
             SocialReactionPresent: socialReaction);
+
+        ObjectInteraction.PhysicsTick(
+            BehaviorArbiterModel.SuppressesVoluntaryAction(snapshot),
+            consciousness == Consciousness.Conscious,
+            cursorWorldPosition);
+
+        snapshot = snapshot with
+        {
+            ObjectActionCommitted =
+                ObjectInteraction.Phase != ObjectPhase.Idle ||
+                Activity.Current == ActivityId.Eat,
+            ObjectApproachDirection = ObjectInteraction.ApproachDirection,
+        };
 
         Intent = _model.Resolve(snapshot, traits);
 
@@ -235,14 +238,19 @@ public partial class BehaviorArbiter : Node
 
         if (Intent.Owner == BehaviorPriority.Ambient)
         {
-            AutonomousMotionIntent ambient = AutonomousMotion.Intent;
+            // Intent.WalkDirection, not the raw planner direction: the arbiter's wall
+            // filter must reach every layer, or it silently applies to none of them.
+            //
+            // An obstacle hop carries forward momentum along the committed walk. Passing
+            // zero here made the hop purely vertical, so the buddy launched straight up and
+            // landed back on the same object (owner correction 2026-07-26).
             return new DriveIntent(
-                Intent.DriveActive ? ambient.WalkDirection : 0.0f,
+                Intent.DriveActive ? Intent.WalkDirection : 0.0f,
                 Intent.LocomotionScale,
                 Intent.JumpRequested,
-                0.0f,
+                Intent.WalkDirection,
                 1.0f,
-                0.0f,
+                Profile.ObstacleHopHorizontalRatio,
                 0.0f,
                 0.0f,
                 false,

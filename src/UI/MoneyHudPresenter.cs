@@ -43,11 +43,13 @@ public partial class MoneyHudPresenter : PanelContainer
 
     public override void _ExitTree()
     {
+        // The economy service outlives every node, so its unsubscribe must not be
+        // gated on the pipeline node still being valid.
+        if (_economy is not null)
+            _economy.BalanceChanged -= OnBalanceChanged;
         if (!GodotObject.IsInstanceValid(Pipeline)) return;
         Pipeline.ImpactAccepted -= OnImpact;
         Pipeline.RewardFeedbackEmitted -= OnFeedback;
-        if (_economy is not null)
-            _economy.BalanceChanged -= OnBalanceChanged;
     }
 
     private void OnImpact(AcceptedImpact impact) => RefreshBalance();

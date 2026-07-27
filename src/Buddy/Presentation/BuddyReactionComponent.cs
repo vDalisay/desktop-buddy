@@ -28,12 +28,19 @@ public partial class BuddyReactionComponent : Node
     private int _fearTicks;
     private int _petSmileTicks;
     private int _learnedThreatFaceTicks;
+    private int _laughTicks;
 
     public bool IsInitialized { get; private set; }
     public string CurrentFace { get; private set; } = ":)";
     public float CurrentFear { get; private set; }
     public int PetSmileTicksRemaining => _petSmileTicks;
     public int LearnedThreatFaceTicksRemaining => _learnedThreatFaceTicks;
+
+    /// <summary>Ticks left on the clean-catch laugh; non-zero means the buddy is laughing.</summary>
+    public int LaughTicksRemaining => _laughTicks;
+
+    /// <summary>Lifetime laughs, so a scenario can assert the reaction actually fired.</summary>
+    public int LaughCount { get; private set; }
 
     /// <summary>
     /// Development/scenario seam for measuring resistance independently of mood.
@@ -51,6 +58,7 @@ public partial class BuddyReactionComponent : Node
             throw new InvalidOperationException("BuddyReactionComponent requires buddy, pipeline, and valid reaction tuning.");
         Pipeline.ImpactAccepted += OnImpact;
         Pipeline.CareAwarded += OnCare;
+        Buddy.ObjectInteraction.FunCatchDelighted += OnFunCatch;
         IsInitialized = true;
         Resolve();
     }
@@ -62,6 +70,7 @@ public partial class BuddyReactionComponent : Node
         if (_delightTicks > 0) _delightTicks--;
         if (_fearTicks > 0) _fearTicks--;
         if (_petSmileTicks > 0) _petSmileTicks--;
+        if (_laughTicks > 0) _laughTicks--;
         if (ToolReaction.IsLearnedGloveThreatActive)
             _learnedThreatFaceTicks = SecondsToTicks(Profile.LearnedThreatFaceTailSeconds);
         else if (_learnedThreatFaceTicks > 0)
@@ -71,9 +80,17 @@ public partial class BuddyReactionComponent : Node
 
     public override void _ExitTree()
     {
-        if (!IsInitialized || !GodotObject.IsInstanceValid(Pipeline)) return;
-        Pipeline.ImpactAccepted -= OnImpact;
-        Pipeline.CareAwarded -= OnCare;
+        if (!IsInitialized) return;
+        if (GodotObject.IsInstanceValid(Pipeline))
+        {
+            Pipeline.ImpactAccepted -= OnImpact;
+            Pipeline.CareAwarded -= OnCare;
+        }
+        if (GodotObject.IsInstanceValid(Buddy) &&
+            GodotObject.IsInstanceValid(Buddy.ObjectInteraction))
+        {
+            Buddy.ObjectInteraction.FunCatchDelighted -= OnFunCatch;
+        }
     }
 
     private void OnImpact(AcceptedImpact impact)
@@ -88,6 +105,16 @@ public partial class BuddyReactionComponent : Node
             _petSmileTicks = SecondsToTicks(Profile.PetCompletionFaceSeconds);
         else
             _delightTicks = SecondsToTicks(Profile.DelightFaceSeconds);
+    }
+
+    /// <summary>
+    /// The buddy caught a thrown ball out of the air and still finds catch fun. Interest and
+    /// cleanliness are already decided upstream; this only performs the laugh.
+    /// </summary>
+    private void OnFunCatch()
+    {
+        _laughTicks = SecondsToTicks(Profile.LaughFaceSeconds);
+        LaughCount++;
     }
 
     private void Resolve()
@@ -111,6 +138,9 @@ public partial class BuddyReactionComponent : Node
             CareStroke.TickleDisposition == TickleDisposition.Angry ? ">:(" :
             ToolReaction.IsDefending ? ">:(" :
             _fearTicks > 0 || _learnedThreatFaceTicks > 0 ? "o_o" :
+            // Above the quieter positives but below pain, anger, and fear: a buddy that gets
+            // punched mid-laugh shows the punch.
+            _laughTicks > 0 ? "^_^" :
             _petSmileTicks > 0 ? ":)" :
             CareStroke.IsPetRubbing ? ":3" :
             CareStroke.IsTickleContact ? "^_^" :

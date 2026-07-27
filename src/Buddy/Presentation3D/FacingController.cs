@@ -138,6 +138,15 @@ public partial class FacingController : Node
             engaged = true;
             side = MathF.Sign(Glove.Cursor.X - torsoX);
         }
+        else if (Buddy.ObjectInteraction.IsHolding)
+        {
+            // Holding something is an engagement with the player: the buddy turns to face them
+            // while it carries the ball, which is also the side it is about to throw toward
+            // (owner instruction 2026-07-27). Ranked below the live tools, because a hand
+            // actually on the buddy is the more immediate attention.
+            engaged = true;
+            side = MathF.Sign(Buddy.ObjectInteraction.CursorWorldPosition.X - torsoX);
+        }
 
         bool eatFacesFront = Buddy.Activity.Current == ActivityId.Eat;
         var inputs = new FacingInputs(

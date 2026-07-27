@@ -138,31 +138,36 @@ public sealed class ObjectInteractionModelTests
     [Fact]
     public void UnthrownObject_GrantsNoCatchCare()
     {
-        // FR-008.3 pays for catching a *thrown* object, not for picking one up.
+        // FR-008.3 pays for catching a *thrown* object, not for picking one up. Food is
+        // the reachable case: it is engaged off the floor with no throw token, and the
+        // mood it eventually pays comes from consuming it, never from the pickup.
         var model = new ObjectInteractionModel(Fast);
 
-        Step(model, Ball(throwToken: 0));
-        ObjectIntent hold = Step(model, Ball(throwToken: 0), holdConfirmed: true);
+        Step(model, Food());
+        ObjectIntent hold = Step(model, Food(), holdConfirmed: true);
 
         Assert.Equal(ObjectPhase.Hold, model.Phase);
         Assert.False(hold.GrantsCatchCare);
     }
 
-    [Theory]
-    [InlineData(MoodBand.Fearful)]
-    [InlineData(MoodBand.Wary)]
-    public void GuardedBands_NeverVoluntarilyEngage(MoodBand band)
+    /// <summary>
+    /// Owner correction 2026-07-26: only fear refuses outright. Declining to catch from
+    /// wary through neutral made a default-mood buddy ignore thrown objects entirely.
+    /// </summary>
+    [Fact]
+    public void FearfulBand_NeverVoluntarilyEngages()
     {
-        // Owner decision 1: fearful and wary do not catch thrown objects.
         var model = new ObjectInteractionModel(Fast);
 
-        ObjectIntent intent = Step(model, Ball(), band);
+        ObjectIntent intent = Step(model, Ball(), MoodBand.Fearful);
 
         Assert.Equal(ObjectCommand.None, intent.Command);
         Assert.Equal(ObjectPhase.Idle, model.Phase);
     }
 
     [Theory]
+    [InlineData(MoodBand.Wary)]
+    [InlineData(MoodBand.Neutral)]
     [InlineData(MoodBand.Content)]
     [InlineData(MoodBand.Delighted)]
     public void WillingBands_Engage(MoodBand band)
@@ -343,8 +348,14 @@ public sealed class ObjectInteractionModelTests
         Assert.Equal(ObjectPhase.Drop, model.Phase);
     }
 
-    [Fact]
-    public void NonConsumableInAGuardedBand_IsPutDownNotTossed()
+    /// <summary>
+    /// Only the guarded bands put a caught object down instead of playing: a wary or fearful
+    /// buddy is not in the mood to throw things back.
+    /// </summary>
+    [Theory]
+    [InlineData(MoodBand.Wary)]
+    [InlineData(MoodBand.Fearful)]
+    public void NonConsumableInAGuardedBand_IsPutDownNotTossed(MoodBand band)
     {
         var model = new ObjectInteractionModel(Fast);
         // Commit while content, then let the mood fall before the outcome is chosen.
@@ -354,21 +365,45 @@ public sealed class ObjectInteractionModelTests
         ObjectIntent outcome = ObjectIntent.None;
         for (int tick = 0; tick < 40 && model.Phase != ObjectPhase.Drop && model.Phase != ObjectPhase.Toss; tick++)
         {
-            outcome = Step(model, Ball(distance: 5.0f), MoodBand.Wary, holdConfirmed: true);
+            outcome = Step(model, Ball(distance: 5.0f), band, holdConfirmed: true);
         }
 
         Assert.Equal(ObjectCommand.Drop, outcome.Command);
+    }
+
+    /// <summary>
+    /// The return throw is the default outcome — a fresh buddy sits at mood 0 (neutral), and
+    /// gating the toss to the content band meant it never threw outside boosted tests (owner
+    /// correction 2026-07-27).
+    /// </summary>
+    [Theory]
+    [InlineData(MoodBand.Neutral)]
+    [InlineData(MoodBand.Delighted)]
+    public void NonConsumableOutsideGuardedBands_IsTossedBack(MoodBand band)
+    {
+        var model = new ObjectInteractionModel(Fast);
+        Step(model, Ball(), band);
+        Step(model, Ball(), band, holdConfirmed: true);
+
+        ObjectIntent outcome = ObjectIntent.None;
+        for (int tick = 0; tick < 40 && model.Phase != ObjectPhase.Drop && model.Phase != ObjectPhase.Toss; tick++)
+        {
+            outcome = Step(model, Ball(distance: 5.0f), band, holdConfirmed: true);
+        }
+
+        Assert.Equal(ObjectCommand.Toss, outcome.Command);
     }
 
     [Fact]
     public void ClosestEligibleCandidateWins()
     {
         var model = new ObjectInteractionModel(Fast);
+        // All airborne: this test is about distance scoring, not rest state.
         ObjectCandidate[] candidates =
         {
-            new(RuntimeId: 1, ContentIds.LooseObject, 1, 180.0f, 1.0f, false, true),
-            new(RuntimeId: 2, ContentIds.LooseObject, 1, 60.0f, -1.0f, false, true),
-            new(RuntimeId: 3, ContentIds.LooseObject, 1, 120.0f, 1.0f, false, true),
+            new(RuntimeId: 1, ContentIds.LooseObject, 1, 180.0f, 1.0f, false, false),
+            new(RuntimeId: 2, ContentIds.LooseObject, 1, 60.0f, -1.0f, false, false),
+            new(RuntimeId: 3, ContentIds.LooseObject, 1, 120.0f, 1.0f, false, false),
         };
 
         model.Tick(candidates, MoodBand.Content, NothingHarmful, false, true, false, false);
@@ -380,10 +415,11 @@ public sealed class ObjectInteractionModelTests
     public void HarmfulCandidatesAreSkippedInFavourOfASafeFartherOne()
     {
         var model = new ObjectInteractionModel(Fast);
+        // All airborne: this test is about harmful memory, not rest state.
         ObjectCandidate[] candidates =
         {
-            new(RuntimeId: 1, ContentIds.ToolBoxingGlove, 1, 30.0f, 1.0f, false, true),
-            new(RuntimeId: 2, ContentIds.LooseObject, 1, 150.0f, -1.0f, false, true),
+            new(RuntimeId: 1, ContentIds.ToolBoxingGlove, 1, 30.0f, 1.0f, false, false),
+            new(RuntimeId: 2, ContentIds.LooseObject, 1, 150.0f, -1.0f, false, false),
         };
 
         model.Tick(candidates, MoodBand.Content, GloveHarmful, false, true, false, false);
@@ -418,6 +454,229 @@ public sealed class ObjectInteractionModelTests
         // After a reposition the previous throw is no longer the same event.
         Step(model, Ball(throwToken: 4));
         Assert.True(Step(model, Ball(throwToken: 4), holdConfirmed: true).GrantsCatchCare);
+    }
+
+    /// <summary>
+    /// A thrown object is a moment the buddy can miss; an idle prop is not. Distance alone
+    /// let a nearer resting object steal the commitment and lose the FR-008.3 catch.
+    /// </summary>
+    [Fact]
+    public void Commit_PrefersAnAirborneCandidateOverANearerRestingOne()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        ObjectCandidate[] candidates =
+        [
+            Food(distance: 10.0f),
+            Ball(distance: 120.0f),
+        ];
+
+        model.Tick(candidates, MoodBand.Content, NothingHarmful, false, true, false, false);
+
+        Assert.Equal(11, model.TrackedRuntimeId);
+        Assert.Equal(ObjectPhase.Approach, model.Phase);
+    }
+
+    /// <summary>
+    /// A resting ball IS a pickup target — the buddy walks over and scoops it. Excluding
+    /// resting objects to protect the obstacle hop removed ground pickup entirely, which is
+    /// the opposite of what was asked for.
+    /// </summary>
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 5)]
+    public void RestingAndThrownObjects_AreBothEngaged(bool atRest, int throwToken)
+    {
+        var model = new ObjectInteractionModel(Fast);
+
+        ObjectIntent intent = Step(
+            model,
+            Ball(throwToken: throwToken) with { AtRest = atRest });
+
+        Assert.Equal(ObjectCommand.Catch, intent.Command);
+        Assert.Equal(atRest, model.TrackedAtRest);
+    }
+
+    /// <summary>
+    /// The ignore window is what lets both behaviours coexist: object action is priority 5
+    /// and the obstacle hop is priority 7, so without a cooling-off period after the buddy
+    /// puts something down it re-commits to the same ball forever and never steps over it.
+    /// </summary>
+    [Fact]
+    public void IgnoredCandidate_IsLeftAloneForTheObstacleHop()
+    {
+        var model = new ObjectInteractionModel(Fast);
+
+        ObjectIntent intent = Step(model, Ball() with { Ignored = true });
+
+        Assert.Equal(ObjectCommand.None, intent.Command);
+        Assert.Equal(ObjectPhase.Idle, model.Phase);
+    }
+
+    /// <summary>
+    /// A ground pickup is gated on being near the object, not on arm reach. The floor sits
+    /// well below the shoulders, so measuring it against catch reach made every resting
+    /// object permanently unreachable and the buddy simply walked into it.
+    /// </summary>
+    [Fact]
+    public void RestingObject_UsesTheWiderScoopGate()
+    {
+        var tuning = Fast with { CatchDistance = 40.0f, ScoopDistance = 80.0f };
+        var model = new ObjectInteractionModel(tuning);
+
+        ObjectIntent resting = Step(
+            model,
+            Ball(distance: 70.0f) with { AtRest = true, ThrowToken = 0 });
+        Assert.Equal(ObjectCommand.Catch, resting.Command);
+
+        model.Reset();
+        ObjectIntent airborne = Step(model, Ball(distance: 70.0f));
+        Assert.Equal(ObjectCommand.Approach, airborne.Command);
+    }
+
+    /// <summary>
+    /// A return throw is a two-beat gesture — draw back, then release — so the toss phase
+    /// must hold priority 5 for its whole duration instead of ending after one tick.
+    /// </summary>
+    [Fact]
+    public void Toss_HoldsItsPhaseForTheWholeGesture()
+    {
+        var tuning = Fast with { TossTicks = 6 };
+        var model = new ObjectInteractionModel(tuning);
+        Step(model, Ball());
+        Step(model, Ball(), holdConfirmed: true);
+        for (int tick = 0; tick < 40 && model.Phase != ObjectPhase.Toss; tick++)
+            Step(model, Ball(distance: 5.0f), holdConfirmed: true);
+        Assert.Equal(ObjectPhase.Toss, model.Phase);
+
+        for (int tick = 1; tick < tuning.TossTicks; tick++)
+        {
+            ObjectIntent during = Step(model, Ball(distance: 5.0f), holdConfirmed: true);
+            Assert.Equal(ObjectCommand.Toss, during.Command);
+            Assert.True(model.IsCommitted);
+        }
+
+        ObjectIntent finished = Step(model, Ball(distance: 5.0f), holdConfirmed: true);
+        Assert.Equal(ObjectCommand.None, finished.Command);
+        Assert.Equal(ObjectPhase.Idle, model.Phase);
+    }
+
+    /// <summary>
+    /// A held object is deliberately absent from the candidate scan, and it stays absent
+    /// while it is being released. Requiring candidate presence during the toss aborted the
+    /// gesture on its second tick, leaving the object stuck in the buddy's hand forever.
+    /// </summary>
+    [Fact]
+    public void Toss_SurvivesTheTrackedObjectLeavingTheCandidateScan()
+    {
+        var tuning = Fast with { TossTicks = 6 };
+        var model = new ObjectInteractionModel(tuning);
+        Step(model, Ball());
+        Step(model, Ball(), holdConfirmed: true);
+        for (int tick = 0; tick < 40 && model.Phase != ObjectPhase.Toss; tick++)
+            Step(model, Ball(distance: 5.0f), holdConfirmed: true);
+        Assert.Equal(ObjectPhase.Toss, model.Phase);
+
+        // No candidates at all from here: the object is held by the buddy.
+        for (int tick = 1; tick < tuning.TossTicks; tick++)
+        {
+            ObjectIntent during = Step(model, candidate: null, holdConfirmed: true);
+            Assert.Equal(ObjectCommand.Toss, during.Command);
+            Assert.Equal(ObjectAbortReason.None, during.Abort);
+        }
+
+        ObjectIntent finished = Step(model, candidate: null, holdConfirmed: true);
+        Assert.Equal(ObjectCommand.None, finished.Command);
+        Assert.Equal(ObjectPhase.Idle, model.Phase);
+        Assert.Equal(ObjectAbortReason.None, model.LastAbort);
+    }
+
+    /// <summary>
+    /// While the player carries a ball the buddy commits to it and holds the ready pose
+    /// indefinitely, so its hands are already up when the throw comes. Ignoring player-held
+    /// objects meant it only noticed the ball on release, far too late for a close throw.
+    /// </summary>
+    [Fact]
+    public void PlayerHeldObject_IsWatchedWithoutTimingOut()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        ObjectCandidate carried = Ball() with { PlayerHeld = true };
+
+        Assert.Equal(ObjectCommand.Catch, Step(model, carried).Command);
+
+        // Far longer than the catch timeout: waiting on the player is not a failed catch.
+        for (int tick = 0; tick < Fast.CatchTimeoutTicks * 3; tick++)
+        {
+            ObjectIntent waiting = Step(model, carried);
+            Assert.Equal(ObjectCommand.Catch, waiting.Command);
+            Assert.Equal(ObjectPhase.Catch, model.Phase);
+        }
+
+        // Released and touched: the catch lands immediately, with no re-approach.
+        ObjectIntent caught = Step(model, Ball(), holdConfirmed: true);
+        Assert.Equal(ObjectPhase.Hold, model.Phase);
+        Assert.True(caught.GrantsCatchCare);
+    }
+
+    /// <summary>A meal on the floor is still worth picking up.</summary>
+    [Fact]
+    public void RestingConsumable_IsStillEngaged()
+    {
+        var model = new ObjectInteractionModel(Fast);
+
+        Assert.Equal(ObjectCommand.Catch, Step(model, Food()).Command);
+    }
+
+    [Fact]
+    public void Commit_UsesDistanceWhenEveryCandidateSharesTheSameRestState()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        ObjectCandidate[] candidates =
+        [
+            Ball(distance: 120.0f) with { RuntimeId = 21 },
+            Ball(distance: 60.0f) with { RuntimeId = 22 },
+        ];
+
+        model.Tick(candidates, MoodBand.Content, NothingHarmful, false, true, false, false);
+
+        Assert.Equal(22, model.TrackedRuntimeId);
+    }
+
+    /// <summary>
+    /// The runtime now reports a physically separated object as a lost grip, so this branch
+    /// is reachable: an interrupted meal drops and must start no cooldown (FR-008.10).
+    /// </summary>
+    [Fact]
+    public void ConsumeInterruptedByAGripLoss_DropsAndRequestsNoConsume()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        DriveToConsume(model);
+
+        ObjectIntent dropped = Step(model, Food(), holdConfirmed: false);
+
+        Assert.Equal(ObjectCommand.Drop, dropped.Command);
+        Assert.False(dropped.RequestsConsume);
+        Assert.Equal(ObjectAbortReason.None, dropped.Abort);
+        Assert.False(model.IsHolding);
+    }
+
+    /// <summary>
+    /// A phase change is not an abort. Reporting the previous abort reason on an ordinary
+    /// transition made the runtime cancel a live consume token mid-meal.
+    /// </summary>
+    [Fact]
+    public void TransitionAfterAnAbort_ReportsNoAbortReason()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        Step(model, Ball());
+        Assert.Equal(ObjectAbortReason.CandidateLost, Step(model, candidate: null).Abort);
+
+        ObjectIntent committed = Step(model, Ball(distance: 120.0f));
+        Assert.Equal(ObjectPhase.Approach, committed.Phase);
+        Assert.Equal(ObjectAbortReason.None, committed.Abort);
+
+        ObjectIntent caught = Step(model, Ball(distance: 10.0f));
+        Assert.Equal(ObjectPhase.Catch, caught.Phase);
+        Assert.Equal(ObjectAbortReason.None, caught.Abort);
     }
 
     [Fact]

@@ -73,10 +73,27 @@ public sealed record ProgressExtensionsSave
     public Dictionary<string, string> Values { get; init; } = new(StringComparer.Ordinal);
 }
 
+/// <summary>
+/// One buddy's taste for a fun activity and how much novelty it currently has left. Both
+/// halves persist: taste is identity sampled once at creation, and interest is live state
+/// that fades with repetition and recharges with time (owner instruction 2026-07-27).
+/// </summary>
+public sealed record FunActivitySave
+{
+    /// <summary>Stable fun-activity content ID.</summary>
+    public string ActivityId { get; init; } = ContentIds.FunCatch;
+
+    /// <summary>Interest cost of one engagement — this buddy's taste for the activity.</summary>
+    public int Drain { get; init; } = FunPreferences.Default.CatchDrain;
+
+    /// <summary>Remaining novelty, <c>0–100</c>.</summary>
+    public float Interest { get; init; } = FunInterestModel.MaximumInterest;
+}
+
 /// <summary>Steam-Cloud-eligible semantic progress only (ARCHITECTURE §12).</summary>
 public sealed record ProgressSave
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public long Revision { get; init; }
@@ -86,6 +103,13 @@ public sealed record ProgressSave
     public float Mood { get; init; }
     public List<string> HarmfulContentIds { get; init; } = [];
     public int ObstacleHopPropensity { get; init; } = BuddyTraits.Default.ObstacleHopPropensity;
+
+    /// <summary>
+    /// Per-activity taste and remaining novelty. Written for every activity this build
+    /// knows; an entry naming an activity a later build added is retained but inert.
+    /// </summary>
+    public List<FunActivitySave> FunActivities { get; init; } = [];
+
     public ProgressStatisticsSave Statistics { get; init; } = new();
     public CumulativeTimesSave Times { get; init; } = new();
     public ProgressExtensionsSave Extensions { get; init; } = new();
@@ -114,6 +138,7 @@ public sealed record ProgressSave
             Mood = snapshot.Mood,
             HarmfulContentIds = [.. snapshot.HarmfulContentIds],
             ObstacleHopPropensity = snapshot.Traits.ObstacleHopPropensity,
+            FunActivities = BuildFunActivities(snapshot),
             Statistics = new ProgressStatisticsSave
             {
                 ScoredImpacts = snapshot.Statistics.ScoredImpacts,
@@ -147,6 +172,40 @@ public sealed record ProgressSave
             },
             Extensions = extensions,
         };
+    }
+
+    /// <summary>
+    /// Pairs each activity's taste (from the personality) with its live novelty. Interest
+    /// defaults to full for any activity the snapshot did not report, so a state composed
+    /// without fun data still writes a coherent payload.
+    /// </summary>
+    private static List<FunActivitySave> BuildFunActivities(in ProgressSnapshot snapshot)
+    {
+        var activities = new List<FunActivitySave>(FunInterestModel.ActivityCount);
+        foreach (FunActivityId activity in Enum.GetValues<FunActivityId>())
+        {
+            float interest = FunInterestModel.MaximumInterest;
+            if (snapshot.FunInterest is not null)
+            {
+                foreach (FunActivityInterest entry in snapshot.FunInterest)
+                {
+                    if (entry.Activity == activity)
+                    {
+                        interest = entry.Interest;
+                        break;
+                    }
+                }
+            }
+
+            activities.Add(new FunActivitySave
+            {
+                ActivityId = ContentIds.ForFun(activity),
+                Drain = snapshot.Traits.Preferences.DrainFor(activity),
+                Interest = interest,
+            });
+        }
+
+        return activities;
     }
 }
 
