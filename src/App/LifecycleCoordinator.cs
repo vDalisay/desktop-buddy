@@ -159,6 +159,10 @@ public partial class LifecycleCoordinator : Node
     private void ApplyAcceptedSpan(double elapsed)
     {
         _progress.DriftMood(elapsed);
+        // Novelty recovers on the same monotonic accepted span mood drifts on, so a toy the
+        // buddy tired of becomes interesting again by the passage of time rather than by
+        // anything the player does (owner instruction 2026-07-27).
+        _progress.RechargeFun(elapsed);
         long milliCredits = _income.Accrue(_progress.Mood, elapsed);
         _economy.DepositPassive(milliCredits);
         bool hidden = AccruesAsHidden;

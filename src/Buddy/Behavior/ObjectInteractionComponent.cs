@@ -5,10 +5,12 @@ using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Objects;
 using Godot;
+using NumericsVector2 = System.Numerics.Vector2;
 
 namespace DesktopBuddy.Buddy.Behavior;
 
@@ -38,6 +40,7 @@ public partial class ObjectInteractionComponent : Area2D
     private int _catchTicks;
     private int _throwWindupTicks;
     private bool _throwReleased;
+    private bool _catchWasClean;
     private bool _pendingLeftHandAttach;
     private bool _attachedToLeftHand;
     private LooseObjectBody? _exceptionBody;
@@ -48,6 +51,7 @@ public partial class ObjectInteractionComponent : Area2D
     private LooseObjectBody? _launchBody;
     private Vector2 _launchVelocity;
     private int _launchTicksRemaining;
+    private float _defaultGravity = 980.0f;
 
     [Export] public PuppetRig Rig { get; set; } = null!;
     [Export] public BehaviorActivityComponent Activity { get; set; } = null!;
@@ -56,6 +60,13 @@ public partial class ObjectInteractionComponent : Area2D
     public event Action<LooseObjectBody>? ConsumeStarted;
     public event Action<LooseObjectBody>? ConsumeCancelled;
     public event Action<LooseObjectBody>? ConsumeSucceeded;
+
+    /// <summary>
+    /// Raised on the tick the buddy catches a player-thrown object out of the air and still
+    /// finds catch fun. Presentation turns this into the laugh (owner instruction
+    /// 2026-07-27); a catch off the floor, or one by a buddy bored of catch, raises nothing.
+    /// </summary>
+    public event Action? FunCatchDelighted;
 
     public bool IsInitialized { get; private set; }
     public int SensedCount { get; private set; }
@@ -68,6 +79,15 @@ public partial class ObjectInteractionComponent : Area2D
     public bool FleeBiasRequested { get; private set; }
     public float ApproachDirection { get; private set; }
     public int CatchCareCount { get; private set; }
+
+    /// <summary>Catches taken out of the air off a player throw, fun or not.</summary>
+    public int CleanCatchCount { get; private set; }
+
+    /// <summary>Clean catches the buddy actually enjoyed, so laughed about.</summary>
+    public int FunCatchCount { get; private set; }
+
+    /// <summary>Catch novelty left after the most recent clean catch, for diagnostics.</summary>
+    public float LastCatchInterest { get; private set; } = FunInterestModel.MaximumInterest;
     public int TossCount { get; private set; }
     public int DiscardCount { get; private set; }
     public int DropCount { get; private set; }
@@ -82,6 +102,12 @@ public partial class ObjectInteractionComponent : Area2D
 
     /// <summary>True while the held object is attached to a hand socket.</summary>
     public bool IsAttached { get; private set; }
+
+    /// <summary>
+    /// The cursor position this component last aimed against. Facing reads it so the buddy
+    /// turns toward the player while it is holding something (owner instruction 2026-07-27).
+    /// </summary>
+    public Vector2 CursorWorldPosition => _cursorWorldPosition;
 
     /// <summary>
     /// The object the buddy is currently paying attention to — the one it has committed to,
@@ -141,6 +167,12 @@ public partial class ObjectInteractionComponent : Area2D
         if (shapeNode?.Shape is not CircleShape2D circle)
             throw new InvalidOperationException("Object interaction sensor requires a circle CollisionShape2D.");
         circle.Radius = Profile.SenseRadius;
+
+        // The throw solver needs the same gravity the objects actually fall under, so read the
+        // project's own value rather than assuming the engine default.
+        _defaultGravity = ProjectSettings
+            .GetSetting("physics/2d/default_gravity", 980.0f)
+            .AsSingle();
 
         _registry = registry;
         _progress = progress;
@@ -375,8 +407,8 @@ public partial class ObjectInteractionComponent : Area2D
         }
 
         // The player still has it: hold the ready pose, do not take it out of their hand.
-        if (_registry.TryGetSnapshot(tracked!.RuntimeId, out LooseObjectSnapshot live) &&
-            live.PlayerHeld)
+        bool known = _registry.TryGetSnapshot(tracked!.RuntimeId, out LooseObjectSnapshot live);
+        if (known && live.PlayerHeld)
         {
             _catchTicks = 0;
             return false;
@@ -391,13 +423,22 @@ public partial class ObjectInteractionComponent : Area2D
                 return false;
             _catchTicks = 0;
             _pendingLeftHandAttach = true;
+            // Picking something up off the floor is never a clean catch.
+            _catchWasClean = false;
             return true;
         }
 
         _catchTicks = 0;
         bool touched = CatchTouchedHand(tracked, out bool leftHand);
         if (touched)
+        {
             _pendingLeftHandAttach = leftHand;
+            // Judged at the instant of the catch: the player threw it, and it has not reached
+            // the floor since. Both halves matter — a ball the buddy tossed itself carries no
+            // throw token, and one that bounced first was not caught out of the air.
+            _catchWasClean = known && live.ThrowToken != 0 && !live.TouchedGroundSinceThrow;
+        }
+
         return touched;
     }
 
@@ -431,11 +472,7 @@ public partial class ObjectInteractionComponent : Area2D
                     BeginHold(body!, _pendingLeftHandAttach);
                 CurrentDriveCommand = BuildHoldCommand(_heldBody, ObjectDriveAction.Hold);
                 if (intent.GrantsCatchCare)
-                {
-                    _progress.ApplyCareMood(1.0f);
-                    _progress.RecordSuccessfulCatch();
-                    CatchCareCount++;
-                }
+                    GrantCatchReward();
                 break;
             case ObjectCommand.Consume:
                 ApproachDirection = 0.0f;
@@ -459,7 +496,7 @@ public partial class ObjectInteractionComponent : Area2D
                 if (IsHolding)
                 {
                     _throwWindupTicks++;
-                    Vector2 throwDirection = ThrowDirection();
+                    Vector2 throwDirection = ThrowDirection(_heldBody);
                     if (_throwWindupTicks <= Profile.ThrowWindupTicks)
                     {
                         // Beat one: draw the carrying hand back, away from the target.
@@ -501,6 +538,34 @@ public partial class ObjectInteractionComponent : Area2D
             CancelConsume();
     }
 
+    /// <summary>
+    /// Pays out one once-per-throw catch. A catch off the floor is still a catch — it counts
+    /// and it still earns care — but only one taken cleanly out of the air spends catch
+    /// novelty, and only a buddy that still finds catch fun laughs about it.
+    ///
+    /// <para>Interest is what makes the tenth identical throw land flat: the drain is this
+    /// buddy's own taste, so a buddy that loves catch keeps laughing far longer than one that
+    /// does not (owner instruction 2026-07-27).</para>
+    /// </summary>
+    private void GrantCatchReward()
+    {
+        _progress.ApplyCareMood(1.0f);
+        _progress.RecordSuccessfulCatch();
+        CatchCareCount++;
+
+        if (!_catchWasClean)
+            return;
+
+        CleanCatchCount++;
+        FunOutcome outcome = _progress.EngageFun(FunActivityId.Catch);
+        LastCatchInterest = outcome.InterestAfter;
+        if (!outcome.WasFun)
+            return;
+
+        FunCatchCount++;
+        FunCatchDelighted?.Invoke();
+    }
+
     private void TryBeginConsume()
     {
         if (_consumeToken != 0 || !GodotObject.IsInstanceValid(_heldBody))
@@ -539,6 +604,9 @@ public partial class ObjectInteractionComponent : Area2D
 
         LooseObjectBody consumed = _heldBody!;
         _progress.ApplyCareMood(result.MoodGain);
+        // A treat is one of the buddy's fun things too, on the same terms as catch: the mood
+        // gain always lands, the novelty of it does not.
+        _progress.EngageFun(FunActivityId.Treat);
         ConsumeSuccessCount++;
         _skipNextCooldownTick = true;
         _consumeCompleted = true;
@@ -791,18 +859,13 @@ public partial class ObjectInteractionComponent : Area2D
         }
         else
         {
-            Vector2 toward = ThrowDirection();
-            impulse = (toward * Profile.TossSpeed) +
-                new Vector2(0.0f, -Profile.TossLiftSpeed);
             // The hand has already swung forward; let go from where it actually is, plus the
             // object's own clearance, so the ball leaves the hand rather than the body.
-            if (IsAttached && GodotObject.IsInstanceValid(body))
-            {
-                PuppetPartBody hand = AttachedHand;
-                LastReleaseOrigin = hand.GlobalPosition;
-                body!.GlobalPosition = hand.GlobalPosition +
-                    (toward * (hand.Radius + body.Radius));
-            }
+            (Vector2 release, Vector2 velocity) = SolveThrow(body);
+            impulse = velocity;
+            LastReleaseOrigin = release;
+            if (IsAttached)
+                body!.GlobalPosition = release;
         }
 
         ReleaseHeld(
@@ -924,17 +987,67 @@ public partial class ObjectInteractionComponent : Area2D
                 : Profile.MaximumHandForce,
             dipForce);
 
+    /// <summary>Where the throw leaves from — the carrying hand once the object is attached.</summary>
+    private Vector2 ThrowOrigin => IsAttached
+        ? AttachedHand.GlobalPosition
+        : Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
+
     /// <summary>
-    /// Unit direction from the throwing hand toward the player's cursor. Aiming from the hand
-    /// rather than the torso keeps the swing and the release on the same line.
+    /// The launch velocity from <paramref name="origin"/> that lands the object on the player's
+    /// cursor (owner instruction 2026-07-27). <see cref="ThrowArc"/> solves it from a fixed
+    /// flight time against the live gravity and damping of the body being thrown, so the ball
+    /// arrives at the cursor rather than merely heading its way — and always leaves along an
+    /// arc, because the upward component carries the whole fall.
+    ///
+    /// <para>If the body is gone or the solve degenerates, this falls back to the old flat
+    /// horizontal launch plus a fixed lift, so a throw always happens.</para>
     /// </summary>
-    private Vector2 ThrowDirection()
+    private Vector2 SolveLaunchFrom(Vector2 origin, LooseObjectBody? body)
     {
-        Vector2 origin = IsAttached
-            ? AttachedHand.GlobalPosition
-            : Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
-        Vector2 toCursor = _cursorWorldPosition - origin;
-        return toCursor.LengthSquared() < 1.0f ? Vector2.Right : toCursor.Normalized();
+        Vector2 displacement = _cursorWorldPosition - origin;
+        if (GodotObject.IsInstanceValid(body))
+        {
+            ThrowArcResult solved = ThrowArc.Solve(
+                new NumericsVector2(displacement.X, displacement.Y),
+                _defaultGravity * body!.GravityScale,
+                body.LinearDamp,
+                Profile.ThrowFlightSeconds,
+                Profile.TossSpeed);
+            if (solved.IsValid)
+                return new Vector2(solved.Velocity.X, solved.Velocity.Y);
+        }
+
+        float side = Mathf.IsZeroApprox(displacement.X) ? 1.0f : Mathf.Sign(displacement.X);
+        return new Vector2(side * Profile.TossSpeed, -Profile.TossLiftSpeed);
+    }
+
+    /// <summary>
+    /// Where the ball leaves from and how fast. The object is let go a little way along the
+    /// throwing line so it clears the hand, which means the hand is <i>not</i> where the flight
+    /// begins — solving from the hand overshot the cursor by exactly that clearance. So the
+    /// first pass only establishes the line, and the arc is then solved again from the real
+    /// release point.
+    /// </summary>
+    private (Vector2 Position, Vector2 Velocity) SolveThrow(LooseObjectBody? body)
+    {
+        Vector2 handOrigin = ThrowOrigin;
+        if (!IsAttached || !GodotObject.IsInstanceValid(body))
+            return (handOrigin, SolveLaunchFrom(handOrigin, body));
+
+        Vector2 line = SolveLaunchFrom(handOrigin, body);
+        Vector2 direction = line.LengthSquared() < 1.0f ? Vector2.Right : line.Normalized();
+        Vector2 release = handOrigin + (direction * (AttachedHand.Radius + body!.Radius));
+        return (release, SolveLaunchFrom(release, body));
+    }
+
+    /// <summary>
+    /// Unit direction of the throw, so the wind-up draws back along the same line the ball will
+    /// actually leave on and the release clears the hand in the right direction.
+    /// </summary>
+    private Vector2 ThrowDirection(LooseObjectBody? body)
+    {
+        Vector2 velocity = SolveThrow(body).Velocity;
+        return velocity.LengthSquared() < 1.0f ? Vector2.Right : velocity.Normalized();
     }
 
     /// <summary>An attached object cannot drift, so the grip only breaks if it detaches.</summary>

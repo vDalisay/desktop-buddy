@@ -349,12 +349,12 @@ public sealed class ObjectInteractionModelTests
     }
 
     /// <summary>
-    /// Catching and playing are still separate: a wary or neutral buddy accepts a thrown
-    /// object but puts it down rather than tossing it back for fun.
+    /// Only the guarded bands put a caught object down instead of playing: a wary or fearful
+    /// buddy is not in the mood to throw things back.
     /// </summary>
     [Theory]
     [InlineData(MoodBand.Wary)]
-    [InlineData(MoodBand.Neutral)]
+    [InlineData(MoodBand.Fearful)]
     public void NonConsumableInAGuardedBand_IsPutDownNotTossed(MoodBand band)
     {
         var model = new ObjectInteractionModel(Fast);
@@ -369,6 +369,29 @@ public sealed class ObjectInteractionModelTests
         }
 
         Assert.Equal(ObjectCommand.Drop, outcome.Command);
+    }
+
+    /// <summary>
+    /// The return throw is the default outcome — a fresh buddy sits at mood 0 (neutral), and
+    /// gating the toss to the content band meant it never threw outside boosted tests (owner
+    /// correction 2026-07-27).
+    /// </summary>
+    [Theory]
+    [InlineData(MoodBand.Neutral)]
+    [InlineData(MoodBand.Delighted)]
+    public void NonConsumableOutsideGuardedBands_IsTossedBack(MoodBand band)
+    {
+        var model = new ObjectInteractionModel(Fast);
+        Step(model, Ball(), band);
+        Step(model, Ball(), band, holdConfirmed: true);
+
+        ObjectIntent outcome = ObjectIntent.None;
+        for (int tick = 0; tick < 40 && model.Phase != ObjectPhase.Drop && model.Phase != ObjectPhase.Toss; tick++)
+        {
+            outcome = Step(model, Ball(distance: 5.0f), band, holdConfirmed: true);
+        }
+
+        Assert.Equal(ObjectCommand.Toss, outcome.Command);
     }
 
     [Fact]

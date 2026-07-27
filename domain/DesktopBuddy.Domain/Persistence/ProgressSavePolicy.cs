@@ -55,7 +55,10 @@ public static class ProgressSavePolicy
 
             ProgressSave save = schema switch
             {
-                1 => MigrateV1(document.RootElement),
+                1 => MigrateV2(MigrateV1(document.RootElement)),
+                2 => MigrateV2(
+                    JsonSerializer.Deserialize<ProgressSave>(json, Options)
+                    ?? throw new JsonException("Progress payload was null.")),
                 ProgressSave.CurrentSchemaVersion =>
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null."),
@@ -89,6 +92,7 @@ public static class ProgressSavePolicy
             throw new ArgumentException("Progress schema is not current.", nameof(save));
         if (save.UnlockedToolIds is null ||
             save.HarmfulContentIds is null ||
+            save.FunActivities is null ||
             save.Statistics is null ||
             save.Times is null ||
             save.Extensions is null ||
@@ -107,6 +111,7 @@ public static class ProgressSavePolicy
             throw new ArgumentException("Mood must be finite and within [-100, 100].", nameof(save));
         if (save.ObstacleHopPropensity is < 0 or > 100)
             throw new ArgumentException("Obstacle hop propensity must be within [0, 100].", nameof(save));
+        ValidateFunActivities(save.FunActivities);
         ValidateSeconds(save.Times.RunSeconds, nameof(save.Times.RunSeconds));
         ValidateSeconds(save.Times.ActiveSeconds, nameof(save.Times.ActiveSeconds));
         ValidateSeconds(save.Times.HiddenSeconds, nameof(save.Times.HiddenSeconds));
@@ -148,12 +153,13 @@ public static class ProgressSavePolicy
             unknownSelected ?? save.Extensions.UnknownSelectedToolId,
             unknownIds,
             new Dictionary<string, string>(save.Extensions.Values, StringComparer.Ordinal));
+        (BuddyTraits traits, List<FunActivityInterest> funInterest) = ReadFun(save);
         return new BuddyProgressState(
             cashPerPain,
             save.Mood,
             activeHarmful,
             activeUnlocks,
-            BuddyTraits.FromPersisted(save.ObstacleHopPropensity),
+            traits,
             new ProgressStatistics(
                 save.Statistics.ScoredImpacts,
                 save.Statistics.Knockouts,
@@ -176,7 +182,36 @@ public static class ProgressSavePolicy
             save.Revision,
             save.BalanceMilliCredits,
             selected,
-            extensions);
+            extensions,
+            funInterest);
+    }
+
+    /// <summary>
+    /// Migrates a payload written before fun activities existed. Such a buddy never had its
+    /// tastes rolled, so it is given the neutral default and full novelty rather than a fresh
+    /// sample: a personality is drawn once at creation, and rolling one here would hand the
+    /// same save a different character on every load.
+    /// </summary>
+    private static ProgressSave MigrateV2(ProgressSave save) => save with
+    {
+        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        FunActivities = DefaultFunActivities(),
+    };
+
+    private static List<FunActivitySave> DefaultFunActivities()
+    {
+        var activities = new List<FunActivitySave>(FunInterestModel.ActivityCount);
+        foreach (FunActivityId activity in Enum.GetValues<FunActivityId>())
+        {
+            activities.Add(new FunActivitySave
+            {
+                ActivityId = ContentIds.ForFun(activity),
+                Drain = FunPreferences.Default.DrainFor(activity),
+                Interest = FunInterestModel.MaximumInterest,
+            });
+        }
+
+        return activities;
     }
 
     /// <summary>
@@ -271,6 +306,61 @@ public static class ProgressSavePolicy
         if (value.ValueKind != JsonValueKind.Number || !value.TryGetSingle(out float result))
             throw new JsonException($"Legacy field '{property}' is not a number.");
         return result;
+    }
+
+    /// <summary>
+    /// A blank ID, an out-of-range drain, or a non-finite meter is corruption. An entry
+    /// naming an activity this build does not know is <b>not</b>: it is a newer build's data
+    /// passing through, and it is retained untouched.
+    /// </summary>
+    private static void ValidateFunActivities(IEnumerable<FunActivitySave> activities)
+    {
+        foreach (FunActivitySave activity in activities)
+        {
+            if (activity is null || string.IsNullOrWhiteSpace(activity.ActivityId))
+                throw new ArgumentException("A fun activity entry is missing its ID.");
+            if (activity.Drain is < FunPreferences.MinDrain or > FunPreferences.MaxDrain)
+            {
+                throw new ArgumentException(
+                    $"Fun activity '{activity.ActivityId}' has an out-of-range drain.");
+            }
+            if (!float.IsFinite(activity.Interest) ||
+                activity.Interest < FunInterestModel.MinimumInterest ||
+                activity.Interest > FunInterestModel.MaximumInterest)
+            {
+                throw new ArgumentException(
+                    $"Fun activity '{activity.ActivityId}' has an out-of-range interest.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Rebuilds the personality's tastes and the live meters from the payload. Entries this
+    /// build does not know are skipped; activities the payload omits keep the neutral
+    /// default taste and full novelty.
+    /// </summary>
+    private static (BuddyTraits Traits, List<FunActivityInterest> Interest) ReadFun(
+        ProgressSave save)
+    {
+        FunPreferences preferences = FunPreferences.Default;
+        var interest = new List<FunActivityInterest>(FunInterestModel.ActivityCount);
+        foreach (FunActivitySave entry in save.FunActivities)
+        {
+            if (!ContentIds.TryParseFun(entry.ActivityId, out FunActivityId activity))
+                continue;
+
+            preferences = activity switch
+            {
+                FunActivityId.Catch => preferences with { CatchDrain = entry.Drain },
+                FunActivityId.Pet => preferences with { PetDrain = entry.Drain },
+                FunActivityId.Tickle => preferences with { TickleDrain = entry.Drain },
+                FunActivityId.Treat => preferences with { TreatDrain = entry.Drain },
+                _ => preferences,
+            };
+            interest.Add(new FunActivityInterest(activity, entry.Interest));
+        }
+
+        return (BuddyTraits.FromPersisted(save.ObstacleHopPropensity, preferences), interest);
     }
 
     private static void ValidateIds(IEnumerable<string> ids, string name)

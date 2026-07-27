@@ -38,6 +38,7 @@ MaximumHandForce = 6000.0
 ObstacleForwardWindow = 52.0
 ThrowHandForce = 24000.0
 LaunchHoldTicks = 3
+ThrowFlightSeconds = 0.55
 TossSpeed = 720.0
 TossLiftSpeed = 240.0
 DiscardSpeed = 180.0

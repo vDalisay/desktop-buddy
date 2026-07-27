@@ -127,7 +127,21 @@ public partial class ObjectInteractionProfile : GameResource
 
     // Launch velocities in px/s, not impulses: the release assigns velocity directly so the
     // throw cannot be swallowed by the physics server's frozen-body handling.
+
+    /// <summary>
+    /// How long the return throw stays in the air. The launch is solved from this duration so
+    /// the ball lands on the cursor (owner instruction 2026-07-27), which also guarantees the
+    /// arc: the upward component always carries the whole fall.
+    /// </summary>
+    [Export(PropertyHint.Range, "0.05,3,0.05")] public float ThrowFlightSeconds { get; set; } = 0.55f;
+
+    /// <summary>
+    /// Speed ceiling for the solved throw. A cursor further away than the buddy can reach at
+    /// this speed still gets an on-line throw that simply falls short.
+    /// </summary>
     [Export(PropertyHint.Range, "0,10000,1")] public float TossSpeed { get; set; } = 720.0f;
+
+    /// <summary>Fallback lift used only if the arc cannot be solved for the live body.</summary>
     [Export(PropertyHint.Range, "0,10000,1")] public float TossLiftSpeed { get; set; } = 240.0f;
     [Export(PropertyHint.Range, "0,10000,1")] public float DiscardSpeed { get; set; } = 180.0f;
     [Export(PropertyHint.Range, "0,10000,1")] public float DiscardLiftSpeed { get; set; } = 40.0f;
@@ -192,6 +206,7 @@ public partial class ObjectInteractionProfile : GameResource
         float.IsFinite(HandStiffness) && HandStiffness >= 0.0f &&
         float.IsFinite(HandDamping) && HandDamping >= 0.0f &&
         float.IsFinite(MaximumHandForce) && MaximumHandForce > 0.0f &&
+        float.IsFinite(ThrowFlightSeconds) && ThrowFlightSeconds > 0.0f &&
         float.IsFinite(TossSpeed) && TossSpeed >= 0.0f &&
         float.IsFinite(TossLiftSpeed) && TossLiftSpeed >= 0.0f &&
         float.IsFinite(DiscardSpeed) && DiscardSpeed >= 0.0f &&
@@ -250,6 +265,7 @@ public partial class ObjectInteractionProfile : GameResource
         NonNegative(errors, HandStiffness, nameof(HandStiffness));
         NonNegative(errors, HandDamping, nameof(HandDamping));
         Positive(errors, MaximumHandForce, nameof(MaximumHandForce));
+        Positive(errors, ThrowFlightSeconds, nameof(ThrowFlightSeconds));
         NonNegative(errors, TossSpeed, nameof(TossSpeed));
         NonNegative(errors, TossLiftSpeed, nameof(TossLiftSpeed));
         NonNegative(errors, DiscardSpeed, nameof(DiscardSpeed));

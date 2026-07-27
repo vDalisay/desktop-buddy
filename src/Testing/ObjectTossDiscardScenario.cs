@@ -4,6 +4,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Damage;
 using DesktopBuddy.Domain.Economy;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Objects;
 using Godot;
 
@@ -34,18 +35,44 @@ public sealed class ObjectTossDiscardScenario : IScenario
     {
         BuddyLab? lab = await M4ObjectScenarioSupport.LoadLab(tree, seed);
         if (lab is null) return (false, "toss lab failed to load");
-        lab.Progress.ApplyCareMood(30.0f);
+        // Deliberately no mood boost: a fresh buddy sits at mood 0 (neutral), and the +30
+        // boost here is exactly what hid the content-band-only toss gate — the buddy threw in
+        // this scenario and never in the real app (owner report 2026-07-27).
         LooseObjectBody? body = M4ObjectScenarioSupport.SpawnCatchCandidate(lab);
         bool held = await M4ObjectScenarioSupport.WaitForPhase(tree, lab, ObjectPhase.Hold, 240);
+
+        // Aim off to one side while the buddy holds it, so the throw is judged on a real
+        // lateral shot rather than the near-vertical one a parked headless cursor produces.
+        Vector2 cursorTarget = M4ObjectScenarioSupport.LateralCursorTarget(lab);
+        await M4ObjectScenarioSupport.AimCursorAt(tree, lab, cursorTarget);
+
+        // Holding turns the buddy toward the player (owner instruction 2026-07-27), which is
+        // also the side it is about to throw toward.
+        FacingSide wantedSide = cursorTarget.X > lab.Buddy.Rig.Torso.GlobalPosition.X
+            ? FacingSide.Right
+            : FacingSide.Left;
+        bool facedCursor = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Buddy.ObjectInteraction.IsHolding &&
+                lab.Facing.CommittedSide == wantedSide,
+            180);
+
         bool tossed = await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.ObjectInteraction.TossCount == 1, 420);
 
         // The ball must actually leave. Asserting only that a release was *recorded* is what
         // let a throw that dropped straight down pass every gate (owner report 2026-07-27).
         Vector2 releaseOrigin = lab.Buddy.ObjectInteraction.LastReleaseOrigin;
+        Vector2 cursor = lab.Pointer.WorldCursor;
         float flightSpeed = 0.0f;
         float flightDistance = 0.0f;
-        for (int tick = 0; tick < 30 && body is not null; tick++)
+        float apexRise = 0.0f;
+        float closestToCursor = float.MaxValue;
+        // Long enough to cover the whole solved flight (ThrowFlightSeconds at 120 Hz) plus
+        // slack, so the landing itself is observed rather than just the launch.
+        int flightTicks = Mathf.CeilToInt(
+            lab.Buddy.ObjectInteraction.Profile.ThrowFlightSeconds * 120.0f) + 20;
+        for (int tick = 0; tick < flightTicks && body is not null; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             if (!GodotObject.IsInstanceValid(body))
@@ -56,8 +83,16 @@ public sealed class ObjectTossDiscardScenario : IScenario
             flightDistance = Mathf.Max(
                 flightDistance,
                 body.GlobalPosition.DistanceTo(releaseOrigin));
+            closestToCursor = Mathf.Min(closestToCursor, body.GlobalPosition.DistanceTo(cursor));
+            // Screen axes: rising means a smaller Y than the release point.
+            apexRise = Mathf.Max(apexRise, releaseOrigin.Y - body.GlobalPosition.Y);
         }
         bool flew = flightSpeed > 200.0f && flightDistance > 40.0f;
+        // The throw is aimed at the cursor, so it must actually get there. Direction alone was
+        // never enough of a gate — a flat launch that merely pointed the right way passed it.
+        bool reachedCursor = closestToCursor < 32.0f;
+        // A throw, not a slingshot: the ball must leave along a rising arc.
+        bool arced = apexRise > 8.0f;
 
         Vector2 impulse = lab.Buddy.ObjectInteraction.LastReleaseImpulse;
         // The collision exception is held a little past the release on purpose, so a thrown
@@ -79,8 +114,11 @@ public sealed class ObjectTossDiscardScenario : IScenario
         bool aimedAtCursor = Mathf.IsZeroApprox(towardCursor) ||
             Mathf.Sign(impulse.X) == towardCursor;
         bool passed = held && tossed && released && impulse.Length() > 0.0f &&
-            driveCount == 1 && aimedAtCursor && flew;
+            driveCount == 1 && aimedAtCursor && flew && reachedCursor && arced && facedCursor;
         string detail = $"toss held={held} tossed={tossed} released={released} flew={flew} " +
+            $"faced_cursor={facedCursor} side={lab.Facing.CommittedSide} " +
+            $"reached_cursor={reachedCursor} closest={closestToCursor:F0} arced={arced} " +
+            $"apex_rise={apexRise:F0} " +
             $"flight_speed={flightSpeed:F0} flight_travel={flightDistance:F0} " +
             $"impulse={impulse.Length():F1} drive_count={driveCount} aimed_at_cursor={aimedAtCursor} " +
             $"impulse_x={impulse.X:F1} toward={towardCursor:F0} " +

@@ -220,7 +220,7 @@ public partial class SandboxRoot : Node2D
         Boundaries.PhysicsTick();
         Grab.PhysicsTick(delta);
         GrabState grab = Grab.CurrentGrab;
-        Objects.PhysicsTick(grab);
+        Objects.PhysicsTick(grab, Boundaries.InnerBounds.End.Y);
         PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
         bool buddyPartGrabbed = grabbedBody is not null;
         Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Damage;
@@ -306,13 +307,32 @@ public partial class InteractionDamageComponent : Node
         return result;
     }
 
+    /// <summary>
+    /// Which novelty meter a kind of care spends, or <c>null</c> for care that carries none.
+    /// </summary>
+    private static FunActivityId? FunActivityFor(CareKind kind) => kind switch
+    {
+        CareKind.Pet => FunActivityId.Pet,
+        CareKind.Tickle => FunActivityId.Tickle,
+        _ => null,
+    };
+
     private void ApplyCareMood(CareKind kind, int positiveAwards, int negativeAwards)
     {
         for (int index = 0; index < positiveAwards; index++)
         {
             CareAwardCount++;
             _progress.ApplyCareMood(1.0f);
-            CareAwarded?.Invoke(kind);
+            // Attention still counts as care however often it is repeated — the mood grant is
+            // unconditional — but the buddy only visibly lights up while it still finds this
+            // kind of attention novel (owner instruction 2026-07-27). Interest recharges with
+            // time, so coming back later gets the reaction again.
+            if (FunActivityFor(kind) is not FunActivityId activity ||
+                _progress.EngageFun(activity).WasFun)
+            {
+                CareAwarded?.Invoke(kind);
+            }
+
             CareMoodChanged?.Invoke(kind, 1);
         }
 

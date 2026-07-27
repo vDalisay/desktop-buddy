@@ -1,6 +1,7 @@
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Objects;
 using Godot;
 
@@ -48,6 +49,34 @@ internal static class M4ObjectScenarioSupport
                 return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Points the player's cursor at a world position through the real pointer path, so a
+    /// scenario can assert where a cursor-aimed throw actually lands. Headless runs see no
+    /// mouse at all, which parks the cursor at world origin and makes every aimed throw a
+    /// near-vertical one — that tests almost nothing about aiming.
+    ///
+    /// <para>Object action outranks social, so an engaged cursor cannot steal priority from
+    /// the lifecycle under test.</para>
+    /// </summary>
+    public static async Task AimCursorAt(SceneTree tree, BuddyLab lab, Vector2 worldTarget)
+    {
+        Input.ParseInputEvent(new InputEventMouseMotion
+        {
+            Position = lab.GetViewport().GetCanvasTransform() * worldTarget,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+    }
+
+    /// <summary>A lateral, in-bounds point to aim a return throw at.</summary>
+    public static Vector2 LateralCursorTarget(BuddyLab lab, float distance = 170.0f)
+    {
+        Vector2 chest = lab.Buddy.Rig.Torso.GlobalPosition;
+        Rect2 bounds = lab.Boundaries.InnerBounds;
+        float side = bounds.End.X - chest.X > distance + 20.0f ? 1.0f : -1.0f;
+        return chest + new Vector2(side * distance, -25.0f);
     }
 
     public static async Task SendKey(SceneTree tree, Key key)
@@ -98,6 +127,56 @@ internal static class M4ObjectScenarioSupport
 
         lab.Grab.Release();
         body.LinearVelocity = velocity;
+        return body;
+    }
+
+    /// <summary>
+    /// Throws a ball at the buddy's chest on an arc that <b>stays off the floor</b>, through
+    /// the real grab/release bridge so the registry mints a player throw token.
+    ///
+    /// <para><see cref="SpawnCatchCandidate"/> deliberately uses a flat hard throw, and over
+    /// its ~0.6 s flight gravity pulls the ball down far enough to graze the floor on the way
+    /// in. That is a perfectly good catch test, but it is not a <i>clean</i> catch — so any
+    /// scenario asserting the caught-out-of-the-air reward needs this instead. The launch is
+    /// solved with the same <see cref="ThrowArc"/> the buddy throws with, over a short flight,
+    /// which both guarantees arrival at the chest and keeps the whole arc above the straight
+    /// line from spawn to target.</para>
+    /// </summary>
+    public static LooseObjectBody? SpawnCleanThrow(
+        BuddyLab lab,
+        float distance = 150.0f,
+        float flightSeconds = 0.35f)
+    {
+        Vector2 chest = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = chest.X - lab.Boundaries.InnerBounds.Position.X > distance + 20.0f
+            ? -1.0f
+            : 1.0f;
+        Vector2 spawn = chest + new Vector2(side * distance, -40.0f);
+
+        LooseObjectBody? body = lab.SpawnLooseObject(
+            lab.SafeObjectProfile,
+            spawn,
+            Vector2.Zero,
+            playerThrown: false);
+        if (body is null || !lab.Grab.TryGrab(body, body.GlobalPosition))
+            return null;
+
+        // Release mints the throw token and clears the ground-contact flag.
+        lab.Grab.Release();
+
+        float gravity = ProjectSettings
+            .GetSetting("physics/2d/default_gravity", 980.0f)
+            .AsSingle() * body.GravityScale;
+        Vector2 displacement = chest - spawn;
+        ThrowArcResult solved = ThrowArc.Solve(
+            new System.Numerics.Vector2(displacement.X, displacement.Y),
+            gravity,
+            body.LinearDamp,
+            flightSeconds,
+            float.MaxValue);
+        body.LinearVelocity = solved.IsValid
+            ? new Vector2(solved.Velocity.X, solved.Velocity.Y)
+            : new Vector2(displacement.X / flightSeconds, -200.0f);
         return body;
     }
 

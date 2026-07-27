@@ -15,6 +15,12 @@ public partial class LooseObjectRegistry : Node
 {
     public const int Capacity = 24;
 
+    /// <summary>
+    /// Slack on the floor test, in px. A resting ball settles a hair above or below the
+    /// nominal floor line depending on solver bias, so an exact comparison would miss.
+    /// </summary>
+    private const float GroundContactTolerance = 2.0f;
+
     private readonly Entry[] _entries = new Entry[Capacity];
     private int _nextRuntimeId = 1;
     private int _nextThrowToken = 1;
@@ -129,7 +135,8 @@ public partial class LooseObjectRegistry : Node
             entry.BuddyHeld,
             entry.ExplicitlyProtected,
             entry.SpawnSequence,
-            entry.IgnoreTicks > 0);
+            entry.IgnoreTicks > 0,
+            entry.TouchedGroundSinceThrow);
         return true;
     }
 
@@ -148,6 +155,8 @@ public partial class LooseObjectRegistry : Node
         entry.AtRest = false;
         entry.RestTicks = 0;
         entry.PlayerHeld = false;
+        // A fresh throw is a fresh chance at a clean catch.
+        entry.TouchedGroundSinceThrow = false;
         body.SetImpactAttribution(attributionContentId);
         return entry.ThrowToken;
     }
@@ -194,11 +203,19 @@ public partial class LooseObjectRegistry : Node
             _entries[slot].ExplicitlyProtected = isProtected;
     }
 
-    /// <summary>Updates player-held and rest state from the root-owned fixed tick.</summary>
-    public void PhysicsTick(in GrabState grab)
+    /// <summary>
+    /// Updates player-held, ground-contact, and rest state from the root-owned fixed tick.
+    /// </summary>
+    /// <param name="floorY">
+    /// World Y of the room floor. Ground contact is a position test rather than a collision
+    /// callback because "did this ball bounce" must be answered every tick for every object
+    /// without registering per-body physics callbacks (ARCHITECTURE §23).
+    /// </param>
+    public void PhysicsTick(in GrabState grab, float floorY)
     {
         RequireInitialized();
         LooseObjectBody? playerHeld = grab.Active ? grab.Target as LooseObjectBody : null;
+        bool floorKnown = float.IsFinite(floorY);
 
         for (int index = 0; index < Capacity; index++)
         {
@@ -209,6 +226,15 @@ public partial class LooseObjectRegistry : Node
 
             if (entry.IgnoreTicks > 0)
                 entry.IgnoreTicks--;
+
+            // Checked before the held/rest short-circuits below: a ball resting on the floor
+            // when the player picks it up has plainly touched the ground, and the flag must
+            // survive until the next throw clears it.
+            if (floorKnown && !entry.TouchedGroundSinceThrow &&
+                body.GlobalPosition.Y + body.Radius >= floorY - GroundContactTolerance)
+            {
+                entry.TouchedGroundSinceThrow = true;
+            }
 
             entry.PlayerHeld = body == playerHeld;
             if (entry.PlayerHeld)
@@ -340,6 +366,12 @@ public partial class LooseObjectRegistry : Node
         public bool PlayerHeld;
         public bool BuddyHeld;
         public bool ExplicitlyProtected;
+
+        /// <summary>
+        /// Whether this object has reached the floor since the player last threw it. A catch
+        /// only counts as clean while this is false (owner instruction 2026-07-27).
+        /// </summary>
+        public bool TouchedGroundSinceThrow;
     }
 }
 
@@ -355,4 +387,10 @@ public readonly record struct LooseObjectSnapshot(
     bool Protected,
     ulong SpawnSequence,
     /// <summary>True while a post-release ignore window is still counting down.</summary>
-    bool Ignored = false);
+    bool Ignored = false,
+    /// <summary>
+    /// True once this object has reached the floor since the player last threw it. Cleared by
+    /// the next player throw, so <c>ThrowToken != 0 &amp;&amp; !TouchedGroundSinceThrow</c> is
+    /// exactly "caught out of the air".
+    /// </summary>
+    bool TouchedGroundSinceThrow = false);

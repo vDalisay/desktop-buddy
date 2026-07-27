@@ -123,6 +123,16 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   bounded toss impulse and clears buddy-held/throw attribution, while newly
   learned harmful memory instead produces one lower-energy discard, clears
   collision exceptions, and requests flee bias (`--fixed-fps 120`, seeds 1 and 7).
+- The `fun_catch_laugh` scenario covers per-buddy fun interest end to end: a ball
+  caught out of the air off a player throw makes the buddy laugh (`^_^` hold) and
+  spends exactly the buddy's own catch drain; the same clean catch by a buddy whose
+  catch interest is spent is still caught and still counted but produces no laugh;
+  a spent meter stays boring while it recovers and is fun again once past the
+  comeback level; and a dropped ball is marked as having reached the floor while a
+  freshly thrown one is not (`--fixed-fps 120`, seed 1). Catch throws for this
+  scenario use `SpawnCleanThrow`, not `SpawnCatchCandidate` — the latter's flat
+  hard throw dips to the floor mid-flight, which is a legitimate catch but not a
+  clean one.
 - The `consume_care_cooldown` scenario proves a cancelled real-food Eat grants no
   care or cooldown, authoritative bite five applies `+10` mood exactly once and
   starts exactly `7200` routed ticks while final hand-lowering continues, and an

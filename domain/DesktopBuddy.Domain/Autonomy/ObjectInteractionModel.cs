@@ -355,11 +355,13 @@ public sealed class ObjectInteractionModel
                     return consume with { RequestsConsume = true };
                 }
 
-                // Non-consumable: a content band tosses it playfully, a guarded band puts it
-                // down. Toss direction policy (away from the cursor) is a runtime concern.
-                return moodBand is MoodBand.Content or MoodBand.Delighted
-                    ? Transition(ObjectPhase.Toss, ObjectCommand.Toss)
-                    : Transition(ObjectPhase.Drop, ObjectCommand.Drop);
+                // Non-consumable: the return throw is the default outcome, neutral included —
+                // a fresh buddy sits at mood 0, so a throw gated to the content band never
+                // happened outside boosted tests and the ball just sat in the hand (owner
+                // correction 2026-07-27). Only the guarded bands put it down instead.
+                return moodBand is MoodBand.Fearful or MoodBand.Wary
+                    ? Transition(ObjectPhase.Drop, ObjectCommand.Drop)
+                    : Transition(ObjectPhase.Toss, ObjectCommand.Toss);
 
             case ObjectPhase.Consume:
                 if (consumeCompleted)
