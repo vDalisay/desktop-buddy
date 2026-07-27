@@ -41,6 +41,7 @@ public partial class ObjectInteractionComponent : Area2D
     private bool _pendingLeftHandAttach;
     private bool _attachedToLeftHand;
     private LooseObjectBody? _exceptionBody;
+    private int _exceptionGraceTicks;
     private float _heldLinearDamp;
     private float _heldAngularDamp;
     private Vector2 _cursorWorldPosition;
@@ -72,6 +73,9 @@ public partial class ObjectInteractionComponent : Area2D
     public ConsumeRejection LastConsumeRejection { get; private set; }
     public ObjectDriveCommand CurrentDriveCommand { get; private set; }
     public Vector2 LastReleaseImpulse { get; private set; }
+
+    /// <summary>Where the last release happened, so aim can be judged from the throwing hand.</summary>
+    public Vector2 LastReleaseOrigin { get; private set; }
 
     /// <summary>True while the held object is attached to a hand socket.</summary>
     public bool IsAttached { get; private set; }
@@ -200,7 +204,7 @@ public partial class ObjectInteractionComponent : Area2D
         LooseObjectBody? committed = IsHolding
             ? _heldBody
             : _model.IsCommitted ? _registry.FindBody(_model.TrackedRuntimeId) : null;
-        ApplyCommitExceptions(committed);
+        ResolveCommitExceptions(committed);
 
         HasWatchTarget = !IsHolding && GodotObject.IsInstanceValid(committed);
         WatchTargetPosition = HasWatchTarget ? committed!.GlobalPosition : Vector2.Zero;
@@ -277,6 +281,8 @@ public partial class ObjectInteractionComponent : Area2D
         _catchTicks = 0;
         _throwWindupTicks = 0;
         _throwReleased = false;
+        _exceptionGraceTicks = 0;
+        ApplyCommitExceptions(null);
         RestingObstacleLeft = false;
         RestingObstacleRight = false;
         MaximumCommandedReach = 0.0f;
@@ -441,15 +447,37 @@ public partial class ObjectInteractionComponent : Area2D
                 // makes the return read as a throw (owner instruction 2026-07-26).
                 if (_throwReleased)
                 {
+                    // Follow through on the free hand pose; the ball is already gone.
                     CurrentDriveCommand = ObjectDriveCommand.None;
                     break;
                 }
-                if (_throwWindupTicks < Profile.ThrowWindupTicks && IsHolding)
+
+                if (IsHolding)
                 {
                     _throwWindupTicks++;
-                    CurrentDriveCommand = BuildThrowWindupCommand(_heldBody);
-                    break;
+                    Vector2 throwDirection = ThrowDirection();
+                    if (_throwWindupTicks <= Profile.ThrowWindupTicks)
+                    {
+                        // Beat one: draw the carrying hand back, away from the target.
+                        CurrentDriveCommand = BuildCarryPoseCommand(
+                            _heldBody,
+                            ObjectDriveAction.ThrowWindup,
+                            -throwDirection * Profile.ThrowWindupDistance);
+                        break;
+                    }
+
+                    if (_throwWindupTicks <= Profile.ThrowWindupTicks + Profile.ThrowForwardTicks)
+                    {
+                        // Beat two: swing forward past the carry pose, object still in hand.
+                        CurrentDriveCommand = BuildCarryPoseCommand(
+                            _heldBody,
+                            ObjectDriveAction.ThrowWindup,
+                            throwDirection * Profile.ThrowForwardDistance);
+                        break;
+                    }
                 }
+
+                // Beat three: let go at the forward extent.
                 _throwReleased = true;
                 ReleaseWithImpulse(body, cursorWorldPosition, discard: false);
                 break;
@@ -557,6 +585,29 @@ public partial class ObjectInteractionComponent : Area2D
     /// is cargo for as long as it is held, not a simulated participant.</para>
     /// </summary>
     /// <summary>
+    /// Resolves this tick's collision exception, including the grace window that keeps a
+    /// just-released object passing through the buddy for a moment so a thrown ball cannot
+    /// clip the hand that threw it (owner correction 2026-07-27).
+    /// </summary>
+    private void ResolveCommitExceptions(LooseObjectBody? desired)
+    {
+        if (desired is not null)
+        {
+            _exceptionGraceTicks = 0;
+            ApplyCommitExceptions(desired);
+            return;
+        }
+
+        if (_exceptionGraceTicks > 0)
+        {
+            _exceptionGraceTicks--;
+            return;
+        }
+
+        ApplyCommitExceptions(null);
+    }
+
+    /// <summary>
     /// Makes the committed object non-colliding with the buddy for as long as the buddy is
     /// going for it. Applied from <b>commitment</b>, not just from the hold: the feet reach a
     /// floor-resting ball at about `51 px`, so any approach kicked away the very object it was
@@ -604,7 +655,8 @@ public partial class ObjectInteractionComponent : Area2D
     private void EndHold(LooseObjectBody body)
     {
         _registry.SetBuddyHeld(body, false);
-        ApplyCommitExceptions(null);
+        // Keep it passing through the buddy for a moment rather than clearing immediately.
+        _exceptionGraceTicks = Profile.ReleaseCollisionGraceTicks;
         if (IsAttached)
         {
             body.Freeze = false;
@@ -621,22 +673,39 @@ public partial class ObjectInteractionComponent : Area2D
 
     private PuppetPartBody AttachedHand => _attachedToLeftHand ? Rig.LeftHand : Rig.RightHand;
 
+    /// <summary>Sign of the side the carrying hand lives on.</summary>
+    private float CarrySide => _attachedToLeftHand ? -1.0f : 1.0f;
+
     /// <summary>
-    /// Where a carried object sits: centred <b>between both hands</b>, not pinned to one of
-    /// them. Pinning it to the hand that happened to make contact put the Eat item off to one
-    /// side instead of in front of the mouth (owner correction 2026-07-26).
+    /// The carrying hand's pose: its natural resting side, so the buddy just stands there
+    /// holding the object rather than clutching it to its chest. Eating overrides this through
+    /// the activity hand reach, which takes the object to the mouth.
+    /// </summary>
+    private Vector2 CarryHandTarget() =>
+        Rig.Torso.GlobalPosition +
+        new Vector2(CarrySide * Profile.CarryHandOffset.X, Profile.CarryHandOffset.Y);
+
+    /// <summary>The free hand mirrors the carry pose so it is never yanked across the body.</summary>
+    private Vector2 FreeHandTarget() =>
+        Rig.Torso.GlobalPosition +
+        new Vector2(-CarrySide * Profile.CarryHandOffset.X, Profile.CarryHandOffset.Y);
+
+    /// <summary>
+    /// Where a carried object sits: resting <b>on top of the carrying hand</b>. Carrying it at
+    /// the midpoint between both hands put it inside the torso, and lifting it from there put
+    /// it inside the head — on this rig the head's underside (`-26`) and the torso's top
+    /// (`-28`) leave no gap, so the only clear space is out to the side.
     /// </summary>
     private Vector2 CarrySocket()
     {
-        Vector2 midpoint =
-            (Rig.LeftHand.GlobalPosition + Rig.RightHand.GlobalPosition) * 0.5f;
+        PuppetPartBody hand = AttachedHand;
         float lift = _heldBody is null
             ? 0.0f
-            : Rig.LeftHand.Radius + _heldBody.Radius - Profile.CatchHandClearance;
-        return midpoint + new Vector2(0.0f, -lift * Profile.CarryLiftFraction);
+            : hand.Radius + _heldBody.Radius - Profile.CatchHandClearance;
+        return hand.GlobalPosition + new Vector2(0.0f, -lift * Profile.CarryLiftFraction);
     }
 
-    /// <summary>Keeps an attached object glued to the two-hand carry socket this tick.</summary>
+    /// <summary>Keeps an attached object riding on top of its carrying hand this tick.</summary>
     private void FollowAttachedHand()
     {
         if (!IsAttached || !GodotObject.IsInstanceValid(_heldBody))
@@ -692,13 +761,14 @@ public partial class ObjectInteractionComponent : Area2D
             Vector2 toward = ThrowDirection();
             impulse = (toward * Profile.TossImpulse) +
                 new Vector2(0.0f, -Profile.TossLiftImpulse);
-            // Leave the hand from in front of the body. Releasing at the carry pose fired the
-            // ball through the buddy's own head, where it wedged between head and torso.
+            // The hand has already swung forward; let go from where it actually is, plus the
+            // object's own clearance, so the ball leaves the hand rather than the body.
             if (IsAttached && GodotObject.IsInstanceValid(body))
             {
-                Vector2 hands =
-                    (Rig.LeftHand.GlobalPosition + Rig.RightHand.GlobalPosition) * 0.5f;
-                body!.GlobalPosition = hands + (toward * Profile.ThrowReleaseForward);
+                PuppetPartBody hand = AttachedHand;
+                LastReleaseOrigin = hand.GlobalPosition;
+                body!.GlobalPosition = hand.GlobalPosition +
+                    (toward * (hand.Radius + body.Radius));
             }
         }
 
@@ -761,31 +831,29 @@ public partial class ObjectInteractionComponent : Area2D
             Profile.ScoopDipForce);
     }
 
-    private ObjectDriveCommand BuildHoldCommand(LooseObjectBody? body, ObjectDriveAction action)
-    {
-        if (!GodotObject.IsInstanceValid(body))
-            return ObjectDriveCommand.None;
-        Vector2 center = Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
-        Vector2 separation = new(Profile.HoldHandHalfSeparation, 0.0f);
-        return BuildHandCommand(action, body!, center - separation, center + separation);
-    }
+    /// <summary>Carry pose: the holding hand out to its own side, the free hand mirrored.</summary>
+    private ObjectDriveCommand BuildHoldCommand(LooseObjectBody? body, ObjectDriveAction action) =>
+        BuildCarryPoseCommand(body, action, Vector2.Zero);
 
     /// <summary>
-    /// The wind-up beat of the return throw: the hands draw back away from the cursor so the
-    /// release that follows reads as a throw rather than a drop.
+    /// One beat of the throw. The carrying hand draws back along <paramref name="handShift"/>
+    /// and then swings forward past the carry pose; the object rides it, so the release reads
+    /// as a throw instead of the ball simply teleporting out of the body.
     /// </summary>
-    private ObjectDriveCommand BuildThrowWindupCommand(LooseObjectBody? body)
+    private ObjectDriveCommand BuildCarryPoseCommand(
+        LooseObjectBody? body,
+        ObjectDriveAction action,
+        Vector2 handShift)
     {
         if (!GodotObject.IsInstanceValid(body))
             return ObjectDriveCommand.None;
-        Vector2 center = Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
-        Vector2 back = ThrowDirection() * -Profile.HoldHandHalfSeparation;
-        Vector2 separation = new(Profile.HoldHandHalfSeparation, 0.0f);
+        Vector2 carry = CarryHandTarget() + handShift;
+        Vector2 free = FreeHandTarget();
         return BuildHandCommand(
-            ObjectDriveAction.ThrowWindup,
+            action,
             body!,
-            center + back - separation,
-            center + back + separation);
+            _attachedToLeftHand ? carry : free,
+            _attachedToLeftHand ? free : carry);
     }
 
     private ObjectDriveCommand BuildReleaseCommand(
@@ -819,11 +887,16 @@ public partial class ObjectInteractionComponent : Area2D
             Profile.MaximumHandForce,
             dipForce);
 
-    /// <summary>Unit direction from the carry pose toward the player's cursor.</summary>
+    /// <summary>
+    /// Unit direction from the throwing hand toward the player's cursor. Aiming from the hand
+    /// rather than the torso keeps the swing and the release on the same line.
+    /// </summary>
     private Vector2 ThrowDirection()
     {
-        Vector2 toCursor = _cursorWorldPosition -
-            (Rig.Torso.GlobalPosition + Profile.HoldCenterOffset);
+        Vector2 origin = IsAttached
+            ? AttachedHand.GlobalPosition
+            : Rig.Torso.GlobalPosition + Profile.HoldCenterOffset;
+        Vector2 toCursor = _cursorWorldPosition - origin;
         return toCursor.LengthSquared() < 1.0f ? Vector2.Right : toCursor.Normalized();
     }
 

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Objects;
 using Godot;
@@ -195,16 +196,30 @@ public sealed class ObjectCatchHoldScenario : IScenario
                 deepest = lab.Buddy.ObjectInteraction.Phase;
         }
 
-        Vector2 hands = (lab.Buddy.Rig.LeftHand.GlobalPosition +
-            lab.Buddy.Rig.RightHand.GlobalPosition) * 0.5f;
-        float offCentre = GodotObject.IsInstanceValid(ball)
-            ? Mathf.Abs(ball!.GlobalPosition.X - hands.X)
+        // Carried resting on top of one hand, in a natural pose out to the side — not clutched
+        // to the chest and not inside the head (owner correction 2026-07-27).
+        PuppetPartBody near = lab.Buddy.Rig.LeftHand;
+        if (GodotObject.IsInstanceValid(ball) &&
+            lab.Buddy.Rig.RightHand.GlobalPosition.DistanceTo(ball!.GlobalPosition) <
+            near.GlobalPosition.DistanceTo(ball.GlobalPosition))
+        {
+            near = lab.Buddy.Rig.RightHand;
+        }
+
+        float seat = GodotObject.IsInstanceValid(ball)
+            ? near.GlobalPosition.DistanceTo(ball!.GlobalPosition)
             : float.MaxValue;
-        // Carried between the hands, not pinned off to one side.
-        bool centred = held && offCentre <= lab.Buddy.Rig.LeftHand.Radius;
-        bool passed = rested && held && centred;
-        string detail = $"rested={rested} held={held} centred={centred} " +
-            $"off_centre={offCentre:F1} phase={lab.Buddy.ObjectInteraction.Phase} " +
+        bool aboveHand = GodotObject.IsInstanceValid(ball) &&
+            ball!.GlobalPosition.Y < near.GlobalPosition.Y;
+        bool clearOfHead = GodotObject.IsInstanceValid(ball) &&
+            lab.Buddy.Rig.Head.GlobalPosition.DistanceTo(ball!.GlobalPosition) >
+                lab.Buddy.Rig.Head.Radius;
+        bool onHand = held && aboveHand && clearOfHead &&
+            seat <= near.Radius + lab.SafeObjectProfile.Radius + 6.0f;
+        bool passed = rested && held && onHand;
+        string detail = $"rested={rested} held={held} on_hand={onHand} " +
+            $"seat={seat:F1} above={aboveHand} clear_of_head={clearOfHead} " +
+            $"phase={lab.Buddy.ObjectInteraction.Phase} " +
             $"closest_dx={closest:F1} tracked={trackedId} ball={ball?.RuntimeId ?? 0} " +
             $"deepest={deepest} scoop_gate={lab.Buddy.ObjectInteraction.Profile.ScoopDistance:F0}";
         await M4ObjectScenarioSupport.Cleanup(tree, lab);

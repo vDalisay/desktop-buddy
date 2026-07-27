@@ -52,9 +52,11 @@ public sealed class ObjectTossDiscardScenario : IScenario
             exceptionsCleared;
         int driveCount = lab.Buddy.ActiveDrive.ObjectTossCount;
         // The return throw goes *toward* the player, reversing the earlier away-from-cursor
-        // policy (owner instruction 2026-07-26). Discard keeps the away release.
+        // policy (owner instruction 2026-07-26). Aim is judged from the throwing hand, which is
+        // where the release actually happens — it sits a whole arm plus a forward swing away
+        // from the torso, so a torso-relative comparison flips sign near the buddy.
         float towardCursor = Mathf.Sign(
-            lab.Pointer.WorldCursor.X - lab.Buddy.Rig.Torso.GlobalPosition.X);
+            lab.Pointer.WorldCursor.X - lab.Buddy.ObjectInteraction.LastReleaseOrigin.X);
         bool aimedAtCursor = Mathf.IsZeroApprox(towardCursor) ||
             Mathf.Sign(impulse.X) == towardCursor;
         bool passed = held && tossed && released && impulse.Length() > 0.0f &&

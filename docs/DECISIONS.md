@@ -756,9 +756,25 @@ report and full detail in `docs/M4_OBJECT_HANDLING_FEEL_PLAN.md`, "Second pass".
 - **Carry pose clears the head.** `HoldCenterOffset` moves `-24 → -8` and `CarryLiftFraction`
   drops to `0`. The head spans roughly `-26` to `-74` from the torso, so the old carry position
   put the ball inside it.
-- **The throw leaves from in front of the hands** (`ThrowReleaseForward = 30`). Releasing at
-  the carry pose fired the ball through the buddy's own head, where it wedged between head and
-  torso.
+- **The throw leaves from the throwing hand**, after that hand has swung forward.
+
+## M4 Object Carry and Throw Pose (2026-07-27)
+
+- **One-handed carry in a natural pose, object resting on top of the hand**
+  (`CarryHandOffset = (34, -2)`, `CarryLiftFraction = 1`). Carrying at the midpoint between
+  both hands clutched the object into the torso, and lifting it from there pushed it into the
+  head. On this rig the head's underside sits at `-26` and the torso's top at `-28`, so there
+  is no gap above the body — the only clear space is out to the side at roughly the hand's own
+  resting offset. The free hand mirrors the pose so it is never dragged across the body.
+- **The throw is a three-beat gesture**: the carrying hand draws back
+  (`ThrowWindupDistance`), swings forward past the carry pose (`ThrowForwardDistance` over
+  `ThrowForwardTicks`) with the object still riding it, and lets go at the forward extent.
+  `TossTicks` must exceed wind-up plus forward, which is now a validation error rather than a
+  silent truncation. Aim is taken from the throwing hand, not the torso.
+- **A released object stays non-colliding with the buddy for `ReleaseCollisionGraceTicks`
+  (`60`)**, so a thrown ball cannot clip the hand that threw it or the body it just left.
+  Collision exceptions therefore span the whole interaction: from commitment, through carry,
+  to shortly after the release.
 
 ## Planning Rule
 

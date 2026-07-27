@@ -38,18 +38,34 @@ public partial class ObjectInteractionProfile : GameResource
     [Export(PropertyHint.Range, "0,1200,1")] public int ReleaseIgnoreTicks { get; set; } = 300;
 
     /// <summary>
-    /// How far above the hand midpoint a carried object rides, as a fraction of the hand and
-    /// object radii. Kept at zero: the head spans roughly `-26` to `-74` from the torso, so any
-    /// lift above the carry pose pushed the ball into the head, where a throw then wedged it
-    /// between head and body (owner correction 2026-07-27).
+    /// How high the carried object rides above its carrying hand, as a fraction of the hand and
+    /// object radii. <c>1</c> rests it exactly on top of the hand.
     /// </summary>
-    [Export(PropertyHint.Range, "0,2,0.05")] public float CarryLiftFraction { get; set; }
+    [Export(PropertyHint.Range, "0,2,0.05")] public float CarryLiftFraction { get; set; } = 1.0f;
 
     /// <summary>
-    /// How far in front of the hands the object is placed on release. Throwing from the carry
-    /// pose launched the ball through the buddy's own head and neck.
+    /// The carrying hand's pose relative to the torso, mirrored onto whichever hand holds the
+    /// object. Kept near the hand's natural rest offset (`38, -5`) so the buddy simply stands
+    /// there holding it, and far enough out that the object clears both torso and head — the
+    /// only clear space on this rig is to the side, because the head's underside sits at `-26`
+    /// and the torso's top at `-28` (owner correction 2026-07-27).
     /// </summary>
-    [Export(PropertyHint.Range, "0,128,0.5")] public float ThrowReleaseForward { get; set; } = 30.0f;
+    [Export] public Vector2 CarryHandOffset { get; set; } = new(34.0f, -2.0f);
+
+    /// <summary>How far the carrying hand draws back before the forward swing.</summary>
+    [Export(PropertyHint.Range, "0,128,0.5")] public float ThrowWindupDistance { get; set; } = 26.0f;
+
+    /// <summary>How far past the carry pose the hand swings before letting go.</summary>
+    [Export(PropertyHint.Range, "0,128,0.5")] public float ThrowForwardDistance { get; set; } = 34.0f;
+
+    /// <summary>Routed ticks of forward swing after the wind-up, ending in the release.</summary>
+    [Export(PropertyHint.Range, "1,240,1")] public int ThrowForwardTicks { get; set; } = 8;
+
+    /// <summary>
+    /// How long a released object stays non-colliding with the buddy, so a thrown ball cannot
+    /// clip the hand that threw it or the body it just left.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,600,1")] public int ReleaseCollisionGraceTicks { get; set; } = 60;
     [Export(PropertyHint.Range, "1,600,1")] public int CatchTimeoutTicks { get; set; } = 90;
     [Export(PropertyHint.Range, "1,1200,1")] public int HoldTicks { get; set; } = 120;
     [Export(PropertyHint.Range, "1,1200,1")] public int InspectTicks { get; set; } = 150;
@@ -140,6 +156,11 @@ public partial class ObjectInteractionProfile : GameResource
         CatchTimeoutTicks > 0 && HoldTicks > 0 && InspectTicks > 0 &&
         ReleaseIgnoreTicks >= 0 &&
         float.IsFinite(CarryLiftFraction) && CarryLiftFraction >= 0.0f &&
+        CarryHandOffset.IsFinite() &&
+        float.IsFinite(ThrowWindupDistance) && ThrowWindupDistance >= 0.0f &&
+        float.IsFinite(ThrowForwardDistance) && ThrowForwardDistance >= 0.0f &&
+        ThrowForwardTicks > 0 && ReleaseCollisionGraceTicks >= 0 &&
+        TossTicks > ThrowWindupTicks + ThrowForwardTicks &&
         ReachOriginOffset.IsFinite() &&
         float.IsFinite(ReachRadius) && ReachRadius > 0.0f &&
         float.IsFinite(MaximumReachExtension) && MaximumReachExtension >= 0.0f &&
@@ -175,6 +196,18 @@ public partial class ObjectInteractionProfile : GameResource
         if (ReleaseIgnoreTicks < 0)
             errors.Add($"{nameof(ReleaseIgnoreTicks)} must be non-negative");
         NonNegative(errors, CarryLiftFraction, nameof(CarryLiftFraction));
+        if (!CarryHandOffset.IsFinite()) errors.Add($"{nameof(CarryHandOffset)} must be finite");
+        NonNegative(errors, ThrowWindupDistance, nameof(ThrowWindupDistance));
+        NonNegative(errors, ThrowForwardDistance, nameof(ThrowForwardDistance));
+        if (ThrowForwardTicks <= 0) errors.Add($"{nameof(ThrowForwardTicks)} must be positive");
+        if (ReleaseCollisionGraceTicks < 0)
+            errors.Add($"{nameof(ReleaseCollisionGraceTicks)} must be non-negative");
+        if (TossTicks <= ThrowWindupTicks + ThrowForwardTicks)
+        {
+            errors.Add(
+                $"{nameof(TossTicks)} must exceed {nameof(ThrowWindupTicks)} + " +
+                $"{nameof(ThrowForwardTicks)} so the release beat happens inside the gesture");
+        }
         if (CatchTimeoutTicks <= 0) errors.Add($"{nameof(CatchTimeoutTicks)} must be positive");
         if (HoldTicks <= 0) errors.Add($"{nameof(HoldTicks)} must be positive");
         if (InspectTicks <= 0) errors.Add($"{nameof(InspectTicks)} must be positive");
