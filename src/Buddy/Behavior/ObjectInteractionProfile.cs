@@ -125,10 +125,26 @@ public partial class ObjectInteractionProfile : GameResource
     /// <summary>Forward distance ahead of the reach origin that counts as blocked.</summary>
     [Export(PropertyHint.Range, "1,256,0.5")] public float ObstacleForwardWindow { get; set; } = 52.0f;
 
-    [Export(PropertyHint.Range, "0,10000,1")] public float TossImpulse { get; set; } = 720.0f;
-    [Export(PropertyHint.Range, "0,10000,1")] public float TossLiftImpulse { get; set; } = 240.0f;
-    [Export(PropertyHint.Range, "0,10000,1")] public float DiscardImpulse { get; set; } = 180.0f;
-    [Export(PropertyHint.Range, "0,10000,1")] public float DiscardLiftImpulse { get; set; } = 40.0f;
+    // Launch velocities in px/s, not impulses: the release assigns velocity directly so the
+    // throw cannot be swallowed by the physics server's frozen-body handling.
+    [Export(PropertyHint.Range, "0,10000,1")] public float TossSpeed { get; set; } = 720.0f;
+    [Export(PropertyHint.Range, "0,10000,1")] public float TossLiftSpeed { get; set; } = 240.0f;
+    [Export(PropertyHint.Range, "0,10000,1")] public float DiscardSpeed { get; set; } = 180.0f;
+    [Export(PropertyHint.Range, "0,10000,1")] public float DiscardLiftSpeed { get; set; } = 40.0f;
+
+    /// <summary>
+    /// Hand force during the throw gesture. The carry force is deliberately gentle, which is
+    /// far too soft to swing an arm in a few ticks — the wind-up barely moved and the release
+    /// read as a drop. The swing gets its own budget so the gesture actually plays.
+    /// </summary>
+    [Export(PropertyHint.Range, "0.1,200000,0.1")] public float ThrowHandForce { get; set; } = 24_000.0f;
+
+    /// <summary>
+    /// Ticks the launch velocity is re-asserted after release. One assignment can still be
+    /// overwritten by the solver on the frame a body resumes simulation; re-stating it for a
+    /// few ticks makes the throw deterministic.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,60,1")] public int LaunchHoldTicks { get; set; } = 3;
 
     /// <summary>
     /// Routed ticks the toss gesture holds priority 5. Must exceed
@@ -176,11 +192,11 @@ public partial class ObjectInteractionProfile : GameResource
         float.IsFinite(HandStiffness) && HandStiffness >= 0.0f &&
         float.IsFinite(HandDamping) && HandDamping >= 0.0f &&
         float.IsFinite(MaximumHandForce) && MaximumHandForce > 0.0f &&
-        float.IsFinite(TossImpulse) && TossImpulse >= 0.0f &&
-        float.IsFinite(TossLiftImpulse) && TossLiftImpulse >= 0.0f &&
-        float.IsFinite(DiscardImpulse) && DiscardImpulse >= 0.0f &&
-        float.IsFinite(DiscardLiftImpulse) && DiscardLiftImpulse >= 0.0f &&
-        DiscardImpulse <= TossImpulse;
+        float.IsFinite(TossSpeed) && TossSpeed >= 0.0f &&
+        float.IsFinite(TossLiftSpeed) && TossLiftSpeed >= 0.0f &&
+        float.IsFinite(DiscardSpeed) && DiscardSpeed >= 0.0f &&
+        float.IsFinite(DiscardLiftSpeed) && DiscardLiftSpeed >= 0.0f &&
+        DiscardSpeed <= TossSpeed;
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -234,12 +250,12 @@ public partial class ObjectInteractionProfile : GameResource
         NonNegative(errors, HandStiffness, nameof(HandStiffness));
         NonNegative(errors, HandDamping, nameof(HandDamping));
         Positive(errors, MaximumHandForce, nameof(MaximumHandForce));
-        NonNegative(errors, TossImpulse, nameof(TossImpulse));
-        NonNegative(errors, TossLiftImpulse, nameof(TossLiftImpulse));
-        NonNegative(errors, DiscardImpulse, nameof(DiscardImpulse));
-        NonNegative(errors, DiscardLiftImpulse, nameof(DiscardLiftImpulse));
-        if (DiscardImpulse > TossImpulse)
-            errors.Add($"{nameof(DiscardImpulse)} must not exceed {nameof(TossImpulse)}");
+        NonNegative(errors, TossSpeed, nameof(TossSpeed));
+        NonNegative(errors, TossLiftSpeed, nameof(TossLiftSpeed));
+        NonNegative(errors, DiscardSpeed, nameof(DiscardSpeed));
+        NonNegative(errors, DiscardLiftSpeed, nameof(DiscardLiftSpeed));
+        if (DiscardSpeed > TossSpeed)
+            errors.Add($"{nameof(DiscardSpeed)} must not exceed {nameof(TossSpeed)}");
         return errors;
     }
 

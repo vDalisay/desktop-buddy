@@ -40,6 +40,25 @@ public sealed class ObjectTossDiscardScenario : IScenario
         bool tossed = await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.ObjectInteraction.TossCount == 1, 420);
 
+        // The ball must actually leave. Asserting only that a release was *recorded* is what
+        // let a throw that dropped straight down pass every gate (owner report 2026-07-27).
+        Vector2 releaseOrigin = lab.Buddy.ObjectInteraction.LastReleaseOrigin;
+        float flightSpeed = 0.0f;
+        float flightDistance = 0.0f;
+        for (int tick = 0; tick < 30 && body is not null; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            if (!GodotObject.IsInstanceValid(body))
+                break;
+            flightSpeed = Mathf.Max(flightSpeed, body.LinearVelocity.Length());
+            // Straight-line displacement, not horizontal: the throw follows the cursor, which
+            // may be well above the buddy, and a high arc is still a throw.
+            flightDistance = Mathf.Max(
+                flightDistance,
+                body.GlobalPosition.DistanceTo(releaseOrigin));
+        }
+        bool flew = flightSpeed > 200.0f && flightDistance > 40.0f;
+
         Vector2 impulse = lab.Buddy.ObjectInteraction.LastReleaseImpulse;
         // The collision exception is held a little past the release on purpose, so a thrown
         // ball does not immediately collide with the hand that just threw it. It must clear
@@ -60,8 +79,9 @@ public sealed class ObjectTossDiscardScenario : IScenario
         bool aimedAtCursor = Mathf.IsZeroApprox(towardCursor) ||
             Mathf.Sign(impulse.X) == towardCursor;
         bool passed = held && tossed && released && impulse.Length() > 0.0f &&
-            driveCount == 1 && aimedAtCursor;
-        string detail = $"toss held={held} tossed={tossed} released={released} " +
+            driveCount == 1 && aimedAtCursor && flew;
+        string detail = $"toss held={held} tossed={tossed} released={released} flew={flew} " +
+            $"flight_speed={flightSpeed:F0} flight_travel={flightDistance:F0} " +
             $"impulse={impulse.Length():F1} drive_count={driveCount} aimed_at_cursor={aimedAtCursor} " +
             $"impulse_x={impulse.X:F1} toward={towardCursor:F0} " +
             $"phase={lab.Buddy.ObjectInteraction.Phase} drops={lab.Buddy.ObjectInteraction.DropCount} " +
@@ -91,7 +111,7 @@ public sealed class ObjectTossDiscardScenario : IScenario
             tree, () => lab.Buddy.ObjectInteraction.DiscardCount == 1, 30);
         Vector2 impulse = lab.Buddy.ObjectInteraction.LastReleaseImpulse;
         bool lowEnergy = impulse.Length() > 0.0f &&
-            impulse.Length() < lab.Buddy.ObjectInteraction.Profile.TossImpulse;
+            impulse.Length() < lab.Buddy.ObjectInteraction.Profile.TossSpeed;
         // Flee bias is a single-tick request, so latch it before advancing any further.
         bool fleeBias = lab.Buddy.ObjectInteraction.FleeBiasRequested;
         bool exceptionsCleared = await M4ObjectScenarioSupport.WaitFor(

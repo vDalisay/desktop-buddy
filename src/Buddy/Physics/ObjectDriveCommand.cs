@@ -42,7 +42,12 @@ public readonly record struct ObjectDriveCommand(
     LooseObjectBody? Body,
     Vector2 LeftHandTarget,
     Vector2 RightHandTarget,
-    Vector2 ReleaseImpulse,
+    /// <summary>
+    /// Launch velocity in px/s, assigned directly rather than applied as an impulse. A release
+    /// unfreezes the body on the same tick, and an impulse queued against a body that has just
+    /// left its frozen state is discarded — which is why thrown objects simply dropped.
+    /// </summary>
+    Vector2 ReleaseVelocity,
     float HandStiffness,
     float HandDamping,
     float MaximumHandForce,

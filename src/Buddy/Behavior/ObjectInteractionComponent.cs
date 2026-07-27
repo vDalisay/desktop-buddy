@@ -45,6 +45,9 @@ public partial class ObjectInteractionComponent : Area2D
     private float _heldLinearDamp;
     private float _heldAngularDamp;
     private Vector2 _cursorWorldPosition;
+    private LooseObjectBody? _launchBody;
+    private Vector2 _launchVelocity;
+    private int _launchTicksRemaining;
 
     [Export] public PuppetRig Rig { get; set; } = null!;
     [Export] public BehaviorActivityComponent Activity { get; set; } = null!;
@@ -171,6 +174,7 @@ public partial class ObjectInteractionComponent : Area2D
         GlobalPosition = Rig.Torso.GlobalPosition;
         FleeBiasRequested = false;
         _cursorWorldPosition = cursorWorldPosition;
+        HoldLaunchVelocity();
         FollowAttachedHand();
         if (_directLabConsume)
         {
@@ -705,6 +709,29 @@ public partial class ObjectInteractionComponent : Area2D
         return hand.GlobalPosition + new Vector2(0.0f, -lift * Profile.CarryLiftFraction);
     }
 
+    /// <summary>
+    /// Re-states a launch velocity for a few ticks after release. The object resumes simulation
+    /// on the release tick, and a single velocity assignment against a body that has just left
+    /// its frozen state can be overwritten before it ever integrates — which is why the throw
+    /// looked like a drop. Re-stating it makes the launch deterministic instead of a race.
+    /// </summary>
+    private void HoldLaunchVelocity()
+    {
+        if (_launchTicksRemaining <= 0)
+            return;
+        _launchTicksRemaining--;
+        if (!GodotObject.IsInstanceValid(_launchBody))
+        {
+            _launchBody = null;
+            _launchTicksRemaining = 0;
+            return;
+        }
+
+        _launchBody!.LinearVelocity = _launchVelocity;
+        if (_launchTicksRemaining <= 0)
+            _launchBody = null;
+    }
+
     /// <summary>Keeps an attached object riding on top of its carrying hand this tick.</summary>
     private void FollowAttachedHand()
     {
@@ -730,6 +757,12 @@ public partial class ObjectInteractionComponent : Area2D
         _registry.MarkBuddyReleased(body!, Profile.ReleaseIgnoreTicks);
         CurrentDriveCommand = BuildReleaseCommand(body!, action, impulse);
         LastReleaseImpulse = impulse;
+        if (impulse != Vector2.Zero)
+        {
+            _launchBody = body;
+            _launchVelocity = impulse;
+            _launchTicksRemaining = Profile.LaunchHoldTicks;
+        }
         _heldBody = null;
     }
 
@@ -754,13 +787,13 @@ public partial class ObjectInteractionComponent : Area2D
             float away = Mathf.Sign(Rig.Torso.GlobalPosition.X - cursorWorldPosition.X);
             if (Mathf.IsZeroApprox(away))
                 away = 1.0f;
-            impulse = new Vector2(away * Profile.DiscardImpulse, -Profile.DiscardLiftImpulse);
+            impulse = new Vector2(away * Profile.DiscardSpeed, -Profile.DiscardLiftSpeed);
         }
         else
         {
             Vector2 toward = ThrowDirection();
-            impulse = (toward * Profile.TossImpulse) +
-                new Vector2(0.0f, -Profile.TossLiftImpulse);
+            impulse = (toward * Profile.TossSpeed) +
+                new Vector2(0.0f, -Profile.TossLiftSpeed);
             // The hand has already swung forward; let go from where it actually is, plus the
             // object's own clearance, so the ball leaves the hand rather than the body.
             if (IsAttached && GodotObject.IsInstanceValid(body))
@@ -884,7 +917,11 @@ public partial class ObjectInteractionComponent : Area2D
             Vector2.Zero,
             Profile.HandStiffness,
             Profile.HandDamping,
-            Profile.MaximumHandForce,
+            // The throw gets its own force budget: the gentle carry force cannot swing an arm
+            // in a handful of ticks, so the wind-up barely moved and the release read as a drop.
+            action == ObjectDriveAction.ThrowWindup
+                ? Profile.ThrowHandForce
+                : Profile.MaximumHandForce,
             dipForce);
 
     /// <summary>

@@ -776,6 +776,28 @@ report and full detail in `docs/M4_OBJECT_HANDLING_FEEL_PLAN.md`, "Second pass".
   Collision exceptions therefore span the whole interaction: from commitment, through carry,
   to shortly after the release.
 
+## M4 Throw Launch (2026-07-27)
+
+The throw gesture played but the ball never left — it dropped at the buddy's feet.
+
+- **The release assigns velocity instead of applying an impulse.** `EndHold` unfreezes the
+  body on the same tick the release command runs, and an impulse queued against a body that
+  has just left its frozen state is discarded by the physics server. Profile properties are
+  renamed accordingly: `TossImpulse`/`TossLiftImpulse`/`DiscardImpulse`/`DiscardLiftImpulse`
+  become `TossSpeed`/`TossLiftSpeed`/`DiscardSpeed`/`DiscardLiftSpeed`, since they are px/s
+  and a silently-changed meaning behind an old name is worse than a rename.
+- **The launch velocity is re-stated for `LaunchHoldTicks` (`3`).** A single assignment on the
+  frame a body resumes simulation can still be overwritten before it integrates. Owner
+  direction was explicitly to fake the throw rather than solve it through physics.
+- **The swing has its own force budget** (`ThrowHandForce = 24000`). The carry force is
+  deliberately gentle at `6000`, far too soft to move an arm in a handful of ticks, so the
+  wind-up barely registered and the release read as a drop.
+
+`object_toss_discard` previously asserted only that a release was *recorded* — an impulse
+value and a drive count. It never checked that the object moved, which is exactly how a throw
+that dropped straight down passed every gate. It now tracks the released body for 30 ticks and
+requires real flight: `flight_speed=938`, `flight_travel=213`.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

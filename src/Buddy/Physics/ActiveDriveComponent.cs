@@ -242,9 +242,14 @@ public partial class ActiveDriveComponent : Node
     }
 
     /// <summary>
-    /// Only the one-shot release impulse remains. A held object is attached at the hand by
+    /// Only the one-shot release remains. A held object is attached at the hand by
     /// <c>ObjectInteractionComponent</c>, so there is nothing to spring toward the buddy —
     /// that spring is what made objects float in rather than being caught.
+    ///
+    /// <para>The launch assigns velocity rather than applying an impulse. The body is
+    /// unfrozen on this same tick, and an impulse queued against a body that has just left
+    /// its frozen state is dropped by the physics server, so thrown objects fell straight
+    /// down (owner correction 2026-07-27).</para>
     /// </summary>
     private void ApplyObjectBodyCommand(in DriveIntent intent)
     {
@@ -252,8 +257,8 @@ public partial class ActiveDriveComponent : Node
         if (!command.Active || !GodotObject.IsInstanceValid(command.Body) || !command.Releases)
             return;
 
-        command.Body!.ApplyCentralImpulse(command.ReleaseImpulse);
-        LastObjectReleaseImpulse = command.ReleaseImpulse;
+        command.Body!.LinearVelocity = command.ReleaseVelocity;
+        LastObjectReleaseImpulse = command.ReleaseVelocity;
         if (command.Action == ObjectDriveAction.Toss)
             ObjectTossCount++;
         else
