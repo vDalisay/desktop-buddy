@@ -567,6 +567,33 @@ public sealed class ObjectInteractionModelTests
         Assert.Equal(ObjectAbortReason.None, model.LastAbort);
     }
 
+    /// <summary>
+    /// While the player carries a ball the buddy commits to it and holds the ready pose
+    /// indefinitely, so its hands are already up when the throw comes. Ignoring player-held
+    /// objects meant it only noticed the ball on release, far too late for a close throw.
+    /// </summary>
+    [Fact]
+    public void PlayerHeldObject_IsWatchedWithoutTimingOut()
+    {
+        var model = new ObjectInteractionModel(Fast);
+        ObjectCandidate carried = Ball() with { PlayerHeld = true };
+
+        Assert.Equal(ObjectCommand.Catch, Step(model, carried).Command);
+
+        // Far longer than the catch timeout: waiting on the player is not a failed catch.
+        for (int tick = 0; tick < Fast.CatchTimeoutTicks * 3; tick++)
+        {
+            ObjectIntent waiting = Step(model, carried);
+            Assert.Equal(ObjectCommand.Catch, waiting.Command);
+            Assert.Equal(ObjectPhase.Catch, model.Phase);
+        }
+
+        // Released and touched: the catch lands immediately, with no re-approach.
+        ObjectIntent caught = Step(model, Ball(), holdConfirmed: true);
+        Assert.Equal(ObjectPhase.Hold, model.Phase);
+        Assert.True(caught.GrantsCatchCare);
+    }
+
     /// <summary>A meal on the floor is still worth picking up.</summary>
     [Fact]
     public void RestingConsumable_IsStillEngaged()

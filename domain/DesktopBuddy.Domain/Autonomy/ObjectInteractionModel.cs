@@ -80,12 +80,18 @@ public readonly record struct ObjectCandidate(
     bool Consumable,
     bool AtRest,
     bool Ignored = false,
-    float GroundDistance = 0.0f)
+    float GroundDistance = 0.0f,
+    /// <summary>
+    /// The player is currently carrying this object. The buddy may commit to it — that is what
+    /// makes it watch the ball and get its hands up before the throw — but the catch can never
+    /// confirm while the player still holds it.
+    /// </summary>
+    bool PlayerHeld = false)
 {
     public bool IsValid => RuntimeId != 0;
 
     /// <summary>The distance this candidate's commit gate is measured against.</summary>
-    public float EngageDistance => AtRest ? GroundDistance : Distance;
+    public float EngageDistance => AtRest && !PlayerHeld ? GroundDistance : Distance;
 }
 
 /// <summary>Tuning for the object lifecycle. All durations are routed ticks.</summary>
@@ -305,9 +311,17 @@ public sealed class ObjectInteractionModel
                     return intent with { GrantsCatchCare = grants };
                 }
 
-                if (_phaseTicks >= _tuning.CatchTimeoutTicks)
+                // Waiting on the player is not a failed catch. While they carry the ball the
+                // buddy holds its ready pose indefinitely, so that when the throw finally
+                // comes its hands are already up instead of starting to react.
+                if (_phaseTicks >= _tuning.CatchTimeoutTicks && !tracked.PlayerHeld)
                 {
                     return AbortTo(ObjectAbortReason.PhaseTimeout);
+                }
+
+                if (tracked.PlayerHeld)
+                {
+                    _phaseTicks = 0;
                 }
 
                 return Emit(ObjectCommand.Catch, tracked.IsValid ? tracked.Direction : 0.0f);

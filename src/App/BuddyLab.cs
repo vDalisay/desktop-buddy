@@ -413,6 +413,11 @@ public partial class BuddyLab : Node2D
     /// </summary>
     private void OnLooseObjectSpawnRequested()
     {
+        // One ball at a time (owner instruction 2026-07-27): a new drop replaces the old one
+        // rather than littering the room. The registry keeps its full capacity and eviction
+        // rules — this is a spawn policy, not a cap.
+        OnLooseObjectClearRequested();
+
         float floorY = Boundaries.InnerBounds.End.Y - SafeObjectProfile.Radius - 1.0f;
         Vector2 spawn = Pointer.HasPointerInput
             ? Pointer.WorldCursor

@@ -76,6 +76,14 @@ public partial class ObjectInteractionComponent : Area2D
     /// <summary>True while the held object is attached to a hand socket.</summary>
     public bool IsAttached { get; private set; }
 
+    /// <summary>
+    /// The object the buddy is currently paying attention to — the one it has committed to,
+    /// including one the player is still carrying. Presentation reads this so the head tracks
+    /// the ball you are about to throw instead of staring past it.
+    /// </summary>
+    public bool HasWatchTarget { get; private set; }
+    public Vector2 WatchTargetPosition { get; private set; }
+
     /// <summary>Largest distance any commanded hand target sat from the reach origin.</summary>
     public float MaximumCommandedReach { get; private set; }
 
@@ -189,10 +197,13 @@ public partial class ObjectInteractionComponent : Area2D
 
         // Keep the buddy from colliding with whatever it is currently going for, and drop the
         // exception the moment it stops caring about it.
-        ApplyCommitExceptions(
-            IsHolding
-                ? _heldBody
-                : _model.IsCommitted ? _registry.FindBody(_model.TrackedRuntimeId) : null);
+        LooseObjectBody? committed = IsHolding
+            ? _heldBody
+            : _model.IsCommitted ? _registry.FindBody(_model.TrackedRuntimeId) : null;
+        ApplyCommitExceptions(committed);
+
+        HasWatchTarget = !IsHolding && GodotObject.IsInstanceValid(committed);
+        WatchTargetPosition = HasWatchTarget ? committed!.GlobalPosition : Vector2.Zero;
         TickCooldowns();
     }
 
@@ -294,8 +305,11 @@ public partial class ObjectInteractionComponent : Area2D
                 SensedCount = Mathf.Max(0, SensedCount - 1);
                 continue;
             }
+            // A player-held object is deliberately included. Skipping it left the buddy blind
+            // to the ball until the instant it was released, which is far too late to react to
+            // a close throw — it is why the buddy appeared to ignore balls thrown at it.
             if (!_registry.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) ||
-                snapshot.PlayerHeld || snapshot.BuddyHeld)
+                snapshot.BuddyHeld)
             {
                 continue;
             }
@@ -313,9 +327,10 @@ public partial class ObjectInteractionComponent : Area2D
                 snapshot.Consumable,
                 snapshot.AtRest,
                 snapshot.Ignored,
-                Mathf.Abs(offset.X));
+                Mathf.Abs(offset.X),
+                snapshot.PlayerHeld);
 
-            if (snapshot.AtRest &&
+            if (snapshot.AtRest && !snapshot.PlayerHeld &&
                 body.GlobalPosition.Y > torsoY &&
                 Mathf.Abs(offset.X) <= Profile.ObstacleForwardWindow)
             {
@@ -344,6 +359,14 @@ public partial class ObjectInteractionComponent : Area2D
     {
         LooseObjectBody? tracked = _registry.FindBody(_model.TrackedRuntimeId);
         if (!GodotObject.IsInstanceValid(tracked))
+        {
+            _catchTicks = 0;
+            return false;
+        }
+
+        // The player still has it: hold the ready pose, do not take it out of their hand.
+        if (_registry.TryGetSnapshot(tracked!.RuntimeId, out LooseObjectSnapshot live) &&
+            live.PlayerHeld)
         {
             _catchTicks = 0;
             return false;
@@ -669,6 +692,14 @@ public partial class ObjectInteractionComponent : Area2D
             Vector2 toward = ThrowDirection();
             impulse = (toward * Profile.TossImpulse) +
                 new Vector2(0.0f, -Profile.TossLiftImpulse);
+            // Leave the hand from in front of the body. Releasing at the carry pose fired the
+            // ball through the buddy's own head, where it wedged between head and torso.
+            if (IsAttached && GodotObject.IsInstanceValid(body))
+            {
+                Vector2 hands =
+                    (Rig.LeftHand.GlobalPosition + Rig.RightHand.GlobalPosition) * 0.5f;
+                body!.GlobalPosition = hands + (toward * Profile.ThrowReleaseForward);
+            }
         }
 
         ReleaseHeld(

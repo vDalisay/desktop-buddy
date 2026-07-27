@@ -129,6 +129,8 @@ public sealed class LaboratoryControlsScenario : IScenario
         // owner gate's catch/toss/obstacle-hop steps depend on this key existing.
         int objectsBefore = lab.Objects.Count;
         await SendKey(tree, Key.O);
+        int afterFirst = lab.Objects.Count;
+        // One ball at a time: a second drop replaces the first rather than littering the room.
         await SendKey(tree, Key.O);
         int objectsAfterSpawn = lab.Objects.Count;
         float roomFloor = lab.Boundaries.InnerBounds.End.Y;
@@ -145,10 +147,11 @@ public sealed class LaboratoryControlsScenario : IScenario
         await SendKey(tree, Key.O, shiftPressed: true);
         int objectsAfterClear = lab.Objects.Count;
         checks.Add(new StartupCheck(
-            "lab_spawns_and_clears_loose_objects",
-            objectsAfterSpawn == objectsBefore + 2 && insideRoom && objectsAfterClear == 0,
-            $"before={objectsBefore} spawned={objectsAfterSpawn} inside={insideRoom} " +
-            $"cleared={objectsAfterClear}"));
+            "lab_spawns_one_ball_at_a_time_and_clears",
+            afterFirst == objectsBefore + 1 && objectsAfterSpawn == afterFirst &&
+            insideRoom && objectsAfterClear == 0,
+            $"before={objectsBefore} after_first={afterFirst} after_second={objectsAfterSpawn} " +
+            $"inside={insideRoom} cleared={objectsAfterClear}"));
 
         lab.Controls.SetTimeScale(1.0);
         lab.QueueFree();

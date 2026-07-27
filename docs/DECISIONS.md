@@ -741,6 +741,25 @@ report and full detail in `docs/M4_OBJECT_HANDLING_FEEL_PLAN.md`, "Second pass".
   `150`-tick landing window. The travel bound stays `1.25 px` and measures `0.5 px`. The old
   bound predates any horizontal impulse source; the obstacle hop is now one.
 
+## M4 Object Handling — Third Pass (2026-07-27)
+
+- **One ball at a time.** A lab drop replaces the previous loose object rather than littering
+  the room. This is a *spawn policy*; `LooseObjectRegistry` keeps its full capacity and
+  eviction rules, which remain separately tested.
+- **The buddy watches a ball while the player carries it.** Player-held objects used to be
+  skipped entirely as candidates, so the buddy was blind to the ball until the instant of
+  release — far too late to react to a close throw, which is why it seemed to ignore thrown
+  balls. It now commits to a carried ball, holds the ready pose without timing out
+  (`CatchTimeoutTicks` does not run while `PlayerHeld`), and never takes it out of the player's
+  hand. `HeadLookAtComponent` feeds the committed object into the existing `Item` look-at
+  source, so the head tracks the ball too.
+- **Carry pose clears the head.** `HoldCenterOffset` moves `-24 → -8` and `CarryLiftFraction`
+  drops to `0`. The head spans roughly `-26` to `-74` from the torso, so the old carry position
+  put the ball inside it.
+- **The throw leaves from in front of the hands** (`ThrowReleaseForward = 30`). Releasing at
+  the carry pose fired the ball through the buddy's own head, where it wedged between head and
+  torso.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

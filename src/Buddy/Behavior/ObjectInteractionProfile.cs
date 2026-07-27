@@ -37,8 +37,19 @@ public partial class ObjectInteractionProfile : GameResource
     /// </summary>
     [Export(PropertyHint.Range, "0,1200,1")] public int ReleaseIgnoreTicks { get; set; } = 300;
 
-    /// <summary>How far above the hand midpoint a carried object rides, as a fraction.</summary>
-    [Export(PropertyHint.Range, "0,2,0.05")] public float CarryLiftFraction { get; set; } = 0.6f;
+    /// <summary>
+    /// How far above the hand midpoint a carried object rides, as a fraction of the hand and
+    /// object radii. Kept at zero: the head spans roughly `-26` to `-74` from the torso, so any
+    /// lift above the carry pose pushed the ball into the head, where a throw then wedged it
+    /// between head and body (owner correction 2026-07-27).
+    /// </summary>
+    [Export(PropertyHint.Range, "0,2,0.05")] public float CarryLiftFraction { get; set; }
+
+    /// <summary>
+    /// How far in front of the hands the object is placed on release. Throwing from the carry
+    /// pose launched the ball through the buddy's own head and neck.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,128,0.5")] public float ThrowReleaseForward { get; set; } = 30.0f;
     [Export(PropertyHint.Range, "1,600,1")] public int CatchTimeoutTicks { get; set; } = 90;
     [Export(PropertyHint.Range, "1,1200,1")] public int HoldTicks { get; set; } = 120;
     [Export(PropertyHint.Range, "1,1200,1")] public int InspectTicks { get; set; } = 150;
@@ -80,7 +91,11 @@ public partial class ObjectInteractionProfile : GameResource
     /// makes the model's interrupted-meal drop path unreachable (FR-008.10).
     /// </summary>
     [Export(PropertyHint.Range, "1,512,0.5")] public float HoldReleaseDistance { get; set; } = 72.0f;
-    [Export] public Vector2 HoldCenterOffset { get; set; } = new(0.0f, -24.0f);
+    /// <summary>
+    /// Carry pose relative to the torso. Raised toward the chest rather than the chin so the
+    /// carried object clears the head (owner correction 2026-07-27).
+    /// </summary>
+    [Export] public Vector2 HoldCenterOffset { get; set; } = new(0.0f, -8.0f);
     [Export(PropertyHint.Range, "0,64,0.5")] public float HoldHandHalfSeparation { get; set; } = 15.0f;
 
     [Export(PropertyHint.Range, "0,100000,0.1")] public float HandStiffness { get; set; } = 1_800.0f;
