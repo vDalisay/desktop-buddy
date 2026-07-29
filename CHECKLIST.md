@@ -146,10 +146,17 @@ Gotchas that WILL fail a run if you forget them:
 15 `data/catalogue/*.tres` definitions, the engine-free `ToolCatalogue`/
 `CataloguePolicy` rules, and the authoritative `EconomyService.Purchase(contentId)`
 boundary. Progression reset is deliberately **not** implemented — it waits on the
-owner's erase/preserve matrix. Baseball is the only implemented tool slice and is
-owner-ACCEPTED (2026-07-29); the Meal reuses its launch chord, so Task 3 input is
-unblocked. The quick suite is now 18 steps — `corner_scoop` guards pickup of an
-object resting hard against a wall. M4 is complete and owner-accepted. Its post-acceptance hardening records
+owner's erase/preserve matrix. Task 2 (FR-014 budget) extracted the cap rule to
+`Domain/Interaction/LooseObjectAdmissionPolicy` and gated it with `object_budget`;
+its projectile half waits for the Task 5 guns. Task 3 (Meal) is
+engineering-complete and awaits the owner feel gate before it may be shop-visible.
+Baseball is owner-ACCEPTED (2026-07-29). The quick suite is now 21 steps — added
+`corner_scoop` (pickup against a wall), `object_budget`, `meal_consume`, and the
+`m5_meal` real-input journey.
+
+**Next owner action:** run the lab, press `6` to place a Meal, launch it with the
+Grab + secondary chord, and judge whether the Meal slice feels right. Accepting it
+flips `data/catalogue/tool_meal.tres` to `Visible = true`. M4 is complete and owner-accepted. Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input
 two-process persistence journey.

@@ -568,6 +568,23 @@ running the suite" remains the failure mode this plan exists to prevent.
   policy unit tests. Deferred to Task 5: the assertion that bullets/pellets never change
   `LooseObjectRegistry.Count`. Verified: domain 783/783, quick suite 19/19, `object_budget`
   green seeds 1 and 7 in both presentations.
+- 2026-07-29 — **Task 3 Meal engineering-complete** (shop-visible still pending the owner's
+  feel gate: `tool_meal.tres` stays `Visible = false`). What edible means is now authored
+  data — `LooseObjectProfile` carries `ConsumeMoodGain` and `ConsumeCooldownTicks`, validated,
+  and the consume path reads the held item's own tuning instead of testing for
+  `care.lab_food`. `data/objects/meal.tres` is the first catalogue consumable (`+10` mood,
+  `7200`-tick cooldown, FR-008.4). The launcher is generalised from "the Baseball" to an
+  authored `LaunchableProfiles` array with per-object attribution and per-object ownership
+  checks, so the Soccer Ball, Grenade, Drink, and Repair Kit are `.tres` references rather
+  than new input code; `HasBall`/`CurrentBall` became `HasLaunchable`/`CurrentLaunchable`.
+  Lab key `6` places a Meal on the confirmed chord (key `5` stays the Baseball). New scenario
+  `meal_consume` (abandoned meal charges nothing, finished meal pays `+10` once and starts the
+  exact `7200`-tick cooldown, a second meal inside the window is refused, and after the
+  cooldown elapses the next one is eaten) and the real-input journey `m5_meal` (spawn key →
+  Grab carry → aim cancel → pullback launch → fetch and eat). Lab food is retained as the `E`
+  key's dev spawn; retiring it is an owner call at the slice review. Verified: domain
+  783/783, quick suite 21/21, `meal_consume` + `m5_meal` + `baseball_pullback` green on seeds
+  1 and 7 in both presentations.
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against
   the repository (`LooseObjectRegistry` cap/eviction/protection, arbiter `Hazard = 3`
   branch, `ToolUses`/`ToolPainMilli` statistics, AGENT_VERIFICATION §7 per-tool

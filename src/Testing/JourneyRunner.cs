@@ -21,6 +21,7 @@ using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Laboratory;
+using DesktopBuddy.Objects;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Presentation3D;
@@ -702,6 +703,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM36ExpressiveAsync(state, lab, timeoutPhysicsTicks);
         }
+        else if (exercise == "m5_meal")
+        {
+            await ExerciseM5MealAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -736,6 +741,100 @@ public partial class JourneyRunner : Node
         // QueueFree completes on the next idle frame. Let component teardown run
         // before the runner writes its verdict and quits.
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+    }
+
+    /// <summary>
+    /// The M5 Meal slice through real input, happy path and cancel path: key `6` places one
+    /// Meal, the ordinary Grab tether picks it up, a secondary tap without a pull returns to
+    /// carrying, a pull-back release launches it, and the buddy then fetches and eats it for
+    /// its authored mood gain and cooldown.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5MealAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        // Place it on the far side of the room so the launch has somewhere to travel and the
+        // buddy has to walk to what lands.
+        float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
+        Vector2 spawn = new(
+            Mathf.Clamp(torso.X + (side * 130.0f), room.Position.X + 130.0f, room.End.X - 130.0f),
+            Mathf.Clamp(torso.Y, room.Position.Y + 40.0f, room.End.Y - 40.0f));
+
+        ToolId toolBefore = lab.Pipeline.SelectedTool;
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, spawn, 0);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.Key6);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Launcher.HasLaunchable && lab.Objects.Count == 1, 20);
+        LooseObjectBody? meal = lab.Launcher.CurrentLaunchable;
+        state["meal_key_spawns_one_meal"] =
+            GodotObject.IsInstanceValid(meal) &&
+            meal!.SemanticContentId == ContentIds.ToolMeal &&
+            lab.Objects.Count == 1 &&
+            lab.Pipeline.SelectedTool == toolBefore &&
+            !lab.Grab.IsGrabbing;
+
+        Vector2 pick = GodotObject.IsInstanceValid(meal) ? meal!.GlobalPosition : spawn;
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, pick, 0);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Left, pressed: true, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Grab.IsGrabbing && lab.Grab.CurrentGrab.Target == meal, 30);
+        state["meal_is_carried_by_the_normal_grab"] =
+            lab.Grab.IsGrabbing && lab.Grab.CurrentGrab.Target == meal;
+
+        // Cancel path: secondary down and straight back up, with no pull, keeps the carry.
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Right, pressed: true,
+            MouseButtonMask.Left | MouseButtonMask.Right);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => lab.Launcher.IsAiming, 30);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Right, pressed: false, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => !lab.Launcher.IsAiming, 30);
+        state["meal_aim_cancel_keeps_the_carry"] =
+            lab.Grab.IsGrabbing &&
+            lab.Grab.CurrentGrab.Target == meal &&
+            lab.Launcher.CancelCount >= 1 &&
+            lab.Launcher.LaunchCount == 0;
+
+        // Happy path: aim, pull back away from the buddy, release to launch toward it.
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Right, pressed: true,
+            MouseButtonMask.Left | MouseButtonMask.Right);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => lab.Launcher.IsAiming, 30);
+        Vector2 pull = pick + new Vector2(side * 70.0f, -20.0f);
+        await M4ObjectScenarioSupport.MovePointer(
+            tree, lab, pull, MouseButtonMask.Left | MouseButtonMask.Right);
+        for (int tick = 0; tick < 20; tick++)
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pull, MouseButton.Right, pressed: false, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => lab.Launcher.LaunchCount == 1, 60);
+        state["meal_pullback_launches_it"] =
+            lab.Launcher.LaunchCount == 1 &&
+            lab.Launcher.LastLaunchVelocity.Length() > 100.0f &&
+            !lab.Grab.IsGrabbing;
+
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pull, MouseButton.Left, pressed: false, 0);
+
+        float moodBefore = lab.Progress.Mood;
+        bool eaten = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1, 3600);
+        state["buddy_fetches_and_eats_the_meal"] = eaten;
+        state["meal_pays_its_authored_mood"] =
+            eaten && lab.Progress.Mood >= moodBefore + 9.5f;
+        state["meal_starts_its_cooldown"] =
+            lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.ToolMeal) > 0;
+
+        Log.Info(
+            "Journey",
+            $"M5 meal launches={lab.Launcher.LaunchCount} cancels={lab.Launcher.CancelCount} " +
+            $"successes={lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
+            $"mood={lab.Progress.Mood:F1} " +
+            $"cooldown={lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.ToolMeal)}");
     }
 
     private async System.Threading.Tasks.Task ExerciseM35PresentationToggleAsync(

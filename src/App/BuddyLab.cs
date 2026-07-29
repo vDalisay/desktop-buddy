@@ -149,7 +149,10 @@ public partial class BuddyLab : Node2D
         // Development laboratory catalogue: implemented M5 tools are available for
         // mechanical tuning without granting them on a real new save.
         if (_runContext is null)
+        {
             Economy.Unlock(ContentIds.ToolBaseball);
+            Economy.Unlock(ContentIds.ToolMeal);
+        }
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
         Launcher.Initialize(OnLooseObjectClearRequested);

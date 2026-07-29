@@ -598,11 +598,15 @@ public partial class ObjectInteractionComponent : Area2D
             return;
 
         string contentId = _heldBody!.SemanticContentId;
+        // What is edible is authored data, not a hard-coded ID: the catalogue's Meal, Drink,
+        // and Repair Kit are the same machinery with their own profiles (FR-013.2).
+        bool consumable = GodotObject.IsInstanceValid(_heldBody.Profile) &&
+            _heldBody.Profile!.Consumable;
         ConsumeRejection rejection = ConsumeRejection.UnknownConsumable;
-        if (contentId != ContentIds.CareLabFood ||
+        if (!consumable ||
             !_consumables.TryBegin(contentId, out _consumeToken, out rejection))
         {
-            LastConsumeRejection = contentId == ContentIds.CareLabFood
+            LastConsumeRejection = consumable
                 ? rejection
                 : ConsumeRejection.UnknownConsumable;
             _model.Reset();
@@ -623,7 +627,12 @@ public partial class ObjectInteractionComponent : Area2D
             return;
         }
 
-        ConsumeResult result = _consumables.Complete(_consumeToken, CareConsumableTuning.LabFood);
+        // The item's own authored mood gain and cooldown, so a Meal and a Repair Kit differ in
+        // data alone.
+        CareConsumableTuning tuning = GodotObject.IsInstanceValid(_heldBody!.Profile)
+            ? _heldBody.Profile!.ToConsumableTuning()
+            : CareConsumableTuning.LabFood;
+        ConsumeResult result = _consumables.Complete(_consumeToken, tuning);
         _consumeToken = 0;
         if (!result.Applied)
             return;

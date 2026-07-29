@@ -2,6 +2,7 @@ using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Grab;
@@ -51,7 +52,7 @@ public partial class LabPointerGrabComponent : Node2D
     private bool _pendingRelease;
     private bool _pendingSecondaryPress;
     private bool _pendingSecondaryRelease;
-    private bool _pendingBaseballSpawn;
+    private string? _pendingLaunchableSpawn;
     private bool _ownsGrab;
     private bool _sawPointerInput;
     private Vector2 _cursor;
@@ -111,7 +112,7 @@ public partial class LabPointerGrabComponent : Node2D
         _pendingRelease = false;
         _pendingSecondaryPress = false;
         _pendingSecondaryRelease = false;
-        _pendingBaseballSpawn = false;
+        _pendingLaunchableSpawn = null;
 
         if (GloveTool is not null && GodotObject.IsInstanceValid(GloveTool))
             GloveTool.ClearCursor();
@@ -157,14 +158,22 @@ public partial class LabPointerGrabComponent : Node2D
         else if (Pipeline is not null && GodotObject.IsInstanceValid(Pipeline) &&
                  @event is InputEventKey { Pressed: true, Echo: false } key)
         {
-            if (key.PhysicalKeycode == Key.Key5)
+            // One spawn key per launchable, all sharing the confirmed chord: the key only
+            // places the object, Grab picks it up, secondary aims, release launches.
+            string? launchable = key.PhysicalKeycode switch
+            {
+                Key.Key5 => ContentIds.ToolBaseball,
+                Key.Key6 => ContentIds.ToolMeal,
+                _ => null,
+            };
+            if (launchable is not null)
             {
                 if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool))
                 {
                     if (!_sawPointerInput)
                         _cursor = GetViewport().GetMousePosition();
                     _sawPointerInput = true;
-                    _pendingBaseballSpawn = true;
+                    _pendingLaunchableSpawn = launchable;
                 }
                 return;
             }
@@ -208,10 +217,10 @@ public partial class LabPointerGrabComponent : Node2D
             _sawPointerInput)
         {
             LauncherTool.MovePointer(cursor);
-            if (_pendingBaseballSpawn)
+            if (_pendingLaunchableSpawn is not null)
             {
-                _pendingBaseballSpawn = false;
-                LauncherTool.RequestSpawn(cursor);
+                LauncherTool.RequestSpawn(_pendingLaunchableSpawn, cursor);
+                _pendingLaunchableSpawn = null;
             }
         }
 

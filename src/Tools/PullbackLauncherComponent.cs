@@ -9,10 +9,16 @@ using Godot;
 namespace DesktopBuddy.Tools;
 
 /// <summary>
-/// Authoritative physics-clock worker for the Baseball's grab-assisted pullback
-/// launch. Key 5 only spawns the object; the normal Grab tether owns pickup and
-/// carrying. Secondary input temporarily hands that grabbed Baseball to this
-/// component for trajectory preview and launch.
+/// Authoritative physics-clock worker for grab-assisted pullback launches. A tool's spawn key
+/// only places the object; the normal Grab tether owns pickup and carrying, and secondary
+/// input temporarily hands the grabbed object to this component for trajectory preview and
+/// launch (DECISIONS, "M5 Baseball Input — Revised").
+///
+/// <para>
+/// Every launchable shares this one chord — confirmed for the Baseball on 2026-07-28 and for
+/// the Meal on 2026-07-29 — so a new launchable is an authored profile in
+/// <see cref="LaunchableProfiles"/>, not new input code.
+/// </para>
 /// </summary>
 [GlobalClass]
 public partial class PullbackLauncherComponent : Node2D
@@ -23,30 +29,41 @@ public partial class PullbackLauncherComponent : Node2D
     [Export] public BoundaryController Boundaries { get; set; } = null!;
     [Export] public Node2D ObjectParent { get; set; } = null!;
     [Export] public PullbackLauncherProfile Profile { get; set; } = null!;
-    [Export] public LooseObjectProfile BaseballProfile { get; set; } = null!;
+
+    /// <summary>
+    /// Every object this launcher can place, keyed by its own stable content ID. Authored
+    /// data, so adding the Soccer Ball or the Grenade is a `.tres` reference.
+    /// </summary>
+    [Export] public Godot.Collections.Array<LooseObjectProfile> LaunchableProfiles { get; set; } = new();
 
     private Vector2 _pointer;
     private Vector2 _pointerAnchor;
     private Vector2 _bodyAnchor;
     private Action? _clearExistingLooseObjects;
-    private bool _pendingSpawn;
+    private string? _pendingSpawnContentId;
     private bool _pendingBegin;
     private bool _pendingRelease;
     private bool _pendingCancel;
-    private LooseObjectBody? _baseball;
+    private LooseObjectBody? _spawned;
     private LooseObjectBody? _aimedBody;
 
     public bool IsInitialized { get; private set; }
-    public bool HasBall =>
-        GodotObject.IsInstanceValid(_baseball) && _baseball!.RuntimeId != 0;
+
+    /// <summary>A launcher-spawned object is live in the room.</summary>
+    public bool HasLaunchable =>
+        GodotObject.IsInstanceValid(_spawned) && _spawned!.RuntimeId != 0;
     public bool IsAiming =>
         GodotObject.IsInstanceValid(_aimedBody) && _aimedBody!.RuntimeId != 0;
     public bool CanAimCurrentGrab =>
         Grab is { IsInitialized: true } &&
         Grab.CurrentGrab is { Active: true, Target: LooseObjectBody body } &&
         body.RuntimeId != 0 &&
-        body.SemanticContentId == ContentIds.ToolBaseball;
-    public LooseObjectBody? CurrentBall => HasBall ? _baseball : null;
+        FindProfile(body.SemanticContentId) is not null;
+    public LooseObjectBody? CurrentLaunchable => HasLaunchable ? _spawned : null;
+
+    /// <summary>The content ID of the last object this launcher spawned, or <c>null</c>.</summary>
+    public string? CurrentLaunchableContentId =>
+        HasLaunchable ? _spawned!.SemanticContentId : null;
     public LooseObjectBody? AimedBody => IsAiming ? _aimedBody : null;
     public LooseObjectBody? LastLaunchedBody { get; private set; }
     public Vector2 LastLaunchVelocity { get; private set; }
@@ -63,16 +80,55 @@ public partial class PullbackLauncherComponent : Node2D
             !GodotObject.IsInstanceValid(Boundaries) ||
             !GodotObject.IsInstanceValid(ObjectParent) ||
             !GodotObject.IsInstanceValid(Profile) || !Profile.IsRuntimeValid ||
-            !GodotObject.IsInstanceValid(BaseballProfile) || !BaseballProfile.IsRuntimeValid ||
-            BaseballProfile.ContentId != ContentIds.ToolBaseball)
+            !LaunchablesValid())
         {
             throw new InvalidOperationException(
-                "PullbackLauncherComponent requires pipeline, grab, registry, boundaries, object parent, valid tuning, and the Baseball profile.");
+                "PullbackLauncherComponent requires pipeline, grab, registry, boundaries, object parent, valid tuning, and at least one valid launchable profile with a unique catalogue content ID.");
         }
 
         _clearExistingLooseObjects = clearExistingLooseObjects ??
             throw new ArgumentNullException(nameof(clearExistingLooseObjects));
         IsInitialized = true;
+    }
+
+    private bool LaunchablesValid()
+    {
+        if (LaunchableProfiles.Count == 0)
+            return false;
+
+        for (int index = 0; index < LaunchableProfiles.Count; index++)
+        {
+            LooseObjectProfile profile = LaunchableProfiles[index];
+            if (!GodotObject.IsInstanceValid(profile) || !profile.IsRuntimeValid ||
+                !ContentIds.IsCatalogueEntry(profile.ContentId))
+            {
+                return false;
+            }
+
+            // A duplicate ID would make the spawn key ambiguous, and the launcher would
+            // silently pick whichever profile came first.
+            for (int other = 0; other < index; other++)
+            {
+                if (LaunchableProfiles[other]?.ContentId == profile.ContentId)
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    private LooseObjectProfile? FindProfile(string? contentId)
+    {
+        if (string.IsNullOrEmpty(contentId))
+            return null;
+
+        foreach (LooseObjectProfile profile in LaunchableProfiles)
+        {
+            if (GodotObject.IsInstanceValid(profile) && profile.ContentId == contentId)
+                return profile;
+        }
+
+        return null;
     }
 
     public void MovePointer(Vector2 worldPosition)
@@ -82,16 +138,17 @@ public partial class PullbackLauncherComponent : Node2D
     }
 
     /// <summary>
-    /// Queues replacement of every loose object with one unheld Baseball at the pointer.
-    /// The root-injected callback owns the room-wide one-ball spawn policy.
+    /// Queues replacement of every loose object with one unheld instance of
+    /// <paramref name="contentId"/> at the pointer. The root-injected callback owns the
+    /// room-wide one-object spawn policy.
     /// </summary>
-    public void RequestSpawn(Vector2 worldPosition)
+    public void RequestSpawn(string contentId, Vector2 worldPosition)
     {
         _pointer = worldPosition;
-        _pendingSpawn = true;
+        _pendingSpawnContentId = contentId;
     }
 
-    /// <summary>Queues secondary-button aiming for the Baseball held by Grab.</summary>
+    /// <summary>Queues secondary-button aiming for the launchable held by Grab.</summary>
     public void RequestBegin(Vector2 worldPosition)
     {
         _pointer = worldPosition;
@@ -153,14 +210,17 @@ public partial class PullbackLauncherComponent : Node2D
             return;
         }
 
-        if (_pendingSpawn)
+        if (_pendingSpawnContentId is not null)
         {
-            _pendingSpawn = false;
+            string requested = _pendingSpawnContentId;
+            _pendingSpawnContentId = null;
             _pendingBegin = false;
             _pendingRelease = false;
             CancelAim();
-            if (Pipeline.Economy.IsUnlocked(ContentIds.ToolBaseball))
-                ReplaceWithBaseball();
+            // Ownership is the shop's answer, not the launcher's: an unowned tool spawns
+            // nothing at all (FR-013.3).
+            if (Pipeline.Economy.IsUnlocked(requested) && FindProfile(requested) is { } profile)
+                ReplaceWith(profile);
         }
 
         if (_pendingBegin)
@@ -210,24 +270,24 @@ public partial class PullbackLauncherComponent : Node2D
     public override void _ExitTree()
     {
         _aimedBody = null;
-        _baseball = null;
+        _spawned = null;
         _clearExistingLooseObjects = null;
     }
 
-    private void ReplaceWithBaseball()
+    private void ReplaceWith(LooseObjectProfile profile)
     {
-        _baseball = null;
+        _spawned = null;
         _clearExistingLooseObjects!();
 
-        Vector2 spawn = ClampInsideRoom(_pointer, BaseballProfile.Radius);
+        Vector2 spawn = ClampInsideRoom(_pointer, profile.Radius);
         var body = new LooseObjectBody
         {
-            Name = $"Baseball_{SpawnCount + 1}",
+            Name = $"Launchable_{SpawnCount + 1}",
             GlobalPosition = spawn,
         };
-        body.Configure(BaseballProfile);
+        body.Configure(profile);
         ObjectParent.AddChild(body);
-        if (!Registry.TryRegister(body, BaseballProfile, out _))
+        if (!Registry.TryRegister(body, profile, out _))
         {
             AdmissionFailureCount++;
             body.QueueFree();
@@ -235,7 +295,7 @@ public partial class PullbackLauncherComponent : Node2D
         }
 
         body.Sleeping = false;
-        _baseball = body;
+        _spawned = body;
         SpawnCount++;
         QueueRedraw();
     }
@@ -283,10 +343,11 @@ public partial class PullbackLauncherComponent : Node2D
         body.Freeze = false;
         body.Sleeping = false;
 
-        // Grab owns the player-held lifetime. Release it first, then establish the
-        // Baseball throw token and uncapped launcher velocity authoritatively.
+        // Grab owns the player-held lifetime. Release it first, then establish the throw token
+        // and uncapped launcher velocity authoritatively. Attribution is the launched object's
+        // own ID, so pain, memory, and statistics name the tool that was actually thrown.
         Grab.Release(countsAsThrow: false);
-        Registry.MarkPlayerThrown(body, ContentIds.ToolBaseball);
+        Registry.MarkPlayerThrown(body, body.SemanticContentId);
         body.LinearVelocity = velocity;
         body.AngularVelocity = 0.0f;
 
@@ -338,7 +399,7 @@ public partial class PullbackLauncherComponent : Node2D
 
     private void ClearPendingIntent()
     {
-        _pendingSpawn = false;
+        _pendingSpawnContentId = null;
         _pendingBegin = false;
         _pendingRelease = false;
         _pendingCancel = false;
