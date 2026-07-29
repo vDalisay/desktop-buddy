@@ -25,6 +25,7 @@ public sealed class ToolSelectionTests
     [InlineData(ToolId.Pet, ToolCategory.Care)]
     [InlineData(ToolId.Tickle, ToolCategory.Care)]
     [InlineData(ToolId.BoxingGlove, ToolCategory.Damage)]
+    [InlineData(ToolId.Baseball, ToolCategory.PhysicsToy)]
     public void CategoryOf_ClassifiesTools(ToolId tool, ToolCategory expected) =>
         Assert.Equal(expected, ToolCatalog.CategoryOf(tool));
 
@@ -37,6 +38,7 @@ public sealed class ToolSelectionTests
     [Theory]
     [InlineData(ToolId.Grab)]
     [InlineData(ToolId.BoxingGlove)]
+    [InlineData(ToolId.Baseball)]
     public void CareKindOf_NonCareTools_IsNull(ToolId tool) =>
         Assert.Null(ToolCatalog.CareKindOf(tool));
 }

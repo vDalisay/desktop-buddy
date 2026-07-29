@@ -21,6 +21,7 @@ public partial class LifecycleCoordinator : Node
     private GameClock _clock = null!;
     private Func<bool> _activeInteraction = null!;
     private Action? _resumePresentation;
+    private Action<bool>? _setWindowVisibility;
     private double _pendingSeconds;
     private int _foregroundMaxFps;
     private bool _presentationThrottled;
@@ -47,7 +48,8 @@ public partial class LifecycleCoordinator : Node
         MoodEconomyProfile profile,
         Func<bool> activeInteraction,
         IMonotonicTimeSource? timeSource = null,
-        Action? resumePresentation = null)
+        Action? resumePresentation = null,
+        Action<bool>? setWindowVisibility = null)
     {
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
@@ -58,6 +60,7 @@ public partial class LifecycleCoordinator : Node
         if (!profile.IsRuntimeValid)
             throw new ArgumentException("Mood economy profile is invalid.", nameof(profile));
         _resumePresentation = resumePresentation;
+        _setWindowVisibility = setWindowVisibility;
         _income = new PassiveIncome(profile.NeutralCreditsPerMinute / 60.0);
         _clock = new GameClock(timeSource ?? new StopwatchTimeSource(), profile.DiscontinuitySeconds);
         ProcessMode = ProcessModeEnum.Always;
@@ -86,13 +89,18 @@ public partial class LifecycleCoordinator : Node
         _clock.Reset();
         _pendingSeconds = 0.0;
         IsHiddenToTray = hidden;
-        if (DisplayServer.GetName() != "headless")
-            GetWindow().Visible = !hidden;
-        GetTree().Paused = hidden;
         if (hidden)
+        {
+            _setWindowVisibility?.Invoke(false);
+            GetTree().Paused = true;
             ThrottlePresentation();
+        }
         else
+        {
+            GetTree().Paused = false;
             RestorePresentation();
+            _setWindowVisibility?.Invoke(true);
+        }
     }
 
     public void NotifySuspended()

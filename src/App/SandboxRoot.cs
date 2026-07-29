@@ -51,6 +51,7 @@ public partial class SandboxRoot : Node2D
     [Export] public PuppetRoomContainmentComponent Containment { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public LooseObjectRegistry Objects { get; set; } = null!;
+    [Export] public PullbackLauncherComponent Launcher { get; set; } = null!;
 
     /// <summary>The single per-run persistent semantic state (ARCHITECTURE §12).</summary>
     public BuddyProgressState Progress { get; private set; } = null!;
@@ -102,6 +103,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(Grab) || !GodotObject.IsInstanceValid(Pointer) ||
             !GodotObject.IsInstanceValid(Containment) || !GodotObject.IsInstanceValid(Pipeline) ||
             !GodotObject.IsInstanceValid(Objects) ||
+            !GodotObject.IsInstanceValid(Launcher) ||
             !GodotObject.IsInstanceValid(Glove) || !GodotObject.IsInstanceValid(CareStroke) ||
             !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
@@ -132,6 +134,7 @@ public partial class SandboxRoot : Node2D
         Settings = _runContext.Settings;
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
+        Launcher.Initialize(ClearLooseObjectsForReplacement);
         Buddy.Arbiter.Initialize(Progress);
         Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
         Glove.Initialize();
@@ -178,7 +181,8 @@ public partial class SandboxRoot : Node2D
             () => Grab.IsGrabbing || Glove.IsActive || CareStroke.IsHeld ||
                   Buddy.ObjectInteraction.IsHolding,
             _runContext.TimeSource,
-            ResetPresentationInterpolation);
+            ResetPresentationInterpolation,
+            Window.Adapter.SetWindowVisible);
         AddChild(Lifecycle);
 
         TrayCommands = new TrayCommandComponent { Name = nameof(TrayCommandComponent) };
@@ -219,6 +223,7 @@ public partial class SandboxRoot : Node2D
         Shell.PhysicsTick();
         Boundaries.PhysicsTick();
         Grab.PhysicsTick(delta);
+        Launcher.PhysicsTick();
         GrabState grab = Grab.CurrentGrab;
         Objects.PhysicsTick(grab, Boundaries.InnerBounds.End.Y);
         PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
@@ -384,6 +389,7 @@ public partial class SandboxRoot : Node2D
     private void OnHardRecovered(HardRecoveryReason reason)
     {
         Buddy.ObjectInteraction.Reset();
+        Launcher.CancelImmediately();
         if (Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
     }
 
@@ -408,6 +414,25 @@ public partial class SandboxRoot : Node2D
             Objects.MarkPlayerThrown(loose, ContentIds.ToolGrab);
         else
             Objects.MarkBuddyReleased(loose);
+    }
+
+    /// <summary>Root-owned one-ball replacement policy used by the Baseball launcher.</summary>
+    private void ClearLooseObjectsForReplacement()
+    {
+        for (int index = GetChildCount() - 1; index >= 0; index--)
+        {
+            if (GetChild(index) is not LooseObjectBody body)
+                continue;
+            if (Buddy.ObjectInteraction.IsHolding &&
+                Buddy.ObjectInteraction.TrackedRuntimeId == body.RuntimeId)
+            {
+                Buddy.ObjectInteraction.CancelActiveInteraction();
+            }
+            if (Grab.IsGrabbing)
+                Grab.Release(countsAsThrow: false);
+            Objects.Unregister(body);
+            body.QueueFree();
+        }
     }
 
     public void SetPresentationMode(PresentationMode mode)

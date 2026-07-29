@@ -61,6 +61,7 @@ public enum ProgressChange
 {
     ToolSelected,
     ToolUnlocked,
+    ContentPurchased,
     BalanceChanged,
     TrustReset,
     CareApplied,
@@ -276,10 +277,14 @@ public sealed class BuddyProgressState
             _fun.Snapshot());
     }
 
-    /// <summary>Explicit tool pick. Returns <c>false</c> when the selection is unchanged.</summary>
+    /// <summary>
+    /// Explicit tool pick. Locked tools and unchanged selections are rejected without
+    /// mutating persistence.
+    /// </summary>
     public bool SelectTool(ToolId tool)
     {
-        if (_tools.Selected == tool)
+        string contentId = ContentIds.ForTool(tool);
+        if (_tools.Selected == tool || !_unlockedTools.Contains(contentId))
         {
             return false;
         }
@@ -310,6 +315,60 @@ public sealed class BuddyProgressState
         Touch();
         Changed?.Invoke(ProgressChange.ToolUnlocked);
         return true;
+    }
+
+    /// <summary>
+    /// Atomically spends currency and records permanent ownership for one known tool.
+    /// Prices use whole displayed credits, represented as milli-credits; invalid catalogue
+    /// requests and every failure path leave revision, balance, and ownership untouched.
+    /// </summary>
+    public PurchaseResult Purchase(string contentId, long priceMilliCredits)
+    {
+        if (!ContentIds.IsTool(contentId))
+        {
+            return new PurchaseResult(
+                PurchaseStatus.InvalidContentId,
+                contentId ?? string.Empty,
+                priceMilliCredits,
+                _ledger.BalanceMilliCredits);
+        }
+
+        if (priceMilliCredits <= 0 ||
+            priceMilliCredits % RewardLedger.MilliCreditsPerCredit != 0)
+        {
+            return new PurchaseResult(
+                PurchaseStatus.InvalidPrice,
+                contentId,
+                priceMilliCredits,
+                _ledger.BalanceMilliCredits);
+        }
+
+        if (_unlockedTools.Contains(contentId))
+        {
+            return new PurchaseResult(
+                PurchaseStatus.AlreadyOwned,
+                contentId,
+                priceMilliCredits,
+                _ledger.BalanceMilliCredits);
+        }
+
+        if (!_ledger.TrySpend(priceMilliCredits))
+        {
+            return new PurchaseResult(
+                PurchaseStatus.InsufficientFunds,
+                contentId,
+                priceMilliCredits,
+                _ledger.BalanceMilliCredits);
+        }
+
+        _unlockedTools.Add(contentId);
+        Touch();
+        Changed?.Invoke(ProgressChange.ContentPurchased);
+        return new PurchaseResult(
+            PurchaseStatus.Purchased,
+            contentId,
+            priceMilliCredits,
+            _ledger.BalanceMilliCredits);
     }
 
     /// <summary>

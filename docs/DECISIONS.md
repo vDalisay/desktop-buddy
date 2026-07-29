@@ -4,6 +4,14 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Milestone 4 Owner Gate — Accepted (2026-07-27)
+
+The owner accepted Milestone 4 in full after the repaired **Hide to Tray** path was
+rechecked through the documented Buddy Lab workflow. The window disappeared, and an
+engineering process check confirmed that Godot remained alive and responsive in hidden
+low-cost operation rather than exiting. The notification-area icon and user-accessible
+restore command remain the already-confirmed Milestone 6 scope.
+
 ## Owner Feel Pass and Shop Addition (2026-07-25)
 
 Recorded from a live owner review session in the buddy laboratory.
@@ -402,8 +410,14 @@ implementation of every M4 task is unblocked.
 - **Swing tools:** Boxing Glove and Baseball Bat are cursor-tethered physical colliders; damage derives from measured swing speed and collision impulse.
 - **Cursor guns:** Pistol and Shotgun remain attached to the cursor. Their forward direction follows the current mouse-motion vector.
 - **Gun angle adjustment:** Mouse-wheel input rotates the cursor gun upward or downward from its current forward direction. The next non-trivial cursor movement resets the wheel adjustment and realigns the gun to the new movement vector.
-- **Pullback launcher:** Balls, care items, and grenades spawn on primary press. Holding and dragging backward displays a predicted trajectory; release launches the object opposite the drag vector in an Angry Birds-style interaction.
-- **Secondary action:** Right mouse cancels or drops the current held/aimed interaction without changing the selected tool.
+- **Pullback launcher:** Baseball is spawned as a normal loose object, acquired through
+  Grab, and aimed by holding secondary while the Grab tether owns it. Dragging backward
+  displays a predicted trajectory; releasing secondary launches it opposite the drag vector.
+  Control details for the remaining future launchables are confirmed with their ordered M5
+  slices rather than inferred from Baseball.
+- **Secondary action:** Right mouse cancels or drops the current held/aimed interaction
+  without changing the selected tool, except that holding it while Grab owns a Baseball
+  activates that ball's trajectory launcher.
 - **Firearm trigger/reload:** Pistol and Shotgun fire once per primary press, reload manually with `R`, and automatically begin reloading when fired empty.
 - **Cursor visibility:** The operating-system cursor is never hidden or replaced. In Play Mode it remains visible above cursor-attached tool actors.
 
@@ -797,6 +811,26 @@ The throw gesture played but the ball never left — it dropped at the buddy's f
 value and a drive count. It never checked that the object moved, which is exactly how a throw
 that dropped straight down passed every gate. It now tracks the released body for 30 ticks and
 requires real flight: `flight_speed=938`, `flight_travel=213`.
+
+## M5 Baseball Input — Revised (2026-07-28)
+
+- **Key `5` only spawns the Baseball at the cursor.** It does not change tool selection.
+  The spawn uses the same one-ball replacement policy as the laboratory's `O` control:
+  the prior loose object is removed, so repeated presses never accumulate balls.
+- **Baseball pickup uses the normal Grab tool.** Select Grab with `G`, then acquire and
+  carry the Baseball through the existing damped elastic left-button tether. The earlier
+  dedicated short-click-follow behavior is explicitly reverted.
+- **Holding secondary while Grab owns the Baseball enters pullback aiming.** Backward drag
+  shows the trajectory preview; releasing secondary beyond the pull threshold launches
+  opposite the pull and releases the Grab tether.
+- **Player ownership is absolute.** The buddy may watch and ready for a player-held ball,
+  but cannot attach or take it from the player's Grab. Watch interest also cannot install
+  collision exceptions on player-held or airborne balls.
+- **A full Baseball launch is deliberately forceful.** Provisional tuning is
+  `15 px/s` per pull pixel, capped at `1800 px/s`, with a `1.0`-mass ball. A `1575 px/s`
+  laboratory strike produced `4.2` pain and approximately `9.4 px` of whole-buddy
+  displacement. Objects above the provisional `900 px/s` catch-speed ceiling are impacts,
+  not automatic catches.
 
 ## Planning Rule
 

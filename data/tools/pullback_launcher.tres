@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="PullbackLauncherProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/PullbackLauncherProfile.cs" id="1"]
+
+[resource]
+resource_name = "M5PullbackLauncherProvisional"
+script = ExtResource("1")
+MaxPullDistance = 120.0
+MinimumLaunchPullDistance = 8.0
+VelocityPerPullPixel = 15.0
+MaxLaunchSpeed = 1800.0
+PredictionSeconds = 1.0
+PredictionSegments = 12
+PullLineColor = Color(0.345098, 0.654902, 0.941176, 1)
+TrajectoryColor = Color(0.968627, 0.788235, 0.282353, 1)

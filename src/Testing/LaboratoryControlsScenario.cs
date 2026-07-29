@@ -153,6 +153,34 @@ public sealed class LaboratoryControlsScenario : IScenario
             $"before={objectsBefore} after_first={afterFirst} after_second={objectsAfterSpawn} " +
             $"inside={insideRoom} cleared={objectsAfterClear}"));
 
+        // Regression for the exact M4 owner-gate failure: the gate launches
+        // buddy_lab.tscn, but the hide command used to exist only in SandboxRoot.
+        // Drive the real Ctrl+Shift+H input action and prove it reaches the shared
+        // lifecycle path. Restore through the command seam because an invisible,
+        // unfocused window cannot receive the same in-app chord (the documented M6
+        // native dependency).
+        await SendKey(tree, Key.H, shiftPressed: true, ctrlPressed: true);
+        int requestsAfterHotkey = lab.TrayCommands.HideShowRequestCount;
+        bool lifecycleHiddenAfterHotkey = lab.Lifecycle.IsHiddenToTray;
+        bool treePausedAfterHotkey = tree.Paused;
+        bool windowVisibleAfterHotkey = lab.WindowAdapterVisibleForTests;
+        bool hiddenFromRealInput =
+            requestsAfterHotkey == 1 &&
+            lifecycleHiddenAfterHotkey &&
+            treePausedAfterHotkey &&
+            !windowVisibleAfterHotkey;
+        lab.SetHiddenToTray(false);
+        bool restoredThroughCommandSeam =
+            !lab.Lifecycle.IsHiddenToTray &&
+            !tree.Paused &&
+            lab.WindowAdapterVisibleForTests;
+        checks.Add(new StartupCheck(
+            "lab_hide_to_tray_routes_real_hotkey",
+            hiddenFromRealInput && restoredThroughCommandSeam,
+            $"requests={requestsAfterHotkey} lifecycle_hidden={lifecycleHiddenAfterHotkey} " +
+            $"tree_paused={treePausedAfterHotkey} window_visible_after_hotkey={windowVisibleAfterHotkey} " +
+            $"restored_window_visible={lab.WindowAdapterVisibleForTests} restored={restoredThroughCommandSeam}"));
+
         lab.Controls.SetTimeScale(1.0);
         lab.QueueFree();
         bool passed = true;
@@ -164,12 +192,17 @@ public sealed class LaboratoryControlsScenario : IScenario
         return new ScenarioResult(passed, checks, messages);
     }
 
-    private static async Task SendKey(SceneTree tree, Key key, bool shiftPressed = false)
+    private static async Task SendKey(
+        SceneTree tree,
+        Key key,
+        bool shiftPressed = false,
+        bool ctrlPressed = false)
     {
         Input.ParseInputEvent(new InputEventKey
         {
             PhysicalKeycode = key,
             ShiftPressed = shiftPressed,
+            CtrlPressed = ctrlPressed,
             Pressed = true,
         });
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
@@ -177,6 +210,7 @@ public sealed class LaboratoryControlsScenario : IScenario
         {
             PhysicalKeycode = key,
             ShiftPressed = shiftPressed,
+            CtrlPressed = ctrlPressed,
             Pressed = false,
         });
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);

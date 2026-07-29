@@ -3,13 +3,16 @@ using DesktopBuddy.Domain.Mood;
 
 namespace DesktopBuddy.Domain.Tools;
 
-/// <summary>The M3 tool subset (RAGDOLL §9 tool table). Grab ships already unlocked.</summary>
+/// <summary>
+/// Stable tool ordinals. New entries append only so legacy integer saves remain migratable.
+/// </summary>
 public enum ToolId
 {
     Grab = 0,
     Pet = 1,
     Tickle = 2,
     BoxingGlove = 3,
+    Baseball = 4,
 }
 
 /// <summary>How a tool physically acts on the buddy (RAGDOLL §9).</summary>
@@ -18,6 +21,7 @@ public enum ToolCategory
     Grab,
     Care,
     Damage,
+    PhysicsToy,
 }
 
 /// <summary>Structural tool facts shared by logic and the Godot layer.</summary>
@@ -28,6 +32,7 @@ public static class ToolCatalog
         ToolId.Grab => ToolCategory.Grab,
         ToolId.Pet or ToolId.Tickle => ToolCategory.Care,
         ToolId.BoxingGlove => ToolCategory.Damage,
+        ToolId.Baseball => ToolCategory.PhysicsToy,
         _ => throw new ArgumentOutOfRangeException(nameof(tool), tool, "Unknown tool."),
     };
 

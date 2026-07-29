@@ -105,6 +105,11 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - Grenade fuse begins on release and expires after 2.5 seconds within one physics tick.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
+- The `baseball_pullback` scenario drives Baseball through the real pointer input path and
+  verifies key-`5` cursor spawning without selection changes, single-ball replacement,
+  normal Grab acquisition, the buddy's player-ownership guard, secondary-held trajectory
+  aiming, opposite-drag launch with automatic Grab release, Baseball attribution, positive
+  pain, and measurable whole-buddy pushback.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
 - The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
   consecutive routed ticks within its `600`-tick settling window. Its verdict

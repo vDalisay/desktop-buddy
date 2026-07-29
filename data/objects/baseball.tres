@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+
+[resource]
+resource_name = "M5BaseballProvisional"
+script = ExtResource("1")
+ContentId = "tool.baseball"
+Consumable = false
+Hazardous = false
+SafeToEvict = true
+Radius = 9.0
+Mass = 1.0
+LinearDamp = 0.8
+AngularDamp = 1.2
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(0.976471, 0.94902, 0.870588, 1)
+OutlineColor = Color(0.8, 0.2, 0.2, 1)

@@ -89,6 +89,16 @@ Exit criteria:
 
 ## Milestone 5 — Shop and Full Tool Catalogue
 
+Implementation status (2026-07-27): the first ordered slice, **Baseball**, is in progress.
+The atomic permanent-purchase boundary, locked selection rule, immediate purchase save,
+shared pullback launcher, typed provisional Baseball/launcher tuning, and real-input
+scenario are implemented. In the development laboratory, key `5` only spawns/replaces one
+Baseball at the cursor; Grab acquires it, and holding secondary while grabbed previews the
+launch. Full pull tuning now produces positive pain and visible pushback; real new saves
+keep Baseball locked. Its catalogue price and final physical preset remain deliberately
+uncalibrated until the documented M5 economy/feel pass, and no unfinished shop entry is
+shown.
+
 Deliver tools in the confirmed progression order:
 
 1. Baseball
@@ -155,6 +165,10 @@ Do not implement these during the milestones above:
 - Buddy painting and coloring.
 - Cosmetic progression.
 - Steam Workshop and custom buddy packages.
+- Work Mode typing companion: an optional nonintrusive corner activity where the buddy
+  wears glasses, works at a miniature PC, reacts to the player's keypresses by typing,
+  and displays a keypress counter. While active, it also provides extra passive earnings
+  and periodically awards a bonus based on the keypresses recorded in that session.
 - Multiple buddies, profiles, multiplayer, Linux, or macOS.
 
 Architecture may leave explicit seams for future custom buddy definitions, but must not add a speculative mod loader or generalized scripting framework now.

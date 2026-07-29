@@ -91,6 +91,7 @@ public partial class ObjectInteractionComponent : Area2D
     public int TossCount { get; private set; }
     public int DiscardCount { get; private set; }
     public int DropCount { get; private set; }
+    public int PlayerHeldPickupRejectionCount { get; private set; }
     public int ConsumeSuccessCount { get; private set; }
     public int ConsumeCancelCount { get; private set; }
     public ConsumeRejection LastConsumeRejection { get; private set; }
@@ -235,12 +236,24 @@ public partial class ObjectInteractionComponent : Area2D
         _consumeCompleted = false;
         HandleIntent(intent, cursorWorldPosition);
 
-        // Keep the buddy from colliding with whatever it is currently going for, and drop the
-        // exception the moment it stops caring about it.
+        // Collision exceptions are ownership/ground-approach state, not interest state.
+        // The buddy may watch a player-held or dangerously fast thrown ball, but those
+        // objects must remain collidable. Carried cargo, a resting approach target, and
+        // an airborne ball slow enough to catch get the anti-kick/catch exception.
         LooseObjectBody? committed = IsHolding
             ? _heldBody
             : _model.IsCommitted ? _registry.FindBody(_model.TrackedRuntimeId) : null;
-        ResolveCommitExceptions(committed);
+        LooseObjectBody? exceptionBody = IsHolding ? committed : null;
+        if (!IsHolding &&
+            GodotObject.IsInstanceValid(committed) &&
+            _registry.TryGetSnapshot(committed!.RuntimeId, out LooseObjectSnapshot committedSnapshot) &&
+            !committedSnapshot.PlayerHeld &&
+            (committedSnapshot.AtRest ||
+             committed.LinearVelocity.Length() <= Profile.MaximumCatchSpeed))
+        {
+            exceptionBody = committed;
+        }
+        ResolveCommitExceptions(exceptionBody);
 
         HasWatchTarget = !IsHolding && GodotObject.IsInstanceValid(committed);
         WatchTargetPosition = HasWatchTarget ? committed!.GlobalPosition : Vector2.Zero;
@@ -272,7 +285,9 @@ public partial class ObjectInteractionComponent : Area2D
 
         if (IsHolding ||
             !_registry.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) ||
-            !snapshot.Consumable)
+            !snapshot.Consumable ||
+            snapshot.PlayerHeld ||
+            snapshot.BuddyHeld)
         {
             LastConsumeRejection = ConsumeRejection.UnknownConsumable;
             return false;
@@ -409,6 +424,12 @@ public partial class ObjectInteractionComponent : Area2D
         // The player still has it: hold the ready pose, do not take it out of their hand.
         bool known = _registry.TryGetSnapshot(tracked!.RuntimeId, out LooseObjectSnapshot live);
         if (known && live.PlayerHeld)
+        {
+            _catchTicks = 0;
+            return false;
+        }
+
+        if (tracked.LinearVelocity.Length() > Profile.MaximumCatchSpeed)
         {
             _catchTicks = 0;
             return false;
@@ -708,6 +729,16 @@ public partial class ObjectInteractionComponent : Area2D
 
     private void BeginHold(LooseObjectBody body, bool leftHand)
     {
+        // Final ownership guard: the model deliberately watches a player-held ball
+        // so the buddy can ready itself for a throw, but no stale intent may attach
+        // that object to a buddy hand until the player actually releases it.
+        if (!_registry.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) ||
+            snapshot.PlayerHeld)
+        {
+            PlayerHeldPickupRejectionCount++;
+            return;
+        }
+
         _heldBody = body;
         _attachedToLeftHand = leftHand;
         _registry.SetBuddyHeld(body, true);

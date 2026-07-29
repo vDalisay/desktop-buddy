@@ -166,6 +166,29 @@ public sealed class SaveCoordinatorTests
         Assert.Equal(4, store.Settings!.Revision);
     }
 
+    [Fact]
+    public async Task Purchase_ImmediatelyFlushesPermanentOwnershipAndSpentBalance()
+    {
+        var state = new BuddyProgressState(0.5);
+        state.Deposit(5_000);
+        var store = new InMemoryProgressStore();
+        var coordinator = new SaveCoordinator(state, store);
+
+        Assert.True(state.Purchase(
+            DesktopBuddy.Domain.Content.ContentIds.ToolBaseball,
+            3_000).Succeeded);
+
+        for (int spin = 0; spin < 100 && store.ProgressWriteCount == 0; spin++)
+            await Task.Yield();
+
+        Assert.Equal(1, store.ProgressWriteCount);
+        Assert.Equal(2_000, store.Progress!.BalanceMilliCredits);
+        Assert.Contains(
+            DesktopBuddy.Domain.Content.ContentIds.ToolBaseball,
+            store.Progress.UnlockedToolIds);
+        Assert.False(coordinator.IsDirty);
+    }
+
     /// <summary>Dirties the state on every write, so a forced flush can never converge.</summary>
     private sealed class MutatingProgressStore(BuddyProgressState state) : IProgressStore
     {

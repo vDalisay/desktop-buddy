@@ -60,5 +60,28 @@ this gate: real `WM_POWERBROADCAST` suspend/resume and session lock/unlock. The
 lifecycle seam is wired and covered headless through the emulated adapter; the native
 adapter declares the events and does not yet raise them.
 
-Record the result in `docs/DECISIONS.md` only after hands-on completion. Until
-then, Milestone 4 owner acceptance is explicitly **pending**.
+## Owner result (2026-07-27)
+
+The owner accepted steps 1–4 and 6. Step 5, **Hide to Tray**, was rejected because it
+did not work in the documented `buddy_lab.tscn` workflow. The accepted steps do not
+need another feel pass. Milestone 4 remains open only for repairing and re-verifying
+Hide to Tray through that real workflow.
+
+## Hide-to-Tray repair and final acceptance (2026-07-27)
+
+The rejected step had three implementation faults: Buddy Lab did not compose the
+lifecycle/tray command components, its telemetry panel consumed modified `H` as plain
+`H`, and Godot does not permit hiding its main window through `Window.Visible`. Buddy
+Lab now owns the lifecycle command seam, the help shortcut accepts only unmodified
+`H`, and the Windows adapter hides or restores the native window handle.
+
+Automated scenarios drive the real `Ctrl+Shift+H` input chord and verify the command
+request, paused lifecycle, hidden adapter state, and restoration path. The owner then
+rechecked the repaired path through `tools\play_buddy_lab.bat`: the Buddy Lab window
+disappeared, and an engineering process inspection confirmed that Godot remained alive
+and responsive in hidden low-cost operation rather than exiting.
+
+The owner accepted Milestone 4 in full. The notification-area icon and
+user-accessible restore stimulus remain the already-confirmed Milestone 6 dependency;
+until then, a manually hidden development-lab process must be ended through Task
+Manager rather than relaunched. Milestone 5 may begin.

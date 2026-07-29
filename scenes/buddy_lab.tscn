@@ -1,4 +1,4 @@
-[gd_scene load_steps=42 format=3]
+[gd_scene load_steps=46 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -39,6 +39,10 @@
 [ext_resource type="Script" path="res://src/Objects/LooseObjectRegistry.cs" id="38_object_registry"]
 [ext_resource type="Resource" path="res://data/objects/lab_food.tres" id="39_lab_food"]
 [ext_resource type="Resource" path="res://data/objects/lab_loose_object.tres" id="40_safe_object"]
+[ext_resource type="Resource" path="res://data/buddy/m4_mood_economy.tres" id="41_mood_economy"]
+[ext_resource type="Script" path="res://src/Tools/PullbackLauncherComponent.cs" id="42_launcher"]
+[ext_resource type="Resource" path="res://data/tools/pullback_launcher.tres" id="43_launcher_profile"]
+[ext_resource type="Resource" path="res://data/objects/baseball.tres" id="44_baseball"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -70,7 +74,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "GloveVisual")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "GloveVisual")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -82,8 +86,10 @@ TelemetryPanel = NodePath("LabUi/TelemetryPanel")
 BoundaryVisualizer = NodePath("LaboratoryBoundaryVisualizer")
 Pipeline = NodePath("InteractionPipeline")
 Objects = NodePath("LooseObjectRegistry")
+Launcher = NodePath("PullbackLauncherComponent")
 LabFoodProfile = ExtResource("39_lab_food")
 SafeObjectProfile = ExtResource("40_safe_object")
+MoodEconomy = ExtResource("41_mood_economy")
 Glove = NodePath("BoxingGloveController")
 CareStroke = NodePath("CareStrokeComponent")
 ToolReactions = NodePath("ToolReactionComponent")
@@ -217,13 +223,14 @@ Facing = NodePath("../FacingController")
 script = ExtResource("4_grab")
 Profile = ExtResource("5_grab_profile")
 
-[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "GloveTool", "CareTool", "CareCursor")]
+[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "GloveTool", "CareTool", "CareCursor", "LauncherTool")]
 script = ExtResource("6_pointer")
 Grab = NodePath("../GrabTetherController")
 Pipeline = NodePath("../InteractionPipeline")
 GloveTool = NodePath("../BoxingGloveController")
 CareTool = NodePath("../CareStrokeComponent")
 CareCursor = NodePath("../ToolCursorPresenter")
+LauncherTool = NodePath("../PullbackLauncherComponent")
 
 [node name="InteractionPipeline" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Grab")]
 script = ExtResource("12_pipeline")
@@ -234,6 +241,16 @@ CareProfile = ExtResource("21_care_profile")
 
 [node name="LooseObjectRegistry" type="Node" parent="."]
 script = ExtResource("38_object_registry")
+
+[node name="PullbackLauncherComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Grab", "Registry", "Boundaries", "ObjectParent")]
+script = ExtResource("42_launcher")
+Pipeline = NodePath("../InteractionPipeline")
+Grab = NodePath("../GrabTetherController")
+Registry = NodePath("../LooseObjectRegistry")
+Boundaries = NodePath("../RoomBounds")
+ObjectParent = NodePath("..")
+Profile = ExtResource("43_launcher_profile")
+BaseballProfile = ExtResource("44_baseball")
 
 [node name="BoxingGloveController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
 script = ExtResource("14_glove")

@@ -72,6 +72,21 @@ public sealed class EconomyService
 
     public bool IsUnlocked(string contentId) => _progress.IsToolUnlocked(contentId);
 
+    /// <summary>
+    /// Atomically buys one catalogue tool. The caller supplies the validated typed-data
+    /// price; failed attempts never spend, unlock, or emit a balance event.
+    /// </summary>
+    public PurchaseResult Purchase(string contentId, long priceMilliCredits)
+    {
+        PurchaseResult result = _progress.Purchase(contentId, priceMilliCredits);
+        if (result.Succeeded)
+        {
+            BalanceChanged?.Invoke(result.BalanceMilliCredits);
+        }
+
+        return result;
+    }
+
     /// <summary>Returns a completed coalesced reward burst, or <c>null</c>.</summary>
     public RewardFeedback? PollFeedback(double now) => _progress.PollRewardFeedback(now);
 }

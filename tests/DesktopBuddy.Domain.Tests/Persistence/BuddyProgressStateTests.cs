@@ -27,6 +27,7 @@ public sealed class BuddyProgressStateTests
         Assert.True(state.IsToolUnlocked(ContentIds.ToolPet));
         Assert.True(state.IsToolUnlocked(ContentIds.ToolTickle));
         Assert.True(state.IsToolUnlocked(ContentIds.ToolBoxingGlove));
+        Assert.False(state.IsToolUnlocked(ContentIds.ToolBaseball));
         Assert.Equal(0.0f, state.Mood);
         Assert.Empty(state.HarmfulContentIds);
     }

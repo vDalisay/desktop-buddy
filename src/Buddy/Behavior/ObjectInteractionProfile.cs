@@ -20,6 +20,13 @@ public partial class ObjectInteractionProfile : GameResource
     [Export(PropertyHint.Range, "1,256,0.5")] public float CatchDistance { get; set; } = 72.0f;
 
     /// <summary>
+    /// Fast objects are impacts, not catches. This upper bound keeps ordinary player
+    /// throws catchable while allowing a high-speed launcher strike to reach the buddy
+    /// instead of being teleported into its hands.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,5000,1")] public float MaximumCatchSpeed { get; set; } = 900.0f;
+
+    /// <summary>
     /// Decision gate for a ground scoop, measured <b>horizontally</b>. The floor sits roughly
     /// `66 px` below the shoulder line, so a straight-line gate is only satisfiable once the
     /// feet are already kicking the object away — which is why the buddy used to shove balls
@@ -181,6 +188,7 @@ public partial class ObjectInteractionProfile : GameResource
     public bool IsRuntimeValid =>
         float.IsFinite(SenseRadius) && SenseRadius > 0.0f &&
         float.IsFinite(CatchDistance) && CatchDistance > 0.0f &&
+        float.IsFinite(MaximumCatchSpeed) && MaximumCatchSpeed > 0.0f &&
         float.IsFinite(ScoopDistance) && ScoopDistance > 0.0f &&
         float.IsFinite(ApproachDistance) && ApproachDistance >= CatchDistance &&
         CatchTimeoutTicks > 0 && HoldTicks > 0 && InspectTicks > 0 &&
@@ -218,6 +226,7 @@ public partial class ObjectInteractionProfile : GameResource
         var errors = new Godot.Collections.Array<string>();
         Positive(errors, SenseRadius, nameof(SenseRadius));
         Positive(errors, CatchDistance, nameof(CatchDistance));
+        Positive(errors, MaximumCatchSpeed, nameof(MaximumCatchSpeed));
         Positive(errors, ApproachDistance, nameof(ApproachDistance));
         // ScoopDistance is horizontal and CatchDistance is straight-line, so they are not
         // comparable; each only has to be positive.

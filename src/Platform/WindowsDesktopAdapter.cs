@@ -32,6 +32,8 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     private const uint WmNcHitTest = 0x0084;
     private const int HtTransparent = -1;
     private const int HtClient = 1;
+    private const int SwHide = 0;
+    private const int SwRestore = 9;
     private const uint MonitorDefaultToPrimary = 0x00000001;
     private const int MdtEffectiveDpi = 0;
 
@@ -51,6 +53,7 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
 
     public bool IsNative => true;
     public bool TransparencyAvailable { get; }
+    public bool IsWindowVisible => IsWindowVisibleNative(_hwnd);
 
     // Declared so the lifecycle coordinator binds to one seam regardless of adapter.
     // Raising them needs WM_POWERBROADCAST and WTSRegisterSessionNotification on the
@@ -114,6 +117,21 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     public void SetPlayModeCapture()
     {
         _workModeActive = false;
+    }
+
+    public void SetWindowVisible(bool visible)
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            Log.Error(Category, "Cannot change main-window visibility without a valid HWND.");
+            return;
+        }
+
+        ShowWindow(_hwnd, visible ? SwRestore : SwHide);
+        if (IsWindowVisibleNative(_hwnd) != visible)
+        {
+            Log.Error(Category, $"Native main-window visibility did not become {visible}.");
+        }
     }
 
     public void Shutdown()
@@ -283,6 +301,14 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll", EntryPoint = "IsWindowVisible")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisibleNative(IntPtr hWnd);
 
     [DllImport("shcore.dll")]
     private static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);

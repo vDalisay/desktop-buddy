@@ -44,11 +44,14 @@ public partial class LabPointerGrabComponent : Node2D
     [Export] public BoxingGloveController? GloveTool { get; set; }
     [Export] public CareStrokeComponent? CareTool { get; set; }
     [Export] public ToolCursorPresenter? CareCursor { get; set; }
+    [Export] public PullbackLauncherComponent? LauncherTool { get; set; }
 
     private bool _active;
     private bool _pendingPress;
     private bool _pendingRelease;
-    private bool _pendingCancel;
+    private bool _pendingSecondaryPress;
+    private bool _pendingSecondaryRelease;
+    private bool _pendingBaseballSpawn;
     private bool _ownsGrab;
     private bool _sawPointerInput;
     private Vector2 _cursor;
@@ -106,7 +109,9 @@ public partial class LabPointerGrabComponent : Node2D
         IsPrimaryHeld = false;
         _pendingPress = false;
         _pendingRelease = false;
-        _pendingCancel = false;
+        _pendingSecondaryPress = false;
+        _pendingSecondaryRelease = false;
+        _pendingBaseballSpawn = false;
 
         if (GloveTool is not null && GodotObject.IsInstanceValid(GloveTool))
             GloveTool.ClearCursor();
@@ -119,6 +124,8 @@ public partial class LabPointerGrabComponent : Node2D
                 : ToolId.Grab;
             CareCursor.SetPointerState(tool, WorldCursor, false);
         }
+        if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool))
+            LauncherTool.RequestCancel();
     }
 
     public override void _UnhandledInput(InputEvent @event)
@@ -141,13 +148,27 @@ public partial class LabPointerGrabComponent : Node2D
         }
         else if (@event.IsActionPressed(InputActions.Secondary))
         {
-            // Right mouse cancels/drops without changing the selected tool.
-            _pendingCancel = true;
-            IsPrimaryHeld = false;
+            _pendingSecondaryPress = true;
+        }
+        else if (@event.IsActionReleased(InputActions.Secondary))
+        {
+            _pendingSecondaryRelease = true;
         }
         else if (Pipeline is not null && GodotObject.IsInstanceValid(Pipeline) &&
                  @event is InputEventKey { Pressed: true, Echo: false } key)
         {
+            if (key.PhysicalKeycode == Key.Key5)
+            {
+                if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool))
+                {
+                    if (!_sawPointerInput)
+                        _cursor = GetViewport().GetMousePosition();
+                    _sawPointerInput = true;
+                    _pendingBaseballSpawn = true;
+                }
+                return;
+            }
+
             ToolId? selected = key.PhysicalKeycode switch
             {
                 Key.G => ToolId.Grab,
@@ -156,7 +177,8 @@ public partial class LabPointerGrabComponent : Node2D
                 Key.T => ToolId.Tickle,
                 _ => null,
             };
-            if (selected.HasValue) Pipeline.SelectTool(selected.Value);
+            if (selected.HasValue)
+                Pipeline.SelectTool(selected.Value);
         }
     }
 
@@ -182,6 +204,17 @@ public partial class LabPointerGrabComponent : Node2D
             ? Pipeline.SelectedTool
             : ToolId.Grab;
 
+        if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool) &&
+            _sawPointerInput)
+        {
+            LauncherTool.MovePointer(cursor);
+            if (_pendingBaseballSpawn)
+            {
+                _pendingBaseballSpawn = false;
+                LauncherTool.RequestSpawn(cursor);
+            }
+        }
+
         if (CareCursor is not null && GodotObject.IsInstanceValid(CareCursor))
             CareCursor.SetPointerState(tool, cursor, _sawPointerInput && IsPrimaryHeld);
 
@@ -201,18 +234,39 @@ public partial class LabPointerGrabComponent : Node2D
             }
         }
 
-        if (_pendingCancel)
+        if (_pendingSecondaryPress)
         {
-            _pendingCancel = false;
-            _pendingPress = false;
-            _pendingRelease = false;
-            ReleaseIfGrabbing(countsAsThrow: false);
+            _pendingSecondaryPress = false;
+            if (LauncherTool is not null &&
+                GodotObject.IsInstanceValid(LauncherTool) &&
+                LauncherTool.CanAimCurrentGrab)
+            {
+                LauncherTool.RequestBegin(cursor);
+            }
+            else
+            {
+                // Outside the grabbed-Baseball launcher chord, secondary keeps
+                // its established cancel/drop behavior.
+                _pendingPress = false;
+                _pendingRelease = false;
+                ReleaseIfGrabbing(countsAsThrow: false);
+                if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool))
+                    LauncherTool.RequestCancel();
+            }
+        }
+
+        if (_pendingSecondaryRelease)
+        {
+            _pendingSecondaryRelease = false;
+            if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool))
+                LauncherTool.RequestRelease();
         }
 
         if (_pendingPress)
         {
             _pendingPress = false;
-            if (tool == ToolId.Grab && !Grab.IsGrabbing && TryPick(cursor, out RigidBody2D? body))
+            if (tool == ToolId.Grab && !Grab.IsGrabbing &&
+                TryPick(cursor, out RigidBody2D? body))
             {
                 if (Grab.TryGrab(body!, cursor))
                 {
@@ -231,6 +285,10 @@ public partial class LabPointerGrabComponent : Node2D
         if (_pendingRelease)
         {
             _pendingRelease = false;
+            if (LauncherTool is not null &&
+                GodotObject.IsInstanceValid(LauncherTool) &&
+                LauncherTool.IsAiming)
+                LauncherTool.RequestCancel();
             ReleaseIfGrabbing(countsAsThrow: true);
         }
 

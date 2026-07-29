@@ -87,7 +87,8 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             "Left-drag: grab / throw   Right-click: drop\n" +
             "P: pause   .: single tick   U: limp/wake\n" +
             "Shift+U: reseed   1/2/3/4: simulation speed\n" +
-            "G: grab  B: glove  F: pet  T: tickle\n" +
+            "G: grab  B: glove  F: pet  T: tickle  5: spawn baseball\n" +
+            "Ball: left-grab; hold right + drag to aim\n" +
             "V: presentation  E: eat item  Q: wave\n" +
             "Z/X: face left/right  C: release facing\n" +
             "H: hide/show this panel";
@@ -117,6 +118,10 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
                 PhysicalKeycode: Key.H,
                 Pressed: true,
                 Echo: false,
+                AltPressed: false,
+                CtrlPressed: false,
+                MetaPressed: false,
+                ShiftPressed: false,
             })
         {
             return;

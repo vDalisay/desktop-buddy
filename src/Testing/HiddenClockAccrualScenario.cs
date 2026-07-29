@@ -41,8 +41,9 @@ public sealed class HiddenClockAccrualScenario : IScenario
         }
         checks.Add(new StartupCheck(
             "hidden_freezes_ragdoll",
-            tree.Paused && poseFrozen,
-            $"paused={tree.Paused} frozen={poseFrozen}"));
+            tree.Paused && poseFrozen && !sandbox.Window.Adapter.IsWindowVisible,
+            $"paused={tree.Paused} frozen={poseFrozen} " +
+            $"window_visible={sandbox.Window.Adapter.IsWindowVisible}"));
 
         // Pausing the tree stops gameplay but not the main loop. Without the render-loop
         // and frame-cap throttle the process keeps drawing behind an invisible window and
@@ -98,9 +99,12 @@ public sealed class HiddenClockAccrualScenario : IScenario
             $"largest_jump={largestJump:F3}"));
         checks.Add(new StartupCheck(
             "show_restores_presentation",
-            !sandbox.Lifecycle.IsPresentationThrottled && RenderingServer.RenderLoopEnabled,
+            !sandbox.Lifecycle.IsPresentationThrottled &&
+            RenderingServer.RenderLoopEnabled &&
+            sandbox.Window.Adapter.IsWindowVisible,
             $"throttled={sandbox.Lifecycle.IsPresentationThrottled} " +
-            $"render_loop={RenderingServer.RenderLoopEnabled} max_fps={Engine.MaxFps}"));
+            $"render_loop={RenderingServer.RenderLoopEnabled} max_fps={Engine.MaxFps} " +
+            $"window_visible={sandbox.Window.Adapter.IsWindowVisible}"));
         messages.Add($"hidden={hidden:F3}s balance_milli={balance}");
         await M4LifecycleScenarioSupport.Cleanup(tree, sandbox);
         bool passed = true;

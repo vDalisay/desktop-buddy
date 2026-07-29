@@ -22,6 +22,7 @@ public static class ContentIds
     public const string ToolPet = "tool.pet";
     public const string ToolTickle = "tool.tickle";
     public const string ToolBoxingGlove = "tool.boxing_glove";
+    public const string ToolBaseball = "tool.baseball";
 
     /// <summary>
     /// Generic untagged physical body (scenario props, expired thrown objects). Covers
@@ -62,6 +63,7 @@ public static class ContentIds
         ToolId.Pet => ToolPet,
         ToolId.Tickle => ToolTickle,
         ToolId.BoxingGlove => ToolBoxingGlove,
+        ToolId.Baseball => ToolBaseball,
         _ => throw new ArgumentOutOfRangeException(
             nameof(tool),
             tool,
@@ -88,6 +90,9 @@ public static class ContentIds
                 return true;
             case ToolBoxingGlove:
                 tool = ToolId.BoxingGlove;
+                return true;
+            case ToolBaseball:
+                tool = ToolId.Baseball;
                 return true;
             default:
                 tool = ToolSelection.DefaultTool;

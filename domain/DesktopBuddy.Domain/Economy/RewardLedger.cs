@@ -117,6 +117,26 @@ public sealed class RewardLedger
     }
 
     /// <summary>
+    /// Atomically spends an integer milli-credit amount. Insufficient funds leave the
+    /// balance unchanged; purchase prices are validated by the catalogue/economy boundary.
+    /// </summary>
+    public bool TrySpend(long milliCredits)
+    {
+        if (milliCredits < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(milliCredits));
+        }
+
+        if (milliCredits > BalanceMilliCredits)
+        {
+            return false;
+        }
+
+        BalanceMilliCredits -= milliCredits;
+        return true;
+    }
+
+    /// <summary>
     /// Returns a completed feedback burst once its 0.25 s interval has elapsed, else null.
     /// Presentation polls this each tick to surface a single coalesced <c>+$N.N</c>.
     /// </summary>

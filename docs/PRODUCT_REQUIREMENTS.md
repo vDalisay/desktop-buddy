@@ -158,10 +158,10 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 2. **FR-009.2:** WHILE Pistol, Shotgun, or Fire Sprayer is active THEN the tool SHALL remain attached to the cursor and its forward direction SHALL follow the current non-trivial mouse-motion vector.
 3. **FR-009.3:** WHEN mouse-wheel input occurs while a cursor weapon is aimed THEN the weapon SHALL rotate upward or downward relative to its current forward direction.
 4. **FR-009.4:** WHEN non-trivial cursor movement follows a wheel angle adjustment THEN the game SHALL clear that adjustment and realign the weapon to the new mouse-motion vector.
-5. **FR-009.5:** WHEN the player presses primary input with Baseball, Soccer Ball, Meal, Drink, Repair Kit, or Grenade selected THEN the game SHALL request the selected object for pullback launching subject to the loose-object budget in FR-014.
-6. **FR-009.6:** WHILE the player holds primary input and drags backward during a pullback launch THEN the game SHALL display a predicted trajectory.
-7. **FR-009.7:** WHEN the player releases a pullback launch THEN the object SHALL launch opposite the drag vector.
-8. **FR-009.8:** WHEN the player presses secondary input during a held or aimed interaction THEN the game SHALL cancel or drop that interaction without changing the selected tool.
+5. **FR-009.5:** WHEN the player presses key `5` with Baseball unlocked THEN the game SHALL spawn it at the cursor, replace the prior loose object so exactly one ball remains, and leave the selected tool unchanged.
+6. **FR-009.6:** WHEN Grab is selected and the player presses primary input on the Baseball THEN the normal damped elastic Grab tether SHALL acquire it. The buddy SHALL NOT attach or take any object while that object is player-held.
+7. **FR-009.7:** WHILE Grab owns the Baseball and the player holds secondary input and drags backward THEN the game SHALL display a predicted trajectory. WHEN secondary input is released beyond the configured pull threshold THEN the Baseball SHALL launch opposite the drag vector and the Grab tether SHALL release it.
+8. **FR-009.8:** WHEN the player presses secondary input outside the grabbed-Baseball launcher chord during a held or aimed interaction THEN the game SHALL cancel or drop that interaction without changing the selected tool.
 9. **FR-009.9:** WHILE any tool is selected, the operating-system cursor SHALL remain visible; tool actors SHALL render beneath it and SHALL NOT hide or replace it.
 10. **FR-009.10:** WHILE primary input is held with Pet or Tickle selected THEN an original animated hand actor SHALL follow the pointer without physical lag beneath the visible operating-system cursor.
 11. **FR-009.11:** WHEN the Boxing Glove has been learned as harmful AND approaches a conscious buddy THEN the buddy SHALL flee away from the pointer while placing its physical hand bodies between the threat direction and head/torso; the guard direction SHALL follow the pointer with bounded lag, its targets SHALL remain body-relative rather than attaching to the physical glove, and guard actuation SHALL NOT pull the puppet toward the pointer. WHEN the glove contacts an actively guarding hand THEN the guarded event SHALL use the confirmed `0.5x` absorption factor, while a bypassing strike SHALL remain unmodified.
@@ -447,6 +447,31 @@ The first Steam release includes:
 - Buddy coloring and paint interactions as content padding.
 - Cosmetic progression capable of extending the progression curve beyond the current two-hour catalogue target.
 - Steam Workshop support for custom buddies; architecture may avoid needless lock-in, but no Workshop API, mod format, compatibility contract, or custom-buddy tooling is required now.
+- **Work Mode typing companion:** an optional, nonintrusive Work Mode presentation in which
+  the buddy sits in a corner, wears glasses, works at a miniature PC, and animates typing
+  in response to the player's keypresses. A visible counter records the keypresses for the
+  defined Work Mode/session scope. While active, the companion also provides extra passive
+  earnings and periodically awards a bonus based on the keypresses recorded in that
+  session. This is a backlog idea only and is not a launch commitment.
+
+  Draft intent to resolve before design:
+
+  - WHEN the typing companion is enabled and a qualifying player keypress is observed
+    THEN the buddy SHALL perform a corresponding typing reaction without interrupting the
+    player's work or changing normal Work Mode pointer passthrough.
+  - WHEN the defined counting scope begins or resets THEN the keypress counter SHALL start
+    from the documented baseline and SHALL update only for the documented keypress events.
+  - WHILE the typing companion is active in Work Mode THEN the game SHALL accrue an
+    additional passive Work Mode earning stream alongside any otherwise applicable
+    earnings.
+  - WHEN a future-defined Work Mode bonus interval is reached THEN the game SHALL award a
+    bonus whose value is determined by the keypresses recorded in the applicable session
+    scope.
+  - The future design SHALL define whether keypress observation is opt-in, which modifier,
+    repeat, and focused-application events count, how the counter resets or persists, the
+    extra passive-earning rate, bonus cadence/formula/cap, whether this stacks with normal
+    passive income, and the fallback behavior when OS-level keyboard observation is
+    unavailable.
 
 ## 11. Acceptance Gates
 

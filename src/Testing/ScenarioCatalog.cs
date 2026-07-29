@@ -54,6 +54,7 @@ public static class ScenarioCatalog
         ["jump_trait_gate"] = () => new JumpTraitGateScenario(),
         ["hidden_clock_accrual"] = () => new HiddenClockAccrualScenario(),
         ["suspend_no_catchup"] = () => new SuspendNoCatchupScenario(),
+        ["baseball_pullback"] = () => new BaseballPullbackScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

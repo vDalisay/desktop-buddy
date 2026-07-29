@@ -18,6 +18,7 @@ using DesktopBuddy.Laboratory;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Platform;
 using DesktopBuddy.Sandbox;
 using DesktopBuddy.Tools;
 using DesktopBuddy.UI;
@@ -36,6 +37,7 @@ namespace DesktopBuddy.App;
 public partial class BuddyLab : Node2D
 {
     private bool _allocationProbeEnabled;
+    private IWindowsDesktopAdapter _windowAdapter = null!;
 
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public LaboratoryControlComponent Controls { get; set; } = null!;
@@ -49,6 +51,8 @@ public partial class BuddyLab : Node2D
     [Export] public LooseObjectRegistry Objects { get; set; } = null!;
     [Export] public LooseObjectProfile LabFoodProfile { get; set; } = null!;
     [Export] public LooseObjectProfile SafeObjectProfile { get; set; } = null!;
+    [Export] public MoodEconomyProfile MoodEconomy { get; set; } = null!;
+    [Export] public PullbackLauncherComponent Launcher { get; set; } = null!;
 
     /// <summary>The single per-run persistent semantic state (ARCHITECTURE §12).</summary>
     public BuddyProgressState Progress { get; private set; } = null!;
@@ -56,6 +60,9 @@ public partial class BuddyLab : Node2D
     /// <summary>The sole currency/unlock mutator for this run (ARCHITECTURE §11).</summary>
     public EconomyService Economy { get; private set; } = null!;
     public SaveCoordinator Saves { get; private set; } = null!;
+    public LifecycleCoordinator Lifecycle { get; private set; } = null!;
+    public TrayCommandComponent TrayCommands { get; private set; } = null!;
+    public bool WindowAdapterVisibleForTests => _windowAdapter?.IsWindowVisible ?? false;
     [Export] public BoxingGloveController Glove { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
@@ -88,6 +95,8 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(Objects) ||
             !GodotObject.IsInstanceValid(LabFoodProfile) ||
             !GodotObject.IsInstanceValid(SafeObjectProfile) ||
+            !GodotObject.IsInstanceValid(MoodEconomy) ||
+            !GodotObject.IsInstanceValid(Launcher) ||
             !GodotObject.IsInstanceValid(Glove) ||
             !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
             !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
@@ -103,7 +112,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(GloveVisual))
         {
             throw new InvalidOperationException(
-                "BuddyLab requires injected buddy, controls, grab, pointer, boundaries, containment, telemetry, boundary visualization, and the interaction pipeline/tools.");
+                "BuddyLab requires injected buddy, controls, grab, pointer, boundaries, containment, telemetry, boundary visualization, interaction pipeline, launcher, and tools.");
         }
 
         Controls.Initialize();
@@ -114,8 +123,12 @@ public partial class BuddyLab : Node2D
         Economy = new EconomyService(Progress);
         var progressStore = new InMemoryProgressStore();
         Saves = new SaveCoordinator(Progress, progressStore);
+        // Development laboratory catalogue: implemented M5 tools are available for
+        // mechanical tuning without granting them on a real new save.
+        Economy.Unlock(ContentIds.ToolBaseball);
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
+        Launcher.Initialize(OnLooseObjectClearRequested);
         Buddy.Arbiter.Initialize(Progress);
         Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
         Glove.Initialize();
@@ -161,6 +174,27 @@ public partial class BuddyLab : Node2D
         BoundaryVisualizer.Initialize();
         TelemetryPanel.Initialize();
 
+        // The M4 owner gate runs this laboratory, not the normal sandbox. Compose the
+        // same focused lifecycle/command workers here so Ctrl+Shift+H exercises the
+        // shipped hidden-mode path while the lab remains saveless (in-memory store).
+        _windowAdapter = WindowsDesktopAdapterFactory.Create();
+        Lifecycle = new LifecycleCoordinator { Name = nameof(LifecycleCoordinator) };
+        Lifecycle.Configure(
+            Progress,
+            Economy,
+            Saves,
+            MoodEconomy,
+            () => Grab.IsGrabbing || Glove.IsActive || CareStroke.IsHeld ||
+                  Buddy.ObjectInteraction.IsHolding,
+            resumePresentation: ResetPresentationInterpolation,
+            setWindowVisibility: _windowAdapter.SetWindowVisible);
+        AddChild(Lifecycle);
+
+        TrayCommands = new TrayCommandComponent { Name = nameof(TrayCommandComponent) };
+        TrayCommands.HideShowToggled += OnTrayHideShowToggled;
+        TrayCommands.SaveAndQuitRequested += RequestSaveAndQuit;
+        AddChild(TrayCommands);
+
         // DECISIONS.md "Fail-safe cleanup": a hard recovery releases the active
         // grab as part of clearing transient state. The tether lives at lab level
         // and recovery at buddy level, so the lab bridges the two.
@@ -203,6 +237,7 @@ public partial class BuddyLab : Node2D
             // Grab/tool forces and buddy drive/constraint forces accumulate into
             // the same physics step; ordering between them does not matter.
             Grab.PhysicsTick(delta);
+            Launcher.PhysicsTick();
             GrabState grab = Grab.CurrentGrab;
             long registryAllocationBefore = _allocationProbeEnabled
                 ? GC.GetAllocatedBytesForCurrentThread()
@@ -307,8 +342,40 @@ public partial class BuddyLab : Node2D
             Glove.BodySpawned -= OnGloveBodySpawned;
             Glove.BodyDespawned -= OnGloveBodyDespawned;
         }
+        if (GodotObject.IsInstanceValid(TrayCommands))
+        {
+            TrayCommands.HideShowToggled -= OnTrayHideShowToggled;
+            TrayCommands.SaveAndQuitRequested -= RequestSaveAndQuit;
+        }
+        _windowAdapter?.Shutdown();
 
         TelemetryRecorder?.Complete();
+    }
+
+    public void SetHiddenToTray(bool hidden) => Lifecycle.SetHiddenToTray(hidden);
+
+    private void OnTrayHideShowToggled() =>
+        SetHiddenToTray(!Lifecycle.IsHiddenToTray);
+
+    private async void RequestSaveAndQuit()
+    {
+        try
+        {
+            await Saves.FlushProgressAsync(force: true);
+        }
+        catch (Exception exception)
+        {
+            Log.Error("Laboratory", $"In-memory Save & Quit flush failed: {exception.Message}");
+        }
+
+        GodotInteropShutdown.PrepareForQuit();
+        GetTree().Quit(0);
+    }
+
+    private void ResetPresentationInterpolation()
+    {
+        Buddy.Rig.ResetInterpolation();
+        Objects.ResetInterpolation();
     }
 
     private void OnBoundaryLayoutApplied(RoomLayout _layout, Rect2 innerBounds) =>
@@ -317,6 +384,7 @@ public partial class BuddyLab : Node2D
     private void OnHardRecovered(HardRecoveryReason reason)
     {
         Buddy.ObjectInteraction.Reset();
+        Launcher.CancelImmediately();
         if (Grab.IsGrabbing)
         {
             Grab.Release(countsAsThrow: false);

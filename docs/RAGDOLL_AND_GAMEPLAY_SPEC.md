@@ -290,8 +290,12 @@ Every purchased tool is permanently unlocked for unlimited use. There is one ear
 - Boxing Glove and Baseball Bat are physical colliders pulled by a cursor tether; real swing speed/contact impulse drives pain.
 - Pistol, Shotgun, and Fire Sprayer remain attached to the cursor. Their forward direction follows the current non-trivial mouse-motion vector.
 - Mouse-wheel input offsets cursor-weapon aim upward/downward. The next non-trivial cursor movement clears that offset and aligns forward to the new movement vector.
-- Baseball, Soccer Ball, Grenade, Meal, Drink, and Repair Kit use the pullback launcher. Primary press spawns/arms the held preview, dragging backward shows a trajectory line, and release launches opposite the drag vector.
-- Secondary input cancels or drops the current interaction without changing the selected tool.
+- Baseball spawns as a normal loose object and is acquired through Grab. While Grab owns it,
+  holding secondary and dragging backward shows the trajectory; releasing secondary launches
+  opposite the drag and releases Grab. Controls for later launchables are confirmed with
+  their ordered M5 implementation slices.
+- Secondary input cancels or drops the current interaction without changing the selected
+  tool, except for the grabbed-Baseball launcher chord above.
 - The predicted trajectory and actual launch must use the same initial-velocity calculation and world gravity/profile data; the line is a preview, not a different aiming model.
 
 ### 9.2 Tool-by-tool behavior

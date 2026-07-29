@@ -114,7 +114,7 @@ public sealed class SaveCoordinator
 
     private void OnProgressChanged(ProgressChange change)
     {
-        if (change == ProgressChange.ToolUnlocked)
+        if (change is ProgressChange.ToolUnlocked or ProgressChange.ContentPurchased)
             _ = FlushImmediateEventAsync();
     }
 

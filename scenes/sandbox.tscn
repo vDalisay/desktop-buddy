@@ -1,4 +1,4 @@
-[gd_scene load_steps=39 format=3]
+[gd_scene load_steps=42 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
@@ -38,6 +38,9 @@
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/FaceCompositor.cs" id="37_face"]
 [ext_resource type="Script" path="res://src/Objects/LooseObjectRegistry.cs" id="38_object_registry"]
 [ext_resource type="Resource" path="res://data/buddy/m4_mood_economy.tres" id="39_mood_economy"]
+[ext_resource type="Script" path="res://src/Tools/PullbackLauncherComponent.cs" id="40_launcher"]
+[ext_resource type="Resource" path="res://data/tools/pullback_launcher.tres" id="41_launcher_profile"]
+[ext_resource type="Resource" path="res://data/objects/baseball.tres" id="42_baseball"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -57,7 +60,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Objects", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "GloveVisual")]
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "Glove", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "GloveVisual")]
 script = ExtResource("1_sandbox")
 Window = NodePath("DesktopWindowController")
 Shell = NodePath("DesktopShellController")
@@ -68,6 +71,7 @@ Pointer = NodePath("PointerToolInput")
 Containment = NodePath("PuppetRoomContainmentComponent")
 Pipeline = NodePath("InteractionPipeline")
 Objects = NodePath("LooseObjectRegistry")
+Launcher = NodePath("PullbackLauncherComponent")
 Glove = NodePath("BoxingGloveController")
 CareStroke = NodePath("CareStrokeComponent")
 ToolReactions = NodePath("ToolReactionComponent")
@@ -197,13 +201,14 @@ Boundaries = NodePath("../RoomBounds")
 script = ExtResource("8_grab")
 Profile = ExtResource("9_grab_profile")
 
-[node name="PointerToolInput" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "GloveTool", "CareTool", "CareCursor")]
+[node name="PointerToolInput" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "GloveTool", "CareTool", "CareCursor", "LauncherTool")]
 script = ExtResource("10_pointer")
 Grab = NodePath("../GrabTetherController")
 Pipeline = NodePath("../InteractionPipeline")
 GloveTool = NodePath("../BoxingGloveController")
 CareTool = NodePath("../CareStrokeComponent")
 CareCursor = NodePath("../ToolCursorPresenter")
+LauncherTool = NodePath("../PullbackLauncherComponent")
 
 [node name="InteractionPipeline" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Grab")]
 script = ExtResource("12_pipeline")
@@ -214,6 +219,16 @@ CareProfile = ExtResource("21_care_profile")
 
 [node name="LooseObjectRegistry" type="Node" parent="."]
 script = ExtResource("38_object_registry")
+
+[node name="PullbackLauncherComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Grab", "Registry", "Boundaries", "ObjectParent")]
+script = ExtResource("40_launcher")
+Pipeline = NodePath("../InteractionPipeline")
+Grab = NodePath("../GrabTetherController")
+Registry = NodePath("../LooseObjectRegistry")
+Boundaries = NodePath("../RoomBounds")
+ObjectParent = NodePath("..")
+Profile = ExtResource("41_launcher_profile")
+BaseballProfile = ExtResource("42_baseball")
 
 [node name="BoxingGloveController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
 script = ExtResource("14_glove")

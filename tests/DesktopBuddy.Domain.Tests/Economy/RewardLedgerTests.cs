@@ -142,4 +142,18 @@ public sealed class RewardLedgerTests
         var ledger = Ledger();
         Assert.Throws<System.ArgumentOutOfRangeException>(() => ledger.Deposit(-1));
     }
+
+    [Fact]
+    public void TrySpend_IsAtomicAndNeverMakesBalanceNegative()
+    {
+        var ledger = Ledger();
+        ledger.Deposit(5_000);
+
+        Assert.False(ledger.TrySpend(5_001));
+        Assert.Equal(5_000, ledger.BalanceMilliCredits);
+
+        Assert.True(ledger.TrySpend(5_000));
+        Assert.Equal(0, ledger.BalanceMilliCredits);
+        Assert.Throws<System.ArgumentOutOfRangeException>(() => ledger.TrySpend(-1));
+    }
 }

@@ -22,6 +22,7 @@ public sealed class EmulatedWindowsDesktopAdapter : IWindowsDesktopAdapter
 
     public bool IsNative => false;
     public bool TransparencyAvailable { get; }
+    public bool IsWindowVisible { get; private set; } = true;
 
     public event Action? SystemSuspending;
     public event Action? SystemResumed;
@@ -69,6 +70,8 @@ public sealed class EmulatedWindowsDesktopAdapter : IWindowsDesktopAdapter
     }
 
     public void SetPlayModeCapture() => PlayModeCaptured = true;
+
+    public void SetWindowVisible(bool visible) => IsWindowVisible = visible;
 
     public void Shutdown() => Log.Info("Platform", "EmulatedWindowsDesktopAdapter shutdown.");
 }

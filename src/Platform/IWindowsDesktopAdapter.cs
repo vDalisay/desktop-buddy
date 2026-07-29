@@ -40,6 +40,12 @@ public interface IWindowsDesktopAdapter
     /// <summary>Whether per-pixel transparency is available on this display path.</summary>
     bool TransparencyAvailable { get; }
 
+    /// <summary>
+    /// Whether the main application window is currently visible. The emulated
+    /// implementation records this deterministically for lifecycle scenarios.
+    /// </summary>
+    bool IsWindowVisible { get; }
+
     /// <summary>Usable work-area rects (taskbar excluded) for every monitor, in virtual-desktop pixels.</summary>
     IReadOnlyList<Rect2I> GetUsableMonitorRects();
 
@@ -54,6 +60,12 @@ public interface IWindowsDesktopAdapter
 
     /// <summary>Capture the whole client box (Play Mode); no pointer passthrough.</summary>
     void SetPlayModeCapture();
+
+    /// <summary>
+    /// Hide or show the native main window. Godot's <c>Window.Visible</c> cannot
+    /// change the main window, so Windows implements this through its HWND.
+    /// </summary>
+    void SetWindowVisible(bool visible);
 
     /// <summary>Restore any subclassed window procedure and native state on shutdown.</summary>
     void Shutdown();

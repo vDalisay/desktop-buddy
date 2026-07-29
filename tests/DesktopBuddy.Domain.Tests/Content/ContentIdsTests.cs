@@ -13,6 +13,7 @@ public sealed class ContentIdsTests
     [InlineData(ToolId.Pet, "tool.pet")]
     [InlineData(ToolId.Tickle, "tool.tickle")]
     [InlineData(ToolId.BoxingGlove, "tool.boxing_glove")]
+    [InlineData(ToolId.Baseball, "tool.baseball")]
     public void ForTool_MapsToTheShippedOrdinalString(ToolId tool, string expected) =>
         Assert.Equal(expected, ContentIds.ForTool(tool));
 
