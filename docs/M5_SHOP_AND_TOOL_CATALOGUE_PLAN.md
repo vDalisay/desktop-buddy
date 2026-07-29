@@ -610,16 +610,28 @@ running the suite" remains the failure mode this plan exists to prevent.
   requested from the selector, so no head-shake ever played; and the resolve threw the item
   aside on the discard impulse, which read as the food glitching away. Now: the refusal keeps
   the ordinary one-handed carry (only `IsStationary` is shared), the animator requests the clip
-  and **seeks** it by the new `BehaviorActivityComponent.RefuseProgress` so exactly two beats
-  fill the `96`-tick window, facing and the head look-at are both forced frontal for the
+  and **seeks** it by the new `BehaviorActivityComponent.RefuseProgress` so the gesture
+  fills the `96`-tick window, facing and the head look-at are both forced frontal for the
   duration (the "no" is aimed at the player), the shake amplitude is authored as
-  `ActivityRefuseAmplitude` (`5` px, inside the same subtle bound), and the item is dropped at
+  a bounded profile value, and the item is dropped at
   rest below the buddy. `meal_consume` gains three checks — one hand, the two-way shake at a
   frontal buddy, and the at-rest drop below the buddy with no discard. Verified: domain
   808/808, quick suite 21/21, `meal_consume` seeds 1/7/13, `activity_clips`,
   `consume_care_cooldown`, `lookat_priority_and_cone`, `facing_follows_walk`,
   `object_toss_discard`, `face_composition`, and the `m36_expressive` + `m5_meal` journeys on
   seeds 1 and 7.
+- 2026-07-30 — Owner clarified that “shake” means **rotation around the neck’s vertical
+  axis**, not lateral head translation. The refusal now starts from a frontal visual body,
+  clears residual look-at pitch/yaw, and plays four smooth damped yaw lobes
+  (left `30°` → right `24.9°` → left `20.1°` → right `12°` → neutral). It crosses the
+  middle continuously with no hold, never exceeds four alternating extremes, leaves pitch
+  and roll untouched, and resets the rotation before any following clip. The typed tuning is
+  renamed from pixel `ActivityRefuseAmplitude` to degree-valued
+  `ActivityRefuseYawDegrees`; selection is also pinned to authoritative
+  `BehaviorActivityComponent.IsRefusing`, so a long render frame cannot expire the visual
+  before the routed-tick refusal window. `meal_consume` now rejects sideways translation,
+  excess/undamped lobes, non-frontal composition, center pauses, residual rotation, and
+  pitch/roll activity.
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against
   the repository (`LooseObjectRegistry` cap/eviction/protection, arbiter `Hazard = 3`
   branch, `ToolUses`/`ToolPainMilli` statistics, AGENT_VERIFICATION §7 per-tool

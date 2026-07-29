@@ -176,7 +176,7 @@ public sealed class ActivityTuningDataTests
         WaveAmplitude: 3.0f,
         ChewAmplitude: 1.0f,
         JumpSquashAmplitude: 2.5f,
-        RefuseAmplitude: 5.0f);
+        RefuseYawDegrees: 30.0f);
 
     [Fact]
     public void AcceptedDefaults_Pass() => Assert.Empty(Accepted.Validate());
@@ -191,17 +191,24 @@ public sealed class ActivityTuningDataTests
             error => error.Contains("breathe amplitude"));
 
     /// <summary>
-    /// The refusal shake is authored wider than the other clips on purpose, so its own bound is
-    /// worth asserting: "wider" still means inside the same six-pixel subtle limit.
+    /// Refusal rotates around the neck's vertical axis. The owner bounded the first extreme
+    /// to the natural over-the-shoulder range of 20–30 degrees.
     /// </summary>
     [Theory]
     [InlineData(0.0f)]
-    [InlineData(7.0f)]
+    [InlineData(19.0f)]
+    [InlineData(31.0f)]
     [InlineData(float.NaN)]
-    public void RefuseAmplitudeOutsideSubtleBound_Fails(float amplitude) =>
+    public void RefuseYawOutsideOwnerBound_Fails(float yawDegrees) =>
         Assert.Single(
-            (Accepted with { RefuseAmplitude = amplitude }).Validate(),
-            error => error.Contains("refuse amplitude"));
+            (Accepted with { RefuseYawDegrees = yawDegrees }).Validate(),
+            error => error.Contains("refuse yaw"));
+
+    [Theory]
+    [InlineData(20.0f)]
+    [InlineData(30.0f)]
+    public void RefuseYawAtOwnerBounds_Passes(float yawDegrees) =>
+        Assert.Empty((Accepted with { RefuseYawDegrees = yawDegrees }).Validate());
 
     [Theory]
     [InlineData(0.0f)]

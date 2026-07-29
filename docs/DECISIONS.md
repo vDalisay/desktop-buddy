@@ -901,9 +901,14 @@ it, and repeating until its cooldown expired. The fix is a model, not a patch.
   **not** share the eat reach, which is what made the food ride the midpoint between both
   hands like a meal being lifted to the mouth. The buddy turns frontal for it, because the
   "no" is aimed at the player who offered the food, and the refusal owns the head for its
-  duration so an ambient glance cannot wander off mid-shake. The shake is exactly **two**
-  side-to-side beats, seeked across the behavior-owned refusal window rather than advanced in
-  real time, so the beats fill the window however the two profiles are tuned. It ends in a
+  duration so an ambient glance cannot wander off mid-gesture. The “no” is a **head yaw**,
+  not a sideways translation: rotate around the neck’s vertical axis as though looking over
+  alternating shoulders, cross neutral continuously without a pause, use no more than four
+  alternating extremes, damp the amplitude, keep pitch/roll substantially stable, and finish
+  neutral. The first extreme is capped at `30°` (`ActivityRefuseYawDegrees`); the authored
+  four-extreme shape is left `30°`, right `24.9°`, left `20.1°`, right `12°`, then neutral.
+  The clip is seeked across the behavior-owned refusal window rather than advanced in real
+  time, so the gesture fills the window however the two profiles are tuned. It ends in a
   plain **drop below the buddy**: the old discard impulse threw the food aside, which is what
   the owner saw as the food glitching away. Distance was never what stopped the fetch loop —
   the per-object refusal memory is.

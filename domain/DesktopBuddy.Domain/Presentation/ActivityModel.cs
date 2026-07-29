@@ -39,10 +39,10 @@ public readonly record struct ActivityParameters(
     float WaveSeconds);
 
 /// <summary>
-/// Pure-logic image of the M3.6 activity tuning (selector timing plus the clip
-/// amplitudes the Godot animator bakes into its offset tracks). Amplitudes are bounded
-/// well inside the offset cap per the owner's very-subtle direction; the presenter's
-/// clamp still applies on top, so even bad data cannot take a visual off its body.
+/// Pure-logic image of the M3.6 activity tuning (selector timing plus the clip values the
+/// Godot animator bakes into its tracks). Positional amplitudes are bounded well inside the
+/// offset cap per the owner's very-subtle direction; refusal yaw has its own owner-confirmed
+/// degree bound. Presentation values never mutate a physics body.
 /// </summary>
 public readonly record struct ActivityTuningData(
     float WalkSpeedThreshold,
@@ -56,13 +56,15 @@ public readonly record struct ActivityTuningData(
     float WaveAmplitude,
     float ChewAmplitude,
     float JumpSquashAmplitude,
-    float RefuseAmplitude)
+    float RefuseYawDegrees)
 {
-    // "Alive but never busy": authored amplitudes stay tiny in world pixels. The
+    // "Alive but never busy": authored positional amplitudes stay tiny in world pixels. The
     // smallest part cap today is ~0.5 x hand radius; six pixels already reads bold.
     public const float MaximumAmplitude = 6.0f;
     public const float MaximumSeconds = 10.0f;
     public const float MaximumWalkCyclePixels = 400.0f;
+    public const float MinimumRefuseYawDegrees = 20.0f;
+    public const float MaximumRefuseYawDegrees = 30.0f;
 
     public IReadOnlyList<string> Validate()
     {
@@ -78,7 +80,14 @@ public readonly record struct ActivityTuningData(
         AddPositiveBounded(errors, WaveAmplitude, MaximumAmplitude, "activity wave amplitude");
         AddPositiveBounded(errors, ChewAmplitude, MaximumAmplitude, "activity chew amplitude");
         AddPositiveBounded(errors, JumpSquashAmplitude, MaximumAmplitude, "activity jump squash amplitude");
-        AddPositiveBounded(errors, RefuseAmplitude, MaximumAmplitude, "activity refuse amplitude");
+        if (!float.IsFinite(RefuseYawDegrees) ||
+            RefuseYawDegrees < MinimumRefuseYawDegrees ||
+            RefuseYawDegrees > MaximumRefuseYawDegrees)
+        {
+            errors.Add(
+                $"activity refuse yaw must be finite within " +
+                $"[{MinimumRefuseYawDegrees:0}-{MaximumRefuseYawDegrees:0}] degrees");
+        }
         return errors;
     }
 

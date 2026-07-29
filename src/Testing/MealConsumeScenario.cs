@@ -155,9 +155,20 @@ public sealed class MealConsumeScenario : IScenario
         bool heldInOneHand = true;
         bool poseSampled = false;
         bool shakeClipPlayed = false;
-        bool facedThePlayer = false;
+        bool frontalThroughout = true;
+        bool yawBounded = true;
+        bool pitchAndRollStable = true;
+        bool headTranslationStable = true;
         float shakeLeft = 0.0f;
         float shakeRight = 0.0f;
+        var yawLobePeaks = new float[4];
+        var yawLobeSigns = new int[4];
+        int yawLobeCount = 0;
+        int activeYawSign = 0;
+        int neutralFrames = 0;
+        int maximumMiddleNeutralFrames = 0;
+        float activeYawPeak = 0.0f;
+        bool tooManyYawLobes = false;
         float carrySideways = 0.0f;
         while (shookItsHead && lab.Buddy.ObjectInteraction.IsRefusing)
         {
@@ -186,13 +197,70 @@ public sealed class MealConsumeScenario : IScenario
 
             shakeClipPlayed |= lab.Activities.CurrentClipName ==
                 ActivityAnimator.ClipNameFor(ActivityId.Refuse);
-            float headOffset = lab.Activities.OffsetFor((int)BuddyPartId.Head).X;
-            shakeLeft = Mathf.Min(shakeLeft, headOffset);
-            shakeRight = Mathf.Max(shakeRight, headOffset);
-            // Facing the player is the eased yaw returning to zero — the three-quarter turn
-            // unwinding to frontal. The remembered committed side is deliberately NOT cleared
-            // by a forced-frontal activity, so asserting it would assert the wrong thing.
-            facedThePlayer |= Mathf.Abs(lab.Facing.CurrentYawDegrees) < 1.0f;
+            float headYaw = lab.VisualPresenter.AppliedActivityHeadYawDegrees;
+            shakeLeft = Mathf.Min(shakeLeft, headYaw);
+            shakeRight = Mathf.Max(shakeRight, headYaw);
+            frontalThroughout &= Mathf.Abs(lab.VisualPresenter.AppliedYawDegrees) < 0.5f;
+            yawBounded &= Mathf.Abs(headYaw) <= 30.5f;
+            pitchAndRollStable &=
+                Mathf.Abs(lab.VisualPresenter.AppliedHeadPitchDegrees) < 0.5f &&
+                Mathf.Abs(lab.Activities.RotationFor((int)BuddyPartId.Head).X) < 0.001f &&
+                Mathf.Abs(lab.Activities.RotationFor((int)BuddyPartId.Head).Z) < 0.001f;
+            headTranslationStable &=
+                lab.Activities.OffsetFor((int)BuddyPartId.Head).Length() < 0.05f;
+
+            int yawSign = headYaw < -2.0f ? -1 : headYaw > 2.0f ? 1 : 0;
+            if (yawSign == 0)
+            {
+                if (activeYawSign != 0)
+                    neutralFrames++;
+                continue;
+            }
+
+            if (activeYawSign == 0)
+            {
+                activeYawSign = yawSign;
+                activeYawPeak = Mathf.Abs(headYaw);
+                neutralFrames = 0;
+            }
+            else if (yawSign == activeYawSign)
+            {
+                activeYawPeak = Mathf.Max(activeYawPeak, Mathf.Abs(headYaw));
+                neutralFrames = 0;
+            }
+            else
+            {
+                maximumMiddleNeutralFrames = Mathf.Max(
+                    maximumMiddleNeutralFrames,
+                    neutralFrames);
+                if (yawLobeCount < yawLobePeaks.Length)
+                {
+                    yawLobePeaks[yawLobeCount] = activeYawPeak;
+                    yawLobeSigns[yawLobeCount] = activeYawSign;
+                }
+                else
+                {
+                    tooManyYawLobes = true;
+                }
+                yawLobeCount++;
+                activeYawSign = yawSign;
+                activeYawPeak = Mathf.Abs(headYaw);
+                neutralFrames = 0;
+            }
+        }
+
+        if (activeYawSign != 0)
+        {
+            if (yawLobeCount < yawLobePeaks.Length)
+            {
+                yawLobePeaks[yawLobeCount] = activeYawPeak;
+                yawLobeSigns[yawLobeCount] = activeYawSign;
+            }
+            else
+            {
+                tooManyYawLobes = true;
+            }
+            yawLobeCount++;
         }
 
         Vector2 torsoAtRelease = lab.Buddy.Rig.Torso.GlobalPosition;
@@ -208,10 +276,31 @@ public sealed class MealConsumeScenario : IScenario
             $"shook={shookItsHead} sampled={poseSampled} sideways={carrySideways:F1}"));
 
         checks.Add(new StartupCheck(
-            "the_refusal_shakes_the_head_side_to_side_at_the_player",
-            shakeClipPlayed && shakeLeft < -0.5f && shakeRight > 0.5f && facedThePlayer,
+            "the_refusal_smoothly_rotates_the_head_left_and_right_at_the_player",
+            shakeClipPlayed &&
+            frontalThroughout &&
+            yawBounded &&
+            pitchAndRollStable &&
+            headTranslationStable &&
+            !tooManyYawLobes &&
+            yawLobeCount == 4 &&
+            yawLobeSigns[0] == -1 &&
+            yawLobeSigns[1] == 1 &&
+            yawLobeSigns[2] == -1 &&
+            yawLobeSigns[3] == 1 &&
+            yawLobePeaks[0] >= 20.0f &&
+            yawLobePeaks[0] <= 30.5f &&
+            yawLobePeaks[1] < yawLobePeaks[0] &&
+            yawLobePeaks[2] < yawLobePeaks[1] &&
+            yawLobePeaks[3] < yawLobePeaks[2] &&
+            maximumMiddleNeutralFrames <= 2 &&
+            Mathf.Abs(lab.VisualPresenter.AppliedActivityHeadYawDegrees) < 0.5f,
             $"clip={shakeClipPlayed} left={shakeLeft:F1} right={shakeRight:F1} " +
-            $"frontal={facedThePlayer}"));
+            $"frontal={frontalThroughout} bounded={yawBounded} pitch_roll={pitchAndRollStable} " +
+            $"translated={!headTranslationStable} lobes={yawLobeCount} " +
+            $"peaks={yawLobePeaks[0]:F1}/{yawLobePeaks[1]:F1}/" +
+            $"{yawLobePeaks[2]:F1}/{yawLobePeaks[3]:F1} " +
+            $"middle_neutral_frames={maximumMiddleNeutralFrames}"));
 
         // The second reported defect: the food used to be flung aside on a discard impulse,
         // which read as it glitching away. It is put down instead — it falls from the hand that

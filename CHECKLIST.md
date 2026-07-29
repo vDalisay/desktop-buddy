@@ -157,7 +157,8 @@ Baseball is owner-ACCEPTED (2026-07-29). The quick suite is now 21 steps — add
 The buddy now has a hidden `200`-point hunger bar (owner decision 2026-07-29,
 `DECISIONS.md`): it eats what fits, and refuses what would overfill. The refusal is
 the performance the owner asked for — the item held in one hand, the buddy turned to
-the player, two side-to-side head shakes, then the item put down below itself — and
+the player, a smooth damped left/right head yaw around the neck (four alternating
+extremes maximum, no center pause, neutral finish), then the item put down below itself — and
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
