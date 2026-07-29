@@ -141,14 +141,16 @@ public static class ProgressSavePolicy
             selected = ContentIds.ToolGrab;
         }
 
+        // Ownership covers every catalogue entry, not only the selectable ones: the FR-019
+        // upgrade is bought and owned like anything else while never being a tool.
         var activeUnlocks = save.UnlockedToolIds
-            .Where(ContentIds.IsTool)
+            .Where(ContentIds.IsCatalogueEntry)
             .ToArray();
         var activeHarmful = save.HarmfulContentIds
             .Where(ContentIds.IsKnown)
             .ToArray();
         var unknownIds = save.Extensions.UnknownContentIds
-            .Concat(save.UnlockedToolIds.Where(id => !ContentIds.IsTool(id)))
+            .Concat(save.UnlockedToolIds.Where(id => !ContentIds.IsCatalogueEntry(id)))
             .Concat(save.HarmfulContentIds.Where(id => !ContentIds.IsKnown(id)))
             .Distinct(StringComparer.Ordinal)
             .ToArray();

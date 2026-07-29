@@ -526,6 +526,28 @@ running the suite" remains the failure mode this plan exists to prevent.
   projectile separation, explicit reset/dock/Strength owner gates, per-tool journeys,
   visibility sequencing, firearm empty-trigger reload boundary, and M5 performance
   gate.
+- 2026-07-29 — **Task 0 catalogue spine landed** (reset operation excluded, still owner-
+  blocked). `ToolId` appended through `RepairKit = 13`; `ContentIds` gained the nine new
+  `tool.*` constants plus `upgrade.strength` and the `IsCatalogueEntry` predicate;
+  `ToolCatalog.CategoryOf` extended. New engine-free `Domain/Content/CatalogueEntry`,
+  `ToolCatalogue` (structural validation), and `CataloguePolicy` (shop/tool filtering,
+  purchase eligibility, FR-013.1 starting set, FR-013.2 launch completeness). New
+  `src/Content/ToolDefinition` + `CatalogueDefinition` + `CatalogueLoader` with the 15
+  `data/catalogue/*.tres` definitions; `boot_smoke` now validates the shipped catalogue.
+  `EconomyService.Purchase(contentId)` and `BuddyProgressState.Purchase(contentId,
+  catalogue)` are authoritative — the caller-supplied price parameter is gone.
+  `PurchaseStatus` gained `NotAvailable` (unfinished) and `NotPurchasable` (starting).
+  Fixed in passing: save load filtered unlocks with `IsTool`, which would have discarded
+  ownership of `upgrade.strength`; it now filters with `IsCatalogueEntry`.
+  Provisional data: prices in credits equal to the FR-013.4 target minutes (Baseball 3 …
+  Repair Kit 120); the Strength Upgrade is unpriced and invisible pending its owner
+  decisions. Only the four starting tools and Baseball are `Visible = true`.
+  Verified: domain 772/772, quick suite 17/17, `baseball_pullback` green on seeds 1 and 7
+  in both presentations, `boot_smoke` green.
+  **Owner check needed:** Baseball is marked shop-visible because its slice is
+  engineering-complete and its price is the only calibrated-enough number to buy with; if
+  its feel has not been accepted, flip `data/catalogue/tool_baseball.tres` to
+  `Visible = false`.
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against
   the repository (`LooseObjectRegistry` cap/eviction/protection, arbiter `Hazard = 3`
   branch, `ToolUses`/`ToolPainMilli` statistics, AGENT_VERIFICATION §7 per-tool

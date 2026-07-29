@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Damage;
 using DesktopBuddy.Domain.Economy;
 using DesktopBuddy.Domain.Persistence;
@@ -17,11 +18,20 @@ namespace DesktopBuddy.Economy;
 public sealed class EconomyService
 {
     private readonly BuddyProgressState _progress;
+    private readonly ToolCatalogue _catalogue;
 
-    public EconomyService(BuddyProgressState progress)
+    /// <param name="catalogue">
+    /// The authoritative FR-013 catalogue. Purchases resolve their price and eligibility
+    /// from it, so no caller can name a price.
+    /// </param>
+    public EconomyService(BuddyProgressState progress, ToolCatalogue catalogue)
     {
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
+        _catalogue = catalogue ?? throw new ArgumentNullException(nameof(catalogue));
     }
+
+    /// <summary>The catalogue this run sells from (ARCHITECTURE §11).</summary>
+    public ToolCatalogue Catalogue => _catalogue;
 
     /// <summary>Raised after any balance change, carrying the new milli-credit balance.</summary>
     public event Action<long>? BalanceChanged;
@@ -73,12 +83,14 @@ public sealed class EconomyService
     public bool IsUnlocked(string contentId) => _progress.IsToolUnlocked(contentId);
 
     /// <summary>
-    /// Atomically buys one catalogue tool. The caller supplies the validated typed-data
-    /// price; failed attempts never spend, unlock, or emit a balance event.
+    /// Atomically buys one catalogue entry. The service — not the caller — resolves the
+    /// entry and its authoritative price, and rejects unknown, starting, unfinished, and
+    /// otherwise non-purchasable entries. Failed attempts never spend, unlock, or emit a
+    /// balance event.
     /// </summary>
-    public PurchaseResult Purchase(string contentId, long priceMilliCredits)
+    public PurchaseResult Purchase(string contentId)
     {
-        PurchaseResult result = _progress.Purchase(contentId, priceMilliCredits);
+        PurchaseResult result = _progress.Purchase(contentId, _catalogue);
         if (result.Succeeded)
         {
             BalanceChanged?.Invoke(result.BalanceMilliCredits);

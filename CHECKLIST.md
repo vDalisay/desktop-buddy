@@ -142,8 +142,11 @@ Gotchas that WILL fail a run if you forget them:
 ## 5. Suggested next step
 
 **Milestone 5 catalogue work.** Follow
-`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`; Baseball is the current implemented
-slice. M4 is complete and owner-accepted. Its post-acceptance hardening records
+`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`. Task 0 (catalogue spine) is done: the
+15 `data/catalogue/*.tres` definitions, the engine-free `ToolCatalogue`/
+`CataloguePolicy` rules, and the authoritative `EconomyService.Purchase(contentId)`
+boundary. Progression reset is deliberately **not** implemented — it waits on the
+owner's erase/preserve matrix. Baseball is the only implemented tool slice. M4 is complete and owner-accepted. Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input
 two-process persistence journey.

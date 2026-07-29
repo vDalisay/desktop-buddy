@@ -191,7 +191,8 @@ Static data is represented by C# `Resource` subclasses and `.tres` assets:
 - `ActiveDriveProfile`: drive gains/limits for normal, fearful resistance, unconscious, and recovery modes.
 - `PainProfile`: accepted source categories and empirical impulse/effect-to-pain curves.
 - `MoodEconomyProfile`: bands, drift, care values, passive curve, cash-per-pain, and calibrated price table.
-- `ToolDefinition`: stable ID, display metadata as translation keys plus icon references, unlock price/order, use mode, PackedScene references, cooldown/ammo/fuse/status data.
+- `ToolDefinition`: stable ID, entry kind, display metadata as translation keys plus icon references, unlock price (authored in whole credits) and progression order, shop/tool-grid visibility, PackedScene references, cooldown/ammo/fuse/status data.
+- `CatalogueDefinition`: the one explicitly referenced list of `ToolDefinition` entries (`res://data/catalogue/launch_catalogue.tres`). `CatalogueLoader` turns it into the immutable engine-free `ToolCatalogue` snapshot the domain rules (`CataloguePolicy`) and `EconomyService.Purchase(contentId)` read; the catalogue, never the caller, resolves purchasability and price. An entry whose slice is unfinished stays `Visible = false` and cannot be shown or bought.
 - `StatusDefinition`: duration/refresh cap and semantic tick policy.
 - `AchievementDefinition`: stable Steam API ID and local trigger ID.
 

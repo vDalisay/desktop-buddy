@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueFireSprayer"
+script = ExtResource("1")
+ContentId = "tool.fire_sprayer"
+Kind = 1
+PriceCredits = 50
+ProgressionOrder = 9
+Visible = false
+NameKey = "shop.tool.fire_sprayer.name"
+DescriptionKey = "shop.tool.fire_sprayer.description"
+RequiresLaunchScene = false
+RequiresIcon = false

@@ -8,6 +8,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Autonomy;
@@ -382,7 +383,7 @@ public partial class JourneyRunner : Node
             loadedMood = loaded.Value.Mood;
         }
 
-        var economy = new EconomyService(progress);
+        var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
         var saves = new SaveCoordinator(progress, store, savedRevision);
         lab.Configure(new RunContext(
             progress,

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueGrab"
+script = ExtResource("1")
+ContentId = "tool.grab"
+Kind = 0
+PriceCredits = 0
+ProgressionOrder = 0
+Visible = true
+NameKey = "shop.tool.grab.name"
+DescriptionKey = "shop.tool.grab.description"
+RequiresLaunchScene = false
+RequiresIcon = false

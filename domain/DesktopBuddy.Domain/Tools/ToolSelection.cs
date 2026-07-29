@@ -13,6 +13,15 @@ public enum ToolId
     Tickle = 2,
     BoxingGlove = 3,
     Baseball = 4,
+    Meal = 5,
+    BaseballBat = 6,
+    Pistol = 7,
+    Grenade = 8,
+    FireSprayer = 9,
+    SoccerBall = 10,
+    Drink = 11,
+    Shotgun = 12,
+    RepairKit = 13,
 }
 
 /// <summary>How a tool physically acts on the buddy (RAGDOLL §9).</summary>
@@ -31,8 +40,12 @@ public static class ToolCatalog
     {
         ToolId.Grab => ToolCategory.Grab,
         ToolId.Pet or ToolId.Tickle => ToolCategory.Care,
-        ToolId.BoxingGlove => ToolCategory.Damage,
-        ToolId.Baseball => ToolCategory.PhysicsToy,
+        // Consumables act through the care/consume machinery, not the damage pipeline;
+        // their pain, when a launch hurts, still arrives as an ordinary physical impact.
+        ToolId.Meal or ToolId.Drink or ToolId.RepairKit => ToolCategory.Care,
+        ToolId.BoxingGlove or ToolId.BaseballBat or ToolId.Pistol or ToolId.Grenade or
+            ToolId.FireSprayer or ToolId.Shotgun => ToolCategory.Damage,
+        ToolId.Baseball or ToolId.SoccerBall => ToolCategory.PhysicsToy,
         _ => throw new ArgumentOutOfRangeException(nameof(tool), tool, "Unknown tool."),
     };
 

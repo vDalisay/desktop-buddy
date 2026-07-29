@@ -9,8 +9,21 @@ public enum PurchaseStatus
     Purchased,
     AlreadyOwned,
     InsufficientFunds,
+
+    /// <summary>The ID is not in this build's catalogue at all.</summary>
     InvalidContentId,
+
+    /// <summary>The catalogue entry carries no spendable whole-credit price.</summary>
     InvalidPrice,
+
+    /// <summary>
+    /// The entry exists but is not shown yet: its slice has not passed its gates, so it
+    /// cannot be sold (owner rule, 2026-07-28).
+    /// </summary>
+    NotAvailable,
+
+    /// <summary>The entry is never sold — a starting tool the save already owns.</summary>
+    NotPurchasable,
 }
 
 /// <summary>

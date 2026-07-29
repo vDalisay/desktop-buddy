@@ -5,6 +5,7 @@ using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Content;
@@ -312,7 +313,7 @@ public partial class SandboxRoot : Node2D
     private RunContext CreateInMemoryRunContext()
     {
         var progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
-        var economy = new EconomyService(progress);
+        var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
         var store = new InMemoryProgressStore();
         return new RunContext(
             progress,

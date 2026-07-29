@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Automation;
+using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Autonomy;
@@ -92,7 +93,21 @@ public partial class Bootstrap : Node
 
     private async Task BootSandboxAsync()
     {
-        StartupReport report = StartupValidator.Validate();
+        // The authored catalogue is validated with the rest of the startup invariants: a
+        // build that cannot say what it sells must not reach the shop (ARCHITECTURE §16).
+        GameResource[] resources;
+        try
+        {
+            resources = [CatalogueLoader.Definition];
+        }
+        catch (Exception exception)
+        {
+            Log.Error(Category, $"Catalogue load failed: {exception.Message}");
+            QuitSafely(2);
+            return;
+        }
+
+        StartupReport report = StartupValidator.Validate(resources);
         if (!report.Ok)
         {
             // Fail-fast in development so misconfiguration is caught immediately;
@@ -147,7 +162,7 @@ public partial class Bootstrap : Node
             : ProgressSavePolicy.CreateState(
                 progressLoad.Value ?? throw new InvalidOperationException("Load returned no progress."),
                 cashPerPain);
-        var economy = new EconomyService(progress);
+        var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
         var saves = new SaveCoordinator(
             progress,
             store,

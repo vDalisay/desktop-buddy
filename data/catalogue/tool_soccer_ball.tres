@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueSoccerBall"
+script = ExtResource("1")
+ContentId = "tool.soccer_ball"
+Kind = 1
+PriceCredits = 65
+ProgressionOrder = 10
+Visible = false
+NameKey = "shop.tool.soccer_ball.name"
+DescriptionKey = "shop.tool.soccer_ball.description"
+RequiresLaunchScene = false
+RequiresIcon = false

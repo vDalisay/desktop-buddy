@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueBoxingGlove"
+script = ExtResource("1")
+ContentId = "tool.boxing_glove"
+Kind = 0
+PriceCredits = 0
+ProgressionOrder = 3
+Visible = true
+NameKey = "shop.tool.boxing_glove.name"
+DescriptionKey = "shop.tool.boxing_glove.description"
+RequiresLaunchScene = false
+RequiresIcon = false

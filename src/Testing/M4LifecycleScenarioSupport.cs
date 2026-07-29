@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
@@ -25,7 +26,7 @@ internal static class M4LifecycleScenarioSupport
             return null;
         double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
         var progress = new BuddyProgressState(cashPerPain);
-        var economy = new EconomyService(progress);
+        var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
         var store = new InMemoryProgressStore();
         var saves = new SaveCoordinator(progress, store);
         sandbox.Configure(new RunContext(
