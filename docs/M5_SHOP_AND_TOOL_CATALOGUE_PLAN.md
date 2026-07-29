@@ -598,12 +598,28 @@ running the suite" remains the failure mode this plan exists to prevent.
   drain rates) plus `HungerActivityPolicy`; fullness is persisted (save schema 4 → 5, legacy
   saves resume empty); `LooseObjectProfile` authors `ConsumeHungerFill`; the Meal fills `50`
   and its cooldown is `0`. Refusal is a performance: pick up once, head-shake through the new
-  `ActivityId.Refuse` clip, throw it aside, then ignore that specific item until there is room
+  `ActivityId.Refuse` clip, put it down, then ignore that specific item until there is room
   for it — other food is still judged on its own size. FR-008.4/.5/.10 amended; FR-008.16–19
   added; FR-008.6 followed the same day — the Repair Kit has **no** cooldown and no appetite
   gate (owner), so nothing rations it. Verified: domain 805/805, quick suite 21/21, `meal_consume` (now including
   the refusal loop and the recovery) + `m5_meal` + `consume_care_cooldown` + `activity_clips`
   + `m36_expressive` + `care_persistence` green on seeds 1 and 7 in both presentations.
+- 2026-07-29 — Owner correction on the refusal performance (FR-008.19 amended). Three defects
+  in the first cut: the refusal shared `EatReachActive`, so the food rode the midpoint between
+  both hands instead of the one hand that picked it up; the `ActivityId.Refuse` clip was never
+  requested from the selector, so no head-shake ever played; and the resolve threw the item
+  aside on the discard impulse, which read as the food glitching away. Now: the refusal keeps
+  the ordinary one-handed carry (only `IsStationary` is shared), the animator requests the clip
+  and **seeks** it by the new `BehaviorActivityComponent.RefuseProgress` so exactly two beats
+  fill the `96`-tick window, facing and the head look-at are both forced frontal for the
+  duration (the "no" is aimed at the player), the shake amplitude is authored as
+  `ActivityRefuseAmplitude` (`5` px, inside the same subtle bound), and the item is dropped at
+  rest below the buddy. `meal_consume` gains three checks — one hand, the two-way shake at a
+  frontal buddy, and the at-rest drop below the buddy with no discard. Verified: domain
+  808/808, quick suite 21/21, `meal_consume` seeds 1/7/13, `activity_clips`,
+  `consume_care_cooldown`, `lookat_priority_and_cone`, `facing_follows_walk`,
+  `object_toss_discard`, `face_composition`, and the `m36_expressive` + `m5_meal` journeys on
+  seeds 1 and 7.
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against
   the repository (`LooseObjectRegistry` cap/eviction/protection, arbiter `Hazard = 3`
   branch, `ToolUses`/`ToolPainMilli` statistics, AGENT_VERIFICATION §7 per-tool

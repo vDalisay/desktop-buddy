@@ -893,9 +893,20 @@ it, and repeating until its cooldown expired. The fix is a model, not a patch.
   `ConsumeCooldownTicks` field stays in the object profile at `0`, unused by shipped content,
   rather than being deleted from a schema mid-milestone.
 - **Refusal is a performance, not a silent drop** (FR-008.19). The buddy picks the item up
-  once, shakes its head side to side, and throws it aside; then it ignores *that* item until
+  once, shakes its head side to side, and puts it down; then it ignores *that* item until
   it has room for that portion again. Other food is still considered on its own size. The
   refusal is remembered per object, so the fetch-drop-fetch loop cannot recur.
+- **The refusal is staged exactly as the owner described it** (correction 2026-07-29, after
+  seeing the first cut): the item stays in the ONE hand that picked it up — the refusal does
+  **not** share the eat reach, which is what made the food ride the midpoint between both
+  hands like a meal being lifted to the mouth. The buddy turns frontal for it, because the
+  "no" is aimed at the player who offered the food, and the refusal owns the head for its
+  duration so an ambient glance cannot wander off mid-shake. The shake is exactly **two**
+  side-to-side beats, seeked across the behavior-owned refusal window rather than advanced in
+  real time, so the beats fill the window however the two profiles are tuned. It ends in a
+  plain **drop below the buddy**: the old discard impulse threw the food aside, which is what
+  the owner saw as the food glitching away. Distance was never what stopped the fetch loop —
+  the per-object refusal memory is.
 - **Provisional magnitudes** (agent-tunable): Meal fills `50` points, the head-shake runs
   `96` ticks (`0.8` s), and a new save starts with an empty stomach. A schema-4 save loads
   empty too, so an upgrade never leaves a buddy mysteriously full.

@@ -176,7 +176,10 @@ public partial class HeadLookAtComponent : Node
             item.X, item.Y,
             (int)Math.Clamp(ticksSinceImpact, 0, int.MaxValue),
             _lastImpactPoint.X, _lastImpactPoint.Y,
-            Profile.SuppressesLookAt(Reactions.CurrentFace),
+            // A refusal owns the head exactly like a high-priority reaction face does: the gaze
+            // rests dead ahead — at the player the buddy is saying no to — so an ambient glance
+            // cannot wander off mid-shake (owner instruction 2026-07-29).
+            Profile.SuppressesLookAt(Reactions.CurrentFace) || Buddy.Activity.IsRefusing,
             head.X, head.Y);
         return _model.Update(inputs, ticksElapsed, deltaSeconds);
     }

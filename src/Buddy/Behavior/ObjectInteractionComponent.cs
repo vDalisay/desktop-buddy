@@ -736,10 +736,11 @@ public partial class ObjectInteractionComponent : Area2D
     }
 
     /// <summary>
-    /// "No thanks." The buddy keeps hold of the item, shakes its head, and — once the shake
-    /// finishes in <see cref="ResolveRefusal"/> — throws it aside and stops caring about that
-    /// item until its appetite comes back (owner instruction 2026-07-29). Picking it up and
-    /// dropping it silently was the loop this replaces.
+    /// "No thanks." The buddy keeps the item in the ONE hand that picked it up, turns to the
+    /// player, shakes its head twice, and — once the shake finishes in
+    /// <see cref="ResolveRefusal"/> — puts the item down below itself and stops caring about
+    /// that item until its appetite comes back (owner instruction 2026-07-29). Picking it up
+    /// and dropping it silently was the loop this replaces.
     /// </summary>
     private void BeginRefusal()
     {
@@ -755,22 +756,34 @@ public partial class ObjectInteractionComponent : Area2D
     }
 
     /// <summary>
-    /// Ends a refusal once the head-shake has played: the item is thrown aside and the
-    /// lifecycle returns to idle. Called every tick, so an interrupted shake (a punch, a
+    /// Ends a refusal once the head-shake has played: the item is put down below the buddy and
+    /// the lifecycle returns to idle. Called every tick, so an interrupted shake (a punch, a
     /// grab) still resolves rather than leaving the buddy holding what it refused.
+    ///
+    /// <para>A plain drop, not the discard throw it used to be: flinging the food away read as
+    /// the item glitching out of the buddy's hands (owner report 2026-07-29). Nothing else was
+    /// needed — the refusal memory, not distance, is what stops the fetch loop.</para>
     /// </summary>
     private void ResolveRefusal()
     {
         if (_refusingRuntimeId == 0 || Activity.IsRefusing)
             return;
 
-        LooseObjectBody? refused = _registry.FindBody(_refusingRuntimeId);
         _refusingRuntimeId = 0;
         _model.Reset();
-        if (GodotObject.IsInstanceValid(refused) && IsHolding)
-            ReleaseWithImpulse(refused, _cursorWorldPosition, discard: true);
-        else if (IsHolding)
-            ReleaseHeld(ObjectDriveAction.Drop, Vector2.Zero);
+        if (!IsHolding)
+            return;
+
+        LooseObjectBody? dropped = _heldBody;
+        ReleaseHeld(ObjectDriveAction.Drop, Vector2.Zero);
+        DropCount++;
+        // The release hands the object the carrying hand's own motion so a throw continues the
+        // gesture; a refusal is the opposite — it lets go, and the food falls where it stood.
+        if (GodotObject.IsInstanceValid(dropped))
+        {
+            dropped!.LinearVelocity = Vector2.Zero;
+            dropped.AngularVelocity = 0.0f;
+        }
     }
 
     /// <summary>

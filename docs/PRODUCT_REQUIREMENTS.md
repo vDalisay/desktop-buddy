@@ -152,7 +152,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 16. **FR-008.16:** WHILE the game is running THEN the buddy SHALL hold a hidden `200`-point hunger bar that food fills and time empties; it SHALL NOT be displayed, and the player SHALL read it only from the buddy's behavior. Fullness SHALL persist across sessions.
 17. **FR-008.17:** WHEN the buddy considers eating an item THEN it SHALL accept the item only if the item's fill amount fits in the room remaining (`fullness + fill <= 200`); a nearly full buddy SHALL therefore accept a small item while refusing a large one.
 18. **FR-008.18:** WHILE time passes THEN fullness SHALL fall by `20` points per minute while the buddy is being actively played with, `10` points per minute during ordinary Play-mode presence, and `2` points per minute while the shell is in Work mode or the buddy is hidden.
-19. **FR-008.19:** WHEN the buddy picks up an item it has no room for THEN it SHALL refuse it visibly — a side-to-side head shake — and then put the item down away from itself, and SHALL NOT retrieve that specific item again until its appetite has room for that item's fill amount. Other items SHALL remain eligible for consideration on their own fill amounts.
+19. **FR-008.19:** WHEN the buddy picks up an item it has no room for THEN it SHALL hold that item in ONE hand, turn to face the player, shake its head side to side twice, then put the item down below itself, and SHALL NOT retrieve that specific item again until its appetite has room for that item's fill amount. The item SHALL NOT be thrown or flung on the refusal. Other items SHALL remain eligible for consideration on their own fill amounts.
 
 ### FR-009 — Tool Input Conventions
 

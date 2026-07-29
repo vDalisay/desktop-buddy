@@ -175,7 +175,8 @@ public sealed class ActivityTuningDataTests
         WalkBobAmplitude: 1.5f,
         WaveAmplitude: 3.0f,
         ChewAmplitude: 1.0f,
-        JumpSquashAmplitude: 2.5f);
+        JumpSquashAmplitude: 2.5f,
+        RefuseAmplitude: 5.0f);
 
     [Fact]
     public void AcceptedDefaults_Pass() => Assert.Empty(Accepted.Validate());
@@ -188,6 +189,19 @@ public sealed class ActivityTuningDataTests
         Assert.Single(
             (Accepted with { BreatheAmplitude = amplitude }).Validate(),
             error => error.Contains("breathe amplitude"));
+
+    /// <summary>
+    /// The refusal shake is authored wider than the other clips on purpose, so its own bound is
+    /// worth asserting: "wider" still means inside the same six-pixel subtle limit.
+    /// </summary>
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(7.0f)]
+    [InlineData(float.NaN)]
+    public void RefuseAmplitudeOutsideSubtleBound_Fails(float amplitude) =>
+        Assert.Single(
+            (Accepted with { RefuseAmplitude = amplitude }).Validate(),
+            error => error.Contains("refuse amplitude"));
 
     [Theory]
     [InlineData(0.0f)]

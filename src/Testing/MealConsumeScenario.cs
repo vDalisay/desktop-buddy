@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Mood;
@@ -17,9 +19,9 @@ namespace DesktopBuddy.Testing;
 ///
 /// <para>Five phases in one room: an abandoned meal feeds nobody, a finished one pays its
 /// mood and fills the bar, meals stop being accepted once the bar is full, a refused meal is
-/// performed and thrown aside rather than silently dropped — and, crucially, is then left
-/// alone instead of being fetched again forever — and appetite returning puts it back on the
-/// menu.</para>
+/// performed as the owner asked — carried in one hand, shaken off at the player, put down
+/// below the buddy, and then left alone instead of being fetched again forever — and appetite
+/// returning puts it back on the menu.</para>
 /// </summary>
 public sealed class MealConsumeScenario : IScenario
 {
@@ -132,8 +134,10 @@ public sealed class MealConsumeScenario : IScenario
             $"meals={meals} fullness={lab.Progress.Fullness:F1} appetite={lab.Progress.Appetite:F1} " +
             $"successes={lab.Buddy.ObjectInteraction.ConsumeSuccessCount}"));
 
-        // Phase 4 — the refusal: picked up once, performed, thrown aside, then left alone.
+        // Phase 4 — the refusal, as the owner asked for it: picked up in ONE hand, aimed at the
+        // player, shaken off twice, put down below itself, then left alone.
         int successesBeforeRefusal = lab.Buddy.ObjectInteraction.ConsumeSuccessCount;
+        int discardsBeforeRefusal = lab.Buddy.ObjectInteraction.DiscardCount;
         float moodBeforeRefusal = lab.Progress.Mood;
         bool placedRefused = await PlaceMeal(tree, lab);
         LooseObjectBody? refused = lab.Launcher.CurrentLaunchable;
@@ -142,11 +146,99 @@ public sealed class MealConsumeScenario : IScenario
             tree,
             () => lab.Buddy.Activity.Current == ActivityId.Refuse,
             FetchTimeoutTicks);
+
+        // Sampled through the performance, not once: the reported defect was a pose, so it has
+        // to hold for the whole shake. The pose itself is read over the back half of the
+        // window, because the hands start where the pickup left them and spring to the carry
+        // pose over the first few ticks. The clip and the frontal turn are read on process
+        // frames, where the expressive layer runs in either presentation mode.
+        bool heldInOneHand = true;
+        bool poseSampled = false;
+        bool shakeClipPlayed = false;
+        bool facedThePlayer = false;
+        float shakeLeft = 0.0f;
+        float shakeRight = 0.0f;
+        float carrySideways = 0.0f;
+        while (shookItsHead && lab.Buddy.ObjectInteraction.IsRefusing)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            LooseObjectBody? inHand = lab.Objects.FindBody(refusedId);
+            if (lab.Buddy.Activity.RefuseProgress >= 0.5f &&
+                lab.Buddy.ObjectInteraction.IsHolding &&
+                GodotObject.IsInstanceValid(inHand))
+            {
+                Vector2 left = lab.Buddy.Rig.LeftHand.GlobalPosition;
+                Vector2 right = lab.Buddy.Rig.RightHand.GlobalPosition;
+                Vector2 between = (left + right) * 0.5f;
+                float nearer = Mathf.Min(
+                    left.DistanceTo(inHand!.GlobalPosition),
+                    right.DistanceTo(inHand.GlobalPosition));
+                float clearance = lab.Buddy.Rig.LeftHand.Radius + inHand.Radius + 8.0f;
+                carrySideways = Mathf.Abs(inHand.GlobalPosition.X - between.X);
+                // One hand: resting on a hand, and NOT between them the way an eaten meal is.
+                heldInOneHand &= nearer <= clearance && carrySideways >= 12.0f;
+                poseSampled = true;
+            }
+
+            if (lab.Buddy.Activity.Current != ActivityId.Refuse)
+                continue;
+
+            shakeClipPlayed |= lab.Activities.CurrentClipName ==
+                ActivityAnimator.ClipNameFor(ActivityId.Refuse);
+            float headOffset = lab.Activities.OffsetFor((int)BuddyPartId.Head).X;
+            shakeLeft = Mathf.Min(shakeLeft, headOffset);
+            shakeRight = Mathf.Max(shakeRight, headOffset);
+            // Facing the player is the eased yaw returning to zero — the three-quarter turn
+            // unwinding to frontal. The remembered committed side is deliberately NOT cleared
+            // by a forced-frontal activity, so asserting it would assert the wrong thing.
+            facedThePlayer |= Mathf.Abs(lab.Facing.CurrentYawDegrees) < 1.0f;
+        }
+
+        Vector2 torsoAtRelease = lab.Buddy.Rig.Torso.GlobalPosition;
         bool releasedIt = shookItsHead && await M4ObjectScenarioSupport.WaitFor(
             tree,
             () => !lab.Buddy.ObjectInteraction.IsHolding &&
                   !lab.Buddy.ObjectInteraction.IsRefusing,
             600);
+
+        checks.Add(new StartupCheck(
+            "the_refused_meal_is_held_in_one_hand",
+            shookItsHead && poseSampled && heldInOneHand,
+            $"shook={shookItsHead} sampled={poseSampled} sideways={carrySideways:F1}"));
+
+        checks.Add(new StartupCheck(
+            "the_refusal_shakes_the_head_side_to_side_at_the_player",
+            shakeClipPlayed && shakeLeft < -0.5f && shakeRight > 0.5f && facedThePlayer,
+            $"clip={shakeClipPlayed} left={shakeLeft:F1} right={shakeRight:F1} " +
+            $"frontal={facedThePlayer}"));
+
+        // The second reported defect: the food used to be flung aside on a discard impulse,
+        // which read as it glitching away. It is put down instead — it falls from the hand that
+        // held it and comes to rest below where the buddy was standing.
+        for (int tick = 0; tick < 180 && GodotObject.IsInstanceValid(refused); tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            if (refused!.LinearVelocity.Length() < 1.0f && tick > 30)
+                break;
+        }
+
+        float droppedSideways = GodotObject.IsInstanceValid(refused)
+            ? Mathf.Abs(refused!.GlobalPosition.X - torsoAtRelease.X)
+            : float.MaxValue;
+        float droppedBelow = GodotObject.IsInstanceValid(refused)
+            ? refused!.GlobalPosition.Y - torsoAtRelease.Y
+            : float.MinValue;
+
+        checks.Add(new StartupCheck(
+            "the_refused_meal_is_put_down_below_the_buddy",
+            releasedIt &&
+            lab.Buddy.ObjectInteraction.DiscardCount == discardsBeforeRefusal &&
+            lab.Buddy.ObjectInteraction.LastReleaseImpulse == Vector2.Zero &&
+            droppedSideways <= 60.0f && droppedBelow > 0.0f,
+            $"sideways={droppedSideways:F1} below={droppedBelow:F1} " +
+            $"impulse={lab.Buddy.ObjectInteraction.LastReleaseImpulse.Length():F1} " +
+            $"discards={lab.Buddy.ObjectInteraction.DiscardCount}"));
 
         checks.Add(new StartupCheck(
             "a_meal_it_has_no_room_for_is_refused_not_eaten",

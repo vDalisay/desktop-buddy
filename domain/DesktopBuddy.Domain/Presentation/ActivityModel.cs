@@ -55,7 +55,8 @@ public readonly record struct ActivityTuningData(
     float WalkBobAmplitude,
     float WaveAmplitude,
     float ChewAmplitude,
-    float JumpSquashAmplitude)
+    float JumpSquashAmplitude,
+    float RefuseAmplitude)
 {
     // "Alive but never busy": authored amplitudes stay tiny in world pixels. The
     // smallest part cap today is ~0.5 x hand radius; six pixels already reads bold.
@@ -77,6 +78,7 @@ public readonly record struct ActivityTuningData(
         AddPositiveBounded(errors, WaveAmplitude, MaximumAmplitude, "activity wave amplitude");
         AddPositiveBounded(errors, ChewAmplitude, MaximumAmplitude, "activity chew amplitude");
         AddPositiveBounded(errors, JumpSquashAmplitude, MaximumAmplitude, "activity jump squash amplitude");
+        AddPositiveBounded(errors, RefuseAmplitude, MaximumAmplitude, "activity refuse amplitude");
         return errors;
     }
 

@@ -30,6 +30,7 @@ public partial class ActivityAnimator : Node3D
     private readonly Node3D[] _proxies = new Node3D[PuppetRigProfile.RequiredPartCount];
     private AnimationPlayer _player = null!;
     private ActivitySelector _selector = null!;
+    private float _refuseClipLength = 1.0f;
 
     public bool IsInitialized { get; private set; }
     public Node3D ItemSocket { get; private set; } = null!;
@@ -87,7 +88,9 @@ public partial class ActivityAnimator : Node3D
         library.AddAnimation(ClipNameFor(ActivityId.JumpAnticipation), BuildJumpClip(tuning));
         library.AddAnimation(ClipNameFor(ActivityId.Wave), BuildWaveClip(tuning));
         library.AddAnimation(ClipNameFor(ActivityId.Eat), BuildEatClip(tuning));
-        library.AddAnimation(ClipNameFor(ActivityId.Refuse), BuildRefuseClip(tuning));
+        Animation refuse = BuildRefuseClip(tuning);
+        _refuseClipLength = refuse.Length;
+        library.AddAnimation(ClipNameFor(ActivityId.Refuse), refuse);
         _player.AddAnimationLibrary(string.Empty, library);
 
         // Presentation-only food follows the midpoint of both physical hand sockets.
@@ -122,6 +125,11 @@ public partial class ActivityAnimator : Node3D
         {
             case ActivityId.Eat:
                 _selector.RequestEat(Buddy.Activity.RemainingTicks /
+                    (double)Engine.PhysicsTicksPerSecond);
+                break;
+            case ActivityId.Refuse:
+                // The behavior layer owns the refusal window; the shake covers all of it.
+                _selector.RequestRefuse(Buddy.Activity.RemainingTicks /
                     (double)Engine.PhysicsTicksPerSecond);
                 break;
             case ActivityId.Wave:
@@ -227,6 +235,12 @@ public partial class ActivityAnimator : Node3D
         else if (activity == ActivityId.Eat)
         {
             _player.Seek(Buddy.Activity.EatCycleProgress, update: true);
+        }
+        else if (activity == ActivityId.Refuse)
+        {
+            // Seeked, not advanced: the shake is stretched across the behavior-owned refusal
+            // window, so the two beats fill it however the two profiles are tuned.
+            _player.Seek(Buddy.Activity.RefuseProgress * _refuseClipLength, update: true);
         }
         else
         {
@@ -364,21 +378,22 @@ public partial class ActivityAnimator : Node3D
     }
 
     /// <summary>
-    /// "No thanks": two side-to-side head shakes over the refusal window. Sideways only —
-    /// a horizontal head motion is what reads as refusal, and the amplitude stays inside the
-    /// same tiny bound every other clip honors.
+    /// "No thanks": exactly TWO side-to-side head shakes, sideways only — a horizontal head
+    /// motion is what reads as refusal (owner instruction 2026-07-29). The clip is seeked by
+    /// the behavior-owned refusal window in <see cref="Evaluate"/>, so its own length is only
+    /// a shape: each shake is one full left-right pass, and the head ends where it started.
     /// </summary>
     private static Animation BuildRefuseClip(in ActivityTuningData tuning)
     {
-        float amplitude = tuning.WaveAmplitude;
-        double length = tuning.WaveSeconds * 0.55;
+        float amplitude = tuning.RefuseAmplitude;
+        double length = tuning.WaveSeconds;
         var animation = new Animation { Length = (float)length };
         int head = AddPositionTrack(animation, BuddyPartId.Head);
         Key(animation, head, 0.0, 0.0f, 0.0f);
-        Key(animation, head, length * 0.15, -amplitude, 0.0f);
-        Key(animation, head, length * 0.38, amplitude, 0.0f);
-        Key(animation, head, length * 0.62, -amplitude, 0.0f);
-        Key(animation, head, length * 0.85, amplitude * 0.6f, 0.0f);
+        Key(animation, head, length * 0.14, -amplitude, 0.0f);
+        Key(animation, head, length * 0.35, amplitude, 0.0f);
+        Key(animation, head, length * 0.56, -amplitude, 0.0f);
+        Key(animation, head, length * 0.78, amplitude, 0.0f);
         Key(animation, head, length, 0.0f, 0.0f);
         return animation;
     }

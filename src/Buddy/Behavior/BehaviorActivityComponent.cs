@@ -18,13 +18,24 @@ public partial class BehaviorActivityComponent : Node
 
     public ActivityId Current { get; private set; } = ActivityId.None;
     public int RemainingTicks { get; private set; }
-    // Refusing is a two-handed "no thanks" the buddy performs standing still, holding the
-    // thing it is about to put down — so it keeps the eat reach and the stationary gate.
+    // Refusing is performed standing still, so it shares the stationary gate — but NOT the
+    // eat reach: the buddy holds the thing it is refusing in ONE hand and shakes its head at
+    // the player, rather than raising it to its mouth with both (owner correction 2026-07-29).
     public bool IsStationary => Current is ActivityId.Eat or ActivityId.Refuse;
-    public bool EatReachActive => Current is ActivityId.Eat or ActivityId.Refuse;
+    public bool EatReachActive => Current == ActivityId.Eat;
 
     /// <summary>True while the buddy is shaking its head at something it will not eat.</summary>
     public bool IsRefusing => Current == ActivityId.Refuse;
+
+    /// <summary>
+    /// How far through the refusal window the buddy is, in <c>[0, 1]</c>. Presentation seeks
+    /// the head-shake clip by this rather than advancing it in real time, so the two shakes
+    /// always fill exactly the authored window instead of finishing early and leaving the
+    /// buddy standing frozen with food in its hand.
+    /// </summary>
+    public float RefuseProgress => Current == ActivityId.Refuse
+        ? Mathf.Clamp(1.0f - (RemainingTicks / (float)Profile.RefuseDurationTicks), 0.0f, 1.0f)
+        : 0.0f;
     public int EatBitesCompleted { get; private set; }
     public int EatBiteCount => Profile.EatBiteCount;
     public float EatItemScale => Current == ActivityId.Eat

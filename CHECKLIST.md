@@ -155,9 +155,11 @@ Baseball is owner-ACCEPTED (2026-07-29). The quick suite is now 21 steps — add
 `m5_meal` real-input journey.
 
 The buddy now has a hidden `200`-point hunger bar (owner decision 2026-07-29,
-`DECISIONS.md`): it eats what fits, refuses what would overfill with a head-shake
-and a toss-aside, and leaves that item alone until it has room. Food reuse
-cooldowns are gone; the save schema is `5`.
+`DECISIONS.md`): it eats what fits, and refuses what would overfill. The refusal is
+the performance the owner asked for — the item held in one hand, the buddy turned to
+the player, two side-to-side head shakes, then the item put down below itself — and
+it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
+schema is `5`.
 
 **Next owner action:** run the lab, press `6` to place a Meal, launch it with the
 Grab + secondary chord, and judge whether the Meal slice feels right — including
