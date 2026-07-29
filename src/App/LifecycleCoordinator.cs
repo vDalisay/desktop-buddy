@@ -25,6 +25,7 @@ public partial class LifecycleCoordinator : Node
     private double _pendingSeconds;
     private int _foregroundMaxFps;
     private bool _presentationThrottled;
+    private bool _shuttingDown;
 
     public bool IsInitialized { get; private set; }
     public bool IsHiddenToTray { get; private set; }
@@ -69,7 +70,7 @@ public partial class LifecycleCoordinator : Node
 
     public override void _Process(double delta)
     {
-        if (!IsInitialized || !_clock.TrySample(out double elapsed))
+        if (!IsInitialized || _shuttingDown || !_clock.TrySample(out double elapsed))
             return;
         _pendingSeconds += elapsed;
         double cadence = AccruesAsHidden
@@ -84,10 +85,9 @@ public partial class LifecycleCoordinator : Node
 
     public void SetHiddenToTray(bool hidden)
     {
-        if (!IsInitialized || hidden == IsHiddenToTray)
+        if (!IsInitialized || _shuttingDown || hidden == IsHiddenToTray)
             return;
-        _clock.Reset();
-        _pendingSeconds = 0.0;
+        SettleCurrentBucket();
         IsHiddenToTray = hidden;
         if (hidden)
         {
@@ -105,16 +105,16 @@ public partial class LifecycleCoordinator : Node
 
     public void NotifySuspended()
     {
-        if (!IsInitialized)
+        if (!IsInitialized || _shuttingDown)
             return;
+        SettleCurrentBucket();
         _clock.Reset();
-        _pendingSeconds = 0.0;
         GetTree().Paused = true;
     }
 
     public void NotifyResumed(bool remainHidden)
     {
-        if (!IsInitialized)
+        if (!IsInitialized || _shuttingDown)
             return;
         _clock.Reset();
         _pendingSeconds = 0.0;
@@ -135,9 +135,36 @@ public partial class LifecycleCoordinator : Node
     /// </summary>
     public void NotifySessionLock(bool locked)
     {
-        if (!IsInitialized || locked == IsSessionLocked)
+        if (!IsInitialized || _shuttingDown || locked == IsSessionLocked)
             return;
+        SettleCurrentBucket();
         IsSessionLocked = locked;
+    }
+
+    /// <summary>
+    /// Settles the final accepted span and stops lifecycle mutation before a clean-exit
+    /// snapshot. Suspended time was already re-anchored on resume and is never included.
+    /// Idempotent so the explicit close path and the tree-exit fallback can both call it.
+    /// </summary>
+    public void BeginShutdown()
+    {
+        if (!IsInitialized || _shuttingDown)
+            return;
+        SettleCurrentBucket();
+        _shuttingDown = true;
+        SetProcess(false);
+    }
+
+    private void SettleCurrentBucket()
+    {
+        if (_clock.TrySample(out double elapsed))
+            _pendingSeconds += elapsed;
+        if (_pendingSeconds > 0.0)
+        {
+            double accepted = _pendingSeconds;
+            _pendingSeconds = 0.0;
+            ApplyAcceptedSpan(accepted);
+        }
     }
 
     private void ThrottlePresentation()

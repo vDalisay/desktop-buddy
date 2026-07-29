@@ -277,8 +277,36 @@ public partial class SandboxRoot : Node2D
         if (DisplayServer.GetName() != "headless" && IsInsideTree())
             GetWindow().CloseRequested -= OnCloseRequested;
 
+        // CloseRequested normally performs the awaited save before Quit. This blocking
+        // fallback covers other clean tree exits (runner shutdown, host-initiated quit)
+        // so a dirty final revision is never abandoned by a fire-and-forget task.
         if (Saves is not null && Saves.IsDirty)
-            _ = ObserveSaveAsync(Saves.FlushProgressAsync(force: true), "Exit save");
+        {
+            if (GodotObject.IsInstanceValid(Lifecycle))
+            {
+                try
+                {
+                    Lifecycle.BeginShutdown();
+                }
+                catch (Exception exception)
+                {
+                    Log.Error(
+                        "Persistence",
+                        $"Lifecycle shutdown settle failed; attempting final save: {exception.Message}");
+                }
+            }
+
+            try
+            {
+                Saves.FlushProgressAsync(force: true).GetAwaiter().GetResult();
+            }
+            catch (Exception exception)
+            {
+                Log.Error(
+                    "Persistence",
+                    $"Exit save failed; progress remains dirty: {exception.Message}");
+            }
+        }
     }
 
     private RunContext CreateInMemoryRunContext()
@@ -328,6 +356,7 @@ public partial class SandboxRoot : Node2D
         SetPhysicsProcess(false);
         try
         {
+            Lifecycle.BeginShutdown();
             // Forced: this is the last chance to write, so a mutation that landed during
             // the flush must not be abandoned.
             await Saves.FlushProgressAsync(force: true);

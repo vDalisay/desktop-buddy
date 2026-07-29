@@ -1,6 +1,7 @@
 # Milestone 4 Owner Feel Gate
 
-Automated prerequisites completed 2026-07-26 and re-verified after the review-fix
+At the pre-acceptance review, automated prerequisites completed 2026-07-26 and
+were re-verified after the review-fix
 pass (`docs/M4_REVIEW_FIXES_PLAN.md`): `dotnet test` is green at 638/638,
 `tools\quick_validate.bat` passes all 15 checks, the valid headless scenario matrix
 is 78/78 (39 runnable scenarios in both presentations; the window-only visual gate

@@ -117,7 +117,13 @@ Milestone 1 additionally runs the `lab_spawn_settle` journey and the `passive_ri
 
 Milestone 3 adds `impact_dedup`, `knockout_window`, `payout_by_region`, `pet_tickle_mood`, and `m3_presentation`, plus the `m3_glove_strike` journey. These cover authoritative physical contact attribution, resting-contact suppression and episode re-arm, the rolling pain window and exact four-second knockout, region/consciousness payout rules, independent care cadence, reaction priority/audio/fear memory, whole-credit HUD formatting, coalesced reward feedback, and the invariant that selecting a damage tool cannot itself award money.
 
-Milestone 4 brings the catalog to 41 scenarios and 11 journeys. Its focused gates cover object catch/hold/toss/consume, the priority-0–7 behavior arbiter and five mood bands, persisted obstacle-hop traits, versioned atomic progress with backup/quarantine recovery, monotonic no-catch-up lifecycle timing, hidden passive accrual with frozen physics, and the phased `care_persistence` save→fresh-process→safe-resume journey.
+Milestone 4 brought the catalog to 42 scenarios and 11 journeys. Milestone 5's
+Baseball slice adds the current 43rd scenario. The M4 focused gates cover object
+catch/hold/toss/consume, the priority-0–7 behavior arbiter and five mood bands,
+persisted obstacle-hop traits, versioned atomic progress with backup/quarantine
+recovery, monotonic no-catch-up lifecycle timing, hidden passive accrual with frozen
+physics, and the phased `care_persistence` real-input save→fresh-process→safe-resume
+journey.
 
 Milestone 5 begins with the `baseball_pullback` scenario and pure purchase tests. This
 slice covers atomic permanent ownership, locked selection, immediate purchase saving,

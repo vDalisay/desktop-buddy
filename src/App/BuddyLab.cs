@@ -38,6 +38,7 @@ public partial class BuddyLab : Node2D
 {
     private bool _allocationProbeEnabled;
     private IWindowsDesktopAdapter _windowAdapter = null!;
+    private RunContext? _runContext;
 
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public LaboratoryControlComponent Controls { get; set; } = null!;
@@ -84,6 +85,17 @@ public partial class BuddyLab : Node2D
     [Export] public PresentationMode Mode { get; set; } = PresentationMode.Mii3D;
     public TelemetryRecorder? TelemetryRecorder { get; private set; }
 
+    /// <summary>
+    /// Injects a journey-owned persistence context before composition. Ordinary lab and
+    /// scenario runs omit this and remain hermetic in memory.
+    /// </summary>
+    public void Configure(RunContext context)
+    {
+        if (IsInsideTree())
+            throw new InvalidOperationException("Buddy Lab context must be configured before _Ready.");
+        _runContext = context ?? throw new ArgumentNullException(nameof(context));
+    }
+
     public override void _Ready()
     {
         if (!GodotObject.IsInstanceValid(Buddy) || !GodotObject.IsInstanceValid(Controls) ||
@@ -118,14 +130,25 @@ public partial class BuddyLab : Node2D
         Controls.Initialize();
         Grab.Initialize();
         Pointer.Initialize();
-        // Labs and scenarios are hermetic: never resolve or mutate user:// progress.
-        Progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
-        Economy = new EconomyService(Progress);
-        var progressStore = new InMemoryProgressStore();
-        Saves = new SaveCoordinator(Progress, progressStore);
+        // Labs and scenarios are hermetic by default. The phased persistence journey may
+        // inject its own fixture-backed context; it never resolves or mutates user://.
+        if (_runContext is null)
+        {
+            Progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
+            Economy = new EconomyService(Progress);
+            var progressStore = new InMemoryProgressStore();
+            Saves = new SaveCoordinator(Progress, progressStore);
+        }
+        else
+        {
+            Progress = _runContext.Progress;
+            Economy = _runContext.Economy;
+            Saves = _runContext.Saves;
+        }
         // Development laboratory catalogue: implemented M5 tools are available for
         // mechanical tuning without granting them on a real new save.
-        Economy.Unlock(ContentIds.ToolBaseball);
+        if (_runContext is null)
+            Economy.Unlock(ContentIds.ToolBaseball);
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
         Launcher.Initialize(OnLooseObjectClearRequested);
@@ -186,6 +209,7 @@ public partial class BuddyLab : Node2D
             MoodEconomy,
             () => Grab.IsGrabbing || Glove.IsActive || CareStroke.IsHeld ||
                   Buddy.ObjectInteraction.IsHolding,
+            _runContext?.TimeSource,
             resumePresentation: ResetPresentationInterpolation,
             setWindowVisibility: _windowAdapter.SetWindowVisible);
         AddChild(Lifecycle);
@@ -215,6 +239,12 @@ public partial class BuddyLab : Node2D
 
         ApplyRunnerPresentationOverride();
         SetPresentationMode(Mode);
+
+        // The fixture-backed persistence journey must enter through the same safe-pose
+        // resume seam as the normal sandbox. Pose and other transient simulation state
+        // are intentionally absent from the save.
+        if (_runContext is not null)
+            Buddy.Recovery.ResetForSessionResume();
 
         Log.Info("BuddyLab", "BuddyLab composed with seeded six-body active puppet.");
     }

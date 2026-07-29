@@ -163,13 +163,26 @@ public sealed class FunInterestModelTests
     {
         var model = new FunInterestModel(LovesCatch);
 
-        model.RestoreInterest(FunActivityId.Catch, 500.0f);
-        model.RestoreInterest(FunActivityId.Pet, -20.0f);
-        model.RestoreInterest(FunActivityId.Tickle, float.NaN);
+        model.RestoreInterest(FunActivityId.Catch, 500.0f, bored: false);
+        model.RestoreInterest(FunActivityId.Pet, -20.0f, bored: true);
+        model.RestoreInterest(FunActivityId.Tickle, float.NaN, bored: true);
 
         Assert.Equal(100.0f, model.InterestIn(FunActivityId.Catch));
         Assert.Equal(0.0f, model.InterestIn(FunActivityId.Pet));
         Assert.Equal(100.0f, model.InterestIn(FunActivityId.Tickle));
+    }
+
+    [Fact]
+    public void RestoreInterest_PreservesTheBoredomLatchAtTheSameMeterValue()
+    {
+        var stillFun = new FunInterestModel(LovesCatch);
+        var recharging = new FunInterestModel(LovesCatch);
+
+        stillFun.RestoreInterest(FunActivityId.Catch, 10.0f, bored: false);
+        recharging.RestoreInterest(FunActivityId.Catch, 10.0f, bored: true);
+
+        Assert.True(stillFun.IsFun(FunActivityId.Catch));
+        Assert.False(recharging.IsFun(FunActivityId.Catch));
     }
 
     [Fact]

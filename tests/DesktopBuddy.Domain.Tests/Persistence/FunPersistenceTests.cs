@@ -45,7 +45,53 @@ public sealed class FunPersistenceTests
 
         Assert.Equal(60.0f, expected);
         Assert.Equal(expected, restored.InterestIn(FunActivityId.Tickle));
+        Assert.True(restored.IsFun(FunActivityId.Tickle));
         Assert.Equal(100.0f, restored.InterestIn(FunActivityId.Catch));
+    }
+
+    [Fact]
+    public void BoredomLatchSurvivesASaveRoundTripAtAnAmbiguousInterest()
+    {
+        var state = new BuddyProgressState(
+            CashPerPain, traits: new BuddyTraits(50, DistinctTastes));
+        for (int engagement = 0; engagement < 5; engagement++)
+            state.EngageFun(FunActivityId.Tickle);
+        state.RechargeFun(20.0); // 0 -> 10, still below the comeback threshold.
+
+        Assert.Equal(10.0f, state.InterestIn(FunActivityId.Tickle));
+        Assert.False(state.IsFun(FunActivityId.Tickle));
+
+        ProgressSave save = ProgressSave.FromSnapshot(state.Snapshot());
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode(ProgressSavePolicy.Serialize(save));
+        BuddyProgressState restored = ProgressSavePolicy.CreateState(decoded.Save!, CashPerPain);
+
+        Assert.Equal(10.0f, restored.InterestIn(FunActivityId.Tickle));
+        Assert.False(restored.IsFun(FunActivityId.Tickle));
+    }
+
+    [Fact]
+    public void SchemaThreeMigrationKeepsItsConservativeBoredomRule()
+    {
+        var state = new BuddyProgressState(CashPerPain);
+        ProgressSave current = ProgressSave.FromSnapshot(state.Snapshot());
+        ProgressSave schemaThree = current with
+        {
+            SchemaVersion = 3,
+            FunActivities = current.FunActivities
+                .Select(entry => entry.ActivityId == ContentIds.FunCatch
+                    ? entry with { Interest = 10.0f, Bored = false }
+                    : entry)
+                .ToList(),
+        };
+        string json = JsonSerializer.Serialize(
+            schemaThree,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode(json);
+        BuddyProgressState restored = ProgressSavePolicy.CreateState(decoded.Save!, CashPerPain);
+
+        Assert.Equal(SaveDecodeStatus.Valid, decoded.Status);
+        Assert.False(restored.IsFun(FunActivityId.Catch));
     }
 
     [Fact]

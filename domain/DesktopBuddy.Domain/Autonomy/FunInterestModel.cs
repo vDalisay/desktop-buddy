@@ -90,7 +90,10 @@ public readonly record struct FunPreferences(
 }
 
 /// <summary>One activity's remaining novelty, for snapshotting into a save.</summary>
-public readonly record struct FunActivityInterest(FunActivityId Activity, float Interest);
+public readonly record struct FunActivityInterest(
+    FunActivityId Activity,
+    float Interest,
+    bool Bored);
 
 /// <summary>The result of one engagement with a fun activity.</summary>
 /// <param name="WasFun">
@@ -258,27 +261,30 @@ public sealed class FunInterestModel
         var snapshot = new FunActivityInterest[ActivityCount];
         for (int index = 0; index < snapshot.Length; index++)
         {
-            snapshot[index] = new FunActivityInterest((FunActivityId)index, _interest[index]);
+            snapshot[index] = new FunActivityInterest(
+                (FunActivityId)index,
+                _interest[index],
+                _bored[index]);
         }
 
         return snapshot;
     }
 
     /// <summary>
-    /// Restores a persisted meter, clamped into range.
-    ///
-    /// <para>The boredom latch is derived rather than persisted: anything below
-    /// <see cref="ComebackInterest"/> reloads as still bored. That is the conservative
-    /// reading — a buddy saved with almost no novelty left should not be instantly delighted
-    /// on load — and it self-corrects within a couple of seconds of recharge.</para>
+    /// Restores a persisted meter and its hysteresis latch, clamped into range.
+    /// Interest alone cannot reconstruct the latch: the same value below
+    /// <see cref="ComebackInterest"/> can be either a still-fun activity being drained or a
+    /// bored activity recharging toward its comeback threshold.
     /// </summary>
-    public void RestoreInterest(FunActivityId activity, float interest)
+    public void RestoreInterest(FunActivityId activity, float interest, bool bored)
     {
         int index = IndexOf(activity);
         _interest[index] = !float.IsFinite(interest)
             ? MaximumInterest
             : Math.Clamp(interest, MinimumInterest, MaximumInterest);
-        _bored[index] = _interest[index] < ComebackInterest;
+        _bored[index] =
+            _interest[index] <= MinimumInterest ||
+            (bored && _interest[index] < ComebackInterest);
     }
 
     private static int IndexOf(FunActivityId activity)

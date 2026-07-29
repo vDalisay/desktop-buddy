@@ -26,6 +26,7 @@ public sealed class HiddenClockAccrualScenario : IScenario
             positions[index] = sandbox.Buddy.Rig.Parts[index].GlobalPosition;
 
         M4LifecycleScenarioSupport.Sample(sandbox.Lifecycle);
+        time.Advance(0.4);
         sandbox.SetHiddenToTray(true);
         for (int sample = 0; sample < 601; sample++)
         {
@@ -63,12 +64,14 @@ public sealed class HiddenClockAccrualScenario : IScenario
 
         long balance = sandbox.Progress.BalanceMilliCredits;
         double hidden = sandbox.Progress.Times.HiddenSeconds;
+        double foreground = sandbox.Progress.Times.RunSeconds - hidden;
         checks.Add(new StartupCheck(
             "hidden_accrues_mood_income_and_time",
-            balance is >= 998 and <= 1001 &&
-            hidden is >= 59.9 and <= 60.1 &&
-            sandbox.Progress.Times.RunSeconds is >= 59.9 and <= 60.1,
-            $"balance={balance} run={sandbox.Progress.Times.RunSeconds:F3} hidden={hidden:F3}"));
+            balance is >= 1005 and <= 1010 &&
+            hidden is >= 59.9 and <= 60.2 &&
+            foreground is >= 0.39 and <= 0.41,
+            $"balance={balance} run={sandbox.Progress.Times.RunSeconds:F3} " +
+            $"hidden={hidden:F3} foreground={foreground:F3}"));
         checks.Add(new StartupCheck(
             "hidden_accrual_autosaves",
             store.ProgressWriteCount >= 1,
@@ -78,7 +81,16 @@ public sealed class HiddenClockAccrualScenario : IScenario
         for (int index = 0; index < beforeShow.Length; index++)
             beforeShow[index] = sandbox.Buddy.Rig.Parts[index].GlobalPosition;
 
+        // Create one sub-cadence tail. Showing the window must settle it into hidden time
+        // before changing the accounting bucket.
+        time.Advance(0.1);
         sandbox.SetHiddenToTray(false);
+        double hiddenAfterShow = sandbox.Progress.Times.HiddenSeconds;
+        checks.Add(new StartupCheck(
+            "mode_transitions_settle_the_previous_bucket",
+            hiddenAfterShow > hidden &&
+            hiddenAfterShow - hidden is >= 0.09 and <= 0.11,
+            $"before={hidden:F3} after={hiddenAfterShow:F3}"));
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
 
         // No burst means the first simulated frame after show advances the pose by an
@@ -105,6 +117,22 @@ public sealed class HiddenClockAccrualScenario : IScenario
             $"throttled={sandbox.Lifecycle.IsPresentationThrottled} " +
             $"render_loop={RenderingServer.RenderLoopEnabled} max_fps={Engine.MaxFps} " +
             $"window_visible={sandbox.Window.Adapter.IsWindowVisible}"));
+
+        double beforeShutdown = sandbox.Progress.Times.RunSeconds;
+        time.Advance(0.1);
+        sandbox.Lifecycle.BeginShutdown();
+        double settledAtShutdown = sandbox.Progress.Times.RunSeconds;
+        await sandbox.Saves.FlushProgressAsync(force: true);
+        time.Advance(1.0);
+        M4LifecycleScenarioSupport.Sample(sandbox.Lifecycle);
+        checks.Add(new StartupCheck(
+            "clean_exit_settles_then_saves_the_final_revision",
+            settledAtShutdown - beforeShutdown is >= 0.09 and <= 0.11 &&
+            sandbox.Progress.Times.RunSeconds == settledAtShutdown &&
+            store.Progress?.Times.RunSeconds == settledAtShutdown &&
+            !sandbox.Saves.IsDirty,
+            $"before={beforeShutdown:F3} settled={settledAtShutdown:F3} " +
+            $"saved={store.Progress?.Times.RunSeconds:F3} dirty={sandbox.Saves.IsDirty}"));
         messages.Add($"hidden={hidden:F3}s balance_milli={balance}");
         await M4LifecycleScenarioSupport.Cleanup(tree, sandbox);
         bool passed = true;

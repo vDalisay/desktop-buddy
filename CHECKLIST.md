@@ -4,11 +4,10 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-24, after owner runtime verification of recovery,
-Boxing Glove pointer-exit reactions, and Work/Play routing, plus closure of the
-loose-ball settling regression.
-**Start here: `docs/M3_6_EXPRESSIVE_PRESENTATION_PLAN.md`** — read its
-Progress section, which is the authoritative per-task status.
+Last updated: 2026-07-29, after the M4 post-acceptance audit hardening.
+**Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
+`docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
+owner-accepted M4 implementation.
 
 ## 1. Current position
 
@@ -25,7 +24,11 @@ Progress section, which is the authoritative per-task status.
 - **Milestone 3.6 (expressive presentation): complete; owner accepted 2026-07-21.**
   Pose pipeline, facing, activities + item socket, head look-at, composed face,
   composition/regression/docs, and the owner feedback rework are complete.
-- Milestone 4 behavior is next; economy/shop work remains Milestone 5 scope.
+- **Milestone 4 (Personality, care, persistence): complete; owner accepted
+  2026-07-27.** Post-acceptance persistence/lifecycle corrections landed
+  2026-07-29.
+- **Milestone 5 (Shop and full tool catalogue): in progress.** The Baseball
+  slice is present; the remaining ordered work is in the M5 plan.
 
 ### Known red
 
@@ -53,11 +56,11 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test` | 648/648 green |
+| Domain unit | `dotnet test` | 715/715 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (41) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | 156/156 valid headless runs green across seeds 1 and 7 in both presentations (`idle_soak` run as `idle_soak_ci`); window-only visual gate pending owner |
-| Journeys (11) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | 21/21 valid presentation runs green |
-| Quick suite | `tools\quick_validate.bat` | 15/15 |
+| Scenarios (43) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | Current targeted lifecycle scenarios green; the latest full both-presentation catalogue result remains the recorded M4/M5 baseline |
+| Journeys (11) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix 21/21 |
+| Quick suite | `tools\quick_validate.bat` | 17/17 |
 
 Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the
 filenames in `tests/journeys/`. Every scenario and journey is also rerun under
@@ -138,14 +141,12 @@ Gotchas that WILL fail a run if you forget them:
 
 ## 5. Suggested next step
 
-**Milestone 4 behavior.** Detailed architecture and task breakdown now live in
-`docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` (2026-07-24): all six owner
-decisions are resolved in `docs/DECISIONS.md`; implementation begins at Task 0.
-M3.6 Task 6 and the owner-feedback rework are complete and
-owner-accepted. The final pass includes the real `E` Eat interaction, two-hand five-bite
-motion, frontal food facing, final hand lowering, passive airborne grabs, full-body wall
-detection, immediate grounded stopping, and sub-0.5-second head recovery after the calm
-delay. See `docs/OWNER_FEEDBACK_2026_07_20_FIX_PLAN.md` for the checked-off acceptance list.
+**Milestone 5 catalogue work.** Follow
+`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`; Baseball is the current implemented
+slice. M4 is complete and owner-accepted. Its post-acceptance hardening records
+the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
+an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input
+two-process persistence journey.
 
 ### Older milestone history (kept for context)
 

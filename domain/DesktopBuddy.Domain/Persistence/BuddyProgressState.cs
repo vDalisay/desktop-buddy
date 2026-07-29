@@ -149,7 +149,7 @@ public sealed class BuddyProgressState
         {
             foreach (FunActivityInterest entry in funInterest)
             {
-                _fun.RestoreInterest(entry.Activity, entry.Interest);
+                _fun.RestoreInterest(entry.Activity, entry.Interest, entry.Bored);
             }
         }
 
@@ -191,8 +191,8 @@ public sealed class BuddyProgressState
         _bestOneSecondMilliCredits = statistics.BestOneSecondMilliCredits;
         _bestThreeSecondMilliCredits = statistics.BestThreeSecondMilliCredits;
         _bestTenSecondMilliCredits = statistics.BestTenSecondMilliCredits;
-        _highestMood = statistics.HighestMood;
-        _lowestMood = statistics.LowestMood;
+        _highestMood = Math.Max(statistics.HighestMood, _mood.Mood);
+        _lowestMood = Math.Min(statistics.LowestMood, _mood.Mood);
         if (statistics.ToolUses is not null)
         {
             foreach ((string id, long count) in statistics.ToolUses)
@@ -384,6 +384,7 @@ public sealed class BuddyProgressState
     {
         long milli = _ledger.Accept(pain, region, consciousness, now);
         _mood.RegisterHarm(contentId, pain);
+        UpdateMoodExtrema();
         _scoredImpacts++;
         _earnedMilliCredits += milli;
         _totalPainMilli += (long)Math.Round(
@@ -430,8 +431,7 @@ public sealed class BuddyProgressState
             _trustResets++;
         }
 
-        _highestMood = Math.Max(_highestMood, _mood.Mood);
-        _lowestMood = Math.Min(_lowestMood, _mood.Mood);
+        UpdateMoodExtrema();
         Touch();
         Changed?.Invoke(reset ? ProgressChange.TrustReset : ProgressChange.CareApplied);
         return reset;
@@ -507,6 +507,7 @@ public sealed class BuddyProgressState
         }
 
         _mood.Drift(elapsedSeconds);
+        UpdateMoodExtrema();
         Touch();
     }
 
@@ -536,6 +537,12 @@ public sealed class BuddyProgressState
 
     /// <summary>Returns a completed coalesced reward burst, or <c>null</c>.</summary>
     public RewardFeedback? PollRewardFeedback(double now) => _ledger.PollFeedback(now);
+
+    private void UpdateMoodExtrema()
+    {
+        _highestMood = Math.Max(_highestMood, _mood.Mood);
+        _lowestMood = Math.Min(_lowestMood, _mood.Mood);
+    }
 
     private void Touch() => Revision++;
 }

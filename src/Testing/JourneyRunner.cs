@@ -348,19 +348,20 @@ public partial class JourneyRunner : Node
         string fixture = Path.GetFullPath(_args.SaveFixture);
         string settingsFixture = fixture + ".settings";
         var store = new JsonProgressStore(fixture, settingsFixture);
-        var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
-        if (packed is null || packed.Instantiate() is not SandboxRoot sandbox)
+        var packed = GD.Load<PackedScene>("res://scenes/buddy_lab.tscn");
+        if (packed is null || packed.Instantiate() is not BuddyLab lab)
         {
-            state["sandbox_composed"] = false;
+            state["lab_composed"] = false;
             return;
         }
 
-        double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
+        double cashPerPain = lab.Pipeline.RequirePainProfile().CashPerPain;
         BuddyTraits expectedTraits = BuddyTraits.Sample(
             new SeededRandomSource(seed ^ 0xA18E_5EED_D15C_A11FUL));
         BuddyProgressState progress;
         SaveLoadStatus loadStatus;
         long savedRevision;
+        float? loadedMood = null;
         if (exercise == "care_persistence_write")
         {
             progress = new BuddyProgressState(cashPerPain, traits: expectedTraits);
@@ -378,58 +379,64 @@ public partial class JourneyRunner : Node
             progress = ProgressSavePolicy.CreateState(loaded.Value, cashPerPain);
             loadStatus = loaded.Status;
             savedRevision = progress.Revision;
+            loadedMood = loaded.Value.Mood;
         }
 
         var economy = new EconomyService(progress);
         var saves = new SaveCoordinator(progress, store, savedRevision);
-        sandbox.Configure(new RunContext(
+        lab.Configure(new RunContext(
             progress,
             economy,
             store,
             saves,
             new LocalSettingsSave(),
             loadStatus));
-        GetTree().Root.AddChild(sandbox);
+        GetTree().Root.AddChild(lab);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        state["sandbox_composed"] = sandbox.IsInsideTree();
+        lab.Controls.Reseed(seed);
+        state["lab_composed"] = lab.IsInsideTree() && lab.Buddy.IsInitialized;
         state["fixture_configured"] = true;
 
         if (exercise == "care_persistence_write")
         {
-            // Freeze routed simulation while constructing the exact phase-one
-            // semantic checkpoint; the relaunch is testing persistence, not a
-            // race against cumulative-time accounting.
-            sandbox.SetPhysicsProcess(false);
-            var care = new CareConsumableModel();
-            bool began = care.TryBegin(
-                ContentIds.CareLabFood,
-                out int careToken,
-                out ConsumeRejection rejection);
-            ConsumeResult result = care.Complete(careToken, CareConsumableTuning.LabFood);
-            if (result.Applied)
+            long careBefore = progress.Statistics.CareAwards;
+            await PressKeyAsync(Key.E);
+            for (int tick = 0;
+                 tick < 720 && progress.Statistics.CareAwards == careBefore;
+                 tick++)
             {
-                progress.ApplyCareMood(result.MoodGain);
-                progress.RecordContentUse(ContentIds.CareLabFood);
+                await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
             }
 
-            long earned = economy.AcceptDamage(
-                ContentIds.ToolBoxingGlove,
-                20.0f,
-                PayoutRegion.Torso,
-                DamageConsciousness.Conscious,
-                0.0);
-            progress.SelectTool(ToolId.Tickle);
+            long balanceBefore = progress.BalanceMilliCredits;
+            await ExerciseM3GloveStrikeAsync(state, lab);
+            await PressKeyAsync(Key.T);
 
-            // Deliberately dirty live state: the second process must not restore it.
-            sandbox.Buddy.Rig.Torso.LinearVelocity = new Vector2(500.0f, -250.0f);
-            sandbox.Buddy.Rig.Torso.AngularVelocity = 8.0f;
-            sandbox.Buddy.SetConsciousness(DesktopBuddy.Domain.Buddy.Consciousness.Unconscious);
+            // Exercise a deliberately transient state through the laboratory's real key
+            // route. Consciousness must reset on the second process and never enter JSON.
+            if (lab.Buddy.CurrentConsciousness ==
+                DesktopBuddy.Domain.Buddy.Consciousness.Unconscious)
+            {
+                await PressKeyAsync(Key.U);
+            }
+            await PressKeyAsync(Key.U);
 
-            await saves.FlushProgressAsync();
+            // Match the production close ordering: stop gameplay mutation, settle/stop
+            // lifecycle mutation, then take the forced final snapshot.
+            lab.SetPhysicsProcess(false);
+            lab.Lifecycle.BeginShutdown();
+            await saves.FlushProgressAsync(force: true);
+            state["real_input_exercised"] =
+                lab.Controls.LastControlKey == Key.U &&
+                lab.Buddy.CurrentConsciousness ==
+                    DesktopBuddy.Domain.Buddy.Consciousness.Unconscious;
             state["care_consumed"] =
-                began && rejection == ConsumeRejection.None && result.Applied &&
-                result.MoodGain == CareConsumableTuning.LabFood.MoodGain;
-            state["damage_earned"] = earned > 0 && progress.BalanceMilliCredits > 0;
+                progress.Statistics.CareAwards == careBefore + 1 &&
+                progress.InterestIn(FunActivityId.Treat) <
+                    FunInterestModel.MaximumInterest;
+            state["damage_earned"] =
+                progress.BalanceMilliCredits > balanceBefore &&
+                progress.Statistics.ScoredImpacts > 0;
             state["harm_memory_recorded"] =
                 progress.IsContentHarmful(ContentIds.ToolBoxingGlove);
             state["selection_changed"] = progress.SelectedTool == ToolId.Tickle;
@@ -438,34 +445,48 @@ public partial class JourneyRunner : Node
         }
         else
         {
-            bool safeBodies = sandbox.Buddy.Rig.AllBodiesFinite() &&
-                sandbox.Buddy.Recovery.AllBodiesInsideSafeBounds();
-            foreach (PuppetPartBody body in sandbox.Buddy.Rig.Parts)
+            // Inspect the session-resume checkpoint immediately after composition. Waiting
+            // for "standing" would let the loaded mood/autonomy legitimately begin moving
+            // and turn a safe-pose assertion into an ambient-behavior race.
+            bool safeBodies = lab.Buddy.Rig.AllBodiesFinite() &&
+                lab.Buddy.Recovery.AllBodiesInsideSafeBounds();
+            foreach (PuppetPartBody body in lab.Buddy.Rig.Parts)
             {
                 safeBodies &= body.LinearVelocity.Length() < 100.0f;
                 safeBodies &= Math.Abs(body.AngularVelocity) < 2.0f;
             }
 
             state["balance_restored"] = progress.BalanceMilliCredits > 0;
-            state["mood_restored"] = progress.Mood > 0.0f;
+            state["mood_restored"] =
+                loadedMood.HasValue &&
+                Math.Abs(progress.Mood - loadedMood.Value) < 0.1f &&
+                progress.Statistics.CareAwards > 0;
             state["memory_restored"] =
                 progress.IsContentHarmful(ContentIds.ToolBoxingGlove);
             state["selection_restored"] = progress.SelectedTool == ToolId.Tickle;
             state["trait_restored"] = progress.Traits == expectedTraits;
             state["safe_standing_resume"] = safeBodies &&
-                sandbox.Buddy.Recovery.HardRecoveryCount == 0;
+                lab.Buddy.Recovery.HardRecoveryCount == 0;
             state["transient_state_absent"] =
-                !sandbox.Grab.IsGrabbing &&
-                sandbox.Objects.Count == 0 &&
-                !sandbox.Buddy.ObjectInteraction.IsHolding &&
-                sandbox.Buddy.CurrentConsciousness ==
+                !lab.Grab.IsGrabbing &&
+                lab.Objects.Count == 0 &&
+                !lab.Buddy.ObjectInteraction.IsHolding &&
+                lab.Buddy.CurrentConsciousness ==
                     DesktopBuddy.Domain.Buddy.Consciousness.Conscious &&
-                sandbox.Buddy.ObjectInteraction.CooldownTicksRemaining(
+                lab.Buddy.ObjectInteraction.CooldownTicksRemaining(
                     ContentIds.CareLabFood) == 0;
         }
 
-        sandbox.QueueFree();
+        lab.QueueFree();
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        async System.Threading.Tasks.Task PressKeyAsync(Key key)
+        {
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = key, Pressed = true });
+            Input.ParseInputEvent(new InputEventKey { PhysicalKeycode = key, Pressed = false });
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
+        }
     }
 
     /// <summary>

@@ -12,6 +12,21 @@ engineering process check confirmed that Godot remained alive and responsive in 
 low-cost operation rather than exiting. The notification-area icon and user-accessible
 restore command remain the already-confirmed Milestone 6 scope.
 
+## Milestone 4 Personality and Fun System — Owner Approved (2026-07-29)
+
+The owner explicitly approved the implemented personality/fun system. Each new buddy
+samples independent Catch, Pet, Tickle, and Treat tastes once from the dedicated
+save-creation RNG stream. Taste is represented by an interest drain in the inclusive
+`1–20` range; each activity has its own `0–100` novelty meter, recharging at
+`0.5` points per accepted running second. An activity that reaches zero remains bored
+until it recovers to `25`, preventing a one-tick comeback. Taste, interest, and the
+bored/not-bored hysteresis state persist with the buddy.
+
+Care mood rewards remain unconditional when care succeeds. The fun verdict controls
+the buddy's delight/laugh response, so repeating one activity can stop landing without
+silently removing the care effect. These rules and the existing implemented tuning are
+accepted rather than provisional.
+
 ## Owner Feel Pass and Shop Addition (2026-07-25)
 
 Recorded from a live owner review session in the buddy laboratory.

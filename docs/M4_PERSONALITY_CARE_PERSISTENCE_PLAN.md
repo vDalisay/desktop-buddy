@@ -1,10 +1,9 @@
 # Milestone 4 — Personality, Care, and Persistence
 
-Status: **READY FOR IMPLEMENTATION — all owner decisions resolved 2026-07-24**
-(see `docs/DECISIONS.md`, "Milestone 4 pre-plan — owner decisions resolved").
-M3.6 is complete and owner-accepted (2026-07-21); the owner-feedback rework and
-the 2026-07-24 runtime fixes are closed with no known red. Implementation begins
-at Task 0.
+Status: **COMPLETE — OWNER ACCEPTED 2026-07-27**
+(see `docs/DECISIONS.md`, "Milestone 4 Owner Gate — Accepted").
+Post-acceptance audit hardening landed 2026-07-29 without changing the accepted
+personality or feel contract.
 
 Plan revision: merged V1 + V2 review pass, 2026-07-25. Task bodies are the
 condensed V2 form; traceability, invariants, code inventory, scope boundaries,
@@ -575,8 +574,8 @@ Authoritative per-task status. Update after each task lands with its suite run.
       `quick_validate` **11/11**; `hidden_clock_accrual` and
       `suspend_no_catchup` **8/8** across seeds 1/7 and both presentations.
       The catalog is now **41 scenarios** and **11 journeys**.
-- [ ] **Task 6 — Composition, regression, docs, owner gate** (automated work
-      complete 2026-07-26; owner feel gate pending).
+- [x] **Task 6 — Composition, regression, docs, owner gate** (owner accepted
+      2026-07-27).
       Scene composition, the 41-scenario/11-journey catalogs, the 15-step quick
       suite, delegated-default decisions, and the owner script are complete.
       The full valid headless matrix passed **80/80 scenario runs** (40 runnable
@@ -591,8 +590,8 @@ Authoritative per-task status. Update after each task lands with its suite run.
       Windows shutdown race was also
       hardened by draining pending managed interop finalizers before every
       application/test-runner quit; the two formerly affected Mii3D journeys
-      now exit cleanly after passing. Milestone acceptance remains pending until
-      the owner performs `docs/M4_OWNER_GATE.md`.
+      now exit cleanly after passing. The owner subsequently performed
+      `docs/M4_OWNER_GATE.md` and accepted Milestone 4 in full on 2026-07-27.
 
       **Pre-acceptance review, 2026-07-26.** An implementation/code review of all six
       tasks against this plan found eleven items, four of them plan deliverables that
@@ -600,6 +599,16 @@ Authoritative per-task status. Update after each task lands with its suite run.
       `docs/M4_REVIEW_FIXES_PLAN.md`; after that pass `dotnet test` is **638/638**,
       `quick_validate` **15/15**, the scenario matrix **78/78**, and journeys
       **21/21**.
+
+      **Post-acceptance audit hardening, 2026-07-29.** The persistence journey now
+      drives care, damage, selection, and transient state through real Buddy Lab
+      keyboard/pointer input before its disk-backed relaunch. Fun persistence schema
+      4 stores the boredom hysteresis latch exactly. Lifecycle mode/suspend/lock
+      transitions settle the accepted pre-transition tail into the previous bucket;
+      clean exit settles and stops lifecycle mutation before the forced final save,
+      with a blocking dirty-save fallback during tree exit. Damage now updates the
+      persisted lowest-mood statistic. The owner explicitly approved the personality
+      system and these corrections.
 
 ### Known pre-existing red (found during the Task 0 gate, 2026-07-25)
 

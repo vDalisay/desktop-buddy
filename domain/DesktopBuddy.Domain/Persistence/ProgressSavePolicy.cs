@@ -55,8 +55,11 @@ public static class ProgressSavePolicy
 
             ProgressSave save = schema switch
             {
-                1 => MigrateV2(MigrateV1(document.RootElement)),
-                2 => MigrateV2(
+                1 => MigrateV3(MigrateV2(MigrateV1(document.RootElement))),
+                2 => MigrateV3(MigrateV2(
+                    JsonSerializer.Deserialize<ProgressSave>(json, Options)
+                    ?? throw new JsonException("Progress payload was null."))),
+                3 => MigrateV3(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null.")),
                 ProgressSave.CurrentSchemaVersion =>
@@ -194,8 +197,24 @@ public static class ProgressSavePolicy
     /// </summary>
     private static ProgressSave MigrateV2(ProgressSave save) => save with
     {
-        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        SchemaVersion = 3,
         FunActivities = DefaultFunActivities(),
+    };
+
+    /// <summary>
+    /// Schema 3 stored novelty but not the hysteresis latch. Preserve that version's
+    /// conservative reload behavior for existing saves; schema 4 then records the exact
+    /// latch so future reloads no longer change the live fun verdict.
+    /// </summary>
+    private static ProgressSave MigrateV3(ProgressSave save) => save with
+    {
+        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        FunActivities = save.FunActivities
+            .Select(activity => activity with
+            {
+                Bored = activity.Interest < FunInterestModel.ComebackInterest,
+            })
+            .ToList(),
     };
 
     private static List<FunActivitySave> DefaultFunActivities()
@@ -208,6 +227,7 @@ public static class ProgressSavePolicy
                 ActivityId = ContentIds.ForFun(activity),
                 Drain = FunPreferences.Default.DrainFor(activity),
                 Interest = FunInterestModel.MaximumInterest,
+                Bored = false,
             });
         }
 
@@ -233,7 +253,7 @@ public static class ProgressSavePolicy
 
         return new ProgressSave
         {
-            SchemaVersion = ProgressSave.CurrentSchemaVersion,
+            SchemaVersion = 2,
             Revision = ReadInt64(root, "revision"),
             BalanceMilliCredits = ReadInt64(root, "balanceMilliCredits"),
             SelectedToolId = selected,
@@ -357,7 +377,7 @@ public static class ProgressSavePolicy
                 FunActivityId.Treat => preferences with { TreatDrain = entry.Drain },
                 _ => preferences,
             };
-            interest.Add(new FunActivityInterest(activity, entry.Interest));
+            interest.Add(new FunActivityInterest(activity, entry.Interest, entry.Bored));
         }
 
         return (BuddyTraits.FromPersisted(save.ObstacleHopPropensity, preferences), interest);

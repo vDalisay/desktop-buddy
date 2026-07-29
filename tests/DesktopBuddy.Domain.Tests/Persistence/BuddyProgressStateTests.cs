@@ -50,8 +50,32 @@ public sealed class BuddyProgressStateTests
         Assert.Equal(10, state.BalanceCredits);
         Assert.True(state.IsContentHarmful(ContentIds.ToolBoxingGlove));
         Assert.Equal(-2.0f, state.Mood, 0.0005f); // 20 × 0.1
+        Assert.Equal(-2.0f, state.Statistics.LowestMood, 0.0005f);
+        Assert.Equal(0.0f, state.Statistics.HighestMood, 0.0005f);
         Assert.Equal(1, state.Statistics.ScoredImpacts);
         Assert.Equal(10_000, state.Statistics.EarnedMilliCredits);
+    }
+
+    [Fact]
+    public void DamageTracksLowestMoodAcrossRepeatedHits()
+    {
+        BuddyProgressState state = NewSave();
+
+        state.AcceptDamage(
+            ContentIds.ToolBoxingGlove,
+            pain: 20.0f,
+            PayoutRegion.Torso,
+            DamageConsciousness.Conscious,
+            now: 1.0);
+        state.AcceptDamage(
+            ContentIds.ToolBoxingGlove,
+            pain: 30.0f,
+            PayoutRegion.Torso,
+            DamageConsciousness.Conscious,
+            now: 2.0);
+
+        Assert.Equal(-5.0f, state.Mood, 0.0005f);
+        Assert.Equal(-5.0f, state.Statistics.LowestMood, 0.0005f);
     }
 
     [Fact]

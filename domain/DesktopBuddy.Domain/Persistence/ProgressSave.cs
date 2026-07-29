@@ -88,12 +88,18 @@ public sealed record FunActivitySave
 
     /// <summary>Remaining novelty, <c>0–100</c>.</summary>
     public float Interest { get; init; } = FunInterestModel.MaximumInterest;
+
+    /// <summary>
+    /// The hysteresis latch. It must persist separately because an interest below the
+    /// comeback threshold can still be fun when it has not yet reached zero.
+    /// </summary>
+    public bool Bored { get; init; }
 }
 
 /// <summary>Steam-Cloud-eligible semantic progress only (ARCHITECTURE §12).</summary>
 public sealed record ProgressSave
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public long Revision { get; init; }
@@ -185,6 +191,7 @@ public sealed record ProgressSave
         foreach (FunActivityId activity in Enum.GetValues<FunActivityId>())
         {
             float interest = FunInterestModel.MaximumInterest;
+            bool bored = false;
             if (snapshot.FunInterest is not null)
             {
                 foreach (FunActivityInterest entry in snapshot.FunInterest)
@@ -192,6 +199,7 @@ public sealed record ProgressSave
                     if (entry.Activity == activity)
                     {
                         interest = entry.Interest;
+                        bored = entry.Bored;
                         break;
                     }
                 }
@@ -202,6 +210,7 @@ public sealed record ProgressSave
                 ActivityId = ContentIds.ForFun(activity),
                 Drain = snapshot.Traits.Preferences.DrainFor(activity),
                 Interest = interest,
+                Bored = bored,
             });
         }
 
