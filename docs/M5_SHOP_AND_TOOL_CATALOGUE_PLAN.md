@@ -552,6 +552,22 @@ running the suite" remains the failure mode this plan exists to prevent.
   wall-avoid margin and stops on torso contact, and the ground-scoop gate measures the
   object's near surface instead of its centre. Verified: domain 772/772, quick suite 18/18,
   the object/behaviour scenario sweep green on seeds 1 and 7 (plus legacy presentation).
+- 2026-07-29 — **Task 2 loose-object budget DONE** (except the projectile half, which needs
+  Task 5's guns to exist). Audited every loose-object spawn path: only two register today —
+  `BuddyLab.SpawnLooseObject` (lab toys, food) and `PullbackLauncherComponent` (Baseball) —
+  and both go through the one registry, with protection flowing from real state (player Grab
+  each tick, buddy hold, launcher `SetProtected` across aim/launch/cancel, authored
+  hazardous/safe flags). The oldest-safe decision is extracted to the engine-free
+  `Domain/Interaction/LooseObjectAdmissionPolicy` (cap `24` now declared once, there); the
+  registry delegates over a `stackalloc` span and remains the sole runtime owner of identity,
+  flags, and cleanup. Added a debug-only audit: a profile-configured `LooseObjectBody` that
+  reaches the tree unregistered logs an error, so a future spawn path cannot quietly escape
+  the budget (the M1/M3 legacy radius/mass props are exempt by design and verified silent).
+  New scenario `object_budget` — 30 spawns against the cap through the real registry, count
+  peaks at 24, the buddy's held ball survives 7 evictions, oldest-first order proven — plus 7
+  policy unit tests. Deferred to Task 5: the assertion that bullets/pellets never change
+  `LooseObjectRegistry.Count`. Verified: domain 783/783, quick suite 19/19, `object_budget`
+  green seeds 1 and 7 in both presentations.
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against
   the repository (`LooseObjectRegistry` cap/eviction/protection, arbiter `Hazard = 3`
   branch, `ToolUses`/`ToolPainMilli` statistics, AGENT_VERIFICATION §7 per-tool
