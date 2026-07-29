@@ -403,13 +403,16 @@ tunneling.
 ### Task 10 — Repair Kit
 
 Third care consumable: pullback-launched, successful application grants `+20` mood,
-clears rolling/transient pain and harmful statuses **including Burning**, never
+clears rolling/transient pain and harmful statuses **including Burning**, and never
 shortens an active 4 s knockout (`ClearRollingPain` already honors this — wire, don't
-re-implement), `120` s cooldown on success only.
+re-implement). **No cooldown and no appetite gate** (owner, 2026-07-29): it is not food, so
+nothing rations it. Its profile therefore authors `ConsumeCooldownTicks = 0` and
+`ConsumeHungerFill = 0`, and a full buddy must still accept one.
 
 **Accept:** scenario `repair_kit`: burning buddy → apply → Burning cleared + 20 mood;
-KO'd buddy → apply → KO end time unchanged while rolling pain clears; failed/dropped
-application starts no cooldown.
+KO'd buddy → apply → KO end time unchanged while rolling pain clears; a failed/dropped
+application applies nothing; a buddy with a full hunger bar still accepts one (the appetite
+rule is for food, and the Repair Kit is not).
 
 ### Task 11 — Strength Upgrade (FR-019) — **blocked pending owner decisions**
 
@@ -597,8 +600,8 @@ running the suite" remains the failure mode this plan exists to prevent.
   and its cooldown is `0`. Refusal is a performance: pick up once, head-shake through the new
   `ActivityId.Refuse` clip, throw it aside, then ignore that specific item until there is room
   for it — other food is still judged on its own size. FR-008.4/.5/.10 amended; FR-008.16–19
-  added. **Open for Task 10:** whether the Repair Kit keeps its `120`-second cooldown, since
-  it is not food. Verified: domain 805/805, quick suite 21/21, `meal_consume` (now including
+  added; FR-008.6 followed the same day — the Repair Kit has **no** cooldown and no appetite
+  gate (owner), so nothing rations it. Verified: domain 805/805, quick suite 21/21, `meal_consume` (now including
   the refusal loop and the recovery) + `m5_meal` + `consume_care_cooldown` + `activity_clips`
   + `m36_expressive` + `care_persistence` green on seeds 1 and 7 in both presentations.
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against

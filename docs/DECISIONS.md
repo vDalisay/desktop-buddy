@@ -887,10 +887,11 @@ it, and repeating until its cooldown expired. The fix is a model, not a patch.
 - **Appetite burns at three rates** (FR-008.18): `20`/minute while the buddy is actively
   played with, `10`/minute during ordinary Play-mode presence, `2`/minute in Work mode or
   hidden. Hidden and Work mode are one case — the buddy is idling on someone else's desktop.
-- **The Meal's and Drink's reuse cooldowns are gone.** Appetite replaces them; FR-008.4/.5
-  are amended. The Repair Kit keeps its `120`-second cooldown for now — it is not food, and
-  the owner's decision was taken about eating. **Open for Task 10:** confirm whether the
-  Repair Kit stays on a cooldown or moves to some other gate.
+- **Every consumable reuse cooldown is gone.** Appetite replaces the Meal's and Drink's;
+  FR-008.4/.5 are amended. The Repair Kit has **no cooldown at all** (owner, 2026-07-29) and
+  no appetite gate either — it is not food, so nothing rations it; FR-008.6 is amended. The
+  `ConsumeCooldownTicks` field stays in the object profile at `0`, unused by shipped content,
+  rather than being deleted from a schema mid-milestone.
 - **Refusal is a performance, not a silent drop** (FR-008.19). The buddy picks the item up
   once, shakes its head side to side, and throws it aside; then it ignores *that* item until
   it has room for that portion again. Other food is still considered on its own size. The
