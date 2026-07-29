@@ -24,9 +24,18 @@ public partial class LooseObjectProfile : GameResource
 
     /// <summary>
     /// Reuse cooldown in routed ticks, started only by a successful consume (FR-008.10).
-    /// <c>7200</c> is 60 s at 120 Hz.
+    /// <c>7200</c> is 60 s at 120 Hz. Food leaves this at <c>0</c>: appetite, not a timer,
+    /// decides whether the buddy eats (owner decision 2026-07-29).
     /// </summary>
-    [Export(PropertyHint.Range, "0,72000,1")] public int ConsumeCooldownTicks { get; set; } = 7200;
+    [Export(PropertyHint.Range, "0,72000,1")] public int ConsumeCooldownTicks { get; set; }
+
+    /// <summary>
+    /// How many points of the <c>200</c>-point hunger bar this item fills. The buddy accepts
+    /// it only when it fits in the room left, so portion size is the whole decision: a nearly
+    /// full buddy takes a snack and refuses a banquet. <c>0</c> means "not food" — a
+    /// consumable that is never refused for appetite.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,200,1")] public float ConsumeHungerFill { get; set; }
     [Export] public bool Hazardous { get; set; }
     [Export] public bool SafeToEvict { get; set; } = true;
 
@@ -49,7 +58,9 @@ public partial class LooseObjectProfile : GameResource
         RestTicksRequired > 0 &&
         !(Hazardous && SafeToEvict) &&
         (!Consumable ||
-         (float.IsFinite(ConsumeMoodGain) && ConsumeMoodGain > 0.0f && ConsumeCooldownTicks >= 0));
+         (float.IsFinite(ConsumeMoodGain) && ConsumeMoodGain > 0.0f &&
+          ConsumeCooldownTicks >= 0 &&
+          float.IsFinite(ConsumeHungerFill) && ConsumeHungerFill >= 0.0f));
 
     /// <summary>
     /// The approved consume tuning for this item. The cooldown/one-success rule itself lives
@@ -81,6 +92,8 @@ public partial class LooseObjectProfile : GameResource
             errors.Add($"{nameof(ConsumeMoodGain)} must be finite and positive for a consumable");
         if (Consumable && ConsumeCooldownTicks < 0)
             errors.Add($"{nameof(ConsumeCooldownTicks)} cannot be negative");
+        if (Consumable && (!float.IsFinite(ConsumeHungerFill) || ConsumeHungerFill < 0.0f))
+            errors.Add($"{nameof(ConsumeHungerFill)} must be finite and non-negative");
         return errors;
     }
 }

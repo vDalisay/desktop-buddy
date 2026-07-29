@@ -183,7 +183,10 @@ public partial class SandboxRoot : Node2D
                   Buddy.ObjectInteraction.IsHolding,
             _runContext.TimeSource,
             ResetPresentationInterpolation,
-            Window.Adapter.SetWindowVisible);
+            Window.Adapter.SetWindowVisible,
+            // Work mode is the player getting on with something else; the buddy idles on
+            // their desktop and barely works up an appetite.
+            () => Shell.Mode == DesktopBuddy.Domain.Platform.InputMode.Work);
         AddChild(Lifecycle);
 
         TrayCommands = new TrayCommandComponent { Name = nameof(TrayCommandComponent) };

@@ -2,14 +2,17 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Presentation;
 using Godot;
 
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// M4 Task 2 gate: only bite five applies lab-food care and starts the exact
-/// cooldown; cancellation and cooldown rejection apply neither.
+/// M4 Task 2 gate, on the M5 appetite rules: only bite five applies lab-food care and fills
+/// the hunger bar; cancellation applies neither. The per-item reuse cooldown it originally
+/// asserted was replaced by the hunger bar (owner decision 2026-07-29), so the reuse checks
+/// now cover the rule that actually gates a second helping.
 /// </summary>
 public sealed class ConsumeCareCooldownScenario : IScenario
 {
@@ -52,12 +55,14 @@ public sealed class ConsumeCareCooldownScenario : IScenario
         bool fourBites = await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.Activity.EatBitesCompleted == 4, 900);
         float beforeFinalMood = lab.Progress.Mood;
+        float fullnessBeforeFinal = lab.Progress.Fullness;
         int beforeFinalCooldown =
             lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.CareLabFood);
         bool success = await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1, 180);
         int cooldownAtSuccess =
             lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.CareLabFood);
+        float fullnessAtSuccess = lab.Progress.Fullness;
         bool finalLoweringContinues = success &&
             lab.Buddy.Activity.Current == ActivityId.Eat &&
             lab.Buddy.Activity.RemainingTicks > 0;
@@ -66,7 +71,10 @@ public sealed class ConsumeCareCooldownScenario : IScenario
             beforeFinalCooldown == 0 &&
             success &&
             Mathf.Abs(lab.Progress.Mood - (initialMood + 10.0f)) < 0.01f &&
-            cooldownAtSuccess == 7200 &&
+            // Food carries no reuse cooldown since the appetite bar replaced it (owner
+            // decision 2026-07-29); the bar is what moved instead.
+            cooldownAtSuccess == 0 &&
+            fullnessAtSuccess >= fullnessBeforeFinal + 49.5f &&
             !lab.Buddy.ObjectInteraction.IsHolding &&
             finalLoweringContinues;
         checks.Add(new StartupCheck(
@@ -74,30 +82,50 @@ public sealed class ConsumeCareCooldownScenario : IScenario
             fifthOnly,
             $"four={fourBites} pre_mood={beforeFinalMood:F1} pre_cd={beforeFinalCooldown} " +
             $"success={success} mood={lab.Progress.Mood:F1} cd={cooldownAtSuccess} " +
+            $"fullness={fullnessAtSuccess:F1} was={fullnessBeforeFinal:F1} " +
             $"holding={lab.Buddy.ObjectInteraction.IsHolding} lowering={finalLoweringContinues}"));
 
         await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.Activity.Current == ActivityId.None, 240);
-        float moodAfterSuccess = lab.Progress.Mood;
+
+        // With room left in the bar, a second helping is simply accepted: the wait between
+        // meals is gone, and appetite is now the only gate.
         await M4ObjectScenarioSupport.SendKey(tree, Key.E);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-        bool cooldownRejected =
-            lab.Buddy.ObjectInteraction.LastConsumeRejection ==
-                DesktopBuddy.Domain.Mood.ConsumeRejection.OnCooldown &&
-            lab.Buddy.Activity.Current == ActivityId.None &&
-            lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1 &&
-            Mathf.Abs(lab.Progress.Mood - moodAfterSuccess) < 0.01f;
+        bool secondAccepted =
+            lab.Buddy.ObjectInteraction.LastConsumeRejection == ConsumeRejection.None &&
+            lab.Buddy.Activity.Current == ActivityId.Eat;
+        lab.Buddy.ObjectInteraction.CancelActiveInteraction();
+        lab.Buddy.SetBehaviorActivity(ActivityId.None);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         checks.Add(new StartupCheck(
-            "consume_cooldown_rejects_reuse",
-            cooldownRejected,
+            "with_room_left_a_second_helping_is_accepted",
+            secondAccepted,
+            $"rejection={lab.Buddy.ObjectInteraction.LastConsumeRejection} " +
+            $"activity={lab.Buddy.Activity.Current} fullness={lab.Progress.Fullness:F1}"));
+
+        // Full to the brim, the same key is refused — for appetite, not for a timer.
+        lab.Progress.FillHunger(lab.Progress.Appetite);
+        float moodWhenFull = lab.Progress.Mood;
+        await M4ObjectScenarioSupport.SendKey(tree, Key.E);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool fullRejects =
+            lab.Buddy.ObjectInteraction.LastConsumeRejection == ConsumeRejection.TooFull &&
+            lab.Buddy.Activity.Current != ActivityId.Eat &&
+            lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1 &&
+            Mathf.Abs(lab.Progress.Mood - moodWhenFull) < 0.01f;
+        checks.Add(new StartupCheck(
+            "a_full_buddy_refuses_food",
+            fullRejects,
             $"rejection={lab.Buddy.ObjectInteraction.LastConsumeRejection} " +
             $"activity={lab.Buddy.Activity.Current} successes=" +
-            $"{lab.Buddy.ObjectInteraction.ConsumeSuccessCount} mood={lab.Progress.Mood:F1}"));
+            $"{lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
+            $"fullness={lab.Progress.Fullness:F1} mood={lab.Progress.Mood:F1}"));
 
         messages.Add(
             $"consume cancel={lab.Buddy.ObjectInteraction.ConsumeCancelCount} " +
             $"success={lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
-            $"cooldown={lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.CareLabFood)}");
+            $"fullness={lab.Progress.Fullness:F1}");
         await M4ObjectScenarioSupport.Cleanup(tree, lab);
         bool passed = true;
         foreach (StartupCheck check in checks) passed &= check.Passed;

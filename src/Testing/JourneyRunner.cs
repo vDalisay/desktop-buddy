@@ -821,20 +821,20 @@ public partial class JourneyRunner : Node
             tree, lab, pull, MouseButton.Left, pressed: false, 0);
 
         float moodBefore = lab.Progress.Mood;
+        float fullnessBefore = lab.Progress.Fullness;
         bool eaten = await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1, 3600);
         state["buddy_fetches_and_eats_the_meal"] = eaten;
         state["meal_pays_its_authored_mood"] =
             eaten && lab.Progress.Mood >= moodBefore + 9.5f;
-        state["meal_starts_its_cooldown"] =
-            lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.ToolMeal) > 0;
+        state["meal_fills_the_hunger_bar"] =
+            eaten && lab.Progress.Fullness >= fullnessBefore + 49.5f;
 
         Log.Info(
             "Journey",
             $"M5 meal launches={lab.Launcher.LaunchCount} cancels={lab.Launcher.CancelCount} " +
             $"successes={lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
-            $"mood={lab.Progress.Mood:F1} " +
-            $"cooldown={lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.ToolMeal)}");
+            $"mood={lab.Progress.Mood:F1} fullness={lab.Progress.Fullness:F1}");
     }
 
     private async System.Threading.Tasks.Task ExerciseM35PresentationToggleAsync(

@@ -16,6 +16,6 @@
     { "predicate": "meal_pullback_launches_it" },
     { "predicate": "buddy_fetches_and_eats_the_meal" },
     { "predicate": "meal_pays_its_authored_mood" },
-    { "predicate": "meal_starts_its_cooldown" }
+    { "predicate": "meal_fills_the_hunger_bar" }
   ]
 }

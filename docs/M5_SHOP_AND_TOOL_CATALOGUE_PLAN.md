@@ -585,6 +585,22 @@ running the suite" remains the failure mode this plan exists to prevent.
   key's dev spawn; retiring it is an owner call at the slice review. Verified: domain
   783/783, quick suite 21/21, `meal_consume` + `m5_meal` + `baseball_pullback` green on seeds
   1 and 7 in both presentations.
+- 2026-07-29 — **Owner review of the Meal slice: two defects fixed, one behaviour added**
+  (see `DECISIONS.md`, "Hunger Replaces the Food Cooldown"). (1) The eaten item rode the
+  carrying hand's socket while both hands lifted to the mouth; it now rides the midpoint
+  between the hands whenever the eat reach is active, guarded by a `meal_consume` check on
+  the sideways offset and resting height. (2) A full buddy fetched, dropped, and re-fetched
+  food forever. Appetite now replaces the food reuse cooldown: new engine-free
+  `Domain/Mood/HungerModel` (`200`-point bar, accept iff `fullness + fill <= 200`, three
+  drain rates) plus `HungerActivityPolicy`; fullness is persisted (save schema 4 → 5, legacy
+  saves resume empty); `LooseObjectProfile` authors `ConsumeHungerFill`; the Meal fills `50`
+  and its cooldown is `0`. Refusal is a performance: pick up once, head-shake through the new
+  `ActivityId.Refuse` clip, throw it aside, then ignore that specific item until there is room
+  for it — other food is still judged on its own size. FR-008.4/.5/.10 amended; FR-008.16–19
+  added. **Open for Task 10:** whether the Repair Kit keeps its `120`-second cooldown, since
+  it is not food. Verified: domain 805/805, quick suite 21/21, `meal_consume` (now including
+  the refusal loop and the recovery) + `m5_meal` + `consume_care_cooldown` + `activity_clips`
+  + `m36_expressive` + `care_persistence` green on seeds 1 and 7 in both presentations.
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against
   the repository (`LooseObjectRegistry` cap/eviction/protection, arbiter `Hazard = 3`
   branch, `ToolUses`/`ToolPainMilli` statistics, AGENT_VERIFICATION §7 per-tool

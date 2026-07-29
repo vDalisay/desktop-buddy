@@ -154,9 +154,15 @@ Baseball is owner-ACCEPTED (2026-07-29). The quick suite is now 21 steps — add
 `corner_scoop` (pickup against a wall), `object_budget`, `meal_consume`, and the
 `m5_meal` real-input journey.
 
+The buddy now has a hidden `200`-point hunger bar (owner decision 2026-07-29,
+`DECISIONS.md`): it eats what fits, refuses what would overfill with a head-shake
+and a toss-aside, and leaves that item alone until it has room. Food reuse
+cooldowns are gone; the save schema is `5`.
+
 **Next owner action:** run the lab, press `6` to place a Meal, launch it with the
-Grab + secondary chord, and judge whether the Meal slice feels right. Accepting it
-flips `data/catalogue/tool_meal.tres` to `Visible = true`. M4 is complete and owner-accepted. Its post-acceptance hardening records
+Grab + secondary chord, and judge whether the Meal slice feels right — including
+the refusal once the buddy is full (four Meals fill the bar). Accepting it flips
+`data/catalogue/tool_meal.tres` to `Visible = true`. M4 is complete and owner-accepted. Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input
 two-process persistence journey.

@@ -99,7 +99,12 @@ public sealed record FunActivitySave
 /// <summary>Steam-Cloud-eligible semantic progress only (ARCHITECTURE §12).</summary>
 public sealed record ProgressSave
 {
-    public const int CurrentSchemaVersion = 4;
+    /// <summary>
+    /// <c>5</c> adds <see cref="Fullness"/>. A schema-4 save loads with an empty stomach,
+    /// which is the same state a new save starts in — the buddy is hungry after an upgrade,
+    /// never mysteriously full.
+    /// </summary>
+    public const int CurrentSchemaVersion = 5;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public long Revision { get; init; }
@@ -107,6 +112,12 @@ public sealed record ProgressSave
     public List<string> UnlockedToolIds { get; init; } = [];
     public string SelectedToolId { get; init; } = ContentIds.ToolGrab;
     public float Mood { get; init; }
+
+    /// <summary>
+    /// Hidden appetite, in points of the <c>200</c>-point bar (owner decision 2026-07-29).
+    /// Persisted like mood: a relaunch must not reset the buddy's stomach.
+    /// </summary>
+    public float Fullness { get; init; }
     public List<string> HarmfulContentIds { get; init; } = [];
     public int ObstacleHopPropensity { get; init; } = BuddyTraits.Default.ObstacleHopPropensity;
 
@@ -142,6 +153,7 @@ public sealed record ProgressSave
             UnlockedToolIds = [.. snapshot.UnlockedToolIds],
             SelectedToolId = snapshot.SelectedToolId,
             Mood = snapshot.Mood,
+            Fullness = snapshot.Fullness,
             HarmfulContentIds = [.. snapshot.HarmfulContentIds],
             ObstacleHopPropensity = snapshot.Traits.ObstacleHopPropensity,
             FunActivities = BuildFunActivities(snapshot),

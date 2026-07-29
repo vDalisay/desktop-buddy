@@ -873,6 +873,36 @@ requires real flight: `flight_speed=938`, `flight_travel=213`.
     workaround in `object_catch_hold`, which deliberately spawned away from the walls
     because a cornered ball "can never be closed on".
 
+## Hunger Replaces the Food Cooldown (2026-07-29)
+
+Owner feedback on the Meal slice: a full buddy kept walking to food, picking it up, dropping
+it, and repeating until its cooldown expired. The fix is a model, not a patch.
+
+- **The buddy has a hidden `200`-point hunger bar** (FR-008.16). It is never displayed; the
+  player reads it from behavior, like mood and the favorite Pet spot.
+- **Acceptance is arithmetic, not a threshold** (FR-008.17). The buddy eats an item only when
+  it fits: `fullness + fill <= 200`. The owner's example is the specification — at `160`
+  fullness a `50`-point cake overshoots by `10` and is refused, while a `10`-point apple is
+  eaten. Portion size is the whole decision, so a nearly full buddy still takes a snack.
+- **Appetite burns at three rates** (FR-008.18): `20`/minute while the buddy is actively
+  played with, `10`/minute during ordinary Play-mode presence, `2`/minute in Work mode or
+  hidden. Hidden and Work mode are one case — the buddy is idling on someone else's desktop.
+- **The Meal's and Drink's reuse cooldowns are gone.** Appetite replaces them; FR-008.4/.5
+  are amended. The Repair Kit keeps its `120`-second cooldown for now — it is not food, and
+  the owner's decision was taken about eating. **Open for Task 10:** confirm whether the
+  Repair Kit stays on a cooldown or moves to some other gate.
+- **Refusal is a performance, not a silent drop** (FR-008.19). The buddy picks the item up
+  once, shakes its head side to side, and throws it aside; then it ignores *that* item until
+  it has room for that portion again. Other food is still considered on its own size. The
+  refusal is remembered per object, so the fetch-drop-fetch loop cannot recur.
+- **Provisional magnitudes** (agent-tunable): Meal fills `50` points, the head-shake runs
+  `96` ticks (`0.8` s), and a new save starts with an empty stomach. A schema-4 save loads
+  empty too, so an upgrade never leaves a buddy mysteriously full.
+- **Eating is two-handed.** The physical item now rides the midpoint between the hands while
+  the eat reach is active, matching the drive that brings both hands to the mouth and the 3D
+  item socket. It previously rode the single carrying hand's socket, which is what the owner
+  saw. The one-handed pose remains correct for ordinary carrying (M4 decision 2026-07-27).
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

@@ -14,6 +14,12 @@ public partial class BehaviorActivityProfile : GameResource
     [Export(PropertyHint.Range, "1,120,1")] public int EatFinalLowerHoldTicks { get; set; } = 30;
     [Export(PropertyHint.Range, "1,600,1")] public int WaveDurationTicks { get; set; } = 144;
 
+    /// <summary>
+    /// How long the "no thanks" head-shake plays before the buddy puts the item down.
+    /// `96` ticks is 0.8 s at 120 Hz: two clear shakes, not a lingering performance.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,600,1")] public int RefuseDurationTicks { get; set; } = 96;
+
     public override Godot.Collections.Array<string> Validate()
     {
         var errors = new Godot.Collections.Array<string>();
@@ -24,6 +30,7 @@ public partial class BehaviorActivityProfile : GameResource
             errors.Add("eat bite moment must be between zero and one");
         if (EatFinalLowerHoldTicks < 1) errors.Add("eat final lower hold ticks must be positive");
         if (WaveDurationTicks < 1) errors.Add("wave duration ticks must be positive");
+        if (RefuseDurationTicks < 1) errors.Add("refuse duration ticks must be positive");
         return errors;
     }
 }

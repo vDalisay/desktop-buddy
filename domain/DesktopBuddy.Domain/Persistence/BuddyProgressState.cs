@@ -45,7 +45,9 @@ public readonly record struct ProgressSnapshot(
     CumulativeTimes Times,
     ProgressExtensionData? Extensions = null,
     /// <summary>Remaining novelty per fun activity; taste itself rides on Traits.</summary>
-    IReadOnlyList<FunActivityInterest>? FunInterest = null);
+    IReadOnlyList<FunActivityInterest>? FunInterest = null,
+    /// <summary>Hidden appetite, in points of the hunger bar.</summary>
+    float Fullness = 0.0f);
 
 /// <summary>
 /// Forward-compatible data retained but never activated by this build.
@@ -95,6 +97,7 @@ public enum ProgressChange
 public sealed class BuddyProgressState
 {
     private readonly MoodModel _mood;
+    private readonly HungerModel _hunger;
     private readonly RewardLedger _ledger;
     private readonly ToolSelection _tools = new();
     private readonly HashSet<string> _unlockedTools = new(StringComparer.Ordinal);
@@ -134,9 +137,11 @@ public sealed class BuddyProgressState
         long initialBalanceMilliCredits = 0,
         string? selectedToolId = null,
         ProgressExtensionData? extensions = null,
-        IEnumerable<FunActivityInterest>? funInterest = null)
+        IEnumerable<FunActivityInterest>? funInterest = null,
+        float initialFullness = 0.0f)
     {
         _mood = new MoodModel(initialMood, harmfulContentIds);
+        _hunger = new HungerModel(initialFullness: initialFullness);
         _ledger = new RewardLedger(cashPerPain, initialBalanceMilliCredits);
         Traits = traits ?? BuddyTraits.Default;
         Revision = revision;
@@ -217,6 +222,42 @@ public sealed class BuddyProgressState
     public IReadOnlyCollection<string> HarmfulContentIds => _mood.HarmfulTools;
     public bool IsContentHarmful(string contentId) => _mood.IsToolHarmful(contentId);
 
+    /// <summary>Hidden appetite: how full the buddy is, in points (owner decision 2026-07-29).</summary>
+    public float Fullness => _hunger.Fullness;
+
+    /// <summary>Room left in the bar — the largest item the buddy would accept right now.</summary>
+    public float Appetite => _hunger.Appetite;
+
+    /// <summary>
+    /// Whether the buddy would eat an item of this size. The rule is arithmetic: it fits or
+    /// it does not, so a nearly full buddy still takes a snack but refuses a banquet.
+    /// </summary>
+    public bool WouldEat(float hungerFill) => _hunger.Accepts(hungerFill);
+
+    /// <summary>Fills the bar after a successful consume.</summary>
+    public void FillHunger(float amount)
+    {
+        if (amount <= 0.0f)
+            return;
+
+        _hunger.Fill(amount);
+        Touch();
+    }
+
+    /// <summary>
+    /// Burns appetite over an elapsed span at the rate for what the buddy is doing. Fires no
+    /// <see cref="Changed"/> event, for the same reason mood drift does not: it runs every
+    /// tick and the save coordinator already coalesces on <see cref="Revision"/>.
+    /// </summary>
+    public void DrainHunger(double elapsedSeconds, HungerActivity activity)
+    {
+        if (elapsedSeconds <= 0.0)
+            return;
+
+        _hunger.Drain(elapsedSeconds, activity);
+        Touch();
+    }
+
     public long BalanceMilliCredits => _ledger.BalanceMilliCredits;
     public long BalanceCredits => _ledger.BalanceCredits;
 
@@ -275,7 +316,8 @@ public sealed class BuddyProgressState
             Statistics,
             Times,
             Extensions,
-            _fun.Snapshot());
+            _fun.Snapshot(),
+            _hunger.Fullness);
     }
 
     /// <summary>

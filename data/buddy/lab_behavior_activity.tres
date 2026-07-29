@@ -10,3 +10,4 @@ EatBiteCycleTicks = 72
 EatBiteMoment = 0.55
 EatFinalLowerHoldTicks = 30
 WaveDurationTicks = 144
+RefuseDurationTicks = 96

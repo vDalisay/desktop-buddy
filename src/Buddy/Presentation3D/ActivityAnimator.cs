@@ -87,6 +87,7 @@ public partial class ActivityAnimator : Node3D
         library.AddAnimation(ClipNameFor(ActivityId.JumpAnticipation), BuildJumpClip(tuning));
         library.AddAnimation(ClipNameFor(ActivityId.Wave), BuildWaveClip(tuning));
         library.AddAnimation(ClipNameFor(ActivityId.Eat), BuildEatClip(tuning));
+        library.AddAnimation(ClipNameFor(ActivityId.Refuse), BuildRefuseClip(tuning));
         _player.AddAnimationLibrary(string.Empty, library);
 
         // Presentation-only food follows the midpoint of both physical hand sockets.
@@ -108,6 +109,7 @@ public partial class ActivityAnimator : Node3D
         ActivityId.JumpAnticipation => "jump_anticipation",
         ActivityId.Wave => "wave",
         ActivityId.Eat => "eat",
+        ActivityId.Refuse => "refuse",
         _ => string.Empty,
     };
 
@@ -358,6 +360,26 @@ public partial class ActivityAnimator : Node3D
         Key(animation, hand, length * 0.65, amplitude * -0.2f, amplitude);
         Key(animation, hand, length * 0.8, amplitude * 0.5f, amplitude);
         Key(animation, hand, length, 0.0f, 0.0f);
+        return animation;
+    }
+
+    /// <summary>
+    /// "No thanks": two side-to-side head shakes over the refusal window. Sideways only —
+    /// a horizontal head motion is what reads as refusal, and the amplitude stays inside the
+    /// same tiny bound every other clip honors.
+    /// </summary>
+    private static Animation BuildRefuseClip(in ActivityTuningData tuning)
+    {
+        float amplitude = tuning.WaveAmplitude;
+        double length = tuning.WaveSeconds * 0.55;
+        var animation = new Animation { Length = (float)length };
+        int head = AddPositionTrack(animation, BuddyPartId.Head);
+        Key(animation, head, 0.0, 0.0f, 0.0f);
+        Key(animation, head, length * 0.15, -amplitude, 0.0f);
+        Key(animation, head, length * 0.38, amplitude, 0.0f);
+        Key(animation, head, length * 0.62, -amplitude, 0.0f);
+        Key(animation, head, length * 0.85, amplitude * 0.6f, 0.0f);
+        Key(animation, head, length, 0.0f, 0.0f);
         return animation;
     }
 
