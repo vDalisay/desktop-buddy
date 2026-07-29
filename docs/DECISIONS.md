@@ -847,6 +847,79 @@ requires real flight: `flight_speed=938`, `flight_travel=213`.
   displacement. Objects above the provisional `900 px/s` catch-speed ceiling are impacts,
   not automatic catches.
 
+## M5 Baseball Accepted, Meal Chord Confirmed, Cornered Pickup (2026-07-29)
+
+- **Baseball feel is owner-ACCEPTED.** The slice is shop-visible: `tool_baseball.tres`
+  carries `Visible = true`. Its price stays provisional until Task 12 calibration.
+- **The Meal uses the same launch chord as the Baseball** (owner confirmation): its key
+  spawns/replaces one Meal at the cursor, Grab acquires it, hold-secondary and drag back
+  previews, release launches. No new input contract for the slice.
+- **A cornered object must be pickable** (owner report with the Baseball acceptance: the
+  buddy could not pick up a ball sitting completely in a corner). Two rules changed, both
+  engineering-delegated:
+  - A committed object approach spends the ambient wall-avoid comfort margin. The margin
+    exists so ambient wandering does not scuff the walls; a buddy walking over to fetch
+    something has a reason to be at the wall. It now stops on real contact, measured from
+    the **torso** rather than the widest part — a swinging hand reaches the wall roughly
+    `23 px` before the body does, which is most of the gap that made the object unreachable.
+    Ambient, hazard-flee, and social layers keep the original accepted M1 wall stop.
+  - The ground-scoop gate measures the object's **near surface**, not its centre. A ball
+    pinned against a wall stops the body about `29 px` from its centre and no amount of
+    walking closes that, while the gate was `26 px`. The scoop is a timed dip that lifts
+    the object into the hands, and the runtime already suspends collision with a committed
+    object, so "the object is against my body" is the honest gate. `ScoopDistance` itself is
+    unchanged at `26`.
+  - Scenario `corner_scoop` covers both corners and is in the quick suite. It replaces the
+    workaround in `object_catch_hold`, which deliberately spawned away from the walls
+    because a cornered ball "can never be closed on".
+
+## Hunger Replaces the Food Cooldown (2026-07-29)
+
+Owner feedback on the Meal slice: a full buddy kept walking to food, picking it up, dropping
+it, and repeating until its cooldown expired. The fix is a model, not a patch.
+
+- **The buddy has a hidden `200`-point hunger bar** (FR-008.16). It is never displayed; the
+  player reads it from behavior, like mood and the favorite Pet spot.
+- **Acceptance is arithmetic, not a threshold** (FR-008.17). The buddy eats an item only when
+  it fits: `fullness + fill <= 200`. The owner's example is the specification — at `160`
+  fullness a `50`-point cake overshoots by `10` and is refused, while a `10`-point apple is
+  eaten. Portion size is the whole decision, so a nearly full buddy still takes a snack.
+- **Appetite burns at three rates** (FR-008.18): `20`/minute while the buddy is actively
+  played with, `10`/minute during ordinary Play-mode presence, `2`/minute in Work mode or
+  hidden. Hidden and Work mode are one case — the buddy is idling on someone else's desktop.
+- **Every consumable reuse cooldown is gone.** Appetite replaces the Meal's and Drink's;
+  FR-008.4/.5 are amended. The Repair Kit has **no cooldown at all** (owner, 2026-07-29) and
+  no appetite gate either — it is not food, so nothing rations it; FR-008.6 is amended. The
+  `ConsumeCooldownTicks` field stays in the object profile at `0`, unused by shipped content,
+  rather than being deleted from a schema mid-milestone.
+- **Refusal is a performance, not a silent drop** (FR-008.19). The buddy picks the item up
+  once, shakes its head side to side, and puts it down; then it ignores *that* item until
+  it has room for that portion again. Other food is still considered on its own size. The
+  refusal is remembered per object, so the fetch-drop-fetch loop cannot recur.
+- **The refusal is staged exactly as the owner described it** (correction 2026-07-29, after
+  seeing the first cut): the item stays in the ONE hand that picked it up — the refusal does
+  **not** share the eat reach, which is what made the food ride the midpoint between both
+  hands like a meal being lifted to the mouth. The buddy turns frontal for it, because the
+  "no" is aimed at the player who offered the food, and the refusal owns the head for its
+  duration so an ambient glance cannot wander off mid-gesture. The “no” is a **head yaw**,
+  not a sideways translation: rotate around the neck’s vertical axis as though looking over
+  alternating shoulders, cross neutral continuously without a pause, use no more than four
+  alternating extremes, damp the amplitude, keep pitch/roll substantially stable, and finish
+  neutral. The first extreme is capped at `30°` (`ActivityRefuseYawDegrees`); the authored
+  four-extreme shape is left `30°`, right `24.9°`, left `20.1°`, right `12°`, then neutral.
+  The clip is seeked across the behavior-owned refusal window rather than advanced in real
+  time, so the gesture fills the window however the two profiles are tuned. It ends in a
+  plain **drop below the buddy**: the old discard impulse threw the food aside, which is what
+  the owner saw as the food glitching away. Distance was never what stopped the fetch loop —
+  the per-object refusal memory is.
+- **Provisional magnitudes** (agent-tunable): Meal fills `50` points, the head-shake runs
+  `96` ticks (`0.8` s), and a new save starts with an empty stomach. A schema-4 save loads
+  empty too, so an upgrade never leaves a buddy mysteriously full.
+- **Eating is two-handed.** The physical item now rides the midpoint between the hands while
+  the eat reach is active, matching the drive that brings both hands to the mouth and the 3D
+  item socket. It previously rode the single carrying hand's socket, which is what the owner
+  saw. The one-handed pose remains correct for ordinary carrying (M4 decision 2026-07-27).
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

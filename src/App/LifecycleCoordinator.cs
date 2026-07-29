@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Domain.Economy;
+using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
@@ -20,6 +21,7 @@ public partial class LifecycleCoordinator : Node
     private PassiveIncome _income = null!;
     private GameClock _clock = null!;
     private Func<bool> _activeInteraction = null!;
+    private Func<bool>? _isWorkMode;
     private Action? _resumePresentation;
     private Action<bool>? _setWindowVisibility;
     private double _pendingSeconds;
@@ -50,8 +52,10 @@ public partial class LifecycleCoordinator : Node
         Func<bool> activeInteraction,
         IMonotonicTimeSource? timeSource = null,
         Action? resumePresentation = null,
-        Action<bool>? setWindowVisibility = null)
+        Action<bool>? setWindowVisibility = null,
+        Func<bool>? isWorkMode = null)
     {
+        _isWorkMode = isWorkMode;
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
@@ -202,6 +206,10 @@ public partial class LifecycleCoordinator : Node
         _economy.DepositPassive(milliCredits);
         bool hidden = AccruesAsHidden;
         bool active = !hidden && _activeInteraction();
+        // Appetite burns on the same accepted span, at the rate for what is actually going on
+        // (owner decision 2026-07-29): barely anything while the player works or the buddy is
+        // hidden, more while it is being played with.
+        _progress.DrainHunger(elapsed, ClassifyHunger(hidden, active));
         _progress.AccrueTime(
             elapsed,
             active ? elapsed : 0.0,
@@ -209,6 +217,9 @@ public partial class LifecycleCoordinator : Node
         AcceptedRunningSeconds += elapsed;
         _ = ObserveAutosaveAsync(_saves.TickAsync(elapsed));
     }
+
+    private HungerActivity ClassifyHunger(bool hidden, bool activeInteraction) =>
+        HungerActivityPolicy.Classify(hidden, _isWorkMode?.Invoke() ?? false, activeInteraction);
 
     private static async System.Threading.Tasks.Task ObserveAutosaveAsync(
         System.Threading.Tasks.Task operation)

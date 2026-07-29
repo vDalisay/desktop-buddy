@@ -79,6 +79,49 @@ internal static class M4ObjectScenarioSupport
         return chest + new Vector2(side * distance, -25.0f);
     }
 
+    /// <summary>
+    /// Moves the real pointer to a world position through Godot's input queue, so anything
+    /// driving the launcher chord exercises the same path a player does.
+    /// </summary>
+    public static async Task MovePointer(
+        SceneTree tree,
+        BuddyLab lab,
+        Vector2 world,
+        MouseButtonMask mask)
+    {
+        Vector2 viewport = lab.GetViewport().GetCanvasTransform() * world;
+        Input.ParseInputEvent(new InputEventMouseMotion
+        {
+            ButtonMask = mask,
+            Position = viewport,
+            GlobalPosition = viewport,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+    }
+
+    /// <summary>Presses or releases a real mouse button at a world position.</summary>
+    public static async Task SetButton(
+        SceneTree tree,
+        BuddyLab lab,
+        Vector2 world,
+        MouseButton button,
+        bool pressed,
+        MouseButtonMask mask)
+    {
+        Vector2 viewport = lab.GetViewport().GetCanvasTransform() * world;
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = button,
+            ButtonMask = mask,
+            Pressed = pressed,
+            Position = viewport,
+            GlobalPosition = viewport,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+    }
+
     public static async Task SendKey(SceneTree tree, Key key)
     {
         Input.ParseInputEvent(new InputEventKey

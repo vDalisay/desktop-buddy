@@ -1,0 +1,21 @@
+{
+  "id": "m5_meal",
+  "description": "Place a catalogue Meal with its spawn key, carry it on the normal Grab tether, cancel one aim without launching, then pull back and launch it so the buddy fetches and eats it for its authored mood gain and cooldown.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_meal",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "meal_key_spawns_one_meal" },
+    { "predicate": "meal_is_carried_by_the_normal_grab" },
+    { "predicate": "meal_aim_cancel_keeps_the_carry" },
+    { "predicate": "meal_pullback_launches_it" },
+    { "predicate": "buddy_fetches_and_eats_the_meal" },
+    { "predicate": "meal_pays_its_authored_mood" },
+    { "predicate": "meal_fills_the_hunger_bar" }
+  ]
+}

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueDrink"
+script = ExtResource("1")
+ContentId = "tool.drink"
+Kind = 2
+PriceCredits = 80
+ProgressionOrder = 11
+Visible = false
+NameKey = "shop.tool.drink.name"
+DescriptionKey = "shop.tool.drink.description"
+RequiresLaunchScene = false
+RequiresIcon = false

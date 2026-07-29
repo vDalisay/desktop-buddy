@@ -17,6 +17,12 @@ public enum ActivityId
     JumpAnticipation = 3,
     Wave = 4,
     Eat = 5,
+
+    /// <summary>
+    /// "No thanks": the head-shake the buddy gives an offered item it has no appetite for,
+    /// before putting the thing down (owner instruction 2026-07-29).
+    /// </summary>
+    Refuse = 6,
 }
 
 /// <summary>Semantic inputs sampled per rendered frame; presentation never writes them.</summary>
@@ -33,10 +39,10 @@ public readonly record struct ActivityParameters(
     float WaveSeconds);
 
 /// <summary>
-/// Pure-logic image of the M3.6 activity tuning (selector timing plus the clip
-/// amplitudes the Godot animator bakes into its offset tracks). Amplitudes are bounded
-/// well inside the offset cap per the owner's very-subtle direction; the presenter's
-/// clamp still applies on top, so even bad data cannot take a visual off its body.
+/// Pure-logic image of the M3.6 activity tuning (selector timing plus the clip values the
+/// Godot animator bakes into its tracks). Positional amplitudes are bounded well inside the
+/// offset cap per the owner's very-subtle direction; refusal yaw has its own owner-confirmed
+/// degree bound. Presentation values never mutate a physics body.
 /// </summary>
 public readonly record struct ActivityTuningData(
     float WalkSpeedThreshold,
@@ -49,13 +55,16 @@ public readonly record struct ActivityTuningData(
     float WalkBobAmplitude,
     float WaveAmplitude,
     float ChewAmplitude,
-    float JumpSquashAmplitude)
+    float JumpSquashAmplitude,
+    float RefuseYawDegrees)
 {
-    // "Alive but never busy": authored amplitudes stay tiny in world pixels. The
+    // "Alive but never busy": authored positional amplitudes stay tiny in world pixels. The
     // smallest part cap today is ~0.5 x hand radius; six pixels already reads bold.
     public const float MaximumAmplitude = 6.0f;
     public const float MaximumSeconds = 10.0f;
     public const float MaximumWalkCyclePixels = 400.0f;
+    public const float MinimumRefuseYawDegrees = 20.0f;
+    public const float MaximumRefuseYawDegrees = 30.0f;
 
     public IReadOnlyList<string> Validate()
     {
@@ -71,6 +80,14 @@ public readonly record struct ActivityTuningData(
         AddPositiveBounded(errors, WaveAmplitude, MaximumAmplitude, "activity wave amplitude");
         AddPositiveBounded(errors, ChewAmplitude, MaximumAmplitude, "activity chew amplitude");
         AddPositiveBounded(errors, JumpSquashAmplitude, MaximumAmplitude, "activity jump squash amplitude");
+        if (!float.IsFinite(RefuseYawDegrees) ||
+            RefuseYawDegrees < MinimumRefuseYawDegrees ||
+            RefuseYawDegrees > MaximumRefuseYawDegrees)
+        {
+            errors.Add(
+                $"activity refuse yaw must be finite within " +
+                $"[{MinimumRefuseYawDegrees:0}-{MaximumRefuseYawDegrees:0}] degrees");
+        }
         return errors;
     }
 
@@ -100,6 +117,7 @@ public sealed class ActivitySelector
 {
     private readonly ActivityParameters _parameters;
     private double _eatSecondsRemaining;
+    private double _refuseSecondsRemaining;
     private double _waveSecondsRemaining;
     private double _jumpSecondsRemaining;
 
@@ -135,10 +153,27 @@ public sealed class ActivitySelector
     /// <summary>Requests the one-shot Wave; it plays for the profile duration.</summary>
     public void RequestWave() => _waveSecondsRemaining = _parameters.WaveSeconds;
 
+    /// <summary>
+    /// Behavior seam: requests the one-shot refusal head-shake. It outranks Eat, because the
+    /// point of it is that the buddy has decided <i>not</i> to eat what it is holding.
+    /// </summary>
+    public void RequestRefuse(double durationSeconds)
+    {
+        if (!double.IsFinite(durationSeconds) || durationSeconds <= 0.0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(durationSeconds), durationSeconds, "Duration must be positive.");
+        }
+
+        _eatSecondsRemaining = 0.0;
+        _refuseSecondsRemaining = durationSeconds;
+    }
+
     /// <summary>Cancels any behavior-backed activity (hard cut back to ambient).</summary>
     public void CancelRequests()
     {
         _eatSecondsRemaining = 0.0;
+        _refuseSecondsRemaining = 0.0;
         _waveSecondsRemaining = 0.0;
         _jumpSecondsRemaining = 0.0;
     }
@@ -148,6 +183,7 @@ public sealed class ActivitySelector
         if (deltaSeconds > 0.0)
         {
             _eatSecondsRemaining = Math.Max(0.0, _eatSecondsRemaining - deltaSeconds);
+            _refuseSecondsRemaining = Math.Max(0.0, _refuseSecondsRemaining - deltaSeconds);
             _waveSecondsRemaining = Math.Max(0.0, _waveSecondsRemaining - deltaSeconds);
             _jumpSecondsRemaining = Math.Max(0.0, _jumpSecondsRemaining - deltaSeconds);
         }
@@ -166,7 +202,11 @@ public sealed class ActivitySelector
             return Current;
         }
 
-        if (_eatSecondsRemaining > 0.0)
+        if (_refuseSecondsRemaining > 0.0)
+        {
+            Current = ActivityId.Refuse;
+        }
+        else if (_eatSecondsRemaining > 0.0)
         {
             Current = ActivityId.Eat;
         }

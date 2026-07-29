@@ -4,6 +4,7 @@ using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Content;
@@ -135,7 +136,7 @@ public partial class BuddyLab : Node2D
         if (_runContext is null)
         {
             Progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
-            Economy = new EconomyService(Progress);
+            Economy = new EconomyService(Progress, CatalogueLoader.Catalogue);
             var progressStore = new InMemoryProgressStore();
             Saves = new SaveCoordinator(Progress, progressStore);
         }
@@ -148,7 +149,10 @@ public partial class BuddyLab : Node2D
         // Development laboratory catalogue: implemented M5 tools are available for
         // mechanical tuning without granting them on a real new save.
         if (_runContext is null)
+        {
             Economy.Unlock(ContentIds.ToolBaseball);
+            Economy.Unlock(ContentIds.ToolMeal);
+        }
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
         Launcher.Initialize(OnLooseObjectClearRequested);

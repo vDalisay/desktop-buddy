@@ -41,6 +41,7 @@
 [ext_resource type="Script" path="res://src/Tools/PullbackLauncherComponent.cs" id="40_launcher"]
 [ext_resource type="Resource" path="res://data/tools/pullback_launcher.tres" id="41_launcher_profile"]
 [ext_resource type="Resource" path="res://data/objects/baseball.tres" id="42_baseball"]
+[ext_resource type="Resource" path="res://data/objects/meal.tres" id="43_meal"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -228,7 +229,7 @@ Registry = NodePath("../LooseObjectRegistry")
 Boundaries = NodePath("../RoomBounds")
 ObjectParent = NodePath("..")
 Profile = ExtResource("41_launcher_profile")
-BaseballProfile = ExtResource("42_baseball")
+LaunchableProfiles = Array[Resource]([ExtResource("42_baseball"), ExtResource("43_meal")])
 
 [node name="BoxingGloveController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
 script = ExtResource("14_glove")

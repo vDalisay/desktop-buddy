@@ -148,12 +148,14 @@ public partial class FacingController : Node
             side = MathF.Sign(Buddy.ObjectInteraction.CursorWorldPosition.X - torsoX);
         }
 
-        bool eatFacesFront = Buddy.Activity.Current == ActivityId.Eat;
+        // Eating faces front, and so does refusing: the point of the head-shake is that it is
+        // aimed at the player who offered the food (owner instruction 2026-07-29).
+        bool facesFront = Buddy.Activity.Current is ActivityId.Eat or ActivityId.Refuse;
         var inputs = new FacingInputs(
             engaged,
             side,
             Buddy.CurrentDriveIntent.WalkDirection,
-            ForceFrontal: eatFacesFront);
+            ForceFrontal: facesFront);
         return _model.Update(inputs, ticksElapsed, deltaSeconds);
     }
 }

@@ -14,6 +14,15 @@ public sealed class ContentIdsTests
     [InlineData(ToolId.Tickle, "tool.tickle")]
     [InlineData(ToolId.BoxingGlove, "tool.boxing_glove")]
     [InlineData(ToolId.Baseball, "tool.baseball")]
+    [InlineData(ToolId.Meal, "tool.meal")]
+    [InlineData(ToolId.BaseballBat, "tool.baseball_bat")]
+    [InlineData(ToolId.Pistol, "tool.pistol")]
+    [InlineData(ToolId.Grenade, "tool.grenade")]
+    [InlineData(ToolId.FireSprayer, "tool.fire_sprayer")]
+    [InlineData(ToolId.SoccerBall, "tool.soccer_ball")]
+    [InlineData(ToolId.Drink, "tool.drink")]
+    [InlineData(ToolId.Shotgun, "tool.shotgun")]
+    [InlineData(ToolId.RepairKit, "tool.repair_kit")]
     public void ForTool_MapsToTheShippedOrdinalString(ToolId tool, string expected) =>
         Assert.Equal(expected, ContentIds.ForTool(tool));
 
@@ -43,6 +52,27 @@ public sealed class ContentIdsTests
         Assert.True(all.Add(ContentIds.LooseObject));
         Assert.True(all.Add(ContentIds.RoomBoundary));
         Assert.True(all.Add(ContentIds.CareLabFood));
+        Assert.True(all.Add(ContentIds.UpgradeStrength));
+    }
+
+    [Fact]
+    public void EveryToolOrdinalKeepsItsShippedValue()
+    {
+        // Ordinals are persisted in legacy integer saves: append only, never renumber.
+        Assert.Equal(0, (int)ToolId.Grab);
+        Assert.Equal(1, (int)ToolId.Pet);
+        Assert.Equal(2, (int)ToolId.Tickle);
+        Assert.Equal(3, (int)ToolId.BoxingGlove);
+        Assert.Equal(4, (int)ToolId.Baseball);
+        Assert.Equal(5, (int)ToolId.Meal);
+        Assert.Equal(6, (int)ToolId.BaseballBat);
+        Assert.Equal(7, (int)ToolId.Pistol);
+        Assert.Equal(8, (int)ToolId.Grenade);
+        Assert.Equal(9, (int)ToolId.FireSprayer);
+        Assert.Equal(10, (int)ToolId.SoccerBall);
+        Assert.Equal(11, (int)ToolId.Drink);
+        Assert.Equal(12, (int)ToolId.Shotgun);
+        Assert.Equal(13, (int)ToolId.RepairKit);
     }
 
     [Fact]
@@ -58,7 +88,8 @@ public sealed class ContentIdsTests
     [Theory]
     [InlineData(null)]
     [InlineData("")]
-    [InlineData("tool.grenade")] // from a newer build
+    [InlineData("tool.from_a_later_build")] // from a newer build
+    [InlineData("upgrade.strength")] // catalogue content, deliberately never a tool (FR-019)
     [InlineData("object.loose")]
     [InlineData("Tool.Grab")] // ordinal comparison: case matters
     public void TryParseTool_UnknownIdFallsBackToGrabWithoutClaimingSuccess(string? contentId)

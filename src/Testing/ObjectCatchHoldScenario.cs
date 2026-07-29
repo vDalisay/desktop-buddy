@@ -160,9 +160,9 @@ public sealed class ObjectCatchHoldScenario : IScenario
         Rect2 room = lab.Boundaries.InnerBounds;
         float floorY = room.End.Y - lab.SafeObjectProfile.Radius - 1.0f;
         float torsoX = lab.Buddy.Rig.Torso.GlobalPosition.X;
-        // Drop it on whichever side has room, clamped inside the walls. Spawning blindly at
-        // torso+90 could land the ball at or past a wall, where the buddy is wall-blocked and
-        // can never close on it.
+        // Drop it on whichever side has room, clamped inside the walls: this check owns the
+        // open-floor pickup. The wall case is `corner_scoop`, which used to be unreachable and
+        // is now its own gate (owner report 2026-07-29).
         float side = room.End.X - torsoX > 110.0f ? 1.0f : -1.0f;
         float spawnX = Mathf.Clamp(
             torsoX + (side * 90.0f),

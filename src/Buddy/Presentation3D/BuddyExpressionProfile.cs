@@ -81,6 +81,12 @@ public partial class BuddyExpressionProfile : GameResource
     [Export(PropertyHint.Range, "0.1,6,0.1")]
     public float ActivityJumpSquashAmplitude { get; set; } = 2.5f;
 
+    // Refusal is a damped left/right look around the neck's vertical axis, not a sideways
+    // translation. The first extreme reaches this yaw; later extremes diminish before the
+    // head returns to neutral (owner correction 2026-07-30).
+    [Export(PropertyHint.Range, "20,30,0.5")]
+    public float ActivityRefuseYawDegrees { get; set; } = 30.0f;
+
     // Task 4 look-at tuning: the cone the head may turn inside, the acquisition ease, the
     // virtual gaze depth the target angles are measured against, how close an engaged
     // cursor must be to be worth watching, how long a hit stays interesting, the seeded
@@ -195,7 +201,8 @@ public partial class BuddyExpressionProfile : GameResource
         ActivityWalkBobAmplitude,
         ActivityWaveAmplitude,
         ActivityChewAmplitude,
-        ActivityJumpSquashAmplitude);
+        ActivityJumpSquashAmplitude,
+        ActivityRefuseYawDegrees);
 
     /// <summary>Projects the exported Godot fields into the pure-logic validation image.</summary>
     public ExpressionTuningData ToData() => new(

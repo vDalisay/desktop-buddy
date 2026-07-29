@@ -176,7 +176,7 @@ public sealed class SaveCoordinatorTests
 
         Assert.True(state.Purchase(
             DesktopBuddy.Domain.Content.ContentIds.ToolBaseball,
-            3_000).Succeeded);
+            Content.TestCatalogues.Standard()).Succeeded);
 
         for (int spin = 0; spin < 100 && store.ProgressWriteCount == 0; spin++)
             await Task.Yield();

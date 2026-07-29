@@ -31,6 +31,10 @@ public partial class AutonomousMotionComponent : Node
     public int JumpRequestCount { get; private set; }
     public bool BlockedLeft { get; private set; }
     public bool BlockedRight { get; private set; }
+
+    /// <summary>Pressed against the wall, with no clearance left for the comfort margin.</summary>
+    public bool ContactLeft { get; private set; }
+    public bool ContactRight { get; private set; }
     public bool IsWallStopping { get; private set; }
     public bool ObstacleLeft { get; private set; }
     public bool ObstacleRight { get; private set; }
@@ -136,6 +140,8 @@ public partial class AutonomousMotionComponent : Node
     {
         BlockedLeft = false;
         BlockedRight = false;
+        ContactLeft = false;
+        ContactRight = false;
         IsWallStopping = false;
         LeftWallClearance = float.PositiveInfinity;
         RightWallClearance = float.PositiveInfinity;
@@ -162,6 +168,15 @@ public partial class AutonomousMotionComponent : Node
         float projectedRight = RightWallClearance - Mathf.Max(0.0f, velocityX) * Profile.WallLookAheadSeconds;
         BlockedLeft = projectedLeft <= Profile.WallAvoidMarginPixels;
         BlockedRight = projectedRight <= Profile.WallAvoidMarginPixels;
+        // Contact is measured from the body, not from the widest part, and without the
+        // comfort margin or the look-ahead. A swinging hand reaches the wall roughly 23 px
+        // before the torso does, which is exactly the gap that made a ball resting in a
+        // corner unreachable: the buddy stopped 51 px away and stood there. Arms may press
+        // into the wall — containment keeps every part in the room regardless.
+        float torsoX = Rig.Torso.GlobalPosition.X;
+        float torsoRadius = Rig.Torso.Radius;
+        ContactLeft = torsoX - torsoRadius <= _walkableBounds.Position.X;
+        ContactRight = torsoX + torsoRadius >= _walkableBounds.End.X;
         IsWallStopping = (BlockedLeft && velocityX < -0.5f) || (BlockedRight && velocityX > 0.5f);
     }
 }

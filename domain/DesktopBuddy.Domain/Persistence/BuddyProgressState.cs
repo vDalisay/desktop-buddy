@@ -45,7 +45,9 @@ public readonly record struct ProgressSnapshot(
     CumulativeTimes Times,
     ProgressExtensionData? Extensions = null,
     /// <summary>Remaining novelty per fun activity; taste itself rides on Traits.</summary>
-    IReadOnlyList<FunActivityInterest>? FunInterest = null);
+    IReadOnlyList<FunActivityInterest>? FunInterest = null,
+    /// <summary>Hidden appetite, in points of the hunger bar.</summary>
+    float Fullness = 0.0f);
 
 /// <summary>
 /// Forward-compatible data retained but never activated by this build.
@@ -95,6 +97,7 @@ public enum ProgressChange
 public sealed class BuddyProgressState
 {
     private readonly MoodModel _mood;
+    private readonly HungerModel _hunger;
     private readonly RewardLedger _ledger;
     private readonly ToolSelection _tools = new();
     private readonly HashSet<string> _unlockedTools = new(StringComparer.Ordinal);
@@ -134,9 +137,11 @@ public sealed class BuddyProgressState
         long initialBalanceMilliCredits = 0,
         string? selectedToolId = null,
         ProgressExtensionData? extensions = null,
-        IEnumerable<FunActivityInterest>? funInterest = null)
+        IEnumerable<FunActivityInterest>? funInterest = null,
+        float initialFullness = 0.0f)
     {
         _mood = new MoodModel(initialMood, harmfulContentIds);
+        _hunger = new HungerModel(initialFullness: initialFullness);
         _ledger = new RewardLedger(cashPerPain, initialBalanceMilliCredits);
         Traits = traits ?? BuddyTraits.Default;
         Revision = revision;
@@ -155,11 +160,12 @@ public sealed class BuddyProgressState
 
         if (unlockedToolIds is null)
         {
-            // FR-013.1: a new save has all four launch-subset tools available.
-            _unlockedTools.Add(ContentIds.ToolGrab);
-            _unlockedTools.Add(ContentIds.ToolPet);
-            _unlockedTools.Add(ContentIds.ToolTickle);
-            _unlockedTools.Add(ContentIds.ToolBoxingGlove);
+            // FR-013.1: a new save has all four launch-subset tools available. The set is
+            // declared once in CataloguePolicy so seeding and the catalogue cannot drift.
+            foreach (string id in CataloguePolicy.NewSaveUnlockedContentIds)
+            {
+                _unlockedTools.Add(id);
+            }
         }
         else
         {
@@ -215,6 +221,42 @@ public sealed class BuddyProgressState
     public MoodBand MoodBand => _mood.Band;
     public IReadOnlyCollection<string> HarmfulContentIds => _mood.HarmfulTools;
     public bool IsContentHarmful(string contentId) => _mood.IsToolHarmful(contentId);
+
+    /// <summary>Hidden appetite: how full the buddy is, in points (owner decision 2026-07-29).</summary>
+    public float Fullness => _hunger.Fullness;
+
+    /// <summary>Room left in the bar — the largest item the buddy would accept right now.</summary>
+    public float Appetite => _hunger.Appetite;
+
+    /// <summary>
+    /// Whether the buddy would eat an item of this size. The rule is arithmetic: it fits or
+    /// it does not, so a nearly full buddy still takes a snack but refuses a banquet.
+    /// </summary>
+    public bool WouldEat(float hungerFill) => _hunger.Accepts(hungerFill);
+
+    /// <summary>Fills the bar after a successful consume.</summary>
+    public void FillHunger(float amount)
+    {
+        if (amount <= 0.0f)
+            return;
+
+        _hunger.Fill(amount);
+        Touch();
+    }
+
+    /// <summary>
+    /// Burns appetite over an elapsed span at the rate for what the buddy is doing. Fires no
+    /// <see cref="Changed"/> event, for the same reason mood drift does not: it runs every
+    /// tick and the save coordinator already coalesces on <see cref="Revision"/>.
+    /// </summary>
+    public void DrainHunger(double elapsedSeconds, HungerActivity activity)
+    {
+        if (elapsedSeconds <= 0.0)
+            return;
+
+        _hunger.Drain(elapsedSeconds, activity);
+        Touch();
+    }
 
     public long BalanceMilliCredits => _ledger.BalanceMilliCredits;
     public long BalanceCredits => _ledger.BalanceCredits;
@@ -274,7 +316,8 @@ public sealed class BuddyProgressState
             Statistics,
             Times,
             Extensions,
-            _fun.Snapshot());
+            _fun.Snapshot(),
+            _hunger.Fullness);
     }
 
     /// <summary>
@@ -318,56 +361,49 @@ public sealed class BuddyProgressState
     }
 
     /// <summary>
-    /// Atomically spends currency and records permanent ownership for one known tool.
-    /// Prices use whole displayed credits, represented as milli-credits; invalid catalogue
-    /// requests and every failure path leave revision, balance, and ownership untouched.
+    /// Atomically buys one catalogue entry. The <b>catalogue</b> resolves purchasability
+    /// and the authoritative price — there is deliberately no caller-supplied price, so a
+    /// shop button cannot name its own number (ARCHITECTURE §11). Every failure path
+    /// leaves revision, balance, and ownership untouched.
     /// </summary>
-    public PurchaseResult Purchase(string contentId, long priceMilliCredits)
+    public PurchaseResult Purchase(string contentId, ToolCatalogue catalogue)
     {
-        if (!ContentIds.IsTool(contentId))
+        ArgumentNullException.ThrowIfNull(catalogue);
+        catalogue.TryGet(contentId, out CatalogueEntry entry);
+        long price = entry.PriceMilliCredits;
+        PurchaseStatus status = CataloguePolicy.EvaluatePurchase(
+            catalogue,
+            contentId,
+            _unlockedTools.Contains(contentId ?? string.Empty),
+            _ledger.BalanceMilliCredits);
+
+        if (status != PurchaseStatus.Purchased)
         {
             return new PurchaseResult(
-                PurchaseStatus.InvalidContentId,
+                status,
                 contentId ?? string.Empty,
-                priceMilliCredits,
+                price,
                 _ledger.BalanceMilliCredits);
         }
 
-        if (priceMilliCredits <= 0 ||
-            priceMilliCredits % RewardLedger.MilliCreditsPerCredit != 0)
+        if (!_ledger.TrySpend(price))
         {
-            return new PurchaseResult(
-                PurchaseStatus.InvalidPrice,
-                contentId,
-                priceMilliCredits,
-                _ledger.BalanceMilliCredits);
-        }
-
-        if (_unlockedTools.Contains(contentId))
-        {
-            return new PurchaseResult(
-                PurchaseStatus.AlreadyOwned,
-                contentId,
-                priceMilliCredits,
-                _ledger.BalanceMilliCredits);
-        }
-
-        if (!_ledger.TrySpend(priceMilliCredits))
-        {
+            // The policy already compared the balance; this is the ledger's own last word,
+            // and it must still leave nothing half-applied.
             return new PurchaseResult(
                 PurchaseStatus.InsufficientFunds,
-                contentId,
-                priceMilliCredits,
+                contentId!,
+                price,
                 _ledger.BalanceMilliCredits);
         }
 
-        _unlockedTools.Add(contentId);
+        _unlockedTools.Add(contentId!);
         Touch();
         Changed?.Invoke(ProgressChange.ContentPurchased);
         return new PurchaseResult(
             PurchaseStatus.Purchased,
-            contentId,
-            priceMilliCredits,
+            contentId!,
+            price,
             _ledger.BalanceMilliCredits);
     }
 

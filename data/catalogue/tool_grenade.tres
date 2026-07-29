@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueGrenade"
+script = ExtResource("1")
+ContentId = "tool.grenade"
+Kind = 1
+PriceCredits = 40
+ProgressionOrder = 8
+Visible = false
+NameKey = "shop.tool.grenade.name"
+DescriptionKey = "shop.tool.grenade.description"
+RequiresLaunchScene = false
+RequiresIcon = false

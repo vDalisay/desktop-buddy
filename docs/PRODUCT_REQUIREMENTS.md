@@ -137,18 +137,22 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 1. **FR-008.1:** WHILE Pet or Tickle is selected, held click-and-drag strokes over buddy body parts SHALL constitute the interaction input.
 2. **FR-008.2:** WHEN Pet satisfies its distance/time gate OR friendly Tickle reaches its `3`-second cadence THEN it SHALL grant `+1` mood no more than once per `3` seconds of valid interaction; Angry Tickle follows FR-008.13 instead.
 3. **FR-008.3:** WHEN the buddy completes a catch of a safely thrown object THEN it SHALL grant `+1` mood once for that throw/catch event.
-4. **FR-008.4:** WHEN the buddy successfully uses a Meal outside its reuse cooldown THEN the Meal SHALL grant `+10` mood and SHALL have a `60`-second reuse cooldown.
-5. **FR-008.5:** WHEN the buddy successfully uses a Drink outside its reuse cooldown THEN the Drink SHALL grant `+5` mood and SHALL have a `60`-second reuse cooldown.
-6. **FR-008.6:** WHEN the buddy successfully uses a Repair Kit outside its reuse cooldown THEN the Repair Kit SHALL grant `+20` mood, clear transient pain and harmful statuses, and SHALL have a `120`-second reuse cooldown.
+4. **FR-008.4:** WHEN the buddy successfully eats a Meal THEN the Meal SHALL grant `+10` mood and SHALL fill its authored share of the FR-008.16 hunger bar. *(Owner decision 2026-07-29: appetite replaces the Meal's former `60`-second reuse cooldown.)*
+5. **FR-008.5:** WHEN the buddy successfully consumes a Drink THEN the Drink SHALL grant `+5` mood and SHALL fill its authored share of the FR-008.16 hunger bar. *(Owner decision 2026-07-29: appetite replaces the Drink's former `60`-second reuse cooldown.)*
+6. **FR-008.6:** WHEN the buddy successfully uses a Repair Kit THEN the Repair Kit SHALL grant `+20` mood and clear transient pain and harmful statuses. *(Owner decision 2026-07-29: the Repair Kit has no reuse cooldown. It is not food, so it is gated by neither a timer nor appetite.)*
 7. **FR-008.7:** WHEN a Repair Kit is used during an active knockout THEN it SHALL NOT shorten the fixed knockout duration.
 8. **FR-008.8:** WHEN Pet, Tickle, catch, Meal, Drink, or Repair Kit grants care benefits THEN it SHALL award no immediate money.
 9. **FR-008.9:** WHEN a mood-granting action would exceed `+100` or a mood-loss action would fall below `-100` THEN the stored mood SHALL remain clamped to its confirmed bounds.
-10. **FR-008.10:** WHEN a Meal, Drink, or Repair Kit is cancelled, dropped without successful use, or otherwise fails to be consumed/used THEN its reuse cooldown SHALL NOT begin; successful consumption/use SHALL begin the cooldown.
+10. **FR-008.10:** WHEN a Meal, Drink, or Repair Kit is cancelled, dropped without successful use, or otherwise fails to be consumed/used THEN it SHALL grant no mood, SHALL NOT fill the hunger bar, and SHALL apply no other effect; only successful consumption/use SHALL apply anything.
 11. **FR-008.11:** WHILE Pet is held over the buddy THEN satisfaction SHALL accumulate from cursor distance travelled over buddy bodies; WHEN the hidden satisfaction threshold is full AND at least `3` valid-contact seconds have elapsed since the previous Pet reward THEN Pet SHALL grant `+1` mood and reset satisfaction.
 12. **FR-008.12:** WHEN Pet becomes selected THEN one of the six body parts SHALL become the favorite spot for that selection; distance travelled over it SHALL contribute `1.2x` Pet satisfaction while the favorite remains hidden and is communicated through expression.
 13. **FR-008.13:** WHEN cumulative valid Tickle contact reaches `6` seconds THEN Tickle SHALL enter Angry, cease positive mood awards, apply `-1` mood per further `3` valid-contact seconds, and request angry expression/flee behavior; WHEN `8` seconds elapse without valid Tickle contact THEN tolerance and anger SHALL reset.
 14. **FR-008.14:** WHILE friendly Tickle contact continues THEN the buddy MAY hop away from the pointer no more often than once per `1.5` seconds; WHILE Angry Tickle contact continues THEN it MAY hop away no more often than once per `0.75` seconds.
 15. **FR-008.15:** WHILE the held Pet hand is rubbing the current favorite spot THEN small original sparkle particles SHALL appear around the Pet hand and SHALL stop when favorite contact, held input, or Pet selection ends.
+16. **FR-008.16:** WHILE the game is running THEN the buddy SHALL hold a hidden `200`-point hunger bar that food fills and time empties; it SHALL NOT be displayed, and the player SHALL read it only from the buddy's behavior. Fullness SHALL persist across sessions.
+17. **FR-008.17:** WHEN the buddy considers eating an item THEN it SHALL accept the item only if the item's fill amount fits in the room remaining (`fullness + fill <= 200`); a nearly full buddy SHALL therefore accept a small item while refusing a large one.
+18. **FR-008.18:** WHILE time passes THEN fullness SHALL fall by `20` points per minute while the buddy is being actively played with, `10` points per minute during ordinary Play-mode presence, and `2` points per minute while the shell is in Work mode or the buddy is hidden.
+19. **FR-008.19:** WHEN the buddy picks up an item it has no room for THEN it SHALL hold that item in ONE hand, turn frontal to the player, and communicate “no” by smoothly rotating its visual head around the neck’s vertical axis: first toward one shoulder at no more than `30°`, then continuously through neutral toward the other shoulder, for no more than four alternating extremes total, with diminishing amplitude before returning to neutral. The gesture SHALL introduce no sideways head translation or center pause and SHALL keep pitch and roll substantially stable. The buddy SHALL then put the item down below itself and SHALL NOT retrieve that specific item again until its appetite has room for that item's fill amount. The item SHALL NOT be thrown or flung on the refusal. Other items SHALL remain eligible for consideration on their own fill amounts.
 
 ### FR-009 — Tool Input Conventions
 
@@ -381,10 +385,12 @@ a shop slot but never appears in tool selection.
 | Trust reset | upward crossing from `<60` to `>=60` | FR-007.7–FR-007.9 |
 | Pet / Tickle | `+1 mood / 3 s` valid contact | FR-008.2 |
 | Safe catch | `+1 mood` per completed catch | FR-008.3 |
-| Meal | `+10 mood`, `60 s` cooldown | FR-008.4 |
-| Drink | `+5 mood`, `60 s` cooldown | FR-008.5 |
-| Repair Kit | `+20 mood`, `120 s` cooldown | FR-008.6–FR-008.7 |
-| Care cooldown activation | successful consumption/use only | FR-008.10 |
+| Meal | `+10 mood`, fills the hunger bar | FR-008.4 |
+| Drink | `+5 mood`, fills the hunger bar | FR-008.5 |
+| Repair Kit | `+20 mood`, no cooldown | FR-008.6–FR-008.7 |
+| Hunger bar | `200` points, hidden, persisted | FR-008.16–FR-008.17 |
+| Appetite rate | `20 / 10 / 2` points per minute (playing / present / working) | FR-008.18 |
+| Care effect activation | successful consumption/use only | FR-008.10 |
 | Pistol | `8` rounds, `0.25 s` cadence, `1.2 s` reload | FR-010.1 |
 | Shotgun | `6` pellets, `5` shells, `0.9 s` cadence, `2 s` reload | FR-010.2 |
 | Firearm input | one shot per press; `R` or empty auto-reload | FR-010.11–FR-010.12 |

@@ -55,11 +55,14 @@ public static class ProgressSavePolicy
 
             ProgressSave save = schema switch
             {
-                1 => MigrateV3(MigrateV2(MigrateV1(document.RootElement))),
-                2 => MigrateV3(MigrateV2(
+                1 => MigrateV4(MigrateV3(MigrateV2(MigrateV1(document.RootElement)))),
+                2 => MigrateV4(MigrateV3(MigrateV2(
+                    JsonSerializer.Deserialize<ProgressSave>(json, Options)
+                    ?? throw new JsonException("Progress payload was null.")))),
+                3 => MigrateV4(MigrateV3(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null."))),
-                3 => MigrateV3(
+                4 => MigrateV4(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null.")),
                 ProgressSave.CurrentSchemaVersion =>
@@ -141,14 +144,16 @@ public static class ProgressSavePolicy
             selected = ContentIds.ToolGrab;
         }
 
+        // Ownership covers every catalogue entry, not only the selectable ones: the FR-019
+        // upgrade is bought and owned like anything else while never being a tool.
         var activeUnlocks = save.UnlockedToolIds
-            .Where(ContentIds.IsTool)
+            .Where(ContentIds.IsCatalogueEntry)
             .ToArray();
         var activeHarmful = save.HarmfulContentIds
             .Where(ContentIds.IsKnown)
             .ToArray();
         var unknownIds = save.Extensions.UnknownContentIds
-            .Concat(save.UnlockedToolIds.Where(id => !ContentIds.IsTool(id)))
+            .Concat(save.UnlockedToolIds.Where(id => !ContentIds.IsCatalogueEntry(id)))
             .Concat(save.HarmfulContentIds.Where(id => !ContentIds.IsKnown(id)))
             .Distinct(StringComparer.Ordinal)
             .ToArray();
@@ -186,7 +191,8 @@ public static class ProgressSavePolicy
             save.BalanceMilliCredits,
             selected,
             extensions,
-            funInterest);
+            funInterest,
+            save.Fullness);
     }
 
     /// <summary>
@@ -208,13 +214,24 @@ public static class ProgressSavePolicy
     /// </summary>
     private static ProgressSave MigrateV3(ProgressSave save) => save with
     {
-        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        SchemaVersion = 4,
         FunActivities = save.FunActivities
             .Select(activity => activity with
             {
                 Bored = activity.Interest < FunInterestModel.ComebackInterest,
             })
             .ToList(),
+    };
+
+    /// <summary>
+    /// Schema 4 predates the appetite bar. Such a save has no stomach state at all, so it
+    /// resumes empty — the same place a new save starts. Loading a pre-hunger buddy as full
+    /// would silently refuse the first meal the player offered after upgrading.
+    /// </summary>
+    private static ProgressSave MigrateV4(ProgressSave save) => save with
+    {
+        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        Fullness = 0.0f,
     };
 
     private static List<FunActivitySave> DefaultFunActivities()

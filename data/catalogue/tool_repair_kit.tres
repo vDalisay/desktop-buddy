@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueRepairKit"
+script = ExtResource("1")
+ContentId = "tool.repair_kit"
+Kind = 2
+PriceCredits = 120
+ProgressionOrder = 13
+Visible = false
+NameKey = "shop.tool.repair_kit.name"
+DescriptionKey = "shop.tool.repair_kit.description"
+RequiresLaunchScene = false
+RequiresIcon = false

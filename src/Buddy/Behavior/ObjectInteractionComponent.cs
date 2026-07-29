@@ -23,6 +23,9 @@ namespace DesktopBuddy.Buddy.Behavior;
 [GlobalClass]
 public partial class ObjectInteractionComponent : Area2D
 {
+    /// <summary>Distinct items the buddy can be refusing at once.</summary>
+    private const int RefusalMemoryCapacity = 8;
+
     private readonly LooseObjectBody?[] _sensed = new LooseObjectBody?[LooseObjectRegistry.Capacity];
     private readonly ObjectCandidate[] _candidates = new ObjectCandidate[LooseObjectRegistry.Capacity];
     private readonly CareConsumableModel _consumables = new();
@@ -45,6 +48,16 @@ public partial class ObjectInteractionComponent : Area2D
     private bool _attachedToLeftHand;
     private LooseObjectBody? _exceptionBody;
     private int _exceptionGraceTicks;
+
+    /// <summary>
+    /// Items the buddy has already said no to, with the size that was too big. It stops the
+    /// fetch-drop-fetch loop the owner reported: a refused item is left alone until the buddy
+    /// has burned enough appetite to actually want it (owner instruction 2026-07-29). Fixed
+    /// capacity and no allocation — the room only holds 24 objects anyway.
+    /// </summary>
+    private readonly int[] _refusedRuntimeIds = new int[RefusalMemoryCapacity];
+    private readonly float[] _refusedFills = new float[RefusalMemoryCapacity];
+    private int _refusingRuntimeId;
     private float _heldLinearDamp;
     private float _heldAngularDamp;
     private Vector2 _cursorWorldPosition;
@@ -93,6 +106,12 @@ public partial class ObjectInteractionComponent : Area2D
     public int DropCount { get; private set; }
     public int PlayerHeldPickupRejectionCount { get; private set; }
     public int ConsumeSuccessCount { get; private set; }
+
+    /// <summary>How many times the buddy has said "no thanks" to an item it had no room for.</summary>
+    public int RefusalCount { get; private set; }
+
+    /// <summary>True while the buddy is performing a refusal it has not yet resolved.</summary>
+    public bool IsRefusing => _refusingRuntimeId != 0;
     public int ConsumeCancelCount { get; private set; }
     public ConsumeRejection LastConsumeRejection { get; private set; }
     public ObjectDriveCommand CurrentDriveCommand { get; private set; }
@@ -222,6 +241,19 @@ public partial class ObjectInteractionComponent : Area2D
             return;
         }
 
+        // A refusal owns the buddy until its head-shake finishes; only then does the item
+        // leave its hands and the lifecycle resume.
+        if (_refusingRuntimeId != 0)
+        {
+            ResolveRefusal();
+            if (_refusingRuntimeId != 0)
+            {
+                CurrentDriveCommand = BuildHoldCommand(_heldBody, ObjectDriveAction.Hold);
+                TickCooldowns();
+                return;
+            }
+        }
+
         int count = BuildCandidates();
         bool holdConfirmed = IsHolding ? HoldStillIntact() : ResolveCatch();
 
@@ -283,6 +315,17 @@ public partial class ObjectInteractionComponent : Area2D
             return false;
         }
 
+        // Appetite applies to the development key exactly as it does to a fetched meal: a
+        // full buddy will not eat, however the food is handed to it (owner decision
+        // 2026-07-29). The direct path refuses outright rather than staging a head-shake —
+        // nothing was picked up to put back down.
+        if (GodotObject.IsInstanceValid(body.Profile) &&
+            !_progress.WouldEat(body.Profile!.ConsumeHungerFill))
+        {
+            LastConsumeRejection = ConsumeRejection.TooFull;
+            return false;
+        }
+
         if (IsHolding ||
             !_registry.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) ||
             !snapshot.Consumable ||
@@ -318,6 +361,12 @@ public partial class ObjectInteractionComponent : Area2D
         if (!IsInitialized)
             return;
         CancelConsume();
+        if (_refusingRuntimeId != 0)
+        {
+            // Interrupted mid-shake: the decision stands, but the performance does not.
+            _refusingRuntimeId = 0;
+            Activity.Interrupt();
+        }
         _model.Reset();
         ReleaseHeld(ObjectDriveAction.Drop, Vector2.Zero);
         CurrentDriveCommand = ObjectDriveCommand.None;
@@ -327,6 +376,9 @@ public partial class ObjectInteractionComponent : Area2D
     {
         CancelActiveInteraction();
         _consumables.Reset();
+        // A hard reposition or session resume drops transient interaction state, and which
+        // particular objects the buddy had turned its nose up at is exactly that.
+        ForgetRefusals();
         Array.Clear(_sensed);
         SensedCount = 0;
         _catchTicks = 0;
@@ -383,8 +435,15 @@ public partial class ObjectInteractionComponent : Area2D
                 Mathf.IsZeroApprox(offset.X) ? 1.0f : Mathf.Sign(offset.X),
                 snapshot.Consumable,
                 snapshot.AtRest,
-                snapshot.Ignored,
-                Mathf.Abs(offset.X),
+                // Already refused and still unwanted: leave it where it lies. This is the
+                // same ignore channel the post-release cooling-off window uses.
+                snapshot.Ignored || IsRefused(snapshot.RuntimeId),
+                // To the object's near surface, not its centre. A ball pinned in a corner
+                // stops the body about `29 px` from its centre — no walking closes that — so
+                // a centre-measured gate made a cornered object permanently unpickable
+                // (owner report 2026-07-29). The scoop is a timed dip that lifts the object
+                // into the hands, so what matters is that it is against the body.
+                Mathf.Max(0.0f, Mathf.Abs(offset.X) - body.Radius),
                 snapshot.PlayerHeld);
 
             if (snapshot.AtRest && !snapshot.PlayerHeld &&
@@ -593,11 +652,26 @@ public partial class ObjectInteractionComponent : Area2D
             return;
 
         string contentId = _heldBody!.SemanticContentId;
+        // What is edible is authored data, not a hard-coded ID: the catalogue's Meal, Drink,
+        // and Repair Kit are the same machinery with their own profiles (FR-013.2).
+        bool consumable = GodotObject.IsInstanceValid(_heldBody.Profile) &&
+            _heldBody.Profile!.Consumable;
+
+        // Appetite decides, and it decides by portion size: the buddy takes what fits in the
+        // room left and refuses what would overfill it (owner decision 2026-07-29). Refusing
+        // is a performance, not a silent drop — see BeginRefusal.
+        if (consumable && !_progress.WouldEat(_heldBody.Profile!.ConsumeHungerFill))
+        {
+            LastConsumeRejection = ConsumeRejection.TooFull;
+            BeginRefusal();
+            return;
+        }
+
         ConsumeRejection rejection = ConsumeRejection.UnknownConsumable;
-        if (contentId != ContentIds.CareLabFood ||
+        if (!consumable ||
             !_consumables.TryBegin(contentId, out _consumeToken, out rejection))
         {
-            LastConsumeRejection = contentId == ContentIds.CareLabFood
+            LastConsumeRejection = consumable
                 ? rejection
                 : ConsumeRejection.UnknownConsumable;
             _model.Reset();
@@ -618,13 +692,22 @@ public partial class ObjectInteractionComponent : Area2D
             return;
         }
 
-        ConsumeResult result = _consumables.Complete(_consumeToken, CareConsumableTuning.LabFood);
+        // The item's own authored mood gain and cooldown, so a Meal and a Repair Kit differ in
+        // data alone.
+        CareConsumableTuning tuning = GodotObject.IsInstanceValid(_heldBody!.Profile)
+            ? _heldBody.Profile!.ToConsumableTuning()
+            : CareConsumableTuning.LabFood;
+        ConsumeResult result = _consumables.Complete(_consumeToken, tuning);
         _consumeToken = 0;
         if (!result.Applied)
             return;
 
         LooseObjectBody consumed = _heldBody!;
         _progress.ApplyCareMood(result.MoodGain);
+        // The stomach only fills on a finished meal, on the same one-success rule the mood
+        // grant follows: an abandoned meal feeds nobody.
+        if (GodotObject.IsInstanceValid(consumed.Profile))
+            _progress.FillHunger(consumed.Profile!.ConsumeHungerFill);
         // A treat is one of the buddy's fun things too, on the same terms as catch: the mood
         // gain always lands, the novelty of it does not.
         _progress.EngageFun(FunActivityId.Treat);
@@ -650,6 +733,119 @@ public partial class ObjectInteractionComponent : Area2D
         CancelConsume();
         _model.Reset();
         ReleaseHeld(ObjectDriveAction.Drop, Vector2.Zero);
+    }
+
+    /// <summary>
+    /// "No thanks." The buddy keeps the item in the ONE hand that picked it up, turns to the
+    /// player, shakes its head twice, and — once the shake finishes in
+    /// <see cref="ResolveRefusal"/> — puts the item down below itself and stops caring about
+    /// that item until its appetite comes back (owner instruction 2026-07-29). Picking it up
+    /// and dropping it silently was the loop this replaces.
+    /// </summary>
+    private void BeginRefusal()
+    {
+        if (!GodotObject.IsInstanceValid(_heldBody))
+            return;
+
+        _refusingRuntimeId = _heldBody!.RuntimeId;
+        RememberRefusal(
+            _heldBody.RuntimeId,
+            GodotObject.IsInstanceValid(_heldBody.Profile) ? _heldBody.Profile!.ConsumeHungerFill : 0.0f);
+        RefusalCount++;
+        Activity.SetActivity(ActivityId.Refuse);
+    }
+
+    /// <summary>
+    /// Ends a refusal once the head-shake has played: the item is put down below the buddy and
+    /// the lifecycle returns to idle. Called every tick, so an interrupted shake (a punch, a
+    /// grab) still resolves rather than leaving the buddy holding what it refused.
+    ///
+    /// <para>A plain drop, not the discard throw it used to be: flinging the food away read as
+    /// the item glitching out of the buddy's hands (owner report 2026-07-29). Nothing else was
+    /// needed — the refusal memory, not distance, is what stops the fetch loop.</para>
+    /// </summary>
+    private void ResolveRefusal()
+    {
+        if (_refusingRuntimeId == 0 || Activity.IsRefusing)
+            return;
+
+        _refusingRuntimeId = 0;
+        _model.Reset();
+        if (!IsHolding)
+            return;
+
+        LooseObjectBody? dropped = _heldBody;
+        ReleaseHeld(ObjectDriveAction.Drop, Vector2.Zero);
+        DropCount++;
+        // The release hands the object the carrying hand's own motion so a throw continues the
+        // gesture; a refusal is the opposite — it lets go, and the food falls where it stood.
+        if (GodotObject.IsInstanceValid(dropped))
+        {
+            dropped!.LinearVelocity = Vector2.Zero;
+            dropped.AngularVelocity = 0.0f;
+        }
+    }
+
+    /// <summary>
+    /// Records that this item was refused, and how big it was. The size is what lets the
+    /// buddy change its mind honestly: once it has room for that portion again, the item goes
+    /// back on the menu.
+    /// </summary>
+    private void RememberRefusal(int runtimeId, float fill)
+    {
+        if (runtimeId == 0)
+            return;
+
+        int free = -1;
+        for (int index = 0; index < RefusalMemoryCapacity; index++)
+        {
+            if (_refusedRuntimeIds[index] == runtimeId)
+            {
+                _refusedFills[index] = fill;
+                return;
+            }
+
+            if (_refusedRuntimeIds[index] == 0 && free < 0)
+                free = index;
+        }
+
+        // Full table: the oldest refusal is the least interesting one to keep, and slot 0 is
+        // the oldest by construction because entries are appended.
+        int slot = free >= 0 ? free : 0;
+        _refusedRuntimeIds[slot] = runtimeId;
+        _refusedFills[slot] = fill;
+    }
+
+    /// <summary>
+    /// Whether this item is still being ignored. A refusal expires by itself: the moment the
+    /// buddy has burned enough appetite for that portion, the entry is dropped and the item is
+    /// interesting again.
+    /// </summary>
+    private bool IsRefused(int runtimeId)
+    {
+        for (int index = 0; index < RefusalMemoryCapacity; index++)
+        {
+            if (_refusedRuntimeIds[index] != runtimeId || runtimeId == 0)
+                continue;
+
+            if (_progress.WouldEat(_refusedFills[index]))
+            {
+                _refusedRuntimeIds[index] = 0;
+                _refusedFills[index] = 0.0f;
+                return false;
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ForgetRefusals()
+    {
+        Array.Clear(_refusedRuntimeIds);
+        Array.Clear(_refusedFills);
+        _refusingRuntimeId = 0;
     }
 
     private void CancelConsume()
@@ -801,11 +997,30 @@ public partial class ObjectInteractionComponent : Area2D
     /// </summary>
     private Vector2 CarrySocket()
     {
+        // Eating is a two-handed gesture: the drive brings both hands together in front of
+        // the mouth, so the food belongs between them. Riding the carrying hand's socket left
+        // it stuck to one hand while both hands lifted (owner report 2026-07-29).
+        if (Activity.EatReachActive)
+            return EatSocket();
+
         PuppetPartBody hand = AttachedHand;
         float lift = _heldBody is null
             ? 0.0f
             : hand.Radius + _heldBody.Radius - Profile.CatchHandClearance;
         return hand.GlobalPosition + new Vector2(0.0f, -lift * Profile.CarryLiftFraction);
+    }
+
+    /// <summary>
+    /// Midway between the hands, lifted just clear of them — the same place the 3D item
+    /// socket puts an eaten item's visual, so the physical body and the visual agree.
+    /// </summary>
+    private Vector2 EatSocket()
+    {
+        Vector2 between = (Rig.LeftHand.GlobalPosition + Rig.RightHand.GlobalPosition) * 0.5f;
+        float lift = _heldBody is null
+            ? 0.0f
+            : Rig.LeftHand.Radius + _heldBody.Radius - Profile.CatchHandClearance;
+        return between + new Vector2(0.0f, -lift * Profile.CarryLiftFraction);
     }
 
     /// <summary>

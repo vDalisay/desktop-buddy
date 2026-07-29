@@ -26,6 +26,12 @@ public enum ConsumeRejection
     OnCooldown,
     AlreadyConsuming,
     UnknownConsumable,
+
+    /// <summary>
+    /// The item would overfill the hunger bar (owner decision 2026-07-29). Not a timer: the
+    /// same buddy would accept a smaller portion this instant.
+    /// </summary>
+    TooFull,
 }
 
 /// <summary>The result of a completed or abandoned consume attempt.</summary>

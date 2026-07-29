@@ -23,6 +23,22 @@ public static class ContentIds
     public const string ToolTickle = "tool.tickle";
     public const string ToolBoxingGlove = "tool.boxing_glove";
     public const string ToolBaseball = "tool.baseball";
+    public const string ToolMeal = "tool.meal";
+    public const string ToolBaseballBat = "tool.baseball_bat";
+    public const string ToolPistol = "tool.pistol";
+    public const string ToolGrenade = "tool.grenade";
+    public const string ToolFireSprayer = "tool.fire_sprayer";
+    public const string ToolSoccerBall = "tool.soccer_ball";
+    public const string ToolDrink = "tool.drink";
+    public const string ToolShotgun = "tool.shotgun";
+    public const string ToolRepairKit = "tool.repair_kit";
+
+    /// <summary>
+    /// The FR-019 passive upgrade. Deliberately <b>not</b> a <see cref="ToolId"/>: it is
+    /// owned and priced like catalogue content but must never enter tool selection, so the
+    /// type system — not a runtime filter alone — keeps it out of the tool vocabulary.
+    /// </summary>
+    public const string UpgradeStrength = "upgrade.strength";
 
     /// <summary>
     /// Generic untagged physical body (scenario props, expired thrown objects). Covers
@@ -64,6 +80,15 @@ public static class ContentIds
         ToolId.Tickle => ToolTickle,
         ToolId.BoxingGlove => ToolBoxingGlove,
         ToolId.Baseball => ToolBaseball,
+        ToolId.Meal => ToolMeal,
+        ToolId.BaseballBat => ToolBaseballBat,
+        ToolId.Pistol => ToolPistol,
+        ToolId.Grenade => ToolGrenade,
+        ToolId.FireSprayer => ToolFireSprayer,
+        ToolId.SoccerBall => ToolSoccerBall,
+        ToolId.Drink => ToolDrink,
+        ToolId.Shotgun => ToolShotgun,
+        ToolId.RepairKit => ToolRepairKit,
         _ => throw new ArgumentOutOfRangeException(
             nameof(tool),
             tool,
@@ -94,6 +119,33 @@ public static class ContentIds
             case ToolBaseball:
                 tool = ToolId.Baseball;
                 return true;
+            case ToolMeal:
+                tool = ToolId.Meal;
+                return true;
+            case ToolBaseballBat:
+                tool = ToolId.BaseballBat;
+                return true;
+            case ToolPistol:
+                tool = ToolId.Pistol;
+                return true;
+            case ToolGrenade:
+                tool = ToolId.Grenade;
+                return true;
+            case ToolFireSprayer:
+                tool = ToolId.FireSprayer;
+                return true;
+            case ToolSoccerBall:
+                tool = ToolId.SoccerBall;
+                return true;
+            case ToolDrink:
+                tool = ToolId.Drink;
+                return true;
+            case ToolShotgun:
+                tool = ToolId.Shotgun;
+                return true;
+            case ToolRepairKit:
+                tool = ToolId.RepairKit;
+                return true;
             default:
                 tool = ToolSelection.DefaultTool;
                 return false;
@@ -106,8 +158,16 @@ public static class ContentIds
     /// <summary>True when this build can safely activate the persisted content ID.</summary>
     public static bool IsKnown(string? contentId) =>
         IsTool(contentId) ||
-        contentId is LooseObject or RoomBoundary or CareLabFood or
+        contentId is UpgradeStrength or LooseObject or RoomBoundary or CareLabFood or
             FunCatch or FunPet or FunTickle or FunTreat;
+
+    /// <summary>
+    /// True when the ID names an entry the FR-013.2 launch catalogue can carry — every
+    /// tool plus the FR-019 upgrade. Attribution-only IDs (loose objects, boundaries, fun
+    /// activities) are deliberately excluded: they are never owned or sold.
+    /// </summary>
+    public static bool IsCatalogueEntry(string? contentId) =>
+        IsTool(contentId) || contentId == UpgradeStrength;
 
     /// <summary>The total <see cref="FunActivityId"/> → stable ID mapping.</summary>
     public static string ForFun(FunActivityId activity) => activity switch

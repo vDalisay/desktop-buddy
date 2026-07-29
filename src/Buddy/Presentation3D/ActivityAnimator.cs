@@ -7,10 +7,10 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 
 /// <summary>
 /// M3.6 Task 3 activity animator: one manual-mode <see cref="AnimationPlayer"/> playing
-/// typed clips whose value tracks animate six offset-proxy nodes — never a socket or a
-/// body. The presenter reads each proxy position as that part's authored offset and
-/// applies it through the pose pipeline's weight and cap clamp, so activities decorate
-/// the physics truth and can never leave it. Clips are built ONCE at initialization
+/// typed clips whose value tracks animate six presentation-proxy nodes — never a socket or a
+/// body. The presenter reads each proxy position as that part's authored offset and the
+/// refusal-only head yaw as a bounded visual rotation, so activities decorate the physics
+/// truth and can never mutate it. Clips are built ONCE at initialization
 /// from the typed amplitudes in <see cref="BuddyExpressionProfile"/> (authored as data,
 /// not code literals; nothing is created per frame). Selection and walk-phase math live
 /// engine-free in <see cref="ActivitySelector"/>: walk dressing derives its cycle from
@@ -30,6 +30,7 @@ public partial class ActivityAnimator : Node3D
     private readonly Node3D[] _proxies = new Node3D[PuppetRigProfile.RequiredPartCount];
     private AnimationPlayer _player = null!;
     private ActivitySelector _selector = null!;
+    private float _refuseClipLength = 1.0f;
 
     public bool IsInitialized { get; private set; }
     public Node3D ItemSocket { get; private set; } = null!;
@@ -87,6 +88,9 @@ public partial class ActivityAnimator : Node3D
         library.AddAnimation(ClipNameFor(ActivityId.JumpAnticipation), BuildJumpClip(tuning));
         library.AddAnimation(ClipNameFor(ActivityId.Wave), BuildWaveClip(tuning));
         library.AddAnimation(ClipNameFor(ActivityId.Eat), BuildEatClip(tuning));
+        Animation refuse = BuildRefuseClip(tuning);
+        _refuseClipLength = refuse.Length;
+        library.AddAnimation(ClipNameFor(ActivityId.Refuse), refuse);
         _player.AddAnimationLibrary(string.Empty, library);
 
         // Presentation-only food follows the midpoint of both physical hand sockets.
@@ -108,6 +112,7 @@ public partial class ActivityAnimator : Node3D
         ActivityId.JumpAnticipation => "jump_anticipation",
         ActivityId.Wave => "wave",
         ActivityId.Eat => "eat",
+        ActivityId.Refuse => "refuse",
         _ => string.Empty,
     };
 
@@ -120,6 +125,11 @@ public partial class ActivityAnimator : Node3D
         {
             case ActivityId.Eat:
                 _selector.RequestEat(Buddy.Activity.RemainingTicks /
+                    (double)Engine.PhysicsTicksPerSecond);
+                break;
+            case ActivityId.Refuse:
+                // The behavior layer owns the refusal window; the shake covers all of it.
+                _selector.RequestRefuse(Buddy.Activity.RemainingTicks /
                     (double)Engine.PhysicsTicksPerSecond);
                 break;
             case ActivityId.Wave:
@@ -180,6 +190,15 @@ public partial class ActivityAnimator : Node3D
     public Vector3 OffsetFor(int partIndex) => _proxies[partIndex].Position;
 
     /// <summary>
+    /// Refusal-only yaw around a part's vertical axis, in radians. All clips except Refuse
+    /// leave this at zero; the presenter composes it on the visual head only.
+    /// </summary>
+    public float YawRadiansFor(int partIndex) => _proxies[partIndex].Rotation.Y;
+
+    /// <summary>The complete authored proxy rotation for scenario verification.</summary>
+    public Vector3 RotationFor(int partIndex) => _proxies[partIndex].Rotation;
+
+    /// <summary>
     /// Advances selection and clip playback for this rendered frame. Called by the
     /// presenter before it resolves offsets; allocation-free after initialization.
     /// </summary>
@@ -194,7 +213,21 @@ public partial class ActivityAnimator : Node3D
             performanceActive,
             MathF.Abs(Buddy.Rig.Torso.LinearVelocity.X),
             Buddy.CurrentDriveIntent.JumpRequested);
-        ActivityId activity = _selector.Update(inputs, deltaSeconds);
+        // Refusal duration is authoritative routed-tick state. Pin selection to that state
+        // instead of allowing one long rendered frame to expire a parallel seconds timer
+        // while capped physics advances only a few ticks.
+        ActivityId activity;
+        if (performanceActive && Buddy.Activity.IsRefusing)
+        {
+            _selector.RequestRefuse(Math.Max(
+                Buddy.Activity.RemainingTicks / (double)Engine.PhysicsTicksPerSecond,
+                1.0 / Engine.PhysicsTicksPerSecond));
+            activity = _selector.Update(inputs, 0.0);
+        }
+        else
+        {
+            activity = _selector.Update(inputs, deltaSeconds);
+        }
 
         if (activity == ActivityId.None)
         {
@@ -206,12 +239,25 @@ public partial class ActivityAnimator : Node3D
             for (int index = 0; index < _proxies.Length; index++)
             {
                 _proxies[index].Position = Vector3.Zero;
+                _proxies[index].Rotation = Vector3.Zero;
             }
 
             return;
         }
 
         string clip = ClipNameFor(activity);
+        if (activity == ActivityId.Refuse)
+        {
+            // Refusal is rotation-only. Clear any sampled breathe/walk head translation from
+            // the previous clip before seeking the yaw track.
+            _proxies[(int)BuddyPartId.Head].Position = Vector3.Zero;
+        }
+        else
+        {
+            // Other clips have no rotation track. Clear the last seeked refusal sample so
+            // ambient/walk/eat cannot inherit a residual over-the-shoulder look.
+            _proxies[(int)BuddyPartId.Head].Rotation = Vector3.Zero;
+        }
         if (_player.CurrentAnimation != clip)
         {
             _player.Play(clip);
@@ -225,6 +271,12 @@ public partial class ActivityAnimator : Node3D
         else if (activity == ActivityId.Eat)
         {
             _player.Seek(Buddy.Activity.EatCycleProgress, update: true);
+        }
+        else if (activity == ActivityId.Refuse)
+        {
+            // Seeked, not advanced: the damped yaw fills the behavior-owned refusal window
+            // however the behavior and expression profiles are tuned.
+            _player.Seek(Buddy.Activity.RefuseProgress * _refuseClipLength, update: true);
         }
         else
         {
@@ -258,6 +310,7 @@ public partial class ActivityAnimator : Node3D
     };
 
     private static string TrackPath(BuddyPartId id) => $"{ProxyName(id)}:position";
+    private static string RotationTrackPath(BuddyPartId id) => $"{ProxyName(id)}:rotation";
 
     private static int AddPositionTrack(Animation animation, BuddyPartId id)
     {
@@ -267,8 +320,26 @@ public partial class ActivityAnimator : Node3D
         return track;
     }
 
+    private static int AddRotationTrack(Animation animation, BuddyPartId id)
+    {
+        int track = animation.AddTrack(Animation.TrackType.Value);
+        animation.TrackSetPath(track, RotationTrackPath(id));
+        animation.TrackSetInterpolationType(track, Animation.InterpolationType.Cubic);
+        return track;
+    }
+
     private static void Key(Animation animation, int track, double time, float x, float y)
         => animation.TrackInsertKey(track, time, new Vector3(x, y, 0.0f));
+
+    private static void YawKey(
+        Animation animation,
+        int track,
+        double time,
+        float yawDegrees) =>
+        animation.TrackInsertKey(
+            track,
+            time,
+            new Vector3(0.0f, Mathf.DegToRad(yawDegrees), 0.0f));
 
     /// <summary>Slow torso/head rise-and-fall; the quiet default sign of life.</summary>
     private static Animation BuildBreatheClip(in ActivityTuningData tuning)
@@ -358,6 +429,28 @@ public partial class ActivityAnimator : Node3D
         Key(animation, hand, length * 0.65, amplitude * -0.2f, amplitude);
         Key(animation, hand, length * 0.8, amplitude * 0.5f, amplitude);
         Key(animation, hand, length, 0.0f, 0.0f);
+        return animation;
+    }
+
+    /// <summary>
+    /// "No thanks": a smooth damped yaw around the neck's vertical axis, as though the buddy
+    /// alternately looks over each shoulder. Four alternating extremes are the maximum:
+    /// left at the authored angle, then progressively smaller right/left/right turns, followed
+    /// by neutral. Cubic interpolation reverses at the ends without holds and crosses the
+    /// middle without a key or pause (owner correction 2026-07-30).
+    /// </summary>
+    private static Animation BuildRefuseClip(in ActivityTuningData tuning)
+    {
+        float yaw = tuning.RefuseYawDegrees;
+        double length = tuning.WaveSeconds;
+        var animation = new Animation { Length = (float)length };
+        int head = AddRotationTrack(animation, BuddyPartId.Head);
+        YawKey(animation, head, 0.0, 0.0f);
+        YawKey(animation, head, length * 0.12, -yaw);
+        YawKey(animation, head, length * 0.34, yaw * 0.83f);
+        YawKey(animation, head, length * 0.56, -yaw * 0.67f);
+        YawKey(animation, head, length * 0.78, yaw * 0.40f);
+        YawKey(animation, head, length, 0.0f);
         return animation;
     }
 

@@ -5,6 +5,7 @@ using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Content;
@@ -182,7 +183,10 @@ public partial class SandboxRoot : Node2D
                   Buddy.ObjectInteraction.IsHolding,
             _runContext.TimeSource,
             ResetPresentationInterpolation,
-            Window.Adapter.SetWindowVisible);
+            Window.Adapter.SetWindowVisible,
+            // Work mode is the player getting on with something else; the buddy idles on
+            // their desktop and barely works up an appetite.
+            () => Shell.Mode == DesktopBuddy.Domain.Platform.InputMode.Work);
         AddChild(Lifecycle);
 
         TrayCommands = new TrayCommandComponent { Name = nameof(TrayCommandComponent) };
@@ -312,7 +316,7 @@ public partial class SandboxRoot : Node2D
     private RunContext CreateInMemoryRunContext()
     {
         var progress = new BuddyProgressState(Pipeline.RequirePainProfile().CashPerPain);
-        var economy = new EconomyService(progress);
+        var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
         var store = new InMemoryProgressStore();
         return new RunContext(
             progress,

@@ -175,7 +175,8 @@ public sealed class ActivityTuningDataTests
         WalkBobAmplitude: 1.5f,
         WaveAmplitude: 3.0f,
         ChewAmplitude: 1.0f,
-        JumpSquashAmplitude: 2.5f);
+        JumpSquashAmplitude: 2.5f,
+        RefuseYawDegrees: 30.0f);
 
     [Fact]
     public void AcceptedDefaults_Pass() => Assert.Empty(Accepted.Validate());
@@ -188,6 +189,26 @@ public sealed class ActivityTuningDataTests
         Assert.Single(
             (Accepted with { BreatheAmplitude = amplitude }).Validate(),
             error => error.Contains("breathe amplitude"));
+
+    /// <summary>
+    /// Refusal rotates around the neck's vertical axis. The owner bounded the first extreme
+    /// to the natural over-the-shoulder range of 20–30 degrees.
+    /// </summary>
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(19.0f)]
+    [InlineData(31.0f)]
+    [InlineData(float.NaN)]
+    public void RefuseYawOutsideOwnerBound_Fails(float yawDegrees) =>
+        Assert.Single(
+            (Accepted with { RefuseYawDegrees = yawDegrees }).Validate(),
+            error => error.Contains("refuse yaw"));
+
+    [Theory]
+    [InlineData(20.0f)]
+    [InlineData(30.0f)]
+    public void RefuseYawAtOwnerBounds_Passes(float yawDegrees) =>
+        Assert.Empty((Accepted with { RefuseYawDegrees = yawDegrees }).Validate());
 
     [Theory]
     [InlineData(0.0f)]

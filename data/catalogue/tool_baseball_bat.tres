@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueBaseballBat"
+script = ExtResource("1")
+ContentId = "tool.baseball_bat"
+Kind = 1
+PriceCredits = 20
+ProgressionOrder = 6
+Visible = false
+NameKey = "shop.tool.baseball_bat.name"
+DescriptionKey = "shop.tool.baseball_bat.description"
+RequiresLaunchScene = false
+RequiresIcon = false

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueStrengthUpgrade"
+script = ExtResource("1")
+ContentId = "upgrade.strength"
+Kind = 3
+PriceCredits = 0
+ProgressionOrder = 14
+Visible = false
+NameKey = "shop.upgrade.strength.name"
+DescriptionKey = "shop.upgrade.strength.description"
+RequiresLaunchScene = false
+RequiresIcon = false

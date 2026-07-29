@@ -61,6 +61,41 @@ public sealed class ProgressSavePolicyTests
     }
 
     [Fact]
+    public void Fullness_SurvivesTheRoundTripAndReachesTheRestoredState()
+    {
+        // Appetite is semantic state like mood: a relaunch must not reset the buddy's stomach.
+        var progress = new BuddyProgressState(1.0);
+        progress.FillHunger(140.0f);
+
+        ProgressSave save = ProgressSave.FromSnapshot(progress.Snapshot());
+        ProgressSave decoded = ProgressSavePolicy.Decode(
+            ProgressSavePolicy.Serialize(save)).Save!;
+        BuddyProgressState restored = ProgressSavePolicy.CreateState(decoded, 1.0);
+
+        Assert.Equal(140.0f, decoded.Fullness);
+        Assert.Equal(140.0f, restored.Fullness);
+        Assert.False(restored.WouldEat(80.0f));
+        Assert.True(restored.WouldEat(60.0f));
+    }
+
+    [Fact]
+    public void APreHungerSaveResumesWithAnEmptyStomach()
+    {
+        // Schema 4 has no stomach state. Resuming full would silently refuse the first meal
+        // the player offered after upgrading.
+        string legacy = ProgressSavePolicy.Serialize(new ProgressSave { Mood = 12.0f })
+            .Replace("\"schemaVersion\": 5", "\"schemaVersion\": 4")
+            .Replace("\"schemaVersion\":5", "\"schemaVersion\":4");
+
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode(legacy);
+
+        Assert.Equal(SaveDecodeStatus.Valid, decoded.Status);
+        Assert.Equal(ProgressSave.CurrentSchemaVersion, decoded.Save!.SchemaVersion);
+        Assert.Equal(0.0f, decoded.Save.Fullness);
+        Assert.Equal(12.0f, decoded.Save.Mood);
+    }
+
+    [Fact]
     public void V1IntegerIds_MigrateSequentiallyToStableStrings()
     {
         const string legacy = """

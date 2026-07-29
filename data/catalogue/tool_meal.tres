@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueMeal"
+script = ExtResource("1")
+ContentId = "tool.meal"
+Kind = 2
+PriceCredits = 6
+ProgressionOrder = 5
+Visible = false
+NameKey = "shop.tool.meal.name"
+DescriptionKey = "shop.tool.meal.description"
+RequiresLaunchScene = false
+RequiresIcon = false

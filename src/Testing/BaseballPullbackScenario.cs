@@ -30,13 +30,13 @@ public sealed class BaseballPullbackScenario : IScenario
         }
 
         Vector2 firstSpawn = new(340.0f, 110.0f);
-        await MovePointer(tree, lab, firstSpawn, 0);
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, firstSpawn, 0);
         await M4ObjectScenarioSupport.SendKey(tree, Key.Key5);
         await M4ObjectScenarioSupport.WaitFor(
             tree,
-            () => lab.Launcher.HasBall && lab.Objects.Count == 1,
+            () => lab.Launcher.HasLaunchable && lab.Objects.Count == 1,
             10);
-        LooseObjectBody? first = lab.Launcher.CurrentBall;
+        LooseObjectBody? first = lab.Launcher.CurrentLaunchable;
         int firstId = first?.RuntimeId ?? 0;
         checks.Add(new StartupCheck(
             "key_5_only_spawns_one_baseball_at_cursor",
@@ -52,15 +52,15 @@ public sealed class BaseballPullbackScenario : IScenario
             $"position={first?.GlobalPosition} count={lab.Objects.Count}"));
 
         Vector2 replacementSpawn = new(180.0f, 90.0f);
-        await MovePointer(tree, lab, replacementSpawn, 0);
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, replacementSpawn, 0);
         await M4ObjectScenarioSupport.SendKey(tree, Key.Key5);
         await M4ObjectScenarioSupport.WaitFor(
             tree,
             () => lab.Launcher.SpawnCount == 2 &&
-                  lab.Launcher.CurrentBall != first &&
+                  lab.Launcher.CurrentLaunchable != first &&
                   lab.Objects.Count == 1,
             10);
-        LooseObjectBody? ball = lab.Launcher.CurrentBall;
+        LooseObjectBody? ball = lab.Launcher.CurrentLaunchable;
         int ballId = ball?.RuntimeId ?? 0;
         checks.Add(new StartupCheck(
             "repeated_key_5_replaces_without_selecting_a_tool",
@@ -73,8 +73,8 @@ public sealed class BaseballPullbackScenario : IScenario
             $"selected={lab.Pipeline.SelectedTool} count={lab.Objects.Count}"));
 
         Vector2 pickPoint = ball?.GlobalPosition ?? replacementSpawn;
-        await MovePointer(tree, lab, pickPoint, 0);
-        await SetButton(
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, pickPoint, 0);
+        await M4ObjectScenarioSupport.SetButton(
             tree, lab, pickPoint, MouseButton.Left, pressed: true, MouseButtonMask.Left);
         await M4ObjectScenarioSupport.WaitFor(
             tree,
@@ -96,7 +96,7 @@ public sealed class BaseballPullbackScenario : IScenario
 
         Vector2 nearBuddy = lab.Buddy.Rig.Torso.GlobalPosition +
                             new Vector2(45.0f, -4.0f);
-        await MovePointer(tree, lab, nearBuddy, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, nearBuddy, MouseButtonMask.Left);
         for (int tick = 0; tick < 45; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         bool stillPlayerOwned =
@@ -113,7 +113,7 @@ public sealed class BaseballPullbackScenario : IScenario
             $"player_held={nearSnapshot.PlayerHeld} buddy_held={nearSnapshot.BuddyHeld} " +
             $"guard_rejections={lab.Buddy.ObjectInteraction.PlayerHeldPickupRejectionCount}"));
 
-        await SetButton(
+        await M4ObjectScenarioSupport.SetButton(
             tree,
             lab,
             nearBuddy,
@@ -121,7 +121,7 @@ public sealed class BaseballPullbackScenario : IScenario
             pressed: true,
             MouseButtonMask.Left | MouseButtonMask.Right);
         await M4ObjectScenarioSupport.WaitFor(tree, () => lab.Launcher.IsAiming, 20);
-        await SetButton(
+        await M4ObjectScenarioSupport.SetButton(
             tree,
             lab,
             nearBuddy,
@@ -150,7 +150,7 @@ public sealed class BaseballPullbackScenario : IScenario
                 torso.Y,
                 bounds.Position.Y + 40.0f,
                 bounds.End.Y - 40.0f));
-        await MovePointer(tree, lab, aimAnchor, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, aimAnchor, MouseButtonMask.Left);
         await M4ObjectScenarioSupport.WaitFor(
             tree,
             () => GodotObject.IsInstanceValid(ball) &&
@@ -158,8 +158,8 @@ public sealed class BaseballPullbackScenario : IScenario
             180);
 
         Vector2 settledAnchor = ball?.GlobalPosition ?? aimAnchor;
-        await MovePointer(tree, lab, settledAnchor, MouseButtonMask.Left);
-        await SetButton(
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, settledAnchor, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.SetButton(
             tree,
             lab,
             settledAnchor,
@@ -179,7 +179,7 @@ public sealed class BaseballPullbackScenario : IScenario
                 bounds.Position.X + ball!.Radius,
                 bounds.End.X - ball.Radius),
             settledAnchor.Y);
-        await MovePointer(
+        await M4ObjectScenarioSupport.MovePointer(
             tree,
             lab,
             pull,
@@ -208,7 +208,7 @@ public sealed class BaseballPullbackScenario : IScenario
         lab.Pipeline.ImpactAccepted += OnImpact;
 
         Vector2 buddyBefore = CenterOfMass(lab);
-        await SetButton(
+        await M4ObjectScenarioSupport.SetButton(
             tree,
             lab,
             pull,
@@ -219,7 +219,7 @@ public sealed class BaseballPullbackScenario : IScenario
             tree,
             () => lab.Launcher.LaunchCount == 1 && !lab.Grab.IsGrabbing,
             20);
-        await SetButton(
+        await M4ObjectScenarioSupport.SetButton(
             tree,
             lab,
             pull,
@@ -291,41 +291,4 @@ public sealed class BaseballPullbackScenario : IScenario
         return mass > 0.0f ? weighted / mass : lab.Buddy.Rig.Torso.GlobalPosition;
     }
 
-    private static async Task MovePointer(
-        SceneTree tree,
-        BuddyLab lab,
-        Vector2 world,
-        MouseButtonMask mask)
-    {
-        Vector2 viewport = lab.GetViewport().GetCanvasTransform() * world;
-        Input.ParseInputEvent(new InputEventMouseMotion
-        {
-            ButtonMask = mask,
-            Position = viewport,
-            GlobalPosition = viewport,
-        });
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-    }
-
-    private static async Task SetButton(
-        SceneTree tree,
-        BuddyLab lab,
-        Vector2 world,
-        MouseButton button,
-        bool pressed,
-        MouseButtonMask mask)
-    {
-        Vector2 viewport = lab.GetViewport().GetCanvasTransform() * world;
-        Input.ParseInputEvent(new InputEventMouseButton
-        {
-            ButtonIndex = button,
-            ButtonMask = mask,
-            Pressed = pressed,
-            Position = viewport,
-            GlobalPosition = viewport,
-        });
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-    }
 }

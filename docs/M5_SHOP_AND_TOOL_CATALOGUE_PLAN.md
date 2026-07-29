@@ -403,13 +403,16 @@ tunneling.
 ### Task 10 — Repair Kit
 
 Third care consumable: pullback-launched, successful application grants `+20` mood,
-clears rolling/transient pain and harmful statuses **including Burning**, never
+clears rolling/transient pain and harmful statuses **including Burning**, and never
 shortens an active 4 s knockout (`ClearRollingPain` already honors this — wire, don't
-re-implement), `120` s cooldown on success only.
+re-implement). **No cooldown and no appetite gate** (owner, 2026-07-29): it is not food, so
+nothing rations it. Its profile therefore authors `ConsumeCooldownTicks = 0` and
+`ConsumeHungerFill = 0`, and a full buddy must still accept one.
 
 **Accept:** scenario `repair_kit`: burning buddy → apply → Burning cleared + 20 mood;
-KO'd buddy → apply → KO end time unchanged while rolling pain clears; failed/dropped
-application starts no cooldown.
+KO'd buddy → apply → KO end time unchanged while rolling pain clears; a failed/dropped
+application applies nothing; a buddy with a full hunger bar still accepts one (the appetite
+rule is for food, and the Repair Kit is not).
 
 ### Task 11 — Strength Upgrade (FR-019) — **blocked pending owner decisions**
 
@@ -526,6 +529,109 @@ running the suite" remains the failure mode this plan exists to prevent.
   projectile separation, explicit reset/dock/Strength owner gates, per-tool journeys,
   visibility sequencing, firearm empty-trigger reload boundary, and M5 performance
   gate.
+- 2026-07-29 — **Task 0 catalogue spine landed** (reset operation excluded, still owner-
+  blocked). `ToolId` appended through `RepairKit = 13`; `ContentIds` gained the nine new
+  `tool.*` constants plus `upgrade.strength` and the `IsCatalogueEntry` predicate;
+  `ToolCatalog.CategoryOf` extended. New engine-free `Domain/Content/CatalogueEntry`,
+  `ToolCatalogue` (structural validation), and `CataloguePolicy` (shop/tool filtering,
+  purchase eligibility, FR-013.1 starting set, FR-013.2 launch completeness). New
+  `src/Content/ToolDefinition` + `CatalogueDefinition` + `CatalogueLoader` with the 15
+  `data/catalogue/*.tres` definitions; `boot_smoke` now validates the shipped catalogue.
+  `EconomyService.Purchase(contentId)` and `BuddyProgressState.Purchase(contentId,
+  catalogue)` are authoritative — the caller-supplied price parameter is gone.
+  `PurchaseStatus` gained `NotAvailable` (unfinished) and `NotPurchasable` (starting).
+  Fixed in passing: save load filtered unlocks with `IsTool`, which would have discarded
+  ownership of `upgrade.strength`; it now filters with `IsCatalogueEntry`.
+  Provisional data: prices in credits equal to the FR-013.4 target minutes (Baseball 3 …
+  Repair Kit 120); the Strength Upgrade is unpriced and invisible pending its owner
+  decisions. Only the four starting tools and Baseball are `Visible = true`.
+  Verified: domain 772/772, quick suite 17/17, `baseball_pullback` green on seeds 1 and 7
+  in both presentations, `boot_smoke` green.
+- 2026-07-29 — **Owner gates resolved** (see `DECISIONS.md`, same date): Baseball feel
+  ACCEPTED, so it stays `Visible = true`; the Meal reuses the Baseball launch chord, which
+  unblocks Task 3's input work. The acceptance came with a defect report — a ball resting
+  completely in a corner was never picked up — fixed with the new `corner_scoop` scenario
+  (both corners, in the quick suite): a committed object approach now spends the ambient
+  wall-avoid margin and stops on torso contact, and the ground-scoop gate measures the
+  object's near surface instead of its centre. Verified: domain 772/772, quick suite 18/18,
+  the object/behaviour scenario sweep green on seeds 1 and 7 (plus legacy presentation).
+- 2026-07-29 — **Task 2 loose-object budget DONE** (except the projectile half, which needs
+  Task 5's guns to exist). Audited every loose-object spawn path: only two register today —
+  `BuddyLab.SpawnLooseObject` (lab toys, food) and `PullbackLauncherComponent` (Baseball) —
+  and both go through the one registry, with protection flowing from real state (player Grab
+  each tick, buddy hold, launcher `SetProtected` across aim/launch/cancel, authored
+  hazardous/safe flags). The oldest-safe decision is extracted to the engine-free
+  `Domain/Interaction/LooseObjectAdmissionPolicy` (cap `24` now declared once, there); the
+  registry delegates over a `stackalloc` span and remains the sole runtime owner of identity,
+  flags, and cleanup. Added a debug-only audit: a profile-configured `LooseObjectBody` that
+  reaches the tree unregistered logs an error, so a future spawn path cannot quietly escape
+  the budget (the M1/M3 legacy radius/mass props are exempt by design and verified silent).
+  New scenario `object_budget` — 30 spawns against the cap through the real registry, count
+  peaks at 24, the buddy's held ball survives 7 evictions, oldest-first order proven — plus 7
+  policy unit tests. Deferred to Task 5: the assertion that bullets/pellets never change
+  `LooseObjectRegistry.Count`. Verified: domain 783/783, quick suite 19/19, `object_budget`
+  green seeds 1 and 7 in both presentations.
+- 2026-07-29 — **Task 3 Meal engineering-complete** (shop-visible still pending the owner's
+  feel gate: `tool_meal.tres` stays `Visible = false`). What edible means is now authored
+  data — `LooseObjectProfile` carries `ConsumeMoodGain` and `ConsumeCooldownTicks`, validated,
+  and the consume path reads the held item's own tuning instead of testing for
+  `care.lab_food`. `data/objects/meal.tres` is the first catalogue consumable (`+10` mood,
+  `7200`-tick cooldown, FR-008.4). The launcher is generalised from "the Baseball" to an
+  authored `LaunchableProfiles` array with per-object attribution and per-object ownership
+  checks, so the Soccer Ball, Grenade, Drink, and Repair Kit are `.tres` references rather
+  than new input code; `HasBall`/`CurrentBall` became `HasLaunchable`/`CurrentLaunchable`.
+  Lab key `6` places a Meal on the confirmed chord (key `5` stays the Baseball). New scenario
+  `meal_consume` (abandoned meal charges nothing, finished meal pays `+10` once and starts the
+  exact `7200`-tick cooldown, a second meal inside the window is refused, and after the
+  cooldown elapses the next one is eaten) and the real-input journey `m5_meal` (spawn key →
+  Grab carry → aim cancel → pullback launch → fetch and eat). Lab food is retained as the `E`
+  key's dev spawn; retiring it is an owner call at the slice review. Verified: domain
+  783/783, quick suite 21/21, `meal_consume` + `m5_meal` + `baseball_pullback` green on seeds
+  1 and 7 in both presentations.
+- 2026-07-29 — **Owner review of the Meal slice: two defects fixed, one behaviour added**
+  (see `DECISIONS.md`, "Hunger Replaces the Food Cooldown"). (1) The eaten item rode the
+  carrying hand's socket while both hands lifted to the mouth; it now rides the midpoint
+  between the hands whenever the eat reach is active, guarded by a `meal_consume` check on
+  the sideways offset and resting height. (2) A full buddy fetched, dropped, and re-fetched
+  food forever. Appetite now replaces the food reuse cooldown: new engine-free
+  `Domain/Mood/HungerModel` (`200`-point bar, accept iff `fullness + fill <= 200`, three
+  drain rates) plus `HungerActivityPolicy`; fullness is persisted (save schema 4 → 5, legacy
+  saves resume empty); `LooseObjectProfile` authors `ConsumeHungerFill`; the Meal fills `50`
+  and its cooldown is `0`. Refusal is a performance: pick up once, head-shake through the new
+  `ActivityId.Refuse` clip, put it down, then ignore that specific item until there is room
+  for it — other food is still judged on its own size. FR-008.4/.5/.10 amended; FR-008.16–19
+  added; FR-008.6 followed the same day — the Repair Kit has **no** cooldown and no appetite
+  gate (owner), so nothing rations it. Verified: domain 805/805, quick suite 21/21, `meal_consume` (now including
+  the refusal loop and the recovery) + `m5_meal` + `consume_care_cooldown` + `activity_clips`
+  + `m36_expressive` + `care_persistence` green on seeds 1 and 7 in both presentations.
+- 2026-07-29 — Owner correction on the refusal performance (FR-008.19 amended). Three defects
+  in the first cut: the refusal shared `EatReachActive`, so the food rode the midpoint between
+  both hands instead of the one hand that picked it up; the `ActivityId.Refuse` clip was never
+  requested from the selector, so no head-shake ever played; and the resolve threw the item
+  aside on the discard impulse, which read as the food glitching away. Now: the refusal keeps
+  the ordinary one-handed carry (only `IsStationary` is shared), the animator requests the clip
+  and **seeks** it by the new `BehaviorActivityComponent.RefuseProgress` so the gesture
+  fills the `96`-tick window, facing and the head look-at are both forced frontal for the
+  duration (the "no" is aimed at the player), the shake amplitude is authored as
+  a bounded profile value, and the item is dropped at
+  rest below the buddy. `meal_consume` gains three checks — one hand, the two-way shake at a
+  frontal buddy, and the at-rest drop below the buddy with no discard. Verified: domain
+  808/808, quick suite 21/21, `meal_consume` seeds 1/7/13, `activity_clips`,
+  `consume_care_cooldown`, `lookat_priority_and_cone`, `facing_follows_walk`,
+  `object_toss_discard`, `face_composition`, and the `m36_expressive` + `m5_meal` journeys on
+  seeds 1 and 7.
+- 2026-07-30 — Owner clarified that “shake” means **rotation around the neck’s vertical
+  axis**, not lateral head translation. The refusal now starts from a frontal visual body,
+  clears residual look-at pitch/yaw, and plays four smooth damped yaw lobes
+  (left `30°` → right `24.9°` → left `20.1°` → right `12°` → neutral). It crosses the
+  middle continuously with no hold, never exceeds four alternating extremes, leaves pitch
+  and roll untouched, and resets the rotation before any following clip. The typed tuning is
+  renamed from pixel `ActivityRefuseAmplitude` to degree-valued
+  `ActivityRefuseYawDegrees`; selection is also pinned to authoritative
+  `BehaviorActivityComponent.IsRefusing`, so a long render frame cannot expire the visual
+  before the routed-tick refusal window. `meal_consume` now rejects sideways translation,
+  excess/undamped lobes, non-frontal composition, center pauses, residual rotation, and
+  pitch/roll activity.
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against
   the repository (`LooseObjectRegistry` cap/eviction/protection, arbiter `Hazard = 3`
   branch, `ToolUses`/`ToolPainMilli` statistics, AGENT_VERIFICATION §7 per-tool

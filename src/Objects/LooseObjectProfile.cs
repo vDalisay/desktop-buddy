@@ -1,5 +1,6 @@
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Mood;
 using Godot;
 
 namespace DesktopBuddy.Objects;
@@ -14,6 +15,27 @@ public partial class LooseObjectProfile : GameResource
 {
     [Export] public string ContentId { get; set; } = ContentIds.LooseObject;
     [Export] public bool Consumable { get; set; }
+
+    /// <summary>
+    /// Mood granted when the buddy finishes eating this (FR-008.4). Authored per consumable —
+    /// the Meal, Drink, and Repair Kit differ only in this data, not in machinery.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,100,0.5")] public float ConsumeMoodGain { get; set; } = 10.0f;
+
+    /// <summary>
+    /// Reuse cooldown in routed ticks, started only by a successful consume (FR-008.10).
+    /// <c>7200</c> is 60 s at 120 Hz. Food leaves this at <c>0</c>: appetite, not a timer,
+    /// decides whether the buddy eats (owner decision 2026-07-29).
+    /// </summary>
+    [Export(PropertyHint.Range, "0,72000,1")] public int ConsumeCooldownTicks { get; set; }
+
+    /// <summary>
+    /// How many points of the <c>200</c>-point hunger bar this item fills. The buddy accepts
+    /// it only when it fits in the room left, so portion size is the whole decision: a nearly
+    /// full buddy takes a snack and refuses a banquet. <c>0</c> means "not food" — a
+    /// consumable that is never refused for appetite.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,200,1")] public float ConsumeHungerFill { get; set; }
     [Export] public bool Hazardous { get; set; }
     [Export] public bool SafeToEvict { get; set; } = true;
 
@@ -34,7 +56,18 @@ public partial class LooseObjectProfile : GameResource
         float.IsFinite(AngularDamp) && AngularDamp >= 0.0f &&
         float.IsFinite(RestSpeedThreshold) && RestSpeedThreshold >= 0.0f &&
         RestTicksRequired > 0 &&
-        !(Hazardous && SafeToEvict);
+        !(Hazardous && SafeToEvict) &&
+        (!Consumable ||
+         (float.IsFinite(ConsumeMoodGain) && ConsumeMoodGain > 0.0f &&
+          ConsumeCooldownTicks >= 0 &&
+          float.IsFinite(ConsumeHungerFill) && ConsumeHungerFill >= 0.0f));
+
+    /// <summary>
+    /// The approved consume tuning for this item. The cooldown/one-success rule itself lives
+    /// in <see cref="CareConsumableModel"/>; this Resource only says how much and how long.
+    /// </summary>
+    public CareConsumableTuning ToConsumableTuning() =>
+        new(ConsumeMoodGain, ConsumeCooldownTicks);
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -55,6 +88,12 @@ public partial class LooseObjectProfile : GameResource
             errors.Add($"{nameof(RestTicksRequired)} must be positive");
         if (Hazardous && SafeToEvict)
             errors.Add("Hazardous loose objects cannot be marked safe to evict");
+        if (Consumable && (!float.IsFinite(ConsumeMoodGain) || ConsumeMoodGain <= 0.0f))
+            errors.Add($"{nameof(ConsumeMoodGain)} must be finite and positive for a consumable");
+        if (Consumable && ConsumeCooldownTicks < 0)
+            errors.Add($"{nameof(ConsumeCooldownTicks)} cannot be negative");
+        if (Consumable && (!float.IsFinite(ConsumeHungerFill) || ConsumeHungerFill < 0.0f))
+            errors.Add($"{nameof(ConsumeHungerFill)} must be finite and non-negative");
         return errors;
     }
 }

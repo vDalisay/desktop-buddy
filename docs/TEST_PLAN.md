@@ -143,6 +143,13 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   starts exactly `7200` routed ticks while final hand-lowering continues, and an
   immediate reuse is rejected without a second reward (`--fixed-fps 120`, seeds
   1 and 7).
+- The `meal_consume` scenario proves appetite-sized admission and the refusal performance:
+  the refused item remains in the original single hand; the frontal visual head performs
+  exactly four alternating yaw lobes around the neck’s vertical axis with a first peak in
+  `20–30°`, strictly diminishing peaks, no multi-frame center pause, no positional head
+  translation, stable activity pitch/roll, and a neutral finish; the item is then dropped
+  below the buddy at rest without a discard and remains ignored until appetite returns
+  (`--fixed-fps 120`, seeds 1, 7, and 13).
 - The `behavior_priority_ladder` scenario proves the complete §4 order `0–7`,
   immediate higher-priority preemption inside a commitment window, and runtime
   routing of fail-safe, unconscious, learned glove hazard, supported fearful

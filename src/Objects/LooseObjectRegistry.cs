@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Interaction;
 using DesktopBuddy.Grab;
 using Godot;
 
@@ -13,7 +14,10 @@ namespace DesktopBuddy.Objects;
 [GlobalClass]
 public partial class LooseObjectRegistry : Node
 {
-    public const int Capacity = 24;
+    /// <summary>
+    /// FR-014.1, declared once in the domain policy so the runtime cannot hold a second number.
+    /// </summary>
+    public const int Capacity = LooseObjectAdmissionPolicy.Capacity;
 
     /// <summary>
     /// Slack on the floor test, in px. A resting ball settles a hair above or below the
@@ -57,16 +61,21 @@ public partial class LooseObjectRegistry : Node
             return false;
         }
 
-        int slot = FindFreeSlot();
-        if (slot < 0)
+        // The cap rule itself is pure and unit-tested; this stays the only runtime owner of
+        // identity, flags, and cleanup (ARCHITECTURE §15). The span is stack-allocated, so
+        // asking the policy costs no managed allocation.
+        Span<LooseObjectSlot> slots = stackalloc LooseObjectSlot[Capacity];
+        DescribeSlots(slots);
+        AdmissionDecision decision = LooseObjectAdmissionPolicy.Decide(slots);
+        if (decision.Outcome == AdmissionOutcome.Refused)
         {
-            slot = FindOldestEvictableSlot();
-            if (slot < 0)
-            {
-                RejectedAdmissionCount++;
-                return false;
-            }
+            RejectedAdmissionCount++;
+            return false;
+        }
 
+        int slot = decision.Slot;
+        if (decision.Outcome == AdmissionOutcome.Evict)
+        {
             LooseObjectBody evicted = _entries[slot].Body!;
             ClearSlot(slot);
             EvictionCount++;
@@ -283,35 +292,26 @@ public partial class LooseObjectRegistry : Node
         }
     }
 
-    private int FindFreeSlot()
+    /// <summary>
+    /// Projects live slots into the pure policy's view. Protection flags come from real state:
+    /// authored safety, the player's grab, the buddy's hold, and whatever the owning system has
+    /// explicitly asserted (a committed launch, a live fuse) — nothing is inferred here.
+    /// </summary>
+    private void DescribeSlots(Span<LooseObjectSlot> slots)
     {
-        for (int index = 0; index < Capacity; index++)
-        {
-            if (_entries[index].Body is null)
-                return index;
-        }
-        return -1;
-    }
-
-    private int FindOldestEvictableSlot()
-    {
-        int best = -1;
-        ulong oldest = ulong.MaxValue;
         for (int index = 0; index < Capacity; index++)
         {
             ref Entry entry = ref _entries[index];
-            if (entry.Body is null || entry.Profile is null ||
-                !entry.Profile.SafeToEvict || entry.Profile.Hazardous ||
-                entry.PlayerHeld || entry.BuddyHeld || entry.ExplicitlyProtected ||
-                entry.SpawnSequence >= oldest)
-            {
-                continue;
-            }
-
-            best = index;
-            oldest = entry.SpawnSequence;
+            bool occupied = entry.Body is not null && entry.Profile is not null;
+            slots[index] = new LooseObjectSlot(
+                occupied,
+                occupied && entry.Profile!.SafeToEvict,
+                occupied && entry.Profile!.Hazardous,
+                entry.PlayerHeld,
+                entry.BuddyHeld,
+                entry.ExplicitlyProtected,
+                entry.SpawnSequence);
         }
-        return best;
     }
 
     private int FindSlot(int runtimeId)

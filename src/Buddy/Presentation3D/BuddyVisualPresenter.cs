@@ -54,6 +54,7 @@ public partial class BuddyVisualPresenter : Node3D
     // construction and composes with any activity clip.
     private float _headLookYawRadians;
     private float _headLookPitchRadians;
+    private float _activityHeadYawRadians;
     private PerformanceBlend? _defendGazeBlend;
 
     // M3.6 Task 1: per-part authored offsets (dev/scenario-driven until the activity
@@ -445,14 +446,26 @@ public partial class BuddyVisualPresenter : Node3D
         _performanceWeight = PosePipeline is { IsInitialized: true }
             ? PosePipeline.Evaluate(performanceDelta)
             : 0.0f;
+        bool refusing = Buddy.Activity.IsRefusing;
         float facingYawDegrees = Facing is { IsInitialized: true }
             ? Facing.Evaluate(performanceDelta)
             : 0.0f;
-        _yawRadians = _developmentYawRadians +
-            (Mathf.DegToRad(facingYawDegrees) * _performanceWeight);
+        // A refusal is addressed directly to the player. Its visual body is frontal before
+        // the head begins the left/right gesture; the facing model still eases toward zero
+        // underneath, so release does not leave a stale forced orientation.
+        _yawRadians = refusing
+            ? 0.0f
+            : _developmentYawRadians +
+                (Mathf.DegToRad(facingYawDegrees) * _performanceWeight);
         if (Activities is { IsInitialized: true })
         {
             Activities.Evaluate(performanceDelta, _performanceWeight > 0.0f);
+            _activityHeadYawRadians =
+                Activities.YawRadiansFor((int)BuddyPartId.Head) * _performanceWeight;
+        }
+        else
+        {
+            _activityHeadYawRadians = 0.0f;
         }
 
         if (HeadLookAt is { IsInitialized: true })
@@ -460,8 +473,14 @@ public partial class BuddyVisualPresenter : Node3D
             LookAtAngles look = HeadLookAt.Evaluate(performanceDelta);
             float defendGazeWeight = ResolveDefendGazeWeight(performanceDelta);
             float gazeWeight = Mathf.Max(_performanceWeight, defendGazeWeight);
-            _headLookYawRadians = Mathf.DegToRad(look.YawDegrees) * gazeWeight;
-            _headLookPitchRadians = Mathf.DegToRad(look.PitchDegrees) * gazeWeight;
+            // The refusal clip owns the head. Clear residual gaze yaw/pitch immediately so
+            // its only motion is the requested vertical-axis turn with stable pitch/roll.
+            _headLookYawRadians = refusing
+                ? 0.0f
+                : Mathf.DegToRad(look.YawDegrees) * gazeWeight;
+            _headLookPitchRadians = refusing
+                ? 0.0f
+                : Mathf.DegToRad(look.PitchDegrees) * gazeWeight;
         }
         else
         {
@@ -522,7 +541,9 @@ public partial class BuddyVisualPresenter : Node3D
         if (index == (int)BuddyPartId.Head)
         {
             socket.GlobalRotation = new Vector3(
-                _headLookPitchRadians, _yawRadians + _headLookYawRadians, rotation);
+                _headLookPitchRadians,
+                _yawRadians + _headLookYawRadians + _activityHeadYawRadians,
+                rotation);
             return;
         }
 
@@ -535,6 +556,9 @@ public partial class BuddyVisualPresenter : Node3D
 
     /// <summary>The head look-at pitch applied this frame, in degrees.</summary>
     public float AppliedHeadPitchDegrees => Mathf.RadToDeg(_headLookPitchRadians);
+
+    /// <summary>The refusal activity's applied visual head yaw, in degrees.</summary>
+    public float AppliedActivityHeadYawDegrees => Mathf.RadToDeg(_activityHeadYawRadians);
 
     /// <summary>
     /// The blended, cap-clamped authored offset for a part this frame; zero whenever the

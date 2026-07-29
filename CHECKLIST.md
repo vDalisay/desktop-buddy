@@ -142,8 +142,30 @@ Gotchas that WILL fail a run if you forget them:
 ## 5. Suggested next step
 
 **Milestone 5 catalogue work.** Follow
-`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`; Baseball is the current implemented
-slice. M4 is complete and owner-accepted. Its post-acceptance hardening records
+`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`. Task 0 (catalogue spine) is done: the
+15 `data/catalogue/*.tres` definitions, the engine-free `ToolCatalogue`/
+`CataloguePolicy` rules, and the authoritative `EconomyService.Purchase(contentId)`
+boundary. Progression reset is deliberately **not** implemented — it waits on the
+owner's erase/preserve matrix. Task 2 (FR-014 budget) extracted the cap rule to
+`Domain/Interaction/LooseObjectAdmissionPolicy` and gated it with `object_budget`;
+its projectile half waits for the Task 5 guns. Task 3 (Meal) is
+engineering-complete and awaits the owner feel gate before it may be shop-visible.
+Baseball is owner-ACCEPTED (2026-07-29). The quick suite is now 21 steps — added
+`corner_scoop` (pickup against a wall), `object_budget`, `meal_consume`, and the
+`m5_meal` real-input journey.
+
+The buddy now has a hidden `200`-point hunger bar (owner decision 2026-07-29,
+`DECISIONS.md`): it eats what fits, and refuses what would overfill. The refusal is
+the performance the owner asked for — the item held in one hand, the buddy turned to
+the player, a smooth damped left/right head yaw around the neck (four alternating
+extremes maximum, no center pause, neutral finish), then the item put down below itself — and
+it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
+schema is `5`.
+
+**Next owner action:** run the lab, press `6` to place a Meal, launch it with the
+Grab + secondary chord, and judge whether the Meal slice feels right — including
+the refusal once the buddy is full (four Meals fill the bar). Accepting it flips
+`data/catalogue/tool_meal.tres` to `Visible = true`. M4 is complete and owner-accepted. Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input
 two-process persistence journey.
