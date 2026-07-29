@@ -150,7 +150,9 @@ public partial class BehaviorArbiter : Node
                 AutonomousMotion.ObstacleInCommittedPath(ambient.WalkDirection) ||
                 ObjectInteraction.RestingObstacleInPath(ambient.WalkDirection),
             HasSupportContact: supportContact,
-            SocialReactionPresent: socialReaction);
+            SocialReactionPresent: socialReaction,
+            WallContactLeft: AutonomousMotion.ContactLeft,
+            WallContactRight: AutonomousMotion.ContactRight);
 
         ObjectInteraction.PhysicsTick(
             BehaviorArbiterModel.SuppressesVoluntaryAction(snapshot),

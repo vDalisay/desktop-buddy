@@ -211,7 +211,15 @@ public readonly record struct BehaviorSnapshot(
     /// A transient non-hazard tool emotion (for example friendly/angry tickle)
     /// requests priority 6 even when the current distance band stands down.
     /// </summary>
-    bool SocialReactionPresent = false);
+    bool SocialReactionPresent = false,
+    /// <summary>
+    /// The buddy is physically against the left wall — no clearance left, as opposed to the
+    /// comfort margin <see cref="WallBlockedLeft"/> reports. A purposeful approach may spend
+    /// that margin; a cornered object is otherwise unreachable (owner report 2026-07-29).
+    /// </summary>
+    bool WallContactLeft = false,
+    /// <summary>The same, against the right wall.</summary>
+    bool WallContactRight = false);
 
 /// <summary>One resolved actuation decision.</summary>
 public readonly record struct ActuationIntent(
@@ -530,7 +538,10 @@ public sealed class BehaviorArbiterModel
                 return new ActuationIntent(
                     owner,
                     DriveActive: snapshot.ObjectApproachDirection != 0.0f,
-                    WalkDirection: BlockedDirection(snapshot, snapshot.ObjectApproachDirection),
+                    // A committed approach walks up to the wall itself, not to the ambient
+                    // comfort margin: an object resting in a corner sits inside that margin,
+                    // and stopping short left the buddy standing beside it forever.
+                    WalkDirection: ContactBlockedDirection(snapshot, snapshot.ObjectApproachDirection),
                     LocomotionScale: 0.85f,
                     JumpRequested: false,
                     GuardRequested: false,
@@ -619,6 +630,26 @@ public sealed class BehaviorArbiterModel
         }
 
         if (direction > 0.0f && snapshot.WallBlockedRight)
+        {
+            return 0.0f;
+        }
+
+        return direction;
+    }
+
+    /// <summary>
+    /// The same rule for layers with a reason to be at the wall: only real contact stops them.
+    /// The buddy still cannot leave the room — containment owns that — so the worst case is a
+    /// buddy pressed against the wall reaching for what it walked over to get.
+    /// </summary>
+    private static float ContactBlockedDirection(in BehaviorSnapshot snapshot, float direction)
+    {
+        if (direction < 0.0f && snapshot.WallContactLeft)
+        {
+            return 0.0f;
+        }
+
+        if (direction > 0.0f && snapshot.WallContactRight)
         {
             return 0.0f;
         }

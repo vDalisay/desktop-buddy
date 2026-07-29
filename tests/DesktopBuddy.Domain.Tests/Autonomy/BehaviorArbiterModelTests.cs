@@ -542,8 +542,22 @@ public sealed class BehaviorArbiterModelTests
         BehaviorSnapshot hazardIntoWall = With(BehaviorPriority.Hazard) with { WallBlockedLeft = true };
         Assert.Equal(0.0f, arbiter.Resolve(hazardIntoWall, NeverHops).WalkDirection);
 
-        BehaviorSnapshot objectIntoWall = With(BehaviorPriority.ObjectAction) with { WallBlockedRight = true };
+        // A committed object approach is the exception: it spends the comfort margin, because
+        // an object resting against a wall sits inside it and stopping short left the buddy
+        // standing beside the thing forever (owner report 2026-07-29). Real contact still stops
+        // it, and containment still owns staying in the room.
+        BehaviorSnapshot objectIntoMargin = With(BehaviorPriority.ObjectAction) with
+        {
+            WallBlockedRight = true,
+        };
+        Assert.Equal(1.0f, arbiter.Resolve(objectIntoMargin, NeverHops).WalkDirection);
+
+        BehaviorSnapshot objectIntoWall = objectIntoMargin with { WallContactRight = true };
         Assert.Equal(0.0f, arbiter.Resolve(objectIntoWall, NeverHops).WalkDirection);
+
+        // The relaxation is directional: contact on the far side must not stop the approach.
+        BehaviorSnapshot objectAwayFromWall = objectIntoMargin with { WallContactLeft = true };
+        Assert.Equal(1.0f, arbiter.Resolve(objectAwayFromWall, NeverHops).WalkDirection);
     }
 
     [Fact]

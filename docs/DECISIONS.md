@@ -847,6 +847,32 @@ requires real flight: `flight_speed=938`, `flight_travel=213`.
   displacement. Objects above the provisional `900 px/s` catch-speed ceiling are impacts,
   not automatic catches.
 
+## M5 Baseball Accepted, Meal Chord Confirmed, Cornered Pickup (2026-07-29)
+
+- **Baseball feel is owner-ACCEPTED.** The slice is shop-visible: `tool_baseball.tres`
+  carries `Visible = true`. Its price stays provisional until Task 12 calibration.
+- **The Meal uses the same launch chord as the Baseball** (owner confirmation): its key
+  spawns/replaces one Meal at the cursor, Grab acquires it, hold-secondary and drag back
+  previews, release launches. No new input contract for the slice.
+- **A cornered object must be pickable** (owner report with the Baseball acceptance: the
+  buddy could not pick up a ball sitting completely in a corner). Two rules changed, both
+  engineering-delegated:
+  - A committed object approach spends the ambient wall-avoid comfort margin. The margin
+    exists so ambient wandering does not scuff the walls; a buddy walking over to fetch
+    something has a reason to be at the wall. It now stops on real contact, measured from
+    the **torso** rather than the widest part — a swinging hand reaches the wall roughly
+    `23 px` before the body does, which is most of the gap that made the object unreachable.
+    Ambient, hazard-flee, and social layers keep the original accepted M1 wall stop.
+  - The ground-scoop gate measures the object's **near surface**, not its centre. A ball
+    pinned against a wall stops the body about `29 px` from its centre and no amount of
+    walking closes that, while the gate was `26 px`. The scoop is a timed dip that lifts
+    the object into the hands, and the runtime already suspends collision with a committed
+    object, so "the object is against my body" is the honest gate. `ScoopDistance` itself is
+    unchanged at `26`.
+  - Scenario `corner_scoop` covers both corners and is in the quick suite. It replaces the
+    workaround in `object_catch_hold`, which deliberately spawned away from the walls
+    because a cornered ball "can never be closed on".
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

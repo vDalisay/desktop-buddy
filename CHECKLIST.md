@@ -146,7 +146,10 @@ Gotchas that WILL fail a run if you forget them:
 15 `data/catalogue/*.tres` definitions, the engine-free `ToolCatalogue`/
 `CataloguePolicy` rules, and the authoritative `EconomyService.Purchase(contentId)`
 boundary. Progression reset is deliberately **not** implemented — it waits on the
-owner's erase/preserve matrix. Baseball is the only implemented tool slice. M4 is complete and owner-accepted. Its post-acceptance hardening records
+owner's erase/preserve matrix. Baseball is the only implemented tool slice and is
+owner-ACCEPTED (2026-07-29); the Meal reuses its launch chord, so Task 3 input is
+unblocked. The quick suite is now 18 steps — `corner_scoop` guards pickup of an
+object resting hard against a wall. M4 is complete and owner-accepted. Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input
 two-process persistence journey.

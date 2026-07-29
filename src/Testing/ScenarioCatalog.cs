@@ -47,6 +47,7 @@ public static class ScenarioCatalog
         ["presentation_look"] = () => new PresentationLookScenario(),
         ["object_catch_hold"] = () => new ObjectCatchHoldScenario(),
         ["object_toss_discard"] = () => new ObjectTossDiscardScenario(),
+        ["corner_scoop"] = () => new CornerScoopScenario(),
         ["fun_catch_laugh"] = () => new FunCatchLaughScenario(),
         ["consume_care_cooldown"] = () => new ConsumeCareCooldownScenario(),
         ["behavior_priority_ladder"] = () => new BehaviorPriorityLadderScenario(),

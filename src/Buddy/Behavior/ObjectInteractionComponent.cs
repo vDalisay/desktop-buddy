@@ -384,7 +384,12 @@ public partial class ObjectInteractionComponent : Area2D
                 snapshot.Consumable,
                 snapshot.AtRest,
                 snapshot.Ignored,
-                Mathf.Abs(offset.X),
+                // To the object's near surface, not its centre. A ball pinned in a corner
+                // stops the body about `29 px` from its centre — no walking closes that — so
+                // a centre-measured gate made a cornered object permanently unpickable
+                // (owner report 2026-07-29). The scoop is a timed dip that lifts the object
+                // into the hands, so what matters is that it is against the body.
+                Mathf.Max(0.0f, Mathf.Abs(offset.X) - body.Radius),
                 snapshot.PlayerHeld);
 
             if (snapshot.AtRest && !snapshot.PlayerHeld &&

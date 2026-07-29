@@ -544,10 +544,14 @@ running the suite" remains the failure mode this plan exists to prevent.
   decisions. Only the four starting tools and Baseball are `Visible = true`.
   Verified: domain 772/772, quick suite 17/17, `baseball_pullback` green on seeds 1 and 7
   in both presentations, `boot_smoke` green.
-  **Owner check needed:** Baseball is marked shop-visible because its slice is
-  engineering-complete and its price is the only calibrated-enough number to buy with; if
-  its feel has not been accepted, flip `data/catalogue/tool_baseball.tres` to
-  `Visible = false`.
+- 2026-07-29 — **Owner gates resolved** (see `DECISIONS.md`, same date): Baseball feel
+  ACCEPTED, so it stays `Visible = true`; the Meal reuses the Baseball launch chord, which
+  unblocks Task 3's input work. The acceptance came with a defect report — a ball resting
+  completely in a corner was never picked up — fixed with the new `corner_scoop` scenario
+  (both corners, in the quick suite): a committed object approach now spends the ambient
+  wall-avoid margin and stops on torso contact, and the ground-scoop gate measures the
+  object's near surface instead of its centre. Verified: domain 772/772, quick suite 18/18,
+  the object/behaviour scenario sweep green on seeds 1 and 7 (plus legacy presentation).
 - 2026-07-29 — Second audit pass: all first-audit factual claims re-verified against
   the repository (`LooseObjectRegistry` cap/eviction/protection, arbiter `Hazard = 3`
   branch, `ToolUses`/`ToolPainMilli` statistics, AGENT_VERIFICATION §7 per-tool

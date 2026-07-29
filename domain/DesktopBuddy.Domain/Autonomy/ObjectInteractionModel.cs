@@ -66,10 +66,12 @@ public enum ObjectCommand
 /// the same object up forever.
 /// </param>
 /// <param name="GroundDistance">
-/// Horizontal distance only. A ground pickup is about standing <i>over</i> the object, not
-/// about how far it is from the shoulders: the floor is roughly `66 px` below the shoulder
-/// line, so a straight-line gate is only satisfiable once the buddy's feet are already
-/// kicking the object away.
+/// Horizontal distance to the object's <b>near surface</b>. A ground pickup is about standing
+/// <i>over</i> the object, not about how far it is from the shoulders: the floor is roughly
+/// `66 px` below the shoulder line, so a straight-line gate is only satisfiable once the
+/// buddy's feet are already kicking the object away. Measuring to the surface rather than the
+/// centre is what makes an object resting against a wall reachable at all — the body cannot
+/// close the last radius, and the runtime already suspends collision with a committed object.
 /// </param>
 public readonly record struct ObjectCandidate(
     int RuntimeId,
