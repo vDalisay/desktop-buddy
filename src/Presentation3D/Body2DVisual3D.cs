@@ -15,6 +15,8 @@ public partial class Body2DVisual3D : Node3D
     private RigidBody2D? _target;
     private IBody2DVisualPulseSource? _pulseSource;
     private MeshInstance3D? _mesh;
+    private MeshInstance3D? _glintHorizontal;
+    private MeshInstance3D? _glintDiagonal;
     private Vector2 _previousPosition;
     private Vector2 _currentPosition;
     private float _previousRotation;
@@ -56,6 +58,7 @@ public partial class Body2DVisual3D : Node3D
             PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
         };
         AddChild(_mesh);
+        BuildGlint();
         Visible = false;
         IsInitialized = true;
     }
@@ -162,7 +165,8 @@ public partial class Body2DVisual3D : Node3D
         _currentRotation = _target.GlobalRotation;
         float fraction = Mathf.Clamp(
             (float)Engine.GetPhysicsInterpolationFraction(), 0.0f, 1.0f);
-        Vector2 position2D = _previousPosition.Lerp(_currentPosition, fraction);
+        Vector2 visualOffset = _pulseSource?.VisualOffset2D ?? Vector2.Zero;
+        Vector2 position2D = _previousPosition.Lerp(_currentPosition, fraction) + visualOffset;
         float rotation2D = Mathf.LerpAngle(_previousRotation, _currentRotation, fraction);
 
         Vector3 position3D = WorldPlaneMapping.To3D(position2D);
@@ -174,6 +178,7 @@ public partial class Body2DVisual3D : Node3D
         GlobalRotation = new Vector3(
             0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(rotation2D + visualRotation));
         _mesh!.Scale = new Vector3(visualScale.X, visualScale.Y, 1.0f);
+        UpdateGlint();
     }
 
     private void SnapSnapshots()
@@ -188,6 +193,7 @@ public partial class Body2DVisual3D : Node3D
         GlobalRotation = new Vector3(
             0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(_currentRotation));
         _mesh!.Scale = Vector3.One;
+        UpdateGlint();
     }
 
     private void ApplyPresentationVisibility()
@@ -198,5 +204,70 @@ public partial class Body2DVisual3D : Node3D
         {
             _target!.Visible = !_presentationActive;
         }
+    }
+
+    /// <summary>Whether the tracked source's one-shot tip glimmer is currently visible.</summary>
+    public bool IsGlintVisible =>
+        _glintHorizontal?.Visible == true && _glintHorizontal.Scale.X > 0.0f;
+
+    private void BuildGlint()
+    {
+        var material = new StandardMaterial3D
+        {
+            AlbedoColor = new Color(1.0f, 0.94f, 0.58f, 0.92f),
+            EmissionEnabled = true,
+            Emission = new Color(1.0f, 0.84f, 0.30f),
+            EmissionEnergyMultiplier = 1.6f,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            BlendMode = BaseMaterial3D.BlendModeEnum.Add,
+            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+        };
+        var quad = new QuadMesh { Size = new Vector2(1.0f, 0.22f) };
+
+        _glintHorizontal = new MeshInstance3D
+        {
+            Name = "ChargeGlintHorizontal",
+            Mesh = quad,
+            MaterialOverride = material,
+            Visible = false,
+        };
+        _glintDiagonal = new MeshInstance3D
+        {
+            Name = "ChargeGlintDiagonal",
+            Mesh = quad,
+            MaterialOverride = material,
+            Rotation = new Vector3(0.0f, 0.0f, Mathf.Pi * 0.5f),
+            Visible = false,
+        };
+        AddChild(_glintHorizontal);
+        AddChild(_glintDiagonal);
+    }
+
+    private void UpdateGlint()
+    {
+        if (_glintHorizontal is null || _glintDiagonal is null || _pulseSource is null)
+        {
+            return;
+        }
+
+        float strength = _pulseSource.VisualGlintStrength;
+        bool visible = strength > 0.0f;
+        _glintHorizontal.Visible = visible;
+        _glintDiagonal.Visible = visible;
+        if (!visible)
+        {
+            return;
+        }
+
+        Vector2 local = _pulseSource.VisualGlintLocalPosition;
+        Vector3 position = WorldPlaneMapping.To3D(local);
+        position.Z = 0.75f;
+        float size = _pulseSource.VisualGlintSizePx * strength;
+        Vector3 scale = new(size, size, 1.0f);
+        _glintHorizontal.Position = position;
+        _glintDiagonal.Position = position;
+        _glintHorizontal.Scale = scale;
+        _glintDiagonal.Scale = scale;
     }
 }

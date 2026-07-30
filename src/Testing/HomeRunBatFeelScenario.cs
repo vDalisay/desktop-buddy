@@ -207,10 +207,199 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"barrel_from_up={barrelDegrees:F2}deg handle_to_cursor={handleError:F1}px " +
             $"centre_to_cursor={centreError:F1}px state={lab.CursorTools.SwingState}"));
 
-        // ---- letting go hands the bat back to the weak free swing ----
+        // ---- charge is exactly five routed seconds, with eased visual strain ----
+        int chargeCompletedEdges = 0;
+        int swingReleaseEdges = 0;
+        int firstReleasedDirection = 0;
+        int secondReleasedDirection = 0;
+        void OnChargeCompleted() => chargeCompletedEdges++;
+        void OnSwingReleased(float charge, int epoch)
+        {
+            _ = charge;
+            _ = epoch;
+            swingReleaseEdges++;
+            if (swingReleaseEdges == 1)
+                firstReleasedDirection = lab.CursorTools.SwingDirectionSign;
+            else if (swingReleaseEdges == 2)
+                secondReleasedDirection = lab.CursorTools.SwingDirectionSign;
+        }
+
+        lab.CursorTools.ChargeCompleted += OnChargeCompleted;
+        lab.CursorTools.SwingReleased += OnSwingReleased;
+        lab.CursorTools.SetChargeHeld(true);
+        await Ticks(tree, 1); // GRIPPED -> CHARGING, charge remains zero on the entry edge.
+
+        await Ticks(tree, 300);
+        int chargeAt300 = lab.CursorTools.SwingChargeTicks;
+        float shakeAt300 = bat.ChargeShakeAmplitude;
+        await Ticks(tree, 299);
+        int chargeAt599 = lab.CursorTools.SwingChargeTicks;
+        float shakeAt599 = bat.ChargeShakeAmplitude;
+        await Ticks(tree, 1);
+        int chargeAt600 = lab.CursorTools.SwingChargeTicks;
+        float shakeAt600 = bat.ChargeShakeAmplitude;
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        bool glintWasVisible = bat.IsChargeGlintActive || lab.CursorToolVisual.IsGlintVisible;
+        await Ticks(tree, 1);
+        int chargeAt601 = lab.CursorTools.SwingChargeTicks;
+        float shakeAt601 = bat.ChargeShakeAmplitude;
+
+        checks.Add(new StartupCheck(
+            "charge_caps_on_tick_600_not_300",
+            chargeAt300 == 300 &&
+            chargeAt599 == 599 &&
+            chargeAt600 == 600 &&
+            chargeAt601 == 600 &&
+            lab.CursorTools.SwingState == ChargedSwingState.Charging,
+            $"t300={chargeAt300} t599={chargeAt599} t600={chargeAt600} " +
+            $"t601={chargeAt601} state={lab.CursorTools.SwingState}"));
+
+        float authoredShake = lab.CursorTools.ActiveProfile!.Swing!.ShakeMaxAmplitudePx;
+        checks.Add(new StartupCheck(
+            "charge_shake_amplitude_ramps_and_caps_at_five_seconds",
+            shakeAt300 > 0.0f &&
+            shakeAt300 < shakeAt599 &&
+            shakeAt599 < shakeAt600 &&
+            Mathf.IsEqualApprox(shakeAt600, authoredShake) &&
+            Mathf.IsEqualApprox(shakeAt601, authoredShake) &&
+            bat.VisualOffset2D.IsFinite(),
+            $"a300={shakeAt300:F3} a599={shakeAt599:F3} " +
+            $"a600={shakeAt600:F3} a601={shakeAt601:F3} max={authoredShake:F3} " +
+            $"offset={bat.VisualOffset2D}"));
+
+        checks.Add(new StartupCheck(
+            "full_charge_shows_the_tip_glimmer_once",
+            chargeCompletedEdges == 1 &&
+            bat.ChargeGlintStarts == 1 &&
+            glintWasVisible &&
+            bat.VisualGlintLocalPosition.IsEqualApprox(new Vector2(0.0f, bat.Length * -0.5f)),
+            $"edges={chargeCompletedEdges} starts={bat.ChargeGlintStarts} " +
+            $"visible={glintWasVisible} tip={bat.VisualGlintLocalPosition}"));
+
+        // ---- cursor travel alone picks the side, through the release edge ----
+        // A significant right drag followed by a significant left drag must use
+        // the latter. Sub-threshold hand jitter after it must not change the aim.
+        lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(12.0f, 0.0f));
+        await Ticks(tree, 1);
+        bool sawRight = lab.CursorTools.SwingDirectionSign == 1;
+        lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(-24.0f, 0.0f));
+        await Ticks(tree, 1);
+        bool sawLeft = lab.CursorTools.SwingDirectionSign == -1;
+        for (int jitter = 0; jitter < 4; jitter++)
+        {
+            lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(5.0f, 0.0f));
+            await Ticks(tree, 1);
+            lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(-5.0f, 0.0f));
+            await Ticks(tree, 1);
+        }
+        bool jitterHeldLeft = lab.CursorTools.SwingDirectionSign == -1;
+        await Ticks(tree, 90);
+        float leftLeanDegrees = Mathf.RadToDeg(Mathf.Wrap(
+            bat.GlobalRotation, -Mathf.Pi, Mathf.Pi));
+
+        lab.CursorTools.SetChargeHeld(false);
+        await Ticks(tree, 1);
+        int firstEpoch = lab.CursorTools.SwingEpoch;
+        bool firstSwingReleased = lab.CursorTools.SwingState == ChargedSwingState.Swinging &&
+                                  firstReleasedDirection == -1;
+        lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(30.0f, 0.0f));
+        await Ticks(tree, 1);
+        bool firstDirectionLocked = lab.CursorTools.SwingDirectionSign == -1 &&
+                                    lab.CursorTools.SwingEpoch == firstEpoch;
+
+        checks.Add(new StartupCheck(
+            "dragging_right_then_left_swings_left",
+            sawRight && sawLeft && firstSwingReleased,
+            $"saw_right={sawRight} saw_left={sawLeft} released={firstSwingReleased} " +
+            $"direction={firstReleasedDirection} epoch={firstEpoch}"));
+        checks.Add(new StartupCheck(
+            "sub_threshold_jitter_does_not_flip_the_direction",
+            jitterHeldLeft,
+            $"threshold={lab.CursorTools.ActiveProfile!.Swing!.DirectionTravelThreshold:F1} " +
+            $"direction_before_release={firstReleasedDirection}"));
+        checks.Add(new StartupCheck(
+            "pointer_motion_after_release_cannot_change_direction",
+            firstDirectionLocked,
+            $"direction={lab.CursorTools.SwingDirectionSign} epoch={lab.CursorTools.SwingEpoch}"));
+
+        bool recoveredFromFirst = await WaitForState(
+            tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+
+        // Mirror the input. The charge pose must lean the other way and the
+        // release must commit +1, proving the first result was not hard-coded.
+        lab.CursorTools.SetChargeHeld(true);
+        await Ticks(tree, 1);
+        lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(-12.0f, 0.0f));
+        await Ticks(tree, 1);
+        lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(24.0f, 0.0f));
+        await Ticks(tree, 1);
+        await Ticks(tree, 90);
+        float rightLeanDegrees = Mathf.RadToDeg(Mathf.Wrap(
+            bat.GlobalRotation, -Mathf.Pi, Mathf.Pi));
+        lab.CursorTools.SetChargeHeld(false);
+        await Ticks(tree, 1);
+        bool secondSwingReleased = lab.CursorTools.SwingState == ChargedSwingState.Swinging &&
+                                   secondReleasedDirection == 1;
+        int secondEpoch = lab.CursorTools.SwingEpoch;
+        lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(-30.0f, 0.0f));
+        await Ticks(tree, 1);
+        bool secondDirectionLocked = lab.CursorTools.SwingDirectionSign == 1 &&
+                                     lab.CursorTools.SwingEpoch == secondEpoch;
+
+        checks.Add(new StartupCheck(
+            "mirrored_drags_produce_mirrored_swings",
+            recoveredFromFirst &&
+            firstSwingReleased &&
+            secondSwingReleased &&
+            leftLeanDegrees > 10.0f &&
+            rightLeanDegrees < -10.0f &&
+            Mathf.Abs(leftLeanDegrees + rightLeanDegrees) <= 12.0f &&
+            secondDirectionLocked,
+            $"first={firstReleasedDirection} second={secondReleasedDirection} " +
+            $"left_lean={leftLeanDegrees:F1}deg right_lean={rightLeanDegrees:F1}deg " +
+            $"locked={secondDirectionLocked}"));
+
+        bool recoveredFromSecond = await WaitForState(
+            tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+
+        // ---- releasing the grip is the safe charge cancel ----
+        int epochBeforeCancel = lab.CursorTools.SwingEpoch;
+        int releasesBeforeCancel = swingReleaseEdges;
+        int cancelPainEvents = 0;
+        void OnCancelImpact(AcceptedImpact impact)
+        {
+            if (impact.ContentId == ContentIds.ToolBaseballBat && impact.Pain > 0.0f)
+                cancelPainEvents++;
+        }
+
+        lab.Pipeline.ImpactAccepted += OnCancelImpact;
+        lab.CursorTools.SetChargeHeld(true);
+        await Ticks(tree, 1);
+        await Ticks(tree, 60);
+        bool cancelWasCharging = lab.CursorTools.SwingState == ChargedSwingState.Charging &&
+                                 lab.CursorTools.SwingChargeTicks == 60;
         lab.CursorTools.SetGrip(false);
-        await Ticks(tree, 10);
+        await Ticks(tree, 2);
+        lab.CursorTools.SetChargeHeld(false);
+        lab.Pipeline.ImpactAccepted -= OnCancelImpact;
         bool returnedToFollow = lab.CursorTools.SwingState == ChargedSwingState.Follow;
+
+        checks.Add(new StartupCheck(
+            "releasing_the_grip_cancels_without_a_swing_or_pain",
+            recoveredFromSecond &&
+            cancelWasCharging &&
+            returnedToFollow &&
+            lab.CursorTools.SwingEpoch == epochBeforeCancel &&
+            swingReleaseEdges == releasesBeforeCancel &&
+            cancelPainEvents == 0,
+            $"charging={cancelWasCharging} state={lab.CursorTools.SwingState} " +
+            $"epoch={epochBeforeCancel}->{lab.CursorTools.SwingEpoch} " +
+            $"releases={releasesBeforeCancel}->{swingReleaseEdges} pain={cancelPainEvents}"));
+
+        lab.CursorTools.ChargeCompleted -= OnChargeCompleted;
+        lab.CursorTools.SwingReleased -= OnSwingReleased;
+
+        // ---- letting go hands the bat back to the weak free swing ----
 
         Vector2 followTarget = openSpace + new Vector2(120.0f, 0.0f);
         lab.CursorTools.MoveCursor(followTarget);
@@ -271,7 +460,9 @@ public sealed class HomeRunBatFeelScenario : IScenario
 
         messages.Add(
             $"free_swing_pain={freeSwing?.Pain:F2} benchmark_peak={benchmarkPeak:F0} " +
-            $"flick_peak={flickPeak:F0} barrel_from_up={barrelDegrees:F2}deg");
+            $"flick_peak={flickPeak:F0} barrel_from_up={barrelDegrees:F2}deg " +
+            $"charge=({chargeAt599},{chargeAt600},{chargeAt601}) " +
+            $"directions=({firstReleasedDirection},{secondReleasedDirection})");
         return Finish(checks, messages, lab);
     }
 
@@ -363,6 +554,25 @@ public sealed class HomeRunBatFeelScenario : IScenario
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         }
+    }
+
+    private static async Task<bool> WaitForState(
+        SceneTree tree,
+        CursorToolController controller,
+        ChargedSwingState state,
+        int timeoutTicks)
+    {
+        for (int tick = 0; tick < timeoutTicks; tick++)
+        {
+            if (controller.SwingState == state)
+            {
+                return true;
+            }
+
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+
+        return controller.SwingState == state;
     }
 
     private static ScenarioResult Finish(

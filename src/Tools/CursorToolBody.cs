@@ -1,4 +1,5 @@
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.App;
 using DesktopBuddy.Presentation3D;
@@ -28,6 +29,14 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
     private double _pulseSeconds;
     private float _pulseIntensity;
     private float _pulseAngle;
+    private ulong _chargeVisualStartedUsec;
+    private float _chargeShakeAmplitude;
+    private float _chargeShakePrimaryHz;
+    private float _chargeShakeSecondaryHz;
+    private ulong _glintStartedUsec;
+    private double _glintSeconds;
+    private float _glintSizePx;
+    private bool _glintActive;
 
     public float Radius { get; private set; } = 14.0f;
 
@@ -41,6 +50,9 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
     public string ContentId => _contentId;
     public bool IsImpactPulsing { get; private set; }
     public bool IsImpactArmed { get; private set; }
+    public int ChargeGlintStarts { get; private set; }
+    public float ChargeShakeAmplitude => _chargeShakeAmplitude;
+    public bool IsChargeGlintActive => _glintActive;
 
     /// <summary>
     /// What the player was doing with this tool when the solver produced the
@@ -70,6 +82,35 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
     /// normal would detach the drawing from the collider; it squashes in place.
     /// </summary>
     public float VisualRotation2D => IsImpactPulsing && !IsElongated ? _pulseAngle : 0.0f;
+
+    /// <summary>
+    /// The charge wobble is computed from monotonic presentation time and never
+    /// written into the RigidBody2D transform. That keeps the collider perfectly
+    /// still while the bat visibly strains at full charge.
+    /// </summary>
+    public Vector2 VisualOffset2D
+    {
+        get
+        {
+            if (_chargeShakeAmplitude <= 0.0f)
+            {
+                return Vector2.Zero;
+            }
+
+            float elapsed = (Time.GetTicksUsec() - _chargeVisualStartedUsec) / 1_000_000.0f;
+            System.Numerics.Vector2 offset = ChargedSwing.ShakeOffset(
+                elapsed,
+                _chargeShakeAmplitude,
+                _chargeShakePrimaryHz,
+                _chargeShakeSecondaryHz);
+            return new Vector2(offset.X, offset.Y);
+        }
+    }
+
+    public float VisualGlintStrength => CurrentGlintStrength();
+    public float VisualGlintSizePx => _glintSizePx;
+    public Vector2 VisualGlintLocalPosition =>
+        IsElongated ? new Vector2(0.0f, Length * -0.5f) : Vector2.Zero;
 
     public void Configure(CursorToolProfile profile)
     {
@@ -108,14 +149,11 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
 
     public override void _Draw()
     {
-        if (IsImpactPulsing)
-        {
-            float pulse = CurrentPulseStrength();
-            DrawSetTransform(
-                Vector2.Zero,
-                VisualRotation2D,
-                new Vector2(1.0f - pulse * 0.24f, 1.0f + pulse * 0.18f));
-        }
+        float pulse = CurrentPulseStrength();
+        DrawSetTransform(
+            VisualOffset2D,
+            VisualRotation2D,
+            new Vector2(1.0f - pulse * 0.24f, 1.0f + pulse * 0.18f));
 
         if (!IsElongated)
         {
@@ -137,16 +175,36 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
         DrawArc(bottom, Radius, 0.0f, Mathf.Pi, CircleSegments, _outlineColor, OutlineWidth, true);
         DrawLine(new Vector2(-Radius, -halfShaft), new Vector2(-Radius, halfShaft), _outlineColor, OutlineWidth, true);
         DrawLine(new Vector2(Radius, -halfShaft), new Vector2(Radius, halfShaft), _outlineColor, OutlineWidth, true);
+
+        DrawChargeGlint();
     }
 
     public override void _Process(double delta)
     {
-        if (!IsImpactPulsing)
-            return;
-        double elapsed = (Time.GetTicksUsec() - _pulseStartedUsec) / 1_000_000.0;
-        if (elapsed >= _pulseSeconds)
-            IsImpactPulsing = false;
-        QueueRedraw();
+        if (IsImpactPulsing)
+        {
+            double elapsed = (Time.GetTicksUsec() - _pulseStartedUsec) / 1_000_000.0;
+            if (elapsed >= _pulseSeconds)
+                IsImpactPulsing = false;
+        }
+
+        if (_glintActive)
+        {
+            double elapsed = (Time.GetTicksUsec() - _glintStartedUsec) / 1_000_000.0;
+            if (elapsed >= _glintSeconds)
+            {
+                _glintActive = false;
+            }
+
+            // The expiry redraw is essential for the legacy CanvasItem path:
+            // without it, the last star draw command would remain cached.
+            QueueRedraw();
+        }
+
+        if (_chargeShakeAmplitude > 0.0f || IsImpactPulsing)
+        {
+            QueueRedraw();
+        }
     }
 
     private float CurrentPulseStrength()
@@ -169,5 +227,96 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
         _pulseAngle = normal.IsZeroApprox() ? 0.0f : normal.Angle();
         IsImpactPulsing = true;
         QueueRedraw();
+    }
+
+    /// <summary>
+    /// Update the render-only charge wobble from the routed gameplay charge.
+    /// The amplitude is the domain model's eased value; presentation time only
+    /// chooses where inside the deterministic two-frequency wobble it is drawn.
+    /// </summary>
+    public void SetChargeVisual(float charge, SwingToolProfile? profile)
+    {
+        if (profile is null || charge <= 0.0f)
+        {
+            if (_chargeShakeAmplitude <= 0.0f)
+            {
+                return;
+            }
+
+            _chargeShakeAmplitude = 0.0f;
+            _chargeShakePrimaryHz = 0.0f;
+            _chargeShakeSecondaryHz = 0.0f;
+            QueueRedraw();
+            return;
+        }
+
+        if (_chargeShakeAmplitude <= 0.0f)
+        {
+            _chargeVisualStartedUsec = Time.GetTicksUsec();
+        }
+
+        _chargeShakeAmplitude = ChargedSwing.ShakeAmplitude(
+            charge, profile.ShakeMaxAmplitudePx);
+        _chargeShakePrimaryHz = profile.ShakePrimaryHz;
+        _chargeShakeSecondaryHz = profile.ShakeSecondaryHz;
+    }
+
+    /// <summary>Start the one-shot full-charge star at the barrel tip.</summary>
+    public void StartChargeGlint(double seconds, float sizePx)
+    {
+        _glintStartedUsec = Time.GetTicksUsec();
+        _glintSeconds = Math.Max(0.001, seconds);
+        _glintSizePx = Math.Max(1.0f, sizePx);
+        _glintActive = true;
+        ChargeGlintStarts++;
+        QueueRedraw();
+    }
+
+    private float CurrentGlintStrength()
+    {
+        if (!_glintActive || _glintSeconds <= 0.0)
+        {
+            return 0.0f;
+        }
+
+        double elapsed = (Time.GetTicksUsec() - _glintStartedUsec) / 1_000_000.0;
+        if (elapsed >= _glintSeconds)
+        {
+            return 0.0f;
+        }
+
+        // Fast scale-pop followed by a longer ease-out tail.
+        float progress = Mathf.Clamp((float)(elapsed / _glintSeconds), 0.0f, 1.0f);
+        return progress < 0.25f
+            ? progress / 0.25f
+            : 1.0f - ((progress - 0.25f) / 0.75f);
+    }
+
+    private void DrawChargeGlint()
+    {
+        float strength = CurrentGlintStrength();
+        if (strength <= 0.0f || !IsElongated)
+        {
+            return;
+        }
+
+        Vector2 tip = VisualGlintLocalPosition;
+        float radius = _glintSizePx * 0.5f * strength;
+        Color glow = new Color(1.0f, 0.94f, 0.58f, 0.9f * strength);
+        DrawLine(tip + Vector2.Left * radius, tip + Vector2.Right * radius, glow, 2.0f, true);
+        DrawLine(tip + Vector2.Up * radius, tip + Vector2.Down * radius, glow, 2.0f, true);
+        float diagonal = radius * 0.62f;
+        DrawLine(
+            tip + new Vector2(-diagonal, -diagonal),
+            tip + new Vector2(diagonal, diagonal),
+            glow,
+            1.5f,
+            true);
+        DrawLine(
+            tip + new Vector2(diagonal, -diagonal),
+            tip + new Vector2(-diagonal, diagonal),
+            glow,
+            1.5f,
+            true);
     }
 }

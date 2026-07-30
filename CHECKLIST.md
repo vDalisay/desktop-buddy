@@ -4,7 +4,7 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-30, after the Home-Run Bat refinement Task B passed.
+Last updated: 2026-07-30, after the Home-Run Bat refinement Task C passed.
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
@@ -168,7 +168,8 @@ the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the ba
 - [x] Task A — pure charged-swing domain model and trajectory servo.
 - [x] Task B — composition, weak free-swing, handle grip, immutable impact
       admission plumbing, and the cumulative `homerun_bat_feel` scenario.
-- [ ] Task C — charge accrual, cursor-travel direction, shake, and tip glimmer.
+- [x] Task C — charge accrual, cursor-travel direction, render-only shake, and
+      the one-shot tip glimmer in both presentation modes.
 - [ ] Task D — physical charged swing, measured impulse separation, pivot hold,
       and the single-hit epoch gate.
 - [ ] Task E — whole-game hit lag and victim shake.
@@ -186,7 +187,7 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
-**Next engineering action:** implement Home-Run Bat refinement Task C. The next
+**Next engineering action:** implement Home-Run Bat refinement Task D. The next
 owner feel gate is Task H, after charge, the physical swing, hit lag, audio, 3D
 presentation, and the promoted real-input journey are complete. The catalogue
 entry remains hidden until that gate passes. M4 is complete and owner-accepted.

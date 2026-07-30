@@ -124,8 +124,12 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   the directed servo holds the barrel upright from the derived handle point, release
   returns to centre-anchored weak FOLLOW, solver contacts retain their immutable
   swing context across the one-tick observation delay, and the Boxing Glove keeps
-  its accepted response envelope. Charge, physical swing, hit-lag, audio, and 3D
-  presentation checks join this same scenario in their ordered tasks.
+  its accepted response envelope. Task C proves the exact `599/600/601` five-second
+  charge boundary, eased render-only shake cap, one-shot geometric tip glimmer in
+  both presentation modes, cursor-travel direction with sub-threshold hysteresis,
+  release-time direction locking, mirrored charge leans, and grip-release cancel
+  without swing or pain. Physical swing, hit-lag, audio, and honest 3D bat checks
+  join this same scenario in their ordered tasks.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
 - The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
   consecutive routed ticks within its `600`-tick settling window. Its verdict

@@ -3,7 +3,7 @@
 **Status:** Revised after architecture/feel audit, then after a second verification audit
 against the codebase (2026-07-30) that corrected the swing arithmetic, the missing swing-phase
 force cap, the free-swing caps, the victim-shake offset lane, and a stale test-count baseline.
-**The §5 owner gate is now resolved in full (2026-07-30) and Task A is ready to start.** Four
+**The §5 owner gate is resolved in full (2026-07-30); Tasks A–C are complete.** Four
 of the nine answers changed the design — cursor-travel aiming, a whole-game freeze,
 full-charge-only object freeze, and in-scope placeholder audio; see §5 and `docs/DECISIONS.md`
 ("Home-Run Bat Interaction Gate — Resolved in Full").
@@ -662,6 +662,12 @@ significant travel before release is the one that counts),
 `pointer_motion_after_release_cannot_change_direction`,
 `mirrored_drags_produce_mirrored_swings`, and
 `releasing_the_grip_cancels_without_a_swing_or_pain`.
+
+**Completed 2026-07-30.** The cumulative `homerun_bat_feel` scenario pins all eight
+checks above in both presentation modes. Charge wobble is a render-only offset sourced
+from monotonic presentation time; the full-charge edge starts one timed star at the
+geometric barrel tip in both the legacy draw path and the dynamic 3D slot. The physics
+body and collider remain untouched.
 
 **Task D — Physical home-run swing and single-hit gate.** Add SWINGING/RECOVERY,
 position-plus-velocity servo drive, latched pivot, charge-scaled trajectory, observation

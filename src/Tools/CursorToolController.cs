@@ -100,6 +100,7 @@ public partial class CursorToolController : Node2D
         // holds no tuning of its own (all of that lives on the tool profile), so
         // exporting it would only give every scene a slot to wire wrongly.
         AddChild(_swing);
+        _swing.ChargeCompleted += OnChargeCompleted;
 
         IsInitialized = true;
     }
@@ -238,6 +239,9 @@ public partial class CursorToolController : Node2D
         Vector2 cursorVelocity = dt > 0.0f ? (_cursor - _previousCursor) / dt : Vector2.Zero;
         ChargedSwingDrive drive = _swing.Tick(body, _cursor, cursorVelocity, dt);
         body.SetSwingContext(drive.Context);
+        body.SetChargeVisual(
+            drive.State == ChargedSwingState.Charging ? drive.Charge : 0.0f,
+            profile.Swing);
 
         if (drive.DrivesTether)
         {
@@ -373,6 +377,21 @@ public partial class CursorToolController : Node2D
         // worker keeps its epoch counter so a respawned tool cannot reuse a
         // swing identity the pain pipeline has already spent.
         _swing.Reset();
+    }
+
+    private void OnChargeCompleted()
+    {
+        if (!GodotObject.IsInstanceValid(_body) || _activeProfile?.Swing is not { } swing)
+        {
+            return;
+        }
+
+        _body!.StartChargeGlint(swing.GlintSeconds, swing.GlintSizePx);
+    }
+
+    public override void _ExitTree()
+    {
+        _swing.ChargeCompleted -= OnChargeCompleted;
     }
 
     private void RequireInitialized()
