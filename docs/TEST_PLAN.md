@@ -134,8 +134,13 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   modest tap, point-blank/one-radius tunneling coverage, charge-scaled loose-object
   travel, no-multiplier tip/barrel/handle evidence, exactly one positive hit across
   several buddy parts, zero-pain-graze epoch retention, immutable post-release
-  pivot/direction/charge, and stale-charge rejection after a whiff. Hit lag, audio,
-  and honest 3D bat checks join this same scenario in their ordered tasks.
+  pivot/direction/charge, and stale-charge rejection after a whiff. Task E proves exact
+  `6/60` whole-game hit-lag endpoints and non-stacking, preserved/resumed launch velocity,
+  a stopped unrelated loose object, held gameplay/knockout/recovery clocks, the exact
+  `599/600` object-freeze boundary, one cancel/resume transition, suppression of the
+  glove slow-time writer, and victim-only shake through the ungated offset lane while
+  pose mode is Tracking. Audio and honest 3D bat checks join this same scenario in their
+  ordered tasks.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
 - The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
   consecutive routed ticks within its `600`-tick settling window. Its verdict

@@ -1,4 +1,4 @@
-[gd_scene load_steps=42 format=3]
+[gd_scene load_steps=44 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
@@ -43,6 +43,8 @@
 [ext_resource type="Resource" path="res://data/tools/pullback_launcher.tres" id="41_launcher_profile"]
 [ext_resource type="Resource" path="res://data/objects/baseball.tres" id="42_baseball"]
 [ext_resource type="Resource" path="res://data/objects/meal.tres" id="43_meal"]
+[ext_resource type="Script" path="res://src/Tools/SwingHitLagComponent.cs" id="44_hit_lag"]
+[ext_resource type="Script" path="res://src/Buddy/Presentation3D/ImpactVisualOffsetComponent.cs" id="45_impact_offset"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -62,7 +64,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_sandbox")
 Window = NodePath("DesktopWindowController")
 Shell = NodePath("DesktopShellController")
@@ -81,6 +83,8 @@ CareCursor = NodePath("ToolCursorPresenter")
 Reactions = NodePath("BuddyReactionComponent")
 ReactionAudio = NodePath("ReactionAudioPresenter")
 ImpactFeedback = NodePath("ImpactFeedbackPresenter")
+SwingHitLag = NodePath("SwingHitLagComponent")
+ImpactVisualOffset = NodePath("ImpactVisualOffsetComponent")
 MoneyHud = NodePath("OverlayUi/MoneyHud")
 VisualPresenter = NodePath("BuddyVisualPresenter")
 LightingRig = NodePath("BuddyLookLightingRig")
@@ -105,7 +109,7 @@ projection = 1
 size = 360.0
 keep_aspect = 1
 
-[node name="BuddyVisualPresenter" type="Node3D" parent="." node_paths=PackedStringArray("Buddy", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face")]
+[node name="BuddyVisualPresenter" type="Node3D" parent="." node_paths=PackedStringArray("Buddy", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "ImpactVisualOffset")]
 visible = false
 script = ExtResource("27_visual_presenter")
 Buddy = NodePath("../Buddy")
@@ -115,6 +119,7 @@ Facing = NodePath("../FacingController")
 Activities = NodePath("../ActivityAnimator")
 HeadLookAt = NodePath("../HeadLookAtComponent")
 Face = NodePath("../FaceCompositor")
+ImpactVisualOffset = NodePath("../ImpactVisualOffsetComponent")
 
 [node name="CursorToolVisual3D" type="Node3D" parent="."]
 visible = false
@@ -238,6 +243,15 @@ Profiles = Array[Resource]([ExtResource("15_glove_profile"), ExtResource("15_bat
 Pipeline = NodePath("../InteractionPipeline")
 Boundaries = NodePath("../RoomBounds")
 
+[node name="SwingHitLagComponent" type="Node" parent="." node_paths=PackedStringArray("Pipeline", "CursorTools")]
+script = ExtResource("44_hit_lag")
+Pipeline = NodePath("../InteractionPipeline")
+CursorTools = NodePath("../CursorToolController")
+
+[node name="ImpactVisualOffsetComponent" type="Node" parent="." node_paths=PackedStringArray("HitLag")]
+script = ExtResource("45_impact_offset")
+HitLag = NodePath("../SwingHitLagComponent")
+
 [node name="CareStrokeComponent" type="Node" parent="." node_paths=PackedStringArray("Pipeline")]
 script = ExtResource("16_care")
 Pipeline = NodePath("../InteractionPipeline")
@@ -271,10 +285,11 @@ Player = NodePath("AudioStreamPlayer")
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ReactionAudioPresenter"]
 
-[node name="ImpactFeedbackPresenter" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "CursorTools")]
+[node name="ImpactFeedbackPresenter" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "CursorTools", "HitLag")]
 script = ExtResource("25_impact_feedback")
 Pipeline = NodePath("../InteractionPipeline")
 CursorTools = NodePath("../CursorToolController")
+HitLag = NodePath("../SwingHitLagComponent")
 Profile = ExtResource("26_impact_feedback_profile")
 
 [node name="PuppetRoomContainmentComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Recovery")]

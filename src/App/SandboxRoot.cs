@@ -70,6 +70,8 @@ public partial class SandboxRoot : Node2D
     [Export] public BuddyReactionComponent Reactions { get; set; } = null!;
     [Export] public ReactionAudioPresenter ReactionAudio { get; set; } = null!;
     [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
+    [Export] public SwingHitLagComponent SwingHitLag { get; set; } = null!;
+    [Export] public ImpactVisualOffsetComponent ImpactVisualOffset { get; set; } = null!;
     [Export] public MoneyHudPresenter MoneyHud { get; set; } = null!;
     [Export] public BuddyVisualPresenter VisualPresenter { get; set; } = null!;
     [Export] public BuddyLookLightingRig LightingRig { get; set; } = null!;
@@ -109,6 +111,8 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
             !GodotObject.IsInstanceValid(ImpactFeedback) ||
+            !GodotObject.IsInstanceValid(SwingHitLag) ||
+            !GodotObject.IsInstanceValid(ImpactVisualOffset) ||
             !GodotObject.IsInstanceValid(MoneyHud) ||
             !GodotObject.IsInstanceValid(VisualPresenter) ||
             !GodotObject.IsInstanceValid(LightingRig) ||
@@ -144,6 +148,8 @@ public partial class SandboxRoot : Node2D
         ToolReactions.Initialize();
         Reactions.Initialize();
         ReactionAudio.Initialize();
+        SwingHitLag.Initialize();
+        ImpactVisualOffset.Initialize();
         ImpactFeedback.Initialize();
         MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();
@@ -225,6 +231,12 @@ public partial class SandboxRoot : Node2D
         Pointer.ResolvePendingInput();
         VisualPresenter.CaptureTickSnapshot();
         CursorToolVisual.CaptureTickSnapshot();
+        CursorTools.RoutePendingImpactEvents();
+        if (SwingHitLag.ConsumeFrozenPhysicsFrame())
+        {
+            return;
+        }
+
         // Shell drains a queued resize into a boundary request; the boundary
         // applies pending layout changes on this physics boundary.
         Shell.PhysicsTick();
@@ -251,6 +263,11 @@ public partial class SandboxRoot : Node2D
 
     public override void _ExitTree()
     {
+        if (GodotObject.IsInstanceValid(SwingHitLag))
+        {
+            SwingHitLag.Cancel();
+        }
+
         if (GodotObject.IsInstanceValid(Boundaries) && GodotObject.IsInstanceValid(Containment))
         {
             Boundaries.LayoutApplied -= Containment.ApplyLayout;
@@ -424,6 +441,7 @@ public partial class SandboxRoot : Node2D
 
     private void OnHardRecovered(HardRecoveryReason reason)
     {
+        SwingHitLag.Cancel();
         Buddy.ObjectInteraction.Reset();
         Launcher.CancelImmediately();
         if (Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
@@ -431,6 +449,7 @@ public partial class SandboxRoot : Node2D
 
     private void OnSessionResumed()
     {
+        SwingHitLag.Cancel();
         Buddy.ObjectInteraction.Reset();
         if (Grab.IsGrabbing)
             Grab.Release(countsAsThrow: false);
@@ -438,6 +457,7 @@ public partial class SandboxRoot : Node2D
 
     private void OnToolChanged(ToolId previous, ToolId selected)
     {
+        SwingHitLag.Cancel();
         if (previous == ToolId.Grab && Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
     }
 
@@ -503,5 +523,9 @@ public partial class SandboxRoot : Node2D
         CursorToolVisual.Attach(body);
     }
 
-    private void OnCursorToolDespawned(CursorToolBody body) => CursorToolVisual.Detach(body);
+    private void OnCursorToolDespawned(CursorToolBody body)
+    {
+        SwingHitLag.Cancel();
+        CursorToolVisual.Detach(body);
+    }
 }

@@ -172,7 +172,7 @@ the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the ba
       the one-shot tip glimmer in both presentation modes.
 - [x] Task D — physical charged swing, measured impulse separation, pivot hold,
       and the single-hit epoch gate.
-- [ ] Task E — whole-game hit lag and victim shake.
+- [x] Task E — whole-game hit lag and victim shake.
 - [ ] Task E2 — procedural placeholder audio.
 - [ ] Task F — honest shaded 3D bat presentation.
 - [ ] Task G — interactive verification and trace capture.
@@ -187,7 +187,7 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
-**Next engineering action:** implement Home-Run Bat refinement Task E. The next
+**Next engineering action:** implement Home-Run Bat refinement Task E2. The next
 owner feel gate is Task H, after charge, the physical swing, hit lag, audio, 3D
 presentation, and the promoted real-input journey are complete. The catalogue
 entry remains hidden until that gate passes. M4 is complete and owner-accepted.

@@ -21,6 +21,7 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
 {
     private const int CircleSegments = 32;
     private const float OutlineWidth = 2.0f;
+    private const int ContactBufferSize = 8;
 
     private Color _fillColor = new("e05b4b");
     private Color _outlineColor = new("5c1a1a");
@@ -37,6 +38,9 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
     private double _glintSeconds;
     private float _glintSizePx;
     private bool _glintActive;
+    private bool _hasPendingLooseObjectHit;
+    private SwingImpactContext _pendingLooseObjectHit;
+    private int _lastLooseObjectSwingEpoch;
 
     public float Radius { get; private set; } = 14.0f;
 
@@ -131,6 +135,8 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
         CollisionMask = 0;
         // The tether must never fight the sleep heuristic while the tool is held.
         CanSleep = false;
+        ContactMonitor = true;
+        MaxContactsReported = ContactBufferSize;
         QueueRedraw();
     }
 
@@ -145,6 +151,49 @@ public partial class CursorToolBody : RigidBody2D, IImpactSource, ISwingImpactSo
             return;
         IsImpactArmed = true;
         CollisionMask = CollisionLayers.MaskPhysicalTools;
+    }
+
+    /// <summary>
+    /// Drains the solver-observed loose-object edge on the next root routing
+    /// boundary. Contacts are deduplicated by swing epoch so one object cluster
+    /// cannot stack or repeatedly request hit lag.
+    /// </summary>
+    public bool TryConsumeLooseObjectSwingHit(out SwingImpactContext context)
+    {
+        if (!_hasPendingLooseObjectHit)
+        {
+            context = default;
+            return false;
+        }
+
+        context = _pendingLooseObjectHit;
+        _hasPendingLooseObjectHit = false;
+        return true;
+    }
+
+    public override void _IntegrateForces(PhysicsDirectBodyState2D state)
+    {
+        if (_hasPendingLooseObjectHit || SwingContext.Mode != SwingImpactMode.HomeRun ||
+            SwingContext.SwingEpoch <= 0 ||
+            SwingContext.SwingEpoch == _lastLooseObjectSwingEpoch)
+        {
+            return;
+        }
+
+        int contactCount = state.GetContactCount();
+        for (int index = 0; index < contactCount; index++)
+        {
+            if (state.GetContactColliderObject(index) is not CollisionObject2D collider ||
+                (collider.CollisionLayer & CollisionLayers.LooseObjects) == 0)
+            {
+                continue;
+            }
+
+            _pendingLooseObjectHit = SwingContext;
+            _hasPendingLooseObjectHit = true;
+            _lastLooseObjectSwingEpoch = SwingContext.SwingEpoch;
+            return;
+        }
     }
 
     public override void _Draw()

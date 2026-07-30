@@ -72,6 +72,8 @@ public partial class BuddyLab : Node2D
     [Export] public BuddyReactionComponent Reactions { get; set; } = null!;
     [Export] public ReactionAudioPresenter ReactionAudio { get; set; } = null!;
     [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
+    [Export] public SwingHitLagComponent SwingHitLag { get; set; } = null!;
+    [Export] public ImpactVisualOffsetComponent ImpactVisualOffset { get; set; } = null!;
     [Export] public MoneyHudPresenter MoneyHud { get; set; } = null!;
     [Export] public BuddyVisualPresenter VisualPresenter { get; set; } = null!;
     [Export] public BuddyLookLightingRig LightingRig { get; set; } = null!;
@@ -114,6 +116,8 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
             !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
             !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
+            !GodotObject.IsInstanceValid(SwingHitLag) ||
+            !GodotObject.IsInstanceValid(ImpactVisualOffset) ||
             !GodotObject.IsInstanceValid(MoneyHud) ||
             !GodotObject.IsInstanceValid(VisualPresenter) ||
             !GodotObject.IsInstanceValid(LightingRig) ||
@@ -165,6 +169,8 @@ public partial class BuddyLab : Node2D
         ToolReactions.Initialize();
         Reactions.Initialize();
         ReactionAudio.Initialize();
+        SwingHitLag.Initialize();
+        ImpactVisualOffset.Initialize();
         ImpactFeedback.Initialize();
         MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();
@@ -266,6 +272,13 @@ public partial class BuddyLab : Node2D
         // 3D interpolation pair stays adjacent and cannot shimmer while frozen.
         VisualPresenter.CaptureTickSnapshot();
         CursorToolVisual.CaptureTickSnapshot();
+        // Solver contacts are semantic input to the gate, so drain them before
+        // deciding whether this engine frame may advance any gameplay.
+        CursorTools.RoutePendingImpactEvents();
+        if (SwingHitLag.ConsumeFrozenPhysicsFrame())
+        {
+            return;
+        }
 
         if (Controls.BeginPhysicsTick())
         {
@@ -342,6 +355,11 @@ public partial class BuddyLab : Node2D
 
     public override void _ExitTree()
     {
+        if (GodotObject.IsInstanceValid(SwingHitLag))
+        {
+            SwingHitLag.Cancel();
+        }
+
         if (GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Buddy.Recovery))
         {
             Buddy.Recovery.HardRecovered -= OnHardRecovered;
@@ -421,6 +439,7 @@ public partial class BuddyLab : Node2D
 
     private void OnHardRecovered(HardRecoveryReason reason)
     {
+        SwingHitLag.Cancel();
         Buddy.ObjectInteraction.Reset();
         Launcher.CancelImmediately();
         if (Grab.IsGrabbing)
@@ -431,6 +450,7 @@ public partial class BuddyLab : Node2D
 
     private void OnToolChanged(ToolId previous, ToolId selected)
     {
+        SwingHitLag.Cancel();
         if (previous == ToolId.Grab && Grab.IsGrabbing)
         {
             Grab.Release(countsAsThrow: false);
@@ -485,7 +505,11 @@ public partial class BuddyLab : Node2D
         CursorToolVisual.Attach(body);
     }
 
-    private void OnCursorToolDespawned(CursorToolBody body) => CursorToolVisual.Detach(body);
+    private void OnCursorToolDespawned(CursorToolBody body)
+    {
+        SwingHitLag.Cancel();
+        CursorToolVisual.Detach(body);
+    }
 
     /// <summary>Root-owned loose-object factory used by the lab and scenarios.</summary>
     public LooseObjectBody? SpawnLooseObject(

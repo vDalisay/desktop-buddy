@@ -1,8 +1,11 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Physics;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Tools;
@@ -314,6 +317,7 @@ public sealed class HomeRunBatFeelScenario : IScenario
             bat.GlobalRotation, -Mathf.Pi, Mathf.Pi));
 
         lab.CursorTools.SetChargeHeld(false);
+
         await Ticks(tree, 1);
         int firstEpoch = lab.CursorTools.SwingEpoch;
         bool firstSwingReleased = lab.CursorTools.SwingState == ChargedSwingState.Swinging &&
@@ -540,12 +544,16 @@ public sealed class HomeRunBatFeelScenario : IScenario
         BuddySwingProbe fullContact = await RunBuddySwingProbe(tree, 600, 0.65f);
         BuddySwingProbe offsetFullContact =
             await RunBuddySwingProbe(tree, 600, 0.65f, radialOffsetRadii: 1.0f);
+        BuddySwingProbe canceledFullContact =
+            await RunBuddySwingProbe(tree, 600, 0.65f, cancelHitLag: true);
         LooseObjectSwingProbe lowObject = await RunLooseObjectSwingProbe(
             tree, 0, TipContactRadiusFraction);
         LooseObjectSwingProbe midObject = await RunLooseObjectSwingProbe(
             tree, 300, TipContactRadiusFraction);
         LooseObjectSwingProbe fullTipObject = await RunLooseObjectSwingProbe(
             tree, 600, TipContactRadiusFraction);
+        LooseObjectSwingProbe underCapObject = await RunLooseObjectSwingProbe(
+            tree, 599, TipContactRadiusFraction);
         LooseObjectSwingProbe fullBarrelObject =
             await RunLooseObjectSwingProbe(tree, 600, contactRadiusFraction: 0.66f);
         LooseObjectSwingProbe fullHandleObject =
@@ -685,6 +693,76 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"{whiffRecovery.WhiffPositiveImpacts} resting_episodes=" +
             $"{whiffRecovery.RestingContactEpisodes} resting_positive=" +
             $"{whiffRecovery.RestingPositiveImpacts}"));
+
+        checks.Add(new StartupCheck(
+            "charge_scales_hit_lag_ticks",
+            lowContact.HitLagDurationTicks == 6 &&
+            fullContact.HitLagDurationTicks == 60 &&
+            lowContact.FrozenFrames == 6 &&
+            fullContact.FrozenFrames == 60 &&
+            lowContact.HitLagTriggerCount == 1 &&
+            fullContact.HitLagTriggerCount == 1,
+            $"duration=({lowContact.HitLagDurationTicks}," +
+            $"{fullContact.HitLagDurationTicks}) frozen=(" +
+            $"{lowContact.FrozenFrames},{fullContact.FrozenFrames}) " +
+            $"triggers=({lowContact.HitLagTriggerCount}," +
+            $"{fullContact.HitLagTriggerCount})"));
+
+        checks.Add(new StartupCheck(
+            "launch_velocity_resumes_after_hit_lag",
+            fullContact.VelocityHeldDuringHitLag &&
+            fullContact.LaunchResumedAfterHitLag,
+            $"held={fullContact.VelocityHeldDuringHitLag} " +
+            $"resumed={fullContact.LaunchResumedAfterHitLag} " +
+            $"travel={fullContact.MaximumTravel:F2}"));
+
+        checks.Add(new StartupCheck(
+            "every_loose_object_stops_during_hit_lag",
+            fullTipObject.AllLooseObjectsHeldDuringHitLag &&
+            fullTipObject.UnrelatedObjectResumedAfterHitLag,
+            $"held={fullTipObject.AllLooseObjectsHeldDuringHitLag} " +
+            $"unrelated_resumed={fullTipObject.UnrelatedObjectResumedAfterHitLag}"));
+
+        checks.Add(new StartupCheck(
+            "knockout_and_recovery_timers_do_not_burn_during_the_freeze",
+            fullContact.GameplayTimersHeldDuringHitLag,
+            $"timers_held={fullContact.GameplayTimersHeldDuringHitLag} " +
+            $"duration={fullContact.HitLagDurationTicks}"));
+
+        checks.Add(new StartupCheck(
+            "full_charge_object_hit_freezes_but_partial_charge_does_not",
+            fullTipObject.HitLagDurationTicks == 60 &&
+            fullTipObject.HitLagTriggerCount == 1 &&
+            underCapObject.SawContact &&
+            underCapObject.HitLagTriggerCount == 0,
+            $"full=({fullTipObject.HitLagTriggerCount}," +
+            $"{fullTipObject.HitLagDurationTicks}) under_cap=(" +
+            $"{underCapObject.HitLagTriggerCount}," +
+            $"{underCapObject.HitLagDurationTicks})"));
+
+        checks.Add(new StartupCheck(
+            "home_run_freeze_suppresses_the_global_slow_time",
+            fullContact.GlobalSlowTimeSuppressed,
+            $"suppressed={fullContact.GlobalSlowTimeSuppressed} " +
+            $"hit_stop={fullContact.SawImpactHitStop}"));
+
+        checks.Add(new StartupCheck(
+            "cancel_resumes_the_tick_exactly_once",
+            canceledFullContact.HitLagCancelCount == 1 &&
+            canceledFullContact.CancelResumedRouting,
+            $"cancel_count={canceledFullContact.HitLagCancelCount} " +
+            $"resumed={canceledFullContact.CancelResumedRouting}"));
+
+        checks.Add(new StartupCheck(
+            "struck_part_shakes_during_freeze_only",
+            fullContact.MaximumVictimShake > 0.05f &&
+            fullContact.MaximumOtherPartShake <= 0.001f &&
+            fullContact.ShakeAfterHitLag <= 0.001f &&
+            fullContact.PoseStayedTrackingDuringHitLag,
+            $"victim={fullContact.MaximumVictimShake:F3}px " +
+            $"other={fullContact.MaximumOtherPartShake:F3}px " +
+            $"after={fullContact.ShakeAfterHitLag:F3}px " +
+            $"tracking={fullContact.PoseStayedTrackingDuringHitLag}"));
 
         messages.Add(
             $"task_d_contact impulse=({lowContact.MaximumImpulse:F1}," +
@@ -912,7 +990,21 @@ public sealed class HomeRunBatFeelScenario : IScenario
         int DirectionSign,
         float MinimumTipDistance,
         float FirstEpisodeImpulse,
-        float MaximumEpisodeImpulse);
+        float MaximumEpisodeImpulse,
+        int HitLagDurationTicks,
+        int HitLagTriggerCount,
+        int FrozenFrames,
+        bool VelocityHeldDuringHitLag,
+        bool LaunchResumedAfterHitLag,
+        bool GameplayTimersHeldDuringHitLag,
+        bool GlobalSlowTimeSuppressed,
+        bool SawImpactHitStop,
+        int HitLagCancelCount,
+        bool CancelResumedRouting,
+        float MaximumVictimShake,
+        float MaximumOtherPartShake,
+        float ShakeAfterHitLag,
+        bool PoseStayedTrackingDuringHitLag);
 
     /// <summary>
     /// Release one real charged bat through the torso in an otherwise isolated
@@ -925,7 +1017,8 @@ public sealed class HomeRunBatFeelScenario : IScenario
         SceneTree tree,
         int chargeTicks,
         float sweepFraction = 0.5f,
-        float radialOffsetRadii = 0.0f)
+        float radialOffsetRadii = 0.0f,
+        bool cancelHitLag = false)
     {
         BuddyLab? lab = await ScenarioSteps.CreateControlledImpactLab(
             tree, CurveMaximumPain, CurveMaximumImpulse);
@@ -987,6 +1080,12 @@ public sealed class HomeRunBatFeelScenario : IScenario
         bool hitObserved = false;
         Vector2 hitCenter = Vector2.Zero;
         int ticksAfterHit = 0;
+        int hitLagDuration = 0;
+        Vector2 frozenCenter = Vector2.Zero;
+        Vector2 frozenVelocity = Vector2.Zero;
+        double frozenPipelineTime = 0.0;
+        long frozenBuddyTicks = 0;
+        RecoveryClockState frozenRecovery = default;
         void OnImpact(AcceptedImpact impact)
         {
             if (impact.ContentId != ContentIds.ToolBaseballBat ||
@@ -1004,6 +1103,12 @@ public sealed class HomeRunBatFeelScenario : IScenario
                 hitObserved = true;
                 hitCenter = WholeBuddyCenter(lab);
                 ticksAfterHit = 0;
+                hitLagDuration = lab.SwingHitLag.TotalTicks;
+                frozenCenter = hitCenter;
+                frozenVelocity = WholeBuddyVelocity(lab);
+                frozenPipelineTime = lab.Pipeline.NowSeconds;
+                frozenBuddyTicks = lab.Buddy.RoutedTicks;
+                frozenRecovery = lab.Buddy.Recovery.State;
             }
         }
 
@@ -1031,6 +1136,19 @@ public sealed class HomeRunBatFeelScenario : IScenario
         bool sawCcd = false;
         bool sawSwing = false;
         float minimumTipDistance = float.PositiveInfinity;
+        bool sawHitLag = false;
+        bool velocityHeld = true;
+        bool timersHeld = true;
+        bool slowTimeSuppressed = true;
+        bool sawImpactHitStop = false;
+        bool launchResumed = false;
+        bool canceled = false;
+        long routedTicksBeforeCancel = 0;
+        bool cancelResumedRouting = false;
+        float maximumVictimShake = 0.0f;
+        float maximumOtherPartShake = 0.0f;
+        float shakeAfterHitLag = 0.0f;
+        bool poseStayedTracking = true;
 
         lab.CursorTools.SetChargeHeld(true);
         await WaitForState(tree, lab.CursorTools, ChargedSwingState.Charging, 3);
@@ -1039,18 +1157,79 @@ public sealed class HomeRunBatFeelScenario : IScenario
         int releasedEpoch = lab.CursorTools.SwingEpoch;
         int directionSign = lab.CursorTools.SwingDirectionSign;
 
-        for (int tick = 0; tick < 150; tick++)
+        for (int tick = 0; tick < 220; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             sawSwing |= lab.CursorTools.SwingState == ChargedSwingState.Swinging;
-            sawCcd |= bat.ContinuousCd == RigidBody2D.CcdMode.CastShape;
-            Vector2 tip = bat.GlobalPosition +
-                          new Vector2(0.0f, -profile.Length * 0.5f).Rotated(
-                              bat.GlobalRotation);
-            minimumTipDistance = Mathf.Min(
-                minimumTipDistance,
-                tip.DistanceTo(lab.Buddy.Rig.Torso.GlobalPosition));
-            if (hitObserved && ticksAfterHit <= 24)
+            if (GodotObject.IsInstanceValid(bat))
+            {
+                sawCcd |= bat.ContinuousCd == RigidBody2D.CcdMode.CastShape;
+                Vector2 tip = bat.GlobalPosition +
+                              new Vector2(0.0f, -profile.Length * 0.5f).Rotated(
+                                  bat.GlobalRotation);
+                minimumTipDistance = Mathf.Min(
+                    minimumTipDistance,
+                    tip.DistanceTo(lab.Buddy.Rig.Torso.GlobalPosition));
+            }
+            if (lab.SwingHitLag.IsActive)
+            {
+                sawHitLag = true;
+                velocityHeld &= WholeBuddyVelocity(lab).DistanceTo(frozenVelocity) <= 0.01f;
+                velocityHeld &= WholeBuddyCenter(lab).DistanceTo(frozenCenter) <= 0.01f;
+                timersHeld &= Mathf.IsEqualApprox(
+                    (float)lab.Pipeline.NowSeconds,
+                    (float)frozenPipelineTime);
+                timersHeld &= lab.Buddy.RoutedTicks == frozenBuddyTicks;
+                timersHeld &= lab.Buddy.Recovery.State == frozenRecovery;
+                sawImpactHitStop |= lab.ImpactFeedback.IsHitStopActive;
+                slowTimeSuppressed &= !lab.ImpactFeedback.IsHitStopActive &&
+                                      Mathf.IsEqualApprox((float)Engine.TimeScale, 1.0f);
+                poseStayedTracking &=
+                    lab.PosePipeline.Mode == PresentationPoseMode.Tracking;
+
+                if (lab.SwingHitLag.Current.StruckPart is BuddyPart struckPart)
+                {
+                    BuddyPartId victim = (BuddyPartId)(int)struckPart;
+                    maximumVictimShake = Mathf.Max(
+                        maximumVictimShake,
+                        lab.ImpactVisualOffset.OffsetFor(victim).Length());
+                    BuddyPartId other = victim == BuddyPartId.Head
+                        ? BuddyPartId.Torso
+                        : BuddyPartId.Head;
+                    maximumOtherPartShake = Mathf.Max(
+                        maximumOtherPartShake,
+                        lab.ImpactVisualOffset.OffsetFor(other).Length());
+                }
+
+                if (cancelHitLag && !canceled)
+                {
+                    canceled = true;
+                    routedTicksBeforeCancel = lab.Buddy.RoutedTicks;
+                    lab.CursorTools.ClearCursor();
+                    // Prove fail-safe cleanup is idempotent at the public seam.
+                    lab.CursorTools.ClearCursor();
+                }
+            }
+            else if (sawHitLag)
+            {
+                if (lab.SwingHitLag.Current.StruckPart is BuddyPart struckPart)
+                {
+                    shakeAfterHitLag = Mathf.Max(
+                        shakeAfterHitLag,
+                        lab.ImpactVisualOffset.OffsetFor(
+                            (BuddyPartId)(int)struckPart).Length());
+                }
+
+                cancelResumedRouting |= canceled &&
+                    lab.Buddy.RoutedTicks > routedTicksBeforeCancel;
+                launchResumed |= !canceled &&
+                    WholeBuddyCenter(lab).DistanceTo(frozenCenter) > 0.1f;
+            }
+            // Task D's travel envelope is measured over routed post-hit ticks.
+            // Task E deliberately inserts charge-scaled engine frames where the
+            // entire simulation is frozen; those frames must not consume this
+            // older probe's observation window.
+            if (hitObserved && !lab.SwingHitLag.IsActive && ticksAfterHit <= 24)
             {
                 Vector2 center = WholeBuddyCenter(lab);
                 maximumTravel = Mathf.Max(maximumTravel, center.DistanceTo(hitCenter));
@@ -1066,6 +1245,9 @@ public sealed class HomeRunBatFeelScenario : IScenario
 
         lab.Pipeline.ImpactAccepted -= OnImpact;
         lab.Pipeline.EpisodeAccepted -= OnEpisode;
+        int hitLagTriggerCount = lab.SwingHitLag.TriggerCount;
+        int frozenFrames = lab.SwingHitLag.FrozenFrameCount;
+        int hitLagCancelCount = lab.SwingHitLag.CancelCount;
         lab.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return new BuddySwingProbe(
@@ -1081,7 +1263,21 @@ public sealed class HomeRunBatFeelScenario : IScenario
             directionSign,
             minimumTipDistance,
             firstEpisodeImpulse,
-            maximumEpisodeImpulse);
+            maximumEpisodeImpulse,
+            hitLagDuration,
+            hitLagTriggerCount,
+            frozenFrames,
+            sawHitLag && velocityHeld,
+            launchResumed,
+            sawHitLag && timersHeld,
+            sawHitLag && slowTimeSuppressed,
+            sawImpactHitStop,
+            hitLagCancelCount,
+            cancelResumedRouting,
+            maximumVictimShake,
+            maximumOtherPartShake,
+            shakeAfterHitLag,
+            sawHitLag && poseStayedTracking);
     }
 
     private static Vector2 WholeBuddyCenter(BuddyLab lab)
@@ -1114,7 +1310,11 @@ public sealed class HomeRunBatFeelScenario : IScenario
         bool SawContact,
         float MaximumTravel,
         float PeakSpeed,
-        bool SawCastShapeCcd);
+        bool SawCastShapeCcd,
+        int HitLagDurationTicks,
+        int HitLagTriggerCount,
+        bool AllLooseObjectsHeldDuringHitLag,
+        bool UnrelatedObjectResumedAfterHitLag);
 
     /// <summary>
     /// Swing the production bat into a passive one-kilogram loose-object probe.
@@ -1188,6 +1388,13 @@ public sealed class HomeRunBatFeelScenario : IScenario
         await Ticks(tree, chargeTicks);
         lab.CursorTools.SetChargeHeld(false);
 
+        var unrelatedObject = new ScenarioImpactBody();
+        unrelatedObject.ConfigureLooseObject(radius: 6.0f);
+        unrelatedObject.CollisionMask = 0;
+        lab.AddChild(unrelatedObject);
+        unrelatedObject.GlobalPosition = new Vector2(45.0f, 55.0f);
+        unrelatedObject.LinearVelocity = new Vector2(90.0f, 25.0f);
+
         int sampleTick = plan.WindupTicks +
                          Mathf.Clamp(
                              Mathf.RoundToInt(plan.SweepTicks * 0.65f),
@@ -1199,7 +1406,19 @@ public sealed class HomeRunBatFeelScenario : IScenario
         float peakSpeed = 0.0f;
         bool sawContact = false;
         bool sawCcd = false;
-        for (int tick = 0; tick < 150; tick++)
+        int hitLagDuration = 0;
+        bool sawHitLag = false;
+        bool allLooseObjectsHeld = true;
+        bool unrelatedResumed = false;
+        Vector2 frozenTargetPosition = Vector2.Zero;
+        Vector2 frozenTargetVelocity = Vector2.Zero;
+        Vector2 frozenUnrelatedPosition = Vector2.Zero;
+        Vector2 frozenUnrelatedVelocity = Vector2.Zero;
+        // The full-charge object case now includes exactly 60 frozen engine
+        // frames. Add those frames only to that case so every charge band keeps
+        // Task D's original 150 routed-frame observation window.
+        int observationFrames = chargeTicks == profile.Swing!.MaxChargeTicks ? 210 : 150;
+        for (int tick = 0; tick < observationFrames; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             sawCcd |= bat.ContinuousCd == RigidBody2D.CcdMode.CastShape;
@@ -1252,6 +1471,32 @@ public sealed class HomeRunBatFeelScenario : IScenario
                 continue;
             }
 
+            if (lab.SwingHitLag.IsActive)
+            {
+                if (!sawHitLag)
+                {
+                    sawHitLag = true;
+                    hitLagDuration = lab.SwingHitLag.TotalTicks;
+                    frozenTargetPosition = targetBody.GlobalPosition;
+                    frozenTargetVelocity = targetBody.LinearVelocity;
+                    frozenUnrelatedPosition = unrelatedObject.GlobalPosition;
+                    frozenUnrelatedVelocity = unrelatedObject.LinearVelocity;
+                }
+                else
+                {
+                    allLooseObjectsHeld &=
+                        targetBody.GlobalPosition.DistanceTo(frozenTargetPosition) <= 0.01f &&
+                        targetBody.LinearVelocity.DistanceTo(frozenTargetVelocity) <= 0.01f &&
+                        unrelatedObject.GlobalPosition.DistanceTo(frozenUnrelatedPosition) <= 0.01f &&
+                        unrelatedObject.LinearVelocity.DistanceTo(frozenUnrelatedVelocity) <= 0.01f;
+                }
+            }
+            else if (sawHitLag)
+            {
+                unrelatedResumed |=
+                    unrelatedObject.GlobalPosition.DistanceTo(frozenUnrelatedPosition) > 0.1f;
+            }
+
             float speed = targetBody.LinearVelocity.Length();
             peakSpeed = Mathf.Max(peakSpeed, speed);
             maximumTravel = Mathf.Max(
@@ -1269,13 +1514,18 @@ public sealed class HomeRunBatFeelScenario : IScenario
             }
         }
 
+        int hitLagTriggerCount = lab.SwingHitLag.TriggerCount;
         lab.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return new LooseObjectSwingProbe(
             sawContact,
             maximumTravel,
             peakSpeed,
-            sawCcd);
+            sawCcd,
+            hitLagDuration,
+            hitLagTriggerCount,
+            sawHitLag && allLooseObjectsHeld,
+            unrelatedResumed);
     }
 
     private readonly record struct GrazeThenHitProbe(

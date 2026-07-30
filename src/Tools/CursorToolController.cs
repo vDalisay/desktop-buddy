@@ -9,6 +9,10 @@ using NumericsVector2 = System.Numerics.Vector2;
 
 namespace DesktopBuddy.Tools;
 
+public readonly record struct LooseObjectSwingHit(
+    string ContentId,
+    SwingImpactContext Context);
+
 /// <summary>
 /// Owns the lifecycle of every cursor-tethered physical tool (RAGDOLL §9.1).
 /// While one of its authored tools is selected, that tool's collider exists and
@@ -43,6 +47,7 @@ public partial class CursorToolController : Node2D
 
     public event Action<CursorToolBody>? BodySpawned;
     public event Action<CursorToolBody>? BodyDespawned;
+    public event Action<LooseObjectSwingHit>? LooseObjectSwingHit;
 
     public bool IsInitialized { get; private set; }
     public bool IsActive => GodotObject.IsInstanceValid(_body);
@@ -186,6 +191,26 @@ public partial class CursorToolController : Node2D
         return false;
     }
 
+    /// <summary>Returns the authored swing tuning for an attributed content ID.</summary>
+    public SwingToolProfile? SwingProfileForContent(string? contentId)
+    {
+        if (contentId is null)
+        {
+            return null;
+        }
+
+        for (int index = 0; index < Profiles.Count; index++)
+        {
+            CursorToolProfile? profile = Profiles[index];
+            if (GodotObject.IsInstanceValid(profile) && profile!.ContentId == contentId)
+            {
+                return profile.Swing;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Move the cursor anchor the active tool is tethered to (sandbox coordinates).</summary>
     public void MoveCursor(Vector2 worldPoint)
     {
@@ -210,6 +235,7 @@ public partial class CursorToolController : Node2D
     public void PhysicsTick(double delta)
     {
         RequireInitialized();
+        RoutePendingImpactEvents();
         CursorToolProfile? wanted = _hasCursor ? ProfileFor(Pipeline.SelectedTool) : null;
         // A tool swap is a despawn and a respawn, never a reconfigure: the collider's
         // shape, mass, and attribution identity all belong to one profile.
@@ -288,6 +314,20 @@ public partial class CursorToolController : Node2D
         }
 
         _previousCursor = _cursor;
+    }
+
+    /// <summary>
+    /// Routes solver contacts before the root's hit-lag gate. Roots call this
+    /// before deciding whether to advance gameplay; the normal controller tick
+    /// calls it again as an idempotent fallback for isolated compositions.
+    /// </summary>
+    public void RoutePendingImpactEvents()
+    {
+        if (GodotObject.IsInstanceValid(_body) &&
+            _body!.TryConsumeLooseObjectSwingHit(out SwingImpactContext context))
+        {
+            LooseObjectSwingHit?.Invoke(new LooseObjectSwingHit(_body.ContentId, context));
+        }
     }
 
     /// <summary>

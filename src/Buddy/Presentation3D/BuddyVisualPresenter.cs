@@ -84,6 +84,12 @@ public partial class BuddyVisualPresenter : Node3D
     /// face plate (Task 5) and the M3.5 <see cref="Label3D"/> parity glyph is retired;
     /// when absent the glyph remains (uncomposed hosts, legacy tests).</summary>
     [Export] public FaceCompositor? Face { get; set; }
+    /// <summary>
+    /// Owner decision "Hit-Lag Shake Gets Its Own Offset Lane": unlike authored
+    /// performance offsets, this one must remain visible while pose mode is
+    /// Tracking. Only the hit-lag victim shake is allowed through this lane.
+    /// </summary>
+    [Export] public ImpactVisualOffsetComponent? ImpactVisualOffset { get; set; }
 
     public bool IsInitialized { get; private set; }
     public Node3D BodyYaw { get; private set; } = null!;
@@ -532,7 +538,7 @@ public partial class BuddyVisualPresenter : Node3D
         socket.GlobalPosition = ResolveLanePosition(
             rendered.Position,
             depthOffset,
-            ResolvePerformanceOffset(index),
+            ResolveFinalVisualOffset(index),
             laneYawFade);
 
         // The head additionally carries the weighted look-at: pitch about X, yaw added to
@@ -587,6 +593,29 @@ public partial class BuddyVisualPresenter : Node3D
         float cap = PosePipeline!.Profile.OffsetCapRadiusFraction * _meshRadii[index];
         (float x, float y, float z) = BoundedOffset.Clamp(raw.X, raw.Y, raw.Z, cap);
         return new Vector3(x, y, z) * _performanceWeight;
+    }
+
+    private Vector3 ResolveFinalVisualOffset(int index)
+    {
+        Vector3 offset = ResolvePerformanceOffset(index);
+        if (ImpactVisualOffset is { IsInitialized: true })
+        {
+            offset += ImpactVisualOffset.OffsetFor((BuddyPartId)index);
+        }
+
+        if (offset == Vector3.Zero)
+        {
+            return Vector3.Zero;
+        }
+
+        if (PosePipeline is not { IsInitialized: true })
+        {
+            return offset;
+        }
+
+        float cap = PosePipeline.Profile.OffsetCapRadiusFraction * _meshRadii[index];
+        (float x, float y, float z) = BoundedOffset.Clamp(offset.X, offset.Y, offset.Z, cap);
+        return new Vector3(x, y, z);
     }
 
     /// <summary>

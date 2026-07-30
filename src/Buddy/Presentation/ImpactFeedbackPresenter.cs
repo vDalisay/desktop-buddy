@@ -20,6 +20,7 @@ public partial class ImpactFeedbackPresenter : Node2D
 
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public CursorToolController CursorTools { get; set; } = null!;
+    [Export] public SwingHitLagComponent HitLag { get; set; } = null!;
     [Export] public ImpactFeedbackProfile Profile { get; set; } = null!;
 
     private ulong _feedbackStartedUsec;
@@ -42,6 +43,7 @@ public partial class ImpactFeedbackPresenter : Node2D
     {
         if (!GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
             !GodotObject.IsInstanceValid(CursorTools) || !CursorTools.IsInitialized ||
+            !GodotObject.IsInstanceValid(HitLag) || !HitLag.IsInitialized ||
             !GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
         {
             throw new InvalidOperationException("ImpactFeedbackPresenter dependencies are incomplete or invalid.");
@@ -50,6 +52,7 @@ public partial class ImpactFeedbackPresenter : Node2D
         ZAsRelative = false;
         ZIndex = 150;
         Pipeline.ImpactAccepted += OnImpact;
+        HitLag.Started += OnHitLagStarted;
         IsInitialized = true;
     }
 
@@ -57,6 +60,8 @@ public partial class ImpactFeedbackPresenter : Node2D
     {
         if (GodotObject.IsInstanceValid(Pipeline))
             Pipeline.ImpactAccepted -= OnImpact;
+        if (GodotObject.IsInstanceValid(HitLag))
+            HitLag.Started -= OnHitLagStarted;
         if (IsHitStopActive)
             Engine.TimeScale = _resumeScale;
     }
@@ -151,7 +156,17 @@ public partial class ImpactFeedbackPresenter : Node2D
             CursorTools.Body?.PulseImpact(impact.Normal, _impactIntensity, Profile.GloveSquashSeconds);
         QueueRedraw();
 
-        if ((impact.Pain + 0.0001f >= Profile.MaximumPain || impact.KnockoutTriggered) &&
+        bool homeRunFreeze = HitLag.IsActive;
+        if (homeRunFreeze)
+        {
+            // The owner-confirmed whole-game home-run freeze wins over the
+            // glove's global slow-time envelope. This also unwinds an envelope
+            // already in progress so two time-control effects never compound.
+            StopHitStop();
+        }
+
+        if (!homeRunFreeze &&
+            (impact.Pain + 0.0001f >= Profile.MaximumPain || impact.KnockoutTriggered) &&
             !IsHitStopActive)
         {
             _resumeScale = Engine.TimeScale;
@@ -161,6 +176,20 @@ public partial class ImpactFeedbackPresenter : Node2D
             LastAppliedHitStopScale = Profile.HitStopScale;
             Engine.TimeScale = _resumeScale * Profile.HitStopScale;
         }
+    }
+
+    private void OnHitLagStarted(SwingHitLagStarted started) => StopHitStop();
+
+    private void StopHitStop()
+    {
+        if (!IsHitStopActive)
+        {
+            return;
+        }
+
+        Engine.TimeScale = _resumeScale;
+        LastAppliedHitStopScale = 1.0f;
+        IsHitStopActive = false;
     }
 
     /// <summary>

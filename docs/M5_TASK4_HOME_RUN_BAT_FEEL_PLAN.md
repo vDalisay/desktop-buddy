@@ -728,6 +728,17 @@ must not compound with the freeze); `cancel_resumes_the_tick_exactly_once`; and
 check must run while the pose pipeline holds Tracking (which it always will after an impact),
 so a shake wired to the performance-weighted path fails it rather than passing vacuously.
 
+**Completed 2026-07-30.** The focused root gate now withholds every routed gameplay tick
+and disables the 2D physics server for exactly `6 → 60` engine physics frames, preserving
+all body transforms and velocities without per-body snapshots. Buddy hits freeze at every
+charge; loose objects freeze only at the exact full-charge endpoint, with the `599/600`
+boundary pinned. The production impact-offset lane renders victim-only shake at a measured
+`1.99 px` while the pose pipeline remains in Tracking, then returns to zero. The cumulative
+scenario also proves non-stacking, timer hold, launch resume, unrelated-object hold,
+single cancel/resume, and suppression of the existing global slow-time envelope. A live MCP
+input pass reached `600` charge ticks through primary/secondary input and observed one
+`60`-frame full-charge loose-object freeze.
+
 **Task E2 — Placeholder audio.** Add `SwingAudioComponent` with procedurally generated
 charge/release/impact/glint sounds (§4.8b). *Accept:* sounds fire on the semantic edges and
 nowhere else; nothing sampled enters the repo; the component writes no master volume and
