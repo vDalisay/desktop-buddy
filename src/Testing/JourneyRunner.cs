@@ -979,7 +979,7 @@ public partial class JourneyRunner : Node
             swing.ToConstants());
         SwingTrajectoryPoint contact = ChargedSwing.SwingTrajectoryAt(
             plan.WindupTicks +
-            Mathf.Clamp(Mathf.RoundToInt(plan.SweepTicks * 0.65f), 0, plan.SweepTicks - 1),
+            Mathf.Clamp(Mathf.RoundToInt(plan.SweepTicks * 0.50f), 0, plan.SweepTicks - 1),
             plan,
             directionSign: 1,
             swing.ToConstants());
@@ -1104,7 +1104,7 @@ public partial class JourneyRunner : Node
             routedChargeTicks == swing.MaxChargeTicks &&
             chargeTicksAtRelease == swing.MaxChargeTicks &&
             Mathf.IsEqualApprox(chargeAtRelease, 1.0f) &&
-            glintStartsAtRelease == 1;
+            glintStartsAtRelease == 3;
         state["homerun_scores_one_attributed_impact"] =
             hit &&
             releaseCommitted &&

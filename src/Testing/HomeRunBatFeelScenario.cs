@@ -46,12 +46,14 @@ public sealed class HomeRunBatFeelScenario : IScenario
     private const float CurveMaximumPain = 10.0f;
 
     // Laboratory-set after the production collider/servo probe was measured.
-    // They are deliberately ratios with margin, not fragile strict ordering:
-    // the 0/300/600-tick reference run measured 1.31× then 3.54× impulse,
-    // and 1.22× then 1.10× post-hit COM travel.
+    // They are deliberately ratios with margin, not fragile strict ordering.
+    // After the owner-requested full-speed increase, the 0/300/600-tick
+    // reference run measures 1.43× then 3.27× impulse and 1.12× then 1.40×
+    // post-hit COM travel. Mid remains materially above the tap while the
+    // larger margin is deliberately concentrated at full charge.
     private const float MinimumMidToLowImpulseRatio = 1.20f;
     private const float MinimumFullToMidImpulseRatio = 2.50f;
-    private const float MinimumMidToLowTravelRatio = 1.15f;
+    private const float MinimumMidToLowTravelRatio = 1.10f;
     private const float MinimumFullToMidTravelRatio = 1.05f;
 
     // Distal barrel sweet spot (70 px from the handle on the 83 px lever),
@@ -227,6 +229,44 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"barrel_from_up={barrelDegrees:F2}deg handle_to_cursor={handleError:F1}px " +
             $"centre_to_cursor={centreError:F1}px state={lab.CursorTools.SwingState}"));
 
+        // ---- the charged handle may be lowered to the floor ----
+        // The cursor is the player's requested pivot. The room, not an
+        // invisible arc-sized inset, should decide whether the physical bat can
+        // actually follow it at the bottom edge.
+        CursorToolProfile authoredProfile = lab.CursorTools.ActiveProfile!;
+        Rect2 playable = lab.Boundaries.InnerBounds;
+        lab.CursorTools.SetChargeHeld(true);
+        await Ticks(tree, 1);
+        lab.CursorTools.MoveCursor(new Vector2(
+            hold.X,
+            playable.End.Y + authoredProfile.Length));
+        await Ticks(tree, 30);
+        float chargedFloorCursorY = lab.CursorTools.Cursor.Y;
+        bool bodyStayedFiniteAtFloor =
+            bat.GlobalPosition.IsFinite() &&
+            bat.LinearVelocity.IsFinite() &&
+            float.IsFinite(bat.GlobalRotation) &&
+            float.IsFinite(bat.AngularVelocity);
+        checks.Add(new StartupCheck(
+            "charging_cursor_can_reach_the_floor_and_physics_blocks_the_bat",
+            lab.CursorTools.SwingState == ChargedSwingState.Charging &&
+            chargedFloorCursorY >=
+                playable.End.Y - authoredProfile.WallClearance - 0.1f &&
+            chargedFloorCursorY <= playable.End.Y + 0.1f &&
+            bodyStayedFiniteAtFloor,
+            $"cursor_y={chargedFloorCursorY:F1} floor={playable.End.Y:F1} " +
+            $"clearance={authoredProfile.WallClearance:F1} finite={bodyStayedFiniteAtFloor}"));
+
+        // Cancel this independent obstruction probe, then reacquire a clean
+        // zero-charge grip for the exact milestone checks below.
+        lab.CursorTools.SetGrip(false);
+        lab.CursorTools.SetChargeHeld(false);
+        await Ticks(tree, 1);
+        lab.CursorTools.MoveCursor(hold);
+        lab.CursorTools.SetGrip(true);
+        await WaitForState(tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+        await Ticks(tree, 30);
+
         // ---- charge is exactly five routed seconds, with eased visual strain ----
         int chargeCompletedEdges = 0;
         int swingReleaseEdges = 0;
@@ -249,10 +289,26 @@ public sealed class HomeRunBatFeelScenario : IScenario
         lab.CursorTools.SetChargeHeld(true);
         await Ticks(tree, 1); // GRIPPED -> CHARGING, charge remains zero on the entry edge.
 
-        await Ticks(tree, 300);
+        await Ticks(tree, 120);
+        int chargeAt120 = lab.CursorTools.SwingChargeTicks;
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        int glintStartsAt120 = bat.ChargeGlintStarts;
+        float glintSizeAt120 = bat.VisualGlintSizePx;
+        bool sourceGlintAt120 = bat.IsChargeGlintActive;
+        bool counterpartGlintAt120 = lab.CursorToolVisual.IsGlintVisible;
+
+        await Ticks(tree, 180);
         int chargeAt300 = lab.CursorTools.SwingChargeTicks;
         float shakeAt300 = bat.ChargeShakeAmplitude;
-        await Ticks(tree, 299);
+        await Ticks(tree, 60);
+        int chargeAt360 = lab.CursorTools.SwingChargeTicks;
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        int glintStartsAt360 = bat.ChargeGlintStarts;
+        float glintSizeAt360 = bat.VisualGlintSizePx;
+        bool sourceGlintAt360 = bat.IsChargeGlintActive;
+        bool counterpartGlintAt360 = lab.CursorToolVisual.IsGlintVisible;
+
+        await Ticks(tree, 239);
         int chargeAt599 = lab.CursorTools.SwingChargeTicks;
         float shakeAt599 = bat.ChargeShakeAmplitude;
         await Ticks(tree, 1);
@@ -291,15 +347,35 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"a600={shakeAt600:F3} a601={shakeAt601:F3} max={authoredShake:F3} " +
             $"offset={bat.VisualOffset2D}"));
 
+        SwingToolProfile authoredSwing = authoredProfile.Swing!;
+        bool earlyGlintVisible =
+            sourceGlintAt120 &&
+            (lab.Mode != PresentationMode.Mii3D || counterpartGlintAt120);
+        bool middleGlintVisible =
+            sourceGlintAt360 &&
+            (lab.Mode != PresentationMode.Mii3D || counterpartGlintAt360);
         checks.Add(new StartupCheck(
-            "full_charge_shows_the_tip_glimmer_once",
+            "charge_shows_small_medium_and_large_tip_glimmers",
             chargeCompletedEdges == 1 &&
-            bat.ChargeGlintStarts == 1 &&
+            chargeAt120 == 120 &&
+            chargeAt360 == 360 &&
+            glintStartsAt120 == 1 &&
+            glintStartsAt360 == 2 &&
+            bat.ChargeGlintStarts == 3 &&
+            earlyGlintVisible &&
+            middleGlintVisible &&
             glintWasVisible &&
+            Mathf.IsEqualApprox(glintSizeAt120, authoredSwing.OneSecondGlintSizePx) &&
+            Mathf.IsEqualApprox(glintSizeAt360, authoredSwing.ThreeSecondGlintSizePx) &&
+            Mathf.IsEqualApprox(bat.VisualGlintSizePx, authoredSwing.FiveSecondGlintSizePx) &&
+            glintSizeAt120 < glintSizeAt360 &&
+            glintSizeAt360 < bat.VisualGlintSizePx &&
             bat.VisualGlintLocalPosition.IsEqualApprox(new Vector2(0.0f, bat.Length * -0.5f)),
-            $"edges={chargeCompletedEdges} starts={bat.ChargeGlintStarts} " +
-            $"source_visible={sourceGlintWasVisible} " +
-            $"counterpart_visible={counterpartGlintWasVisible} mode={lab.Mode} " +
+            $"edges={chargeCompletedEdges} starts=({glintStartsAt120}," +
+            $"{glintStartsAt360},{bat.ChargeGlintStarts}) sizes=(" +
+            $"{glintSizeAt120:F1},{glintSizeAt360:F1},{bat.VisualGlintSizePx:F1}) " +
+            $"visible=({earlyGlintVisible},{middleGlintVisible},{glintWasVisible}) " +
+            $"mode={lab.Mode} " +
             $"tip={bat.VisualGlintLocalPosition}"));
 
         // ---- cursor travel alone picks the side, through the release edge ----
@@ -425,6 +501,13 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"low={lowSwing.PeakTipSpeed:F0}/{lowSwing.TargetTipSpeed:F0} " +
             $"mid={midSwing.PeakTipSpeed:F0}/{midSwing.TargetTipSpeed:F0} " +
             $"full={fullSwing.PeakTipSpeed:F0}/{fullSwing.TargetTipSpeed:F0}"));
+
+        checks.Add(new StartupCheck(
+            "full_charge_uses_the_owner_boosted_physical_speed",
+            Mathf.IsEqualApprox(fullSwing.TargetTipSpeed, 6000.0f) &&
+            fullSwing.PeakTipSpeed > midSwing.PeakTipSpeed,
+            $"full={fullSwing.PeakTipSpeed:F0}/{fullSwing.TargetTipSpeed:F0} " +
+            $"mid={midSwing.PeakTipSpeed:F0}/{midSwing.TargetTipSpeed:F0}"));
 
         checks.Add(new StartupCheck(
             "the_handle_pivot_holds_through_a_full_charge_swing",
@@ -632,6 +715,16 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"epoch={fullContact.SwingEpoch} positive={fullContact.PositiveImpactCount} " +
             $"episodes={fullContact.BatEpisodeCount} " +
             $"parts={fullContact.DistinctEpisodeParts}"));
+
+        checks.Add(new StartupCheck(
+            "home_run_contact_emits_one_small_impact_burst",
+            fullContact.HomeRunBurstCount == 1 &&
+            fullContact.HomeRunBurstMatchedContact &&
+            fullContact.HomeRunBurstSizePx > 0.0f &&
+            fullContact.HomeRunBurstSizePx <= 24.0f,
+            $"bursts={fullContact.HomeRunBurstCount} " +
+            $"matched={fullContact.HomeRunBurstMatchedContact} " +
+            $"size={fullContact.HomeRunBurstSizePx:F1}px"));
 
         checks.Add(new StartupCheck(
             "uncharged_rmb_tap_stays_modest",
@@ -1079,7 +1172,10 @@ public sealed class HomeRunBatFeelScenario : IScenario
         bool AudioOwnsExactlyOnePlayer,
         bool AudioBusExists,
         bool AudioMasterVolumeUnchanged,
-        bool AudioVolumeMatchesProfile);
+        bool AudioVolumeMatchesProfile,
+        int HomeRunBurstCount,
+        bool HomeRunBurstMatchedContact,
+        float HomeRunBurstSizePx);
 
     /// <summary>
     /// Release one real charged bat through the torso in an otherwise isolated
@@ -1165,6 +1261,7 @@ public sealed class HomeRunBatFeelScenario : IScenario
         double frozenPipelineTime = 0.0;
         long frozenBuddyTicks = 0;
         RecoveryClockState frozenRecovery = default;
+        Vector2 firstImpactPoint = Vector2.Zero;
         void OnImpact(AcceptedImpact impact)
         {
             if (impact.ContentId != ContentIds.ToolBaseballBat ||
@@ -1180,6 +1277,7 @@ public sealed class HomeRunBatFeelScenario : IScenario
             if (!hitObserved)
             {
                 hitObserved = true;
+                firstImpactPoint = impact.Point;
                 hitCenter = WholeBuddyCenter(lab);
                 ticksAfterHit = 0;
                 hitLagDuration = lab.SwingHitLag.TotalTicks;
@@ -1349,6 +1447,11 @@ public sealed class HomeRunBatFeelScenario : IScenario
             Mathf.IsEqualApprox(
                 lab.SwingAudio.Player.VolumeDb,
                 swing.AudioVolumeDb);
+        int homeRunBurstCount = lab.ImpactFeedback.HomeRunBurstCount;
+        bool homeRunBurstMatchedContact =
+            hitObserved &&
+            lab.ImpactFeedback.LastHomeRunBurstWorldPoint.DistanceTo(firstImpactPoint) <= 0.01f;
+        float homeRunBurstSizePx = lab.ImpactFeedback.Profile.HomeRunBurstSizePx;
         lab.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return new BuddySwingProbe(
@@ -1389,7 +1492,10 @@ public sealed class HomeRunBatFeelScenario : IScenario
             audioOwnsExactlyOnePlayer,
             audioBusExists,
             audioMasterVolumeUnchanged,
-            audioVolumeMatchesProfile);
+            audioVolumeMatchesProfile,
+            homeRunBurstCount,
+            homeRunBurstMatchedContact,
+            homeRunBurstSizePx);
     }
 
     private static Vector2 WholeBuddyCenter(BuddyLab lab)

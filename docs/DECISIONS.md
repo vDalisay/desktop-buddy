@@ -1033,6 +1033,29 @@ implementation is unblocked. Five confirmed the drafted default; four changed th
 - **The bat has a black handle wrap** over the wooden barrel, authored as a second profile
   colour rather than hard-coded in the mesh builder.
 
+## Home-Run Bat Task H Feel Feedback (2026-07-30)
+
+The owner liked the first complete pass ("I love it") and requested four small revisions
+before the catalogue visibility decision. These are confirmed behavior; the catalogue stays
+hidden until the revised feel is reviewed.
+
+- **Charging may be lowered to the floor.** While GRIPPED or CHARGING, the cursor/handle
+  anchor may travel down to the room's ordinary wall clearance. The old symmetric
+  swing-arc inset remains at the ceiling and side walls, but no longer creates an invisible
+  lower-height limit. The bat capsule still collides with the floor, so placing and releasing
+  a low swing is intentionally player skill rather than cursor rejection.
+- **Full charge is physically stronger.** `TipSpeedFull` rises from `5500` to `6000` px/s.
+  Sweep duration continues to derive from real tip speed (now `7` ticks at full charge);
+  pain, payout, and launch still come from measured solver impulse with no damage or
+  knockback multiplier.
+- **Charge glints are staged.** The barrel tip glints at `120`, `360`, and `600` routed
+  charge ticks: `7` px at one second, `12` px at three seconds, and `18` px at the
+  five-second cap, each using the existing `0.35` s clean-room star. Only the cap retains
+  the `ChargeCompleted` semantic/audio edge.
+- **Home-run contact gets a small impact burst.** One accepted home-run epoch starts one
+  `18` px, `0.20` s six-ray burst at the solver contact point. It is presentation-only,
+  coexists with the existing impact ring and victim shake, and never mutates physics.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

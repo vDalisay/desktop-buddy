@@ -4,8 +4,8 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-30, after the Home-Run Bat refinement Task H engineering
-gates passed; owner feel acceptance is pending.
+Last updated: 2026-07-30, after the Home-Run Bat refinement Task H owner-feedback
+implementation passed its focused gates; revised feel acceptance is pending.
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
@@ -170,7 +170,7 @@ the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the ba
 - [x] Task B — composition, weak free-swing, handle grip, immutable impact
       admission plumbing, and the cumulative `homerun_bat_feel` scenario.
 - [x] Task C — charge accrual, cursor-travel direction, render-only shake, and
-      the one-shot tip glimmer in both presentation modes.
+      staged one-/three-/five-second tip glimmers in both presentation modes.
 - [x] Task D — physical charged swing, measured impulse separation, pivot hold,
       and the single-hit epoch gate.
 - [x] Task E — whole-game hit lag and victim shake.
@@ -191,8 +191,14 @@ the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the ba
         whole-game freeze, resumed launch, and recovery. The 24-step quick suite,
         the 940-test domain suite, both bat scenarios, presentation regressions,
         and both bat journeys pass in Mii3D and legacy.
+  - [x] Owner-feedback implementation — the charged handle reaches the floor
+        while the capsule remains collision-blocked; full tip speed is `6000`
+        px/s; tip glints are `7/12/18` px at `1/3/5` seconds; an accepted
+        home-run emits one small solver-point impact burst. Focused feel,
+        presentation, tool-feedback, weak-bat, and both real-input journey
+        regressions pass in Mii3D and legacy.
   - [ ] Owner gate — accept the side-by-side feel review. Only then record the
-        acceptance in `docs/DECISIONS.md` and make the catalogue entry visible.
+        final acceptance in `docs/DECISIONS.md` and make the catalogue entry visible.
 
 The buddy now has a hidden `200`-point hunger bar (owner decision 2026-07-29,
 `DECISIONS.md`): it eats what fits, and refuses what would overfill. The refusal is
@@ -202,10 +208,10 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
-**Next action:** conduct the Home-Run Bat Task H owner feel review. Charge, the
-physical swing, hit lag, provisional audio, 3D presentation, and the promoted
-real-input journey are complete and green. The catalogue entry remains hidden
-until the owner accepts the feel; that acceptance is the next non-deferrable
+**Next action:** conduct the revised Home-Run Bat Task H owner feel review,
+including low-to-floor charge placement, the stronger full-charge launch,
+staged glints, and the contact burst. The catalogue entry remains hidden until
+the owner accepts the revised feel; that acceptance is the next non-deferrable
 input. M4 is complete and owner-accepted.
 Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,

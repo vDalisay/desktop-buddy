@@ -17,6 +17,7 @@ public partial class ImpactFeedbackPresenter : Node2D
 {
     private static readonly Color RingColor = new("ffd166");
     private static readonly Color FlashColor = new(1.0f, 0.82f, 0.38f, 0.35f);
+    private static readonly Color HomeRunBurstColor = new("fff3b0");
 
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public CursorToolController CursorTools { get; set; } = null!;
@@ -27,17 +28,21 @@ public partial class ImpactFeedbackPresenter : Node2D
     private Vector2 _impactWorldPoint;
     private Vector2 _impactNormal;
     private float _impactIntensity;
+    private ulong _homeRunBurstStartedUsec;
     private ulong _hitStopStartedUsec;
     private double _resumeScale = 1.0;
 
     public bool IsInitialized { get; private set; }
     public bool IsFeedbackActive { get; private set; }
+    public bool IsHomeRunBurstActive { get; private set; }
     public bool IsHitStopActive { get; private set; }
     public int FeedbackCount { get; private set; }
+    public int HomeRunBurstCount { get; private set; }
     public int HitStopTriggerCount { get; private set; }
     public float LastAppliedHitStopScale { get; private set; } = 1.0f;
     public Vector2 LastImpactWorldPoint => _impactWorldPoint;
     public Vector2 LastImpactLocalPoint => ToLocal(_impactWorldPoint);
+    public Vector2 LastHomeRunBurstWorldPoint { get; private set; }
 
     public void Initialize()
     {
@@ -88,51 +93,92 @@ public partial class ImpactFeedbackPresenter : Node2D
             double elapsed = (now - _feedbackStartedUsec) / 1_000_000.0;
             if (elapsed >= Profile.RingSeconds)
                 IsFeedbackActive = false;
+        }
+
+        if (IsHomeRunBurstActive)
+        {
+            double elapsed = (now - _homeRunBurstStartedUsec) / 1_000_000.0;
+            if (elapsed >= Profile.HomeRunBurstSeconds)
+                IsHomeRunBurstActive = false;
+        }
+
+        if (IsFeedbackActive || IsHomeRunBurstActive)
+        {
             QueueRedraw();
         }
     }
 
     public override void _Draw()
     {
-        if (!IsFeedbackActive)
+        if (!IsFeedbackActive && !IsHomeRunBurstActive)
             return;
 
-        double elapsed = (Time.GetTicksUsec() - _feedbackStartedUsec) / 1_000_000.0;
-        float progress = Mathf.Clamp((float)(elapsed / Profile.RingSeconds), 0.0f, 1.0f);
-        float alpha = 1.0f - progress;
-        float radius = Mathf.Lerp(9.0f, 38.0f, progress);
-        Color ring = new(RingColor, alpha * _impactIntensity);
         Vector2 impactLocal = ToLocal(_impactWorldPoint);
-        DrawArc(impactLocal, radius, 0, Mathf.Tau, 32, ring, 3.0f, true);
-
-        Vector2 normal = _impactNormal.IsZeroApprox() ? Vector2.Up : _impactNormal.Normalized();
-        for (int ray = -1; ray <= 1; ray++)
+        if (IsFeedbackActive)
         {
-            Vector2 direction = normal.Rotated(ray * 0.45f);
-            DrawLine(
-                impactLocal + direction * (radius * 0.35f),
-                impactLocal + direction * radius,
-                ring,
+            double elapsed = (Time.GetTicksUsec() - _feedbackStartedUsec) / 1_000_000.0;
+            float progress = Mathf.Clamp((float)(elapsed / Profile.RingSeconds), 0.0f, 1.0f);
+            float alpha = 1.0f - progress;
+            float radius = Mathf.Lerp(9.0f, 38.0f, progress);
+            Color ring = new(RingColor, alpha * _impactIntensity);
+            DrawArc(impactLocal, radius, 0, Mathf.Tau, 32, ring, 3.0f, true);
+
+            Vector2 normal = _impactNormal.IsZeroApprox() ? Vector2.Up : _impactNormal.Normalized();
+            for (int ray = -1; ray <= 1; ray++)
+            {
+                Vector2 direction = normal.Rotated(ray * 0.45f);
+                DrawLine(
+                    impactLocal + direction * (radius * 0.35f),
+                    impactLocal + direction * radius,
+                    ring,
+                    2.0f,
+                    true);
+            }
+
+            // A presentation-only edge jolt: the world/camera and pointer mapping do
+            // not move, so it cannot corrupt physics or desktop coordinates.
+            Rect2 viewport = GetViewportRect();
+            float jolt = Mathf.Sin(progress * Mathf.Tau * 3.0f) *
+                          Profile.CanvasJoltPixels * alpha * _impactIntensity;
+            Color flash = new(FlashColor, FlashColor.A * alpha * _impactIntensity);
+            Vector2 joltOffset = new(jolt, 0.0f);
+            Vector2 topLeft = MakeCanvasPositionLocal(viewport.Position + joltOffset);
+            Vector2 topRight = MakeCanvasPositionLocal(viewport.Position + new Vector2(viewport.Size.X, 0.0f) + joltOffset);
+            Vector2 bottomRight = MakeCanvasPositionLocal(viewport.End + joltOffset);
+            Vector2 bottomLeft = MakeCanvasPositionLocal(viewport.Position + new Vector2(0.0f, viewport.Size.Y) + joltOffset);
+            DrawPolyline(
+                new[] { topLeft, topRight, bottomRight, bottomLeft, topLeft },
+                flash,
                 2.0f,
                 true);
         }
 
-        // A presentation-only edge jolt: the world/camera and pointer mapping do
-        // not move, so it cannot corrupt physics or desktop coordinates.
-        Rect2 viewport = GetViewportRect();
-        float jolt = Mathf.Sin(progress * Mathf.Tau * 3.0f) *
-                      Profile.CanvasJoltPixels * alpha * _impactIntensity;
-        Color flash = new(FlashColor, FlashColor.A * alpha * _impactIntensity);
-        Vector2 joltOffset = new(jolt, 0.0f);
-        Vector2 topLeft = MakeCanvasPositionLocal(viewport.Position + joltOffset);
-        Vector2 topRight = MakeCanvasPositionLocal(viewport.Position + new Vector2(viewport.Size.X, 0.0f) + joltOffset);
-        Vector2 bottomRight = MakeCanvasPositionLocal(viewport.End + joltOffset);
-        Vector2 bottomLeft = MakeCanvasPositionLocal(viewport.Position + new Vector2(0.0f, viewport.Size.Y) + joltOffset);
-        DrawPolyline(
-            new[] { topLeft, topRight, bottomRight, bottomLeft, topLeft },
-            flash,
-            2.0f,
-            true);
+        if (IsHomeRunBurstActive)
+        {
+            Vector2 burstLocal = ToLocal(LastHomeRunBurstWorldPoint);
+            double elapsed = (Time.GetTicksUsec() - _homeRunBurstStartedUsec) / 1_000_000.0;
+            float progress = Mathf.Clamp(
+                (float)(elapsed / Profile.HomeRunBurstSeconds), 0.0f, 1.0f);
+            float alpha = 1.0f - progress;
+            float radius = Mathf.Lerp(
+                Profile.HomeRunBurstSizePx * 0.45f,
+                Profile.HomeRunBurstSizePx,
+                progress);
+            Color burst = new(
+                HomeRunBurstColor,
+                alpha * Mathf.Lerp(1.0f, 0.55f, progress));
+            DrawCircle(burstLocal, Mathf.Lerp(3.0f, 1.0f, progress), burst);
+            for (int ray = 0; ray < 6; ray++)
+            {
+                Vector2 direction = Vector2.Right.Rotated(ray * Mathf.Tau / 6.0f);
+                DrawLine(
+                    burstLocal + direction * 4.0f,
+                    burstLocal + direction * radius,
+                    burst,
+                    2.0f,
+                    true);
+            }
+        }
     }
 
     private void OnImpact(AcceptedImpact impact)
@@ -150,6 +196,13 @@ public partial class ImpactFeedbackPresenter : Node2D
         _impactIntensity = Mathf.Clamp(impact.Pain / Profile.MaximumPain, 0.25f, 1.0f);
         IsFeedbackActive = true;
         FeedbackCount++;
+        if (impact.SwingEpoch > 0)
+        {
+            _homeRunBurstStartedUsec = _feedbackStartedUsec;
+            LastHomeRunBurstWorldPoint = impact.Point;
+            IsHomeRunBurstActive = true;
+            HomeRunBurstCount++;
+        }
         // Only the collider that actually struck squashes; a live tool of a different
         // identity must not flinch for someone else's hit.
         if (CursorTools.ActiveContentId == impact.ContentId)

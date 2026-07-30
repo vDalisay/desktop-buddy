@@ -5,7 +5,7 @@ against the codebase (2026-07-30) that corrected the swing arithmetic, the missi
 force cap, the free-swing caps, the victim-shake offset lane, and a stale test-count baseline.
 **The §5 interaction-policy gate is resolved in full (2026-07-30); Tasks A–G are
 complete and Task H's engineering gates are green. The Task H owner feel gate is
-pending.** Four
+pending after a focused owner-feedback pass.** Four
 of the nine answers changed the design — cursor-travel aiming, a whole-game freeze,
 full-charge-only object freeze, and in-scope placeholder audio; see §5 and `docs/DECISIONS.md`
 ("Home-Run Bat Interaction Gate — Resolved in Full").
@@ -148,7 +148,7 @@ Engine-free, allocation-free, mirroring the `AlignmentTorque`/`GrabTether` house
 - `ChargedSwingMachine.Tick(in ChargedSwingInput) → ChargedSwingResult` — the state machine
   above. Input: current state, grip held, charge held, elapsed ticks in state, profile
   constants. Result: next state, normalized charge `0..1`, one-shot event flags
-  (`ChargeCompleted` for the glint, `SwingReleased` carrying the released charge, latched
+  (`ChargeCompleted` for the cap/audio edge, `SwingReleased` carrying the released charge, latched
   direction/pivot, and a monotonically increasing `SwingEpoch`).
 - `ChargeProgress(ticks, maxTicks) → float` — linear, clamped.
 - `ShakeAmplitude(charge, maxAmplitude) → float` — ease-in `charge²·maxAmplitude`: subtle
@@ -335,7 +335,7 @@ target, 180° = down; mirror all angles for leftward):
 |---|---|---|---|
 | Charge lean | while charging | 0° → 325° | Bat tilts back over the rear shoulder, shaking harder and harder |
 | Windup snap | 14 ticks (≈0.117 s) | 325° → 290° | The Brawl batter wind-up: one last pull **farther behind**, compressed because the charge already built the drama |
-| Strike sweep | **derived**: 24 ticks (0 charge) → 8 ticks (full) | 290° → 180° → **90°** → 45° | Constant-ω plateau. The bat whips down-under-and-through like a rising baseball swing. Contact zone ≈ 140°–70°, where the tip is moving **up and toward** the target; the laboratory, not the drawing alone, must prove the resulting launch vector |
+| Strike sweep | **derived**: 24 ticks (0 charge) → 7 ticks (full) | 290° → 180° → **90°** → 45° | Constant-ω plateau. The bat whips down-under-and-through like a rising baseball swing. Contact zone ≈ 140°–70°, where the tip is moving **up and toward** the target; the laboratory, not the drawing alone, must prove the resulting launch vector |
 | Follow-through | `FollowThroughTicks` (10) | 45° → 20° | Ease-out tail, counted **separately** from `SweepDegrees`. Momentum wraps the bat over the front shoulder |
 | Recovery | 42 ticks (0.35 s) | back to 0° | Servo settles to upright; charging locked out until GRIPPED again |
 
@@ -349,11 +349,11 @@ sweepTicks  = round(radians(SweepDegrees) / omega * TicksPerSecond)
 ```
 
 Uncharged: `1800/83 = 21.7 rad/s`, `4.276 rad / 21.7 = 0.197 s` → **24 ticks**.
-Full charge: `5500/83 = 66.3 rad/s`, `4.276 / 66.3 = 0.0645 s` → **8 ticks**.
+Full charge: `6000/83 = 72.3 rad/s`, `4.276 / 72.3 = 0.0592 s` → **7 ticks**.
 
-**8 ticks is not a typo, and it makes the contact window very thin.** The ≈140°–70° contact
+**7 ticks is not a typo, and it makes the contact window very thin.** The ≈140°–70° contact
 zone is 70° of the 245° plateau, so at full charge the bat is inside it for roughly
-`70/245 × 8 ≈ 2.3` physics ticks. That is deliberate and matches the reference — Smash's
+`70/245 × 7 = 2.0` physics ticks. That is deliberate and matches the reference — Smash's
 Home-Run Bat connects on a single frame — but it means the whole slice leans on CCD rather
 than on having several ticks to notice a contact. Treat the point-blank and one-radius-offset
 full-charge checks as load-bearing, not as edge cases, and if contacts are missed at full
@@ -362,8 +362,8 @@ count.
 
 The earlier draft authored tip speeds *and* sweep ticks independently, which over-determined
 the arc: with `SweepDegrees` fixed, tip speed is forced to scale as `1/sweepTicks`, so the
-authored 24/11 tick pair demands a `5500/1800` ratio of `2.18×` while the authored speeds ask
-`3.06×` — a 40% contradiction with no stated tie-breaker. Tip speed wins because it is the
+authored 24/11 tick pair demands a `24/11 = 2.18×` speed ratio while the current authored
+speeds ask `6000/1800 = 3.33×` — a contradiction with no stated tie-breaker. Tip speed wins because it is the
 quantity that produces the impulse, and the sacred rule is that charge must make the bat
 really swing faster. `SweepTicksUncharged`/`SweepTicksFull` are therefore **removed** from the
 profile; `SwingPlan` computes them, and validation asserts the derived values land within
@@ -381,8 +381,8 @@ Implementation mechanics:
 - **The swing phase needs its own tether force cap.** Holding the handle still while the bat
   rotates about it is a centripetal problem: the tether must supply `m · ω² · rCom`, where
   `rCom` is the handle-to-centre-of-mass distance (38 px for the authored bat). At full charge
-  (`ω ≈ 66 rad/s`) that is `6 × 66.3² × 38 ≈ 1.0 × 10⁶` force units. The profile's authored
-  `MaximumForce` is `120 000`, so the tether would saturate roughly 8× short, the "pivot" would
+  (`ω ≈ 72 rad/s`) that is `6 × 72.3² × 38 ≈ 1.19 × 10⁶` force units. The profile's authored
+  `MaximumForce` is `120 000`, so the tether would saturate roughly 10× short, the "pivot" would
   be dragged bodily across the room, and the measured tip speed would never reach its target —
   silently invalidating every Task D envelope. `SwingAnchorForceCap` (§4.9, default
   `1 400 000`) governs the tether during SWINGING only; FOLLOW and GRIPPED keep the profile's
@@ -390,7 +390,7 @@ Implementation mechanics:
   which is inside today's `120 000` by under 12% — the existing cap was always marginal for a
   handle pivot, which is why this is a new authored value rather than a reuse.
 - **Tip speed targets** (agent-tunable; Task 12 calibrates the economy side): uncharged
-  ≈ 1 800 px/s, full charge ≈ 5 500 px/s, both measured at the barrel tip about the handle
+  ≈ 1 800 px/s, full charge ≈ 6 000 px/s, both measured at the barrel tip about the handle
   pivot. These are **not** comparable to the `2 400 px/s` cursor drag in today's `bat_swing`:
   that number is the translation speed of the bat's *centre* with no pivot, and the tip
   additionally carries whatever the alignment servo contributes, so today's effective tip
@@ -399,7 +399,7 @@ Implementation mechanics:
   meaningful separation claim is the one Task D measures directly: non-overlapping
   pre-contact tip-speed envelopes between the weak free-swing and each charge band.
 - **CCD:** set `ContinuousCd = CcdMode.CastShape` on the bat body during SWINGING (and back
-  off afterwards). 5 500 px/s across a 120 Hz tick is ~46 px — still more than the bat's
+  off afterwards). 6 000 px/s across a 120 Hz tick is 50 px — still more than the bat's
   width — so tunneling protection is mandatory, proven by point-blank and one-radius-offset
   full-charge scenario checks.
 - A whiff is the same swing with nothing hit: same arc, same recovery, no consequences.
@@ -502,9 +502,14 @@ physics:
   `IBody2DVisualPulseSource` (default zero) and apply it in `Body2DVisual3D._Process`;
   the controller feeds it `ShakeOffset(...)` while charging. The glint is a small additive
   unshaded star-quad (two crossed quads) parented at the **barrel tip**, scale-popping
-  0 → 1 → 0 over ~0.35 s exactly once when the owner-specified `ChargeCompleted` edge fires.
+  0 → 1 → 0 over ~0.35 s. The owner-feedback pass stages it at one, three, and five
+  seconds (`7/12/18` px); only the five-second glint shares the `ChargeCompleted` edge.
   No particle systems, so nothing conflicts with the FR-017.3 reduced-effects settings that
   arrive with Task 7; when those settings land, the glint honors them.
+
+- **Impact punctuation:** an accepted home-run epoch adds one compact `18` px, `0.20` s
+  six-ray burst at the solver point. It is presentation-only and uses the existing focused
+  impact presenter; the generic ring, whole-game freeze, and victim shake remain unchanged.
 
 ### 4.8b Placeholder audio (owner-confirmed 2026-07-30)
 
@@ -539,16 +544,16 @@ referenced from `CursorToolProfile` as `[Export] public SwingToolProfile? Swing`
 | `WindupDegrees` | 70 | barrel angle behind vertical at the top of the snap — where the strike sweep begins (290° in §4.6's compass). Added during Task A: §4.6's table implies it but the original table named no field for it, which would have left the sweep's start angle hard-coded. Must exceed `LeanDegrees`, or the snap would run the arc backwards |
 | `SweepDegrees` | 245 | constant-ω plateau, windup end (290°) → 45°; **excludes** the follow-through tail |
 | `FollowThroughDegrees` / `FollowThroughTicks` | 25 / 10 | the 45° → 20° ease-out wrap |
-| `TipSpeedUncharged` / `TipSpeedFull` | 1 800 / 5 500 px/s | authored intent; **sweep ticks derive from these** (§4.6) — 24 and 8 ticks for the authored bat |
+| `TipSpeedUncharged` / `TipSpeedFull` | 1 800 / 6 000 px/s | owner-feedback tuning; **sweep ticks derive from these** (§4.6) — 24 and 7 ticks for the authored bat |
 | `MinimumSweepTicks` / `MaximumSweepTicks` | 5 / 60 | validation bound on the *derived* sweep so an absurd tip speed cannot produce a one-tick swing |
 | `RecoveryTicks` | 42 | 0.35 s lockout + settle |
-| `SwingAnchorForceCap` | 1 400 000 | tether authority during SWINGING only; ~1.4× the `m·ω²·rCom ≈ 1.0 × 10⁶` needed to hold the handle pivot at full charge (§4.6). FOLLOW/GRIPPED keep the profile's `MaximumForce` |
+| `SwingAnchorForceCap` | 1 400 000 | tether authority during SWINGING only; ~1.17× the `m·ω²·rCom ≈ 1.19 × 10⁶` needed to hold the handle pivot at the owner-boosted full charge (§4.6). FOLLOW/GRIPPED keep the profile's `MaximumForce` |
 | `FreeSwingAnchorSpeedCap` | 2 400 px/s | equals today's benchmark swing by construction, so the two green bat tests are unaffected; only *faster* input is bounded (§4.5) |
 | `FreeSwingForceCap` | 120 000 | equals the bat profile's existing `MaximumForce` — FOLLOW behaviour is unchanged today (§4.5) |
 | `ContactObservationGraceTicks` | 2 | covers the documented one-tick contact-report delay |
 | `ShakeMaxAmplitudePx` | 3.5 | presentation shake at full charge |
 | `ShakePrimaryHz` / `ShakeSecondaryHz` | 33 / 41 | incommensurate wobble |
-| `GlintSeconds` / `GlintSizePx` | 0.35 / 14 | one-shot tip glimmer |
+| `GlintSeconds` / one-/three-/five-second sizes | 0.35 / 7 / 12 / 18 px | staged tip glimmers; only the cap emits `ChargeCompleted` |
 | `DirectionTravelThreshold` | 6 px/tick | horizontal cursor travel that counts as "aiming that way" (§4.4); below it the previous sign persists |
 | `GripColor` | near-black (`#141414`) | the owner-confirmed black handle wrap (§4.8) |
 | `HitLagMinTicks` / `HitLagMaxTicks` | 6 / 60 | 0.05 / 0.50 s whole-game hit lag |
@@ -659,7 +664,7 @@ glove-response envelopes.
 direction tracking with commit-at-release, `VisualOffset2D`, and the glint edge. *Accept:*
 `charge_caps_on_tick_600_not_300` (`599/600/601` boundary),
 `charge_shake_amplitude_ramps_and_caps_at_five_seconds`,
-`full_charge_shows_the_tip_glimmer_once`,
+`charge_shows_small_medium_and_large_tip_glimmers`,
 `dragging_right_then_left_swings_left` (direction follows cursor travel, and the *last*
 significant travel before release is the one that counts),
 `sub_threshold_jitter_does_not_flip_the_direction`,
@@ -667,11 +672,11 @@ significant travel before release is the one that counts),
 `mirrored_drags_produce_mirrored_swings`, and
 `releasing_the_grip_cancels_without_a_swing_or_pain`.
 
-**Completed 2026-07-30.** The cumulative `homerun_bat_feel` scenario pins all eight
-checks above in both presentation modes. Charge wobble is a render-only offset sourced
-from monotonic presentation time; the full-charge edge starts one timed star at the
-geometric barrel tip in both the legacy draw path and the dynamic 3D slot. The physics
-body and collider remain untouched.
+**Completed 2026-07-30, then revised by Task H owner feedback.** The cumulative
+`homerun_bat_feel` scenario pins the checks above in both presentation modes. Charge wobble
+is a render-only offset sourced from monotonic presentation time; exact `120/360/600`
+milestones start strictly increasing timed stars at the geometric barrel tip in both the
+legacy draw path and dynamic 3D slot. The physics body and collider remain untouched.
 
 **Task D — Physical home-run swing and single-hit gate.** Add SWINGING/RECOVERY,
 position-plus-velocity servo drive, latched pivot, charge-scaled trajectory, observation
@@ -702,15 +707,16 @@ the tip strongest, stop for an owner feel decision; do not add a hidden tip mult
 
 **Completed 2026-07-30.** The production position-plus-velocity servo compensates the
 off-centre handle force before applying motor torque, holds the full-charge pivot inside
-`12.6 px`, and reaches measured low/mid/full tip speeds of approximately
-`1 697 / 3 267 / 4 590 px/s` against the `1 800 / 3 662 / 5 500` targets. The controlled
-buddy probe records `1 834 / 2 409 / 8 522` impulse and `82.9 / 100.8 / 111.4 px`
-24-tick post-hit centre-of-mass travel. The full hit launches at `25.4°` up-and-away,
-scores once across two distinct buddy parts, and survives both point-blank and one-radius
+`12.8 px`, and after the owner-feedback speed increase reaches measured low/mid/full tip
+speeds of approximately `1 697 / 3 530 / 5 065 px/s` against the
+`1 800 / 3 914 / 6 000` targets. The controlled buddy probe records
+`1 834 / 2 617 / 8 564` impulse and `79.4 / 89.2 / 125.1 px`
+24-tick post-hit centre-of-mass travel. The full hit launches at `53.6°` up-and-away,
+scores once across four distinct buddy parts, and survives both point-blank and one-radius
 offset CCD probes. A physical zero-pain graze leaves its epoch available, and a full whiff
 cannot reuse stale charge on later GRIPPED contact. The one-contact passive-object probe
-travels `1 067 / 2 271 / 3 042 px` across charge bands. Its no-multiplier
-tip/barrel/handle evidence is `3 042 / 2 926 / 1 786 px`, with “tip” defined as the
+travels `1 067 / 2 200 / 3 089 px` across charge bands. Its no-multiplier
+tip/barrel/handle evidence is `3 089 / 2 808 / 1 335 px`, with “tip” defined as the
 distal barrel sweet spot `70 px` from the handle on the collider-derived `83 px` lever;
 the geometric end-cap point is a tangential graze, not the striking face.
 

@@ -11,3 +11,5 @@ MaximumPain = 100.0
 RingSeconds = 0.22
 GloveSquashSeconds = 0.16
 CanvasJoltPixels = 4.0
+HomeRunBurstSeconds = 0.20
+HomeRunBurstSizePx = 18.0

@@ -105,7 +105,7 @@ public partial class CursorToolController : Node2D
         // holds no tuning of its own (all of that lives on the tool profile), so
         // exporting it would only give every scene a slot to wire wrongly.
         AddChild(_swing);
-        _swing.ChargeCompleted += OnChargeCompleted;
+        _swing.ChargeGlintRequested += OnChargeGlintRequested;
 
         IsInitialized = true;
     }
@@ -156,7 +156,7 @@ public partial class CursorToolController : Node2D
         remove => _swing.ChargeStarted -= value;
     }
 
-    /// <summary>Fires once per charge when it reaches the cap — the tip glint edge.</summary>
+    /// <summary>Fires once per charge when it reaches the cap.</summary>
     public event Action? ChargeCompleted
     {
         add => _swing.ChargeCompleted += value;
@@ -433,19 +433,25 @@ public partial class CursorToolController : Node2D
         _swing.Reset();
     }
 
-    private void OnChargeCompleted()
+    private void OnChargeGlintRequested(ChargeGlintStage stage)
     {
         if (!GodotObject.IsInstanceValid(_body) || _activeProfile?.Swing is not { } swing)
         {
             return;
         }
 
-        _body!.StartChargeGlint(swing.GlintSeconds, swing.GlintSizePx);
+        float sizePx = stage switch
+        {
+            ChargeGlintStage.OneSecond => swing.OneSecondGlintSizePx,
+            ChargeGlintStage.ThreeSeconds => swing.ThreeSecondGlintSizePx,
+            _ => swing.FiveSecondGlintSizePx,
+        };
+        _body!.StartChargeGlint(swing.GlintSeconds, sizePx);
     }
 
     public override void _ExitTree()
     {
-        _swing.ChargeCompleted -= OnChargeCompleted;
+        _swing.ChargeGlintRequested -= OnChargeGlintRequested;
     }
 
     private void RequireInitialized()
@@ -483,11 +489,19 @@ public partial class CursorToolController : Node2D
             ? _swing.PivotInset
             : new Vector2(extent, extent);
         float insetX = insets.X + profile.WallClearance;
-        float insetY = insets.Y + profile.WallClearance;
+        float topInsetY = insets.Y + profile.WallClearance;
+        // The handle may be taken all the way down to the floor while gripped
+        // or charging. The bat itself remains a physical capsule and the room
+        // collision decides how far it can follow; judging that obstruction is
+        // now player skill instead of an invisible cursor-height restriction.
+        float bottomInsetY =
+            _swing.State is ChargedSwingState.Gripped or ChargedSwingState.Charging
+                ? profile.WallClearance
+                : insets.Y + profile.WallClearance;
         float minimumX = bounds.Position.X + insetX;
         float maximumX = bounds.End.X - insetX;
-        float minimumY = bounds.Position.Y + insetY;
-        float maximumY = bounds.End.Y - insetY;
+        float minimumY = bounds.Position.Y + topInsetY;
+        float maximumY = bounds.End.Y - bottomInsetY;
         if (maximumX < minimumX || maximumY < minimumY)
             return bounds.GetCenter();
 

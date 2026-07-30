@@ -7,6 +7,14 @@ using NumericsVector2 = System.Numerics.Vector2;
 
 namespace DesktopBuddy.Tools;
 
+/// <summary>The three owner-confirmed visual reads during a five-second charge.</summary>
+public enum ChargeGlintStage
+{
+    OneSecond,
+    ThreeSeconds,
+    FiveSeconds,
+}
+
 /// <summary>
 /// What <see cref="CursorToolController"/> should apply to the tool body this
 /// tick. The worker computes it; the controller applies it. Nothing here reads
@@ -77,6 +85,13 @@ public partial class ChargedSwingComponent : Node
 
     /// <summary>Fired once when a charge reaches the cap — the tip glint.</summary>
     public event Action? ChargeCompleted;
+
+    /// <summary>
+    /// Fired at one, three, and five seconds of one uninterrupted charge.
+    /// Presentation chooses the authored size; audio remains on
+    /// <see cref="ChargeCompleted"/> at the cap only.
+    /// </summary>
+    public event Action<ChargeGlintStage>? ChargeGlintRequested;
 
     /// <summary>Fired once on the release that committed a swing: charge, then epoch.</summary>
     public event Action<float, int>? SwingReleased;
@@ -199,6 +214,7 @@ public partial class ChargedSwingComponent : Node
         Vector2 handleOffset = profile.HandleLocalOffset.Rotated(body.GlobalRotation);
         Vector2 handlePoint = body.GlobalPosition + handleOffset;
         ChargedSwingState before = _phase.State;
+        int chargeTicksBefore = _phase.ChargeTicks;
 
         ChargedSwingResult result = ChargedSwingMachine.Tick(new ChargedSwingInput(
             _phase,
@@ -225,6 +241,23 @@ public partial class ChargedSwingComponent : Node
         if (result.ChargeCompleted)
         {
             ChargeCompleted?.Invoke();
+        }
+
+        if (_phase.State == ChargedSwingState.Charging &&
+            _phase.ChargeTicks != chargeTicksBefore)
+        {
+            if (_phase.ChargeTicks == _constants.TicksPerSecond)
+            {
+                ChargeGlintRequested?.Invoke(ChargeGlintStage.OneSecond);
+            }
+            else if (_phase.ChargeTicks == _constants.TicksPerSecond * 3)
+            {
+                ChargeGlintRequested?.Invoke(ChargeGlintStage.ThreeSeconds);
+            }
+            else if (result.ChargeCompleted)
+            {
+                ChargeGlintRequested?.Invoke(ChargeGlintStage.FiveSeconds);
+            }
         }
 
         if (result.SwingReleased)

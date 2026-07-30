@@ -106,7 +106,14 @@ public partial class SwingToolProfile : GameResource
     [Export(PropertyHint.Range, "0.1,200,0.1")] public float ShakeSecondaryHz { get; set; } = 41.0f;
 
     [Export(PropertyHint.Range, "0.01,4,0.01")] public float GlintSeconds { get; set; } = 0.35f;
-    [Export(PropertyHint.Range, "1,256,0.1")] public float GlintSizePx { get; set; } = 14.0f;
+
+    /// <summary>
+    /// Owner-confirmed staged charge read: a small tip glint at one second,
+    /// medium at three, and the largest at the five-second cap.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,256,0.1")] public float OneSecondGlintSizePx { get; set; } = 7.0f;
+    [Export(PropertyHint.Range, "1,256,0.1")] public float ThreeSecondGlintSizePx { get; set; } = 12.0f;
+    [Export(PropertyHint.Range, "1,256,0.1")] public float FiveSecondGlintSizePx { get; set; } = 18.0f;
 
     /// <summary>
     /// Horizontal cursor travel per tick that counts as "aiming that way".
@@ -231,7 +238,18 @@ public partial class SwingToolProfile : GameResource
         RequireFinitePositive(errors, ShakePrimaryHz, nameof(ShakePrimaryHz));
         RequireFinitePositive(errors, ShakeSecondaryHz, nameof(ShakeSecondaryHz));
         RequireFinitePositive(errors, GlintSeconds, nameof(GlintSeconds));
-        RequireFinitePositive(errors, GlintSizePx, nameof(GlintSizePx));
+        RequireFinitePositive(errors, OneSecondGlintSizePx, nameof(OneSecondGlintSizePx));
+        RequireFinitePositive(errors, ThreeSecondGlintSizePx, nameof(ThreeSecondGlintSizePx));
+        RequireFinitePositive(errors, FiveSecondGlintSizePx, nameof(FiveSecondGlintSizePx));
+        if (float.IsFinite(OneSecondGlintSizePx) &&
+            float.IsFinite(ThreeSecondGlintSizePx) &&
+            float.IsFinite(FiveSecondGlintSizePx) &&
+            (OneSecondGlintSizePx >= ThreeSecondGlintSizePx ||
+             ThreeSecondGlintSizePx >= FiveSecondGlintSizePx))
+        {
+            errors.Add(
+                "charge glint sizes must be strictly ordered one-second < three-second < five-second");
+        }
         RequireFiniteNonNegative(errors, DirectionTravelThreshold, nameof(DirectionTravelThreshold));
 
         // A single frequency reads as a mechanical oscillation and visibly loops;

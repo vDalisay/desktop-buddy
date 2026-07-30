@@ -13,6 +13,8 @@ public partial class ImpactFeedbackProfile : GameResource
     [Export(PropertyHint.Range, "0.01,0.5,0.01")] public double RingSeconds { get; set; } = 0.22;
     [Export(PropertyHint.Range, "0.01,0.5,0.01")] public double GloveSquashSeconds { get; set; } = 0.16;
     [Export(PropertyHint.Range, "0,24,0.1")] public float CanvasJoltPixels { get; set; } = 4.0f;
+    [Export(PropertyHint.Range, "0.01,0.5,0.01")] public double HomeRunBurstSeconds { get; set; } = 0.20;
+    [Export(PropertyHint.Range, "1,48,0.1")] public float HomeRunBurstSizePx { get; set; } = 18.0f;
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -28,6 +30,10 @@ public partial class ImpactFeedbackProfile : GameResource
             errors.Add("feedback durations must be finite and positive");
         if (!float.IsFinite(CanvasJoltPixels) || CanvasJoltPixels < 0.0f)
             errors.Add("CanvasJoltPixels must be finite and non-negative");
+        if (!double.IsFinite(HomeRunBurstSeconds) || HomeRunBurstSeconds <= 0.0)
+            errors.Add("HomeRunBurstSeconds must be finite and positive");
+        if (!float.IsFinite(HomeRunBurstSizePx) || HomeRunBurstSizePx <= 0.0f)
+            errors.Add("HomeRunBurstSizePx must be finite and positive");
         return errors;
     }
 }

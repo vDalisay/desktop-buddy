@@ -125,8 +125,9 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   returns to centre-anchored weak FOLLOW, solver contacts retain their immutable
   swing context across the one-tick observation delay, and the Boxing Glove keeps
   its accepted response envelope. Task C proves the exact `599/600/601` five-second
-  charge boundary, eased render-only shake cap, one-shot geometric tip glimmer in
-  both presentation modes, cursor-travel direction with sub-threshold hysteresis,
+  charge boundary, eased render-only shake cap, ordered `7/12/18` px geometric tip
+  glimmers at exact `120/360/600` milestones in both presentation modes,
+  cursor-travel direction with sub-threshold hysteresis,
   release-time direction locking, mirrored charge leans, and grip-release cancel
   without swing or pain. Task D proves absolute/non-overlapping low/mid/full tip-speed
   targets, the full-charge pivot-drift bound and CastShape CCD, laboratory-set impulse
@@ -149,6 +150,11 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   the mapped end invariant: wood at the physical barrel/glint end, black wrap at
   the physical handle end. The Task C glint check requires both the live source
   and the Mii3D counterpart when that presentation mode is active.
+- The Task H owner-feedback checks additionally prove a charging cursor reaches
+  the floor while the physical bat stays finite and collision-blocked, full charge
+  targets the owner-boosted `6000` px/s physical tip speed, and one accepted
+  home-run produces one compact impact burst at the solver contact point. The
+  generic glove feedback path stays green in `tool_feel_reactions`.
 - The `m5_homerun_bat` journey runs at `--fixed-fps 120` through the queued real
   key, pointer, primary, and secondary input paths. It selects the bat with `K`,
   grips the physical handle, holds charge for exactly `600` routed physics ticks,
