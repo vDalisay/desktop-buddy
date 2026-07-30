@@ -1,0 +1,19 @@
+{
+  "id": "m5_baseball_bat",
+  "description": "Select the catalogue Baseball Bat with its lab tool key, give it a cursor with the real pointer, swing it across the buddy so the solver's own impulse scores pain attributed to the bat, and confirm the buddy learns to fear the bat and not the glove.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_baseball_bat",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "bat_key_selects_the_bat" },
+    { "predicate": "bat_follows_the_real_pointer" },
+    { "predicate": "bat_swing_hurts_the_buddy" },
+    { "predicate": "bat_is_remembered_as_harmful" },
+    { "predicate": "selecting_grab_takes_the_bat_away" }
+  ]
+}

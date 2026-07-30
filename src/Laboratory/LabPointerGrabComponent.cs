@@ -42,7 +42,7 @@ public partial class LabPointerGrabComponent : Node2D
     // cursor follow real pointer input only, so headless scenarios that drive
     // the tool APIs directly are never clobbered by a stale (0,0) cursor.
     [Export] public InteractionDamageComponent? Pipeline { get; set; }
-    [Export] public BoxingGloveController? GloveTool { get; set; }
+    [Export] public CursorToolController? CursorTools { get; set; }
     [Export] public CareStrokeComponent? CareTool { get; set; }
     [Export] public ToolCursorPresenter? CareCursor { get; set; }
     [Export] public PullbackLauncherComponent? LauncherTool { get; set; }
@@ -114,8 +114,15 @@ public partial class LabPointerGrabComponent : Node2D
         _pendingSecondaryRelease = false;
         _pendingLaunchableSpawn = null;
 
-        if (GloveTool is not null && GodotObject.IsInstanceValid(GloveTool))
-            GloveTool.ClearCursor();
+        if (CursorTools is not null && GodotObject.IsInstanceValid(CursorTools))
+        {
+            // Grip and charge go with the pointer; the despawn inside ClearCursor
+            // would abandon them anyway, but a tool that is still selected must
+            // not resume holding a button nobody is pressing.
+            CursorTools.SetGrip(false);
+            CursorTools.SetChargeHeld(false);
+            CursorTools.ClearCursor();
+        }
         if (CareTool is not null && GodotObject.IsInstanceValid(CareTool))
             CareTool.SetStroke(false, WorldCursor);
         if (CareCursor is not null && GodotObject.IsInstanceValid(CareCursor))
@@ -182,6 +189,7 @@ public partial class LabPointerGrabComponent : Node2D
             {
                 Key.G => ToolId.Grab,
                 Key.B => ToolId.BoxingGlove,
+                Key.K => ToolId.BaseballBat,
                 Key.F => ToolId.Pet,
                 Key.T => ToolId.Tickle,
                 _ => null,
@@ -231,10 +239,10 @@ public partial class LabPointerGrabComponent : Node2D
         // input has been seen; scenarios drive the tool APIs directly instead.
         if (_sawPointerInput)
         {
-            if (GloveTool is not null && GodotObject.IsInstanceValid(GloveTool) &&
-                tool == ToolId.BoxingGlove)
+            if (CursorTools is not null && GodotObject.IsInstanceValid(CursorTools) &&
+                CursorTools.DrivesTool(tool))
             {
-                GloveTool.MoveCursor(cursor);
+                CursorTools.MoveCursor(cursor);
             }
 
             if (CareTool is not null && GodotObject.IsInstanceValid(CareTool))
@@ -243,10 +251,37 @@ public partial class LabPointerGrabComponent : Node2D
             }
         }
 
+        // Same rule the cursor anchor already follows: forward pointer state to
+        // the tools only once real pointer input has been seen, so a headless
+        // scenario driving the tool APIs directly is never clobbered by a
+        // synthetic "nothing is held".
+        bool swingTool = _sawPointerInput &&
+                         CursorTools is not null &&
+                         GodotObject.IsInstanceValid(CursorTools) &&
+                         CursorTools.IsSwingCapableTool(tool);
+
+        // Charging is guarded on the grab and aim being idle, and that is not
+        // redundant with the launcher branch below. CanAimCurrentGrab inspects
+        // only the current grab and is not tied to the selected tool, so grabbing
+        // a Baseball, beginning an aim, and then selecting the bat leaves a live
+        // aim while a swing-capable tool is selected. Routing secondary to charge
+        // unconditionally would swallow the RequestRelease that fires the
+        // launcher and strand the aim with no way to release it. The bat simply
+        // refuses to charge while a grab or aim is outstanding.
+        bool swingOwnsSecondary = swingTool &&
+                                  !Grab.IsGrabbing &&
+                                  (LauncherTool is null ||
+                                   !GodotObject.IsInstanceValid(LauncherTool) ||
+                                   !LauncherTool.IsAiming);
+
         if (_pendingSecondaryPress)
         {
             _pendingSecondaryPress = false;
-            if (LauncherTool is not null &&
+            if (swingOwnsSecondary)
+            {
+                CursorTools!.SetChargeHeld(true);
+            }
+            else if (LauncherTool is not null &&
                 GodotObject.IsInstanceValid(LauncherTool) &&
                 LauncherTool.CanAimCurrentGrab)
             {
@@ -267,8 +302,26 @@ public partial class LabPointerGrabComponent : Node2D
         if (_pendingSecondaryRelease)
         {
             _pendingSecondaryRelease = false;
-            if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool))
+            if (swingTool)
+            {
+                // Always released, even when the press was swallowed by an
+                // outstanding aim: a charge that could be started but never let
+                // go would be a stuck button.
+                CursorTools!.SetChargeHeld(false);
+            }
+
+            if (!swingOwnsSecondary &&
+                LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool))
+            {
                 LauncherTool.RequestRelease();
+            }
+        }
+
+        // Primary grips a swing-capable tool by the handle. Nothing is displaced:
+        // with a cursor tool selected, primary does nothing today.
+        if (swingTool)
+        {
+            CursorTools!.SetGrip(IsPrimaryHeld);
         }
 
         if (_pendingPress)

@@ -47,7 +47,7 @@ public partial class Body2DVisual3D : Node3D
         _mesh = new MeshInstance3D
         {
             Name = "Mesh",
-            Mesh = new SphereMesh { Radius = radius, Height = radius * 2.0f },
+            Mesh = BuildMesh(radius, 0.0f),
             MaterialOverride = new StandardMaterial3D
             {
                 AlbedoColor = color,
@@ -59,6 +59,42 @@ public partial class Body2DVisual3D : Node3D
         Visible = false;
         IsInitialized = true;
     }
+
+    /// <summary>
+    /// Re-shapes the render body for a source whose geometry is not fixed for the
+    /// run — the cursor-tool slot, where the collider that attaches depends on which
+    /// tool is selected. <paramref name="length"/> of <c>0</c> is a sphere; a longer
+    /// body becomes a capsule along its local Y, matching CapsuleShape2D so the
+    /// render body and the collider agree about which way the long axis points.
+    /// </summary>
+    public void SetGeometry(float radius, float length, Color color, float depthOffset)
+    {
+        if (!IsInitialized)
+        {
+            throw new InvalidOperationException("Body2DVisual3D used before initialization.");
+        }
+
+        if (!float.IsFinite(radius) || radius <= 0.0f ||
+            !float.IsFinite(length) || length < 0.0f ||
+            !float.IsFinite(depthOffset))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(radius), "Body2DVisual3D geometry must be finite and positive.");
+        }
+
+        _depthOffset = depthOffset;
+        _mesh!.Mesh = BuildMesh(radius, length);
+        _mesh.MaterialOverride = new StandardMaterial3D
+        {
+            AlbedoColor = color,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        };
+    }
+
+    private static Mesh BuildMesh(float radius, float length) =>
+        length > radius * 2.0f
+            ? new CapsuleMesh { Radius = radius, Height = length }
+            : new SphereMesh { Radius = radius, Height = radius * 2.0f };
 
     public void Attach(RigidBody2D target)
     {

@@ -1,0 +1,60 @@
+[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/CursorToolProfile.cs" id="1_cursor_tool"]
+[ext_resource type="Script" path="res://src/Tools/SwingToolProfile.cs" id="2_swing_tool"]
+
+[sub_resource type="Resource" id="Resource_swing_bat"]
+resource_name = "ProvisionalM5HomeRunSwing"
+script = ExtResource("2_swing_tool")
+MaxChargeTicks = 600
+LeanDegrees = 35.0
+WindupTicks = 14
+WindupDegrees = 70.0
+SweepDegrees = 245.0
+FollowThroughDegrees = 25.0
+FollowThroughTicks = 10
+TipSpeedUncharged = 1800.0
+TipSpeedFull = 5500.0
+MinimumSweepTicks = 5
+MaximumSweepTicks = 60
+RecoveryTicks = 42
+SwingAnchorForceCap = 1400000.0
+FreeSwingAnchorSpeedCap = 2400.0
+FreeSwingForceCap = 120000.0
+ContactObservationGraceTicks = 2
+ShakeMaxAmplitudePx = 3.5
+ShakePrimaryHz = 33.0
+ShakeSecondaryHz = 41.0
+GlintSeconds = 0.35
+GlintSizePx = 14.0
+DirectionTravelThreshold = 6.0
+GripColor = Color(0.078431, 0.078431, 0.078431, 1)
+HitLagMinTicks = 6
+HitLagMaxTicks = 60
+AudioVolumeDb = -6.0
+GripStiffness = 900000.0
+GripDamping = 120000.0
+SwingTorqueCap = 2000000.0
+
+[resource]
+resource_name = "ProvisionalM5BaseballBat"
+script = ExtResource("1_cursor_tool")
+ContentId = "tool.baseball_bat"
+Radius = 7.0
+Length = 90.0
+Mass = 6.0
+Stiffness = 4800.0
+Damping = 240.0
+MaximumForce = 120000.0
+LinearDamp = 0.5
+AngularDamp = 1.0
+AlignStiffness = 400000.0
+AlignDamping = 66000.0
+MaximumAlignTorque = 500000.0
+MinimumAlignSpeed = 60.0
+MinimumArmingTravel = 8.0
+WallClearance = 2.0
+VisualColor = Color(0.752941, 0.541176, 0.290196, 1)
+OutlineColor = Color(0.352941, 0.227451, 0.094118, 1)
+VisualDepthOffset = 144.0
+Swing = SubResource("Resource_swing_bat")

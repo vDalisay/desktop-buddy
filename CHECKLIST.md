@@ -4,7 +4,7 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-29, after the M4 post-acceptance audit hardening.
+Last updated: 2026-07-30, after the Home-Run Bat refinement Task B passed.
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
@@ -56,11 +56,11 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test` | 715/715 green |
+| Domain unit | `dotnet test` | 940/940 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (43) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | Current targeted lifecycle scenarios green; the latest full both-presentation catalogue result remains the recorded M4/M5 baseline |
-| Journeys (11) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix 21/21 |
-| Quick suite | `tools\quick_validate.bat` | 17/17 |
+| Scenarios (48) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | Current targeted lifecycle scenarios green; the latest full both-presentation catalogue result remains the recorded M4/M5 baseline |
+| Journeys (13) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix green |
+| Quick suite | `tools\quick_validate.bat` | 23/23 |
 
 Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the
 filenames in `tests/journeys/`. Every scenario and journey is also rerun under
@@ -148,11 +148,35 @@ Gotchas that WILL fail a run if you forget them:
 boundary. Progression reset is deliberately **not** implemented — it waits on the
 owner's erase/preserve matrix. Task 2 (FR-014 budget) extracted the cap rule to
 `Domain/Interaction/LooseObjectAdmissionPolicy` and gated it with `object_budget`;
-its projectile half waits for the Task 5 guns. Task 3 (Meal) is
-engineering-complete and awaits the owner feel gate before it may be shop-visible.
-Baseball is owner-ACCEPTED (2026-07-29). The quick suite is now 21 steps — added
-`corner_scoop` (pickup against a wall), `object_budget`, `meal_consume`, and the
-`m5_meal` real-input journey.
+its projectile half waits for the Task 5 guns. Task 3 (Meal) is owner-ACCEPTED
+(2026-07-30) and shop-visible. Task 4's original Baseball Bat slice is
+engineering-complete, but its owner feel gate requested the ordered Home-Run Bat
+refinement below; the catalogue entry remains hidden until that refinement passes.
+Baseball is owner-ACCEPTED
+(2026-07-29). The quick suite is now 23 steps — added `corner_scoop` (pickup against
+a wall), `object_budget`, `meal_consume`, `bat_swing`, and the `m5_meal` and
+`m5_baseball_bat` real-input journeys.
+
+The Boxing Glove mechanism is now the shared **cursor-tool** mechanism
+(`CursorToolController` + authored `CursorToolProfile` array); a cursor-tethered tool
+is a `.tres` plus a content ID. Elongated tools hold square to their swing through
+the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the bat,
+`B` the glove.
+
+**Home-Run Bat refinement** (`docs/M5_TASK4_HOME_RUN_BAT_FEEL_PLAN.md`):
+
+- [x] Task A — pure charged-swing domain model and trajectory servo.
+- [x] Task B — composition, weak free-swing, handle grip, immutable impact
+      admission plumbing, and the cumulative `homerun_bat_feel` scenario.
+- [ ] Task C — charge accrual, cursor-travel direction, shake, and tip glimmer.
+- [ ] Task D — physical charged swing, measured impulse separation, pivot hold,
+      and the single-hit epoch gate.
+- [ ] Task E — whole-game hit lag and victim shake.
+- [ ] Task E2 — procedural placeholder audio.
+- [ ] Task F — honest shaded 3D bat presentation.
+- [ ] Task G — interactive verification and trace capture.
+- [ ] Task H — promoted journey, documentation, complete regression, and owner
+      feel gate.
 
 The buddy now has a hidden `200`-point hunger bar (owner decision 2026-07-29,
 `DECISIONS.md`): it eats what fits, and refuses what would overfill. The refusal is
@@ -162,10 +186,11 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
-**Next owner action:** run the lab, press `6` to place a Meal, launch it with the
-Grab + secondary chord, and judge whether the Meal slice feels right — including
-the refusal once the buddy is full (four Meals fill the bar). Accepting it flips
-`data/catalogue/tool_meal.tres` to `Visible = true`. M4 is complete and owner-accepted. Its post-acceptance hardening records
+**Next engineering action:** implement Home-Run Bat refinement Task C. The next
+owner feel gate is Task H, after charge, the physical swing, hit lag, audio, 3D
+presentation, and the promoted real-input journey are complete. The catalogue
+entry remains hidden until that gate passes. M4 is complete and owner-accepted.
+Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input
 two-process persistence journey.

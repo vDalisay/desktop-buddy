@@ -35,7 +35,7 @@ public partial class HeadLookAtComponent : Node
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public InteractionDamageComponent DamagePipeline { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
-    [Export] public BoxingGloveController Glove { get; set; } = null!;
+    [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public ActivityAnimator Activities { get; set; } = null!;
     [Export] public BuddyReactionComponent Reactions { get; set; } = null!;
     [Export] public BuddyExpressionProfile Profile { get; set; } = null!;
@@ -70,7 +70,7 @@ public partial class HeadLookAtComponent : Node
         if (!GodotObject.IsInstanceValid(Buddy) || !Buddy.IsInitialized ||
             !GodotObject.IsInstanceValid(DamagePipeline) || !DamagePipeline.IsInitialized ||
             !GodotObject.IsInstanceValid(CareStroke) ||
-            !GodotObject.IsInstanceValid(Glove) ||
+            !GodotObject.IsInstanceValid(CursorTools) ||
             !GodotObject.IsInstanceValid(Activities) || !Activities.IsInitialized ||
             !GodotObject.IsInstanceValid(Reactions) ||
             !GodotObject.IsInstanceValid(Profile))
@@ -144,10 +144,10 @@ public partial class HeadLookAtComponent : Node
             engaged = true;
             cursor = CareStroke.Cursor;
         }
-        else if (tool == ToolId.BoxingGlove && Glove.HasCursor)
+        else if (CursorTools.DrivesTool(tool) && CursorTools.HasCursor)
         {
             engaged = true;
-            cursor = Glove.Cursor;
+            cursor = CursorTools.Cursor;
         }
 
         // Two item targets share this input: the eaten item riding the hand socket, and the

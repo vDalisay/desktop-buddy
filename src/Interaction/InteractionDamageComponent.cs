@@ -35,7 +35,24 @@ public readonly record struct AcceptedImpact(
     bool Guarded,
     bool IsBuddyGrabbed,
     bool KnockoutTriggered,
-    double TimeSeconds);
+    double TimeSeconds,
+
+    /// <summary>
+    /// Identity of the charged swing that landed this, or <c>0</c> for every
+    /// other kind of contact. Copied from the immutable context the source
+    /// carried into the contact rather than read back from controller state.
+    /// </summary>
+    int SwingEpoch,
+
+    /// <summary>Charge the swing was released with, <c>0..1</c>; <c>0</c> when not a charged swing.</summary>
+    float SwingCharge,
+
+    /// <summary>
+    /// Routed tick on which the swing was committed, or <c>0</c> for every
+    /// non-home-run contact. This travels with the solver sample so later
+    /// hit-lag and observation-grace logic never consults mutable tool state.
+    /// </summary>
+    long SwingReleasedTick);
 
 /// <summary>
 /// One contact episode accepted by the router before the empirical pain curve.
@@ -84,6 +101,8 @@ public partial class InteractionDamageComponent : Node
     private double _fixedDelta;
     private long _ticks;
     private bool _knockoutDrivenUnconscious;
+    private int _claimedSwingSource = -1;
+    private int _claimedSwingEpoch = -1;
 
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public GrabTetherController Grab { get; set; } = null!;
@@ -225,7 +244,10 @@ public partial class InteractionDamageComponent : Node
                     MaxRawImpulse = contact.Impulse;
                 }
 
-                if (!TryResolveSource(contact.Collider, out int interactionId, out string contentId))
+                if (!TryResolveSource(
+                        contact.Collider,
+                        out int interactionId,
+                        out string contentId))
                 {
                     continue;
                 }
@@ -257,7 +279,12 @@ public partial class InteractionDamageComponent : Node
                     now);
                 LastEpisode = episode;
                 EpisodeAccepted?.Invoke(episode);
-                ApplyAcceptedImpact(accepted.Value, contact, region, now);
+                ApplyAcceptedImpact(
+                    accepted.Value,
+                    contact,
+                    region,
+                    contact.SwingContext,
+                    now);
             }
 
             part.ClearPendingContacts();
@@ -361,6 +388,7 @@ public partial class InteractionDamageComponent : Node
         in ImpactSample accepted,
         in RawPartContact contact,
         PayoutRegion region,
+        SwingImpactContext? swing,
         double now)
     {
         bool guarded = accepted.ContentId == ContentIds.ToolBoxingGlove &&
@@ -375,6 +403,16 @@ public partial class InteractionDamageComponent : Node
             // Above the episode threshold but at/below the curve floor: a valid
             // contact episode that scores nothing — it must not pay, must not
             // mark the source harmful, and must not enter the knockout window.
+            return;
+        }
+
+        // The swing gate sits here, after the curve has produced positive pain,
+        // because this is the one point where "cannot score, pay, change mood, or
+        // trigger hit lag" is all still enforceable at once. Sitting after the
+        // zero-pain return also means a graze naturally fails to consume an
+        // attack with no extra branch. It admits or rejects; it never scales.
+        if (!AdmitSwingImpact(accepted.SourceInteractionId, swing))
+        {
             return;
         }
 
@@ -408,7 +446,10 @@ public partial class InteractionDamageComponent : Node
             guarded,
             buddyPartGrabbed,
             acceptance.KnockoutTriggered,
-            now);
+            now,
+            swing is { Mode: SwingImpactMode.HomeRun } homeRun ? homeRun.SwingEpoch : 0,
+            swing is { Mode: SwingImpactMode.HomeRun } charged ? charged.ReleasedCharge : 0.0f,
+            swing is { Mode: SwingImpactMode.HomeRun } released ? released.ReleasedTick : 0L);
         LastImpact = impact;
         if (accepted.TargetPart == BuddyPart.Head)
             Buddy.ActiveDrive.NotifyHeadDisturbed();
@@ -424,7 +465,54 @@ public partial class InteractionDamageComponent : Node
         }
     }
 
-    private bool TryResolveSource(GodotObject? collider, out int interactionId, out string contentId)
+    /// <summary>
+    /// Whether a contact from a swing-capable source may be scored at all, and
+    /// whether it spends that swing. A source that carries no swing context —
+    /// every loose object, projectile, and non-swing tool — bypasses this
+    /// entirely and is scored exactly as it always was.
+    ///
+    /// The claim is keyed on the source instance as well as the epoch, so a tool
+    /// that despawned and respawned can never inherit an earlier body's spent
+    /// swing.
+    /// </summary>
+    private bool AdmitSwingImpact(
+        int sourceInteractionId,
+        SwingImpactContext? swing)
+    {
+        // Non-swing sources carry no swing context and bypass this policy
+        // entirely. Loose objects, projectiles, and room contacts therefore keep
+        // the exact admission behavior they had before charged tools existed.
+        if (swing is null)
+        {
+            return true;
+        }
+
+        SwingImpactContext context = swing.Value;
+        bool alreadyClaimed =
+            _claimedSwingSource == sourceInteractionId &&
+            _claimedSwingEpoch == context.SwingEpoch;
+        SwingImpactAdmissionResult admission = SwingImpactAdmission.Evaluate(
+            context.Mode, context.SwingEpoch, alreadyClaimed, scoredPain: true);
+        if (!admission.Admitted)
+        {
+            return false;
+        }
+
+        if (admission.ClaimsEpoch)
+        {
+            // One home run per swing: the bat may keep crossing shoulders and
+            // arms, but the attack has been spent and they cannot score again.
+            _claimedSwingSource = sourceInteractionId;
+            _claimedSwingEpoch = context.SwingEpoch;
+        }
+
+        return true;
+    }
+
+    private bool TryResolveSource(
+        GodotObject? collider,
+        out int interactionId,
+        out string contentId)
     {
         interactionId = 0;
         contentId = ContentIds.LooseObject;
@@ -476,6 +564,8 @@ public partial class InteractionDamageComponent : Node
         _knockout.Reset();
         _care.Reset();
         _knockoutDrivenUnconscious = false;
+        _claimedSwingSource = -1;
+        _claimedSwingEpoch = -1;
         // Persistent mood and harmful history intentionally survive (§5): hard
         // reposition is a fail-safe, not a trust event.
     }

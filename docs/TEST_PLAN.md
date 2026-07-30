@@ -110,6 +110,22 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   normal Grab acquisition, the buddy's player-ownership guard, secondary-held trajectory
   aiming, opposite-drag launch with automatic Grab release, Baseball attribution, positive
   pain, and measurable whole-buddy pushback.
+- The `bat_swing` scenario drives Baseball Bat on the shared cursor-tethered tool
+  mechanism and verifies its own elongated collider and content ID, that a bat parked
+  against the buddy scores nothing over a full second (proved non-vacuous by measuring
+  the surface gap, not merely the absence of pain), that a real swing scores pain
+  attributed to `tool.baseball_bat` with the barrel held square to its travel, that
+  harmful history and pain statistics record the bat and never the glove, and that
+  selecting another tool replaces the collider and its identity together. The
+  `m5_baseball_bat` journey repeats the slice through real pointer and key input.
+- The `homerun_bat_feel` scenario runs at `--fixed-fps 120` and is the cumulative
+  charged-bat host. Task B proves the weak FOLLOW anchor bounds high-speed pointer
+  input without suppressing positive physical pain, GRIPPED contacts cannot score,
+  the directed servo holds the barrel upright from the derived handle point, release
+  returns to centre-anchored weak FOLLOW, solver contacts retain their immutable
+  swing context across the one-tick observation delay, and the Boxing Glove keeps
+  its accepted response envelope. Charge, physical swing, hit-lag, audio, and 3D
+  presentation checks join this same scenario in their ordered tasks.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
 - The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
   consecutive routed ticks within its `600`-tick settling window. Its verdict

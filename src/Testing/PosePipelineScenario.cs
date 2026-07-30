@@ -197,7 +197,7 @@ public sealed class PosePipelineScenario : IScenario
         lab.Pipeline.SelectTool(ToolId.BoxingGlove);
         Vector2 protectedCenter =
             (lab.Buddy.Rig.Head.GlobalPosition + torso.GlobalPosition) * 0.5f;
-        lab.Glove.MoveCursor(protectedCenter);
+        lab.CursorTools.MoveCursor(protectedCenter);
         for (int tick = 0; tick < 60 && !lab.ToolReactions.IsDefending; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);

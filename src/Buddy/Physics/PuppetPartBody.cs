@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.App;
+using DesktopBuddy.Interaction;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Physics;
@@ -15,7 +16,15 @@ public readonly record struct RawPartContact(
     float Impulse,
     float RelativeSpeed,
     Vector2 Point,
-    Vector2 Normal);
+    Vector2 Normal,
+
+    /// <summary>
+    /// Immutable swing state from the physics step that produced this contact.
+    /// The impact pipeline consumes the sample one routed tick later, so reading
+    /// the collider's live state there would classify the previous step using
+    /// the next step's grip/charge/swing state.
+    /// </summary>
+    SwingImpactContext? SwingContext);
 
 /// <summary>
 /// One authoritative circular rigid body. It owns only body configuration and
@@ -149,8 +158,18 @@ public partial class PuppetPartBody : RigidBody2D
                 // the actual solver contact and rotated its presentation rays.
                 Vector2 point = state.GetContactLocalPosition(index);
                 Vector2 normal = state.GetContactLocalNormal(index).Normalized();
+                SwingImpactContext? swingContext =
+                    colliderObject is ISwingImpactSource swingSource
+                        ? swingSource.SwingContext
+                        : null;
                 _pendingContacts[PendingContactCount] =
-                    new RawPartContact(colliderObject, impulse, relativeSpeed, point, normal);
+                    new RawPartContact(
+                        colliderObject,
+                        impulse,
+                        relativeSpeed,
+                        point,
+                        normal,
+                        swingContext);
                 PendingContactCount++;
             }
 

@@ -58,6 +58,8 @@ public static class ScenarioCatalog
         ["hidden_clock_accrual"] = () => new HiddenClockAccrualScenario(),
         ["suspend_no_catchup"] = () => new SuspendNoCatchupScenario(),
         ["baseball_pullback"] = () => new BaseballPullbackScenario(),
+        ["bat_swing"] = () => new BatSwingScenario(),
+        ["homerun_bat_feel"] = () => new HomeRunBatFeelScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

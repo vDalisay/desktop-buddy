@@ -255,6 +255,13 @@ this is the mechanism the Task 7 reruns use while the committed default stays
 `VisualProfile` export.
 
 ### Task 6 — Boxing Glove 3D counterpart (pattern-setter; may trail Task 7)
+
+> Historical naming: M5 Task 4 generalised this mechanism across every
+> cursor-tethered tool. `BoxingGloveController`/`BoxingGloveBody`/`BoxingGloveProfile`
+> are now `CursorToolController`/`CursorToolBody`/`CursorToolProfile`; the
+> attach/detach lifecycle described below is unchanged, and `Body2DVisual3D` now
+> re-shapes itself per spawn because the collider depends on the selected tool.
+
 Generic `Body2DVisual3D : Node3D` tracker (mesh parameters or a small typed profile)
 reusing the Task 4 transform source and mapping. The glove body is **dynamic**:
 `BoxingGloveController.Spawn()/Despawn()` creates and `QueueFree`s a fresh

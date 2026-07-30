@@ -215,15 +215,15 @@ public sealed class Presentation3DScenario : IScenario
         List<string> messages)
     {
         lab.SetPresentationMode(PresentationMode.Mii3D);
-        lab.Glove.MoveCursor(new Vector2(80.0f, 80.0f));
+        lab.CursorTools.MoveCursor(new Vector2(80.0f, 80.0f));
         lab.Pipeline.SelectTool(ToolId.BoxingGlove);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
-        BoxingGloveBody? glove = lab.Glove.Glove;
-        bool attached = glove is not null && lab.GloveVisual.Target == glove &&
-            lab.GloveVisual.Visible && !glove.Visible;
+        CursorToolBody? glove = lab.CursorTools.Body;
+        bool attached = glove is not null && lab.CursorToolVisual.Target == glove &&
+            lab.CursorToolVisual.Visible && !glove.Visible;
         if (glove is null)
         {
             return false;
@@ -232,17 +232,17 @@ public sealed class Presentation3DScenario : IScenario
         glove.PulseImpact(Vector2.Right, 1.0f, 1.0);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         Vector2 expectedScale = glove.VisualScale2D;
-        Vector3 actualScale = lab.GloveVisual.Mesh.Scale;
+        Vector3 actualScale = lab.CursorToolVisual.Mesh.Scale;
         float scaleError = new Vector2(actualScale.X, actualScale.Y).DistanceTo(expectedScale);
         float expectedAngle = WorldPlaneMapping.To3DRotationZ(
             glove.GlobalRotation + glove.VisualRotation2D);
         float angleError = Mathf.Abs(Mathf.AngleDifference(
-            lab.GloveVisual.GlobalRotation.Z, expectedAngle));
+            lab.CursorToolVisual.GlobalRotation.Z, expectedAngle));
 
         lab.Pipeline.SelectTool(ToolId.Pet);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-        bool detached = !lab.GloveVisual.IsAttached && !lab.GloveVisual.Visible;
+        bool detached = !lab.CursorToolVisual.IsAttached && !lab.CursorToolVisual.Visible;
         messages.Add($"glove_attached={attached} detached={detached} " +
             $"scale_error={scaleError:F4} angle_error={angleError:F4}");
         return attached && scaleError < 0.01f && angleError < 0.01f && detached;

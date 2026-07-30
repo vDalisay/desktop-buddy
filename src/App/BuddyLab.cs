@@ -65,7 +65,7 @@ public partial class BuddyLab : Node2D
     public LifecycleCoordinator Lifecycle { get; private set; } = null!;
     public TrayCommandComponent TrayCommands { get; private set; } = null!;
     public bool WindowAdapterVisibleForTests => _windowAdapter?.IsWindowVisible ?? false;
-    [Export] public BoxingGloveController Glove { get; set; } = null!;
+    [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
     [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
@@ -80,7 +80,7 @@ public partial class BuddyLab : Node2D
     [Export] public ActivityAnimator Activities { get; set; } = null!;
     [Export] public HeadLookAtComponent HeadLookAt { get; set; } = null!;
     [Export] public FaceCompositor Face { get; set; } = null!;
-    [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
+    [Export] public Body2DVisual3D CursorToolVisual { get; set; } = null!;
     // Mii3D is the shipping default since the M3.5 Task 8 owner gate (2026-07-18); the
     // legacy circles remain behind the V toggle / --presentation=legacy as a dev view.
     [Export] public PresentationMode Mode { get; set; } = PresentationMode.Mii3D;
@@ -110,7 +110,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(SafeObjectProfile) ||
             !GodotObject.IsInstanceValid(MoodEconomy) ||
             !GodotObject.IsInstanceValid(Launcher) ||
-            !GodotObject.IsInstanceValid(Glove) ||
+            !GodotObject.IsInstanceValid(CursorTools) ||
             !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
             !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
             !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
@@ -122,7 +122,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(Activities) ||
             !GodotObject.IsInstanceValid(HeadLookAt) ||
             !GodotObject.IsInstanceValid(Face) ||
-            !GodotObject.IsInstanceValid(GloveVisual))
+            !GodotObject.IsInstanceValid(CursorToolVisual))
         {
             throw new InvalidOperationException(
                 "BuddyLab requires injected buddy, controls, grab, pointer, boundaries, containment, telemetry, boundary visualization, interaction pipeline, launcher, and tools.");
@@ -152,13 +152,14 @@ public partial class BuddyLab : Node2D
         {
             Economy.Unlock(ContentIds.ToolBaseball);
             Economy.Unlock(ContentIds.ToolMeal);
+            Economy.Unlock(ContentIds.ToolBaseballBat);
         }
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
         Launcher.Initialize(OnLooseObjectClearRequested);
         Buddy.Arbiter.Initialize(Progress);
         Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
-        Glove.Initialize();
+        CursorTools.Initialize();
         CareStroke.Initialize();
         CareCursor.Initialize();
         ToolReactions.Initialize();
@@ -177,10 +178,13 @@ public partial class BuddyLab : Node2D
         // Last of the expressive chain: the face reads reactions, the eat activity, and
         // the look-at pupils.
         Face.Initialize();
-        GloveVisual.Initialize(
-            Glove.Profile.Radius,
-            Glove.Profile.VisualColor,
-            Glove.Profile.VisualDepthOffset);
+        // The slot is shaped per spawn, because which collider attaches depends on
+        // which cursor tool is selected; the first authored profile is only the
+        // resting default before anything has been picked up.
+        CursorToolVisual.Initialize(
+            CursorTools.Profiles[0]!.Radius,
+            CursorTools.Profiles[0]!.VisualColor,
+            CursorTools.Profiles[0]!.VisualDepthOffset);
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
@@ -211,7 +215,7 @@ public partial class BuddyLab : Node2D
             Economy,
             Saves,
             MoodEconomy,
-            () => Grab.IsGrabbing || Glove.IsActive || CareStroke.IsHeld ||
+            () => Grab.IsGrabbing || CursorTools.IsActive || CareStroke.IsHeld ||
                   Buddy.ObjectInteraction.IsHolding,
             _runContext?.TimeSource,
             resumePresentation: ResetPresentationInterpolation,
@@ -238,8 +242,8 @@ public partial class BuddyLab : Node2D
         Controls.LooseObjectClearRequested += OnLooseObjectClearRequested;
         Buddy.ObjectInteraction.ConsumeStarted += OnObjectConsumeStarted;
         Buddy.ObjectInteraction.ConsumeCancelled += OnObjectConsumeCancelled;
-        Glove.BodySpawned += OnGloveBodySpawned;
-        Glove.BodyDespawned += OnGloveBodyDespawned;
+        CursorTools.BodySpawned += OnCursorToolSpawned;
+        CursorTools.BodyDespawned += OnCursorToolDespawned;
 
         ApplyRunnerPresentationOverride();
         SetPresentationMode(Mode);
@@ -261,7 +265,7 @@ public partial class BuddyLab : Node2D
         // Capture every engine tick, including paused lab ticks, so the manual
         // 3D interpolation pair stays adjacent and cannot shimmer while frozen.
         VisualPresenter.CaptureTickSnapshot();
-        GloveVisual.CaptureTickSnapshot();
+        CursorToolVisual.CaptureTickSnapshot();
 
         if (Controls.BeginPhysicsTick())
         {
@@ -287,7 +291,7 @@ public partial class BuddyLab : Node2D
             bool buddyPartGrabbed = grabbedBody is not null;
             Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
 
-            Glove.PhysicsTick(delta);
+            CursorTools.PhysicsTick(delta);
             CareStroke.PhysicsTick(delta);
             ToolReactions.PhysicsTick(delta);
             Reactions.PhysicsTick();
@@ -371,10 +375,10 @@ public partial class BuddyLab : Node2D
             Buddy.ObjectInteraction.ConsumeStarted -= OnObjectConsumeStarted;
             Buddy.ObjectInteraction.ConsumeCancelled -= OnObjectConsumeCancelled;
         }
-        if (GodotObject.IsInstanceValid(Glove))
+        if (GodotObject.IsInstanceValid(CursorTools))
         {
-            Glove.BodySpawned -= OnGloveBodySpawned;
-            Glove.BodyDespawned -= OnGloveBodyDespawned;
+            CursorTools.BodySpawned -= OnCursorToolSpawned;
+            CursorTools.BodyDespawned -= OnCursorToolDespawned;
         }
         if (GodotObject.IsInstanceValid(TrayCommands))
         {
@@ -454,7 +458,7 @@ public partial class BuddyLab : Node2D
         }
 
         VisualPresenter.Visible = show3D;
-        GloveVisual.SetPresentationActive(show3D);
+        CursorToolVisual.SetPresentationActive(show3D);
     }
 
     private void OnPresentationToggleRequested() => SetPresentationMode(
@@ -473,9 +477,15 @@ public partial class BuddyLab : Node2D
         }
     }
 
-    private void OnGloveBodySpawned(BoxingGloveBody body) => GloveVisual.Attach(body);
+    private void OnCursorToolSpawned(CursorToolBody body)
+    {
+        CursorToolProfile profile = CursorTools.ActiveProfile!;
+        CursorToolVisual.SetGeometry(
+            profile.Radius, profile.Length, profile.VisualColor, profile.VisualDepthOffset);
+        CursorToolVisual.Attach(body);
+    }
 
-    private void OnGloveBodyDespawned(BoxingGloveBody body) => GloveVisual.Detach(body);
+    private void OnCursorToolDespawned(CursorToolBody body) => CursorToolVisual.Detach(body);
 
     /// <summary>Root-owned loose-object factory used by the lab and scenarios.</summary>
     public LooseObjectBody? SpawnLooseObject(

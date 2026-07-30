@@ -29,7 +29,7 @@ public partial class FacingController : Node
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public InteractionDamageComponent DamagePipeline { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
-    [Export] public BoxingGloveController Glove { get; set; } = null!;
+    [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public BuddyExpressionProfile Profile { get; set; } = null!;
 
     private FacingModel _model = null!;
@@ -53,7 +53,7 @@ public partial class FacingController : Node
         if (!GodotObject.IsInstanceValid(Buddy) || !Buddy.IsInitialized ||
             !GodotObject.IsInstanceValid(DamagePipeline) || !DamagePipeline.IsInitialized ||
             !GodotObject.IsInstanceValid(CareStroke) ||
-            !GodotObject.IsInstanceValid(Glove) ||
+            !GodotObject.IsInstanceValid(CursorTools) ||
             !GodotObject.IsInstanceValid(Profile))
         {
             throw new InvalidOperationException("FacingController dependencies are incomplete.");
@@ -133,10 +133,10 @@ public partial class FacingController : Node
             engaged = true;
             side = MathF.Sign(CareStroke.Cursor.X - torsoX);
         }
-        else if (tool == ToolId.BoxingGlove && Glove.HasCursor)
+        else if (CursorTools.DrivesTool(tool) && CursorTools.HasCursor)
         {
             engaged = true;
-            side = MathF.Sign(Glove.Cursor.X - torsoX);
+            side = MathF.Sign(CursorTools.Cursor.X - torsoX);
         }
         else if (Buddy.ObjectInteraction.IsHolding)
         {

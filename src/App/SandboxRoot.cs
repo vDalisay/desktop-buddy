@@ -63,7 +63,7 @@ public partial class SandboxRoot : Node2D
     public LocalSettingsSave Settings { get; private set; } = null!;
     private RunContext? _runContext;
     private bool _quitSaveStarted;
-    [Export] public BoxingGloveController Glove { get; set; } = null!;
+    [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
     [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
@@ -78,7 +78,7 @@ public partial class SandboxRoot : Node2D
     [Export] public ActivityAnimator Activities { get; set; } = null!;
     [Export] public HeadLookAtComponent HeadLookAt { get; set; } = null!;
     [Export] public FaceCompositor Face { get; set; } = null!;
-    [Export] public Body2DVisual3D GloveVisual { get; set; } = null!;
+    [Export] public Body2DVisual3D CursorToolVisual { get; set; } = null!;
     [Export] public MoodEconomyProfile MoodEconomy { get; set; } = null!;
     public LifecycleCoordinator Lifecycle { get; private set; } = null!;
 
@@ -105,7 +105,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(Containment) || !GodotObject.IsInstanceValid(Pipeline) ||
             !GodotObject.IsInstanceValid(Objects) ||
             !GodotObject.IsInstanceValid(Launcher) ||
-            !GodotObject.IsInstanceValid(Glove) || !GodotObject.IsInstanceValid(CareStroke) ||
+            !GodotObject.IsInstanceValid(CursorTools) || !GodotObject.IsInstanceValid(CareStroke) ||
             !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
             !GodotObject.IsInstanceValid(ImpactFeedback) ||
@@ -117,7 +117,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(Activities) ||
             !GodotObject.IsInstanceValid(HeadLookAt) ||
             !GodotObject.IsInstanceValid(Face) ||
-            !GodotObject.IsInstanceValid(GloveVisual) ||
+            !GodotObject.IsInstanceValid(CursorToolVisual) ||
             !GodotObject.IsInstanceValid(MoodEconomy))
         {
             throw new InvalidOperationException(
@@ -138,7 +138,7 @@ public partial class SandboxRoot : Node2D
         Launcher.Initialize(ClearLooseObjectsForReplacement);
         Buddy.Arbiter.Initialize(Progress);
         Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
-        Glove.Initialize();
+        CursorTools.Initialize();
         CareStroke.Initialize();
         CareCursor.Initialize();
         ToolReactions.Initialize();
@@ -157,10 +157,13 @@ public partial class SandboxRoot : Node2D
         // Last of the expressive chain: the face reads reactions, the eat activity, and
         // the look-at pupils.
         Face.Initialize();
-        GloveVisual.Initialize(
-            Glove.Profile.Radius,
-            Glove.Profile.VisualColor,
-            Glove.Profile.VisualDepthOffset);
+        // The slot is shaped per spawn, because which collider attaches depends on
+        // which cursor tool is selected; the first authored profile is only the
+        // resting default before anything has been picked up.
+        CursorToolVisual.Initialize(
+            CursorTools.Profiles[0]!.Radius,
+            CursorTools.Profiles[0]!.VisualColor,
+            CursorTools.Profiles[0]!.VisualDepthOffset);
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
@@ -170,8 +173,8 @@ public partial class SandboxRoot : Node2D
         Buddy.Recovery.SessionResumed += OnSessionResumed;
         Pipeline.ToolChanged += OnToolChanged;
         Grab.Released += OnGrabReleased;
-        Glove.BodySpawned += OnGloveBodySpawned;
-        Glove.BodyDespawned += OnGloveBodyDespawned;
+        CursorTools.BodySpawned += OnCursorToolSpawned;
+        CursorTools.BodyDespawned += OnCursorToolDespawned;
         Window.WindowFocusLost += OnWindowFocusLost;
         Lifecycle = new LifecycleCoordinator { Name = nameof(LifecycleCoordinator) };
         Lifecycle.Configure(
@@ -179,7 +182,7 @@ public partial class SandboxRoot : Node2D
             Economy,
             Saves,
             MoodEconomy,
-            () => Grab.IsGrabbing || Glove.IsActive || CareStroke.IsHeld ||
+            () => Grab.IsGrabbing || CursorTools.IsActive || CareStroke.IsHeld ||
                   Buddy.ObjectInteraction.IsHolding,
             _runContext.TimeSource,
             ResetPresentationInterpolation,
@@ -221,7 +224,7 @@ public partial class SandboxRoot : Node2D
     {
         Pointer.ResolvePendingInput();
         VisualPresenter.CaptureTickSnapshot();
-        GloveVisual.CaptureTickSnapshot();
+        CursorToolVisual.CaptureTickSnapshot();
         // Shell drains a queued resize into a boundary request; the boundary
         // applies pending layout changes on this physics boundary.
         Shell.PhysicsTick();
@@ -233,7 +236,7 @@ public partial class SandboxRoot : Node2D
         PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
         bool buddyPartGrabbed = grabbedBody is not null;
         Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
-        Glove.PhysicsTick(delta);
+        CursorTools.PhysicsTick(delta);
         CareStroke.PhysicsTick(delta);
         ToolReactions.PhysicsTick(delta);
         Reactions.PhysicsTick();
@@ -260,10 +263,10 @@ public partial class SandboxRoot : Node2D
         }
         if (GodotObject.IsInstanceValid(Pipeline)) Pipeline.ToolChanged -= OnToolChanged;
         if (GodotObject.IsInstanceValid(Grab)) Grab.Released -= OnGrabReleased;
-        if (GodotObject.IsInstanceValid(Glove))
+        if (GodotObject.IsInstanceValid(CursorTools))
         {
-            Glove.BodySpawned -= OnGloveBodySpawned;
-            Glove.BodyDespawned -= OnGloveBodyDespawned;
+            CursorTools.BodySpawned -= OnCursorToolSpawned;
+            CursorTools.BodyDespawned -= OnCursorToolDespawned;
         }
         if (GodotObject.IsInstanceValid(Window))
         {
@@ -478,7 +481,7 @@ public partial class SandboxRoot : Node2D
         }
 
         VisualPresenter.Visible = show3D;
-        GloveVisual.SetPresentationActive(show3D);
+        CursorToolVisual.SetPresentationActive(show3D);
     }
 
     private void ApplyRunnerPresentationOverride()
@@ -492,7 +495,13 @@ public partial class SandboxRoot : Node2D
         }
     }
 
-    private void OnGloveBodySpawned(BoxingGloveBody body) => GloveVisual.Attach(body);
+    private void OnCursorToolSpawned(CursorToolBody body)
+    {
+        CursorToolProfile profile = CursorTools.ActiveProfile!;
+        CursorToolVisual.SetGeometry(
+            profile.Radius, profile.Length, profile.VisualColor, profile.VisualDepthOffset);
+        CursorToolVisual.Attach(body);
+    }
 
-    private void OnGloveBodyDespawned(BoxingGloveBody body) => GloveVisual.Detach(body);
+    private void OnCursorToolDespawned(CursorToolBody body) => CursorToolVisual.Detach(body);
 }

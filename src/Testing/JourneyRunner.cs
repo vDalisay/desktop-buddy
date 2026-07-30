@@ -22,9 +22,11 @@ using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Interaction;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Presentation3D;
+using DesktopBuddy.Tools;
 using Godot;
 using FileAccess = Godot.FileAccess;
 using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
@@ -707,6 +709,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5MealAsync(state, lab);
         }
+        else if (exercise == "m5_baseball_bat")
+        {
+            await ExerciseM5BaseballBatAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -835,6 +841,85 @@ public partial class JourneyRunner : Node
             $"M5 meal launches={lab.Launcher.LaunchCount} cancels={lab.Launcher.CancelCount} " +
             $"successes={lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
             $"mood={lab.Progress.Mood:F1} fullness={lab.Progress.Fullness:F1}");
+    }
+
+    /// <summary>
+    /// The M5 Baseball Bat slice through real input: the lab's tool key selects the bat,
+    /// the real pointer gives it its cursor, a swing across the buddy scores pain
+    /// attributed to the bat and teaches the buddy to fear it specifically, and
+    /// selecting another tool takes the collider away again.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5BaseballBatAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
+
+        await M4ObjectScenarioSupport.SendKey(tree, Key.K);
+        Vector2 windUp = new(
+            Mathf.Clamp(torso.X - (side * 150.0f), room.Position.X + 60.0f, room.End.X - 60.0f),
+            Mathf.Clamp(torso.Y, room.Position.Y + 60.0f, room.End.Y - 60.0f));
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, windUp, 0);
+        bool spawned = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.CursorTools.IsActive, 30);
+        CursorToolBody? bat = lab.CursorTools.Body;
+        state["bat_key_selects_the_bat"] =
+            lab.Pipeline.SelectedTool == ToolId.BaseballBat &&
+            spawned &&
+            bat is not null &&
+            bat.ContentId == ContentIds.ToolBaseballBat &&
+            bat.IsElongated;
+
+        bool tracked = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => GodotObject.IsInstanceValid(bat) &&
+                  bat!.GlobalPosition.DistanceTo(lab.CursorTools.Cursor) <= 30.0f,
+            60);
+        state["bat_follows_the_real_pointer"] = tracked;
+
+        AcceptedImpact? batImpact = null;
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (batImpact is null && impact.ContentId == ContentIds.ToolBaseballBat)
+                batImpact = impact;
+        }
+        lab.Pipeline.ImpactAccepted += OnImpact;
+
+        // The swing is pointer motion at real speed; the impulse is whatever the
+        // solver measures out of it, never an authored number.
+        Vector2 swing = windUp;
+        float step = 20.0f;
+        for (int tick = 0; tick < 60 && batImpact is null; tick++)
+        {
+            swing = new Vector2(
+                Mathf.Clamp(swing.X + (side * step), room.Position.X + 20.0f, room.End.X - 20.0f),
+                swing.Y);
+            await M4ObjectScenarioSupport.MovePointer(tree, lab, swing, 0);
+        }
+
+        for (int tick = 0; tick < 60 && batImpact is null; tick++)
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+
+        state["bat_swing_hurts_the_buddy"] =
+            batImpact is { Pain: > 0.0f } hit && hit.ContentId == ContentIds.ToolBaseballBat;
+        state["bat_is_remembered_as_harmful"] =
+            lab.Progress.IsContentHarmful(ContentIds.ToolBaseballBat) &&
+            !lab.Progress.IsContentHarmful(ContentIds.ToolBoxingGlove);
+
+        await M4ObjectScenarioSupport.SendKey(tree, Key.G);
+        bool despawned = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => !lab.CursorTools.IsActive, 30);
+        state["selecting_grab_takes_the_bat_away"] =
+            lab.Pipeline.SelectedTool == ToolId.Grab && despawned;
+
+        Log.Info(
+            "Journey",
+            $"M5 bat pain={batImpact?.Pain:F2} impulse={batImpact?.Impulse:F1} " +
+            $"part={batImpact?.Part} harmful={lab.Progress.IsContentHarmful(ContentIds.ToolBaseballBat)}");
     }
 
     private async System.Threading.Tasks.Task ExerciseM35PresentationToggleAsync(
@@ -1132,7 +1217,7 @@ public partial class JourneyRunner : Node
         state["reward_feedback_visible"] = lab.MoneyHud.RewardLabel.Visible;
         Log.Info("Journey", $"M3 glove raw={lab.Pipeline.RawContactCount} accepted={lab.Pipeline.AcceptedEpisodeCount} " +
             $"scored={lab.Pipeline.ScoredImpactCount} maxImpulse={lab.Pipeline.MaxRawImpulse:F1} " +
-            $"active={lab.Glove.IsActive} position={lab.Glove.Glove?.GlobalPosition}");
+            $"active={lab.CursorTools.IsActive} position={lab.CursorTools.Body?.GlobalPosition}");
 
         async System.Threading.Tasks.Task MovePointerAsync(Vector2 world, Vector2 relative)
         {

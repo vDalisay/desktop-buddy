@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/CursorToolProfile.cs" id="1_cursor_tool"]
+
+[resource]
+resource_name = "ProvisionalM3BoxingGlove"
+script = ExtResource("1_cursor_tool")
+ContentId = "tool.boxing_glove"
+Radius = 14.0
+Length = 0.0
+Mass = 4.0
+Stiffness = 3200.0
+Damping = 160.0
+MaximumForce = 80000.0
+LinearDamp = 0.5
+AngularDamp = 1.0
+AlignStiffness = 0.0
+AlignDamping = 0.0
+MaximumAlignTorque = 100000.0
+MinimumAlignSpeed = 60.0
+MinimumArmingTravel = 8.0
+WallClearance = 2.0
+VisualColor = Color(0.878431, 0.356863, 0.294118, 1)
+OutlineColor = Color(0.360784, 0.101961, 0.101961, 1)
+VisualDepthOffset = 144.0

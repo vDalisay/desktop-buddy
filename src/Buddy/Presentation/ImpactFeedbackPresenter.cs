@@ -19,7 +19,7 @@ public partial class ImpactFeedbackPresenter : Node2D
     private static readonly Color FlashColor = new(1.0f, 0.82f, 0.38f, 0.35f);
 
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
-    [Export] public BoxingGloveController Glove { get; set; } = null!;
+    [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public ImpactFeedbackProfile Profile { get; set; } = null!;
 
     private ulong _feedbackStartedUsec;
@@ -41,7 +41,7 @@ public partial class ImpactFeedbackPresenter : Node2D
     public void Initialize()
     {
         if (!GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
-            !GodotObject.IsInstanceValid(Glove) || !Glove.IsInitialized ||
+            !GodotObject.IsInstanceValid(CursorTools) || !CursorTools.IsInitialized ||
             !GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
         {
             throw new InvalidOperationException("ImpactFeedbackPresenter dependencies are incomplete or invalid.");
@@ -132,7 +132,11 @@ public partial class ImpactFeedbackPresenter : Node2D
 
     private void OnImpact(AcceptedImpact impact)
     {
-        if (impact.ContentId != ContentIds.ToolBoxingGlove)
+        // The ring and squash belong to whichever cursor-tethered tool landed the
+        // hit, so every tool on that mechanism reads the same way rather than the
+        // glove alone having feedback. Attribution, not liveness: a scenario probe
+        // striking under a tool's identity still earns the tool's feedback.
+        if (!CursorTools.AttributesContent(impact.ContentId))
             return;
 
         _feedbackStartedUsec = Time.GetTicksUsec();
@@ -141,7 +145,10 @@ public partial class ImpactFeedbackPresenter : Node2D
         _impactIntensity = Mathf.Clamp(impact.Pain / Profile.MaximumPain, 0.25f, 1.0f);
         IsFeedbackActive = true;
         FeedbackCount++;
-        Glove.Glove?.PulseImpact(impact.Normal, _impactIntensity, Profile.GloveSquashSeconds);
+        // Only the collider that actually struck squashes; a live tool of a different
+        // identity must not flinch for someone else's hit.
+        if (CursorTools.ActiveContentId == impact.ContentId)
+            CursorTools.Body?.PulseImpact(impact.Normal, _impactIntensity, Profile.GloveSquashSeconds);
         QueueRedraw();
 
         if ((impact.Pain + 0.0001f >= Profile.MaximumPain || impact.KnockoutTriggered) &&

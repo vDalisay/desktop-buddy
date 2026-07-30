@@ -314,10 +314,10 @@ public sealed class LookAtScenario : IScenario
         Vector2 protectedCenter =
             (lab.Buddy.Rig.Head.GlobalPosition + lab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
         Vector2 cursor = protectedCenter + new Vector2(100.0f, -20.0f);
-        lab.Glove.MoveCursor(cursor);
+        lab.CursorTools.MoveCursor(cursor);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
 
-        if (lab.Glove.Glove is { } glove)
+        if (lab.CursorTools.Body is { } glove)
         {
             // The scenario's controlled impact body establishes harmful memory. Keep the
             // cursor actor present for attention/defense, but prevent incidental contacts.
@@ -336,7 +336,7 @@ public sealed class LookAtScenario : IScenario
             protectedCenter =
                 (lab.Buddy.Rig.Head.GlobalPosition + lab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
             cursor = protectedCenter + new Vector2(100.0f, -20.0f);
-            lab.Glove.MoveCursor(cursor);
+            lab.CursorTools.MoveCursor(cursor);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             coned &= InsideCone(lab.HeadLookAt);
             angryFaceSeen |= lab.Reactions.CurrentFace == ">:(";
@@ -353,7 +353,7 @@ public sealed class LookAtScenario : IScenario
         bool easedToRest = false;
         for (int frame = 0; frame < 120 && !easedToRest; frame++)
         {
-            lab.Glove.MoveCursor(cursor);
+            lab.CursorTools.MoveCursor(cursor);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             painFaceSeen |= lab.Reactions.CurrentFace == ">_<";
             easedToRest = painFaceSeen &&

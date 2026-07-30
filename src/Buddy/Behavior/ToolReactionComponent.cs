@@ -38,7 +38,7 @@ public partial class ToolReactionComponent : Node
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
-    [Export] public BoxingGloveController Glove { get; set; } = null!;
+    [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public ToolReactionProfile Profile { get; set; } = null!;
 
     private Vector2 _guardDirection = Vector2.Right;
@@ -58,7 +58,7 @@ public partial class ToolReactionComponent : Node
     public bool IsLearnedGloveThreatActive =>
         Pipeline.SelectedTool == ToolId.BoxingGlove &&
         Pipeline.IsToolHarmful(ToolId.BoxingGlove) &&
-        Glove.HasCursor;
+        CursorTools.HasCursor;
     public Vector2 GuardDirection => _guardDirection;
     public Vector2 GuardAimPoint => _guardAimPoint;
     public Vector2 GuardCenter => Intent.GuardActive
@@ -70,7 +70,7 @@ public partial class ToolReactionComponent : Node
         if (!GodotObject.IsInstanceValid(Buddy) || !Buddy.IsInitialized ||
             !GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
             !GodotObject.IsInstanceValid(CareStroke) || !CareStroke.IsInitialized ||
-            !GodotObject.IsInstanceValid(Glove) || !Glove.IsInitialized ||
+            !GodotObject.IsInstanceValid(CursorTools) || !CursorTools.IsInitialized ||
             !GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
         {
             throw new InvalidOperationException("ToolReactionComponent dependencies are incomplete or invalid.");
@@ -137,7 +137,7 @@ public partial class ToolReactionComponent : Node
 
     private ToolReactionIntent ResolveGloveDefense(double delta)
     {
-        BoxingGloveBody? glove = Glove.Glove;
+        CursorToolBody? glove = CursorTools.Body;
         if (glove is null || !Pipeline.IsToolHarmful(ToolId.BoxingGlove))
         {
             _gloveDefenseLatched = false;
@@ -162,7 +162,7 @@ public partial class ToolReactionComponent : Node
             _gloveDefenseLatched = true;
         }
 
-        Vector2 threatPoint = Glove.HasCursor ? Glove.Cursor : glove.GlobalPosition;
+        Vector2 threatPoint = CursorTools.HasCursor ? CursorTools.Cursor : glove.GlobalPosition;
         if (!_guardAimInitialized)
         {
             _guardAimPoint = threatPoint;

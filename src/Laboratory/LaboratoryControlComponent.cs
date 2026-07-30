@@ -218,6 +218,9 @@ public partial class LaboratoryControlComponent : Node
             case Key.B when HasPipeline:
                 Pipeline!.SelectTool(ToolId.BoxingGlove);
                 break;
+            case Key.K when HasPipeline:
+                Pipeline!.SelectTool(ToolId.BaseballBat);
+                break;
             case Key.T when HasPipeline:
                 Pipeline!.SelectTool(ToolId.Tickle);
                 break;

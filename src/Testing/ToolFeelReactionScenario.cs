@@ -182,40 +182,40 @@ public sealed class ToolFeelReactionScenario : IScenario
         }
 
         gloveLab.Pipeline.SelectTool(ToolId.BoxingGlove);
-        gloveLab.Glove.MoveCursor(new Vector2(60.0f, 60.0f));
+        gloveLab.CursorTools.MoveCursor(new Vector2(60.0f, 60.0f));
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-        gloveLab.Glove.MoveCursor(new Vector2(160.0f, 60.0f));
+        gloveLab.CursorTools.MoveCursor(new Vector2(160.0f, 60.0f));
         for (int tick = 0; tick < 12; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-        float gloveLag = gloveLab.Glove.Glove?.GlobalPosition.DistanceTo(new Vector2(160.0f, 60.0f)) ?? float.PositiveInfinity;
+        float gloveLag = gloveLab.CursorTools.Body?.GlobalPosition.DistanceTo(new Vector2(160.0f, 60.0f)) ?? float.PositiveInfinity;
         checks.Add(new StartupCheck("boxing_glove_tracks_cursor_promptly",
             gloveLag <= 40.0f,
             $"lag={gloveLag:F2}px after 0.1s"));
 
         gloveLab.Pointer.NotifyPointerExitedPlayArea();
-        bool despawnedImmediately = !gloveLab.Glove.IsActive;
+        bool despawnedImmediately = !gloveLab.CursorTools.IsActive;
         for (int tick = 0; tick < 3; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-        bool stayedDespawnedOutside = !gloveLab.Glove.IsActive;
+        bool stayedDespawnedOutside = !gloveLab.CursorTools.IsActive;
         checks.Add(new StartupCheck("boxing_glove_despawns_when_pointer_leaves_play_area",
             gloveLab.Pipeline.SelectedTool == ToolId.BoxingGlove &&
-            !gloveLab.Glove.HasCursor && despawnedImmediately && stayedDespawnedOutside,
-            $"selected={gloveLab.Pipeline.SelectedTool} hasCursor={gloveLab.Glove.HasCursor} immediate={despawnedImmediately} active={gloveLab.Glove.IsActive}"));
+            !gloveLab.CursorTools.HasCursor && despawnedImmediately && stayedDespawnedOutside,
+            $"selected={gloveLab.Pipeline.SelectedTool} hasCursor={gloveLab.CursorTools.HasCursor} immediate={despawnedImmediately} active={gloveLab.CursorTools.IsActive}"));
         Rect2 gloveBounds = gloveLab.Boundaries.InnerBounds;
-        gloveLab.Glove.MoveCursor(gloveBounds.Position - new Vector2(100.0f, 100.0f));
+        gloveLab.CursorTools.MoveCursor(gloveBounds.Position - new Vector2(100.0f, 100.0f));
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-        float gloveInset = gloveLab.Glove.Profile.Radius + gloveLab.Glove.Profile.WallClearance;
+        float gloveInset = gloveLab.CursorTools.ActiveProfile!.Radius + gloveLab.CursorTools.ActiveProfile!.WallClearance;
         Vector2 edgeSafeMinimum = gloveBounds.Position + new Vector2(gloveInset, gloveInset);
         checks.Add(new StartupCheck("boxing_glove_respawns_clear_of_room_edges",
-            gloveLab.Glove.HasCursor && gloveLab.Glove.IsActive &&
-            gloveLab.Glove.Cursor.IsEqualApprox(edgeSafeMinimum) &&
-            gloveLab.Glove.Glove is { } respawnedGlove &&
+            gloveLab.CursorTools.HasCursor && gloveLab.CursorTools.IsActive &&
+            gloveLab.CursorTools.Cursor.IsEqualApprox(edgeSafeMinimum) &&
+            gloveLab.CursorTools.Body is { } respawnedGlove &&
             respawnedGlove.GlobalPosition.X >= edgeSafeMinimum.X - 0.25f &&
             respawnedGlove.GlobalPosition.Y >= edgeSafeMinimum.Y - 0.25f &&
             respawnedGlove.GlobalPosition.X <= gloveBounds.End.X - gloveInset + 0.25f &&
             respawnedGlove.GlobalPosition.Y <= gloveBounds.End.Y - gloveInset + 0.25f,
-            $"cursor={gloveLab.Glove.Cursor} minimum={edgeSafeMinimum} glove={gloveLab.Glove.Glove?.GlobalPosition}"));
-        gloveLab.Glove.MoveCursor(new Vector2(160.0f, 60.0f));
+            $"cursor={gloveLab.CursorTools.Cursor} minimum={edgeSafeMinimum} glove={gloveLab.CursorTools.Body?.GlobalPosition}"));
+        gloveLab.CursorTools.MoveCursor(new Vector2(160.0f, 60.0f));
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
 
         AcceptedImpact? slow = await ScenarioSteps.StrikePartAtSpeed(
@@ -230,7 +230,7 @@ public sealed class ToolFeelReactionScenario : IScenario
             $"slow(v={slow?.RelativeSpeed:F1},i={slow?.RawImpulse:F1},p={slow?.Pain:F2}) fast(v={fast?.RelativeSpeed:F1},i={fast?.RawImpulse:F1},p={fast?.Pain:F2})"));
 
         Vector2 protectedCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
-        gloveLab.Glove.MoveCursor(protectedCenter);
+        gloveLab.CursorTools.MoveCursor(protectedCenter);
         for (int tick = 0; tick < 30 && !gloveLab.ToolReactions.IsDefending; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         checks.Add(new StartupCheck("learned_harm_raises_real_hand_guard",
@@ -239,7 +239,7 @@ public sealed class ToolFeelReactionScenario : IScenario
             gloveLab.Buddy.CurrentDriveIntent.GuardActive,
             $"harmful={gloveLab.Pipeline.IsToolHarmful(ToolId.BoxingGlove)} defending={gloveLab.ToolReactions.IsDefending}"));
 
-        BoxingGloveBody? physicalGlove = gloveLab.Glove.Glove;
+        CursorToolBody? physicalGlove = gloveLab.CursorTools.Body;
         if (physicalGlove is not null)
         {
             physicalGlove.CollisionLayer = 0;
@@ -252,7 +252,7 @@ public sealed class ToolFeelReactionScenario : IScenario
         Vector2 defenseCenter =
             (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
         Vector2 threatRight = defenseCenter + Vector2.Right * 100.0f;
-        gloveLab.Glove.MoveCursor(threatRight);
+        gloveLab.CursorTools.MoveCursor(threatRight);
         if (physicalGlove is not null) physicalGlove.GlobalPosition = threatRight;
         float fleeStartX = gloveLab.Buddy.Rig.Torso.GlobalPosition.X;
         for (int tick = 0; tick < 24; tick++)
@@ -260,7 +260,7 @@ public sealed class ToolFeelReactionScenario : IScenario
         Vector2 guardBeforeTurn = gloveLab.ToolReactions.GuardDirection;
         Vector2 centerBeforeTurn =
             (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
-        Vector2 desiredBeforeTurn = (gloveLab.Glove.Cursor - centerBeforeTurn).Normalized();
+        Vector2 desiredBeforeTurn = (gloveLab.CursorTools.Cursor - centerBeforeTurn).Normalized();
         float fleeDeltaX = gloveLab.Buddy.Rig.Torso.GlobalPosition.X - fleeStartX;
         float nearestHandToGlove = physicalGlove is null
             ? float.PositiveInfinity
@@ -274,7 +274,7 @@ public sealed class ToolFeelReactionScenario : IScenario
 
         Vector2 currentCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
         Vector2 threatLeft = currentCenter - desiredBeforeTurn * 100.0f;
-        gloveLab.Glove.MoveCursor(threatLeft);
+        gloveLab.CursorTools.MoveCursor(threatLeft);
         if (physicalGlove is not null) physicalGlove.GlobalPosition = threatLeft;
         foreach (PuppetPartBody part in gloveLab.Buddy.Rig.Parts)
             part.LinearVelocity = Vector2.Zero;
@@ -313,7 +313,7 @@ public sealed class ToolFeelReactionScenario : IScenario
         {
             Vector2 center = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
             Vector2 inBand = center + Vector2.Right * hysteresisDistance;
-            gloveLab.Glove.MoveCursor(inBand);
+            gloveLab.CursorTools.MoveCursor(inBand);
             if (physicalGlove is not null) physicalGlove.GlobalPosition = inBand;
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             stayedDefensiveInBand &= gloveLab.ToolReactions.IsDefending;
@@ -321,21 +321,21 @@ public sealed class ToolFeelReactionScenario : IScenario
 
         Vector2 releaseCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
         Vector2 beyondRelease = releaseCenter + Vector2.Right * (gloveLab.ToolReactions.Profile.DefenseReleaseRange + 5.0f);
-        gloveLab.Glove.MoveCursor(beyondRelease);
+        gloveLab.CursorTools.MoveCursor(beyondRelease);
         if (physicalGlove is not null) physicalGlove.GlobalPosition = beyondRelease;
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         bool releasedOutside = !gloveLab.ToolReactions.IsDefending;
 
         Vector2 reentryCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
         Vector2 bandReentry = reentryCenter + Vector2.Right * hysteresisDistance;
-        gloveLab.Glove.MoveCursor(bandReentry);
+        gloveLab.CursorTools.MoveCursor(bandReentry);
         if (physicalGlove is not null) physicalGlove.GlobalPosition = bandReentry;
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         bool stayedCalmInBand = !gloveLab.ToolReactions.IsDefending;
 
         Vector2 reacquireCenter = (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
         Vector2 insideDefense = reacquireCenter + Vector2.Right * (gloveLab.ToolReactions.Profile.DefenseRange - 5.0f);
-        gloveLab.Glove.MoveCursor(insideDefense);
+        gloveLab.CursorTools.MoveCursor(insideDefense);
         if (physicalGlove is not null) physicalGlove.GlobalPosition = insideDefense;
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         checks.Add(new StartupCheck("glove_defense_uses_enter_exit_hysteresis_without_face_thrashing",
@@ -354,7 +354,7 @@ public sealed class ToolFeelReactionScenario : IScenario
 
         Vector2 bypassCenter =
             (gloveLab.Buddy.Rig.Head.GlobalPosition + gloveLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
-        gloveLab.Glove.MoveCursor(bypassCenter + Vector2.Right * 100.0f);
+        gloveLab.CursorTools.MoveCursor(bypassCenter + Vector2.Right * 100.0f);
         for (int tick = 0; tick < 30 && gloveLab.ToolReactions.GuardDirection.X < 0.8f; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         AcceptedImpact? bypass = await ScenarioSteps.StrikePartAtSpeed(
@@ -413,9 +413,9 @@ public sealed class ToolFeelReactionScenario : IScenario
         hitStopLab.Pipeline.SelectTool(ToolId.BoxingGlove);
         Vector2 knockoutCenter =
             (hitStopLab.Buddy.Rig.Head.GlobalPosition + hitStopLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
-        hitStopLab.Glove.MoveCursor(knockoutCenter - Vector2.Right * 100.0f);
+        hitStopLab.CursorTools.MoveCursor(knockoutCenter - Vector2.Right * 100.0f);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
-        BoxingGloveBody? knockoutGlove = hitStopLab.Glove.Glove;
+        CursorToolBody? knockoutGlove = hitStopLab.CursorTools.Body;
         if (knockoutGlove is not null)
         {
             knockoutGlove.CollisionLayer = 0;
@@ -431,7 +431,7 @@ public sealed class ToolFeelReactionScenario : IScenario
             Vector2 center =
                 (hitStopLab.Buddy.Rig.Head.GlobalPosition + hitStopLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
             Vector2 threat = center - Vector2.Right * 100.0f;
-            hitStopLab.Glove.MoveCursor(threat);
+            hitStopLab.CursorTools.MoveCursor(threat);
             if (knockoutGlove is not null) knockoutGlove.GlobalPosition = threat;
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             stayedPassiveWhileUnconscious &= !hitStopLab.Buddy.ActiveDrive.ActiveOutputsEnabled;
@@ -446,7 +446,7 @@ public sealed class ToolFeelReactionScenario : IScenario
             Vector2 center =
                 (hitStopLab.Buddy.Rig.Head.GlobalPosition + hitStopLab.Buddy.Rig.Torso.GlobalPosition) * 0.5f;
             Vector2 threat = center - Vector2.Right * 100.0f;
-            hitStopLab.Glove.MoveCursor(threat);
+            hitStopLab.CursorTools.MoveCursor(threat);
             if (knockoutGlove is not null) knockoutGlove.GlobalPosition = threat;
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         }
@@ -474,7 +474,7 @@ public sealed class ToolFeelReactionScenario : IScenario
         else
         {
             faceTailLab.Pipeline.SelectTool(ToolId.BoxingGlove);
-            faceTailLab.Glove.MoveCursor(faceTailLab.Buddy.Rig.Head.GlobalPosition);
+            faceTailLab.CursorTools.MoveCursor(faceTailLab.Buddy.Rig.Head.GlobalPosition);
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             _ = await ScenarioSteps.StrikePartAtSpeed(
                 tree,

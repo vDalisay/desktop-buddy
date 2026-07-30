@@ -920,6 +920,119 @@ it, and repeating until its cooldown expired. The fix is a model, not a patch.
   item socket. It previously rode the single carrying hand's socket, which is what the owner
   saw. The one-handed pose remains correct for ordinary carrying (M4 decision 2026-07-27).
 
+## M5 Meal Slice Accepted (2026-07-30)
+
+- **The Meal feel gate passed** (owner, 2026-07-30: "meal feel is fine"), covering the
+  hunger/appetite behavior and the corrected head-yaw refusal. `tool_meal.tres` flips to
+  `Visible = true`, so the Meal is the second catalogue entry offered in the shop after the
+  Baseball. Its price stays the provisional FR-013.4 placeholder (`6` credits) until Task 12
+  calibrates the economy.
+- **Lab food is kept as a dev-only spawn** (owner, 2026-07-30). The Task 3 plan left
+  retire-or-keep open at this review; the answer is keep. `care.lab_food` stays on the `E`
+  key, stays out of the catalogue so no player ever sees it, and the M3.6/M4 scenarios keep
+  using it rather than being migrated onto the Meal. This is settled, not revisited at the
+  Task 13 gate.
+
+## M5 Baseball Bat and the Cursor-Tool Mechanism (2026-07-30)
+
+- **The Boxing Glove mechanism is now a shared, data-authored one.** `BoxingGloveController`
+  / `BoxingGloveBody` / `BoxingGloveProfile` became `CursorToolController` / `CursorToolBody`
+  / `CursorToolProfile`, and the controller holds an authored array of profiles instead of a
+  single one, exactly as the launcher was generalised for the Meal in Task 3. A
+  cursor-tethered tool is now a `.tres` plus a content ID, not new input code. Each profile
+  authors its own shape, mass, tether gains, alignment gains, and colours; the collider
+  derives its attribution identity from the profile, so nothing keys on "the glove" any more.
+  Facing, head look-at, and the pointer path ask `DrivesTool`; impact feedback asks
+  `AttributesContent`. The one-collider-at-a-time rule is unchanged, and a tool swap is a
+  despawn plus a respawn rather than a reconfigure, because shape, mass, and identity all
+  belong to one profile.
+- **An elongated tool holds square to its own swing.** New engine-free
+  `Domain/Physics/AlignmentTorque` is the rotational counterpart of `GrabTether`: a bounded
+  damped angular servo that takes the shortest way around and folds out the half-turn
+  symmetry of a two-ended tool, so a bat never spins 180° to present its other end. The
+  target angle comes from the cursor's own travel; below `MinimumAlignSpeed` the tool holds
+  the angle it had. A stiffness of `0` disables alignment, which is how the round glove
+  authors "never steer my rotation" without a branch. Without this an elongated collider
+  tumbles off every contact and reads as a floating stick, so the profile validator requires
+  the pairing.
+- **Provisional Baseball Bat tuning** (agent-tunable, Task 12 calibrates): length `90` px,
+  radius `7`, mass `6.0`, tether `4800`/`240` capped at `120000`, alignment `400000`/`66000`
+  capped at `500000` above `60` px/s. Pain comes only from the measured impulse through the
+  shared curve — there is **no** per-tool multiplier, so the bat hurts more only because a
+  longer, heavier collider really does hit harder. The catalogue entry stays
+  `Visible = false` until its own owner feel gate.
+- **The buddy's learned defense stays glove-only for now.** `ToolReactionComponent` still
+  guards against the Boxing Glove alone. Extending the guard to the bat is a feel decision
+  about a tool with reach, and the Task 4 gate does not ask for it; the buddy does record
+  the bat in harmful history today, so the memory is already correct when the owner decides.
+- **`ProgressStatistics.ToolUses` has no runtime writer.** `BuddyProgressState.RecordContentUse`
+  exists and is unreferenced; only the `ToolPainMilli` half of the stats seam is live. What
+  counts as one "use" of a swung, fired, or thrown tool is an owner call, so the bat slice
+  asserts the pain half and leaves the counter alone rather than inventing a rule.
+
+## Hit-Lag Shake Gets Its Own Offset Lane (2026-07-30)
+
+- **The charged-bat victim shake uses a second visual-offset lane that the performance
+  weight does not gate** (owner, 2026-07-30). `BuddyVisualPresenter.ResolvePerformanceOffset`
+  is the only path that nudges a part's visual off its physics body, and it returns zero
+  whenever `_performanceWeight <= 0`. `PoseModeArbiter` forces Tracking — and so zero weight —
+  while `TicksSinceImpact < PostImpactCooldownTicks` (60) or the buddy is not stable
+  standing. Every scored bat hit sits inside that window for the whole hit-lag freeze, so
+  routing the shake through the existing lane would silently multiply it by zero.
+- **Why this is not a weakening of the M3.6 rule.** That gate exists so an animation offset
+  can never draw the buddy somewhere the physics body is not *while the ragdoll is really
+  moving*. During hit lag the struck bodies are frozen, so there is no motion for a ±2 px
+  jitter to misrepresent. The collision was with the plumbing — one shared pipe, zeroed
+  wholesale, with no notion of why a given offset exists — not with the reasoning. The
+  invariant that actually matters is unchanged: the new lane still clamps through
+  `BoundedOffset.Clamp` against the same `OffsetCapRadiusFraction * partRadius` cap, so the
+  visual can never stray further from its body than it can today.
+- **NOT A DEFECT — do not flag on review.** An offset contributor that deliberately ignores
+  `_performanceWeight` is the accepted design here, not a missed gate. A reviewer or agent
+  re-reading this code should treat "this offset bypasses the Tracking gate" as expected and
+  move on. The lane must carry a comment at its definition pointing back to this entry.
+- **Scope is the hit-lag shake alone.** Only `ImpactVisualOffsetComponent`, and only while a
+  home-run hit lag is active, may use the ungated lane. Every other offset source —
+  development/scenario offsets, activity clips, anything added later — still goes through the
+  performance-weighted path. Widening the lane to a second consumer is a new owner decision.
+
+## Home-Run Bat Interaction Gate — Resolved in Full (2026-07-30)
+
+The nine open items in `docs/M5_TASK4_HOME_RUN_BAT_FEEL_PLAN.md` §5 are answered. Task 4
+implementation is unblocked. Five confirmed the drafted default; four changed the design.
+
+- **Confirmed as drafted:** releasing LMB mid-charge cancels to the weak follow with no swing
+  (a safe bail-out); an RMB tap performs the minimum-charge home-run arc rather than nothing;
+  holding RMB past 5 s keeps full charge indefinitely until release; the post-release windup
+  stays the provisional 14-tick snap; the bat is a clean-room classic wooden bat with no Smash
+  black/gold trade dress.
+- **Swing direction is cursor travel, not target proximity.** The bat swings whichever way the
+  mouse is moving, so the swing always goes "in front of" the cursor — drag right, swing right;
+  drag left, swing left. The drafted "nearest strikeable body outside an X dead zone" rule is
+  withdrawn. This deletes the planned `SwingTargetResolver` component outright: it existed only
+  to serve the target rule, and nothing else in the slice needs a proximity query. Delegated
+  reading, flagged in the plan: direction tracks through the charge and commits at RMB release,
+  so a player can wind up and change their mind; the charge lean flips sides when they do.
+- **The hit-lag freeze stops every game element**, not just the bat and the struck buddy. This
+  deliberately departs from the Smash reference (where unrelated actors keep moving). It is
+  implemented as a wholesale suspension of the composition root's routed physics tick, which is
+  *simpler* than the per-body freeze it replaces — nothing advances, so nothing needs a
+  velocity snapshot or a transactional restore. `Engine.TimeScale` is still not used. Because
+  no unrelated motion remains on screen, the victim shake stops being decorative and becomes
+  the only thing distinguishing a hit-stop from a hitch — it is now mandatory, not deferrable.
+- **Loose-object freeze is full-charge-only.** A scored buddy hit freezes at any charge with
+  the duration scaled by charge. A loose object freezes only when the charge actually reached
+  the cap, and below that its physics stays continuous. Delegated reading, flagged in the plan:
+  "full charge" means normalized charge `== 1.0`, the same condition that fires the tip glint,
+  so what the player sees glimmer is exactly what earns the object freeze.
+- **Placeholder audio ships in this slice.** The drafted "defer sound entirely, leave a hook"
+  default is withdrawn; the owner wants simple dummy sounds now, to be replaced later. They
+  must be **procedurally generated** — no sampled audio enters the repo, and specifically
+  nothing resembling the reference game's impact ping. Placeholder audio *existing* is the
+  requirement; whether it sounds right is explicitly not a feel-gate criterion.
+- **The bat has a black handle wrap** over the wooden barrel, authored as a second profile
+  colour rather than hard-coded in the mesh builder.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

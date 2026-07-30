@@ -336,6 +336,11 @@ shape/mass/tether data and distinct content ID for attribution/memory/stats.
 rules); a fast swing produces pain attributed to `tool.baseball_bat`; harmful-history
 records the bat, not the glove. Glove regression scenarios untouched.
 
+**Feel refinement (owner, 2026-07-30):** the engineering-complete bat is superseded by the
+Home-Run-Bat treatment — grip/charge/release with charged hit lag and a 3D look. Full
+handoff plan: `docs/M5_TASK4_HOME_RUN_BAT_FEEL_PLAN.md`. The feel gate for this slice is
+that plan's Task G, not the original accept line alone.
+
 ### Task 5 — Cursor-gun platform + Pistol
 
 `CursorAimModel` + `GunModel` + `CursorGunComponent` + pooled CCD projectile. Pistol
@@ -640,3 +645,40 @@ running the suite" remains the failure mode this plan exists to prevent.
   obligations and median-across-seeds wording; statistics seam named explicitly;
   reload bound to existing `buddy_reload` action through `ToolInputFrame`; journey
   naming/fixture convention (`m5_<tool>`).
+- 2026-07-30 — **Task 3 Meal CLOSED — owner feel gate accepted.** `tool_meal.tres` is now
+  `Visible = true`, making the Meal the second shop-offered entry after the Baseball; the
+  price stays the provisional FR-013.4 placeholder until Task 12. Recorded in `DECISIONS.md`
+  ("M5 Meal Slice Accepted"). The plan's open retire-or-keep question for `care.lab_food`
+  was not answered, so it stays a dev-only `E`-key spawn, provisionally, to be revisited at
+  the Task 13 gate. Verified: `boot_smoke` green (catalogue validation covers visibility).
+- 2026-07-30 — Owner settled the open question: lab food is **kept** as a dev-only `E`-key
+  spawn, not retired, and the M3.6/M4 scenarios keep using it.
+- 2026-07-30 — **Task 4 Baseball Bat engineering-complete** (shop-visible still pending the
+  owner's feel gate: `tool_baseball_bat.tres` stays `Visible = false`). The Boxing Glove
+  mechanism is generalised rather than copied: `CursorToolController` holds an authored
+  `CursorToolProfile` array and activates the one matching the selected tool, so the bat is
+  a `.tres` plus a content ID and the next cursor-tethered tool will be too. The collider
+  takes its shape, mass, tether, colours, and attribution identity from its own profile;
+  facing, head look-at, and the pointer path now ask `DrivesTool` instead of naming the
+  glove, and impact feedback asks `AttributesContent`. New engine-free
+  `Domain/Physics/AlignmentTorque` — a bounded damped angular servo, the rotational
+  counterpart of `GrabTether` — holds the elongated barrel square to the cursor's travel and
+  folds out the bat's half-turn symmetry; a zero stiffness disables it for round tools.
+  `Body2DVisual3D` re-shapes per spawn (capsule or sphere) because the collider now depends
+  on the selected tool. Lab key `K` selects the bat in both the pointer component and the
+  laboratory controls; the dev catalogue unlocks it. New scenario `bat_swing` (own elongated
+  collider and ID, a parked bat scoring nothing across `120` ticks with the surface gap
+  measured so the check cannot pass vacuously, a real swing scoring pain attributed to
+  `tool.baseball_bat` with a best alignment error of `0.00°`, harmful history and pain
+  statistics naming the bat and not the glove, and a tool swap replacing collider and
+  identity together) plus the real-input journey `m5_baseball_bat`; both are in the quick
+  suite, now 23/23. Two deliberate deferrals are recorded in `DECISIONS.md`: the buddy's
+  learned defense stays glove-only pending an owner feel call, and `ProgressStatistics.ToolUses`
+  is left alone because it has no runtime writer and what counts as one "use" is an owner
+  decision. Verified: build 0/0, domain 836/836, quick suite 23/23, `bat_swing` seeds 1/7/13
+  plus legacy presentation, the `m5_baseball_bat` / `m3_glove_strike` / `m3_tool_feel` /
+  `m36_expressive` journeys on seeds 1 and 7 in both presentations, and a full sweep of the
+  scenario catalogue and journey catalogue on seed 1 (the only two reds were the documented
+  window-only `owner_feedback_visual` and `lab_idle_soak` run without `--artifacts`, which
+  passes when given one).
+  **Next: Task 5 — cursor-gun platform + Pistol.**
