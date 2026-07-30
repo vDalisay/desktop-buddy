@@ -81,7 +81,7 @@ public partial class SandboxRoot : Node2D
     [Export] public ActivityAnimator Activities { get; set; } = null!;
     [Export] public HeadLookAtComponent HeadLookAt { get; set; } = null!;
     [Export] public FaceCompositor Face { get; set; } = null!;
-    [Export] public Body2DVisual3D CursorToolVisual { get; set; } = null!;
+    [Export] public CursorToolVisual3D CursorToolVisual { get; set; } = null!;
     [Export] public MoodEconomyProfile MoodEconomy { get; set; } = null!;
     public LifecycleCoordinator Lifecycle { get; private set; } = null!;
 
@@ -169,10 +169,7 @@ public partial class SandboxRoot : Node2D
         // The slot is shaped per spawn, because which collider attaches depends on
         // which cursor tool is selected; the first authored profile is only the
         // resting default before anything has been picked up.
-        CursorToolVisual.Initialize(
-            CursorTools.Profiles[0]!.Radius,
-            CursorTools.Profiles[0]!.VisualColor,
-            CursorTools.Profiles[0]!.VisualDepthOffset);
+        CursorToolVisual.Initialize(CursorTools.Profiles[0]!);
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
@@ -521,8 +518,7 @@ public partial class SandboxRoot : Node2D
     private void OnCursorToolSpawned(CursorToolBody body)
     {
         CursorToolProfile profile = CursorTools.ActiveProfile!;
-        CursorToolVisual.SetGeometry(
-            profile.Radius, profile.Length, profile.VisualColor, profile.VisualDepthOffset);
+        CursorToolVisual.SetProfile(profile);
         CursorToolVisual.Attach(body);
     }
 

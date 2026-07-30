@@ -83,7 +83,7 @@ public partial class BuddyLab : Node2D
     [Export] public ActivityAnimator Activities { get; set; } = null!;
     [Export] public HeadLookAtComponent HeadLookAt { get; set; } = null!;
     [Export] public FaceCompositor Face { get; set; } = null!;
-    [Export] public Body2DVisual3D CursorToolVisual { get; set; } = null!;
+    [Export] public CursorToolVisual3D CursorToolVisual { get; set; } = null!;
     // Mii3D is the shipping default since the M3.5 Task 8 owner gate (2026-07-18); the
     // legacy circles remain behind the V toggle / --presentation=legacy as a dev view.
     [Export] public PresentationMode Mode { get; set; } = PresentationMode.Mii3D;
@@ -190,10 +190,7 @@ public partial class BuddyLab : Node2D
         // The slot is shaped per spawn, because which collider attaches depends on
         // which cursor tool is selected; the first authored profile is only the
         // resting default before anything has been picked up.
-        CursorToolVisual.Initialize(
-            CursorTools.Profiles[0]!.Radius,
-            CursorTools.Profiles[0]!.VisualColor,
-            CursorTools.Profiles[0]!.VisualDepthOffset);
+        CursorToolVisual.Initialize(CursorTools.Profiles[0]!);
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
@@ -503,8 +500,7 @@ public partial class BuddyLab : Node2D
     private void OnCursorToolSpawned(CursorToolBody body)
     {
         CursorToolProfile profile = CursorTools.ActiveProfile!;
-        CursorToolVisual.SetGeometry(
-            profile.Radius, profile.Length, profile.VisualColor, profile.VisualDepthOffset);
+        CursorToolVisual.SetProfile(profile);
         CursorToolVisual.Attach(body);
     }
 

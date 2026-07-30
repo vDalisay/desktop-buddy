@@ -313,6 +313,14 @@ Buddy visuals attach directly to each physical body; do not depend on the experi
 
 Two presentation modes render the same physics truth: `Mii3D` (the shipping default since the M3.5 Task 8 gate) and `LegacyCircles` (a development view kept behind the laboratory `V` key and `--presentation=legacy`). Mode selection is a rendering choice only — every scenario and journey verdict must be identical in both modes.
 
+Dynamic cursor tools use one `CursorToolVisual3D` presenter around the reusable
+`Body2DVisual3D` slot. The composition root passes the selected `CursorToolProfile`; an
+internal factory resolves its authored `Visual3DKind`. The default kind retains the original
+unshaded sphere/capsule scalar path. Focused kinds inject a mesh/material through
+`Body2DVisual3D.SetVisual` without changing the 2D collider. The Baseball Bat's clean-room
+lathed mesh is vertex-coloured from the profile and lit by the same shadowless rig as the
+buddy; roots never branch on content IDs or construct its render Resources.
+
 The M3.6 expressive layer decorates that truth; it never replaces it. `BuddyPosePipeline` arbitrates the pose mode (`Performance` while the buddy behaves, `Tracking` while physics owns the read — grabs, knockouts, hard recoveries) and blends a performance weight between them. Every expressive contributor emits a **bounded offset**, and the presenter clamps the combined offset to `0.5 x part radius` before applying it, so a performance can never move a part far enough to misreport the physics pose. A Tracking cut sets the weight to zero, which snaps all display-only rotation (body yaw, head look-at) to zero in one frame while the committed semantic state (facing side) is remembered.
 
 Contributors, all engine-free models under `DesktopBuddy.Domain.Presentation` with thin Godot nodes:

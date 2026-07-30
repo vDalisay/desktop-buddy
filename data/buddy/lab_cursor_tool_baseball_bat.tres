@@ -61,4 +61,5 @@ WallClearance = 2.0
 VisualColor = Color(0.752941, 0.541176, 0.290196, 1)
 OutlineColor = Color(0.352941, 0.227451, 0.094118, 1)
 VisualDepthOffset = 144.0
+Visual3DKind = 1
 Swing = SubResource("Resource_swing_bat")

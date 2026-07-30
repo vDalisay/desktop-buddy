@@ -86,6 +86,31 @@ public sealed class Presentation3DScenario : IScenario
             legacyVisibility && miiVisibility && equalPain,
             $"legacy={legacyImpact?.Pain:F3} mii3d={miiImpact?.Pain:F3}"));
 
+        BatVisualProbe batVisual = await CheckBatCounterpart(tree, lab);
+        checks.Add(new StartupCheck(
+            "lathed_bat_stays_inside_the_authoritative_capsule",
+            batVisual.IsLathed &&
+            batVisual.VertexCount > 0 &&
+            batVisual.AllVerticesInsideCapsule,
+            $"lathed={batVisual.IsLathed} vertices={batVisual.VertexCount} " +
+            $"inside={batVisual.AllVerticesInsideCapsule}"));
+        checks.Add(new StartupCheck(
+            "bat_uses_authored_wood_and_grip_under_per_pixel_light",
+            batVisual.PerPixel &&
+            batVisual.RoughnessMatches &&
+            batVisual.HasWoodColor &&
+            batVisual.HasGripColor &&
+            batVisual.ShadowlessAcceptedRig,
+            $"per_pixel={batVisual.PerPixel} roughness={batVisual.RoughnessMatches} " +
+            $"wood={batVisual.HasWoodColor} grip={batVisual.HasGripColor} " +
+            $"shadowless_rig={batVisual.ShadowlessAcceptedRig} " +
+            $"colors={batVisual.ColorCount} first={batVisual.FirstColor}"));
+        checks.Add(new StartupCheck(
+            "cursor_tool_root_has_only_the_generic_dynamic_visual_slot",
+            batVisual.GenericSlotOnly,
+            $"children={lab.CursorToolVisual.GetChildCount()} " +
+            $"slot={lab.CursorToolVisual.Slot.Name}"));
+
         bool gloveLifecycle = await CheckGloveCounterpart(tree, lab, messages);
         checks.Add(new StartupCheck("glove_3d_spawn_pulse_despawn", gloveLifecycle,
             "dynamic attach/detach and squash parity"));
@@ -209,6 +234,106 @@ public sealed class Presentation3DScenario : IScenario
         return true;
     }
 
+    private readonly record struct BatVisualProbe(
+        bool IsLathed,
+        int VertexCount,
+        bool AllVerticesInsideCapsule,
+        bool PerPixel,
+        bool RoughnessMatches,
+        bool HasWoodColor,
+        bool HasGripColor,
+        bool ShadowlessAcceptedRig,
+        bool GenericSlotOnly,
+        int ColorCount,
+        Color FirstColor);
+
+    private static async Task<BatVisualProbe> CheckBatCounterpart(
+        SceneTree tree,
+        BuddyLab lab)
+    {
+        lab.SetPresentationMode(PresentationMode.Mii3D);
+        lab.CursorTools.MoveCursor(new Vector2(100.0f, 80.0f));
+        lab.Pipeline.SelectTool(ToolId.BaseballBat);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+        CursorToolProfile? profile = lab.CursorTools.ActiveProfile;
+        Mesh? mesh = lab.CursorToolVisual.Mesh.Mesh;
+        bool isLathed =
+            profile?.Visual3DKind == CursorToolVisual3DKind.LathedBat &&
+            lab.CursorToolVisual.ActiveKind == CursorToolVisual3DKind.LathedBat &&
+            mesh is ArrayMesh;
+
+        Vector3[] vertices = mesh?.GetFaces() ?? System.Array.Empty<Vector3>();
+        bool inside = profile is not null;
+        foreach (Vector3 vertex in vertices)
+        {
+            inside &= BatMeshBuilder.IsInsideCapsule(
+                vertex,
+                profile!.Length,
+                profile.Radius);
+        }
+
+        bool hasWood = false;
+        bool hasGrip = false;
+        int colorCount = 0;
+        Color firstColor = default;
+        if (mesh is ArrayMesh arrayMesh && arrayMesh.GetSurfaceCount() > 0 && profile is not null)
+        {
+            Godot.Collections.Array arrays = arrayMesh.SurfaceGetArrays(0);
+            Color[] colors = arrays[(int)Mesh.ArrayType.Color].AsColorArray();
+            colorCount = colors.Length;
+            firstColor = colors.Length > 0 ? colors[0] : default;
+            foreach (Color color in colors)
+            {
+                // SurfaceTool stores vertex colours in the mesh's 8-bit packed
+                // colour channel, so compare within one quantization step.
+                hasWood |= PackedColorMatches(color, profile.VisualColor);
+                hasGrip |= profile.Swing is { } swing &&
+                           PackedColorMatches(color, swing.GripColor);
+            }
+        }
+
+        StandardMaterial3D? material =
+            lab.CursorToolVisual.Mesh.MaterialOverride as StandardMaterial3D;
+        bool perPixel =
+            material?.ShadingMode == BaseMaterial3D.ShadingModeEnum.PerPixel &&
+            material.VertexColorUseAsAlbedo;
+        bool roughnessMatches =
+            material is not null && Mathf.IsEqualApprox(material.Roughness, 0.7f);
+        bool shadowlessRig =
+            lab.LightingRig.GetChildCount() == 2 &&
+            !lab.LightingRig.KeyLight.ShadowEnabled &&
+            !lab.LightingRig.FillLight.ShadowEnabled;
+        bool genericSlotOnly =
+            lab.CursorToolVisual.GetChildCount() == 1 &&
+            lab.CursorToolVisual.Slot.Name == "DynamicBodyVisualSlot" &&
+            lab.CursorToolVisual.FindChild("*Bat*", recursive: true, owned: false) is null;
+
+        return new BatVisualProbe(
+            isLathed,
+            vertices.Length,
+            inside,
+            perPixel,
+            roughnessMatches,
+            hasWood,
+            hasGrip,
+            shadowlessRig,
+            genericSlotOnly,
+            colorCount,
+            firstColor);
+    }
+
+    private static bool PackedColorMatches(Color actual, Color expected)
+    {
+        const float tolerance = 1.1f / 255.0f;
+        return Mathf.Abs(actual.R - expected.R) <= tolerance &&
+               Mathf.Abs(actual.G - expected.G) <= tolerance &&
+               Mathf.Abs(actual.B - expected.B) <= tolerance &&
+               Mathf.Abs(actual.A - expected.A) <= tolerance;
+    }
+
     private static async Task<bool> CheckGloveCounterpart(
         SceneTree tree,
         BuddyLab lab,
@@ -223,7 +348,9 @@ public sealed class Presentation3DScenario : IScenario
 
         CursorToolBody? glove = lab.CursorTools.Body;
         bool attached = glove is not null && lab.CursorToolVisual.Target == glove &&
-            lab.CursorToolVisual.Visible && !glove.Visible;
+            lab.CursorToolVisual.Visible && !glove.Visible &&
+            lab.CursorToolVisual.ActiveKind == CursorToolVisual3DKind.Capsule &&
+            lab.CursorToolVisual.Mesh.Mesh is SphereMesh;
         if (glove is null)
         {
             return false;

@@ -5,6 +5,12 @@ using Godot;
 
 namespace DesktopBuddy.Tools;
 
+public enum CursorToolVisual3DKind
+{
+    Capsule = 0,
+    LathedBat = 1,
+}
+
 /// <summary>
 /// Provisional, laboratory-tunable tuning for one cursor-tethered physical tool
 /// (RAGDOLL §9.1/§9.2). Every such tool reuses the M1 damped-elastic tether
@@ -64,6 +70,7 @@ public partial class CursorToolProfile : GameResource
     [Export] public Color VisualColor { get; set; } = new("e05b4b");
     [Export] public Color OutlineColor { get; set; } = new("5c1a1a");
     [Export] public float VisualDepthOffset { get; set; } = 144.0f;
+    [Export] public CursorToolVisual3DKind Visual3DKind { get; set; }
 
     /// <summary>
     /// Grip/charge/swing handling, or <c>null</c> for a tool that is only ever
@@ -210,6 +217,17 @@ public partial class CursorToolProfile : GameResource
         if (!float.IsFinite(VisualDepthOffset))
         {
             errors.Add($"{nameof(VisualDepthOffset)} must be finite");
+        }
+
+        if (!System.Enum.IsDefined(Visual3DKind))
+        {
+            errors.Add($"{nameof(Visual3DKind)} must name a supported visual kind");
+        }
+
+        if (Visual3DKind == CursorToolVisual3DKind.LathedBat && !IsSwingCapable)
+        {
+            errors.Add(
+                $"{nameof(Visual3DKind)} LathedBat requires an elongated swing-capable profile");
         }
 
         if (Swing is not null && GodotObject.IsInstanceValid(Swing))

@@ -94,6 +94,37 @@ public partial class Body2DVisual3D : Node3D
         };
     }
 
+    /// <summary>
+    /// Injects an authored visual into this dynamic body slot. Unlike
+    /// <see cref="SetGeometry"/>, this seam does not replace the supplied mesh or
+    /// force an unshaded material, so focused presenters can provide a genuinely
+    /// lit shape while the scalar sphere/capsule path stays unchanged.
+    /// </summary>
+    public void SetVisual(Mesh mesh, Material material, float depthOffset)
+    {
+        if (!IsInitialized)
+        {
+            throw new InvalidOperationException("Body2DVisual3D used before initialization.");
+        }
+
+        if (!GodotObject.IsInstanceValid(mesh) ||
+            !GodotObject.IsInstanceValid(material))
+        {
+            throw new ArgumentException(
+                "Body2DVisual3D requires live mesh and material Resources.");
+        }
+
+        if (!float.IsFinite(depthOffset))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(depthOffset), "Body2DVisual3D depth must be finite.");
+        }
+
+        _depthOffset = depthOffset;
+        _mesh!.Mesh = mesh;
+        _mesh.MaterialOverride = material;
+    }
+
     private static Mesh BuildMesh(float radius, float length) =>
         length > radius * 2.0f
             ? new CapsuleMesh { Radius = radius, Height = length }

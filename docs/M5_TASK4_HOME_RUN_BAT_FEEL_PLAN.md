@@ -760,6 +760,16 @@ lies inside the length/radius capsule envelope; bat uses the shadowless accepted
 still uses its sphere path; roots contain no Bat-specific branch; 2D collider draw and all
 accepted physical outcomes are unchanged by presentation mode.
 
+**Completed 2026-07-30.** The dynamic cursor-tool slot now has the explicit
+`SetVisual(mesh, material, depth)` injection seam and a focused profile-driven presenter/factory.
+`LathedBat` builds 24 radial segments with authored wood and black-wrap vertex colours under
+one rough `PerPixel` material; the default glove route still calls the original scalar
+sphere/capsule path. `presentation_3d` proves all `1,728` face vertices remain inside the
+authoritative capsule, both packed colours survive, the accepted two-light rig stays
+shadowless, and the root contains only one generically named dynamic slot. Both presentation
+modes retain identical charged-bat physical telemetry. A live real-`K` preview confirmed the
+rounded barrel, taper, black handle, and clean runtime log.
+
 **Task G — Interactive verification and trace capture.** Launch through the configured Godot
 MCP server, use real `K`/pointer/button input, and perform weak free-swing plus left/right
 low/mid/full charged hits and a whiff. Inspect semantic state, physics telemetry, errors, and
