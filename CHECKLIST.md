@@ -4,7 +4,8 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-30, after the Home-Run Bat refinement Task C passed.
+Last updated: 2026-07-30, after the Home-Run Bat refinement Task H engineering
+gates passed; owner feel acceptance is pending.
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
@@ -153,9 +154,9 @@ its projectile half waits for the Task 5 guns. Task 3 (Meal) is owner-ACCEPTED
 engineering-complete, but its owner feel gate requested the ordered Home-Run Bat
 refinement below; the catalogue entry remains hidden until that refinement passes.
 Baseball is owner-ACCEPTED
-(2026-07-29). The quick suite is now 23 steps — added `corner_scoop` (pickup against
+(2026-07-29). The quick suite is now 24 steps — added `corner_scoop` (pickup against
 a wall), `object_budget`, `meal_consume`, `bat_swing`, and the `m5_meal` and
-`m5_baseball_bat` real-input journeys.
+`m5_baseball_bat` / `m5_homerun_bat` real-input journeys.
 
 The Boxing Glove mechanism is now the shared **cursor-tool** mechanism
 (`CursorToolController` + authored `CursorToolProfile` array); a cursor-tethered tool
@@ -185,6 +186,13 @@ the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the ba
       handle.
 - [ ] Task H — promoted journey, documentation, complete regression, and owner
       feel gate.
+  - [x] Engineering gate — `m5_homerun_bat` drives the real input queue through
+        an exact `600` routed-tick charge, one attributed impact, a `60`-tick
+        whole-game freeze, resumed launch, and recovery. The 24-step quick suite,
+        the 940-test domain suite, both bat scenarios, presentation regressions,
+        and both bat journeys pass in Mii3D and legacy.
+  - [ ] Owner gate — accept the side-by-side feel review. Only then record the
+        acceptance in `docs/DECISIONS.md` and make the catalogue entry visible.
 
 The buddy now has a hidden `200`-point hunger bar (owner decision 2026-07-29,
 `DECISIONS.md`): it eats what fits, and refuses what would overfill. The refusal is
@@ -194,10 +202,11 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
-**Next engineering action:** implement Home-Run Bat refinement Task H. The next
-owner feel gate is Task H, after charge, the physical swing, hit lag, audio, 3D
-presentation, and the promoted real-input journey are complete. The catalogue
-entry remains hidden until that gate passes. M4 is complete and owner-accepted.
+**Next action:** conduct the Home-Run Bat Task H owner feel review. Charge, the
+physical swing, hit lag, provisional audio, 3D presentation, and the promoted
+real-input journey are complete and green. The catalogue entry remains hidden
+until the owner accepts the feel; that acceptance is the next non-deferrable
+input. M4 is complete and owner-accepted.
 Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input

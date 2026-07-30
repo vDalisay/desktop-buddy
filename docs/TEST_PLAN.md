@@ -149,6 +149,12 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   the mapped end invariant: wood at the physical barrel/glint end, black wrap at
   the physical handle end. The Task C glint check requires both the live source
   and the Mii3D counterpart when that presentation mode is active.
+- The `m5_homerun_bat` journey runs at `--fixed-fps 120` through the queued real
+  key, pointer, primary, and secondary input paths. It selects the bat with `K`,
+  grips the physical handle, holds charge for exactly `600` routed physics ticks,
+  releases into one attributed home-run epoch, observes the whole-game freeze,
+  then proves launch resumes and the bat reaches recovery. Run it in both Mii3D
+  and legacy; keep `m5_baseball_bat` beside it as the weak free-swing journey.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
 - The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
   consecutive routed ticks within its `600`-tick settling window. Its verdict

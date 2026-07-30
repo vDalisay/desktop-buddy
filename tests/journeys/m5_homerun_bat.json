@@ -1,0 +1,21 @@
+{
+  "id": "m5_homerun_bat",
+  "description": "Select the Baseball Bat through real key input, grip its handle with primary, hold secondary for exactly 600 routed ticks, release a torso-targeted full-charge swing, then verify one attributed hit, the complete whole-game freeze, resumed launch, and recovery.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_homerun_bat",
+    "seed": 1,
+    "timeout_physics_ticks": 1440
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "homerun_key_selects_swing_bat" },
+    { "predicate": "homerun_grips_by_the_handle" },
+    { "predicate": "homerun_charge_is_exactly_600_ticks" },
+    { "predicate": "homerun_scores_one_attributed_impact" },
+    { "predicate": "homerun_whole_game_freeze_completes" },
+    { "predicate": "homerun_launch_resumes_after_freeze" },
+    { "predicate": "homerun_recovers_to_gripped" }
+  ]
+}

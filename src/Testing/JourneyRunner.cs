@@ -713,6 +713,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5BaseballBatAsync(state, lab);
         }
+        else if (exercise == "m5_homerun_bat")
+        {
+            await ExerciseM5HomeRunBatAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -745,7 +749,12 @@ public partial class JourneyRunner : Node
         state["lab_telemetry_visible"] = lab.TelemetryPanel.IsInitialized && lab.TelemetryPanel.Visible;
         lab.QueueFree();
         // QueueFree completes on the next idle frame. Let component teardown run
-        // before the runner writes its verdict and quits.
+        // before the runner writes its verdict and quits. Dynamic Godot Resources
+        // such as cursor-tool shapes also have managed wrappers; collect those
+        // while the native runtime is live, then give the rendering/physics
+        // servers one more frame to release their final RIDs.
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        GodotInteropShutdown.PrepareForQuit();
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
     }
 
@@ -920,6 +929,242 @@ public partial class JourneyRunner : Node
             "Journey",
             $"M5 bat pain={batImpact?.Pain:F2} impulse={batImpact?.Impulse:F1} " +
             $"part={batImpact?.Part} harmful={lab.Progress.IsContentHarmful(ContentIds.ToolBaseballBat)}");
+    }
+
+    /// <summary>
+    /// Promoted Task G trace: select the bat with its real key, acquire the
+    /// handle with primary, charge through exactly 600 routed physics ticks with
+    /// secondary, then release through a semantic torso-derived contact arc.
+    /// No component is commanded directly; all player intent enters through the
+    /// same queued key/pointer/button events as ordinary play.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5HomeRunBatAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        // The development telemetry panel occupies the left contact zone and
+        // consumes mouse buttons there. Hide it through its real lab key just
+        // as the Task G trace did; the journey must exercise the game, not a
+        // Control overlay sitting above it.
+        await M4ObjectScenarioSupport.SendKey(tree, Key.H);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.K);
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torsoAtSelection = lab.Buddy.Rig.Torso.GlobalPosition;
+        Vector2 openSpawn = new(
+            Mathf.Clamp(torsoAtSelection.X - 150.0f, room.Position.X + 40.0f, room.End.X - 40.0f),
+            Mathf.Clamp(torsoAtSelection.Y - 150.0f, room.Position.Y + 40.0f, room.End.Y - 40.0f));
+        await M4ObjectScenarioSupport.MovePointer(
+            tree, lab, openSpawn, 0);
+        bool spawned = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.CursorTools.IsActive,
+            30);
+
+        CursorToolProfile? profile = lab.CursorTools.ActiveProfile;
+        CursorToolBody? bat = lab.CursorTools.Body;
+        state["homerun_key_selects_swing_bat"] =
+            lab.Pipeline.SelectedTool == ToolId.BaseballBat &&
+            spawned &&
+            profile?.Swing is not null &&
+            bat is { IsElongated: true };
+        if (profile?.Swing is not { } swing || bat is null)
+        {
+            return;
+        }
+
+        SwingPlan plan = ChargedSwing.SwingPlanFor(
+            1.0f,
+            profile.HandleToTipRadius,
+            swing.ToConstants());
+        SwingTrajectoryPoint contact = ChargedSwing.SwingTrajectoryAt(
+            plan.WindupTicks +
+            Mathf.Clamp(Mathf.RoundToInt(plan.SweepTicks * 0.65f), 0, plan.SweepTicks - 1),
+            plan,
+            directionSign: 1,
+            swing.ToConstants());
+        Vector2 tipFromPivot =
+            new Vector2(0.0f, -profile.HandleToTipRadius).Rotated(contact.BarrelAngle);
+        Vector2 pivot = lab.Buddy.Rig.Torso.GlobalPosition - tipFromPivot;
+
+        // The final significant pointer travel is rightward, so the semantic
+        // direction resolver commits the canonical right swing at release.
+        Vector2 prePivot = pivot - Vector2.Right * 12.0f;
+        await M4ObjectScenarioSupport.MovePointer(
+            tree, lab, prePivot, 0);
+        await WaitPhysicsTicks(tree, 120);
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+        bool gripped = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.CursorTools.SwingState == ChargedSwingState.Gripped,
+            120);
+        Log.Info(
+            "Journey",
+            $"M5 home-run grip probe gripped={gripped} panel={lab.TelemetryPanel.Visible} " +
+            $"pointer_active={lab.Pointer.IsActive} pointer_seen={lab.Pointer.HasPointerInput} " +
+            $"primary={lab.Pointer.IsPrimaryHeld} input={lab.Pointer.ReceivedInputCount} " +
+            $"swing={lab.CursorTools.SwingState} cursor={lab.CursorTools.Cursor}");
+        await M4ObjectScenarioSupport.MovePointer(
+            tree, lab, pivot, MouseButtonMask.Left);
+        await WaitPhysicsTicks(tree, 60);
+
+        int homeRunImpactCount = 0;
+        AcceptedImpact homeRunImpact = default;
+        Vector2 centerAtImpact = Vector2.Zero;
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (impact.ContentId != ContentIds.ToolBaseballBat ||
+                impact.SwingEpoch <= 0 ||
+                impact.Pain <= 0.0f)
+            {
+                return;
+            }
+
+            homeRunImpactCount++;
+            homeRunImpact = impact;
+            if (homeRunImpactCount == 1)
+            {
+                centerAtImpact = WholeBuddyCenter(lab);
+            }
+        }
+
+        lab.Pipeline.ImpactAccepted += OnImpact;
+        await SetInputActionAsync(tree, InputActions.Secondary, pressed: true);
+        // The press frame enters CHARGING at tick zero; these are the exact 600
+        // routed charge ticks, not a wall-clock sleep.
+        bool enteredCharging = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.CursorTools.SwingState == ChargedSwingState.Charging,
+            3);
+        long routedAtChargeStart = lab.Buddy.RoutedTicks;
+        bool reachedChargeCap = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.CursorTools.SwingChargeTicks == swing.MaxChargeTicks,
+            swing.MaxChargeTicks + 2);
+        long routedChargeTicks = lab.Buddy.RoutedTicks - routedAtChargeStart;
+        int chargeTicksAtRelease = lab.CursorTools.SwingChargeTicks;
+        float chargeAtRelease = lab.CursorTools.SwingCharge;
+        int glintStartsAtRelease = bat.ChargeGlintStarts;
+
+        // Refresh the semantic contact point against the buddy's live torso
+        // after the five-second hold. Autonomy may have walked; the journey
+        // follows the target instead of relying on a stale pixel.
+        tipFromPivot =
+            new Vector2(0.0f, -profile.HandleToTipRadius).Rotated(contact.BarrelAngle);
+        pivot = lab.Buddy.Rig.Torso.GlobalPosition - tipFromPivot;
+        prePivot = pivot - Vector2.Right * 12.0f;
+        await M4ObjectScenarioSupport.MovePointer(
+            tree,
+            lab,
+            prePivot,
+            MouseButtonMask.Left | MouseButtonMask.Right);
+        await WaitPhysicsTicks(tree, 30);
+        await M4ObjectScenarioSupport.MovePointer(
+            tree,
+            lab,
+            pivot,
+            MouseButtonMask.Left | MouseButtonMask.Right);
+
+        await SetInputActionAsync(tree, InputActions.Secondary, pressed: false);
+        bool releaseCommitted = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.CursorTools.SwingEpoch > 0,
+            3);
+        int releasedEpoch = lab.CursorTools.SwingEpoch;
+        bool hit = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => homeRunImpactCount > 0,
+            120);
+        bool freezeCompleted = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.SwingHitLag.CompletionCount == 1,
+            120);
+        long routedAtCompletion = lab.Buddy.RoutedTicks;
+        await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Buddy.RoutedTicks >= routedAtCompletion + 12,
+            120);
+        bool launchResumed =
+            hit && WholeBuddyCenter(lab).DistanceTo(centerAtImpact) > 0.1f;
+        bool sawRecovery = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.CursorTools.SwingState == ChargedSwingState.Recovery,
+            120);
+        bool returnedToGrip = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.CursorTools.SwingState == ChargedSwingState.Gripped,
+            120);
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+
+        state["homerun_grips_by_the_handle"] = gripped;
+        state["homerun_charge_is_exactly_600_ticks"] =
+            reachedChargeCap &&
+            enteredCharging &&
+            routedChargeTicks == swing.MaxChargeTicks &&
+            chargeTicksAtRelease == swing.MaxChargeTicks &&
+            Mathf.IsEqualApprox(chargeAtRelease, 1.0f) &&
+            glintStartsAtRelease == 1;
+        state["homerun_scores_one_attributed_impact"] =
+            hit &&
+            releaseCommitted &&
+            homeRunImpactCount == 1 &&
+            homeRunImpact.ContentId == ContentIds.ToolBaseballBat &&
+            homeRunImpact.SwingEpoch == releasedEpoch;
+        state["homerun_whole_game_freeze_completes"] =
+            freezeCompleted &&
+            lab.SwingHitLag.TriggerCount == 1 &&
+            lab.SwingHitLag.TotalTicks == swing.HitLagMaxTicks &&
+            lab.SwingHitLag.FrozenFrameCount == swing.HitLagMaxTicks;
+        state["homerun_launch_resumes_after_freeze"] = launchResumed;
+        state["homerun_recovers_to_gripped"] = sawRecovery && returnedToGrip;
+
+        Log.Info(
+            "Journey",
+            $"M5 home-run charge={chargeTicksAtRelease}/{swing.MaxChargeTicks} " +
+            $"routed={routedChargeTicks} " +
+            $"epoch={releasedEpoch} impacts={homeRunImpactCount} " +
+            $"impulse={homeRunImpact.Impulse:F1} freeze=(" +
+            $"{lab.SwingHitLag.TriggerCount},{lab.SwingHitLag.FrozenFrameCount}) " +
+            $"recovery={sawRecovery}/{returnedToGrip} resumed={launchResumed}");
+    }
+
+    private static async System.Threading.Tasks.Task WaitPhysicsTicks(
+        SceneTree tree,
+        int ticks)
+    {
+        for (int tick = 0; tick < ticks; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+    }
+
+    private static async System.Threading.Tasks.Task SetInputActionAsync(
+        SceneTree tree,
+        StringName action,
+        bool pressed)
+    {
+        Input.ParseInputEvent(new InputEventAction
+        {
+            Action = action,
+            Pressed = pressed,
+            Strength = pressed ? 1.0f : 0.0f,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+    }
+
+    private static Vector2 WholeBuddyCenter(BuddyLab lab)
+    {
+        Vector2 weighted = Vector2.Zero;
+        float totalMass = 0.0f;
+        foreach (PuppetPartBody part in lab.Buddy.Rig.Parts)
+        {
+            weighted += part.GlobalPosition * part.Mass;
+            totalMass += part.Mass;
+        }
+
+        return totalMass > 0.0f ? weighted / totalMass : Vector2.Zero;
     }
 
     private async System.Threading.Tasks.Task ExerciseM35PresentationToggleAsync(

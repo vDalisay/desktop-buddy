@@ -3,7 +3,9 @@
 **Status:** Revised after architecture/feel audit, then after a second verification audit
 against the codebase (2026-07-30) that corrected the swing arithmetic, the missing swing-phase
 force cap, the free-swing caps, the victim-shake offset lane, and a stale test-count baseline.
-**The §5 owner gate is resolved in full (2026-07-30); Tasks A–D are complete.** Four
+**The §5 interaction-policy gate is resolved in full (2026-07-30); Tasks A–G are
+complete and Task H's engineering gates are green. The Task H owner feel gate is
+pending.** Four
 of the nine answers changed the design — cursor-travel aiming, a whole-game freeze,
 full-charge-only object freeze, and in-scope placeholder audio; see §5 and `docs/DECISIONS.md`
 ("Home-Run Bat Interaction Gate — Resolved in Full").
@@ -804,6 +806,16 @@ free-swing journey with its new upper bound. Update `docs/DECISIONS.md`, `CHECKL
 presentation regressions, and both bat journeys at `--fixed-fps 120`. Then conduct the
 side-by-side owner feel review. *Accept:* every automated gate is green and the owner accepts
 the feel before the catalogue entry becomes visible.
+
+**Engineering gate completed 2026-07-30; owner feel acceptance pending.** The promoted
+`m5_homerun_bat` journey uses the queued real input path and records
+`charge=600/600`, `routed=600`, `epoch=1`, `impacts=1`, `freeze=(1,60)`, resumed
+launch, and completed recovery. The 24-step quick suite (including the promoted
+journey), all 940 domain tests, `homerun_bat_feel`, `bat_swing`, `presentation_3d`,
+`presentation_look`, and both bat journeys pass at fixed 120 Hz; the focused
+scenario and journey matrix passes in both Mii3D and legacy. The catalogue entry
+remains hidden. Per the project decision discipline, `docs/DECISIONS.md` is not
+updated with feel acceptance until the owner actually grants it.
 
 ## 7. Risks and traps for the implementing agent
 
