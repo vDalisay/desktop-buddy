@@ -72,6 +72,9 @@ public partial class ChargedSwingComponent : Node
     private SwingImpactContext _published = SwingImpactContext.FreeSwing;
     private Vector2 _pivotInset;
 
+    /// <summary>Fired once on the routed tick that enters Charging.</summary>
+    public event Action? ChargeStarted;
+
     /// <summary>Fired once when a charge reaches the cap — the tip glint.</summary>
     public event Action? ChargeCompleted;
 
@@ -213,6 +216,12 @@ public partial class ChargedSwingComponent : Node
         }
 
         _phase = result.Phase;
+        if (before != ChargedSwingState.Charging &&
+            _phase.State == ChargedSwingState.Charging)
+        {
+            ChargeStarted?.Invoke();
+        }
+
         if (result.ChargeCompleted)
         {
             ChargeCompleted?.Invoke();

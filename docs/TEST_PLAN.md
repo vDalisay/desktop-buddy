@@ -139,8 +139,11 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   a stopped unrelated loose object, held gameplay/knockout/recovery clocks, the exact
   `599/600` object-freeze boundary, one cancel/resume transition, suppression of the
   glove slow-time writer, and victim-only shake through the ungated offset lane while
-  pose mode is Tracking. Audio and honest 3D bat checks join this same scenario in their
-  ordered tasks.
+  pose mode is Tracking. Task E2 proves exact one-shot charge-start, charge-complete,
+  release, and accepted-home-run audio edges; a tap omits completion, a charged whiff
+  omits impact, and the provisional component owns one player with four generated PCM
+  streams, a valid existing bus, profile-authored volume, and no Master-volume mutation.
+  The honest 3D bat checks join this same scenario in Task F.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
 - The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
   consecutive routed ticks within its `600`-tick settling window. Its verdict

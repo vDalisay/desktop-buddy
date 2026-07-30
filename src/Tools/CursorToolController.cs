@@ -149,6 +149,13 @@ public partial class CursorToolController : Node2D
     /// <summary>True when the named tool would be gripped and swung rather than only dragged.</summary>
     public bool IsSwingCapableTool(ToolId tool) => ProfileFor(tool)?.IsSwingCapable == true;
 
+    /// <summary>Fires once on the routed tick that charging begins.</summary>
+    public event Action? ChargeStarted
+    {
+        add => _swing.ChargeStarted += value;
+        remove => _swing.ChargeStarted -= value;
+    }
+
     /// <summary>Fires once per charge when it reaches the cap — the tip glint edge.</summary>
     public event Action? ChargeCompleted
     {

@@ -74,6 +74,7 @@ public partial class BuddyLab : Node2D
     [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
     [Export] public SwingHitLagComponent SwingHitLag { get; set; } = null!;
     [Export] public ImpactVisualOffsetComponent ImpactVisualOffset { get; set; } = null!;
+    [Export] public SwingAudioComponent SwingAudio { get; set; } = null!;
     [Export] public MoneyHudPresenter MoneyHud { get; set; } = null!;
     [Export] public BuddyVisualPresenter VisualPresenter { get; set; } = null!;
     [Export] public BuddyLookLightingRig LightingRig { get; set; } = null!;
@@ -118,6 +119,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
             !GodotObject.IsInstanceValid(SwingHitLag) ||
             !GodotObject.IsInstanceValid(ImpactVisualOffset) ||
+            !GodotObject.IsInstanceValid(SwingAudio) ||
             !GodotObject.IsInstanceValid(MoneyHud) ||
             !GodotObject.IsInstanceValid(VisualPresenter) ||
             !GodotObject.IsInstanceValid(LightingRig) ||
@@ -171,6 +173,7 @@ public partial class BuddyLab : Node2D
         ReactionAudio.Initialize();
         SwingHitLag.Initialize();
         ImpactVisualOffset.Initialize();
+        SwingAudio.Initialize();
         ImpactFeedback.Initialize();
         MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();

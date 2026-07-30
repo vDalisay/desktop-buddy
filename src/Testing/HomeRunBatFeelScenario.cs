@@ -764,6 +764,56 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"after={fullContact.ShakeAfterHitLag:F3}px " +
             $"tracking={fullContact.PoseStayedTrackingDuringHitLag}"));
 
+        checks.Add(new StartupCheck(
+            "placeholder_sounds_follow_semantic_swing_edges",
+            fullContact.AudioPlayCount == 4 &&
+            fullContact.AudioChargeStartedCount == 1 &&
+            fullContact.AudioChargeCompletedCount == 1 &&
+            fullContact.AudioSwingReleasedCount == 1 &&
+            fullContact.AudioHomeRunImpactCount == 1 &&
+            lowContact.AudioPlayCount == 3 &&
+            lowContact.AudioChargeStartedCount == 1 &&
+            lowContact.AudioChargeCompletedCount == 0 &&
+            lowContact.AudioSwingReleasedCount == 1 &&
+            lowContact.AudioHomeRunImpactCount == 1,
+            $"full=({fullContact.AudioPlayCount}," +
+            $"{fullContact.AudioChargeStartedCount}," +
+            $"{fullContact.AudioChargeCompletedCount}," +
+            $"{fullContact.AudioSwingReleasedCount}," +
+            $"{fullContact.AudioHomeRunImpactCount}) low=(" +
+            $"{lowContact.AudioPlayCount},{lowContact.AudioChargeStartedCount}," +
+            $"{lowContact.AudioChargeCompletedCount}," +
+            $"{lowContact.AudioSwingReleasedCount}," +
+            $"{lowContact.AudioHomeRunImpactCount})"));
+
+        checks.Add(new StartupCheck(
+            "charged_whiff_has_no_home_run_impact_sound",
+            whiffRecovery.AudioPlayCount == 3 &&
+            whiffRecovery.AudioChargeStartedCount == 1 &&
+            whiffRecovery.AudioChargeCompletedCount == 1 &&
+            whiffRecovery.AudioSwingReleasedCount == 1 &&
+            whiffRecovery.AudioHomeRunImpactCount == 0,
+            $"plays={whiffRecovery.AudioPlayCount} cues=(" +
+            $"{whiffRecovery.AudioChargeStartedCount}," +
+            $"{whiffRecovery.AudioChargeCompletedCount}," +
+            $"{whiffRecovery.AudioSwingReleasedCount}," +
+            $"{whiffRecovery.AudioHomeRunImpactCount})"));
+
+        checks.Add(new StartupCheck(
+            "placeholder_audio_is_procedural_and_bus_scoped",
+            fullContact.AudioGeneratedStreamCount == 4 &&
+            fullContact.AudioStreamIsGeneratedPcm &&
+            fullContact.AudioOwnsExactlyOnePlayer &&
+            fullContact.AudioBusExists &&
+            fullContact.AudioMasterVolumeUnchanged &&
+            fullContact.AudioVolumeMatchesProfile,
+            $"streams={fullContact.AudioGeneratedStreamCount} " +
+            $"pcm={fullContact.AudioStreamIsGeneratedPcm} " +
+            $"one_player={fullContact.AudioOwnsExactlyOnePlayer} " +
+            $"bus_exists={fullContact.AudioBusExists} " +
+            $"master_unchanged={fullContact.AudioMasterVolumeUnchanged} " +
+            $"profile_volume={fullContact.AudioVolumeMatchesProfile}"));
+
         messages.Add(
             $"task_d_contact impulse=({lowContact.MaximumImpulse:F1}," +
             $"{midContact.MaximumImpulse:F1},{fullContact.MaximumImpulse:F1}) " +
@@ -786,6 +836,13 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"{midObject.MaximumTravel:F1},{fullTipObject.MaximumTravel:F1}) " +
             $"tip_barrel_handle=({fullTipObject.MaximumTravel:F1}," +
             $"{fullBarrelObject.MaximumTravel:F1},{fullHandleObject.MaximumTravel:F1})");
+        messages.Add(
+            $"task_e2_audio full=({fullContact.AudioChargeStartedCount}," +
+            $"{fullContact.AudioChargeCompletedCount}," +
+            $"{fullContact.AudioSwingReleasedCount}," +
+            $"{fullContact.AudioHomeRunImpactCount}) whiff_impact=" +
+            $"{whiffRecovery.AudioHomeRunImpactCount} streams=" +
+            $"{fullContact.AudioGeneratedStreamCount}");
         return Finish(checks, messages);
     }
 
@@ -1004,7 +1061,18 @@ public sealed class HomeRunBatFeelScenario : IScenario
         float MaximumVictimShake,
         float MaximumOtherPartShake,
         float ShakeAfterHitLag,
-        bool PoseStayedTrackingDuringHitLag);
+        bool PoseStayedTrackingDuringHitLag,
+        int AudioGeneratedStreamCount,
+        int AudioPlayCount,
+        int AudioChargeStartedCount,
+        int AudioChargeCompletedCount,
+        int AudioSwingReleasedCount,
+        int AudioHomeRunImpactCount,
+        bool AudioStreamIsGeneratedPcm,
+        bool AudioOwnsExactlyOnePlayer,
+        bool AudioBusExists,
+        bool AudioMasterVolumeUnchanged,
+        bool AudioVolumeMatchesProfile);
 
     /// <summary>
     /// Release one real charged bat through the torso in an otherwise isolated
@@ -1027,6 +1095,10 @@ public sealed class HomeRunBatFeelScenario : IScenario
             return default;
         }
 
+        int masterBus = AudioServer.GetBusIndex("Master");
+        float masterVolumeBefore = masterBus >= 0
+            ? AudioServer.GetBusVolumeDb(masterBus)
+            : 0.0f;
         lab.Pipeline.SelectTool(ToolId.BaseballBat);
         Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
         lab.CursorTools.MoveCursor(torso + new Vector2(-140.0f, -100.0f));
@@ -1248,6 +1320,28 @@ public sealed class HomeRunBatFeelScenario : IScenario
         int hitLagTriggerCount = lab.SwingHitLag.TriggerCount;
         int frozenFrames = lab.SwingHitLag.FrozenFrameCount;
         int hitLagCancelCount = lab.SwingHitLag.CancelCount;
+        int audioGeneratedStreamCount = lab.SwingAudio.GeneratedStreamCount;
+        int audioPlayCount = lab.SwingAudio.PlayCount;
+        int audioChargeStartedCount = lab.SwingAudio.ChargeStartedCount;
+        int audioChargeCompletedCount = lab.SwingAudio.ChargeCompletedCount;
+        int audioSwingReleasedCount = lab.SwingAudio.SwingReleasedCount;
+        int audioHomeRunImpactCount = lab.SwingAudio.HomeRunImpactCount;
+        bool audioStreamIsGeneratedPcm =
+            lab.SwingAudio.Player.Stream is AudioStreamWav;
+        bool audioOwnsExactlyOnePlayer =
+            lab.SwingAudio.GetChildCount() == 1 &&
+            lab.SwingAudio.Player.GetParent() == lab.SwingAudio;
+        bool audioBusExists =
+            AudioServer.GetBusIndex(lab.SwingAudio.RoutedBus) >= 0;
+        bool audioMasterVolumeUnchanged =
+            masterBus < 0 ||
+            Mathf.IsEqualApprox(
+                AudioServer.GetBusVolumeDb(masterBus),
+                masterVolumeBefore);
+        bool audioVolumeMatchesProfile =
+            Mathf.IsEqualApprox(
+                lab.SwingAudio.Player.VolumeDb,
+                swing.AudioVolumeDb);
         lab.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return new BuddySwingProbe(
@@ -1277,7 +1371,18 @@ public sealed class HomeRunBatFeelScenario : IScenario
             maximumVictimShake,
             maximumOtherPartShake,
             shakeAfterHitLag,
-            sawHitLag && poseStayedTracking);
+            sawHitLag && poseStayedTracking,
+            audioGeneratedStreamCount,
+            audioPlayCount,
+            audioChargeStartedCount,
+            audioChargeCompletedCount,
+            audioSwingReleasedCount,
+            audioHomeRunImpactCount,
+            audioStreamIsGeneratedPcm,
+            audioOwnsExactlyOnePlayer,
+            audioBusExists,
+            audioMasterVolumeUnchanged,
+            audioVolumeMatchesProfile);
     }
 
     private static Vector2 WholeBuddyCenter(BuddyLab lab)
@@ -1648,7 +1753,12 @@ public sealed class HomeRunBatFeelScenario : IScenario
         int SwingEpoch,
         int WhiffPositiveImpacts,
         int RestingContactEpisodes,
-        int RestingPositiveImpacts);
+        int RestingPositiveImpacts,
+        int AudioPlayCount,
+        int AudioChargeStartedCount,
+        int AudioChargeCompletedCount,
+        int AudioSwingReleasedCount,
+        int AudioHomeRunImpactCount);
 
     private static async Task<WhiffRecoveryProbe> RunWhiffRecoveryProbe(SceneTree tree)
     {
@@ -1723,6 +1833,11 @@ public sealed class HomeRunBatFeelScenario : IScenario
 
         lab.Pipeline.ImpactAccepted -= OnImpact;
         lab.Pipeline.EpisodeAccepted -= OnEpisode;
+        int audioPlayCount = lab.SwingAudio.PlayCount;
+        int audioChargeStartedCount = lab.SwingAudio.ChargeStartedCount;
+        int audioChargeCompletedCount = lab.SwingAudio.ChargeCompletedCount;
+        int audioSwingReleasedCount = lab.SwingAudio.SwingReleasedCount;
+        int audioHomeRunImpactCount = lab.SwingAudio.HomeRunImpactCount;
         lab.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return new WhiffRecoveryProbe(
@@ -1731,7 +1846,12 @@ public sealed class HomeRunBatFeelScenario : IScenario
             epoch,
             whiffPositive,
             restingEpisodes,
-            restingPositive);
+            restingPositive,
+            audioPlayCount,
+            audioChargeStartedCount,
+            audioChargeCompletedCount,
+            audioSwingReleasedCount,
+            audioHomeRunImpactCount);
     }
 
     private static bool WithinFraction(float actual, float target, float fraction) =>

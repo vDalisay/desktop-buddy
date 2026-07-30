@@ -744,6 +744,16 @@ charge/release/impact/glint sounds (§4.8b). *Accept:* sounds fire on the semant
 nowhere else; nothing sampled enters the repo; the component writes no master volume and
 routes through the existing bus layout; a headless run emits no audio-device warnings.
 
+**Completed 2026-07-30.** One focused component now synthesizes four deterministic mono
+PCM clips once at startup and plays them through its single scene-authored
+`AudioStreamPlayer`. The cumulative physical scenario observes exact semantic counts:
+full charge plus impact is `(start, complete, release, impact) = (1,1,1,1)`, an RMB tap
+omits only completion, and a charged whiff never emits the impact cue. It also pins four
+generated `AudioStreamWav` resources, one owned player, the existing valid bus, the
+profile-authored `−6 dB` level, and unchanged Master volume. The focused headless run
+emitted no audio-device warning. These sounds remain explicitly provisional and sampled
+audio remains out of the repository.
+
 **Task F — Honest 3D bat.** Add `BatMeshBuilder`, `CursorToolVisual3D`, factory plumbing, and
 PerPixel materials. *Accept:* extend `Presentation3DScenario`/look checks: every lathed vertex
 lies inside the length/radius capsule envelope; bat uses the shadowless accepted rig; glove
