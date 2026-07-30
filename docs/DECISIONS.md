@@ -1056,6 +1056,13 @@ hidden until the revised feel is reviewed.
   `18` px, `0.20` s six-ray burst at the solver contact point. It is presentation-only,
   coexists with the existing impact ring and victim shake, and never mutates physics.
 
+## Home-Run Bat Task H Accepted (2026-07-30)
+
+The owner accepted the revised Home-Run Bat feel ("it's great"). Task H and the M5
+Baseball Bat slice are closed. `data/catalogue/tool_baseball_bat.tres` now carries
+`Visible = true`, so the accepted bat may appear in the shop. Its `20`-credit price
+remains the provisional FR-013.4 placeholder until Task 12 economy calibration.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

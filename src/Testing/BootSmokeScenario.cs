@@ -31,13 +31,29 @@ public sealed class BootSmokeScenario : IScenario
             catalogue.Count == CataloguePolicy.LaunchContentIds.Count,
             $"entries={catalogue.Count} expected={CataloguePolicy.LaunchContentIds.Count}"));
 
-        int shopEntries = CataloguePolicy.ShopEntries(catalogue).Count;
+        IReadOnlyList<CatalogueEntry> shop = CataloguePolicy.ShopEntries(catalogue);
+        int shopEntries = shop.Count;
         int selectable = CataloguePolicy.SelectableEntries(catalogue).Count;
         checks.Add(new StartupCheck(
             "unfinished_entries_are_not_shown",
             shopEntries < CataloguePolicy.LaunchContentIds.Count &&
             !CataloguePolicy.IsSelectable(catalogue, ContentIds.UpgradeStrength),
             $"shop={shopEntries} selectable={selectable}"));
+
+        bool acceptedBatShopVisible = false;
+        foreach (CatalogueEntry entry in shop)
+        {
+            if (entry.ContentId == ContentIds.ToolBaseballBat)
+            {
+                acceptedBatShopVisible = true;
+                break;
+            }
+        }
+
+        checks.Add(new StartupCheck(
+            "accepted_baseball_bat_is_shop_visible",
+            acceptedBatShopVisible,
+            $"visible={acceptedBatShopVisible} shop={shopEntries}"));
 
         var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
         bool loaded = packed is not null;
@@ -63,7 +79,7 @@ public sealed class BootSmokeScenario : IScenario
             checks.Add(new StartupCheck("sandbox_composed", false, "scene not loaded"));
         }
 
-        bool passed = report.Ok && loaded && composed;
+        bool passed = report.Ok && acceptedBatShopVisible && loaded && composed;
         return new ScenarioResult(passed, checks, messages);
     }
 }

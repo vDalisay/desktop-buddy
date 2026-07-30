@@ -681,4 +681,9 @@ running the suite" remains the failure mode this plan exists to prevent.
   scenario catalogue and journey catalogue on seed 1 (the only two reds were the documented
   window-only `owner_feedback_visual` and `lab_idle_soak` run without `--artifacts`, which
   passes when given one).
+- 2026-07-30 — **Task 4 Home-Run Bat refinement CLOSED — owner feel gate accepted.**
+  The owner accepted the revised low-to-floor charge placement, stronger full-charge
+  launch, staged `1/3/5`-second glints, and compact contact burst. Task H's promoted
+  journey and full regression are green, and `tool_baseball_bat.tres` is now
+  `Visible = true`. Its `20`-credit price remains provisional until Task 12.
   **Next: Task 5 — cursor-gun platform + Pistol.**

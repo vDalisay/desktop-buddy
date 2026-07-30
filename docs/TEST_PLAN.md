@@ -94,6 +94,8 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 
 ### Tools and Collision Attribution
 
+- The `boot_smoke` push gate validates the complete authored launch catalogue and
+  requires the owner-accepted Baseball Bat to be present in the filtered shop entries.
 - Glove and bat damage comes from physical contact rather than tool activation.
 - Boxing Glove cursor lag remains within the accepted response envelope; faster real strikes increase measured impulse/pain; the impact marker is centered on the solver contact point; maximum-pain/knockout hit-stop has a visibly slow early curve, is non-stacking, and restores the prior time scale.
 - Learned Boxing Glove harm raises both real hand bodies into a body-relative guard while the buddy travels away from the pointer. The guard direction follows pointer changes with bounded lag, never attaches to the physical glove, and applies an equal reaction so guard actuation cannot pull the puppet toward the threat. Guard-hand contact applies `0.5x` accepted impulse plus a matching physical counter-impulse; strikes around the hands remain unmodified.

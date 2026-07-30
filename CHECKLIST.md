@@ -4,8 +4,8 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-30, after the Home-Run Bat refinement Task H owner-feedback
-implementation passed its focused gates; revised feel acceptance is pending.
+Last updated: 2026-07-30, after the Home-Run Bat refinement Task H owner gate
+passed and the accepted bat became shop-visible.
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
@@ -150,9 +150,8 @@ boundary. Progression reset is deliberately **not** implemented — it waits on 
 owner's erase/preserve matrix. Task 2 (FR-014 budget) extracted the cap rule to
 `Domain/Interaction/LooseObjectAdmissionPolicy` and gated it with `object_budget`;
 its projectile half waits for the Task 5 guns. Task 3 (Meal) is owner-ACCEPTED
-(2026-07-30) and shop-visible. Task 4's original Baseball Bat slice is
-engineering-complete, but its owner feel gate requested the ordered Home-Run Bat
-refinement below; the catalogue entry remains hidden until that refinement passes.
+(2026-07-30) and shop-visible. Task 4's Home-Run Bat refinement is also
+owner-ACCEPTED (2026-07-30) and shop-visible.
 Baseball is owner-ACCEPTED
 (2026-07-29). The quick suite is now 24 steps — added `corner_scoop` (pickup against
 a wall), `object_budget`, `meal_consume`, `bat_swing`, and the `m5_meal` and
@@ -184,7 +183,7 @@ the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the ba
       and fixed the lathed mesh's reversed 2D→3D long axis; automation now pins
       the wooden barrel and glint to the physical tip and the black wrap to the
       handle.
-- [ ] Task H — promoted journey, documentation, complete regression, and owner
+- [x] Task H — promoted journey, documentation, complete regression, and owner
       feel gate.
   - [x] Engineering gate — `m5_homerun_bat` drives the real input queue through
         an exact `600` routed-tick charge, one attributed impact, a `60`-tick
@@ -197,8 +196,8 @@ the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the ba
         home-run emits one small solver-point impact burst. Focused feel,
         presentation, tool-feedback, weak-bat, and both real-input journey
         regressions pass in Mii3D and legacy.
-  - [ ] Owner gate — accept the side-by-side feel review. Only then record the
-        final acceptance in `docs/DECISIONS.md` and make the catalogue entry visible.
+  - [x] Owner gate — revised feel accepted ("it's great"); acceptance is recorded
+        in `docs/DECISIONS.md` and the catalogue entry is visible.
 
 The buddy now has a hidden `200`-point hunger bar (owner decision 2026-07-29,
 `DECISIONS.md`): it eats what fits, and refuses what would overfill. The refusal is
@@ -208,11 +207,9 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
-**Next action:** conduct the revised Home-Run Bat Task H owner feel review,
-including low-to-floor charge placement, the stronger full-charge launch,
-staged glints, and the contact burst. The catalogue entry remains hidden until
-the owner accepts the revised feel; that acceptance is the next non-deferrable
-input. M4 is complete and owner-accepted.
+**Next action:** begin M5 Task 5 (Pistol) from
+`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`. The Home-Run Bat Task H refinement is
+complete, owner-accepted, and shop-visible. M4 is complete and owner-accepted.
 Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input
