@@ -145,7 +145,10 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   streams, a valid existing bus, profile-authored volume, and no Master-volume mutation.
   Task F extends `presentation_3d` with the lathed mesh's full vertex-in-capsule
   envelope, authored packed wood/grip colours, rough PerPixel material, accepted
-  shadowless lighting rig, generic root slot, and unchanged glove sphere route.
+  shadowless lighting rig, generic root slot, unchanged glove sphere route, and
+  the mapped end invariant: wood at the physical barrel/glint end, black wrap at
+  the physical handle end. The Task C glint check requires both the live source
+  and the Mii3D counterpart when that presentation mode is active.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
 - The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
   consecutive routed ticks within its `600`-tick settling window. Its verdict

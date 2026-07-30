@@ -8,6 +8,7 @@ using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -258,7 +259,11 @@ public sealed class HomeRunBatFeelScenario : IScenario
         int chargeAt600 = lab.CursorTools.SwingChargeTicks;
         float shakeAt600 = bat.ChargeShakeAmplitude;
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-        bool glintWasVisible = bat.IsChargeGlintActive || lab.CursorToolVisual.IsGlintVisible;
+        bool sourceGlintWasVisible = bat.IsChargeGlintActive;
+        bool counterpartGlintWasVisible = lab.CursorToolVisual.IsGlintVisible;
+        bool glintWasVisible =
+            sourceGlintWasVisible &&
+            (lab.Mode != PresentationMode.Mii3D || counterpartGlintWasVisible);
         await Ticks(tree, 1);
         int chargeAt601 = lab.CursorTools.SwingChargeTicks;
         float shakeAt601 = bat.ChargeShakeAmplitude;
@@ -293,7 +298,9 @@ public sealed class HomeRunBatFeelScenario : IScenario
             glintWasVisible &&
             bat.VisualGlintLocalPosition.IsEqualApprox(new Vector2(0.0f, bat.Length * -0.5f)),
             $"edges={chargeCompletedEdges} starts={bat.ChargeGlintStarts} " +
-            $"visible={glintWasVisible} tip={bat.VisualGlintLocalPosition}"));
+            $"source_visible={sourceGlintWasVisible} " +
+            $"counterpart_visible={counterpartGlintWasVisible} mode={lab.Mode} " +
+            $"tip={bat.VisualGlintLocalPosition}"));
 
         // ---- cursor travel alone picks the side, through the release edge ----
         // A significant right drag followed by a significant left drag must use

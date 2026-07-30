@@ -106,7 +106,11 @@ public static class BatMeshBuilder
 
     private static Vector3 Point(Ring ring, float angle) => new(
         ring.Radius * Mathf.Cos(angle),
-        ring.Y,
+        // The authoritative capsule lives in 2D where +Y points down. The
+        // frontal 3D world maps that axis to -Y, so flip the lathe here: the
+        // wooden barrel at local 2D -Y must share the glint/collider tip rather
+        // than appearing at the physical handle end.
+        -ring.Y,
         ring.Radius * Mathf.Sin(angle));
 
     private static void AddVertex(SurfaceTool surface, Vector3 point, Color color)

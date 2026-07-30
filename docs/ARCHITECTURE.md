@@ -320,6 +320,9 @@ unshaded sphere/capsule scalar path. Focused kinds inject a mesh/material throug
 `Body2DVisual3D.SetVisual` without changing the 2D collider. The Baseball Bat's clean-room
 lathed mesh is vertex-coloured from the profile and lit by the same shadowless rig as the
 buddy; roots never branch on content IDs or construct its render Resources.
+Asymmetric 2D-authored meshes flip their local Y coordinate at build time: Godot 2D +Y points
+down while the frontal 3D plane +Y points up. This keeps semantic ends such as the bat's
+barrel/glint (`local 2D -Y`) and wrapped handle (`local 2D +Y`) aligned with the collider.
 
 The M3.6 expressive layer decorates that truth; it never replaces it. `BuddyPosePipeline` arbitrates the pose mode (`Performance` while the buddy behaves, `Tracking` while physics owns the read — grabs, knockouts, hard recoveries) and blends a performance weight between them. Every expressive contributor emits a **bounded offset**, and the presenter clamps the combined offset to `0.5 x part radius` before applying it, so a performance can never move a part far enough to misreport the physics pose. A Tracking cut sets the weight to zero, which snaps all display-only rotation (body yaw, head look-at) to zero in one frame while the committed semantic state (facing side) is remembered.
 

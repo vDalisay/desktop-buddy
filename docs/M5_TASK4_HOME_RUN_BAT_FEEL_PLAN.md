@@ -777,6 +777,24 @@ scene wiring; capture screenshots and an input trace. Fix discrepancies before t
 automation as final. *Accept:* no warnings/NaNs/missing Resources; visible 5-second
 shake/glint, whole-game freeze, recovery, and up-and-away launch match the scenario telemetry.
 
+**Completed 2026-07-30.** Fresh live rigs covered weak free-swing and both directions at
+released charge `0.0067 / 0.4983 / 1.0`. The charged hits latched the requested `+1/-1`
+direction, created one epoch, emitted one impact cue, and measured `6 / 33 / 60` frozen
+frames; full hits resumed into recovery, while the full charged whiff scored zero, requested
+no freeze, and emitted `(start, complete, release, impact) = (1,1,1,0)`. The clean full-charge
+capture observed tick `600`, one glint start, active source and Mii3D counterpart glints, and
+the black-wrap/wood visual under the real `K`, pointer, primary, and secondary path. Fresh
+runtime logs contained no errors, NaNs, or missing Resources. Raw screenshots and the
+first-party input trace remain throwaway artifacts under `.artifacts/task-g/`, ready for
+Task H hardening.
+
+The visual pass found one real discrepancy: the asymmetric lathe had treated 3D local Y as
+2D local Y, so the black handle appeared on the physical barrel/glint end. The builder now
+applies the established 2D-Y-down → 3D-Y-up mapping. `presentation_3d` pins wood at the
+mapped barrel extreme and grip at the mapped handle extreme, and `homerun_bat_feel` now
+requires the Mii3D slot's glint as well as the source edge instead of the earlier permissive
+OR. Both focused scenarios pass in Mii3D and legacy after the correction.
+
 **Task H — Promote automation, documentation, and owner feel gate.** Harden the captured trace
 into `tests/journeys/m5_homerun_bat.json` using semantic targets and real input (select `K`,
 hold primary, hold secondary for exactly `600` routed ticks, release, assert one attributed

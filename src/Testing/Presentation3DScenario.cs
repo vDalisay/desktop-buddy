@@ -100,9 +100,11 @@ public sealed class Presentation3DScenario : IScenario
             batVisual.RoughnessMatches &&
             batVisual.HasWoodColor &&
             batVisual.HasGripColor &&
+            batVisual.BarrelAndGripEndsAligned &&
             batVisual.ShadowlessAcceptedRig,
             $"per_pixel={batVisual.PerPixel} roughness={batVisual.RoughnessMatches} " +
             $"wood={batVisual.HasWoodColor} grip={batVisual.HasGripColor} " +
+            $"ends_aligned={batVisual.BarrelAndGripEndsAligned} " +
             $"shadowless_rig={batVisual.ShadowlessAcceptedRig} " +
             $"colors={batVisual.ColorCount} first={batVisual.FirstColor}"));
         checks.Add(new StartupCheck(
@@ -242,6 +244,7 @@ public sealed class Presentation3DScenario : IScenario
         bool RoughnessMatches,
         bool HasWoodColor,
         bool HasGripColor,
+        bool BarrelAndGripEndsAligned,
         bool ShadowlessAcceptedRig,
         bool GenericSlotOnly,
         int ColorCount,
@@ -277,12 +280,15 @@ public sealed class Presentation3DScenario : IScenario
 
         bool hasWood = false;
         bool hasGrip = false;
+        bool endsAligned = false;
         int colorCount = 0;
         Color firstColor = default;
         if (mesh is ArrayMesh arrayMesh && arrayMesh.GetSurfaceCount() > 0 && profile is not null)
         {
             Godot.Collections.Array arrays = arrayMesh.SurfaceGetArrays(0);
             Color[] colors = arrays[(int)Mesh.ArrayType.Color].AsColorArray();
+            Vector3[] rawVertices =
+                arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
             colorCount = colors.Length;
             firstColor = colors.Length > 0 ? colors[0] : default;
             foreach (Color color in colors)
@@ -292,6 +298,32 @@ public sealed class Presentation3DScenario : IScenario
                 hasWood |= PackedColorMatches(color, profile.VisualColor);
                 hasGrip |= profile.Swing is { } swing &&
                            PackedColorMatches(color, swing.GripColor);
+            }
+
+            if (rawVertices.Length == colors.Length && rawVertices.Length > 0 &&
+                profile.Swing is { } authoredSwing)
+            {
+                float minimumY = float.PositiveInfinity;
+                float maximumY = float.NegativeInfinity;
+                foreach (Vector3 vertex in rawVertices)
+                {
+                    minimumY = Mathf.Min(minimumY, vertex.Y);
+                    maximumY = Mathf.Max(maximumY, vertex.Y);
+                }
+
+                bool woodAtBarrel = false;
+                bool gripAtHandle = false;
+                for (int index = 0; index < rawVertices.Length; index++)
+                {
+                    woodAtBarrel |=
+                        Mathf.Abs(rawVertices[index].Y - maximumY) <= 0.001f &&
+                        PackedColorMatches(colors[index], profile.VisualColor);
+                    gripAtHandle |=
+                        Mathf.Abs(rawVertices[index].Y - minimumY) <= 0.001f &&
+                        PackedColorMatches(colors[index], authoredSwing.GripColor);
+                }
+
+                endsAligned = woodAtBarrel && gripAtHandle;
             }
         }
 
@@ -319,6 +351,7 @@ public sealed class Presentation3DScenario : IScenario
             roughnessMatches,
             hasWood,
             hasGrip,
+            endsAligned,
             shadowlessRig,
             genericSlotOnly,
             colorCount,
