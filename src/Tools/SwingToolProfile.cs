@@ -126,7 +126,23 @@ public partial class SwingToolProfile : GameResource
 
     [Export(PropertyHint.Range, "0,10000000,1,or_greater")] public float GripStiffness { get; set; } = 900_000.0f;
     [Export(PropertyHint.Range, "0,1000000,1,or_greater")] public float GripDamping { get; set; } = 120_000.0f;
-    [Export(PropertyHint.Range, "1,10000000,1,or_greater")] public float SwingTorqueCap { get; set; } = 2_000_000.0f;
+
+    /// <summary>
+    /// Dedicated linear pivot gains. The ordinary cursor tether is intentionally
+    /// soft; reusing it during a 66 rad/s swing reaches the force cap only after
+    /// the handle has already drifted far outside its laboratory tolerance.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,1000000,1,or_greater")] public float SwingAnchorStiffness { get; set; } = 240_000.0f;
+    [Export(PropertyHint.Range, "0,100000,1,or_greater")] public float SwingAnchorDamping { get; set; } = 1_000.0f;
+
+    /// <summary>
+    /// Dedicated angular trajectory gains. Grip settles to zero velocity;
+    /// swinging tracks a discontinuous high-speed command, so sharing one
+    /// damping value makes either the hold or the strike wrong.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,10000000,1,or_greater")] public float SwingServoStiffness { get; set; } = 50_000.0f;
+    [Export(PropertyHint.Range, "0,5000000,1,or_greater")] public float SwingServoDamping { get; set; } = 120_000.0f;
+    [Export(PropertyHint.Range, "1,100000000,1,or_greater")] public float SwingTorqueCap { get; set; } = 70_000_000.0f;
 
     /// <summary>
     /// The engine-free constants the pure swing rules run on. Tick-rate comes
@@ -207,6 +223,10 @@ public partial class SwingToolProfile : GameResource
         RequireFinitePositive(errors, SwingTorqueCap, nameof(SwingTorqueCap));
         RequireFiniteNonNegative(errors, GripStiffness, nameof(GripStiffness));
         RequireFiniteNonNegative(errors, GripDamping, nameof(GripDamping));
+        RequireFiniteNonNegative(errors, SwingAnchorStiffness, nameof(SwingAnchorStiffness));
+        RequireFiniteNonNegative(errors, SwingAnchorDamping, nameof(SwingAnchorDamping));
+        RequireFiniteNonNegative(errors, SwingServoStiffness, nameof(SwingServoStiffness));
+        RequireFiniteNonNegative(errors, SwingServoDamping, nameof(SwingServoDamping));
         RequireFiniteNonNegative(errors, ShakeMaxAmplitudePx, nameof(ShakeMaxAmplitudePx));
         RequireFinitePositive(errors, ShakePrimaryHz, nameof(ShakePrimaryHz));
         RequireFinitePositive(errors, ShakeSecondaryHz, nameof(ShakeSecondaryHz));

@@ -130,6 +130,10 @@ public partial class CursorToolController : Node2D
 
     /// <summary>Monotonic identity of the running swing; <c>0</c> before the first release.</summary>
     public int SwingEpoch => _swing.SwingEpoch;
+    public float ReleasedSwingCharge => _swing.ReleasedCharge;
+    public int SwingTicksInState => _swing.SwingTicksInState;
+    public Vector2 LatchedSwingPivot => _swing.LatchedPivot;
+    public SwingPlan CurrentSwingPlan => _swing.CurrentPlan;
 
     /// <summary>The impact context the live collider is carrying into the pain pipeline.</summary>
     public SwingImpactContext SwingContext => _swing.Context;
@@ -239,6 +243,9 @@ public partial class CursorToolController : Node2D
         Vector2 cursorVelocity = dt > 0.0f ? (_cursor - _previousCursor) / dt : Vector2.Zero;
         ChargedSwingDrive drive = _swing.Tick(body, _cursor, cursorVelocity, dt);
         body.SetSwingContext(drive.Context);
+        body.ContinuousCd = drive.State == ChargedSwingState.Swinging
+            ? RigidBody2D.CcdMode.CastShape
+            : RigidBody2D.CcdMode.Disabled;
         body.SetChargeVisual(
             drive.State == ChargedSwingState.Charging ? drive.Charge : 0.0f,
             profile.Swing);

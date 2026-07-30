@@ -133,7 +133,8 @@ internal static class ScenarioSteps
     public static async Task<BuddyLab?> CreateControlledImpactLab(
         SceneTree tree,
         float maximumPain,
-        float maximumImpulse = 40.0f)
+        float maximumImpulse = 40.0f,
+        float curveFloorImpulse = 10.0f)
     {
         PackedScene? packed = GD.Load<PackedScene>("res://scenes/buddy_lab.tscn");
         if (packed is null)
@@ -142,11 +143,16 @@ internal static class ScenarioSteps
         }
 
         BuddyLab lab = packed.Instantiate<BuddyLab>();
+        bool zeroPainPlateau = curveFloorImpulse > 10.0f;
         lab.Pipeline.Profile = new PainConversionProfile
         {
             ResourceName = "ScenarioControlledPainConversion",
-            ImpulseAnchors = new[] { 10.0f, maximumImpulse },
-            PainAnchors = new[] { 0.0f, maximumPain },
+            ImpulseAnchors = zeroPainPlateau
+                ? new[] { 10.0f, curveFloorImpulse, maximumImpulse }
+                : new[] { 10.0f, maximumImpulse },
+            PainAnchors = zeroPainPlateau
+                ? new[] { 0.0f, 0.0f, maximumPain }
+                : new[] { 0.0f, maximumPain },
             MinimumImpulse = 10.0f,
             CashPerPain = 1.0,
         };

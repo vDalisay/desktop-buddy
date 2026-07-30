@@ -85,6 +85,17 @@ public partial class ChargedSwingComponent : Node
     public int DirectionSign => _phase.DirectionSign;
     public bool IsGripHeld => _grip;
     public bool IsChargeHeld => _chargeHeld;
+    public float ReleasedCharge => _phase.ReleasedCharge;
+    public int SwingTicksInState => _phase.TicksInState;
+    public Vector2 LatchedPivot => ToGodot(_phase.Pivot);
+
+    /// <summary>The immutable plan currently being executed, or an invalid default outside a swing.</summary>
+    public SwingPlan CurrentPlan =>
+        _swing is not null && _profile is not null &&
+        _phase.State is ChargedSwingState.Swinging or ChargedSwingState.Recovery
+            ? ChargedSwing.SwingPlanFor(
+                _phase.ReleasedCharge, _profile.HandleToTipRadius, _constants)
+            : default;
 
     /// <summary>The impact context the live body should carry right now.</summary>
     public SwingImpactContext Context => _published;
@@ -244,7 +255,8 @@ public partial class ChargedSwingComponent : Node
         Vector2 force = Tether(
             _anchor - body.GlobalPosition,
             body.LinearVelocity - anchorVelocity,
-            profile,
+            profile.Stiffness,
+            profile.Damping,
             swing.FreeSwingForceCap);
 
         return new ChargedSwingDrive(
@@ -284,7 +296,8 @@ public partial class ChargedSwingComponent : Node
         Vector2 force = Tether(
             _anchor - handlePoint,
             PointVelocity(body, handleOffset) - anchorVelocity,
-            profile,
+            profile.Stiffness,
+            profile.Damping,
             profile.MaximumForce);
 
         // While charging the upright target leans away from the swing side —
@@ -309,8 +322,9 @@ public partial class ChargedSwingComponent : Node
     /// curve. The swing keeps its own much larger force cap because holding a
     /// pivot through a rotation is a centripetal load, not merely a constraint.
     ///
-    /// The arc's trajectory servo is the one piece of the swing this slice does
-    /// not drive yet; the tether already holds the handle where it was released.
+    /// The trajectory servo follows both the scripted barrel angle and its
+    /// nonzero commanded velocity. An ordinary settling servo would damp the
+    /// requested spin toward zero and arrive below the authored tip speed.
     /// </summary>
     private ChargedSwingDrive HoldPivot(
         CursorToolBody body,
@@ -324,8 +338,45 @@ public partial class ChargedSwingComponent : Node
         Vector2 force = Tether(
             pivot - handlePoint,
             PointVelocity(body, handleOffset),
-            profile,
+            swinging ? swing.SwingAnchorStiffness : profile.Stiffness,
+            swinging ? swing.SwingAnchorDamping : profile.Damping,
             swinging ? swing.SwingAnchorForceCap : profile.MaximumForce);
+
+        float torque = 0.0f;
+        bool appliesTorque = !swinging;
+        if (swinging)
+        {
+            SwingPlan plan = ChargedSwing.SwingPlanFor(
+                _phase.ReleasedCharge, profile.HandleToTipRadius, _constants);
+            SwingTrajectoryPoint target = ChargedSwing.SwingTrajectoryAt(
+                _phase.TicksInState, plan, _phase.DirectionSign, _constants);
+            SwingTrajectoryServoResult servo = SwingTrajectoryServo.Evaluate(
+                new SwingTrajectoryServoInput(
+                    target.BarrelAngle - body.GlobalRotation,
+                    body.AngularVelocity,
+                    target.TargetAngularVelocity,
+                    swing.SwingServoStiffness,
+                    swing.SwingServoDamping,
+                    swing.SwingTorqueCap));
+            if (target.IsValid && servo.IsValid)
+            {
+                // The pivot force is applied at the handle and therefore
+                // contributes torque of its own. The trajectory servo commands
+                // the desired *net* torque; compensate the handle-force moment
+                // before applying the motor torque or the two add together and
+                // overshoot the authored angular velocity by nearly 2x.
+                float handleForceTorque = handleOffset.Cross(force);
+                torque = Mathf.Clamp(
+                    servo.Torque - handleForceTorque,
+                    -swing.SwingTorqueCap,
+                    swing.SwingTorqueCap);
+                appliesTorque = true;
+            }
+        }
+        else
+        {
+            torque = UprightTorque(body, 0.0f, swing, profile);
+        }
 
         return new ChargedSwingDrive(
             _phase.State,
@@ -333,8 +384,8 @@ public partial class ChargedSwingComponent : Node
             force,
             handleOffset,
             OwnsRotation: true,
-            AppliesTorque: !swinging,
-            swinging ? 0.0f : UprightTorque(body, 0.0f, swing, profile),
+            appliesTorque,
+            torque,
             _published,
             Charge,
             _phase.DirectionSign);
@@ -432,14 +483,15 @@ public partial class ChargedSwingComponent : Node
     private static Vector2 Tether(
         Vector2 error,
         Vector2 relativeVelocity,
-        CursorToolProfile profile,
+        float stiffness,
+        float damping,
         float maximumForce)
     {
         GrabTetherResult result = GrabTether.Evaluate(new GrabTetherInput(
             ToNumerics(error),
             ToNumerics(relativeVelocity),
-            profile.Stiffness,
-            profile.Damping,
+            stiffness,
+            damping,
             maximumForce));
         return ToGodot(result.Force);
     }

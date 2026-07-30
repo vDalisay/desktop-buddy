@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
@@ -39,6 +40,21 @@ public sealed class HomeRunBatFeelScenario : IScenario
     private const float CurveMaximumImpulse = 6000.0f;
 
     private const float CurveMaximumPain = 10.0f;
+
+    // Laboratory-set after the production collider/servo probe was measured.
+    // They are deliberately ratios with margin, not fragile strict ordering:
+    // the 0/300/600-tick reference run measured 1.31× then 3.54× impulse,
+    // and 1.22× then 1.10× post-hit COM travel.
+    private const float MinimumMidToLowImpulseRatio = 1.20f;
+    private const float MinimumFullToMidImpulseRatio = 2.50f;
+    private const float MinimumMidToLowTravelRatio = 1.15f;
+    private const float MinimumFullToMidTravelRatio = 1.05f;
+
+    // Distal barrel sweet spot (70 px from the handle on the 83 px lever),
+    // where a tangential swing meets the side of the barrel. The geometric
+    // outermost end cap has a longitudinal normal and only produces a glancing
+    // contact under tangential motion, so it is not the "tip hit" players mean.
+    private const float TipContactRadiusFraction = 70.0f / 83.0f;
 
     public string Id => "homerun_bat_feel";
 
@@ -302,10 +318,17 @@ public sealed class HomeRunBatFeelScenario : IScenario
         int firstEpoch = lab.CursorTools.SwingEpoch;
         bool firstSwingReleased = lab.CursorTools.SwingState == ChargedSwingState.Swinging &&
                                   firstReleasedDirection == -1;
+        Vector2 firstPivot = lab.CursorTools.LatchedSwingPivot;
+        float firstReleasedCharge = lab.CursorTools.ReleasedSwingCharge;
         lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(30.0f, 0.0f));
         await Ticks(tree, 1);
         bool firstDirectionLocked = lab.CursorTools.SwingDirectionSign == -1 &&
-                                    lab.CursorTools.SwingEpoch == firstEpoch;
+                                    lab.CursorTools.SwingEpoch == firstEpoch &&
+                                    lab.CursorTools.LatchedSwingPivot.DistanceTo(firstPivot) <= 0.001f &&
+                                    Mathf.IsEqualApprox(
+                                        lab.CursorTools.ReleasedSwingCharge,
+                                        firstReleasedCharge);
+        SwingMeasurement fullSwing = await MeasureSwing(tree, lab, bat);
 
         checks.Add(new StartupCheck(
             "dragging_right_then_left_swings_left",
@@ -318,9 +341,11 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"threshold={lab.CursorTools.ActiveProfile!.Swing!.DirectionTravelThreshold:F1} " +
             $"direction_before_release={firstReleasedDirection}"));
         checks.Add(new StartupCheck(
-            "pointer_motion_after_release_cannot_change_direction",
+            "pointer_motion_after_release_cannot_change_pivot_direction_or_charge",
             firstDirectionLocked,
-            $"direction={lab.CursorTools.SwingDirectionSign} epoch={lab.CursorTools.SwingEpoch}"));
+            $"direction={lab.CursorTools.SwingDirectionSign} epoch={lab.CursorTools.SwingEpoch} " +
+            $"pivot={firstPivot}->{lab.CursorTools.LatchedSwingPivot} " +
+            $"charge={firstReleasedCharge:F3}->{lab.CursorTools.ReleasedSwingCharge:F3}"));
 
         bool recoveredFromFirst = await WaitForState(
             tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
@@ -333,7 +358,7 @@ public sealed class HomeRunBatFeelScenario : IScenario
         await Ticks(tree, 1);
         lab.CursorTools.MoveCursor(lab.CursorTools.Cursor + new Vector2(24.0f, 0.0f));
         await Ticks(tree, 1);
-        await Ticks(tree, 90);
+        await Ticks(tree, 300);
         float rightLeanDegrees = Mathf.RadToDeg(Mathf.Wrap(
             bat.GlobalRotation, -Mathf.Pi, Mathf.Pi));
         lab.CursorTools.SetChargeHeld(false);
@@ -345,6 +370,7 @@ public sealed class HomeRunBatFeelScenario : IScenario
         await Ticks(tree, 1);
         bool secondDirectionLocked = lab.CursorTools.SwingDirectionSign == 1 &&
                                      lab.CursorTools.SwingEpoch == secondEpoch;
+        SwingMeasurement midSwing = await MeasureSwing(tree, lab, bat);
 
         checks.Add(new StartupCheck(
             "mirrored_drags_produce_mirrored_swings",
@@ -361,6 +387,41 @@ public sealed class HomeRunBatFeelScenario : IScenario
 
         bool recoveredFromSecond = await WaitForState(
             tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+
+        // The RMB-tap swing is a real minimum-charge arc. Measure it separately
+        // so charge bands cannot all collapse to one saturated speed.
+        bool settledBeforeLow = await WaitForBatSettled(tree, lab, bat, 600);
+        lab.CursorTools.SetChargeHeld(true);
+        await Ticks(tree, 1);
+        lab.CursorTools.SetChargeHeld(false);
+        await Ticks(tree, 1);
+        SwingMeasurement lowSwing = await MeasureSwing(tree, lab, bat);
+        bool recoveredFromLow = await WaitForState(
+            tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+
+        checks.Add(new StartupCheck(
+            "charged_swing_tip_speed_tracks_non_overlapping_targets",
+            fullSwing.SawSwing &&
+            midSwing.SawSwing &&
+            lowSwing.SawSwing &&
+            settledBeforeLow &&
+            lowSwing.PeakTipSpeed < midSwing.PeakTipSpeed &&
+            midSwing.PeakTipSpeed < fullSwing.PeakTipSpeed &&
+            WithinFraction(lowSwing.PeakTipSpeed, lowSwing.TargetTipSpeed, 0.20f) &&
+            WithinFraction(midSwing.PeakTipSpeed, midSwing.TargetTipSpeed, 0.20f) &&
+            WithinFraction(fullSwing.PeakTipSpeed, fullSwing.TargetTipSpeed, 0.20f),
+            $"settled={settledBeforeLow} " +
+            $"low={lowSwing.PeakTipSpeed:F0}/{lowSwing.TargetTipSpeed:F0} " +
+            $"mid={midSwing.PeakTipSpeed:F0}/{midSwing.TargetTipSpeed:F0} " +
+            $"full={fullSwing.PeakTipSpeed:F0}/{fullSwing.TargetTipSpeed:F0}"));
+
+        checks.Add(new StartupCheck(
+            "the_handle_pivot_holds_through_a_full_charge_swing",
+            fullSwing.SawSwing &&
+            fullSwing.SawCastShapeCcd &&
+            fullSwing.MaximumPivotDrift <= 18.0f,
+            $"drift={fullSwing.MaximumPivotDrift:F2}px ccd={fullSwing.SawCastShapeCcd} " +
+            $"peak_omega={fullSwing.PeakAngularSpeed:F1}rad/s"));
 
         // ---- releasing the grip is the safe charge cancel ----
         int epochBeforeCancel = lab.CursorTools.SwingEpoch;
@@ -387,6 +448,7 @@ public sealed class HomeRunBatFeelScenario : IScenario
         checks.Add(new StartupCheck(
             "releasing_the_grip_cancels_without_a_swing_or_pain",
             recoveredFromSecond &&
+            recoveredFromLow &&
             cancelWasCharging &&
             returnedToFollow &&
             lab.CursorTools.SwingEpoch == epochBeforeCancel &&
@@ -462,8 +524,191 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"free_swing_pain={freeSwing?.Pain:F2} benchmark_peak={benchmarkPeak:F0} " +
             $"flick_peak={flickPeak:F0} barrel_from_up={barrelDegrees:F2}deg " +
             $"charge=({chargeAt599},{chargeAt600},{chargeAt601}) " +
-            $"directions=({firstReleasedDirection},{secondReleasedDirection})");
-        return Finish(checks, messages, lab);
+            $"directions=({firstReleasedDirection},{secondReleasedDirection}) " +
+            $"tip_speed=({lowSwing.PeakTipSpeed:F0},{midSwing.PeakTipSpeed:F0}," +
+            $"{fullSwing.PeakTipSpeed:F0})");
+
+        // Contact envelopes use fresh isolated labs. Keeping the open-air/glove
+        // host alive would put two complete rigs in one World2D and let them
+        // become accidental collision partners.
+        float weakFreeSwingImpulse = freeSwing?.RawImpulse ?? 0.0f;
+        lab.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+        BuddySwingProbe lowContact = await RunBuddySwingProbe(tree, 0, 0.65f);
+        BuddySwingProbe midContact = await RunBuddySwingProbe(tree, 300, 0.65f);
+        BuddySwingProbe fullContact = await RunBuddySwingProbe(tree, 600, 0.65f);
+        BuddySwingProbe offsetFullContact =
+            await RunBuddySwingProbe(tree, 600, 0.65f, radialOffsetRadii: 1.0f);
+        LooseObjectSwingProbe lowObject = await RunLooseObjectSwingProbe(
+            tree, 0, TipContactRadiusFraction);
+        LooseObjectSwingProbe midObject = await RunLooseObjectSwingProbe(
+            tree, 300, TipContactRadiusFraction);
+        LooseObjectSwingProbe fullTipObject = await RunLooseObjectSwingProbe(
+            tree, 600, TipContactRadiusFraction);
+        LooseObjectSwingProbe fullBarrelObject =
+            await RunLooseObjectSwingProbe(tree, 600, contactRadiusFraction: 0.66f);
+        LooseObjectSwingProbe fullHandleObject =
+            await RunLooseObjectSwingProbe(tree, 600, contactRadiusFraction: 0.24f);
+        GrazeThenHitProbe grazeThenHit = await RunGrazeThenHitProbe(tree);
+        WhiffRecoveryProbe whiffRecovery = await RunWhiffRecoveryProbe(tree);
+
+        checks.Add(new StartupCheck(
+            "charged_swing_contact_probe_reaches_the_buddy",
+            lowContact.PositiveImpactCount == 1 &&
+            midContact.PositiveImpactCount == 1 &&
+            fullContact.PositiveImpactCount == 1,
+            $"positive=({lowContact.PositiveImpactCount}," +
+            $"{midContact.PositiveImpactCount},{fullContact.PositiveImpactCount}) " +
+            $"impulse=({lowContact.MaximumImpulse:F1},{midContact.MaximumImpulse:F1}," +
+            $"{fullContact.MaximumImpulse:F1})"));
+
+        checks.Add(new StartupCheck(
+            "charge_scales_measured_impulse_by_laboratory_ratios",
+            midContact.MaximumImpulse >=
+                lowContact.MaximumImpulse * MinimumMidToLowImpulseRatio &&
+            fullContact.MaximumImpulse >=
+                midContact.MaximumImpulse * MinimumFullToMidImpulseRatio,
+            $"impulse=({lowContact.MaximumImpulse:F1},{midContact.MaximumImpulse:F1}," +
+            $"{fullContact.MaximumImpulse:F1}) ratios=(" +
+            $"{Ratio(midContact.MaximumImpulse, lowContact.MaximumImpulse):F2}," +
+            $"{Ratio(fullContact.MaximumImpulse, midContact.MaximumImpulse):F2}) " +
+            $"minimum=({MinimumMidToLowImpulseRatio:F2}," +
+            $"{MinimumFullToMidImpulseRatio:F2})"));
+
+        checks.Add(new StartupCheck(
+            "charge_scales_post_hit_whole_buddy_travel_by_laboratory_ratios",
+            midContact.MaximumTravel >=
+                lowContact.MaximumTravel * MinimumMidToLowTravelRatio &&
+            fullContact.MaximumTravel >=
+                midContact.MaximumTravel * MinimumFullToMidTravelRatio,
+            $"travel=({lowContact.MaximumTravel:F2},{midContact.MaximumTravel:F2}," +
+            $"{fullContact.MaximumTravel:F2}) ratios=(" +
+            $"{Ratio(midContact.MaximumTravel, lowContact.MaximumTravel):F2}," +
+            $"{Ratio(fullContact.MaximumTravel, midContact.MaximumTravel):F2}) " +
+            $"minimum=({MinimumMidToLowTravelRatio:F2}," +
+            $"{MinimumFullToMidTravelRatio:F2})"));
+
+        checks.Add(new StartupCheck(
+            "weak_free_swing_cannot_match_full_charge_impulse",
+            weakFreeSwingImpulse > 0.0f &&
+            fullContact.MaximumImpulse >= weakFreeSwingImpulse * 2.5f,
+            $"weak={weakFreeSwingImpulse:F1} full={fullContact.MaximumImpulse:F1} " +
+            $"ratio={Ratio(fullContact.MaximumImpulse, weakFreeSwingImpulse):F2}"));
+
+        float launchAngle = Mathf.RadToDeg(Mathf.Atan2(
+            -fullContact.PeakWholeBuddyVelocity.Y,
+            fullContact.PeakWholeBuddyVelocity.X));
+        checks.Add(new StartupCheck(
+            "full_charge_launches_the_buddy_up_and_away",
+            fullContact.PeakWholeBuddyVelocity.X > 0.0f &&
+            fullContact.PeakWholeBuddyVelocity.Y < 0.0f &&
+            launchAngle >= 20.0f &&
+            launchAngle <= 55.0f,
+            $"velocity={fullContact.PeakWholeBuddyVelocity} angle={launchAngle:F1}deg " +
+            "envelope=[20,55]deg"));
+
+        checks.Add(new StartupCheck(
+            "one_home_run_epoch_scores_once_across_multiple_buddy_parts",
+            fullContact.SwingEpoch > 0 &&
+            fullContact.PositiveImpactCount == 1 &&
+            fullContact.BatEpisodeCount >= 2 &&
+            fullContact.DistinctEpisodeParts >= 2,
+            $"epoch={fullContact.SwingEpoch} positive={fullContact.PositiveImpactCount} " +
+            $"episodes={fullContact.BatEpisodeCount} " +
+            $"parts={fullContact.DistinctEpisodeParts}"));
+
+        checks.Add(new StartupCheck(
+            "uncharged_rmb_tap_stays_modest",
+            lowContact.MaximumImpulse > 0.0f &&
+            lowContact.MaximumImpulse <= fullContact.MaximumImpulse * 0.30f,
+            $"tap={lowContact.MaximumImpulse:F1} full={fullContact.MaximumImpulse:F1} " +
+            $"fraction={Ratio(lowContact.MaximumImpulse, fullContact.MaximumImpulse):F2}"));
+
+        checks.Add(new StartupCheck(
+            "point_blank_and_one_radius_offset_full_charge_do_not_tunnel",
+            fullContact.PositiveImpactCount == 1 &&
+            offsetFullContact.PositiveImpactCount == 1 &&
+            fullContact.SawCastShapeCcd &&
+            offsetFullContact.SawCastShapeCcd,
+            $"point_blank_positive={fullContact.PositiveImpactCount} " +
+            $"offset_positive={offsetFullContact.PositiveImpactCount} " +
+            $"ccd=({fullContact.SawCastShapeCcd},{offsetFullContact.SawCastShapeCcd}) " +
+            $"offset_impulse={offsetFullContact.MaximumImpulse:F1}"));
+
+        checks.Add(new StartupCheck(
+            "higher_charge_sends_a_controlled_loose_object_farther",
+            lowObject.SawContact &&
+            midObject.SawContact &&
+            fullTipObject.SawContact &&
+            midObject.MaximumTravel >= lowObject.MaximumTravel * 1.15f &&
+            fullTipObject.MaximumTravel >= midObject.MaximumTravel * 1.15f,
+            $"travel=({lowObject.MaximumTravel:F1},{midObject.MaximumTravel:F1}," +
+            $"{fullTipObject.MaximumTravel:F1}) ratios=(" +
+            $"{Ratio(midObject.MaximumTravel, lowObject.MaximumTravel):F2}," +
+            $"{Ratio(fullTipObject.MaximumTravel, midObject.MaximumTravel):F2})"));
+
+        checks.Add(new StartupCheck(
+            "the_real_solver_makes_the_bat_tip_the_strongest_contact",
+            fullTipObject.SawContact &&
+            fullTipObject.MaximumTravel > fullBarrelObject.MaximumTravel &&
+            fullTipObject.MaximumTravel > fullHandleObject.MaximumTravel,
+            $"handle={fullHandleObject.MaximumTravel:F1}px " +
+            $"barrel={fullBarrelObject.MaximumTravel:F1}px " +
+            $"tip={fullTipObject.MaximumTravel:F1}px " +
+            $"peak_speed=({fullHandleObject.PeakSpeed:F1}," +
+            $"{fullBarrelObject.PeakSpeed:F1},{fullTipObject.PeakSpeed:F1})"));
+
+        checks.Add(new StartupCheck(
+            "a_zero_pain_graze_does_not_consume_the_home_run_epoch",
+            grazeThenHit.EpisodeCount >= 2 &&
+            grazeThenHit.PositiveImpactCount == 1 &&
+            grazeThenHit.FirstEpisodeImpulse >= 10.0f &&
+            grazeThenHit.FirstEpisodeImpulse < grazeThenHit.CurveFloorImpulse &&
+            grazeThenHit.AcceptedEpoch == grazeThenHit.SwingEpoch,
+            $"episodes={grazeThenHit.EpisodeCount} positive=" +
+            $"{grazeThenHit.PositiveImpactCount} first_impulse=" +
+            $"{grazeThenHit.FirstEpisodeImpulse:F1} floor=" +
+            $"{grazeThenHit.CurveFloorImpulse:F1} accepted_epoch=" +
+            $"{grazeThenHit.AcceptedEpoch}/{grazeThenHit.SwingEpoch}"));
+
+        checks.Add(new StartupCheck(
+            "a_charged_whiff_cannot_reuse_stale_charge_on_recovery_contact",
+            whiffRecovery.SawSwing &&
+            whiffRecovery.SawRecovery &&
+            whiffRecovery.SwingEpoch > 0 &&
+            whiffRecovery.WhiffPositiveImpacts == 0 &&
+            whiffRecovery.RestingContactEpisodes > 0 &&
+            whiffRecovery.RestingPositiveImpacts == 0,
+            $"swing={whiffRecovery.SawSwing} recovery={whiffRecovery.SawRecovery} " +
+            $"epoch={whiffRecovery.SwingEpoch} whiff_positive=" +
+            $"{whiffRecovery.WhiffPositiveImpacts} resting_episodes=" +
+            $"{whiffRecovery.RestingContactEpisodes} resting_positive=" +
+            $"{whiffRecovery.RestingPositiveImpacts}"));
+
+        messages.Add(
+            $"task_d_contact impulse=({lowContact.MaximumImpulse:F1}," +
+            $"{midContact.MaximumImpulse:F1},{fullContact.MaximumImpulse:F1}) " +
+            $"travel=({lowContact.MaximumTravel:F2},{midContact.MaximumTravel:F2}," +
+            $"{fullContact.MaximumTravel:F2}) weak={weakFreeSwingImpulse:F1} " +
+            $"speed=({lowContact.PeakWholeBuddyVelocity.Length():F1}," +
+            $"{midContact.PeakWholeBuddyVelocity.Length():F1}," +
+            $"{fullContact.PeakWholeBuddyVelocity.Length():F1}) " +
+            $"full_velocity=({fullContact.PeakWholeBuddyVelocity.X:F1}," +
+            $"{fullContact.PeakWholeBuddyVelocity.Y:F1}) " +
+            $"episodes={fullContact.BatEpisodeCount} parts={fullContact.DistinctEpisodeParts} " +
+            $"saw=({lowContact.SawSwing},{midContact.SawSwing},{fullContact.SawSwing}) " +
+            $"direction=({lowContact.DirectionSign},{midContact.DirectionSign}," +
+            $"{fullContact.DirectionSign}) tip_distance=({lowContact.MinimumTipDistance:F1}," +
+            $"{midContact.MinimumTipDistance:F1},{fullContact.MinimumTipDistance:F1}) " +
+            $"full_episode_impulse=({fullContact.FirstEpisodeImpulse:F1}," +
+            $"{fullContact.MaximumEpisodeImpulse:F1})");
+        messages.Add(
+            $"task_d_object travel=({lowObject.MaximumTravel:F1}," +
+            $"{midObject.MaximumTravel:F1},{fullTipObject.MaximumTravel:F1}) " +
+            $"tip_barrel_handle=({fullTipObject.MaximumTravel:F1}," +
+            $"{fullBarrelObject.MaximumTravel:F1},{fullHandleObject.MaximumTravel:F1})");
+        return Finish(checks, messages);
     }
 
     /// <summary>
@@ -575,12 +820,693 @@ public sealed class HomeRunBatFeelScenario : IScenario
         return controller.SwingState == state;
     }
 
+    private readonly record struct SwingMeasurement(
+        bool SawSwing,
+        bool SawCastShapeCcd,
+        float PeakTipSpeed,
+        float TargetTipSpeed,
+        float PeakAngularSpeed,
+        float MaximumPivotDrift);
+
+    private static async Task<SwingMeasurement> MeasureSwing(
+        SceneTree tree,
+        BuddyLab lab,
+        CursorToolBody bat)
+    {
+        bool saw = false;
+        bool ccd = false;
+        float peakTip = 0.0f;
+        float peakAngular = 0.0f;
+        float drift = 0.0f;
+        float target = lab.CursorTools.CurrentSwingPlan.TargetTipSpeed;
+        SwingPlan plan = lab.CursorTools.CurrentSwingPlan;
+        Vector2 pivot = lab.CursorTools.LatchedSwingPivot;
+        CursorToolProfile profile = lab.CursorTools.ActiveProfile!;
+
+        for (int timeout = 0; timeout < 90; timeout++)
+        {
+            if (lab.CursorTools.SwingState != ChargedSwingState.Swinging)
+            {
+                break;
+            }
+
+            saw = true;
+            ccd |= bat.ContinuousCd == RigidBody2D.CcdMode.CastShape;
+            // The authored target is the tip speed *about the handle pivot*,
+            // not absolute world translation. Pivot drift is asserted
+            // independently below.
+            int swingTick = lab.CursorTools.SwingTicksInState;
+            if (swingTick >= plan.WindupTicks &&
+                swingTick < plan.WindupTicks + plan.SweepTicks)
+            {
+                peakTip = Mathf.Max(
+                    peakTip,
+                    Mathf.Abs(bat.AngularVelocity) * profile.HandleToTipRadius);
+            }
+            peakAngular = Mathf.Max(peakAngular, Mathf.Abs(bat.AngularVelocity));
+            Vector2 handle = bat.GlobalPosition +
+                             profile.HandleLocalOffset.Rotated(bat.GlobalRotation);
+            drift = Mathf.Max(drift, handle.DistanceTo(pivot));
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+
+        return new SwingMeasurement(saw, ccd, peakTip, target, peakAngular, drift);
+    }
+
+    private static async Task<bool> WaitForBatSettled(
+        SceneTree tree,
+        BuddyLab lab,
+        CursorToolBody bat,
+        int timeoutTicks)
+    {
+        for (int tick = 0; tick < timeoutTicks; tick++)
+        {
+            float angle = Mathf.Abs(Mathf.Wrap(bat.GlobalRotation, -Mathf.Pi, Mathf.Pi));
+            Vector2 handle = bat.GlobalPosition +
+                             lab.CursorTools.ActiveProfile!.HandleLocalOffset.Rotated(
+                                 bat.GlobalRotation);
+            if (lab.CursorTools.SwingState == ChargedSwingState.Gripped &&
+                Mathf.Abs(bat.AngularVelocity) <= 0.5f &&
+                angle <= Mathf.DegToRad(3.0f) &&
+                handle.DistanceTo(lab.CursorTools.Cursor) <= 8.0f)
+            {
+                return true;
+            }
+
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+
+        return false;
+    }
+
+    private readonly record struct BuddySwingProbe(
+        int PositiveImpactCount,
+        int BatEpisodeCount,
+        int DistinctEpisodeParts,
+        float MaximumImpulse,
+        float MaximumTravel,
+        Vector2 PeakWholeBuddyVelocity,
+        int SwingEpoch,
+        bool SawCastShapeCcd,
+        bool SawSwing,
+        int DirectionSign,
+        float MinimumTipDistance,
+        float FirstEpisodeImpulse,
+        float MaximumEpisodeImpulse);
+
+    /// <summary>
+    /// Release one real charged bat through the torso in an otherwise isolated
+    /// production rig. The pivot is derived from the authored trajectory at the
+    /// same authored late-sweep contact zone, so every charge band crosses the
+    /// same point on the same part instead of being hand-placed on three
+    /// different arcs.
+    /// </summary>
+    private static async Task<BuddySwingProbe> RunBuddySwingProbe(
+        SceneTree tree,
+        int chargeTicks,
+        float sweepFraction = 0.5f,
+        float radialOffsetRadii = 0.0f)
+    {
+        BuddyLab? lab = await ScenarioSteps.CreateControlledImpactLab(
+            tree, CurveMaximumPain, CurveMaximumImpulse);
+        if (lab is null)
+        {
+            return default;
+        }
+
+        lab.Pipeline.SelectTool(ToolId.BaseballBat);
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        lab.CursorTools.MoveCursor(torso + new Vector2(-140.0f, -100.0f));
+        await Ticks(tree, 2);
+        CursorToolBody? bat = lab.CursorTools.Body;
+        CursorToolProfile? profile = lab.CursorTools.ActiveProfile;
+        if (bat is null || profile?.Swing is null)
+        {
+            lab.QueueFree();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            return default;
+        }
+
+        SwingToolProfile swing = profile.Swing;
+        SwingPlan plan = ChargedSwing.SwingPlanFor(
+            ChargedSwing.ChargeProgress(chargeTicks, swing.MaxChargeTicks),
+            profile.HandleToTipRadius,
+            swing.ToConstants());
+        SwingTrajectoryPoint contactPoint = ChargedSwing.SwingTrajectoryAt(
+            plan.WindupTicks +
+            Mathf.Clamp(
+                Mathf.RoundToInt(plan.SweepTicks * sweepFraction),
+                0,
+                plan.SweepTicks - 1),
+            plan,
+            directionSign: 1,
+            swing.ToConstants());
+
+        Vector2 tipFromPivot =
+            new Vector2(0.0f, -profile.HandleToTipRadius).Rotated(contactPoint.BarrelAngle);
+        Vector2 pivot = torso - tipFromPivot +
+                        tipFromPivot.Normalized() * profile.Radius * radialOffsetRadii;
+
+        // The last significant cursor travel is rightward and ends exactly at
+        // the release pivot. Once released, the helper never moves the pointer.
+        lab.CursorTools.MoveCursor(pivot + new Vector2(-12.0f, 0.0f));
+        await Ticks(tree, 120);
+        lab.CursorTools.SetGrip(true);
+        await WaitForState(tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+        lab.CursorTools.MoveCursor(pivot);
+        await Ticks(tree, 60);
+        await WaitForBatSettled(tree, lab, bat, 360);
+
+        int positiveImpacts = 0;
+        int episodes = 0;
+        var episodeParts = new HashSet<BuddyPart>();
+        float firstEpisodeImpulse = 0.0f;
+        float maximumEpisodeImpulse = 0.0f;
+        float maximumImpulse = 0.0f;
+        int epoch = 0;
+        bool hitObserved = false;
+        Vector2 hitCenter = Vector2.Zero;
+        int ticksAfterHit = 0;
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (impact.ContentId != ContentIds.ToolBaseballBat ||
+                impact.SwingEpoch <= 0 ||
+                impact.Pain <= 0.0f)
+            {
+                return;
+            }
+
+            positiveImpacts++;
+            maximumImpulse = Mathf.Max(maximumImpulse, impact.RawImpulse);
+            epoch = impact.SwingEpoch;
+            if (!hitObserved)
+            {
+                hitObserved = true;
+                hitCenter = WholeBuddyCenter(lab);
+                ticksAfterHit = 0;
+            }
+        }
+
+        void OnEpisode(AcceptedContactEpisode episode)
+        {
+            if (episode.ContentId != ContentIds.ToolBaseballBat)
+            {
+                return;
+            }
+
+            if (episodes == 0)
+            {
+                firstEpisodeImpulse = episode.Impulse;
+            }
+
+            episodes++;
+            maximumEpisodeImpulse = Mathf.Max(maximumEpisodeImpulse, episode.Impulse);
+            episodeParts.Add(episode.Part);
+        }
+
+        lab.Pipeline.ImpactAccepted += OnImpact;
+        lab.Pipeline.EpisodeAccepted += OnEpisode;
+        float maximumTravel = 0.0f;
+        Vector2 peakVelocity = Vector2.Zero;
+        bool sawCcd = false;
+        bool sawSwing = false;
+        float minimumTipDistance = float.PositiveInfinity;
+
+        lab.CursorTools.SetChargeHeld(true);
+        await WaitForState(tree, lab.CursorTools, ChargedSwingState.Charging, 3);
+        await Ticks(tree, chargeTicks);
+        lab.CursorTools.SetChargeHeld(false);
+        int releasedEpoch = lab.CursorTools.SwingEpoch;
+        int directionSign = lab.CursorTools.SwingDirectionSign;
+
+        for (int tick = 0; tick < 150; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            sawSwing |= lab.CursorTools.SwingState == ChargedSwingState.Swinging;
+            sawCcd |= bat.ContinuousCd == RigidBody2D.CcdMode.CastShape;
+            Vector2 tip = bat.GlobalPosition +
+                          new Vector2(0.0f, -profile.Length * 0.5f).Rotated(
+                              bat.GlobalRotation);
+            minimumTipDistance = Mathf.Min(
+                minimumTipDistance,
+                tip.DistanceTo(lab.Buddy.Rig.Torso.GlobalPosition));
+            if (hitObserved && ticksAfterHit <= 24)
+            {
+                Vector2 center = WholeBuddyCenter(lab);
+                maximumTravel = Mathf.Max(maximumTravel, center.DistanceTo(hitCenter));
+                Vector2 velocity = WholeBuddyVelocity(lab);
+                if (velocity.LengthSquared() > peakVelocity.LengthSquared())
+                {
+                    peakVelocity = velocity;
+                }
+
+                ticksAfterHit++;
+            }
+        }
+
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+        lab.Pipeline.EpisodeAccepted -= OnEpisode;
+        lab.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return new BuddySwingProbe(
+            positiveImpacts,
+            episodes,
+            episodeParts.Count,
+            maximumImpulse,
+            maximumTravel,
+            peakVelocity,
+            epoch == 0 ? releasedEpoch : epoch,
+            sawCcd,
+            sawSwing,
+            directionSign,
+            minimumTipDistance,
+            firstEpisodeImpulse,
+            maximumEpisodeImpulse);
+    }
+
+    private static Vector2 WholeBuddyCenter(BuddyLab lab)
+    {
+        Vector2 weighted = Vector2.Zero;
+        float totalMass = 0.0f;
+        foreach (var part in lab.Buddy.Rig.Parts)
+        {
+            weighted += part.GlobalPosition * part.Mass;
+            totalMass += part.Mass;
+        }
+
+        return totalMass > 0.0f ? weighted / totalMass : Vector2.Zero;
+    }
+
+    private static Vector2 WholeBuddyVelocity(BuddyLab lab)
+    {
+        Vector2 weighted = Vector2.Zero;
+        float totalMass = 0.0f;
+        foreach (var part in lab.Buddy.Rig.Parts)
+        {
+            weighted += part.LinearVelocity * part.Mass;
+            totalMass += part.Mass;
+        }
+
+        return totalMass > 0.0f ? weighted / totalMass : Vector2.Zero;
+    }
+
+    private readonly record struct LooseObjectSwingProbe(
+        bool SawContact,
+        float MaximumTravel,
+        float PeakSpeed,
+        bool SawCastShapeCcd);
+
+    /// <summary>
+    /// Swing the production bat into a passive one-kilogram loose-object probe.
+    /// Varying <paramref name="contactRadiusFraction"/> changes only where the
+    /// real capsule meets it; there is no tip or charge outcome multiplier.
+    /// </summary>
+    private static async Task<LooseObjectSwingProbe> RunLooseObjectSwingProbe(
+        SceneTree tree,
+        int chargeTicks,
+        float contactRadiusFraction = 1.0f)
+    {
+        BuddyLab? lab = await ScenarioSteps.CreateControlledImpactLab(
+            tree, CurveMaximumPain, CurveMaximumImpulse);
+        if (lab is null)
+        {
+            return default;
+        }
+
+        // The buddy remains composed and ticking, but is not a collision target
+        // in this object-only measurement.
+        foreach (var part in lab.Buddy.Rig.Parts)
+        {
+            part.CollisionLayer = 0;
+            part.CollisionMask = 0;
+        }
+
+        Vector2 target = lab.Buddy.Rig.Torso.GlobalPosition;
+        lab.Pipeline.SelectTool(ToolId.BaseballBat);
+        lab.CursorTools.MoveCursor(target + new Vector2(-140.0f, -100.0f));
+        await Ticks(tree, 2);
+        CursorToolBody? bat = lab.CursorTools.Body;
+        CursorToolProfile? profile = lab.CursorTools.ActiveProfile;
+        if (bat is null || profile?.Swing is null)
+        {
+            lab.QueueFree();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            return default;
+        }
+
+        SwingToolProfile swing = profile.Swing;
+        SwingPlan plan = ChargedSwing.SwingPlanFor(
+            ChargedSwing.ChargeProgress(chargeTicks, swing.MaxChargeTicks),
+            profile.HandleToTipRadius,
+            swing.ToConstants());
+        SwingTrajectoryPoint contactPoint = ChargedSwing.SwingTrajectoryAt(
+            plan.WindupTicks +
+            Mathf.Clamp(
+                Mathf.RoundToInt(plan.SweepTicks * 0.65f),
+                0,
+                plan.SweepTicks - 1),
+            plan,
+            directionSign: 1,
+            swing.ToConstants());
+
+        float contactRadius = profile.HandleToTipRadius *
+                              Mathf.Clamp(contactRadiusFraction, 0.20f, 1.0f);
+        Vector2 contactFromPivot =
+            new Vector2(0.0f, -contactRadius).Rotated(contactPoint.BarrelAngle);
+        Vector2 pivot = target - contactFromPivot;
+
+        lab.CursorTools.MoveCursor(pivot + new Vector2(-12.0f, 0.0f));
+        await Ticks(tree, 120);
+        lab.CursorTools.SetGrip(true);
+        await WaitForState(tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+        lab.CursorTools.MoveCursor(pivot);
+        await Ticks(tree, 60);
+        await WaitForBatSettled(tree, lab, bat, 360);
+
+        lab.CursorTools.SetChargeHeld(true);
+        await WaitForState(tree, lab.CursorTools, ChargedSwingState.Charging, 3);
+        await Ticks(tree, chargeTicks);
+        lab.CursorTools.SetChargeHeld(false);
+
+        int sampleTick = plan.WindupTicks +
+                         Mathf.Clamp(
+                             Mathf.RoundToInt(plan.SweepTicks * 0.65f),
+                             0,
+                             plan.SweepTicks - 1);
+        ScenarioImpactBody? targetBody = null;
+        Vector2 start = Vector2.Zero;
+        float maximumTravel = 0.0f;
+        float peakSpeed = 0.0f;
+        bool sawContact = false;
+        bool sawCcd = false;
+        for (int tick = 0; tick < 150; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            sawCcd |= bat.ContinuousCd == RigidBody2D.CcdMode.CastShape;
+
+            if (targetBody is null &&
+                lab.CursorTools.SwingState == ChargedSwingState.Swinging &&
+                lab.CursorTools.SwingTicksInState >= sampleTick)
+            {
+                // Place the mass immediately ahead of the selected point on the
+                // *realized* moving capsule. Rotational CastShape CCD does not
+                // expose a swept-contact query, so a theoretical world target
+                // can sit between two 46 px full-charge tip samples. This
+                // placement uses measured point velocity only to choose the
+                // next physical contact location; the resulting travel still
+                // comes entirely from the solver.
+                Vector2 pointOffset = new Vector2(
+                    0.0f,
+                    profile.HandleLocalOffset.Y - contactRadius).Rotated(
+                        bat.GlobalRotation);
+                Vector2 point = bat.GlobalPosition + pointOffset;
+                Vector2 pointVelocity = bat.LinearVelocity + new Vector2(
+                    -bat.AngularVelocity * pointOffset.Y,
+                    bat.AngularVelocity * pointOffset.X);
+                Vector2 direction = pointVelocity.Normalized();
+                if (direction.IsZeroApprox())
+                {
+                    direction = Vector2.Right;
+                }
+
+                const float objectRadius = 8.0f;
+                // The tip sample names the capsule's outermost surface; the
+                // barrel/handle samples name points on its centre line. Start
+                // the passive circle one pixel inside the corresponding
+                // contact shell so the next solver step observes the real
+                // point velocity even though CastShape does not sweep rotation.
+                bool outerTip =
+                    contactRadius >= profile.HandleToTipRadius - 0.1f;
+                float ahead = outerTip
+                    ? objectRadius - 1.0f
+                    : profile.Radius + objectRadius - 1.0f;
+                targetBody = new ScenarioImpactBody();
+                targetBody.ConfigureLooseObject(radius: objectRadius);
+                lab.AddChild(targetBody);
+                targetBody.GlobalPosition = point + direction * ahead;
+                start = targetBody.GlobalPosition;
+            }
+
+            if (targetBody is null)
+            {
+                continue;
+            }
+
+            float speed = targetBody.LinearVelocity.Length();
+            peakSpeed = Mathf.Max(peakSpeed, speed);
+            maximumTravel = Mathf.Max(
+                maximumTravel,
+                targetBody.GlobalPosition.DistanceTo(start));
+            if (!sawContact && speed >= 1.0f)
+            {
+                sawContact = true;
+                // Compare the one solver launch, not several ticks of the
+                // anchored bat continuing to push a mass parked near its
+                // handle. The body then coasts with the velocity that contact
+                // actually transferred.
+                targetBody.CollisionLayer = 0;
+                targetBody.CollisionMask = 0;
+            }
+        }
+
+        lab.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return new LooseObjectSwingProbe(
+            sawContact,
+            maximumTravel,
+            peakSpeed,
+            sawCcd);
+    }
+
+    private readonly record struct GrazeThenHitProbe(
+        int EpisodeCount,
+        int PositiveImpactCount,
+        float FirstEpisodeImpulse,
+        float CurveFloorImpulse,
+        int AcceptedEpoch,
+        int SwingEpoch);
+
+    /// <summary>
+    /// Exercise the production curve/admission order with two real contacts
+    /// carrying one immutable swing identity. The first is routed above the
+    /// episode threshold but below the pain-curve floor; after re-arm, the
+    /// second is harmful. If the graze claimed the epoch, the second event
+    /// would disappear.
+    /// </summary>
+    private static async Task<GrazeThenHitProbe> RunGrazeThenHitProbe(SceneTree tree)
+    {
+        const float curveFloor = 100.0f;
+        const int swingEpoch = 77;
+        BuddyLab? lab = await ScenarioSteps.CreateControlledImpactLab(
+            tree,
+            CurveMaximumPain,
+            CurveMaximumImpulse,
+            curveFloor);
+        if (lab is null)
+        {
+            return default;
+        }
+
+        int interactionId = InteractionIds.Next();
+        int episodes = 0;
+        int positives = 0;
+        float firstEpisodeImpulse = 0.0f;
+        int acceptedEpoch = 0;
+        void OnEpisode(AcceptedContactEpisode episode)
+        {
+            if (episode.InteractionId != interactionId)
+            {
+                return;
+            }
+
+            if (episodes == 0)
+            {
+                firstEpisodeImpulse = episode.Impulse;
+            }
+
+            episodes++;
+        }
+
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (impact.InteractionId != interactionId)
+            {
+                return;
+            }
+
+            positives++;
+            acceptedEpoch = impact.SwingEpoch;
+        }
+
+        lab.Pipeline.EpisodeAccepted += OnEpisode;
+        lab.Pipeline.ImpactAccepted += OnImpact;
+        var context = new SwingImpactContext(
+            SwingImpactMode.HomeRun,
+            swingEpoch,
+            ReleasedCharge: 1.0f,
+            ReleasedTick: 1234L);
+
+        await StrikeWithSwingContext(
+            tree, lab, interactionId, context, speed: 100.0f);
+        // The episode router rearms after 0.2 s of separation. This wait is
+        // routed physics time, not wall time.
+        await Ticks(tree, 30);
+        await StrikeWithSwingContext(
+            tree, lab, interactionId, context, speed: 2000.0f);
+        await Ticks(tree, 4);
+
+        lab.Pipeline.EpisodeAccepted -= OnEpisode;
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+        lab.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return new GrazeThenHitProbe(
+            episodes,
+            positives,
+            firstEpisodeImpulse,
+            curveFloor,
+            acceptedEpoch,
+            swingEpoch);
+    }
+
+    private static async Task StrikeWithSwingContext(
+        SceneTree tree,
+        BuddyLab lab,
+        int interactionId,
+        SwingImpactContext context,
+        float speed)
+    {
+        var source = new ScenarioImpactBody();
+        source.Configure(
+            ContentIds.ToolBaseballBat,
+            radius: 8.0f,
+            mass: 0.25f,
+            interactionId: interactionId);
+        source.SetSwingContext(context);
+        var target = lab.Buddy.Rig.Torso;
+        source.GlobalPosition =
+            target.GlobalPosition - Vector2.Right * (target.Radius + 10.0f);
+        source.LinearVelocity = Vector2.Right * speed;
+        lab.AddChild(source);
+        await Ticks(tree, 60);
+        source.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+    }
+
+    private readonly record struct WhiffRecoveryProbe(
+        bool SawSwing,
+        bool SawRecovery,
+        int SwingEpoch,
+        int WhiffPositiveImpacts,
+        int RestingContactEpisodes,
+        int RestingPositiveImpacts);
+
+    private static async Task<WhiffRecoveryProbe> RunWhiffRecoveryProbe(SceneTree tree)
+    {
+        BuddyLab? lab = await ScenarioSteps.CreateControlledImpactLab(
+            tree, CurveMaximumPain, CurveMaximumImpulse);
+        if (lab is null)
+        {
+            return default;
+        }
+
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        Vector2 openPivot = torso + new Vector2(0.0f, -220.0f);
+        lab.Pipeline.SelectTool(ToolId.BaseballBat);
+        lab.CursorTools.MoveCursor(openPivot + new Vector2(-12.0f, 0.0f));
+        await Ticks(tree, 120);
+        CursorToolBody? bat = lab.CursorTools.Body;
+        if (bat is null)
+        {
+            lab.QueueFree();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            return default;
+        }
+
+        lab.CursorTools.SetGrip(true);
+        await WaitForState(tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+        lab.CursorTools.MoveCursor(openPivot);
+        await Ticks(tree, 60);
+        await WaitForBatSettled(tree, lab, bat, 360);
+        lab.CursorTools.SetChargeHeld(true);
+        await WaitForState(tree, lab.CursorTools, ChargedSwingState.Charging, 3);
+        await Ticks(tree, 600);
+
+        bool restingContactPhase = false;
+        int whiffPositive = 0;
+        int restingPositive = 0;
+        int restingEpisodes = 0;
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (impact.ContentId != ContentIds.ToolBaseballBat)
+            {
+                return;
+            }
+
+            if (restingContactPhase)
+                restingPositive++;
+            else
+                whiffPositive++;
+        }
+
+        void OnEpisode(AcceptedContactEpisode episode)
+        {
+            if (restingContactPhase &&
+                episode.ContentId == ContentIds.ToolBaseballBat)
+            {
+                restingEpisodes++;
+            }
+        }
+
+        lab.Pipeline.ImpactAccepted += OnImpact;
+        lab.Pipeline.EpisodeAccepted += OnEpisode;
+        lab.CursorTools.SetChargeHeld(false);
+        bool sawSwing = await WaitForState(
+            tree, lab.CursorTools, ChargedSwingState.Swinging, 3);
+        int epoch = lab.CursorTools.SwingEpoch;
+        bool sawRecovery = await WaitForState(
+            tree, lab.CursorTools, ChargedSwingState.Recovery, 120);
+        await WaitForState(tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
+
+        restingContactPhase = true;
+        lab.CursorTools.MoveCursor(torso);
+        await Ticks(tree, 180);
+
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+        lab.Pipeline.EpisodeAccepted -= OnEpisode;
+        lab.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return new WhiffRecoveryProbe(
+            sawSwing,
+            sawRecovery,
+            epoch,
+            whiffPositive,
+            restingEpisodes,
+            restingPositive);
+    }
+
+    private static bool WithinFraction(float actual, float target, float fraction) =>
+        actual >= target * (1.0f - fraction) &&
+        actual <= target * (1.0f + fraction);
+
+    private static float Ratio(float numerator, float denominator) =>
+        denominator > 0.0f ? numerator / denominator : 0.0f;
+
     private static ScenarioResult Finish(
         List<StartupCheck> checks,
         List<string> messages,
         BuddyLab lab)
     {
         lab.QueueFree();
+        bool passed = true;
+        foreach (StartupCheck check in checks)
+            passed &= check.Passed;
+        return new ScenarioResult(passed, checks, messages);
+    }
+
+    private static ScenarioResult Finish(
+        List<StartupCheck> checks,
+        List<string> messages)
+    {
         bool passed = true;
         foreach (StartupCheck check in checks)
             passed &= check.Passed;

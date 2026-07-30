@@ -3,7 +3,7 @@
 **Status:** Revised after architecture/feel audit, then after a second verification audit
 against the codebase (2026-07-30) that corrected the swing arithmetic, the missing swing-phase
 force cap, the free-swing caps, the victim-shake offset lane, and a stale test-count baseline.
-**The §5 owner gate is resolved in full (2026-07-30); Tasks A–C are complete.** Four
+**The §5 owner gate is resolved in full (2026-07-30); Tasks A–D are complete.** Four
 of the nine answers changed the design — cursor-travel aiming, a whole-game freeze,
 full-charge-only object freeze, and in-scope placeholder audio; see §5 and `docs/DECISIONS.md`
 ("Home-Run Bat Interaction Gate — Resolved in Full").
@@ -552,7 +552,9 @@ referenced from `CursorToolProfile` as `[Export] public SwingToolProfile? Swing`
 | `HitLagMinTicks` / `HitLagMaxTicks` | 6 / 60 | 0.05 / 0.50 s whole-game hit lag |
 | `AudioVolumeDb` | −6 | placeholder swing/impact audio level (§4.8b); routed through the existing bus layout |
 | `GripStiffness` / `GripDamping` | 900 000 / 120 000 | upright servo gains |
-| `SwingTorqueCap` | 2 000 000 | strike-sweep servo authority |
+| `SwingAnchorStiffness` / `SwingAnchorDamping` | 240 000 / 1 000 | dedicated handle-pivot gains; the ordinary soft FOLLOW tether cannot reach the centripetal force demand inside the pivot-drift tolerance |
+| `SwingServoStiffness` / `SwingServoDamping` | 50 000 / 120 000 | position-plus-velocity moving-trajectory gains; the modest position term corrects phase error while feed-forward velocity carries the fast plateau |
+| `SwingTorqueCap` | 70 000 000 | strike-sweep authority includes cancellation of the pivot force's handle moment (up to `1 400 000 × 38 = 53 200 000`) plus net motor torque; a cap sized only for the motor cannot track the target once the off-centre tether saturates |
 
 The grip anchor is **not** in this table: it derives from the collider as
 `(0, +Length/2 − Radius)` (§4.4). There is no `HandleFraction`.
@@ -659,7 +661,7 @@ direction tracking with commit-at-release, `VisualOffset2D`, and the glint edge.
 `dragging_right_then_left_swings_left` (direction follows cursor travel, and the *last*
 significant travel before release is the one that counts),
 `sub_threshold_jitter_does_not_flip_the_direction`,
-`pointer_motion_after_release_cannot_change_direction`,
+`pointer_motion_after_release_cannot_change_pivot_direction_or_charge`,
 `mirrored_drags_produce_mirrored_swings`, and
 `releasing_the_grip_cancels_without_a_swing_or_pain`.
 
@@ -695,6 +697,20 @@ grace, epoch admission, and CCD toggle. *Accept:*
 
 The tip/barrel/handle comparison is recorded as evidence. If the real solver does not make
 the tip strongest, stop for an owner feel decision; do not add a hidden tip multiplier.
+
+**Completed 2026-07-30.** The production position-plus-velocity servo compensates the
+off-centre handle force before applying motor torque, holds the full-charge pivot inside
+`12.6 px`, and reaches measured low/mid/full tip speeds of approximately
+`1 697 / 3 267 / 4 590 px/s` against the `1 800 / 3 662 / 5 500` targets. The controlled
+buddy probe records `1 834 / 2 409 / 8 522` impulse and `82.9 / 100.8 / 111.4 px`
+24-tick post-hit centre-of-mass travel. The full hit launches at `25.4°` up-and-away,
+scores once across two distinct buddy parts, and survives both point-blank and one-radius
+offset CCD probes. A physical zero-pain graze leaves its epoch available, and a full whiff
+cannot reuse stale charge on later GRIPPED contact. The one-contact passive-object probe
+travels `1 067 / 2 271 / 3 042 px` across charge bands. Its no-multiplier
+tip/barrel/handle evidence is `3 042 / 2 926 / 1 786 px`, with “tip” defined as the
+distal barrel sweet spot `70 px` from the handle on the collider-derived `83 px` lever;
+the geometric end-cap point is a tangential graze, not the striking face.
 
 **Task E — Whole-game hit lag and victim shake.** Add `SwingHitLagComponent` and
 `ImpactVisualOffsetComponent` (§4.7). While hit lag is active the root does not advance the

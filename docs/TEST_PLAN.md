@@ -128,8 +128,14 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   charge boundary, eased render-only shake cap, one-shot geometric tip glimmer in
   both presentation modes, cursor-travel direction with sub-threshold hysteresis,
   release-time direction locking, mirrored charge leans, and grip-release cancel
-  without swing or pain. Physical swing, hit-lag, audio, and honest 3D bat checks
-  join this same scenario in their ordered tasks.
+  without swing or pain. Task D proves absolute/non-overlapping low/mid/full tip-speed
+  targets, the full-charge pivot-drift bound and CastShape CCD, laboratory-set impulse
+  and whole-buddy-travel ratios, up-and-away launch angle, weak-vs-full separation,
+  modest tap, point-blank/one-radius tunneling coverage, charge-scaled loose-object
+  travel, no-multiplier tip/barrel/handle evidence, exactly one positive hit across
+  several buddy parts, zero-pain-graze epoch retention, immutable post-release
+  pivot/direction/charge, and stale-charge rejection after a whiff. Hit lag, audio,
+  and honest 3D bat checks join this same scenario in their ordered tasks.
 - Contacts attribute the correct source, buddy region, pain, mood change, payout, and statistics.
 - The `impact_dedup` loose-object probe must fall below `5 px/s` for `60`
   consecutive routed ticks within its `600`-tick settling window. Its verdict

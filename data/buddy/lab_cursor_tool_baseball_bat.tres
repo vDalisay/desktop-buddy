@@ -34,7 +34,11 @@ HitLagMaxTicks = 60
 AudioVolumeDb = -6.0
 GripStiffness = 900000.0
 GripDamping = 120000.0
-SwingTorqueCap = 2000000.0
+SwingAnchorStiffness = 240000.0
+SwingAnchorDamping = 1000.0
+SwingServoStiffness = 50000.0
+SwingServoDamping = 120000.0
+SwingTorqueCap = 70000000.0
 
 [resource]
 resource_name = "ProvisionalM5BaseballBat"
