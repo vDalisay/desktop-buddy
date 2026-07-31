@@ -65,6 +65,7 @@ public static class ScenarioCatalog
         ["gun_visuals"] = () => new GunVisualsScenario(),
         ["pistol_punctuation"] = () => new PistolPunctuationScenario(),
         ["grenade_fuse"] = () => new GrenadeFuseScenario(),
+        ["burning_status"] = () => new BurningStatusScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

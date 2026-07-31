@@ -104,6 +104,26 @@ public partial class FireSprayerComponent : Node2D
     public float TotalBurnPain { get; private set; }
     public int SprayTicks { get; private set; }
 
+    /// <summary>
+    /// Pooled droplets the reduced-particles rule currently lets draw. A computed counter
+    /// rather than a drawn one, so it is a usable oracle in a headless run where nothing
+    /// ever paints.
+    /// </summary>
+    public int DrawEnabledDropletCount
+    {
+        get
+        {
+            int enabled = 0;
+            for (int index = 0; index < _pool.Length; index++)
+            {
+                if (_pool[index].DrawEnabled)
+                    enabled++;
+            }
+
+            return enabled;
+        }
+    }
+
     public int ActiveDropletCount
     {
         get

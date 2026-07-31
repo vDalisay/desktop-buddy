@@ -98,12 +98,16 @@ public partial class FireSprayerProfile : GameResource
     [Export(PropertyHint.Range, "1,1200,1,or_greater")] public int BurnPainIntervalTicks { get; set; } = 60;
 
     /// <summary>
-    /// The equivalent impulse one burn event hands the shared pain curve. Tuned so a single
-    /// event is a few points of pain: a full 4 s burn stays well under the 100-pain rolling
-    /// knockout window even at the 8 s cap (owner default 1 — a full burn never KOs by
-    /// itself).
+    /// The equivalent impulse one burn event hands the shared pain curve.
+    ///
+    /// <para>Measured against the shipped conversion profile (anchors 350/700/1500/3000 to
+    /// pain 0/20/55/100) on 2026-08-01: <c>430</c> scores <b>4.57 pain</b> per event, so a
+    /// full 4 s burn totals about <b>36.6</b> pain over eight events and a sustained 8 s cap
+    /// burn about <b>73.1</b> over sixteen — painful and profitable, and never a knockout by
+    /// itself, because the most any rolling 5 s window can hold is ten events (<b>45.7</b>)
+    /// against the 100-pain threshold (owner default 1).</para>
     /// </summary>
-    [Export(PropertyHint.Range, "1,20000,1,or_greater")] public float BurnEquivalentImpulse { get; set; } = 200.0f;
+    [Export(PropertyHint.Range, "1,20000,1,or_greater")] public float BurnEquivalentImpulse { get; set; } = 430.0f;
 
     // --- Presentation (all of it; nothing below reaches gameplay) ---
 
