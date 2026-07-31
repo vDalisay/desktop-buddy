@@ -93,7 +93,7 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             "P: pause   .: single tick   U: limp/wake\n" +
             "Shift+U: reseed   1/2/3/4: simulation speed\n" +
             "G: grab  B: glove  K: bat  F: pet  T: tickle  5: spawn baseball\n" +
-            "J: pistol — left-click fires, wheel raises aim, R reloads\n" +
+            "N: nerf blaster  J: pistol — click fires, wheel raises aim, R reloads\n" +
             "Ball: left-grab; hold right + drag to aim\n" +
             "V: presentation  E: eat item  Q: wave\n" +
             "Z/X: face left/right  C: release facing\n" +

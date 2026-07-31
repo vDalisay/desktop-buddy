@@ -481,25 +481,8 @@ public sealed class PistolFireScenario : IScenario
     private static async Task<bool> SettleAim(SceneTree tree, CursorGunComponent gun) =>
         await M4ObjectScenarioSupport.WaitFor(tree, () => !gun.AimIsSteering, 240);
 
-    /// <summary>
-    /// The projectile launched most recently, which is the shot a check just fired.
-    /// Pool order says nothing about launch order, so the youngest live body is the
-    /// only reliable way to name "that shot".
-    /// </summary>
-    private static ProjectileBody? NewestLiveProjectile(CursorGunComponent gun)
-    {
-        ProjectileBody? newest = null;
-        foreach (Node child in gun.GetChildren())
-        {
-            if (child is ProjectileBody { State: ProjectileState.Live } projectile &&
-                (newest is null || projectile.TicksInState < newest.TicksInState))
-            {
-                newest = projectile;
-            }
-        }
-
-        return newest;
-    }
+    private static ProjectileBody? NewestLiveProjectile(CursorGunComponent gun) =>
+        M4ObjectScenarioSupport.NewestLiveProjectile(gun);
 
     /// <summary>One complete trigger pull: pressed for a tick, then released.</summary>
     private static async Task PressTrigger(SceneTree tree, CursorGunComponent gun)

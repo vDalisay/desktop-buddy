@@ -16,6 +16,7 @@ public sealed class ContentIdsTests
     [InlineData(ToolId.Baseball, "tool.baseball")]
     [InlineData(ToolId.Meal, "tool.meal")]
     [InlineData(ToolId.BaseballBat, "tool.baseball_bat")]
+    [InlineData(ToolId.NerfBlaster, "tool.nerf_blaster")]
     [InlineData(ToolId.Pistol, "tool.pistol")]
     [InlineData(ToolId.Grenade, "tool.grenade")]
     [InlineData(ToolId.FireSprayer, "tool.fire_sprayer")]
@@ -73,6 +74,7 @@ public sealed class ContentIdsTests
         Assert.Equal(11, (int)ToolId.Drink);
         Assert.Equal(12, (int)ToolId.Shotgun);
         Assert.Equal(13, (int)ToolId.RepairKit);
+        Assert.Equal(14, (int)ToolId.NerfBlaster);
     }
 
     [Fact]

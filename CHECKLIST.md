@@ -168,8 +168,12 @@ the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the ba
 
 Cursor **guns** run the same shape: `CursorGunComponent` + an authored `GunProfile`
 array, with the rules in the engine-free `Domain/Tools/CursorAimModel` and
-`Domain/Tools/GunModel`, so the Shotgun is a `.tres` plus a content ID. Lab key `J`
-selects the Pistol. Two traps are recorded in `DECISIONS.md` for anyone tidying the
+`Domain/Tools/GunModel`, so the Shotgun is a `.tres` plus a content ID. Two guns ship on
+it: the **Nerf Blaster** (`tool.nerf_blaster`, `ToolId 14`, lab key `N`) is the toy the
+player owns first and the **Pistol** (`J`) is the real one, and nothing separates them but
+their authored numbers — a point-blank dart scores measured zero pain where a bullet scores
+`13`. The launch catalogue is therefore sixteen entries, with the blaster at progression
+slot 7 ahead of the Pistol. Two traps are recorded in `DECISIONS.md` for anyone tidying the
 projectile up: `RigidBody2D.ContinuousCd` is deliberately **off** because it destroys the
 momentum the pain pipeline scores from (no-tunneling is guaranteed by a validated per-tick
 travel bound instead), and `LockRotation` is deliberately **off** because locking it halves

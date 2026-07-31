@@ -1,4 +1,4 @@
-[gd_scene load_steps=51 format=3]
+[gd_scene load_steps=52 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -50,6 +50,7 @@
 [ext_resource type="Script" path="res://src/Tools/SwingAudioComponent.cs" id="48_swing_audio"]
 [ext_resource type="Script" path="res://src/Tools/CursorGunComponent.cs" id="49_cursor_guns"]
 [ext_resource type="Resource" path="res://data/tools/gun_pistol.tres" id="49_pistol_profile"]
+[ext_resource type="Resource" path="res://data/tools/gun_nerf_blaster.tres" id="50_nerf_profile"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -295,7 +296,7 @@ Profile = ExtResource("21_care_profile")
 
 [node name="CursorGunComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
 script = ExtResource("49_cursor_guns")
-Profiles = Array[Resource]([ExtResource("49_pistol_profile")])
+Profiles = Array[Resource]([ExtResource("50_nerf_profile"), ExtResource("49_pistol_profile")])
 Pipeline = NodePath("../InteractionPipeline")
 Boundaries = NodePath("../RoomBounds")
 

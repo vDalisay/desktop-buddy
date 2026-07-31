@@ -1,4 +1,4 @@
-[gd_resource type="Resource" script_class="CatalogueDefinition" load_steps=17 format=3]
+[gd_resource type="Resource" script_class="CatalogueDefinition" load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://src/Content/CatalogueDefinition.cs" id="1"]
 [ext_resource type="Resource" path="res://data/catalogue/tool_grab.tres" id="2"]
@@ -8,16 +8,17 @@
 [ext_resource type="Resource" path="res://data/catalogue/tool_baseball.tres" id="6"]
 [ext_resource type="Resource" path="res://data/catalogue/tool_meal.tres" id="7"]
 [ext_resource type="Resource" path="res://data/catalogue/tool_baseball_bat.tres" id="8"]
-[ext_resource type="Resource" path="res://data/catalogue/tool_pistol.tres" id="9"]
-[ext_resource type="Resource" path="res://data/catalogue/tool_grenade.tres" id="10"]
-[ext_resource type="Resource" path="res://data/catalogue/tool_fire_sprayer.tres" id="11"]
-[ext_resource type="Resource" path="res://data/catalogue/tool_soccer_ball.tres" id="12"]
-[ext_resource type="Resource" path="res://data/catalogue/tool_drink.tres" id="13"]
-[ext_resource type="Resource" path="res://data/catalogue/tool_shotgun.tres" id="14"]
-[ext_resource type="Resource" path="res://data/catalogue/tool_repair_kit.tres" id="15"]
-[ext_resource type="Resource" path="res://data/catalogue/upgrade_strength.tres" id="16"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_nerf_blaster.tres" id="9"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_pistol.tres" id="10"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_grenade.tres" id="11"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_fire_sprayer.tres" id="12"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_soccer_ball.tres" id="13"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_drink.tres" id="14"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_shotgun.tres" id="15"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_repair_kit.tres" id="16"]
+[ext_resource type="Resource" path="res://data/catalogue/upgrade_strength.tres" id="17"]
 
 [resource]
 resource_name = "M5LaunchCatalogueProvisional"
 script = ExtResource("1")
-Entries = Array[Resource]([ExtResource("2"), ExtResource("3"), ExtResource("4"), ExtResource("5"), ExtResource("6"), ExtResource("7"), ExtResource("8"), ExtResource("9"), ExtResource("10"), ExtResource("11"), ExtResource("12"), ExtResource("13"), ExtResource("14"), ExtResource("15"), ExtResource("16")])
+Entries = Array[Resource]([ExtResource("2"), ExtResource("3"), ExtResource("4"), ExtResource("5"), ExtResource("6"), ExtResource("7"), ExtResource("8"), ExtResource("9"), ExtResource("10"), ExtResource("11"), ExtResource("12"), ExtResource("13"), ExtResource("14"), ExtResource("15"), ExtResource("16"), ExtResource("17")])

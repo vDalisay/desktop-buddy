@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="GunProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/GunProfile.cs" id="1_gun"]
+
+[resource]
+resource_name = "ProvisionalM5NerfBlaster"
+script = ExtResource("1_gun")
+ContentId = "tool.nerf_blaster"
+MagazineCapacity = 6
+ShotIntervalTicks = 30
+ReloadTicks = 120
+ProjectilesPerShot = 1
+SpreadHalfAngleDegrees = 0.0
+AimSmoothingHalfLifeTicks = 10.0
+MinimumAimSpeedPxPerTick = 0.35
+MaxAimTurnDegreesPerTick = 9.0
+WheelDegreesPerStep = 5.0
+MaximumAimOffsetDegrees = 60.0
+MuzzleSpeed = 1100.0
+MuzzleOffsetPx = 14.0
+ProjectileRadius = 4.0
+ProjectileMass = 0.02
+ProjectileGravityScale = 0.15
+ProjectileLifetimeTicks = 180
+ProjectileMaxTravelPx = 3000.0
+ContactSettleTicks = 2
+SpentLingerTicks = 3
+PoolCapacity = 12
+ProjectileColor = Color(1, 0.549020, 0.101961, 1)
+TrailColor = Color(1, 0.686275, 0.352941, 1)
+MuzzleColor = Color(0.247059, 0.650980, 0.294118, 1)

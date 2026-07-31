@@ -225,6 +225,10 @@ public partial class LaboratoryControlComponent : Node
             case Key.J when HasPipeline:
                 Pipeline!.SelectTool(ToolId.Pistol);
                 break;
+            // N rather than the planned H: H already hides this panel, and journeys press it.
+            case Key.N when HasPipeline:
+                Pipeline!.SelectTool(ToolId.NerfBlaster);
+                break;
             case Key.T when HasPipeline:
                 Pipeline!.SelectTool(ToolId.Tickle);
                 break;

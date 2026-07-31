@@ -22,6 +22,13 @@ public enum ToolId
     Drink = 11,
     Shotgun = 12,
     RepairKit = 13,
+
+    /// <summary>
+    /// The toy gun the player owns first. Appended rather than swapped with
+    /// <see cref="Pistol"/>: ordinals are persisted, and <c>tool.pistol</c> already means
+    /// the real gun everywhere it has shipped.
+    /// </summary>
+    NerfBlaster = 14,
 }
 
 /// <summary>How a tool physically acts on the buddy (RAGDOLL §9).</summary>
@@ -43,8 +50,10 @@ public static class ToolCatalog
         // Consumables act through the care/consume machinery, not the damage pipeline;
         // their pain, when a launch hurts, still arrives as an ordinary physical impact.
         ToolId.Meal or ToolId.Drink or ToolId.RepairKit => ToolCategory.Care,
-        ToolId.BoxingGlove or ToolId.BaseballBat or ToolId.Pistol or ToolId.Grenade or
-            ToolId.FireSprayer or ToolId.Shotgun => ToolCategory.Damage,
+        // The Nerf Blaster is a damage tool by mechanism, not by outcome: it fires through
+        // the same pipeline and its darts are authored to score next to nothing.
+        ToolId.BoxingGlove or ToolId.BaseballBat or ToolId.NerfBlaster or ToolId.Pistol or
+            ToolId.Grenade or ToolId.FireSprayer or ToolId.Shotgun => ToolCategory.Damage,
         ToolId.Baseball or ToolId.SoccerBall => ToolCategory.PhysicsToy,
         _ => throw new ArgumentOutOfRangeException(nameof(tool), tool, "Unknown tool."),
     };

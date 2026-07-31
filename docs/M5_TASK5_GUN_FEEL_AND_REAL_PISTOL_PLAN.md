@@ -315,13 +315,14 @@ existing priced `tool_pistol.tres` — and content IDs are never silently repurp
 Mechanical checklist for the new tool (each is a compile-time or test-enforced total
 mapping — missing one throws):
 `ToolId` append · `ContentIds` const + `ForTool` + `TryParseTool` ·
-`ToolCatalog.CategoryOf` (**Damage**) · catalogue entry
+`ToolCatalog.CategoryOf` (**Damage**, by mechanism — its darts are authored to score nothing) · catalogue entry
 `data/catalogue/tool_nerf_blaster.tres` (cheap starter price; `Visible = false` until the
-owner's feel gate, same as the pistol today) · `launch_catalogue.tres` ·
+owner's feel gate, same as the pistol today) · `launch_catalogue.tres` (which grows to sixteen entries, and every progression slot from
+the Pistol onward shifts by one) ·
 `CursorGunComponent.Profiles` gets the second profile in both scenes (`sandbox.tscn`,
 `buddy_lab.tscn` — the component already validates duplicate content IDs and drives
 selection per-tool with per-gun session magazines; **no component code changes for the
-second gun**) · lab key `H` selects it (`J` stays Pistol) · dev catalogue unlock ·
+second gun**) · lab key `N` selects it (`H` is taken: it hides the laboratory panel; `J` stays Pistol) · dev catalogue unlock ·
 `ContentIdsTests` / `ToolCatalogueTests` / `PurchaseTests` enumeration updates.
 
 **Nerf darts and the pain floor:** the Nerf Blaster should barely matter physically — that
@@ -402,7 +403,7 @@ path. Each is authored per profile (Nerf authors zero/off for all three).
 |---|---|---|
 | `ContentId` | `tool.nerf_blaster` | `tool.pistol` |
 | Magazine / cadence / reload | 6 / 30 ticks / 120 ticks | 8 / 30 ticks / 144 ticks (spec §9.2) |
-| `MuzzleSpeed` | **1 100** (visible dart flight) | **2 760** (23 px/tick — inside the 2 880 ceiling with margin; muzzle speed is the pain lever) |
+| `MuzzleSpeed` | **1 100** (visible dart flight) | ~~2 760~~ **2 400** — 23 px/tick made close shots graze the rim; measured and reverted at Task D |
 | `ProjectileRadius` / `Mass` | 4.0 / 0.02 (foam) | 2.0 / 0.3 |
 | `ProjectileGravityScale` | 0.15 (darts droop a little — toy identity) | 0 (ballistically flat across the room) |
 | Aim v2 constants | 10 / 0.35 / 9° | 14 / 0.35 / 6° (§4.1) |
@@ -536,7 +537,46 @@ exit/re-enter → aim left → single click fires left.
 `pointer_reentry_click_without_motion_spends_no_round`,
 `slow_leftward_travel_steers_the_aim_left`, `aim_never_flips_on_release_jitter`.
 
-**Task D — Catalogue split + real-pistol tuning.** §4.4 mechanical checklist; author both
+**Task D — DONE 2026-07-31.** The split landed as recommended: `ToolId.NerfBlaster = 14` /
+`tool.nerf_blaster` is the starter, `tool.pistol` keeps its plain meaning. It takes the
+FR-013.2 launch catalogue to **sixteen entries** (fifteen interactions plus the upgrade) at
+progression slot 7, ahead of the Pistol, which pushed every later slot along by one.
+`gun_nerf_blaster.tres` is authored per §4.7; `gun_pistol.tres` is the real gun. New scenario
+`nerf_versus_pistol` (6 checks) proves the split through the unmodified pain pipeline.
+
+Measured, seeds 1/7/13 (both presentations on 1/7):
+
+| | dart | bullet |
+|---|---|---|
+| point-blank head impulse | `20.2`–`22.4` | `574`–`603` |
+| pain | **`0.00`**, milli `0` | `12.8`–`14.4`, milli > 0 |
+| remembered as harmful | no | yes |
+| level flight over ~36 ticks | droops `4.5 px` | `0.00 px` |
+
+Separation is `26`–`28×` on measured impulse with no multiplier anywhere, which is the whole
+claim. (The `574`–`603` here and the `1168`–`1208` in `pistol_fire` are the same gun: a square
+hit gets no spin channel and scores about half of a glancing one — §4.3.)
+
+**Two deviations from the plan, both forced and both measured:**
+
+- **Muzzle speed stays `2400`, not the planned `2760`.** 2 760 px/s is 23 px per tick, and
+  the geometric no-tunneling argument only guarantees that *some* sample of the flight overlaps
+  the target — not that it overlaps it squarely. At 23 px/tick the close shot in `pistol_fire`
+  landed on the head's rim on seed 13, spun `150°`, and delivered `198` impulse: under the
+  curve's floor, so a visibly perfect head shot did nothing. A/B on that seed, changing one
+  field at a time: `2760`/r2.5 fails, `2400`/r2.0 and `2400`/r2.5 both score `1168.6`. So the
+  speed was the cause, the radius was not, and the pistol keeps the muzzle speed it shipped
+  with while the bullet takes the planned thinner `2.0` radius. This is the measurement
+  `GunProfile.MaximumTravelPerTickPx` asks for before anyone raises that number again: the
+  `24 px` ceiling is where tunneling starts, not where reliable hits end.
+- **Lab key `N`, not the planned `H`.** `H` already hides the laboratory panel and journeys
+  press it.
+
+*Verified:* build 0/0 · domain **981/981** (two enumeration cases) · quick suite 26/26 ·
+`nerf_versus_pistol` seeds 1/7/13 · `pistol_fire` seeds 1/7/13 unchanged at `1168`–`1208` ·
+`m5_pistol` seeds 1/7/13 · `boot_smoke` green with the sixteen-entry catalogue.
+
+**Task D (original text) — Catalogue split + real-pistol tuning.** §4.4 mechanical checklist; author both
 `.tres` per §4.7; measure and record: nerf point-blank head-shot pain (≈ 0), pistol
 point-blank pain (comparable to today's 85-class measurement), pistol vs nerf measured
 impulse separation.

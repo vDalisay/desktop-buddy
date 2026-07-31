@@ -25,6 +25,12 @@ public static class ContentIds
     public const string ToolBaseball = "tool.baseball";
     public const string ToolMeal = "tool.meal";
     public const string ToolBaseballBat = "tool.baseball_bat";
+
+    /// <summary>
+    /// The starter toy gun. <see cref="ToolPistol"/> keeps its plain meaning — the real
+    /// gun — because a shipped content ID is migrated, never repurposed.
+    /// </summary>
+    public const string ToolNerfBlaster = "tool.nerf_blaster";
     public const string ToolPistol = "tool.pistol";
     public const string ToolGrenade = "tool.grenade";
     public const string ToolFireSprayer = "tool.fire_sprayer";
@@ -82,6 +88,7 @@ public static class ContentIds
         ToolId.Baseball => ToolBaseball,
         ToolId.Meal => ToolMeal,
         ToolId.BaseballBat => ToolBaseballBat,
+        ToolId.NerfBlaster => ToolNerfBlaster,
         ToolId.Pistol => ToolPistol,
         ToolId.Grenade => ToolGrenade,
         ToolId.FireSprayer => ToolFireSprayer,
@@ -124,6 +131,9 @@ public static class ContentIds
                 return true;
             case ToolBaseballBat:
                 tool = ToolId.BaseballBat;
+                return true;
+            case ToolNerfBlaster:
+                tool = ToolId.NerfBlaster;
                 return true;
             case ToolPistol:
                 tool = ToolId.Pistol;

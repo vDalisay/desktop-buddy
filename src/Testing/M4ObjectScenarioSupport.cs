@@ -107,6 +107,26 @@ internal static class M4ObjectScenarioSupport
     }
 
     /// <summary>
+    /// The projectile launched most recently, which is the shot a check has just fired.
+    /// Pool order says nothing about launch order, so the youngest live body is the only
+    /// reliable way to name "that shot".
+    /// </summary>
+    public static Tools.ProjectileBody? NewestLiveProjectile(Tools.CursorGunComponent gun)
+    {
+        Tools.ProjectileBody? newest = null;
+        foreach (Node child in gun.GetChildren())
+        {
+            if (child is Tools.ProjectileBody { State: Tools.ProjectileState.Live } projectile &&
+                (newest is null || projectile.TicksInState < newest.TicksInState))
+            {
+                newest = projectile;
+            }
+        }
+
+        return newest;
+    }
+
+    /// <summary>
     /// A cursor stand-off from a target, on whichever side has more room behind it, with
     /// the direction a shot from there travels. Aiming needs pointer travel, and the roomier
     /// side is the one where the approach that provides it always fits.

@@ -163,7 +163,10 @@ Out of scope (do not build):
   unknown, and invalid entries cannot be purchased or selected. This type owns no
   authored prices, display metadata, or Godot references.
 - **`ToolId` appends:** `Meal = 5, BaseballBat = 6, Pistol = 7, Grenade = 8,
-  FireSprayer = 9, SoccerBall = 10, Drink = 11, Shotgun = 12, RepairKit = 13`.
+  FireSprayer = 9, SoccerBall = 10, Drink = 11, Shotgun = 12, RepairKit = 13`, and
+  `NerfBlaster = 14` — the starter toy gun added when M5 Task 5's refinement split the
+  toy from the real one, which takes the FR-013.2 launch catalogue to fifteen
+  interactions plus the upgrade.
   `ContentIds` gains `tool.*` constants for each plus `upgrade.strength`;
   `ForTool`/`TryParseTool`/`IsKnown` extended in the same commit that adds the enum
   member (the total-mapping throw enforces this).

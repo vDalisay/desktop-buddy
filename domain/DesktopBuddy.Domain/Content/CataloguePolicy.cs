@@ -30,9 +30,13 @@ public static class CataloguePolicy
     };
 
     /// <summary>
-    /// The complete FR-013.2 launch catalogue: fourteen interactions plus the FR-019
+    /// The complete FR-013.2 launch catalogue: fifteen interactions plus the FR-019
     /// upgrade. Listed in the confirmed progression order of FR-013.4, with the starting
     /// tools first and the upgrade last (its schedule slot is an FR-019.7 decision).
+    ///
+    /// <para>FR-013.2 confirmed fourteen interactions; the Nerf Blaster is the fifteenth,
+    /// added when M5 split the toy gun from the real one so the guns arrive as a
+    /// progression rather than as one weapon the owner could not place.</para>
     /// </summary>
     public static readonly IReadOnlyList<string> LaunchContentIds = new[]
     {
@@ -43,6 +47,7 @@ public static class CataloguePolicy
         ContentIds.ToolBaseball,
         ContentIds.ToolMeal,
         ContentIds.ToolBaseballBat,
+        ContentIds.ToolNerfBlaster,
         ContentIds.ToolPistol,
         ContentIds.ToolGrenade,
         ContentIds.ToolFireSprayer,

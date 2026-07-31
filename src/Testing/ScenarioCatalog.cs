@@ -61,6 +61,7 @@ public static class ScenarioCatalog
         ["bat_swing"] = () => new BatSwingScenario(),
         ["homerun_bat_feel"] = () => new HomeRunBatFeelScenario(),
         ["pistol_fire"] = () => new PistolFireScenario(),
+        ["nerf_versus_pistol"] = () => new NerfVersusPistolScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

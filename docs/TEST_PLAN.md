@@ -139,6 +139,16 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   moves. Each check was confirmed to bite by mutation: removing the smoothing fails only the
   jitter check (`0.978`), removing the slew fails only the reversal check (10 ticks), and
   restoring the retired 1 px/tick gate fails only the slow-travel check (the aim never turns).
+- The `nerf_versus_pistol` scenario is the gate on the two guns being **one platform with two
+  authored profiles**. Both are selectable through the real lab keys (`N` and `J`), each keeps
+  its own magazine across a swap, darts droop under their authored gravity while bullets fly
+  flat, and — the claim that matters — a point-blank dart connects and scores **exactly zero
+  pain** (measured impulse `20`–`22`) where a bullet on the same head scores `12.8`–`14.4`
+  (impulse `574`–`603`), a separation of `26`–`28×` with no per-gun damage multiplier anywhere.
+  A dart that merely *missed* would also score zero, so the check proves contact from the
+  projectile's own solver report rather than from the absence of pain. Aimed shots re-derive
+  their stand-off until the barrel really points at the head: the buddy walks over to an
+  engaged cursor, and an aim takes most of a second of pointer travel to establish.
 - **Aiming a gun in a test means moving its pointer, and that is a contract, not a detail.**
   The aim follows the direction the pointer has lately been travelling and turns at a bounded
   rate, so a cursor that teleports into position aims at wherever the jump pointed. Every

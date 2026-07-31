@@ -123,6 +123,7 @@ public sealed class PurchaseTests
     [InlineData(ToolId.Baseball)]
     [InlineData(ToolId.Meal)]
     [InlineData(ToolId.BaseballBat)]
+    [InlineData(ToolId.NerfBlaster)]
     [InlineData(ToolId.Pistol)]
     [InlineData(ToolId.Grenade)]
     [InlineData(ToolId.FireSprayer)]
