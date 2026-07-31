@@ -193,6 +193,9 @@ public partial class BuddyLab : Node2D
         // grab and cancel a buddy interaction, so removal stays the root's job.
         Grenades.Initialize(RemoveLooseObject);
         GrenadeVisual.Initialize(Grenades.Profile);
+        // The pooled pins exist only after the component has built them, and the 3D
+        // presenter takes their flat drawing over the moment it adopts them.
+        GrenadeVisual.TrackPins(Grenades.Pins);
         GrenadeVisualLegacy.Initialize(Grenades.Profile);
         GrenadeAudio.Initialize();
         Grenades.PinPulled += OnGrenadePinPulled;

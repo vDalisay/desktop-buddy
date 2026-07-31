@@ -217,11 +217,21 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   is worth. At `155 px` it scores `4.39` on one part and knocks nobody out. The blast shoves
   every dynamic body on `BuddyParts | LooseObjects` and scores **only** buddy parts, all
   attributed to `tool.grenade`; what a shoved object hits afterwards is ordinary physics, so
-  the attribution check is narrowed to the detonation tick. The camera kick peaks at the
-  authored `4.000 px` and four back-to-back restarts stay inside one envelope, the expanding
-  ring reaches the real `48 px` full-effect radius (measured `45.60 px` in 3D, `48.00 px` in
-  legacy), the boom counter equals the detonation count, and a grenade rolling on the floor
-  adds no thuds. No grenade mesh vertex escapes its stated envelope, pin in or pin out.
+  the attribution check is narrowed to the detonation tick. The shove is measured as the
+  speed a witness object *leaves* at rather than where it ends up: held at a known `35 px`
+  from the centre — inside the full-effect radius, where the falloff is `1` — it leaves at
+  `1750.8 px/s` against the authored `1800` impulse over its `1.0` mass, and how far it then
+  travels is a story about which wall it met. That measurement replaced a settled-distance
+  reading that moved *down* when the owner doubled the shove, because the object was
+  bouncing back off a wall inside the sample window (owner feel gate, 2026-07-31). The camera
+  kick peaks at the authored `4.000 px` and four back-to-back restarts stay inside one
+  envelope, the expanding ring reaches the real `48 px` full-effect radius (measured
+  `45.60 px` in 3D, `48.00 px` in legacy), the boom counter equals the detonation count, and
+  a grenade rolling on the floor adds no thuds. No grenade mesh vertex escapes its stated
+  envelope — now `1.35 x` the **drawn** radius, `17.50 px` for a `10 px` collider — pin in or
+  pin out, and the dropped pin is drawn exactly once: as a mesh in `Mii3D` with the flat body
+  dark, and as its own flat ring in legacy with no mesh
+  (`the_dropped_pin_is_drawn_once_in_the_active_presentation`).
 - The `m5_grenade` journey repeats the slice through real pointer, button, and key input on
   seeds `1/7`, in both presentation modes: the shop refuses a grenade while its catalogue entry
   is invisible, a buddy that has never met one is curious and catches a **pinned** grenade like

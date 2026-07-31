@@ -1192,6 +1192,26 @@ RAGDOLL §9.2, FR-010.3, and the FR-010 tuning table; those three are amended to
   *is* registry-protected until it detonates — the player is owed the explosion they started —
   and its slot is freed when it goes off.
 
+**Owner feel gate, first pass (2026-07-31).** Three changes, none of which touch the fuse or
+the pain path:
+
+- **The grenade and the pin are drawn as models.** `GrenadeProfile.VisualScale` (`1.75`) is
+  the drawn size against the collider radius, read by the mesh builder and the flat fallback
+  alike, on the guns' precedent: a collider sized for how a grenade should *throw* is too
+  small to carry a silhouette. The dropped pin had no 3D presenter at all — it drew flat
+  canvas art in both modes — and now has `GrenadePinVisual3D`, which takes that drawing over
+  in `Mii3D` exactly as the body slot does.
+- **The explosion is four layers, not two.** A white-hot core, a fireball that swells on an
+  ease-out and cools through flame to smoke, embers thrown on fixed per-index directions, and
+  the same shock ring, which still expands to the real full-effect radius because that is the
+  one part of the explosion that is a claim about the physics. Ember directions come from the
+  index and never from a generator: presentation may not consume simulation randomness.
+- **Knockback is doubled, `ShoveImpulseAtCenter` `900 → 1800`.** The shove and the pain
+  impulse are separate authored quantities precisely so this could happen: the room now gets
+  thrown twice as hard and the buddy is hurt exactly as much as before, because pain still
+  comes only from `EquivalentImpulseAtCenter` through the shared curve. Measured: a `1.0`-mass
+  witness at `35 px` leaves at `1750.8 px/s`, and point-blank pain is unmoved at `190.65`.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

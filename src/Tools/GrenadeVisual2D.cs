@@ -24,6 +24,8 @@ public partial class GrenadeVisual2D : Node2D
     private bool _presentationActive;
     private int _flashTicks;
     private int _ringTicks;
+    private int _fireballTicks;
+    private int _emberTicks;
     private Vector2 _blastCenter;
 
     public bool IsInitialized { get; private set; }
@@ -89,6 +91,8 @@ public partial class GrenadeVisual2D : Node2D
         _blastCenter = center;
         _flashTicks = Mathf.Max(0, _profile.FlashTicks);
         _ringTicks = Mathf.Max(1, _profile.RingTicks);
+        _fireballTicks = Mathf.Max(0, _profile.FireballTicks);
+        _emberTicks = _profile.EmberCount > 0 ? Mathf.Max(0, _profile.EmberTicks) : 0;
         PeakRingRadiusPx = 0.0f;
         QueueRedraw();
     }
@@ -109,6 +113,10 @@ public partial class GrenadeVisual2D : Node2D
 
         if (_flashTicks > 0)
             _flashTicks--;
+        if (_fireballTicks > 0)
+            _fireballTicks--;
+        if (_emberTicks > 0)
+            _emberTicks--;
         if (_ringTicks > 0)
         {
             _ringTicks--;
@@ -145,7 +153,9 @@ public partial class GrenadeVisual2D : Node2D
         LooseObjectBody body = _body!;
         // The presenter sits at the world origin, so world coordinates draw directly.
         Vector2 centre = body.GlobalPosition;
-        float radius = body.Radius;
+        // The drawn size, not the collider size — the same one authored number the mesh
+        // builds at, so the two modes are one grenade at one size.
+        float radius = _profile.DrawnRadiusPx(body.Radius);
         DrawCircle(centre, radius, _profile.BodyColor, true, -1.0f, true);
         DrawArc(centre, radius, 0.0f, Mathf.Tau, 20, _profile.CapColor, 1.6f, true);
 
@@ -169,26 +179,15 @@ public partial class GrenadeVisual2D : Node2D
         }
     }
 
+    /// <summary>
+    /// The same four layers the 3D presenter draws — fireball, embers, white-hot core,
+    /// shock ring — flattened. Back to front, so the hot centre finishes on top.
+    /// </summary>
     private void DrawBlast()
     {
-        int authoredFlash = Mathf.Max(1, _profile.FlashTicks);
-        if (_profile.FlashTicks > 0 && _flashTicks > 0)
-        {
-            float strength = (float)_flashTicks / authoredFlash;
-            float reach = _profile.BlastFullRadiusPx * 0.9f * strength;
-            var star = new Color(_profile.BlastColor, 0.95f * strength);
-            DrawCircle(_blastCenter, reach * 0.45f, star, true, -1.0f, true);
-            for (int ray = 0; ray < 4; ray++)
-            {
-                Vector2 direction = Vector2.Right.Rotated(Mathf.Pi * ray / 4.0f);
-                DrawLine(
-                    _blastCenter - (direction * reach),
-                    _blastCenter + (direction * reach),
-                    star,
-                    3.0f,
-                    true);
-            }
-        }
+        DrawFireball();
+        DrawEmbers();
+        DrawCore();
 
         if (_ringTicks > 0 && RingRadiusPx > 0.0f)
         {
@@ -196,6 +195,80 @@ public partial class GrenadeVisual2D : Node2D
             float progress = 1.0f - ((float)_ringTicks / authoredRing);
             var ring = new Color(_profile.BlastColor, 0.75f * (1.0f - progress));
             DrawArc(_blastCenter, RingRadiusPx, 0.0f, Mathf.Tau, 32, ring, 2.5f, true);
+        }
+    }
+
+    private void DrawFireball()
+    {
+        if (_profile.FireballTicks <= 0 || _fireballTicks <= 0)
+            return;
+
+        int authored = Mathf.Max(1, _profile.FireballTicks);
+        float life = 1.0f - ((float)_fireballTicks / authored);
+        float swell = 1.0f - ((1.0f - life) * (1.0f - life));
+        float radius = _profile.BlastFullRadiusPx * _profile.FireballRadiusFactor *
+                       Mathf.Lerp(0.35f, 1.0f, swell);
+        Color colour = life < 0.35f
+            ? _profile.FireCoreColor.Lerp(_profile.FireColor, life / 0.35f)
+            : _profile.FireColor.Lerp(_profile.SmokeColor, (life - 0.35f) / 0.65f);
+        float alpha = 0.95f * (1.0f - (life * life));
+
+        // Two discs rather than one: the cooler skirt is what makes a flat circle read as
+        // fire instead of as a coloured dot.
+        DrawCircle(
+            _blastCenter, radius, new Color(colour, alpha * 0.55f), true, -1.0f, true);
+        DrawCircle(
+            _blastCenter,
+            radius * 0.62f,
+            new Color(colour.Lerp(_profile.FireCoreColor, 0.45f), alpha),
+            true,
+            -1.0f,
+            true);
+    }
+
+    private void DrawEmbers()
+    {
+        int count = Mathf.Clamp(_profile.EmberCount, 0, 64);
+        if (count == 0 || _profile.EmberTicks <= 0 || _emberTicks <= 0)
+            return;
+
+        int authored = Mathf.Max(1, _profile.EmberTicks);
+        float life = 1.0f - ((float)_emberTicks / authored);
+        float travel = 1.0f - ((1.0f - life) * (1.0f - life) * (1.0f - life));
+        float reach = _profile.BlastFullRadiusPx * _profile.EmberReachFactor;
+        float length = _profile.BlastFullRadiusPx * 0.30f * (1.0f - life);
+        var tint = new Color(
+            _profile.FireColor.Lerp(_profile.FireCoreColor, 0.35f),
+            0.95f * (1.0f - (life * life)));
+
+        for (int index = 0; index < count; index++)
+        {
+            Vector2 direction = GrenadeProfile.EmberDirection(index, count);
+            float distance = reach * GrenadeProfile.EmberReachFraction(index) * travel;
+            Vector2 head = _blastCenter + (direction * distance);
+            DrawLine(head - (direction * length), head, tint, 2.2f, true);
+        }
+    }
+
+    private void DrawCore()
+    {
+        if (_profile.FlashTicks <= 0 || _flashTicks <= 0)
+            return;
+
+        int authored = Mathf.Max(1, _profile.FlashTicks);
+        float strength = (float)_flashTicks / authored;
+        float reach = _profile.BlastFullRadiusPx * 1.05f * strength;
+        var star = new Color(_profile.FireCoreColor, 0.95f * strength);
+        DrawCircle(_blastCenter, reach * 0.45f, star, true, -1.0f, true);
+        for (int ray = 0; ray < 4; ray++)
+        {
+            Vector2 direction = Vector2.Right.Rotated(Mathf.Pi * ray / 4.0f);
+            DrawLine(
+                _blastCenter - (direction * reach),
+                _blastCenter + (direction * reach),
+                star,
+                3.0f,
+                true);
         }
     }
 

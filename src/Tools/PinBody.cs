@@ -30,6 +30,10 @@ public partial class PinBody : RigidBody2D
     private Color _color = new("c9c3a6");
     private int _ticks;
     private int _lingerTicks = 480;
+    private bool _legacyDrawEnabled = true;
+
+    /// <summary>The wire ring's radius in px — what the 3D pin mesh is built from.</summary>
+    public static float RingRadiusPx => RingRadius;
 
     public bool IsLive { get; private set; }
 
@@ -95,8 +99,20 @@ public partial class PinBody : RigidBody2D
         // Nothing may hit it; it may only hit the floor.
         CollisionLayer = 0u;
         CollisionMask = CollisionLayers.RoomBounds;
-        Visible = true;
+        Visible = _legacyDrawEnabled;
         ResetPhysicsInterpolation();
+        QueueRedraw();
+    }
+
+    /// <summary>
+    /// Whether this body draws its own flat ring. The 3D presentation turns it off and
+    /// draws the pin as a mesh instead — the same one-silhouette-per-mode handover the
+    /// grenade and the guns make, so the two are never on screen at once.
+    /// </summary>
+    public void SetLegacyDrawEnabled(bool enabled)
+    {
+        _legacyDrawEnabled = enabled;
+        Visible = enabled && IsLive;
         QueueRedraw();
     }
 

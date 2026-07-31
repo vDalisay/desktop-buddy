@@ -55,8 +55,14 @@ public partial class GrenadeProfile : GameResource
     /// on <c>BuddyParts | LooseObjects</c>. Separate from the pain impulse because they
     /// answer different questions: this one decides what the room looks like afterwards,
     /// and only the buddy is scored for pain at all.
+    ///
+    /// <para>Doubled from the first pass' <c>900</c> on the owner's feel gate: the blast
+    /// was reading as loud but polite. Because the shove and
+    /// <see cref="EquivalentImpulseAtCenter"/> are separate authored quantities, this moves
+    /// how far things fly without moving what the blast hurts for — the pain still comes
+    /// only from the shared curve, at the impulse it was already tuned to.</para>
     /// </summary>
-    [Export(PropertyHint.Range, "0,20000,1,or_greater")] public float ShoveImpulseAtCenter { get; set; } = 900.0f;
+    [Export(PropertyHint.Range, "0,20000,1,or_greater")] public float ShoveImpulseAtCenter { get; set; } = 1800.0f;
 
     // --- Presentation (none of it may touch the routed tick or the pain path) ---
 
@@ -65,11 +71,33 @@ public partial class GrenadeProfile : GameResource
 
     [Export(PropertyHint.Range, "0,120,1,or_greater")] public int KickDecayTicks { get; set; } = 14;
 
-    /// <summary>Ticks the additive detonation flash is drawn for.</summary>
-    [Export(PropertyHint.Range, "0,30,1,or_greater")] public int FlashTicks { get; set; } = 3;
+    /// <summary>Ticks the white-hot detonation core is drawn for.</summary>
+    [Export(PropertyHint.Range, "0,30,1,or_greater")] public int FlashTicks { get; set; } = 5;
 
     /// <summary>Ticks the expanding blast ring takes to reach <see cref="BlastFullRadiusPx"/> and fade.</summary>
     [Export(PropertyHint.Range, "1,120,1,or_greater")] public int RingTicks { get; set; } = 20;
+
+    /// <summary>
+    /// Ticks the fireball burns for. It punches out fast and then falls off, so this is
+    /// longer than <see cref="FlashTicks"/> — the core is the bang, the fireball is the
+    /// fire the owner asked to see behind it.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,120,1,or_greater")] public int FireballTicks { get; set; } = 18;
+
+    /// <summary>How far the fireball swells, as a factor of <see cref="BlastFullRadiusPx"/>.</summary>
+    [Export(PropertyHint.Range, "0.2,4,0.05,or_greater")] public float FireballRadiusFactor { get; set; } = 1.15f;
+
+    /// <summary>Ticks the thrown embers live for. They outlast the fireball on purpose.</summary>
+    [Export(PropertyHint.Range, "0,240,1,or_greater")] public int EmberTicks { get; set; } = 30;
+
+    /// <summary>
+    /// How many embers the blast throws. Their directions are fixed by index rather than
+    /// drawn from any generator, so two runs of the same seed draw the same explosion.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,64,1")] public int EmberCount { get; set; } = 14;
+
+    /// <summary>How far the embers reach, as a factor of <see cref="BlastFullRadiusPx"/>.</summary>
+    [Export(PropertyHint.Range, "0.2,8,0.05,or_greater")] public float EmberReachFactor { get; set; } = 2.1f;
 
     /// <summary>
     /// Impact speed, in px/s, below which hitting the floor makes no sound. Without a
@@ -95,6 +123,26 @@ public partial class GrenadeProfile : GameResource
 
     /// <summary>Additive flash / ring colour.</summary>
     [Export] public Color BlastColor { get; set; } = new("ffd489");
+
+    /// <summary>The white-hot centre of the detonation, hotter than <see cref="BlastColor"/>.</summary>
+    [Export] public Color FireCoreColor { get; set; } = new("fff6d8");
+
+    /// <summary>The body of the fireball and the embers thrown out of it.</summary>
+    [Export] public Color FireColor { get; set; } = new("ff7a20");
+
+    /// <summary>What the fireball cools to before it goes out.</summary>
+    [Export] public Color SmokeColor { get; set; } = new("57402f");
+
+    /// <summary>
+    /// How big the drawn grenade is against its authoritative collider radius. The mesh and
+    /// the flat fallback both read it, so the two modes stay one grenade seen two ways, and
+    /// it is the single number to turn if the model reads too small or too fat.
+    ///
+    /// <para>Deliberately greater than one, on the guns' precedent: the collider is sized
+    /// for how a grenade should <i>throw</i>, and at a 10 px radius that leaves a 20 px lump
+    /// in a 480 px window with nothing on it a player could call a model.</para>
+    /// </summary>
+    [Export(PropertyHint.Range, "0.25,4,0.05,or_greater")] public float VisualScale { get; set; } = 1.75f;
 
     /// <summary>Camera-axis depth the drawn grenade sits at, matching the loose objects.</summary>
     [Export] public float VisualDepthOffset { get; set; } = 140.0f;
@@ -125,6 +173,39 @@ public partial class GrenadeProfile : GameResource
 
         float span = BlastZeroRadiusPx - BlastFullRadiusPx;
         return Mathf.Clamp(1.0f - ((distancePx - BlastFullRadiusPx) / span), 0.0f, 1.0f);
+    }
+
+    /// <summary>
+    /// The drawn body radius for a grenade whose collider radius is
+    /// <paramref name="colliderRadiusPx"/>. The one place <see cref="VisualScale"/> is
+    /// applied, so the mesh and the flat fallback cannot drift apart.
+    /// </summary>
+    public float DrawnRadiusPx(float colliderRadiusPx) => colliderRadiusPx * VisualScale;
+
+    /// <summary>
+    /// Which way ember <paramref name="index"/> of <paramref name="count"/> is thrown.
+    /// Spread evenly and then nudged by an irrational step so the fan does not read as a
+    /// clock face — fixed by index, never by a generator, so the explosion is the same
+    /// explosion every run. Shared by both presenters for the same reason.
+    /// </summary>
+    public static Vector2 EmberDirection(int index, int count)
+    {
+        if (count <= 0)
+            return Vector2.Right;
+
+        // 0.618… turns per index: the golden angle, which never repeats a direction.
+        float angle = (Mathf.Tau * index / count) + (index * 0.6180339f);
+        return Vector2.Right.Rotated(angle);
+    }
+
+    /// <summary>
+    /// How far ember <paramref name="index"/> gets, as a fraction of the full reach. Also
+    /// fixed by index, so some embers outrun the others without any two runs disagreeing.
+    /// </summary>
+    public static float EmberReachFraction(int index)
+    {
+        float wobble = (index * 0.6180339f) % 1.0f;
+        return 0.55f + (0.45f * wobble);
     }
 
     public override Godot.Collections.Array<string> Validate()
@@ -178,6 +259,27 @@ public partial class GrenadeProfile : GameResource
         {
             errors.Add(
                 $"{nameof(FlashTicks)} must be non-negative and {nameof(RingTicks)} positive");
+        }
+
+        if (FireballTicks < 0 || EmberTicks < 0 || EmberCount < 0)
+        {
+            errors.Add(
+                $"{nameof(FireballTicks)}, {nameof(EmberTicks)} and {nameof(EmberCount)} " +
+                "must be non-negative");
+        }
+
+        if (!float.IsFinite(FireballRadiusFactor) || FireballRadiusFactor <= 0.0f ||
+            !float.IsFinite(EmberReachFactor) || EmberReachFactor <= 0.0f)
+        {
+            errors.Add(
+                $"{nameof(FireballRadiusFactor)} and {nameof(EmberReachFactor)} must be " +
+                "finite and positive");
+        }
+
+        if (!float.IsFinite(VisualScale) || VisualScale <= 0.0f)
+        {
+            // A zero or negative scale would collapse the mesh or turn it inside out.
+            errors.Add($"{nameof(VisualScale)} must be finite and positive");
         }
 
         if (!float.IsFinite(ThudMinImpactSpeed) || ThudMinImpactSpeed < 0.0f ||

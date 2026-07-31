@@ -56,6 +56,13 @@ public partial class GrenadeComponent : Node2D
 
     public bool IsInitialized { get; private set; }
 
+    /// <summary>
+    /// The pooled cosmetic pins, for a presenter that draws them. Exposed read-only: a
+    /// presenter may look at where a pin is and whether it is live, and may not drop,
+    /// park, or move one — those are this component's, on the routed tick.
+    /// </summary>
+    public System.Collections.Generic.IReadOnlyList<PinBody> Pins => _pins;
+
     /// <summary>The grenade this component is following, or <c>null</c>.</summary>
     public LooseObjectBody? Tracked =>
         GodotObject.IsInstanceValid(_tracked) && _tracked!.RuntimeId != 0 ? _tracked : null;

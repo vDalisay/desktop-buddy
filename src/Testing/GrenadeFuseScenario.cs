@@ -36,6 +36,15 @@ public sealed class GrenadeFuseScenario : IScenario
     /// <summary>Six seconds — twice the fuse — is "it is never going off".</summary>
     private const int SafetySoakTicks = 720;
 
+    /// <summary>
+    /// Where the witness object sits when the blast goes off, relative to the centre.
+    /// Well inside the full-effect radius, so the falloff there is exactly 1 and the speed
+    /// it leaves with is the authored shove divided by its mass — nothing to interpret.
+    /// Far enough out that it is not overlapping the buddy part the blast is centred on,
+    /// whose ejection would be the thing being measured instead.
+    /// </summary>
+    private static readonly Vector2 WitnessOffset = new(34.0f, -10.0f);
+
     public string Id => "grenade_fuse";
 
     public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
@@ -64,7 +73,7 @@ public sealed class GrenadeFuseScenario : IScenario
             int outside = 0;
             foreach (Vector3 vertex in faces)
             {
-                if (!GrenadeMeshBuilder.IsInsideEnvelope(vertex, 10.0f))
+                if (!GrenadeMeshBuilder.IsInsideEnvelope(vertex, profile, 10.0f))
                     outside++;
             }
 
@@ -75,7 +84,10 @@ public sealed class GrenadeFuseScenario : IScenario
         checks.Add(new StartupCheck(
             "grenade_mesh_stays_inside_its_authored_envelope",
             envelopeHolds,
-            $"{string.Join(" | ", envelopeReport)} bound={GrenadeMeshBuilder.EnvelopeRadiusFactor}x radius"));
+            $"{string.Join(" | ", envelopeReport)} " +
+            $"bound={GrenadeMeshBuilder.EnvelopeRadiusFactor}x drawn radius " +
+            $"({GrenadeMeshBuilder.DrawnRadius(profile, 10.0f):F2}px from a 10px collider, " +
+            $"scale={profile.VisualScale})"));
 
         Rect2 room = lab.Boundaries.InnerBounds;
         var bench = new Vector2(room.Position.X + 90.0f, room.Position.Y + 70.0f);
@@ -157,6 +169,17 @@ public sealed class GrenadeFuseScenario : IScenario
             $"scored={scoredBeforePinProbe}->{lab.Pipeline.ScoredImpactCount} " +
             $"buddy_contacts={pinBuddyContactsBefore}->{pin?.BuddyContactCount ?? 0} " +
             $"registry={lab.Objects.Count} (pins never register)"));
+
+        // One pin, one silhouette: the mode that is drawing owns it and the other is dark.
+        // Read after a render frame, because which mesh is on screen is decided in _Process.
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        int pinMeshes = lab.GrenadeVisual.Pins.VisiblePinCount;
+        bool pinDrawsItself = pin is not null && pin.Visible;
+        checks.Add(new StartupCheck(
+            "the_dropped_pin_is_drawn_once_in_the_active_presentation",
+            is3D ? pinMeshes == 1 && !pinDrawsItself : pinMeshes == 0 && pinDrawsItself,
+            $"mode={lab.Mode} pin_meshes={pinMeshes} flat_pin_drawing={pinDrawsItself} " +
+            $"live_pins={grenades.ActivePinCount}"));
 
         // --- 3. Pin out and still in the hand: safe indefinitely ---
         await Idle(tree, SafetySoakTicks);
@@ -307,16 +330,25 @@ public sealed class GrenadeFuseScenario : IScenario
             $"witness moved {witnessed.WitnessMovedPx:F2}px, " +
             $"non-grenade impacts={witnessed.NonGrenadeImpacts}");
 
+        // The witness sits 30px from the centre — inside the full-effect radius, so the
+        // falloff is 1 — and weighs exactly the profile's mass. Its speed on the way out
+        // is therefore the authored shove itself, which is what the owner's "double it"
+        // moved. How far it ends up is a story about which wall it met.
+        float expectedWitnessSpeed = profile.ShoveImpulseAtCenter / lab.SafeObjectProfile.Mass;
         checks.Add(new StartupCheck(
             "blast_moves_objects_but_only_the_buddy_feels_pain",
             witnessed.WitnessMovedPx > 4.0f &&
+            witnessed.WitnessPeakSpeedPx >= expectedWitnessSpeed * 0.85f &&
             witnessed.ShovedBodies > witnessed.ScoredParts &&
             witnessed.AllAttributedToGrenade &&
             witnessed.ScoredParts > 0,
-            $"witness_moved={witnessed.WitnessMovedPx:F2}px shoved={witnessed.ShovedBodies} " +
+            $"witness_moved={witnessed.WitnessMovedPx:F2}px " +
+            $"witness_peak_speed={witnessed.WitnessPeakSpeedPx:F1}px/s " +
+            $"(expected>={expectedWitnessSpeed * 0.85f:F1} from " +
+            $"shove {profile.ShoveImpulseAtCenter} / mass {lab.SafeObjectProfile.Mass}) " +
+            $"shoved={witnessed.ShovedBodies} " +
             $"scored_parts={witnessed.ScoredParts} " +
             $"non_grenade_impacts_on_the_blast_frame={witnessed.NonGrenadeImpacts} " +
-            $"shove_at_centre={profile.ShoveImpulseAtCenter} " +
             $"(what a shoved object hits afterwards is ordinary physics)"));
 
         // --- 7. Presentation: the medium kick, the ring, and the cues ---
@@ -383,6 +415,7 @@ public sealed class GrenadeFuseScenario : IScenario
         int NonGrenadeImpacts,
         int ShovedBodies,
         float WitnessMovedPx,
+        float WitnessPeakSpeedPx,
         int KickCountDelta,
         float KickPeakPx,
         int RestartKicks,
@@ -421,8 +454,7 @@ public sealed class GrenadeFuseScenario : IScenario
         LooseObjectBody? witness = null;
         if (withWitnessObject)
         {
-            witness = lab.SpawnLooseObject(
-                lab.SafeObjectProfile, blastPoint() + new Vector2(30.0f, 0.0f));
+            witness = lab.SpawnLooseObject(lab.SafeObjectProfile, blastPoint() + WitnessOffset);
         }
 
         await Grab(tree, lab, grenade);
@@ -500,6 +532,22 @@ public sealed class GrenadeFuseScenario : IScenario
                 grenade.AngularVelocity = 0.0f;
                 grenade.ResetPhysicsInterpolation();
                 placements++;
+
+                // The witness is placed for the same reason and on the same ticks. Left
+                // where it was spawned it spends the fuse falling to the floor, and then
+                // "how hard did the blast throw it" would be a question about the falloff
+                // at wherever it rolled to, and about the floor holding it down. Held at a
+                // known offset it is airborne, inside the full-effect radius, and the
+                // impulse it leaves with is the authored shove.
+                if (GodotObject.IsInstanceValid(witness))
+                {
+                    witness!.GlobalPosition = blastPoint() + WitnessOffset;
+                    witness.LinearVelocity = Vector2.Zero;
+                    witness.AngularVelocity = 0.0f;
+                    witness.Sleeping = false;
+                    witness.ResetPhysicsInterpolation();
+                    witnessBefore = witness.GlobalPosition;
+                }
             }
 
             int grenadeBefore = grenadeImpacts;
@@ -527,10 +575,19 @@ public sealed class GrenadeFuseScenario : IScenario
         float blastPain = grenades.LastBlastPain;
         int blastParts = grenades.LastBlastScoredParts;
         int shoved = grenades.LastBlastShovedBodies;
-        // Let the shove actually move things before reading how far they went.
+        // Let the shove actually move things before reading how far they went. The witness'
+        // speed is sampled over the first few ticks, before it can reach a wall: how far it
+        // ends up is a story about the room, but how hard it left is the authored shove.
+        float witnessPeakSpeed = 0.0f;
         for (int tick = 0; tick < grenades.Profile.RingTicks + 20; tick++)
         {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            if (tick < 4 && GodotObject.IsInstanceValid(witness))
+            {
+                witnessPeakSpeed = Mathf.Max(
+                    witnessPeakSpeed, witness!.LinearVelocity.Length());
+            }
+
             flashSeen |= lab.Mode == PresentationMode.Mii3D
                 ? lab.GrenadeVisual.IsFlashVisible
                 : lab.GrenadeVisualLegacy.IsFlashVisible;
@@ -554,6 +611,7 @@ public sealed class GrenadeFuseScenario : IScenario
             blastFrameNonGrenadeImpacts,
             shoved,
             witnessMoved,
+            witnessPeakSpeed,
             kickDelta,
             kickPeak,
             restartKicks,

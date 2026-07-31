@@ -257,10 +257,17 @@ M5 Task 6 (Grenade) is engineering-complete against
       the real blast radius; the pistol's camera lane at the grenade's bigger `4.0 px`/`14`
       tick numbers; and two clean-room synthesized cues, the thud gated so a rolling grenade
       stays quiet.
-- [x] Task E — `grenade_fuse` (13 checks, seeds `1/7/13`, both presentations) and the
+- [x] Task E — `grenade_fuse` (14 checks, seeds `1/7/13`, both presentations) and the
       `m5_grenade` journey (8 assertions, seeds `1/7`, both presentations), both registered
       in `ScenarioCatalog`, `TEST_PLAN.md`, and the quick suite (now 28 steps).
-- [ ] Task F — owner feel gate on real Windows. The catalogue entry stays
+- [x] Task G — the owner's first feel-gate pass, 2026-07-31: the grenade and its pin now
+      read as models rather than as lumps (drawn at `1.75 x` the collider radius in both
+      modes, grooved body, folded lever, wire-ring pin, and a real 3D mesh for the *dropped*
+      pin, which had been flat canvas art in both modes); the explosion is four layers
+      instead of two — white-hot core, swelling-and-cooling fireball, fourteen thrown embers,
+      and the same shock ring; and `ShoveImpulseAtCenter` is doubled `900 → 1800`, which
+      moves knockback alone and leaves the pain curve untouched.
+- [ ] Task F — owner feel gate on real Windows, **second pass**. The catalogue entry stays
       `Visible = false` until the owner's word, and the three flagged defaults in the plan's
       §3 (a live grenade stays live, "five bullets" is the solid reading, buy-once) were
       taken as written and are recorded in `DECISIONS.md` as accepted-by-default.

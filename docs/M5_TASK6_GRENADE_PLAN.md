@@ -1,7 +1,9 @@
 # M5 Task 6 — Grenade Plan
 
 **Status:** Drafted 2026-07-31 from the owner's refinement decisions (below), and
-**implemented through Task E on 2026-07-31**; Task F's owner feel gate is outstanding.
+**implemented through Task E on 2026-07-31**, plus **Task G, the first round of owner
+feel-gate feedback** (3D grenade and pin, a fierier explosion, doubled knockback — §4);
+Task F's second owner feel gate is outstanding.
 Measured results are recorded in §2.2 and §6. This plan **supersedes the fuse rule** in the master plan's Task 6 and in
 RAGDOLL §9.2 ("2.5-second fuse starts on launch"): the owner replaced it with a pin
 mechanic and a 3-second post-release fuse. That is a spec amendment — record it in
@@ -296,7 +298,7 @@ kick, audio component, pin visual. *Accept:* both presentation modes —
 `boom_and_thud_cues_fire_with_counters` (thud gated: a rolling grenade stays quiet),
 mesh envelope proof; existing presentation regressions green.
 
-**Task E — DONE 2026-07-31.** `grenade_fuse` (13 checks) and the `m5_grenade` journey
+**Task E — DONE 2026-07-31.** `grenade_fuse` (13 checks, now 14 after Task G below) and the `m5_grenade` journey
 (8 assertions) are registered in `ScenarioCatalog`, `TEST_PLAN.md`, and the quick suite
 (now **28 steps**). §2.5 held as written — no new behavior systems. The journey shows a
 buddy that has never met a grenade catching a pinned one like a ball, then leaving the next
@@ -334,8 +336,54 @@ neighbours green on seeds `1/7`: `baseball_pullback` (also seed 13 and legacy),
 `object_budget`, `presentation_3d`, `m3_presentation`, `boot_smoke`. No baseline moved
 except the domain count stated above.
 
-**Still owed at this task:** the owner plays it on real Windows and either accepts the feel
-or sends it back, and `Visible = true` follows only from that.
+**Task G — owner feel-gate pass 1, DONE 2026-07-31.** The owner played it and sent back three
+items. All three are landed; none of them touches the fuse machine, the pain path, or the
+routed clock.
+
+1. *"The grenade and pin is not in 3D yet."* The grenade **had** a 3D mesh; the dropped pin
+   had none — `PinBody` drew flat canvas art in both presentation modes, which is exactly
+   what "not in 3D" describes. That is now `GrenadePinVisual3D`: one mesh per pooled pin,
+   built once, interpolated off the presenter's existing tick snapshot, faded on the pin's
+   own linger, and taking the flat drawing over in `Mii3D` the same way the body slot does.
+   The grenade itself was drawn to its `10 px` collider, which is a `20 px` lump in a `480 px`
+   window — too small to carry a shape whatever geometry is under it. `VisualScale = 1.75` is
+   now the drawn size against the collider radius, read by the mesh builder and by the flat
+   fallback, so the two modes stay one grenade at one size; and the silhouette itself earns
+   the pixels, with three moulded grooves down the body, a folded lever instead of a stuck-on
+   tab, and a swept wire ring in place of the ring of beads. The stated envelope moves with
+   it — still `1.35 x`, now of the **drawn** radius — so the check is against a stated bound
+   rather than a discovered one.
+2. *"The explosion looks a bit lame — more explosive and fiery."* Two layers became four:
+   the white-hot core (`FireCoreColor`, `5` ticks), a fireball that swells on an ease-out to
+   `1.15 x` the full-effect radius and cools flame → smoke over `18` ticks, `14` embers thrown
+   to `2.1 x` that radius over `30` ticks, and the original shock ring, unchanged in meaning
+   because it is the one layer that makes a claim about the physics. Both presentations draw
+   all four. Ember directions and reaches are functions of the ember's index — the golden
+   angle, so the fan does not read as a clock face — and never of a generator: presentation
+   must not consume simulation randomness, and a replayed seed must produce the same
+   explosion.
+3. *"Double the knockback."* `ShoveImpulseAtCenter` `900 → 1800`. The shove and the pain
+   impulse were authored as separate quantities for exactly this reason, so knockback moved
+   and pain did not (point-blank `190.65`, unchanged).
+
+**One test had to be replaced rather than re-baselined.** `blast_moves_objects_but_only_the_
+buddy_feels_pain` measured how far a witness object had travelled `40` ticks after the blast.
+That number went *down* when the shove doubled — `105.77 px → 25.09 px` — because the witness
+was now reaching a wall and bouncing back inside the sample window, and because it had spent
+the three-second fuse falling to the floor, so it was being shoved from wherever it rolled to.
+It now sits at a known `35 px` from the centre on the detonation tick, inside the full-effect
+radius where the falloff is `1`, and the check reads the speed it *leaves* at: `1750.8 px/s`
+against `1800` impulse over `1.0` mass. How far it ends up is a story about which wall it met;
+how hard it left is the authored number. A fourteenth check,
+`the_dropped_pin_is_drawn_once_in_the_active_presentation`, pins the new pin handover in both
+modes.
+
+**Validation, 2026-07-31 (feel-gate pass 1).** Build `0/0` · domain **999/999** (unmoved —
+the fuse model was not touched) · quick suite **28/28** · `grenade_fuse` green in `Mii3D` and
+`legacy`, **14 checks** each (was 13).
+
+**Still owed at this task:** the owner plays it again on real Windows and either accepts the
+feel or sends it back, and `Visible = true` follows only from that.
 
 **Task F (original text) — Feel gate + bookkeeping.** Owner plays it on real Windows. Then: DECISIONS
 entries (fuse supersession, the three §3 defaults as accepted/vetoed), RAGDOLL §9.2 +
