@@ -233,8 +233,11 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   dark, and as its own flat ring in legacy with no mesh
   (`the_dropped_pin_is_drawn_once_in_the_active_presentation`).
 - The `m5_grenade` journey repeats the slice through real pointer, button, and key input on
-  seeds `1/7`, in both presentation modes: the shop refuses a grenade while its catalogue entry
-  is invisible, a buddy that has never met one is curious and catches a **pinned** grenade like
+  seeds `1/7`, in both presentation modes: the shop **sells** a grenade at its authored `40`
+  credits to a saveless buyer holding exactly that — the leg asserted the refusal an invisible
+  catalogue entry produces until the owner accepted the tool on 2026-07-31, and it is
+  exercised against a fresh progress state because the laboratory grants every implemented M5
+  tool at boot and would answer `AlreadyOwned` — a buddy that has never met one is curious and catches a **pinned** grenade like
   a ball, the pullback chord's first secondary press pulls the pin so the throw starts the
   three-second fuse, the blast hurts the buddy and pays for it (`200.91` pain, `146067`
   milli-credits), `tool.grenade` enters harmful memory, and the buddy then leaves the next

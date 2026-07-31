@@ -1,9 +1,9 @@
 # M5 Task 6 — Grenade Plan
 
-**Status:** Drafted 2026-07-31 from the owner's refinement decisions (below), and
-**implemented through Task E on 2026-07-31**, plus **Task G, the first round of owner
-feel-gate feedback** (3D grenade and pin, a fierier explosion, doubled knockback — §4);
-Task F's second owner feel gate is outstanding.
+**Status:** **COMPLETE and owner-accepted 2026-07-31.** Drafted from the owner's refinement
+decisions (below), implemented through Task E, refined at Task G against the owner's
+feel-gate feedback (3D grenade and pin, a fierier explosion, doubled knockback — §4), then
+accepted at Task F with `tool_grenade.tres` going `Visible = true`.
 Measured results are recorded in §2.2 and §6. This plan **supersedes the fuse rule** in the master plan's Task 6 and in
 RAGDOLL §9.2 ("2.5-second fuse starts on launch"): the owner replaced it with a pin
 mechanic and a 3-second post-release fuse. That is a spec amendment — record it in
@@ -382,8 +382,21 @@ modes.
 the fuse model was not touched) · quick suite **28/28** · `grenade_fuse` green in `Mii3D` and
 `legacy`, **14 checks** each (was 13).
 
-**Still owed at this task:** the owner plays it again on real Windows and either accepts the
-feel or sends it back, and `Visible = true` follows only from that.
+**Task F — ACCEPTED 2026-07-31.** The owner played the post-feedback build on real Windows
+and accepted the state it is in. `data/catalogue/tool_grenade.tres` is now `Visible = true`
+and the Grenade is on sale at its authored `40` credits. Nothing else about the slice moved:
+the three §3 defaults stand as recorded, and the provisional tuning stays provisional until
+Task 12's economy calibration, like every other M5 tool's price.
+
+The `m5_grenade` journey's first leg changes with it. It asserted the *refusal* — the only
+truthful claim available while the entry was invisible — and now asserts the sale the slice
+always owed: the entry is listed, appears in `CataloguePolicy.ShopEntries`, and a saveless
+buyer holding exactly the price buys it, is unlocked, and is left with nothing
+(`the_shop_sells_the_grenade_at_its_authored_price`). It is exercised against a fresh state
+rather than the laboratory's, because the lab grants every implemented M5 tool at boot for
+mechanical tuning and would answer `AlreadyOwned` to a real purchase.
+
+**Milestone status:** M5 Task 6 (Grenade) is **complete and owner-accepted**.
 
 **Task F (original text) — Feel gate + bookkeeping.** Owner plays it on real Windows. Then: DECISIONS
 entries (fuse supersession, the three §3 defaults as accepted/vetoed), RAGDOLL §9.2 +

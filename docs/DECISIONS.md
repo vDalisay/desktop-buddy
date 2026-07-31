@@ -1212,6 +1212,16 @@ the pain path:
   comes only from `EquivalentImpulseAtCenter` through the shared curve. Measured: a `1.0`-mass
   witness at `35 px` leaves at `1750.8 px/s`, and point-blank pain is unmoved at `190.65`.
 
+**Owner gate — ACCEPTED (2026-07-31).** The owner played the post-feedback build on real
+Windows and accepted the state it is in. `data/catalogue/tool_grenade.tres` is `Visible = true`
+and the Grenade sells at its authored `40` credits, provisional until Task 12's economy
+calibration like every other M5 price. The `m5_grenade` journey's opening leg changed with it:
+it asserted the refusal an invisible entry produces, and now asserts the sale — listed, in
+`CataloguePolicy.ShopEntries`, and bought by a saveless buyer holding exactly the price. The
+sale is exercised against a fresh progress state rather than the laboratory's, because the lab
+grants every implemented M5 tool at boot for mechanical tuning and would answer
+`AlreadyOwned`.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

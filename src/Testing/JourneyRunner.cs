@@ -1139,12 +1139,12 @@ public partial class JourneyRunner : Node
     }
 
     /// <summary>
-    /// The M5 Grenade slice end to end, through real input: the shop still refuses one and
-    /// an unowned spawn key places nothing, a buddy that has never met a grenade is curious
-    /// and catches a pinned one like a ball, the pullback chord's first secondary press
-    /// pulls the pin and the throw starts the three-second fuse, the blast hurts the buddy
-    /// through the shared curve and teaches it that grenades are harmful, and the next one
-    /// is left strictly alone.
+    /// The M5 Grenade slice end to end, through real input: the shop sells one for its
+    /// authored price, a buddy that has never met a grenade is curious and catches a pinned
+    /// one like a ball, the pullback chord's first secondary press pulls the pin and the
+    /// throw starts the three-second fuse, the blast hurts the buddy through the shared
+    /// curve and teaches it that grenades are harmful, and the next one is left strictly
+    /// alone.
     /// </summary>
     private async System.Threading.Tasks.Task ExerciseM5GrenadeAsync(
         Dictionary<string, bool> state,
@@ -1157,28 +1157,47 @@ public partial class JourneyRunner : Node
         Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
         float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
 
-        // --- The shop will not sell one yet ---
-        // The catalogue entry stays `Visible = false` until the owner's feel gate, and the
-        // shop refuses it for exactly that reason rather than for the balance. Ownership
-        // in this journey comes from the development laboratory catalogue, the same way
-        // every other unreleased M5 tool is granted; when the owner flips the entry
-        // visible this refusal becomes a real purchase.
-        PurchaseResult refused = lab.Economy.Purchase(ContentIds.ToolGrenade);
+        // --- The shop sells one ---
+        // The owner accepted the Grenade on 2026-07-31 and the catalogue entry went
+        // `Visible = true`, so this leg is the purchase the slice always owed rather than
+        // the refusal that stood in for it. The laboratory grants ownership at boot for
+        // mechanical tuning, so the sale is exercised against a fresh saveless state at the
+        // shipped price rather than against the lab's granted one — and the lab's own
+        // catalogue is then confirmed to offer it.
+        bool listed = lab.Economy.Catalogue.TryGet(
+            ContentIds.ToolGrenade, out CatalogueEntry shopEntry);
+        bool offered = false;
+        foreach (CatalogueEntry entry in CataloguePolicy.ShopEntries(lab.Economy.Catalogue))
+            offered |= entry.ContentId == ContentIds.ToolGrenade;
+
+        var buyer = new BuddyProgressState(lab.Pipeline.RequirePainProfile().CashPerPain);
+        buyer.Deposit(shopEntry.PriceMilliCredits);
+        long buyerBalanceBefore = buyer.BalanceMilliCredits;
+        PurchaseResult sale = buyer.Purchase(ContentIds.ToolGrenade, lab.Economy.Catalogue);
+
         Vector2 bench = new(
             Mathf.Clamp(torso.X + (side * 140.0f), room.Position.X + 130.0f, room.End.X - 130.0f),
             Mathf.Clamp(torso.Y, room.Position.Y + 40.0f, room.End.Y - 40.0f));
 
-        state["the_grenade_is_not_on_sale_until_the_owner_gates_it"] =
-            !refused.Succeeded &&
-            refused.Status == PurchaseStatus.NotAvailable &&
+        state["the_shop_sells_the_grenade_at_its_authored_price"] =
+            listed &&
+            shopEntry.Visible &&
+            offered &&
+            sale.Succeeded &&
+            sale.Status == PurchaseStatus.Purchased &&
+            sale.PriceMilliCredits == shopEntry.PriceMilliCredits &&
+            buyer.IsToolUnlocked(ContentIds.ToolGrenade) &&
+            buyer.BalanceMilliCredits == buyerBalanceBefore - shopEntry.PriceMilliCredits &&
             grenadeProfile is not null &&
             lab.Progress.IsToolUnlocked(ContentIds.ToolGrenade) &&
             lab.Objects.Count == 0;
 
         Log.Info(
             "Journey",
-            $"M5 grenade gate: refused={refused.Status} succeeded={refused.Succeeded} " +
-            $"owned={lab.Progress.IsToolUnlocked(ContentIds.ToolGrenade)} " +
+            $"M5 grenade shop: listed={listed} visible={shopEntry.Visible} offered={offered} " +
+            $"sale={sale.Status} price={shopEntry.PriceMilliCredits}milli " +
+            $"balance={buyerBalanceBefore}->{buyer.BalanceMilliCredits} " +
+            $"lab_owned={lab.Progress.IsToolUnlocked(ContentIds.ToolGrenade)} " +
             $"objects={lab.Objects.Count} profile={grenadeProfile?.ContentId ?? "<none>"}");
 
         // --- Curious: a buddy that has never met a grenade catches a pinned one ---

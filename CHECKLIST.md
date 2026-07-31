@@ -237,8 +237,8 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
-M5 Task 6 (Grenade) is engineering-complete against
-`docs/M5_TASK6_GRENADE_PLAN.md`, awaiting the owner's feel gate:
+M5 Task 6 (Grenade) is **complete and owner-accepted** (2026-07-31) against
+`docs/M5_TASK6_GRENADE_PLAN.md`:
 
 - [x] Task A — `GrenadeFuseModel` (Domain): `Pinned → PinPulled → Live → Detonated`, the
       one-way pin, held-forever safety, a `360`-tick fuse from either release path, and a
@@ -267,10 +267,12 @@ M5 Task 6 (Grenade) is engineering-complete against
       instead of two — white-hot core, swelling-and-cooling fireball, fourteen thrown embers,
       and the same shock ring; and `ShoveImpulseAtCenter` is doubled `900 → 1800`, which
       moves knockback alone and leaves the pain curve untouched.
-- [ ] Task F — owner feel gate on real Windows, **second pass**. The catalogue entry stays
-      `Visible = false` until the owner's word, and the three flagged defaults in the plan's
-      §3 (a live grenade stays live, "five bullets" is the solid reading, buy-once) were
-      taken as written and are recorded in `DECISIONS.md` as accepted-by-default.
+- [x] Task F — **owner-accepted 2026-07-31** on real Windows after the Task G pass.
+      `tool_grenade.tres` is `Visible = true` and the Grenade is on sale at its authored
+      `40` credits; the `m5_grenade` journey's first leg became the real purchase it always
+      owed, instead of asserting the invisible entry's refusal. The three flagged defaults
+      in the plan's §3 (a live grenade stays live, "five bullets" is the solid reading,
+      buy-once) were taken as written and are recorded in `DECISIONS.md`.
 
 **Next action:** continue `docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` at **Task C**
 (the left-shot regression scenario; two of its four checks already live in `pistol_fire`).
