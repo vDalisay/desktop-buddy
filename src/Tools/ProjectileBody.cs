@@ -43,6 +43,13 @@ public enum ProjectileState
 /// that reused one identity would let its second shot be swallowed as a continuation
 /// of its first shot's contact episode, on the same part, inside the router's re-arm
 /// window.</para>
+///
+/// <para>A multi-projectile shot is the one exception, and it is deliberate: every pellet
+/// of one trigger pull is launched with the <b>same</b> shared identity, so the router's
+/// <c>(SourceInteractionId, TargetPartId)</c> episode key makes six pellets into one part
+/// a single scored impact rather than six. A shotgun's damage therefore comes from
+/// coverage — pellets across N parts open N episodes — which is the owner-accepted dedup
+/// interpretation recorded in DECISIONS for M5 Task 9.</para>
 /// </summary>
 [GlobalClass]
 public partial class ProjectileBody : RigidBody2D, IImpactSource
@@ -151,10 +158,17 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         Park();
     }
 
-    /// <summary>Puts a pooled projectile into flight. Called only from a routed tick.</summary>
-    public void Launch(Vector2 position, Vector2 velocity)
+    /// <summary>
+    /// Puts a pooled projectile into flight. Called only from a routed tick.
+    ///
+    /// <para><paramref name="sharedInteractionId"/> is the identity every pellet of one
+    /// multi-projectile shot is stamped with. Left <c>null</c> — which is what the
+    /// single-projectile path passes — the flight mints its own identity exactly as it
+    /// always did.</para>
+    /// </summary>
+    public void Launch(Vector2 position, Vector2 velocity, int? sharedInteractionId = null)
     {
-        InteractionId = InteractionIds.Next();
+        InteractionId = sharedInteractionId ?? InteractionIds.Next();
         LaunchPosition = position;
         _lastSample = position;
         _launchVelocity = velocity;

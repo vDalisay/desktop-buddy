@@ -16,10 +16,10 @@ namespace DesktopBuddy.Presentation3D;
 /// presenter rotates that whole frame to the aim, so nothing here knows which way the
 /// player is pointing.</para>
 ///
-/// <para>The two silhouettes are deliberately different shapes rather than two colours of
-/// the same one: the Nerf Blaster is chunky, rounded-off and oversized with a wide orange
-/// tip ring, and the Pistol is a compact slide-and-frame with a raked grip. Neither
-/// carries any real-world model's trade dress.</para>
+/// <para>The silhouettes are deliberately different shapes rather than recolours of one:
+/// the Nerf Blaster is chunky, rounded-off and oversized with a wide orange tip ring, the
+/// Pistol is a compact slide-and-frame with a raked grip, and the Shotgun is a long pump
+/// with a walnut forend and stock. None carries any real-world model's trade dress.</para>
 /// </summary>
 public static class GunMeshBuilder
 {
@@ -42,6 +42,7 @@ public static class GunMeshBuilder
         {
             GunVisual3DKind.NerfBlaster => NerfBlaster(profile),
             GunVisual3DKind.RealPistol => RealPistol(profile),
+            GunVisual3DKind.Shotgun => Shotgun(profile),
             _ => throw new ArgumentException(
                 $"'{profile.ContentId}' has no authored gun silhouette.", nameof(profile)),
         };
@@ -166,6 +167,62 @@ public static class GunMeshBuilder
                 new Vector3(length * 0.10f, -length * 0.41f, 0.0f),
                 new Vector3(length * 0.15f, length * 0.06f, length * 0.11f),
                 grip),
+        };
+    }
+
+    /// <summary>
+    /// The Shotgun: a pump silhouette, and deliberately the longest of the three. A single
+    /// bore on the <b>y = 0</b> axis — which is where the presenter puts the muzzle flash and
+    /// where the profile says rounds are born — with the magazine tube slung under it, a
+    /// walnut pump forend around that tube, and a walnut stock and grip carrying the whole
+    /// weapon back over the cursor. The wood is the accent colour, so at a glance the
+    /// shotgun reads long-and-brown where the pistol reads short-and-black.
+    /// </summary>
+    private static List<Block> Shotgun(GunProfile profile)
+    {
+        float length = profile.VisualLengthPx;
+        float tip = profile.VisualMuzzleTipPx;
+        Color body = profile.MuzzleColor;
+        Color wood = profile.AccentColor;
+        float barrelBreech = length * 0.30f;
+
+        return new List<Block>
+        {
+            // Barrel, on the bore line the shot really leaves along.
+            new(
+                new Vector3((barrelBreech + tip) * 0.5f, 0.0f, 0.0f),
+                new Vector3(tip - barrelBreech, length * 0.10f, length * 0.10f),
+                body),
+            // Magazine tube, slung under the barrel.
+            new(
+                new Vector3(length * 0.59f, -length * 0.09f, 0.0f),
+                new Vector3(length * 0.54f, length * 0.07f, length * 0.07f),
+                body),
+            // Pump forend: the wood the shooting hand works, wrapped around that tube.
+            new(
+                new Vector3(length * 0.60f, -length * 0.09f, 0.0f),
+                new Vector3(length * 0.24f, length * 0.13f, length * 0.13f),
+                wood),
+            // Receiver: the thick block the barrel screws into.
+            new(
+                new Vector3(length * 0.26f, -length * 0.02f, 0.0f),
+                new Vector3(length * 0.24f, length * 0.19f, length * 0.14f),
+                body),
+            // Trigger guard, a bar rather than a hollow loop, as the pistol's is.
+            new(
+                new Vector3(length * 0.24f, -length * 0.16f, 0.0f),
+                new Vector3(length * 0.15f, length * 0.035f, length * 0.08f),
+                body),
+            // Stock, running back past the cursor.
+            new(
+                new Vector3(length * 0.06f, -length * 0.10f, 0.0f),
+                new Vector3(length * 0.28f, length * 0.15f, length * 0.12f),
+                wood),
+            // Grip, hanging below the cursor the way both other guns' do.
+            new(
+                new Vector3(length * 0.14f, -length * 0.26f, 0.0f),
+                new Vector3(length * 0.13f, length * 0.26f, length * 0.11f),
+                wood),
         };
     }
 

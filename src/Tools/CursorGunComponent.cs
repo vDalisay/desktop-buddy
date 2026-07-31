@@ -139,6 +139,14 @@ public partial class CursorGunComponent : Node2D
     public int ProjectilesLaunched { get; private set; }
     public int PoolExhaustedCount { get; private set; }
 
+    /// <summary>
+    /// The identity every pellet of the last multi-projectile shot was stamped with, or
+    /// <c>0</c> when the last shot was a single projectile that minted its own. Telemetry
+    /// only: it exists so a scenario can prove the six pellets really are one interaction
+    /// rather than inferring it from the count of accepted impacts.
+    /// </summary>
+    public int LastShotInteractionId { get; private set; }
+
     /// <summary>Projectiles currently in flight across every gun's pool.</summary>
     public int ActiveProjectileCount
     {
@@ -377,6 +385,15 @@ public partial class CursorGunComponent : Node2D
         Vector2 forward = AimForward;
         Vector2 muzzle = ClampInsideRoom(
             _cursor + (forward * profile.MuzzleOffsetPx), profile.ProjectileRadius);
+
+        // One trigger pull is one interaction. A spread gun's pellets share this identity,
+        // so the impact router's (source, part) episode key makes six pellets arriving on
+        // one part a single scored impact instead of six — the shotgun hurts by covering
+        // parts, not by concentrating on one (RAGDOLL §7.1–7.2, DECISIONS M5 Task 9). A
+        // single-projectile gun passes null and mints per launch exactly as it always has,
+        // which is the behaviour the pistol and nerf regressions pin.
+        int? sharedShotId = shot.Projectiles > 1 ? InteractionIds.Next() : null;
+        LastShotInteractionId = sharedShotId ?? 0;
         for (int index = 0; index < shot.Projectiles; index++)
         {
             ProjectileBody? projectile = gun.TryTake();
@@ -390,7 +407,7 @@ public partial class CursorGunComponent : Node2D
             }
 
             Vector2 direction = SpreadDirection(forward, index, shot.Projectiles, profile);
-            projectile.Launch(muzzle, direction * profile.MuzzleSpeed);
+            projectile.Launch(muzzle, direction * profile.MuzzleSpeed, sharedShotId);
             ProjectilesLaunched++;
         }
     }

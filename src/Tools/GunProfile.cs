@@ -15,6 +15,7 @@ public enum GunVisual3DKind
     Unspecified = 0,
     NerfBlaster = 1,
     RealPistol = 2,
+    Shotgun = 3,
 }
 
 /// <summary>

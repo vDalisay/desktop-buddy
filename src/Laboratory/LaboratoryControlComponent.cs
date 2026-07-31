@@ -229,6 +229,10 @@ public partial class LaboratoryControlComponent : Node
             case Key.N when HasPipeline:
                 Pipeline!.SelectTool(ToolId.NerfBlaster);
                 break;
+            // L for the long gun: S, H, and P are all taken by other lab controls.
+            case Key.L when HasPipeline:
+                Pipeline!.SelectTool(ToolId.Shotgun);
+                break;
             case Key.T when HasPipeline:
                 Pipeline!.SelectTool(ToolId.Tickle);
                 break;
