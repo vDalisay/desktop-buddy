@@ -1,6 +1,6 @@
 {
   "id": "m5_pistol",
-  "description": "Draw the catalogue Pistol with its lab tool key, steer its aim with real pointer travel and offset it with a wheel notch, fire one shot per primary press so a projectile's own measured impulse hurts the buddy, reload with the R action and by dry-firing an empty magazine, then put the gun away.",
+  "description": "Confirm the shop sells both guns at their authored prices now that the owner has accepted them, draw the catalogue Pistol with its lab tool key, steer its aim with real pointer travel and offset it with a wheel notch, fire one shot per primary press so a projectile's own measured impulse hurts the buddy, reload with the R action and by dry-firing an empty magazine, then put the gun away.",
   "milestone": 5,
   "setup": {
     "scene": "buddy_lab",
@@ -10,6 +10,7 @@
   },
   "steps": [],
   "assertions": [
+    { "predicate": "the_shop_sells_both_guns_at_their_authored_prices" },
     { "predicate": "pistol_key_draws_a_loaded_pistol" },
     { "predicate": "pointer_motion_aims_the_pistol" },
     { "predicate": "the_wheel_offsets_aim_until_the_next_motion" },

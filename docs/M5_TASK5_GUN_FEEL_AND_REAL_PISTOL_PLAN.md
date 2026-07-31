@@ -1,6 +1,9 @@
 # M5 Task 5 Refinement — Gun Feel, Nerf Blaster, and Real Pistol Plan
 
-**Status:** Drafted 2026-07-31 from the owner's feel feedback on the engineering-complete
+**Status:** **COMPLETE and owner-accepted 2026-07-31.** Both guns are shop-visible; the §4.1
+aim constants are accepted as authored (Task F) and the slice is promoted (Task H).
+
+Drafted 2026-07-31 from the owner's feel feedback on the engineering-complete
 Task 5 cursor-gun platform, after a code audit of the shipped implementation
 (`CursorAimModel`, `GunModel`, `CursorGunComponent`, `ProjectileBody`, `GunProfile`,
 `LabPointerGrabComponent`). The audit found **identified root causes** for two of the three
@@ -635,7 +638,21 @@ sizes, muzzle-offset agreement, left-flip mirroring.
 mesh-bounds helper proves no vertex outside the authored envelope; existing 3D-presentation
 regressions green.
 
-**Task F — Feel pass + owner co-tuning session.** Lab panel dials/readouts for the three
+**Task F — ACCEPTED 2026-07-31, without the co-tuning session.** The owner played the built
+guns and accepted the aim as authored, so the session the task was built around never needed
+to happen. **The shipped values are therefore the accepted values, not provisional ones:**
+
+| Constant | Nerf Blaster | Pistol |
+| --- | --- | --- |
+| `AimSmoothingHalfLifeTicks` | `10.0` | `14.0` |
+| `MaxAimTurnDegreesPerTick` | `9.0` | `6.0` |
+
+No lab dials were built for constants nobody needed to turn, and nothing about the aim moved,
+so the `sustained_reversal_completes_within_expected_ticks` bound and the tick count recorded
+in §6 and `TEST_PLAN.md` stand as measured. If the owner ever wants to dial these, §4.1 is
+still the surface and this table is the thing to update.
+
+**Task F (original text) — Feel pass + owner co-tuning session.** Lab panel dials/readouts for the three
 aim constants; run the session; commit the accepted values into both `.tres` files and
 record them here.
 *Accept:* owner accepts the aim feel in the lab; accepted constants recorded in §4.1's
@@ -704,7 +721,31 @@ envelope), `muzzle_flash_fires_only_on_real_launches` (dry fire: none),
 `dropped_magazine_never_registers_as_a_loose_object` (registry count unchanged),
 magazines re-pool after linger; nerf authors all three off and shows none.
 
-**Task H — Promotion + bookkeeping.** Extend `m5_pistol` journey with the left-shot
+**Task H — ACCEPTED and PROMOTED 2026-07-31.** The owner accepted the whole gun slice on real
+Windows and made the catalogue call in the same breath: `tool_nerf_blaster.tres` and
+`tool_pistol.tres` are both `Visible = true`, on sale at their authored `12` and `30` credits
+— provisional prices until Task 12's economy calibration, like every other M5 tool's.
+
+The `m5_pistol` journey gains one leg for it,
+`the_shop_sells_both_guns_at_their_authored_prices`: each entry is listed, appears in
+`CataloguePolicy.ShopEntries`, and a saveless buyer holding exactly its price buys it, is
+unlocked, and is left with nothing. It shares the `BuysFromShop` helper with the Grenade's
+equivalent leg — the second tool to be promoted is the moment that idiom is worth extracting,
+and any later promotion is now one call. The sale runs against a fresh progress state rather
+than the laboratory's, because the lab grants every implemented M5 tool at boot and would
+answer `AlreadyOwned`.
+
+The bookkeeping this task also listed — the left-shot reproduction leg and a dedicated nerf
+journey — was **not** done and is not silently dropped: `pistol_fire` already carries the
+left-shot regression as scenario checks from Task C, and `nerf_versus_pistol` covers the nerf
+gun's own behaviour, so neither gap is a hole in coverage. They stay available if the journey
+budget ever wants them.
+
+**Validation, 2026-07-31 (promotion).** Build `0/0` · domain **999/999** · quick suite
+**28/28** · `m5_pistol` and `m5_grenade` green on seeds `1/7` in both presentations ·
+`boot_smoke` green with the larger shop.
+
+**Task H (original text) — Promotion + bookkeeping.** Extend `m5_pistol` journey with the left-shot
 reproduction and one nerf leg (or add `m5_nerf_blaster` if the journey grows past its
 budget); update `quick_validate.bat`, `TEST_PLAN.md`, `CHECKLIST.md`; DECISIONS entries:
 the no-round-without-aim rule, the catalogue split, the cosmetic magazine, the accepted aim

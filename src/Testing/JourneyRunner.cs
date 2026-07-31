@@ -1164,41 +1164,15 @@ public partial class JourneyRunner : Node
         // mechanical tuning, so the sale is exercised against a fresh saveless state at the
         // shipped price rather than against the lab's granted one — and the lab's own
         // catalogue is then confirmed to offer it.
-        bool listed = lab.Economy.Catalogue.TryGet(
-            ContentIds.ToolGrenade, out CatalogueEntry shopEntry);
-        bool offered = false;
-        foreach (CatalogueEntry entry in CataloguePolicy.ShopEntries(lab.Economy.Catalogue))
-            offered |= entry.ContentId == ContentIds.ToolGrenade;
-
-        var buyer = new BuddyProgressState(lab.Pipeline.RequirePainProfile().CashPerPain);
-        buyer.Deposit(shopEntry.PriceMilliCredits);
-        long buyerBalanceBefore = buyer.BalanceMilliCredits;
-        PurchaseResult sale = buyer.Purchase(ContentIds.ToolGrenade, lab.Economy.Catalogue);
-
         Vector2 bench = new(
             Mathf.Clamp(torso.X + (side * 140.0f), room.Position.X + 130.0f, room.End.X - 130.0f),
             Mathf.Clamp(torso.Y, room.Position.Y + 40.0f, room.End.Y - 40.0f));
 
         state["the_shop_sells_the_grenade_at_its_authored_price"] =
-            listed &&
-            shopEntry.Visible &&
-            offered &&
-            sale.Succeeded &&
-            sale.Status == PurchaseStatus.Purchased &&
-            sale.PriceMilliCredits == shopEntry.PriceMilliCredits &&
-            buyer.IsToolUnlocked(ContentIds.ToolGrenade) &&
-            buyer.BalanceMilliCredits == buyerBalanceBefore - shopEntry.PriceMilliCredits &&
+            BuysFromShop(lab, ContentIds.ToolGrenade) &&
             grenadeProfile is not null &&
             lab.Progress.IsToolUnlocked(ContentIds.ToolGrenade) &&
             lab.Objects.Count == 0;
-
-        Log.Info(
-            "Journey",
-            $"M5 grenade shop: listed={listed} visible={shopEntry.Visible} offered={offered} " +
-            $"sale={sale.Status} price={shopEntry.PriceMilliCredits}milli " +
-            $"balance={buyerBalanceBefore}->{buyer.BalanceMilliCredits} " +
-            $"lab_owned={lab.Progress.IsToolUnlocked(ContentIds.ToolGrenade)} " +
-            $"objects={lab.Objects.Count} profile={grenadeProfile?.ContentId ?? "<none>"}");
 
         // --- Curious: a buddy that has never met a grenade catches a pinned one ---
         LooseObjectBody? gift = M4ObjectScenarioSupport.SpawnCleanThrow(
@@ -1353,11 +1327,50 @@ public partial class JourneyRunner : Node
     }
 
     /// <summary>
-    /// The M5 Pistol slice through real input, happy path and reload path: the lab's
-    /// tool key draws the pistol, pointer motion aims it, a wheel notch offsets that aim
-    /// until the next motion clears it, one primary press fires exactly one shot whose
-    /// projectile hurts the buddy and is remembered as the pistol, the <c>R</c> action
-    /// reloads a partial magazine, an emptied magazine dry-fires into an automatic
+    /// Whether the shop really sells <paramref name="contentId"/>: the entry is listed and
+    /// visible, <see cref="CataloguePolicy.ShopEntries"/> offers it, and a buyer holding
+    /// exactly its price buys it, is unlocked by it, and is left with nothing.
+    ///
+    /// <para>The sale runs against a fresh <see cref="BuddyProgressState"/> rather than the
+    /// laboratory's, because the lab grants every implemented M5 tool at boot for mechanical
+    /// tuning and would answer <see cref="PurchaseStatus.AlreadyOwned"/> to a real
+    /// purchase — which would prove nothing about whether the shop sells it.</para>
+    /// </summary>
+    private static bool BuysFromShop(BuddyLab lab, string contentId)
+    {
+        if (!lab.Economy.Catalogue.TryGet(contentId, out CatalogueEntry entry) || !entry.Visible)
+            return false;
+
+        bool offered = false;
+        foreach (CatalogueEntry candidate in CataloguePolicy.ShopEntries(lab.Economy.Catalogue))
+            offered |= candidate.ContentId == contentId;
+
+        var buyer = new BuddyProgressState(lab.Pipeline.RequirePainProfile().CashPerPain);
+        buyer.Deposit(entry.PriceMilliCredits);
+        long before = buyer.BalanceMilliCredits;
+        PurchaseResult sale = buyer.Purchase(contentId, lab.Economy.Catalogue);
+
+        Log.Info(
+            "Journey",
+            $"M5 shop: {contentId} offered={offered} sale={sale.Status} " +
+            $"price={entry.PriceMilliCredits}milli " +
+            $"balance={before}->{buyer.BalanceMilliCredits} " +
+            $"lab_owned={lab.Progress.IsToolUnlocked(contentId)}");
+
+        return offered &&
+               sale.Succeeded &&
+               sale.Status == PurchaseStatus.Purchased &&
+               sale.PriceMilliCredits == entry.PriceMilliCredits &&
+               buyer.IsToolUnlocked(contentId) &&
+               buyer.BalanceMilliCredits == before - entry.PriceMilliCredits;
+    }
+
+    /// <summary>
+    /// The M5 Pistol slice through real input, happy path and reload path: the shop sells
+    /// both guns, the lab's tool key draws the pistol, pointer motion aims it, a wheel notch
+    /// offsets that aim until the next motion clears it, one primary press fires exactly one
+    /// shot whose projectile hurts the buddy and is remembered as the pistol, the <c>R</c>
+    /// action reloads a partial magazine, an emptied magazine dry-fires into an automatic
     /// reload, and selecting Grab puts the gun away.
     /// </summary>
     private async System.Threading.Tasks.Task ExerciseM5PistolAsync(
@@ -1365,6 +1378,14 @@ public partial class JourneyRunner : Node
         BuddyLab lab)
     {
         SceneTree tree = GetTree();
+        // --- Both guns are on sale ---
+        // The owner accepted the gun slice on 2026-07-31 and both catalogue entries went
+        // `Visible = true`. Exercised against a fresh saveless state at the shipped prices,
+        // because the laboratory grants every implemented M5 tool at boot for mechanical
+        // tuning and would answer `AlreadyOwned` to a real purchase.
+        state["the_shop_sells_both_guns_at_their_authored_prices"] = BuysFromShop(
+            lab, ContentIds.ToolNerfBlaster) && BuysFromShop(lab, ContentIds.ToolPistol);
+
         // The development telemetry panel covers the left contact zone and consumes
         // mouse buttons there; its own lab key hides it, as the home-run trace does.
         await M4ObjectScenarioSupport.SendKey(tree, Key.H);

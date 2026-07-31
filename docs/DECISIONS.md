@@ -1158,6 +1158,26 @@ spin channel and scores about half as much as a glancing one.
   authored sad-face window is provisionally `1.5` seconds; the immediate pain face may take
   priority before the sad face becomes visible.
 
+## Gun Slice — Owner Gate ACCEPTED and Promoted (2026-07-31)
+
+The owner played the refined guns on real Windows and accepted the slice, closing
+`docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md`.
+
+- **Both guns are on sale.** `tool_nerf_blaster.tres` and `tool_pistol.tres` are
+  `Visible = true` at their authored `12` and `30` credits — provisional until Task 12's
+  economy calibration, like every other M5 price.
+- **The §4.1 aim constants are accepted as authored, not co-tuned.** `AimSmoothingHalfLife
+  Ticks` / `MaxAimTurnDegreesPerTick` are `10.0` / `9.0` for the Nerf Blaster and
+  `14.0` / `6.0` for the Pistol. Task F existed to build laboratory dials for a co-tuning
+  session; the owner accepted the feel without needing one, so no dials were built for
+  constants nobody turned. The values stop being provisional and become the authored
+  baseline: a later change to them is a change, not a first decision.
+- **A promoted tool's shop leg is a real sale, exercised against a fresh progress state.**
+  The laboratory grants every implemented M5 tool at boot for mechanical tuning, so asking
+  *it* to buy one answers `AlreadyOwned` and proves nothing. `JourneyRunner.BuysFromShop`
+  is the shared idiom: entry listed and visible, present in `CataloguePolicy.ShopEntries`,
+  and a saveless buyer holding exactly the price ends up owning it with nothing left.
+
 ## Grenade — Pin Mechanic, Post-Release Fuse, and Blast (Owner decision, 2026-07-31)
 
 The owner replaced the specified launch-triggered fuse with a pin mechanic while approving

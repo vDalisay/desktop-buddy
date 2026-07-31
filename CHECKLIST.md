@@ -151,10 +151,13 @@ owner's erase/preserve matrix. Task 2 (FR-014 budget) extracted the cap rule to
 `Domain/Interaction/LooseObjectAdmissionPolicy` and gated it with `object_budget`;
 its projectile half waits for the Task 5 guns. Task 3 (Meal) is owner-ACCEPTED
 (2026-07-30) and shop-visible. Task 4's Home-Run Bat refinement is also
-owner-ACCEPTED (2026-07-30) and shop-visible. Task 5 (cursor-gun platform + Pistol) is
-engineering-complete (2026-07-31) but was **rejected on feel**; its refinement plan
-`docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` is owner-signed-off and in progress
-(Tasks A and B done), so `tool_pistol.tres` stays hidden. Task 5 also discharged Task 2's
+owner-ACCEPTED (2026-07-30) and shop-visible. Task 5 (cursor-gun platform + Pistol) was
+**rejected on feel** and then refined to acceptance: its plan
+`docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` is **complete and owner-ACCEPTED
+(2026-07-31)**, with both `tool_nerf_blaster.tres` and `tool_pistol.tres` now shop-visible
+at `12` and `30` credits, and the §4.1 aim constants accepted as authored rather than
+co-tuned. Task 6 (Grenade) is **complete and owner-ACCEPTED (2026-07-31)** and shop-visible
+at `40`. Task 5 also discharged Task 2's
 deferred projectile assertion. Baseball is owner-ACCEPTED
 (2026-07-29). The quick suite is now 26 steps — added `corner_scoop` (pickup against
 a wall), `object_budget`, `meal_consume`, `bat_swing`, `pistol_fire`, and the `m5_meal`,
@@ -274,14 +277,15 @@ M5 Task 6 (Grenade) is **complete and owner-accepted** (2026-07-31) against
       in the plan's §3 (a live grenade stays live, "five bullets" is the solid reading,
       buy-once) were taken as written and are recorded in `DECISIONS.md`.
 
-**Next action:** continue `docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` at **Task C**
-(the left-shot regression scenario; two of its four checks already live in `pistol_fire`).
-The owner rejected the first Pistol on feel and signed that plan off; Tasks A (defect
-verification, projectile alignment, aim-gated trigger) and B (aim v2 smoothed pursuit) are
-done and verified. Tasks C–H then cover the regression scenario, the Nerf Blaster/real
-Pistol catalogue split, doubled 3D gun visuals, the owner aim co-tuning session, the real
-pistol's screenshake/flash/dropped magazine, and promotion. M5 Task 6 (Grenade) landed ahead of that plan's own
-wrap-up and is recorded above. The Home-Run Bat Task H
+**Next action:** start **M5 Task 7 (Burning + Fire Sprayer)** against
+`docs/M5_TASK7_BURNING_AND_FIRE_SPRAYER_PLAN.md`, whose owner-gate defaults were accepted
+pre-implementation on 2026-07-31 and which builds the FR-017.3 `EffectsSettings` seam that
+Tasks 8–10 then ride.
+
+Everything before it is closed: `docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` is complete
+and owner-accepted (both guns shop-visible; §4.1's aim constants accepted as authored rather
+than co-tuned, so the Task F session was never needed), and M5 Task 6 (Grenade) is complete
+and owner-accepted above. The Home-Run Bat Task H
 refinement is complete, owner-accepted, and shop-visible. M4 is complete and owner-accepted.
 Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,

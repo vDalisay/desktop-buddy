@@ -123,7 +123,12 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   it is really flying (`the_bullet_visual_stays_glued_to_its_flight_path` — the body is free to
   spin, since locking it halves the impulse the pain pipeline scores, so the claim is about the
   drawing). The `m5_pistol` journey repeats the slice through real pointer, wheel, button, and
-  key input, including both the `R` reload and the dry-fire reload.
+  key input, including both the `R` reload and the dry-fire reload, and opens by confirming
+  the shop **sells** both guns at their authored `12` and `30` credits now that the owner has
+  accepted them (`the_shop_sells_both_guns_at_their_authored_prices`). That leg and the
+  Grenade's share `JourneyRunner.BuysFromShop`, which runs the sale against a fresh progress
+  state: the laboratory grants every implemented M5 tool at boot for mechanical tuning, so
+  asking it to buy one answers `AlreadyOwned` and proves nothing about the shop.
 - The same scenario pins the **aim feel** the owner reported as "choppy, as if locked to
   different axes", with three checks that fire no shots because they are properties of the aim
   rather than of the gun. `slow_leftward_travel_steers_the_aim_left`: pointer travel of under a
