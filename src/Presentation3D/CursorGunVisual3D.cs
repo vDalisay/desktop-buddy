@@ -17,18 +17,18 @@ namespace DesktopBuddy.Presentation3D;
 /// model, so there is deliberately no second smoothing layer — a visual that lagged the
 /// aim would be showing the player a barrel their shots do not come out of.</para>
 ///
-/// <para>A gun aimed left is <b>mirrored</b> rather than rotated past vertical. Rotating a
-/// side-on gun by 180° stands it on its head, grip in the air; mirroring about the barrel
-/// axis keeps the grip under the cursor where a hand would be. The mirror is a negative
-/// scale, so the material disables backface culling: a mirrored mesh has inverted winding
-/// and would otherwise render inside-out.</para>
+/// <para>A gun aimed left is rolled 180° around its barrel axis rather than reflected with
+/// a negative scale. The roll keeps the grip under the cursor without reversing triangle
+/// winding or normals, so the existing lighting rig shades both aim directions equally.</para>
 /// </summary>
 [GlobalClass]
 public partial class CursorGunVisual3D : Node3D
 {
     private readonly Dictionary<string, Mesh> _meshes = new(StringComparer.Ordinal);
     private CursorGunComponent _gun = null!;
+    private Node3D _orientation = null!;
     private MeshInstance3D _mesh = null!;
+    private MeshInstance3D _flash = null!;
     private StandardMaterial3D _material = null!;
     private GunProfile? _shown;
     private bool _presentationActive;
@@ -55,10 +55,21 @@ public partial class CursorGunVisual3D : Node3D
     /// The direction the drawn grip hangs, in 2D world space. Screen Y grows downward, so
     /// a gun that is the right way up has a positive Y here whichever way it points.
     /// </summary>
-    public Vector2 GripDirection2D => Direction2D(Vector3.Down);
+    public Vector2 GripDirection2D => Direction2D(_orientation.GlobalTransform.Basis, Vector3.Down);
+
+    /// <summary>
+    /// Determinant of the real mesh orientation used by the renderer. It must stay positive:
+    /// a negative value means a reflection has inverted the mesh normals and lighting basis.
+    /// </summary>
+    public float VisualBasisDeterminant => IsInitialized
+        ? _orientation.GlobalTransform.Basis.Determinant()
+        : 0.0f;
 
     /// <summary>True while the aim points left and the silhouette is mirrored.</summary>
     public bool IsMirrored { get; private set; }
+
+    /// <summary>True while the blast flare is on screen.</summary>
+    public bool IsFlashVisible => IsInitialized && Visible && _flash.Visible;
 
     public void Initialize(CursorGunComponent gun)
     {
@@ -79,16 +90,23 @@ public partial class CursorGunVisual3D : Node3D
             ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
             Roughness = 0.7f,
             Metallic = 0.0f,
-            // A mirrored gun is a negative-scale gun, which reverses triangle winding.
+            // The silhouettes are intentionally readable from either side of the camera.
             CullMode = BaseMaterial3D.CullModeEnum.Disabled,
         };
+        _orientation = new Node3D
+        {
+            Name = "GunOrientation",
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+        };
+        AddChild(_orientation);
         _mesh = new MeshInstance3D
         {
             Name = "GunMesh",
             MaterialOverride = _material,
             PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
         };
-        AddChild(_mesh);
+        _orientation.AddChild(_mesh);
+        BuildFlash();
 
         // Every authored gun's mesh is built once here, on composition, rather than on the
         // tick a player draws one.
@@ -136,19 +154,83 @@ public partial class CursorGunVisual3D : Node3D
         }
 
         Vector2 aim = _gun.AimForward;
-        Vector3 position = WorldPlaneMapping.To3D(_gun.Cursor);
+        // Recoil is a presentation offset on the drawn gun, never on the aim: a burst may
+        // shove the weapon about, but the next shot still goes where the player pointed.
+        Vector3 position = WorldPlaneMapping.To3D(_gun.Cursor + _gun.RecoilOffset2D);
         position.Z = profile.VisualDepthOffset;
         GlobalPosition = position;
         GlobalRotation = new Vector3(
             0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(aim.Angle()));
         IsMirrored = aim.X < 0.0f;
-        Scale = new Vector3(1.0f, IsMirrored ? -1.0f : 1.0f, 1.0f);
+        Scale = Vector3.One;
+        // A proper rotation has determinant +1, unlike the old negative-Y reflection.
+        // Local X is the barrel axis, so this roll flips the grip while preserving aim.
+        _orientation.Rotation = new Vector3(IsMirrored ? Mathf.Pi : 0.0f, 0.0f, 0.0f);
         Visible = true;
+        UpdateFlash(profile);
+    }
+
+    /// <summary>
+    /// The blast flare: an additive unshaded star at the barrel mouth that pops down over
+    /// the authored ticks, cribbed from the bat's glint. It is driven by the component's
+    /// own flash counter, which only a real launch starts, so a dry fire shows nothing.
+    /// </summary>
+    private void UpdateFlash(GunProfile profile)
+    {
+        float strength = _gun.MuzzleFlashStrength;
+        if (strength <= 0.0f || profile.MuzzleFlashTicks <= 0)
+        {
+            _flash.Visible = false;
+            return;
+        }
+
+        // Positioned in the gun's own frame, so it sits on the mouth through the roll
+        // and the recoil without a second copy of either.
+        _flash.Position = new Vector3(profile.VisualMuzzleTipPx, 0.0f, 0.0f);
+        float size = profile.VisualLengthPx * 0.34f * strength;
+        _flash.Scale = new Vector3(size, size, size);
+        _flash.Visible = true;
+    }
+
+    private void BuildFlash()
+    {
+        var material = new StandardMaterial3D
+        {
+            ResourceName = "ProvisionalMuzzleFlashMaterial",
+            AlbedoColor = new Color(1.0f, 0.93f, 0.62f, 0.9f),
+            EmissionEnabled = true,
+            Emission = new Color(1.0f, 0.86f, 0.42f),
+            EmissionEnergyMultiplier = 2.0f,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            BlendMode = BaseMaterial3D.BlendModeEnum.Add,
+            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+        };
+        _flash = new MeshInstance3D
+        {
+            Name = "MuzzleFlash",
+            Mesh = new QuadMesh { Size = Vector2.One },
+            MaterialOverride = material,
+            Visible = false,
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+        };
+        _orientation.AddChild(_flash);
+        var cross = new MeshInstance3D
+        {
+            Name = "MuzzleFlashCross",
+            Mesh = new QuadMesh { Size = new Vector2(2.2f, 0.35f) },
+            MaterialOverride = material,
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+        };
+        _flash.AddChild(cross);
     }
 
     private Vector2 Direction2D(Vector3 localAxis)
+        => Direction2D(GlobalTransform.Basis, localAxis);
+
+    private static Vector2 Direction2D(Basis basis, Vector3 localAxis)
     {
-        Vector3 world = GlobalTransform.Basis * localAxis;
+        Vector3 world = basis * localAxis;
         Vector2 plane = WorldPlaneMapping.To2D(world);
         return plane.IsZeroApprox() ? Vector2.Zero : plane.Normalized();
     }

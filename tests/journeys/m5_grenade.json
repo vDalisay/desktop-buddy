@@ -1,0 +1,38 @@
+{
+  "id": "m5_grenade",
+  "description": "The Grenade end to end: the shop sells one at its authored price now that the owner has accepted it, a buddy that has never met a grenade is curious and catches a pinned one like a ball, the pullback chord's first secondary press pulls the pin so the throw starts a three-second fuse, the blast hurts the buddy through the shared pain curve and pays for it, and the buddy then leaves the next grenade strictly alone.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_grenade",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    {
+      "predicate": "the_shop_sells_the_grenade_at_its_authored_price"
+    },
+    {
+      "predicate": "curious_buddy_catches_an_unfamiliar_grenade"
+    },
+    {
+      "predicate": "the_grenade_key_places_one_owned_grenade"
+    },
+    {
+      "predicate": "the_pullback_throw_pulls_the_pin_and_starts_the_fuse"
+    },
+    {
+      "predicate": "the_thrown_grenade_explodes_three_seconds_later"
+    },
+    {
+      "predicate": "the_blast_hurts_the_buddy_and_pays_for_it"
+    },
+    {
+      "predicate": "the_grenade_is_remembered_as_harmful"
+    },
+    {
+      "predicate": "harmed_buddy_leaves_the_next_grenade_alone"
+    }
+  ]
+}

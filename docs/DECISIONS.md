@@ -1131,6 +1131,117 @@ visual must be oriented from velocity, never from the body transform. The same m
 explains the `6`–`100` per-shot pain spread noted above: a bullet that hits square gets no
 spin channel and scores about half as much as a glancing one.
 
+## Gun Owner Follow-up — Left Lighting and Nerf Impact (2026-07-31)
+
+- **Left-facing 3D guns use a proper rotation, never a negative-scale reflection.** The
+  gun may roll 180 degrees around its barrel axis to keep the grip down, but its rendered
+  mesh basis must retain a positive determinant so normals and lighting do not invert.
+- **The Nerf Blaster restores the pre-split gun's impact-driving projectile values.** Its
+  muzzle speed is `2400` px/s and projectile mass is `0.3`. This supersedes the delegated
+  near-zero-pain default: a connected Nerf dart still scores physical pain, knockout, and
+  payout through the ordinary shared solver-impulse curve, with no damage multiplier. Its
+  mood response is governed by the later owner decision below. The Nerf keeps its chunky
+  `4 px` orange dart, `0.15` gravity scale, toy model, magazine, cadence, and reload behavior.
+
+## Gun Mood and Pistol Sadness (Owner decision, 2026-07-31)
+
+- **Only accepted positive-pain Nerf hits count.** Misses and zero-pain contacts do not
+  advance tolerance. Hits `1` through `20` in one barrage each grant `+0.25` mood and do
+  not create harmful-tool memory. Physical pain, knockout, payout, and statistics remain
+  unchanged.
+- **The 21st and later Nerf hits are annoying.** Each applies the ordinary pain-sized mood
+  loss `min(10, pain x 0.1)` without creating persistent harmful-tool memory. After exactly
+  `10` routed gameplay seconds without an accepted Nerf hit, the transient counter resets
+  and the next accepted hit is hit `1`. This tolerance is not saved.
+- **Every accepted real-Pistol hit is harmful.** It applies the ordinary pain-sized mood
+  loss, records `tool.pistol` in harmful memory, and starts a visible sad reaction. The
+  authored sad-face window is provisionally `1.5` seconds; the immediate pain face may take
+  priority before the sad face becomes visible.
+
+## Gun Slice — Owner Gate ACCEPTED and Promoted (2026-07-31)
+
+The owner played the refined guns on real Windows and accepted the slice, closing
+`docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md`.
+
+- **Both guns are on sale.** `tool_nerf_blaster.tres` and `tool_pistol.tres` are
+  `Visible = true` at their authored `12` and `30` credits — provisional until Task 12's
+  economy calibration, like every other M5 price.
+- **The §4.1 aim constants are accepted as authored, not co-tuned.** `AimSmoothingHalfLife
+  Ticks` / `MaxAimTurnDegreesPerTick` are `10.0` / `9.0` for the Nerf Blaster and
+  `14.0` / `6.0` for the Pistol. Task F existed to build laboratory dials for a co-tuning
+  session; the owner accepted the feel without needing one, so no dials were built for
+  constants nobody turned. The values stop being provisional and become the authored
+  baseline: a later change to them is a change, not a first decision.
+- **A promoted tool's shop leg is a real sale, exercised against a fresh progress state.**
+  The laboratory grants every implemented M5 tool at boot for mechanical tuning, so asking
+  *it* to buy one answers `AlreadyOwned` and proves nothing. `JourneyRunner.BuysFromShop`
+  is the shared idiom: entry listed and visible, present in `CataloguePolicy.ShopEntries`,
+  and a saveless buyer holding exactly the price ends up owning it with nothing left.
+
+## Grenade — Pin Mechanic, Post-Release Fuse, and Blast (Owner decision, 2026-07-31)
+
+The owner replaced the specified launch-triggered fuse with a pin mechanic while approving
+`docs/M5_TASK6_GRENADE_PLAN.md`. This **supersedes** the `2.5`-second launch fuse in
+RAGDOLL §9.2, FR-010.3, and the FR-010 tuning table; those three are amended to match.
+
+- **A pinned grenade is inert forever.** Thrown by hand, caught, dropped, or left alone, it
+  never goes off — it is a ball, including for the buddy.
+- **The pin comes out on the first secondary press**, which is also the pullback's begin.
+  There is deliberately no separate arming input: every pullback-launched grenade is live and
+  every inert one was thrown by plain grab. The pin is one-way, and a cancelled pullback
+  leaves the grenade armed but still safe in the hand.
+- **The fuse is `3.0` seconds (`360` routed ticks) and starts when player control ends** —
+  launch release or grab release, which are the same event to the grenade. It counts routed
+  ticks, so the laboratory's pause holds it exactly as it holds every other clock.
+- **Nothing stops a live fuse.** Not a buddy catch, not a player re-grab: it goes off in
+  whoever's hand is holding it. (Delegated default 1, taken; the alternative was a re-grab
+  pausing it, which reads as safe rather than dangerous.)
+- **The blast is an impulse source, not a damage source.** It applies an equivalent impulse
+  to each buddy part, shaped only by distance falloff, and feeds it through the *same*
+  `PainCurve.PainFor` → `RegisterPain` → `AcceptDamage` chain every collision uses. The
+  no-per-tool-damage-multiplier rule is untouched: the curve still owns impulse→pain, and the
+  falloff is the only authored blast quantity. Loose objects within reach are shoved and
+  nothing else — only the buddy is ever scored.
+- **"Five pistol bullets" is read as five solid aimed shots** (delegated default 2, taken), so
+  a point-blank grenade crosses the `100`-pain knockout window and knocks the buddy out.
+  Measured seeds `1/7/13`: `186.21`–`190.65` total pain at the head over six parts, and
+  `223.31`–`225.16` at the hand, against a solid bullet's `40.5`–`42.3`.
+- **Buy once, throw forever** (delegated default 3, taken), exactly like the Baseball.
+- **The dropped pin is cosmetic**, on the ejected magazine's rules: collision layer `0`, mask
+  `RoomBounds` only, never a `LooseObjectRegistry` object, pooled and re-used. A live grenade
+  *is* registry-protected until it detonates — the player is owed the explosion they started —
+  and its slot is freed when it goes off.
+
+**Owner feel gate, first pass (2026-07-31).** Three changes, none of which touch the fuse or
+the pain path:
+
+- **The grenade and the pin are drawn as models.** `GrenadeProfile.VisualScale` (`1.75`) is
+  the drawn size against the collider radius, read by the mesh builder and the flat fallback
+  alike, on the guns' precedent: a collider sized for how a grenade should *throw* is too
+  small to carry a silhouette. The dropped pin had no 3D presenter at all — it drew flat
+  canvas art in both modes — and now has `GrenadePinVisual3D`, which takes that drawing over
+  in `Mii3D` exactly as the body slot does.
+- **The explosion is four layers, not two.** A white-hot core, a fireball that swells on an
+  ease-out and cools through flame to smoke, embers thrown on fixed per-index directions, and
+  the same shock ring, which still expands to the real full-effect radius because that is the
+  one part of the explosion that is a claim about the physics. Ember directions come from the
+  index and never from a generator: presentation may not consume simulation randomness.
+- **Knockback is doubled, `ShoveImpulseAtCenter` `900 → 1800`.** The shove and the pain
+  impulse are separate authored quantities precisely so this could happen: the room now gets
+  thrown twice as hard and the buddy is hurt exactly as much as before, because pain still
+  comes only from `EquivalentImpulseAtCenter` through the shared curve. Measured: a `1.0`-mass
+  witness at `35 px` leaves at `1750.8 px/s`, and point-blank pain is unmoved at `190.65`.
+
+**Owner gate — ACCEPTED (2026-07-31).** The owner played the post-feedback build on real
+Windows and accepted the state it is in. `data/catalogue/tool_grenade.tres` is `Visible = true`
+and the Grenade sells at its authored `40` credits, provisional until Task 12's economy
+calibration like every other M5 price. The `m5_grenade` journey's opening leg changed with it:
+it asserted the refusal an invisible entry produces, and now asserts the sale — listed, in
+`CataloguePolicy.ShopEntries`, and bought by a saveless buyer holding exactly the price. The
+sale is exercised against a fresh progress state rather than the laboratory's, because the lab
+grants every implemented M5 tool at boot for mechanical tuning and would answer
+`AlreadyOwned`.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

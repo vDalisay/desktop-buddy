@@ -36,3 +36,4 @@ mcp_interaction_server.gd
 mcp_interaction_server.gd.uid
 
 # NOTE: per-asset *.import files (e.g. icon.svg.import) are intentionally tracked.
+.mcp/

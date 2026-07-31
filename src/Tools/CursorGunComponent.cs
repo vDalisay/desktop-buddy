@@ -47,6 +47,10 @@ public partial class CursorGunComponent : Node2D
     private bool _triggerLatched;
     private bool _pendingReload;
     private int _pendingWheelSteps;
+    private int _flashTicks;
+    private int _flashDuration;
+    private int _recoilTicks;
+    private int _recoilDuration;
 
     public bool IsInitialized { get; private set; }
 
@@ -75,6 +79,43 @@ public partial class CursorGunComponent : Node2D
     public float AimSmoothedSpeed { get; private set; }
 
     public bool AimIsSteering { get; private set; }
+
+    // --- Presentation punctuation (real guns; a toy authors all of it off) ---
+
+    /// <summary>
+    /// Raised on the routed tick a round really leaves the barrel, with the gun that fired
+    /// it. The camera kick lives outside this component — a gun does not own the camera —
+    /// so the composition root listens here and drives it.
+    /// </summary>
+    public event Action<GunProfile>? ShotFired;
+
+    /// <summary>Muzzle flash strength, 1 on the firing tick and 0 once it has burned out.</summary>
+    public float MuzzleFlashStrength =>
+        _flashTicks <= 0 || _flashDuration <= 0 ? 0.0f : (float)_flashTicks / _flashDuration;
+
+    /// <summary>Where the flash is drawn: the barrel mouth the round came out of.</summary>
+    public Vector2 MuzzleFlashPoint { get; private set; }
+
+    /// <summary>
+    /// How far the drawn gun is pushed back right now, in world pixels. Presentation only:
+    /// the aim model stays the single source of truth for direction, so recoil can never
+    /// walk a burst off target.
+    /// </summary>
+    public Vector2 RecoilOffset2D { get; private set; }
+
+    /// <summary>Cosmetic magazines currently lying on the floor.</summary>
+    public int ActiveMagazineCount
+    {
+        get
+        {
+            int count = 0;
+            for (int index = 0; index < _runtimes.Count; index++)
+                count += _runtimes[index].LiveMagazines;
+            return count;
+        }
+    }
+
+    public int MagazinesDropped { get; private set; }
 
     public int RoundsRemaining => _active?.Phase.Rounds ?? 0;
     public bool IsReloading => _active?.Phase.IsReloading ?? false;
@@ -244,6 +285,7 @@ public partial class CursorGunComponent : Node2D
             AimForward = Vector2.Zero;
             AimSmoothedSpeed = 0.0f;
             AimIsSteering = false;
+            ClearGunPunctuation();
             _previousCursor = _cursor;
             _active = runtime;
             // Holstering has to erase the drawn barrel: the ordinary redraw at the end
@@ -293,8 +335,14 @@ public partial class CursorGunComponent : Node2D
             gun.Phase, trigger && aimed, reload, profile.ToGunConstants()));
         gun.Phase = shot.Phase;
 
+        AdvancePunctuation(profile);
+
         if (shot.ReloadStarted)
+        {
             ReloadStartCount++;
+            if (profile.DropsMagazineOnReload)
+                DropMagazine(gun);
+        }
 
         if (shot.ReloadCompleted)
             ReloadCompleteCount++;
@@ -308,6 +356,7 @@ public partial class CursorGunComponent : Node2D
             {
                 LaunchShot(gun, shot);
                 ShotCount++;
+                BeginPunctuation(profile);
             }
             else
             {
@@ -369,6 +418,71 @@ public partial class CursorGunComponent : Node2D
     {
         for (int index = 0; index < _runtimes.Count; index++)
             _runtimes[index].Advance();
+    }
+
+    /// <summary>
+    /// Starts this gun's authored punctuation on a real launch. Non-stacking by
+    /// construction: a shot inside a live flash restarts the envelope rather than adding
+    /// to it, so rapid fire cannot pile one effect on another.
+    /// </summary>
+    private void BeginPunctuation(GunProfile profile)
+    {
+        MuzzleFlashPoint = _cursor + (AimForward * profile.MuzzleOffsetPx);
+        _flashDuration = profile.MuzzleFlashTicks;
+        _flashTicks = profile.MuzzleFlashTicks;
+        _recoilDuration = profile.RecoilTicks;
+        _recoilTicks = profile.RecoilTicks;
+        RecoilOffset2D = _recoilTicks <= 0 || _recoilDuration <= 0
+            ? Vector2.Zero
+            : -AimForward * profile.RecoilKickPx;
+        ShotFired?.Invoke(profile);
+    }
+
+    private void ClearGunPunctuation()
+    {
+        _flashTicks = 0;
+        _flashDuration = 0;
+        _recoilTicks = 0;
+        _recoilDuration = 0;
+        MuzzleFlashPoint = Vector2.Zero;
+        RecoilOffset2D = Vector2.Zero;
+    }
+
+    private void AdvancePunctuation(GunProfile profile)
+    {
+        if (_flashTicks > 0)
+            _flashTicks--;
+
+        if (_recoilTicks > 0)
+            _recoilTicks--;
+
+        RecoilOffset2D = _recoilTicks <= 0 || _recoilDuration <= 0
+            ? Vector2.Zero
+            : -AimForward * (profile.RecoilKickPx * ((float)_recoilTicks / _recoilDuration));
+    }
+
+    /// <summary>
+    /// Throws a cosmetic magazine down and back out of the grip. It is pooled by this gun
+    /// and never enters the loose-object registry — see <see cref="MagazineBody"/>.
+    /// </summary>
+    private void DropMagazine(GunRuntime gun)
+    {
+        MagazineBody? magazine = gun.TakeMagazine();
+        if (magazine is null)
+            return;
+
+        GunProfile profile = gun.Profile;
+        Vector2 forward = AimForward == Vector2.Zero ? Vector2.Right : AimForward;
+        Vector2 grip = _cursor + (forward * (profile.VisualLengthPx * 0.12f)) +
+                       new Vector2(0.0f, profile.VisualLengthPx * 0.28f);
+        // Down and backwards out of the grip, with a lazy tumble.
+        Vector2 velocity = (-forward * 40.0f) + new Vector2(0.0f, 30.0f);
+        magazine.Drop(
+            ClampInsideRoom(grip, profile.VisualLengthPx * 0.2f),
+            velocity,
+            forward.X >= 0.0f ? 6.0f : -6.0f,
+            profile.MagazineLingerTicks);
+        MagazinesDropped++;
     }
 
     private GunProfile? ProfileFor(ToolId tool)
@@ -462,6 +576,19 @@ public partial class CursorGunComponent : Node2D
         DrawColoredPolygon(
             new[] { Tip(-0.09f, -0.15f), Tip(0.0f, -0.15f), Tip(0.0f, 0.15f), Tip(-0.09f, 0.15f) },
             profile.AccentColor);
+
+        // The flash, when a gun authors one: three rays at the mouth, scale-popping down
+        // over its authored ticks. Never drawn on a dry fire — it is started by a launch.
+        float flash = MuzzleFlashStrength;
+        if (flash <= 0.0f)
+            return;
+
+        Vector2 mouth = ToLocal(MuzzleFlashPoint);
+        float reach = length * 0.30f * flash;
+        var glow = new Color(1.0f, 0.93f, 0.62f, Mathf.Clamp(flash, 0.0f, 1.0f));
+        DrawLine(mouth, mouth + (forward * reach), glow, 3.0f, true);
+        DrawLine(mouth, mouth + (down * (reach * 0.55f)), glow, 2.0f, true);
+        DrawLine(mouth, mouth - (down * (reach * 0.55f)), glow, 2.0f, true);
     }
 
     private Vector2 ClampToPlayableBounds(Vector2 worldPoint)
@@ -506,6 +633,7 @@ public partial class CursorGunComponent : Node2D
     private sealed class GunRuntime
     {
         private ProjectileBody[] _pool = Array.Empty<ProjectileBody>();
+        private MagazineBody[] _magazines = Array.Empty<MagazineBody>();
 
         public GunRuntime(GunProfile profile)
         {
@@ -540,6 +668,32 @@ public partial class CursorGunComponent : Node2D
             }
         }
 
+        public int LiveMagazines
+        {
+            get
+            {
+                int live = 0;
+                for (int index = 0; index < _magazines.Length; index++)
+                {
+                    if (_magazines[index].IsLive)
+                        live++;
+                }
+
+                return live;
+            }
+        }
+
+        public MagazineBody? TakeMagazine()
+        {
+            for (int index = 0; index < _magazines.Length; index++)
+            {
+                if (!_magazines[index].IsLive)
+                    return _magazines[index];
+            }
+
+            return null;
+        }
+
         public void BuildPool(Node parent)
         {
             _pool = new ProjectileBody[Math.Max(1, Profile.PoolCapacity)];
@@ -550,6 +704,18 @@ public partial class CursorGunComponent : Node2D
                 projectile.Configure(Profile);
                 parent.AddChild(projectile);
                 _pool[index] = projectile;
+            }
+
+            if (!Profile.DropsMagazineOnReload)
+                return;
+
+            _magazines = new MagazineBody[GunProfile.MagazinePoolCapacity];
+            for (int index = 0; index < _magazines.Length; index++)
+            {
+                var magazine = new MagazineBody { Name = $"{prefix}-magazine-{index + 1}" };
+                magazine.Configure(Profile);
+                parent.AddChild(magazine);
+                _magazines[index] = magazine;
             }
         }
 
@@ -580,6 +746,12 @@ public partial class CursorGunComponent : Node2D
                 {
                     projectile.Park();
                 }
+            }
+
+            for (int index = 0; index < _magazines.Length; index++)
+            {
+                if (_magazines[index].Advance())
+                    _magazines[index].Park();
             }
         }
     }

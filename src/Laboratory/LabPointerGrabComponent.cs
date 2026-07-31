@@ -46,6 +46,7 @@ public partial class LabPointerGrabComponent : Node2D
     [Export] public CareStrokeComponent? CareTool { get; set; }
     [Export] public ToolCursorPresenter? CareCursor { get; set; }
     [Export] public PullbackLauncherComponent? LauncherTool { get; set; }
+    [Export] public GrenadeComponent? GrenadeTool { get; set; }
     [Export] public CursorGunComponent? GunTool { get; set; }
 
     private bool _active;
@@ -197,6 +198,7 @@ public partial class LabPointerGrabComponent : Node2D
             {
                 Key.Key5 => ContentIds.ToolBaseball,
                 Key.Key6 => ContentIds.ToolMeal,
+                Key.Key7 => ContentIds.ToolGrenade,
                 _ => null,
             };
             if (launchable is not null)
@@ -339,6 +341,12 @@ public partial class LabPointerGrabComponent : Node2D
                 LauncherTool.CanAimCurrentGrab)
             {
                 LauncherTool.RequestBegin(cursor);
+                // The same press that begins the pullback pulls the pin, which is why a
+                // grenade has no separate arming input: every pullback-launched grenade is
+                // live, and every inert one was thrown by hand. The grenade's own model
+                // ignores the request unless it is holding a pinned grenade.
+                if (GrenadeTool is not null && GodotObject.IsInstanceValid(GrenadeTool))
+                    GrenadeTool.RequestPinPull();
             }
             else
             {

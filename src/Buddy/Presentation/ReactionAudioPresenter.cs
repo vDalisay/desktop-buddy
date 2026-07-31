@@ -41,6 +41,12 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnImpact(AcceptedImpact impact)
     {
+        if (impact.MoodEffect == ImpactMoodEffectKind.Enjoyment)
+        {
+            PlayChirp(Profile.CareChirpHz, 7_000.0f);
+            return;
+        }
+
         bool glove = impact.ContentId == ContentIds.ToolBoxingGlove;
         float normalized = Mathf.Clamp(impact.Pain / 100.0f, 0.0f, 1.0f);
         PlayChirp(

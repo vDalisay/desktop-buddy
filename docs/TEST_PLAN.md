@@ -123,7 +123,12 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   it is really flying (`the_bullet_visual_stays_glued_to_its_flight_path` — the body is free to
   spin, since locking it halves the impulse the pain pipeline scores, so the claim is about the
   drawing). The `m5_pistol` journey repeats the slice through real pointer, wheel, button, and
-  key input, including both the `R` reload and the dry-fire reload.
+  key input, including both the `R` reload and the dry-fire reload, and opens by confirming
+  the shop **sells** both guns at their authored `12` and `30` credits now that the owner has
+  accepted them (`the_shop_sells_both_guns_at_their_authored_prices`). That leg and the
+  Grenade's share `JourneyRunner.BuysFromShop`, which runs the sale against a fresh progress
+  state: the laboratory grants every implemented M5 tool at boot for mechanical tuning, so
+  asking it to buy one answers `AlreadyOwned` and proves nothing about the shop.
 - The same scenario pins the **aim feel** the owner reported as "choppy, as if locked to
   different axes", with three checks that fire no shots because they are properties of the aim
   rather than of the gun. `slow_leftward_travel_steers_the_aim_left`: pointer travel of under a
@@ -142,24 +147,42 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - The `nerf_versus_pistol` scenario is the gate on the two guns being **one platform with two
   authored profiles**. Both are selectable through the real lab keys (`N` and `J`), each keeps
   its own magazine across a swap, darts droop under their authored gravity while bullets fly
-  flat, and — the claim that matters — a point-blank dart connects and scores **exactly zero
-  pain** (measured impulse `20`–`22`) where a bullet on the same head scores `12.8`–`14.4`
-  (impulse `574`–`603`), a separation of `26`–`28×` with no per-gun damage multiplier anywhere.
-  A dart that merely *missed* would also score zero, so the check proves contact from the
-  projectile's own solver report rather than from the absence of pain. Aimed shots re-derive
-  their stand-off until the barrel really points at the head: the buddy walks over to an
-  engaged cursor, and an aim takes most of a second of pointer travel to establish.
+  flat, and the Nerf retains the pre-split impact-driving `2400` px/s speed and `0.3` mass.
+  A three-shot point-blank volley must connect and score positive physical pain/payout through
+  the ordinary shared solver path while its accepted early hits each add `+0.25` mood and do
+  not enter harmful history. The real-Pistol volley must lower mood, enter harmful history,
+  and start the semantic sad reaction. Seeds `1/7/13` measured best dart impulse
+  `1172.6`–`1194.0` and pain `40.68`–`41.61`. Pure domain coverage pins hit `20` as enjoyed,
+  hit `21` as annoying with the shared pain-sized mood loss, misses as absent from the model,
+  no reset at `9.999` seconds, and reset at exactly `10` seconds. Aimed shots re-derive their stand-off until the
+  barrel really points at the head: the buddy walks over to an engaged cursor, and an aim
+  takes most of a second of pointer travel to establish. Trajectory drop is measured relative
+  to the actual launch vector so sub-degree aim pitch cannot hide the faster dart's `1.24 px`
+  gravity bend across its 15-tick visible flight.
 - The `gun_visuals` scenario holds the drawn gun to the gameplay underneath it, and runs in
   **both** presentation modes because the 3D presenter and the legacy 2D drawing are two views
   of one weapon: the barrel points where the aim points (`gun_visual_faces_the_slewed_aim`),
-  the grip hangs downward whichever way the gun faces — a left-facing gun is mirrored, never
-  rotated onto its head (`gun_is_never_upside_down`) — rounds are born at the visible barrel
+  the grip hangs downward whichever way the gun faces (`gun_is_never_upside_down`), and the
+  rendered basis remains positive in both directions so lighting normals cannot invert
+  (`gun_visual_keeps_a_positive_lighting_basis`, determinant `+1.000`). Rounds are born at the visible barrel
   mouth within 3 px (`rounds_are_born_at_the_visible_muzzle`, measured `0.00 px` for both
   guns), the two modes put that muzzle in the same place, and no mesh vertex escapes the
   authored envelope. The last one is the bat's rule restated for a box: presentation may not
   reach further than the dimensions the data says the weapon has. Note for anything aiming a
   gun in a test: the grip sits at the cursor, so a round is born 53–61 px **ahead** of the
   pointer and a stand-off has to include the barrel or the shot starts past its target.
+- The `pistol_punctuation` scenario is the gate on the real Pistol's presentation-only fire
+  feedback, and runs under seeds `1/7/13` in both presentation modes. Four rapid shots restart
+  rather than add their camera envelopes (measured peak `1.500 px` against the one-envelope
+  `2.175 px` magnitude bound), and the camera returns exactly to its layout position. A real
+  launched round starts the three-tick muzzle flash; a dry fire starts none, and the 3D run
+  observes the actual flash node. A reload ejects one preallocated cosmetic magazine which
+  rebounds and remains quiet in the floor band for 30 consecutive ticks plus a 90-tick hold,
+  stays on collision layer `0` with mask `RoomBounds`, produces zero buddy contacts/scored
+  impacts when probed through the buddy, never changes `LooseObjectRegistry.Count`, and
+  returns to its three-slot pool after 600 ticks. The Nerf Blaster authors and produces none
+  of these effects. The magazine uses shape-cast CCD because it has no gameplay impulse to
+  preserve and must not tunnel through the thin floor during a routed-gameplay pause.
 - **Aiming a gun in a test means moving its pointer, and that is a contract, not a detail.**
   The aim follows the direction the pointer has lately been travelling and turns at a bounded
   rate, so a cursor that teleports into position aims at wherever the jump pointed. Every
@@ -174,7 +197,56 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   pipeline scores from, and `GunProfile` instead validates that a projectile's per-tick travel
   stays inside the smallest buddy part's diameter (`DECISIONS.md`, "Cursor-Gun Platform and
   Pistol").
-- Grenade fuse begins on release and expires after 2.5 seconds within one physics tick.
+- A pinned grenade never detonates, however it is thrown or caught. The fuse begins on the
+  routed tick player control of a **pin-pulled** grenade ends — launch release or grab release —
+  and expires exactly `360` routed ticks later, unaffected by any catch or re-grab (owner
+  amendment 2026-07-31, superseding the 2.5-second launch fuse; `DECISIONS.md`, "Grenade — Pin
+  Mechanic, Post-Release Fuse, and Blast").
+- The `grenade_fuse` scenario is the Grenade gate, run under seeds `1/7/13` in both
+  presentation modes. It proves the pin rules on the real composition and through the real
+  input chord: a grenade flung with primary alone is soaked for `720` ticks and never goes off
+  (`pin_in_grenade_never_explodes`); the first secondary press drops exactly one pin and later
+  presses drop none (`pin_drops_on_first_rmb_press`), and that pin is on collision layer `0`
+  with mask `RoomBounds`, produces zero buddy contacts and zero scored impacts when probed
+  through the buddy's chest, and never changes `LooseObjectRegistry.Count`; a pin-pulled
+  grenade held for `720` ticks stays safe (`held_live_grenade_never_explodes`); and letting go
+  runs the fuse for exactly `360` routed ticks even when the player picks it back up mid-count
+  (`fuse_runs_360_ticks_from_release_and_a_regrab_does_not_stop_it`). A live grenade is
+  registry-protected and survives two dozen fresh objects being piled onto a full registry,
+  then frees its slot when it detonates.
+- The same scenario measures the blast, because the falloff curve is the only authored blast
+  quantity and everything else comes from the shared pain curve. Point-blank at the head it
+  scores `186.21`–`190.65` total pain over all six parts on seeds `1/7/13` — about five solid
+  aimed pistol bullets (`40.5`–`42.3` each) — crossing the `100`-pain knockout window, and at
+  the buddy's hand `223.31`–`225.16`, which is what "it goes off in whoever's hand holds it"
+  is worth. At `155 px` it scores `4.39` on one part and knocks nobody out. The blast shoves
+  every dynamic body on `BuddyParts | LooseObjects` and scores **only** buddy parts, all
+  attributed to `tool.grenade`; what a shoved object hits afterwards is ordinary physics, so
+  the attribution check is narrowed to the detonation tick. The shove is measured as the
+  speed a witness object *leaves* at rather than where it ends up: held at a known `35 px`
+  from the centre — inside the full-effect radius, where the falloff is `1` — it leaves at
+  `1750.8 px/s` against the authored `1800` impulse over its `1.0` mass, and how far it then
+  travels is a story about which wall it met. That measurement replaced a settled-distance
+  reading that moved *down* when the owner doubled the shove, because the object was
+  bouncing back off a wall inside the sample window (owner feel gate, 2026-07-31). The camera
+  kick peaks at the authored `4.000 px` and four back-to-back restarts stay inside one
+  envelope, the expanding ring reaches the real `48 px` full-effect radius (measured
+  `45.60 px` in 3D, `48.00 px` in legacy), the boom counter equals the detonation count, and
+  a grenade rolling on the floor adds no thuds. No grenade mesh vertex escapes its stated
+  envelope — now `1.35 x` the **drawn** radius, `17.50 px` for a `10 px` collider — pin in or
+  pin out, and the dropped pin is drawn exactly once: as a mesh in `Mii3D` with the flat body
+  dark, and as its own flat ring in legacy with no mesh
+  (`the_dropped_pin_is_drawn_once_in_the_active_presentation`).
+- The `m5_grenade` journey repeats the slice through real pointer, button, and key input on
+  seeds `1/7`, in both presentation modes: the shop **sells** a grenade at its authored `40`
+  credits to a saveless buyer holding exactly that — the leg asserted the refusal an invisible
+  catalogue entry produces until the owner accepted the tool on 2026-07-31, and it is
+  exercised against a fresh progress state because the laboratory grants every implemented M5
+  tool at boot and would answer `AlreadyOwned` — a buddy that has never met one is curious and catches a **pinned** grenade like
+  a ball, the pullback chord's first secondary press pulls the pin so the throw starts the
+  three-second fuse, the blast hurts the buddy and pays for it (`200.91` pain, `146067`
+  milli-credits), `tool.grenade` enters harmful memory, and the buddy then leaves the next
+  grenade strictly alone for `600` ticks.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - The `baseball_pullback` scenario drives Baseball through the real pointer input path and

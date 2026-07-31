@@ -12,11 +12,11 @@ namespace DesktopBuddy.Testing;
 /// <summary>
 /// The M5 gun split (plan Task D): one platform, two guns, and the difference between them
 /// authored rather than coded. The Nerf Blaster is the toy the player owns first and the
-/// Pistol is the real one, and the only thing that separates them is their
-/// <see cref="GunProfile"/> — so the separation has to be <b>measured</b> through the
-/// unmodified pain pipeline, which is the sacred rule this scenario exists to hold:
-/// pain comes from a measured solver impulse and there is no per-gun damage multiplier
-/// anywhere for a dart to be made harmless with.
+/// Pistol is the real one, and their behavior is authored entirely in each
+/// <see cref="GunProfile"/>. The Nerf keeps its toy presentation and drooping dart, while
+/// owner feedback restores the pre-split gun's impact-driving speed and mass. Both results
+/// are measured through the unmodified pain pipeline: pain still comes only from solver
+/// impulse, with no per-gun damage multiplier.
 /// </summary>
 public sealed class NerfVersusPistolScenario : IScenario
 {
@@ -139,7 +139,7 @@ public sealed class NerfVersusPistolScenario : IScenario
             "darts_droop_and_bullets_fly_flat",
             dartPath.WasLevel &&
             bulletPath.WasLevel &&
-            dartPath.Drop >= 2.0f &&
+            dartPath.Drop >= 0.5f &&
             bulletPath.Drop <= 0.25f &&
             dartPath.Ticks > 4 &&
             bulletPath.Ticks > 4,
@@ -152,50 +152,119 @@ public sealed class NerfVersusPistolScenario : IScenario
         // A volley rather than one shot each. The target is alive: it walks, it leans, and
         // where a shot lands on a 17 px head decides whether the solver reports a square
         // impact or a rim graze. One shot would therefore be measuring the buddy's pose as
-        // much as the gun. Three makes the pistol's claim "a bullet that lands hurts" and
-        // the dart's claim "not one of them does" — which is the stronger reading of both.
+        // much as the gun. Three gives each restored-impact projectile several independent
+        // contact geometries while keeping both on the same shared solver/pain path.
+        float moodBeforeDart = lab.Pipeline.Mood;
         Volley dart = await FireVolley(
             tree, lab, gun, ToolId.NerfBlaster, nerf, ContentIds.ToolNerfBlaster);
+        float moodAfterDart = lab.Pipeline.Mood;
+        int nerfHitsAfterDart = lab.Pipeline.NerfHitsInCurrentBarrage;
+        bool nerfHarmfulAfterDart = lab.Progress.IsContentHarmful(ContentIds.ToolNerfBlaster);
+        int sadReactionsBeforePistol = lab.Reactions.PistolSadReactionCount;
+        float moodBeforeBullet = lab.Pipeline.Mood;
         Volley bullet = await FireVolley(
             tree, lab, gun, ToolId.Pistol, pistol, ContentIds.ToolPistol);
+        float moodAfterBullet = lab.Pipeline.Mood;
 
         checks.Add(new StartupCheck(
-            "nerf_dart_scores_no_meaningful_pain",
-            dart.Connections > 0 && dart.Pain <= 0.0f && dart.MilliCredits == 0L,
+            "nerf_dart_restores_pre_split_impact",
+            dart.Connections > 0 &&
+            dart.Pain > 0.0f &&
+            dart.MilliCredits > 0L &&
+            Mathf.IsEqualApprox(nerf.MuzzleSpeed, 2400.0f) &&
+            Mathf.IsEqualApprox(nerf.ProjectileMass, 0.3f),
             $"connected={dart.Connections}/{dart.Shots} best_impulse={dart.BestImpulse:F1} " +
             $"pain={dart.Pain:F2} milli={dart.MilliCredits} mass={nerf.ProjectileMass} " +
             $"muzzle={nerf.MuzzleSpeed} | {dart.Report}"));
 
-        // Ten times is not a tuning target, it is the size of the gap that makes the two
-        // guns different weapons rather than two skins on one.
+        float expectedNerfMood = moodBeforeDart + (dart.Connections * 0.25f);
+        checks.Add(new StartupCheck(
+            "early_nerf_hits_raise_mood_without_harmful_memory",
+            dart.Connections > 0 &&
+            Mathf.Abs(moodAfterDart - expectedNerfMood) <= 0.01f &&
+            nerfHitsAfterDart == dart.Connections &&
+            !nerfHarmfulAfterDart,
+            $"mood={moodBeforeDart:F2}->{moodAfterDart:F2} " +
+            $"expected={expectedNerfMood:F2} hits={nerfHitsAfterDart} " +
+            $"connected={dart.Connections} harmful=" +
+            nerfHarmfulAfterDart));
+
         checks.Add(new StartupCheck(
             "pistol_bullet_hurts_the_buddy",
             bullet.Connections > 0 &&
             bullet.Pain > 0.0f &&
-            bullet.MilliCredits > 0L &&
-            bullet.BestImpulse > dart.BestImpulse * 10.0f,
+            bullet.MilliCredits > 0L,
             $"connected={bullet.Connections}/{bullet.Shots} best_impulse={bullet.BestImpulse:F1} " +
             $"pain={bullet.Pain:F2} milli={bullet.MilliCredits} part={bullet.Part} " +
-            $"dart_best={dart.BestImpulse:F1} separation=" +
-            $"{(dart.BestImpulse > 0.0f ? bullet.BestImpulse / dart.BestImpulse : 0.0f):F1}x | " +
+            $"dart_best={dart.BestImpulse:F1} | " +
             bullet.Report));
 
         checks.Add(new StartupCheck(
-            "only_the_pistol_is_remembered_as_harmful",
+            "real_pistol_lowers_mood_and_starts_sad_reaction",
             lab.Progress.IsContentHarmful(ContentIds.ToolPistol) &&
-            !lab.Progress.IsContentHarmful(ContentIds.ToolNerfBlaster),
+            !lab.Progress.IsContentHarmful(ContentIds.ToolNerfBlaster) &&
+            moodAfterBullet < moodBeforeBullet &&
+            lab.Reactions.PistolSadReactionCount > sadReactionsBeforePistol,
             $"pistol_harmful={lab.Progress.IsContentHarmful(ContentIds.ToolPistol)} " +
-            $"nerf_harmful={lab.Progress.IsContentHarmful(ContentIds.ToolNerfBlaster)}"));
+            $"nerf_harmful={lab.Progress.IsContentHarmful(ContentIds.ToolNerfBlaster)} " +
+            $"mood={moodBeforeBullet:F2}->{moodAfterBullet:F2} " +
+            $"sad={sadReactionsBeforePistol}->{lab.Reactions.PistolSadReactionCount}"));
 
         messages.Add(
             $"dart impulse={dart.BestImpulse:F1} pain={dart.Pain:F2} | " +
             $"bullet impulse={bullet.BestImpulse:F1} pain={bullet.Pain:F2} " +
-            $"part={bullet.Part}");
+            $"part={bullet.Part} mood={moodBeforeDart:F2}->{moodAfterDart:F2}" +
+            $"->{moodAfterBullet:F2}");
         messages.Add(
             $"dart_drop={dartPath.Drop:F2}px bullet_drop={bulletPath.Drop:F2}px " +
             $"nerf_muzzle={nerf.MuzzleSpeed} pistol_muzzle={pistol.MuzzleSpeed}");
 
         lab.QueueFree();
+        await Tick(tree);
+
+        // Use a fresh composition so earlier physical pain cannot leave the buddy
+        // unconscious and mask the authored sad face with the higher-priority x_x face.
+        BuddyLab? sadLab = await M4ObjectScenarioSupport.LoadLab(tree, seed);
+        if (sadLab is null)
+        {
+            checks.Add(new StartupCheck(
+                "real_pistol_hit_displays_sad_face",
+                false,
+                "fresh buddy_lab failed to load"));
+        }
+        else
+        {
+            CursorGunComponent sadGun = sadLab.CursorGuns;
+            sadGun.MoveCursor(sadLab.Boundaries.InnerBounds.GetCenter());
+            await Tick(tree);
+            await M4ObjectScenarioSupport.SendKey(tree, Key.J);
+            await Tick(tree);
+            GunProfile sadPistol = sadGun.ActiveProfile!;
+            Shot sadShot = default;
+            int sadAttempts = 0;
+            for (; sadAttempts < VolleyShots && !sadShot.SawSadFace; sadAttempts++)
+            {
+                sadShot = await FirePointBlank(
+                    tree,
+                    sadLab,
+                    sadGun,
+                    ToolId.Pistol,
+                    sadPistol,
+                    ContentIds.ToolPistol);
+                await M4ObjectScenarioSupport.WaitFor(
+                    tree,
+                    () => sadGun.ActiveProjectileCount == 0,
+                    sadPistol.ProjectileLifetimeTicks + 16);
+            }
+            checks.Add(new StartupCheck(
+                "real_pistol_hit_displays_sad_face",
+                sadShot.Connected && sadShot.Pain > 0.0f && sadShot.SawSadFace,
+                $"connected={sadShot.Connected} pain={sadShot.Pain:F2} " +
+                $"sad_seen={sadShot.SawSadFace} attempts={sadAttempts} " +
+                $"final_face={sadLab.Reactions.CurrentFace}"));
+            sadLab.QueueFree();
+        }
+
         bool passed = true;
         foreach (StartupCheck check in checks)
             passed &= check.Passed;
@@ -252,9 +321,10 @@ public sealed class NerfVersusPistolScenario : IScenario
     }
 
     /// <summary>
-    /// Fires one level shot and reports how far it fell while the player could still see
-    /// it. Drop is measured from the launch height rather than from the cursor: the shot
-    /// is born at the muzzle, and the aim's own pitch is not part of this question.
+    /// Fires one level shot and reports how far gravity bends it below the straight path
+    /// implied by its actual launch vector. Subtracting that path matters now that the
+    /// restored dart crosses the room quickly: even a fraction of a degree of aim pitch
+    /// would otherwise be larger than the short flight's authored gravity drop.
     /// </summary>
     private static async Task<Trajectory> MeasureTrajectory(
         SceneTree tree,
@@ -274,7 +344,6 @@ public sealed class NerfVersusPistolScenario : IScenario
             return new Trajectory(0.0f, 0, Vector2.Zero);
 
         Vector2 launch = shot.LaunchVelocity;
-        float launchY = shot.GlobalPosition.Y;
         float drop = 0.0f;
         int ticks = 0;
         for (int tick = 0; tick < TrajectoryTicks; tick++)
@@ -282,7 +351,9 @@ public sealed class NerfVersusPistolScenario : IScenario
             if (!GodotObject.IsInstanceValid(shot) || shot.State != ProjectileState.Live)
                 break;
 
-            drop = shot.GlobalPosition.Y - launchY;
+            float elapsedSeconds = shot.TicksInState / 120.0f;
+            float straightPathY = shot.LaunchPosition.Y + (launch.Y * elapsedSeconds);
+            drop = shot.GlobalPosition.Y - straightPathY;
             ticks = tick;
             await Tick(tree);
         }
@@ -334,9 +405,8 @@ public sealed class NerfVersusPistolScenario : IScenario
 
     /// <summary>
     /// One point-blank head shot with both halves of the answer: what the pipeline scored,
-    /// and what the projectile itself delivered. The second is what proves a dart really
-    /// connected on a shot the pain curve is expected to score at nothing — otherwise
-    /// "harmless" and "missed" read identically.
+    /// and what the projectile itself delivered. Keeping both proves that positive pain
+    /// came from a real solver contact rather than merely trusting the scoring callback.
     /// </summary>
     private static async Task<Shot> FirePointBlank(
         SceneTree tree,
@@ -351,8 +421,7 @@ public sealed class NerfVersusPistolScenario : IScenario
         // stand-off computed before the sweep can be stale by the time the trigger goes —
         // this scenario has fired the barrel straight past a head that stepped behind it.
         // The geometry is therefore re-derived until the shot is really square, and it is
-        // reported either way: a miss and a harmless dart both score no pain, and the
-        // whole point of these two checks is to tell those apart.
+        // reported either way so a miss cannot masquerade as a weak impact measurement.
         float radius = lab.Buddy.Rig.Head.Radius;
         Rect2 room = lab.Boundaries.InnerBounds;
         Vector2 muzzle = Vector2.Zero;
@@ -412,10 +481,12 @@ public sealed class NerfVersusPistolScenario : IScenario
         ProjectileBody? shot = M4ObjectScenarioSupport.NewestLiveProjectile(gun);
         Vector2 launch = shot?.LaunchVelocity ?? Vector2.Zero;
         bool connected = false;
+        bool sawSadFace = false;
         float delivered = 0.0f;
         float travel = 0.0f;
         for (int tick = 0; tick < FlightTicks; tick++)
         {
+            sawSadFace |= lab.Reactions.CurrentFace == ":(";
             if (GodotObject.IsInstanceValid(shot) && shot is not null)
             {
                 connected |= shot.HasHit;
@@ -425,6 +496,7 @@ public sealed class NerfVersusPistolScenario : IScenario
 
             await Tick(tree);
         }
+        sawSadFace |= lab.Reactions.CurrentFace == ":(";
 
         lab.Pipeline.ImpactAccepted -= OnImpact;
         lab.Pipeline.EpisodeAccepted -= OnEpisode;
@@ -438,7 +510,8 @@ public sealed class NerfVersusPistolScenario : IScenario
             aimError,
             toHead.Length(),
             travel,
-            launch);
+            launch,
+            sawSadFace);
     }
 
     private readonly record struct Volley(
@@ -472,7 +545,8 @@ public sealed class NerfVersusPistolScenario : IScenario
         float AimError,
         float RangePx,
         float TravelPx,
-        Vector2 Launch)
+        Vector2 Launch,
+        bool SawSadFace)
     {
         public string Geometry =>
             $"aim_dot={AimError:F3} range={RangePx:F1}px travel={TravelPx:F1}px launch={Launch}";

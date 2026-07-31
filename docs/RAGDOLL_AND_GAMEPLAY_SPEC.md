@@ -194,7 +194,15 @@ Use `(source interaction ID, target buddy part ID)` as the contact-episode key. 
 
 The accepted measured impulse is converted to non-negative pain by the configured empirical curve. Do not attach hidden payout multipliers to tools. Tool differences must arise from their actual physical contact and the shared pain conversion, aside from the explicit region and consciousness multipliers. The confirmed active glove-defense state is a documented target-side exception: contact with an actively guarding hand scales accepted impulse by `0.5` before pain/reward/mood handling, while bypassing strikes remain unmodified.
 
-Accepted events update total pain, per-tool uses/pain statistics, visual/audio feedback, and harmful-history attribution. Each accepted harmful event reduces persistent mood by `min(10, pain x 0.1)`. Burning pain ticks use the same formula and entering knockout adds no separate mood penalty.
+Accepted events update total pain, per-tool uses/pain statistics, visual/audio feedback, and the event's authored mood response. Ordinary harm reduces persistent mood by `min(10, pain x 0.1)` and records harmful-tool memory. Burning pain ticks use the same formula and entering knockout adds no separate mood penalty.
+
+The Nerf Blaster is a mood-response exception only; it never bypasses physical pain,
+knockout, payout, or statistics. Accepted positive-pain hits `1`–`20` each grant `+0.25`
+mood and no harmful memory. Hit `21` onward applies the ordinary pain-sized mood loss but
+still no persistent harmful memory. Misses and zero-pain contacts do not count. Exactly
+`10` routed gameplay seconds without an accepted Nerf hit resets this transient barrage
+counter. Every accepted positive-pain real-Pistol hit remains ordinary harm and also starts
+the authored sad reaction after the immediate pain face.
 
 ### 7.3 Rolling knockout window
 
@@ -310,7 +318,7 @@ Every purchased tool is permanently unlocked for unlimited use. There is one ear
 | Meal | `6` minutes | Pullback-launched care object. Successful consumption grants `+10` mood, then enforces a `60`-second reuse cooldown. |
 | Baseball Bat | `20` minutes | Cursor-tethered physical collider. Swing velocity and contact impulse determine pain through the shared pipeline. |
 | Pistol | `30` minutes | Cursor gun with physical CCD projectile. Magazine `8`; minimum shot interval `0.25` seconds; reload `1.2` seconds; unlimited reserve ammunition. Fires once per primary press, reloads with `R`, and auto-reloads when fired empty. |
-| Grenade | `40` minutes | Pullback-launched explosive. Its `2.5`-second fuse starts on launch, not initial press. An inexperienced buddy may investigate/catch it; harmful grenade memory causes flee/discard behavior. Blast tuning is empirical. |
+| Grenade | `40` minutes | Pullback-launched explosive. **Amended by the owner 2026-07-31 (`DECISIONS.md`, "Grenade — Pin Mechanic, Post-Release Fuse, and Blast"), superseding the `2.5`-second launch fuse:** a pinned grenade is inert forever, the first secondary press — which is also the pullback's begin — pulls the pin one-way, and the `3.0`-second (`360` routed tick) fuse starts when player control ends, by launch release or by grab release. Nothing pauses or resets a live fuse. An inexperienced buddy may investigate/catch it, including a live one; harmful grenade memory causes flee/discard behavior. The blast is an impulse source through the shared pain curve, with distance falloff as its only authored quantity. Blast tuning is empirical. |
 | Fire Sprayer | `50` minutes | Cursor weapon using shared motion/wheel aim. Holding primary sprays continuously. Contact applies Burning as specified below. |
 | Soccer Ball | `65` minutes | Pullback-launched loose physical object. It supports catch/hold/toss and the same `+1` completed-catch reward. Final physical preset is empirical and distinct data from Baseball. |
 | Drink | `80` minutes | Pullback-launched care object. Successful consumption grants `+5` mood, then enforces a `60`-second reuse cooldown. |
@@ -422,7 +430,7 @@ Exact timers are asserted within one `120 Hz` physics tick where the check cross
 - Mood clamps to `[-100, +100]`, maps to the five approved bands, drifts toward `0` by `0.5` points per running minute, and does not advance while closed or across sleep/large-clock gaps.
 - Pet/Tickle, catch, Meal, Drink, and Repair Kit apply exactly their approved mood amounts/cadences and no immediate cash.
 - Passive multiplier reaches `0.25x`, `1.0x`, and `2.0x` at moods `-100`, `0`, and `+100`; peak passive earnings are calibrated to approximately `25%` of representative active-attack earnings.
-- Pistol/Shotgun capacities, cadence, reload durations, pellet count, CCD, and unlimited reserve match section 9; grenade fuse starts only on launch; cursor aim/wheel reset and pullback launch controls match their shared contracts.
+- Pistol/Shotgun capacities, cadence, reload durations, pellet count, CCD, and unlimited reserve match section 9; a grenade's fuse starts only when player control of it ends, and only with the pin already pulled; cursor aim/wheel reset and pullback launch controls match their shared contracts.
 - Loose-object count never exceeds `24`. Cleanup always chooses the oldest eligible safe object and never removes a held/protected object.
 - The final calibrated economy reaches the approved `3`, `6`, `20`, `30`, `40`, `50`, `65`, `80`, `100`, and `120` minute purchase targets in the required sequence for the documented representative play profile.
 

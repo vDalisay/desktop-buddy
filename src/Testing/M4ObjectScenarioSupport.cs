@@ -289,10 +289,15 @@ internal static class M4ObjectScenarioSupport
     /// which both guarantees arrival at the chest and keeps the whole arc above the straight
     /// line from spawn to target.</para>
     /// </summary>
+    /// <param name="profile">
+    /// What to throw. Defaults to the laboratory's safe ball; the Grenade journey passes
+    /// its own so the buddy is offered a real grenade rather than a stand-in.
+    /// </param>
     public static LooseObjectBody? SpawnCleanThrow(
         BuddyLab lab,
         float distance = 150.0f,
-        float flightSeconds = 0.35f)
+        float flightSeconds = 0.35f,
+        LooseObjectProfile? profile = null)
     {
         Vector2 chest = lab.Buddy.Rig.Torso.GlobalPosition;
         float side = chest.X - lab.Boundaries.InnerBounds.Position.X > distance + 20.0f
@@ -301,7 +306,7 @@ internal static class M4ObjectScenarioSupport
         Vector2 spawn = chest + new Vector2(side * distance, -40.0f);
 
         LooseObjectBody? body = lab.SpawnLooseObject(
-            lab.SafeObjectProfile,
+            profile ?? lab.SafeObjectProfile,
             spawn,
             Vector2.Zero,
             playerThrown: false);

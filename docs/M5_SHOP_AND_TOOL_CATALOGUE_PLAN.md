@@ -372,6 +372,15 @@ does not tick it); blast damages by distance; a buddy holding it at detonation t
 the close-range result and drops nothing afterward (nothing left to hold); after a
 harmful blast the next grenade triggers flee/discard, seeds 1 and 7.
 
+**Owner refinement (2026-07-31):** the fuse rule above is **superseded** — the owner
+replaced it with a pin mechanic (pin drops on the first RMB press; safe while
+player-held; explodes 3 s after release with the pin out), set damage at ≈ 5 pistol
+bullets, and specified the presentation (small explosion, medium camera kick,
+placeholder boom/landing sounds, simple 3D model, heavier-than-Baseball heft on the
+same arc). Full handoff plan: `docs/M5_TASK6_GRENADE_PLAN.md` — the slice's spec and
+accept criteria are that plan's, not this section's; RAGDOLL §9.2's fuse sentence is
+amended at its bookkeeping task.
+
 ### Task 7 — Burning + Fire Sprayer
 
 `BurningStatus` per §9.3 (4 s apply, refresh capped 8 s, periodic attributed pain,
@@ -385,6 +394,10 @@ spray → burn 4 s of attributed ticks; sustained spray caps at 8 s remaining; b
 drops a held ball and panics; pain/mood per tick match the shared formula; status
 survives KO but hard reposition clears it.
 
+**Refined (2026-07-31):** handoff plan at `docs/M5_TASK7_BURNING_AND_FIRE_SPRAYER_PLAN.md`;
+the slice's authoritative spec and accept criteria are that plan's. It also builds the
+FR-017.3 `EffectsSettings` read seam (no runtime consumer of the saved settings exists yet).
+
 ### Task 8 — Soccer Ball + Drink
 
 Two data-driven reuses: Soccer Ball = second pullback loose object with its own
@@ -397,6 +410,10 @@ catch rules; Meal and Drink cooldowns proven independent (consume Meal, immediat
 consume Drink → both succeed); presets verifiably distinct (different measured
 bounce/settle signature than Baseball).
 
+**Refined (2026-07-31):** handoff plan at `docs/M5_TASK8_SOCCER_BALL_AND_DRINK_PLAN.md`;
+the slice's authoritative spec and accept criteria are that plan's. One code addition:
+authored restitution (`Bounce`) on `LooseObjectProfile` — nothing authors bounce today.
+
 ### Task 9 — Shotgun
 
 `GunModel` second profile: capacity 5, 0.9 s interval, 2 s reload, one press fires
@@ -407,6 +424,10 @@ assert the actual accepted-event count, don't assume 6).
 **Accept:** unit — profile table. Scenario `shotgun_spread`: 6 pellets spawn per
 press; cadence/reload honored; multi-part hits attribute per part; point-blank no
 tunneling.
+
+**Refined (2026-07-31):** handoff plan at `docs/M5_TASK9_SHOTGUN_PLAN.md`; the slice's
+authoritative spec and accept criteria are that plan's. It resolves the dedup reading:
+pellets of one shot share one interaction id, so one shot into one part scores once.
 
 ### Task 10 — Repair Kit
 
@@ -421,6 +442,12 @@ nothing rations it. Its profile therefore authors `ConsumeCooldownTicks = 0` and
 KO'd buddy → apply → KO end time unchanged while rolling pain clears; a failed/dropped
 application applies nothing; a buddy with a full hunger bar still accepts one (the appetite
 rule is for food, and the Repair Kit is not).
+
+**Refined (2026-07-31):** handoff plan at `docs/M5_TASK10_REPAIR_KIT_PLAN.md`; the slice's
+authoritative spec and accept criteria are that plan's. It resolves how FR-008.7/FR-010.10
+are reachable at all (a KO'd or burning buddy can never eat): player contact-application on
+a thrown kit, flagged as an owner-gate default; RAGDOLL's stale 120 s cooldown rows are
+amended at its bookkeeping task.
 
 ### Task 11 — Strength Upgrade (FR-019) — **blocked pending owner decisions**
 

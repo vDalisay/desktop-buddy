@@ -190,8 +190,40 @@ public partial class GunProfile : GameResource
     /// <summary>Camera-axis depth the drawn gun sits at, matching the cursor tools.</summary>
     [Export] public float VisualDepthOffset { get; set; } = 144.0f;
 
+    // --- Punctuation (real guns only; a toy authors all of this off) ---
+
+    /// <summary>
+    /// Peak camera kick on firing, in pixels. "Very small" is the specification: at 1.5 px
+    /// it is felt rather than seen. Zero disables the kick entirely.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,16,0.1")] public float FireShakeAmplitudePx { get; set; }
+
+    /// <summary>Ticks the fire kick takes to decay to nothing.</summary>
+    [Export(PropertyHint.Range, "0,60,1,or_greater")] public int FireShakeDecayTicks { get; set; }
+
+    /// <summary>Ticks the muzzle flash is drawn for; zero is no flash.</summary>
+    [Export(PropertyHint.Range, "0,30,1,or_greater")] public int MuzzleFlashTicks { get; set; }
+
+    /// <summary>
+    /// How far the drawn gun is pushed back along its own aim after a shot, and for how
+    /// long. Presentation only — recoil must never reach the aim, or a burst would walk
+    /// the player's barrel off target.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,24,0.1")] public float RecoilKickPx { get; set; }
+
+    [Export(PropertyHint.Range, "0,30,1,or_greater")] public int RecoilTicks { get; set; }
+
+    /// <summary>Whether starting a reload ejects a cosmetic magazine onto the floor.</summary>
+    [Export] public bool DropsMagazineOnReload { get; set; }
+
+    /// <summary>Ticks a dropped magazine lies on the floor before it fades and re-pools.</summary>
+    [Export(PropertyHint.Range, "30,3600,1,or_greater")] public int MagazineLingerTicks { get; set; } = 600;
+
     /// <summary>Pixels of agreement required between the authored muzzle and the mesh tip.</summary>
     public const float MuzzleAgreementPx = 2.0f;
+
+    /// <summary>Cosmetic magazines a dropping gun preallocates.</summary>
+    public const int MagazinePoolCapacity = 3;
 
     /// <summary>Where the barrel mouth is, in pixels ahead of the cursor.</summary>
     public float VisualMuzzleTipPx => VisualLengthPx * MuzzleTipFraction;
@@ -278,6 +310,32 @@ public partial class GunProfile : GameResource
         if (!float.IsFinite(MuzzleOffsetPx) || MuzzleOffsetPx < 0.0f)
         {
             errors.Add($"{nameof(MuzzleOffsetPx)} must be finite and non-negative");
+        }
+
+        if (!float.IsFinite(FireShakeAmplitudePx) || FireShakeAmplitudePx < 0.0f ||
+            FireShakeDecayTicks < 0 ||
+            MuzzleFlashTicks < 0 ||
+            !float.IsFinite(RecoilKickPx) || RecoilKickPx < 0.0f ||
+            RecoilTicks < 0 ||
+            MagazineLingerTicks < 1)
+        {
+            errors.Add(
+                $"{nameof(FireShakeAmplitudePx)}, {nameof(FireShakeDecayTicks)}, " +
+                $"{nameof(MuzzleFlashTicks)}, {nameof(RecoilKickPx)}, and {nameof(RecoilTicks)} " +
+                $"must be finite and non-negative, and {nameof(MagazineLingerTicks)} positive");
+        }
+        else if (FireShakeAmplitudePx > 0.0f && FireShakeDecayTicks <= 0)
+        {
+            // An envelope with no length never decays, so the kick would be permanent.
+            errors.Add(
+                $"{nameof(FireShakeDecayTicks)} must be positive when " +
+                $"{nameof(FireShakeAmplitudePx)} is");
+        }
+        else if ((RecoilKickPx > 0.0f) != (RecoilTicks > 0))
+        {
+            errors.Add(
+                $"{nameof(RecoilKickPx)} and {nameof(RecoilTicks)} must either both be " +
+                "positive or both disable recoil");
         }
 
         if (Visual3DKind == GunVisual3DKind.Unspecified)

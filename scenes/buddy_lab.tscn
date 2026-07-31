@@ -1,4 +1,4 @@
-[gd_scene load_steps=53 format=3]
+[gd_scene load_steps=54 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -52,6 +52,13 @@
 [ext_resource type="Resource" path="res://data/tools/gun_pistol.tres" id="49_pistol_profile"]
 [ext_resource type="Resource" path="res://data/tools/gun_nerf_blaster.tres" id="50_nerf_profile"]
 [ext_resource type="Script" path="res://src/Presentation3D/CursorGunVisual3D.cs" id="51_gun_visual"]
+[ext_resource type="Script" path="res://src/Sandbox/CameraKickComponent.cs" id="52_camera_kick"]
+[ext_resource type="Script" path="res://src/Tools/GrenadeComponent.cs" id="53_grenade"]
+[ext_resource type="Resource" path="res://data/tools/grenade.tres" id="54_grenade_profile"]
+[ext_resource type="Resource" path="res://data/objects/grenade.tres" id="55_grenade_object"]
+[ext_resource type="Script" path="res://src/Presentation3D/GrenadeVisual3D.cs" id="56_grenade_visual"]
+[ext_resource type="Script" path="res://src/Tools/GrenadeAudioComponent.cs" id="57_grenade_audio"]
+[ext_resource type="Script" path="res://src/Tools/GrenadeVisual2D.cs" id="58_grenade_visual_2d"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -83,7 +90,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "GrenadeVisualLegacy", "GrenadeAudio", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -102,6 +109,11 @@ MoodEconomy = ExtResource("41_mood_economy")
 CursorTools = NodePath("CursorToolController")
 CursorGuns = NodePath("CursorGunComponent")
 CursorGunVisual = NodePath("CursorGunVisual3D")
+Grenades = NodePath("GrenadeComponent")
+GrenadeVisual = NodePath("GrenadeVisual3D")
+GrenadeVisualLegacy = NodePath("GrenadeVisual2D")
+GrenadeAudio = NodePath("GrenadeAudioComponent")
+CameraKick = NodePath("CameraKickComponent")
 CareStroke = NodePath("CareStrokeComponent")
 ToolReactions = NodePath("ToolReactionComponent")
 CareCursor = NodePath("ToolCursorPresenter")
@@ -150,9 +162,22 @@ ImpactVisualOffset = NodePath("../ImpactVisualOffsetComponent")
 visible = false
 script = ExtResource("29_body_visual")
 
+[node name="CameraKickComponent" type="Node" parent="." node_paths=PackedStringArray("WorldCamera", "WorldCamera3D")]
+script = ExtResource("52_camera_kick")
+WorldCamera = NodePath("../WorldCamera")
+WorldCamera3D = NodePath("../WorldCamera3D")
+
 [node name="CursorGunVisual3D" type="Node3D" parent="."]
 visible = false
 script = ExtResource("51_gun_visual")
+
+[node name="GrenadeVisual3D" type="Node3D" parent="."]
+visible = false
+script = ExtResource("56_grenade_visual")
+
+[node name="GrenadeVisual2D" type="Node2D" parent="."]
+visible = false
+script = ExtResource("58_grenade_visual_2d")
 
 [node name="BuddyLookLightingRig" type="Node3D" parent="."]
 script = ExtResource("30_lighting")
@@ -242,7 +267,7 @@ Facing = NodePath("../FacingController")
 script = ExtResource("4_grab")
 Profile = ExtResource("5_grab_profile")
 
-[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "CursorTools", "CareTool", "CareCursor", "LauncherTool", "GunTool")]
+[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "CursorTools", "CareTool", "CareCursor", "LauncherTool", "GrenadeTool", "GunTool")]
 script = ExtResource("6_pointer")
 Grab = NodePath("../GrabTetherController")
 Pipeline = NodePath("../InteractionPipeline")
@@ -250,6 +275,7 @@ CursorTools = NodePath("../CursorToolController")
 CareTool = NodePath("../CareStrokeComponent")
 CareCursor = NodePath("../ToolCursorPresenter")
 LauncherTool = NodePath("../PullbackLauncherComponent")
+GrenadeTool = NodePath("../GrenadeComponent")
 GunTool = NodePath("../CursorGunComponent")
 
 [node name="InteractionPipeline" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Grab")]
@@ -270,7 +296,16 @@ Registry = NodePath("../LooseObjectRegistry")
 Boundaries = NodePath("../RoomBounds")
 ObjectParent = NodePath("..")
 Profile = ExtResource("43_launcher_profile")
-LaunchableProfiles = Array[Resource]([ExtResource("44_baseball"), ExtResource("45_meal")])
+LaunchableProfiles = Array[Resource]([ExtResource("44_baseball"), ExtResource("45_meal"), ExtResource("55_grenade_object")])
+
+[node name="GrenadeComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Grab", "Registry", "Launcher", "Boundaries")]
+script = ExtResource("53_grenade")
+Pipeline = NodePath("../InteractionPipeline")
+Grab = NodePath("../GrabTetherController")
+Registry = NodePath("../LooseObjectRegistry")
+Launcher = NodePath("../PullbackLauncherComponent")
+Boundaries = NodePath("../RoomBounds")
+Profile = ExtResource("54_grenade_profile")
 
 [node name="CursorToolController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
 script = ExtResource("14_cursor_tools")
@@ -294,6 +329,13 @@ Pipeline = NodePath("../InteractionPipeline")
 Player = NodePath("AudioStreamPlayer")
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="SwingAudioComponent"]
+
+[node name="GrenadeAudioComponent" type="Node" parent="." node_paths=PackedStringArray("Grenades", "Player")]
+script = ExtResource("57_grenade_audio")
+Grenades = NodePath("../GrenadeComponent")
+Player = NodePath("AudioStreamPlayer")
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="GrenadeAudioComponent"]
 
 [node name="CareStrokeComponent" type="Node" parent="." node_paths=PackedStringArray("Pipeline")]
 script = ExtResource("16_care")

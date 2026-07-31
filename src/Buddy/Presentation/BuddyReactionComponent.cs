@@ -2,6 +2,7 @@ using System;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
@@ -24,6 +25,7 @@ public partial class BuddyReactionComponent : Node
     [Export] public ToolReactionComponent ToolReaction { get; set; } = null!;
 
     private int _painTicks;
+    private int _pistolSadTicks;
     private int _delightTicks;
     private int _fearTicks;
     private int _petSmileTicks;
@@ -35,6 +37,8 @@ public partial class BuddyReactionComponent : Node
     public float CurrentFear { get; private set; }
     public int PetSmileTicksRemaining => _petSmileTicks;
     public int LearnedThreatFaceTicksRemaining => _learnedThreatFaceTicks;
+    public int PistolSadFaceTicksRemaining => _pistolSadTicks;
+    public int PistolSadReactionCount { get; private set; }
 
     /// <summary>Ticks left on the clean-catch laugh; non-zero means the buddy is laughing.</summary>
     public int LaughTicksRemaining => _laughTicks;
@@ -67,6 +71,7 @@ public partial class BuddyReactionComponent : Node
     {
         if (!IsInitialized) return;
         if (_painTicks > 0) _painTicks--;
+        if (_pistolSadTicks > 0) _pistolSadTicks--;
         if (_delightTicks > 0) _delightTicks--;
         if (_fearTicks > 0) _fearTicks--;
         if (_petSmileTicks > 0) _petSmileTicks--;
@@ -95,8 +100,19 @@ public partial class BuddyReactionComponent : Node
 
     private void OnImpact(AcceptedImpact impact)
     {
+        if (impact.MoodEffect == ImpactMoodEffectKind.Enjoyment)
+        {
+            _delightTicks = SecondsToTicks(Profile.DelightFaceSeconds);
+            return;
+        }
+
         _painTicks = SecondsToTicks(Profile.PainFaceSeconds);
         _fearTicks = SecondsToTicks(Profile.AcuteFearSeconds);
+        if (impact.ContentId == ContentIds.ToolPistol)
+        {
+            _pistolSadTicks = SecondsToTicks(Profile.PistolSadFaceSeconds);
+            PistolSadReactionCount++;
+        }
     }
 
     private void OnCare(CareKind kind)
@@ -134,6 +150,7 @@ public partial class BuddyReactionComponent : Node
 
         CurrentFace = Buddy.CurrentConsciousness == Consciousness.Unconscious ? "x_x" :
             _painTicks > 0 ? ">_<" :
+            _pistolSadTicks > 0 ? ":(" :
             Pipeline.SelectedTool == ToolId.Tickle &&
             CareStroke.TickleDisposition == TickleDisposition.Angry ? ">:(" :
             ToolReaction.IsDefending ? ">:(" :
