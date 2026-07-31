@@ -1,6 +1,6 @@
 # M5 Task 7 — Burning + Fire Sprayer Plan
 
-**Status: PLAN — written 2026-07-31, not yet implemented.** Refines the master plan's
+**Status: IMPLEMENTED 2026-08-01 through Task E; Task F's owner feel gate is outstanding.** Written 2026-07-31. Refines the master plan's
 Task 7 stub (`M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`) to handoff fidelity, the same way
 `M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` and `M5_TASK6_GRENADE_PLAN.md` did for their
 slices. Authoritative contracts: RAGDOLL §9.1 (shared cursor-weapon aim), §9.2 Fire
@@ -266,6 +266,48 @@ journey (catalogue leg per the current visibility state — grenade-journey prec
 select by key, real pointer spray, burn, panic, release-stops-spray cancel leg).
 Register in `ScenarioCatalog`, `TEST_PLAN.md`, quick suite.
 *Accept:* journey green seeds 1/7, both presentations; quick suite grows by exactly 2.
+
+### Implementation notes (2026-08-01)
+
+Where the build differs from the plan as written, and why:
+
+- **Selection key `S`, not `H`.** `H` already toggles the laboratory telemetry panel, which
+  the plan's "free map" missed. One key doing two unrelated things is the kind of collision
+  that only surfaces half-way through a tuning session.
+- **`BurnEquivalentImpulse` tuned `200 → 430`.** `200` sits below the shipped conversion
+  profile's `350` minimum impulse and would have scored nothing at all. At `430` one event is
+  `4.57` pain: `36.6` over a four-second burn, `73.1` over a sustained eight-second cap burn,
+  and at most `45.7` inside any rolling five-second window against the `100`-pain threshold.
+  Squarely inside the plan's 3–6 band, and §3 default 1 is proven rather than assumed.
+- **The lateral fan is an eight-wide triangle wave** (`-1, -0.5, 0, +0.5, +1, +0.5, 0, -0.5`)
+  rather than the plan's unspecified period, chosen because it is symmetric about the aim.
+  Still purely index-driven, so a replayed seed reproduces the stream exactly.
+- **The mood assertion is per-event, not per-burn.** Persistent mood also carries the shared
+  passive drift, which over a burn-length window is larger than the thing being checked, so
+  the scenario measures the single routed tick one event lands on and finds exactly
+  `min(10, pain x 0.1)`.
+- **The FR-017.3 comparison pins the buddy.** Ambient autonomy walks the buddy between the two
+  probes, so without a pinned captured pose the check would be measuring the walk rather than
+  the settings. Both probes are also anchored on ignition rather than on the tick the stream
+  starts, because how long the first droplet takes to connect depends on where in its fan the
+  stream happens to be — a property of the stream, not of the settings.
+- **`FireSprayerComponent` exposes `AimIsSteering`/`AimSmoothedSpeed`** like the gun does. The
+  journey's shared `AimAtPointAsync` waits for the live weapon's aim to come to rest before
+  the approach begins; without it the jump to the start of the walk establishes the aim
+  pointing backwards and the bounded slew never recovers inside the walk.
+- **Presentation counters are computed, not drawn.** A headless run never paints, so the
+  reduced-particles oracle is `FireSprayerComponent.DrawEnabledDropletCount` rather than a
+  draw counter.
+
+### Validation sweep (2026-08-01)
+
+- `dotnet test`: **1017 passed, 0 failed** (baseline `999`, +18 for `BurningStatusModelTests`).
+- `tools\quick_validate.bat`: **passed**, now 30 steps.
+- `burning_status`: seeds `1/7/13` green in `Mii3D`; seeds `1/13` green in legacy.
+- `m5_fire_sprayer`: seeds `1/7` green in `Mii3D`; seeds `1/7` green in legacy.
+- Neighbours unchanged: `pistol_fire` (1), `nerf_versus_pistol` (7), `grenade_fuse` (1, 13),
+  `object_toss_discard` (7), `behavior_priority_ladder` (1, 13), `boot_smoke` (1), and the
+  `m5_pistol` journey (1).
 
 **Task F — Feel gate + bookkeeping.** Owner plays it on real Windows. Then: DECISIONS
 entry (the four §3 defaults as accepted/vetoed + the settings-seam scope), TEST_PLAN
