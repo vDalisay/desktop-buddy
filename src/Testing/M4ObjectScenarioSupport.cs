@@ -70,6 +70,61 @@ internal static class M4ObjectScenarioSupport
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
     }
 
+    /// <summary>
+    /// Establishes a cursor gun's aim by sweeping its cursor along
+    /// <paramref name="direction"/> and finishing exactly on <paramref name="cursor"/>,
+    /// the way a player's hand arrives at a target rather than teleporting to it.
+    ///
+    /// <para>Every scenario that aims a gun goes through here, and the shape of the sweep is
+    /// part of the contract being exercised. The aim follows the direction the pointer has
+    /// lately been travelling and turns at a bounded rate, so two things matter: the jump
+    /// that carries the cursor to the start of the run is travel of its own and the aim is
+    /// let go of it first, and the run is long enough for the aim to come round from any
+    /// previous direction — a full reversal, worst case. Aim from a stand-off with room
+    /// behind it: a cursor pinned against the edge of the play area stops travelling, and
+    /// an aim with no travel simply holds.</para>
+    /// </summary>
+    public static async Task AimGunOver(
+        SceneTree tree,
+        Tools.CursorGunComponent gun,
+        Vector2 cursor,
+        Vector2 direction,
+        int ticks = 42)
+    {
+        const float StepPx = 1.5f;
+        int steps = Mathf.Max(8, ticks);
+        Vector2 unit = direction.IsZeroApprox() ? Vector2.Right : direction.Normalized();
+        Vector2 start = cursor - (unit * (StepPx * steps));
+
+        gun.MoveCursor(start);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        await WaitFor(tree, () => !gun.AimIsSteering, 300);
+        for (int step = 1; step <= steps; step++)
+        {
+            gun.MoveCursor(start + (unit * (StepPx * step)));
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+    }
+
+    /// <summary>
+    /// A cursor stand-off from a target, on whichever side has more room behind it, with
+    /// the direction a shot from there travels. Aiming needs pointer travel, and the roomier
+    /// side is the one where the approach that provides it always fits.
+    /// </summary>
+    public static (Vector2 Cursor, Vector2 Forward) StandOffFrom(
+        Rect2 room,
+        Vector2 target,
+        float standOffPx)
+    {
+        float side = target.X - room.Position.X >= room.End.X - target.X ? -1.0f : 1.0f;
+        var forward = new Vector2(-side, 0.0f);
+        var cursor = new Vector2(
+            Mathf.Clamp(
+                target.X + (side * standOffPx), room.Position.X + 8.0f, room.End.X - 8.0f),
+            Mathf.Clamp(target.Y, room.Position.Y + 8.0f, room.End.Y - 8.0f));
+        return (cursor, forward);
+    }
+
     /// <summary>A lateral, in-bounds point to aim a return throw at.</summary>
     public static Vector2 LateralCursorTarget(BuddyLab lab, float distance = 170.0f)
     {
@@ -115,6 +170,35 @@ internal static class M4ObjectScenarioSupport
             ButtonIndex = button,
             ButtonMask = mask,
             Pressed = pressed,
+            Position = viewport,
+            GlobalPosition = viewport,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+    }
+
+    /// <summary>
+    /// Sends one real mouse-wheel notch at a world position. The position matches the
+    /// pointer's current one so the notch offsets aim without also reading as motion,
+    /// which is exactly how a wheel notch arrives from Windows.
+    /// </summary>
+    public static async Task SendWheel(SceneTree tree, BuddyLab lab, Vector2 world, bool up)
+    {
+        Vector2 viewport = lab.GetViewport().GetCanvasTransform() * world;
+        MouseButton button = up ? MouseButton.WheelUp : MouseButton.WheelDown;
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = button,
+            Pressed = true,
+            Factor = 1.0f,
+            Position = viewport,
+            GlobalPosition = viewport,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = button,
+            Pressed = false,
             Position = viewport,
             GlobalPosition = viewport,
         });

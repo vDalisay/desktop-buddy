@@ -221,6 +221,10 @@ public partial class LaboratoryControlComponent : Node
             case Key.K when HasPipeline:
                 Pipeline!.SelectTool(ToolId.BaseballBat);
                 break;
+            // J rather than P: P is the pause key, and G is already Grab.
+            case Key.J when HasPipeline:
+                Pipeline!.SelectTool(ToolId.Pistol);
+                break;
             case Key.T when HasPipeline:
                 Pipeline!.SelectTool(ToolId.Tickle);
                 break;

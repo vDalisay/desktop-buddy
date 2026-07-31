@@ -60,6 +60,7 @@ public static class ScenarioCatalog
         ["baseball_pullback"] = () => new BaseballPullbackScenario(),
         ["bat_swing"] = () => new BatSwingScenario(),
         ["homerun_bat_feel"] = () => new HomeRunBatFeelScenario(),
+        ["pistol_fire"] = () => new PistolFireScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

@@ -1063,6 +1063,74 @@ Baseball Bat slice are closed. `data/catalogue/tool_baseball_bat.tres` now carri
 `Visible = true`, so the accepted bat may appear in the shop. Its `20`-credit price
 remains the provisional FR-013.4 placeholder until Task 12 economy calibration.
 
+## Cursor-Gun Platform and Pistol (M5 Task 5, 2026-07-31)
+
+Delegated defaults, all agent-tunable and all provisional until the Task 12 economy
+calibration and the owner's feel gate:
+
+- Pistol projectile: `2400` px/s muzzle speed, `2.5` px radius, `0.3` mass, no gravity,
+  born `14` px ahead of the cursor, `24`-slot pool, `120`-tick maximum lifetime and
+  `3000` px maximum path.
+- Aim: pointer travel under `1` px per routed tick is jitter and does not re-aim; one
+  wheel notch offsets aim by `5` degrees, clamped to `60` degrees either way.
+- Laboratory tool key: `J` selects the Pistol (`P` is pause and `G` is Grab).
+- The authored magazine `8`, `0.25` s minimum shot interval, `1.2` s reload, `R` reload,
+  auto-reload on an empty pull, and unlimited reserve are RAGDOLL §9.2 requirements, not
+  delegated choices.
+
+**Engine finding — Godot's 2D continuous collision cannot be used for projectiles, and a
+projectile's per-tick travel is bounded instead.** `RigidBody2D.ContinuousCd` avoids
+tunneling by *replacing the body's velocity* with the reduced velocity that lands it on
+the surface it was about to cross. The shot stops in the right place carrying almost no
+momentum, so the solver reports a tiny contact impulse and the shared pain curve scores a
+visibly perfect hit as nothing. Measured on one point-blank head shot: pain `85` with CCD
+disabled, pain `0` with `CastRay`, and a clean pass straight through the head with
+`CastShape`. Coverage is therefore geometric: `GunProfile` rejects any muzzle speed above
+`24` px per routed tick (`2880` px/s), which keeps every shot inside the smallest buddy
+part's `30` px diameter, so some sample of the flight always overlaps the target and the
+ordinary solver resolves the contact at full speed. RAGDOLL §9.2's "physical CCD
+projectile" is honored in substance — a shot cannot pass through the buddy — but not by
+that engine setting, and `pistol_fire` asserts the outcome rather than the mechanism.
+
+A second consequence, recorded for the Task 12 calibration: because the reported impulse
+of a small fast body is dominated by how far it got in one step, **muzzle speed is the
+lever on how much a gun hurts and projectile mass is nearly inert**. Mass still decides
+how hard the buddy is shoved. Per-shot pain also varies widely with contact geometry
+(observed `6`–`100` across hits), which is inherent to the shared impulse pipeline rather
+than specific to guns.
+
+## Gun Feel Refinement — Aim-Gated Trigger and Projectile Spin (M5 Task 5 Task A, 2026-07-31)
+
+The owner rejected the engineering-complete Pistol on feel and signed off
+`docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md`. Two rules from its Task A are decisions
+rather than tuning.
+
+**A trigger press with no established aim does not consume a round.** A cursor gun's aim
+comes from pointer travel and is wiped whenever the pointer leaves the play area — which is
+what sweeping across it does. The shipped behavior spent the round anyway and launched
+nothing, silently: verified 2026-07-31 as a magazine going `6 → 5` rounds with no projectile,
+which is the owner's report that "it takes a few clicks before ammo comes out to the left".
+The trigger fed to `GunMachine` is now gated on the aim being valid, so the press is refused
+instead. Dry fire, reload, and cadence are unchanged; press-and-hold before aiming fires the
+moment an aim exists. `CursorGunComponent.ShotCount` therefore counts only shots that really
+left the barrel, and `ShotsSpentWithoutAim` is kept as a permanent zero so a regression
+announces itself. This retires the previous "the model owns the magazine, so the round is
+still spent" reading: a round the player never saw leave the gun is a bug, not a principle.
+
+**Engine finding — a projectile's rotation must stay free, and its visual must not follow
+it.** Locking `RigidBody2D.LockRotation` on a projectile looks like a pure presentation
+tidy-up and is not: measured A/B on identical seeds with nothing else changed, it **halved
+the contact impulse the shared pain pipeline scores** — `1187.4 → 597.8` (pain
+`41.32 → 14.16`) on seed 1, `1206.9 → 605.6` on seed 7. A small round body's spin-up is a
+real part of the impulse this project measures pain from, so taking it away cuts every gun's
+damage in half. Rotation therefore stays free, and the alignment defect the owner reported
+("the ammo doesn't line up with the gun, and it rotates while flying") is fixed entirely in
+the drawing: the streak is drawn along the velocity the body has at that instant and undoes
+the body's own rotation, because a canvas item draws in local space. Any future projectile
+visual must be oriented from velocity, never from the body transform. The same measurement
+explains the `6`–`100` per-shot pain spread noted above: a bullet that hits square gets no
+spin channel and scores about half as much as a glancing one.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

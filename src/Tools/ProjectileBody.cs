@@ -1,0 +1,315 @@
+using System;
+using DesktopBuddy.App;
+using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Interaction;
+using Godot;
+
+namespace DesktopBuddy.Tools;
+
+/// <summary>Where one pooled projectile is in its short life.</summary>
+public enum ProjectileState
+{
+    /// <summary>Parked in the pool: inert, invisible, and outside every collision layer.</summary>
+    Pooled,
+
+    /// <summary>In flight.</summary>
+    Live,
+
+    /// <summary>
+    /// Hit something and stopped, but deliberately still a valid instance. The
+    /// interaction pipeline resolves a contact's attribution on the routed tick after
+    /// the solver produced it, so a projectile freed on impact would lose its own pain.
+    /// </summary>
+    Spent,
+}
+
+/// <summary>
+/// One pooled projectile fired by a cursor gun (RAGDOLL §9.2). It lives on the
+/// Projectiles layer, so it strikes buddy parts, loose objects, and room bounds but
+/// never another projectile or a physical tool, and it is <b>never</b> registered with
+/// the <see cref="Objects.LooseObjectRegistry"/>: bullets are bounded by their own pool
+/// and never consume one of the 24 loose-object slots (RAGDOLL §10, ARCHITECTURE §15).
+///
+/// <para>It cannot pass through what it is fired at, but not because of the engine's
+/// continuous-collision setting — see <see cref="GunProfile.MaximumTravelPerTickPx"/>
+/// for what really guarantees that, and for the measurements behind it.</para>
+///
+/// <para>Pain comes from the impulse the solver measures when a shot really connects,
+/// through the shared curve, with the firing tool's content ID as attribution. The
+/// body owns no gameplay decisions: lifetime, travel, and recycling are driven from
+/// the owning component's routed tick.</para>
+///
+/// <para><see cref="InteractionId"/> is re-minted on every launch. A pooled instance
+/// that reused one identity would let its second shot be swallowed as a continuation
+/// of its first shot's contact episode, on the same part, inside the router's re-arm
+/// window.</para>
+/// </summary>
+[GlobalClass]
+public partial class ProjectileBody : RigidBody2D, IImpactSource
+{
+    private const int ContactBufferSize = 4;
+    private const float MinimumStreakSpeed = 1.0f;
+
+    private Color _fillColor = new("ffe08a");
+    private Color _trailColor = new("ffb347");
+    private string _contentId = ContentIds.ToolPistol;
+    private Vector2 _lastSample;
+    private Vector2 _launchVelocity;
+    private bool _contactObserved;
+    private int _contactTicks;
+    private float _deliveredImpulse;
+
+    public float Radius { get; private set; } = 2.0f;
+
+    public int InteractionId { get; private set; } = InteractionIds.Next();
+
+    public string ContentId => _contentId;
+
+    public ProjectileState State { get; private set; } = ProjectileState.Pooled;
+
+    /// <summary>Routed ticks this projectile has been live, or spent.</summary>
+    public int TicksInState { get; private set; }
+
+    /// <summary>
+    /// Pixels of path actually flown, accumulated per routed tick. Path length rather
+    /// than distance from the muzzle, so the authored bound stays meaningful for a shot
+    /// that deflected instead of flying straight.
+    /// </summary>
+    public float TravelledPx { get; private set; }
+
+    /// <summary>True once the solver has reported a contact for this flight.</summary>
+    public bool HasHit => _contactObserved;
+
+    /// <summary>The velocity this projectile was launched with, for test readouts.</summary>
+    public Vector2 LaunchVelocity => _launchVelocity;
+
+    /// <summary>
+    /// The orientation this flight actually began at, snapshotted before any physics step
+    /// could add to it. A recycled pool slot must not inherit the orientation of the shot
+    /// before it, and one tick later this is unreadable: an impact spins the body.
+    /// </summary>
+    public float LaunchRotation { get; private set; }
+
+    /// <summary>
+    /// World-space direction the drawn streak points along. Exposed so a scenario can
+    /// prove the visual is really glued to the flight path: the streak is drawn in this
+    /// body's local space, so any body rotation swings the drawn shot away from the
+    /// direction it is actually travelling.
+    /// </summary>
+    public Vector2 VisualForward => LocalStreakForward().Rotated(Rotation);
+
+    /// <summary>
+    /// The largest contact impulse the solver has actually applied to this projectile.
+    /// A continuous-collision hit is detected a step before it is resolved, so this —
+    /// not the bare contact — is what says the shot has landed.
+    /// </summary>
+    public float DeliveredImpulse => _deliveredImpulse;
+
+    /// <summary>Shapes and configures the body once, when the pool is built.</summary>
+    public void Configure(GunProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+
+        Radius = profile.ProjectileRadius;
+        _fillColor = profile.ProjectileColor;
+        _trailColor = profile.TrailColor;
+        _contentId = profile.ContentId;
+        Mass = profile.ProjectileMass;
+        GravityScale = profile.ProjectileGravityScale;
+        LinearDamp = 0.0f;
+        LinearDampMode = DampMode.Replace;
+        AngularDamp = 0.0f;
+        AngularDampMode = DampMode.Replace;
+        AddChild(new CollisionShape2D { Shape = new CircleShape2D { Radius = profile.ProjectileRadius } });
+        // Godot's own continuous collision is deliberately OFF: it prevents tunneling by
+        // *replacing the body's velocity* with the reduced velocity that lands it on the
+        // surface it was about to cross, so the shot stops in the right place carrying
+        // almost no momentum, the solver reports a correspondingly tiny impulse, and a
+        // visibly perfect hit does no harm at all. What guarantees this body cannot skip
+        // its target instead is GunProfile.MaximumTravelPerTickPx — read that first if you
+        // are about to turn this back on.
+        ContinuousCd = CcdMode.Disabled;
+        // Rotation is deliberately LEFT FREE, and this is not an oversight. An off-centre
+        // hit does spin a bullet — 121 degrees while still visible, measured 2026-07-31 —
+        // but that is invisible on a round body drawn along its own velocity, and it is
+        // not free to take away: `LockRotation = true` halved the contact impulse the
+        // shared pain pipeline scores, from 1187 to 598 on the same seeded point-blank
+        // head shot, quietly cutting every gun's damage in half. A projectile's spin-up is
+        // part of the impulse this project measures pain from, so the alignment fix belongs
+        // in the drawing (see LocalStreakForward), never in the body.
+        LockRotation = false;
+        ContactMonitor = true;
+        MaxContactsReported = ContactBufferSize;
+        CanSleep = false;
+        Park();
+    }
+
+    /// <summary>Puts a pooled projectile into flight. Called only from a routed tick.</summary>
+    public void Launch(Vector2 position, Vector2 velocity)
+    {
+        InteractionId = InteractionIds.Next();
+        _lastSample = position;
+        _launchVelocity = velocity;
+        _contactObserved = false;
+        _contactTicks = 0;
+        _deliveredImpulse = 0.0f;
+        TravelledPx = 0.0f;
+        TicksInState = 0;
+        State = ProjectileState.Live;
+
+        Freeze = false;
+        Sleeping = false;
+        GlobalPosition = position;
+        // Cleared with the rest of the transform rather than carried over: a reused pool
+        // slot starts every shot square, so Rotation reads as this flight's own spin.
+        Rotation = 0.0f;
+        LaunchRotation = Rotation;
+        LinearVelocity = velocity;
+        AngularVelocity = 0.0f;
+        CollisionLayer = CollisionLayers.Projectiles;
+        CollisionMask = CollisionLayers.MaskProjectiles;
+        Visible = true;
+        ResetPhysicsInterpolation();
+        QueueRedraw();
+    }
+
+    /// <summary>
+    /// Advances this projectile's own bookkeeping on the owning component's routed
+    /// tick and reports whether it is ready to return to the pool.
+    /// </summary>
+    public bool Advance(
+        int lifetimeTicks,
+        float maxTravelPx,
+        int contactSettleTicks,
+        int spentLingerTicks)
+    {
+        if (State == ProjectileState.Pooled)
+            return false;
+
+        TicksInState++;
+        if (State == ProjectileState.Spent)
+            return TicksInState >= Math.Max(1, spentLingerTicks);
+
+        TravelledPx += GlobalPosition.DistanceTo(_lastSample);
+        _lastSample = GlobalPosition;
+        // The streak is drawn along the direction of travel, and a deflected shot changes
+        // that direction, so a live projectile is redrawn every tick it flies.
+        QueueRedraw();
+
+        // A projectile that connected keeps its physics for a short settling window
+        // before it is taken out of the world, and that window is load-bearing: the
+        // solver spreads one impact over several steps, and the first step it reports can
+        // be a touch of almost no impulse. Withdrawing on that first report stopped the
+        // bullet dead before the real impact resolved, and the shot visibly connected and
+        // did nothing. The shared impact router's own threshold discards the weak touches,
+        // so waiting costs nothing and lets the real impulse through.
+        if (_contactObserved)
+        {
+            _contactTicks++;
+            if (_contactTicks >= Math.Max(1, contactSettleTicks))
+            {
+                Spend();
+                return false;
+            }
+        }
+
+        if (TicksInState >= Math.Max(2, lifetimeTicks) || TravelledPx >= maxTravelPx)
+        {
+            // An expiring projectile has hit nothing, so nothing is waiting to resolve
+            // its attribution; it can be parked immediately.
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Stops a projectile that connected and takes it out of every collision layer,
+    /// while leaving the instance valid so the pipeline can still attribute its hit.
+    /// </summary>
+    private void Spend()
+    {
+        State = ProjectileState.Spent;
+        TicksInState = 0;
+        CollisionLayer = 0;
+        CollisionMask = 0;
+        LinearVelocity = Vector2.Zero;
+        AngularVelocity = 0.0f;
+        Freeze = true;
+        FreezeMode = FreezeModeEnum.Kinematic;
+        Visible = false;
+        QueueRedraw();
+    }
+
+    /// <summary>Returns the projectile to the pool, inert and out of the way.</summary>
+    public void Park()
+    {
+        State = ProjectileState.Pooled;
+        TicksInState = 0;
+        TravelledPx = 0.0f;
+        _contactObserved = false;
+        _contactTicks = 0;
+        _deliveredImpulse = 0.0f;
+        _launchVelocity = Vector2.Zero;
+        CollisionLayer = 0;
+        CollisionMask = 0;
+        LinearVelocity = Vector2.Zero;
+        AngularVelocity = 0.0f;
+        FreezeMode = FreezeModeEnum.Kinematic;
+        Freeze = true;
+        Visible = false;
+        QueueRedraw();
+    }
+
+    public override void _IntegrateForces(PhysicsDirectBodyState2D state)
+    {
+        if (State != ProjectileState.Live)
+            return;
+
+        // Observation only: what happens to a projectile that connected is decided on
+        // the owning component's routed tick, never inside a solver callback.
+        int contactCount = state.GetContactCount();
+        for (int index = 0; index < contactCount; index++)
+        {
+            _contactObserved = true;
+            float impulse = state.GetContactImpulse(index).Length();
+            if (impulse > _deliveredImpulse)
+                _deliveredImpulse = impulse;
+        }
+    }
+
+    public override void _Draw()
+    {
+        if (State != ProjectileState.Live)
+            return;
+
+        // A short trail back along the flight direction: at these speeds a two-pixel dot
+        // renders as an invisible flicker, and the streak is what reads as a shot.
+        Vector2 forward = LocalStreakForward();
+        if (forward != Vector2.Zero)
+            DrawLine(Vector2.Zero, -forward * (Radius * 6.0f), _trailColor, Radius * 1.2f, true);
+
+        DrawCircle(Vector2.Zero, Radius, _fillColor, true, -1.0f, true);
+    }
+
+    /// <summary>
+    /// The direction, in this body's local space, that the drawn streak runs along. One
+    /// source of truth for <see cref="_Draw"/> and <see cref="VisualForward"/>.
+    ///
+    /// <para>Two things are corrected here, and both were reported as "the ammo doesn't
+    /// line up with the gun, and it rotates while flying". It follows the velocity the
+    /// body has <b>right now</b> rather than the one it was launched with, so a deflected
+    /// shot is drawn along the path it is really on; and it undoes the body's own rotation,
+    /// because a canvas item draws in local space and the body is free to spin (see
+    /// <see cref="Configure"/> for why it must stay free). Any future projectile visual —
+    /// a dart, a tracer mesh — has to be oriented from velocity the same way.</para>
+    /// </summary>
+    private Vector2 LocalStreakForward()
+    {
+        Vector2 velocity = LinearVelocity;
+        // Stopped, or barely moving: the launch direction is the last thing it did that
+        // the player could read as a direction.
+        Vector2 world = velocity.Length() > MinimumStreakSpeed ? velocity : _launchVelocity;
+        return world == Vector2.Zero ? Vector2.Zero : world.Normalized().Rotated(-Rotation);
+    }
+}

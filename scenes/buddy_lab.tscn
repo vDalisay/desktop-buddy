@@ -1,4 +1,4 @@
-[gd_scene load_steps=49 format=3]
+[gd_scene load_steps=51 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -48,6 +48,8 @@
 [ext_resource type="Script" path="res://src/Tools/SwingHitLagComponent.cs" id="46_hit_lag"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/ImpactVisualOffsetComponent.cs" id="47_impact_offset"]
 [ext_resource type="Script" path="res://src/Tools/SwingAudioComponent.cs" id="48_swing_audio"]
+[ext_resource type="Script" path="res://src/Tools/CursorGunComponent.cs" id="49_cursor_guns"]
+[ext_resource type="Resource" path="res://data/tools/gun_pistol.tres" id="49_pistol_profile"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -79,7 +81,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -96,6 +98,7 @@ LabFoodProfile = ExtResource("39_lab_food")
 SafeObjectProfile = ExtResource("40_safe_object")
 MoodEconomy = ExtResource("41_mood_economy")
 CursorTools = NodePath("CursorToolController")
+CursorGuns = NodePath("CursorGunComponent")
 CareStroke = NodePath("CareStrokeComponent")
 ToolReactions = NodePath("ToolReactionComponent")
 CareCursor = NodePath("ToolCursorPresenter")
@@ -232,7 +235,7 @@ Facing = NodePath("../FacingController")
 script = ExtResource("4_grab")
 Profile = ExtResource("5_grab_profile")
 
-[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "CursorTools", "CareTool", "CareCursor", "LauncherTool")]
+[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "CursorTools", "CareTool", "CareCursor", "LauncherTool", "GunTool")]
 script = ExtResource("6_pointer")
 Grab = NodePath("../GrabTetherController")
 Pipeline = NodePath("../InteractionPipeline")
@@ -240,6 +243,7 @@ CursorTools = NodePath("../CursorToolController")
 CareTool = NodePath("../CareStrokeComponent")
 CareCursor = NodePath("../ToolCursorPresenter")
 LauncherTool = NodePath("../PullbackLauncherComponent")
+GunTool = NodePath("../CursorGunComponent")
 
 [node name="InteractionPipeline" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Grab")]
 script = ExtResource("12_pipeline")
@@ -288,6 +292,12 @@ Player = NodePath("AudioStreamPlayer")
 script = ExtResource("16_care")
 Pipeline = NodePath("../InteractionPipeline")
 Profile = ExtResource("21_care_profile")
+
+[node name="CursorGunComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
+script = ExtResource("49_cursor_guns")
+Profiles = Array[Resource]([ExtResource("49_pistol_profile")])
+Pipeline = NodePath("../InteractionPipeline")
+Boundaries = NodePath("../RoomBounds")
 
 [node name="ToolReactionComponent" type="Node" parent="." node_paths=PackedStringArray("Buddy", "Pipeline", "CareStroke", "CursorTools")]
 script = ExtResource("22_tool_reaction")
@@ -371,7 +381,7 @@ theme_override_colors/font_color = Color(0.45, 1, 0.65, 1)
 text = "+$0.0"
 horizontal_alignment = 2
 
-[node name="TelemetryPanel" type="PanelContainer" parent="LabUi" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Boundaries", "Containment", "InstructionsLabel", "TelemetryLabel", "Pipeline", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Presenter")]
+[node name="TelemetryPanel" type="PanelContainer" parent="LabUi" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Boundaries", "Containment", "InstructionsLabel", "TelemetryLabel", "Pipeline", "Guns", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Presenter")]
 offset_left = 8.0
 offset_top = 8.0
 offset_right = 256.0
@@ -387,6 +397,7 @@ Containment = NodePath("../../PuppetRoomContainmentComponent")
 InstructionsLabel = NodePath("Margin/VBox/Instructions")
 TelemetryLabel = NodePath("Margin/VBox/Telemetry")
 Pipeline = NodePath("../../InteractionPipeline")
+Guns = NodePath("../../CursorGunComponent")
 PosePipeline = NodePath("../../BuddyPosePipeline")
 Facing = NodePath("../../FacingController")
 Activities = NodePath("../../ActivityAnimator")

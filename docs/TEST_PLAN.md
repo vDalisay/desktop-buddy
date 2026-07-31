@@ -102,8 +102,42 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - After a learned-harm Boxing Glove pointer leaves the play area, its `o_o` threat face persists for exactly five seconds (`600` routed ticks) and then returns to the ordinary reaction/mood face without clearing harmful-tool memory.
 - The physical head rotates while the emoticon remains upright; Pet/Tickle cursor hands follow real pointer input instantly beneath the visible OS cursor.
 - Favorite-spot Pet contact emits small sparkles around the Pet hand only while held rubbing contact remains valid.
-- Pistol/shotgun cadence, magazine, reload, pellet count, and CCD behavior match the specification.
+- Pistol/shotgun cadence, magazine, reload, pellet count, and no-tunneling behavior match the specification.
+- A trigger press while a gun has no established aim is refused rather than spending a round
+  (`DECISIONS.md`, "Gun Feel Refinement"), and `CursorGunComponent.ShotsSpentWithoutAim` stays
+  at zero as the standing proof of it.
 - Pistol/shotgun fire once per primary press, reload with `R`, and auto-reload after an attempted empty shot.
+- The `pistol_fire` scenario is the cursor-gun platform gate. It proves that drawing the
+  Pistol arms a full magazine, that aim follows pointer motion and a wheel notch offsets it
+  until the next motion clears it, that eight shots empty the magazine without starting a
+  reload, that the ninth pull dry-fires into the automatic reload, that mid-reload presses are
+  ignored and the reload still completes on its authored tick, that a real projectile's
+  measured impulse scores pain attributed to `tool.pistol` in harmful history and statistics,
+  that a point-blank shot stops in the target instead of passing through it, that bullets never
+  change `LooseObjectRegistry.Count` and peak inside their own pool before returning to it, and
+  that a holstered gun cannot fire. It also pins the two defects the owner reported after the
+  first Pistol build: a click with no established aim spends no round
+  (`pointer_reentry_click_without_motion_spends_no_round`, reproduced through the same pointer
+  exit and re-entry a sweep across the play area causes), a first click after that fires along
+  the new aim (`right_then_left_first_click_fires_left`), and a bullet is drawn along the path
+  it is really flying (`the_bullet_visual_stays_glued_to_its_flight_path` — the body is free to
+  spin, since locking it halves the impulse the pain pipeline scores, so the claim is about the
+  drawing). The `m5_pistol` journey repeats the slice through real pointer, wheel, button, and
+  key input, including both the `R` reload and the dry-fire reload.
+- **Aiming a gun in a test means moving its pointer, and that is a contract, not a detail.**
+  The aim follows the direction the pointer has lately been travelling and turns at a bounded
+  rate, so a cursor that teleports into position aims at wherever the jump pointed. Every
+  scenario goes through `M4ObjectScenarioSupport.AimGunOver` and every journey through
+  `JourneyRunner.AimAtPointAsync`: jump, let the aim come to rest, then sweep long enough to
+  come round from any previous direction, standing off on whichever side has room behind it.
+  Aimed shots are taken at the head from close in — a horizontal chest shot grazes the hands
+  hanging beside the chest for an impulse under the curve's floor, and the bullet spends
+  itself on the graze, so the buddy is hit and unhurt.
+- A gun's no-tunneling guarantee is asserted as an outcome, not as an engine setting:
+  `RigidBody2D.ContinuousCd` is deliberately off because it destroys the momentum the pain
+  pipeline scores from, and `GunProfile` instead validates that a projectile's per-tick travel
+  stays inside the smallest buddy part's diameter (`DECISIONS.md`, "Cursor-Gun Platform and
+  Pistol").
 - Grenade fuse begins on release and expires after 2.5 seconds within one physics tick.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.

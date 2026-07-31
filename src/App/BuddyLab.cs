@@ -66,6 +66,7 @@ public partial class BuddyLab : Node2D
     public TrayCommandComponent TrayCommands { get; private set; } = null!;
     public bool WindowAdapterVisibleForTests => _windowAdapter?.IsWindowVisible ?? false;
     [Export] public CursorToolController CursorTools { get; set; } = null!;
+    [Export] public CursorGunComponent CursorGuns { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
     [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
@@ -114,6 +115,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(MoodEconomy) ||
             !GodotObject.IsInstanceValid(Launcher) ||
             !GodotObject.IsInstanceValid(CursorTools) ||
+            !GodotObject.IsInstanceValid(CursorGuns) ||
             !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
             !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
             !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
@@ -159,6 +161,7 @@ public partial class BuddyLab : Node2D
             Economy.Unlock(ContentIds.ToolBaseball);
             Economy.Unlock(ContentIds.ToolMeal);
             Economy.Unlock(ContentIds.ToolBaseballBat);
+            Economy.Unlock(ContentIds.ToolPistol);
         }
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
@@ -166,6 +169,7 @@ public partial class BuddyLab : Node2D
         Buddy.Arbiter.Initialize(Progress);
         Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
         CursorTools.Initialize();
+        CursorGuns.Initialize();
         CareStroke.Initialize();
         CareCursor.Initialize();
         ToolReactions.Initialize();
@@ -221,8 +225,8 @@ public partial class BuddyLab : Node2D
             Economy,
             Saves,
             MoodEconomy,
-            () => Grab.IsGrabbing || CursorTools.IsActive || CareStroke.IsHeld ||
-                  Buddy.ObjectInteraction.IsHolding,
+            () => Grab.IsGrabbing || CursorTools.IsActive || CursorGuns.IsActive ||
+                  CareStroke.IsHeld || Buddy.ObjectInteraction.IsHolding,
             _runContext?.TimeSource,
             resumePresentation: ResetPresentationInterpolation,
             setWindowVisibility: _windowAdapter.SetWindowVisible);
@@ -305,6 +309,7 @@ public partial class BuddyLab : Node2D
             Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
 
             CursorTools.PhysicsTick(delta);
+            CursorGuns.PhysicsTick();
             CareStroke.PhysicsTick(delta);
             ToolReactions.PhysicsTick(delta);
             Reactions.PhysicsTick();

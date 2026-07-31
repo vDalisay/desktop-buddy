@@ -4,8 +4,8 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-30, after the Home-Run Bat refinement Task H owner gate
-passed and the accepted bat became shop-visible.
+Last updated: 2026-07-31, after M5 Task 5's gun-feel refinement Tasks A and B
+(defect verification, projectile alignment, aim-gated trigger, aim v2 smoothed pursuit).
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
@@ -57,11 +57,11 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test` | 940/940 green |
+| Domain unit | `dotnet test` | 979/979 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (48) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | Current targeted lifecycle scenarios green; the latest full both-presentation catalogue result remains the recorded M4/M5 baseline |
-| Journeys (13) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix green |
-| Quick suite | `tools\quick_validate.bat` | 23/23 |
+| Scenarios (49) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | Current targeted lifecycle scenarios green; the latest full both-presentation catalogue result remains the recorded M4/M5 baseline |
+| Journeys (14) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix green |
+| Quick suite | `tools\quick_validate.bat` | 26/26 |
 
 Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the
 filenames in `tests/journeys/`. Every scenario and journey is also rerun under
@@ -151,17 +151,36 @@ owner's erase/preserve matrix. Task 2 (FR-014 budget) extracted the cap rule to
 `Domain/Interaction/LooseObjectAdmissionPolicy` and gated it with `object_budget`;
 its projectile half waits for the Task 5 guns. Task 3 (Meal) is owner-ACCEPTED
 (2026-07-30) and shop-visible. Task 4's Home-Run Bat refinement is also
-owner-ACCEPTED (2026-07-30) and shop-visible.
-Baseball is owner-ACCEPTED
-(2026-07-29). The quick suite is now 24 steps — added `corner_scoop` (pickup against
-a wall), `object_budget`, `meal_consume`, `bat_swing`, and the `m5_meal` and
-`m5_baseball_bat` / `m5_homerun_bat` real-input journeys.
+owner-ACCEPTED (2026-07-30) and shop-visible. Task 5 (cursor-gun platform + Pistol) is
+engineering-complete (2026-07-31) but was **rejected on feel**; its refinement plan
+`docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` is owner-signed-off and in progress
+(Tasks A and B done), so `tool_pistol.tres` stays hidden. Task 5 also discharged Task 2's
+deferred projectile assertion. Baseball is owner-ACCEPTED
+(2026-07-29). The quick suite is now 26 steps — added `corner_scoop` (pickup against
+a wall), `object_budget`, `meal_consume`, `bat_swing`, `pistol_fire`, and the `m5_meal`,
+`m5_baseball_bat`, `m5_homerun_bat`, and `m5_pistol` real-input journeys.
 
 The Boxing Glove mechanism is now the shared **cursor-tool** mechanism
 (`CursorToolController` + authored `CursorToolProfile` array); a cursor-tethered tool
 is a `.tres` plus a content ID. Elongated tools hold square to their swing through
 the new engine-free `Domain/Physics/AlignmentTorque`. Lab key `K` selects the bat,
 `B` the glove.
+
+Cursor **guns** run the same shape: `CursorGunComponent` + an authored `GunProfile`
+array, with the rules in the engine-free `Domain/Tools/CursorAimModel` and
+`Domain/Tools/GunModel`, so the Shotgun is a `.tres` plus a content ID. Lab key `J`
+selects the Pistol. Two traps are recorded in `DECISIONS.md` for anyone tidying the
+projectile up: `RigidBody2D.ContinuousCd` is deliberately **off** because it destroys the
+momentum the pain pipeline scores from (no-tunneling is guaranteed by a validated per-tick
+travel bound instead), and `LockRotation` is deliberately **off** because locking it halves
+the impulse a hit scores — a bullet's spin is fixed in the drawing, not in the body.
+
+The aim is a **smoothed pursuit** (M5 Task 5 refinement, Tasks A/B): a smoothed pointer
+velocity, a speed gate with hysteresis, and a bounded turn rate, all authored per gun. It
+follows the direction the pointer has lately been travelling instead of the latest delta,
+which is what stopped it snapping between 0/26/45 degrees. Consequence for tests: a gun
+cannot be aimed by teleporting its cursor — use `M4ObjectScenarioSupport.AimGunOver` or
+`JourneyRunner.AimAtPointAsync`. A press with no established aim no longer spends a round.
 
 **Home-Run Bat refinement** (`docs/M5_TASK4_HOME_RUN_BAT_FEEL_PLAN.md`):
 
@@ -207,9 +226,15 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
-**Next action:** begin M5 Task 5 (Pistol) from
-`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`. The Home-Run Bat Task H refinement is
-complete, owner-accepted, and shop-visible. M4 is complete and owner-accepted.
+**Next action:** continue `docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` at **Task C**
+(the left-shot regression scenario; two of its four checks already live in `pistol_fire`).
+The owner rejected the first Pistol on feel and signed that plan off; Tasks A (defect
+verification, projectile alignment, aim-gated trigger) and B (aim v2 smoothed pursuit) are
+done and verified. Tasks C–H then cover the regression scenario, the Nerf Blaster/real
+Pistol catalogue split, doubled 3D gun visuals, the owner aim co-tuning session, the real
+pistol's screenshake/flash/dropped magazine, and promotion. M5 Task 6 (Grenade) from
+`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md` comes after that. The Home-Run Bat Task H
+refinement is complete, owner-accepted, and shop-visible. M4 is complete and owner-accepted.
 Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,
 an ordered clean-exit final save, lowest-mood tracking on damage, and a real-input

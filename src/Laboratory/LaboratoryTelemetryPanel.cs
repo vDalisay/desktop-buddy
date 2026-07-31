@@ -56,6 +56,11 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
     // Optional M3 interaction pipeline readout; the dual-profile lab leaves it unset.
     [Export] public Interaction.InteractionDamageComponent? Pipeline { get; set; }
 
+    // Optional M5 cursor-gun readout. A gun's whole state is invisible otherwise: how
+    // much magazine is left, whether it has an aim at all, and whether a click that
+    // produced nothing was refused (good) or ate a round (the bug this line watches).
+    [Export] public Tools.CursorGunComponent? Guns { get; set; }
+
     // Optional M3.6 expressive-presentation readout. Head look-at is rotation-only on a
     // sphere behind a screen-upright placeholder face, so until the Task 5 composed face
     // lands this panel is the only way to SEE the gaze arbitration working.
@@ -87,7 +92,8 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             "Left-drag: grab / throw   Right-click: drop\n" +
             "P: pause   .: single tick   U: limp/wake\n" +
             "Shift+U: reseed   1/2/3/4: simulation speed\n" +
-            "G: grab  B: glove  F: pet  T: tickle  5: spawn baseball\n" +
+            "G: grab  B: glove  K: bat  F: pet  T: tickle  5: spawn baseball\n" +
+            "J: pistol — left-click fires, wheel raises aim, R reloads\n" +
             "Ball: left-grab; hold right + drag to aim\n" +
             "V: presentation  E: eat item  Q: wave\n" +
             "Z/X: face left/right  C: release facing\n" +
@@ -157,7 +163,7 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             links strain {snapshot.MaximumLinkStrain:F3} | force {snapshot.MaximumLinkForce:F0}
             grab {grab} | stretch {snapshot.GrabExtension:F1} | force {snapshot.GrabForce:F0}
             release {snapshot.LastReleaseSpeed:F1} | corrections {snapshot.LastContainmentCorrections}
-            room {snapshot.RoomWidth:F0}x{snapshot.RoomHeight:F0} | zoom {snapshot.EffectiveZoom * 100.0:F0}%{PipelineLine()}{PresentationLine()}
+            room {snapshot.RoomWidth:F0}x{snapshot.RoomHeight:F0} | zoom {snapshot.EffectiveZoom * 100.0:F0}%{PipelineLine()}{GunLine()}{PresentationLine()}
             """);
     }
 
@@ -196,6 +202,31 @@ public partial class LaboratoryTelemetryPanel : PanelContainer
             $"\ngaze {HeadLookAt.CurrentSource} y{HeadLookAt.CurrentYawDegrees:F1} " +
             $"p{HeadLookAt.CurrentPitchDegrees:F1} | pupil " +
             $"({HeadLookAt.PupilOffset.X:F2},{HeadLookAt.PupilOffset.Y:F2}){applied}");
+    }
+
+    /// <summary>Live cursor-gun readout; empty unless a gun is actually drawn.</summary>
+    private string GunLine()
+    {
+        if (Guns is null || !GodotObject.IsInstanceValid(Guns) || !Guns.IsInitialized ||
+            !Guns.IsActive)
+        {
+            return string.Empty;
+        }
+
+        string reload = Guns.IsReloading ? $"reload {Guns.ReloadTicksRemaining}t" : "ready";
+        string aim = Guns.AimForward == Vector2.Zero
+            ? "no aim"
+            : $"aim {Mathf.RadToDeg(Guns.AimForward.Angle()):F0}deg";
+        // The smoothed speed and the steering flag are the aim's own state, and they are
+        // what the feel of it is tuned against: the aim only follows the pointer while it
+        // is steering, and the wheel offset only survives while it is not.
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"\ngun {Guns.ActiveContentId} | {Guns.RoundsRemaining} rounds | {reload}" +
+            $"\n{aim} +{Guns.AimOffsetDegrees:F0} | {(Guns.AimIsSteering ? "steering" : "held")}" +
+            $" {Guns.AimSmoothedSpeed:F2}px/t" +
+            $"\nshots {Guns.ShotCount} | dry {Guns.DryFireCount}" +
+            $" | no-aim {Guns.ShotsSpentWithoutAim} | flying {Guns.ActiveProjectileCount}");
     }
 
     private string PipelineLine()

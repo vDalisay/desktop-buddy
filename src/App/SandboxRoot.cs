@@ -64,6 +64,7 @@ public partial class SandboxRoot : Node2D
     private RunContext? _runContext;
     private bool _quitSaveStarted;
     [Export] public CursorToolController CursorTools { get; set; } = null!;
+    [Export] public CursorGunComponent CursorGuns { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
     [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
@@ -108,7 +109,8 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(Containment) || !GodotObject.IsInstanceValid(Pipeline) ||
             !GodotObject.IsInstanceValid(Objects) ||
             !GodotObject.IsInstanceValid(Launcher) ||
-            !GodotObject.IsInstanceValid(CursorTools) || !GodotObject.IsInstanceValid(CareStroke) ||
+            !GodotObject.IsInstanceValid(CursorTools) ||
+            !GodotObject.IsInstanceValid(CursorGuns) || !GodotObject.IsInstanceValid(CareStroke) ||
             !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
             !GodotObject.IsInstanceValid(ImpactFeedback) ||
@@ -145,6 +147,7 @@ public partial class SandboxRoot : Node2D
         Buddy.Arbiter.Initialize(Progress);
         Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
         CursorTools.Initialize();
+        CursorGuns.Initialize();
         CareStroke.Initialize();
         CareCursor.Initialize();
         ToolReactions.Initialize();
@@ -188,8 +191,8 @@ public partial class SandboxRoot : Node2D
             Economy,
             Saves,
             MoodEconomy,
-            () => Grab.IsGrabbing || CursorTools.IsActive || CareStroke.IsHeld ||
-                  Buddy.ObjectInteraction.IsHolding,
+            () => Grab.IsGrabbing || CursorTools.IsActive || CursorGuns.IsActive ||
+                  CareStroke.IsHeld || Buddy.ObjectInteraction.IsHolding,
             _runContext.TimeSource,
             ResetPresentationInterpolation,
             Window.Adapter.SetWindowVisible,
@@ -249,6 +252,7 @@ public partial class SandboxRoot : Node2D
         bool buddyPartGrabbed = grabbedBody is not null;
         Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
         CursorTools.PhysicsTick(delta);
+        CursorGuns.PhysicsTick();
         CareStroke.PhysicsTick(delta);
         ToolReactions.PhysicsTick(delta);
         Reactions.PhysicsTick();

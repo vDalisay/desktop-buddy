@@ -687,3 +687,29 @@ running the suite" remains the failure mode this plan exists to prevent.
   journey and full regression are green, and `tool_baseball_bat.tres` is now
   `Visible = true`. Its `20`-credit price remains provisional until Task 12.
   **Next: Task 5 — cursor-gun platform + Pistol.**
+- 2026-07-31 — **Task 5 cursor-gun platform + Pistol engineering-complete** (shop-visible
+  still pending the owner's feel gate: `tool_pistol.tres` stays `Visible = false`). Three new
+  engine-free domain types carry the rules: `Domain/Tools/CursorAimModel` (forward follows the
+  latest non-trivial pointer motion, the wheel pitches that aim up or down, the next motion
+  clears the offset — pitched about the aim's own horizontal side so "up" is up whichever way
+  the weapon points) and `Domain/Tools/GunModel` (magazine, shot interval, reload, fire on the
+  press edge, auto-reload on an empty pull, unlimited reserve), both stated in routed ticks.
+  `src/Tools/CursorGunComponent` is the thin driver, `src/Tools/GunProfile` the authored data,
+  and `src/Tools/ProjectileBody` a pooled physical projectile that never enters
+  `LooseObjectRegistry`; the Shotgun is therefore a `.tres` plus a content ID. Reload binds the
+  existing `buddy_reload` action and reaches the gun through the pointer's queued-input path,
+  never a direct key read. Lab key `J` selects the Pistol; the dev catalogue unlocks it.
+  New scenario `pistol_fire` (11 checks) and real-input journey `m5_pistol` (10 assertions),
+  both in the quick suite, now 26/26. Deferred Task 2 assertion discharged here: bullets never
+  change `LooseObjectRegistry.Count`, peak inside their pool, and return to it.
+  **Two findings recorded in `DECISIONS.md`:** Godot's `RigidBody2D.ContinuousCd` destroys a
+  shot's momentum instead of transferring it (measured pain `85` disabled vs `0` with
+  `CastRay`, and `CastShape` let a shot pass clean through a head), so no-tunneling is
+  guaranteed geometrically by a validated `24` px per-tick travel bound rather than by that
+  setting; and muzzle speed, not projectile mass, is the lever on how much a gun hurts.
+  Two deliberate deferrals: the buddy's facing/head look-at still ignores a drawn gun (a feel
+  call, and `CursorGunComponent.DrivesTool` is the seam ready for it), and the gun's cursor
+  visual is a minimal 2D barrel — full presentation is M7's art pass.
+  Verified: build 0/0, domain 971/971, quick suite 26/26, `pistol_fire` seeds 1/7/13 plus
+  legacy presentation, `m5_pistol` seeds 1/7 in both presentations, and a 32-scenario /
+  6-journey regression sweep on seed 1 all green.

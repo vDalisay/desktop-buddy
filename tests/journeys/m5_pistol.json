@@ -1,0 +1,24 @@
+{
+  "id": "m5_pistol",
+  "description": "Draw the catalogue Pistol with its lab tool key, steer its aim with real pointer travel and offset it with a wheel notch, fire one shot per primary press so a projectile's own measured impulse hurts the buddy, reload with the R action and by dry-firing an empty magazine, then put the gun away.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_pistol",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "pistol_key_draws_a_loaded_pistol" },
+    { "predicate": "pointer_motion_aims_the_pistol" },
+    { "predicate": "the_wheel_offsets_aim_until_the_next_motion" },
+    { "predicate": "one_press_fires_exactly_one_shot" },
+    { "predicate": "a_pistol_shot_hurts_the_buddy" },
+    { "predicate": "the_pistol_is_remembered_as_harmful" },
+    { "predicate": "the_reload_key_refills_a_partial_magazine" },
+    { "predicate": "an_empty_magazine_dry_fires_into_an_automatic_reload" },
+    { "predicate": "the_automatic_reload_completes" },
+    { "predicate": "selecting_grab_holsters_the_pistol" }
+  ]
+}

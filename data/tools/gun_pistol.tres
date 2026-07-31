@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="GunProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/GunProfile.cs" id="1_gun"]
+
+[resource]
+resource_name = "ProvisionalM5Pistol"
+script = ExtResource("1_gun")
+ContentId = "tool.pistol"
+MagazineCapacity = 8
+ShotIntervalTicks = 30
+ReloadTicks = 144
+ProjectilesPerShot = 1
+SpreadHalfAngleDegrees = 0.0
+AimSmoothingHalfLifeTicks = 14.0
+MinimumAimSpeedPxPerTick = 0.35
+MaxAimTurnDegreesPerTick = 6.0
+WheelDegreesPerStep = 5.0
+MaximumAimOffsetDegrees = 60.0
+MuzzleSpeed = 2400.0
+MuzzleOffsetPx = 14.0
+ProjectileRadius = 2.5
+ProjectileMass = 0.3
+ProjectileGravityScale = 0.0
+ProjectileLifetimeTicks = 120
+ProjectileMaxTravelPx = 3000.0
+ContactSettleTicks = 2
+SpentLingerTicks = 3
+PoolCapacity = 24
+ProjectileColor = Color(1, 0.878431, 0.541176, 1)
+TrailColor = Color(1, 0.701961, 0.278431, 1)
+MuzzleColor = Color(0.227451, 0.247059, 0.294118, 1)

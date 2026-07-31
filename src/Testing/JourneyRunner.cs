@@ -717,6 +717,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5HomeRunBatAsync(state, lab);
         }
+        else if (exercise == "m5_pistol")
+        {
+            await ExerciseM5PistolAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -1128,6 +1132,230 @@ public partial class JourneyRunner : Node
             $"{lab.SwingHitLag.TriggerCount},{lab.SwingHitLag.FrozenFrameCount}) " +
             $"recovery={sawRecovery}/{returnedToGrip} resumed={launchResumed}");
     }
+
+    /// <summary>
+    /// The M5 Pistol slice through real input, happy path and reload path: the lab's
+    /// tool key draws the pistol, pointer motion aims it, a wheel notch offsets that aim
+    /// until the next motion clears it, one primary press fires exactly one shot whose
+    /// projectile hurts the buddy and is remembered as the pistol, the <c>R</c> action
+    /// reloads a partial magazine, an emptied magazine dry-fires into an automatic
+    /// reload, and selecting Grab puts the gun away.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5PistolAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        // The development telemetry panel covers the left contact zone and consumes
+        // mouse buttons there; its own lab key hides it, as the home-run trace does.
+        await M4ObjectScenarioSupport.SendKey(tree, Key.H);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.J);
+
+        CursorGunComponent gun = lab.CursorGuns;
+
+        // Aim is pointer travel, so the cursor arrives heading toward the buddy.
+        Vector2 forward = await AimAtPointAsync(tree, lab, lab.Buddy.Rig.Torso.GlobalPosition, 140.0f);
+        bool armed = await M4ObjectScenarioSupport.WaitFor(tree, () => gun.IsActive, 30);
+        GunProfile? profile = gun.ActiveProfile;
+        state["pistol_key_draws_a_loaded_pistol"] =
+            lab.Pipeline.SelectedTool == ToolId.Pistol &&
+            armed &&
+            profile is not null &&
+            gun.ActiveContentId == ContentIds.ToolPistol &&
+            gun.RoundsRemaining == profile.MagazineCapacity;
+        if (profile is null)
+            return;
+
+        state["pointer_motion_aims_the_pistol"] = gun.AimForward.Dot(forward) > 0.95f;
+
+        // The wheel offsets the aim upward, and travelling again clears it. The offset
+        // belongs to a hand that has stopped moving, so the aim is allowed to settle first —
+        // scrolling mid-sweep would be cleared again by the sweep it is part of.
+        Vector2 held = lab.Pointer.WorldCursor;
+        await M4ObjectScenarioSupport.WaitFor(tree, () => !gun.AimIsSteering, 300);
+        await M4ObjectScenarioSupport.SendWheel(tree, lab, held, up: true);
+        await M4ObjectScenarioSupport.SendWheel(tree, lab, held, up: true);
+        bool raised = gun.AimOffsetDegrees > 0.0f && gun.AimForward.Y < -0.05f;
+        forward = await AimAtPointAsync(tree, lab, lab.Buddy.Rig.Torso.GlobalPosition, 140.0f);
+        state["the_wheel_offsets_aim_until_the_next_motion"] =
+            raised && Mathf.IsZeroApprox(gun.AimOffsetDegrees) &&
+            gun.AimForward.Dot(forward) > 0.95f;
+
+        AcceptedImpact? shotImpact = null;
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (shotImpact is null && impact.ContentId == ContentIds.ToolPistol)
+                shotImpact = impact;
+        }
+
+        lab.Pipeline.ImpactAccepted += OnImpact;
+
+        // Track the target the way a player does: the buddy has been walking about
+        // since the tool was drawn, so the aim is taken from where its body is now.
+        await AimAtBuddyAsync(tree, lab);
+
+        // One press, one shot — and holding the button down never fires a second.
+        int shotsBefore = gun.ShotCount;
+        int launchedBefore = gun.ProjectilesLaunched;
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+        await WaitPhysicsTicks(tree, profile.ShotIntervalTicks * 3);
+        int firedWhileHeld = gun.ShotCount - shotsBefore;
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+        state["one_press_fires_exactly_one_shot"] =
+            firedWhileHeld == 1 &&
+            gun.ProjectilesLaunched - launchedBefore == 1 &&
+            gun.RoundsRemaining == profile.MagazineCapacity - 1;
+
+        // Then keep shooting until one lands, re-aiming at a buddy that is moving,
+        // recoiling, and being knocked about — the same thing a player does, and the
+        // reason this is a "does a hit hurt" assertion rather than a marksmanship one.
+        for (int shot = 0; shot < 5 && shotImpact is null; shot++)
+        {
+            await AimAtBuddyAsync(tree, lab);
+            Log.Info(
+                "Journey",
+                $"M5 pistol aimed shot {shot}: cursor={lab.Pointer.WorldCursor} " +
+                $"aim={gun.AimForward} torso={lab.Buddy.Rig.Torso.GlobalPosition} " +
+                $"rounds={gun.RoundsRemaining}");
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+            await M4ObjectScenarioSupport.WaitFor(
+                tree, () => shotImpact is not null, profile.ShotIntervalTicks);
+            Log.Info(
+                "Journey",
+                $"M5 pistol after shot {shot}: raw={lab.Pipeline.MaxRawImpulse:F1} " +
+                $"scored={lab.Pipeline.ScoredImpactCount} flying={gun.ActiveProjectileCount} " +
+                $"torso={lab.Buddy.Rig.Torso.GlobalPosition} " +
+                $"head={lab.Buddy.Rig.Head.GlobalPosition}");
+        }
+
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+        state["a_pistol_shot_hurts_the_buddy"] =
+            shotImpact is { Pain: > 0.0f } landed &&
+            landed.ContentId == ContentIds.ToolPistol &&
+            landed.MilliCredits > 0L;
+        state["the_pistol_is_remembered_as_harmful"] =
+            lab.Progress.IsContentHarmful(ContentIds.ToolPistol) &&
+            !lab.Progress.IsContentHarmful(ContentIds.ToolBaseballBat);
+
+        // The R action reloads a partial magazine through the same queued-input path.
+        int completionsBefore = gun.ReloadCompleteCount;
+        await M4ObjectScenarioSupport.SendKey(tree, Key.R);
+        bool reloadRunning = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => gun.IsReloading, 10);
+        bool refilled = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => gun.ReloadCompleteCount == completionsBefore + 1 &&
+                  gun.RoundsRemaining == profile.MagazineCapacity,
+            profile.ReloadTicks + 30);
+        state["the_reload_key_refills_a_partial_magazine"] = reloadRunning && refilled;
+
+        // Empty the magazine, then pull once more: the dry fire is what reloads.
+        for (int shot = 0; shot < profile.MagazineCapacity; shot++)
+        {
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+            await WaitPhysicsTicks(tree, profile.ShotIntervalTicks);
+        }
+
+        bool emptied = gun.RoundsRemaining == 0 && !gun.IsReloading;
+        int dryBefore = gun.DryFireCount;
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+        state["an_empty_magazine_dry_fires_into_an_automatic_reload"] =
+            emptied && gun.DryFireCount == dryBefore + 1 && gun.IsReloading;
+
+        bool autoRefilled = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => !gun.IsReloading && gun.RoundsRemaining == profile.MagazineCapacity,
+            profile.ReloadTicks + 30);
+        state["the_automatic_reload_completes"] = autoRefilled;
+
+        await M4ObjectScenarioSupport.SendKey(tree, Key.G);
+        bool holstered = await M4ObjectScenarioSupport.WaitFor(tree, () => !gun.IsActive, 30);
+        state["selecting_grab_holsters_the_pistol"] =
+            lab.Pipeline.SelectedTool == ToolId.Grab && holstered;
+
+        Log.Info(
+            "Journey",
+            $"M5 pistol shots={gun.ShotCount} launched={gun.ProjectilesLaunched} " +
+            $"dry={gun.DryFireCount} reloads={gun.ReloadCompleteCount} " +
+            $"pain={shotImpact?.Pain:F2} impulse={shotImpact?.Impulse:F1} " +
+            $"part={shotImpact?.Part} active_projectiles={gun.ActiveProjectileCount}");
+    }
+
+    /// <summary>
+    /// Aims a cursor weapon at a world point from a stand-off and returns the direction its
+    /// shot should travel. A cursor weapon aims by the direction the pointer has lately been
+    /// travelling (RAGDOLL §9.1), so this walks the real pointer along that line rather than
+    /// teleporting it into position.
+    ///
+    /// <para>Three details are load-bearing, and each of them broke this journey once. The
+    /// approach is long enough for the aim to <b>slew</b> round from wherever it was
+    /// pointing, because the aim turns at a bounded rate and a short run leaves it halfway.
+    /// The jump to the start of that run is itself travel, so the aim is allowed to come to
+    /// rest before the real approach begins. And the stand-off is taken on whichever side of
+    /// the target has more room behind it, because a pointer that runs into the edge of the
+    /// play area stops travelling — and an aim with no travel simply holds.</para>
+    ///
+    /// <para>The four-tick settle at the end is not padding either. A synthesized pointer
+    /// event is delivered at the start of the engine's next iteration, so the physics frame
+    /// awaited by <c>MovePointer</c> still runs on the previous cursor. Reading — or firing —
+    /// right after the last move would use the aim from the move before it, which is how
+    /// this journey first "missed" a point-blank shot that the game had aimed correctly.</para>
+    /// </summary>
+    private static async System.Threading.Tasks.Task<Vector2> AimAtPointAsync(
+        SceneTree tree,
+        BuddyLab lab,
+        Vector2 target,
+        float standOff = 70.0f)
+    {
+        const float StepPx = 1.5f;
+        Rect2 room = lab.Boundaries.InnerBounds;
+        float turnRate = lab.CursorGuns.ActiveProfile?.MaxAimTurnDegreesPerTick ?? 6.0f;
+        int steps = (int)Mathf.Ceil(180.0f / Mathf.Max(0.5f, turnRate)) + 14;
+
+        float side = target.X - room.Position.X >= room.End.X - target.X ? -1.0f : 1.0f;
+        var forward = new Vector2(-side, 0.0f);
+        Vector2 anchor = new(
+            Mathf.Clamp(
+                target.X + (side * standOff), room.Position.X + 8.0f, room.End.X - 8.0f),
+            Mathf.Clamp(target.Y, room.Position.Y + 8.0f, room.End.Y - 8.0f));
+        Vector2 start = anchor - (forward * (StepPx * steps));
+
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, start, 0);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => !lab.CursorGuns.AimIsSteering, 300);
+        for (int step = 1; step <= steps; step++)
+        {
+            await M4ObjectScenarioSupport.MovePointer(
+                tree, lab, start + (forward * (StepPx * step)), 0);
+        }
+
+        await WaitPhysicsTicks(tree, 4);
+        return forward;
+    }
+
+    /// <summary>
+    /// Aims at the buddy's head from close in, where a shot has the best chance of landing
+    /// on the buddy that exists when it arrives rather than the one that was there when it
+    /// was aimed.
+    ///
+    /// <para>The head and not the torso, because the buddy's hands hang beside its chest: a
+    /// horizontal chest shot from beside it grazes a hand first, and a graze is not a miss
+    /// that can be retried — the bullet spends itself on it. Measured on seed 7 as six
+    /// aimed shots in a row reporting contacts of impulse 157–185, all of them under the
+    /// shared pain curve's floor of 350, so the buddy was hit six times and hurt none.</para>
+    ///
+    /// <para>And close, because the buddy walks: from a stand-off of a head radius plus 40
+    /// the shot lands within a tick or two of leaving the barrel. This is a "does a hit
+    /// hurt" assertion, not a marksmanship one.</para>
+    /// </summary>
+    private static async System.Threading.Tasks.Task<Vector2> AimAtBuddyAsync(SceneTree tree, BuddyLab lab) =>
+        await AimAtPointAsync(
+            tree,
+            lab,
+            lab.Buddy.Rig.Head.GlobalPosition,
+            lab.Buddy.Rig.Head.Radius + 40.0f);
 
     private static async System.Threading.Tasks.Task WaitPhysicsTicks(
         SceneTree tree,

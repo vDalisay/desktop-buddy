@@ -46,6 +46,7 @@ public partial class LabPointerGrabComponent : Node2D
     [Export] public CareStrokeComponent? CareTool { get; set; }
     [Export] public ToolCursorPresenter? CareCursor { get; set; }
     [Export] public PullbackLauncherComponent? LauncherTool { get; set; }
+    [Export] public CursorGunComponent? GunTool { get; set; }
 
     private bool _active;
     private bool _pendingPress;
@@ -53,6 +54,8 @@ public partial class LabPointerGrabComponent : Node2D
     private bool _pendingSecondaryPress;
     private bool _pendingSecondaryRelease;
     private string? _pendingLaunchableSpawn;
+    private bool _pendingReload;
+    private int _pendingWheelSteps;
     private bool _ownsGrab;
     private bool _sawPointerInput;
     private Vector2 _cursor;
@@ -113,6 +116,15 @@ public partial class LabPointerGrabComponent : Node2D
         _pendingSecondaryPress = false;
         _pendingSecondaryRelease = false;
         _pendingLaunchableSpawn = null;
+        _pendingReload = false;
+        _pendingWheelSteps = 0;
+
+        if (GunTool is not null && GodotObject.IsInstanceValid(GunTool))
+        {
+            // The trigger goes with the pointer. Shots already in flight are the
+            // room's and keep travelling.
+            GunTool.ClearCursor();
+        }
 
         if (CursorTools is not null && GodotObject.IsInstanceValid(CursorTools))
         {
@@ -162,6 +174,20 @@ public partial class LabPointerGrabComponent : Node2D
         {
             _pendingSecondaryRelease = true;
         }
+        else if (@event.IsActionPressed(InputActions.Reload))
+        {
+            // The existing buddy_reload action, routed through the same queued-input
+            // path as every other tool intent — never a direct key read in the gun.
+            _pendingReload = true;
+        }
+        else if (@event is InputEventMouseButton
+                 {
+                     Pressed: true,
+                     ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown,
+                 } wheel)
+        {
+            _pendingWheelSteps += wheel.ButtonIndex == MouseButton.WheelUp ? 1 : -1;
+        }
         else if (Pipeline is not null && GodotObject.IsInstanceValid(Pipeline) &&
                  @event is InputEventKey { Pressed: true, Echo: false } key)
         {
@@ -190,6 +216,7 @@ public partial class LabPointerGrabComponent : Node2D
                 Key.G => ToolId.Grab,
                 Key.B => ToolId.BoxingGlove,
                 Key.K => ToolId.BaseballBat,
+                Key.J => ToolId.Pistol,
                 Key.F => ToolId.Pet,
                 Key.T => ToolId.Tickle,
                 _ => null,
@@ -249,7 +276,33 @@ public partial class LabPointerGrabComponent : Node2D
             {
                 CareTool.SetStroke(IsPrimaryHeld && ToolCatalog.CareKindOf(tool) is not null, cursor);
             }
+
+            if (GunTool is not null && GodotObject.IsInstanceValid(GunTool) &&
+                GunTool.DrivesTool(tool))
+            {
+                // Primary is the trigger; the gun's own model turns the held state into
+                // one shot per press. Wheel and reload intents arrive the same way.
+                GunTool.MoveCursor(cursor);
+                if (_pendingPress)
+                {
+                    // Only the level state is forwarded below, so a click whose press and
+                    // release both landed between two routed ticks would never reach the
+                    // gun at all. The press edge is routed in its own right.
+                    GunTool.LatchTrigger();
+                }
+
+                GunTool.SetTriggerHeld(IsPrimaryHeld);
+                if (_pendingReload)
+                    GunTool.RequestReload();
+                if (_pendingWheelSteps != 0)
+                    GunTool.ApplyWheel(_pendingWheelSteps);
+            }
         }
+
+        // Consumed whether or not a gun is selected: a reload pressed while the bat is
+        // out must not fire the instant a gun is drawn.
+        _pendingReload = false;
+        _pendingWheelSteps = 0;
 
         // Same rule the cursor anchor already follows: forward pointer state to
         // the tools only once real pointer input has been seen, so a headless

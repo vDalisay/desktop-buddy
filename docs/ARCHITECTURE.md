@@ -88,6 +88,7 @@ Names may change, but ownership may not collapse into `AppRoot`, `BuddyRoot`, or
 | `PainKnockoutComponent` | Pain events/window, knockout timer and consciousness events | Physics contact discovery or payout |
 | `MoodMemoryComponent` | Persistent mood, bands, transient emotions, harmful records, crossing reset | Physics, inventory, audio playback |
 | `StatusEffectComponent` | Burning/status timers and semantic tick events | Direct UI/VFX or persistence writes |
+| `CursorGunComponent` | Feeding the pure aim/cadence models, launching and recycling pooled projectiles, per-gun magazine state | Aim or cadence rules, pain, payout, projectile registration in the loose-object budget |
 | `ImpactRouter` | Contact sampling, attribution, episode/debounce state, accepted impact events | Tool prices, mood bands |
 | `RewardLedger` | Formula, currency mutation, income windows, reward/stat events | Measuring collision impulse |
 
@@ -193,6 +194,7 @@ Static data is represented by C# `Resource` subclasses and `.tres` assets:
 - `MoodEconomyProfile`: bands, drift, care values, passive curve, cash-per-pain, and calibrated price table.
 - `ToolDefinition`: stable ID, entry kind, display metadata as translation keys plus icon references, unlock price (authored in whole credits) and progression order, shop/tool-grid visibility, PackedScene references, cooldown/ammo/fuse/status data.
 - `CatalogueDefinition`: the one explicitly referenced list of `ToolDefinition` entries (`res://data/catalogue/launch_catalogue.tres`). `CatalogueLoader` turns it into the immutable engine-free `ToolCatalogue` snapshot the domain rules (`CataloguePolicy`) and `EconomyService.Purchase(contentId)` read; the catalogue, never the caller, resolves purchasability and price. An entry whose slice is unfinished stays `Visible = false` and cannot be shown or bought.
+- `GunProfile`: one cursor gun's magazine, shot interval, reload duration, projectiles per shot and spread, aim feel (smoothing half-life, steering-speed gate, maximum turn per tick, wheel offset), and projectile physics/pool tuning. Cadence is authored in routed ticks. `CursorGunComponent` holds an authored array of them and activates whichever matches the selected tool, so a second gun is a `.tres` plus a content ID rather than new input code — the same shape the cursor-tethered tools and the pullback launcher take.
 - `StatusDefinition`: duration/refresh cap and semantic tick policy.
 - `AchievementDefinition`: stable Steam API ID and local trigger ID.
 
@@ -359,7 +361,11 @@ The operating-system cursor is never hidden or replaced; cursor-attached tool ac
 
 `LooseObjectRegistry` assigns a monotonic spawn sequence and tracks held, hazardous, protected, and safe-to-evict flags. Before a spawn that would exceed 24, it evicts the oldest safe/unheld/unprotected object. If none exists, the spawn request fails cleanly and does not consume a purchase, cooldown, fuse, or ammunition action.
 
-Projectiles use pools separate from the loose-object budget, CCD, maximum lifetime/distance, and one authoritative interaction ID per shot/pellet. Grenades and launched care/toy objects participate in the loose-object registry. VFX particles never register as gameplay bodies.
+Projectiles use pools separate from the loose-object budget, maximum lifetime/distance, and one authoritative interaction ID per shot/pellet (re-minted on every launch, so a reused pool slot can never inherit an earlier shot's contact episode). Grenades and launched care/toy objects participate in the loose-object registry. VFX particles never register as gameplay bodies.
+
+A projectile must not pass through what it is fired at, and from M5 Task 5 that is guaranteed by bounding its per-tick travel inside the smallest target's diameter rather than by `RigidBody2D.ContinuousCd`: the engine's continuous collision prevents tunneling by replacing the body's velocity with the reduced velocity that reaches the surface, which destroys the momentum the shared pain pipeline scores from. `GunProfile` validates the bound and rejects a faster muzzle speed. See `DECISIONS.md`, "Cursor-Gun Platform and Pistol", for the measurements.
+
+A projectile's **rotation is also left free**, and its visual is what compensates: a round body drawn along its own velocity looks identical whether or not it is spinning, while locking rotation halves the contact impulse a hit reports and so halves every gun's damage. Orient a projectile's visual from its velocity, never from its body transform (`DECISIONS.md`, "Gun Feel Refinement").
 
 ## 16. Failure Handling and Diagnostics
 
