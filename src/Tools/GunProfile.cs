@@ -6,6 +6,18 @@ using Godot;
 namespace DesktopBuddy.Tools;
 
 /// <summary>
+/// Which silhouette a gun is drawn as. There is deliberately no usable default: a gun
+/// whose visual was never authored must fail validation rather than ship as whatever
+/// shape happens to be first in the enum.
+/// </summary>
+public enum GunVisual3DKind
+{
+    Unspecified = 0,
+    NerfBlaster = 1,
+    RealPistol = 2,
+}
+
+/// <summary>
 /// Provisional, laboratory-tunable tuning for one cursor gun (RAGDOLL §9.1/§9.2).
 /// Every gun runs the same <see cref="GunMachine"/> cadence model, the same
 /// <see cref="CursorAim"/> aim, and the same pooled projectile, so the Pistol and the
@@ -146,7 +158,43 @@ public partial class GunProfile : GameResource
 
     [Export] public Color ProjectileColor { get; set; } = new("ffe08a");
     [Export] public Color TrailColor { get; set; } = new("ffb347");
+
+    /// <summary>The gun's body colour: toy green, or gunmetal.</summary>
     [Export] public Color MuzzleColor { get; set; } = new("3a3f4b");
+
+    /// <summary>
+    /// The gun's second colour — the Nerf Blaster's orange tip, the Pistol's near-black
+    /// grip. Two authored colours are all the silhouettes need to read apart.
+    /// </summary>
+    [Export] public Color AccentColor { get; set; } = new("1c1f26");
+
+    // --- Visual (the drawn gun; the collider-free presentation half) ---
+
+    /// <summary>The silhouette this gun is built as; must be authored (see the enum).</summary>
+    [Export] public GunVisual3DKind Visual3DKind { get; set; } = GunVisual3DKind.Unspecified;
+
+    /// <summary>
+    /// Muzzle-to-grip length of the drawn gun in world pixels. The grip sits at the
+    /// cursor and the barrel runs forward along the aim, so this is also how far ahead of
+    /// the pointer the weapon reaches.
+    /// </summary>
+    [Export(PropertyHint.Range, "8,256,0.5,or_greater")] public float VisualLengthPx { get; set; } = 56.0f;
+
+    /// <summary>
+    /// Where along <see cref="VisualLengthPx"/> the barrel mouth is. Validation ties
+    /// <see cref="MuzzleOffsetPx"/> to it, so a round cannot be born somewhere the player
+    /// can see is not the end of the barrel.
+    /// </summary>
+    [Export(PropertyHint.Range, "0.1,1,0.01")] public float MuzzleTipFraction { get; set; } = 0.95f;
+
+    /// <summary>Camera-axis depth the drawn gun sits at, matching the cursor tools.</summary>
+    [Export] public float VisualDepthOffset { get; set; } = 144.0f;
+
+    /// <summary>Pixels of agreement required between the authored muzzle and the mesh tip.</summary>
+    public const float MuzzleAgreementPx = 2.0f;
+
+    /// <summary>Where the barrel mouth is, in pixels ahead of the cursor.</summary>
+    public float VisualMuzzleTipPx => VisualLengthPx * MuzzleTipFraction;
 
     /// <summary>The tool this profile serves; only meaningful once <see cref="Validate"/> passes.</summary>
     public ToolId Tool
@@ -230,6 +278,32 @@ public partial class GunProfile : GameResource
         if (!float.IsFinite(MuzzleOffsetPx) || MuzzleOffsetPx < 0.0f)
         {
             errors.Add($"{nameof(MuzzleOffsetPx)} must be finite and non-negative");
+        }
+
+        if (Visual3DKind == GunVisual3DKind.Unspecified)
+        {
+            errors.Add(
+                $"{nameof(Visual3DKind)} must be authored: a gun has no default silhouette");
+        }
+
+        if (!float.IsFinite(VisualLengthPx) || VisualLengthPx <= 0.0f ||
+            !float.IsFinite(MuzzleTipFraction) ||
+            MuzzleTipFraction <= 0.0f || MuzzleTipFraction > 1.0f ||
+            !float.IsFinite(VisualDepthOffset))
+        {
+            errors.Add(
+                $"{nameof(VisualLengthPx)} must be finite and positive, " +
+                $"{nameof(MuzzleTipFraction)} within (0,1], and " +
+                $"{nameof(VisualDepthOffset)} finite");
+        }
+        else if (Mathf.Abs(MuzzleOffsetPx - VisualMuzzleTipPx) > MuzzleAgreementPx)
+        {
+            // The drawn barrel and the point rounds are born at are one fact authored
+            // twice, and the two drifting apart is the bug the owner reported as ammo
+            // that does not come out of the gun.
+            errors.Add(
+                $"{nameof(MuzzleOffsetPx)} ({MuzzleOffsetPx:F1}) must agree with the drawn " +
+                $"barrel mouth ({VisualMuzzleTipPx:F1}) within {MuzzleAgreementPx} px");
         }
 
         if (!float.IsFinite(ProjectileRadius) || ProjectileRadius <= 0.0f)

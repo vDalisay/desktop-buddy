@@ -84,6 +84,13 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
     public Vector2 LaunchVelocity => _launchVelocity;
 
     /// <summary>
+    /// Where this flight began. Kept because it is the only honest answer to "did the
+    /// round come out of the barrel the player can see": recovering it later from the
+    /// current position means guessing how many steps have been integrated since.
+    /// </summary>
+    public Vector2 LaunchPosition { get; private set; }
+
+    /// <summary>
     /// The orientation this flight actually began at, snapshotted before any physics step
     /// could add to it. A recycled pool slot must not inherit the orientation of the shot
     /// before it, and one tick later this is unreadable: an impact spins the body.
@@ -148,6 +155,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
     public void Launch(Vector2 position, Vector2 velocity)
     {
         InteractionId = InteractionIds.Next();
+        LaunchPosition = position;
         _lastSample = position;
         _launchVelocity = velocity;
         _contactObserved = false;

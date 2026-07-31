@@ -1355,7 +1355,11 @@ public partial class JourneyRunner : Node
             tree,
             lab,
             lab.Buddy.Rig.Head.GlobalPosition,
-            lab.Buddy.Rig.Head.Radius + 40.0f);
+            // Plus the barrel: a round is born at the muzzle, and the drawn gun now reaches
+            // most of a head-width ahead of the cursor. Standing off by the target distance
+            // alone would spawn the shot past the head it is aimed at.
+            lab.Buddy.Rig.Head.Radius + 40.0f +
+                (lab.CursorGuns.ActiveProfile?.MuzzleOffsetPx ?? 0.0f));
 
     private static async System.Threading.Tasks.Task WaitPhysicsTicks(
         SceneTree tree,

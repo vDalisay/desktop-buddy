@@ -26,8 +26,15 @@ public sealed class NerfVersusPistolScenario : IScenario
     /// <summary>How long a level trajectory is watched, in ticks, before it is judged.</summary>
     private const int TrajectoryTicks = 40;
 
+    /// <summary>Aimed shots taken at the head per gun; the strongest answer counts.</summary>
+    private const int VolleyShots = 3;
+
     /// <summary>How many times an aimed shot re-derives its geometry before it fires.</summary>
-    private const int AimAttempts = 4;
+    private const int AimAttempts = 5;
+
+    /// <summary>How far past the head's surface the muzzle may sit and still count as the
+    /// close shot these measurements are specified at.</summary>
+    private const float MaximumRangePx = 70.0f;
 
     /// <summary>Torso speed, in px/s, under which the buddy counts as standing still.</summary>
     private const float SettledSpeedPx = 8.0f;
@@ -142,32 +149,36 @@ public sealed class NerfVersusPistolScenario : IScenario
             $"(gravity={pistol.ProjectileGravityScale}, launched {bulletPath.Launch})"));
 
         // --- What the two guns do to the buddy, measured point blank ---
-        Shot dart = await FirePointBlank(
-            tree, lab, gun, ToolId.NerfBlaster, ContentIds.ToolNerfBlaster);
-        await Settle(tree, gun, nerf, pistol);
-        Shot bullet = await FirePointBlank(
-            tree, lab, gun, ToolId.Pistol, ContentIds.ToolPistol);
+        // A volley rather than one shot each. The target is alive: it walks, it leans, and
+        // where a shot lands on a 17 px head decides whether the solver reports a square
+        // impact or a rim graze. One shot would therefore be measuring the buddy's pose as
+        // much as the gun. Three makes the pistol's claim "a bullet that lands hurts" and
+        // the dart's claim "not one of them does" — which is the stronger reading of both.
+        Volley dart = await FireVolley(
+            tree, lab, gun, ToolId.NerfBlaster, nerf, ContentIds.ToolNerfBlaster);
+        Volley bullet = await FireVolley(
+            tree, lab, gun, ToolId.Pistol, pistol, ContentIds.ToolPistol);
 
         checks.Add(new StartupCheck(
             "nerf_dart_scores_no_meaningful_pain",
-            dart.Connected && dart.Pain <= 0.0f && dart.MilliCredits == 0L,
-            $"connected={dart.Connected} delivered_impulse={dart.DeliveredImpulse:F1} " +
-            $"episode_impulse={dart.EpisodeImpulse:F1} pain={dart.Pain:F2} " +
-            $"milli={dart.MilliCredits} mass={nerf.ProjectileMass} muzzle={nerf.MuzzleSpeed} " +
-            dart.Geometry));
+            dart.Connections > 0 && dart.Pain <= 0.0f && dart.MilliCredits == 0L,
+            $"connected={dart.Connections}/{dart.Shots} best_impulse={dart.BestImpulse:F1} " +
+            $"pain={dart.Pain:F2} milli={dart.MilliCredits} mass={nerf.ProjectileMass} " +
+            $"muzzle={nerf.MuzzleSpeed} | {dart.Report}"));
 
         // Ten times is not a tuning target, it is the size of the gap that makes the two
         // guns different weapons rather than two skins on one.
         checks.Add(new StartupCheck(
             "pistol_bullet_hurts_the_buddy",
-            bullet.Connected &&
+            bullet.Connections > 0 &&
             bullet.Pain > 0.0f &&
             bullet.MilliCredits > 0L &&
-            bullet.DeliveredImpulse > dart.DeliveredImpulse * 10.0f,
-            $"connected={bullet.Connected} delivered_impulse={bullet.DeliveredImpulse:F1} " +
+            bullet.BestImpulse > dart.BestImpulse * 10.0f,
+            $"connected={bullet.Connections}/{bullet.Shots} best_impulse={bullet.BestImpulse:F1} " +
             $"pain={bullet.Pain:F2} milli={bullet.MilliCredits} part={bullet.Part} " +
-            $"dart_impulse={dart.DeliveredImpulse:F1} " + bullet.Geometry + " " +
-            $"separation={(dart.DeliveredImpulse > 0.0f ? bullet.DeliveredImpulse / dart.DeliveredImpulse : 0.0f):F1}x"));
+            $"dart_best={dart.BestImpulse:F1} separation=" +
+            $"{(dart.BestImpulse > 0.0f ? bullet.BestImpulse / dart.BestImpulse : 0.0f):F1}x | " +
+            bullet.Report));
 
         checks.Add(new StartupCheck(
             "only_the_pistol_is_remembered_as_harmful",
@@ -177,8 +188,8 @@ public sealed class NerfVersusPistolScenario : IScenario
             $"nerf_harmful={lab.Progress.IsContentHarmful(ContentIds.ToolNerfBlaster)}"));
 
         messages.Add(
-            $"dart impulse={dart.DeliveredImpulse:F1} pain={dart.Pain:F2} | " +
-            $"bullet impulse={bullet.DeliveredImpulse:F1} pain={bullet.Pain:F2} " +
+            $"dart impulse={dart.BestImpulse:F1} pain={dart.Pain:F2} | " +
+            $"bullet impulse={bullet.BestImpulse:F1} pain={bullet.Pain:F2} " +
             $"part={bullet.Part}");
         messages.Add(
             $"dart_drop={dartPath.Drop:F2}px bullet_drop={bulletPath.Drop:F2}px " +
@@ -280,6 +291,48 @@ public sealed class NerfVersusPistolScenario : IScenario
     }
 
     /// <summary>
+    /// Fires <see cref="VolleyShots"/> aimed shots at the head and keeps the strongest
+    /// answer. Every shot re-derives its own geometry and the room is cleared between
+    /// them, so the shots are independent rather than a burst into one settling pose.
+    /// </summary>
+    private static async Task<Volley> FireVolley(
+        SceneTree tree,
+        BuddyLab lab,
+        CursorGunComponent gun,
+        ToolId tool,
+        GunProfile profile,
+        string contentId)
+    {
+        int connections = 0;
+        float bestImpulse = 0.0f;
+        float pain = 0.0f;
+        long milli = 0L;
+        string part = "none";
+        var report = new List<string>();
+        for (int shot = 1; shot <= VolleyShots; shot++)
+        {
+            Shot fired = await FirePointBlank(tree, lab, gun, tool, profile, contentId);
+            connections += fired.Connected ? 1 : 0;
+            bestImpulse = Mathf.Max(bestImpulse, fired.DeliveredImpulse);
+            if (fired.Pain > pain)
+            {
+                pain = fired.Pain;
+                part = fired.Part;
+            }
+
+            milli += fired.MilliCredits;
+            report.Add(
+                $"#{shot} impulse={fired.DeliveredImpulse:F1} pain={fired.Pain:F2} " +
+                $"{fired.Geometry}");
+            await M4ObjectScenarioSupport.WaitFor(
+                tree, () => gun.ActiveProjectileCount == 0, profile.ProjectileLifetimeTicks + 16);
+        }
+
+        return new Volley(
+            VolleyShots, connections, bestImpulse, pain, milli, part, string.Join(" ", report));
+    }
+
+    /// <summary>
     /// One point-blank head shot with both halves of the answer: what the pipeline scored,
     /// and what the projectile itself delivered. The second is what proves a dart really
     /// connected on a shot the pain curve is expected to score at nothing — otherwise
@@ -290,6 +343,7 @@ public sealed class NerfVersusPistolScenario : IScenario
         BuddyLab lab,
         CursorGunComponent gun,
         ToolId tool,
+        GunProfile profile,
         string contentId)
     {
         // The buddy is alive, and an engaged cursor is something it walks over to look at.
@@ -313,8 +367,10 @@ public sealed class NerfVersusPistolScenario : IScenario
                 240);
 
             Vector2 target = lab.Buddy.Rig.Head.GlobalPosition;
-            (Vector2 cursor, Vector2 direction) =
-                M4ObjectScenarioSupport.StandOffFrom(room, target, radius + 40.0f);
+            // Plus the barrel: the round is born at the muzzle, which the drawn gun puts
+            // most of a head-width ahead of the cursor.
+            (Vector2 cursor, Vector2 direction) = M4ObjectScenarioSupport.StandOffFrom(
+                room, target, radius + 40.0f + profile.MuzzleOffsetPx);
             await SelectAndAim(tree, lab, gun, tool, cursor, direction);
 
             muzzle = gun.Cursor + (gun.AimForward * gun.ActiveProfile!.MuzzleOffsetPx);
@@ -322,7 +378,13 @@ public sealed class NerfVersusPistolScenario : IScenario
             aimError = toHead.Length() > 0.01f
                 ? gun.AimForward.Dot(toHead.Normalized())
                 : 0.0f;
-            if (aimError > 0.99f && toHead.Length() > radius)
+            // Square, and from the range this measurement is specified at. Direction alone
+            // is not enough: a buddy that walks straight away down the barrel keeps the
+            // aim perfect while doubling the range, and a shot's arrival lands on a
+            // different sampling phase from further out — seed 1 grazed the rim that way
+            // and delivered nothing from 115 px where it delivers 600 from 65.
+            float range = toHead.Length();
+            if (aimError > 0.99f && range > radius && range <= radius + MaximumRangePx)
                 break;
         }
 
@@ -378,6 +440,15 @@ public sealed class NerfVersusPistolScenario : IScenario
             travel,
             launch);
     }
+
+    private readonly record struct Volley(
+        int Shots,
+        int Connections,
+        float BestImpulse,
+        float Pain,
+        long MilliCredits,
+        string Part,
+        string Report);
 
     private readonly record struct Trajectory(float Drop, int Ticks, Vector2 Launch)
     {

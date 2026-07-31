@@ -67,6 +67,7 @@ public partial class BuddyLab : Node2D
     public bool WindowAdapterVisibleForTests => _windowAdapter?.IsWindowVisible ?? false;
     [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public CursorGunComponent CursorGuns { get; set; } = null!;
+    [Export] public CursorGunVisual3D CursorGunVisual { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
     [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
@@ -116,6 +117,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(Launcher) ||
             !GodotObject.IsInstanceValid(CursorTools) ||
             !GodotObject.IsInstanceValid(CursorGuns) ||
+            !GodotObject.IsInstanceValid(CursorGunVisual) ||
             !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
             !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
             !GodotObject.IsInstanceValid(ReactionAudio) || !GodotObject.IsInstanceValid(ImpactFeedback) ||
@@ -171,6 +173,7 @@ public partial class BuddyLab : Node2D
         Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
         CursorTools.Initialize();
         CursorGuns.Initialize();
+        CursorGunVisual.Initialize(CursorGuns);
         CareStroke.Initialize();
         CareCursor.Initialize();
         ToolReactions.Initialize();
@@ -485,6 +488,10 @@ public partial class BuddyLab : Node2D
 
         VisualPresenter.Visible = show3D;
         CursorToolVisual.SetPresentationActive(show3D);
+        // One gun per cursor: the 3D presenter and the legacy 2D drawing are the same
+        // weapon seen two ways, never both at once.
+        CursorGunVisual.SetPresentationActive(show3D);
+        CursorGuns.SetLegacyVisualEnabled(!show3D);
     }
 
     private void OnPresentationToggleRequested() => SetPresentationMode(

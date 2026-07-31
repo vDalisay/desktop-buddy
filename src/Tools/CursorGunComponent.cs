@@ -403,18 +403,65 @@ public partial class CursorGunComponent : Node2D
         return runtime;
     }
 
+    /// <summary>
+    /// Whether the legacy 2D presentation draws this gun. The 3D presentation has its own
+    /// gun (<c>CursorGunVisual3D</c>), and drawing both would put two barrels on one
+    /// cursor.
+    /// </summary>
+    public bool DrawsLegacyGun { get; private set; } = true;
+
+    public void SetLegacyVisualEnabled(bool enabled)
+    {
+        DrawsLegacyGun = enabled;
+        QueueRedraw();
+    }
+
+    /// <summary>
+    /// The drawn barrel mouth in world pixels, or zero when no gun is drawn. This is the
+    /// authored visual length rather than the launch offset on purpose: profile validation
+    /// ties the two together, and a check that read the launch offset for both sides of
+    /// that comparison would be comparing a number with itself.
+    /// </summary>
+    public Vector2 VisualMuzzle2D => _active is null || !_hasCursor || AimForward == Vector2.Zero
+        ? Vector2.Zero
+        : _cursor + (AimForward * _active.Profile.VisualMuzzleTipPx);
+
     public override void _Draw()
     {
-        // A minimal barrel so the player can see where the shot will go. Presentation
-        // only: the gun itself has no collider, and nothing here touches gameplay.
-        if (_active is null || !_hasCursor || AimForward == Vector2.Zero)
+        // The legacy 2D view of the gun: a flat silhouette at the same dimensions the 3D
+        // one is built to, so the two modes agree about where the player's barrel is.
+        // Presentation only — the gun has no collider and nothing here touches gameplay.
+        if (_active is null || !_hasCursor || AimForward == Vector2.Zero || !DrawsLegacyGun)
             return;
 
         GunProfile profile = _active.Profile;
         Vector2 origin = ToLocal(_cursor);
-        Vector2 muzzle = origin + (AimForward * profile.MuzzleOffsetPx);
-        DrawLine(origin, muzzle, profile.MuzzleColor, 3.0f, true);
-        DrawCircle(muzzle, 2.0f, profile.ProjectileColor, true, -1.0f, true);
+        Vector2 forward = AimForward;
+        // Mirrored the same way the 3D silhouette is: rotating a side-on gun past vertical
+        // would hang its grip in the air.
+        Vector2 down = new Vector2(-forward.Y, forward.X) * (forward.X < 0.0f ? -1.0f : 1.0f);
+        float length = profile.VisualLengthPx;
+        float tip = profile.VisualMuzzleTipPx;
+
+        Vector2 At(float along, float across) =>
+            origin + (forward * (length * along)) + (down * (length * across));
+
+        Vector2 Tip(float fromTip, float across) =>
+            origin + (forward * (tip + (length * fromTip))) + (down * (length * across));
+
+        DrawColoredPolygon(
+            new[] { At(0.08f, -0.17f), At(0.60f, -0.17f), At(0.60f, 0.17f), At(0.08f, 0.17f) },
+            profile.MuzzleColor);
+        DrawColoredPolygon(
+            new[] { At(0.54f, -0.10f), Tip(-0.04f, -0.10f), Tip(-0.04f, 0.10f), At(0.54f, 0.10f) },
+            profile.MuzzleColor);
+        DrawColoredPolygon(
+            new[] { At(0.06f, 0.13f), At(0.26f, 0.13f), At(0.22f, 0.47f), At(0.04f, 0.47f) },
+            profile.AccentColor);
+        // The tip accent sits on the barrel mouth itself, which is the point of it.
+        DrawColoredPolygon(
+            new[] { Tip(-0.09f, -0.15f), Tip(0.0f, -0.15f), Tip(0.0f, 0.15f), Tip(-0.09f, 0.15f) },
+            profile.AccentColor);
     }
 
     private Vector2 ClampToPlayableBounds(Vector2 worldPoint)

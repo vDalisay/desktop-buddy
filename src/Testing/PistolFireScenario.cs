@@ -556,8 +556,10 @@ public sealed class PistolFireScenario : IScenario
             Vector2 target = _lab.Buddy.Rig.Head.GlobalPosition;
             float radius = _lab.Buddy.Rig.Head.Radius;
             Rect2 room = _lab.Boundaries.InnerBounds;
-            (Vector2 cursor, Vector2 direction) =
-                M4ObjectScenarioSupport.StandOffFrom(room, target, radius + 40.0f);
+            // The stand-off carries the barrel too: the round is born at the muzzle, which
+            // the drawn gun puts most of a head-width ahead of the cursor.
+            (Vector2 cursor, Vector2 direction) = M4ObjectScenarioSupport.StandOffFrom(
+                room, target, radius + 40.0f + _profile.MuzzleOffsetPx);
             await AimAt(tree, _gun, cursor, direction);
             for (int tick = 0; tick < SettleTicks; tick++)
                 await Tick(tree);

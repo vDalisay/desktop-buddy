@@ -585,7 +585,40 @@ per-gun magazines persist across swaps (already component behavior — assert it
 `swapping_guns_preserves_each_magazine`); `nerf_dart_scores_no_meaningful_pain` and
 `pistol_bullet_hurts_the_buddy` with recorded numbers; darts visibly droop, bullets fly flat.
 
-**Task E — 3D visuals.** `GunMeshBuilder`, `CursorGunVisual3D`, legacy 2D fallback, doubled
+**Task E — DONE 2026-07-31 (engineering; the look itself is the owner's Task H gate).**
+`GunMeshBuilder` builds both silhouettes from vertex-coloured boxes — the Nerf Blaster chunky
+with a wide orange tip ring, the Pistol a compact slide/frame/grip in gunmetal, neither
+carrying any real model's trade dress — and `CursorGunVisual3D` follows the cursor and the
+slewed aim with no second smoothing layer. The gun is **four times** the old 14 px barrel:
+`VisualLengthPx` 64 (nerf) and 56 (pistol), with `MuzzleOffsetPx` re-derived to the drawn
+barrel mouth (60.8 and 53.2) and profile validation refusing any pair that drifts more than
+2 px apart. Legacy 2D draws the same silhouette flat, and both modes put the muzzle in the
+same place — measured gap `0.00 px`. New scenario `gun_visuals` (5 checks), run in both modes.
+
+Three things worth recording:
+
+- **The gun is held, not centred.** The grip sits at the cursor and the barrel runs forward,
+  so a round is now born 53–61 px ahead of the pointer instead of 14. Every aimed test had to
+  learn that: `pistol_fire`, `nerf_versus_pistol`, and `JourneyRunner.AimAtBuddyAsync` now
+  stand off by *target distance plus the barrel*, or the shot is born past the head it is
+  aimed at. `ProjectileBody.LaunchPosition` was added so a check can ask the body where it was
+  born instead of walking its current position backwards.
+- **A left-facing gun is mirrored, not rotated.** Rotating a side-on gun past vertical stands
+  it on its head; `gun_is_never_upside_down` pins the grip pointing down (screen +Y) on both
+  sides. The mirror is a negative scale, so the material disables backface culling.
+- **`nerf_versus_pistol` now fires a three-shot volley per gun.** One aimed shot was measuring
+  the buddy's pose as much as the gun: it walks, it leans, and on a 17 px head the difference
+  between a square hit and a rim graze is the difference between `1180` impulse and `0`. Three
+  independent shots make the claims "a bullet that lands hurts" (best of three) and "not one
+  dart does" (all three), which is the stronger reading of both. Recorded: dart `21.5`–`22.7`
+  with `0.00` pain on 9 of 9 shots across seeds; bullet best `592`–`1180`, pain `13.9`–`41.0`,
+  separation `27`–`52×`.
+
+*Verified:* build 0/0 · domain 981/981 · quick suite 26/26 · `gun_visuals` both presentations ·
+`nerf_versus_pistol` seeds 1/7/13 + legacy · `pistol_fire` seeds 1/7/13 · `m5_pistol` seeds
+1/7 · `presentation_3d`, `presentation_look`, `m3_presentation` green.
+
+**Task E (original text) — 3D visuals.** `GunMeshBuilder`, `CursorGunVisual3D`, legacy 2D fallback, doubled
 sizes, muzzle-offset agreement, left-flip mirroring.
 *Accept:* scenario checks in **both** presentation modes:
 `gun_visual_faces_the_slewed_aim`, `gun_is_never_upside_down` (mirror at left-facing),

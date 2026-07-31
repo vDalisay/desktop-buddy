@@ -173,7 +173,11 @@ it: the **Nerf Blaster** (`tool.nerf_blaster`, `ToolId 14`, lab key `N`) is the 
 player owns first and the **Pistol** (`J`) is the real one, and nothing separates them but
 their authored numbers — a point-blank dart scores measured zero pain where a bullet scores
 `13`. The launch catalogue is therefore sixteen entries, with the blaster at progression
-slot 7 ahead of the Pistol. Two traps are recorded in `DECISIONS.md` for anyone tidying the
+slot 7 ahead of the Pistol. Both are drawn at four times the old barrel's size by
+`Presentation3D/GunMeshBuilder` + `CursorGunVisual3D` (procedural vertex-coloured boxes, no
+imported art), with a flat version of the same silhouette in the legacy 2D view. The grip
+sits at the cursor, so rounds are born 53–61 px ahead of the pointer — anything aiming a gun
+in a test must add the barrel to its stand-off. Two traps are recorded in `DECISIONS.md` for anyone tidying the
 projectile up: `RigidBody2D.ContinuousCd` is deliberately **off** because it destroys the
 momentum the pain pipeline scores from (no-tunneling is guaranteed by a validated per-tick
 travel bound instead), and `LockRotation` is deliberately **off** because locking it halves

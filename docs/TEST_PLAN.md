@@ -149,6 +149,17 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   projectile's own solver report rather than from the absence of pain. Aimed shots re-derive
   their stand-off until the barrel really points at the head: the buddy walks over to an
   engaged cursor, and an aim takes most of a second of pointer travel to establish.
+- The `gun_visuals` scenario holds the drawn gun to the gameplay underneath it, and runs in
+  **both** presentation modes because the 3D presenter and the legacy 2D drawing are two views
+  of one weapon: the barrel points where the aim points (`gun_visual_faces_the_slewed_aim`),
+  the grip hangs downward whichever way the gun faces — a left-facing gun is mirrored, never
+  rotated onto its head (`gun_is_never_upside_down`) — rounds are born at the visible barrel
+  mouth within 3 px (`rounds_are_born_at_the_visible_muzzle`, measured `0.00 px` for both
+  guns), the two modes put that muzzle in the same place, and no mesh vertex escapes the
+  authored envelope. The last one is the bat's rule restated for a box: presentation may not
+  reach further than the dimensions the data says the weapon has. Note for anything aiming a
+  gun in a test: the grip sits at the cursor, so a round is born 53–61 px **ahead** of the
+  pointer and a stand-off has to include the barrel or the shot starts past its target.
 - **Aiming a gun in a test means moving its pointer, and that is a contract, not a detail.**
   The aim follows the direction the pointer has lately been travelling and turns at a bounded
   rate, so a cursor that teleports into position aims at wherever the jump pointed. Every
