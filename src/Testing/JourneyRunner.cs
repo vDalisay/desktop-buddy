@@ -726,6 +726,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5GrenadeAsync(state, lab);
         }
+        else if (exercise == "m5_fire_sprayer")
+        {
+            await ExerciseM5FireSprayerAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -1524,6 +1528,151 @@ public partial class JourneyRunner : Node
             $"part={shotImpact?.Part} active_projectiles={gun.ActiveProjectileCount}");
     }
 
+
+    /// <summary>
+    /// The M5 Fire Sprayer slice end to end, through real input: the catalogue carries it at
+    /// its authored price but does not yet advertise it, the lab's tool key draws it, pointer
+    /// motion aims it on the shared cursor-weapon convention, holding primary sprays a real
+    /// stream that sets the buddy alight, the burn hurts and pays on the shared curve and is
+    /// remembered as harmful, the burning buddy panics, and releasing primary stops the
+    /// stream on the tick it is let go — which is this tool's whole cancel path.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5FireSprayerAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        FireSprayerComponent sprayer = lab.FireSprayer;
+        FireSprayerProfile profile = sprayer.Profile;
+
+        // --- The catalogue leg, at the slice's current visibility ---
+        // The owner's feel gate has not run yet, so `tool_fire_sprayer.tres` is still
+        // `Visible = false` and the shop must NOT offer it. That is the grenade journey's
+        // pre-acceptance shape: assert what the catalogue really promises today, so the
+        // leg flips to a sale by editing one authored flag rather than by rewriting a test.
+        bool listed = lab.Economy.Catalogue.TryGet(
+            ContentIds.ToolFireSprayer, out CatalogueEntry entry);
+        bool offered = false;
+        foreach (CatalogueEntry candidate in CataloguePolicy.ShopEntries(lab.Economy.Catalogue))
+            offered |= candidate.ContentId == ContentIds.ToolFireSprayer;
+        state["the_catalogue_carries_the_sprayer_but_does_not_advertise_it_yet"] =
+            listed && !entry.Visible && !offered && entry.PriceMilliCredits > 0L &&
+            lab.Progress.IsToolUnlocked(ContentIds.ToolFireSprayer);
+
+        // The development telemetry panel covers the left contact zone and consumes mouse
+        // buttons there; its own lab key hides it, as the gun journeys do.
+        await M4ObjectScenarioSupport.SendKey(tree, Key.H);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.S);
+
+        Vector2 forward = await AimAtPointAsync(
+            tree, lab, lab.Buddy.Rig.Torso.GlobalPosition, SprayerStandOffPx(lab));
+        bool armed = await M4ObjectScenarioSupport.WaitFor(tree, () => sprayer.IsActive, 30);
+        state["sprayer_key_draws_a_sprayer_with_no_magazine"] =
+            lab.Pipeline.SelectedTool == ToolId.FireSprayer &&
+            armed && !sprayer.IsSpraying && !sprayer.IsBurning;
+        state["pointer_motion_aims_the_sprayer"] = sprayer.AimForward.Dot(forward) > 0.95f;
+
+        AcceptedImpact? burnImpact = null;
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (burnImpact is null && impact.ContentId == ContentIds.ToolFireSprayer)
+                burnImpact = impact;
+        }
+
+        lab.Pipeline.ImpactAccepted += OnImpact;
+
+        // --- Holding primary sprays, and the stream sets the buddy alight ---
+        int dropletsBefore = sprayer.DropletsLaunched;
+        int registryBefore = lab.Objects.Count;
+        int registryPeak = registryBefore;
+        bool ignited = false;
+        for (int attempt = 0; attempt < 5 && !ignited; attempt++)
+        {
+            // The buddy walks, so the aim is retaken from where its body is now — the same
+            // thing a player does, and the reason this is a "does the stream connect"
+            // assertion rather than a marksmanship one.
+            await AimAtPointAsync(
+                tree, lab, lab.Buddy.Rig.Torso.GlobalPosition, SprayerStandOffPx(lab));
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+            for (int tick = 0; tick < 120 && !sprayer.IsBurning; tick++)
+            {
+                await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+                registryPeak = Mathf.Max(registryPeak, lab.Objects.Count);
+            }
+
+            ignited = sprayer.IsBurning;
+            if (!ignited)
+                await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+        }
+
+        state["holding_primary_sprays_a_stream_that_sets_the_buddy_alight"] =
+            ignited &&
+            sprayer.DropletsLaunched > dropletsBefore &&
+            sprayer.BurnTicksRemaining > profile.BurnApplyTicks - 30 &&
+            sprayer.IgnitionCount > 0 &&
+            registryPeak == registryBefore;
+
+        // --- The burn hurts, pays, and is remembered ---
+        bool hurt = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => burnImpact is not null, profile.BurnPainIntervalTicks * 3);
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+        state["the_burn_hurts_the_buddy_and_pays_for_it"] =
+            hurt &&
+            burnImpact is { Pain: > 0.0f } landed &&
+            landed.ContentId == ContentIds.ToolFireSprayer &&
+            landed.MilliCredits > 0L;
+        state["the_sprayer_is_remembered_as_harmful"] =
+            lab.Progress.IsContentHarmful(ContentIds.ToolFireSprayer) &&
+            !lab.Progress.IsContentHarmful(ContentIds.ToolBaseballBat);
+
+        // --- The burning buddy panics: priority 3, through the real ladder ---
+        bool panicked = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Buddy.Arbiter.Diagnostics.Owner == BehaviorPriority.Hazard,
+            240);
+        state["the_burning_buddy_panics"] = panicked && sprayer.IsBurning;
+
+        // --- The cancel path: releasing primary stops the stream on the same tick ---
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+        await WaitPhysicsTicks(tree, 2);
+        bool stopped = !sprayer.IsSpraying;
+        int launchedAtRelease = sprayer.DropletsLaunched;
+        await WaitPhysicsTicks(tree, profile.EmitIntervalTicks * 8);
+        state["releasing_primary_stops_the_stream"] =
+            stopped && sprayer.DropletsLaunched == launchedAtRelease;
+
+        // --- Holstering, and the burn that outlives the tool ---
+        bool stillBurning = sprayer.IsBurning;
+        await M4ObjectScenarioSupport.SendKey(tree, Key.G);
+        bool holstered = await M4ObjectScenarioSupport.WaitFor(tree, () => !sprayer.IsActive, 30);
+        int eventsAtHolster = sprayer.BurnPainEventCount;
+        bool keptBurning = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => sprayer.BurnPainEventCount > eventsAtHolster,
+            profile.BurnPainIntervalTicks * 3);
+        state["holstering_the_sprayer_does_not_put_the_fire_out"] =
+            lab.Pipeline.SelectedTool == ToolId.Grab && holstered &&
+            stillBurning && keptBurning;
+
+        Log.Info(
+            "Journey",
+            $"M5 sprayer droplets={sprayer.DropletsLaunched} ignitions={sprayer.IgnitionCount} " +
+            $"burn_events={sprayer.BurnPainEventCount} total_pain={sprayer.TotalBurnPain:F1} " +
+            $"pain={burnImpact?.Pain:F2} part={burnImpact?.Part} " +
+            $"remaining={sprayer.BurnTicksRemaining} " +
+            $"owner={lab.Buddy.Arbiter.Diagnostics.Owner} " +
+            $"exhausted={sprayer.PoolExhaustedCount}");
+    }
+
+    /// <summary>
+    /// How far back the sprayer is aimed from. Close, because the stream is deliberately
+    /// short-ranged: droplets expire at the authored travel bound, and a stand-off past it
+    /// aims a weapon that physically cannot reach.
+    /// </summary>
+    private static float SprayerStandOffPx(BuddyLab lab) =>
+        (lab.FireSprayer.Profile.DropletMaxTravelPx * 0.45f) +
+        lab.FireSprayer.Profile.MuzzleOffsetPx;
+
     /// <summary>
     /// Aims a cursor weapon at a world point from a stand-off and returns the direction its
     /// shot should travel. A cursor weapon aims by the direction the pointer has lately been
@@ -1552,7 +1701,9 @@ public partial class JourneyRunner : Node
     {
         const float StepPx = 1.5f;
         Rect2 room = lab.Boundaries.InnerBounds;
-        float turnRate = lab.CursorGuns.ActiveProfile?.MaxAimTurnDegreesPerTick ?? 6.0f;
+        float turnRate = lab.Pipeline.SelectedTool == ToolId.FireSprayer
+            ? lab.FireSprayer.Profile.MaxAimTurnDegreesPerTick
+            : lab.CursorGuns.ActiveProfile?.MaxAimTurnDegreesPerTick ?? 6.0f;
         int steps = (int)Mathf.Ceil(180.0f / Mathf.Max(0.5f, turnRate)) + 14;
 
         float side = target.X - room.Position.X >= room.End.X - target.X ? -1.0f : 1.0f;
@@ -1564,7 +1715,13 @@ public partial class JourneyRunner : Node
         Vector2 start = anchor - (forward * (StepPx * steps));
 
         await M4ObjectScenarioSupport.MovePointer(tree, lab, start, 0);
-        await M4ObjectScenarioSupport.WaitFor(tree, () => !lab.CursorGuns.AimIsSteering, 300);
+        // Whichever cursor weapon is out: the jump to the start of the approach is itself
+        // travel, and reading the aim before it has decayed below the gate establishes the
+        // weapon pointing back the way the pointer jumped from.
+        await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => !lab.CursorGuns.AimIsSteering && !lab.FireSprayer.AimIsSteering,
+            300);
         for (int step = 1; step <= steps; step++)
         {
             await M4ObjectScenarioSupport.MovePointer(

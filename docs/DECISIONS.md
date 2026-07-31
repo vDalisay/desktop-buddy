@@ -1242,6 +1242,67 @@ sale is exercised against a fresh progress state rather than the laboratory's, b
 grants every implemented M5 tool at boot for mechanical tuning and would answer
 `AlreadyOwned`.
 
+## Fire Sprayer and Burning (M5 Task 7)
+
+**Owner-accepted 2026-07-31, pre-implementation.** All four rules below were decided before
+any code was written, so the implementation carried them out rather than proposing them. The
+owner's feel gate still owns the *tuning* — the numbers — but these rules are settled.
+
+1. **A full burn never knocks the buddy out by itself.** Even a sustained eight-second cap
+   burn peaks below the `100`-pain rolling window. Implemented and proven rather than
+   assumed: `BurnEquivalentImpulse = 430` scores `4.57` pain per event against the shipped
+   conversion profile, so a rolling five-second window holds at most ten events — `45.7`.
+   A four-second burn totals `36.6` and a sustained cap burn `73.1`.
+2. **The sprayer has no ammunition, heat, or duration limit.** Primary may be held forever.
+   The specification is silent for the sprayer and a fuel gauge would be new UI for no
+   requested reason, so the tool is authored with no magazine, no reload, and no press edge —
+   which is also why it is *not* a `GunProfile`: `GunMachine` is a press-edge cadence and
+   magazine machine, and forcing the sprayer through it would mean authoring a fake capacity
+   nobody ever sees.
+3. **Fire does not spread.** Only the buddy burns. Objects, walls, and the room are not
+   flammable, and a burning buddy ignites nothing it touches.
+4. **The stream pushes nothing.** Droplet mass is cosmetically tiny and droplets collide with
+   `RoomBounds | BuddyParts` only, so they cannot disturb a loose object or each other. The
+   sprayer harms through Burning and has no knockback lane at all.
+
+**Burning is the only harm lane.** A droplet's buddy contact does exactly two things: it
+refreshes the burn and it records which part is alight. It never reaches the contact pipeline
+as an impact source, so a stream can never double-dip as both impact pain and burn pain — the
+`burning_status` scenario asserts that every accepted `tool.fire_sprayer` event carries the
+burn's own interaction id. Pain arrives only on the burn's own cadence, through the same
+contact-free `ApplyBlastImpulse` entry the grenade blast uses, so the shared curve, the
+knockout window, the payout, the harmful memory and the `min(10, pain x 0.1)` mood loss are
+untouched machinery. One burn is one interaction id, re-minted when a lapsed burn reignites.
+
+**Panic is one snapshot bool.** `BehaviorPriority.Hazard` was already reserved and plumbed, so
+Burning sets `BehaviorSnapshot.HazardPresent` and the existing ladder does the rest: priority
+`3` outranks `ObjectAction`, so a committed catch or eat aborts through the existing
+higher-priority abort — which *is* "drops held items" — and stays below `Unconscious`, so a
+knocked-out burning buddy lies there and burns. No new behavior system exists in this slice.
+
+**The FR-017.3 effects seam ships here, not in the M7 accessibility pass.** `ProgressSave`
+already carried `ReducedMotion`, `ScreenShake`, `ReducedParticles` and `PhotosensitivitySafe`
+with nothing reading them. This slice adds the `EffectsSettings` snapshot the composition root
+hands to presentation components, because a shipped effect that ignores the setting is exactly
+what FR-017.3 forbids. Two consequences worth recording:
+
+- **Gameplay never reads it.** The `burning_status` scenario sprays one pinned pose twice
+  under the permissive and the most restrictive settings and asserts identical events, pain,
+  mood and droplets, with only the drawable-droplet count differing. Determinism must not vary
+  with accessibility.
+- **`ScreenShake = false` now silences the whole `CameraKickComponent` lane**, pistol and
+  grenade kicks included. Shipping the seam while leaving the one existing shake setting dead
+  would have been absurd; it is flagged here rather than done silently.
+
+**Selection key `S`, not `H`.** The Task 7 plan suggested `H` from what it believed was the
+free map. `H` already toggles the laboratory telemetry panel, and one key doing two unrelated
+things is the kind of collision that only surfaces half-way through a tuning session.
+
+**Feel gate outstanding.** `data/catalogue/tool_fire_sprayer.tres` stays `Visible = false`
+until the owner plays it on real Windows, so the `m5_fire_sprayer` journey's catalogue leg
+asserts today's real promise — carried at its authored price, not advertised — and flips to a
+sale by editing one authored flag.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

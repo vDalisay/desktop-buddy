@@ -248,6 +248,51 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   milli-credits), `tool.grenade` enters harmful memory, and the buddy then leaves the next
   grenade strictly alone for `600` ticks.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
+- The `burning_status` scenario is the Fire Sprayer and Burning gate (M5 Task 7), run under
+  seeds `1/7/13` in both presentation modes. It proves on the real composition that the
+  stream runs only while primary is held and stops on the tick it is released (`60` held
+  ticks emit exactly `15` droplets at the authored `4`-tick interval, and none afterwards);
+  that droplets are bounded by their own `48`-slot pool and never change
+  `LooseObjectRegistry.Count` over a five-second spray; that contact grants `480` ticks and
+  sustained contact pins the remaining duration at the `960`-tick cap without ever exceeding
+  it; and that **a droplet never scores an impact** — every accepted `tool.fire_sprayer`
+  event is a burn tick carrying the burn's own interaction id, so one stream cannot
+  double-dip as both impact pain and burn pain.
+- The same scenario measures the burn economy, because `BurnEquivalentImpulse` is the only
+  authored damage quantity and everything after it is the shared curve. At the authored
+  `430` it scores `4.57` pain per event against the shipped conversion profile: `36.6` over
+  a full four-second burn, `73.1` over a sustained eight-second cap burn, and at most `45.7`
+  inside any rolling five-second window — so `a_full_cap_burn_never_knocks_out` is proven
+  rather than assumed (owner default 1). Mood loss is measured across the single routed tick
+  one event lands on, not across the whole burn, because persistent mood also carries the
+  shared passive drift; on that tick it is exactly `min(10, pain x 0.1)`.
+- Burning's panic is one snapshot bool, so the scenario asserts it through the *real* ladder:
+  a buddy holding a ball is set alight, priority `3` takes actuation from `ObjectAction`, and
+  the ball is released by the existing higher-priority abort. Burning survives a knockout
+  (a KO'd buddy lies there and keeps taking attributed ticks) and is cleared by the
+  centralized hard reposition, which is the sentence `DECISIONS.md` "Fail-safe cleanup"
+  already promised.
+- FR-017.3 is asserted as a *negative*: the same captured standing pose, pinned so ambient
+  autonomy cannot move it, is sprayed twice under `EffectsSettings.Default` and
+  `EffectsSettings.MostRestrictive`, measured over five whole pain intervals counted from
+  ignition. Both runs produce the same `5` events, the same `22.857` pain, the same `75`
+  droplets and the same burn at the cap; only the drawable-droplet count differs (`48` to
+  `16` under reduced particles). The flicker cap is measured at `3.00 Hz` in both
+  presentation modes while photosensitivity-safe effects are on — which is the shipped
+  default, so the safe look is the normal look and the faster `8 Hz` flicker is the opt-out —
+  and `ScreenShake = false` silences the whole `CameraKickComponent` lane, pistol and grenade
+  kicks included, rather than only this tool's effects.
+- The `m5_fire_sprayer` journey repeats the slice through real pointer, button, and key input
+  on seeds `1/7`, in both presentation modes: the catalogue carries `tool.fire_sprayer` at
+  its authored price but does **not** advertise it (the entry stays `Visible = false` until
+  the owner's feel gate passes, so the leg asserts today's real promise and flips to a sale
+  by editing one authored flag); the `S` key draws it — `S` rather than the plan's suggested
+  `H`, which already toggles the laboratory telemetry panel; pointer motion aims it on the
+  shared cursor-weapon convention; holding primary sprays a stream that sets the buddy
+  alight; the burn hurts and pays (`4.57` pain per event) and enters harmful memory; the
+  burning buddy panics at priority `3`; releasing primary stops the stream on the tick it is
+  let go, which is this tool's whole cancel path; and holstering the sprayer does not put the
+  fire out.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - The `baseball_pullback` scenario drives Baseball through the real pointer input path and
   verifies key-`5` cursor spawning without selection changes, single-ball replacement,

@@ -69,6 +69,16 @@ public partial class FireSprayerComponent : Node2D
 
     public float AimOffsetDegrees => _aim.OffsetDegrees;
 
+    /// <summary>
+    /// Smoothed pointer speed in pixels per routed tick, and whether it is above the authored
+    /// gate. Exposed for the same reason the gun exposes them: "is the player aiming right
+    /// now" is what decides when the wheel offset survives, and it is the only honest way for
+    /// a scripted run to wait for an aim to come to rest instead of guessing a tick count.
+    /// </summary>
+    public float AimSmoothedSpeed { get; private set; }
+
+    public bool AimIsSteering { get; private set; }
+
     public Vector2 Cursor => _cursor;
 
     /// <summary>Where the drawn nozzle mouth is, or zero when nothing is drawn.</summary>
@@ -241,6 +251,8 @@ public partial class FireSprayerComponent : Node2D
             // stale direction would send the first droplet somewhere never pointed at.
             _aim = CursorAimState.Initial;
             AimForward = Vector2.Zero;
+            AimSmoothedSpeed = 0.0f;
+            AimIsSteering = false;
             _previousCursor = _cursor;
             QueueRedraw();
         }
@@ -264,6 +276,8 @@ public partial class FireSprayerComponent : Node2D
                 Profile.ToAimConstants()));
             _aim = aim.State;
             AimForward = aim.IsValid ? new Vector2(aim.Forward.X, aim.Forward.Y) : Vector2.Zero;
+            AimSmoothedSpeed = aim.SmoothedSpeed;
+            AimIsSteering = aim.IsSteering;
         }
 
         bool spraying = active && primary && AimForward != Vector2.Zero;

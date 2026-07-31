@@ -229,7 +229,10 @@ public partial class LabPointerGrabComponent : Node2D
                 Key.J => ToolId.Pistol,
                 Key.F => ToolId.Pet,
                 Key.T => ToolId.Tickle,
-                Key.H => ToolId.FireSprayer,
+                // S, not the plan's suggested H: H already toggles the laboratory telemetry
+                // panel, and one key doing two unrelated things is the kind of collision
+                // that only shows up as a mystery half-way through a tuning session.
+                Key.S => ToolId.FireSprayer,
                 _ => null,
             };
             if (selected.HasValue)

@@ -277,10 +277,44 @@ M5 Task 6 (Grenade) is **complete and owner-accepted** (2026-07-31) against
       in the plan's §3 (a live grenade stays live, "five bullets" is the solid reading,
       buy-once) were taken as written and are recorded in `DECISIONS.md`.
 
-**Next action:** start **M5 Task 7 (Burning + Fire Sprayer)** against
-`docs/M5_TASK7_BURNING_AND_FIRE_SPRAYER_PLAN.md`, whose owner-gate defaults were accepted
-pre-implementation on 2026-07-31 and which builds the FR-017.3 `EffectsSettings` seam that
-Tasks 8–10 then ride.
+M5 Task 7 (Burning + Fire Sprayer) — `docs/M5_TASK7_BURNING_AND_FIRE_SPRAYER_PLAN.md`,
+whose owner-gate defaults were accepted pre-implementation on 2026-07-31:
+
+- [x] Task A — `BurningStatusModel` (Domain): apply refreshes and caps at `960` ticks, the
+      first attributed pain event lands one full interval after ignition so the spray
+      contact itself scores nothing, expiry is silent and idempotent, and `Clear()` is the
+      immediate entry point the fail-safe (and later the Repair Kit) uses. Domain baseline
+      `999 → 1017`.
+- [x] Task B — `FireSprayerComponent` as a sibling of `CursorGunComponent` on the same
+      thin-driver shape, and deliberately **not** a `GunProfile`: hold-to-stream with no
+      press edge, no magazine, no reload and no dry-fire. Pooled `SprayDropletBody` copies
+      `ProjectileBody`'s pooling and layer discipline and not its damage path; the lateral
+      fan is an eight-wide triangle wave driven by the droplet's own index, never a random
+      source. Selection key `S` (not the plan's suggested `H`, which already toggles the
+      telemetry panel), laboratory unlock grant, `data/tools/fire_sprayer.tres`.
+- [x] Task C — Burning is the only harm lane. Each due event goes through the sanctioned
+      contact-free `ApplyBlastImpulse` entry, so the shared curve, knockout window, payout,
+      harmful memory and `min(10, pain x 0.1)` mood loss are untouched machinery.
+      `BurnEquivalentImpulse` tuned `200 → 430`: `4.57` pain per event, `36.6` over a
+      four-second burn, `73.1` at the eight-second cap, at most `45.7` in any rolling
+      five-second window — painful, profitable, and never a knockout by itself. Panic is one
+      snapshot bool (`BehaviorArbiter.SetStatusHazard`), so the drop and the flee come from
+      the existing priority-3 ladder; the hard reposition now really clears Burning.
+- [x] Task D — the FR-017.3 `EffectsSettings` seam that Tasks 8–10 ride, plus `FireVisual2D`
+      / `FireVisual3D` (flame body, index-fanned ember motes, `3 Hz` flicker cap while
+      photosensitivity-safe) and `FireAudioComponent` (looped spray hiss, ignition whumpf,
+      counters as oracles). Shipping the seam made the one existing shake setting live:
+      `ScreenShake = false` now silences the whole `CameraKickComponent` lane.
+- [x] Task E — `burning_status` (13 checks, seeds `1/7/13`, both presentations) and the
+      `m5_fire_sprayer` journey (9 assertions, seeds `1/7`, both presentations), both
+      registered in `ScenarioCatalog`, `TEST_PLAN.md`, and the quick suite (now 30 steps).
+- [ ] Task F — **owner feel gate, outstanding.** The owner plays it on real Windows, then
+      `tool_fire_sprayer.tres` goes `Visible = true` and the journey's catalogue leg becomes
+      a real purchase. The four §3 rules are already settled (accepted 2026-07-31,
+      pre-implementation); the gate owns only the tuning numbers.
+
+**Next action:** the **M5 Task 7 owner feel gate** above, then M5 Task 8 (Soccer Ball +
+Drink) against `docs/M5_TASK8_SOCCER_BALL_AND_DRINK_PLAN.md`.
 
 Everything before it is closed: `docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` is complete
 and owner-accepted (both guns shop-visible; §4.1's aim constants accepted as authored rather

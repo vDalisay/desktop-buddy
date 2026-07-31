@@ -1,0 +1,41 @@
+{
+  "id": "m5_fire_sprayer",
+  "description": "The Fire Sprayer end to end: the catalogue carries it at its authored price but does not advertise it until the owner's feel gate passes, the lab's tool key draws it, pointer motion aims it on the shared cursor-weapon convention, holding primary sprays a real stream that sets the buddy alight, the burn hurts and pays through the shared curve and is remembered as harmful, the burning buddy panics at priority 3, releasing primary stops the stream on the tick it is let go, and holstering the tool does not put the fire out.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_fire_sprayer",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    {
+      "predicate": "the_catalogue_carries_the_sprayer_but_does_not_advertise_it_yet"
+    },
+    {
+      "predicate": "sprayer_key_draws_a_sprayer_with_no_magazine"
+    },
+    {
+      "predicate": "pointer_motion_aims_the_sprayer"
+    },
+    {
+      "predicate": "holding_primary_sprays_a_stream_that_sets_the_buddy_alight"
+    },
+    {
+      "predicate": "the_burn_hurts_the_buddy_and_pays_for_it"
+    },
+    {
+      "predicate": "the_sprayer_is_remembered_as_harmful"
+    },
+    {
+      "predicate": "the_burning_buddy_panics"
+    },
+    {
+      "predicate": "releasing_primary_stops_the_stream"
+    },
+    {
+      "predicate": "holstering_the_sprayer_does_not_put_the_fire_out"
+    }
+  ]
+}
