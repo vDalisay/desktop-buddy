@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="FireSprayerProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/FireSprayerProfile.cs" id="1_sprayer"]
+
+[resource]
+resource_name = "ProvisionalM5FireSprayer"
+script = ExtResource("1_sprayer")
+ContentId = "tool.fire_sprayer"
+AimSmoothingHalfLifeTicks = 14.0
+MinimumAimSpeedPxPerTick = 0.35
+MaxAimTurnDegreesPerTick = 6.0
+WheelDegreesPerStep = 5.0
+MaximumAimOffsetDegrees = 60.0
+EmitIntervalTicks = 4
+SprayDropletSpeed = 700.0
+DropletGravityScale = 0.4
+DropletLifetimeTicks = 45
+DropletMaxTravelPx = 260.0
+SprayHalfAngleDegrees = 7.0
+MuzzleOffsetPx = 49.4
+DropletRadius = 1.5
+DropletMass = 0.05
+PoolCapacity = 48
+BurnApplyTicks = 480
+BurnCapTicks = 960
+BurnPainIntervalTicks = 60
+BurnEquivalentImpulse = 200.0
+FlameColor = Color(1, 0.603922, 0.235294, 1)
+FlameCoreColor = Color(1, 0.878431, 0.478431, 1)
+EmberColor = Color(1, 0.352941, 0.121569, 1)
+BodyColor = Color(0.227451, 0.247059, 0.294118, 1)
+AccentColor = Color(0.698039, 0.262745, 0.121569, 1)
+VisualLengthPx = 52.0
+MuzzleTipFraction = 0.95
+VisualDepthOffset = 144.0
+SafeFlickerHz = 3.0
+FullFlickerHz = 8.0
+EmberCount = 9
+EmberReachFactor = 2.4
+EmberCycleTicks = 72
+AudioVolumeDb = -12.0

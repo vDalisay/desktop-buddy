@@ -48,6 +48,7 @@ public partial class LabPointerGrabComponent : Node2D
     [Export] public PullbackLauncherComponent? LauncherTool { get; set; }
     [Export] public GrenadeComponent? GrenadeTool { get; set; }
     [Export] public CursorGunComponent? GunTool { get; set; }
+    [Export] public FireSprayerComponent? SprayerTool { get; set; }
 
     private bool _active;
     private bool _pendingPress;
@@ -125,6 +126,13 @@ public partial class LabPointerGrabComponent : Node2D
             // The trigger goes with the pointer. Shots already in flight are the
             // room's and keep travelling.
             GunTool.ClearCursor();
+        }
+
+        if (SprayerTool is not null && GodotObject.IsInstanceValid(SprayerTool))
+        {
+            // Same rule as the trigger: the stream stops with the pointer, and droplets
+            // already in the air are the room's and keep travelling.
+            SprayerTool.ClearCursor();
         }
 
         if (CursorTools is not null && GodotObject.IsInstanceValid(CursorTools))
@@ -221,6 +229,7 @@ public partial class LabPointerGrabComponent : Node2D
                 Key.J => ToolId.Pistol,
                 Key.F => ToolId.Pet,
                 Key.T => ToolId.Tickle,
+                Key.H => ToolId.FireSprayer,
                 _ => null,
             };
             if (selected.HasValue)
@@ -298,6 +307,19 @@ public partial class LabPointerGrabComponent : Node2D
                     GunTool.RequestReload();
                 if (_pendingWheelSteps != 0)
                     GunTool.ApplyWheel(_pendingWheelSteps);
+            }
+
+            if (SprayerTool is not null && GodotObject.IsInstanceValid(SprayerTool) &&
+                tool == ToolId.FireSprayer)
+            {
+                // No press edge and no reload: the stream simply follows the held state,
+                // and releasing primary stops it on the same routed tick.
+                SprayerTool.MoveCursor(cursor);
+                if (_pendingPress)
+                    SprayerTool.LatchPrimary();
+                SprayerTool.SetPrimaryHeld(IsPrimaryHeld);
+                if (_pendingWheelSteps != 0)
+                    SprayerTool.ApplyWheel(_pendingWheelSteps);
             }
         }
 
