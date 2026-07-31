@@ -124,6 +124,21 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   spin, since locking it halves the impulse the pain pipeline scores, so the claim is about the
   drawing). The `m5_pistol` journey repeats the slice through real pointer, wheel, button, and
   key input, including both the `R` reload and the dry-fire reload.
+- The same scenario pins the **aim feel** the owner reported as "choppy, as if locked to
+  different axes", with three checks that fire no shots because they are properties of the aim
+  rather than of the gun. `slow_leftward_travel_steers_the_aim_left`: pointer travel of under a
+  pixel per tick — everything the retired raw gate discarded, up to 120 px/s of deliberate
+  aiming — turns the aim all the way round (measured 82 ticks at 0.49 px/tick).
+  `aim_never_flips_on_release_jitter`: a pixel of backward slop as the hand lets go, then
+  stillness, leaves the aim within a degree of where it was (worst alignment `0.999`), where the
+  old last-raw-delta aim turned completely round on it. `sustained_reversal_completes_within_expected_ticks`:
+  a full reversal costs 39 ticks, pinned from **both** sides against the authored constants —
+  never fewer than the slew allows (`ceil(180 / MaxAimTurnDegreesPerTick)` = 30, so the aim
+  cannot have snapped) and never more than that plus three smoothing half-lives (72). The turn
+  rate is the owner's co-tuning dial, so the measured count is re-recorded here whenever it
+  moves. Each check was confirmed to bite by mutation: removing the smoothing fails only the
+  jitter check (`0.978`), removing the slew fails only the reversal check (10 ticks), and
+  restoring the retired 1 px/tick gate fails only the slow-travel check (the aim never turns).
 - **Aiming a gun in a test means moving its pointer, and that is a contract, not a detail.**
   The aim follows the direction the pointer has lately been travelling and turns at a bounded
   rate, so a cursor that teleports into position aims at wherever the jump pointed. Every

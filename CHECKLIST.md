@@ -181,6 +181,9 @@ follows the direction the pointer has lately been travelling instead of the late
 which is what stopped it snapping between 0/26/45 degrees. Consequence for tests: a gun
 cannot be aimed by teleporting its cursor — use `M4ObjectScenarioSupport.AimGunOver` or
 `JourneyRunner.AimAtPointAsync`. A press with no established aim no longer spends a round.
+Task C pinned the feel in `pistol_fire` (17 checks now): sub-pixel travel steers the aim,
+release jitter never flips it, and a reversal costs 39 ticks — bounded below by the authored
+turn rate so it cannot snap, and above by that plus three smoothing half-lives.
 
 **Home-Run Bat refinement** (`docs/M5_TASK4_HOME_RUN_BAT_FEEL_PLAN.md`):
 

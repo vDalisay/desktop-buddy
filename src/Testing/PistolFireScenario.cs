@@ -24,6 +24,21 @@ public sealed class PistolFireScenario : IScenario
 {
     private const int SettleTicks = 30;
 
+    /// <summary>Pointer travel per tick for the reversal pin: brisk, deliberate aiming.</summary>
+    private const float ReversalStepPx = 3.0f;
+
+    /// <summary>
+    /// The slop a hand leaves behind as it lets go of the mouse: backward first, then a
+    /// little rocking. Small, and pointed the opposite way to the aim, which is the shape
+    /// that used to turn the weapon completely round.
+    /// </summary>
+    private static readonly Vector2[] ReleaseJitter =
+    {
+        new(-1.0f, 0.0f),
+        new(-1.0f, 1.0f),
+        new(-1.0f, -1.0f),
+    };
+
     public string Id => "pistol_fire";
 
     public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
@@ -317,6 +332,90 @@ public sealed class PistolFireScenario : IScenario
             $"fired_right={firedRight} right_launch={rightLaunch} left_launch={leftLaunch} " +
             $"rounds_before={roundsBeforeLeft} rounds_after={gun.RoundsRemaining}"));
 
+        // --- Aim feel: the "choppy, locked to different axes" report (§1.5) ---
+        // Three properties of the aim rather than of the gun, so none of them pulls a
+        // trigger: slow travel steers, letting go of the mouse never swings the weapon,
+        // and a reversal is steered through instead of teleported. Each starts from a
+        // settled rightward aim near the right of the room, which leaves the whole width
+        // of the play area as the lane the pointer travels down.
+        var aimLane = new Vector2(room.End.X - 12.0f, room.GetCenter().Y);
+
+        await AimAt(tree, gun, aimLane, Vector2.Right);
+        float aimedRight = gun.AimForward.Dot(Vector2.Right);
+        // Deliberately under a pixel per tick, and derived from the authored gate so a
+        // co-tuning session cannot leave it below the speed the aim steers at. The
+        // retired raw threshold discarded every delta smaller than a whole pixel, which
+        // is 120 px/s: a slow deliberate aim to the left steered nothing at all, and the
+        // gun kept firing along the rightward direction the player had left behind.
+        float creepPx = Mathf.Min(0.9f, profile.MinimumAimSpeedPxPerTick * 1.4f);
+        int creepTicks = await DriftCursor(
+            tree,
+            gun,
+            aimLane,
+            new Vector2(-creepPx, 0.0f),
+            300,
+            () => gun.AimForward.Dot(Vector2.Left) > 0.999f);
+        checks.Add(new StartupCheck(
+            "slow_leftward_travel_steers_the_aim_left",
+            aimedRight > 0.99f && creepTicks > 0,
+            $"step={creepPx:F2}px/tick gate={profile.MinimumAimSpeedPxPerTick:F2}px/tick " +
+            $"aimed_right={aimedRight:F3} ticks={creepTicks} forward={gun.AimForward} " +
+            $"cursor={gun.Cursor}"));
+
+        // A hand letting go of the mouse: a pixel of backward slop with a little rocking,
+        // then stillness. Backward is the case that matters, because the old aim was the
+        // last raw delta normalized — a single pixel of slop turned the weapon completely
+        // round, and the shot after it went the other way.
+        await AimAt(tree, gun, aimLane, Vector2.Right);
+        Vector2 jitterCursor = aimLane;
+        float worstJitter = gun.AimForward.Dot(Vector2.Right);
+        foreach (Vector2 slop in ReleaseJitter)
+        {
+            jitterCursor += slop;
+            gun.MoveCursor(jitterCursor);
+            await Tick(tree);
+            worstJitter = Mathf.Min(worstJitter, gun.AimForward.Dot(Vector2.Right));
+        }
+
+        // Then the hand simply stops. The gate has hysteresis rather than decay, so the
+        // aim has to hold exactly where it was left instead of drifting back to anything.
+        for (int tick = 0; tick < 90; tick++)
+        {
+            await Tick(tree);
+            worstJitter = Mathf.Min(worstJitter, gun.AimForward.Dot(Vector2.Right));
+        }
+
+        checks.Add(new StartupCheck(
+            "aim_never_flips_on_release_jitter",
+            worstJitter > 0.99f && !gun.AimIsSteering,
+            $"worst_alignment={worstJitter:F3} settled={!gun.AimIsSteering} " +
+            $"smoothed_speed={gun.AimSmoothedSpeed:F3} forward={gun.AimForward}"));
+
+        // The turn rate is the owner's co-tuning dial (plan §4.1), so it is pinned from
+        // both sides against the authored numbers: a reversal may not cost less than the
+        // slew itself allows — that would mean the aim snapped somewhere — and it may not
+        // cost more than the slew plus the time the smoothed velocity needs to change its
+        // mind. Re-record the measured count here whenever the dial moves.
+        await AimAt(tree, gun, aimLane, Vector2.Right);
+        int reversalTicks = await DriftCursor(
+            tree,
+            gun,
+            aimLane,
+            new Vector2(-ReversalStepPx, 0.0f),
+            240,
+            () => gun.AimForward.Dot(Vector2.Left) > 0.999f);
+        int slewFloor = Mathf.CeilToInt(180.0f / profile.MaxAimTurnDegreesPerTick);
+        int reversalBudget = slewFloor + Mathf.CeilToInt(3.0f * profile.AimSmoothingHalfLifeTicks);
+        checks.Add(new StartupCheck(
+            "sustained_reversal_completes_within_expected_ticks",
+            reversalTicks >= slewFloor && reversalTicks <= reversalBudget,
+            $"ticks={reversalTicks} slew_floor={slewFloor} budget={reversalBudget} " +
+            $"turn={profile.MaxAimTurnDegreesPerTick:F1}deg/tick " +
+            $"half_life={profile.AimSmoothingHalfLifeTicks:F0}ticks forward={gun.AimForward}"));
+
+        messages.Add(
+            $"creep_ticks={creepTicks} reversal_ticks={reversalTicks} " +
+            $"worst_release_alignment={worstJitter:F3}");
         messages.Add(
             $"spent_without_aim={gun.ShotsSpentWithoutAim} " +
             $"body_spin={Mathf.RadToDeg(pointBlank.MaxSpinRadians):F1}deg " +
@@ -344,6 +443,36 @@ public sealed class PistolFireScenario : IScenario
         Vector2 cursor,
         Vector2 direction) =>
         await M4ObjectScenarioSupport.AimGunOver(tree, gun, cursor, direction);
+
+    /// <summary>
+    /// Walks the cursor by a fixed step every tick from <paramref name="start"/> and
+    /// reports how many ticks it took for <paramref name="until"/> to hold, or <c>-1</c>
+    /// if it never did within <paramref name="maxTicks"/>.
+    ///
+    /// <para>Unlike <see cref="AimAt"/>, which delivers an aim, this delivers the travel
+    /// itself: the shape and the speed of the pointer motion are what these checks are
+    /// about, so they cannot be handed to a helper that decides them.</para>
+    /// </summary>
+    private static async Task<int> DriftCursor(
+        SceneTree tree,
+        CursorGunComponent gun,
+        Vector2 start,
+        Vector2 stepPerTick,
+        int maxTicks,
+        System.Func<bool> until)
+    {
+        Vector2 cursor = start;
+        for (int tick = 1; tick <= maxTicks; tick++)
+        {
+            cursor += stepPerTick;
+            gun.MoveCursor(cursor);
+            await Tick(tree);
+            if (until())
+                return tick;
+        }
+
+        return -1;
+    }
 
     /// <summary>
     /// Waits for a held-still pointer's smoothed aim to fall back below the steering gate,

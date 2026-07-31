@@ -15,10 +15,11 @@ Task H is still the owner's. Implementation may start at Task A.
 this same slice, sharing the whole platform and differing only in model, ammo, power, speed,
 and presentation punctuation (screenshake, muzzle flash, dropped magazine). Both guns get
 doubled, 3D-looking visuals and a floaty, relaxed aim.
-**Baseline (2026-07-31, all green and must stay green):** build 0/0 · domain **971/971** ·
-quick suite 26/26 · scenario `pistol_fire` (11 checks, seeds 1/7/13 + legacy presentation) ·
-journey `m5_pistol` (10 assertions, seeds 1/7, both presentations). The `971` figure is
-current; `836/648/429` in older logs are historical baselines — do not check against them.
+**Baseline (updated through Task C, 2026-07-31, all green and must stay green):** build 0/0 ·
+domain **979/979** · quick suite 26/26 · scenario `pistol_fire` (**17 checks**, seeds 1/7/13,
+both presentations) · journey `m5_pistol` (10 assertions, seeds 1/7/13, both presentations).
+The `979` figure is current; `971/836/648/429` in older logs are historical baselines — do not
+check against them.
 
 ---
 
@@ -505,7 +506,30 @@ Godot references; allocation-free.
 hysteresis, wheel edge cases, determinism); 971 baseline untouched; `pistol_fire` green
 using the new `AimGunOver` helper.
 
-**Task C — Left-shot regression scenario.** Extend `pistol_fire` (or add `gun_aim_feel`
+**Task C — DONE 2026-07-31.** `pistol_fire` was extended rather than split: the two
+firing-side checks landed with Task A's fixes, and the aim-feel checks belong beside them —
+one lab load, one place to read the whole reported defect. **17 checks now** (was 14). The
+three new ones fire no shots, because all three are properties of the aim rather than of the
+gun: `slow_leftward_travel_steers_the_aim_left` (0.49 px/tick, derived from the authored gate
+and deliberately under the retired 1 px/tick floor, turns the aim right round in **82 ticks**),
+`aim_never_flips_on_release_jitter` (a pixel of backward slop as the hand lets go, then 90
+still ticks: worst alignment **0.999**, and the aim is below the steering gate at the end), and
+`sustained_reversal_completes_within_expected_ticks` (**39 ticks** at 3 px/tick, pinned from
+both sides — never under `ceil(180/MaxAimTurnDegreesPerTick)` = 30, so the aim cannot have
+snapped, and never over that plus three smoothing half-lives = 72). The reversal pin is the one
+Task F re-records after the co-tuning session.
+
+Added beyond the accept list, and worth the ten minutes: **each new check was confirmed to
+bite**, by mutating the model and watching exactly one of them fail. Smoothing removed
+(`smoothed = motion`) → only the jitter check fails at `0.978`. Slew removed
+(`forward = target`) → only the reversal check fails at 10 ticks. The retired raw gate restored
+(`MinimumAimSpeedPxPerTick = 1.0`) → only the slow-travel check fails, with the aim never
+turning at all. All three mutations were reverted; a pin that cannot fail is not a pin.
+*Verified:* build 0/0 · domain **979/979** · quick suite 26/26 · `pistol_fire` seeds 1/7/13 ·
+`m5_pistol` seeds 1/7/13 · both presentations for each, and the three aim measurements are
+identical across every seed and both modes, as a deterministic pointer path should be.
+
+**Task C (original text) — Left-shot regression scenario.** Extend `pistol_fire` (or add `gun_aim_feel`
 and register it in `ScenarioCatalog` + `TEST_PLAN.md`): fire right → synthetic pointer
 exit/re-enter → aim left → single click fires left.
 *Accept:* `right_then_left_first_click_fires_left`,
@@ -533,8 +557,9 @@ regressions green.
 aim constants; run the session; commit the accepted values into both `.tres` files and
 record them here.
 *Accept:* owner accepts the aim feel in the lab; accepted constants recorded in §4.1's
-table; a `sustained_reversal_completes_within_expected_ticks` scenario pin updated to the
-accepted turn rate.
+table; the `sustained_reversal_completes_within_expected_ticks` scenario pin (Task C, in
+`pistol_fire`) re-measured against the accepted turn rate — its bounds derive from the
+authored constants, so only the recorded tick count in §6 and `TEST_PLAN.md` moves.
 
 **Task G — Real-pistol punctuation.** §4.6: `CameraKickComponent`, muzzle flash, magazine
 drop pool.
