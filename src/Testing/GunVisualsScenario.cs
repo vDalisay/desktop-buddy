@@ -11,7 +11,8 @@ namespace DesktopBuddy.Testing;
 /// <summary>
 /// The drawn gun (plan Task E). Everything here is presentation, and the point of every
 /// check is that the presentation cannot lie about the gameplay underneath it: the barrel
-/// the player sees points where the shot goes, it never stands on its head, and rounds are
+/// the player sees points where the shot goes, it never stands on its head or inverts its
+/// lighting basis, and rounds are
 /// born at the visible muzzle rather than at some unrelated authored offset.
 ///
 /// <para>Run in <b>both</b> presentation modes. The 3D presenter and the legacy 2D drawing
@@ -93,12 +94,22 @@ public sealed class GunVisualsScenario : IScenario
 
         // Screen Y grows downward, so a gun the right way up hangs its grip at positive Y
         // whichever way it points. Rotating a side-on gun past vertical instead of
-        // mirroring it is exactly what this check exists to catch.
+        // rolling it around the barrel axis is exactly what this check exists to catch.
         checks.Add(new StartupCheck(
             "gun_is_never_upside_down",
             right.GripDown.Y > 0.5f && left.GripDown.Y > 0.5f,
             $"right_grip={right.GripDown} left_grip={left.GripDown} " +
             $"mirrored_right={right.Mirrored} mirrored_left={left.Mirrored}"));
+
+        // A negative-scale mirror looks correct geometrically but reverses the mesh's
+        // normals, making the left-facing gun shade black under the shared 3D light rig.
+        // Both orientations must be proper rotations (positive determinant).
+        checks.Add(new StartupCheck(
+            "gun_visual_keeps_a_positive_lighting_basis",
+            !is3D ||
+            (right.VisualBasisDeterminant > 0.99f && left.VisualBasisDeterminant > 0.99f),
+            $"mode={lab.Mode} right_det={right.VisualBasisDeterminant:F3} " +
+            $"left_det={left.VisualBasisDeterminant:F3}"));
 
         // --- Rounds leave the barrel the player can see ---
         // Both guns, because the muzzle is authored per profile and the agreement between
@@ -206,7 +217,8 @@ public sealed class GunVisualsScenario : IScenario
                 visual.GripDirection2D,
                 visual.MuzzlePoint2D,
                 visual.IsMirrored,
-                gun.AimForward.Normalized());
+                gun.AimForward.Normalized(),
+                visual.VisualBasisDeterminant);
         }
 
         Vector2 forward = gun.AimForward;
@@ -217,7 +229,8 @@ public sealed class GunVisualsScenario : IScenario
             down,
             gun.VisualMuzzle2D,
             forward.X < 0.0f,
-            forward);
+            forward,
+            1.0f);
     }
 
     private readonly record struct Sighting(
@@ -226,5 +239,6 @@ public sealed class GunVisualsScenario : IScenario
         Vector2 GripDown,
         Vector2 Muzzle,
         bool Mirrored,
-        Vector2 Aim);
+        Vector2 Aim,
+        float VisualBasisDeterminant);
 }

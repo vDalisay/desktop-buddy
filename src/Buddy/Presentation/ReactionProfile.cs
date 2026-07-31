@@ -8,6 +8,7 @@ namespace DesktopBuddy.Buddy.Presentation;
 public partial class ReactionProfile : GameResource
 {
     [Export(PropertyHint.Range, "0,5,0.01")] public double PainFaceSeconds { get; set; } = 0.45;
+    [Export(PropertyHint.Range, "0,5,0.01")] public double PistolSadFaceSeconds { get; set; } = 1.5;
     [Export(PropertyHint.Range, "0,5,0.01")] public double DelightFaceSeconds { get; set; } = 0.6;
     [Export(PropertyHint.Range, "0,5,0.01")] public double AcuteFearSeconds { get; set; } = 1.0;
     [Export(PropertyHint.Range, "0,10,0.01")] public double LearnedThreatFaceTailSeconds { get; set; } = 5.0;
@@ -30,7 +31,8 @@ public partial class ReactionProfile : GameResource
     public override Godot.Collections.Array<string> Validate()
     {
         var errors = new Godot.Collections.Array<string>();
-        if (PainFaceSeconds < 0 || DelightFaceSeconds < 0 || AcuteFearSeconds < 0 ||
+        if (PainFaceSeconds < 0 || PistolSadFaceSeconds < 0 ||
+            DelightFaceSeconds < 0 || AcuteFearSeconds < 0 ||
             LearnedThreatFaceTailSeconds < 0 || LaughFaceSeconds < 0 ||
             PetCompletionFaceSeconds < 0)
             errors.Add("reaction durations must be non-negative");

@@ -14,6 +14,7 @@ using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Damage;
+using DesktopBuddy.Domain.Economy;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
@@ -721,6 +722,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5PistolAsync(state, lab);
         }
+        else if (exercise == "m5_grenade")
+        {
+            await ExerciseM5GrenadeAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -1131,6 +1136,201 @@ public partial class JourneyRunner : Node
             $"impulse={homeRunImpact.Impulse:F1} freeze=(" +
             $"{lab.SwingHitLag.TriggerCount},{lab.SwingHitLag.FrozenFrameCount}) " +
             $"recovery={sawRecovery}/{returnedToGrip} resumed={launchResumed}");
+    }
+
+    /// <summary>
+    /// The M5 Grenade slice end to end, through real input: the shop still refuses one and
+    /// an unowned spawn key places nothing, a buddy that has never met a grenade is curious
+    /// and catches a pinned one like a ball, the pullback chord's first secondary press
+    /// pulls the pin and the throw starts the three-second fuse, the blast hurts the buddy
+    /// through the shared curve and teaches it that grenades are harmful, and the next one
+    /// is left strictly alone.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5GrenadeAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        GrenadeComponent grenades = lab.Grenades;
+        LooseObjectProfile? grenadeProfile = FindLaunchable(lab, ContentIds.ToolGrenade);
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
+
+        // --- The shop will not sell one yet ---
+        // The catalogue entry stays `Visible = false` until the owner's feel gate, and the
+        // shop refuses it for exactly that reason rather than for the balance. Ownership
+        // in this journey comes from the development laboratory catalogue, the same way
+        // every other unreleased M5 tool is granted; when the owner flips the entry
+        // visible this refusal becomes a real purchase.
+        PurchaseResult refused = lab.Economy.Purchase(ContentIds.ToolGrenade);
+        Vector2 bench = new(
+            Mathf.Clamp(torso.X + (side * 140.0f), room.Position.X + 130.0f, room.End.X - 130.0f),
+            Mathf.Clamp(torso.Y, room.Position.Y + 40.0f, room.End.Y - 40.0f));
+
+        state["the_grenade_is_not_on_sale_until_the_owner_gates_it"] =
+            !refused.Succeeded &&
+            refused.Status == PurchaseStatus.NotAvailable &&
+            grenadeProfile is not null &&
+            lab.Progress.IsToolUnlocked(ContentIds.ToolGrenade) &&
+            lab.Objects.Count == 0;
+
+        Log.Info(
+            "Journey",
+            $"M5 grenade gate: refused={refused.Status} succeeded={refused.Succeeded} " +
+            $"owned={lab.Progress.IsToolUnlocked(ContentIds.ToolGrenade)} " +
+            $"objects={lab.Objects.Count} profile={grenadeProfile?.ContentId ?? "<none>"}");
+
+        // --- Curious: a buddy that has never met a grenade catches a pinned one ---
+        LooseObjectBody? gift = M4ObjectScenarioSupport.SpawnCleanThrow(
+            lab, profile: grenadeProfile);
+        bool caught = await M4ObjectScenarioSupport.WaitForPhase(
+            tree, lab, ObjectPhase.Hold, 600);
+        state["curious_buddy_catches_an_unfamiliar_grenade"] =
+            gift is not null &&
+            caught &&
+            grenades.Tracked == gift &&
+            grenades.Stage == GrenadeFuseStage.Pinned &&
+            grenades.DetonationCount == 0 &&
+            !lab.Pipeline.IsToolHarmful(ContentIds.ToolGrenade);
+
+        // --- The spawn key, the pin, and the throw ---
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, bench, 0);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.Key7);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Launcher.CurrentLaunchableContentId == ContentIds.ToolGrenade &&
+                  grenades.Tracked is not null,
+            30);
+        LooseObjectBody? live = grenades.Tracked;
+        state["the_grenade_key_places_one_owned_grenade"] =
+            live is not null &&
+            live.SemanticContentId == ContentIds.ToolGrenade &&
+            lab.Objects.Count == 1 &&
+            grenades.Stage == GrenadeFuseStage.Pinned &&
+            !lab.Grab.IsGrabbing;
+        if (live is null)
+            return;
+
+        // Let it fall to the floor and settle before reaching for it: the spawn key places
+        // it at the pointer, in mid-air, and a click aimed at where it was born misses.
+        for (int tick = 0; tick < 90; tick++)
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        Vector2 pick = live.GlobalPosition;
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, pick, 0);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Left, pressed: true, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Grab.IsGrabbing && lab.Grab.CurrentGrab.Target == live, 60);
+
+        int pinsBefore = grenades.PinDropCount;
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Right, pressed: true,
+            MouseButtonMask.Left | MouseButtonMask.Right);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => lab.Launcher.IsAiming, 30);
+        bool pinOutWhileHeld = grenades.PinIsOut && !grenades.IsCountingDown;
+
+        // Pull back away from the buddy and let go: a short pull, so it lands near the
+        // buddy rather than crossing the room. This is the Baseball's chord exactly.
+        Vector2 pull = pick + new Vector2(side * 34.0f, -14.0f);
+        await M4ObjectScenarioSupport.MovePointer(
+            tree, lab, pull, MouseButtonMask.Left | MouseButtonMask.Right);
+        for (int tick = 0; tick < 20; tick++)
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pull, MouseButton.Right, pressed: false, MouseButtonMask.Left);
+        bool launched = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Launcher.LaunchCount >= 1 && grenades.IsCountingDown, 60);
+        long releaseTick = lab.Controls.RoutedPhysicsTicks;
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pull, MouseButton.Left, pressed: false, 0);
+
+        Log.Info(
+            "Journey",
+            $"M5 grenade throw: pins={grenades.PinDropCount - pinsBefore} " +
+            $"pin_out_while_held={pinOutWhileHeld} launched={launched} " +
+            $"counting={grenades.IsCountingDown} remaining={grenades.FuseTicksRemaining} " +
+            $"grabbing={lab.Grab.IsGrabbing} launches={lab.Launcher.LaunchCount}");
+
+        state["the_pullback_throw_pulls_the_pin_and_starts_the_fuse"] =
+            grenades.PinDropCount == pinsBefore + 1 &&
+            pinOutWhileHeld &&
+            launched &&
+            grenades.IsCountingDown &&
+            grenades.FuseTicksRemaining > 0 &&
+            !lab.Grab.IsGrabbing;
+
+        // --- It goes off on its own, and it hurts ---
+        float blastPain = 0.0f;
+        long blastMilli = 0;
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (impact.ContentId != ContentIds.ToolGrenade)
+                return;
+            blastPain += impact.Pain;
+            blastMilli += impact.MilliCredits;
+        }
+
+        lab.Pipeline.ImpactAccepted += OnImpact;
+        long balanceBefore = lab.Progress.BalanceMilliCredits;
+        int detonationsBefore = grenades.DetonationCount;
+        bool detonated = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => grenades.DetonationCount > detonationsBefore, 600);
+        long blastTick = lab.Controls.RoutedPhysicsTicks;
+        for (int tick = 0; tick < 30; tick++)
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+
+        state["the_thrown_grenade_explodes_three_seconds_later"] =
+            detonated &&
+            blastTick - releaseTick <= grenades.Profile.FuseTicks + 4 &&
+            blastTick - releaseTick >= grenades.Profile.FuseTicks - 8 &&
+            lab.Objects.Count == 0;
+        state["the_blast_hurts_the_buddy_and_pays_for_it"] =
+            blastPain > 0.0f &&
+            blastMilli > 0 &&
+            lab.Progress.BalanceMilliCredits > balanceBefore;
+        state["the_grenade_is_remembered_as_harmful"] =
+            lab.Pipeline.IsToolHarmful(ContentIds.ToolGrenade);
+
+        // --- And the next one is left strictly alone ---
+        await M4ObjectScenarioSupport.WaitFor(
+            tree, () => !lab.Pipeline.LastKnockoutState.KnockoutActive, 900);
+        int catchesBefore = lab.Buddy.ObjectInteraction.CleanCatchCount;
+        LooseObjectBody? feared = M4ObjectScenarioSupport.SpawnCleanThrow(
+            lab, profile: grenadeProfile);
+        bool everHeld = false;
+        for (int tick = 0; tick < 600; tick++)
+        {
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            everHeld |= lab.Buddy.ObjectInteraction.IsHolding;
+        }
+
+        state["harmed_buddy_leaves_the_next_grenade_alone"] =
+            feared is not null &&
+            !everHeld &&
+            lab.Buddy.ObjectInteraction.CleanCatchCount == catchesBefore &&
+            grenades.DetonationCount == detonationsBefore + 1;
+
+        Log.Info(
+            "Journey",
+            $"M5 grenade pins={grenades.PinDropCount} detonations={grenades.DetonationCount} " +
+            $"fuse={blastTick - releaseTick} ticks blast_pain={blastPain:F2} " +
+            $"milli={blastMilli} harmful={lab.Pipeline.IsToolHarmful(ContentIds.ToolGrenade)} " +
+            $"caught_first={caught} held_second={everHeld}");
+    }
+
+    /// <summary>The launcher's authored profile for one launchable, or <c>null</c>.</summary>
+    private static LooseObjectProfile? FindLaunchable(BuddyLab lab, string contentId)
+    {
+        foreach (LooseObjectProfile profile in lab.Launcher.LaunchableProfiles)
+        {
+            if (GodotObject.IsInstanceValid(profile) && profile.ContentId == contentId)
+                return profile;
+        }
+
+        return null;
     }
 
     /// <summary>

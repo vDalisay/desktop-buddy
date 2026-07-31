@@ -2,6 +2,7 @@ using System;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Damage;
 using DesktopBuddy.Domain.Economy;
+using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Persistence;
 
 namespace DesktopBuddy.Economy;
@@ -51,9 +52,11 @@ public sealed class EconomyService
         float pain,
         PayoutRegion region,
         DamageConsciousness consciousness,
-        double now)
+        double now,
+        ImpactMoodEffect moodEffect = default)
     {
-        long milli = _progress.AcceptDamage(contentId, pain, region, consciousness, now);
+        long milli = _progress.AcceptDamage(
+            contentId, pain, region, consciousness, now, moodEffect);
         if (milli != 0)
         {
             BalanceChanged?.Invoke(_progress.BalanceMilliCredits);

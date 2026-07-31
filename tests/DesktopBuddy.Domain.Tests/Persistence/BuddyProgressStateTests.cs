@@ -57,6 +57,45 @@ public sealed class BuddyProgressStateTests
     }
 
     [Fact]
+    public void EnjoyedImpactPaysAndTracksPainButRaisesMoodWithoutHarmfulMemory()
+    {
+        BuddyProgressState state = NewSave();
+
+        long milli = state.AcceptDamage(
+            ContentIds.ToolNerfBlaster,
+            pain: 20.0f,
+            PayoutRegion.Torso,
+            DamageConsciousness.Conscious,
+            now: 1.0,
+            ImpactMoodEffect.Enjoyment(0.25f));
+
+        Assert.Equal(10_000, milli);
+        Assert.Equal(0.25f, state.Mood, 0.0005f);
+        Assert.False(state.IsContentHarmful(ContentIds.ToolNerfBlaster));
+        Assert.Equal(20_000, state.Statistics.TotalPainMilli);
+        Assert.Equal(20_000, state.Statistics.ToolPainMilli![ContentIds.ToolNerfBlaster]);
+        Assert.Equal(0, state.Statistics.CareAwards);
+    }
+
+    [Fact]
+    public void AnnoyingImpactUsesSharedPainMoodLossWithoutPersistentHarmfulMemory()
+    {
+        BuddyProgressState state = NewSave();
+
+        state.AcceptDamage(
+            ContentIds.ToolNerfBlaster,
+            pain: 40.0f,
+            PayoutRegion.Head,
+            DamageConsciousness.Conscious,
+            now: 1.0,
+            ImpactMoodEffect.Annoyance);
+
+        Assert.Equal(-4.0f, state.Mood, 0.0005f);
+        Assert.False(state.IsContentHarmful(ContentIds.ToolNerfBlaster));
+        Assert.Equal(-4.0f, state.Statistics.LowestMood, 0.0005f);
+    }
+
+    [Fact]
     public void DamageTracksLowestMoodAcrossRepeatedHits()
     {
         BuddyProgressState state = NewSave();

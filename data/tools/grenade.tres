@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="GrenadeProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/GrenadeProfile.cs" id="1"]
+
+[resource]
+resource_name = "M5GrenadeProvisional"
+script = ExtResource("1")
+ContentId = "tool.grenade"
+FuseTicks = 360
+EquivalentImpulseAtCenter = 1150.0
+BlastFullRadiusPx = 48.0
+BlastZeroRadiusPx = 180.0
+ShoveImpulseAtCenter = 900.0
+KickAmplitudePx = 4.0
+KickDecayTicks = 14
+FlashTicks = 3
+RingTicks = 20
+ThudMinImpactSpeed = 250.0
+ThudMinIntervalTicks = 12
+AudioVolumeDb = -6.0
+BodyColor = Color(0.290196, 0.364706, 0.2, 1)
+CapColor = Color(0.172549, 0.211765, 0.12549, 1)
+PinColor = Color(0.788235, 0.764706, 0.65098, 1)
+BlastColor = Color(1, 0.831373, 0.537255, 1)
+VisualDepthOffset = 140.0
+PinEjectSpeed = 90.0
+PinLingerTicks = 480

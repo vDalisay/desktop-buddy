@@ -6,7 +6,8 @@ Task 5 cursor-gun platform, after a code audit of the shipped implementation
 `LabPointerGrabComponent`). The audit found **identified root causes** for two of the three
 reported defects (§3); they are stated as findings to verify first, not guesses.
 **Owner SIGNED OFF 2026-07-31** — the plan and the §5 defaults are approved: proceed with the
-`tool.nerf_blaster` catalogue split (item 1), near-zero nerf pain via tuning (item 2), the
+`tool.nerf_blaster` catalogue split (item 1), near-zero nerf pain via tuning (item 2,
+superseded by the owner's restored-impact follow-up later that day), the
 cosmetic-only magazine (item 3), and the no-round-without-aim rule (item 5). The §4.1 aim
 constants remain provisional until the Task F co-tuning session; the final feel gate at
 Task H is still the owner's. Implementation may start at Task A.
@@ -18,8 +19,9 @@ doubled, 3D-looking visuals and a floaty, relaxed aim.
 **Baseline (updated through Task C, 2026-07-31, all green and must stay green):** build 0/0 ·
 domain **979/979** · quick suite 26/26 · scenario `pistol_fire` (**17 checks**, seeds 1/7/13,
 both presentations) · journey `m5_pistol` (10 assertions, seeds 1/7/13, both presentations).
-The `979` figure is current; `971/836/648/429` in older logs are historical baselines — do not
-check against them.
+The `979` figure is the Task C checkpoint; later sections record Task G at `981` and the
+gun-mood follow-up at `987`. The `971/836/648/429` figures in older logs are historical
+baselines — do not check against them.
 
 ---
 
@@ -96,10 +98,10 @@ check against them.
   "Hit-Lag Shake Gets Its Own Offset Lane".
 
 **Sacred rule (DECISIONS.md):** pain comes only from the measured solver impulse through the
-shared curve — **no per-gun damage multiplier anywhere**. "Nerf darts barely hurt" and
-"bullets actively hurt" must both be achieved with authored mass/speed (muzzle speed is the
-lever that moves pain; mass mostly decides shove), and both must be **measured** in the
-laboratory, not asserted.
+shared curve — **no per-gun damage multiplier anywhere**. Each gun's impact must be achieved
+with authored mass/speed (muzzle speed is the lever that moves pain; mass mostly decides
+shove) and **measured** in the laboratory, not asserted. The original near-zero Nerf target
+below was superseded by the owner's 2026-07-31 request to restore its pre-split impact.
 
 ## 3. Defect diagnosis — verify, then fix
 
@@ -330,6 +332,12 @@ is its identity. Author dart mass/speed so a point-blank head shot scores **at o
 pain through the unmodified curve** (measured, Task D). If the owner wants strictly zero,
 lower muzzle speed until measured zero — never touch the curve or add a multiplier.
 
+**Owner revision, 2026-07-31:** superseded. Restore the Nerf's pre-split impact-driving
+`2400` px/s speed and `0.3` mass. It remains visually a toy and keeps its dart gravity, but
+a connected shot retains physical pain, knockout, payout, and statistics through the same
+unmodified curve as every other projectile. The later gun-mood decision below owns whether
+that accepted physical hit raises or lowers mood and whether it creates harmful memory.
+
 ### 4.5 Visuals — doubled size, 3D like the bat, both presentation modes
 
 The gun has **no physical body** (nothing to `Attach` a `Body2DVisual3D` to), so add a
@@ -348,9 +356,10 @@ focused cursor-following presenter instead of forcing the slot abstraction:
 - **`src/Presentation3D/CursorGunVisual3D.cs`** — a `Node3D` presenter owned by the roots
   beside `CursorToolVisual3D`: maps the gun's cursor through `WorldPlaneMapping.To3D`,
   yaw-rotates to the component's `AimForward` (already slewed by §4.1 — no second smoothing
-  layer), and **mirrors vertically when the aim points left** so the grip stays down and the
-  gun is never upside-down. Visible only while `CursorGuns.IsActive`. `PerPixel` material,
-  existing lighting rig, no new lights.
+  layer), and **rolls 180° around the barrel axis when the aim points left** so the grip stays
+  down without a negative-scale reflection. The rendered basis must retain a positive
+  determinant so normals and lighting remain correct. Visible only while
+  `CursorGuns.IsActive`. `PerPixel` material, existing lighting rig, no new lights.
 - **Doubled size:** authored `VisualLengthPx = 56` (Nerf 64 — toys are chunky) versus the
   current 14 px line. `MuzzleOffsetPx` is **re-derived per profile to the mesh's actual
   muzzle-tip distance** so rounds are born at the visible barrel mouth (§3.1 Finding C) —
@@ -403,8 +412,8 @@ path. Each is authored per profile (Nerf authors zero/off for all three).
 |---|---|---|
 | `ContentId` | `tool.nerf_blaster` | `tool.pistol` |
 | Magazine / cadence / reload | 6 / 30 ticks / 120 ticks | 8 / 30 ticks / 144 ticks (spec §9.2) |
-| `MuzzleSpeed` | **1 100** (visible dart flight) | ~~2 760~~ **2 400** — 23 px/tick made close shots graze the rim; measured and reverted at Task D |
-| `ProjectileRadius` / `Mass` | 4.0 / 0.02 (foam) | 2.0 / 0.3 |
+| `MuzzleSpeed` | **2 400** (pre-split impact restored by owner) | ~~2 760~~ **2 400** — 23 px/tick made close shots graze the rim; measured and reverted at Task D |
+| `ProjectileRadius` / `Mass` | 4.0 / **0.3** (toy appearance; restored impact mass) | 2.0 / 0.3 |
 | `ProjectileGravityScale` | 0.15 (darts droop a little — toy identity) | 0 (ballistically flat across the room) |
 | Aim v2 constants | 10 / 0.35 / 9° | 14 / 0.35 / 6° (§4.1) |
 | `VisualLengthPx` / `MuzzleTipFraction` | 64 / ~0.95 | 56 / ~0.95 |
@@ -417,7 +426,7 @@ path. Each is authored per profile (Nerf authors zero/off for all three).
 Validation additions: `Visual3DKind` must be authored (no default silhouette);
 shake/flash/magazine fields finite and non-negative; the muzzle-offset/mesh-tip agreement
 rule (§4.5); everything existing (pool ≥ magazine, muzzle ceiling, spread rules) unchanged.
-The dart's droop plus 1 100 px/s must be checked against `ProjectileLifetimeTicks`/
+The dart's droop plus 2 400 px/s must be checked against `ProjectileLifetimeTicks`/
 `ProjectileMaxTravelPx` so darts still cross the room before expiring.
 
 ### 4.8 Gore hook (explicitly future, zero implementation now)
@@ -449,8 +458,8 @@ Needs an owner answer before the affected task (each has a stated default so wor
 1. **Catalogue split** (§4.4): recommendation is new `tool.nerf_blaster` + `tool.pistol`
    stays the real gun. *Default: recommendation.* Affects Task B naming only — the platform
    work is identical either way.
-2. **Nerf pain**: exactly zero, or "near-zero is fine"? *Default: near-zero via tuning,
-   measured.* (Strict zero is a muzzle-speed reduction, nothing else.)
+2. **Nerf pain — RESOLVED 2026-07-31:** neither; the owner restored the pre-split
+   `2400` px/s speed and `0.3` mass, so connected darts are harmful through the shared curve.
 3. **Magazine is cosmetic-only** (§4.6). *Default: cosmetic.* Pickable mags are a new
    loose-object decision.
 4. **Aim constants** (§4.1) are the co-tuning surface; the defaults are starting points for
@@ -582,7 +591,7 @@ point-blank pain (comparable to today's 85-class measurement), pistol vs nerf me
 impulse separation.
 *Accept:* enumeration tests updated and green; both guns selectable in the lab (`H`/`J`),
 per-gun magazines persist across swaps (already component behavior — assert it for two guns:
-`swapping_guns_preserves_each_magazine`); `nerf_dart_scores_no_meaningful_pain` and
+`swapping_guns_preserves_each_magazine`); `nerf_dart_restores_pre_split_impact` and
 `pistol_bullet_hurts_the_buddy` with recorded numbers; darts visibly droop, bullets fly flat.
 
 **Task E — DONE 2026-07-31 (engineering; the look itself is the owner's Task H gate).**
@@ -593,7 +602,7 @@ slewed aim with no second smoothing layer. The gun is **four times** the old 14 
 `VisualLengthPx` 64 (nerf) and 56 (pistol), with `MuzzleOffsetPx` re-derived to the drawn
 barrel mouth (60.8 and 53.2) and profile validation refusing any pair that drifts more than
 2 px apart. Legacy 2D draws the same silhouette flat, and both modes put the muzzle in the
-same place — measured gap `0.00 px`. New scenario `gun_visuals` (5 checks), run in both modes.
+same place — measured gap `0.00 px`. New scenario `gun_visuals` (now 6 checks), run in both modes.
 
 Three things worth recording:
 
@@ -603,16 +612,16 @@ Three things worth recording:
   stand off by *target distance plus the barrel*, or the shot is born past the head it is
   aimed at. `ProjectileBody.LaunchPosition` was added so a check can ask the body where it was
   born instead of walking its current position backwards.
-- **A left-facing gun is mirrored, not rotated.** Rotating a side-on gun past vertical stands
+- **A left-facing gun rolls around the barrel axis.** Rotating only in the screen plane stands
   it on its head; `gun_is_never_upside_down` pins the grip pointing down (screen +Y) on both
-  sides. The mirror is a negative scale, so the material disables backface culling.
+  sides. Owner follow-up replaced the original negative-scale reflection with a 180° local-X
+  roll so the mesh basis and normals retain determinant `+1` under the existing lights.
 - **`nerf_versus_pistol` now fires a three-shot volley per gun.** One aimed shot was measuring
   the buddy's pose as much as the gun: it walks, it leans, and on a 17 px head the difference
   between a square hit and a rim graze is the difference between `1180` impulse and `0`. Three
-  independent shots make the claims "a bullet that lands hurts" (best of three) and "not one
-  dart does" (all three), which is the stronger reading of both. Recorded: dart `21.5`–`22.7`
-  with `0.00` pain on 9 of 9 shots across seeds; bullet best `592`–`1180`, pain `13.9`–`41.0`,
-  separation `27`–`52×`.
+  independent shots originally pinned the near-zero tuning. That historical result was dart
+  `21.5`–`22.7` with `0.00` pain on 9 of 9 shots across seeds; it is superseded by the owner's
+  restored-impact follow-up recorded below.
 
 *Verified:* build 0/0 · domain 981/981 · quick suite 26/26 · `gun_visuals` both presentations ·
 `nerf_versus_pistol` seeds 1/7/13 + legacy · `pistol_fire` seeds 1/7/13 · `m5_pistol` seeds
@@ -634,7 +643,60 @@ table; the `sustained_reversal_completes_within_expected_ticks` scenario pin (Ta
 `pistol_fire`) re-measured against the accepted turn rate — its bounds derive from the
 authored constants, so only the recorded tick count in §6 and `TEST_PLAN.md` moves.
 
-**Task G — Real-pistol punctuation.** §4.6: `CameraKickComponent`, muzzle flash, magazine
+**Task G — DONE 2026-07-31.** The real Pistol now authors a non-stacking `1.5 px` camera
+kick on its own 2D/3D camera lane, a three-tick additive muzzle flare, four-tick
+presentation-only gun recoil, and a three-slot pool of cosmetic dropped magazines. A
+magazine is layer `0`, masks only `RoomBounds`, uses shape-cast CCD to remain contained
+during a routed-gameplay pause, never enters the loose-object registry or pain pipeline,
+fades, and re-pools after `600` ticks. The Nerf profile authors every effect off. New
+`pistol_punctuation` has six checks and passed seeds `1/7/13` in both presentation modes;
+measured rapid-fire shake peak was `1.500 px`, every dry-fire flash peak was `0`, and every
+buddy contact/scored-impact/registry delta from the magazine probe was `0`. A live Godot MCP
+pass drove `J`, real pointer motion, primary fire, and `R`; it captured the visible muzzle
+flare and then held the laboratory routing pause for two seconds with the magazine sleeping
+on the floor at `(195.7, 341.0)`, layer/mask `0/1`, zero velocity, and no runtime errors.
+Build 0/0 · domain **981/981** · existing quick suite 26/26 · `pistol_fire`,
+`nerf_versus_pistol`, and `gun_visuals` remained green across the targeted seed/presentation
+matrix.
+
+**Owner follow-up — DONE 2026-07-31.** Left-facing 3D guns no longer use a negative-Y
+scale, which inverted the mesh normals and made both models shade black. The presentation
+now rolls its focused orientation node 180° about local X (the barrel axis), retaining
+determinant `+1.000` on both sides while the grip-down and exact-muzzle checks stay green.
+`gun_visual_keeps_a_positive_lighting_basis` permanently covers the renderer-facing cause.
+
+The Nerf's impact-driving values are restored from `1100` / `0.02` to the pre-split
+`2400` px/s / `0.3`, while its `4 px` orange dart, `0.15` gravity, and toy presentation stay
+unchanged. Across seeds `1/7/13`, its three-shot volley measured best impulse
+`1172.6`–`1194.0` and pain `40.68`–`41.61`; it pays through the shared curve. Its later
+owner-confirmed mood exception below supersedes this paragraph's former harmful-memory
+claim. Gravity residual was `1.24 px` over the faster 15-tick visible flight.
+Build 0/0 and both targeted scenarios passed seeds `1/7/13` in both presentation modes.
+A live Godot MCP pass selected both guns through `N`/`J`, swept real pointer input left,
+and captured each model retaining its authored green/orange or gunmetal shading with zero
+runtime errors.
+
+**Gun mood owner follow-up — DONE 2026-07-31.** Accepted positive-pain Nerf hits `1`–`20`
+now retain their physical pain, knockout, payout, and statistics while each granting
+`+0.25` mood and no harmful memory. Hit `21` onward applies the shared pain-sized mood loss;
+misses do not count, and exactly ten routed seconds without a Nerf hit reset the transient
+tolerance. Every accepted real-Pistol hit remains harmful, lowers mood through the shared
+formula, and starts an authored `1.5 s` sad reaction after the immediate pain face. Friendly
+Nerf hits use the delight face/care chirp instead of pain/fear presentation.
+
+The focused domain model pins hits `1`–`20`, hit `21`, `9.999 s`, exact `10 s`, invalid
+tuning, and monotonic time. Progress tests prove that mood semantics do not alter payout,
+pain statistics, or knockout inputs. `nerf_versus_pistol` now checks early Nerf mood and
+memory plus real-Pistol mood, harmful memory, and the sad-reaction event on the actual
+physics composition. Build 0/0 · domain **987/987** · seed 1 Mii3D scenario green; the full
+eight-check scenario passed seeds `1/7/13` in both presentation modes · quick suite 26/26
+with clean process shutdown.
+The literal `:(` face was observed by the scenario on a fresh conscious buddy in every
+matrix run. A live Godot MCP pass selected the real Pistol with `J`, aimed and fired through
+real pointer/button input, and observed an accepted hit lowering mood and incrementing the
+sad-reaction counter; the final clean live run reported zero runtime errors.
+
+**Task G (original text) — Real-pistol punctuation.** §4.6: `CameraKickComponent`, muzzle flash, magazine
 drop pool.
 *Accept:* `screenshake_decays_and_never_stacks` (rapid fire: amplitude bounded by one
 envelope), `muzzle_flash_fires_only_on_real_launches` (dry fire: none),

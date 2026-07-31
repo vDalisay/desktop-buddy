@@ -372,6 +372,15 @@ does not tick it); blast damages by distance; a buddy holding it at detonation t
 the close-range result and drops nothing afterward (nothing left to hold); after a
 harmful blast the next grenade triggers flee/discard, seeds 1 and 7.
 
+**Owner refinement (2026-07-31):** the fuse rule above is **superseded** — the owner
+replaced it with a pin mechanic (pin drops on the first RMB press; safe while
+player-held; explodes 3 s after release with the pin out), set damage at ≈ 5 pistol
+bullets, and specified the presentation (small explosion, medium camera kick,
+placeholder boom/landing sounds, simple 3D model, heavier-than-Baseball heft on the
+same arc). Full handoff plan: `docs/M5_TASK6_GRENADE_PLAN.md` — the slice's spec and
+accept criteria are that plan's, not this section's; RAGDOLL §9.2's fuse sentence is
+amended at its bookkeeping task.
+
 ### Task 7 — Burning + Fire Sprayer
 
 `BurningStatus` per §9.3 (4 s apply, refresh capped 8 s, periodic attributed pain,

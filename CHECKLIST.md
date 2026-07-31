@@ -237,14 +237,42 @@ extremes maximum, no center pause, neutral finish), then the item put down below
 it leaves that item alone until it has room. Food reuse cooldowns are gone; the save
 schema is `5`.
 
+M5 Task 6 (Grenade) is engineering-complete against
+`docs/M5_TASK6_GRENADE_PLAN.md`, awaiting the owner's feel gate:
+
+- [x] Task A — `GrenadeFuseModel` (Domain): `Pinned → PinPulled → Live → Detonated`, the
+      one-way pin, held-forever safety, a `360`-tick fuse from either release path, and a
+      re-grab that changes nothing. Domain suite `987 → 999`.
+- [x] Task B — the grenade is a launchable profile on the existing pullback launcher (spawn
+      key `7`), the pullback's first secondary press pulls the pin through the queued-input
+      path, the dropped pin is a pooled cosmetic body on the ejected magazine's rules, and a
+      live grenade is registry-protected until it goes off.
+- [x] Task C — the blast applies an equivalent impulse per buddy part through the *shared*
+      pain curve (a sibling entry on `InteractionDamageComponent`, not a parallel pipeline),
+      shoves every dynamic body on `BuddyParts | LooseObjects`, and despawns. Measured
+      point-blank `186`–`191` total pain across seeds `1/7/13`, which is about five solid
+      aimed pistol bullets and knocks the buddy out.
+- [x] Task D — lathed olive-drab mesh with cap, lever, and a pin ring that disappears with
+      the pin; a matching flat silhouette in legacy mode; additive flash plus a ring sized to
+      the real blast radius; the pistol's camera lane at the grenade's bigger `4.0 px`/`14`
+      tick numbers; and two clean-room synthesized cues, the thud gated so a rolling grenade
+      stays quiet.
+- [x] Task E — `grenade_fuse` (13 checks, seeds `1/7/13`, both presentations) and the
+      `m5_grenade` journey (8 assertions, seeds `1/7`, both presentations), both registered
+      in `ScenarioCatalog`, `TEST_PLAN.md`, and the quick suite (now 28 steps).
+- [ ] Task F — owner feel gate on real Windows. The catalogue entry stays
+      `Visible = false` until the owner's word, and the three flagged defaults in the plan's
+      §3 (a live grenade stays live, "five bullets" is the solid reading, buy-once) were
+      taken as written and are recorded in `DECISIONS.md` as accepted-by-default.
+
 **Next action:** continue `docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` at **Task C**
 (the left-shot regression scenario; two of its four checks already live in `pistol_fire`).
 The owner rejected the first Pistol on feel and signed that plan off; Tasks A (defect
 verification, projectile alignment, aim-gated trigger) and B (aim v2 smoothed pursuit) are
 done and verified. Tasks C–H then cover the regression scenario, the Nerf Blaster/real
 Pistol catalogue split, doubled 3D gun visuals, the owner aim co-tuning session, the real
-pistol's screenshake/flash/dropped magazine, and promotion. M5 Task 6 (Grenade) from
-`docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md` comes after that. The Home-Run Bat Task H
+pistol's screenshake/flash/dropped magazine, and promotion. M5 Task 6 (Grenade) landed ahead of that plan's own
+wrap-up and is recorded above. The Home-Run Bat Task H
 refinement is complete, owner-accepted, and shop-visible. M4 is complete and owner-accepted.
 Its post-acceptance hardening records
 the exact fun boredom latch in schema 4, lossless lifecycle bucket transitions,

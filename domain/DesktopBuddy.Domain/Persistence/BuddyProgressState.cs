@@ -408,18 +408,30 @@ public sealed class BuddyProgressState
     }
 
     /// <summary>
-    /// Applies one accepted damage event: payout, harmful memory, and statistics in spec
-    /// order. Returns the milli-credits awarded.
+    /// Applies one accepted damage event: payout, its authored mood/memory response, and
+    /// statistics in spec order. Returns the milli-credits awarded.
     /// </summary>
     public long AcceptDamage(
         string contentId,
         float pain,
         PayoutRegion region,
         DamageConsciousness consciousness,
-        double now)
+        double now,
+        ImpactMoodEffect moodEffect = default)
     {
         long milli = _ledger.Accept(pain, region, consciousness, now);
-        _mood.RegisterHarm(contentId, pain);
+        bool trustReset = moodEffect.Kind switch
+        {
+            ImpactMoodEffectKind.Harm => RegisterHarmAndReturnFalse(contentId, pain),
+            ImpactMoodEffectKind.Enjoyment =>
+                _mood.ApplyMoodDelta(moodEffect.EnjoymentMoodGain),
+            ImpactMoodEffectKind.Annoyance =>
+                _mood.ApplyMoodDelta(-MoodModel.MoodLossForPain(pain)),
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(moodEffect), moodEffect.Kind, "Unknown impact mood effect."),
+        };
+        if (trustReset)
+            _trustResets++;
         UpdateMoodExtrema();
         _scoredImpacts++;
         _earnedMilliCredits += milli;
@@ -435,8 +447,18 @@ public sealed class BuddyProgressState
         {
             Changed?.Invoke(ProgressChange.BalanceChanged);
         }
+        if (trustReset)
+        {
+            Changed?.Invoke(ProgressChange.TrustReset);
+        }
 
         return milli;
+    }
+
+    private bool RegisterHarmAndReturnFalse(string contentId, float pain)
+    {
+        _mood.RegisterHarm(contentId, pain);
+        return false;
     }
 
     /// <summary>Deposits already-earned credits (passive income). Emits no <c>+$</c> burst.</summary>

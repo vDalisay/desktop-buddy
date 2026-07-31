@@ -43,6 +43,8 @@ public partial class SandboxRoot : Node2D
     private readonly Rect2[] _buddyWorkModeWorldRegions =
         new Rect2[PuppetRigProfile.RequiredPartCount];
 
+    private LooseObjectBody? _shownGrenade;
+
     [Export] public DesktopWindowController Window { get; set; } = null!;
     [Export] public DesktopShellController Shell { get; set; } = null!;
     [Export] public BoundaryController Boundaries { get; set; } = null!;
@@ -66,6 +68,11 @@ public partial class SandboxRoot : Node2D
     [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public CursorGunComponent CursorGuns { get; set; } = null!;
     [Export] public CursorGunVisual3D CursorGunVisual { get; set; } = null!;
+    [Export] public GrenadeComponent Grenades { get; set; } = null!;
+    [Export] public GrenadeVisual3D GrenadeVisual { get; set; } = null!;
+    [Export] public GrenadeVisual2D GrenadeVisualLegacy { get; set; } = null!;
+    [Export] public GrenadeAudioComponent GrenadeAudio { get; set; } = null!;
+    [Export] public CameraKickComponent CameraKick { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
     [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
@@ -113,6 +120,11 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(CursorTools) ||
             !GodotObject.IsInstanceValid(CursorGuns) ||
             !GodotObject.IsInstanceValid(CursorGunVisual) ||
+            !GodotObject.IsInstanceValid(Grenades) ||
+            !GodotObject.IsInstanceValid(GrenadeVisual) ||
+            !GodotObject.IsInstanceValid(GrenadeVisualLegacy) ||
+            !GodotObject.IsInstanceValid(GrenadeAudio) ||
+            !GodotObject.IsInstanceValid(CameraKick) ||
             !GodotObject.IsInstanceValid(CareStroke) ||
             !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
@@ -152,6 +164,17 @@ public partial class SandboxRoot : Node2D
         CursorTools.Initialize();
         CursorGuns.Initialize();
         CursorGunVisual.Initialize(CursorGuns);
+        // The gun does not own the camera: it says a shot left the barrel, and the
+        // camera's own offset lane decides what that looks like.
+        CursorGuns.ShotFired += OnGunShotFired;
+        // Taking a detonated grenade out of the world also has to release the player's
+        // grab and cancel a buddy interaction, so removal stays the root's job.
+        Grenades.Initialize(RemoveLooseObject);
+        GrenadeVisual.Initialize(Grenades.Profile);
+        GrenadeVisualLegacy.Initialize(Grenades.Profile);
+        GrenadeAudio.Initialize();
+        Grenades.PinPulled += OnGrenadePinPulled;
+        Grenades.Detonated += OnGrenadeDetonated;
         CareStroke.Initialize();
         CareCursor.Initialize();
         ToolReactions.Initialize();
@@ -180,6 +203,7 @@ public partial class SandboxRoot : Node2D
         Containment.Initialize();
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
+        Boundaries.LayoutApplied += OnLayoutMovedTheCameras;
         Buddy.AutonomousMotion.SetWalkableBounds(Boundaries.InnerBounds);
         RefreshWorkModeHitRegions();
         Buddy.Recovery.HardRecovered += OnHardRecovered;
@@ -238,6 +262,7 @@ public partial class SandboxRoot : Node2D
         Pointer.ResolvePendingInput();
         VisualPresenter.CaptureTickSnapshot();
         CursorToolVisual.CaptureTickSnapshot();
+        GrenadeVisual.CaptureTickSnapshot();
         CursorTools.RoutePendingImpactEvents();
         if (SwingHitLag.ConsumeFrozenPhysicsFrame())
         {
@@ -257,6 +282,7 @@ public partial class SandboxRoot : Node2D
         Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
         CursorTools.PhysicsTick(delta);
         CursorGuns.PhysicsTick();
+        CameraKick.PhysicsTick();
         CareStroke.PhysicsTick(delta);
         ToolReactions.PhysicsTick(delta);
         Reactions.PhysicsTick();
@@ -266,11 +292,28 @@ public partial class SandboxRoot : Node2D
             Pointer.WorldCursor,
             Pointer.HasPointerInput);
         Pipeline.PhysicsTick();
+        // After the pipeline, so a blast is scored against the same simulation clock
+        // every contact this tick was scored against.
+        Grenades.PhysicsTick();
+        SyncGrenadeVisuals();
+        GrenadeVisual.PhysicsTick();
+        GrenadeVisualLegacy.PhysicsTick();
         RefreshWorkModeHitRegions();
     }
 
     public override void _ExitTree()
     {
+        if (GodotObject.IsInstanceValid(CursorGuns))
+        {
+            CursorGuns.ShotFired -= OnGunShotFired;
+        }
+
+        if (GodotObject.IsInstanceValid(Grenades))
+        {
+            Grenades.PinPulled -= OnGrenadePinPulled;
+            Grenades.Detonated -= OnGrenadeDetonated;
+        }
+
         if (GodotObject.IsInstanceValid(SwingHitLag))
         {
             SwingHitLag.Cancel();
@@ -280,6 +323,7 @@ public partial class SandboxRoot : Node2D
         {
             Boundaries.LayoutApplied -= Containment.ApplyLayout;
             Boundaries.LayoutApplied -= OnBoundaryLayoutApplied;
+            Boundaries.LayoutApplied -= OnLayoutMovedTheCameras;
         }
         if (GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Buddy.Recovery))
         {
@@ -418,6 +462,14 @@ public partial class SandboxRoot : Node2D
         }
     }
 
+    /// <summary>A room resize repositions both cameras, so any live kick is abandoned.</summary>
+    private void OnLayoutMovedTheCameras(RoomLayout _layout, Rect2 _bounds) =>
+        CameraKick.NotifyLayoutChanged();
+
+    /// <summary>A round left the barrel: kick the camera by whatever that gun authors.</summary>
+    private void OnGunShotFired(GunProfile profile) =>
+        CameraKick.Kick(profile.FireShakeAmplitudePx, profile.FireShakeDecayTicks);
+
     private void OnBoundaryLayoutApplied(RoomLayout _layout, Rect2 innerBounds) =>
         Buddy.AutonomousMotion.SetWalkableBounds(innerBounds);
 
@@ -452,6 +504,7 @@ public partial class SandboxRoot : Node2D
         SwingHitLag.Cancel();
         Buddy.ObjectInteraction.Reset();
         Launcher.CancelImmediately();
+        Grenades.CancelImmediately();
         if (Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
     }
 
@@ -487,15 +540,75 @@ public partial class SandboxRoot : Node2D
         {
             if (GetChild(index) is not LooseObjectBody body)
                 continue;
-            if (Buddy.ObjectInteraction.IsHolding &&
-                Buddy.ObjectInteraction.TrackedRuntimeId == body.RuntimeId)
-            {
-                Buddy.ObjectInteraction.CancelActiveInteraction();
-            }
+            // Replacement drops whatever the player is holding, buddy part included —
+            // unchanged behaviour, and broader than the targeted release below.
             if (Grab.IsGrabbing)
                 Grab.Release(countsAsThrow: false);
-            Objects.Unregister(body);
-            body.QueueFree();
+            RemoveLooseObject(body);
+        }
+    }
+
+    /// <summary>
+    /// Takes one loose object out of the world, releasing whoever had hold of it first.
+    /// Shared by the replacement policy and by a detonating grenade, because "this object
+    /// is gone" has the same three consequences either way.
+    /// </summary>
+    private void RemoveLooseObject(LooseObjectBody body)
+    {
+        if (!GodotObject.IsInstanceValid(body))
+            return;
+
+        if (Buddy.ObjectInteraction.IsHolding &&
+            Buddy.ObjectInteraction.TrackedRuntimeId == body.RuntimeId)
+        {
+            Buddy.ObjectInteraction.CancelActiveInteraction();
+        }
+
+        if (Grab.IsGrabbing && Grab.CurrentGrab.Target == body)
+            Grab.Release(countsAsThrow: false);
+        Objects.Unregister(body);
+        body.QueueFree();
+    }
+
+    private void OnGrenadePinPulled(Vector2 _position)
+    {
+        GrenadeVisual.NotifyPinPulled();
+        GrenadeVisualLegacy.NotifyPinPulled();
+    }
+
+    /// <summary>
+    /// A grenade went off. The same offset lane the pistol kicks, with the grenade's own
+    /// bigger numbers — no new camera code, and non-stacking by the component's design.
+    /// </summary>
+    private void OnGrenadeDetonated(Vector2 center)
+    {
+        CameraKick.Kick(Grenades.Profile.KickAmplitudePx, Grenades.Profile.KickDecayTicks);
+        GrenadeVisual.NotifyDetonated(center);
+        GrenadeVisualLegacy.NotifyDetonated(center);
+    }
+
+    /// <summary>
+    /// Keeps both grenade presenters attached to whatever the grenade component is
+    /// following. Polled rather than event-driven because a grenade can leave for reasons
+    /// nothing announces — eviction, a spawn that replaced it, a clear.
+    /// </summary>
+    private void SyncGrenadeVisuals()
+    {
+        LooseObjectBody? tracked = Grenades.Tracked;
+        if (_shownGrenade == tracked)
+            return;
+
+        if (GodotObject.IsInstanceValid(_shownGrenade))
+        {
+            GrenadeVisual.Detach(_shownGrenade!);
+            GrenadeVisualLegacy.Detach(_shownGrenade!);
+        }
+
+        _shownGrenade = tracked;
+        if (tracked is not null)
+        {
+            GrenadeVisual.Attach(tracked, !Grenades.PinIsOut);
+            GrenadeVisualLegacy.Attach(tracked, !Grenades.PinIsOut);
         }
     }
 
@@ -514,6 +627,9 @@ public partial class SandboxRoot : Node2D
         // weapon seen two ways, never both at once.
         CursorGunVisual.SetPresentationActive(show3D);
         CursorGuns.SetLegacyVisualEnabled(!show3D);
+        // Same rule for the grenade: one silhouette per mode, never both at once.
+        GrenadeVisual.SetPresentationActive(show3D);
+        GrenadeVisualLegacy.SetPresentationActive(!show3D);
     }
 
     private void ApplyRunnerPresentationOverride()

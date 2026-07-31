@@ -52,7 +52,13 @@ public readonly record struct AcceptedImpact(
     /// non-home-run contact. This travels with the solver sample so later
     /// hit-lag and observation-grace logic never consults mutable tool state.
     /// </summary>
-    long SwingReleasedTick);
+    long SwingReleasedTick,
+
+    /// <summary>The semantic mood response chosen for this accepted physical impact.</summary>
+    ImpactMoodEffectKind MoodEffect,
+
+    /// <summary>One-based hit number in the current Nerf barrage, or zero for other sources.</summary>
+    int NerfHitNumber);
 
 /// <summary>
 /// One contact episode accepted by the router before the empirical pain curve.
@@ -95,6 +101,7 @@ public partial class InteractionDamageComponent : Node
     private ImpactRouter _router = null!;
     private PainCurve _curve = null!;
     private PainKnockoutModel _knockout = null!;
+    private NerfMoodToleranceModel _nerfMood = null!;
     private BuddyProgressState _progress = null!;
     private EconomyService _economy = null!;
     private CareModel _care = null!;
@@ -160,6 +167,8 @@ public partial class InteractionDamageComponent : Node
     public double PetValidSecondsProgress => _care.PetValidSecondsProgress;
     public double TickleContactSeconds => _care.TickleContactSeconds;
     public TickleDisposition TickleDisposition => _care.TickleDisposition;
+    public int NerfHitsInCurrentBarrage => _nerfMood.HitsInCurrentBarrage;
+    public bool NerfIsAnnoyed => _nerfMood.IsAnnoyed;
 
     /// <summary>
     /// Validates and returns the pain profile so a composition root can read approved
@@ -202,6 +211,7 @@ public partial class InteractionDamageComponent : Node
         _router = new ImpactRouter(ImpactRouter.DefaultReArmSeconds, Profile.MinimumImpulse);
         _curve = Profile.BuildCurve();
         _knockout = new PainKnockoutModel();
+        _nerfMood = new NerfMoodToleranceModel();
         _progress = progress;
         _economy = economy;
         _care = new CareModel(CareProfile.ToTuning());
@@ -229,6 +239,7 @@ public partial class InteractionDamageComponent : Node
         RequireInitialized();
         _ticks++;
         double now = NowSeconds;
+        _nerfMood.Update(now);
 
         IReadOnlyList<PuppetPartBody> parts = Buddy.Rig.Parts;
         for (int partIndex = 0; partIndex < parts.Count; partIndex++)
@@ -416,6 +427,15 @@ public partial class InteractionDamageComponent : Node
             return;
         }
 
+        ImpactMoodEffect moodEffect = ImpactMoodEffect.Harm;
+        int nerfHitNumber = 0;
+        if (accepted.ContentId == ContentIds.ToolNerfBlaster)
+        {
+            NerfMoodHit nerfHit = _nerfMood.RegisterHit(now);
+            moodEffect = nerfHit.MoodEffect;
+            nerfHitNumber = nerfHit.HitNumber;
+        }
+
         PainAcceptance acceptance = _knockout.RegisterPain(pain, now);
         // Payout, harmful memory, and statistics move together through the economy service
         // so the balance has exactly one mutator (ARCHITECTURE §11).
@@ -424,7 +444,8 @@ public partial class InteractionDamageComponent : Node
             pain,
             region,
             acceptance.ConsciousnessAtAcceptance,
-            now);
+            now,
+            moodEffect);
         ScoredImpactCount++;
 
         GrabState grab = Grab.CurrentGrab;
@@ -449,7 +470,9 @@ public partial class InteractionDamageComponent : Node
             now,
             swing is { Mode: SwingImpactMode.HomeRun } homeRun ? homeRun.SwingEpoch : 0,
             swing is { Mode: SwingImpactMode.HomeRun } charged ? charged.ReleasedCharge : 0.0f,
-            swing is { Mode: SwingImpactMode.HomeRun } released ? released.ReleasedTick : 0L);
+            swing is { Mode: SwingImpactMode.HomeRun } released ? released.ReleasedTick : 0L,
+            moodEffect.Kind,
+            nerfHitNumber);
         LastImpact = impact;
         if (accepted.TargetPart == BuddyPart.Head)
             Buddy.ActiveDrive.NotifyHeadDisturbed();
@@ -463,6 +486,99 @@ public partial class InteractionDamageComponent : Node
             Buddy.SetConsciousness(Consciousness.Unconscious);
             KnockoutStarted?.Invoke(now);
         }
+    }
+
+    /// <summary>
+    /// Scores one blast sample against one buddy part, as a sibling of
+    /// <see cref="ApplyAcceptedImpact"/> rather than a parallel pipeline (M5 Task 6 plan
+    /// §4.2/§2.2). An explosion produces no solver contact, so there is no
+    /// <c>RawPartContact</c> to route and no episode to de-duplicate — but everything
+    /// downstream of the contact is the same machinery: the shared curve, its zero-pain
+    /// floor, the knockout window, the payout, harmful memory, and the
+    /// <see cref="ImpactAccepted"/> event with a world-space hit point for the future gore
+    /// consumer.
+    ///
+    /// <para><paramref name="equivalentImpulse"/> is the blast's strength at this part
+    /// after distance falloff, in the same units the solver reports. The blast is an
+    /// <b>impulse source</b>, exactly like a collision; the curve still owns impulse→pain,
+    /// so the no-per-tool-multiplier rule holds unchanged.</para>
+    /// </summary>
+    /// <param name="sourceInteractionId">
+    /// Identity of the exploding body, so a consumer can tell two grenades apart.
+    /// </param>
+    /// <returns>The pain scored, or <c>0</c> when the sample fell under the curve floor.</returns>
+    public float ApplyBlastImpulse(
+        int sourceInteractionId,
+        string contentId,
+        BuddyPart part,
+        float equivalentImpulse,
+        Vector2 worldPoint)
+    {
+        RequireInitialized();
+        if (!float.IsFinite(equivalentImpulse) || equivalentImpulse <= 0.0f)
+        {
+            return 0.0f;
+        }
+
+        float pain = _curve.PainFor(equivalentImpulse);
+        if (pain <= 0.0f)
+        {
+            // The same floor a graze meets: a part on the edge of the blast is shoved
+            // but must not pay, must not mark the grenade harmful, and must not enter
+            // the knockout window.
+            return 0.0f;
+        }
+
+        PayoutRegion region = PayoutRegions.Of(part);
+        PainAcceptance acceptance = _knockout.RegisterPain(pain, NowSeconds);
+        long milli = _economy.AcceptDamage(
+            contentId,
+            pain,
+            region,
+            acceptance.ConsciousnessAtAcceptance,
+            NowSeconds,
+            ImpactMoodEffect.Harm);
+        ScoredImpactCount++;
+
+        GrabState grab = Grab.CurrentGrab;
+        var impact = new AcceptedImpact(
+            sourceInteractionId,
+            contentId,
+            part,
+            region,
+            equivalentImpulse,
+            equivalentImpulse,
+            // A blast has no closing speed of its own — nothing travelled into the part.
+            0.0f,
+            worldPoint,
+            Vector2.Zero,
+            pain,
+            milli,
+            acceptance.ConsciousnessAtAcceptance,
+            Guarded: false,
+            grab.Active && grab.Target is PuppetPartBody,
+            acceptance.KnockoutTriggered,
+            NowSeconds,
+            SwingEpoch: 0,
+            SwingCharge: 0.0f,
+            SwingReleasedTick: 0L,
+            ImpactMoodEffectKind.Harm,
+            NerfHitNumber: 0);
+        LastImpact = impact;
+        if (part == BuddyPart.Head)
+            Buddy.ActiveDrive.NotifyHeadDisturbed();
+        Buddy.InterruptBehaviorActivity();
+        ImpactAccepted?.Invoke(impact);
+
+        if (acceptance.KnockoutTriggered)
+        {
+            _knockoutDrivenUnconscious = true;
+            _progress.RecordKnockout();
+            Buddy.SetConsciousness(Consciousness.Unconscious);
+            KnockoutStarted?.Invoke(NowSeconds);
+        }
+
+        return pain;
     }
 
     /// <summary>
@@ -563,6 +679,7 @@ public partial class InteractionDamageComponent : Node
         _router.Reset();
         _knockout.Reset();
         _care.Reset();
+        _nerfMood.Reset();
         _knockoutDrivenUnconscious = false;
         _claimedSwingSource = -1;
         _claimedSwingEpoch = -1;

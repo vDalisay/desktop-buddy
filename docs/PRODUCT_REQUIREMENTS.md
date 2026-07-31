@@ -176,7 +176,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 
 1. **FR-010.1:** WHEN the Pistol fires THEN it SHALL create a physical continuous-collision-detection projectile, consume one of its `8` magazine rounds, and enforce at least `0.25` seconds before the next shot; WHEN a Pistol reload is initiated THEN it SHALL take `1.2` seconds; reserve ammunition SHALL be unlimited.
 2. **FR-010.2:** WHEN the Shotgun fires THEN it SHALL create `6` physical continuous-collision-detection pellets, consume one of its `5` loaded shells, and enforce at least `0.9` seconds before the next shot; WHEN a Shotgun reload is initiated THEN it SHALL take `2` seconds; reserve ammunition SHALL be unlimited.
-3. **FR-010.3:** WHEN a Grenade is launched THEN its `2.5`-second fuse SHALL begin.
+3. **FR-010.3:** WHEN the player first presses secondary on a held Grenade THEN its pin SHALL be pulled one-way, and WHEN player control of a pin-pulled Grenade ends — by launch release or by grab release — THEN its `3.0`-second fuse SHALL begin and SHALL NOT be paused or reset by any later catch or re-grab. A Grenade whose pin is still in SHALL never detonate. (Owner amendment 2026-07-31, superseding the `2.5`-second launch fuse; see `DECISIONS.md`, "Grenade — Pin Mechanic, Post-Release Fuse, and Blast".)
 4. **FR-010.4:** WHEN a buddy without harmful grenade history encounters a launched grenade THEN its available reactions MAY include investigation or catching.
 5. **FR-010.5:** WHEN a buddy with harmful grenade history encounters a launched grenade THEN it SHALL attempt to flee or discard it.
 6. **FR-010.6:** WHILE primary input is held with Fire Sprayer selected THEN it SHALL spray continuously using the cursor-weapon aiming convention.
@@ -207,6 +207,9 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 14. **FR-011.14:** WHEN knockout begins THEN the rolling pain window SHALL clear; WHILE unconscious, accepted hits SHALL still pay and affect mood but SHALL NOT accumulate toward the next knockout; WHEN the buddy wakes THEN the rolling window SHALL be empty.
 15. **FR-011.15:** WHEN currency is stored THEN it SHALL use signed 64-bit milli-credits with `1000` minor units per displayed credit; fractional rewards SHALL accumulate, while the HUD, shop prices, and balances SHALL display whole credits.
 16. **FR-011.16:** WHEN a launched or thrown object impacts the buddy before it has first come to rest and before any reassigning interaction THEN the impact SHALL attribute to the originating tool/throw; WHEN it impacts after coming to rest or after reassignment THEN it SHALL attribute to the generic loose-object source; boundary bounces alone SHALL NOT clear attribution.
+17. **FR-011.17:** WHEN an accepted positive-pain Nerf Blaster hit is numbered `1` through `20` since the last tolerance reset THEN it SHALL retain ordinary physical pain, knockout, payout, and statistics, grant `+0.25` mood, and SHALL NOT create harmful-tool memory; misses and zero-pain contacts SHALL NOT increment the hit count.
+18. **FR-011.18:** WHEN an accepted positive-pain Nerf Blaster hit is numbered `21` or later THEN it SHALL reduce mood by `min(10, pain x 0.1)` without creating persistent harmful-tool memory; WHEN exactly `10` routed gameplay seconds pass without an accepted Nerf hit THEN the transient count SHALL reset so the next hit is numbered `1`.
+19. **FR-011.19:** WHEN a real Pistol hit produces accepted positive pain THEN it SHALL reduce mood by `min(10, pain x 0.1)`, record the Pistol as harmful, and start a visible sad reaction after the immediate pain reaction; misses and zero-pain contacts SHALL do none of these things.
 
 ### FR-012 — Passive Income and Economy Rules
 
@@ -394,7 +397,7 @@ a shop slot but never appears in tool selection.
 | Pistol | `8` rounds, `0.25 s` cadence, `1.2 s` reload | FR-010.1 |
 | Shotgun | `6` pellets, `5` shells, `0.9 s` cadence, `2 s` reload | FR-010.2 |
 | Firearm input | one shot per press; `R` or empty auto-reload | FR-010.11–FR-010.12 |
-| Grenade fuse | `2.5 s` from launch | FR-010.3 |
+| Grenade fuse | `3.0 s` from the end of player control, pin out | FR-010.3 |
 | Burning | `4 s`, refreshable up to `8 s` | FR-010.7–FR-010.10 |
 | Knockout threshold | `100 pain / rolling 5 s` | FR-011.2 |
 | Knockout duration | exactly `4 s`, never extended by hits | FR-011.3–FR-011.4 |

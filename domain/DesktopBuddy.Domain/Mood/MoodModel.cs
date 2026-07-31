@@ -80,9 +80,12 @@ public sealed class MoodModel
         }
 
         _harmfulTools.Add(contentId);
-        float reduction = Math.Min(MaxHarmReduction, Math.Max(0.0f, pain) * 0.1f);
-        SetMood(Mood - reduction);
+        SetMood(Mood - MoodLossForPain(pain));
     }
+
+    /// <summary>The shared pain-sized mood loss, usable by transient annoyance too.</summary>
+    public static float MoodLossForPain(float pain) =>
+        Math.Min(MaxHarmReduction, Math.Max(0.0f, pain) * 0.1f);
 
     /// <summary>
     /// Applies a mood change (e.g. care rewards). Returns <c>true</c> when this change
