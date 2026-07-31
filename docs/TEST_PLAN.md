@@ -247,6 +247,31 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   three-second fuse, the blast hurts the buddy and pays for it (`200.91` pain, `146067`
   milli-credits), `tool.grenade` enters harmful memory, and the buddy then leaves the next
   grenade strictly alone for `600` ticks.
+- The `soccer_and_drink` scenario is the Task 8 gate, run under seeds `1/7/13` in both
+  presentation modes. Its centrepiece is a **measured** signature rather than an asserted one:
+  both balls are dropped `240 px` above their own resting height, on the far side of the room
+  and inside the registry's own ignore window so the buddy cannot fetch the fall, and the
+  number of rebounds, the highest rebound, and the routed ticks to registry rest are recorded.
+  The Baseball lands dead (`0` rebounds, `0.0 px`, `153` ticks) and the Soccer Ball does not
+  (`6` rebounds, `82.1 px`, `417` ticks). The Baseball reading is the regression band for the
+  restitution seam itself (`bounce_zero_objects_did_not_change`): a profile that authors no
+  bounce is given no `PhysicsMaterial` at all, and the Baseball is expected to keep landing
+  dead forever. The scenario also proves key `8` places, launches through the shared pullback
+  chord using the ball's **own** authored preset (`VelocityPerPullPixel 11.5`, measured launch
+  `1035 px/s`), and settles; that a clean soccer catch pays `+1` care exactly once per throw;
+  and the Drink's whole care contract — key `9` places one, a buddy at `200/200` fullness
+  still accepts it (`ConsumeHungerFill = 0` means `TooFull` can never fire), abandoning it
+  mid-drink starts no cooldown (FR-008.10), a Meal and a Drink taken back to back both
+  succeed, the Drink's running `7200`-tick cooldown does not gate the Meal (per-content-id
+  cooldown slots), and a second Drink inside the minute is refused `OnCooldown` for no mood.
+- The `m5_soccer_ball` and `m5_drink` journeys repeat both slices through real pointer,
+  button, and key input on seeds `1/7`, in both presentation modes. Each opens on the refusal
+  an invisible catalogue entry produces — both entries stay `Visible = false` until the
+  owner's feel gate, on the Grenade's precedent — and then exercises the happy path and its
+  paired failure path: for the ball, spawn, carry, a secondary tap with no pull that keeps the
+  carry, a real pullback launch, and a clean catch worth `+1` mood; for the Drink, spawn to a
+  completely full buddy, `+5` mood with no stomach filled, and a second can inside the minute
+  refused for the timer without costing mood or restarting the wait.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - The `baseball_pullback` scenario drives Baseball through the real pointer input path and

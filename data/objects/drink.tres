@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+
+[resource]
+resource_name = "M5DrinkProvisional"
+script = ExtResource("1")
+ContentId = "tool.drink"
+Consumable = true
+ConsumeMoodGain = 5.0
+ConsumeCooldownTicks = 7200
+ConsumeHungerFill = 0.0
+Hazardous = false
+SafeToEvict = true
+Radius = 8.0
+Mass = 0.6
+LinearDamp = 1.6
+AngularDamp = 2.6
+Bounce = 0.0
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(0.290196, 0.639216, 0.87451, 1)
+OutlineColor = Color(0.109804, 0.278431, 0.4, 1)

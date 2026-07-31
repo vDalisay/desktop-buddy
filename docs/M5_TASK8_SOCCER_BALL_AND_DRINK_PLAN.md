@@ -1,6 +1,10 @@
 # M5 Task 8 — Soccer Ball + Drink Plan
 
-**Status: PLAN — written 2026-07-31, not yet implemented.** Refines the master plan's
+**Status: IMPLEMENTED 2026-07-31 through Task D; Task E (owner feel gate) outstanding.**
+Both catalogue entries remain `Visible = false`. Measurements taken during implementation are
+recorded inline below where the plan asked for them (§2.2) and collected in §6.
+
+**Originally: PLAN — written 2026-07-31, not yet implemented.** Refines the master plan's
 Task 8 stub to handoff fidelity. This is the mildest slice in M5 — **two data-driven
 reuses** — and the plan's job is mostly to prove that claim and to name the one real
 code addition (restitution authoring, §2.1). Authoritative contracts: RAGDOLL §9.2
@@ -65,12 +69,32 @@ move, and the accept gate runs them to prove it.
 
 Its own `PullbackLauncherProfile` preset tuned so a full pullback flies a touch
 slower and loopier than Baseball (empirical, lab-measured at Task B, recorded here).
+
+**Implemented as `LooseObjectProfile.Launch`**, an optional per-launchable
+`PullbackLauncherProfile` reference; `null` — every launchable authored before the Soccer
+Ball — means the launcher's shared preset, so nothing that did not author one moved. The ball
+authors `data/tools/pullback_launcher_soccer_ball.tres`: `VelocityPerPullPixel 11.5` and
+`MaxLaunchSpeed 1400` against the shared `15.0`/`1800`. **Measured** full pullback:
+`1035 px/s` (the Baseball's measured full pullback in `baseball_pullback` is `1575 px/s`).
 Catch/hold/toss/discard, +1 clean catch, novelty, budget: all inherited.
 
 **Distinctness is measured, not asserted:** the scenario drops both balls from the
 same authored height on the same seed and records bounce count to rest, peak rebound
 height, and ticks-to-rest. The check requires the signatures to differ beyond a
 stated tolerance *and* pins the soccer values as the regression band.
+
+**Measured** (`soccer_and_drink`, both balls dropped `240 px` above their own resting height,
+identical on seeds `1/7/13` and in both presentation modes, because a drop is deterministic
+physics):
+
+| | rebounds | peak rebound | routed ticks to registry rest |
+|---|---|---|---|
+| Baseball (`Bounce 0.0`) | 0 | `0.0 px` | 153 |
+| Soccer Ball (`Bounce 0.65`) | 6 | `82.1 px` | 417 |
+
+Bands asserted: soccer rebounds `>=` baseball `+ 2`, soccer peak `>= 60 px` **and** `>=`
+baseball `+ 40 px`, soccer ticks-to-rest `>` baseball's. The Baseball row is separately pinned
+as `bounce_zero_objects_did_not_change` (`<= 1` rebound, `<= 8 px` peak).
 
 ### 2.3 Drink — `data/objects/drink.tres`, spawn key `9`
 
@@ -160,3 +184,36 @@ The standard three: build + domain suite, quick scenario suite, targeted runs
 `meal_consume`, `consume_care_cooldown`, `object_budget` as neighbours) across seeds
 1/7/13 and both presentation modes. Any baseline movement stated in the commit
 message, never silently absorbed.
+
+## 6. Implementation record (2026-07-31)
+
+**Sweep, all green, no baseline movement:**
+
+- `dotnet test` — `999/999`, unchanged. The plan predicted this: the whole slice is
+  authoring-layer plus two `.tres` files, and there is no new domain logic to unit-test.
+- `soccer_and_drink` — 8 checks, seeds `1`, `7`, `13`, plus `--presentation=legacy` on seed
+  `1`. All pass.
+- `m5_soccer_ball` — 6 assertions, seeds `1` and `7`, plus legacy on seed `1`.
+- `m5_drink` — 7 assertions, seeds `1` and `7`, plus legacy on seed `1`.
+- Neighbours: `baseball_pullback`, `meal_consume`, `grenade_fuse`, `consume_care_cooldown`,
+  and `object_budget` all green with unmoved readings — `baseball_pullback` still measures
+  launch `1575 px/s`, impact impulse `426.8`, pain `4.4`.
+- `tools\quick_validate.bat` — 31 steps, green.
+
+**Deviations from the plan, both additive and both stated:**
+
+1. §2.1 calls restitution "the one code addition", but §2.2 also asks the Soccer Ball for its
+   own `PullbackLauncherProfile`, which the launcher had no way to honour — it read one shared
+   preset. That is the second (small) code addition: `LooseObjectProfile.Launch`, plus
+   `PullbackLauncherComponent.AimTuning`, which resolves the aimed body's own preset and falls
+   back to the shared one. Null default, so no existing launchable changed.
+2. §2.4's optional two-tone banding on the ball visual was **not** done. Loose objects have no
+   3D mesh presenter today — they draw flat in both modes, as the Baseball, Meal, and Grenade
+   body all do — so banding would have meant building a presenter, which §2.4 explicitly puts
+   out of scope ("anything more is out of scope"; final art is M7). The ball is authored white
+   with a black outline as the table asks.
+
+**Left for the owner (Task E):** the feel gate itself. Bounce `0.65`, the roll damping, and
+the ball's launch tuning are the numbers the gate owns; the rules behind them are settled per
+§3 and recorded in `DECISIONS.md`. Flipping either `Visible` flag is the owner's word alone,
+and the two entries can flip independently.

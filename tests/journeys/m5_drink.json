@@ -1,0 +1,21 @@
+{
+  "id": "m5_drink",
+  "description": "The Drink end to end: the shop still withholds it until the owner's feel gate, its spawn key places one owned can, a completely full buddy still fetches and drinks it for its authored +5 mood without filling its stomach, and a second can inside the 60 s cooldown is refused for the timer without costing the buddy any mood or restarting the wait.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_drink",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "the_drink_is_not_on_sale_until_the_owner_gates_it" },
+    { "predicate": "the_drink_key_places_one_owned_can" },
+    { "predicate": "the_full_buddy_fetches_and_drinks_it" },
+    { "predicate": "the_drink_pays_its_authored_mood" },
+    { "predicate": "the_drink_fills_no_stomach" },
+    { "predicate": "a_second_drink_inside_the_minute_is_refused" },
+    { "predicate": "the_refused_drink_is_not_punished" }
+  ]
+}

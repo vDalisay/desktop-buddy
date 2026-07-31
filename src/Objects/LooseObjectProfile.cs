@@ -43,10 +43,27 @@ public partial class LooseObjectProfile : GameResource
     [Export(PropertyHint.Range, "0.01,100,0.01")] public float Mass { get; set; } = 1.0f;
     [Export(PropertyHint.Range, "0,100,0.01")] public float LinearDamp { get; set; } = 1.5f;
     [Export(PropertyHint.Range, "0,100,0.01")] public float AngularDamp { get; set; } = 2.0f;
+    /// <summary>
+    /// Restitution, applied through a <see cref="PhysicsMaterial"/> when the body takes this
+    /// profile. <c>0</c> is Godot's own default — a dead thud — so every profile authored
+    /// before this field existed keeps its measured behavior exactly. A Soccer Ball that does
+    /// not bounce is only a big Baseball, which is why bounce is authored rather than shared.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,1,0.01")] public float Bounce { get; set; }
+
     [Export(PropertyHint.Range, "0,100,0.1")] public float RestSpeedThreshold { get; set; } = 5.0f;
     [Export(PropertyHint.Range, "1,600,1")] public int RestTicksRequired { get; set; } = 60;
     [Export] public Color FillColor { get; set; } = new("ffd27a");
     [Export] public Color OutlineColor { get; set; } = new("183042");
+
+    /// <summary>
+    /// Optional pullback tuning used when the player launches <i>this</i> item.
+    /// <c>null</c> — the case for every launchable authored before the Soccer Ball — means the
+    /// launcher's own shared preset, so nothing that did not author one changes. Authored
+    /// rather than shared because a playground ball should leave the hand slower and loopier
+    /// than a baseball, and that is a per-item feel number.
+    /// </summary>
+    [Export] public Tools.PullbackLauncherProfile? Launch { get; set; }
 
     public bool IsRuntimeValid =>
         !string.IsNullOrWhiteSpace(ContentId) &&
@@ -54,8 +71,10 @@ public partial class LooseObjectProfile : GameResource
         float.IsFinite(Mass) && Mass > 0.0f &&
         float.IsFinite(LinearDamp) && LinearDamp >= 0.0f &&
         float.IsFinite(AngularDamp) && AngularDamp >= 0.0f &&
+        float.IsFinite(Bounce) && Bounce >= 0.0f && Bounce <= 1.0f &&
         float.IsFinite(RestSpeedThreshold) && RestSpeedThreshold >= 0.0f &&
         RestTicksRequired > 0 &&
+        (Launch is null || (GodotObject.IsInstanceValid(Launch) && Launch.IsRuntimeValid)) &&
         !(Hazardous && SafeToEvict) &&
         (!Consumable ||
          (float.IsFinite(ConsumeMoodGain) && ConsumeMoodGain > 0.0f &&
@@ -82,10 +101,17 @@ public partial class LooseObjectProfile : GameResource
             errors.Add($"{nameof(LinearDamp)} must be finite and non-negative");
         if (!float.IsFinite(AngularDamp) || AngularDamp < 0.0f)
             errors.Add($"{nameof(AngularDamp)} must be finite and non-negative");
+        if (!float.IsFinite(Bounce) || Bounce < 0.0f || Bounce > 1.0f)
+            errors.Add($"{nameof(Bounce)} must be finite and between zero and one");
         if (!float.IsFinite(RestSpeedThreshold) || RestSpeedThreshold < 0.0f)
             errors.Add($"{nameof(RestSpeedThreshold)} must be finite and non-negative");
         if (RestTicksRequired <= 0)
             errors.Add($"{nameof(RestTicksRequired)} must be positive");
+        if (Launch is not null &&
+            (!GodotObject.IsInstanceValid(Launch) || !Launch.IsRuntimeValid))
+        {
+            errors.Add($"{nameof(Launch)} must be a valid pullback launcher profile when set");
+        }
         if (Hazardous && SafeToEvict)
             errors.Add("Hazardous loose objects cannot be marked safe to evict");
         if (Consumable && (!float.IsFinite(ConsumeMoodGain) || ConsumeMoodGain <= 0.0f))

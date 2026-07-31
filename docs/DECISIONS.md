@@ -1242,6 +1242,42 @@ sale is exercised against a fresh progress state rather than the laboratory's, b
 grants every implemented M5 tool at boot for mechanical tuning and would answer
 `AlreadyOwned`.
 
+## Soccer Ball and Drink — Authored Restitution and the Not-Food Consumable (Owner decision, 2026-07-31)
+
+Accepted in full **before** implementation, from `docs/M5_TASK8_SOCCER_BALL_AND_DRINK_PLAN.md`
+§3. The rules below are settled; the feel gate still owns the tuning numbers.
+
+- **The Drink is never refused for a full stomach.** `ConsumeHungerFill = 0`, so a completely
+  full buddy still accepts one. The Meal and the Drink are rationed by different things on
+  purpose: appetite rations food (owner decision 2026-07-29, the hunger bar), and a 60 s
+  per-item timer rations the Drink. The alternative — a small fill so chain-feeding drinks
+  eventually meets the refusal performance — was rejected.
+- **The Soccer Ball bounces at `0.65` and rolls long** (`LinearDamp` `0.3`, `AngularDamp`
+  `0.8`, against the Baseball's `0.8`/`1.2`), tuned to "playground ball". The final number is
+  the owner's to move at the feel gate.
+- **Both are buy-once, spawn-forever**, like the Baseball and the Grenade: laboratory spawn
+  keys `8` and `9`.
+
+**The restitution seam.** `LooseObjectProfile.Bounce` (`0..1`, default `0.0`) is applied
+through a `PhysicsMaterial` when the body takes its profile. A profile that authors no bounce
+is given no material at all, so the Baseball, Meal, and Grenade are bit-identical to before
+the field existed — pinned by the `bounce_zero_objects_did_not_change` check, which drops a
+Baseball from `240 px` and requires it to land dead. Measured at implementation, same drop for
+both: Baseball `0` rebounds, `0.0 px` peak, `153` ticks to rest; Soccer Ball `6` rebounds,
+`82.1 px` peak, `417` ticks to rest.
+
+**Per-launchable pullback tuning.** `LooseObjectProfile.Launch` optionally carries a
+`PullbackLauncherProfile` of the item's own; `null` means the launcher's shared preset, which
+is what every launchable authored before the Soccer Ball uses, so nothing that did not author
+one changed. The Soccer Ball authors `VelocityPerPullPixel 11.5` and `MaxLaunchSpeed 1400`
+against the shared `15.0`/`1800`, so a playground ball leaves the hand slower and loopier than
+a baseball.
+
+**Still owner-gated.** `data/catalogue/tool_soccer_ball.tres` and `tool_drink.tres` remain
+`Visible = false` pending the owner's feel gate; the two entries may flip independently. The
+`m5_soccer_ball` and `m5_drink` journeys assert the refusal an invisible entry produces, on
+the Grenade's precedent, and become real purchases when the owner flips them.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

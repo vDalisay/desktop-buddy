@@ -42,6 +42,11 @@ public partial class LooseObjectBody : RigidBody2D, IImpactSource
         _fillColor = profile.FillColor;
         _outlineColor = profile.OutlineColor;
         Configure(profile.Radius, profile.Mass, profile.LinearDamp, profile.AngularDamp);
+        // Restitution is the only physical property Godot does not take from the body itself.
+        // Authored bounce of 0 is the engine default, so a profile that authors none is left
+        // without a material at all and behaves bit-identically to before the field existed.
+        if (profile.Bounce > 0.0f)
+            PhysicsMaterialOverride = new PhysicsMaterial { Bounce = profile.Bounce };
     }
 
     /// <summary>Legacy scenario helper; registry-backed runtime objects use the profile overload.</summary>

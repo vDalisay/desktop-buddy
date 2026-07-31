@@ -65,6 +65,27 @@ public partial class PullbackLauncherComponent : Node2D
     public string? CurrentLaunchableContentId =>
         HasLaunchable ? _spawned!.SemanticContentId : null;
     public LooseObjectBody? AimedBody => IsAiming ? _aimedBody : null;
+
+    /// <summary>
+    /// The pullback tuning in force right now: the aimed launchable's own authored preset when
+    /// it has one, otherwise this launcher's shared preset. Every launchable authored before
+    /// the Soccer Ball leaves <see cref="LooseObjectProfile.Launch"/> null and is pulled with
+    /// the shared numbers exactly as before.
+    /// </summary>
+    public PullbackLauncherProfile AimTuning
+    {
+        get
+        {
+            if (IsAiming && GodotObject.IsInstanceValid(_aimedBody!.Profile) &&
+                _aimedBody.Profile!.Launch is { } authored &&
+                GodotObject.IsInstanceValid(authored) && authored.IsRuntimeValid)
+            {
+                return authored;
+            }
+
+            return Profile;
+        }
+    }
     public LooseObjectBody? LastLaunchedBody { get; private set; }
     public Vector2 LastLaunchVelocity { get; private set; }
     public int SpawnCount { get; private set; }
@@ -232,7 +253,7 @@ public partial class PullbackLauncherComponent : Node2D
         if (IsAiming)
         {
             Vector2 displacement = (_pointer - _pointerAnchor)
-                .LimitLength(Profile.MaxPullDistance);
+                .LimitLength(AimTuning.MaxPullDistance);
             _aimedBody!.GlobalPosition =
                 ClampInsideRoom(_bodyAnchor + displacement, _aimedBody.Radius);
             _aimedBody.LinearVelocity = Vector2.Zero;
@@ -255,14 +276,15 @@ public partial class PullbackLauncherComponent : Node2D
 
         Vector2 start = ToLocal(_aimedBody!.GlobalPosition);
         Vector2 anchor = ToLocal(_bodyAnchor);
-        DrawLine(start, anchor, Profile.PullLineColor, 2.0f, true);
+        PullbackLauncherProfile tuning = AimTuning;
+        DrawLine(start, anchor, tuning.PullLineColor, 2.0f, true);
 
         Vector2 previous = start;
-        for (int segment = 1; segment <= Profile.PredictionSegments; segment++)
+        for (int segment = 1; segment <= tuning.PredictionSegments; segment++)
         {
-            float time = Profile.PredictionSeconds * segment / Profile.PredictionSegments;
+            float time = tuning.PredictionSeconds * segment / tuning.PredictionSegments;
             Vector2 current = ToLocal(PredictAimedWorldPosition(time));
-            DrawLine(previous, current, Profile.TrajectoryColor, 1.5f, true);
+            DrawLine(previous, current, tuning.TrajectoryColor, 1.5f, true);
             previous = current;
         }
     }
@@ -326,7 +348,7 @@ public partial class PullbackLauncherComponent : Node2D
             return;
 
         if ((_bodyAnchor - _aimedBody!.GlobalPosition).Length() <
-            Profile.MinimumLaunchPullDistance)
+            AimTuning.MinimumLaunchPullDistance)
         {
             CancelAim();
             return;
@@ -384,9 +406,10 @@ public partial class PullbackLauncherComponent : Node2D
         if (!IsAiming)
             return Vector2.Zero;
 
+        PullbackLauncherProfile tuning = AimTuning;
         Vector2 velocity = (_bodyAnchor - _aimedBody!.GlobalPosition) *
-                           Profile.VelocityPerPullPixel;
-        return velocity.LimitLength(Profile.MaxLaunchSpeed);
+                           tuning.VelocityPerPullPixel;
+        return velocity.LimitLength(tuning.MaxLaunchSpeed);
     }
 
     private Vector2 ClampInsideRoom(Vector2 position, float radius)

@@ -726,6 +726,14 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5GrenadeAsync(state, lab);
         }
+        else if (exercise == "m5_soccer_ball")
+        {
+            await ExerciseM5SoccerBallAsync(state, lab);
+        }
+        else if (exercise == "m5_drink")
+        {
+            await ExerciseM5DrinkAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -1312,6 +1320,246 @@ public partial class JourneyRunner : Node
             $"fuse={blastTick - releaseTick} ticks blast_pain={blastPain:F2} " +
             $"milli={blastMilli} harmful={lab.Pipeline.IsToolHarmful(ContentIds.ToolGrenade)} " +
             $"caught_first={caught} held_second={everHeld}");
+    }
+
+    /// <summary>
+    /// The M5 Soccer Ball slice through real input, happy path and cancel path: the shop still
+    /// withholds it until the owner's feel gate, key <c>8</c> places one owned ball, the
+    /// ordinary Grab tether carries it, a secondary tap with no pull returns to carrying, a
+    /// real pullback release launches it with the ball's own authored tuning, and a ball
+    /// thrown cleanly at the buddy is caught out of the air for its one care point.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5SoccerBallAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        LooseObjectProfile? soccerProfile = FindLaunchable(lab, ContentIds.ToolSoccerBall);
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
+
+        // --- The shop will not sell one yet ---
+        // The catalogue entry stays `Visible = false` until the owner's feel gate, and the shop
+        // refuses it for exactly that reason rather than for the balance. Ownership here comes
+        // from the development laboratory catalogue, the same way every other ungated M5 tool
+        // is granted; when the owner flips the entry visible this becomes a real purchase.
+        PurchaseResult refused = lab.Economy.Purchase(ContentIds.ToolSoccerBall);
+        state["the_soccer_ball_is_not_on_sale_until_the_owner_gates_it"] =
+            !refused.Succeeded &&
+            refused.Status == PurchaseStatus.NotAvailable &&
+            soccerProfile is not null &&
+            lab.Progress.IsToolUnlocked(ContentIds.ToolSoccerBall) &&
+            lab.Objects.Count == 0;
+
+        // --- The spawn key places exactly one ball ---
+        Vector2 bench = new(
+            Mathf.Clamp(torso.X + (side * 130.0f), room.Position.X + 130.0f, room.End.X - 130.0f),
+            Mathf.Clamp(torso.Y, room.Position.Y + 40.0f, room.End.Y - 40.0f));
+        ToolId toolBefore = lab.Pipeline.SelectedTool;
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, bench, 0);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.Key8);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Launcher.CurrentLaunchableContentId == ContentIds.ToolSoccerBall &&
+                  lab.Objects.Count == 1,
+            30);
+        LooseObjectBody? ball = lab.Launcher.CurrentLaunchable;
+        state["the_soccer_key_places_one_owned_ball"] =
+            GodotObject.IsInstanceValid(ball) &&
+            ball!.SemanticContentId == ContentIds.ToolSoccerBall &&
+            lab.Objects.Count == 1 &&
+            lab.Pipeline.SelectedTool == toolBefore &&
+            !lab.Grab.IsGrabbing;
+        if (!GodotObject.IsInstanceValid(ball))
+            return;
+
+        // Let it fall out of the air first: the key places it at the pointer, and a click aimed
+        // at where it was born would miss.
+        for (int tick = 0; tick < 120; tick++)
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        Vector2 pick = ball!.GlobalPosition;
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, pick, 0);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Left, pressed: true, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Grab.IsGrabbing && lab.Grab.CurrentGrab.Target == ball, 60);
+        state["the_ball_is_carried_by_the_normal_grab"] =
+            lab.Grab.IsGrabbing && lab.Grab.CurrentGrab.Target == ball;
+
+        // --- Cancel path: secondary down and straight back up keeps the carry ---
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Right, pressed: true,
+            MouseButtonMask.Left | MouseButtonMask.Right);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => lab.Launcher.IsAiming, 30);
+        // Only observable while an aim is live: the ball is pulled with its own preset, not
+        // the launcher's shared one.
+        bool ownTuning = lab.Launcher.IsAiming &&
+            lab.Launcher.AimTuning != lab.Launcher.Profile;
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Right, pressed: false, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => !lab.Launcher.IsAiming, 30);
+        state["the_ball_aim_cancel_keeps_the_carry"] =
+            lab.Grab.IsGrabbing &&
+            lab.Grab.CurrentGrab.Target == ball &&
+            lab.Launcher.CancelCount >= 1 &&
+            lab.Launcher.LaunchCount == 0;
+
+        // --- Happy path: pull back and let go ---
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Right, pressed: true,
+            MouseButtonMask.Left | MouseButtonMask.Right);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => lab.Launcher.IsAiming, 30);
+        Vector2 pull = new(
+            Mathf.Clamp(
+                pick.X + (side * 70.0f),
+                room.Position.X + ball.Radius,
+                room.End.X - ball.Radius),
+            pick.Y - 20.0f);
+        await M4ObjectScenarioSupport.MovePointer(
+            tree, lab, pull, MouseButtonMask.Left | MouseButtonMask.Right);
+        for (int tick = 0; tick < 20; tick++)
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pull, MouseButton.Right, pressed: false, MouseButtonMask.Left);
+        await M4ObjectScenarioSupport.WaitFor(tree, () => lab.Launcher.LaunchCount == 1, 60);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pull, MouseButton.Left, pressed: false, 0);
+        state["the_ball_pullback_launches_it"] =
+            lab.Launcher.LaunchCount == 1 &&
+            lab.Launcher.LastLaunchVelocity.Length() > 100.0f &&
+            ownTuning &&
+            !lab.Grab.IsGrabbing;
+
+        // --- And a ball thrown cleanly at it is caught for its one care point ---
+        lab.Progress.ApplyCareMood(30.0f);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Buddy.ObjectInteraction.Phase == ObjectPhase.Idle, 900);
+        int cleanBefore = lab.Buddy.ObjectInteraction.CleanCatchCount;
+        float moodBefore = lab.Progress.Mood;
+        LooseObjectBody? gift = M4ObjectScenarioSupport.SpawnCleanThrow(
+            lab, profile: soccerProfile);
+        bool caught = gift is not null && await M4ObjectScenarioSupport.WaitForPhase(
+            tree, lab, ObjectPhase.Hold, 900);
+        float moodAtCatch = lab.Progress.Mood;
+
+        state["a_clean_soccer_catch_pays_one_mood"] =
+            caught &&
+            lab.Buddy.ObjectInteraction.CleanCatchCount == cleanBefore + 1 &&
+            Mathf.Abs(moodAtCatch - (moodBefore + 1.0f)) < 0.01f;
+
+        Log.Info(
+            "Journey",
+            $"M5 soccer sale={refused.Status} launches={lab.Launcher.LaunchCount} " +
+            $"cancels={lab.Launcher.CancelCount} own_tuning={ownTuning} " +
+            $"speed={lab.Launcher.LastLaunchVelocity.Length():F1} caught={caught} " +
+            $"clean={cleanBefore}->{lab.Buddy.ObjectInteraction.CleanCatchCount} " +
+            $"mood={moodBefore:F1}->{moodAtCatch:F1}");
+    }
+
+    /// <summary>
+    /// The M5 Drink slice through real input, happy path and refusal path: the shop still
+    /// withholds it until the owner's feel gate, key <c>9</c> places one owned can, the buddy
+    /// fetches and drinks it for its authored <c>+5</c> mood and starts a 60 s cooldown, and a
+    /// second can inside that minute is refused for the timer without costing the buddy
+    /// anything — no mood, no restarted cooldown, no punishment.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5DrinkAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        LooseObjectProfile? drinkProfile = FindLaunchable(lab, ContentIds.ToolDrink);
+        Rect2 room = lab.Boundaries.InnerBounds;
+
+        PurchaseResult refusedSale = lab.Economy.Purchase(ContentIds.ToolDrink);
+        state["the_drink_is_not_on_sale_until_the_owner_gates_it"] =
+            !refusedSale.Succeeded &&
+            refusedSale.Status == PurchaseStatus.NotAvailable &&
+            drinkProfile is not null &&
+            lab.Progress.IsToolUnlocked(ContentIds.ToolDrink) &&
+            lab.Objects.Count == 0;
+
+        // A drink is not food, so a completely full buddy is exactly the case worth exercising:
+        // if appetite ever gated it, this leg would never start.
+        lab.Progress.FillHunger(lab.Progress.Appetite);
+        float fullnessWhenOffered = lab.Progress.Fullness;
+
+        ToolId toolBefore = lab.Pipeline.SelectedTool;
+        Vector2 spawn = PlaceOnTheFloorBesideTheBuddy(lab, room);
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, spawn, 0);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.Key9);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Launcher.CurrentLaunchableContentId == ContentIds.ToolDrink &&
+                  lab.Objects.Count == 1,
+            30);
+        LooseObjectBody? can = lab.Launcher.CurrentLaunchable;
+        state["the_drink_key_places_one_owned_can"] =
+            GodotObject.IsInstanceValid(can) &&
+            can!.SemanticContentId == ContentIds.ToolDrink &&
+            lab.Objects.Count == 1 &&
+            lab.Pipeline.SelectedTool == toolBefore &&
+            !lab.Grab.IsGrabbing;
+
+        float moodBefore = lab.Progress.Mood;
+        bool drank = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1, 3600);
+        state["the_full_buddy_fetches_and_drinks_it"] =
+            drank && lab.Buddy.ObjectInteraction.RefusalCount == 0;
+        state["the_drink_pays_its_authored_mood"] =
+            drank && Mathf.Abs(lab.Progress.Mood - (moodBefore + 5.0f)) < 0.01f;
+        state["the_drink_fills_no_stomach"] =
+            drank && lab.Progress.Fullness <= fullnessWhenOffered + 0.01f;
+
+        int cooldownAfterSuccess =
+            lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.ToolDrink);
+
+        // --- A second can inside the minute ---
+        float moodBeforeRefusal = lab.Progress.Mood;
+        Vector2 second = PlaceOnTheFloorBesideTheBuddy(lab, room);
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, second, 0);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.Key9);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Launcher.CurrentLaunchableContentId == ContentIds.ToolDrink, 30);
+        bool refusedForTheTimer = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Buddy.ObjectInteraction.LastConsumeRejection == ConsumeRejection.OnCooldown,
+            3600);
+        int cooldownAfterRefusal =
+            lab.Buddy.ObjectInteraction.CooldownTicksRemaining(ContentIds.ToolDrink);
+
+        state["a_second_drink_inside_the_minute_is_refused"] =
+            refusedForTheTimer &&
+            lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1 &&
+            cooldownAfterSuccess > 0;
+        // FR-008.10, from the other side: the refusal is free. It pays no mood, and it does not
+        // restart the wait it was refused for.
+        state["the_refused_drink_is_not_punished"] =
+            refusedForTheTimer &&
+            Mathf.Abs(lab.Progress.Mood - moodBeforeRefusal) < 0.01f &&
+            cooldownAfterRefusal > 0 &&
+            cooldownAfterRefusal < cooldownAfterSuccess;
+
+        Log.Info(
+            "Journey",
+            $"M5 drink sale={refusedSale.Status} drank={drank} " +
+            $"successes={lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
+            $"mood={moodBefore:F1}->{lab.Progress.Mood:F1} " +
+            $"fullness={fullnessWhenOffered:F1}->{lab.Progress.Fullness:F1} " +
+            $"cooldown={cooldownAfterSuccess}->{cooldownAfterRefusal} " +
+            $"rejection={lab.Buddy.ObjectInteraction.LastConsumeRejection}");
+    }
+
+    /// <summary>A clear floor point beside the buddy for a spawn key to place something at.</summary>
+    private static Vector2 PlaceOnTheFloorBesideTheBuddy(BuddyLab lab, Rect2 room)
+    {
+        float torsoX = lab.Buddy.Rig.Torso.GlobalPosition.X;
+        float side = room.End.X - torsoX > 110.0f ? 1.0f : -1.0f;
+        return new Vector2(
+            Mathf.Clamp(torsoX + (side * 80.0f), room.Position.X + 20.0f, room.End.X - 20.0f),
+            room.End.Y - 24.0f);
     }
 
     /// <summary>The launcher's authored profile for one launchable, or <c>null</c>.</summary>

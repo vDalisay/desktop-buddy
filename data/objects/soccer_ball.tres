@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+[ext_resource type="Resource" path="res://data/tools/pullback_launcher_soccer_ball.tres" id="2"]
+
+[resource]
+resource_name = "M5SoccerBallProvisional"
+script = ExtResource("1")
+ContentId = "tool.soccer_ball"
+Consumable = false
+Hazardous = false
+SafeToEvict = true
+Radius = 14.0
+Mass = 0.9
+LinearDamp = 0.3
+AngularDamp = 0.8
+Bounce = 0.65
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(0.960784, 0.960784, 0.960784, 1)
+OutlineColor = Color(0.0784314, 0.0784314, 0.0784314, 1)
+Launch = ExtResource("2")

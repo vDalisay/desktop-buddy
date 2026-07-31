@@ -277,6 +277,34 @@ M5 Task 6 (Grenade) is **complete and owner-accepted** (2026-07-31) against
       in the plan's §3 (a live grenade stays live, "five bullets" is the solid reading,
       buy-once) were taken as written and are recorded in `DECISIONS.md`.
 
+M5 Task 8 (Soccer Ball + Drink) is **implemented, pending the owner's feel gate**, against
+`docs/M5_TASK8_SOCCER_BALL_AND_DRINK_PLAN.md`, whose §3 defaults were all accepted
+pre-implementation on 2026-07-31:
+- [x] Task A — the restitution seam. `LooseObjectProfile.Bounce` (`0..1`, default `0.0`,
+      validated finite and in range) applied through a `PhysicsMaterial` at profile-apply
+      time. A profile authoring no bounce is given no material at all, so every `.tres` that
+      predates the field is bit-identical: `baseball_pullback`, `meal_consume`, `grenade_fuse`,
+      `consume_care_cooldown`, and `object_budget` all green with unmoved readings, and the
+      domain baseline is unmoved at `999/999` because this is authoring-layer, not domain.
+- [x] Task B — two presets and their wiring. `data/objects/soccer_ball.tres` (radius `14`,
+      mass `0.9`, bounce `0.65`, damp `0.3`/`0.8`) on spawn key `8` with its **own**
+      `PullbackLauncherProfile` (`data/tools/pullback_launcher_soccer_ball.tres`,
+      `VelocityPerPullPixel 11.5`, `MaxLaunchSpeed 1400`) through the new optional
+      `LooseObjectProfile.Launch` override; `data/objects/drink.tres` (`+5` mood, `7200`-tick
+      cooldown, `ConsumeHungerFill 0`) on key `9`. Both in the lab and sandbox launchable
+      arrays and both granted at lab boot. Measured drop signature from `240 px`: Baseball
+      `0` rebounds / `0.0 px` / `153` ticks, Soccer Ball `6` / `82.1 px` / `417` ticks;
+      measured full-pullback launch `1035 px/s`.
+- [x] Task C — the `soccer_and_drink` scenario, 8 checks, seeds `1/7/13`, both presentations.
+- [x] Task D — the `m5_soccer_ball` (6 assertions) and `m5_drink` (7 assertions) real-input
+      journeys, seeds `1/7`, both presentations; all three registered in `ScenarioCatalog` /
+      `tests/journeys/`, `TEST_PLAN.md`, and the quick suite (now 31 steps).
+- [ ] Task E — owner feel gate. `tool_soccer_ball.tres` and `tool_drink.tres` are still
+      `Visible = false` and the two entries may flip independently; both journeys assert the
+      invisible entry's refusal until then, on the Grenade's precedent. The bounce value and
+      the ball's launch tuning are the numbers the gate owns. `DECISIONS.md` records the
+      three §3 defaults and the restitution seam.
+
 **Next action:** start **M5 Task 7 (Burning + Fire Sprayer)** against
 `docs/M5_TASK7_BURNING_AND_FIRE_SPRAYER_PLAN.md`, whose owner-gate defaults were accepted
 pre-implementation on 2026-07-31 and which builds the FR-017.3 `EffectsSettings` seam that
