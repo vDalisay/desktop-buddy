@@ -43,6 +43,13 @@ public enum ProjectileState
 /// that reused one identity would let its second shot be swallowed as a continuation
 /// of its first shot's contact episode, on the same part, inside the router's re-arm
 /// window.</para>
+///
+/// <para>A multi-projectile shot is the one exception, and it is deliberate: every pellet
+/// of one trigger pull is launched with the <b>same</b> shared identity, so the router's
+/// <c>(SourceInteractionId, TargetPartId)</c> episode key makes six pellets into one part
+/// a single scored impact rather than six. A shotgun's damage therefore comes from
+/// coverage — pellets across N parts open N episodes — which is the owner-accepted dedup
+/// interpretation recorded in DECISIONS for M5 Task 9.</para>
 /// </summary>
 [GlobalClass]
 public partial class ProjectileBody : RigidBody2D, IImpactSource
@@ -55,9 +62,12 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
     private string _contentId = ContentIds.ToolPistol;
     private Vector2 _lastSample;
     private Vector2 _launchVelocity;
+    private Vector2 _approachVelocity;
     private bool _contactObserved;
     private int _contactTicks;
     private float _deliveredImpulse;
+    private ulong _hitBodyId;
+    private bool _shoveDelivered;
 
     public float Radius { get; private set; } = 2.0f;
 
@@ -151,16 +161,27 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         Park();
     }
 
-    /// <summary>Puts a pooled projectile into flight. Called only from a routed tick.</summary>
-    public void Launch(Vector2 position, Vector2 velocity)
+    /// <summary>
+    /// Puts a pooled projectile into flight. Called only from a routed tick.
+    ///
+    /// <para><paramref name="sharedInteractionId"/> is the identity every pellet of one
+    /// multi-projectile shot is stamped with. Left <c>null</c> — which is what the
+    /// single-projectile path passes — the flight mints its own identity exactly as it
+    /// always did.</para>
+    /// </summary>
+    public void Launch(Vector2 position, Vector2 velocity, int? sharedInteractionId = null)
     {
-        InteractionId = InteractionIds.Next();
+        InteractionId = sharedInteractionId ?? InteractionIds.Next();
         LaunchPosition = position;
         _lastSample = position;
         _launchVelocity = velocity;
+        _approachVelocity = velocity;
         _contactObserved = false;
         _contactTicks = 0;
         _deliveredImpulse = 0.0f;
+        _hitBodyId = 0;
+        _shoveDelivered = false;
+        LastShoveImpulse = 0.0f;
         TravelledPx = 0.0f;
         TicksInState = 0;
         State = ProjectileState.Live;
@@ -258,7 +279,10 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         _contactObserved = false;
         _contactTicks = 0;
         _deliveredImpulse = 0.0f;
+        _hitBodyId = 0;
+        _shoveDelivered = false;
         _launchVelocity = Vector2.Zero;
+        _approachVelocity = Vector2.Zero;
         CollisionLayer = 0;
         CollisionMask = 0;
         LinearVelocity = Vector2.Zero;
@@ -274,6 +298,13 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         if (State != ProjectileState.Live)
             return;
 
+        // The velocity the shot is carrying *into* whatever it is about to touch. Read
+        // every step before the contacts are examined, because a resolved contact has
+        // already reversed and shrunk it, and the shove has to push the way the shot was
+        // going rather than the way it bounced.
+        if (state.LinearVelocity.LengthSquared() > MinimumStreakSpeed * MinimumStreakSpeed)
+            _approachVelocity = state.LinearVelocity;
+
         // Observation only: what happens to a projectile that connected is decided on
         // the owning component's routed tick, never inside a solver callback.
         int contactCount = state.GetContactCount();
@@ -283,8 +314,65 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
             float impulse = state.GetContactImpulse(index).Length();
             if (impulse > _deliveredImpulse)
                 _deliveredImpulse = impulse;
+
+            // Remember the hardest thing hit so the routed tick can shove it. An id
+            // rather than the reference: a pooled projectile outlives its own contacts,
+            // and a stale strong reference to a freed body is how that becomes a crash.
+            if (impulse >= _deliveredImpulse &&
+                state.GetContactColliderObject(index) is RigidBody2D target)
+            {
+                _hitBodyId = target.GetInstanceId();
+            }
         }
     }
+
+    /// <summary>
+    /// Puts this projectile's authored knockback through the body it hit, on the owning
+    /// component's routed tick and at most once per flight.
+    ///
+    /// <para>This is <b>knockback only</b>. Pain is scored from the impulse the solver
+    /// itself reported, which has already happened by the time this runs; a central impulse
+    /// applied here moves the target and is invisible to the pain pipeline, which is the
+    /// same separation the grenade's blast shove relies on. The magnitude falls off with
+    /// how far the shot flew (<see cref="GunProfile.ContactShoveAfter"/>): point blank it is
+    /// authored to a grenade's worth across a whole burst, and past the far radius it is
+    /// nothing at all, leaving the bare physical hit that was always there.</para>
+    /// </summary>
+    /// <returns>The impulse really delivered, or <c>0</c> when there was nothing to shove.</returns>
+    public float TryApplyContactShove(GunProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (_shoveDelivered || !_contactObserved || _hitBodyId == 0)
+            return 0.0f;
+
+        float magnitude = profile.ContactShoveAfter(TravelledPx);
+        if (magnitude <= 0.0f)
+        {
+            // Nothing to deliver is still a delivered shove: a projectile past the far
+            // radius must not keep re-testing every tick of its settling window.
+            _shoveDelivered = true;
+            return 0.0f;
+        }
+
+        _shoveDelivered = true;
+        if (GodotObject.InstanceFromId(_hitBodyId) is not RigidBody2D target ||
+            !GodotObject.IsInstanceValid(target) ||
+            target.Freeze)
+        {
+            return 0.0f;
+        }
+
+        Vector2 heading = _approachVelocity != Vector2.Zero ? _approachVelocity : _launchVelocity;
+        if (heading == Vector2.Zero)
+            return 0.0f;
+
+        target.ApplyCentralImpulse(heading.Normalized() * magnitude);
+        LastShoveImpulse = magnitude;
+        return magnitude;
+    }
+
+    /// <summary>The extra knockback this flight delivered, for test readouts and telemetry.</summary>
+    public float LastShoveImpulse { get; private set; }
 
     public override void _Draw()
     {

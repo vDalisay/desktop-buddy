@@ -1362,6 +1362,73 @@ cool into a smoke trail. A touched part remains visually alight until the burn e
 not change which most-recent part receives the burn's attributed pain event. While Burning owns
 the hazard layer, locomotion is authored at `1.35x` and both free arms reuse the accepted
 grab-resistance panic-flail arc at full strength. No new behavior or damage lane exists.
+## Shotgun — Even Fan, Coverage Damage, and the Shared Shot Identity (M5 Task 9, 2026-07-31)
+
+The owner accepted all three of `docs/M5_TASK9_SHOTGUN_PLAN.md` §3's defaults on 2026-07-31,
+**before** implementation, so they are rules rather than proposals. The Shotgun's authored
+contract is unchanged from §9.2 above: `6` pellets, `5` shells, `0.9 s` cadence, `2 s` reload,
+unlimited reserve.
+
+- **The pellet fan is even and deterministic, not random scatter.** The platform already fanned
+  a multi-projectile shot across `SpreadHalfAngleDegrees` by index fraction, and that is now the
+  recorded rule: a replayed seed reproduces a shot exactly, and a scenario can state where every
+  pellet went. (The alternative considered and rejected: seeded per-shot jitter drawn from the
+  simulation's random source.)
+- **One shot into one part scores once.** Every pellet of one trigger pull carries **one**
+  interaction identity, so the impact router's `(SourceInteractionId, TargetPartId)` episode key
+  makes six simultaneous pellets on one part a single contact episode. This is the recorded
+  interpretation of the §7.1–7.2 dedup rules for spread weapons, and it has a consequence worth
+  stating plainly: **point-blank damage into a single part is one pellet's worth, not six.** A
+  shotgun's damage comes from *coverage* — pellets across `N` parts open `N` episodes and score
+  `N` times — so mid-range against a spread-eagled buddy out-damages a point-blank shot into a
+  fingertip, and a knockout needs two committed bursts. (The alternative considered and
+  rejected: per-pellet identities, which would make it a six-fold point-blank one-shot weapon.)
+  Single-projectile guns are untouched: they pass no shared identity and mint one per launch
+  exactly as they always have.
+- **A reload ejects a cosmetic shell** on the existing dropped-magazine lane — pooled, on no
+  collision layer, masked only against the room bounds, never a loose object, and never able to
+  touch the buddy. It is authored as the magazine visual for now, which §3.3 permits.
+
+Two engineering values were set by measurement during implementation and are recorded here
+because both are load-bearing rather than taste:
+
+- **`ContactSettleTicks` is `4`, not the Pistol's `2`.** At `2`, a pellet that had connected was
+  taken out of the world before the solver resolved the real impulse, and a burst the player
+  watched land delivered nothing at all. Point-blank shots happened to survive it; everything
+  past arm's length did not.
+- **`ProjectileMass` is `0.20` at `2200 px/s`,** tuned against the shared curve to the plan's
+  §2.3 pain target and nothing else. Measured on seeds `1/7/13`: one solid pellet `7.2–9.1`
+  pain against a point-blank pistol bullet's `13.8–13.9`, and a two-part burst `9.0–26.0`. There
+  is still no per-tool damage multiplier anywhere.
+
+`PoolCapacity` is `36` rather than the plan's suggested `24`: `GunProfile.Validate` already
+requires the pool to cover a whole magazine in flight, which for this gun is `5 x 6 = 30`.
+
+**Owner gate: NOT YET PLAYED.** `data/catalogue/tool_shotgun.tres` stays `Visible = false` at
+its provisional `100` credits until the owner plays the slice, and the `m5_shotgun` journey
+asserts that refusal — the shape the Grenade's leg had before its own acceptance.
+
+## Shotgun Owner Feedback — Scatter, Pump, Shells, Stock, and Knockback (2026-08-01)
+
+This owner feedback supersedes the Task 9 even-fan and reload-ejected-shell choices above.
+
+- Every shot selects a new seeded-random spread half-angle between `12°` and `20°`; each of
+  its six pellets independently selects an angle inside that shot's cone. Seeded runs remain
+  replayable, but successive shots no longer repeat one fixed ladder.
+- Every fired shot ejects one pooled cosmetic red shotgun shell. Reloading ejects no magazine.
+- The primary click after a shot cycles the pump over `24` routed ticks and chambers the next
+  shell; that click cannot fire. The forend follows the stroke in both presentation modes.
+- Each pellet adds distance-falling knockback without changing pain. At point blank the six
+  authored `600` impulses total `3600`, twice the Grenade's `1800` center shove, when all
+  connect. The extra
+  shove reaches zero by `260 px`, leaving the projectile's former physical contact response as
+  the minimum, never reducing it.
+- The procedural Shotgun stock is doubled lengthwise behind the cursor and gains restrained
+  receiver/butt details; no imported model or new asset dependency is introduced.
+
+The owner played this revision on 2026-08-01, liked the changes, and doubled only the maximum
+point-blank knockback from `300` to `600` per pellet. Falloff distances and the physical-hit
+floor are unchanged.
 
 ## Planning Rule
 

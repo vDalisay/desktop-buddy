@@ -1,4 +1,4 @@
-[gd_scene load_steps=54 format=3]
+[gd_scene load_steps=55 format=3]
 
 [ext_resource type="Script" path="res://src/App/BuddyLab.cs" id="1_lab"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2_buddy"]
@@ -51,6 +51,7 @@
 [ext_resource type="Script" path="res://src/Tools/CursorGunComponent.cs" id="49_cursor_guns"]
 [ext_resource type="Resource" path="res://data/tools/gun_pistol.tres" id="49_pistol_profile"]
 [ext_resource type="Resource" path="res://data/tools/gun_nerf_blaster.tres" id="50_nerf_profile"]
+[ext_resource type="Resource" path="res://data/tools/gun_shotgun.tres" id="50_shotgun_profile"]
 [ext_resource type="Script" path="res://src/Presentation3D/CursorGunVisual3D.cs" id="51_gun_visual"]
 [ext_resource type="Script" path="res://src/Sandbox/CameraKickComponent.cs" id="52_camera_kick"]
 [ext_resource type="Script" path="res://src/Tools/GrenadeComponent.cs" id="53_grenade"]
@@ -389,7 +390,7 @@ Profile = ExtResource("21_care_profile")
 
 [node name="CursorGunComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
 script = ExtResource("49_cursor_guns")
-Profiles = Array[Resource]([ExtResource("50_nerf_profile"), ExtResource("49_pistol_profile")])
+Profiles = Array[Resource]([ExtResource("50_nerf_profile"), ExtResource("49_pistol_profile"), ExtResource("50_shotgun_profile")])
 Pipeline = NodePath("../InteractionPipeline")
 Boundaries = NodePath("../RoomBounds")
 

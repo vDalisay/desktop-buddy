@@ -17,13 +17,27 @@ public readonly record struct GunConstants(
     int ReloadTicks,
 
     /// <summary>Projectiles one shot releases: <c>1</c> for a bullet, more for a spread.</summary>
-    int ProjectilesPerShot)
+    int ProjectilesPerShot,
+
+    /// <summary>
+    /// Whether a fired shot leaves the chamber empty until the player works the action.
+    /// A pump gun answers <c>true</c>: the shell that just went off has to be cycled out
+    /// before the next one can go off, and the player pays a primary press for it.
+    /// </summary>
+    bool RequiresPumpBetweenShots = false,
+
+    /// <summary>
+    /// Ticks the pump stroke takes. The gun ignores the trigger while it runs, so this is
+    /// the real cost of the action — <c>24</c> is a fifth of a second at 120 Hz.
+    /// </summary>
+    int PumpTicks = 0)
 {
     public bool IsWellFormed() =>
         MagazineCapacity > 0 &&
         ShotIntervalTicks > 0 &&
         ReloadTicks > 0 &&
-        ProjectilesPerShot > 0;
+        ProjectilesPerShot > 0 &&
+        (!RequiresPumpBetweenShots || PumpTicks > 0);
 }
 
 /// <summary>
@@ -47,17 +61,32 @@ public readonly record struct GunPhase(
     bool TriggerHeld,
 
     /// <summary>Monotonic shot identity; <c>0</c> before the first shot.</summary>
-    int ShotEpoch)
+    int ShotEpoch,
+
+    /// <summary>
+    /// True on a pump gun between the shot that emptied the chamber and the stroke that
+    /// recharges it. Always false on a gun that authors no pump, which is what keeps the
+    /// pistol and the nerf on exactly the path they were on before pumps existed.
+    /// </summary>
+    bool ChamberEmpty = false,
+
+    /// <summary>Ticks left in the running pump stroke, or <c>0</c> when none is running.</summary>
+    int PumpTicksRemaining = 0)
 {
     public bool IsReloading => ReloadTicksRemaining > 0;
 
-    /// <summary>A freshly drawn gun with a full magazine.</summary>
+    /// <summary>True while the action is being worked; the trigger is dead for the duration.</summary>
+    public bool IsPumping => PumpTicksRemaining > 0;
+
+    /// <summary>A freshly drawn gun with a full magazine and a charged chamber.</summary>
     public static GunPhase FullyLoaded(in GunConstants constants) => new(
         Rounds: Math.Max(0, constants.MagazineCapacity),
         TicksSinceShot: Math.Max(0, constants.ShotIntervalTicks),
         ReloadTicksRemaining: 0,
         TriggerHeld: false,
-        ShotEpoch: 0);
+        ShotEpoch: 0,
+        ChamberEmpty: false,
+        PumpTicksRemaining: 0);
 }
 
 /// <summary>External facts for one gun tick.</summary>
@@ -89,7 +118,13 @@ public readonly record struct GunResult(
 
     /// <summary>True on the tick the magazine came back full.</summary>
     bool ReloadCompleted,
-    bool IsValid);
+    bool IsValid,
+
+    /// <summary>True on the tick a primary press started the pump stroke instead of firing.</summary>
+    bool PumpStarted = false,
+
+    /// <summary>True on the tick the pump stroke finished and the chamber came back.</summary>
+    bool PumpCompleted = false);
 
 /// <summary>
 /// The pure cadence/magazine/reload state machine every cursor gun runs on
@@ -113,6 +148,14 @@ public readonly record struct GunResult(
 ///   <item>A press on an empty magazine is a dry fire and starts the automatic
 ///   reload. Emptying the magazine does <b>not</b>: the eighth shot leaves the gun
 ///   empty and ready, and it is the ninth pull that reloads it.</item>
+///   <item>On a gun that authors <see cref="GunConstants.RequiresPumpBetweenShots"/>,
+///   a fired shot leaves the chamber empty, and the <b>next primary press works the
+///   action instead of firing</b>. The stroke owns the gun for
+///   <see cref="GunConstants.PumpTicks"/>, and only the press after it can fire. The
+///   pump is deliberately <b>not</b> gated on the shot interval: a player who cycles
+///   the action the instant the shell leaves is rewarded with a gun that is ready when
+///   the interval elapses, which is the whole feel of a pump gun. A completed reload
+///   charges the chamber, so a reload is never followed by a wasted stroke.</item>
 /// </list>
 /// </summary>
 public static class GunMachine
@@ -130,6 +173,8 @@ public static class GunMachine
         bool dryFired = false;
         bool reloadStarted = false;
         bool reloadCompleted = false;
+        bool pumpStarted = false;
+        bool pumpCompleted = false;
         int projectiles = 0;
 
         if (phase.IsReloading)
@@ -139,10 +184,32 @@ public static class GunMachine
             {
                 remaining = 0;
                 reloadCompleted = true;
-                phase = phase with { Rounds = constants.MagazineCapacity };
+                // A reload ends with the action closed on a live shell: charging the
+                // chamber here is what stops a reload from being followed by a stroke the
+                // player has no way to know they still owe.
+                phase = phase with
+                {
+                    Rounds = constants.MagazineCapacity,
+                    ChamberEmpty = false,
+                    PumpTicksRemaining = 0,
+                };
             }
 
             phase = phase with { ReloadTicksRemaining = remaining };
+        }
+        else if (phase.IsPumping)
+        {
+            // The stroke owns the gun the way a reload does: presses during it are spent,
+            // and nothing queues behind it.
+            int remaining = phase.PumpTicksRemaining - 1;
+            if (remaining <= 0)
+            {
+                remaining = 0;
+                pumpCompleted = true;
+                phase = phase with { ChamberEmpty = false };
+            }
+
+            phase = phase with { PumpTicksRemaining = remaining };
         }
         else if (input.ReloadRequested && phase.Rounds < constants.MagazineCapacity)
         {
@@ -151,7 +218,15 @@ public static class GunMachine
         }
         else if (input.TriggerHeld && !phase.TriggerHeld)
         {
-            if (phase.TicksSinceShot < constants.ShotIntervalTicks)
+            if (phase.ChamberEmpty)
+            {
+                // The press the player owes the action. Charged ahead of the cadence check
+                // on purpose — see the class rules — so cycling early is rewarded rather
+                // than swallowed by the interval that is still running.
+                pumpStarted = true;
+                phase = phase with { PumpTicksRemaining = Math.Max(1, constants.PumpTicks) };
+            }
+            else if (phase.TicksSinceShot < constants.ShotIntervalTicks)
             {
                 // Inside the cadence window: the press is consumed and nothing else
                 // happens. It must not linger, or a player mashing the button would
@@ -166,6 +241,7 @@ public static class GunMachine
                     Rounds = phase.Rounds - 1,
                     TicksSinceShot = 0,
                     ShotEpoch = Advance(phase.ShotEpoch),
+                    ChamberEmpty = constants.RequiresPumpBetweenShots,
                 };
             }
             else
@@ -184,7 +260,9 @@ public static class GunMachine
             dryFired,
             reloadStarted,
             reloadCompleted,
-            IsValid: true);
+            IsValid: true,
+            pumpStarted,
+            pumpCompleted);
     }
 
     /// <summary>Increment that saturates instead of wrapping into negative counters.</summary>

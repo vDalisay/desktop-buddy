@@ -196,6 +196,20 @@ Task C pinned the feel in `pistol_fire` (17 checks now): sub-pixel travel steers
 release jitter never flips it, and a reversal costs 39 ticks — bounded below by the authored
 turn rate so it cannot snap, and above by that plus three smoothing half-lives.
 
+The **Shotgun** (`tool.shotgun`, `ToolId 12`, lab key `L`) is the platform's own claim
+tested: a third `.tres`, a third `GunVisual3DKind` (a pump silhouette with a walnut forend
+and stock), and no new input code, cadence code, or machine states. Its one platform change
+is the **shared shot identity** — every pellet of one trigger pull carries the same
+`InteractionId`, so six pellets into one part are one accepted impact and a shotgun hurts by
+covering parts rather than by concentrating on one (`DECISIONS.md`, "Shotgun — Even Fan,
+Coverage Damage, and the Shared Shot Identity"). Single-projectile guns pass no shared id and
+are byte-identical to before. Two numbers there are correctness rather than taste and are
+recorded in the profile: `ContactSettleTicks` is `4`, because at `2` a connected pellet left
+the world before the solver resolved its impulse, and `PoolCapacity` is `36`, because
+validation requires a whole magazine (`5 x 6`) in flight. Gated by `shotgun_spread` (15
+checks, seeds `1/7/13`) and the `m5_shotgun` journey; the catalogue entry stays
+`Visible = false` until the owner's feel gate.
+
 **Home-Run Bat refinement** (`docs/M5_TASK4_HOME_RUN_BAT_FEEL_PLAN.md`):
 
 - [x] Task A — pure charged-swing domain model and trajectory servo.

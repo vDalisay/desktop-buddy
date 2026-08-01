@@ -23,6 +23,9 @@ namespace DesktopBuddy.Tools;
 [GlobalClass]
 public partial class MagazineBody : RigidBody2D
 {
+    /// <summary>The brass head a spent case is drawn with, under its authored hull colour.</summary>
+    private static readonly Color BrassColor = new("c9a227");
+
     private Vector2 _size = new(7.0f, 12.0f);
     private Color _color = new("1c1f26");
     private int _ticks;
@@ -43,13 +46,26 @@ public partial class MagazineBody : RigidBody2D
     /// <summary>Fade applied while the magazine is on its way out; 1 is fully drawn.</summary>
     public float FadeAlpha { get; private set; } = 1.0f;
 
-    public void Configure(GunProfile profile)
+    /// <summary>
+    /// True when this body is a spent case thrown out on a shot rather than a magazine
+    /// dropped on a reload. The physics and the layer discipline are identical — only the
+    /// drawn size and colour differ — because a shotgun has no magazine to drop and reusing
+    /// this lane is what keeps ejected brass out of the loose-object budget.
+    /// </summary>
+    public bool IsCasing { get; private set; }
+
+    public void Configure(GunProfile profile, bool asCasing = false)
     {
         ArgumentNullException.ThrowIfNull(profile);
 
-        _color = profile.AccentColor;
-        _size = new Vector2(profile.VisualLengthPx * 0.11f, profile.VisualLengthPx * 0.20f);
-        Mass = 0.08f;
+        IsCasing = asCasing;
+        _color = asCasing ? profile.CasingColor : profile.AccentColor;
+        _size = asCasing
+            ? new Vector2(
+                profile.VisualLengthPx * profile.CasingLengthFraction * 0.42f,
+                profile.VisualLengthPx * profile.CasingLengthFraction)
+            : new Vector2(profile.VisualLengthPx * 0.11f, profile.VisualLengthPx * 0.20f);
+        Mass = asCasing ? 0.03f : 0.08f;
         GravityScale = 1.0f;
         // This tiny cosmetic has no gameplay impulse to preserve, so shape casting is
         // appropriate here: it prevents a long frame or a paused routing gate from ever
@@ -149,7 +165,18 @@ public partial class MagazineBody : RigidBody2D
         if (!IsLive)
             return;
 
-        var body = new Color(_color, _color.A * Mathf.Clamp(FadeAlpha, 0.0f, 1.0f));
+        float alpha = Mathf.Clamp(FadeAlpha, 0.0f, 1.0f);
+        var body = new Color(_color, _color.A * alpha);
         DrawRect(new Rect2(-_size * 0.5f, _size), body, true);
+        if (!IsCasing)
+            return;
+
+        // The brass head on the red hull: two colours are the whole difference between a
+        // shotgun shell and a red crumb at this size.
+        float head = _size.Y * 0.32f;
+        DrawRect(
+            new Rect2(new Vector2(-_size.X * 0.5f, (_size.Y * 0.5f) - head), new Vector2(_size.X, head)),
+            new Color(BrassColor, alpha),
+            true);
     }
 }

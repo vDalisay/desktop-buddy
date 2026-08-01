@@ -28,6 +28,7 @@ public partial class CursorGunVisual3D : Node3D
     private CursorGunComponent _gun = null!;
     private Node3D _orientation = null!;
     private MeshInstance3D _mesh = null!;
+    private MeshInstance3D _pump = null!;
     private MeshInstance3D _flash = null!;
     private StandardMaterial3D _material = null!;
     private GunProfile? _shown;
@@ -106,6 +107,14 @@ public partial class CursorGunVisual3D : Node3D
             PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
         };
         _orientation.AddChild(_mesh);
+        _pump = new MeshInstance3D
+        {
+            Name = "ShotgunPump",
+            MaterialOverride = _material,
+            Visible = false,
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+        };
+        _orientation.AddChild(_pump);
         BuildFlash();
 
         // Every authored gun's mesh is built once here, on composition, rather than on the
@@ -150,6 +159,9 @@ public partial class CursorGunVisual3D : Node3D
             }
 
             _mesh.Mesh = mesh;
+            _pump.Mesh = profile.Visual3DKind == GunVisual3DKind.Shotgun
+                ? GunMeshBuilder.BuildShotgunPump(profile)
+                : null;
             _shown = profile;
         }
 
@@ -166,6 +178,8 @@ public partial class CursorGunVisual3D : Node3D
         // A proper rotation has determinant +1, unlike the old negative-Y reflection.
         // Local X is the barrel axis, so this roll flips the grip while preserving aim.
         _orientation.Rotation = new Vector3(IsMirrored ? Mathf.Pi : 0.0f, 0.0f, 0.0f);
+        _pump.Visible = profile.Visual3DKind == GunVisual3DKind.Shotgun;
+        _pump.Position = new Vector3(-_gun.PumpSlideOffsetPx, 0.0f, 0.0f);
         Visible = true;
         UpdateFlash(profile);
     }

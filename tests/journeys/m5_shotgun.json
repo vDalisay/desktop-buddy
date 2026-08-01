@@ -1,0 +1,27 @@
+{
+  "id": "m5_shotgun",
+  "description": "The Shotgun end to end through real input: one press releases six scattered pellets and ejects a red shell, the next click cycles the pump, hits hurt the buddy, R reloads the tube, an empty pull starts the automatic reload, and Grab holsters it.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_shotgun",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "the_shotgun_is_not_on_sale_until_the_owner_gates_it" },
+    { "predicate": "the_shotgun_key_draws_a_loaded_five_shell_magazine" },
+    { "predicate": "pointer_motion_aims_the_shotgun" },
+    { "predicate": "one_press_releases_exactly_six_pellets" },
+    { "predicate": "the_six_pellets_of_one_press_share_one_interaction" },
+    { "predicate": "each_shot_ejects_a_red_shell" },
+    { "predicate": "the_click_after_a_shot_cocks_the_pump" },
+    { "predicate": "a_shotgun_burst_hurts_the_buddy" },
+    { "predicate": "the_shotgun_is_remembered_as_harmful" },
+    { "predicate": "the_reload_key_refills_a_partial_magazine" },
+    { "predicate": "an_empty_magazine_dry_fires_into_an_automatic_reload" },
+    { "predicate": "the_automatic_reload_completes" },
+    { "predicate": "selecting_grab_holsters_the_shotgun" }
+  ]
+}
