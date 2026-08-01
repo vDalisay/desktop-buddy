@@ -1,7 +1,8 @@
 # M5 Task 10 — Repair Kit Plan
 
-**Status: READY TO IMPLEMENT — prerequisites verified against `main` 2026-08-01.** Written
-2026-07-31, not yet implemented. Refines the master plan's
+**Status: IMPLEMENTED 2026-08-01 (Tasks A–D) plus Task E's bookkeeping; the owner feel gate
+itself is outstanding and `tool_repair_kit.tres` stays `Visible = false` until it passes.**
+Progress and the measured results are recorded in §6. Written 2026-07-31. Refines the master plan's
 Task 10 stub to handoff fidelity. Authoritative contracts: FR-008.6/.7/.8/.10,
 FR-010.10, RAGDOLL §8.2/§9.2 Repair Kit rows **as amended below**, and the owner
 decision of 2026-07-29 (DECISIONS ~line 891): **no cooldown and no appetite gate** —
@@ -214,3 +215,50 @@ The standard three: build + domain suite, quick scenario suite, targeted runs
 `burning_status`, `knockout_window`, `object_toss_discard` as neighbours) across
 seeds 1/7/13 and both presentation modes. Any baseline movement stated in the commit
 message, never silently absorbed.
+
+---
+
+## 6. Progress (2026-08-01)
+
+**Tasks A–D DONE, one commit each.** Task E's bookkeeping is done; only the owner feel gate
+and the `Visible = true` flip remain.
+
+- **A — data + flag** (`9943a4e`). `LooseObjectProfile.ClearsHarmfulStatuses`, validated as
+  meaningful only on a consumable. `data/objects/repair_kit.tres`: 20 mood, cooldown 0, hunger
+  fill 0, radius 10 / mass 1.2, single-raise gesture, white fill on cross-red outline. Both
+  launcher arrays, spawn key `0`, laboratory grant. No mesh (`Visual3D = None`), no launcher
+  preset — the shared one measured fine, so the plan's per-item preset was not authored.
+- **B — contact application** (`b918475`). `ObjectInteractionComponent.TryApplyThrownCareContact`
+  runs the effect through `CareConsumableModel.TryBegin`/`Complete`, so the thrown route and the
+  eaten route share one success discipline. Called from `InteractionDamageComponent.PhysicsTick`
+  *before* `TryResolveSource`, which is what keeps a kit out of the impact pipeline and out of
+  harmful memory. Player-thrown is read from the registry snapshot (`ThrowToken != 0`, not
+  buddy- or player-held), so a resting kit and a kit the buddy is carrying are both inert.
+  A kit arriving while another consume is open applies nothing and stays a loose object.
+- **C — the healing** (`161d4dc`). One `OnCareItemTaken` handler per root on `ConsumeSucceeded`:
+  `Pipeline.ClearRollingPain()`, `FireSprayer.ClearBurning()`, hazard flag down. Scorch goes out
+  with the fire — see §3's open call, resolved as "reuse `ClearBurning` as-is" and recorded in
+  `DECISIONS.md`.
+- **D — scenario, journey, registration** (`40d41de`). `repair_kit` (13 checks) and
+  `m5_repair_kit`; `ScenarioCatalog`, `TEST_PLAN.md`, quick suite now 37 steps.
+
+**Two things the measurements changed, both worth keeping:**
+
+1. **Rolling pain during a knockout is always zero.** `EnterKnockout` empties the window and
+   unconscious hits never enter it, so the plan's Task C accept line — clear the window while
+   knocked out — is unsatisfiable as written. The clear is proved on a conscious buddy instead,
+   and the knockout leg proves only that the kit is not a wake-up call. That the model cannot
+   move the end time is `PainKnockoutModelTests.ClearRollingPain_DoesNotShortenActiveKnockout`
+   and is not re-proved.
+2. **The controlled-impact laboratory always fail-safe repositions mid-knockout** — its buddy
+   hangs where it can never stand, so the recovery clock runs out at about 2.2 s and clears the
+   knockout by design. The watch on "still out" stops there rather than counting it as an early
+   wake. Any future scenario measuring a full knockout in that laboratory hits this.
+
+**Validation, 2026-08-01.** Build `0/0` · domain **1114/1114** · `repair_kit` seeds 1/7/13 and
+legacy · `m5_repair_kit` seeds 1/7 in both presentations · neighbours green (`meal_consume`,
+`consume_care_cooldown`, `burning_status`, `knockout_window`, `object_toss_discard`) · quick
+suite **37/37**.
+
+**Left for the owner (Task E):** play it, then flip `Visible = true` and set the price. The
+DECISIONS entry and the RAGDOLL §8.2 / §9.2 cooldown amendments are already written.

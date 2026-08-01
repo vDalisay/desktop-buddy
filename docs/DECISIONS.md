@@ -1571,6 +1571,42 @@ The owner played this revision on 2026-08-01, liked the changes, and doubled onl
 point-blank knockback from `300` to `600` per pellet. Falloff distances and the physical-hit
 floor are unchanged.
 
+## Repair Kit — Contact Application, No Rationing, and What the Clears Touch (M5 Task 10, 2026-08-01)
+
+Implemented from `docs/M5_TASK10_REPAIR_KIT_PLAN.md`, whose four §3 defaults the owner accepted
+in full on 2026-07-31, before implementation:
+
+- **A player-thrown kit applies on its first buddy-part contact** — pullback-launched or
+  grab-flung. This is the mechanism FR-008.7 and FR-010.10 are satisfied by, not a plan
+  proposal: a knocked-out buddy is priority `1` and a burning buddy flees at priority `3`, so
+  the two buddies a Repair Kit exists for are exactly the two that can never pick one up and
+  eat it. Buddy consumption stays available for a calm, conscious buddy, and both routes
+  converge on the same application so they cannot drift.
+- **The kit's own impact never scores pain or harmful memory.** Its contact is consumed by the
+  care path before the impact pipeline resolves a source. A medkit that bruised would enter
+  itself into harmful memory and teach the buddy to flee the thing that heals it.
+- **Applying to a healthy, calm buddy still works and still pays `+20`.** There is no "nothing
+  to repair" refusal.
+- **Buy-once, spawn-forever**, on spawn key `0`, like every other launchable.
+
+Two consequences settled during implementation:
+
+- **The clears take scorch with them.** The kit calls `FireSprayerComponent.ClearBurning`, the
+  same entry point the fail-safe reposition uses, which puts out the fire and wipes the soot by
+  an explicit contract. Soot that survived being patched up would read as the repair not having
+  worked. A second entry point that spares scorch is the alternative if the owner ever wants
+  one; nothing else would have to change.
+- **The knockout is untouched.** `ClearRollingPain` empties the pain events and cannot reach
+  the knockout end timestamp. Measuring it also settled that rolling pain during a knockout is
+  always zero — `EnterKnockout` empties the window and unconscious hits never enter it — so what
+  the kit clears mid-knockout is nothing, and what it stops is the buddy accumulating toward
+  the *next* one.
+
+**Superseded:** the `120`-second Repair Kit cooldown carried by RAGDOLL §8.2's care table and
+§9.2's tool row until this slice. Both rows are amended; the older DECISIONS bullet of
+2026-07-25 stays as history, superseded by the 2026-07-29 owner decision recorded above, the
+same way the grenade fuse supersession was recorded. FR-008.6 was already amended.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

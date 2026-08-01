@@ -4,8 +4,9 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-07-31, after M5 Task 5's gun-feel refinement Tasks A and B
-(defect verification, projectile alignment, aim-gated trigger, aim v2 smoothed pursuit).
+Last updated: 2026-08-01, after M5 Task 10 (Repair Kit) Tasks A-D. Tasks 5-9 are
+owner-accepted and on sale; the Repair Kit is code-complete and waits only on its
+owner feel gate, so `tool_repair_kit.tres` stays `Visible = false`.
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
@@ -57,11 +58,11 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test` | 979/979 green |
+| Domain unit | `dotnet test` | 1114/1114 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
-| Scenarios (49) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | Current targeted lifecycle scenarios green; the latest full both-presentation catalogue result remains the recorded M4/M5 baseline |
-| Journeys (14) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix green |
-| Quick suite | `tools\quick_validate.bat` | 26/26 |
+| Scenarios (57) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | Current targeted lifecycle scenarios green; the latest full both-presentation catalogue result remains the recorded M4/M5 baseline |
+| Journeys (21) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix green |
+| Quick suite | `tools\quick_validate.bat` | 37/37 |
 
 Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the
 filenames in `tests/journeys/`. Every scenario and journey is also rerun under

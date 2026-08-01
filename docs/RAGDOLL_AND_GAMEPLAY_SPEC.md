@@ -270,11 +270,11 @@ Care gives no immediate money. It increases mood and therefore passive earning p
 | Completed safe throw/catch | `+1` | Once per completed throw/catch event |
 | Meal successfully consumed | `+10` | `60` seconds |
 | Drink successfully consumed | `+5` | `60` seconds |
-| Repair Kit successfully applied | `+20` | `120` seconds |
+| Repair Kit successfully applied | `+20` | none (owner, 2026-07-29) |
 
 Pet/Tickle cadence counts valid contact, not merely held input over empty space. Pet satisfaction counts cursor distance over buddy bodies, with a hidden `1.2x` favorite body part reselected whenever Pet is selected. Active rubbing contact with that favorite emits small presentation-only sparkles around the Pet hand; the particles stop immediately when the valid favorite contact ends. Tickle becomes Angry after `6` cumulative valid-contact seconds, stops granting positive care, and resets after `8` seconds without valid contact. A catch can reward only once for its originating throw. Repair Kit clears transient pain and harmful statuses, including Burning, but does not shorten knockout.
 
-Meal, Drink, and Repair Kit cooldowns begin only after successful consumption/use. Cancelling, dropping, missing, or otherwise failing to use the item does not start its cooldown.
+Meal and Drink cooldowns begin only after successful consumption; the Repair Kit authors no cooldown at all. Cancelling, dropping, missing, or otherwise failing to use the item does not start its cooldown.
 
 ### 8.3 Passive economy
 
@@ -323,7 +323,7 @@ Every purchased tool is permanently unlocked for unlimited use. There is one ear
 | Soccer Ball | `65` minutes | Pullback-launched loose physical object. It never enters ordinary catch/scoop/hold; the sole hand exception is a Content/Delighted corner rescue: pick up a ball inside the authored wall distance, carry and face inward while watching it, place it in front, then kick inward. A player touch enables an underfoot trap; floor contact preserves that permission, while side-wall or ceiling contact clears it until the next player touch. Away from walls, Content/Delighted buddies track and chase a free ball and choose seeded straight or arched kicks. While the player holds it, they continuously track it while travelling and repeatedly retreat for five seconds then pause briefly; release immediately restores chase. The Soccer Ball alone is excluded from ambient obstacle hopping. Final physical preset is empirical and distinct data from Baseball. |
 | Drink | `80` minutes | Pullback-launched care object. Successful consumption grants `+5` mood, then enforces a `60`-second reuse cooldown. |
 | Shotgun | `100` minutes | Cursor gun firing `6` physical CCD pellets in a newly randomized `12–20°` half-angle cone per shot. Capacity `5`; minimum shot interval `0.9` seconds; reload `2` seconds; unlimited reserve ammunition. Each shot ejects a cosmetic red shell and leaves the chamber requiring a pump click before another firing click. Added pellet knockback falls with travel: all six point-blank pellets total twice the Grenade's center shove, while long shots retain the original physical contact as the minimum. Reloads with `R` and auto-reloads when fired empty. |
-| Repair Kit | `120` minutes | Pullback-launched care object. Successful application grants `+20` mood, clears transient pain and harmful statuses, and enforces a `120`-second cooldown. It never shortens an active knockout. |
+| Repair Kit | `120` minutes | Pullback-launched or grab-flung care object. Successful application grants `+20` mood and clears transient pain and harmful statuses; it never shortens an active knockout. **No cooldown and no appetite gate** (owner, 2026-07-29: "it is not food, so nothing rations it"), superseding the `120`-second cooldown this row and the care table used to carry. Applies on player-thrown contact with a buddy part as well as by consumption, because a knocked-out or burning buddy cannot pick anything up (owner, 2026-07-31). |
 
 Target times are cumulative-play pacing goals, not hard time gates. Prices and income are tuned so a representative mixed active/passive player can buy in this sequence, with the complete current catalogue at approximately `2` hours.
 
