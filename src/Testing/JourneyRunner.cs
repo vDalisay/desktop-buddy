@@ -742,6 +742,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5ShotgunAsync(state, lab);
         }
+        else if (exercise == "m5_repair_kit")
+        {
+            await ExerciseM5RepairKitAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -1616,6 +1620,138 @@ public partial class JourneyRunner : Node
             $"fullness={fullnessWhenOffered:F1}->{lab.Progress.Fullness:F1} " +
             $"cooldown={cooldownAfterSuccess}->{cooldownAfterRefusal} " +
             $"rejection={lab.Buddy.ObjectInteraction.LastConsumeRejection}");
+    }
+
+    /// <summary>
+    /// The M5 Repair Kit end to end through real input: the shop still withholds it until the
+    /// owner's feel gate, key <c>0</c> places one owned kit, a kit flung wide heals nobody and
+    /// waits where it lands, and a kit released against a burning buddy puts the fire out and
+    /// pays its authored mood.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5RepairKitAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+        Rect2 room = lab.Boundaries.InnerBounds;
+        LooseObjectProfile? kitProfile = FindLaunchable(lab, ContentIds.ToolRepairKit);
+
+        PurchaseResult refusedSale = lab.Economy.Purchase(ContentIds.ToolRepairKit);
+        state["the_repair_kit_is_not_on_sale_until_the_owner_gates_it"] =
+            !refusedSale.Succeeded &&
+            refusedSale.Status == PurchaseStatus.NotAvailable &&
+            kitProfile is not null &&
+            lab.Progress.IsToolUnlocked(ContentIds.ToolRepairKit) &&
+            lab.Objects.Count == 0;
+
+        ToolId toolBefore = lab.Pipeline.SelectedTool;
+        Vector2 spawn = PlaceOnTheFloorBesideTheBuddy(lab, room);
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, spawn, 0);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.Key0);
+        await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Launcher.CurrentLaunchableContentId == ContentIds.ToolRepairKit &&
+                  lab.Objects.Count == 1,
+            30);
+        LooseObjectBody? kit = lab.Launcher.CurrentLaunchable;
+        state["the_repair_kit_key_places_one_owned_kit"] =
+            GodotObject.IsInstanceValid(kit) &&
+            kit!.SemanticContentId == ContentIds.ToolRepairKit &&
+            lab.Objects.Count == 1 &&
+            lab.Pipeline.SelectedTool == toolBefore &&
+            !lab.Grab.IsGrabbing;
+
+        // --- The miss. A kit flung at the far wall applies nothing and stays a loose object ---
+        float moodBeforeMiss = lab.Progress.Mood;
+        Vector2 away = new(
+            lab.Buddy.Rig.Torso.GlobalPosition.X <= room.GetCenter().X
+                ? room.End.X - 24.0f
+                : room.Position.X + 24.0f,
+            room.End.Y - 24.0f);
+        bool flungWide = await FlingKitTo(tree, lab, kit, () => away);
+        for (int tick = 0; tick < 180; tick++)
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        state["a_missed_kit_heals_nobody_and_waits"] =
+            flungWide &&
+            lab.Buddy.ObjectInteraction.ContactCareCount == 0 &&
+            Mathf.Abs(lab.Progress.Mood - moodBeforeMiss) < 0.01f &&
+            GodotObject.IsInstanceValid(kit) &&
+            lab.Objects.TryGetSnapshot(kit!.RuntimeId, out _);
+
+        // --- The real one, at a burning buddy ---
+        // Lit first: a burning buddy flees at hazard priority instead of walking over and
+        // eating the kit, which is the whole reason the thrown route has to exist.
+        lab.FireSprayer.ApplyFireContact(
+            BuddyPartId.Torso, lab.Buddy.Rig.Torso.GlobalPosition);
+        await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        // Thrown on a solved arc rather than dragged onto the buddy: a burning buddy is running
+        // away, and chasing it with the pointer measures the aim of the throw instead of what
+        // the kit does when it lands. The throw still goes through the real grab-and-release
+        // bridge, so it is a genuine player throw carrying a genuine throw token.
+        bool caughtFire = lab.FireSprayer.IsBurning;
+        float moodBeforeCure = lab.Progress.Mood;
+        LooseObjectBody? thrown = M4ObjectScenarioSupport.SpawnCleanThrow(
+            lab, profile: kitProfile);
+        bool healed = thrown is not null && await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Buddy.ObjectInteraction.ContactCareCount == 1, 600);
+        float moodGained = lab.Progress.Mood - moodBeforeCure;
+
+        state["a_thrown_kit_patches_up_a_burning_buddy"] =
+            caughtFire && healed && !lab.FireSprayer.IsBurning;
+        // A range, not a point: the fire charges its own mood loss every tick it burns.
+        state["the_kit_pays_its_authored_mood"] =
+            healed && moodGained > 18.0f && moodGained <= 20.01f;
+
+        Log.Info(
+            "Journey",
+            $"M5 repair kit sale={refusedSale.Status} flung_wide={flungWide} " +
+            $"healed={healed} burning_after={lab.FireSprayer.IsBurning} " +
+            $"contact_care={lab.Buddy.ObjectInteraction.ContactCareCount} " +
+            $"mood_gained={moodGained:F2} objects={lab.Objects.Count}");
+    }
+
+    /// <summary>
+    /// Picks a kit up with the pointer, drags it to <paramref name="target"/>, and lets go —
+    /// the ordinary grab-fling, which is what mints the player throw token the contact route
+    /// requires.
+    /// </summary>
+    private async System.Threading.Tasks.Task<bool> FlingKitTo(
+        SceneTree tree,
+        BuddyLab lab,
+        LooseObjectBody? kit,
+        Func<Vector2> target)
+    {
+        if (!GodotObject.IsInstanceValid(kit))
+            return false;
+
+        Vector2 pick = kit!.GlobalPosition;
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, pick, 0);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, pick, MouseButton.Left, pressed: true, MouseButtonMask.Left);
+        bool grabbed = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Grab.IsGrabbing && lab.Grab.CurrentGrab.Target == kit, 60);
+        if (!grabbed)
+            return false;
+
+        // The pointer keeps up with a target that moves: a burning buddy is running away, and
+        // a kit dragged to where it used to be lands on the floor behind it. The drag ends when
+        // the kit has actually arrived rather than after a fixed count, because a journey runs
+        // at free pacing and a tick count would be a different distance every run.
+        const float ArrivedWithinPx = 24.0f;
+        for (int tick = 0; tick < 240; tick++)
+        {
+            await M4ObjectScenarioSupport.MovePointer(
+                tree, lab, target(), MouseButtonMask.Left);
+            if (tick >= 20 && kit.GlobalPosition.DistanceTo(target()) <= ArrivedWithinPx)
+                break;
+        }
+
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, target(), MouseButton.Left, pressed: false, 0);
+        // The pointer's release is resolved on the root's next routed tick, never inline.
+        return await M4ObjectScenarioSupport.WaitFor(tree, () => !lab.Grab.IsGrabbing, 30);
     }
 
     /// <summary>A clear floor point beside the buddy for a spawn key to place something at.</summary>

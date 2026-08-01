@@ -439,6 +439,44 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   burning buddy panics at priority `3`; releasing primary stops the stream on the tick it is
   let go, which is this tool's whole cancel path; and holstering the sprayer does not put the
   fire out.
+- The `repair_kit` scenario is the M5 Task 10 Repair Kit gate, run under seeds `1/7/13`. The
+  kit is authored data on the shared consume machinery — `20` mood, cooldown `0`, hunger fill
+  `0`, which together are the owner's "it is not food, so nothing rations it" — so the scenario
+  spends its checks on the one new field and the one new route.
+  `meal_and_drink_do_not_clear_statuses` pins `ClearsHarmfulStatuses` to the kit alone, and
+  `clearing_statuses_is_rejected_on_something_that_cannot_be_taken` proves the flag is
+  validated as meaningful only on a consumable. `a_full_buddy_still_accepts_one` feeds a buddy
+  pinned to a full stomach, because appetite gates food and this is not food.
+- The same scenario covers the **player-thrown route**, which exists because the two buddies a
+  Repair Kit is for are the two that can never eat one: a knocked-out buddy is priority `1` and
+  a burning buddy flees at priority `3`, and both outrank the object action that picks food up.
+  `a_thrown_kit_applies_on_buddy_contact` (mood once, kit despawned, registry slot freed),
+  `a_missed_throw_applies_nothing_and_waits` (FR-008.10 — the kit lands and stays a loose
+  object), `double_contact_cannot_double_apply` (the `CareConsumableModel` token, shared with
+  the eating route so the two cannot drift), and
+  `kit_contact_scores_zero_impacts_and_no_harmful_memory` — a medkit that bruised would enter
+  itself into harmful memory and teach the buddy to flee the thing that heals it.
+- The healing legs are `burning_buddy_is_cured_and_cheered` (FR-010.10; mood is asserted as a
+  range because the fire charges its own loss every tick right up to the moment the kit lands),
+  `clears_do_not_touch_money_stats_or_history` (healing is not a payout, not a statistic, and
+  not forgiveness — the sprayer stays in harmful memory), `a_kit_empties_the_rolling_pain_window`,
+  and `knockout_is_never_shortened` (FR-008.7). Two measured facts shape those last two:
+  **rolling pain during a knockout is always zero** — `EnterKnockout` empties the window and
+  unconscious hits never enter it — so the clear is proved on a conscious buddy, and the knockout
+  leg proves only that the kit is not a wake-up call; that the model cannot move the end time is
+  a domain fact with its own unit test and is not re-proved here. Those two legs run in their own
+  controlled-impact laboratory, sequentially, because measured pain needs an authored curve and
+  two laboratories at once share the 2D space. That laboratory's buddy hangs where it can never
+  stand, so its recovery clock always runs out mid-knockout; the watch on "still out" stops at
+  that fail-safe reposition rather than counting it as an early wake.
+- The `m5_repair_kit` journey repeats the slice through real pointer, button, and key input on
+  seeds `1/7` in both presentation modes: the shop still refuses a sale because the catalogue
+  entry stays `Visible = false` until the owner's feel gate (the Grenade's leg had this shape
+  before acceptance), key `0` places one owned kit, a kit flung at the far wall heals nobody and
+  waits where it lands, and a kit thrown at a buddy that has just been set on fire puts the fire
+  out and pays its authored `+20`. The curing throw is solved onto the chest rather than dragged
+  there with the pointer: a burning buddy is running away, and chasing it measures the aim of
+  the throw instead of what the kit does when it lands.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - The `baseball_pullback` scenario drives Baseball through the real pointer input path and
   verifies key-`5` cursor spawning without selection changes, single-ball replacement,
