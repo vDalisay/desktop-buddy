@@ -56,13 +56,15 @@ public static class LooseObjectMeshBuilder
     private const float KitHalfHeight = 0.86f;
     private const float KitHalfDepth = 0.52f;
     private const float KitSeamHeight = 0.10f;
-    private const float KitCrossArm = 0.42f;
-    private const float KitCrossWidth = 0.14f;
-    private const float KitCrossRelief = 0.03f;
+    // Sized for a case that is about 26 px wide on screen: at the first pass the cross was
+    // 1.4 px across the arms and simply did not read (owner, 2026-08-02, "I don't see it").
+    private const float KitCrossArm = 0.52f;
+    private const float KitCrossWidth = 0.26f;
+    private const float KitCrossRelief = 0.06f;
     private const float KitHandleSpan = 0.46f;
     private const float KitHandleRise = 0.44f;
-    private const float KitHandleDepth = 0.07f;
-    private const float KitHandleThickness = 0.07f;
+    private const float KitHandleDepth = 0.16f;
+    private const float KitHandleThickness = 0.13f;
     private const int KitHandleSegments = 8;
 
     /// <summary>The cross on the case. Not authored: it is the same green on every kit.</summary>
@@ -228,6 +230,10 @@ public static class LooseObjectMeshBuilder
         float armWidth = radius * KitCrossWidth;
         AddFrontQuad(tool, -armWidth, armWidth, -armLength, armLength, front, KitCrossColor);
         AddFrontQuad(tool, -armLength, armLength, -armWidth, armWidth, front, KitCrossColor);
+        // And on the back, wound the other way round. A case tumbles when it is thrown, so it
+        // shows whichever face it lands on, and a cross on one side only is a coin flip.
+        AddFrontQuad(tool, armWidth, -armWidth, -armLength, armLength, -front, KitCrossColor);
+        AddFrontQuad(tool, armLength, -armLength, -armWidth, armWidth, -front, KitCrossColor);
 
         // The handle: a flat strap arched over the lid, drawn as a ribbon of quads so it has
         // thickness from the side as well as from the front.
