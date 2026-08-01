@@ -157,7 +157,8 @@ public partial class BehaviorArbiter : Node
         ObjectInteraction.PhysicsTick(
             BehaviorArbiterModel.SuppressesVoluntaryAction(snapshot),
             consciousness == Consciousness.Conscious,
-            cursorWorldPosition);
+            cursorWorldPosition,
+            AutonomousMotion.WalkableBounds);
 
         snapshot = snapshot with
         {
@@ -360,7 +361,9 @@ public partial class BehaviorArbiter : Node
             false, 0.0f, 1.0f, 0.0f,
             0.0f, 0.0f,
             false, Vector2.Zero, Vector2.Zero, 0.0f, 0.0f, 0.0f, 1.0f,
-            Activity.IsStationary || ObjectInteraction.Phase != ObjectPhase.Approach,
+            Activity.IsStationary ||
+                (ObjectInteraction.Phase != ObjectPhase.Approach &&
+                 Mathf.IsZeroApprox(ObjectInteraction.ApproachDirection)),
             reach,
             Activity.EatLift,
             leftTarget,

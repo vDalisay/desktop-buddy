@@ -401,12 +401,12 @@ FR-017.3 `EffectsSettings` read seam (no runtime consumer of the saved settings 
 ### Task 8 — Soccer Ball + Drink
 
 Two data-driven reuses: Soccer Ball = second pullback loose object with its own
-empirical preset (distinct `.tres`, same catch/hold/toss + `+1` clean-catch mood via
-the existing clean-catch rule); Drink = second care consumable (+5 mood, 60 s own
+empirical preset and foot-only play behavior (never catch/hold/toss); Drink = second care consumable (+5 mood, 60 s own
 cooldown, independent of Meal's cooldown).
 
-**Accept:** scenario `soccer_and_drink`: soccer catch pays +1 mood under the clean-
-catch rules; Meal and Drink cooldowns proven independent (consume Meal, immediately
+**Accept:** scenario `soccer_and_drink`: the Soccer Ball is never picked up, player touch
+enables trapping, floor contact preserves it, wall/ceiling contact disables it without
+disabling a direct kick; Meal and Drink cooldowns proven independent (consume Meal, immediately
 consume Drink → both succeed); presets verifiably distinct (different measured
 bounce/settle signature than Baseball).
 

@@ -4,6 +4,7 @@ using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Physics;
+using DesktopBuddy.Objects;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Behavior;
@@ -40,6 +41,7 @@ public partial class AutonomousMotionComponent : Node
     public bool ObstacleRight { get; private set; }
     public float LeftWallClearance { get; private set; } = float.PositiveInfinity;
     public float RightWallClearance { get; private set; } = float.PositiveInfinity;
+    public Rect2 WalkableBounds => _walkableBounds;
     public bool IsInitialized { get; private set; }
 
     public void Initialize(ulong seed)
@@ -105,9 +107,13 @@ public partial class AutonomousMotionComponent : Node
         }
     }
 
-    public bool ObstacleInCommittedPath(float walkDirection) =>
-        walkDirection < 0.0f ? ObstacleLeft :
-        walkDirection > 0.0f && ObstacleRight;
+    public bool ObstacleInCommittedPath(float walkDirection)
+    {
+        RayCast2D? cast = walkDirection < 0.0f ? LeftObstacleCast :
+            walkDirection > 0.0f ? RightObstacleCast : null;
+        return cast is not null && cast.IsColliding() &&
+            cast.GetCollider() is not LooseObjectBody { Profile.SoccerPlay: not null };
+    }
 
     private static void ConfigureObstacleCast(RayCast2D cast, float targetX)
     {

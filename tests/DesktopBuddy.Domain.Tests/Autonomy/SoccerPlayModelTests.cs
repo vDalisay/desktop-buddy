@@ -26,8 +26,9 @@ public sealed class SoccerPlayModelTests
         float closingSpeed = 200.0f,
         float height = 0.0f,
         float direction = 1.0f,
-        bool available = true) =>
-        new(BallId, available, surfaceDistance, direction, closingSpeed, height);
+        bool available = true,
+        bool trapAllowed = true) =>
+        new(BallId, available, surfaceDistance, direction, closingSpeed, height, trapAllowed);
 
     /// <summary>A stream that always answers with the same option.</summary>
     private sealed class FixedRandom(int value) : IRandomSource
@@ -122,7 +123,7 @@ public sealed class SoccerPlayModelTests
     }
 
     [Fact]
-    public void ABallBarelyMovingIsLeftToTheOrdinaryPickup()
+    public void ABallBarelyMovingAtTheFootIsKickedInsteadOfPickedUp()
     {
         SoccerPlayModel model = Model();
 
@@ -130,7 +131,8 @@ public sealed class SoccerPlayModelTests
             Fast, Rolling(closingSpeed: Fast.MinimumApproachSpeed - 1.0f),
             suppressed: false, conscious: true);
 
-        Assert.Equal(SoccerPlayCommand.None, intent.Command);
+        Assert.Equal(SoccerPlayCommand.Kick, intent.Command);
+        Assert.Equal(1, model.KickCount);
     }
 
     [Fact]
@@ -181,6 +183,146 @@ public sealed class SoccerPlayModelTests
     }
 
     [Fact]
+    public void AnUntouchedBallCannotBeTrappedButCanBeKicked()
+    {
+        SoccerPlayModel model = Model();
+        SoccerBallReading untouched = Rolling(trapAllowed: false);
+
+        Assert.False(SoccerPlayModel.IsReserved(Fast, untouched));
+        Assert.False(SoccerPlayModel.IsTrappable(Fast, untouched));
+        Assert.True(SoccerPlayModel.IsKickCandidate(Fast, untouched));
+        Assert.True(SoccerPlayModel.IsDirectlyKickable(Fast, untouched));
+
+        SoccerPlayIntent intent = model.Tick(Fast, untouched, false, true);
+        Assert.Equal(SoccerPlayCommand.Kick, intent.Command);
+        Assert.Equal(0, model.TrapCount);
+        Assert.Equal(1, model.KickCount);
+    }
+
+    [Fact]
+    public void ASpentFallbackKickIsNotRepeated()
+    {
+        SoccerPlayIntent intent = Model().Tick(
+            Fast,
+            Rolling(trapAllowed: false) with { DirectKickAllowed = false },
+            false,
+            true);
+
+        Assert.Equal(SoccerPlayCommand.None, intent.Command);
+    }
+
+    [Fact]
+    public void AGoodMoodBuddyChasesAFreeBall()
+    {
+        SoccerPlayIntent intent = Model().Tick(
+            Fast,
+            Rolling(surfaceDistance: 180.0f) with { WantsPlay = true },
+            false,
+            true);
+
+        Assert.Equal(SoccerPlayCommand.Approach, intent.Command);
+        Assert.Equal(1.0f, intent.ApproachDirection);
+    }
+
+    [Fact]
+    public void AGoodMoodBuddyKeepsRetreatingWithARegularPauseWhileThePlayerHoldsTheBall()
+    {
+        SoccerPlayModel model = Model();
+        SoccerPlayTuning cadence = Fast with { ReceiveWalkTicks = 3, ReceivePauseTicks = 2 };
+        SoccerBallReading held = Rolling(available: false) with
+        {
+            PlayerHeld = true,
+            WantsPlay = true,
+        };
+
+        for (int tick = 0; tick < cadence.ReceiveWalkTicks; tick++)
+            Assert.Equal(-1.0f, model.Tick(cadence, held, false, true).ApproachDirection);
+        for (int tick = 0; tick < cadence.ReceivePauseTicks; tick++)
+            Assert.Equal(0.0f, model.Tick(cadence, held, false, true).ApproachDirection);
+
+        SoccerPlayIntent resumed = model.Tick(cadence, held, false, true);
+        Assert.Equal(SoccerPlayCommand.Receive, resumed.Command);
+        Assert.Equal(-1.0f, resumed.ApproachDirection);
+
+        SoccerPlayIntent released = model.Tick(
+            cadence,
+            held with { Available = true, PlayerHeld = false, SurfaceDistance = 180.0f },
+            false,
+            true);
+        Assert.Equal(SoccerPlayCommand.Approach, released.Command);
+        Assert.Equal(1.0f, released.ApproachDirection);
+    }
+
+    [Fact]
+    public void AutonomousKickChoosesForwardOrANonZeroArc()
+    {
+        SoccerBallReading playable = Rolling(trapAllowed: false) with { WantsPlay = true };
+
+        SoccerPlayIntent forward = Model(new FixedRandom(0)).Tick(Fast, playable, false, true);
+        SoccerPlayIntent arc = Model(new FixedRandom(1)).Tick(Fast, playable, false, true);
+
+        Assert.Equal(SoccerKickStyle.Forward, forward.KickStyle);
+        Assert.Equal(0.0f, forward.KickLoftDegrees);
+        Assert.Equal(SoccerKickStyle.Arc, arc.KickStyle);
+        Assert.True(arc.KickLoftDegrees > 0.0f);
+    }
+
+    [Fact]
+    public void CornerBallIsPickedUpCarriedInwardDroppedAndKickedAwayFromWall()
+    {
+        SoccerPlayModel model = Model();
+        SoccerBallReading nearLeftWall = Rolling(trapAllowed: false) with
+        {
+            WantsPlay = true,
+            LeftWallDistance = Fast.WallTurnDistance - 1.0f,
+        };
+
+        SoccerPlayIntent intent = model.Tick(Fast, nearLeftWall, false, true);
+        Assert.Equal(SoccerPlayCommand.CornerPickup, intent.Command);
+        Assert.Equal(SoccerPlayPhase.CornerPickup, intent.Phase);
+        Assert.Equal(SoccerKickStyle.TurnAwayFromWall, intent.KickStyle);
+        Assert.Equal(1.0f, intent.ApproachDirection);
+
+        SoccerBallReading held = nearLeftWall with { Available = false, BuddyHeld = true };
+        intent = model.Tick(Fast, held, false, true);
+        Assert.Equal(SoccerPlayCommand.CornerCarry, intent.Command);
+        Assert.Equal(1.0f, intent.ApproachDirection);
+
+        for (int tick = 0; tick < Fast.TurnTicks; tick++)
+            intent = model.Tick(Fast, held, false, true);
+        Assert.Equal(SoccerPlayCommand.CornerDrop, intent.Command);
+
+        SoccerBallReading dropped = nearLeftWall with { ClosingSpeed = 0.0f };
+        for (int tick = 0; tick < Fast.TurnTicks; tick++)
+            intent = model.Tick(Fast, dropped, false, true);
+
+        Assert.Equal(SoccerPlayCommand.Kick, intent.Command);
+        Assert.Equal(SoccerKickStyle.TurnAwayFromWall, intent.KickStyle);
+        Assert.True(intent.KickVelocity.X > 0.0f);
+    }
+
+    [Fact]
+    public void PlayerTakingTheCornerBallAbortsTheRescue()
+    {
+        SoccerPlayModel model = Model();
+        SoccerBallReading corner = Rolling(trapAllowed: false) with
+        {
+            WantsPlay = true,
+            LeftWallDistance = Fast.WallTurnDistance - 1.0f,
+        };
+        model.Tick(Fast, corner, false, true);
+
+        SoccerPlayIntent intent = model.Tick(
+            Fast,
+            corner with { Available = false, PlayerHeld = true },
+            false,
+            true);
+
+        Assert.Equal(SoccerPlayAbort.BallLost, intent.Abort);
+        Assert.False(model.IsCommitted);
+    }
+
+    [Fact]
     public void NoBallAtAllIsNotTrapped()
     {
         SoccerPlayModel model = Model();
@@ -197,8 +339,8 @@ public sealed class SoccerPlayModelTests
     [Fact]
     public void ABallStillRollingInFromAcrossTheRoomIsAlreadyReserved()
     {
-        // No distance term on purpose: the ordinary pickup must not commit to it and walk out
-        // to meet it, or there is nothing left to trap by the time it arrives.
+        // No distance term on purpose: the anti-deflection exception must be active before
+        // the ball reaches the buddy's shins.
         SoccerBallReading far = Rolling(surfaceDistance: 400.0f);
 
         Assert.True(SoccerPlayModel.IsReserved(Fast, far));
@@ -215,9 +357,9 @@ public sealed class SoccerPlayModelTests
     }
 
     [Theory]
-    [InlineData(200.0f, 100.0f)]  // sailing in above the foot line: still a catch
+    [InlineData(200.0f, 100.0f)]  // sailing above the foot line: not a foot interaction
     [InlineData(-300.0f, 0.0f)]   // rolling away: nobody's
-    [InlineData(5.0f, 0.0f)]      // barely moving: an ordinary pickup
+    [InlineData(5.0f, 0.0f)]      // barely moving: not a trap, but directly kickable at the foot
     public void OnlyALowBallRollingInIsReserved(float closingSpeed, float height)
     {
         SoccerBallReading ball = Rolling(closingSpeed: closingSpeed, height: height);

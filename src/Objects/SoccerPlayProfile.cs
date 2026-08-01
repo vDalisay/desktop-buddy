@@ -41,6 +41,11 @@ public partial class SoccerPlayProfile : GameResource
     /// <summary>How many evenly spaced loft options, the first always dead straight.</summary>
     [Export(PropertyHint.Range, "1,8,1")] public int KickLoftChoices { get; set; } = 3;
 
+    [Export(PropertyHint.Range, "1,2400,1")] public int ReceiveWalkTicks { get; set; } = 600;
+    [Export(PropertyHint.Range, "1,1200,1")] public int ReceivePauseTicks { get; set; } = 120;
+    [Export(PropertyHint.Range, "1,500,1")] public float WallTurnDistance { get; set; } = 72.0f;
+    [Export(PropertyHint.Range, "1,600,1")] public int TurnTicks { get; set; } = 60;
+
     /// <summary>Spring constants for planting the foot on the ball; engineering, not feel.</summary>
     [Export(PropertyHint.Range, "0.1,20000,0.1")] public float FootStiffness { get; set; } = 260.0f;
     [Export(PropertyHint.Range, "0.1,2000,0.1")] public float FootDamping { get; set; } = 26.0f;
@@ -59,7 +64,11 @@ public partial class SoccerPlayProfile : GameResource
         DwellTicks,
         KickSpeed,
         MaximumKickLoftDegrees,
-        KickLoftChoices);
+        KickLoftChoices,
+        ReceiveWalkTicks,
+        ReceivePauseTicks,
+        WallTurnDistance,
+        TurnTicks);
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -69,7 +78,7 @@ public partial class SoccerPlayProfile : GameResource
             errors.Add(
                 "Soccer play tuning must have positive distances, an increasing approach-speed " +
                 "window, a positive dwell and kick speed, a loft under 90 degrees, and at least " +
-                "one loft choice");
+                "one loft choice, valid receive cadence, wall distance, and turn duration");
         }
         if (!float.IsFinite(FootStiffness) || FootStiffness <= 0.0f)
             errors.Add($"{nameof(FootStiffness)} must be finite and positive");

@@ -258,7 +258,8 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   bounce is given no `PhysicsMaterial` at all, and the Baseball is expected to keep landing
   dead forever. The scenario also proves key `8` places, launches through the shared pullback
   chord using the ball's **own** authored preset (`VelocityPerPullPixel 11.5`, measured launch
-  `1035 px/s`), and settles; that a clean soccer catch pays `+1` care exactly once per throw;
+  `1035 px/s`), and settles; that the Soccer Ball never enters the buddy's ordinary
+  catch/scoop/hold lifecycle outside the explicit corner-rescue case;
   and the Drink's whole care contract — key `9` places one, a buddy at `200/200` fullness
   still accepts it (`ConsumeHungerFill = 0` means `TooFull` can never fire), abandoning it
   mid-drink starts no cooldown (FR-008.10), a Meal and a Drink taken back to back both
@@ -280,6 +281,36 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   `LooseObjectVisual3D`, that no other object is, that every mesh vertex stays inside the
   builder's stated `1.80 x` envelope, and that the mesh and the flat circle are complements —
   exactly one silhouette per presentation mode, which makes the verdict identical in both.
+- The follow-up owner correction makes the Soccer Ball foot-only. Registry provenance proves
+  player Grab/launch contact enables trapping, floor contact preserves it, and either side wall
+  or the ceiling clears it. A cleared ball rolling into foot range is kicked without a trap,
+  while the ordinary object lifecycle never tracks or holds the ball.
+- The good-mood follow-up is covered in the same real-physics scenario. A Content/Delighted
+  buddy closes on a free ball and kicks it without ever picking it up; seeded pure-model checks
+  cover straight and non-zero arc choices. A corner check requires the explicit exception:
+  hand pickup, continuous held-ball gaze during inward carry/facing, placement in front, and
+  an inward kick. While the player
+  continuously holds the ball, the composed buddy keeps it as the semantic head/eye target,
+  retreats for `600` routed ticks, pauses for `120`, resumes retreat, and leaves ownership with
+  the player (`61 → 139 px` before the room boundary in the scenario). Release restores chase
+  within ten ticks. The `m5_soccer_ball` journey repeats the full cadence through the real Grab
+  path (`94 → 253 px`). The check now requires the **applied rendered head yaw** and the
+  **composed visible pupil offset** to point toward the ball; a windowed post-draw capture at
+  `.artifacts/soccer-windowed-visual4/soccer_receive_tracking.png` was inspected with the ball,
+  open eyes, head turn, and both pupil highlights aligned right. The same scenario proves the
+  obstacle ray rejects the football but accepts a Baseball, while the registry fallback also
+  excludes the football.
+- The receive check samples every travelling tick after a 30-tick gaze-acquisition allowance:
+  the item source may never drop, head yaw must remain aligned, and every open-eye pupil frame
+  must point at the player-held ball. The corner check applies the same per-tick rendered-gaze
+  rule while the rescued ball is carried. Pure-model coverage proves player takeover aborts a
+  committed rescue.
+- The follow-up readable-gaze gate inspects a real windowed post-draw frame. The head must stay
+  front-readable while looking back during retreat, with white eye shapes and distinct dark
+  pupils visibly displaced toward the ball; semantic or head-angle evidence alone is rejected.
+- Soccer-ball art is inspected in held and unobstructed post-draw frames. The mesh must read as
+  a white ball with a centered black pentagon and evenly distributed surrounding panels, with
+  no random dark facet blocks, while remaining inside the authored visual envelope.
 - The Meal path is unchanged by the gesture refactor and is proven so rather than assumed:
   `meal_consume` still measures four meals to a full bar and its five-bite refusal choreography,
   `consume_care_cooldown` still lands care on bite five, and `activity_clips` is green.
@@ -287,8 +318,9 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   button, and key input on seeds `1/7`, in both presentation modes. Each opens on the refusal
   an invisible catalogue entry produces — both entries stay `Visible = false` until the
   owner's feel gate, on the Grenade's precedent — and then exercises the happy path and its
-  paired failure path: for the ball, spawn, carry, a secondary tap with no pull that keeps the
-  carry, a real pullback launch, and a clean catch worth `+1` mood; for the Drink, spawn to a
+  paired failure path: for the ball, spawn, player carry, good-mood receive cadence, a secondary
+  tap with no pull that keeps the carry, a real pullback launch, and proof that the buddy never
+  hand-attaches it; for the Drink, spawn to a
   completely full buddy, `+5` mood with no stomach filled, and a second can inside the minute
   refused for the timer without costing mood or restarting the wait.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.

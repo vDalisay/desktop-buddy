@@ -478,7 +478,11 @@ public partial class BuddyVisualPresenter : Node3D
         {
             LookAtAngles look = HeadLookAt.Evaluate(performanceDelta);
             float defendGazeWeight = ResolveDefendGazeWeight(performanceDelta);
-            float gazeWeight = Mathf.Max(_performanceWeight, defendGazeWeight);
+            // An item target is itself the performance. Requiring an unrelated activity clip
+            // left the semantic look-at live while multiplying the rendered head turn by zero.
+            float gazeWeight = HeadLookAt.CurrentSource == LookAtSource.Item
+                ? 1.0f
+                : Mathf.Max(_performanceWeight, defendGazeWeight);
             // The refusal clip owns the head. Clear residual gaze yaw/pitch immediately so
             // its only motion is the requested vertical-axis turn with stable pitch/roll.
             _headLookYawRadians = refusing
@@ -546,9 +550,16 @@ public partial class BuddyVisualPresenter : Node3D
         // body yaw is untouched, and every other socket is exactly as before.
         if (index == (int)BuddyPartId.Head)
         {
+            // Item look yaw is already authored in world-screen direction. Adding it to the
+            // body's retreat facing could turn the face nearly edge-on, making a technically
+            // correct gaze unreadable. Keep item attention world-relative so the buddy can
+            // visibly look back at a held ball while its body walks away to receive a pass.
+            float headYaw = HeadLookAt?.CurrentSource == LookAtSource.Item
+                ? _headLookYawRadians + _activityHeadYawRadians
+                : _yawRadians + _headLookYawRadians + _activityHeadYawRadians;
             socket.GlobalRotation = new Vector3(
                 _headLookPitchRadians,
-                _yawRadians + _headLookYawRadians + _activityHeadYawRadians,
+                headYaw,
                 rotation);
             return;
         }

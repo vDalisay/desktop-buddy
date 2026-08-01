@@ -91,6 +91,7 @@ public partial class LooseObjectRegistry : Node
             RuntimeId = runtimeId,
             SpawnSequence = _nextSpawnSequence++,
             AtRest = true,
+            SoccerKickAllowed = profile.SoccerPlay is not null,
         };
         Count++;
         body.AttachRegistration(this, profile, runtimeId);
@@ -159,7 +160,9 @@ public partial class LooseObjectRegistry : Node
             entry.ExplicitlyProtected,
             entry.SpawnSequence,
             entry.IgnoreTicks > 0,
-            entry.TouchedGroundSinceThrow);
+            entry.TouchedGroundSinceThrow,
+            entry.SoccerTrapAllowed,
+            entry.SoccerKickAllowed);
         return true;
     }
 
@@ -178,6 +181,11 @@ public partial class LooseObjectRegistry : Node
         entry.AtRest = false;
         entry.RestTicks = 0;
         entry.PlayerHeld = false;
+        if (entry.Profile!.SoccerPlay is not null)
+        {
+            entry.SoccerTrapAllowed = true;
+            entry.SoccerKickAllowed = true;
+        }
         // A fresh throw is a fresh chance at a clean catch.
         entry.TouchedGroundSinceThrow = false;
         body.SetImpactAttribution(attributionContentId);
@@ -226,19 +234,27 @@ public partial class LooseObjectRegistry : Node
             _entries[slot].ExplicitlyProtected = isProtected;
     }
 
+    public void ConsumeSoccerKick(LooseObjectBody body)
+    {
+        int slot = SlotFor(body);
+        if (slot >= 0)
+            _entries[slot].SoccerKickAllowed = false;
+    }
+
     /// <summary>
-    /// Updates player-held, ground-contact, and rest state from the root-owned fixed tick.
+    /// Updates player-held, room-contact, and rest state from the root-owned fixed tick.
     /// </summary>
-    /// <param name="floorY">
-    /// World Y of the room floor. Ground contact is a position test rather than a collision
-    /// callback because "did this ball bounce" must be answered every tick for every object
-    /// without registering per-body physics callbacks (ARCHITECTURE §23).
+    /// <param name="bounds">
+    /// Inner room bounds. Contact is a position test rather than a per-body collision callback
+    /// (ARCHITECTURE §23). The floor tracks clean catches; side walls and ceiling revoke a
+    /// Soccer Ball's player-authored trap permission.
     /// </param>
-    public void PhysicsTick(in GrabState grab, float floorY)
+    public void PhysicsTick(in GrabState grab, Rect2 bounds)
     {
         RequireInitialized();
         LooseObjectBody? playerHeld = grab.Active ? grab.Target as LooseObjectBody : null;
-        bool floorKnown = float.IsFinite(floorY);
+        bool boundsKnown = bounds.Position.IsFinite() && bounds.End.IsFinite();
+        float floorY = bounds.End.Y;
 
         for (int index = 0; index < Capacity; index++)
         {
@@ -253,13 +269,28 @@ public partial class LooseObjectRegistry : Node
             // Checked before the held/rest short-circuits below: a ball resting on the floor
             // when the player picks it up has plainly touched the ground, and the flag must
             // survive until the next throw clears it.
-            if (floorKnown && !entry.TouchedGroundSinceThrow &&
+            if (boundsKnown && !entry.TouchedGroundSinceThrow &&
                 body.GlobalPosition.Y + body.Radius >= floorY - GroundContactTolerance)
             {
                 entry.TouchedGroundSinceThrow = true;
             }
 
             entry.PlayerHeld = body == playerHeld;
+            if (entry.Profile!.SoccerPlay is not null)
+            {
+                if (entry.PlayerHeld)
+                {
+                    entry.SoccerTrapAllowed = true;
+                    entry.SoccerKickAllowed = true;
+                }
+
+                bool touchedWallOrCeiling = boundsKnown &&
+                    (body.GlobalPosition.X - body.Radius <= bounds.Position.X + GroundContactTolerance ||
+                     body.GlobalPosition.X + body.Radius >= bounds.End.X - GroundContactTolerance ||
+                     body.GlobalPosition.Y - body.Radius <= bounds.Position.Y + GroundContactTolerance);
+                if (touchedWallOrCeiling)
+                    entry.SoccerTrapAllowed = false;
+            }
             if (entry.PlayerHeld)
             {
                 // Picking it back up is an invitation, so stop ignoring it immediately.
@@ -279,6 +310,8 @@ public partial class LooseObjectRegistry : Node
                 entry.RestTicks++;
                 if (entry.RestTicks >= entry.Profile.RestTicksRequired)
                 {
+                    if (!entry.AtRest && entry.Profile.SoccerPlay is not null)
+                        entry.SoccerKickAllowed = true;
                     entry.AtRest = true;
                     entry.ThrowToken = 0;
                     body.SetImpactAttribution(ContentIds.LooseObject);
@@ -380,6 +413,8 @@ public partial class LooseObjectRegistry : Node
         public bool PlayerHeld;
         public bool BuddyHeld;
         public bool ExplicitlyProtected;
+        public bool SoccerTrapAllowed;
+        public bool SoccerKickAllowed;
 
         /// <summary>
         /// Whether this object has reached the floor since the player last threw it. A catch
@@ -407,4 +442,11 @@ public readonly record struct LooseObjectSnapshot(
     /// the next player throw, so <c>ThrowToken != 0 &amp;&amp; !TouchedGroundSinceThrow</c> is
     /// exactly "caught out of the air".
     /// </summary>
-    bool TouchedGroundSinceThrow = false);
+    bool TouchedGroundSinceThrow = false,
+    /// <summary>
+    /// True after player Grab/launch contact and until the Soccer Ball touches a side wall or
+    /// ceiling. Ground contact deliberately does not clear it.
+    /// </summary>
+    bool SoccerTrapAllowed = false,
+    /// <summary>False after the buddy has used the current fallback direct kick.</summary>
+    bool SoccerKickAllowed = true);

@@ -151,6 +151,16 @@ public partial class FaceCompositor : Node
 
         string face = Reactions.CurrentFace;
         FaceFeaturePose pose = FaceExpressionMap.Resolve(face);
+        // Item attention must read at desktop-buddy scale. The ordinary dark ovals use a tiny
+        // white highlight as their pupil, which looked static in the actual 480x360 lab frame.
+        // Keep the semantic mouth/brows, but use the existing wide white eye + dark pupil while
+        // tracking an item so direction remains unmistakable without adding another face style.
+        if (HeadLookAt is { IsInitialized: true, CurrentSource: LookAtSource.Item } &&
+            !Profile.SuppressesLookAt(face) &&
+            (pose.HasPupils || pose.Eyes == FaceEyePose.HappyArc))
+        {
+            pose = pose with { Eyes = FaceEyePose.Wide };
+        }
         _blink.Update(!pose.EyesBlinkable, ticksElapsed);
 
         // The eat chew loop: the activity selector already suppresses Eat to None in
@@ -370,9 +380,12 @@ public sealed class SoftOvalFacePainter : IFaceStylePainter
     {
         FillEllipse(canvas, x, y, rx, ry, _ink);
         // The white highlight doubles as the pupil: its rest pose is the accepted mockup
-        // highlight, and the Task 4 quantized offset slides it inside the oval.
+        // highlight, and the quantized offset must visibly cross the eye centre. Model Y is
+        // screen-down while face-space Y is up, hence the subtraction.
+        float visibleX = Mathf.Clamp(-0.8f + (pupilX * 2.0f), -1.5f, 1.5f);
+        float visibleY = Mathf.Clamp(1.3f - (pupilY * 2.0f), -2.5f, 2.5f);
         canvas.DrawCircle(
-            P(x - 0.8f + (pupilX * 1.1f), y + 1.3f + (pupilY * 1.1f)),
+            P(x + visibleX, y + visibleY),
             S(0.9f), White, filled: true, antialiased: true);
     }
 
@@ -381,7 +394,7 @@ public sealed class SoftOvalFacePainter : IFaceStylePainter
         canvas.DrawCircle(P(x, y), S(3.6f), White, filled: true, antialiased: true);
         canvas.DrawCircle(P(x, y), S(3.6f), _ink, filled: false, width: S(0.5f), antialiased: true);
         canvas.DrawCircle(
-            P(x + (pupilX * 1.6f), y + (pupilY * 1.6f)),
+            P(x + (pupilX * 1.6f), y - (pupilY * 1.6f)),
             S(1.4f), _ink, filled: true, antialiased: true);
     }
 

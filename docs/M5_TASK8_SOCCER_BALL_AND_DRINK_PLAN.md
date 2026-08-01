@@ -37,9 +37,8 @@ Tasks 7/9/10 — may run in parallel with any of them.
   two-phase begin/complete token, refusal choreography, and `ApplyCareMood`. The
   code comment literally promises "the catalogue's Meal, Drink, and Repair Kit are
   the same machinery with their own profiles."
-- **Clean-catch rule** — `+1` mood once per originating throw, only for a genuinely
-  airborne catch; `SpawnCatchCandidate`-style gift throws are excluded (see the
-  clean-catch memory note / M4 tests). The soccer ball rides it untouched.
+- **Clean-catch rule (superseded for Soccer Ball on 2026-08-01)** — the generic `+1`
+  rule remains unchanged, but the Soccer Ball is now foot-only and never completes a catch.
 - **Fun/novelty** — `FunInterestModel` meters fire on catches (`fun.catch`); a new
   ball is automatically novel. Nothing to add.
 - **FR-014 budget** — both items are ordinary registry citizens: `SafeToEvict = true`,
@@ -76,7 +75,8 @@ Ball — means the launcher's shared preset, so nothing that did not author one 
 authors `data/tools/pullback_launcher_soccer_ball.tres`: `VelocityPerPullPixel 11.5` and
 `MaxLaunchSpeed 1400` against the shared `15.0`/`1800`. **Measured** full pullback:
 `1035 px/s` (the Baseball's measured full pullback in `baseball_pullback` is `1575 px/s`).
-Catch/hold/toss/discard, +1 clean catch, novelty, budget: all inherited.
+The original catch/hold/toss/discard and +1 clean-catch behavior was superseded by the
+2026-08-01 owner feedback in §8: the Soccer Ball is foot-only.
 
 **Distinctness is measured, not asserted:** the scenario drops both balls from the
 same authored height on the same seed and records bounce count to rest, peak rebound
@@ -155,9 +155,9 @@ registry admission, rest), `drink_spawns_like_a_meal` (key 9),
 `soccer_signature_differs_from_baseball` (§2.2 measured bands),
 `bounce_zero_objects_did_not_change` (Baseball drop signature pinned before/after).
 
-**Task C — `soccer_and_drink` scenario.** The master plan's accept list is the
-floor: soccer clean catch pays +1 under the clean-catch rules (airborne, once per
-throw); Meal→Drink immediate-succession both succeed; Drink→Drink inside 60 s
+**Task C — `soccer_and_drink` scenario.** The master plan's original clean-catch criterion is
+superseded by §8: the Soccer Ball never enters the pickup lifecycle; Meal→Drink
+immediate-succession both succeed; Drink→Drink inside 60 s
 refused `OnCooldown` and the cooldown was started only by success (a cancelled drink
 leaves it consumable now); a full buddy accepts a Drink (`TooFull` never fires at
 fill 0); presets verifiably distinct (§2.2 bands re-asserted on the composition).
@@ -166,8 +166,8 @@ fill 0); presets verifiably distinct (§2.2 bands re-asserted on the composition
 **Task D — Journeys + registration.** Two lean real-input journeys per
 `AGENT_VERIFICATION_AND_E2E.md` (per-tool, happy + cancel/secondary path):
 `m5_soccer_ball` (catalogue leg per current visibility — grenade precedent — spawn,
-grab, pullback-cancel via the chord's cancel, then real launch, buddy clean catch,
-+1 mood) and `m5_drink` (spawn, buddy drinks, +5 mood, immediate second drink
+player grab, pullback-cancel via the chord's cancel, then real launch, buddy never
+hand-attaches it) and `m5_drink` (spawn, buddy drinks, +5 mood, immediate second drink
 refused on cooldown, refusal-not-punished leg). Register both + the scenario in
 `ScenarioCatalog`, `TEST_PLAN.md`, quick suite (+3 steps).
 *Accept:* journeys green seeds 1/7, both presentations.
@@ -250,3 +250,45 @@ is the one place that would consume it.
 the ball's launch tuning are the numbers the gate owns; the rules behind them are settled per
 §3 and recorded in `DECISIONS.md`. Flipping either `Visible` flag is the owner's word alone,
 and the two entries can flip independently.
+
+## 8. Owner feedback pass 2 (2026-08-01)
+
+- The buddy never ordinarily picks up, catches, or hand-attaches the Soccer Ball; the former
+  clean-catch reward checks are removed for this content id. Pass 6 adds the sole corner-rescue
+  exception.
+- Player Grab/launch contact enables trapping. Ground contact preserves eligibility; either
+  side wall or the ceiling clears it until the next player touch.
+- A low ball that is in foot range may still be kicked directly when trapping is unavailable.
+  The existing soccer kick command is reused; no second lifecycle is introduced.
+
+**Verification:** domain `1059/1059`; `soccer_and_drink` seeds `1/7/13` and
+`m5_soccer_ball` seeds `1/7`, both presentation modes; neighboring `baseball_pullback` and
+`object_catch_hold` remain green.
+
+## 9. Owner feedback pass 3 (2026-08-01)
+
+Content/Delighted buddies actively chase and watch a free Soccer Ball. Autonomous shot
+selection is seeded between straight and non-zero arc. The original near-wall underfoot turn
+was superseded by pass 6's deterministic rescue. A player-held ball instead requests a continuing
+receive cadence: watch it, retreat for `600` routed ticks, pause for `120`, and repeat without
+taking ownership; release immediately restores chase/play. The Soccer Ball is excluded from
+ambient obstacle-hop evidence without changing any other object's hop behavior. These values
+are provisional Resource data owned by Task E's feel gate.
+
+The visible-gaze correction applies item look-at at full rendered head weight, opens
+Delighted's otherwise pupil-less happy arcs while tracking, and fixes the shared pupil painter's
+travel/vertical coordinate conversion. Verification asserts applied head yaw plus composed
+pupil direction and includes a windowed post-draw capture rather than relying on target state.
+
+## 10. Owner feedback pass 6 (2026-08-01)
+
+Receive travel now carries a continuous rendered-gaze assertion rather than an eventual one.
+The former random near-wall underfoot turn is replaced by the requested deterministic corner
+rescue: the football-only exception lifts the stranded ball, carries/turns inward while watching
+it, places it in front, waits one authored turn beat for separation, and kicks inward. Ordinary
+football play remains hand-free, and player takeover aborts the rescue.
+
+**Verification:** domain `1064/1064`; `soccer_and_drink` seeds `1/7/13` and
+`m5_soccer_ball` seeds `1/7`, both presentation modes. The receive oracle samples `640`
+travelling ticks with no semantic/head/open-eye pupil dropout; the corner oracle measures
+`60` carried ticks before placement and the inward kick.

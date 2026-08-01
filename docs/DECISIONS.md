@@ -1295,10 +1295,11 @@ or angled a bit towards the player."
   **reserved** is marked `ObjectCandidate.Ignored` — the existing "leave that one alone"
   channel — so the pickup machinery is untouched.
 - **Reservation has no distance term, deliberately.** A ball rolling in from across the room
-  belongs to the foot from the moment it starts rolling; without that the ordinary pickup
-  commits to it, walks out to meet it, and there is nothing left to trap. A ball above
-  `TrapHeight` is still a catch, a ball at rest is still an ordinary scoop, and a ball rolling
-  away belongs to nobody — which is also what stops the buddy trapping its own kick.
+  belongs to the foot from the moment it starts rolling, preserving the anti-kick collision
+  exception until it arrives. The later foot-only correction below removes the Soccer Ball
+  from ordinary pickup in every state; a ball above `TrapHeight` is simply not a foot action,
+  and a ball rolling away belongs to nobody — which also stops the buddy re-kicking its own
+  outgoing kick.
 - A reserved ball also takes the existing **anti-kick collision exception**. Measured: without
   it the buddy's own shins knock the ball away at about `39 px`, before it can reach the
   `34 px` trap gate, and the trap never fires.
@@ -1332,11 +1333,56 @@ loose object whose profile authors a `LooseObjectVisualKind`, on the standard
 `Body2DVisual3D` attach seam and a pooled slot per object; `LooseObjectMeshBuilder` builds the
 shapes on the `GrenadeMeshBuilder` idiom (no imported art, dimensions from the collider radius,
 vertex colours, one normal per face, a stated envelope of `1.80 x` the radius). The Soccer Ball
-is a faceted sphere with alternating dark panels; the Drink is a red can with a white belly
+is a smooth white sphere with twelve evenly distributed raised dark pentagons; the Drink is a
+red can with a white belly
 band and rolled rims. Clean-room: no crest, wordmark, script, or real product's trade dress.
 An object authoring `None` — every object that predates this — keeps its flat circle in both
 modes, and legacy presentation deactivates every slot, so exactly one silhouette is drawn per
 mode.
+
+## Soccer Ball Is Foot-Only and Player-Authored Traps (Owner feedback, 2026-08-01)
+
+- **The buddy never ordinarily picks up the Soccer Ball.** It is excluded from the ordinary
+  catch/scoop/hold lifecycle and grants no clean-catch mood reward. The sole exception is the
+  explicit good-mood corner rescue below.
+- **A trap requires an unbroken player-touch provenance.** Grabbing or launching the ball
+  enables trapping. Floor contact preserves that permission. Contact with either side wall
+  or the ceiling clears it; the player must touch the ball again before another trap is
+  allowed.
+- **Losing trap permission does not make the ball inert.** A low, reachable ball that cannot
+  be trapped may still receive the existing one-shot soccer kick. This does not add pickup,
+  attachment, or a second object-action lifecycle.
+
+## Good-Mood Soccer Chase and Receive Stance (Owner feedback, 2026-08-01)
+
+- **Good mood means the existing Content or Delighted bands.** In either band, a conscious,
+  unsuppressed buddy treats a sensed free Soccer Ball as a priority-5 play goal, chases it,
+  and kicks it without ever using its hands. Neutral, Wary, and Fearful buddies retain the
+  passive foot-only behavior above.
+- **Autonomous shots are seeded choices away from walls.** The buddy chooses a straight
+  forward kick or a non-zero authored arc using the soccer model's dedicated seeded stream.
+  A ball inside the authored wall-turn distance instead enters a deterministic corner rescue:
+  pick it up, carry/turn inward away from the wall, place it on the floor in front, then kick
+  inward. No other football state permits hand attachment.
+- **A player-held ball requests a continuing receive stance.** A Content/Delighted buddy
+  continuously keeps its head and rendered eyes on it while travelling and keeps increasing
+  horizontal separation for as long as the player holds it,
+  alternating `600` routed ticks (five seconds) of retreat with a provisional `120`-tick
+  stationary pause. Releasing the ball immediately ends the retreat and restores chase/play.
+  Player ownership remains absolute and no collision exception or attachment is installed.
+- **Football never requests an obstacle hop.** It is filtered from the ambient obstacle-hop
+  evidence only; every other loose object retains the existing hop behavior.
+- **Football interest is visibly rendered, not merely selected.** An item look target applies
+  its head yaw at full gaze weight even without an unrelated activity clip. Item yaw is applied
+  world-relative instead of being added to retreat-facing yaw, which keeps the face readable
+  while looking back at a held ball. Item attention uses the existing wide white eyes with dark
+  pupils so direction remains visible at the `480x360` desktop scale.
+- **Corner rescue retains the same gaze contract.** While carrying the rescued ball inward,
+  the buddy continuously watches the held ball; its body movement/facing is inward, away from
+  the wall, before the ball is placed and kicked.
+- **Provisional feel values:** receive walk `600` ticks, receive pause `120` ticks, wall-turn
+  distance `72 px`, turn hold `60` routed ticks. These are Resource-authored and remain part
+  of the Task E feel gate.
 
 ## Planning Rule
 

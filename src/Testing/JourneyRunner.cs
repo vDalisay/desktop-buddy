@@ -1327,7 +1327,8 @@ public partial class JourneyRunner : Node
     /// withholds it until the owner's feel gate, key <c>8</c> places one owned ball, the
     /// ordinary Grab tether carries it, a secondary tap with no pull returns to carrying, a
     /// real pullback release launches it with the ball's own authored tuning, and a ball
-    /// thrown cleanly at the buddy is caught out of the air for its one care point.
+    /// thrown at the buddy never enters the ordinary hand/catch lifecycle; the explicit
+    /// corner-rescue exception is tracked separately.
     /// </summary>
     private async System.Threading.Tasks.Task ExerciseM5SoccerBallAsync(
         Dictionary<string, bool> state,
@@ -1388,6 +1389,52 @@ public partial class JourneyRunner : Node
         state["the_ball_is_carried_by_the_normal_grab"] =
             lab.Grab.IsGrabbing && lab.Grab.CurrentGrab.Target == ball;
 
+        // A happy buddy reads a player-held ball as an invitation to receive a pass. Keep the
+        // ball near, through the real held-pointer path, and watch the buddy create space.
+        lab.Progress.ApplyCareMood(30.0f);
+        Vector2 receivePoint = lab.Buddy.Rig.Torso.GlobalPosition + new Vector2(side * 70.0f, 0.0f);
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, receivePoint, MouseButtonMask.Left);
+        float initialReceiveGap = Mathf.Abs(
+            ball.GlobalPosition.X - lab.Buddy.Rig.Torso.GlobalPosition.X);
+        float maximumReceiveGap = initialReceiveGap;
+        bool receiving = false;
+        bool watched = false;
+        bool lookedAtBall = false;
+        bool renderedHeadTracked = false;
+        bool renderedEyesTracked = false;
+        bool receivePaused = false;
+        bool receiveResumed = false;
+        for (int tick = 0; tick < 760; tick++)
+        {
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            receiving |= lab.Buddy.ObjectInteraction.SoccerCommand == SoccerPlayCommand.Receive &&
+                Mathf.Sign(lab.Buddy.ObjectInteraction.ApproachDirection) == -side;
+            watched |= lab.Buddy.ObjectInteraction.HasWatchTarget;
+            lookedAtBall |= lab.HeadLookAt.CurrentSource == LookAtSource.Item;
+            float ballDirection = Mathf.Sign(ball.GlobalPosition.X - lab.Buddy.Rig.Head.GlobalPosition.X);
+            renderedHeadTracked |= Mathf.Abs(lab.VisualPresenter.AppliedHeadYawDegrees) > 1.0f &&
+                Mathf.Sign(lab.VisualPresenter.AppliedHeadYawDegrees) == ballDirection;
+            FaceRenderState face = lab.Face.LastComposedState;
+            renderedEyesTracked |= face.Eyes is FaceEyePose.Open or FaceEyePose.Narrow or FaceEyePose.Wide &&
+                Mathf.Abs(face.PupilX) > 0.0f && Mathf.Sign(face.PupilX) == ballDirection;
+            receivePaused |= tick is >= 600 and < 720 &&
+                lab.Buddy.ObjectInteraction.SoccerCommand == SoccerPlayCommand.Receive &&
+                Mathf.IsZeroApprox(lab.Buddy.ObjectInteraction.ApproachDirection);
+            receiveResumed |= tick >= 720 &&
+                Mathf.Sign(lab.Buddy.ObjectInteraction.ApproachDirection) == -side;
+            maximumReceiveGap = Mathf.Max(
+                maximumReceiveGap,
+                Mathf.Abs(ball.GlobalPosition.X - lab.Buddy.Rig.Torso.GlobalPosition.X));
+        }
+        state["the_good_mood_buddy_takes_receive_position"] =
+            receiving && watched && lookedAtBall && renderedHeadTracked && renderedEyesTracked &&
+            receivePaused && receiveResumed &&
+            maximumReceiveGap > initialReceiveGap + 20.0f &&
+            lab.Grab.IsGrabbing &&
+            !lab.Buddy.ObjectInteraction.IsHolding;
+        pick = ball.GlobalPosition;
+        await M4ObjectScenarioSupport.MovePointer(tree, lab, pick, MouseButtonMask.Left);
+
         // --- Cancel path: secondary down and straight back up keeps the carry ---
         await M4ObjectScenarioSupport.SetButton(
             tree, lab, pick, MouseButton.Right, pressed: true,
@@ -1432,30 +1479,41 @@ public partial class JourneyRunner : Node
             ownTuning &&
             !lab.Grab.IsGrabbing;
 
-        // --- And a ball thrown cleanly at it is caught for its one care point ---
+        // --- Ordinary Soccer Ball play stays foot-only; corner rescue is the sole exception ---
         lab.Progress.ApplyCareMood(30.0f);
         await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.ObjectInteraction.Phase == ObjectPhase.Idle, 900);
         int cleanBefore = lab.Buddy.ObjectInteraction.CleanCatchCount;
-        float moodBefore = lab.Progress.Mood;
         LooseObjectBody? gift = M4ObjectScenarioSupport.SpawnCleanThrow(
             lab, profile: soccerProfile);
-        bool caught = gift is not null && await M4ObjectScenarioSupport.WaitForPhase(
-            tree, lab, ObjectPhase.Hold, 900);
-        float moodAtCatch = lab.Progress.Mood;
+        bool ordinaryHeld = false;
+        bool cornerRescue = false;
+        for (int tick = 0; tick < 900 && GodotObject.IsInstanceValid(gift); tick++)
+        {
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            SoccerPlayPhase phase = lab.Buddy.ObjectInteraction.SoccerPhase;
+            cornerRescue |= phase is SoccerPlayPhase.CornerPickup or
+                SoccerPlayPhase.CornerCarry or SoccerPlayPhase.CornerDrop;
+            ordinaryHeld |= lab.Buddy.ObjectInteraction.IsHolding && !cornerRescue;
+            if (cornerRescue)
+                break;
+        }
 
-        state["a_clean_soccer_catch_pays_one_mood"] =
-            caught &&
-            lab.Buddy.ObjectInteraction.CleanCatchCount == cleanBefore + 1 &&
-            Mathf.Abs(moodAtCatch - (moodBefore + 1.0f)) < 0.01f;
+        state["a_soccer_ball_avoids_the_ordinary_hand_lifecycle"] =
+            gift is not null &&
+            !ordinaryHeld &&
+            lab.Buddy.ObjectInteraction.CleanCatchCount == cleanBefore;
 
         Log.Info(
             "Journey",
             $"M5 soccer sale={refused.Status} launches={lab.Launcher.LaunchCount} " +
             $"cancels={lab.Launcher.CancelCount} own_tuning={ownTuning} " +
-            $"speed={lab.Launcher.LastLaunchVelocity.Length():F1} caught={caught} " +
+            $"speed={lab.Launcher.LastLaunchVelocity.Length():F1} " +
+            $"ordinary_held={ordinaryHeld} corner_rescue={cornerRescue} " +
             $"clean={cleanBefore}->{lab.Buddy.ObjectInteraction.CleanCatchCount} " +
-            $"mood={moodBefore:F1}->{moodAtCatch:F1}");
+            $"receive={receiving} pause={receivePaused} resumed={receiveResumed} " +
+            $"look={lookedAtBall} head={renderedHeadTracked} eyes={renderedEyesTracked} " +
+            $"gap={initialReceiveGap:F1}->{maximumReceiveGap:F1}");
     }
 
     /// <summary>

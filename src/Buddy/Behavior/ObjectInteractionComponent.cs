@@ -51,6 +51,7 @@ public partial class ObjectInteractionComponent : Area2D
     private bool _collisionExceptionsActive;
     private bool _skipNextCooldownTick;
     private int _catchTicks;
+    private int _soccerPickupTicks;
     private int _throwWindupTicks;
     private bool _throwReleased;
     private bool _catchWasClean;
@@ -127,6 +128,8 @@ public partial class ObjectInteractionComponent : Area2D
     public int SoccerKickCount => _soccerPlay?.KickCount ?? 0;
     public int SoccerDwellTicksRemaining => _soccerPlay?.DwellTicksRemaining ?? 0;
     public float LastSoccerKickLoftDegrees => _soccerPlay?.LastKickLoftDegrees ?? 0.0f;
+    public SoccerKickStyle LastSoccerKickStyle => _soccerPlay?.LastKickStyle ?? SoccerKickStyle.None;
+    public SoccerPlayCommand SoccerCommand => _soccerIntent.Command;
     public Vector2 LastSoccerKickVelocity { get; private set; }
 
     /// <summary>The runtime ID of the ball currently under the foot, or <c>0</c>.</summary>
@@ -256,7 +259,11 @@ public partial class ObjectInteractionComponent : Area2D
     }
 
     /// <summary>Called once by BuddyRoot from the routed fixed tick.</summary>
-    public void PhysicsTick(bool suppressed, bool conscious, Vector2 cursorWorldPosition)
+    public void PhysicsTick(
+        bool suppressed,
+        bool conscious,
+        Vector2 cursorWorldPosition,
+        Rect2 roomBounds)
     {
         if (!IsInitialized)
             return;
@@ -297,7 +304,7 @@ public partial class ObjectInteractionComponent : Area2D
         // The soccer beat resolves before the catch lifecycle so that a ball it has claimed can
         // be marked Ignored -- the existing "leave that one alone" channel -- instead of the two
         // priority-5 workers contending for the same object.
-        TickSoccerPlay(count, suppressed, conscious);
+        TickSoccerPlay(count, suppressed, conscious, roomBounds);
 
         bool holdConfirmed = IsHolding ? HoldStillIntact() : ResolveCatch();
 
@@ -305,12 +312,17 @@ public partial class ObjectInteractionComponent : Area2D
             _candidates.AsSpan(0, count),
             _progress.MoodBand,
             _isHarmful,
-            suppressed,
+            suppressed || SoccerPlayCommitted,
             conscious,
             holdConfirmed,
             _consumeCompleted);
         _consumeCompleted = false;
         HandleIntent(intent, cursorWorldPosition);
+        if (_soccerIntent.Command is SoccerPlayCommand.Approach or SoccerPlayCommand.Receive ||
+            !Mathf.IsZeroApprox(_soccerIntent.ApproachDirection))
+        {
+            ApproachDirection = _soccerIntent.ApproachDirection;
+        }
         ApplySoccerCommand();
 
         // Collision exceptions are ownership/ground-approach state, not interest state.
@@ -340,8 +352,14 @@ public partial class ObjectInteractionComponent : Area2D
 
         ResolveCommitExceptions(exceptionBody);
 
-        HasWatchTarget = !IsHolding && GodotObject.IsInstanceValid(committed);
-        WatchTargetPosition = HasWatchTarget ? committed!.GlobalPosition : Vector2.Zero;
+        LooseObjectBody? watch = GodotObject.IsInstanceValid(committed) ? committed :
+            (LastSoccerReading.WantsPlay || _soccerIntent.Command != SoccerPlayCommand.None) &&
+            GodotObject.IsInstanceValid(_soccerBall)
+                ? _soccerBall
+                : null;
+        bool holdingRescuedBall = IsHolding && _soccerPlay.IsCommitted && watch == _soccerBall;
+        HasWatchTarget = (!IsHolding || holdingRescuedBall) && GodotObject.IsInstanceValid(watch);
+        WatchTargetPosition = HasWatchTarget ? watch!.GlobalPosition : Vector2.Zero;
         TickCooldowns();
     }
 
@@ -496,7 +514,8 @@ public partial class ObjectInteractionComponent : Area2D
                 snapshot.AtRest,
                 // Already refused and still unwanted: leave it where it lies. This is the
                 // same ignore channel the post-release cooling-off window uses.
-                snapshot.Ignored || IsRefused(snapshot.RuntimeId),
+                snapshot.Ignored || IsRefused(snapshot.RuntimeId) ||
+                body.Profile?.SoccerPlay is not null,
                 // To the object's near surface, not its centre. A ball pinned in a corner
                 // stops the body about `29 px` from its centre — no walking closes that — so
                 // a centre-measured gate made a cornered object permanently unpickable
@@ -505,7 +524,7 @@ public partial class ObjectInteractionComponent : Area2D
                 Mathf.Max(0.0f, Mathf.Abs(offset.X) - body.Radius),
                 snapshot.PlayerHeld);
 
-            if (snapshot.AtRest && !snapshot.PlayerHeld &&
+            if (snapshot.AtRest && !snapshot.PlayerHeld && body.Profile?.SoccerPlay is null &&
                 body.GlobalPosition.Y > torsoY &&
                 Mathf.Abs(offset.X) <= Profile.ObstacleForwardWindow)
             {
@@ -1224,15 +1243,21 @@ public partial class ObjectInteractionComponent : Area2D
     /// The model is ticked even when there is nothing playable in reach, so a trap already in
     /// progress ends cleanly rather than hanging on a ball that has gone.
     /// </summary>
-    private void TickSoccerPlay(int candidateCount, bool suppressed, bool conscious)
+    private void TickSoccerPlay(
+        int candidateCount,
+        bool suppressed,
+        bool conscious,
+        Rect2 roomBounds)
     {
         _soccerIntent = SoccerPlayIntent.None;
 
         // One object action at a time (RAGDOLL section 4, priority 5). Hands full or a refusal
         // in progress means no football; so does the catch lifecycle already owning some OTHER
         // object, because it would be the one driving the buddy.
-        bool busy = IsHolding || _refusingRuntimeId != 0;
-        LooseObjectBody? ball = busy ? null : FindPlayableBall();
+        bool holdingSoccer = IsHolding && _soccerPlay.IsCommitted &&
+            _heldBody?.RuntimeId == _soccerPlay.TrappedRuntimeId;
+        bool busy = (IsHolding && !holdingSoccer) || _refusingRuntimeId != 0;
+        LooseObjectBody? ball = busy ? null : holdingSoccer ? _heldBody : FindPlayableBall();
         if (GodotObject.IsInstanceValid(ball) &&
             _model.IsCommitted &&
             _model.TrackedRuntimeId != ball!.RuntimeId)
@@ -1257,9 +1282,11 @@ public partial class ObjectInteractionComponent : Area2D
 
         _soccerBall = ball;
         SoccerPlayTuning tuning = play.ToDomainTuning();
-        SoccerBallReading reading = ReadBall(ball!);
+        SoccerBallReading reading = ReadBall(ball!, roomBounds);
         LastSoccerReading = reading;
         _soccerIntent = _soccerPlay.Tick(tuning, reading, suppressed, conscious);
+        if (_soccerIntent.Command == SoccerPlayCommand.Kick && !reading.TrapAllowed)
+            _registry.ConsumeSoccerKick(ball!);
 
         // Reserved, not merely trapped: a ball rolling in from across the room already belongs
         // to the foot, so the catch lifecycle must never commit to it and walk out to fetch it.
@@ -1272,14 +1299,16 @@ public partial class ObjectInteractionComponent : Area2D
         SoccerBallReserved = conscious && !suppressed &&
             (_soccerIntent.IsCommitted ||
              _soccerIntent.Command == SoccerPlayCommand.Kick ||
-             SoccerPlayModel.IsReserved(tuning, reading));
+             _soccerIntent.Command == SoccerPlayCommand.Approach ||
+             SoccerPlayModel.IsReserved(tuning, reading) ||
+             (!reading.TrapAllowed && SoccerPlayModel.IsKickCandidate(tuning, reading)));
         if (SoccerBallReserved)
             IgnoreCandidate(candidateCount, ball!.RuntimeId);
     }
 
     /// <summary>
     /// The ball this beat is about: the one already under the foot if there is one, otherwise
-    /// the nearest sensed object whose authored profile opts into soccer play at all.
+    /// the nearest registered object whose authored profile opts into soccer play at all.
     /// </summary>
     private LooseObjectBody? FindPlayableBall()
     {
@@ -1294,9 +1323,9 @@ public partial class ObjectInteractionComponent : Area2D
         LooseObjectBody? nearest = null;
         float nearestDistance = float.MaxValue;
         float torsoX = Rig.Torso.GlobalPosition.X;
-        for (int index = 0; index < _sensed.Length; index++)
+        for (int index = 0; index < LooseObjectRegistry.Capacity; index++)
         {
-            LooseObjectBody? body = _sensed[index];
+            LooseObjectBody? body = _registry.BodyAt(index);
             if (!GodotObject.IsInstanceValid(body) ||
                 !GodotObject.IsInstanceValid(body!.Profile) ||
                 body.Profile!.SoccerPlay is null ||
@@ -1317,7 +1346,7 @@ public partial class ObjectInteractionComponent : Area2D
     }
 
     /// <summary>Reads one ball into the engine-free shape the model decides on.</summary>
-    private SoccerBallReading ReadBall(LooseObjectBody ball)
+    private SoccerBallReading ReadBall(LooseObjectBody ball, Rect2 roomBounds)
     {
         if (!_registry.TryGetSnapshot(ball.RuntimeId, out LooseObjectSnapshot snapshot))
             return SoccerBallReading.None;
@@ -1339,7 +1368,14 @@ public partial class ObjectInteractionComponent : Area2D
             surfaceDistance,
             direction,
             closingSpeed,
-            footY - ball.GlobalPosition.Y);
+            footY - ball.GlobalPosition.Y,
+            snapshot.SoccerTrapAllowed,
+            snapshot.SoccerKickAllowed,
+            snapshot.PlayerHeld,
+            _progress.MoodBand is MoodBand.Content or MoodBand.Delighted,
+            ball.GlobalPosition.X - ball.Radius - roomBounds.Position.X,
+            roomBounds.End.X - ball.GlobalPosition.X - ball.Radius,
+            snapshot.BuddyHeld);
     }
 
     /// <summary>Marks one candidate ignored so the catch lifecycle will not commit to it.</summary>
@@ -1364,10 +1400,15 @@ public partial class ObjectInteractionComponent : Area2D
     {
         if (_soccerIntent.Command == SoccerPlayCommand.None ||
             !GodotObject.IsInstanceValid(_soccerBall) ||
-            IsHolding ||
             _model.IsCommitted ||
             CurrentDriveCommand.Active)
         {
+            return;
+        }
+
+        if (_soccerIntent.Command is SoccerPlayCommand.Approach or SoccerPlayCommand.Receive)
+        {
+            _soccerPickupTicks = 0;
             return;
         }
 
@@ -1377,8 +1418,46 @@ public partial class ObjectInteractionComponent : Area2D
         if (play is null || !GodotObject.IsInstanceValid(play))
             return;
 
-        bool kicking = _soccerIntent.Command == SoccerPlayCommand.Kick;
         LooseObjectBody ball = _soccerBall!;
+        if (_soccerIntent.Command == SoccerPlayCommand.CornerPickup)
+        {
+            if (IsHolding)
+                return;
+            CurrentDriveCommand = BuildScoopCommand(ball);
+            _soccerPickupTicks++;
+            if (_soccerPickupTicks >= Profile.ScoopTicks)
+            {
+                BeginHold(ball, _soccerIntent.ApproachDirection < 0.0f);
+                _soccerPickupTicks = 0;
+            }
+            return;
+        }
+
+        if (_soccerIntent.Command == SoccerPlayCommand.CornerCarry)
+        {
+            if (IsHolding && _heldBody == ball)
+                CurrentDriveCommand = BuildHoldCommand(ball, ObjectDriveAction.Hold);
+            return;
+        }
+
+        if (_soccerIntent.Command == SoccerPlayCommand.CornerDrop)
+        {
+            if (IsHolding && _heldBody == ball)
+            {
+                float floorY = Mathf.Max(
+                    Rig.LeftFoot.GlobalPosition.Y + Rig.LeftFoot.Radius,
+                    Rig.RightFoot.GlobalPosition.Y + Rig.RightFoot.Radius);
+                float front = Rig.Torso.Radius + ball.Radius + 4.0f;
+                ball.GlobalPosition = new Vector2(
+                    Rig.Torso.GlobalPosition.X + (_soccerIntent.ApproachDirection * front),
+                    floorY - ball.Radius);
+                ball.ResetPhysicsInterpolation();
+                ReleaseHeld(ObjectDriveAction.Drop, Vector2.Zero);
+            }
+            return;
+        }
+
+        bool kicking = _soccerIntent.Command == SoccerPlayCommand.Kick;
         float towardBuddy = Mathf.Sign(Rig.Torso.GlobalPosition.X - ball.GlobalPosition.X);
         if (Mathf.IsZeroApprox(towardBuddy))
             towardBuddy = 1.0f;

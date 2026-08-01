@@ -11,9 +11,9 @@ namespace DesktopBuddy.Presentation3D;
 /// <see cref="SurfaceTool.GenerateNormals"/> gives one normal per face, and a stated envelope
 /// verification can check the result against.
 ///
-/// <para>Two shapes so far. The <b>soccer ball</b> is a faceted sphere with alternating dark
-/// panels — the traditional look, arrived at by colouring facets rather than by modelling a
-/// truncated icosahedron, because at this size the pattern is the whole read. The <b>can</b>
+/// <para>Two shapes so far. The <b>soccer ball</b> is a white sphere with twelve raised dark
+/// pentagons in the topology of an icosahedron — the traditional read without importing art
+/// or building a full truncated-icosahedron collider. The <b>can</b>
 /// is a straight cylinder with rolled rims and a wide band around its belly.</para>
 ///
 /// <para>Clean-room: the ball carries no crest or maker's mark, and the can is a generic
@@ -26,7 +26,11 @@ public static class LooseObjectMeshBuilder
     public const int RadialSegments = 18;
 
     /// <summary>Stacks from pole to pole on the ball.</summary>
-    public const int BallRings = 9;
+    public const int BallRings = 12;
+
+    private const int BallRadialSegments = 24;
+    private const float PentagonAngularRadius = 0.20f;
+    private const float PentagonSurfaceScale = 1.025f;
 
     /// <summary>
     /// How far past the collider radius a built mesh may reach. The ball is a sphere and sits
@@ -60,20 +64,37 @@ public static class LooseObjectMeshBuilder
             float lowerRadius = Mathf.Sin(lowerAngle) * radius;
             float upperRadius = Mathf.Sin(upperAngle) * radius;
 
-            for (int segment = 0; segment < RadialSegments; segment++)
+            for (int segment = 0; segment < BallRadialSegments; segment++)
             {
-                float startAngle = Mathf.Tau * segment / RadialSegments;
-                float endAngle = Mathf.Tau * (segment + 1) / RadialSegments;
-                Color tint = IsDarkPanel(ring, segment) ? panel : fill;
+                float startAngle = Mathf.Tau * segment / BallRadialSegments;
+                float endAngle = Mathf.Tau * (segment + 1) / BallRadialSegments;
 
                 Vector3 a = OnSphere(lowerRadius, lowerY, startAngle);
                 Vector3 b = OnSphere(lowerRadius, lowerY, endAngle);
                 Vector3 c = OnSphere(upperRadius, upperY, endAngle);
                 Vector3 d = OnSphere(upperRadius, upperY, startAngle);
 
-                AddTriangle(tool, a, b, c, tint);
-                AddTriangle(tool, a, c, d, tint);
+                AddTriangle(tool, a, b, c, fill);
+                AddTriangle(tool, a, c, d, fill);
             }
+        }
+
+        AddPentagon(tool, Vector3.Forward, radius, panel);
+        AddPentagon(tool, Vector3.Back, radius, panel);
+        float ringZ = 1.0f / Mathf.Sqrt(5.0f);
+        float ringRadius = 2.0f / Mathf.Sqrt(5.0f);
+        for (int index = 0; index < 5; index++)
+        {
+            float upperAngle = Mathf.Tau * index / 5.0f;
+            float lowerAngle = upperAngle + (Mathf.Pi / 5.0f);
+            AddPentagon(tool, new Vector3(
+                Mathf.Cos(upperAngle) * ringRadius,
+                Mathf.Sin(upperAngle) * ringRadius,
+                ringZ), radius, panel);
+            AddPentagon(tool, new Vector3(
+                Mathf.Cos(lowerAngle) * ringRadius,
+                Mathf.Sin(lowerAngle) * ringRadius,
+                -ringZ), radius, panel);
         }
 
         tool.GenerateNormals();
@@ -140,19 +161,26 @@ public static class LooseObjectMeshBuilder
         return tool.Commit();
     }
 
-    /// <summary>
-    /// Whether this facet is one of the dark panels. A fixed function of the facet's own
-    /// indices and nothing else: presentation may never consume simulation randomness, and
-    /// two runs of the same seed must draw the same ball.
-    /// </summary>
-    public static bool IsDarkPanel(int ring, int segment)
+    private static void AddPentagon(
+        SurfaceTool tool, Vector3 direction, float radius, Color tint)
     {
-        // Poles get a panel dead centre, and the belly rows are offset from each other so the
-        // dark patches scatter the way a stitched ball's do instead of forming stripes.
-        if (ring == 0 || ring == BallRings - 1)
-            return segment % 3 == 0;
+        Vector3 normal = direction.Normalized();
+        Vector3 tangent = Mathf.Abs(normal.Y) < 0.9f
+            ? normal.Cross(Vector3.Up).Normalized()
+            : normal.Cross(Vector3.Right).Normalized();
+        Vector3 bitangent = normal.Cross(tangent).Normalized();
+        Vector3 center = normal * radius * PentagonSurfaceScale;
+        var points = new Vector3[5];
+        for (int index = 0; index < points.Length; index++)
+        {
+            float angle = -Mathf.Pi * 0.5f + (Mathf.Tau * index / points.Length);
+            Vector3 offset = tangent * Mathf.Cos(angle) + bitangent * Mathf.Sin(angle);
+            points[index] = (normal + offset * Mathf.Tan(PentagonAngularRadius)).Normalized() *
+                radius * PentagonSurfaceScale;
+        }
 
-        return (segment + (ring * 5)) % 4 == 0;
+        for (int index = 0; index < points.Length; index++)
+            AddTriangle(tool, center, points[(index + 1) % points.Length], points[index], tint);
     }
 
     /// <summary>The bound every built mesh stays inside, in world pixels.</summary>

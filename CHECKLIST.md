@@ -311,6 +311,41 @@ pre-implementation on 2026-07-31:
       (`Presentation3D/LooseObjectVisual3D` + `LooseObjectMeshBuilder`, a panelled ball and a
       generic red-and-white can, degrading to the flat circle in legacy). Domain suite
       `999 → 1057`; quick suite 31 steps green.
+- [x] Owner feedback pass 2, 2026-08-01 — the Soccer Ball became **foot-only** outside the
+      later pass-6 corner-rescue exception. Player touch enables trapping, floor contact preserves it,
+      side-wall/ceiling contact clears it, and one direct kick remains available without a
+      trap. Domain `1059/1059`; `soccer_and_drink` seeds `1/7/13` and `m5_soccer_ball`
+      seeds `1/7` pass in both presentations.
+- [x] Owner feedback pass 3, 2026-08-01 — a Content/Delighted buddy chases and repeatedly
+      kicks a free Soccer Ball, seeded between forward and arcing shots; its original near-wall
+      choice was superseded by pass 6's deterministic rescue. A player-held ball instead makes
+      the buddy watch and back into receive space while
+      player ownership remains intact. Domain `1063/1063`; `soccer_and_drink` seeds `1/7/13`
+      and `m5_soccer_ball` seeds `1/7` pass in both presentations; `baseball_pullback`,
+      `object_catch_hold`, and `autonomous_motion` neighbors remain green.
+- [x] Owner feedback pass 4, 2026-08-01 — receive no longer stops at a fixed distance: while
+      held, the football remains the head/eye target through a `600`-tick retreat / `120`-tick
+      pause cadence that repeats until release; release immediately restores chase. Football
+      is filtered from both ambient obstacle-hop evidence paths while Baseball still trips the
+      ray. Domain `1063/1063`; the same seed/presentation matrix and three neighbors remain green.
+- [x] Owner feedback pass 5, 2026-08-01 — corrected the weak semantic-only gaze check. Item
+      gaze now reaches the rendered head without an activity clip, Delighted opens its eyes
+      while tracking, and pupil travel visibly crosses toward the target with correct vertical
+      coordinates. Windowed frame inspected; `soccer_and_drink` full matrix, `m5_soccer_ball`
+      full matrix, `lookat_priority_and_cone`, and `face_composition` are green.
+- [x] Owner feedback pass 6, 2026-08-01 — receive travel continuously preserves semantic and
+      rendered ball gaze; a cornered football alone may be picked up, carried/faced inward while
+      watched, placed in front, and kicked away from the wall. Domain `1064/1064`;
+      `soccer_and_drink` seeds `1/7/13` and `m5_soccer_ball` seeds `1/7` pass in both
+      presentations.
+- [x] Owner feedback pass 7, 2026-08-01 — the real rendered frame exposed an edge-on face and
+      highlight-sized eyes despite correct gaze state. Item head yaw is now world-relative and
+      item attention uses readable wide white eyes with dark moving pupils. Windowed capture
+      inspected; `soccer_and_drink`, `face_composition`, and `lookat_priority_and_cone` pass.
+- [x] Owner feedback pass 8, 2026-08-01 — replaced the Soccer Ball's random dark facet blocks
+      with a smoother white sphere and twelve evenly distributed raised black pentagons. Held
+      and unobstructed windowed frames were inspected; the mesh stays inside its envelope
+      (`14.4 / 25.2 px`) and `soccer_and_drink` passes.
 - [ ] Task E — owner feel gate. `tool_soccer_ball.tres` and `tool_drink.tres` are still
       `Visible = false` and the two entries may flip independently; both journeys assert the
       invisible entry's refusal until then, on the Grenade's precedent. The bounce value and

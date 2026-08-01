@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Autonomy;
@@ -16,15 +17,15 @@ namespace DesktopBuddy.Testing;
 /// <summary>
 /// M5 Task 8 gate for the Soccer Ball and the Drink — the milestone's two data-driven reuses.
 /// Nothing here is new machinery: the ball is a second pullback launchable that rides the
-/// existing clean-catch rule, and the Drink is a second care consumable on the same two-phase
+/// foot-only soccer interaction, and the Drink is a second care consumable on the same two-phase
 /// consume transaction the Meal uses. What the scenario owns is the proof that the data
 /// actually differs where it is supposed to and is shared where it is supposed to be.
 ///
 /// <para>Five things are measured rather than asserted. The Soccer Ball's authored bounce
 /// gives it a drop signature the Baseball does not have, and the Baseball's own signature is
 /// pinned so the restitution seam can be shown not to have moved anything that authored no
-/// bounce. The Drink is placed by its own spawn key like any launchable. A clean soccer catch
-/// pays the one care point once per throw. And the Meal and the Drink gate each other not at
+/// bounce. The Drink is placed by its own spawn key like any launchable. The Soccer Ball never
+/// enters the buddy's hands. And the Meal and the Drink gate each other not at
 /// all: per-content-id cooldown slots plus a hunger fill of zero mean a full buddy still takes
 /// a Drink, a cancelled Drink is drinkable again this instant, and a Drink on its 60 s
 /// cooldown does not stop the buddy eating.</para>
@@ -122,13 +123,26 @@ public sealed class SoccerAndDrinkScenario : IScenario
         // --- Phase 2: the spawn key, the shared chord, and rest ---
         checks.Add(await CheckSoccerSpawnsLaunchesAndRests(tree, lab, messages));
 
-        // --- Phase 3: the clean-catch rule, unchanged, on a new ball ---
-        checks.Add(await CheckCleanSoccerCatch(tree, lab, soccer, messages));
+        // --- Phase 3: ordinary ball play is foot-only ---
+        checks.Add(await CheckSoccerIsFootOnly(tree, lab, soccer, messages));
 
-        // --- Phase 3b: the trap, the beat, and the kick back ---
+        // --- Phase 3a: a player-held ball produces a receive-pass stance ---
+        checks.Add(await CheckSoccerReceiveStance(tree, lab, soccer, messages));
+
+        // --- Phase 3b: a cornered ball gets the explicit hand-rescue exception ---
+        checks.Add(await CheckCornerRescue(tree, lab, soccer, messages));
+
+        // --- Phase 3c: football alone is not ambient-hop obstacle evidence ---
+        checks.Add(await CheckFootballDoesNotRequestObstacleHop(
+            tree, lab, soccer, baseball, messages));
+
+        // --- Phase 3d: player touch survives ground, but not walls/ceiling ---
+        checks.AddRange(await CheckSoccerTrapPermission(tree, lab, soccer, messages));
+
+        // --- Phase 3e: the trap, the beat, and the kick back ---
         checks.AddRange(await CheckSoccerTrapAndKick(tree, lab, soccer, messages));
 
-        // --- Phase 3c: both items are drawn once, in whichever mode is active ---
+        // --- Phase 3f: both items are drawn once, in whichever mode is active ---
         checks.Add(await CheckDrawnSilhouettes(tree, lab, soccer, drink, messages));
 
         // --- Phase 4 and 5: the Drink's own spawn key and the care rules ---
@@ -325,52 +339,417 @@ public sealed class SoccerAndDrinkScenario : IScenario
     }
 
     /// <summary>
-    /// The clean-catch rule is inherited whole: a Soccer Ball taken out of the air pays the
-    /// one care point, and pays it once for that throw.
+    /// A resting Soccer Ball in ordinary pickup range is ignored by the hand lifecycle. This
+    /// is content behavior, not a timing accident: it remains untracked for the full window.
     /// </summary>
-    private static async Task<StartupCheck> CheckCleanSoccerCatch(
+    private static async Task<StartupCheck> CheckSoccerIsFootOnly(
         SceneTree tree,
         BuddyLab lab,
         LooseObjectProfile soccer,
         List<string> messages)
     {
-        // A buddy in a decent mood is a buddy that reaches for a ball; the catch rule, not the
-        // mood ladder, is what this leg is about.
         lab.Progress.ApplyCareMood(30.0f);
         await M4ObjectScenarioSupport.WaitFor(
             tree, () => lab.Buddy.ObjectInteraction.Phase == ObjectPhase.Idle, 600);
 
-        int cleanBefore = lab.Buddy.ObjectInteraction.CleanCatchCount;
-        int careBefore = lab.Buddy.ObjectInteraction.CatchCareCount;
-        float moodBefore = lab.Progress.Mood;
-        LooseObjectBody? ball = M4ObjectScenarioSupport.SpawnCleanThrow(lab, profile: soccer);
-        bool caught = ball is not null && await M4ObjectScenarioSupport.WaitForPhase(
-            tree, lab, ObjectPhase.Hold, 600);
-        float moodAtCatch = lab.Progress.Mood;
-
-        // Once per originating throw: keep watching while it is still carried.
-        for (int tick = 0; tick < 240; tick++)
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
+        float wallMargin = soccer.SoccerPlay!.WallTurnDistance + soccer.Radius + 2.0f;
+        var spawn = new Vector2(
+            Mathf.Clamp(torso.X + side * 120.0f,
+                room.Position.X + wallMargin,
+                room.End.X - wallMargin),
+            room.End.Y - soccer.Radius - 1.0f);
+        LooseObjectBody? ball = lab.SpawnLooseObject(soccer, spawn, Vector2.Zero);
+        string? freeBallVisual = null;
+        if (ball is not null && DisplayServer.GetName() != "headless")
+        {
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            CanvasLayer ui = lab.GetNode<CanvasLayer>("LabUi");
+            bool uiVisible = ui.Visible;
+            bool boundsVisible = lab.BoundaryVisualizer.Visible;
+            ui.Visible = false;
+            lab.BoundaryVisualizer.Visible = false;
+            for (int frame = 0; frame < 3; frame++)
+                await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            await tree.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            string directory = Path.GetFullPath(
+                ScenarioArtifacts.Directory ?? ".artifacts/soccer_visual_check");
+            Directory.CreateDirectory(directory);
+            freeBallVisual = Path.Combine(directory, "soccer_free_ball.png");
+            if (tree.Root.GetTexture().GetImage().SavePng(freeBallVisual) != Error.Ok)
+                freeBallVisual = null;
+            ui.Visible = uiVisible;
+            lab.BoundaryVisualizer.Visible = boundsVisible;
+        }
+        bool everTracked = false;
+        bool everHeld = false;
+        bool chased = false;
+        int kicksBefore = lab.Buddy.ObjectInteraction.SoccerKickCount;
+        float initialGap = ball is null ? float.MaxValue :
+            Mathf.Abs(ball.GlobalPosition.X - torso.X) - ball.Radius;
+        float minimumGap = initialGap;
+        for (int tick = 0; tick < 600 && GodotObject.IsInstanceValid(ball) &&
+            lab.Buddy.ObjectInteraction.SoccerKickCount == kicksBefore; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            everTracked |= lab.Buddy.ObjectInteraction.TrackedRuntimeId == ball!.RuntimeId;
+            everHeld |= lab.Buddy.ObjectInteraction.IsHolding;
+            chased |= lab.Buddy.ObjectInteraction.SoccerCommand == SoccerPlayCommand.Approach;
+            minimumGap = Mathf.Min(
+                minimumGap,
+                Mathf.Abs(ball.GlobalPosition.X - lab.Buddy.Rig.Torso.GlobalPosition.X) - ball.Radius);
+        }
 
-        bool paidOnce =
-            lab.Buddy.ObjectInteraction.CleanCatchCount == cleanBefore + 1 &&
-            lab.Buddy.ObjectInteraction.CatchCareCount == careBefore + 1;
-        bool paidOnePoint = Mathf.Abs(moodAtCatch - (moodBefore + 1.0f)) < 0.01f;
-
+        bool kicked = lab.Buddy.ObjectInteraction.SoccerKickCount > kicksBefore;
         string detail =
-            $"caught={caught} clean={cleanBefore}->{lab.Buddy.ObjectInteraction.CleanCatchCount} " +
-            $"care={careBefore}->{lab.Buddy.ObjectInteraction.CatchCareCount} " +
-            $"mood={moodBefore:F2}->{moodAtCatch:F2}";
-        messages.Add($"soccer_catch {detail}");
+            $"spawned={ball is not null} tracked={everTracked} held={everHeld} " +
+            $"chased={chased} kicked={kicked} gap={initialGap:F1}->{minimumGap:F1} " +
+            $"style={lab.Buddy.ObjectInteraction.LastSoccerKickStyle} " +
+            $"visual={freeBallVisual ?? "headless"}";
+        messages.Add($"soccer_foot_only {detail}");
 
         if (ball is not null)
             RemoveObject(lab, ball);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
 
         return new StartupCheck(
-            "a_clean_soccer_catch_pays_one_care_once",
-            caught && paidOnce && paidOnePoint,
+            "a_good_mood_buddy_chases_and_kicks_without_pickup",
+            ball is not null && !everTracked && !everHeld && chased && kicked &&
+            minimumGap < initialGap - 20.0f,
             detail);
+    }
+
+    private static async Task<StartupCheck> CheckSoccerReceiveStance(
+        SceneTree tree,
+        BuddyLab lab,
+        LooseObjectProfile soccer,
+        List<string> messages)
+    {
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
+        var spawn = new Vector2(
+            Mathf.Clamp(torso.X + side * 75.0f,
+                room.Position.X + soccer.Radius + 2.0f,
+                room.End.X - soccer.Radius - 2.0f),
+            room.End.Y - soccer.Radius - 1.0f);
+        LooseObjectBody? ball = lab.SpawnLooseObject(soccer, spawn, Vector2.Zero);
+        bool grabbed = ball is not null && lab.Grab.TryGrab(ball, ball.GlobalPosition);
+        float initialGap = ball is null ? 0.0f :
+            Mathf.Abs(ball.GlobalPosition.X - torso.X) - ball.Radius;
+        bool received = false;
+        bool watched = false;
+        bool lookedAtBall = false;
+        bool renderedHeadTracked = false;
+        bool renderedEyesTracked = false;
+        string? visualEvidence = null;
+        bool paused = false;
+        bool resumed = false;
+        int travellingTicks = 0;
+        bool continuouslyWatchedWhileTravelling = true;
+        bool continuouslyRenderedWhileTravelling = true;
+        string firstTravelGazeFailure = "none";
+        float maximumGap = initialGap;
+        for (int tick = 0; tick < 760 && grabbed && GodotObject.IsInstanceValid(ball); tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            received |= lab.Buddy.ObjectInteraction.SoccerCommand == SoccerPlayCommand.Receive &&
+                Mathf.Sign(lab.Buddy.ObjectInteraction.ApproachDirection) == -side;
+            watched |= lab.Buddy.ObjectInteraction.HasWatchTarget;
+            lookedAtBall |= lab.HeadLookAt.CurrentSource == LookAtSource.Item;
+            float ballDirection = Mathf.Sign(ball!.GlobalPosition.X - lab.Buddy.Rig.Head.GlobalPosition.X);
+            renderedHeadTracked |= Mathf.Abs(lab.VisualPresenter.AppliedHeadYawDegrees) > 1.0f &&
+                Mathf.Sign(lab.VisualPresenter.AppliedHeadYawDegrees) == ballDirection;
+            FaceRenderState face = lab.Face.LastComposedState;
+            renderedEyesTracked |= face.Eyes is FaceEyePose.Open or FaceEyePose.Narrow or FaceEyePose.Wide &&
+                Mathf.Abs(face.PupilX) > 0.0f && Mathf.Sign(face.PupilX) == ballDirection;
+            if (lab.Buddy.ObjectInteraction.SoccerCommand == SoccerPlayCommand.Receive &&
+                !Mathf.IsZeroApprox(lab.Buddy.ObjectInteraction.ApproachDirection))
+            {
+                travellingTicks++;
+                if (travellingTicks > 30)
+                {
+                    continuouslyWatchedWhileTravelling &=
+                        lab.Buddy.ObjectInteraction.HasWatchTarget &&
+                        lab.HeadLookAt.CurrentSource == LookAtSource.Item;
+                    bool eyesOpen = face.Eyes is
+                        FaceEyePose.Open or FaceEyePose.Narrow or FaceEyePose.Wide;
+                    bool renderedThisTick =
+                        Mathf.Abs(lab.VisualPresenter.AppliedHeadYawDegrees) > 1.0f &&
+                        Mathf.Sign(lab.VisualPresenter.AppliedHeadYawDegrees) == ballDirection &&
+                        (!eyesOpen || face.Blinking || (Mathf.Abs(face.PupilX) > 0.0f &&
+                            Mathf.Sign(face.PupilX) == ballDirection));
+                    if (!renderedThisTick && firstTravelGazeFailure == "none")
+                    {
+                        firstTravelGazeFailure = $"tick={tick} travel={travellingTicks} " +
+                            $"dir={ballDirection:F0} yaw={lab.VisualPresenter.AppliedHeadYawDegrees:F2} " +
+                            $"eyes={face.Eyes} pupil={face.PupilX:F2} source={lab.HeadLookAt.CurrentSource}";
+                    }
+                    continuouslyRenderedWhileTravelling &= renderedThisTick;
+                }
+            }
+            if (renderedEyesTracked && visualEvidence is null &&
+                DisplayServer.GetName() != "headless")
+            {
+                CanvasLayer ui = lab.GetNode<CanvasLayer>("LabUi");
+                bool uiVisible = ui.Visible;
+                bool boundsVisible = lab.BoundaryVisualizer.Visible;
+                ui.Visible = false;
+                lab.BoundaryVisualizer.Visible = false;
+                for (int frame = 0; frame < 3; frame++)
+                    await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+                await tree.ToSignal(
+                    RenderingServer.Singleton,
+                    RenderingServer.SignalName.FramePostDraw);
+                string directory = Path.GetFullPath(
+                    ScenarioArtifacts.Directory ?? ".artifacts/soccer_visual_check");
+                Directory.CreateDirectory(directory);
+                visualEvidence = Path.Combine(directory, "soccer_receive_tracking.png");
+                if (tree.Root.GetTexture().GetImage().SavePng(visualEvidence) != Error.Ok)
+                    visualEvidence = null;
+                ui.Visible = uiVisible;
+                lab.BoundaryVisualizer.Visible = boundsVisible;
+            }
+            paused |= tick is >= 600 and < 720 &&
+                lab.Buddy.ObjectInteraction.SoccerCommand == SoccerPlayCommand.Receive &&
+                Mathf.IsZeroApprox(lab.Buddy.ObjectInteraction.ApproachDirection);
+            resumed |= tick >= 720 &&
+                Mathf.Sign(lab.Buddy.ObjectInteraction.ApproachDirection) == -side;
+            maximumGap = Mathf.Max(
+                maximumGap,
+                Mathf.Abs(ball!.GlobalPosition.X - lab.Buddy.Rig.Torso.GlobalPosition.X) - ball.Radius);
+        }
+
+        bool playerStillOwns = lab.Grab.IsGrabbing &&
+            lab.Grab.CurrentGrab.Target == ball &&
+            !lab.Buddy.ObjectInteraction.IsHolding;
+        string detail =
+            $"grabbed={grabbed} receive={received} watched={watched} semantic_look={lookedAtBall} " +
+            $"head={renderedHeadTracked} eyes={renderedEyesTracked} " +
+            $"continuous=({continuouslyWatchedWhileTravelling}," +
+            $"{continuouslyRenderedWhileTravelling}) travel_ticks={travellingTicks} " +
+            $"first_failure=({firstTravelGazeFailure}) " +
+            $"paused={paused} resumed={resumed} " +
+            $"player_owns={playerStillOwns} gap={initialGap:F1}->{maximumGap:F1} " +
+            $"visual={visualEvidence ?? "headless"}";
+        messages.Add($"soccer_receive {detail}");
+
+        if (lab.Grab.IsGrabbing)
+            lab.Grab.Release(countsAsThrow: false);
+        bool chasedAfterRelease = false;
+        for (int tick = 0; tick < 10 && GodotObject.IsInstanceValid(ball); tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            chasedAfterRelease |= lab.Buddy.ObjectInteraction.SoccerCommand == SoccerPlayCommand.Approach;
+        }
+        if (ball is not null)
+            RemoveObject(lab, ball);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        return new StartupCheck(
+            "a_player_held_ball_makes_the_buddy_take_receive_spacing",
+            grabbed && received && watched && lookedAtBall && renderedHeadTracked &&
+            renderedEyesTracked && travellingTicks > 30 &&
+            continuouslyWatchedWhileTravelling && continuouslyRenderedWhileTravelling &&
+            paused && resumed &&
+            chasedAfterRelease && playerStillOwns && maximumGap > initialGap + 20.0f,
+            $"{detail} release_chase={chasedAfterRelease}");
+    }
+
+    private static async Task<StartupCheck> CheckCornerRescue(
+        SceneTree tree,
+        BuddyLab lab,
+        LooseObjectProfile soccer,
+        List<string> messages)
+    {
+        Rect2 room = lab.Boundaries.InnerBounds;
+        lab.Progress.ApplyCareMood(30.0f);
+        var spawn = new Vector2(
+            room.Position.X + soccer.Radius + 1.0f,
+            room.End.Y - soccer.Radius - 1.0f);
+        LooseObjectBody? ball = lab.SpawnLooseObject(soccer, spawn, Vector2.Zero);
+        int kicksBefore = lab.Buddy.ObjectInteraction.SoccerKickCount;
+        bool pickedUp = false;
+        bool carriedInward = false;
+        bool watchedWhileCarried = true;
+        bool renderedWhileCarried = true;
+        int carriedTicks = 0;
+        bool droppedInFront = false;
+        bool kickedInward = false;
+
+        for (int tick = 0; tick < 1800 && GodotObject.IsInstanceValid(ball) && !kickedInward; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            bool carrying = lab.Buddy.ObjectInteraction.SoccerPhase == SoccerPlayPhase.CornerCarry;
+            pickedUp |= carrying && lab.Buddy.ObjectInteraction.IsHolding;
+            carriedInward |= carrying && lab.Buddy.ObjectInteraction.ApproachDirection > 0.0f;
+            if (carrying && lab.Buddy.ObjectInteraction.IsHolding)
+            {
+                carriedTicks++;
+                watchedWhileCarried &= lab.Buddy.ObjectInteraction.HasWatchTarget &&
+                    lab.HeadLookAt.CurrentSource == LookAtSource.Item;
+                if (carriedTicks > 30)
+                {
+                    float direction = Mathf.Sign(
+                        ball!.GlobalPosition.X - lab.Buddy.Rig.Head.GlobalPosition.X);
+                    FaceRenderState face = lab.Face.LastComposedState;
+                    bool eyesOpen = face.Eyes is
+                        FaceEyePose.Open or FaceEyePose.Narrow or FaceEyePose.Wide;
+                    renderedWhileCarried &=
+                        Mathf.Abs(lab.VisualPresenter.AppliedHeadYawDegrees) > 1.0f &&
+                        Mathf.Sign(lab.VisualPresenter.AppliedHeadYawDegrees) == direction &&
+                        (!eyesOpen || face.Blinking || (Mathf.Abs(face.PupilX) > 0.0f &&
+                            Mathf.Sign(face.PupilX) == direction));
+                }
+            }
+
+            droppedInFront |= lab.Buddy.ObjectInteraction.SoccerPhase == SoccerPlayPhase.CornerDrop &&
+                !lab.Buddy.ObjectInteraction.IsHolding &&
+                ball!.GlobalPosition.X > lab.Buddy.Rig.Torso.GlobalPosition.X;
+            kickedInward = lab.Buddy.ObjectInteraction.SoccerKickCount == kicksBefore + 1 &&
+                lab.Buddy.ObjectInteraction.LastSoccerKickStyle ==
+                    SoccerKickStyle.TurnAwayFromWall &&
+                lab.Buddy.ObjectInteraction.LastSoccerKickVelocity.X > 0.0f;
+        }
+
+        string detail = $"pickup={pickedUp} carry={carriedInward} carry_ticks={carriedTicks} " +
+            $"watch={watchedWhileCarried} rendered={renderedWhileCarried} " +
+            $"drop={droppedInFront} kick={kickedInward}";
+        messages.Add($"soccer_corner_rescue {detail}");
+        if (ball is not null)
+            RemoveObject(lab, ball);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        return new StartupCheck(
+            "a_cornered_ball_is_carried_inward_dropped_in_front_and_kicked",
+            ball is not null && pickedUp && carriedInward && carriedTicks > 30 &&
+            watchedWhileCarried && renderedWhileCarried && droppedInFront && kickedInward,
+            detail);
+    }
+
+    private static async Task<StartupCheck> CheckFootballDoesNotRequestObstacleHop(
+        SceneTree tree,
+        BuddyLab lab,
+        LooseObjectProfile soccer,
+        LooseObjectProfile baseball,
+        List<string> messages)
+    {
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
+        Vector2 probe = new(torso.X + side * 36.0f, room.End.Y - soccer.Radius - 1.0f);
+
+        LooseObjectBody? football = lab.SpawnLooseObject(soccer, probe, Vector2.Zero);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool footballRay = lab.Buddy.AutonomousMotion.ObstacleInCommittedPath(side);
+        bool footballRegistry = lab.Buddy.ObjectInteraction.RestingObstacleInPath(side);
+        if (football is not null)
+            RemoveObject(lab, football);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        probe.Y = room.End.Y - baseball.Radius - 1.0f;
+        LooseObjectBody? ordinary = lab.SpawnLooseObject(baseball, probe, Vector2.Zero);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool ordinaryRay = lab.Buddy.AutonomousMotion.ObstacleInCommittedPath(side);
+        bool ordinaryRegistry = lab.Buddy.ObjectInteraction.RestingObstacleInPath(side);
+        if (ordinary is not null)
+            RemoveObject(lab, ordinary);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        string detail = $"football=({footballRay},{footballRegistry}) " +
+            $"baseball=({ordinaryRay},{ordinaryRegistry})";
+        messages.Add($"soccer_obstacle_hop {detail}");
+        return new StartupCheck(
+            "football_does_not_request_object_hops_but_other_objects_do",
+            football is not null && ordinary is not null && !footballRay && !footballRegistry &&
+            ordinaryRay,
+            detail);
+    }
+
+    private static async Task<List<StartupCheck>> CheckSoccerTrapPermission(
+        SceneTree tree,
+        BuddyLab lab,
+        LooseObjectProfile soccer,
+        List<string> messages)
+    {
+        var checks = new List<StartupCheck>();
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        var floor = new Vector2(room.GetCenter().X, room.End.Y - soccer.Radius - 1.0f);
+        LooseObjectBody? ball = lab.SpawnLooseObject(soccer, floor, Vector2.Zero);
+        if (ball is null)
+        {
+            checks.Add(new StartupCheck("player_touch_survives_ground_contact", false, "spawn refused"));
+            return checks;
+        }
+
+        lab.Objects.MarkPlayerThrown(ball, ContentIds.ToolSoccerBall);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool groundPreserved = lab.Objects.TryGetSnapshot(ball.RuntimeId, out LooseObjectSnapshot ground) &&
+            ground.SoccerTrapAllowed;
+
+        ball.GlobalPosition = new Vector2(
+            room.Position.X + soccer.Radius,
+            room.GetCenter().Y);
+        ball.LinearVelocity = Vector2.Zero;
+        ball.ResetPhysicsInterpolation();
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool wallCleared = lab.Objects.TryGetSnapshot(ball.RuntimeId, out LooseObjectSnapshot wall) &&
+            !wall.SoccerTrapAllowed;
+
+        lab.Objects.MarkPlayerThrown(ball, ContentIds.ToolSoccerBall);
+        ball.GlobalPosition = new Vector2(room.GetCenter().X, room.Position.Y + soccer.Radius);
+        ball.ResetPhysicsInterpolation();
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        bool ceilingCleared = lab.Objects.TryGetSnapshot(ball.RuntimeId, out LooseObjectSnapshot ceiling) &&
+            !ceiling.SoccerTrapAllowed;
+
+        checks.Add(new StartupCheck(
+            "player_touch_survives_ground_contact",
+            groundPreserved,
+            $"ground_allowed={ground.SoccerTrapAllowed}"));
+        checks.Add(new StartupCheck(
+            "walls_and_ceiling_disable_trapping_until_the_next_player_touch",
+            wallCleared && ceilingCleared,
+            $"wall_allowed={wall.SoccerTrapAllowed} ceiling_allowed={ceiling.SoccerTrapAllowed}"));
+
+        SoccerPlayProfile play = soccer.SoccerPlay!;
+        float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
+        ball.GlobalPosition = new Vector2(
+            Mathf.Clamp(torso.X + side * 120.0f,
+                room.Position.X + soccer.Radius + 2.0f,
+                room.End.X - soccer.Radius - 2.0f),
+            room.End.Y - soccer.Radius - 1.0f);
+        ball.LinearVelocity = new Vector2(
+            -side * (play.MinimumApproachSpeed + play.MaximumApproachSpeed) * 0.25f, 0.0f);
+        ball.AngularVelocity = 0.0f;
+        ball.Sleeping = false;
+        ball.ResetPhysicsInterpolation();
+
+        int trapsBefore = lab.Buddy.ObjectInteraction.SoccerTrapCount;
+        int kicksBefore = lab.Buddy.ObjectInteraction.SoccerKickCount;
+        bool kicked = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Buddy.ObjectInteraction.SoccerKickCount == kicksBefore + 1,
+            900);
+        bool directKick = kicked &&
+            lab.Buddy.ObjectInteraction.SoccerTrapCount == trapsBefore &&
+            !lab.Buddy.ObjectInteraction.IsHolding;
+        checks.Add(new StartupCheck(
+            "a_ball_that_cannot_be_trapped_can_still_be_kicked",
+            directKick,
+            $"kicked={kicked} traps={trapsBefore}->{lab.Buddy.ObjectInteraction.SoccerTrapCount} " +
+            $"kicks={kicksBefore}->{lab.Buddy.ObjectInteraction.SoccerKickCount} " +
+            $"holding={lab.Buddy.ObjectInteraction.IsHolding}"));
+
+        messages.Add(
+            $"soccer_permission ground={groundPreserved} wall={wallCleared} " +
+            $"ceiling={ceilingCleared} direct_kick={directKick}");
+        RemoveObject(lab, ball);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        return checks;
     }
 
     /// <summary>
@@ -684,7 +1063,11 @@ public sealed class SoccerAndDrinkScenario : IScenario
 
         // Comfortably inside the authored approach window at the moment it arrives.
         float speed = (play.MinimumApproachSpeed + play.MaximumApproachSpeed) * 0.25f;
-        return lab.SpawnLooseObject(soccer, spawn, new Vector2(-side * speed, 0.0f));
+        LooseObjectBody? ball = lab.SpawnLooseObject(
+            soccer, spawn, new Vector2(-side * speed, 0.0f));
+        if (ball is not null)
+            lab.Objects.MarkPlayerThrown(ball, ContentIds.ToolSoccerBall);
+        return ball;
     }
 
     /// <summary>

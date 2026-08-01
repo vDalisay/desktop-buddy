@@ -337,7 +337,7 @@ public partial class BuddyLab : Node2D
             long registryAllocationBefore = _allocationProbeEnabled
                 ? GC.GetAllocatedBytesForCurrentThread()
                 : 0;
-            Objects.PhysicsTick(grab, Boundaries.InnerBounds.End.Y);
+            Objects.PhysicsTick(grab, Boundaries.InnerBounds);
             if (_allocationProbeEnabled)
             {
                 PhysicsRegistryAllocationSamples++;
