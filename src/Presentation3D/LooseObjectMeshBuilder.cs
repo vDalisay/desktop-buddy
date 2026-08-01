@@ -65,6 +65,9 @@ public static class LooseObjectMeshBuilder
     private const float KitHandleThickness = 0.07f;
     private const int KitHandleSegments = 8;
 
+    /// <summary>The cross on the case. Not authored: it is the same green on every kit.</summary>
+    private static readonly Color KitCrossColor = new(0.16f, 0.72f, 0.36f, 1.0f);
+
     /// <summary>
     /// A traditional panelled ball. <paramref name="fill"/> is the light panel colour and
     /// <paramref name="panel"/> the dark one, both authored on the object's profile.
@@ -217,13 +220,14 @@ public static class LooseObjectMeshBuilder
             new Vector3(halfWidth, seam, halfDepth),
             shell);
 
-        // The cross, standing just proud of the front face so it never z-fights the lid.
+        // The cross, centred on the case and standing just proud of the front face so it never
+        // z-fights the two slabs it straddles. Green rather than the shell colour (owner,
+        // 2026-08-02): a red cross on a red base disappears, and green reads as the heal.
         float front = halfDepth + radius * KitCrossRelief;
         float armLength = radius * KitCrossArm;
         float armWidth = radius * KitCrossWidth;
-        float crossY = seam + (halfHeight - seam) * 0.5f;
-        AddFrontQuad(tool, -armWidth, armWidth, crossY - armLength, crossY + armLength, front, shell);
-        AddFrontQuad(tool, -armLength, armLength, crossY - armWidth, crossY + armWidth, front, shell);
+        AddFrontQuad(tool, -armWidth, armWidth, -armLength, armLength, front, KitCrossColor);
+        AddFrontQuad(tool, -armLength, armLength, -armWidth, armWidth, front, KitCrossColor);
 
         // The handle: a flat strap arched over the lid, drawn as a ribbon of quads so it has
         // thickness from the side as well as from the front.
