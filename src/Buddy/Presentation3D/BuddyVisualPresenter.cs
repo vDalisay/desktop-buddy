@@ -221,6 +221,55 @@ public partial class BuddyVisualPresenter : Node3D
     public StandardMaterial3D OutlineMaterial => _materials.OutlineMaterial;
 
     /// <summary>
+    /// Darkens one part toward <paramref name="scorchColor"/> by <paramref name="amount"/>
+    /// (owner feedback 2026-08-01). This is the per-part mutation the material library was
+    /// built for — every mesh already owns its own lit material instance precisely so a tint
+    /// can never bleed onto an unrelated part through a shared one — so it is not a parallel
+    /// visual channel, and the outline shell is deliberately left alone: the ink line is the
+    /// buddy's silhouette, not its skin.
+    ///
+    /// <para>The authored <see cref="PartVisualDefinition.Color"/> stays the source of truth
+    /// and is re-read every call, so the tint is absolute rather than cumulative and a mark
+    /// that fades really does land back on the exact original albedo.</para>
+    /// </summary>
+    public void SetPartScorch(BuddyPartId partId, float amount, Color scorchColor)
+    {
+        int index = (int)partId;
+        if (!IsInitialized || index < 0 || index >= _partMeshes.Length)
+            return;
+
+        if (_partMeshes[index].MaterialOverride is not StandardMaterial3D material)
+            return;
+
+        Color authored = _partDefinitions[index].Color;
+        float clamped = Mathf.Clamp(amount, 0.0f, 1.0f);
+        Color wanted = clamped <= 0.0f ? authored : authored.Lerp(scorchColor, clamped);
+        if (material.AlbedoColor != wanted)
+            material.AlbedoColor = wanted;
+    }
+
+    /// <summary>The albedo one part is currently rendered with, for scenario readouts.</summary>
+    public Color PartAlbedo(BuddyPartId partId)
+    {
+        int index = (int)partId;
+        if (!IsInitialized || index < 0 || index >= _partMeshes.Length)
+            return Colors.White;
+
+        return _partMeshes[index].MaterialOverride is StandardMaterial3D material
+            ? material.AlbedoColor
+            : Colors.White;
+    }
+
+    /// <summary>The authored albedo one part returns to when its mark has faded.</summary>
+    public Color AuthoredPartAlbedo(BuddyPartId partId)
+    {
+        int index = (int)partId;
+        return !IsInitialized || index < 0 || index >= _partDefinitions.Length
+            ? Colors.White
+            : _partDefinitions[index].Color;
+    }
+
+    /// <summary>
     /// Development/scenario-only yaw drive for the accepted ~30-degree three-quarter pose. It
     /// does not exist in normal composition and never touches physics — only the read-only
     /// visual sockets. Re-renders immediately so callers see the yawed pose without waiting a

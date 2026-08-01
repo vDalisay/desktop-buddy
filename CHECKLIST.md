@@ -308,6 +308,17 @@ whose owner-gate defaults were accepted pre-implementation on 2026-07-31:
 - [x] Task E — `burning_status` (13 checks, seeds `1/7/13`, both presentations) and the
       `m5_fire_sprayer` journey (9 assertions, seeds `1/7`, both presentations), both
       registered in `ScenarioCatalog`, `TEST_PLAN.md`, and the quick suite (now 30 steps).
+- [x] Owner feel-gate pass 1, 2026-08-01 — presentation only; the mechanics and timing
+      above were accepted as they stand. Three changes: a real 3D flamethrower
+      (`SprayerMeshBuilder` + `CursorSprayerVisual3D`, on the guns' vertex-coloured-box
+      idiom — slung canister, slim wand, flared nozzle, pilot light — with the flat
+      silhouette still carrying legacy mode); the stream redrawn as a billowing smoky mist
+      instead of discrete pellets, in both modes, with the collider, the fan and the
+      ignition path untouched; and **progressive per-part scorch** — `ScorchStateModel` in
+      Domain with `ScorchPresenter` as a thin driver writing through the per-part lit
+      material and the legacy fill, darkening to an authored `0.72` ceiling, holding 10 s,
+      fading over 5 s, and wiped by the same fail-safe that clears Burning. Domain baseline
+      `1017 → 1036`.
 - [ ] Task F — **owner feel gate, outstanding.** The owner plays it on real Windows, then
       `tool_fire_sprayer.tres` goes `Visible = true` and the journey's catalogue leg becomes
       a real purchase. The four §3 rules are already settled (accepted 2026-07-31,

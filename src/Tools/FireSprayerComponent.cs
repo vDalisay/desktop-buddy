@@ -41,6 +41,9 @@ public partial class FireSprayerComponent : Node2D
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public BoundaryController Boundaries { get; set; } = null!;
 
+    /// <summary>The six authoritative parts, indexed by <see cref="BuddyPartId"/>.</summary>
+    private readonly ScorchPhase[] _scorch = new ScorchPhase[6];
+
     private SprayDropletBody[] _pool = Array.Empty<SprayDropletBody>();
     private CursorAimState _aim = CursorAimState.Initial;
     private BurningPhase _burn = BurningPhase.None;
@@ -98,6 +101,43 @@ public partial class FireSprayerComponent : Node2D
     public int BurnInteractionId => _burnInteractionId;
 
     /// <summary>
+    /// How scorched one part is right now, in <c>[0, MaxScorchDarkness]</c>. Presentation
+    /// reads this and tints with it; nothing else in the game does anything with it (owner
+    /// feedback 2026-08-01).
+    /// </summary>
+    public float ScorchOf(BuddyPartId part)
+    {
+        int index = (int)part;
+        return index >= 0 && index < _scorch.Length ? _scorch[index].Darkness : 0.0f;
+    }
+
+    /// <summary>Whether one part's mark is holding at full strength before its fade begins.</summary>
+    public bool ScorchIsHolding(BuddyPartId part)
+    {
+        int index = (int)part;
+        return index >= 0 && index < _scorch.Length && _scorch[index].IsHolding;
+    }
+
+    /// <summary>Whether one part's mark is on its way back to clean skin.</summary>
+    public bool ScorchIsFading(BuddyPartId part)
+    {
+        int index = (int)part;
+        return index >= 0 && index < _scorch.Length && _scorch[index].IsFading;
+    }
+
+    /// <summary>The darkest any part is right now — the scenario's whole-buddy readout.</summary>
+    public float PeakScorch
+    {
+        get
+        {
+            float peak = 0.0f;
+            for (int index = 0; index < _scorch.Length; index++)
+                peak = Mathf.Max(peak, _scorch[index].Darkness);
+            return peak;
+        }
+    }
+
+    /// <summary>
     /// Signed direction the buddy should run to get away from the fire: away from the
     /// player's cursor while the stream is live, else away from the nearer wall. The
     /// composition root hands this to the arbiter as its priority-3 flee direction.
@@ -113,6 +153,13 @@ public partial class FireSprayerComponent : Node2D
     public float LastBurnPain { get; private set; }
     public float TotalBurnPain { get; private set; }
     public int SprayTicks { get; private set; }
+
+    /// <summary>
+    /// The pooled droplets, for a presenter that draws the stream. Exposed read-only: a
+    /// presenter may look at where a droplet is and how far through its life it is, and may
+    /// not launch, park, or move one — those are this component's, on the routed tick.
+    /// </summary>
+    public System.Collections.Generic.IReadOnlyList<SprayDropletBody> Droplets => _pool;
 
     /// <summary>
     /// Pooled droplets the reduced-particles rule currently lets draw. A computed counter
@@ -236,6 +283,12 @@ public partial class FireSprayerComponent : Node2D
     public void ClearBurning()
     {
         _burn = BurningStatus.Clear(_burn);
+        // Scorch goes out with the fire on this entry point and no other: the hard
+        // reposition's contract is that it clears Burning "and other temporary statuses",
+        // and a soot mark that survived a fail-safe reposition would be exactly the kind of
+        // leftover that contract exists to prevent.
+        for (int index = 0; index < _scorch.Length; index++)
+            _scorch[index] = ScorchState.Clear(_scorch[index]);
         QueueRedraw();
     }
 
@@ -304,6 +357,7 @@ public partial class FireSprayerComponent : Node2D
         }
 
         AdvanceBurning();
+        AdvanceScorch();
         UpdateFleeDirection();
         _previousCursor = _cursor;
         QueueRedraw();
@@ -326,6 +380,22 @@ public partial class FireSprayerComponent : Node2D
         {
             if (_pool[index].State != SprayDropletState.Pooled)
                 _pool[index].Park();
+        }
+    }
+
+    /// <summary>The number of parts carrying a visible mark, for readouts.</summary>
+    public int ScorchedPartCount
+    {
+        get
+        {
+            int marked = 0;
+            for (int index = 0; index < _scorch.Length; index++)
+            {
+                if (_scorch[index].IsMarked)
+                    marked++;
+            }
+
+            return marked;
         }
     }
 
@@ -428,6 +498,24 @@ public partial class FireSprayerComponent : Node2D
         LastBurnPain = pain;
         TotalBurnPain += pain;
         BurnEventApplied?.Invoke(pain);
+    }
+
+    /// <summary>
+    /// Advances every part's scorch mark. Only the part the fire is actually on counts as
+    /// burning, so a stream that moves from a leg to the head leaves two marks at different
+    /// strengths rather than darkening the whole buddy evenly.
+    /// </summary>
+    private void AdvanceScorch()
+    {
+        ScorchConstants constants = Profile.ToScorchConstants();
+        for (int index = 0; index < _scorch.Length; index++)
+        {
+            bool burning = _burn.IsBurning && index == (int)_ignitionPart;
+            if (!burning && !_scorch[index].IsMarked)
+                continue;
+
+            _scorch[index] = ScorchState.Tick(_scorch[index], burning, constants).Phase;
+        }
     }
 
     private PuppetPartBody? FindPart(BuddyPartId partId)

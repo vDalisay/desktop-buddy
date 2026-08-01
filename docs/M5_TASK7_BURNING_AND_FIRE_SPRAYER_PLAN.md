@@ -299,15 +299,29 @@ Where the build differs from the plan as written, and why:
   reduced-particles oracle is `FireSprayerComponent.DrawEnabledDropletCount` rather than a
   draw counter.
 
+### Owner feel-gate pass 1 (2026-08-01) — presentation only
+
+The owner played it and accepted the mechanics and the timing; the feedback was entirely
+about the look. Recorded in full in `DECISIONS.md`. In short: a real 3D flamethrower on the
+guns' mesh-builder idiom, the stream redrawn as a billowing smoky mist in both presentation
+modes, and progressive per-part scorch darkening with a 10-second hold and a 5-second fade.
+The scorch rules are real state, so they went into `ScorchStateModel` in Domain with their own
+unit table rather than into the presenter; `ScorchPresenter` only reads the resulting number
+and writes it through the per-part lit material and the legacy fill that already decide a
+part's skin colour. None of it touches the droplet physics, the fan geometry, the ignition
+path, or the burn economy — `burning_status`'s measured numbers are unmoved.
+
 ### Validation sweep (2026-08-01)
 
-- `dotnet test`: **1017 passed, 0 failed** (baseline `999`, +18 for `BurningStatusModelTests`).
+- `dotnet test`: **1036 passed, 0 failed** (baseline `999`; +18 `BurningStatusModelTests`,
+  +19 `ScorchStateModelTests` after the feel-gate pass).
 - `tools\quick_validate.bat`: **passed**, now 30 steps.
-- `burning_status`: seeds `1/7/13` green in `Mii3D`; seeds `1/13` green in legacy.
+- `burning_status` (now 17 checks): seeds `1/7/13` green in `Mii3D`; seeds `1/7` green in legacy.
 - `m5_fire_sprayer`: seeds `1/7` green in `Mii3D`; seeds `1/7` green in legacy.
 - Neighbours unchanged: `pistol_fire` (1), `nerf_versus_pistol` (7), `grenade_fuse` (1, 13),
   `object_toss_discard` (7), `behavior_priority_ladder` (1, 13), `boot_smoke` (1), and the
-  `m5_pistol` journey (1).
+  `m5_pistol` journey (1). Presentation regressions after the feel-gate pass:
+  `presentation_3d` (1) and `gun_visuals` (1) green.
 
 **Task F — Feel gate + bookkeeping.** Owner plays it on real Windows. Then: DECISIONS
 entry (the four §3 defaults as accepted/vetoed + the settings-seam scope), TEST_PLAN

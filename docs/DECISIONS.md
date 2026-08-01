@@ -1298,6 +1298,36 @@ what FR-017.3 forbids. Two consequences worth recording:
 free map. `H` already toggles the laboratory telemetry panel, and one key doing two unrelated
 things is the kind of collision that only surfaces half-way through a tuning session.
 
+**Owner feel gate, first pass (2026-08-01).** The owner played the slice in the laboratory
+and accepted the mechanics and the timing as they stand; the feedback was entirely about how
+it looks. Three changes, none of which touch the droplet physics, the fan geometry, the
+ignition path, or the burn economy — `burning_status`'s measured numbers are unmoved:
+
+- **A real flamethrower model.** `SprayerMeshBuilder` builds a clean-room silhouette on
+  exactly the guns' vertex-coloured-box idiom, and `CursorSprayerVisual3D` follows the cursor
+  and the aim the way `CursorGunVisual3D` does, including the determinant-positive roll for a
+  left-handed aim. It reads apart from the two pistols by shape rather than by colour — a fat
+  pressure canister slung behind and above the grip, a slim wand running well forward, a
+  flared nozzle ring, and a pilot-light bead. The flat silhouette still carries legacy mode,
+  and only one of the two is ever drawn.
+- **The stream is a mist, not a row of pellets.** Each live droplet now carries a stack of
+  soft, semi-transparent puffs in legacy and one additive billow in 3D, born small and hot at
+  the nozzle and swelling and cooling toward `SmokeColor` as it ages, so overlapping droplets
+  blend into one smoky column. `MistSpreadFactor` is a drawn size only: the collider is still
+  the authored `1.5 px` circle, so the weapon looks like fire and hits exactly as it did.
+- **Progressive per-part scorch.** A part in the stream darkens toward `ScorchColor`, and the
+  longer it burns the darker it gets, up to an authored `MaxScorchDarkness` of `0.72` — below
+  one on purpose, because a fully black limb reads as a hole in the buddy rather than a burnt
+  one, and because the buddy cannot be permanently damaged. The mark then **holds for 10 s and
+  fades over the following 5 s**, both authored. The rules are real state, so they live in
+  `ScorchStateModel` in Domain with their own unit table, and `ScorchPresenter` is a thin
+  driver that writes through the channels that already decide a part's skin colour: the
+  per-part lit material the library gives every mesh its own instance of, and the legacy
+  circle's drawn fill. It is per part, not per buddy — a stream that moves from a hand to the
+  head leaves two marks at different strengths. Nothing gameplay reads it, the outline shell
+  and the pose pipeline are untouched, and the fail-safe hard reposition wipes it on the same
+  `Clear()` entry point that puts the burn out.
+
 **Feel gate outstanding.** `data/catalogue/tool_fire_sprayer.tres` stays `Visible = false`
 until the owner plays it on real Windows, so the `m5_fire_sprayer` journey's catalogue leg
 asserts today's real promise — carried at its authored price, not advertised — and flips to a

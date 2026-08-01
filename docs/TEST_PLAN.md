@@ -282,6 +282,19 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   default, so the safe look is the normal look and the faster `8 Hz` flicker is the opt-out —
   and `ScreenShake = false` silences the whole `CameraKickComponent` lane, pistol and grenade
   kicks included, rather than only this tool's effects.
+- The same scenario covers the scorch marks a burnt buddy carries (owner feedback
+  2026-08-01), measured against the pinned pose because the hold and the fade are exact tick
+  counts and a wandering buddy would be measuring the walk instead. A part in the stream
+  darkens monotonically — sampled `0.002, 0.182, 0.362, 0.542` on the way to the authored
+  `0.72` ceiling — and **only** that part is marked, so a stream that moves from a hand to
+  the head leaves two marks at different strengths rather than darkening the whole buddy.
+  The tint is asserted in both presentations at once: the legacy circle's drawn fill and the
+  3D part's own lit material both leave the authored skin colour, and a part that was never
+  in the stream keeps its exact authored albedo. Letting the fire go out naturally, the mark
+  holds at full strength for the whole authored `1200`-tick hold and then fades to clean skin
+  in `597` of its authored `600`, with the 3D albedo landing back on exactly the authored
+  colour rather than near it. A hard reposition wipes a mark that has not finished fading,
+  on the same `Clear()` entry point that puts the burn itself out.
 - The `m5_fire_sprayer` journey repeats the slice through real pointer, button, and key input
   on seeds `1/7`, in both presentation modes: the catalogue carries `tool.fire_sprayer` at
   its authored price but does **not** advertise it (the entry stays `Visible = false` until

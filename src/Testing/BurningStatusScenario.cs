@@ -349,6 +349,151 @@ public sealed class BurningStatusScenario : IScenario
             $"silenced={silenced} restored={restored} " +
             $"peak={lab.CameraKick.PeakOffsetPx:F2}px kicks={lab.CameraKick.KickCount}"));
 
+        // --- Scorch marks: darken while burning, hold, fade, and wipe (owner 2026-08-01) ---
+        // Measured against the pinned pose for the same reason the settings probe is: the
+        // hold and the fade are exact tick counts, and a buddy wandering out of the stream
+        // half-way through would be measuring the walk instead.
+        Transform2D[] scorchPose = CapturePose(lab);
+        await RestorePose(tree, lab, sprayer, scorchPose);
+        Rect2 scorchRoom = lab.Boundaries.InnerBounds;
+        Vector2 scorchTorso = lab.Buddy.Rig.Torso.GlobalPosition;
+        (Vector2 scorchCursor, Vector2 scorchForward) =
+            M4ObjectScenarioSupport.StandOffFrom(scorchRoom, scorchTorso, SprayStandOffPx);
+        await AimAt(tree, lab, sprayer, scorchCursor, scorchForward);
+
+        bool cleanBefore = Mathf.IsZeroApprox(sprayer.PeakScorch);
+        sprayer.SetPrimaryHeld(true);
+        for (int tick = 0; tick < 240 && !sprayer.IsBurning; tick++)
+        {
+            await Tick(tree);
+            sprayer.MoveCursor(scorchCursor);
+        }
+
+        BuddyPartId litPart = sprayer.IgnitionPart;
+        var darkeningSamples = new List<float>();
+        bool monotonic = true;
+        float previousDarkness = sprayer.ScorchOf(litPart);
+        for (int tick = 0; tick < profile.ScorchTicksToFull; tick++)
+        {
+            await Tick(tree);
+            sprayer.MoveCursor(scorchCursor);
+            float now = sprayer.ScorchOf(litPart);
+            monotonic &= now >= previousDarkness - 0.0001f;
+            previousDarkness = now;
+            if (tick % 180 == 0)
+                darkeningSamples.Add(now);
+        }
+
+        float darkestWhileBurning = sprayer.ScorchOf(litPart);
+        int markedWhileBurning = sprayer.ScorchedPartCount;
+        bool grewOverTime = darkeningSamples.Count >= 3 &&
+                            darkeningSamples[^1] > darkeningSamples[0];
+        checks.Add(new StartupCheck(
+            "scorch_darkens_progressively_only_on_the_part_that_is_burning",
+            cleanBefore && sprayer.IsBurning && monotonic && grewOverTime &&
+            darkestWhileBurning > 0.0f &&
+            darkestWhileBurning <= profile.MaxScorchDarkness + 0.0001f &&
+            markedWhileBurning == 1,
+            $"clean_before={cleanBefore} part={litPart} samples=[{string.Join(", ", darkeningSamples.ConvertAll(v => v.ToString("F3")))}] " +
+            $"darkest={darkestWhileBurning:F3} ceiling={profile.MaxScorchDarkness:F3} " +
+            $"monotonic={monotonic} marked_parts={markedWhileBurning}"));
+
+        // The tint really reaches both presentations, and it is the part's own material.
+        PuppetPartBody? litBody = FindRigPart(lab, litPart);
+        Color authoredAlbedo = lab.VisualPresenter.AuthoredPartAlbedo(litPart);
+        Color scorchedAlbedo = lab.VisualPresenter.PartAlbedo(litPart);
+        BuddyPartId cleanPart = litPart == BuddyPartId.Head ? BuddyPartId.Torso : BuddyPartId.Head;
+        checks.Add(new StartupCheck(
+            "the_scorch_tint_reaches_both_presentations_and_no_other_part",
+            litBody is not null && litBody.Scorch > 0.0f &&
+            litBody.DrawnFillColor != litBody.FillColor &&
+            scorchedAlbedo != authoredAlbedo &&
+            lab.VisualPresenter.PartAlbedo(cleanPart) ==
+                lab.VisualPresenter.AuthoredPartAlbedo(cleanPart) &&
+            Mathf.IsZeroApprox(FindRigPart(lab, cleanPart)?.Scorch ?? 1.0f) &&
+            lab.Scorch.MarkedPartCount == 1,
+            $"legacy_scorch={litBody?.Scorch:F3} legacy_fill={litBody?.DrawnFillColor} " +
+            $"authored_fill={litBody?.FillColor} albedo={scorchedAlbedo} " +
+            $"authored_albedo={authoredAlbedo} clean_part={cleanPart} " +
+            $"presenter_marked={lab.Scorch.MarkedPartCount} peak={lab.Scorch.PeakDarkness:F3}"));
+
+        // Let the fire go out on its own — a cleared burn would take the mark with it, and
+        // the hold is a fact about what happens *after* a natural burn ends.
+        sprayer.SetPrimaryHeld(false);
+        for (int tick = 0; tick < profile.BurnCapTicks + 120 && sprayer.IsBurning; tick++)
+            await Tick(tree);
+
+        float atBurnOut = sprayer.ScorchOf(litPart);
+        bool heldFull = true;
+        for (int tick = 0; tick < profile.ScorchHoldTicks - 2; tick++)
+        {
+            await Tick(tree);
+            heldFull &= Mathf.IsEqualApprox(sprayer.ScorchOf(litPart), atBurnOut, 0.0005f);
+        }
+
+        bool stillHolding = sprayer.ScorchIsHolding(litPart);
+        // Over the hold's last couple of ticks the fade is armed.
+        for (int tick = 0; tick < 4; tick++)
+            await Tick(tree);
+        bool fading = sprayer.ScorchIsFading(litPart);
+
+        int fadeTicks = 0;
+        for (int tick = 0; tick < profile.ScorchFadeTicks + 60; tick++)
+        {
+            await Tick(tree);
+            fadeTicks++;
+            if (Mathf.IsZeroApprox(sprayer.ScorchOf(litPart)))
+                break;
+        }
+
+        checks.Add(new StartupCheck(
+            "scorch_holds_for_the_authored_hold_then_fades_to_clean_skin",
+            atBurnOut > 0.0f && heldFull && stillHolding && fading &&
+            Mathf.IsZeroApprox(sprayer.ScorchOf(litPart)) &&
+            fadeTicks <= profile.ScorchFadeTicks + 8 &&
+            lab.VisualPresenter.PartAlbedo(litPart) == authoredAlbedo &&
+            Mathf.IsZeroApprox(FindRigPart(lab, litPart)?.Scorch ?? 1.0f),
+            $"at_burn_out={atBurnOut:F3} held_full={heldFull} hold_ticks={profile.ScorchHoldTicks} " +
+            $"still_holding={stillHolding} fading={fading} fade_ticks={fadeTicks} " +
+            $"authored_fade={profile.ScorchFadeTicks} " +
+            $"albedo_restored={lab.VisualPresenter.PartAlbedo(litPart) == authoredAlbedo}"));
+
+        // --- And the fail-safe wipes a mark that has not finished fading ---
+        await RestorePose(tree, lab, sprayer, scorchPose);
+        await AimAt(tree, lab, sprayer, scorchCursor, scorchForward);
+        sprayer.SetPrimaryHeld(true);
+        for (int tick = 0; tick < 240 && !sprayer.IsBurning; tick++)
+        {
+            await Tick(tree);
+            sprayer.MoveCursor(scorchCursor);
+        }
+
+        for (int tick = 0; tick < 240; tick++)
+        {
+            await Tick(tree);
+            sprayer.MoveCursor(scorchCursor);
+        }
+
+        sprayer.SetPrimaryHeld(false);
+        float markedBeforeReposition = sprayer.PeakScorch;
+        UnpinBuddy(lab);
+        int recoveriesBefore = lab.Buddy.Recovery.HardRecoveryCount;
+        lab.Buddy.Rig.Head.GlobalPosition = new Vector2(-1_000.0f, -1_000.0f);
+        lab.Buddy.Rig.Head.LinearVelocity = new Vector2(40_000.0f, -40_000.0f);
+        await Tick(tree);
+        await Tick(tree);
+        bool wiped = lab.Buddy.Recovery.HardRecoveryCount > recoveriesBefore &&
+                     Mathf.IsZeroApprox(sprayer.PeakScorch) &&
+                     !sprayer.IsBurning &&
+                     lab.Scorch.MarkedPartCount == 0;
+        checks.Add(new StartupCheck(
+            "a_hard_reposition_wipes_the_scorch_with_the_burn",
+            markedBeforeReposition > 0.0f && wiped &&
+            lab.VisualPresenter.PartAlbedo(litPart) == authoredAlbedo,
+            $"marked_before={markedBeforeReposition:F3} burning_after={sprayer.IsBurning} " +
+            $"peak_after={sprayer.PeakScorch:F3} presenter_marked={lab.Scorch.MarkedPartCount} " +
+            $"albedo_restored={lab.VisualPresenter.PartAlbedo(litPart) == authoredAlbedo}"));
+
         checks.Add(new StartupCheck(
             "spray_and_ignition_cues_fire_with_counters",
             lab.FireAudio.GeneratedStreamCount == 2 &&
@@ -520,6 +665,18 @@ public sealed class BurningStatusScenario : IScenario
         }
 
         await Tick(tree);
+    }
+
+    private static PuppetPartBody? FindRigPart(BuddyLab lab, BuddyPartId partId)
+    {
+        System.Collections.Generic.IReadOnlyList<PuppetPartBody> parts = lab.Buddy.Rig.Parts;
+        for (int index = 0; index < parts.Count; index++)
+        {
+            if (parts[index].PartId == partId)
+                return parts[index];
+        }
+
+        return null;
     }
 
     private static void UnpinBuddy(BuddyLab lab)

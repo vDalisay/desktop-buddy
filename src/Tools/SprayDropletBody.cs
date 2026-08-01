@@ -33,8 +33,12 @@ public partial class SprayDropletBody : RigidBody2D
 {
     private const int ContactBufferSize = 4;
 
+    /// <summary>Soft discs one droplet paints to read as a billow rather than a dot.</summary>
+    private const int PuffCount = 3;
+
     private Color _flameColor = new("ff9a3c");
     private Color _coreColor = new("ffe07a");
+    private Color _smokeColor = new("4a4038");
     private Vector2 _lastSample;
     private Vector2 _launchVelocity;
 
@@ -67,6 +71,14 @@ public partial class SprayDropletBody : RigidBody2D
     /// <summary>The velocity this droplet was launched with, for test readouts.</summary>
     public Vector2 LaunchVelocity => _launchVelocity;
 
+    /// <summary>
+    /// How far through its life this droplet is, in <c>[0, 1]</c>. Presentation only, and the
+    /// one number the mist is built out of: a puff is born small and hot at the nozzle, swells
+    /// as it travels, and thins to nothing at the end of the stream. The physics is unchanged
+    /// — the droplet is still the same tiny circle it always was.
+    /// </summary>
+    public float LifeFraction { get; private set; }
+
     /// <summary>Shapes and configures the body once, when the pool is built.</summary>
     public void Configure(FireSprayerProfile profile)
     {
@@ -75,6 +87,7 @@ public partial class SprayDropletBody : RigidBody2D
         Radius = profile.DropletRadius;
         _flameColor = profile.FlameColor;
         _coreColor = profile.FlameCoreColor;
+        _smokeColor = profile.SmokeColor;
         Mass = profile.DropletMass;
         GravityScale = profile.DropletGravityScale;
         LinearDamp = 0.0f;
@@ -103,6 +116,7 @@ public partial class SprayDropletBody : RigidBody2D
         HasContact = false;
         TravelledPx = 0.0f;
         TicksInState = 0;
+        LifeFraction = 0.0f;
         State = SprayDropletState.Live;
 
         Freeze = false;
@@ -134,6 +148,11 @@ public partial class SprayDropletBody : RigidBody2D
         TicksInState++;
         TravelledPx += GlobalPosition.DistanceTo(_lastSample);
         _lastSample = GlobalPosition;
+        // Whichever bound this droplet is going to reach first is the one the puff should
+        // dissipate against, so the stream thins out where it really ends.
+        float byTicks = TicksInState / (float)Math.Max(2, lifetimeTicks);
+        float byTravel = maxTravelPx > 0.0f ? TravelledPx / maxTravelPx : 0.0f;
+        LifeFraction = Math.Clamp(Math.Max(byTicks, byTravel), 0.0f, 1.0f);
         QueueRedraw();
 
         return HasContact ||
@@ -147,6 +166,7 @@ public partial class SprayDropletBody : RigidBody2D
         State = SprayDropletState.Pooled;
         TicksInState = 0;
         TravelledPx = 0.0f;
+        LifeFraction = 0.0f;
         HasContact = false;
         IgnitedPart = null;
         IgnitionPoint = Vector2.Zero;
@@ -188,17 +208,50 @@ public partial class SprayDropletBody : RigidBody2D
         if (State != SprayDropletState.Live || !DrawEnabled)
             return;
 
-        // A short flame-coloured streak back along the flight path plus a hot core: at
-        // 700 px/s a 1.5 px dot renders as an invisible flicker, and the streak is what
-        // reads as fire leaving the nozzle.
+        // The legacy counterpart of the 3D mist (owner feedback 2026-08-01). It used to be a
+        // hard streak and a bright dot, which read as discrete pellets rather than as fire.
+        // Now each droplet paints a small stack of soft, semi-transparent puffs strung back
+        // along its own flight path: they swell and cool as the droplet ages, so overlapping
+        // droplets blend into one billowing, smoky column instead of a dotted line.
+        //
+        // Purely presentation. The collider is still the same tiny circle, the fan geometry
+        // is untouched, and nothing here is read by the ignition path.
         Vector2 velocity = LinearVelocity.Length() > 1.0f ? LinearVelocity : _launchVelocity;
-        if (velocity != Vector2.Zero)
+        Vector2 forward = velocity == Vector2.Zero ? Vector2.Right : velocity.Normalized();
+        float life = Mathf.Clamp(LifeFraction, 0.0f, 1.0f);
+        // Swells fast at first and keeps spreading; a linear growth reads as a wedge rather
+        // than as a plume.
+        float swell = 1.0f + (5.5f * Mathf.Sqrt(life));
+        // Hot at the nozzle, sooty at the end of its reach.
+        Color tint = _flameColor.Lerp(_smokeColor, life);
+        float fade = (1.0f - (life * life)) * 0.34f;
+
+        for (int puff = 0; puff < PuffCount; puff++)
         {
-            Vector2 forward = velocity.Normalized();
-            DrawLine(
-                Vector2.Zero, -forward * (Radius * 7.0f), _flameColor, Radius * 1.6f, true);
+            float along = puff / (float)PuffCount;
+            float size = Radius * swell * (1.0f - (along * 0.45f));
+            Vector2 centre = -forward * (Radius * swell * 1.5f * along);
+            DrawCircle(
+                centre,
+                size,
+                new Color(tint, fade * (1.0f - (along * 0.55f))),
+                true,
+                -1.0f,
+                true);
         }
 
-        DrawCircle(Vector2.Zero, Radius, _coreColor, true, -1.0f, true);
+        // The hot core survives only near the nozzle, which is what keeps the stream from
+        // reading as plain smoke.
+        float coreStrength = 1.0f - Mathf.Min(1.0f, life * 2.2f);
+        if (coreStrength > 0.0f)
+        {
+            DrawCircle(
+                Vector2.Zero,
+                Radius * (1.0f + (1.6f * coreStrength)),
+                new Color(_coreColor, 0.75f * coreStrength),
+                true,
+                -1.0f,
+                true);
+        }
     }
 }

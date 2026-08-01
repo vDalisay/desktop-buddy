@@ -64,6 +64,8 @@
 [ext_resource type="Script" path="res://src/Tools/FireVisual2D.cs" id="62_fire_visual_2d"]
 [ext_resource type="Script" path="res://src/Presentation3D/FireVisual3D.cs" id="63_fire_visual_3d"]
 [ext_resource type="Script" path="res://src/Tools/FireAudioComponent.cs" id="64_fire_audio"]
+[ext_resource type="Script" path="res://src/Presentation3D/CursorSprayerVisual3D.cs" id="65_sprayer_visual"]
+[ext_resource type="Script" path="res://src/Tools/ScorchPresenter.cs" id="66_scorch"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -95,7 +97,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "FireAudio", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -122,6 +124,8 @@ FireSprayer = NodePath("FireSprayerComponent")
 FireVisualLegacy = NodePath("FireVisual2D")
 FireVisual = NodePath("FireVisual3D")
 FireAudio = NodePath("FireAudioComponent")
+SprayerVisual = NodePath("CursorSprayerVisual3D")
+Scorch = NodePath("ScorchPresenter")
 CameraKick = NodePath("CameraKickComponent")
 CareStroke = NodePath("CareStrokeComponent")
 ToolReactions = NodePath("ToolReactionComponent")
@@ -209,6 +213,15 @@ LoopPlayer = NodePath("LoopPlayer")
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="FireAudioComponent"]
 
 [node name="LoopPlayer" type="AudioStreamPlayer" parent="FireAudioComponent"]
+
+[node name="CursorSprayerVisual3D" type="Node3D" parent="."]
+script = ExtResource("65_sprayer_visual")
+
+[node name="ScorchPresenter" type="Node" parent="." node_paths=PackedStringArray("Sprayer", "Rig", "VisualPresenter")]
+script = ExtResource("66_scorch")
+Sprayer = NodePath("../FireSprayerComponent")
+Rig = NodePath("../Buddy/PuppetRig")
+VisualPresenter = NodePath("../BuddyVisualPresenter")
 
 [node name="BuddyLookLightingRig" type="Node3D" parent="."]
 script = ExtResource("30_lighting")

@@ -109,6 +109,27 @@ public partial class FireSprayerProfile : GameResource
     /// </summary>
     [Export(PropertyHint.Range, "1,20000,1,or_greater")] public float BurnEquivalentImpulse { get; set; } = 430.0f;
 
+    // --- Scorch marks (owner feedback 2026-08-01; presentation only) ---
+
+    /// <summary>Routed ticks of continuous burning to reach <see cref="MaxScorchDarkness"/>.</summary>
+    [Export(PropertyHint.Range, "1,3600,1,or_greater")] public int ScorchTicksToFull { get; set; } = 720;
+
+    /// <summary>
+    /// The darkest a part may ever get, as a fraction toward <see cref="ScorchColor"/>.
+    /// Below one on purpose: a fully black limb reads as a hole in the buddy rather than a
+    /// burnt one, and the buddy cannot be permanently damaged.
+    /// </summary>
+    [Export(PropertyHint.Range, "0.05,1,0.01")] public float MaxScorchDarkness { get; set; } = 0.72f;
+
+    /// <summary>Ticks a mark holds at full strength once the fire is out — <c>1200</c> is 10 s.</summary>
+    [Export(PropertyHint.Range, "0,7200,1,or_greater")] public int ScorchHoldTicks { get; set; } = 1200;
+
+    /// <summary>Ticks the mark then takes to fade back to clean skin — <c>600</c> is 5 s.</summary>
+    [Export(PropertyHint.Range, "1,7200,1,or_greater")] public int ScorchFadeTicks { get; set; } = 600;
+
+    /// <summary>The soot colour a scorched part is tinted toward.</summary>
+    [Export] public Color ScorchColor { get; set; } = new("241c18");
+
     // --- Presentation (all of it; nothing below reaches gameplay) ---
 
     /// <summary>Colour of a droplet in flight.</summary>
@@ -119,6 +140,20 @@ public partial class FireSprayerProfile : GameResource
 
     /// <summary>Rising motes over a burning part.</summary>
     [Export] public Color EmberColor { get; set; } = new("ff5a1f");
+
+    /// <summary>
+    /// What the stream cools to at the end of its reach. The mist is drawn as flame at the
+    /// nozzle blending to this as each droplet ages, which is what makes a stream of
+    /// discrete droplets read as one billowing, smoky column (owner feedback 2026-08-01).
+    /// </summary>
+    [Export] public Color SmokeColor { get; set; } = new("4a4038");
+
+    /// <summary>
+    /// How much wider than the droplet's collider the mist puff grows by the end of its
+    /// life. Purely a drawn size: the collider never changes, so the stream looks like fire
+    /// and hits like the authored `1.5 px` circle it has always been.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,16,0.1,or_greater")] public float MistSpreadFactor { get; set; } = 6.5f;
 
     /// <summary>The drawn sprayer's colours, on the gun silhouette's two-colour rule.</summary>
     [Export] public Color BodyColor { get; set; } = new("3a3f4b");
@@ -175,6 +210,10 @@ public partial class FireSprayerProfile : GameResource
 
     public BurningConstants ToBurningConstants() => new(
         BurnApplyTicks, BurnCapTicks, BurnPainIntervalTicks);
+
+    /// <summary>The engine-free scorch timing this profile authors.</summary>
+    public ScorchConstants ToScorchConstants() => new(
+        ScorchTicksToFull, MaxScorchDarkness, ScorchHoldTicks, ScorchFadeTicks);
 
     /// <summary>
     /// The lateral offset, in degrees, droplet <paramref name="index"/> leaves the nozzle
@@ -291,6 +330,14 @@ public partial class FireSprayerProfile : GameResource
             errors.Add($"{nameof(BurnEquivalentImpulse)} must be finite and positive");
         }
 
+        if (!ToScorchConstants().IsWellFormed())
+        {
+            errors.Add(
+                $"{nameof(ScorchTicksToFull)} and {nameof(ScorchFadeTicks)} must be positive, " +
+                $"{nameof(ScorchHoldTicks)} non-negative, and {nameof(MaxScorchDarkness)} " +
+                "within (0,1]");
+        }
+
         if (!float.IsFinite(VisualLengthPx) || VisualLengthPx <= 0.0f ||
             !float.IsFinite(MuzzleTipFraction) ||
             MuzzleTipFraction <= 0.0f || MuzzleTipFraction > 1.0f ||
@@ -331,6 +378,11 @@ public partial class FireSprayerProfile : GameResource
             errors.Add(
                 $"{nameof(EmberCount)} must be non-negative, {nameof(EmberCycleTicks)} " +
                 $"positive, and {nameof(EmberReachFactor)} finite and positive");
+        }
+
+        if (!float.IsFinite(MistSpreadFactor) || MistSpreadFactor < 1.0f)
+        {
+            errors.Add($"{nameof(MistSpreadFactor)} must be finite and at least one");
         }
 
         if (!float.IsFinite(AudioVolumeDb))

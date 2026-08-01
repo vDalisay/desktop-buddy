@@ -77,6 +77,8 @@ public partial class BuddyLab : Node2D
     [Export] public FireVisual2D FireVisualLegacy { get; set; } = null!;
     [Export] public FireVisual3D FireVisual { get; set; } = null!;
     [Export] public FireAudioComponent FireAudio { get; set; } = null!;
+    [Export] public CursorSprayerVisual3D SprayerVisual { get; set; } = null!;
+    [Export] public ScorchPresenter Scorch { get; set; } = null!;
     [Export] public CameraKickComponent CameraKick { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
@@ -136,6 +138,8 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(FireVisualLegacy) ||
             !GodotObject.IsInstanceValid(FireVisual) ||
             !GodotObject.IsInstanceValid(FireAudio) ||
+            !GodotObject.IsInstanceValid(SprayerVisual) ||
+            !GodotObject.IsInstanceValid(Scorch) ||
             !GodotObject.IsInstanceValid(CameraKick) ||
             !GodotObject.IsInstanceValid(CareStroke) || !GodotObject.IsInstanceValid(ToolReactions) ||
             !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(Reactions) ||
@@ -213,6 +217,7 @@ public partial class BuddyLab : Node2D
         FireVisualLegacy.Initialize(FireSprayer, FireSprayer.Profile);
         FireVisual.Initialize(FireSprayer, FireSprayer.Profile);
         FireAudio.Initialize();
+        SprayerVisual.Initialize(FireSprayer, FireSprayer.Profile);
         ApplyEffectsSettings(EffectsSettings.FromSave(null));
         Grenades.PinPulled += OnGrenadePinPulled;
         Grenades.Detonated += OnGrenadeDetonated;
@@ -227,6 +232,9 @@ public partial class BuddyLab : Node2D
         ImpactFeedback.Initialize();
         MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();
+        // After the visual presenter: the scorch driver writes through that presenter's own
+        // per-part materials, so it cannot be composed before they exist.
+        Scorch.Initialize();
         // Same Resource the presenter renders with: lights and materials share one look truth.
         LightingRig.Initialize(VisualPresenter.Profile.Look);
         PosePipeline.Initialize();
@@ -383,6 +391,8 @@ public partial class BuddyLab : Node2D
                 FireSprayer.IsBurning, FireSprayer.HazardFleeDirection);
             FireVisual.PhysicsTick();
             FireVisualLegacy.PhysicsTick();
+            SprayerVisual.PhysicsTick();
+            Scorch.PhysicsTick();
             SyncGrenadeVisuals();
             GrenadeVisual.PhysicsTick();
             GrenadeVisualLegacy.PhysicsTick();
@@ -575,6 +585,7 @@ public partial class BuddyLab : Node2D
         Effects = settings;
         FireSprayer.ApplyEffectsSettings(settings);
         FireVisual.ApplyEffectsSettings(settings);
+        SprayerVisual.ApplyEffectsSettings(settings);
         FireVisualLegacy.ApplyEffectsSettings(settings);
         CameraKick.ApplyEffectsSettings(settings);
     }
@@ -643,6 +654,9 @@ public partial class BuddyLab : Node2D
         // fire seen two ways, never both at once.
         FireVisual.SetPresentationActive(show3D);
         FireVisualLegacy.SetPresentationActive(!show3D);
+        // One flamethrower per cursor: the frontal model and the flat silhouette are the
+        // same weapon seen two ways, never both at once.
+        SprayerVisual.SetPresentationActive(show3D);
         FireSprayer.SetLegacyVisualEnabled(!show3D);
     }
 
