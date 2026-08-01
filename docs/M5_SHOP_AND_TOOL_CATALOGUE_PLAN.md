@@ -451,75 +451,90 @@ amended at its bookkeeping task.
 
 ### Task 11 — Strength Upgrade (FR-019) — **blocked pending owner decisions**
 
-Do not implement the owned behavior until the owner confirms product name, tier count,
-snap/strain semantics, every factor and safe maximum, and the intended schedule slot.
-The hidden `upgrade.strength` Resource and passive-upgrade catalogue/filter tests may
-exist before that decision only if they contain no guessed player-facing name, price, or
-behavioral magnitude.
+Implementation remains blocked until the owner resolves the complete decision packet:
+product name, tier count, force/ceiling/stretch/release factors, upgraded safe cap,
+snap/strain semantics, fear-response preservation, activation boundary, schedule slot,
+and price authority. Record the answer in `DECISIONS.md`; do not leave the repository's
+known owner question absent from `OPEN_QUESTIONS.md` while it is unresolved.
 
-Once resolved, implement `IGrabStrengthSource` exactly from the recorded decision:
-tether force, force ceiling, stretch limit, release-velocity scale, the upgraded
-release velocity's own safe maximum, and the confirmed snap/strain rule. Fear
-resistance remains generated and visible (FR-019.5); the upgrade adds no direct
-damage/payout/mood modifier (FR-019.6).
+After resolution, extend the existing Grab solver/limiter through one Resource-backed,
+allocation-free `IGrabStrengthSource`. The unowned identity path must be exactly today's
+tether, stretch/snap, and release behavior. The owned path applies only the confirmed
+quantities, remains inside its confirmed caps, preserves visible fear resistance, and adds
+no direct damage, payout, mood, statistics, or selection behavior. The upgrade remains
+`upgrade.strength`, never a `ToolId`.
 
-**Accept after owner resolution:** unit — identity source is bit-identical to today
-(golden comparison on tether math); owned source applies every confirmed quantity and
-safe cap; its strain/snap behavior matches the recorded decision. Scenario
-`strength_upgrade`: unowned save retains FR-006.8; owned behavior proves the confirmed
-authority, stretch, yank, and strain/snap outcomes; fearful resistance remains
-measurably present; upgrade is absent from tool selection everywhere. The slice becomes
-shop-visible only after its own real-input/owner feel gate.
+**Accept:** pure golden identity/owned/boundary tests; quantitative
+`strength_upgrade` scenario; purchase → relaunch → real-pointer Grab journey
+`m5_strength_upgrade`; neighbor Grab/damage regression; both presentations; owner
+Windows feel gate. It stays `Visible = false` until the owner gate and Task 12 price are
+both complete.
 
-### Task 12 — Economy calibration and simulation
+**Refined (2026-08-01):** authoritative implementation packets, exact file seams,
+owner-decision table, negative proofs, test matrix, and stop conditions are in
+`docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §2–§3. Follow that document instead of
+expanding this summary ad hoc.
 
-The measuring instrument first, numbers second: `EconomySimulation` implements
-**TEST_PLAN §4** — deterministic benchmark input traces for the owner-confirmed
-representative mixed active/passive player, replayed against the real
-`PainCurve`/`RewardLedger`/`PassiveIncome` math. Calibrate cash-per-pain, base
-passive rate (peak passive ≈ 25 % of benchmark active income, spec §8), and all
-prices together so **median** target purchases land near FR-013.4 (Baseball 3 min …
-Repair Kit 120 min) across the simulation seeds, the Strength Upgrade gets its slot
-and price (FR-019.7), and the full `15`-entry catalogue is affordable in ≈ 2 h
-(FR-013.5). Finalize Baseball's physical preset and the provisional 900 px/s catch
-ceiling. Prices move out of "provisional"; entries already accepted at their slice
-gates retain `Visible = true`; Task 12 may not make an unaccepted slice visible merely
-because its price is calibrated.
+### Task 12 — Economy calibration and simulation — **blocked on benchmark + catalogue reconciliation**
 
-**Accept:** simulation asserts every FR-013.4 target within an owner-agreed tolerance
-band and the 2 h total, **plus TEST_PLAN §4's four proof obligations**: active
-attacking remains the dominant income source; maximum-mood passive income ≈ 25 % of
-benchmark active income; no single ordinary event skips multiple intended unlock
-milestones; repeated legitimate use stays rewarding while duplicate physics callbacks
-print no money (drive the dedup path inside the simulation, don't assume it). The
-simulation is deterministic and seeded so calibration regressions fail loudly. Owner
-accepts the resulting feel/pacing in a live session.
+Resolve two inputs before accepting calibration: (1) the owner-approved mixed
+active/passive trace, seeds, purchase policy, ordinary-event definition, and tolerance
+bands; (2) the current catalogue conflict — accepted Nerf/code contain fifteen
+selectable interactions plus Strength (`16` total), while current FR-013.2 says
+`15` total and omits Nerf. Do not silently calibrate either interpretation.
 
-### Task 13 — Composition, regression, docs, owner exit gate
+Build the engine-free `EconomySimulation` first. Replay raw contacts through the real
+`ImpactRouter` dedup, `PainCurve`, `RewardLedger`, and sequential catalogue spend;
+replay passive intervals through the real `PassiveIncome`. A Godot integration scenario
+`economy_calibration` must load the actual catalogue, pain, and mood-economy Resources,
+write deterministic JSON/Markdown results, and fail on target, ratio, catalogue, or proof
+obligation violations. Pure tests use small synthetic catalogues and never duplicate final
+Resource prices.
 
-Prereq: every slice has passed its owner feel gate and is shop-visible. Full catalogue
-playable end-to-end from a fresh save through the dock; run the **entire** scenario +
-journey catalogue in both presentation modes (whole catalogue, not a curated list —
-the M3.6 lesson).
+Calibrate only existing typed Resource values: cash-per-pain, neutral passive rate,
+whole-credit prices/order, and the explicitly delegated Baseball preset/catch ceiling.
+Do not alter the impulse-to-pain curve merely to fit prices and do not introduce per-tool
+money multipliers. Calibration never promotes an owner-unaccepted slice.
 
-Add `m5_shop_progression`: fresh save → earn → buy Baseball → buy Meal → continue
-through the ordered catalogue → relaunch → ownership persists. In addition, each M5
-tool/care slice has its own real-input journey covering its happy path and applicable
-cancel/secondary/error path, as required by `AGENT_VERIFICATION_AND_E2E.md`; the
-progression journey does not replace them.
+**Accept:** owner-approved median target bands, final full-catalogue time, Strength
+slot/price, and TEST_PLAN §4's four direct proofs: active dominance, peak-passive ratio,
+ordinary-event no-multi-skip, and real dedup/reuse awards `positive, zero, positive`.
+Run the complete registered scenario/journey matrix in both presentations and obtain the
+owner's live pacing acceptance.
 
-Run the NFR-002 performance gate on reference-class hardware at `480x360` with `24`
-loose objects plus representative peak projectile/pellet/spray pools: fixed 120 Hz,
-render target, CPU/RAM budgets, zero managed allocations on the warmed gameplay tick,
-bounded pool counts/lifetimes, and no GC-driven spikes. Projectiles remain outside the
-24-object count.
+**Refined (2026-08-01):** the replay data model, real-Resource adapter, required report
+fields, ordered packets, executable proof algorithms, tuning boundaries, and definition
+of done are in `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §2.1/§2.3 and §4.
 
-Docs: ARCHITECTURE (Resource catalogue/purchase/gun/status/object seams), TEST_PLAN
-(per-tool journeys and performance suite), DECISIONS (delegated defaults + owner
-resolutions), CHECKLIST rewrite. Owner exit gate: every tool exercised on real Windows;
-exit criteria are ROADMAP's — every tool has automated behavior/error tests,
-real-input journey coverage, and clean-room presentation; economy meets the
-3–120-minute schedule and active/passive ratio.
+### Task 13 — Composition, regression, docs, owner exit gate — **externally gated**
+
+Prereq: Tasks 0–12 engineering-complete; every slice owner-accepted and visible; exact
+catalogue reconciled; dock catalogue binding and owner-confirmed reset complete;
+`economy_calibration` green; every M5 entry already owns its behavior/error scenario and
+real-input journey. Missing slice work returns to that task rather than hiding in closeout.
+
+Add a registry-derived inventory check and a real-dock multi-phase
+`m5_shop_progression`: fresh save → legitimate earning → ordered UI purchases with
+failure paths → immediate save → relaunch at first/middle/final checkpoints → exact final
+ownership/balance. Strength is bought in its confirmed slot and never enters selection.
+Long pacing remains Task 12's simulation concern; committed phase fixtures may establish
+legitimately earned persistent preconditions but may not mutate balance/ownership behind
+the UI during an assertion phase.
+
+Generate the full scenario/journey sweep from authoritative registries, not a curated
+list: every ID × seeds 1/7 × `mii3d`/`legacy` × fixed 120 Hz, unique artifacts, complete
+matrix, non-zero exit on any unexpected red/skip. Add a warmed whole-routed-tick stress
+scenario with exactly 24 loose objects plus peak bounded projectile/pellet/spray pools,
+zero managed allocations, and pool/count/lifetime proofs. Keep that deterministic layer
+separate from the real i5-8400/UHD 630 Windows CPU/RAM/FPS/hidden/soak benchmark.
+
+Close by reconciling ARCHITECTURE, TEST_PLAN, DECISIONS, requirements/spec/ROADMAP, and
+CHECKLIST. An agent may report automated gates; only observed reference-hardware and owner
+Windows feel/pacing/clean-room gates can close M5.
+
+**Refined (2026-08-01):** hard prerequisites, exact progression phases, registry-derived
+matrix, two-layer performance protocol, docs audit, evidence ownership matrix, and handoff
+template are in `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §5–§7.
 
 ## New test surface (summary)
 
@@ -557,6 +572,14 @@ running the suite" remains the failure mode this plan exists to prevent.
 
 ## Progress
 
+- 2026-08-01 — **Tasks 11–13 refined to agent-handoff fidelity.** Added
+  `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` with owner decision packets, exact existing
+  seams/file targets, ordered implementation packets, executable acceptance checks,
+  registry-derived full regression, a two-layer performance gate, documentation/owner
+  evidence ownership, and a fixed handoff template. The audit also found a blocking
+  source-of-truth conflict: accepted Nerf/code currently describe `16` catalogue entries
+  including Strength, while current FR-013.2 says `15` and omits Nerf. No implementation
+  or owner decision was inferred; Tasks 11–13 remain gated as stated.
 - 2026-07-29 — Plan written. Baseball slice pre-existing (see status header).
   Nothing else started.
 - 2026-07-29 — Audit corrections integrated: Resource-authored catalogue,
