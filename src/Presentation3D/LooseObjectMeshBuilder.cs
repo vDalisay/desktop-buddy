@@ -284,10 +284,11 @@ public static class LooseObjectMeshBuilder
         Vector3 g = end - out_ + depth;
         Vector3 h = start - out_ + depth;
 
-        AddQuad(tool, a, b, c, d, tint);
-        AddQuad(tool, h, g, f, e, tint);
-        AddQuad(tool, d, c, g, h, tint);
-        AddQuad(tool, e, f, b, a, tint);
+        // Corners counter-clockwise as seen from outside each face, per AddQuad's contract.
+        AddQuad(tool, a, d, c, b, tint);
+        AddQuad(tool, h, e, f, g, tint);
+        AddQuad(tool, d, h, g, c, tint);
+        AddQuad(tool, e, a, b, f, tint);
     }
 
     /// <summary>An axis-aligned box between two corners, every face the same colour.</summary>
@@ -321,11 +322,18 @@ public static class LooseObjectMeshBuilder
             new Vector3(left, top, z),
             tint);
 
+    /// <summary>
+    /// A quad whose corners are given counter-clockwise <i>as seen from the side meant to be
+    /// visible</i>, emitted as the clockwise triangles Godot treats as front faces. Getting this
+    /// backwards does not look like a bug: a closed box wound inside-out still reads as a box,
+    /// because what survives the cull is the inside of its own far wall — but anything applied
+    /// to a surface, like the cross, vanishes. `the_kit_is_drawn_once_as_a_case` checks it.
+    /// </summary>
     private static void AddQuad(
         SurfaceTool tool, Vector3 a, Vector3 b, Vector3 c, Vector3 d, Color tint)
     {
-        AddTriangle(tool, a, b, c, tint);
-        AddTriangle(tool, a, c, d, tint);
+        AddTriangle(tool, a, c, b, tint);
+        AddTriangle(tool, a, d, c, tint);
     }
 
     private static void AddPentagon(

@@ -256,18 +256,10 @@ public sealed class RepairKitScenario : IScenario
     }
 
     /// <summary>
-    /// FR-008.7: a kit taken during a knockout empties the rolling pain window and does not
-    /// shorten the knockout by one tick — the buddy wakes on the schedule the hit set.
-    ///
-    /// <para>The parts in this laboratory only collide with tools, so the kit is applied
-    /// through the same call the impact pipeline makes rather than by a physical throw. The
-    /// contact route itself is proven by the thrown-kit checks above; what is under test here
-    /// is what the application does to a knockout.</para>
-    /// </summary>
-    /// <summary>
     /// The kit authors a shape, so it must be drawn as one — and as exactly one. Mesh on and
-    /// flat circle off in the 3D presentation, the reverse in legacy, never both, and no vertex
-    /// outside the builder's stated envelope for the collider radius.
+    /// flat circle off in the 3D presentation, the reverse in legacy, never both, no vertex
+    /// outside the builder's stated envelope, and every added face wound so it is actually
+    /// rendered.
     /// </summary>
     private static async Task<StartupCheck> DrawnOnce(
         SceneTree tree, BuddyLab lab, LooseObjectProfile kit)
@@ -292,20 +284,74 @@ public sealed class RepairKitScenario : IScenario
         bool once = presenter.MeshVisible(body.RuntimeId) != body.Visible;
 
         float reach = 0.0f;
+        // Every face the camera is meant to see must face it. Godot's front faces are wound
+        // clockwise, and a quad wound the other way is silently culled — the case still looks
+        // like a case, because what survives is the inside of its own back wall, so this is
+        // checked rather than eyeballed. The cross is the probe: its triangles are the ones
+        // standing proud of the front face, and their normals must point at the camera.
+        int crossTriangles = 0;
+        int crossFacingCamera = 0;
+        int handleTriangles = 0;
+        int handleFacingOut = 0;
         Mesh? mesh = presenter.MeshFor(body.RuntimeId);
         if (mesh is not null)
         {
             Godot.Collections.Array surface = mesh.SurfaceGetArrays(0);
-            foreach (Vector3 vertex in surface[(int)Mesh.ArrayType.Vertex].AsVector3Array())
+            Vector3[] vertices = surface[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            Vector3[] normals = surface[(int)Mesh.ArrayType.Normal].AsVector3Array();
+            foreach (Vector3 vertex in vertices)
                 reach = Mathf.Max(reach, vertex.Length());
+
+            float front = 0.0f;
+            foreach (Vector3 vertex in vertices)
+                front = Mathf.Max(front, vertex.Z);
+
+            for (int index = 0; index + 2 < vertices.Length; index += 3)
+            {
+                bool onTheFrontRelief =
+                    vertices[index].Z >= front - 0.01f &&
+                    vertices[index + 1].Z >= front - 0.01f &&
+                    vertices[index + 2].Z >= front - 0.01f;
+                if (!onTheFrontRelief)
+                    continue;
+
+                crossTriangles++;
+                if (normals[index].Z > 0.9f)
+                    crossFacingCamera++;
+            }
+
+            // The handle is a separate ribbon with its own winding, so it gets its own probe.
+            // The arch's summit is an edge rather than a whole triangle, so this takes the
+            // single highest-sitting triangle in the mesh: that is the strap's outward face at
+            // the top of the arch, and it must point up rather than down into the case.
+            float highest = float.MinValue;
+            var apexNormal = Vector3.Zero;
+            for (int index = 0; index + 2 < vertices.Length; index += 3)
+            {
+                float centroidY =
+                    (vertices[index].Y + vertices[index + 1].Y + vertices[index + 2].Y) / 3.0f;
+                if (centroidY <= highest)
+                    continue;
+
+                highest = centroidY;
+                apexNormal = normals[index];
+            }
+
+            handleTriangles = 1;
+            handleFacingOut = apexNormal.Y > 0.5f ? 1 : 0;
         }
 
         float envelope = LooseObjectMeshBuilder.EnvelopeRadius(kit.Radius);
         bool insideEnvelope = mesh is not null && reach <= envelope + 0.01f;
 
+        bool crossFacesTheCamera = crossTriangles > 0 && crossFacingCamera == crossTriangles;
+        bool handleFacesOut = handleTriangles > 0 && handleFacingOut == handleTriangles;
+
         string detail =
             $"mode={lab.Mode} adopted={adopted} once={once} " +
-            $"reach={reach:F1}/{envelope:F1} drawn={presenter.DrawnCount}";
+            $"reach={reach:F1}/{envelope:F1} drawn={presenter.DrawnCount} " +
+            $"cross_faces_camera={crossFacingCamera}/{crossTriangles} " +
+            $"handle_faces_out={handleFacingOut}/{handleTriangles}";
 
         lab.Objects.Unregister(body);
         body.QueueFree();
@@ -313,7 +359,7 @@ public sealed class RepairKitScenario : IScenario
 
         return new StartupCheck(
             "the_kit_is_drawn_once_as_a_case",
-            adopted && once && insideEnvelope,
+            adopted && once && insideEnvelope && crossFacesTheCamera && handleFacesOut,
             detail);
     }
 
