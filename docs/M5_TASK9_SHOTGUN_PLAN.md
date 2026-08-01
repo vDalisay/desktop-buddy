@@ -4,8 +4,7 @@
 Measured numbers are recorded in §2.3; the catalogue entry stays `Visible = false` until the
 owner plays it. Original plan text below is unchanged except where marked MEASURED.
 
- Refines the master plan's
-Task 9 stub to handoff fidelity. The gun platform was built to make this slice cheap —
+Refines the master plan's Task 9 stub to handoff fidelity. The gun platform was built to make this slice cheap —
 "the Shotgun is a `.tres` plus a content ID, not new input code"
 (`CursorGunComponent` doc comment) — and this plan holds it to that: the only real
 engineering is the **shared-shot interaction id** (§2.2) and the mesh. Authoritative
