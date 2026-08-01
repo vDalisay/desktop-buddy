@@ -13,6 +13,7 @@ using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Grab;
+using DesktopBuddy.Objects;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -254,6 +255,15 @@ public partial class InteractionDamageComponent : Node
                 if (contact.Impulse > MaxRawImpulse)
                 {
                     MaxRawImpulse = contact.Impulse;
+                }
+
+                // A thrown care item is caught before the impact pipeline sees it, not after:
+                // scoring pain for a Repair Kit would enter it into harmful memory and teach
+                // the buddy to flee the thing that heals it (§2.3 of the Task 10 plan).
+                if (contact.Collider is LooseObjectBody care &&
+                    Buddy.ObjectInteraction.TryApplyThrownCareContact(care))
+                {
+                    continue;
                 }
 
                 if (!TryResolveSource(

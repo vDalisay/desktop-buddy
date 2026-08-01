@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Objects;
 using Godot;
@@ -106,14 +107,114 @@ public sealed class RepairKitScenario : IScenario
             $"treat_before={treatInterestBefore:F1} " +
             $"after={lab.Progress.InterestIn(FunActivityId.Treat):F1}"));
 
+        // --- Task B: the player-thrown route ---
+        // A missed throw applies nothing and waits (FR-008.10). Thrown along the floor away
+        // from the buddy, so nothing about it touches anybody.
+        float moodBeforeMiss = lab.Progress.Mood;
+        int contactCareBeforeMiss = lab.Buddy.ObjectInteraction.ContactCareCount;
+        LooseObjectBody? missed = ThrowKitWide(lab, kit!);
+        bool missedLanded = missed is not null && await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => !GodotObject.IsInstanceValid(missed) ||
+                  missed!.LinearVelocity.Length() < 5.0f,
+            900);
+        bool missedStillThere = GodotObject.IsInstanceValid(missed) &&
+            lab.Objects.TryGetSnapshot(missed!.RuntimeId, out _);
+
+        checks.Add(new StartupCheck(
+            "a_missed_throw_applies_nothing_and_waits",
+            missedLanded && missedStillThere &&
+            lab.Buddy.ObjectInteraction.ContactCareCount == contactCareBeforeMiss &&
+            Mathf.Abs(lab.Progress.Mood - moodBeforeMiss) < 0.01f,
+            $"landed={missedLanded} still_there={missedStillThere} " +
+            $"contact_care={lab.Buddy.ObjectInteraction.ContactCareCount} " +
+            $"mood={lab.Progress.Mood:F1} was={moodBeforeMiss:F1}"));
+
+        // The missed kit is deliberately left lying there: "and waits" is half the requirement,
+        // and an unconscious buddy cannot go and fetch it during the phases that follow.
+        // The real throw. Measured on a buddy that cannot reach for it, because the two
+        // buddies this route exists for are the two that cannot: the kit has to land on a
+        // body, not be caught by it.
+        lab.Buddy.SetConsciousness(Consciousness.Unconscious);
+        for (int tick = 0; tick < 60; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        float moodBeforeThrow = lab.Progress.Mood;
+        long impactsBeforeThrow = lab.Pipeline.ScoredImpactCount;
+        int contactCareBefore = lab.Buddy.ObjectInteraction.ContactCareCount;
+        LooseObjectBody? thrown = M4ObjectScenarioSupport.SpawnCleanThrow(
+            lab, profile: kit);
+        int thrownId = thrown?.RuntimeId ?? 0;
+        bool applied = thrown is not null && await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => lab.Buddy.ObjectInteraction.ContactCareCount == contactCareBefore + 1,
+            900);
+
+        // Freed and unregistered: the slot is back, not leaked.
+        bool despawned = !GodotObject.IsInstanceValid(thrown) ||
+            !lab.Objects.TryGetSnapshot(thrownId, out _);
+
+        checks.Add(new StartupCheck(
+            "a_thrown_kit_applies_on_buddy_contact",
+            applied && despawned &&
+            Mathf.Abs(lab.Progress.Mood - (moodBeforeThrow + KitMoodGain)) < 0.01f,
+            $"applied={applied} despawned={despawned} mood={lab.Progress.Mood:F1} " +
+            $"was={moodBeforeThrow:F1} contact_care={lab.Buddy.ObjectInteraction.ContactCareCount}"));
+
+        checks.Add(new StartupCheck(
+            "double_contact_cannot_double_apply",
+            applied &&
+            lab.Buddy.ObjectInteraction.ContactCareCount == contactCareBefore + 1 &&
+            (!GodotObject.IsInstanceValid(thrown) ||
+             !lab.Buddy.ObjectInteraction.TryApplyThrownCareContact(thrown!)) &&
+            lab.Buddy.ObjectInteraction.ContactCareCount == contactCareBefore + 1 &&
+            Mathf.Abs(lab.Progress.Mood - (moodBeforeThrow + KitMoodGain)) < 0.01f,
+            $"contact_care={lab.Buddy.ObjectInteraction.ContactCareCount} " +
+            $"was={contactCareBefore} mood={lab.Progress.Mood:F1}"));
+
+        // A medkit that bruises would enter itself into harmful memory and teach the buddy to
+        // run from the thing that heals it.
+        checks.Add(new StartupCheck(
+            "kit_contact_scores_zero_impacts_and_no_harmful_memory",
+            applied &&
+            lab.Pipeline.ScoredImpactCount == impactsBeforeThrow &&
+            !lab.Progress.IsContentHarmful(ContentIds.ToolRepairKit),
+            $"impacts={lab.Pipeline.ScoredImpactCount} was={impactsBeforeThrow} " +
+            $"harmful={lab.Progress.IsContentHarmful(ContentIds.ToolRepairKit)}"));
+
+        lab.Buddy.SetConsciousness(Consciousness.Conscious);
+
         messages.Add(
             $"successes={lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
+            $"contact_care={lab.Buddy.ObjectInteraction.ContactCareCount} " +
             $"mood={lab.Progress.Mood:F1} fullness={lab.Progress.Fullness:F1}");
         await M4ObjectScenarioSupport.Cleanup(tree, lab);
 
         bool passed = true;
         foreach (StartupCheck check in checks) passed &= check.Passed;
         return new ScenarioResult(passed, checks, messages);
+    }
+
+    /// <summary>
+    /// Throws a kit along the floor away from the buddy, through the real grab/release bridge
+    /// so it carries a genuine player throw token and only the landing is different.
+    /// </summary>
+    private static LooseObjectBody? ThrowKitWide(BuddyLab lab, LooseObjectProfile kit)
+    {
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 chest = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = chest.X - room.Position.X > room.End.X - chest.X ? -1.0f : 1.0f;
+        Vector2 spawn = new(
+            Mathf.Clamp(chest.X + (side * 60.0f), room.Position.X + 20.0f, room.End.X - 20.0f),
+            room.End.Y - 30.0f);
+
+        LooseObjectBody? body = lab.SpawnLooseObject(kit, spawn, Vector2.Zero, playerThrown: false);
+        if (body is null || !lab.Grab.TryGrab(body, body.GlobalPosition))
+            return null;
+
+        lab.Grab.Release();
+        body.LinearVelocity = new Vector2(side * 260.0f, 0.0f);
+        return body;
     }
 
     private static LooseObjectProfile? FindProfile(BuddyLab lab, string contentId)

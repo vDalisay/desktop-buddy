@@ -147,6 +147,9 @@ public partial class ObjectInteractionComponent : Area2D
     public int PlayerHeldPickupRejectionCount { get; private set; }
     public int ConsumeSuccessCount { get; private set; }
 
+    /// <summary>Care items applied by a player throw landing on the buddy, never by eating.</summary>
+    public int ContactCareCount { get; private set; }
+
     /// <summary>How many times the buddy has said "no thanks" to an item it had no room for.</summary>
     public int RefusalCount { get; private set; }
 
@@ -193,6 +196,57 @@ public partial class ObjectInteractionComponent : Area2D
         direction > 0.0f && RestingObstacleRight;
 
     private Vector2 ReachOrigin => Rig.Torso.GlobalPosition + Profile.ReachOriginOffset;
+
+    /// <summary>
+    /// A player-thrown care item applying on contact — the route FR-008.7 and FR-010.10 need,
+    /// because the two buddies a Repair Kit is for are the two that can never eat one: a
+    /// knocked-out buddy is priority 1 and a burning buddy flees at priority 3, and both
+    /// outrank the object action that picks food up.
+    ///
+    /// <para>The effect goes through <see cref="CareConsumableModel"/> exactly as eating does,
+    /// so the two routes cannot drift and a second contact on the same tick cannot pay twice.
+    /// A kit that arrives while another consume is open applies nothing and stays an ordinary
+    /// loose object — it can be thrown again, or eaten later.</para>
+    /// </summary>
+    /// <returns>True when the item was applied and removed, which also means its contact is
+    /// spent and must never reach the impact pipeline (a medkit does not bruise).</returns>
+    public bool TryApplyThrownCareContact(LooseObjectBody body)
+    {
+        if (!IsInitialized ||
+            !GodotObject.IsInstanceValid(body) ||
+            !GodotObject.IsInstanceValid(body.Profile) ||
+            !body.Profile!.ClearsHarmfulStatuses ||
+            !_registry.TryGetSnapshot(body.RuntimeId, out LooseObjectSnapshot snapshot) ||
+            snapshot.ThrowToken == 0 ||
+            snapshot.BuddyHeld ||
+            snapshot.PlayerHeld)
+        {
+            return false;
+        }
+
+        string contentId = body.SemanticContentId;
+        if (!_consumables.TryBegin(contentId, out int token, out ConsumeRejection rejection))
+        {
+            LastConsumeRejection = rejection;
+            return false;
+        }
+
+        ConsumeResult result = _consumables.Complete(token, body.Profile.ToConsumableTuning());
+        if (!result.Applied)
+            return false;
+
+        _progress.ApplyCareMood(result.MoodGain);
+        _progress.FillHunger(body.Profile.ConsumeHungerFill);
+        // Being patched up is one of the buddy's fun things on the same terms as being fed.
+        _progress.EngageFun(FunActivityId.Treat);
+        ContactCareCount++;
+        _registry.Unregister(body);
+        body.QueueFree();
+        ConsumeSucceeded?.Invoke(body);
+        Log.Info("ObjectInteraction",
+            $"Thrown care item '{contentId}' applied on contact mood_gain={result.MoodGain:F0}.");
+        return true;
+    }
 
     public int CooldownTicksRemaining(string contentId) =>
         _consumables.CooldownTicksRemaining(contentId);
