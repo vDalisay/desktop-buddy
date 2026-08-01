@@ -331,6 +331,17 @@ public partial class InteractionDamageComponent : Node
         }
     }
 
+    /// <summary>
+    /// Empties the rolling pain window (FR-008.7). The knockout end time is separate state
+    /// this never touches, so a Repair Kit taken mid-knockout stops the buddy accumulating
+    /// toward the next one without shortening the one it is already in.
+    /// </summary>
+    public void ClearRollingPain()
+    {
+        RequireInitialized();
+        _knockout.ClearRollingPain();
+    }
+
     /// <summary>Holds unconsciousness while a qualified full-body fire remains active.</summary>
     public void SetFireUnconsciousness(bool active)
     {

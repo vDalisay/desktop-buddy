@@ -243,6 +243,7 @@ public partial class SandboxRoot : Node2D
         Buddy.Recovery.SessionResumed += OnSessionResumed;
         Pipeline.ToolChanged += OnToolChanged;
         Grab.Released += OnGrabReleased;
+        Buddy.ObjectInteraction.ConsumeSucceeded += OnCareItemTaken;
         CursorTools.BodySpawned += OnCursorToolSpawned;
         CursorTools.BodyDespawned += OnCursorToolDespawned;
         Window.WindowFocusLost += OnWindowFocusLost;
@@ -376,6 +377,11 @@ public partial class SandboxRoot : Node2D
         }
         if (GodotObject.IsInstanceValid(Pipeline)) Pipeline.ToolChanged -= OnToolChanged;
         if (GodotObject.IsInstanceValid(Grab)) Grab.Released -= OnGrabReleased;
+        if (GodotObject.IsInstanceValid(Buddy) &&
+            GodotObject.IsInstanceValid(Buddy.ObjectInteraction))
+        {
+            Buddy.ObjectInteraction.ConsumeSucceeded -= OnCareItemTaken;
+        }
         if (GodotObject.IsInstanceValid(CursorTools))
         {
             CursorTools.BodySpawned -= OnCursorToolSpawned;
@@ -560,6 +566,25 @@ public partial class SandboxRoot : Node2D
         Shell.UpdateWorkModeHitRegions(
             _buddyWorkModeWorldRegions,
             _buddyWorkModeHitRegions);
+    }
+
+    /// <summary>
+    /// The healing, applied identically however the item was taken — eaten or thrown. Only a
+    /// profile that authors <c>ClearsHarmfulStatuses</c> reaches past its mood gain, so food
+    /// stays food. The knockout end time is untouched by construction (FR-008.7).
+    /// </summary>
+    private void OnCareItemTaken(LooseObjectBody item)
+    {
+        if (!GodotObject.IsInstanceValid(item) ||
+            !GodotObject.IsInstanceValid(item.Profile) ||
+            !item.Profile!.ClearsHarmfulStatuses)
+        {
+            return;
+        }
+
+        Pipeline.ClearRollingPain();
+        FireSprayer.ClearBurning();
+        Buddy.Arbiter.SetStatusHazard(false, 0.0f);
     }
 
     private void OnHardRecovered(HardRecoveryReason reason)

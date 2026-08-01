@@ -316,6 +316,7 @@ public partial class BuddyLab : Node2D
         Controls.LooseObjectClearRequested += OnLooseObjectClearRequested;
         Buddy.ObjectInteraction.ConsumeStarted += OnObjectConsumeStarted;
         Buddy.ObjectInteraction.ConsumeCancelled += OnObjectConsumeCancelled;
+        Buddy.ObjectInteraction.ConsumeSucceeded += OnCareItemTaken;
         CursorTools.BodySpawned += OnCursorToolSpawned;
         CursorTools.BodyDespawned += OnCursorToolDespawned;
 
@@ -494,6 +495,7 @@ public partial class BuddyLab : Node2D
         {
             Buddy.ObjectInteraction.ConsumeStarted -= OnObjectConsumeStarted;
             Buddy.ObjectInteraction.ConsumeCancelled -= OnObjectConsumeCancelled;
+            Buddy.ObjectInteraction.ConsumeSucceeded -= OnCareItemTaken;
         }
         if (GodotObject.IsInstanceValid(CursorTools))
         {
@@ -607,6 +609,28 @@ public partial class BuddyLab : Node2D
 
     private void OnBoundaryLayoutApplied(RoomLayout _layout, Rect2 innerBounds) =>
         Buddy.AutonomousMotion.SetWalkableBounds(innerBounds);
+
+    /// <summary>
+    /// The healing, applied identically however the item was taken — eaten or thrown. Only a
+    /// profile that authors <c>ClearsHarmfulStatuses</c> reaches past its mood gain, so food
+    /// stays food. The knockout end time is untouched by construction (FR-008.7): nothing here
+    /// can reach it.
+    /// </summary>
+    private void OnCareItemTaken(LooseObjectBody item)
+    {
+        if (!GodotObject.IsInstanceValid(item) ||
+            !GodotObject.IsInstanceValid(item.Profile) ||
+            !item.Profile!.ClearsHarmfulStatuses)
+        {
+            return;
+        }
+
+        Pipeline.ClearRollingPain();
+        // The same call the fail-safe reposition uses, scorch and all: soot that survived
+        // being patched up would read as the repair not having worked.
+        FireSprayer.ClearBurning();
+        Buddy.Arbiter.SetStatusHazard(false, 0.0f);
+    }
 
     private void OnHardRecovered(HardRecoveryReason reason)
     {
