@@ -1,6 +1,10 @@
 # M5 Task 9 — Shotgun Plan
 
-**Status: PLAN — written 2026-07-31, not yet implemented.** Refines the master plan's
+**Status: IMPLEMENTED 2026-07-31 (Tasks A–D), awaiting the Task E owner feel gate.**
+Measured numbers are recorded in §2.3; the catalogue entry stays `Visible = false` until the
+owner plays it. Original plan text below is unchanged except where marked MEASURED.
+
+ Refines the master plan's
 Task 9 stub to handoff fidelity. The gun platform was built to make this slice cheap —
 "the Shotgun is a `.tres` plus a content ID, not new input code"
 (`CursorGunComponent` doc comment) — and this plan holds it to that: the only real
@@ -98,6 +102,38 @@ id path didn't move.
 
 ### 2.3 Pain target (empirical, measured at Task B and recorded here)
 
+**MEASURED 2026-07-31 (implementation).** Final authored values: `MuzzleSpeed 2200`,
+`ProjectileMass 0.20`, `ProjectileRadius 1.6`, `ContactSettleTicks 4`, `PoolCapacity 36`.
+Through the shared curve only, seeds 1/7/13 of `shotgun_spread`:
+
+| Measurement | Target | Measured |
+|---|---|---|
+| One solid pellet | 6–9 pain | **7.2 / 9.1 / 7.2** (impulse 483–510) |
+| Pistol solid bullet, same run | 12.8–14.4 | **13.8 / 13.8 / 13.9** |
+| Best multi-part burst | 30–50 over 4–6 parts | **9.0 / 25.7 / 26.0** over **2** parts |
+| Point-blank CCD | never tunnels | green, all 6 pellets, all seeds |
+
+Two deviations from the plan's guesses, both forced by measurement rather than taste:
+
+- **`ContactSettleTicks` 2 → 4.** At the pistol's `2`, a pellet that had connected was taken
+  out of the world before the solver resolved the real impulse, so a burst the player watched
+  land delivered *zero*. Point-blank shots happened to survive it and everything past arm's
+  length did not. This is a correctness value now; lowering it needs the coverage leg
+  re-measured.
+- **`ProjectileMass` 0.12 → 0.20.** At `0.12` a solid pellet scored `0.3–1.6` pain — under, or
+  barely over, the curve's `350` impulse floor — which made the whole coverage model
+  unobservable. The prior "muzzle speed, not mass, is the pain lever" finding holds for a
+  *bullet-sized* projectile; at a pellet's size mass moves the reported impulse substantially.
+
+**Coverage is 2 parts, not 4–6.** A `5°` half-angle fan at the range the room allows
+(~150–180 px of flight) opens to roughly `±15 px`, which straddles two parts — typically the
+near hand plus the head or torso — rather than a whole spread-eagled buddy. The rule the plan
+cares about is pinned (`N` covered parts → exactly `N` accepted impacts, never two on one
+part, checked on every landed burst); the *count* is reported, not assumed. If the owner wants
+the plan's 30–50 burst, the dial is `SpreadHalfAngleDegrees`, and that is a feel-gate decision
+rather than one the implementation should take.
+
+
 Through the shared curve only — no per-tool anything. Tune pellet mass/speed so:
 
 - one solid pellet ≈ **6–9** pain (pistol solid bullet: 12.8–14.4);
@@ -143,14 +179,14 @@ model of default 2, which is now the recorded dedup interpretation. Record them 
 
 ## 4. Implementation tasks (in order, each gated)
 
-**Task A — Profile + unit table.** §2.1 `.tres`, selection key, lab grant, and the
+**Task A — DONE. Profile + unit table.** §2.1 `.tres`, selection key, lab grant, and the
 `GunMachine` profile table: full cadence/reload/auto-reload/dry-fire state walk at
 capacity 5 / 108 / 240 / 6 in ticks.
 *Accept:* unit rows green; domain baseline moves by exactly the new rows; the gun
 selection cycles Pistol → Nerf → Shotgun without disturbing per-gun magazines
 (session-persistence check).
 
-**Task B — Shared shot id + pellet tuning.** §2.2 seam + §2.3 measurement; numbers
+**Task B — DONE. Shared shot id + pellet tuning.** §2.2 seam + §2.3 measurement; numbers
 recorded **here**.
 *Accept:* `six_pellets_leave_on_one_press` (pool probe, fan angles match the index
 formula), `point_blank_one_part_scores_exactly_once`,
@@ -159,13 +195,13 @@ formula), `point_blank_one_part_scores_exactly_once`,
 `point_blank_pellets_never_tunnel` (CCD), `pistol_and_nerf_id_path_unmoved`
 (`pistol_fire`, `nerf_versus_pistol` green). Seeds 1/7/13.
 
-**Task C — Presentation.** §2.4 complete, both modes.
+**Task C — DONE. Presentation.** §2.4 complete, both modes.
 *Accept:* mesh envelope + positive-basis + exact-muzzle checks for the new kind;
 `shotgun_kick_reads_bigger_than_pistol_and_never_stacks`;
 `shell_ejects_on_reload_and_cannot_touch_the_buddy` (mask + registry probes,
 magazine-lane rules verbatim); existing presentation regressions green.
 
-**Task D — Scenario + journey + registration.** `shotgun_spread` (master-plan floor:
+**Task D — DONE. Scenario + journey + registration.** `shotgun_spread` (master-plan floor:
 6 pellets per press, cadence/reload honored, multi-part per-part attribution with the
 actual count asserted, point-blank no tunneling) + `m5_shotgun` journey (catalogue leg
 per current visibility — grenade precedent — select by key, real pointer aim, fire,
@@ -173,7 +209,7 @@ per current visibility — grenade precedent — select by key, real pointer aim
 `ScenarioCatalog`, `TEST_PLAN.md`, quick suite (+2 steps).
 *Accept:* journey green seeds 1/7, both presentations.
 
-**Task E — Feel gate + bookkeeping.** Owner plays it. DECISIONS entry (the three §3
+**Task E — OPEN (owner). Feel gate + bookkeeping.** Owner plays it. DECISIONS entry (the three §3
 defaults, the shared-shot-id rule as the recorded dedup interpretation),
 `CHECKLIST.md`, TEST_PLAN docs, full sweep recorded here. `Visible = true` only on
 the owner's word.

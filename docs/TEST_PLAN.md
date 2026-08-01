@@ -247,6 +247,47 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   three-second fuse, the blast hurts the buddy and pays for it (`200.91` pain, `146067`
   milli-credits), `tool.grenade` enters harmful memory, and the buddy then leaves the next
   grenade strictly alone for `600` ticks.
+- The `shotgun_spread` scenario is the M5 Task 9 Shotgun gate, run under seeds `1/7/13`. The
+  cadence half of the slice is a profile table on the shared `GunMachine` — capacity `5`,
+  `108`-tick (`0.9 s`) interval, `240`-tick (`2 s`) reload, `6` pellets — so the scenario spends
+  most of its checks on what is not data. `six_pellets_leave_on_one_press_along_the_authored_fan`
+  compares each pellet's launch angle against the platform's own index formula
+  (`2i/(n-1) - 1` of the authored half-angle, so `-5/-3/-1/+1/+3/+5` degrees at `6` pellets):
+  the fan is even and deterministic, never scatter, which is the owner-accepted default.
+  `every_pellet_of_one_press_shares_one_interaction_id` reads the shared identity directly.
+  `point_blank_one_part_scores_exactly_once` is the dedup consequence stated out loud — six
+  pellets into one head are **one** accepted impact, not six — and
+  `a_mid_range_burst_scores_once_per_covered_part` is the other half: a burst that covers `N`
+  parts scores exactly `N` times, one per part, never twice on the same one. That second check
+  fires a volley rather than one shot, for the reason `nerf_versus_pistol` gives — the buddy
+  walks, and establishing a cursor aim costs the best part of half a second — and the dedup
+  invariant is checked on **every** burst that landed while the coverage count comes from the
+  best of them. Measured coverage is `2` parts at seeds `1/7/13` (head plus hand, or torso plus
+  hand); it is reported, never assumed to be six.
+- The same scenario records the Shotgun's **pain band**, which is the number the owner's feel
+  gate tunes against: one solid pellet scores `7.2–9.1` pain (seeds `1/7/13`) against a
+  point-blank pistol bullet's `13.8–13.9` on the same shared curve, and the best two-part burst
+  totals `9.0–26.0`. There is no per-tool damage anywhere; the difference is authored muzzle
+  speed and pellet mass only. It also pins `point_blank_pellets_never_tunnel_through_the_target`
+  (the `pistol_fire` geometric test applied to six bodies at once),
+  `the_reload_ejects_a_shell_that_cannot_touch_the_buddy` (the cosmetic magazine lane's rules
+  verbatim — layer `0`, `RoomBounds` mask, a contact probe on the chest that must do nothing,
+  and never a loose-object slot), and
+  `the_shotgun_kick_reads_bigger_than_the_pistol_and_never_stacks` (`3.0 px` against the
+  Pistol's `1.5`, three shells back to back peaking inside one envelope).
+- `ContactSettleTicks` is `4` for the Shotgun rather than the Pistol's `2`, and that is a
+  correctness value rather than a taste one: at `2` a pellet that had connected was withdrawn
+  from the world before the solver resolved the real impulse, so a burst the player watched
+  land delivered nothing. Point-blank shots happened to survive it; everything past arm's
+  length did not. Lowering it needs this scenario's coverage leg re-measured, not just a
+  smaller number.
+- The `m5_shotgun` journey repeats the slice through real pointer, button, and key input on
+  seeds `1/7`: the shop still **refuses** a sale because the catalogue entry stays
+  `Visible = false` until the owner's feel gate (the Grenade's leg had exactly this shape
+  before acceptance), the `L` lab key draws a loaded five-shell magazine, pointer travel aims
+  it, one primary press releases six pellets carrying one interaction identity, a burst hurts
+  the buddy and enters harmful memory as `tool.shotgun`, `R` reloads a partial magazine, an
+  emptied magazine dry-fires into the two-second automatic reload, and Grab holsters it.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - The `baseball_pullback` scenario drives Baseball through the real pointer input path and

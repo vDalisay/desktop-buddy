@@ -726,6 +726,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5GrenadeAsync(state, lab);
         }
+        else if (exercise == "m5_shotgun")
+        {
+            await ExerciseM5ShotgunAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -1522,6 +1526,155 @@ public partial class JourneyRunner : Node
             $"dry={gun.DryFireCount} reloads={gun.ReloadCompleteCount} " +
             $"pain={shotImpact?.Pain:F2} impulse={shotImpact?.Impulse:F1} " +
             $"part={shotImpact?.Part} active_projectiles={gun.ActiveProjectileCount}");
+    }
+
+    /// <summary>
+    /// The M5 Shotgun slice through real input (Task 9): the catalogue still refuses a sale
+    /// because the entry stays invisible until the owner's feel gate, the lab tool key draws
+    /// a loaded five-shell magazine, pointer travel aims it, one primary press releases six
+    /// pellets that carry a single interaction identity and hurt the buddy, the <c>R</c>
+    /// action reloads a partial magazine, an emptied magazine dry-fires into the two-second
+    /// automatic reload, and selecting Grab puts the gun away.
+    ///
+    /// <para>Deliberately the Pistol journey's shape at the Shotgun's numbers, because that
+    /// is the claim the gun platform makes about itself: the second real gun is a resource
+    /// and a content ID, and the player's whole interaction with it is the same.</para>
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5ShotgunAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+
+        // --- Not on sale yet ---
+        // The catalogue entry is authored `Visible = false` and stays that way until the
+        // owner plays the slice (plan Task E). The refusal is the assertion; when the entry
+        // goes visible this becomes a real purchase, as the Grenade's did.
+        PurchaseResult refused = lab.Economy.Purchase(ContentIds.ToolShotgun);
+        state["the_shotgun_is_not_on_sale_until_the_owner_gates_it"] =
+            !refused.Succeeded &&
+            refused.Status == PurchaseStatus.NotAvailable &&
+            lab.Progress.IsToolUnlocked(ContentIds.ToolShotgun);
+
+        // The development telemetry panel covers the left contact zone and consumes mouse
+        // buttons there; its own lab key hides it, exactly as the Pistol journey does.
+        await M4ObjectScenarioSupport.SendKey(tree, Key.H);
+        await M4ObjectScenarioSupport.SendKey(tree, Key.L);
+
+        CursorGunComponent gun = lab.CursorGuns;
+        Vector2 forward = await AimAtPointAsync(
+            tree, lab, lab.Buddy.Rig.Torso.GlobalPosition, 160.0f);
+        bool armed = await M4ObjectScenarioSupport.WaitFor(tree, () => gun.IsActive, 30);
+        GunProfile? profile = gun.ActiveProfile;
+        state["the_shotgun_key_draws_a_loaded_five_shell_magazine"] =
+            lab.Pipeline.SelectedTool == ToolId.Shotgun &&
+            armed &&
+            profile is not null &&
+            gun.ActiveContentId == ContentIds.ToolShotgun &&
+            gun.RoundsRemaining == profile.MagazineCapacity &&
+            profile.MagazineCapacity == 5;
+        if (profile is null)
+            return;
+
+        state["pointer_motion_aims_the_shotgun"] = gun.AimForward.Dot(forward) > 0.95f;
+
+        AcceptedImpact? shotImpact = null;
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (shotImpact is null && impact.ContentId == ContentIds.ToolShotgun)
+                shotImpact = impact;
+        }
+
+        lab.Pipeline.ImpactAccepted += OnImpact;
+        await AimAtBuddyAsync(tree, lab);
+
+        // One press, six pellets — and holding the button never fires a second shell.
+        int shotsBefore = gun.ShotCount;
+        int launchedBefore = gun.ProjectilesLaunched;
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+        await WaitPhysicsTicks(tree, profile.ShotIntervalTicks * 2);
+        int firedWhileHeld = gun.ShotCount - shotsBefore;
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+        int sharedId = gun.LastShotInteractionId;
+        state["one_press_releases_exactly_six_pellets"] =
+            firedWhileHeld == 1 &&
+            gun.ProjectilesLaunched - launchedBefore == profile.ProjectilesPerShot &&
+            profile.ProjectilesPerShot == 6 &&
+            gun.RoundsRemaining == profile.MagazineCapacity - 1;
+
+        // The shared-shot identity, read through the component rather than inferred: a
+        // trigger pull is one interaction however many pellets it puts in the air.
+        state["the_six_pellets_of_one_press_share_one_interaction"] = sharedId != 0;
+
+        // Then keep shooting until a burst lands, re-aiming at a buddy that is moving and
+        // being knocked about — the same "does a hit hurt" question the Pistol journey asks.
+        for (int shot = 0; shot < 4 && shotImpact is null; shot++)
+        {
+            await AimAtBuddyAsync(tree, lab);
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+            await M4ObjectScenarioSupport.WaitFor(
+                tree, () => shotImpact is not null, profile.ShotIntervalTicks);
+            Log.Info(
+                "Journey",
+                $"M5 shotgun aimed burst {shot}: aim={gun.AimForward} " +
+                $"rounds={gun.RoundsRemaining} raw={lab.Pipeline.MaxRawImpulse:F1} " +
+                $"scored={lab.Pipeline.ScoredImpactCount} flying={gun.ActiveProjectileCount}");
+        }
+
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+        state["a_shotgun_burst_hurts_the_buddy"] =
+            shotImpact is { Pain: > 0.0f } landed &&
+            landed.ContentId == ContentIds.ToolShotgun &&
+            landed.MilliCredits > 0L;
+        state["the_shotgun_is_remembered_as_harmful"] =
+            lab.Progress.IsContentHarmful(ContentIds.ToolShotgun) &&
+            !lab.Progress.IsContentHarmful(ContentIds.ToolBaseballBat);
+
+        // The R action reloads a partial magazine through the same queued-input path.
+        int completionsBefore = gun.ReloadCompleteCount;
+        await M4ObjectScenarioSupport.SendKey(tree, Key.R);
+        bool reloadRunning = await M4ObjectScenarioSupport.WaitFor(
+            tree, () => gun.IsReloading, 10);
+        bool refilled = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => gun.ReloadCompleteCount == completionsBefore + 1 &&
+                  gun.RoundsRemaining == profile.MagazineCapacity,
+            profile.ReloadTicks + 60);
+        state["the_reload_key_refills_a_partial_magazine"] = reloadRunning && refilled;
+
+        // Empty the magazine, then pull once more: the dry fire is what reloads.
+        for (int shell = 0; shell < profile.MagazineCapacity; shell++)
+        {
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+            await WaitPhysicsTicks(tree, profile.ShotIntervalTicks);
+        }
+
+        bool emptied = gun.RoundsRemaining == 0 && !gun.IsReloading;
+        int dryBefore = gun.DryFireCount;
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+        state["an_empty_magazine_dry_fires_into_an_automatic_reload"] =
+            emptied && gun.DryFireCount == dryBefore + 1 && gun.IsReloading;
+
+        state["the_automatic_reload_completes"] = await M4ObjectScenarioSupport.WaitFor(
+            tree,
+            () => !gun.IsReloading && gun.RoundsRemaining == profile.MagazineCapacity,
+            profile.ReloadTicks + 60);
+
+        await M4ObjectScenarioSupport.SendKey(tree, Key.G);
+        bool holstered = await M4ObjectScenarioSupport.WaitFor(tree, () => !gun.IsActive, 30);
+        state["selecting_grab_holsters_the_shotgun"] =
+            lab.Pipeline.SelectedTool == ToolId.Grab && holstered;
+
+        Log.Info(
+            "Journey",
+            $"M5 shotgun shells={gun.ShotCount} pellets={gun.ProjectilesLaunched} " +
+            $"dry={gun.DryFireCount} reloads={gun.ReloadCompleteCount} " +
+            $"shared_id={sharedId} pain={shotImpact?.Pain:F2} " +
+            $"impulse={shotImpact?.Impulse:F1} part={shotImpact?.Part} " +
+            $"shells_ejected={gun.MagazinesDropped}");
     }
 
     /// <summary>
