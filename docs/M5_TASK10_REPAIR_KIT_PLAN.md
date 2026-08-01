@@ -1,6 +1,7 @@
 # M5 Task 10 — Repair Kit Plan
 
-**Status: PLAN — written 2026-07-31, not yet implemented.** Refines the master plan's
+**Status: READY TO IMPLEMENT — prerequisites verified against `main` 2026-08-01.** Written
+2026-07-31, not yet implemented. Refines the master plan's
 Task 10 stub to handoff fidelity. Authoritative contracts: FR-008.6/.7/.8/.10,
 FR-010.10, RAGDOLL §8.2/§9.2 Repair Kit rows **as amended below**, and the owner
 decision of 2026-07-29 (DECISIONS ~line 891): **no cooldown and no appetite gate** —
@@ -13,10 +14,42 @@ PRODUCT_REQUIREMENTS FR-008.6 is already amended. Amend the RAGDOLL rows at this
 slice's bookkeeping task; the older DECISIONS bullet stays as history with the newer
 entry superseding it, exactly how the fuse supersession was recorded.
 
-**Dependency:** Task 7 (Burning) must land first — FR-010.10's "clears Burning" leg
-and the scenario's burning-buddy proof need `BurningStatusModel.Clear()` to exist. If
-Task 7 slips, everything else here can ship with the Burning leg explicitly deferred
-and flagged, but the slice is not *done* until that leg runs.
+**Dependency — SATISFIED.** Task 7 (Burning) landed and was owner-accepted; Task 9
+(Shotgun) likewise. The Burning clear seam exists and was built for this caller:
+**`FireSprayerComponent.ClearBurning()`** (`src/Tools/FireSprayerComponent.cs:305`),
+whose doc comment names the Repair Kit and FR-010.10 outright. Everywhere below that
+says `BurningStatusModel.Clear()`, read `FireSprayerComponent.ClearBurning()` — the
+pure model is `BurningStatus.Clear(in BurningPhase)`
+(`domain/DesktopBuddy.Domain/Damage/BurningStatusModel.cs:168`), a static function over
+a phase; the live burn state is the sprayer component's `_burn` field, so the kit calls
+the component, not the model.
+
+**Sequencing:** start after Task 8 (Soccer Ball + Drink) merges to `main`. Task 8 adds
+a restitution export to `src/Objects/LooseObjectProfile.cs` and spawn keys `8`/`9` to
+the launchable switch in `src/Laboratory/LabPointerGrabComponent.cs:205` — the same two
+files §2.2 and §2.4 touch. Rebasing after is cheaper than resolving both.
+
+**Verified on `main` 2026-08-01 (do not re-check):**
+- `data/catalogue/tool_repair_kit.tres` exists; `data/objects/repair_kit.tres` does not
+  (Task A creates it).
+- `PainKnockoutModel.ClearRollingPain()` — `Damage/PainKnockoutModel.cs:98`, one line,
+  events only, KO end untouched; the "never shortens" test already exists at
+  `tests/DesktopBuddy.Domain.Tests/Damage/PainKnockoutModelTests.cs:135`, with a comment
+  naming the Repair Kit. Wire, don't re-implement, and don't re-prove.
+- `EffectsSettings` seam shipped: `domain/DesktopBuddy.Domain/Presentation/EffectsSettings.cs`
+  (§2.4's `ReducedParticles` honoring rides it).
+- `LooseObjectProfile.Consumable` + `ConsumeMoodGain`/`ConsumeCooldownTicks`/
+  `ConsumeHungerFill` validation lives at `src/Objects/LooseObjectProfile.cs:60,91-95`
+  — `ClearsHarmfulStatuses` goes in beside them.
+- Spawn key `0` is free: the launchable switch holds only `5`/`6`/`7`, and tool
+  selection uses letters (`G/B/K/J/F/T/S`).
+
+**One open call for Task C.** `ClearBurning()` also clears **scorch**, deliberately and
+by a doc-comment contract that says it does so "on this entry point and no other".
+Cheapest path is the kit reusing it as-is, so a repaired buddy loses its soot too — a
+medkit that wipes the burn marks reads fine and costs zero code. If the owner wants
+scorch to persist through a repair, that's a second entry point, and it needs saying
+before Task C. Default: reuse as-is, note it in the Task E DECISIONS entry.
 
 ---
 

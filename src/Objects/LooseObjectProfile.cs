@@ -50,6 +50,15 @@ public partial class LooseObjectProfile : GameResource
     /// <summary>Routed ticks it is held at the head before it is gone. <c>240</c> is two seconds.</summary>
     [Export(PropertyHint.Range, "6,1800,1")] public int ConsumeHoldTicks { get; set; } = 240;
 
+    /// <summary>
+    /// Whether taking this item also puts out what is hurting the buddy — the rolling pain
+    /// window and Burning (FR-008.7, FR-010.10). Only the Repair Kit authors <c>true</c>; the
+    /// Meal and the Drink are food and leave it <c>false</c>, so a sandwich never cures a fire.
+    /// Meaningful only on a <see cref="Consumable"/>, and it never touches an active knockout:
+    /// that end time is separate state nobody here can reach.
+    /// </summary>
+    [Export] public bool ClearsHarmfulStatuses { get; set; }
+
     [Export] public bool Hazardous { get; set; }
     [Export] public bool SafeToEvict { get; set; } = true;
 
@@ -109,6 +118,7 @@ public partial class LooseObjectProfile : GameResource
         (SoccerPlay is null ||
          (GodotObject.IsInstanceValid(SoccerPlay) && SoccerPlay.IsRuntimeValid)) &&
         !(Hazardous && SafeToEvict) &&
+        (!ClearsHarmfulStatuses || Consumable) &&
         (!Consumable ||
          (ConsumeRaiseTicks > 0 && ConsumeHoldTicks > 0 &&
           float.IsFinite(ConsumeMoodGain) && ConsumeMoodGain > 0.0f &&
@@ -173,6 +183,8 @@ public partial class LooseObjectProfile : GameResource
             errors.Add($"{nameof(ConsumeHungerFill)} must be finite and non-negative");
         if (Consumable && (ConsumeRaiseTicks <= 0 || ConsumeHoldTicks <= 0))
             errors.Add($"{nameof(ConsumeRaiseTicks)} and {nameof(ConsumeHoldTicks)} must be positive");
+        if (ClearsHarmfulStatuses && !Consumable)
+            errors.Add($"{nameof(ClearsHarmfulStatuses)} is only meaningful on a consumable");
         return errors;
     }
 }

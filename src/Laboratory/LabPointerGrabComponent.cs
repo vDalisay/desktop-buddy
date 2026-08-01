@@ -209,6 +209,7 @@ public partial class LabPointerGrabComponent : Node2D
                 Key.Key7 => ContentIds.ToolGrenade,
                 Key.Key8 => ContentIds.ToolSoccerBall,
                 Key.Key9 => ContentIds.ToolDrink,
+                Key.Key0 => ContentIds.ToolRepairKit,
                 _ => null,
             };
             if (launchable is not null)

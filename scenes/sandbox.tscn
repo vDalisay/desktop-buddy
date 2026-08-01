@@ -57,6 +57,7 @@
 [ext_resource type="Resource" path="res://data/objects/grenade.tres" id="53_grenade_object"]
 [ext_resource type="Resource" path="res://data/objects/soccer_ball.tres" id="57_soccer_object"]
 [ext_resource type="Resource" path="res://data/objects/drink.tres" id="58_drink_object"]
+[ext_resource type="Resource" path="res://data/objects/repair_kit.tres" id="70_repair_kit_object"]
 [ext_resource type="Script" path="res://src/Presentation3D/GrenadeVisual3D.cs" id="54_grenade_visual"]
 [ext_resource type="Script" path="res://src/Presentation3D/LooseObjectVisual3D.cs" id="59_object_visual"]
 [ext_resource type="Script" path="res://src/Tools/GrenadeVisual2D.cs" id="55_grenade_visual_2d"]
@@ -328,7 +329,7 @@ Registry = NodePath("../LooseObjectRegistry")
 Boundaries = NodePath("../RoomBounds")
 ObjectParent = NodePath("..")
 Profile = ExtResource("41_launcher_profile")
-LaunchableProfiles = Array[Resource]([ExtResource("42_baseball"), ExtResource("43_meal"), ExtResource("53_grenade_object"), ExtResource("57_soccer_object"), ExtResource("58_drink_object")])
+LaunchableProfiles = Array[Resource]([ExtResource("42_baseball"), ExtResource("43_meal"), ExtResource("53_grenade_object"), ExtResource("57_soccer_object"), ExtResource("58_drink_object"), ExtResource("70_repair_kit_object")])
 
 [node name="GrenadeComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Grab", "Registry", "Launcher", "Boundaries")]
 script = ExtResource("51_grenade")

@@ -197,6 +197,7 @@ public partial class BuddyLab : Node2D
             Economy.Unlock(ContentIds.ToolDrink);
             Economy.Unlock(ContentIds.ToolFireSprayer);
             Economy.Unlock(ContentIds.ToolShotgun);
+            Economy.Unlock(ContentIds.ToolRepairKit);
         }
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
