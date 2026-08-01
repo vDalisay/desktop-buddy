@@ -23,6 +23,8 @@ public partial class BehaviorArbiter : Node
     private BuddyProgressState? _progress;
     private BuddyTraits _savelessTraits = BuddyTraits.Default;
     private MoodBand _savelessMoodBand = MoodBand.Neutral;
+    private bool _statusHazard;
+    private float _statusHazardFleeDirection = 1.0f;
 
     [Export] public PuppetRig Rig { get; set; } = null!;
     [Export] public StandingDetector Standing { get; set; } = null!;
@@ -107,7 +109,8 @@ public partial class BehaviorArbiter : Node
 
         GrabResistanceIntent resistance = GrabResistance.Intent;
         bool supportContact = Standing.Snapshot.SupportContactCount > 0;
-        bool hazard = toolReaction.Active && toolReaction.GuardActive;
+        bool toolHazard = toolReaction.Active && toolReaction.GuardActive;
+        bool hazard = toolHazard || _statusHazard;
 
         AutonomousMotionIntent ambient = AutonomousMotion.Intent;
         float targetOffsetX = cursorWorldPosition.X - Rig.Torso.GlobalPosition.X;
@@ -128,7 +131,11 @@ public partial class BehaviorArbiter : Node
             RequiresFailsafeReposition: hardRecoveredThisTick,
             SelfRightingEligible: Recovery.State.AssistanceActive,
             HazardPresent: hazard,
-            HazardFleeDirection: toolReaction.WalkDirection,
+            // A learned-harm guard flee already carries its own direction; a status hazard
+            // supplies one only when nothing else does.
+            HazardFleeDirection: toolHazard
+                ? toolReaction.WalkDirection
+                : _statusHazardFleeDirection,
             Grabbed: grabbedPart is not null,
             AfraidOfGrab: resistance.Active,
             GrabFleeDirection: resistance.Direction,
@@ -193,7 +200,7 @@ public partial class BehaviorArbiter : Node
             Activity.SetActivity(ActivityId.Wave);
         }
 
-        DriveIntent = BuildDriveIntent(grabbedPart, toolReaction);
+        DriveIntent = BuildDriveIntent(routedTick, grabbedPart, toolReaction);
         if (_allocationProbeEnabled)
         {
             AllocationSamples++;
@@ -215,21 +222,40 @@ public partial class BehaviorArbiter : Node
 
     public void EndAllocationProbe() => _allocationProbeEnabled = false;
 
+    /// <summary>
+    /// A status effect the buddy carries — today only Burning (RAGDOLL §9.3) — is an
+    /// immediate hazard in its own right, with no tool contact involved. The composition
+    /// root sets it from the sprayer's burn state each routed tick; the ladder does the
+    /// rest, because priority 3 already outranks a committed object action and the social
+    /// and ambient layers.
+    /// </summary>
+    public void SetStatusHazard(bool present, float fleeDirection)
+    {
+        _statusHazard = present;
+        if (present && (fleeDirection > 0.0f || fleeDirection < 0.0f))
+            _statusHazardFleeDirection = Mathf.Sign(fleeDirection);
+    }
+
     public void Reset()
     {
         if (!IsInitialized)
             return;
+        _statusHazard = false;
         _model.Reset();
         Intent = default;
         DriveIntent = default;
     }
 
     private DriveIntent BuildDriveIntent(
+        long routedTick,
         BuddyPartId? grabbedPart,
         in ToolReactionIntent toolReaction)
     {
         if (Intent.Owner == BehaviorPriority.GrabResistance)
             return BuildResistanceIntent(grabbedPart);
+
+        if (Intent.Owner == BehaviorPriority.Hazard && _statusHazard)
+            return BuildBurningHazardIntent(routedTick);
 
         if (Intent.Owner is BehaviorPriority.Hazard or BehaviorPriority.Social &&
             toolReaction.Active)
@@ -240,8 +266,13 @@ public partial class BehaviorArbiter : Node
         if (Intent.Owner == BehaviorPriority.ObjectAction)
             return BuildObjectIntent();
 
-        if (Intent.Owner == BehaviorPriority.Social)
+        // A status hazard has no tool reaction behind it, so the guard-shaped intent above
+        // does not apply: the buddy simply runs, which is the panic.
+        if (Intent.Owner == BehaviorPriority.Hazard ||
+            Intent.Owner == BehaviorPriority.Social)
+        {
             return BasicDrive(Intent.WalkDirection, Intent.LocomotionScale);
+        }
 
         if (Intent.Owner == BehaviorPriority.Ambient)
         {
@@ -309,6 +340,28 @@ public partial class BehaviorArbiter : Node
             PanicRightHandActive: grabbedPart != BuddyPartId.RightHand,
             LeftPanicHandTarget: shoulder + ToGodot(flail.LeftHandOffset),
             RightPanicHandTarget: shoulder + ToGodot(flail.RightHandOffset));
+    }
+
+    private DriveIntent BuildBurningHazardIntent(long routedTick)
+    {
+        ActiveDriveProfile drive = ActiveDrive.Profile;
+        var tuning = new PanicFlailTuning(
+            drive.PanicFlailAmplitude,
+            drive.PanicFlailLift,
+            drive.PanicFlailCycleTicks,
+            drive.PanicFlailAsymmetry,
+            drive.PanicFlailReachBias);
+        PanicFlailSample flail = PanicFlail.Sample(
+            unchecked((int)routedTick), 1.0f, Intent.WalkDirection, tuning);
+        Vector2 shoulder = Rig.Torso.GlobalPosition + drive.PanicHandOriginOffset;
+
+        return BasicDrive(Intent.WalkDirection, Profile.BurningLocomotionScale) with
+        {
+            PanicLeftHandActive = true,
+            PanicRightHandActive = true,
+            LeftPanicHandTarget = shoulder + ToGodot(flail.LeftHandOffset),
+            RightPanicHandTarget = shoulder + ToGodot(flail.RightHandOffset),
+        };
     }
 
     private static DriveIntent BuildToolReactionIntent(in ToolReactionIntent reaction) =>

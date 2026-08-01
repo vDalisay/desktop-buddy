@@ -194,7 +194,7 @@ Static data is represented by C# `Resource` subclasses and `.tres` assets:
 - `MoodEconomyProfile`: bands, drift, care values, passive curve, cash-per-pain, and calibrated price table.
 - `ToolDefinition`: stable ID, entry kind, display metadata as translation keys plus icon references, unlock price (authored in whole credits) and progression order, shop/tool-grid visibility, PackedScene references, cooldown/ammo/fuse/status data.
 - `CatalogueDefinition`: the one explicitly referenced list of `ToolDefinition` entries (`res://data/catalogue/launch_catalogue.tres`). `CatalogueLoader` turns it into the immutable engine-free `ToolCatalogue` snapshot the domain rules (`CataloguePolicy`) and `EconomyService.Purchase(contentId)` read; the catalogue, never the caller, resolves purchasability and price. An entry whose slice is unfinished stays `Visible = false` and cannot be shown or bought.
-- `GunProfile`: one cursor gun's magazine, shot interval, reload duration, projectiles per shot and spread, aim feel (smoothing half-life, steering-speed gate, maximum turn per tick, wheel offset), and projectile physics/pool tuning. Cadence is authored in routed ticks. `CursorGunComponent` holds an authored array of them and activates whichever matches the selected tool, so a second gun is a `.tres` plus a content ID rather than new input code — the same shape the cursor-tethered tools and the pullback launcher take.
+- `GunProfile`: one cursor gun's magazine, shot interval, reload/pump duration, projectiles per shot and seeded spread band, aim feel (smoothing half-life, steering-speed gate, maximum turn per tick, wheel offset), distance-scaled contact shove, casing ejection, and projectile physics/pool tuning. Cadence is authored in routed ticks. `CursorGunComponent` holds an authored array of them and activates whichever matches the selected tool, so a second gun is a `.tres` plus a content ID rather than new input code — the same shape the cursor-tethered tools and the pullback launcher take.
 - `StatusDefinition`: duration/refresh cap and semantic tick policy.
 - `AchievementDefinition`: stable Steam API ID and local trigger ID.
 
@@ -256,7 +256,7 @@ Window resize events enqueue boundary changes for the next physics boundary. The
 - Mouse movement stores a normalized non-trivial direction for cursor weapons.
 - Mouse wheel applies a temporary angular offset; the next non-trivial movement clears it.
 - Pullback start captures a spawn point and drag origin; preview and launch use the same ballistic configuration.
-- Pistol and Shotgun consume only a newly pressed primary action, never held-repeat. `R` requests manual reload and an attempted empty shot requests automatic reload.
+- Pistol and Shotgun consume only a newly pressed primary action, never held-repeat. The Shotgun's post-shot press cycles its pump and cannot fire. `R` requests manual reload and an attempted empty shot requests automatic reload.
 - UI consumes input before gameplay.
 - Right mouse sends cancel/drop without changing selection.
 - Work/Play transitions never synthesize primary input.

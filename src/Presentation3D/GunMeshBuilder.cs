@@ -16,10 +16,10 @@ namespace DesktopBuddy.Presentation3D;
 /// presenter rotates that whole frame to the aim, so nothing here knows which way the
 /// player is pointing.</para>
 ///
-/// <para>The two silhouettes are deliberately different shapes rather than two colours of
-/// the same one: the Nerf Blaster is chunky, rounded-off and oversized with a wide orange
-/// tip ring, and the Pistol is a compact slide-and-frame with a raked grip. Neither
-/// carries any real-world model's trade dress.</para>
+/// <para>The silhouettes are deliberately different shapes rather than recolours of one:
+/// the Nerf Blaster is chunky, rounded-off and oversized with a wide orange tip ring, the
+/// Pistol is a compact slide-and-frame with a raked grip, and the Shotgun is a long pump
+/// with a walnut forend and stock. None carries any real-world model's trade dress.</para>
 /// </summary>
 public static class GunMeshBuilder
 {
@@ -42,10 +42,30 @@ public static class GunMeshBuilder
         {
             GunVisual3DKind.NerfBlaster => NerfBlaster(profile),
             GunVisual3DKind.RealPistol => RealPistol(profile),
+            GunVisual3DKind.Shotgun => Shotgun(profile),
             _ => throw new ArgumentException(
                 $"'{profile.ContentId}' has no authored gun silhouette.", nameof(profile)),
         };
 
+        return Build(blocks);
+    }
+
+    /// <summary>The Shotgun's separately animated wooden forend.</summary>
+    public static ArrayMesh BuildShotgunPump(GunProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        float length = profile.VisualLengthPx;
+        return Build(new[]
+        {
+            new Block(
+                new Vector3(length * 0.60f, -length * 0.09f, 0.0f),
+                new Vector3(length * 0.24f, length * 0.13f, length * 0.13f),
+                profile.AccentColor),
+        });
+    }
+
+    private static ArrayMesh Build(IReadOnlyList<Block> blocks)
+    {
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
         foreach (Block block in blocks)
@@ -68,9 +88,10 @@ public static class GunMeshBuilder
         float length = profile.VisualLengthPx;
         float height = length * EnvelopeHeightFraction;
         float depth = length * EnvelopeDepthFraction;
+        float back = profile.Visual3DKind == GunVisual3DKind.Shotgun ? 0.40f : 0.12f;
         return new Aabb(
-            new Vector3(-length * 0.12f, -height, -depth),
-            new Vector3(length * 1.12f, height * 2.0f, depth * 2.0f));
+            new Vector3(-length * back, -height, -depth),
+            new Vector3(length * (1.0f + back), height * 2.0f, depth * 2.0f));
     }
 
     public static bool IsInsideEnvelope(Vector3 vertex, Aabb envelope, float epsilon = 0.001f)
@@ -166,6 +187,66 @@ public static class GunMeshBuilder
                 new Vector3(length * 0.10f, -length * 0.41f, 0.0f),
                 new Vector3(length * 0.15f, length * 0.06f, length * 0.11f),
                 grip),
+        };
+    }
+
+    /// <summary>
+    /// The Shotgun: a pump silhouette, and deliberately the longest of the three. A single
+    /// bore on the <b>y = 0</b> axis — which is where the presenter puts the muzzle flash and
+    /// where the profile says rounds are born — with the magazine tube slung under it, a
+    /// walnut pump forend around that tube, and a walnut stock and grip carrying the whole
+    /// weapon back over the cursor. The wood is the accent colour, so at a glance the
+    /// shotgun reads long-and-brown where the pistol reads short-and-black.
+    /// </summary>
+    private static List<Block> Shotgun(GunProfile profile)
+    {
+        float length = profile.VisualLengthPx;
+        float tip = profile.VisualMuzzleTipPx;
+        Color body = profile.MuzzleColor;
+        Color wood = profile.AccentColor;
+        float barrelBreech = length * 0.30f;
+
+        return new List<Block>
+        {
+            // Barrel, on the bore line the shot really leaves along.
+            new(
+                new Vector3((barrelBreech + tip) * 0.5f, 0.0f, 0.0f),
+                new Vector3(tip - barrelBreech, length * 0.10f, length * 0.10f),
+                body),
+            // Magazine tube, slung under the barrel.
+            new(
+                new Vector3(length * 0.59f, -length * 0.09f, 0.0f),
+                new Vector3(length * 0.54f, length * 0.07f, length * 0.07f),
+                body),
+            // Receiver: the thick block the barrel screws into.
+            new(
+                new Vector3(length * 0.26f, -length * 0.02f, 0.0f),
+                new Vector3(length * 0.24f, length * 0.19f, length * 0.14f),
+                body),
+            // Trigger guard, a bar rather than a hollow loop, as the pistol's is.
+            new(
+                new Vector3(length * 0.24f, -length * 0.16f, 0.0f),
+                new Vector3(length * 0.15f, length * 0.035f, length * 0.08f),
+                body),
+            // Stock, doubled lengthwise from the first pass and carried behind the cursor.
+            new(
+                new Vector3(-length * 0.08f, -length * 0.10f, 0.0f),
+                new Vector3(length * 0.56f, length * 0.15f, length * 0.12f),
+                wood),
+            // Dark butt plate and receiver cap keep the longer stock from reading as a box.
+            new(
+                new Vector3(-length * 0.35f, -length * 0.10f, 0.0f),
+                new Vector3(length * 0.04f, length * 0.18f, length * 0.14f),
+                body),
+            new(
+                new Vector3(length * 0.39f, -length * 0.02f, 0.0f),
+                new Vector3(length * 0.035f, length * 0.21f, length * 0.15f),
+                body),
+            // Grip, hanging below the cursor the way both other guns' do.
+            new(
+                new Vector3(length * 0.14f, -length * 0.26f, 0.0f),
+                new Vector3(length * 0.13f, length * 0.26f, length * 0.11f),
+                wood),
         };
     }
 

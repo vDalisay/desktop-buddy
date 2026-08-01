@@ -196,6 +196,20 @@ Task C pinned the feel in `pistol_fire` (17 checks now): sub-pixel travel steers
 release jitter never flips it, and a reversal costs 39 ticks — bounded below by the authored
 turn rate so it cannot snap, and above by that plus three smoothing half-lives.
 
+The **Shotgun** (`tool.shotgun`, `ToolId 12`, lab key `L`) is the platform's own claim
+tested: a third `.tres`, a third `GunVisual3DKind` (a pump silhouette with a walnut forend
+and stock), and no new input code, cadence code, or machine states. Its one platform change
+is the **shared shot identity** — every pellet of one trigger pull carries the same
+`InteractionId`, so six pellets into one part are one accepted impact and a shotgun hurts by
+covering parts rather than by concentrating on one (`DECISIONS.md`, "Shotgun — Even Fan,
+Coverage Damage, and the Shared Shot Identity"). Single-projectile guns pass no shared id and
+are byte-identical to before. Two numbers there are correctness rather than taste and are
+recorded in the profile: `ContactSettleTicks` is `4`, because at `2` a connected pellet left
+the world before the solver resolved its impulse, and `PoolCapacity` is `36`, because
+validation requires a whole magazine (`5 x 6`) in flight. Gated by `shotgun_spread` (15
+checks, seeds `1/7/13`) and the `m5_shotgun` journey; the catalogue entry stays
+`Visible = false` until the owner's feel gate.
+
 **Home-Run Bat refinement** (`docs/M5_TASK4_HOME_RUN_BAT_FEEL_PLAN.md`):
 
 - [x] Task A — pure charged-swing domain model and trajectory servo.
@@ -352,10 +366,54 @@ pre-implementation on 2026-07-31:
       the ball's launch tuning are the numbers the gate owns. `DECISIONS.md` records the
       three §3 defaults and the restitution seam.
 
-**Next action:** start **M5 Task 7 (Burning + Fire Sprayer)** against
-`docs/M5_TASK7_BURNING_AND_FIRE_SPRAYER_PLAN.md`, whose owner-gate defaults were accepted
-pre-implementation on 2026-07-31 and which builds the FR-017.3 `EffectsSettings` seam that
-Tasks 8–10 then ride.
+M5 Task 7 (Burning + Fire Sprayer) — `docs/M5_TASK7_BURNING_AND_FIRE_SPRAYER_PLAN.md`,
+whose owner-gate defaults were accepted pre-implementation on 2026-07-31:
+
+- [x] Task A — `BurningStatusModel` (Domain): apply refreshes and caps at `960` ticks, the
+      first attributed pain event lands one full interval after ignition so the spray
+      contact itself scores nothing, expiry is silent and idempotent, and `Clear()` is the
+      immediate entry point the fail-safe (and later the Repair Kit) uses. Domain baseline
+      `999 → 1017`.
+- [x] Task B — `FireSprayerComponent` as a sibling of `CursorGunComponent` on the same
+      thin-driver shape, and deliberately **not** a `GunProfile`: hold-to-stream with no
+      press edge, no magazine, no reload and no dry-fire. Pooled `SprayDropletBody` copies
+      `ProjectileBody`'s pooling and layer discipline and not its damage path; the lateral
+      fan is an eight-wide triangle wave driven by the droplet's own index, never a random
+      source. Selection key `S` (not the plan's suggested `H`, which already toggles the
+      telemetry panel), laboratory unlock grant, `data/tools/fire_sprayer.tres`.
+- [x] Task C — Burning is the only harm lane. Each due event goes through the sanctioned
+      contact-free `ApplyBlastImpulse` entry, so the shared curve, knockout window, payout,
+      harmful memory and `min(10, pain x 0.1)` mood loss are untouched machinery.
+      `BurnEquivalentImpulse` tuned `200 → 430`: `4.57` pain per event, `36.6` over a
+      four-second burn, `73.1` at the eight-second cap, at most `45.7` in any rolling
+      five-second window — painful, profitable, and never a knockout by itself. Panic is one
+      snapshot bool (`BehaviorArbiter.SetStatusHazard`), so the drop and the flee come from
+      the existing priority-3 ladder; the hard reposition now really clears Burning.
+- [x] Task D — the FR-017.3 `EffectsSettings` seam that Tasks 8–10 ride, plus `FireVisual2D`
+      / `FireVisual3D` (flame body, index-fanned ember motes, `3 Hz` flicker cap while
+      photosensitivity-safe) and `FireAudioComponent` (looped spray hiss, ignition whumpf,
+      counters as oracles). Shipping the seam made the one existing shake setting live:
+      `ScreenShake = false` now silences the whole `CameraKickComponent` lane.
+- [x] Task E — `burning_status` (13 checks, seeds `1/7/13`, both presentations) and the
+      `m5_fire_sprayer` journey (9 assertions, seeds `1/7`, both presentations), both
+      registered in `ScenarioCatalog`, `TEST_PLAN.md`, and the quick suite (now 30 steps).
+- [x] Owner feel-gate pass 1, 2026-08-01 — presentation only; the mechanics and timing
+      above were accepted as they stand. Three changes: a real 3D flamethrower
+      (`SprayerMeshBuilder` + `CursorSprayerVisual3D`, on the guns' vertex-coloured-box
+      idiom — slung canister, slim wand, flared nozzle, pilot light — with the flat
+      silhouette still carrying legacy mode); the stream redrawn as a billowing smoky mist
+      instead of discrete pellets, in both modes, with the collider, the fan and the
+      ignition path untouched; and **progressive per-part scorch** — `ScorchStateModel` in
+      Domain with `ScorchPresenter` as a thin driver writing through the per-part lit
+      material and the legacy fill, darkening to an authored `0.72` ceiling, holding 10 s,
+      fading over 5 s, and wiped by the same fail-safe that clears Burning. Domain baseline
+      `1017 → 1036`.
+- [ ] Task F — **owner feel gate, outstanding.** The owner plays it on real Windows, then
+      `tool_fire_sprayer.tres` goes `Visible = true` and the journey's catalogue leg becomes
+      a real purchase. The four §3 rules are already settled (accepted 2026-07-31,
+      pre-implementation); the gate owns only the tuning numbers.
+
+**Next action:** owner feel gates for Fire Sprayer, Soccer Ball/Drink, and Shotgun.
 
 Everything before it is closed: `docs/M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` is complete
 and owner-accepted (both guns shop-visible; §4.1's aim constants accepted as authored rather

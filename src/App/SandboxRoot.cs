@@ -20,6 +20,7 @@ using DesktopBuddy.Laboratory;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Sandbox;
 using DesktopBuddy.Tools;
@@ -75,6 +76,12 @@ public partial class SandboxRoot : Node2D
     [Export] public LooseObjectVisual3D LooseObjectVisual { get; set; } = null!;
     [Export] public GrenadeVisual2D GrenadeVisualLegacy { get; set; } = null!;
     [Export] public GrenadeAudioComponent GrenadeAudio { get; set; } = null!;
+    [Export] public FireSprayerComponent FireSprayer { get; set; } = null!;
+    [Export] public FireVisual2D FireVisualLegacy { get; set; } = null!;
+    [Export] public FireVisual3D FireVisual { get; set; } = null!;
+    [Export] public FireAudioComponent FireAudio { get; set; } = null!;
+    [Export] public CursorSprayerVisual3D SprayerVisual { get; set; } = null!;
+    [Export] public ScorchPresenter Scorch { get; set; } = null!;
     [Export] public CameraKickComponent CameraKick { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
@@ -128,6 +135,12 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(LooseObjectVisual) ||
             !GodotObject.IsInstanceValid(GrenadeVisualLegacy) ||
             !GodotObject.IsInstanceValid(GrenadeAudio) ||
+            !GodotObject.IsInstanceValid(FireSprayer) ||
+            !GodotObject.IsInstanceValid(FireVisualLegacy) ||
+            !GodotObject.IsInstanceValid(FireVisual) ||
+            !GodotObject.IsInstanceValid(FireAudio) ||
+            !GodotObject.IsInstanceValid(SprayerVisual) ||
+            !GodotObject.IsInstanceValid(Scorch) ||
             !GodotObject.IsInstanceValid(CameraKick) ||
             !GodotObject.IsInstanceValid(CareStroke) ||
             !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
@@ -181,6 +194,15 @@ public partial class SandboxRoot : Node2D
         GrenadeVisual.TrackPins(Grenades.Pins);
         GrenadeVisualLegacy.Initialize(Grenades.Profile);
         GrenadeAudio.Initialize();
+        // The sprayer is a sibling of the guns on the same thin-driver shape; its burn
+        // keeps running whatever tool is selected, so it is composed unconditionally.
+        FireSprayer.Initialize();
+        FireVisualLegacy.Initialize(FireSprayer, FireSprayer.Profile);
+        FireVisual.Initialize(FireSprayer, FireSprayer.Profile);
+        FireAudio.Initialize();
+        SprayerVisual.Initialize(FireSprayer, FireSprayer.Profile);
+        // The shipped sandbox has real machine-local settings, so the seam is fed from them.
+        ApplyEffectsSettings(EffectsSettings.FromSave(Settings));
         Grenades.PinPulled += OnGrenadePinPulled;
         Grenades.Detonated += OnGrenadeDetonated;
         CareStroke.Initialize();
@@ -194,6 +216,9 @@ public partial class SandboxRoot : Node2D
         ImpactFeedback.Initialize();
         MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();
+        // After the visual presenter: the scorch driver writes through that presenter's own
+        // per-part materials, so it cannot be composed before they exist.
+        Scorch.Initialize();
         // Same Resource the presenter renders with: lights and materials share one look truth.
         LightingRig.Initialize(VisualPresenter.Profile.Look);
         PosePipeline.Initialize();
@@ -227,7 +252,7 @@ public partial class SandboxRoot : Node2D
             Economy,
             Saves,
             MoodEconomy,
-            () => Grab.IsGrabbing || CursorTools.IsActive || CursorGuns.IsActive ||
+            () => Grab.IsGrabbing || CursorTools.IsActive || CursorGuns.IsActive || FireSprayer.IsActive ||
                   CareStroke.IsHeld || Buddy.ObjectInteraction.IsHolding,
             _runContext.TimeSource,
             ResetPresentationInterpolation,
@@ -304,6 +329,15 @@ public partial class SandboxRoot : Node2D
         // After the pipeline, so a blast is scored against the same simulation clock
         // every contact this tick was scored against.
         Grenades.PhysicsTick();
+        FireSprayer.PhysicsTick();
+        Pipeline.SetFireUnconsciousness(FireSprayer.FullBodyBurnKnockoutActive);
+        // Burning is an immediate hazard in its own right (RAGDOLL §4 priority 3): one
+        // snapshot bool, and the existing ladder does the panic and the drop.
+        Buddy.Arbiter.SetStatusHazard(FireSprayer.IsBurning, FireSprayer.HazardFleeDirection);
+        FireVisual.PhysicsTick();
+        FireVisualLegacy.PhysicsTick();
+        SprayerVisual.PhysicsTick();
+        Scorch.PhysicsTick();
         SyncGrenadeVisuals();
         GrenadeVisual.PhysicsTick();
             LooseObjectVisual.PhysicsTick();
@@ -480,6 +514,25 @@ public partial class SandboxRoot : Node2D
     private void OnGunShotFired(GunProfile profile) =>
         CameraKick.Kick(profile.FireShakeAmplitudePx, profile.FireShakeDecayTicks);
 
+    /// <summary>
+    /// Hands the four accessibility effect settings to every presenter that honours one
+    /// (FR-017.3). <b>Gameplay never sees them</b>: this reaches presentation components
+    /// only, so flipping every toggle changes what a run looks and sounds like and cannot
+    /// change one tick of what it simulates.
+    /// </summary>
+    public void ApplyEffectsSettings(EffectsSettings settings)
+    {
+        Effects = settings;
+        FireSprayer.ApplyEffectsSettings(settings);
+        FireVisual.ApplyEffectsSettings(settings);
+        SprayerVisual.ApplyEffectsSettings(settings);
+        FireVisualLegacy.ApplyEffectsSettings(settings);
+        CameraKick.ApplyEffectsSettings(settings);
+    }
+
+    /// <summary>The effect settings currently in force.</summary>
+    public EffectsSettings Effects { get; private set; } = EffectsSettings.Default;
+
     private void OnBoundaryLayoutApplied(RoomLayout _layout, Rect2 innerBounds) =>
         Buddy.AutonomousMotion.SetWalkableBounds(innerBounds);
 
@@ -515,6 +568,10 @@ public partial class SandboxRoot : Node2D
         Buddy.ObjectInteraction.Reset();
         Launcher.CancelImmediately();
         Grenades.CancelImmediately();
+        // DECISIONS "Fail-safe cleanup" already promises a hard reposition clears Burning;
+        // this is the one call that makes that sentence true.
+        FireSprayer.ClearBurning();
+        Buddy.Arbiter.SetStatusHazard(false, 0.0f);
         if (Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
     }
 
@@ -641,6 +698,14 @@ public partial class SandboxRoot : Node2D
         GrenadeVisual.SetPresentationActive(show3D);
         LooseObjectVisual.SetPresentationActive(show3D);
         GrenadeVisualLegacy.SetPresentationActive(!show3D);
+        // One fire per burning buddy: the frontal flame and the flat one are the same
+        // fire seen two ways, never both at once.
+        FireVisual.SetPresentationActive(show3D);
+        FireVisualLegacy.SetPresentationActive(!show3D);
+        // One flamethrower per cursor: the frontal model and the flat silhouette are the
+        // same weapon seen two ways, never both at once.
+        SprayerVisual.SetPresentationActive(show3D);
+        FireSprayer.SetLegacyVisualEnabled(!show3D);
     }
 
     private void ApplyRunnerPresentationOverride()

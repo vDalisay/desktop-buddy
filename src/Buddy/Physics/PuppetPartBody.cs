@@ -66,6 +66,35 @@ public partial class PuppetPartBody : RigidBody2D
     /// <summary>Wired once by <see cref="PuppetRig"/> during initialization.</summary>
     public void SetStretchAnchor(PuppetPartBody anchor) => StretchAnchor = anchor;
     public Color FillColor { get; private set; } = new("7ac7ff");
+
+    /// <summary>
+    /// How scorched this part is drawn, in <c>[0, 1]</c> toward <see cref="ScorchColor"/>,
+    /// and the soot colour it is tinted toward. Presentation only: the authored
+    /// <see cref="FillColor"/> stays the one source of truth for what this part *is*, and
+    /// nothing in physics, pain, or pose reads either of these (owner feedback 2026-08-01).
+    /// </summary>
+    public float Scorch { get; private set; }
+
+    public Color ScorchColor { get; private set; } = new("241c18");
+
+    /// <summary>The colour actually painted this frame — the fill, darkened by the mark.</summary>
+    public Color DrawnFillColor =>
+        Scorch <= 0.0f ? FillColor : FillColor.Lerp(ScorchColor, Mathf.Clamp(Scorch, 0.0f, 1.0f));
+
+    /// <summary>
+    /// Sets this part's scorch tint. Called only from a presenter on the routed tick; a
+    /// no-op when nothing changed, so a clean buddy never queues a redraw.
+    /// </summary>
+    public void SetScorch(float amount, Color scorchColor)
+    {
+        float clamped = Mathf.Clamp(amount, 0.0f, 1.0f);
+        if (Mathf.IsEqualApprox(clamped, Scorch) && scorchColor == ScorchColor)
+            return;
+
+        Scorch = clamped;
+        ScorchColor = scorchColor;
+        QueueRedraw();
+    }
     public bool HasSupportContact { get; private set; }
     public int SupportContactCount { get; private set; }
     public int PendingContactCount { get; private set; }
@@ -197,7 +226,7 @@ public partial class PuppetPartBody : RigidBody2D
 
     public override void _Draw()
     {
-        DrawCircle(Vector2.Zero, Radius, FillColor, true, -1.0f, true);
+        DrawCircle(Vector2.Zero, Radius, DrawnFillColor, true, -1.0f, true);
         DrawArc(Vector2.Zero, Radius, 0.0f, Mathf.Tau, CircleSegments, OutlineColor, OutlineWidth, true);
         if (PartId == BuddyPartId.Head && !string.IsNullOrEmpty(_face))
         {

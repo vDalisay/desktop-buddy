@@ -323,7 +323,122 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   hand-attaches it; for the Drink, spawn to a
   completely full buddy, `+5` mood with no stomach filled, and a second can inside the minute
   refused for the timer without costing mood or restarting the wait.
+- The `shotgun_spread` scenario is the M5 Task 9 Shotgun gate, run under seeds `1/7/13`. The
+  cadence half of the slice is a profile table on the shared `GunMachine` — capacity `5`,
+  `108`-tick (`0.9 s`) interval, `240`-tick (`2 s`) reload, `6` pellets — so the scenario spends
+  most of its checks on what is not data. `six_pellets_leave_on_one_press_inside_a_randomized_cone`
+  proves that every shot selects a fresh seeded-random half-angle inside the authored
+  `12–20°` band and every pellet remains inside that shot's cone; five shots must produce
+  more than one cone while a repeated seed reproduces the same sequence.
+  `every_pellet_of_one_press_shares_one_interaction_id` reads the shared identity directly.
+  `point_blank_one_part_scores_exactly_once` is the dedup consequence stated out loud — six
+  pellets into one head are **one** accepted impact, not six — and
+  `a_mid_range_burst_scores_once_per_covered_part` is the other half: a burst that covers `N`
+  parts scores exactly `N` times, one per part, never twice on the same one. That second check
+  fires a volley rather than one shot, for the reason `nerf_versus_pistol` gives — the buddy
+  walks, and establishing a cursor aim costs the best part of half a second — and the dedup
+  invariant is checked on **every** burst that landed while the coverage count comes from the
+  best of them. Measured coverage is `2` parts at seeds `1/7/13` (head plus hand, or torso plus
+  hand); it is reported, never assumed to be six.
+- The same scenario records the Shotgun's **pain band**, which is the number the owner's feel
+  gate tunes against: one solid pellet scores `7.2–9.1` pain (seeds `1/7/13`) against a
+  point-blank pistol bullet's `13.8–13.9` on the same shared curve, and the best two-part burst
+  totals `9.0–26.0`. There is no per-tool damage anywhere; the difference is authored muzzle
+  speed and pellet mass only. It also pins `point_blank_pellets_never_tunnel_through_the_target`
+  (the `pistol_fire` geometric test applied to six bodies at once),
+  `every_shot_ejects_a_red_shell_that_cannot_touch_the_buddy` (the cosmetic casing lane's
+  rules — red shell body, layer `0`, `RoomBounds` mask, a contact probe on the chest that must
+  do nothing, and never a loose-object slot), the click-after-shot pump state and visible
+  forend stroke, `shotgun_knockback_falls_with_travel_but_never_below_the_old_physical_hit`
+  (six point-blank `600` impulses equal twice the Grenade's `1800`, middle distance is lower, and
+  the extra reaches zero without subtracting the original contact), and
+  `the_shotgun_kick_reads_bigger_than_the_pistol_and_never_stacks` (`3.0 px` against the
+  Pistol's `1.5`, three shells back to back peaking inside one envelope).
+- `ContactSettleTicks` is `4` for the Shotgun rather than the Pistol's `2`, and that is a
+  correctness value rather than a taste one: at `2` a pellet that had connected was withdrawn
+  from the world before the solver resolved the real impulse, so a burst the player watched
+  land delivered nothing. Point-blank shots happened to survive it; everything past arm's
+  length did not. Lowering it needs this scenario's coverage leg re-measured, not just a
+  smaller number.
+- The `m5_shotgun` journey repeats the slice through real pointer, button, and key input on
+  seeds `1/7`: the shop still **refuses** a sale because the catalogue entry stays
+  `Visible = false` until the owner's feel gate (the Grenade's leg had exactly this shape
+  before acceptance), the `L` lab key draws a loaded five-shell magazine, pointer travel aims
+  it, one primary press releases six pellets carrying one interaction identity and ejects a
+  red shell, the next real-input click cycles the pump, a burst hurts the buddy and enters
+  harmful memory as `tool.shotgun`, `R` reloads a partial tube, an emptied tube dry-fires into
+  the two-second automatic reload, and Grab holsters it.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
+- The `burning_status` scenario is the Fire Sprayer and Burning gate (M5 Task 7), run under
+  seeds `1/7/13` in both presentation modes. It proves on the real composition that the
+  stream runs only while primary is held and stops on the tick it is released (`60` held
+  ticks emit exactly `15` droplets at the authored `4`-tick interval, and none afterwards);
+  that droplets are bounded by their own `48`-slot pool and never change
+  `LooseObjectRegistry.Count` over a five-second spray; that contact grants `480` ticks and
+  sustained contact pins the remaining duration at the `960`-tick cap without ever exceeding
+  it; and that **a droplet never scores an impact** — every accepted `tool.fire_sprayer`
+  event is a burn tick carrying the burn's own interaction id, so one stream cannot
+  double-dip as both impact pain and burn pain.
+- The same scenario measures the burn economy, because `BurnEquivalentImpulse` is the only
+  authored damage quantity and everything after it is the shared curve. At the authored
+  `430` it scores `4.57` pain per event against the shipped conversion profile: `36.6` over
+  a full four-second burn, `73.1` over a sustained eight-second cap burn, and at most `45.7`
+  inside any rolling five-second window — so `a_single_part_full_cap_burn_never_knocks_out`
+  is proven rather than assumed. The owner-confirmed exception is also exact: all six parts
+  alight together remain conscious through tick `599`, force unconsciousness on tick `600`,
+  and release that hold only when the fire subsides. Mood loss is measured across the single routed tick
+  one event lands on, not across the whole burn, because persistent mood also carries the
+  shared passive drift; on that tick it is exactly `min(10, pain x 0.1)`.
+- Per-part scorch presentation also covers the visual connectors: a hand darkens its arm, a
+  foot its leg, and the head its neck. The same scenario asserts torso scorch does not fan out
+  to every connector.
+- Burning's panic is one snapshot bool, so the scenario asserts it through the *real* ladder:
+  a buddy holding a ball is set alight, priority `3` takes actuation from `ObjectAction`, and
+  the ball is released by the existing higher-priority abort. Burning survives a knockout
+  (a KO'd buddy lies there and keeps taking attributed ticks) and is cleared by the
+  centralized hard reposition, which is the sentence `DECISIONS.md` "Fail-safe cleanup"
+  already promised.
+- FR-017.3 is asserted as a *negative*: the same captured standing pose, pinned so ambient
+  autonomy cannot move it, is sprayed twice under `EffectsSettings.Default` and
+  `EffectsSettings.MostRestrictive`, measured over five whole pain intervals counted from
+  ignition. Both runs produce the same `5` events, the same `22.857` pain, the same `75`
+  droplets and the same burn at the cap; only the drawable-droplet count differs (`48` to
+  `16` under reduced particles). The flicker cap is measured at `3.00 Hz` in both
+  presentation modes while photosensitivity-safe effects are on — which is the shipped
+  default, so the safe look is the normal look and the faster `8 Hz` flicker is the opt-out —
+  and `ScreenShake = false` silences the whole `CameraKickComponent` lane, pistol and grenade
+  kicks included, rather than only this tool's effects.
+- The same scenario covers the scorch marks a burnt buddy carries (owner feedback
+  2026-08-01), measured against the pinned pose because the hold and the fade are exact tick
+  counts and a wandering buddy would be measuring the walk instead. A part in the stream
+  darkens monotonically — sampled `0.002, 0.182, 0.362, 0.542` on the way to the authored
+  `0.72` ceiling — and **only** that part is marked, so a stream that moves from a hand to
+  the head leaves two marks at different strengths rather than darkening the whole buddy.
+  The tint is asserted in both presentations at once: the legacy circle's drawn fill and the
+  3D part's own lit material both leave the authored skin colour, and a part that was never
+  in the stream keeps its exact authored albedo. Letting the fire go out naturally, the mark
+  holds at full strength for the whole authored `1200`-tick hold and then fades to clean skin
+  in `597` of its authored `600`, with the 3D albedo landing back on exactly the authored
+  colour rather than near it. A hard reposition wipes a mark that has not finished fading,
+  on the same `Clear()` entry point that puts the burn itself out.
+- The Fire Sprayer presentation check requires a visible cylindrical canister and a live
+  shader-backed cloud with positive upward vapor lift while spraying. These remain visual
+  assertions; the settings-parity check continues to pin identical gameplay.
+- The Burning presentation keeps two shader-cloud fire puffs on every part touched during the
+  current episode and sends older puffs upward as smoke. The panic check also requires both
+  panic-hand targets and an authored locomotion multiplier above `1.0` (`1.35` currently),
+  while the ordinary burn pain and settings-parity assertions remain unchanged.
+- The `m5_fire_sprayer` journey repeats the slice through real pointer, button, and key input
+  on seeds `1/7`, in both presentation modes: the catalogue carries `tool.fire_sprayer` at
+  its authored price but does **not** advertise it (the entry stays `Visible = false` until
+  the owner's feel gate passes, so the leg asserts today's real promise and flips to a sale
+  by editing one authored flag); the `S` key draws it — `S` rather than the plan's suggested
+  `H`, which already toggles the laboratory telemetry panel; pointer motion aims it on the
+  shared cursor-weapon convention; holding primary sprays a stream that sets the buddy
+  alight; the burn hurts and pays (`4.57` pain per event) and enters harmful memory; the
+  burning buddy panics at priority `3`; releasing primary stops the stream on the tick it is
+  let go, which is this tool's whole cancel path; and holstering the sprayer does not put the
+  fire out.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - The `baseball_pullback` scenario drives Baseball through the real pointer input path and
   verifies key-`5` cursor spawning without selection changes, single-ball replacement,

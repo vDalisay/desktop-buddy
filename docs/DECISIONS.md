@@ -1383,6 +1383,193 @@ mode.
 - **Provisional feel values:** receive walk `600` ticks, receive pause `120` ticks, wall-turn
   distance `72 px`, turn hold `60` routed ticks. These are Resource-authored and remain part
   of the Task E feel gate.
+## Fire Sprayer and Burning (M5 Task 7)
+
+**Owner-accepted 2026-07-31, pre-implementation.** All four rules below were decided before
+any code was written, so the implementation carried them out rather than proposing them. The
+owner's feel gate still owns the *tuning* — the numbers — but these rules are settled.
+
+1. **A single-part full burn never knocks the buddy out through pain alone.** Even a
+   sustained eight-second cap burn peaks below the `100`-pain rolling window. Implemented and proven rather than
+   assumed: `BurnEquivalentImpulse = 430` scores `4.57` pain per event against the shipped
+   conversion profile, so a rolling five-second window holds at most ten events — `45.7`.
+   A four-second burn totals `36.6` and a sustained cap burn `73.1`.
+2. **The sprayer has no ammunition, heat, or duration limit.** Primary may be held forever.
+   The specification is silent for the sprayer and a fuel gauge would be new UI for no
+   requested reason, so the tool is authored with no magazine, no reload, and no press edge —
+   which is also why it is *not* a `GunProfile`: `GunMachine` is a press-edge cadence and
+   magazine machine, and forcing the sprayer through it would mean authoring a fake capacity
+   nobody ever sees.
+3. **Fire does not spread.** Only the buddy burns. Objects, walls, and the room are not
+   flammable, and a burning buddy ignites nothing it touches.
+4. **The stream pushes nothing.** Droplet mass is cosmetically tiny and droplets collide with
+   `RoomBounds | BuddyParts` only, so they cannot disturb a loose object or each other. The
+   sprayer harms through Burning and has no knockback lane at all.
+
+**Burning is the only harm lane.** A droplet's buddy contact does exactly two things: it
+refreshes the burn and it records which part is alight. It never reaches the contact pipeline
+as an impact source, so a stream can never double-dip as both impact pain and burn pain — the
+`burning_status` scenario asserts that every accepted `tool.fire_sprayer` event carries the
+burn's own interaction id. Pain arrives only on the burn's own cadence, through the same
+contact-free `ApplyBlastImpulse` entry the grenade blast uses, so the shared curve, the
+knockout window, the payout, the harmful memory and the `min(10, pain x 0.1)` mood loss are
+untouched machinery. One burn is one interaction id, re-minted when a lapsed burn reignites.
+
+**Panic is one snapshot bool.** `BehaviorPriority.Hazard` was already reserved and plumbed, so
+Burning sets `BehaviorSnapshot.HazardPresent` and the existing ladder does the rest: priority
+`3` outranks `ObjectAction`, so a committed catch or eat aborts through the existing
+higher-priority abort — which *is* "drops held items" — and stays below `Unconscious`, so a
+knocked-out burning buddy lies there and burns. No new behavior system exists in this slice.
+
+**Owner feel-gate rule 2026-08-01: all six parts alight for five continuous seconds forces
+unconsciousness until the fire subsides.** The threshold is `600` routed ticks. It is a
+separate status hold, not an invented pain multiplier: the shared rolling-pain model remains
+unchanged, and the fire hold cannot wake the buddy early if its ordinary knockout is still
+active. At `599` ticks the buddy remains conscious; tick `600` forces unconsciousness; natural
+burn expiry or explicit fire cleanup releases only this hold.
+
+**Scorch propagates from an endpoint to its own visual connector only.** A scorched hand
+darkens its adjacent arm, a foot its leg, and the head its neck. Torso scorch alone does not
+darken every connector, so there is no torso-to-whole-rig propagation.
+
+**The FR-017.3 effects seam ships here, not in the M7 accessibility pass.** `ProgressSave`
+already carried `ReducedMotion`, `ScreenShake`, `ReducedParticles` and `PhotosensitivitySafe`
+with nothing reading them. This slice adds the `EffectsSettings` snapshot the composition root
+hands to presentation components, because a shipped effect that ignores the setting is exactly
+what FR-017.3 forbids. Two consequences worth recording:
+
+- **Gameplay never reads it.** The `burning_status` scenario sprays one pinned pose twice
+  under the permissive and the most restrictive settings and asserts identical events, pain,
+  mood and droplets, with only the drawable-droplet count differing. Determinism must not vary
+  with accessibility.
+- **`ScreenShake = false` now silences the whole `CameraKickComponent` lane**, pistol and
+  grenade kicks included. Shipping the seam while leaving the one existing shake setting dead
+  would have been absurd; it is flagged here rather than done silently.
+
+**Selection key `S`, not `H`.** The Task 7 plan suggested `H` from what it believed was the
+free map. `H` already toggles the laboratory telemetry panel, and one key doing two unrelated
+things is the kind of collision that only surfaces half-way through a tuning session.
+
+**Owner feel gate, first pass (2026-08-01).** The owner played the slice in the laboratory
+and accepted the mechanics and the timing as they stand; the feedback was entirely about how
+it looks. Three changes, none of which touch the droplet physics, the fan geometry, the
+ignition path, or the burn economy — `burning_status`'s measured numbers are unmoved:
+
+- **A real flamethrower model.** `SprayerMeshBuilder` builds a clean-room silhouette on
+  exactly the guns' vertex-coloured-box idiom, and `CursorSprayerVisual3D` follows the cursor
+  and the aim the way `CursorGunVisual3D` does, including the determinant-positive roll for a
+  left-handed aim. It reads apart from the two pistols by shape rather than by colour — a fat
+  pressure canister slung behind and above the grip, a slim wand running well forward, a
+  flared nozzle ring, and a pilot-light bead. The flat silhouette still carries legacy mode,
+  and only one of the two is ever drawn.
+- **The stream is a mist, not a row of pellets.** Each live droplet now carries a stack of
+  soft, semi-transparent puffs in legacy and one additive billow in 3D, born small and hot at
+  the nozzle and swelling and cooling toward `SmokeColor` as it ages, so overlapping droplets
+  blend into one smoky column. `MistSpreadFactor` is a drawn size only: the collider is still
+  the authored `1.5 px` circle, so the weapon looks like fire and hits exactly as it did.
+- **Progressive per-part scorch.** A part in the stream darkens toward `ScorchColor`, and the
+  longer it burns the darker it gets, up to an authored `MaxScorchDarkness` of `0.72` — below
+  one on purpose, because a fully black limb reads as a hole in the buddy rather than a burnt
+  one, and because the buddy cannot be permanently damaged. The mark then **holds for 10 s and
+  fades over the following 5 s**, both authored. The rules are real state, so they live in
+  `ScorchStateModel` in Domain with their own unit table, and `ScorchPresenter` is a thin
+  driver that writes through the channels that already decide a part's skin colour: the
+  per-part lit material the library gives every mesh its own instance of, and the legacy
+  circle's drawn fill. It is per part, not per buddy — a stream that moves from a hand to the
+  head leaves two marks at different strengths. Nothing gameplay reads it, the outline shell
+  and the pose pipeline are untouched, and the fail-safe hard reposition wipes it on the same
+  `Clear()` entry point that puts the burn out.
+
+**Feel gate outstanding.** `data/catalogue/tool_fire_sprayer.tres` stays `Visible = false`
+until the owner plays it on real Windows, so the `m5_fire_sprayer` journey's catalogue leg
+asserts today's real promise — carried at its authored price, not advertised — and flips to a
+sale by editing one authored flag.
+
+**Owner feel gate, second pass (2026-08-01).** The owner kept the mechanics and requested a
+presentation-only revision: the fuel canister must read clearly, and the emitted fire must be
+a large foamy cloud rather than discrete puffs. The stream now uses a procedural shader to
+blend a hot core into smoky breakup, follows the existing physical forward stream, and gains
+presentation-only upward vapor lift. The model carries a separate cylindrical fuel canister.
+Ignition geometry, droplet physics, burn timing, pain, payout, and panic remain unchanged.
+
+**Owner feel gate, third pass (2026-08-01).** The separate fuel canister was oversized and
+intersected the box-built tank, exposing a red blob only when aiming right. The duplicate tank
+volume is removed; one smaller neutral rounded canister now sits on the weapon's zero-depth
+plane and remains symmetric under the existing determinant-positive left roll.
+
+Burning presentation now uses the stream's procedural fire/smoke shader on every part touched
+during the current burn episode. Two hot puffs stay on each lit part while older puffs rise and
+cool into a smoke trail. A touched part remains visually alight until the burn ends; this does
+not change which most-recent part receives the burn's attributed pain event. While Burning owns
+the hazard layer, locomotion is authored at `1.35x` and both free arms reuse the accepted
+grab-resistance panic-flail arc at full strength. No new behavior or damage lane exists.
+## Shotgun — Even Fan, Coverage Damage, and the Shared Shot Identity (M5 Task 9, 2026-07-31)
+
+The owner accepted all three of `docs/M5_TASK9_SHOTGUN_PLAN.md` §3's defaults on 2026-07-31,
+**before** implementation, so they are rules rather than proposals. The Shotgun's authored
+contract is unchanged from §9.2 above: `6` pellets, `5` shells, `0.9 s` cadence, `2 s` reload,
+unlimited reserve.
+
+- **The pellet fan is even and deterministic, not random scatter.** The platform already fanned
+  a multi-projectile shot across `SpreadHalfAngleDegrees` by index fraction, and that is now the
+  recorded rule: a replayed seed reproduces a shot exactly, and a scenario can state where every
+  pellet went. (The alternative considered and rejected: seeded per-shot jitter drawn from the
+  simulation's random source.)
+- **One shot into one part scores once.** Every pellet of one trigger pull carries **one**
+  interaction identity, so the impact router's `(SourceInteractionId, TargetPartId)` episode key
+  makes six simultaneous pellets on one part a single contact episode. This is the recorded
+  interpretation of the §7.1–7.2 dedup rules for spread weapons, and it has a consequence worth
+  stating plainly: **point-blank damage into a single part is one pellet's worth, not six.** A
+  shotgun's damage comes from *coverage* — pellets across `N` parts open `N` episodes and score
+  `N` times — so mid-range against a spread-eagled buddy out-damages a point-blank shot into a
+  fingertip, and a knockout needs two committed bursts. (The alternative considered and
+  rejected: per-pellet identities, which would make it a six-fold point-blank one-shot weapon.)
+  Single-projectile guns are untouched: they pass no shared identity and mint one per launch
+  exactly as they always have.
+- **A reload ejects a cosmetic shell** on the existing dropped-magazine lane — pooled, on no
+  collision layer, masked only against the room bounds, never a loose object, and never able to
+  touch the buddy. It is authored as the magazine visual for now, which §3.3 permits.
+
+Two engineering values were set by measurement during implementation and are recorded here
+because both are load-bearing rather than taste:
+
+- **`ContactSettleTicks` is `4`, not the Pistol's `2`.** At `2`, a pellet that had connected was
+  taken out of the world before the solver resolved the real impulse, and a burst the player
+  watched land delivered nothing at all. Point-blank shots happened to survive it; everything
+  past arm's length did not.
+- **`ProjectileMass` is `0.20` at `2200 px/s`,** tuned against the shared curve to the plan's
+  §2.3 pain target and nothing else. Measured on seeds `1/7/13`: one solid pellet `7.2–9.1`
+  pain against a point-blank pistol bullet's `13.8–13.9`, and a two-part burst `9.0–26.0`. There
+  is still no per-tool damage multiplier anywhere.
+
+`PoolCapacity` is `36` rather than the plan's suggested `24`: `GunProfile.Validate` already
+requires the pool to cover a whole magazine in flight, which for this gun is `5 x 6 = 30`.
+
+**Owner gate: NOT YET PLAYED.** `data/catalogue/tool_shotgun.tres` stays `Visible = false` at
+its provisional `100` credits until the owner plays the slice, and the `m5_shotgun` journey
+asserts that refusal — the shape the Grenade's leg had before its own acceptance.
+
+## Shotgun Owner Feedback — Scatter, Pump, Shells, Stock, and Knockback (2026-08-01)
+
+This owner feedback supersedes the Task 9 even-fan and reload-ejected-shell choices above.
+
+- Every shot selects a new seeded-random spread half-angle between `12°` and `20°`; each of
+  its six pellets independently selects an angle inside that shot's cone. Seeded runs remain
+  replayable, but successive shots no longer repeat one fixed ladder.
+- Every fired shot ejects one pooled cosmetic red shotgun shell. Reloading ejects no magazine.
+- The primary click after a shot cycles the pump over `24` routed ticks and chambers the next
+  shell; that click cannot fire. The forend follows the stroke in both presentation modes.
+- Each pellet adds distance-falling knockback without changing pain. At point blank the six
+  authored `600` impulses total `3600`, twice the Grenade's `1800` center shove, when all
+  connect. The extra
+  shove reaches zero by `260 px`, leaving the projectile's former physical contact response as
+  the minimum, never reducing it.
+- The procedural Shotgun stock is doubled lengthwise behind the cursor and gains restrained
+  receiver/butt details; no imported model or new asset dependency is introduced.
+
+The owner played this revision on 2026-08-01, liked the changes, and doubled only the maximum
+point-blank knockback from `300` to `600` per pellet. Falloff distances and the physical-hit
+floor are unchanged.
 
 ## Planning Rule
 

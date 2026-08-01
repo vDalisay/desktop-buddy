@@ -38,6 +38,7 @@ public partial class CameraKickComponent : Node
     private int _ticks;
     private int _duration;
     private bool _kicking;
+    private bool _screenShakeEnabled = true;
 
     /// <summary>The offset in force right now, in world pixels.</summary>
     public Vector2 CurrentOffsetPx { get; private set; }
@@ -52,6 +53,21 @@ public partial class CameraKickComponent : Node
 
     public bool IsKicking => _kicking;
 
+    /// <summary>
+    /// Whether the Screen Shake setting currently lets this lane move anything (FR-017.3,
+    /// FR-017.8). Shipping the M5 Task 7 effects seam while leaving the one existing shake
+    /// setting dead would be absurd, so the setting is honoured here for every kick — the
+    /// pistol's and the grenade's — rather than only for the tool that built the seam.
+    /// </summary>
+    public bool ScreenShakeEnabled => _screenShakeEnabled;
+
+    public void ApplyEffectsSettings(Domain.Presentation.EffectsSettings settings)
+    {
+        _screenShakeEnabled = settings.ScreenShake;
+        if (!_screenShakeEnabled && _kicking)
+            Restore();
+    }
+
     public void ResetPeak() => PeakOffsetPx = 0.0f;
 
     /// <summary>
@@ -60,6 +76,12 @@ public partial class CameraKickComponent : Node
     /// </summary>
     public void Kick(float amplitudePx, int decayTicks)
     {
+        if (!_screenShakeEnabled)
+        {
+            // Silenced, not queued: a kick the player turned off never happened.
+            return;
+        }
+
         if (!float.IsFinite(amplitudePx) || amplitudePx <= 0.0f || decayTicks <= 0)
             return;
 

@@ -112,11 +112,13 @@ public sealed class GunVisualsScenario : IScenario
             $"left_det={left.VisualBasisDeterminant:F3}"));
 
         // --- Rounds leave the barrel the player can see ---
-        // Both guns, because the muzzle is authored per profile and the agreement between
-        // the drawn barrel and the launch point is the thing being checked.
+        // Every gun, because the muzzle is authored per profile and the agreement between
+        // the drawn barrel and the launch point is the thing being checked. The Shotgun's
+        // pellets are all born at that one muzzle, so a spread gun answers this the same
+        // way a single-bullet one does.
         var muzzleReport = new List<string>();
         bool bornAtMuzzle = true;
-        foreach (ToolId tool in new[] { ToolId.NerfBlaster, ToolId.Pistol })
+        foreach (ToolId tool in new[] { ToolId.NerfBlaster, ToolId.Pistol, ToolId.Shotgun })
         {
             await SelectAndAim(tree, lab, gun, tool, bench, Vector2.Right);
             Sighting sighting = Read(lab, gun, visual, is3D);

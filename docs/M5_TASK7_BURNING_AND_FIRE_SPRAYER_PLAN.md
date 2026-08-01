@@ -1,6 +1,6 @@
 # M5 Task 7 — Burning + Fire Sprayer Plan
 
-**Status: PLAN — written 2026-07-31, not yet implemented.** Refines the master plan's
+**Status: IMPLEMENTED 2026-08-01 through Task E; Task F's owner feel gate is outstanding.** Written 2026-07-31. Refines the master plan's
 Task 7 stub (`M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`) to handoff fidelity, the same way
 `M5_TASK5_GUN_FEEL_AND_REAL_PISTOL_PLAN.md` and `M5_TASK6_GRENADE_PLAN.md` did for their
 slices. Authoritative contracts: RAGDOLL §9.1 (shared cursor-weapon aim), §9.2 Fire
@@ -142,7 +142,7 @@ ignitionPart, BurnEquivalentImpulse, partWorldPoint)`:
   later), and the `min(10, pain × 0.1)` mood loss.
 - `BurnEquivalentImpulse` provisional **200** — tune at Task C to **3–6 pain per
   event**, giving a full 4 s burn ≈ 25–45 total pain and a sustained 8 s cap burn
-  ≈ 55–90: painful, profitable, and **never a knockout by itself** (§3 default 1).
+  ≈ 55–90: painful, profitable, and **never a pain-driven knockout by itself** (§3 default 1).
 - Burning **survives knockout** (master-plan check): the model keeps ticking and events
   keep applying under the existing unconscious-buddy rules — the same "a blast cannot
   retrigger a running knockout" behavior the grenade documented.
@@ -217,7 +217,7 @@ All four defaults below are owner decisions, not provisional guesses. Record the
 `DECISIONS.md` at Task F's bookkeeping as accepted 2026-07-31; the feel gate still
 owns the *tuning* (numbers), but these *rules* are settled.
 
-1. **A full burn never KOs by itself.** Even a sustained 8 s cap burn peaks below the
+1. **A single-part full burn never KOs through pain by itself.** Even a sustained 8 s cap burn peaks below the
    100-pain rolling window. (Alternative: hotter — a max burn alone can KO.)
 2. **The sprayer has no ammunition, heat, or duration limit** — hold primary forever.
    Guns author "unlimited reserve"; the spec is silent for the sprayer, and a fuel
@@ -248,7 +248,7 @@ the numbers **in this section** (grenade-plan style).
 mood delta = `min(10, pain × 0.1)` per event, payout attributed `tool.fire_sprayer`,
 harmful memory entered), `a_burning_buddy_drops_its_ball_and_panics` (real ladder:
 held object released via priority-3 abort, hazard layer active),
-`burning_survives_knockout_but_not_hard_reposition`, `a_full_cap_burn_never_knocks_out`
+`burning_survives_knockout_but_not_hard_reposition`, `a_single_part_full_cap_burn_never_knocks_out`
 (§3 default 1 proven, not assumed). Seeds 1/7/13.
 
 **Task D — Presentation, FR-017.3 seam, audio.** §2.5 complete, both presentation
@@ -266,6 +266,87 @@ journey (catalogue leg per the current visibility state — grenade-journey prec
 select by key, real pointer spray, burn, panic, release-stops-spray cancel leg).
 Register in `ScenarioCatalog`, `TEST_PLAN.md`, quick suite.
 *Accept:* journey green seeds 1/7, both presentations; quick suite grows by exactly 2.
+
+### Implementation notes (2026-08-01)
+
+Where the build differs from the plan as written, and why:
+
+- **Selection key `S`, not `H`.** `H` already toggles the laboratory telemetry panel, which
+  the plan's "free map" missed. One key doing two unrelated things is the kind of collision
+  that only surfaces half-way through a tuning session.
+- **`BurnEquivalentImpulse` tuned `200 → 430`.** `200` sits below the shipped conversion
+  profile's `350` minimum impulse and would have scored nothing at all. At `430` one event is
+  `4.57` pain: `36.6` over a four-second burn, `73.1` over a sustained eight-second cap burn,
+  and at most `45.7` inside any rolling five-second window against the `100`-pain threshold.
+  Squarely inside the plan's 3–6 band, and §3 default 1 is proven rather than assumed.
+- **The lateral fan is an eight-wide triangle wave** (`-1, -0.5, 0, +0.5, +1, +0.5, 0, -0.5`)
+  rather than the plan's unspecified period, chosen because it is symmetric about the aim.
+  Still purely index-driven, so a replayed seed reproduces the stream exactly.
+- **The mood assertion is per-event, not per-burn.** Persistent mood also carries the shared
+  passive drift, which over a burn-length window is larger than the thing being checked, so
+  the scenario measures the single routed tick one event lands on and finds exactly
+  `min(10, pain x 0.1)`.
+- **The FR-017.3 comparison pins the buddy.** Ambient autonomy walks the buddy between the two
+  probes, so without a pinned captured pose the check would be measuring the walk rather than
+  the settings. Both probes are also anchored on ignition rather than on the tick the stream
+  starts, because how long the first droplet takes to connect depends on where in its fan the
+  stream happens to be — a property of the stream, not of the settings.
+- **`FireSprayerComponent` exposes `AimIsSteering`/`AimSmoothedSpeed`** like the gun does. The
+  journey's shared `AimAtPointAsync` waits for the live weapon's aim to come to rest before
+  the approach begins; without it the jump to the start of the walk establishes the aim
+  pointing backwards and the bounded slew never recovers inside the walk.
+- **Presentation counters are computed, not drawn.** A headless run never paints, so the
+  reduced-particles oracle is `FireSprayerComponent.DrawEnabledDropletCount` rather than a
+  draw counter.
+
+### Owner feel-gate pass 1 (2026-08-01) — presentation only
+
+The owner played it and accepted the mechanics and the timing; the feedback was entirely
+about the look. Recorded in full in `DECISIONS.md`. In short: a real 3D flamethrower on the
+guns' mesh-builder idiom, the stream redrawn as a billowing smoky mist in both presentation
+modes, and progressive per-part scorch darkening with a 10-second hold and a 5-second fade.
+The scorch rules are real state, so they went into `ScorchStateModel` in Domain with their own
+unit table rather than into the presenter; `ScorchPresenter` only reads the resulting number
+and writes it through the per-part lit material and the legacy fill that already decide a
+part's skin colour. None of it touches the droplet physics, the fan geometry, the ignition
+path, or the burn economy — `burning_status`'s measured numbers are unmoved.
+
+### Owner feel-gate pass 2 (2026-08-01) — shader cloud and canister
+
+The remaining ball-like 3D puffs are replaced by a procedural hot-fire-to-smoke shader and
+overlap into one foamy stream. Older drawable puffs lift upward as vapor without moving their
+colliders, and a separate cylindrical fuel canister makes the tank unambiguous. The
+`burning_status` scenario pins the shader, lift, and canister seams.
+
+### Owner feel-gate pass 3 (2026-08-01) — body fire and panic
+
+The right-facing red blob was intersecting duplicate canister geometry. The box tank is gone;
+the one retained rounded canister is smaller, neutral, and centered at zero depth. Each part
+touched in the current burn now carries the stream's shader cloud with a rising smoke trail.
+The existing hazard drive reuses the accepted panic-hand arc and runs at an authored `1.35x`
+locomotion scale. Burn physics, attribution, timing, and economy remain unchanged.
+
+### Owner feel-gate pass 4 (2026-08-01) — full-body knockout and limb scorch
+
+When all six physical parts have remained alight together for `600` routed ticks, Burning
+holds the buddy unconscious until the fire ends. This is a status hold through the existing
+damage/consciousness component, not added pain. Scorch on a hand, foot, or head also darkens
+only its adjacent arm, leg, or neck connector; torso scorch does not spread to every limb.
+The `burning_status` scenario pins the `599/600` boundary, wake-on-expiry, endpoint connector
+tint, and torso non-propagation.
+
+### Validation sweep (2026-08-01)
+
+- `dotnet test`: **1036 passed, 0 failed** (baseline `999`; +18 `BurningStatusModelTests`,
+  +19 `ScorchStateModelTests` after the feel-gate pass).
+- `tools\quick_validate.bat`: **passed**, now 30 steps.
+- `burning_status` (now 21 checks): seed `1` green in `Mii3D` after feel-gate pass 4;
+  prior seeds `1/7/13` green in `Mii3D` and `1/7` green in legacy.
+- `m5_fire_sprayer`: seeds `1/7` green in `Mii3D`; seeds `1/7` green in legacy.
+- Neighbours unchanged: `pistol_fire` (1), `nerf_versus_pistol` (7), `grenade_fuse` (1, 13),
+  `object_toss_discard` (7), `behavior_priority_ladder` (1, 13), `boot_smoke` (1), and the
+  `m5_pistol` journey (1). Presentation regressions after the feel-gate pass:
+  `presentation_3d` (1) and `gun_visuals` (1) green.
 
 **Task F — Feel gate + bookkeeping.** Owner plays it on real Windows. Then: DECISIONS
 entry (the four §3 defaults as accepted/vetoed + the settings-seam scope), TEST_PLAN
