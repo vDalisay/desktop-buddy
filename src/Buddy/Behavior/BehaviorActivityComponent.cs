@@ -16,6 +16,8 @@ public partial class BehaviorActivityComponent : Node
 
     [Export] public BehaviorActivityProfile Profile { get; set; } = null!;
 
+    private ConsumeGesture _gesture;
+
     public ActivityId Current { get; private set; } = ActivityId.None;
     public int RemainingTicks { get; private set; }
     // Refusing is performed standing still, so it shares the stationary gate — but NOT the
@@ -37,9 +39,18 @@ public partial class BehaviorActivityComponent : Node
         ? Mathf.Clamp(1.0f - (RemainingTicks / (float)Profile.RefuseDurationTicks), 0.0f, 1.0f)
         : 0.0f;
     public int EatBitesCompleted { get; private set; }
-    public int EatBiteCount => Profile.EatBiteCount;
+
+    /// <summary>
+    /// Care steps the running gesture takes. Five for the Meal's bites, one for the Drink's
+    /// single raise (owner instruction 2026-08-01) -- the schedule is authored per item, so
+    /// this is the gesture's number rather than the profile's.
+    /// </summary>
+    public int EatBiteCount => _gesture.IsValid ? _gesture.StepCount : Profile.EatBiteCount;
+
+    /// <summary>The gesture the current (or next) Eat runs.</summary>
+    public ConsumeGesture Gesture => _gesture;
     public float EatItemScale => Current == ActivityId.Eat
-        ? Mathf.Clamp(1.0f - (EatBitesCompleted / (float)Profile.EatBiteCount), 0.0f, 1.0f)
+        ? Mathf.Clamp(1.0f - (EatBitesCompleted / (float)EatBiteCount), 0.0f, 1.0f)
         : 0.0f;
     public float EatCycleProgress { get; private set; }
     public float EatLift { get; private set; }
@@ -50,7 +61,30 @@ public partial class BehaviorActivityComponent : Node
     {
         if (!GodotObject.IsInstanceValid(Profile) || Profile.Validate().Count > 0)
             throw new InvalidOperationException("BehaviorActivityComponent requires a valid profile.");
+        _gesture = DefaultGesture;
         IsInitialized = true;
+    }
+
+    /// <summary>The authored Meal schedule, and the fallback for anything that authors none.</summary>
+    public ConsumeGesture MealGesture => DefaultGesture;
+
+    private ConsumeGesture DefaultGesture => ConsumeGesture.Bites(
+        Profile.EatChestHoldTicks,
+        Profile.EatBiteCount,
+        Profile.EatBiteCycleTicks,
+        Profile.EatBiteMoment,
+        Profile.EatFinalLowerHoldTicks);
+
+    /// <summary>
+    /// Chooses the schedule the next Eat runs. Called by the object worker from the item's own
+    /// profile immediately before <see cref="SetActivity"/>; an invalid one falls back to the
+    /// Meal's, so a malformed drink is slow rather than broken.
+    /// </summary>
+    public void SetConsumeGesture(ConsumeGesture gesture)
+    {
+        if (!IsInitialized)
+            throw new InvalidOperationException("BehaviorActivityComponent used before initialization.");
+        _gesture = gesture.IsValid ? gesture : DefaultGesture;
     }
 
     public void SetActivity(ActivityId activity)
@@ -73,9 +107,7 @@ public partial class BehaviorActivityComponent : Node
         EatFinalLowering = 0.0f;
         RemainingTicks = activity switch
         {
-            ActivityId.Eat => Profile.EatChestHoldTicks +
-                (Profile.EatBiteCount * Profile.EatBiteCycleTicks) +
-                Profile.EatFinalLowerHoldTicks,
+            ActivityId.Eat => _gesture.TotalTicks,
             ActivityId.Refuse => Profile.RefuseDurationTicks,
             _ => Profile.WaveDurationTicks,
         };
@@ -99,51 +131,24 @@ public partial class BehaviorActivityComponent : Node
 
     public void Interrupt() => Clear();
 
+    /// <summary>
+    /// Plays one routed tick of the running consume gesture. The schedule itself -- windows,
+    /// easing, and which tick a care step lands on -- lives in the engine-free
+    /// <see cref="ConsumeGesture"/>; this only holds the counter and raises the event.
+    /// </summary>
     private void TickEat()
     {
-        int biteSequenceTicks = Profile.EatBiteCount * Profile.EatBiteCycleTicks;
-        int totalTicks = Profile.EatChestHoldTicks + biteSequenceTicks +
-            Profile.EatFinalLowerHoldTicks;
-        int elapsed = totalTicks - RemainingTicks;
-        if (elapsed < Profile.EatChestHoldTicks)
-        {
-            EatCycleProgress = 0.0f;
-            EatLift = 0.0f;
-            EatFinalLowering = 0.0f;
+        int elapsed = _gesture.TotalTicks - RemainingTicks;
+        ConsumeGestureSample sample = _gesture.Sample(elapsed, EatBitesCompleted);
+        EatCycleProgress = sample.CycleProgress;
+        EatLift = sample.Lift;
+        EatFinalLowering = sample.FinalLowering;
+
+        if (sample.CompletedSteps <= EatBitesCompleted)
             return;
-        }
 
-        int eatingTick = elapsed - Profile.EatChestHoldTicks;
-        if (eatingTick >= biteSequenceTicks)
-        {
-            EatCycleProgress = 1.0f;
-            EatLift = 0.0f;
-            EatFinalLowering = 1.0f;
-            return;
-        }
-
-        int cycleTick = eatingTick % Profile.EatBiteCycleTicks;
-        EatCycleProgress = cycleTick / (float)Profile.EatBiteCycleTicks;
-
-        // Smooth chest-to-mouth lift, a short bite hold, then return to the chest.
-        EatLift = EatCycleProgress switch
-        {
-            < 0.35f => Mathf.SmoothStep(0.0f, 1.0f, EatCycleProgress / 0.35f),
-            < 0.68f => 1.0f,
-            _ => Mathf.SmoothStep(1.0f, 0.0f, (EatCycleProgress - 0.68f) / 0.32f),
-        };
-
-        EatFinalLowering = EatBitesCompleted >= Profile.EatBiteCount &&
-            EatCycleProgress >= 0.68f
-            ? Mathf.SmoothStep(0.0f, 1.0f, (EatCycleProgress - 0.68f) / 0.32f)
-            : 0.0f;
-
-        int biteTick = Mathf.RoundToInt(Profile.EatBiteMoment * Profile.EatBiteCycleTicks);
-        if (cycleTick == biteTick && EatBitesCompleted < Profile.EatBiteCount)
-        {
-            EatBitesCompleted++;
-            EatBiteCompleted?.Invoke(EatBitesCompleted, Profile.EatBiteCount);
-        }
+        EatBitesCompleted = sample.CompletedSteps;
+        EatBiteCompleted?.Invoke(EatBitesCompleted, _gesture.StepCount);
     }
 
     private void Clear()

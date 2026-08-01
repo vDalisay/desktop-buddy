@@ -213,6 +213,39 @@ message, never silently absorbed.
    out of scope ("anything more is out of scope"; final art is M7). The ball is authored white
    with a black outline as the table asks.
 
+## 7. Owner feedback pass (2026-08-01)
+
+Three instructions arrived after the slice above landed; all three are implemented on this
+branch and recorded in `DECISIONS.md` under "Soccer Ball Trap and Kick, the Drink's Single
+Raise, and Both 3D Models". In short:
+
+1. **The soccer loop** — roll → foot trap → one-second dwell → kick back at a seeded straight
+   or slightly lofted angle. The decision lives in `Domain/Autonomy/SoccerPlayModel` (40 unit
+   tests); `src/` only reads the ball, marks it reserved, and turns the intent into one bounded
+   `ObjectDriveCommand`. Tuning is `data/objects/soccer_play.tres`, referenced by the ball's
+   profile alone.
+2. **The Drink's single raise** — `Domain/Presentation/ConsumeGesture` now owns both consume
+   schedules (18 unit tests). The Meal's is the M4 arithmetic restated exactly; the Drink
+   authors `SingleRaise` with a `60`-tick raise and a `240`-tick hold.
+3. **Both 3D models** — `Presentation3D/LooseObjectVisual3D` and `LooseObjectMeshBuilder`,
+   opted into by `LooseObjectProfile.Visual3D`. Clean-room placeholder art until M7.
+
+**Measured:** trap at `234 px/s` approach, `119`/`120` dwell ticks with the ball at `0.00 px/s`
+throughout, kick at exactly `520 px/s` with the gap going `52 → 171 px`, loft `12°` on seed `1`
+and `24°` on seeds `7`/`13`; drink raised once and held `244` ticks against the authored `240`.
+
+**Sweep:** domain suite `1057/1057` (was `999`, plus 40 soccer and 18 gesture rows);
+`soccer_and_drink` 15 checks on seeds `1/7/13` and both presentation modes; both journeys on
+seeds `1/7` and both modes; `meal_consume`, `consume_care_cooldown`, `activity_clips`,
+`baseball_pullback`, `grenade_fuse`, and `object_budget` unmoved; `quick_validate.bat` 31 steps
+green.
+
+**Note for the merge:** Task 7's `EffectsSettings` seam (FR-017.3) is not on this branch, so
+none of the above reads it. The new visuals are plain meshes with no particles, shake, or
+motion effects, so there is nothing here that a reduced-motion setting would need to gate —
+but if the seam later grows a "reduced detail" axis, `LooseObjectVisual3D.SetPresentationActive`
+is the one place that would consume it.
+
 **Left for the owner (Task E):** the feel gate itself. Bounce `0.65`, the roll damping, and
 the ball's launch tuning are the numbers the gate owns; the rules behind them are settled per
 §3 and recorded in `DECISIONS.md`. Flipping either `Visible` flag is the owner's word alone,

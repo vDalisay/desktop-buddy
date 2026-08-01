@@ -57,6 +57,7 @@
 [ext_resource type="Resource" path="res://data/objects/soccer_ball.tres" id="57_soccer_object"]
 [ext_resource type="Resource" path="res://data/objects/drink.tres" id="58_drink_object"]
 [ext_resource type="Script" path="res://src/Presentation3D/GrenadeVisual3D.cs" id="54_grenade_visual"]
+[ext_resource type="Script" path="res://src/Presentation3D/LooseObjectVisual3D.cs" id="59_object_visual"]
 [ext_resource type="Script" path="res://src/Tools/GrenadeVisual2D.cs" id="55_grenade_visual_2d"]
 [ext_resource type="Script" path="res://src/Tools/GrenadeAudioComponent.cs" id="56_grenade_audio"]
 
@@ -78,7 +79,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "GrenadeVisualLegacy", "GrenadeAudio", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_sandbox")
 Window = NodePath("DesktopWindowController")
 Shell = NodePath("DesktopShellController")
@@ -95,6 +96,7 @@ CursorGuns = NodePath("CursorGunComponent")
 CursorGunVisual = NodePath("CursorGunVisual3D")
 Grenades = NodePath("GrenadeComponent")
 GrenadeVisual = NodePath("GrenadeVisual3D")
+LooseObjectVisual = NodePath("LooseObjectVisual3D")
 GrenadeVisualLegacy = NodePath("GrenadeVisual2D")
 GrenadeAudio = NodePath("GrenadeAudioComponent")
 CameraKick = NodePath("CameraKickComponent")
@@ -155,6 +157,10 @@ WorldCamera3D = NodePath("../WorldCamera3D")
 [node name="GrenadeVisual3D" type="Node3D" parent="."]
 visible = false
 script = ExtResource("54_grenade_visual")
+
+[node name="LooseObjectVisual3D" type="Node3D" parent="."]
+visible = false
+script = ExtResource("59_object_visual")
 
 [node name="GrenadeVisual2D" type="Node2D" parent="."]
 visible = false

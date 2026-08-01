@@ -30,6 +30,16 @@ public partial class ObjectInteractionComponent : Area2D
     private readonly ObjectCandidate[] _candidates = new ObjectCandidate[LooseObjectRegistry.Capacity];
     private readonly CareConsumableModel _consumables = new();
 
+    /// <summary>
+    /// Distinct stream per consumer family (IRandomSource contract): which way a ball is
+    /// kicked must not be perturbed by, nor perturb, ambient walking or blinking.
+    /// </summary>
+    private const ulong SoccerStreamSalt = 0x50CCE7_BA11_5EEDUL;
+
+    private SoccerPlayModel _soccerPlay = null!;
+    private SoccerPlayIntent _soccerIntent = SoccerPlayIntent.None;
+    private LooseObjectBody? _soccerBall;
+
     private LooseObjectRegistry _registry = null!;
     private BuddyProgressState _progress = null!;
     private Func<string, bool> _isHarmful = null!;
@@ -101,6 +111,33 @@ public partial class ObjectInteractionComponent : Area2D
 
     /// <summary>Catch novelty left after the most recent clean catch, for diagnostics.</summary>
     public float LastCatchInterest { get; private set; } = FunInterestModel.MaximumInterest;
+    /// <summary>The trap/kick beat's phase this tick.</summary>
+    public SoccerPlayPhase SoccerPhase => _soccerPlay?.Phase ?? SoccerPlayPhase.Idle;
+
+    /// <summary>
+    /// True while the trap beat wants arbiter priority 5 (RAGDOLL section 4). The kick tick
+    /// counts even though the model has already returned to idle by then: the one-shot release
+    /// is delivered through the priority-5 drive intent, so giving the band up a tick early
+    /// throws the kick away.
+    /// </summary>
+    public bool SoccerPlayCommitted =>
+        _soccerPlay is { IsCommitted: true } ||
+        _soccerIntent.Command != SoccerPlayCommand.None;
+    public int SoccerTrapCount => _soccerPlay?.TrapCount ?? 0;
+    public int SoccerKickCount => _soccerPlay?.KickCount ?? 0;
+    public int SoccerDwellTicksRemaining => _soccerPlay?.DwellTicksRemaining ?? 0;
+    public float LastSoccerKickLoftDegrees => _soccerPlay?.LastKickLoftDegrees ?? 0.0f;
+    public Vector2 LastSoccerKickVelocity { get; private set; }
+
+    /// <summary>The runtime ID of the ball currently under the foot, or <c>0</c>.</summary>
+    public int TrappedRuntimeId => _soccerPlay?.TrappedRuntimeId ?? 0;
+
+    /// <summary>This tick s reading of the ball the soccer beat is watching, for diagnostics.</summary>
+    public SoccerBallReading LastSoccerReading { get; private set; }
+
+    /// <summary>True while a ball is reserved for the foot and hidden from the catch lifecycle.</summary>
+    public bool SoccerBallReserved { get; private set; }
+
     public int TossCount { get; private set; }
     public int DiscardCount { get; private set; }
     public int DropCount { get; private set; }
@@ -198,6 +235,7 @@ public partial class ObjectInteractionComponent : Area2D
         _progress = progress;
         _isHarmful = progress.IsContentHarmful;
         _model = new ObjectInteractionModel(Profile.ToDomainTuning(), socialTuning);
+        _soccerPlay = new SoccerPlayModel(new SeededRandomSource(SoccerStreamSalt));
         BodyEntered += OnBodyEntered;
         BodyExited += OnBodyExited;
         Activity.EatBiteCompleted += OnEatBiteCompleted;
@@ -255,6 +293,12 @@ public partial class ObjectInteractionComponent : Area2D
         }
 
         int count = BuildCandidates();
+
+        // The soccer beat resolves before the catch lifecycle so that a ball it has claimed can
+        // be marked Ignored -- the existing "leave that one alone" channel -- instead of the two
+        // priority-5 workers contending for the same object.
+        TickSoccerPlay(count, suppressed, conscious);
+
         bool holdConfirmed = IsHolding ? HoldStillIntact() : ResolveCatch();
 
         ObjectIntent intent = _model.Tick(
@@ -267,6 +311,7 @@ public partial class ObjectInteractionComponent : Area2D
             _consumeCompleted);
         _consumeCompleted = false;
         HandleIntent(intent, cursorWorldPosition);
+        ApplySoccerCommand();
 
         // Collision exceptions are ownership/ground-approach state, not interest state.
         // The buddy may watch a player-held or dangerously fast thrown ball, but those
@@ -285,6 +330,14 @@ public partial class ObjectInteractionComponent : Area2D
         {
             exceptionBody = committed;
         }
+
+        // A ball reserved for the foot gets the same anti-kick exception, for exactly the
+        // reason the exception exists: without it the buddy's own shins knock the ball away
+        // about 39 px out — measured — and it never survives long enough to be trapped. The
+        // trap itself then owns the ball's motion, so nothing is lost by not colliding.
+        if (!IsHolding && SoccerBallReserved && GodotObject.IsInstanceValid(_soccerBall))
+            exceptionBody = _soccerBall;
+
         ResolveCommitExceptions(exceptionBody);
 
         HasWatchTarget = !IsHolding && GodotObject.IsInstanceValid(committed);
@@ -345,6 +398,9 @@ public partial class ObjectInteractionComponent : Area2D
 
         LastConsumeRejection = ConsumeRejection.None;
         _directLabConsume = true;
+        Activity.SetConsumeGesture(body.Profile is null
+            ? Activity.MealGesture
+            : body.Profile.ToConsumeGesture(Activity.MealGesture));
         BeginHold(
             body,
             Rig.LeftHand.GlobalPosition.DistanceTo(body.GlobalPosition) <=
@@ -368,6 +424,9 @@ public partial class ObjectInteractionComponent : Area2D
             Activity.Interrupt();
         }
         _model.Reset();
+        _soccerPlay?.Reset();
+        _soccerIntent = SoccerPlayIntent.None;
+        _soccerBall = null;
         ReleaseHeld(ObjectDriveAction.Drop, Vector2.Zero);
         CurrentDriveCommand = ObjectDriveCommand.None;
     }
@@ -680,6 +739,9 @@ public partial class ObjectInteractionComponent : Area2D
         }
 
         LastConsumeRejection = ConsumeRejection.None;
+        // The item's own gesture: the Meal's five bites, or the Drink's one raise and hold
+        // (owner instruction 2026-08-01). Authored data, so the machinery below is identical.
+        Activity.SetConsumeGesture(_heldBody!.Profile!.ToConsumeGesture(Activity.MealGesture));
         Activity.SetActivity(ActivityId.Eat);
         ConsumeStarted?.Invoke(_heldBody);
     }
@@ -1145,6 +1207,213 @@ public partial class ObjectInteractionComponent : Area2D
     /// Reach toward an incoming object, clamped to arm's length. The object is never pulled
     /// in; the catch happens when it arrives and touches a hand.
     /// </summary>
+    /// <summary>
+    /// Re-derives the kick stream from the run's autonomy seed, so a scenario replays the same
+    /// sequence of straight/angled kicks. Distinct salt per consumer family: the ball must not
+    /// perturb, nor be perturbed by, ambient walking or blinking.
+    /// </summary>
+    public void Reseed(ulong seed)
+    {
+        _soccerPlay = new SoccerPlayModel(new SeededRandomSource(seed ^ SoccerStreamSalt));
+        _soccerIntent = SoccerPlayIntent.None;
+        _soccerBall = null;
+    }
+
+    /// <summary>
+    /// Runs the trap, dwell, and kick beat for one routed tick (owner instruction 2026-08-01).
+    /// The model is ticked even when there is nothing playable in reach, so a trap already in
+    /// progress ends cleanly rather than hanging on a ball that has gone.
+    /// </summary>
+    private void TickSoccerPlay(int candidateCount, bool suppressed, bool conscious)
+    {
+        _soccerIntent = SoccerPlayIntent.None;
+
+        // One object action at a time (RAGDOLL section 4, priority 5). Hands full or a refusal
+        // in progress means no football; so does the catch lifecycle already owning some OTHER
+        // object, because it would be the one driving the buddy.
+        bool busy = IsHolding || _refusingRuntimeId != 0;
+        LooseObjectBody? ball = busy ? null : FindPlayableBall();
+        if (GodotObject.IsInstanceValid(ball) &&
+            _model.IsCommitted &&
+            _model.TrackedRuntimeId != ball!.RuntimeId)
+        {
+            ball = null;
+        }
+
+        SoccerPlayProfile? play = GodotObject.IsInstanceValid(ball) &&
+            GodotObject.IsInstanceValid(ball!.Profile)
+                ? ball.Profile!.SoccerPlay
+                : null;
+
+        if (play is null || !GodotObject.IsInstanceValid(play) || !play.IsRuntimeValid)
+        {
+            _soccerBall = null;
+            LastSoccerReading = SoccerBallReading.None;
+            SoccerBallReserved = false;
+            _soccerIntent = _soccerPlay.Tick(
+                SoccerPlayTuning.Default, SoccerBallReading.None, suppressed, conscious);
+            return;
+        }
+
+        _soccerBall = ball;
+        SoccerPlayTuning tuning = play.ToDomainTuning();
+        SoccerBallReading reading = ReadBall(ball!);
+        LastSoccerReading = reading;
+        _soccerIntent = _soccerPlay.Tick(tuning, reading, suppressed, conscious);
+
+        // Reserved, not merely trapped: a ball rolling in from across the room already belongs
+        // to the foot, so the catch lifecycle must never commit to it and walk out to fetch it.
+        // The ignore flag is the existing "leave that one alone" channel a freshly put-down
+        // object uses, so this costs the pickup machinery nothing new.
+        // The kick tick counts too. By then the ball is stopped, so it reads as neither
+        // reserved nor committed -- and an unreserved stopped ball is exactly what the ordinary
+        // ground scoop commits to, which would take the drive command away and swallow the kick
+        // on the one tick it exists.
+        SoccerBallReserved = conscious && !suppressed &&
+            (_soccerIntent.IsCommitted ||
+             _soccerIntent.Command == SoccerPlayCommand.Kick ||
+             SoccerPlayModel.IsReserved(tuning, reading));
+        if (SoccerBallReserved)
+            IgnoreCandidate(candidateCount, ball!.RuntimeId);
+    }
+
+    /// <summary>
+    /// The ball this beat is about: the one already under the foot if there is one, otherwise
+    /// the nearest sensed object whose authored profile opts into soccer play at all.
+    /// </summary>
+    private LooseObjectBody? FindPlayableBall()
+    {
+        int trapped = _soccerPlay.TrappedRuntimeId;
+        if (trapped != 0)
+        {
+            LooseObjectBody? held = _registry.FindBody(trapped);
+            if (GodotObject.IsInstanceValid(held))
+                return held;
+        }
+
+        LooseObjectBody? nearest = null;
+        float nearestDistance = float.MaxValue;
+        float torsoX = Rig.Torso.GlobalPosition.X;
+        for (int index = 0; index < _sensed.Length; index++)
+        {
+            LooseObjectBody? body = _sensed[index];
+            if (!GodotObject.IsInstanceValid(body) ||
+                !GodotObject.IsInstanceValid(body!.Profile) ||
+                body.Profile!.SoccerPlay is null ||
+                body.RuntimeId == 0)
+            {
+                continue;
+            }
+
+            float distance = Mathf.Abs(body.GlobalPosition.X - torsoX);
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = body;
+            }
+        }
+
+        return nearest;
+    }
+
+    /// <summary>Reads one ball into the engine-free shape the model decides on.</summary>
+    private SoccerBallReading ReadBall(LooseObjectBody ball)
+    {
+        if (!_registry.TryGetSnapshot(ball.RuntimeId, out LooseObjectSnapshot snapshot))
+            return SoccerBallReading.None;
+
+        float offsetX = ball.GlobalPosition.X - Rig.Torso.GlobalPosition.X;
+        float direction = Mathf.IsZeroApprox(offsetX) ? 1.0f : Mathf.Sign(offsetX);
+        // To the near surface, for the same reason the ground scoop measures that way: the
+        // body cannot close the last radius.
+        float surfaceDistance = Mathf.Max(0.0f, Mathf.Abs(offsetX) - ball.Radius);
+        // Positive means closing: the ball travels against the side it lies on.
+        float closingSpeed = -ball.LinearVelocity.X * direction;
+        float footY = Mathf.Max(Rig.LeftFoot.GlobalPosition.Y, Rig.RightFoot.GlobalPosition.Y);
+        bool available =
+            !snapshot.PlayerHeld && !snapshot.BuddyHeld && !_isHarmful(snapshot.ContentId);
+
+        return new SoccerBallReading(
+            ball.RuntimeId,
+            available,
+            surfaceDistance,
+            direction,
+            closingSpeed,
+            footY - ball.GlobalPosition.Y);
+    }
+
+    /// <summary>Marks one candidate ignored so the catch lifecycle will not commit to it.</summary>
+    private void IgnoreCandidate(int count, int runtimeId)
+    {
+        for (int index = 0; index < count; index++)
+        {
+            if (_candidates[index].RuntimeId == runtimeId)
+            {
+                _candidates[index] = _candidates[index] with { Ignored = true };
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Turns this tick's soccer intent into the one bounded drive command. It may only take the
+    /// command over when the catch lifecycle has not produced one of its own, so a trap can
+    /// never fight a catch for the same buddy.
+    /// </summary>
+    private void ApplySoccerCommand()
+    {
+        if (_soccerIntent.Command == SoccerPlayCommand.None ||
+            !GodotObject.IsInstanceValid(_soccerBall) ||
+            IsHolding ||
+            _model.IsCommitted ||
+            CurrentDriveCommand.Active)
+        {
+            return;
+        }
+
+        SoccerPlayProfile? play = GodotObject.IsInstanceValid(_soccerBall!.Profile)
+            ? _soccerBall.Profile!.SoccerPlay
+            : null;
+        if (play is null || !GodotObject.IsInstanceValid(play))
+            return;
+
+        bool kicking = _soccerIntent.Command == SoccerPlayCommand.Kick;
+        LooseObjectBody ball = _soccerBall!;
+        float towardBuddy = Mathf.Sign(Rig.Torso.GlobalPosition.X - ball.GlobalPosition.X);
+        if (Mathf.IsZeroApprox(towardBuddy))
+            towardBuddy = 1.0f;
+
+        // Trap: the sole meets the near face of the ball, slightly above centre. Kick: the same
+        // foot swings through to the far face, so the leg follows the ball out.
+        float faceSign = kicking ? -towardBuddy : towardBuddy;
+        Vector2 footTarget = ball.GlobalPosition +
+            new Vector2(faceSign * ball.Radius, -ball.Radius * 0.35f);
+        bool leftFoot =
+            Mathf.Abs(Rig.LeftFoot.GlobalPosition.X - ball.GlobalPosition.X) <=
+            Mathf.Abs(Rig.RightFoot.GlobalPosition.X - ball.GlobalPosition.X);
+
+        var kickVelocity = new Vector2(
+            _soccerIntent.KickVelocity.X, _soccerIntent.KickVelocity.Y);
+        if (kicking)
+            LastSoccerKickVelocity = kickVelocity;
+
+        CurrentDriveCommand = new ObjectDriveCommand(
+            kicking ? ObjectDriveAction.Kick : ObjectDriveAction.TrapUnderFoot,
+            ball,
+            Vector2.Zero,
+            Vector2.Zero,
+            kicking ? kickVelocity : Vector2.Zero,
+            0.0f,
+            0.0f,
+            0.0f,
+            0.0f,
+            footTarget,
+            leftFoot,
+            play.FootStiffness,
+            play.FootDamping,
+            play.MaximumFootForce);
+    }
+
     private ObjectDriveCommand BuildCatchCommand(LooseObjectBody? body)
     {
         if (!GodotObject.IsInstanceValid(body))

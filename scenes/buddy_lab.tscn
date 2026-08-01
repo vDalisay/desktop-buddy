@@ -59,6 +59,7 @@
 [ext_resource type="Resource" path="res://data/objects/soccer_ball.tres" id="59_soccer_object"]
 [ext_resource type="Resource" path="res://data/objects/drink.tres" id="60_drink_object"]
 [ext_resource type="Script" path="res://src/Presentation3D/GrenadeVisual3D.cs" id="56_grenade_visual"]
+[ext_resource type="Script" path="res://src/Presentation3D/LooseObjectVisual3D.cs" id="61_object_visual"]
 [ext_resource type="Script" path="res://src/Tools/GrenadeAudioComponent.cs" id="57_grenade_audio"]
 [ext_resource type="Script" path="res://src/Tools/GrenadeVisual2D.cs" id="58_grenade_visual_2d"]
 
@@ -92,7 +93,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "GrenadeVisualLegacy", "GrenadeAudio", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -113,6 +114,7 @@ CursorGuns = NodePath("CursorGunComponent")
 CursorGunVisual = NodePath("CursorGunVisual3D")
 Grenades = NodePath("GrenadeComponent")
 GrenadeVisual = NodePath("GrenadeVisual3D")
+LooseObjectVisual = NodePath("LooseObjectVisual3D")
 GrenadeVisualLegacy = NodePath("GrenadeVisual2D")
 GrenadeAudio = NodePath("GrenadeAudioComponent")
 CameraKick = NodePath("CameraKickComponent")
@@ -176,6 +178,10 @@ script = ExtResource("51_gun_visual")
 [node name="GrenadeVisual3D" type="Node3D" parent="."]
 visible = false
 script = ExtResource("56_grenade_visual")
+
+[node name="LooseObjectVisual3D" type="Node3D" parent="."]
+visible = false
+script = ExtResource("61_object_visual")
 
 [node name="GrenadeVisual2D" type="Node2D" parent="."]
 visible = false

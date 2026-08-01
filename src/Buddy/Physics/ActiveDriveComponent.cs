@@ -43,6 +43,15 @@ public partial class ActiveDriveComponent : Node
     public Vector2 LastLeftObjectHandForce { get; private set; }
     public Vector2 LastRightObjectHandForce { get; private set; }
     public Vector2 LastObjectScoopDipForce { get; private set; }
+
+    /// <summary>Force last applied to the planted foot during a soccer trap or kick.</summary>
+    public Vector2 LastObjectFootForce { get; private set; }
+
+    /// <summary>Routed ticks a ball has been held still under the foot.</summary>
+    public int ObjectTrapTicks { get; private set; }
+
+    /// <summary>Balls sent away by the soccer kick.</summary>
+    public int ObjectKickCount { get; private set; }
     public Vector2 LastObjectReleaseImpulse { get; private set; }
     public int ObjectTossCount { get; private set; }
     public int ObjectDiscardCount { get; private set; }
@@ -128,6 +137,7 @@ public partial class ActiveDriveComponent : Node
         LastLeftObjectHandForce = Vector2.Zero;
         LastRightObjectHandForce = Vector2.Zero;
         LastObjectScoopDipForce = Vector2.Zero;
+        LastObjectFootForce = Vector2.Zero;
         LastObjectReleaseImpulse = Vector2.Zero;
 
         if (HeadRightingDelayTicksRemaining > 0)
@@ -201,6 +211,8 @@ public partial class ActiveDriveComponent : Node
             ApplyActivityHandReach(intent, mode);
         else if (intent.ObjectCommand.DrivesHands)
             ApplyObjectHandReach(intent.ObjectCommand, mode);
+        else if (intent.ObjectCommand.DrivesFoot)
+            ApplyObjectFootReach(intent.ObjectCommand, mode);
         ApplyObjectBodyCommand(intent);
         UpdateJump(intent, mode);
     }
@@ -242,6 +254,29 @@ public partial class ActiveDriveComponent : Node
     }
 
     /// <summary>
+    /// Plants one foot on a ball for the soccer trap and swings it through for the kick. The
+    /// same bounded spring the hands use, on the foot nearer the ball, with the same
+    /// torso-reaction cancellation: sticking a foot out is internal actuation and may not tow
+    /// the puppet anywhere. There is no new solver here — <see cref="DriveHandToTarget"/> takes
+    /// any rig part, and a foot is one.
+    /// </summary>
+    private void ApplyObjectFootReach(
+        in ObjectDriveCommand command,
+        ConsciousnessDriveProfile mode)
+    {
+        PuppetPartBody foot = command.FootIsLeft ? Rig.LeftFoot : Rig.RightFoot;
+        LastObjectFootForce = DriveHandToTarget(
+            foot,
+            command.FootTarget,
+            Rig.Torso.LinearVelocity,
+            command.FootStiffness,
+            command.FootDamping,
+            command.MaximumFootForce,
+            mode);
+        Rig.Torso.ApplyCentralForce(-LastObjectFootForce);
+    }
+
+    /// <summary>
     /// Only the one-shot release remains. A held object is attached at the hand by
     /// <c>ObjectInteractionComponent</c>, so there is nothing to spring toward the buddy —
     /// that spring is what made objects float in rather than being caught.
@@ -254,13 +289,30 @@ public partial class ActiveDriveComponent : Node
     private void ApplyObjectBodyCommand(in DriveIntent intent)
     {
         ObjectDriveCommand command = intent.ObjectCommand;
-        if (!command.Active || !GodotObject.IsInstanceValid(command.Body) || !command.Releases)
+        if (!command.Active || !GodotObject.IsInstanceValid(command.Body))
+            return;
+
+        // The trap is the other half of the same idea: instead of handing the ball a velocity,
+        // take the one it has away. Written on the same authoritative tick, through the same
+        // one method that is allowed to touch a loose object's motion.
+        if (command.Action == ObjectDriveAction.TrapUnderFoot)
+        {
+            command.Body!.LinearVelocity = Vector2.Zero;
+            command.Body.AngularVelocity = 0.0f;
+            command.Body.Sleeping = false;
+            ObjectTrapTicks++;
+            return;
+        }
+
+        if (!command.Releases)
             return;
 
         command.Body!.LinearVelocity = command.ReleaseVelocity;
         LastObjectReleaseImpulse = command.ReleaseVelocity;
         if (command.Action == ObjectDriveAction.Toss)
             ObjectTossCount++;
+        else if (command.Action == ObjectDriveAction.Kick)
+            ObjectKickCount++;
         else
             ObjectDiscardCount++;
     }

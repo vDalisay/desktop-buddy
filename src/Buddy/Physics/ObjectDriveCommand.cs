@@ -20,6 +20,12 @@ public enum ObjectDriveAction
     /// <summary>Draw the hand back before the return throw releases.</summary>
     ThrowWindup,
 
+    /// <summary>Plant a foot on a rolling ball and hold it still (owner instruction 2026-08-01).</summary>
+    TrapUnderFoot,
+
+    /// <summary>One-shot: swing the foot through a trapped ball and send it away.</summary>
+    Kick,
+
     Toss,
     Discard,
     Drop,
@@ -52,7 +58,14 @@ public readonly record struct ObjectDriveCommand(
     float HandDamping,
     float MaximumHandForce,
     /// <summary>Bounded downward force applied to torso and head during a scoop dip.</summary>
-    float DipForce = 0.0f)
+    float DipForce = 0.0f,
+    /// <summary>Where the planted foot is driven for a trap or a kick.</summary>
+    Vector2 FootTarget = default,
+    /// <summary>Which foot is doing it — the one nearer the ball.</summary>
+    bool FootIsLeft = false,
+    float FootStiffness = 0.0f,
+    float FootDamping = 0.0f,
+    float MaximumFootForce = 0.0f)
 {
     public static ObjectDriveCommand None => default;
     public bool Active => Action != ObjectDriveAction.None && Body is not null;
@@ -64,7 +77,11 @@ public readonly record struct ObjectDriveCommand(
         ObjectDriveAction.Hold or
         ObjectDriveAction.ThrowWindup;
 
+    /// <summary>True while one foot should be driven at <see cref="FootTarget"/>.</summary>
+    public bool DrivesFoot => Action is
+        ObjectDriveAction.TrapUnderFoot or ObjectDriveAction.Kick;
+
     /// <summary>True for the one-shot release actions that apply an impulse.</summary>
     public bool Releases => Action is
-        ObjectDriveAction.Toss or ObjectDriveAction.Discard;
+        ObjectDriveAction.Toss or ObjectDriveAction.Discard or ObjectDriveAction.Kick;
 }

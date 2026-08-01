@@ -169,6 +169,9 @@ public partial class BuddyRoot : Node2D
     public void ReseedAutonomy(ulong seed)
     {
         AutonomousMotion.Reseed(seed);
+        // The soccer kick picks its angle off its own salted stream from the same seed, so a
+        // reseeded scenario replays the same sequence of straight and angled kicks.
+        ObjectInteraction.Reseed(seed);
         AutonomyReseeded?.Invoke(seed);
     }
 }

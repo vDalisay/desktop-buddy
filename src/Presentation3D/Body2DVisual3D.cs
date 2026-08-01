@@ -167,6 +167,21 @@ public partial class Body2DVisual3D : Node3D
         Visible = false;
     }
 
+    /// <summary>
+    /// Releases whatever this slot was following without needing the body back. A pooled
+    /// presenter reaches this when the object it was drawing has already been freed — a
+    /// consumed drink, an evicted ball — so there is nothing left to hand in.
+    /// </summary>
+    public void DetachAny()
+    {
+        if (GodotObject.IsInstanceValid(_target))
+            _target!.Visible = true;
+
+        _target = null;
+        _pulseSource = null;
+        Visible = false;
+    }
+
     public void SetPresentationActive(bool active)
     {
         _presentationActive = active;

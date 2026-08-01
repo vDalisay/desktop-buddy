@@ -71,6 +71,9 @@ public partial class BuddyLab : Node2D
     [Export] public CursorGunVisual3D CursorGunVisual { get; set; } = null!;
     [Export] public GrenadeComponent Grenades { get; set; } = null!;
     [Export] public GrenadeVisual3D GrenadeVisual { get; set; } = null!;
+
+    /// <summary>Draws the loose objects whose profiles author a 3D shape.</summary>
+    [Export] public LooseObjectVisual3D LooseObjectVisual { get; set; } = null!;
     [Export] public GrenadeVisual2D GrenadeVisualLegacy { get; set; } = null!;
     [Export] public GrenadeAudioComponent GrenadeAudio { get; set; } = null!;
     [Export] public CameraKickComponent CameraKick { get; set; } = null!;
@@ -126,6 +129,7 @@ public partial class BuddyLab : Node2D
             !GodotObject.IsInstanceValid(CursorGunVisual) ||
             !GodotObject.IsInstanceValid(Grenades) ||
             !GodotObject.IsInstanceValid(GrenadeVisual) ||
+            !GodotObject.IsInstanceValid(LooseObjectVisual) ||
             !GodotObject.IsInstanceValid(GrenadeVisualLegacy) ||
             !GodotObject.IsInstanceValid(GrenadeAudio) ||
             !GodotObject.IsInstanceValid(CameraKick) ||
@@ -195,6 +199,7 @@ public partial class BuddyLab : Node2D
         // grab and cancel a buddy interaction, so removal stays the root's job.
         Grenades.Initialize(RemoveLooseObject);
         GrenadeVisual.Initialize(Grenades.Profile);
+        LooseObjectVisual.Initialize(Objects);
         // The pooled pins exist only after the component has built them, and the 3D
         // presenter takes their flat drawing over the moment it adopts them.
         GrenadeVisual.TrackPins(Grenades.Pins);
@@ -310,6 +315,7 @@ public partial class BuddyLab : Node2D
         VisualPresenter.CaptureTickSnapshot();
         CursorToolVisual.CaptureTickSnapshot();
         GrenadeVisual.CaptureTickSnapshot();
+        LooseObjectVisual.CaptureTickSnapshot();
         // Solver contacts are semantic input to the gate, so drain them before
         // deciding whether this engine frame may advance any gameplay.
         CursorTools.RoutePendingImpactEvents();
@@ -364,6 +370,7 @@ public partial class BuddyLab : Node2D
             Grenades.PhysicsTick();
             SyncGrenadeVisuals();
             GrenadeVisual.PhysicsTick();
+            LooseObjectVisual.PhysicsTick();
             GrenadeVisualLegacy.PhysicsTick();
 
             TelemetryRecorder?.Capture(Controls.RoutedPhysicsTicks);
@@ -595,6 +602,7 @@ public partial class BuddyLab : Node2D
         CursorGuns.SetLegacyVisualEnabled(!show3D);
         // Same rule for the grenade: one silhouette per mode, never both at once.
         GrenadeVisual.SetPresentationActive(show3D);
+        LooseObjectVisual.SetPresentationActive(show3D);
         GrenadeVisualLegacy.SetPresentationActive(!show3D);
     }
 

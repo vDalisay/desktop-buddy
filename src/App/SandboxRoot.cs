@@ -70,6 +70,9 @@ public partial class SandboxRoot : Node2D
     [Export] public CursorGunVisual3D CursorGunVisual { get; set; } = null!;
     [Export] public GrenadeComponent Grenades { get; set; } = null!;
     [Export] public GrenadeVisual3D GrenadeVisual { get; set; } = null!;
+
+    /// <summary>Draws the loose objects whose profiles author a 3D shape.</summary>
+    [Export] public LooseObjectVisual3D LooseObjectVisual { get; set; } = null!;
     [Export] public GrenadeVisual2D GrenadeVisualLegacy { get; set; } = null!;
     [Export] public GrenadeAudioComponent GrenadeAudio { get; set; } = null!;
     [Export] public CameraKickComponent CameraKick { get; set; } = null!;
@@ -122,6 +125,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(CursorGunVisual) ||
             !GodotObject.IsInstanceValid(Grenades) ||
             !GodotObject.IsInstanceValid(GrenadeVisual) ||
+            !GodotObject.IsInstanceValid(LooseObjectVisual) ||
             !GodotObject.IsInstanceValid(GrenadeVisualLegacy) ||
             !GodotObject.IsInstanceValid(GrenadeAudio) ||
             !GodotObject.IsInstanceValid(CameraKick) ||
@@ -171,6 +175,7 @@ public partial class SandboxRoot : Node2D
         // grab and cancel a buddy interaction, so removal stays the root's job.
         Grenades.Initialize(RemoveLooseObject);
         GrenadeVisual.Initialize(Grenades.Profile);
+        LooseObjectVisual.Initialize(Objects);
         // The pooled pins exist only after the component has built them, and the 3D
         // presenter takes their flat drawing over the moment it adopts them.
         GrenadeVisual.TrackPins(Grenades.Pins);
@@ -266,6 +271,7 @@ public partial class SandboxRoot : Node2D
         VisualPresenter.CaptureTickSnapshot();
         CursorToolVisual.CaptureTickSnapshot();
         GrenadeVisual.CaptureTickSnapshot();
+        LooseObjectVisual.CaptureTickSnapshot();
         CursorTools.RoutePendingImpactEvents();
         if (SwingHitLag.ConsumeFrozenPhysicsFrame())
         {
@@ -300,6 +306,7 @@ public partial class SandboxRoot : Node2D
         Grenades.PhysicsTick();
         SyncGrenadeVisuals();
         GrenadeVisual.PhysicsTick();
+            LooseObjectVisual.PhysicsTick();
         GrenadeVisualLegacy.PhysicsTick();
         RefreshWorkModeHitRegions();
     }
@@ -632,6 +639,7 @@ public partial class SandboxRoot : Node2D
         CursorGuns.SetLegacyVisualEnabled(!show3D);
         // Same rule for the grenade: one silhouette per mode, never both at once.
         GrenadeVisual.SetPresentationActive(show3D);
+        LooseObjectVisual.SetPresentationActive(show3D);
         GrenadeVisualLegacy.SetPresentationActive(!show3D);
     }
 

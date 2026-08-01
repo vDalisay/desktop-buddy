@@ -1278,6 +1278,66 @@ a baseball.
 `m5_soccer_ball` and `m5_drink` journeys assert the refusal an invisible entry produces, on
 the Grenade's precedent, and become real purchases when the owner flips them.
 
+## Soccer Ball Trap and Kick, the Drink's Single Raise, and Both 3D Models (Owner feedback, 2026-08-01)
+
+Three owner instructions on the Task 8 slice, taken verbatim and implemented as data plus one
+pure model each. All numbers below are provisional until the feel gate.
+
+**1. The buddy plays football with it.** Owner: "it should kick the ball away from it, towards
+the player. when the soccer ball is rolling towards the buddy, the buddy can stop the ball from
+rolling with its foot. then after a second kicks the ball in a random way, so either straight
+or angled a bit towards the player."
+
+- The beat is a **sibling** of the catch lifecycle, not a phase of it:
+  `Domain/Autonomy/SoccerPlayModel`. `ObjectInteractionModel` is catch → hold → inspect →
+  outcome and every phase of it assumes the object ends up in the hands; a trap never picks the
+  ball up. Both are priority 5 (RAGDOLL §4) and they never contend, because a ball the trap has
+  **reserved** is marked `ObjectCandidate.Ignored` — the existing "leave that one alone"
+  channel — so the pickup machinery is untouched.
+- **Reservation has no distance term, deliberately.** A ball rolling in from across the room
+  belongs to the foot from the moment it starts rolling; without that the ordinary pickup
+  commits to it, walks out to meet it, and there is nothing left to trap. A ball above
+  `TrapHeight` is still a catch, a ball at rest is still an ordinary scoop, and a ball rolling
+  away belongs to nobody — which is also what stops the buddy trapping its own kick.
+- A reserved ball also takes the existing **anti-kick collision exception**. Measured: without
+  it the buddy's own shins knock the ball away at about `39 px`, before it can reach the
+  `34 px` trap gate, and the trap never fires.
+- The kick direction is **back the way the ball came**, which is away from the buddy and toward
+  whoever sent it, lofted by one of `KickLoftChoices` evenly spaced angles from dead flat up to
+  `MaximumKickLoftDegrees`. The choice comes from a salted `IRandomSource` stream off the run's
+  autonomy seed, so a replayed seed replays the same kick and presentation randomness can never
+  perturb it.
+- Tuning is authored on the ball alone, `data/objects/soccer_play.tres`, referenced by
+  `LooseObjectProfile.SoccerPlay`: trap distance `34`, trap height `30`, approach window
+  `40`–`900 px/s`, dwell `120` ticks (one second), kick speed `520 px/s`, loft up to `24°` in
+  `3` choices. **No other loose object opts in**, and the scenario asserts that.
+
+**2. The Drink is raised once, not bitten five times.** Owner: raise to the head once, hold two
+seconds, then it disappears. The Meal is unchanged.
+
+- The Eat schedule moved to the engine-free `Domain/Presentation/ConsumeGesture`, which serves
+  both styles. The `Bites` arithmetic is the M4 schedule restated exactly — same windows, same
+  easing, same bite moment — so every measured meal signature is bit-identical, and
+  `meal_consume`, `consume_care_cooldown`, and `activity_clips` all stay green.
+- `SingleRaise` solves its windows from the authored durations rather than borrowing the bite
+  cycle's, because the bite cycle's hold is a third of its length and a two-second hold would
+  silently have become two thirds of one.
+- Authored per item: `LooseObjectProfile.ConsumeStyle` / `ConsumeRaiseTicks` /
+  `ConsumeHoldTicks`. The Drink authors `SingleRaise`, `60`, `240`. The consequence is
+  identical either way — the authoritative final step is what completes the care transaction —
+  so a Drink still cannot pay twice and a cancelled one still pays nothing (FR-008.10).
+
+**3. Both items are drawn as models.** A general `Presentation3D/LooseObjectVisual3D` adopts any
+loose object whose profile authors a `LooseObjectVisualKind`, on the standard
+`Body2DVisual3D` attach seam and a pooled slot per object; `LooseObjectMeshBuilder` builds the
+shapes on the `GrenadeMeshBuilder` idiom (no imported art, dimensions from the collider radius,
+vertex colours, one normal per face, a stated envelope of `1.80 x` the radius). The Soccer Ball
+is a faceted sphere with alternating dark panels; the Drink is a red can with a white belly
+band and rolled rims. Clean-room: no crest, wordmark, script, or real product's trade dress.
+An object authoring `None` — every object that predates this — keeps its flat circle in both
+modes, and legacy presentation deactivates every slot, so exactly one silhouette is drawn per
+mode.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

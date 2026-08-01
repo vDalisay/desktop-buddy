@@ -7,6 +7,7 @@ using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -123,6 +124,12 @@ public sealed class SoccerAndDrinkScenario : IScenario
 
         // --- Phase 3: the clean-catch rule, unchanged, on a new ball ---
         checks.Add(await CheckCleanSoccerCatch(tree, lab, soccer, messages));
+
+        // --- Phase 3b: the trap, the beat, and the kick back ---
+        checks.AddRange(await CheckSoccerTrapAndKick(tree, lab, soccer, messages));
+
+        // --- Phase 3c: both items are drawn once, in whichever mode is active ---
+        checks.Add(await CheckDrawnSilhouettes(tree, lab, soccer, drink, messages));
 
         // --- Phase 4 and 5: the Drink's own spawn key and the care rules ---
         checks.AddRange(await CheckDrinkCare(tree, lab, messages));
@@ -367,6 +374,320 @@ public sealed class SoccerAndDrinkScenario : IScenario
     }
 
     /// <summary>
+    /// Both new items carry a real model in the Mii3D presentation and degrade to their flat
+    /// circle in legacy — exactly one silhouette per mode, never both and never neither, which
+    /// is the rule the grenade's own presentation check established.
+    ///
+    /// <para>The verdict is identical in both modes on purpose (ARCHITECTURE §16): what is
+    /// asserted is that the drawn set and the flat set are complements, not which one is on.
+    /// The mesh envelope is pure geometry and holds either way.</para>
+    /// </summary>
+    private static async Task<StartupCheck> CheckDrawnSilhouettes(
+        SceneTree tree,
+        BuddyLab lab,
+        LooseObjectProfile soccer,
+        LooseObjectProfile drink,
+        List<string> messages)
+    {
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        float side = torso.X - room.Position.X > room.End.X - torso.X ? -1.0f : 1.0f;
+        var ballAt = new Vector2(
+            Mathf.Clamp(torso.X + (side * 170.0f),
+                room.Position.X + 40.0f, room.End.X - 40.0f),
+            room.End.Y - soccer.Radius - 1.0f);
+        var canAt = new Vector2(
+            Mathf.Clamp(torso.X + (side * 210.0f),
+                room.Position.X + 40.0f, room.End.X - 40.0f),
+            room.End.Y - drink.Radius - 1.0f);
+
+        LooseObjectBody? ball = lab.SpawnLooseObject(soccer, ballAt);
+        LooseObjectBody? can = lab.SpawnLooseObject(drink, canAt);
+        if (ball is null || can is null)
+        {
+            return new StartupCheck(
+                "the_new_items_are_drawn_once_in_the_active_presentation", false, "spawn refused");
+        }
+
+        // Both are kept out of the buddy's way; this leg is about drawing, not behaviour.
+        lab.Objects.MarkBuddyReleased(ball, ignoreTicks: 600);
+        lab.Objects.MarkBuddyReleased(can, ignoreTicks: 600);
+        for (int tick = 0; tick < 12; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+        LooseObjectVisual3D presenter = lab.LooseObjectVisual;
+        bool adopted = presenter.IsDrawing(ball.RuntimeId) && presenter.IsDrawing(can.RuntimeId);
+        // Exactly one silhouette each: the mesh on and the flat body off, or the reverse.
+        bool ballOnce = presenter.MeshVisible(ball.RuntimeId) != ball.Visible;
+        bool canOnce = presenter.MeshVisible(can.RuntimeId) != can.Visible;
+
+        bool ballInsideEnvelope = MeshFitsEnvelope(
+            presenter.MeshFor(ball.RuntimeId), soccer.Radius, out float ballReach);
+        bool canInsideEnvelope = MeshFitsEnvelope(
+            presenter.MeshFor(can.RuntimeId), drink.Radius, out float canReach);
+
+        // Nothing that authored no shape may be adopted: the Baseball, Meal, and Grenade keep
+        // the flat circle they have always had.
+        bool onlyTheNewOnes = presenter.DrawnCount == 2;
+
+        string detail =
+            $"mode={lab.Mode} adopted={adopted} drawn={presenter.DrawnCount} " +
+            $"ball_once={ballOnce} can_once={canOnce} " +
+            $"ball_reach={ballReach:F1}/{LooseObjectMeshBuilder.EnvelopeRadius(soccer.Radius):F1} " +
+            $"can_reach={canReach:F1}/{LooseObjectMeshBuilder.EnvelopeRadius(drink.Radius):F1} " +
+            $"meshes_built={presenter.BuiltMeshCount}";
+        messages.Add($"soccer_drink_visuals {detail}");
+
+        RemoveObject(lab, ball);
+        RemoveObject(lab, can);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        return new StartupCheck(
+            "the_new_items_are_drawn_once_in_the_active_presentation",
+            adopted && ballOnce && canOnce && onlyTheNewOnes &&
+            ballInsideEnvelope && canInsideEnvelope,
+            detail);
+    }
+
+    /// <summary>No vertex may escape the builder's stated envelope for its collider radius.</summary>
+    private static bool MeshFitsEnvelope(Mesh? mesh, float radius, out float reach)
+    {
+        reach = 0.0f;
+        if (mesh is null)
+            return false;
+
+        Godot.Collections.Array surface = mesh.SurfaceGetArrays(0);
+        var vertices = surface[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+        foreach (Vector3 vertex in vertices)
+            reach = Mathf.Max(reach, vertex.Length());
+
+        return reach <= LooseObjectMeshBuilder.EnvelopeRadius(radius) + 0.01f;
+    }
+
+    /// <summary>
+    /// The owner's soccer loop (2026-08-01): a ball rolled along the floor at the buddy is
+    /// stopped dead under its foot, sat on for the authored dwell, and then kicked back the way
+    /// it came at either a dead-straight or a slightly lofted angle.
+    ///
+    /// <para>The ball is rolled through the real registry with a real velocity — no component
+    /// is commanded directly — and every claim is measured off runtime state: the ball's speed
+    /// at the moment of the trap, the routed ticks it stays stopped, and which way it is
+    /// travelling once the foot has gone through it.</para>
+    /// </summary>
+    private static async Task<List<StartupCheck>> CheckSoccerTrapAndKick(
+        SceneTree tree,
+        BuddyLab lab,
+        LooseObjectProfile soccer,
+        List<string> messages)
+    {
+        var checks = new List<StartupCheck>();
+        SoccerPlayProfile? play = soccer.SoccerPlay;
+        if (play is null || !GodotObject.IsInstanceValid(play))
+        {
+            checks.Add(new StartupCheck(
+                "the_soccer_ball_opts_into_being_played_with", false, "no SoccerPlay profile"));
+            return checks;
+        }
+
+        // Only the Soccer Ball. If this ever fails, some other object has quietly been given
+        // the beat, which is exactly what the owner's "no other loose object changes" means.
+        LooseObjectProfile?[] others =
+        [
+            FindLaunchable(lab, ContentIds.ToolBaseball),
+            FindLaunchable(lab, ContentIds.ToolMeal),
+            FindLaunchable(lab, ContentIds.ToolGrenade),
+            FindLaunchable(lab, ContentIds.ToolDrink),
+            lab.SafeObjectProfile,
+            lab.LabFoodProfile,
+        ];
+        bool nobodyElseOptedIn = true;
+        foreach (LooseObjectProfile? other in others)
+        {
+            if (GodotObject.IsInstanceValid(other) && other!.SoccerPlay is not null)
+                nobodyElseOptedIn = false;
+        }
+
+        checks.Add(new StartupCheck(
+            "the_soccer_ball_opts_into_being_played_with",
+            play.IsRuntimeValid && nobodyElseOptedIn,
+            $"valid={play.IsRuntimeValid} dwell={play.DwellTicks} kick={play.KickSpeed:F0} " +
+            $"loft_max={play.MaximumKickLoftDegrees:F0} choices={play.KickLoftChoices} " +
+            $"nobody_else={nobodyElseOptedIn}"));
+
+        await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Buddy.ObjectInteraction.Phase == ObjectPhase.Idle, 600);
+
+        int trapsBefore = lab.Buddy.ObjectInteraction.SoccerTrapCount;
+        int kicksBefore = lab.Buddy.ObjectInteraction.SoccerKickCount;
+        LooseObjectBody? ball = RollBallAtBuddy(lab, soccer, play);
+        if (ball is null)
+        {
+            checks.Add(new StartupCheck(
+                "a_rolling_ball_is_trapped_under_the_foot", false, "roll refused"));
+            return checks;
+        }
+
+        int ballId = ball.RuntimeId;
+        float speedWhileRolling = 0.0f;
+        float closestSurface = float.MaxValue;
+        SoccerBallReading closestReading = default;
+        bool everReserved = false;
+        bool trapped = false;
+        for (int tick = 0; tick < 900 && !trapped; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            if (!GodotObject.IsInstanceValid(ball))
+                break;
+            if (lab.Buddy.ObjectInteraction.SoccerPhase != SoccerPlayPhase.Trapping)
+            {
+                speedWhileRolling = Mathf.Max(
+                    speedWhileRolling, Mathf.Abs(ball!.LinearVelocity.X));
+                SoccerBallReading live = lab.Buddy.ObjectInteraction.LastSoccerReading;
+                everReserved |= lab.Buddy.ObjectInteraction.SoccerBallReserved;
+                if (live.IsValid && live.SurfaceDistance < closestSurface)
+                {
+                    closestSurface = live.SurfaceDistance;
+                    closestReading = live;
+                }
+                continue;
+            }
+
+            trapped = true;
+        }
+        messages.Add(
+            $"soccer_approach closest_surface={closestSurface:F1} reserved={everReserved} " +
+            $"closest=({closestReading})");
+
+        int dwellAtTrap = lab.Buddy.ObjectInteraction.SoccerDwellTicksRemaining;
+        checks.Add(new StartupCheck(
+            "a_rolling_ball_is_trapped_under_the_foot",
+            trapped &&
+            lab.Buddy.ObjectInteraction.SoccerTrapCount == trapsBefore + 1 &&
+            lab.Buddy.ObjectInteraction.TrappedRuntimeId == ballId &&
+            speedWhileRolling >= play.MinimumApproachSpeed &&
+            // A trap is not a pickup: the ball never reaches the hands.
+            !lab.Buddy.ObjectInteraction.IsHolding,
+            $"trapped={trapped} traps={trapsBefore}->" +
+            $"{lab.Buddy.ObjectInteraction.SoccerTrapCount} " +
+            $"rolling_speed={speedWhileRolling:F0} dwell={dwellAtTrap} " +
+            $"holding={lab.Buddy.ObjectInteraction.IsHolding}"));
+
+        // The beat itself: the ball stays stopped for the whole authored dwell, and the trap
+        // owns arbiter priority 5 while it does, so ambient autonomy cannot wander off.
+        float fastestWhileTrapped = 0.0f;
+        int trappedTicks = 0;
+        bool ownedObjectAction = true;
+        bool kicked = false;
+        for (int tick = 0; tick < play.DwellTicks + 240 && trapped && !kicked; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            if (!GodotObject.IsInstanceValid(ball))
+                break;
+
+            if (lab.Buddy.ObjectInteraction.SoccerPhase == SoccerPlayPhase.Trapping)
+            {
+                trappedTicks++;
+                fastestWhileTrapped = Mathf.Max(
+                    fastestWhileTrapped, ball!.LinearVelocity.Length());
+                ownedObjectAction &=
+                    lab.Buddy.Arbiter.Diagnostics.Owner <= BehaviorPriority.ObjectAction;
+                continue;
+            }
+
+            kicked = lab.Buddy.ObjectInteraction.SoccerKickCount == kicksBefore + 1;
+        }
+
+        checks.Add(new StartupCheck(
+            "the_trapped_ball_is_held_still_for_about_a_second",
+            trapped && kicked &&
+            // The ball is stopped, not merely slowed: the trap writes its velocity to zero
+            // every tick it holds it.
+            fastestWhileTrapped <= 1.0f &&
+            trappedTicks >= play.DwellTicks - 4 &&
+            trappedTicks <= play.DwellTicks + 4 &&
+            ownedObjectAction,
+            $"trapped_ticks={trappedTicks} authored_dwell={play.DwellTicks} " +
+            $"fastest_while_trapped={fastestWhileTrapped:F2} " +
+            $"owned_object_action={ownedObjectAction}"));
+
+        Vector2 kickVelocity = lab.Buddy.ObjectInteraction.LastSoccerKickVelocity;
+        float loft = lab.Buddy.ObjectInteraction.LastSoccerKickLoftDegrees;
+        float torsoAtKick = lab.Buddy.Rig.Torso.GlobalPosition.X;
+        float ballAtKick = GodotObject.IsInstanceValid(ball)
+            ? ball!.GlobalPosition.X
+            : torsoAtKick;
+        float awaySign = Mathf.Sign(ballAtKick - torsoAtKick);
+
+        // Where it actually ends up, not merely what was commanded: sampled a beat later, the
+        // ball must be further from the buddy than it was at the kick.
+        float gapAtKick = Mathf.Abs(ballAtKick - torsoAtKick);
+        for (int tick = 0; tick < 30; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        float gapAfter = GodotObject.IsInstanceValid(ball)
+            ? Mathf.Abs(ball!.GlobalPosition.X - lab.Buddy.Rig.Torso.GlobalPosition.X)
+            : gapAtKick;
+
+        checks.Add(new StartupCheck(
+            "the_kick_sends_the_ball_back_away_from_the_buddy",
+            kicked &&
+            lab.Buddy.ObjectInteraction.SoccerKickCount == kicksBefore + 1 &&
+            !Mathf.IsZeroApprox(kickVelocity.X) &&
+            Mathf.Sign(kickVelocity.X) == awaySign &&
+            Mathf.Abs(kickVelocity.Length() - play.KickSpeed) <= 1.0f &&
+            gapAfter > gapAtKick + 20.0f,
+            $"kicked={kicked} velocity={kickVelocity} speed={kickVelocity.Length():F0} " +
+            $"authored={play.KickSpeed:F0} away_sign={awaySign} " +
+            $"gap={gapAtKick:F1}->{gapAfter:F1}"));
+
+        checks.Add(new StartupCheck(
+            "the_kick_is_straight_or_angled_a_little",
+            kicked &&
+            loft >= 0.0f &&
+            loft <= play.MaximumKickLoftDegrees + 0.01f &&
+            // Loft rises; screen space puts up at negative Y.
+            (Mathf.IsZeroApprox(loft) ? Mathf.IsZeroApprox(kickVelocity.Y) : kickVelocity.Y < 0.0f),
+            $"loft={loft:F1} maximum={play.MaximumKickLoftDegrees:F1} " +
+            $"velocity_y={kickVelocity.Y:F1}"));
+
+        messages.Add(
+            $"soccer_play traps={lab.Buddy.ObjectInteraction.SoccerTrapCount} " +
+            $"kicks={lab.Buddy.ObjectInteraction.SoccerKickCount} " +
+            $"rolling_speed={speedWhileRolling:F0} trapped_ticks={trappedTicks} " +
+            $"kick={kickVelocity} loft={loft:F1} gap={gapAtKick:F1}->{gapAfter:F1}");
+
+        if (GodotObject.IsInstanceValid(ball))
+            RemoveObject(lab, ball!);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        return checks;
+    }
+
+    /// <summary>
+    /// Rolls one ball along the floor at the buddy, fast enough to be a pass and slow enough
+    /// not to be a projectile. It is spawned unheld and given a real velocity, so everything
+    /// after this point is the buddy reacting to ordinary physics.
+    /// </summary>
+    private static LooseObjectBody? RollBallAtBuddy(
+        BuddyLab lab,
+        LooseObjectProfile soccer,
+        SoccerPlayProfile play)
+    {
+        Rect2 room = lab.Boundaries.InnerBounds;
+        Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+        // From whichever side has room for the roll to develop.
+        float side = torso.X - room.Position.X > room.End.X - torso.X ? -1.0f : 1.0f;
+        float startX = Mathf.Clamp(
+            torso.X + (side * 150.0f),
+            room.Position.X + soccer.Radius + 2.0f,
+            room.End.X - soccer.Radius - 2.0f);
+        var spawn = new Vector2(startX, room.End.Y - soccer.Radius - 1.0f);
+
+        // Comfortably inside the authored approach window at the moment it arrives.
+        float speed = (play.MinimumApproachSpeed + play.MaximumApproachSpeed) * 0.25f;
+        return lab.SpawnLooseObject(soccer, spawn, new Vector2(-side * speed, 0.0f));
+    }
+
+    /// <summary>
     /// The Drink's whole contract, in the order the cooldown allows it to be shown: it is
     /// placed by its own spawn key, a completely full buddy still takes one, abandoning it
     /// starts no cooldown, a Meal and a Drink can be taken back to back, the Drink's running
@@ -406,16 +727,21 @@ public sealed class SoccerAndDrinkScenario : IScenario
             tree,
             () => lab.Buddy.Activity.Current == ActivityId.Eat,
             FetchTimeoutTicks);
-        bool bitTwice = startedDrinking && await M4ObjectScenarioSupport.WaitFor(
-            tree, () => lab.Buddy.Activity.EatBitesCompleted >= 2, 600);
+        // The Drink is not eaten in bites: it is raised to the head once and held there
+        // (owner instruction 2026-08-01), so "under way" is the raise having landed.
+        bool raised = startedDrinking && await M4ObjectScenarioSupport.WaitFor(
+            tree, () => lab.Buddy.Activity.EatLift >= 0.99f, 600);
+        bool oneStepGesture = lab.Buddy.Activity.EatBiteCount == 1 &&
+            lab.Buddy.Activity.Gesture.Style == ConsumeGestureStyle.SingleRaise;
         bool neverRefused = buddy.RefusalCount == refusalsBefore &&
             buddy.LastConsumeRejection == ConsumeRejection.None;
 
         checks.Add(new StartupCheck(
             "a_full_buddy_still_accepts_a_drink",
-            startedDrinking && bitTwice && neverRefused &&
+            startedDrinking && raised && oneStepGesture && neverRefused &&
             lab.Progress.Fullness <= fullnessWhenFull + 0.01f,
-            $"started={startedDrinking} bites={lab.Buddy.Activity.EatBitesCompleted} " +
+            $"started={startedDrinking} raised={raised} one_step={oneStepGesture} " +
+            $"lift={lab.Buddy.Activity.EatLift:F2} " +
             $"rejection={buddy.LastConsumeRejection} refusals={buddy.RefusalCount} " +
             $"fullness={lab.Progress.Fullness:F1} appetite={lab.Progress.Appetite:F1}"));
 
@@ -426,7 +752,7 @@ public sealed class SoccerAndDrinkScenario : IScenario
         int cooldownAfterCancel = buddy.CooldownTicksRemaining(ContentIds.ToolDrink);
         checks.Add(new StartupCheck(
             "a_cancelled_drink_starts_no_cooldown",
-            bitTwice &&
+            raised &&
             buddy.ConsumeCancelCount == cancelsBefore + 1 &&
             buddy.ConsumeSuccessCount == 0 &&
             cooldownAfterCancel == 0 &&
@@ -448,7 +774,11 @@ public sealed class SoccerAndDrinkScenario : IScenario
         bool ateMeal = await Consume(tree, lab, ContentIds.ToolMeal);
         float moodAfterMeal = lab.Progress.Mood;
         float fullnessAfterMeal = lab.Progress.Fullness;
-        bool drankAfterMeal = ateMeal && await Consume(tree, lab, ContentIds.ToolDrink);
+        int raiseCount = 0;
+        int holdTicks = 0;
+        bool drankAfterMeal = ateMeal &&
+            await ConsumeDrinkMeasured(tree, lab, out_raises: r => raiseCount = r,
+                out_hold: h => holdTicks = h);
         float fullnessAfterDrink = lab.Progress.Fullness;
         int drinkCooldown = buddy.CooldownTicksRemaining(ContentIds.ToolDrink);
         int mealCooldown = buddy.CooldownTicksRemaining(ContentIds.ToolMeal);
@@ -469,6 +799,19 @@ public sealed class SoccerAndDrinkScenario : IScenario
             $"{moodAfterMeal:F1}->{lab.Progress.Mood:F1} " +
             $"fullness={fullnessBeforeMeal:F1}->{fullnessAfterMeal:F1}->{fullnessAfterDrink:F1} " +
             $"drink_cooldown={drinkCooldown} meal_cooldown={mealCooldown}"));
+
+        // The gesture itself, measured off runtime state: exactly one raise to the head, held
+        // there for the authored two seconds, and then the can is gone (owner instruction
+        // 2026-08-01). The Meal is untouched -- it still takes its five bites, which the
+        // meal_consume gate continues to assert.
+        checks.Add(new StartupCheck(
+            "the_drink_is_raised_once_held_and_gone",
+            drankAfterMeal &&
+            raiseCount == 1 &&
+            holdTicks >= 230 && holdTicks <= 260 &&
+            lab.Objects.Count == 0,
+            $"raises={raiseCount} hold_ticks={holdTicks} authored_hold=240 " +
+            $"objects_left={lab.Objects.Count}"));
 
         // --- The Drink's running cooldown is its own; the Meal never sees it ---
         float moodBeforeSecondMeal = lab.Progress.Mood;
@@ -537,6 +880,66 @@ public sealed class SoccerAndDrinkScenario : IScenario
         LooseObjectBody? placed = lab.Launcher.CurrentLaunchable;
         return GodotObject.IsInstanceValid(placed) &&
             placed!.SemanticContentId == contentId;
+    }
+
+    /// <summary>
+    /// Places one Drink, waits for the buddy to finish it, and measures the gesture on the way
+    /// through: how many separate raises to the head there were, and how many routed ticks the
+    /// can spent held up there. A bite gesture would report five raises and a short hold.
+    /// </summary>
+    private static async Task<bool> ConsumeDrinkMeasured(
+        SceneTree tree,
+        BuddyLab lab,
+        System.Action<int> out_raises,
+        System.Action<int> out_hold)
+    {
+        int before = lab.Buddy.ObjectInteraction.ConsumeSuccessCount;
+        if (!await Place(tree, lab, ContentIds.ToolDrink))
+        {
+            out_raises(0);
+            out_hold(0);
+            return false;
+        }
+
+        int raises = 0;
+        int hold = 0;
+        bool atTop = false;
+        bool done = false;
+        bool wasEating = false;
+        for (int tick = 0; tick < ConsumeTimeoutTicks && !done; tick++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            bool eating = lab.Buddy.Activity.Current == ActivityId.Eat;
+            // Measure the gesture that actually completes. An attempt the buddy abandons
+            // partway -- it can be knocked off the can -- starts the count again rather than
+            // adding a phantom second raise to it.
+            if (eating && !wasEating)
+            {
+                raises = 0;
+                hold = 0;
+                atTop = false;
+            }
+
+            wasEating = eating;
+            if (eating)
+            {
+                bool up = lab.Buddy.Activity.EatLift >= 0.99f;
+                if (up)
+                {
+                    hold++;
+                    if (!atTop)
+                        raises++;
+                }
+
+                atTop = up;
+            }
+
+            done = lab.Buddy.ObjectInteraction.ConsumeSuccessCount == before + 1;
+        }
+
+        out_raises(raises);
+        out_hold(hold);
+        return done;
     }
 
     /// <summary>Places one item and waits for the buddy to finish consuming it.</summary>

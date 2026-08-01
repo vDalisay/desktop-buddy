@@ -1,6 +1,7 @@
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Mood;
+using DesktopBuddy.Domain.Presentation;
 using Godot;
 
 namespace DesktopBuddy.Objects;
@@ -36,6 +37,19 @@ public partial class LooseObjectProfile : GameResource
     /// consumable that is never refused for appetite.
     /// </summary>
     [Export(PropertyHint.Range, "0,200,1")] public float ConsumeHungerFill { get; set; }
+    /// <summary>
+    /// How this consumable is taken. The Meal keeps the repeated-bite gesture; the Drink is
+    /// raised to the head once and held there (owner instruction 2026-08-01). Authored rather
+    /// than inferred, so a future consumable picks a gesture instead of a special case.
+    /// </summary>
+    [Export] public ConsumeGestureStyle ConsumeStyle { get; set; } = ConsumeGestureStyle.Bites;
+
+    /// <summary>Routed ticks the single raise takes to reach the head. Ignored by the bites style.</summary>
+    [Export(PropertyHint.Range, "6,600,1")] public int ConsumeRaiseTicks { get; set; } = 60;
+
+    /// <summary>Routed ticks it is held at the head before it is gone. <c>240</c> is two seconds.</summary>
+    [Export(PropertyHint.Range, "6,1800,1")] public int ConsumeHoldTicks { get; set; } = 240;
+
     [Export] public bool Hazardous { get; set; }
     [Export] public bool SafeToEvict { get; set; } = true;
 
@@ -57,6 +71,16 @@ public partial class LooseObjectProfile : GameResource
     [Export] public Color OutlineColor { get; set; } = new("183042");
 
     /// <summary>
+    /// Which drawn shape this object takes in the Mii3D presentation.
+    /// <see cref="LooseObjectVisualKind.None"/> -- the case for every object authored before
+    /// the Soccer Ball -- keeps the flat circle it has always had, in both modes.
+    /// </summary>
+    [Export] public LooseObjectVisualKind Visual3D { get; set; } = LooseObjectVisualKind.None;
+
+    /// <summary>How far in front of the room plane the drawn mesh sits.</summary>
+    [Export(PropertyHint.Range, "-64,64,0.5")] public float VisualDepthOffset { get; set; } = 6.0f;
+
+    /// <summary>
     /// Optional pullback tuning used when the player launches <i>this</i> item.
     /// <c>null</c> — the case for every launchable authored before the Soccer Ball — means the
     /// launcher's own shared preset, so nothing that did not author one changes. Authored
@@ -64,6 +88,13 @@ public partial class LooseObjectProfile : GameResource
     /// than a baseball, and that is a per-item feel number.
     /// </summary>
     [Export] public Tools.PullbackLauncherProfile? Launch { get; set; }
+
+    /// <summary>
+    /// Optional opt-in to the trap → dwell → kick beat (owner instruction 2026-08-01). Only the
+    /// Soccer Ball authors one; every other loose object leaves this <c>null</c> and is never
+    /// even read into a <see cref="DesktopBuddy.Domain.Autonomy.SoccerBallReading"/>.
+    /// </summary>
+    [Export] public SoccerPlayProfile? SoccerPlay { get; set; }
 
     public bool IsRuntimeValid =>
         !string.IsNullOrWhiteSpace(ContentId) &&
@@ -75,9 +106,12 @@ public partial class LooseObjectProfile : GameResource
         float.IsFinite(RestSpeedThreshold) && RestSpeedThreshold >= 0.0f &&
         RestTicksRequired > 0 &&
         (Launch is null || (GodotObject.IsInstanceValid(Launch) && Launch.IsRuntimeValid)) &&
+        (SoccerPlay is null ||
+         (GodotObject.IsInstanceValid(SoccerPlay) && SoccerPlay.IsRuntimeValid)) &&
         !(Hazardous && SafeToEvict) &&
         (!Consumable ||
-         (float.IsFinite(ConsumeMoodGain) && ConsumeMoodGain > 0.0f &&
+         (ConsumeRaiseTicks > 0 && ConsumeHoldTicks > 0 &&
+          float.IsFinite(ConsumeMoodGain) && ConsumeMoodGain > 0.0f &&
           ConsumeCooldownTicks >= 0 &&
           float.IsFinite(ConsumeHungerFill) && ConsumeHungerFill >= 0.0f));
 
@@ -87,6 +121,18 @@ public partial class LooseObjectProfile : GameResource
     /// </summary>
     public CareConsumableTuning ToConsumableTuning() =>
         new(ConsumeMoodGain, ConsumeCooldownTicks);
+
+    /// <summary>
+    /// The gesture this item is taken with. <paramref name="bites"/> is the shipped Meal
+    /// schedule from the activity profile, returned unchanged for everything that authors the
+    /// bites style — so the Meal path is bit-identical and only an item that asks for the
+    /// single raise gets one.
+    /// </summary>
+    public ConsumeGesture ToConsumeGesture(in ConsumeGesture bites) =>
+        ConsumeStyle == ConsumeGestureStyle.SingleRaise
+            ? ConsumeGesture.SingleRaise(
+                bites.ChestHoldTicks, ConsumeRaiseTicks, ConsumeHoldTicks)
+            : bites;
 
     public override Godot.Collections.Array<string> Validate()
     {
@@ -112,6 +158,11 @@ public partial class LooseObjectProfile : GameResource
         {
             errors.Add($"{nameof(Launch)} must be a valid pullback launcher profile when set");
         }
+        if (SoccerPlay is not null &&
+            (!GodotObject.IsInstanceValid(SoccerPlay) || !SoccerPlay.IsRuntimeValid))
+        {
+            errors.Add($"{nameof(SoccerPlay)} must be a valid soccer play profile when set");
+        }
         if (Hazardous && SafeToEvict)
             errors.Add("Hazardous loose objects cannot be marked safe to evict");
         if (Consumable && (!float.IsFinite(ConsumeMoodGain) || ConsumeMoodGain <= 0.0f))
@@ -120,6 +171,8 @@ public partial class LooseObjectProfile : GameResource
             errors.Add($"{nameof(ConsumeCooldownTicks)} cannot be negative");
         if (Consumable && (!float.IsFinite(ConsumeHungerFill) || ConsumeHungerFill < 0.0f))
             errors.Add($"{nameof(ConsumeHungerFill)} must be finite and non-negative");
+        if (Consumable && (ConsumeRaiseTicks <= 0 || ConsumeHoldTicks <= 0))
+            errors.Add($"{nameof(ConsumeRaiseTicks)} and {nameof(ConsumeHoldTicks)} must be positive");
         return errors;
     }
 }

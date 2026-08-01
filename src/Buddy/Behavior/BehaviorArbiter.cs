@@ -161,8 +161,12 @@ public partial class BehaviorArbiter : Node
 
         snapshot = snapshot with
         {
+            // The soccer trap is the second priority-5 worker: it never picks the ball up, so
+            // it has no ObjectPhase, but it does own actuation for its dwell and must not be
+            // walked away from by ambient autonomy mid-beat.
             ObjectActionCommitted =
                 ObjectInteraction.Phase != ObjectPhase.Idle ||
+                ObjectInteraction.SoccerPlayCommitted ||
                 Activity.Current == ActivityId.Eat,
             ObjectApproachDirection = ObjectInteraction.ApproachDirection,
         };

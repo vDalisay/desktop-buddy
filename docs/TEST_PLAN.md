@@ -264,6 +264,25 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   mid-drink starts no cooldown (FR-008.10), a Meal and a Drink taken back to back both
   succeed, the Drink's running `7200`-tick cooldown does not gate the Meal (per-content-id
   cooldown slots), and a second Drink inside the minute is refused `OnCooldown` for no mood.
+- The same scenario covers the 2026-08-01 owner feedback. The **soccer loop** is driven through
+  real physics — a ball spawned on the floor and given a real velocity, no component commanded
+  directly — and measured end to end: it arrives rolling at `234 px/s`, is stopped dead under
+  the foot (`fastest_while_trapped` `0.00`, so the trap writes the velocity to zero rather than
+  merely slowing it), held for `119` of the authored `120` dwell ticks with arbiter priority 5
+  owned throughout, and then kicked at exactly the authored `520 px/s` away from the buddy —
+  verified twice over, by the sign of the commanded velocity and by the buddy-to-ball gap
+  measured a beat later (`52 → 171 px`). The loft is one of three seeded choices and stays
+  inside the authored `24°`; seed `1` picks `12°` and seeds `7`/`13` pick `24°`, which is the
+  randomization the owner asked for. A companion check asserts that **no other** loose object
+  profile opts into the beat. The **Drink gesture** is measured on the consume that actually
+  completes: exactly `1` raise to the head and `244` ticks held there against the authored
+  `240`, then the can is gone. The **models** check asserts both items are adopted by
+  `LooseObjectVisual3D`, that no other object is, that every mesh vertex stays inside the
+  builder's stated `1.80 x` envelope, and that the mesh and the flat circle are complements —
+  exactly one silhouette per presentation mode, which makes the verdict identical in both.
+- The Meal path is unchanged by the gesture refactor and is proven so rather than assumed:
+  `meal_consume` still measures four meals to a full bar and its five-bite refusal choreography,
+  `consume_care_cooldown` still lands care on bite five, and `activity_clips` is green.
 - The `m5_soccer_ball` and `m5_drink` journeys repeat both slices through real pointer,
   button, and key input on seeds `1/7`, in both presentation modes. Each opens on the refusal
   an invisible catalogue entry produces — both entries stay `Visible = false` until the

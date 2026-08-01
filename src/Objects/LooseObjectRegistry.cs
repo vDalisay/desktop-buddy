@@ -111,6 +111,20 @@ public partial class LooseObjectRegistry : Node
         return true;
     }
 
+    /// <summary>
+    /// The live body in one capacity slot, or <c>null</c> when the slot is empty. Read-only
+    /// enumeration for presenters that must reconcile a pool of drawn meshes against whatever
+    /// is currently in the room; it exposes no state a caller could mutate.
+    /// </summary>
+    public LooseObjectBody? BodyAt(int slot)
+    {
+        if (slot < 0 || slot >= Capacity)
+            return null;
+
+        LooseObjectBody? body = _entries[slot].Body;
+        return GodotObject.IsInstanceValid(body) && _entries[slot].RuntimeId != 0 ? body : null;
+    }
+
     public LooseObjectBody? FindBody(int runtimeId)
     {
         int slot = FindSlot(runtimeId);

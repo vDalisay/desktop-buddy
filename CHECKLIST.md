@@ -299,6 +299,18 @@ pre-implementation on 2026-07-31:
 - [x] Task D — the `m5_soccer_ball` (6 assertions) and `m5_drink` (7 assertions) real-input
       journeys, seeds `1/7`, both presentations; all three registered in `ScenarioCatalog` /
       `tests/journeys/`, `TEST_PLAN.md`, and the quick suite (now 31 steps).
+- [x] Owner feedback pass, 2026-08-01 — three instructions, each data plus one pure model:
+      the buddy now **plays football** with the ball (`Domain/Autonomy/SoccerPlayModel`, a
+      priority-5 sibling of the catch lifecycle: a low ball rolling in is reserved from the
+      pickup through the existing `Ignored` channel and given the anti-kick collision
+      exception, trapped dead under the nearer foot, held one authored second, then kicked
+      back the way it came at one of three seeded loft angles); the **Drink is raised once**
+      and held two seconds instead of bitten five times (`Domain/Presentation/ConsumeGesture`
+      now owns both schedules, with the Meal's arithmetic restated exactly so its measured
+      signatures are bit-identical); and both items are **drawn as models**
+      (`Presentation3D/LooseObjectVisual3D` + `LooseObjectMeshBuilder`, a panelled ball and a
+      generic red-and-white can, degrading to the flat circle in legacy). Domain suite
+      `999 → 1057`; quick suite 31 steps green.
 - [ ] Task E — owner feel gate. `tool_soccer_ball.tres` and `tool_drink.tres` are still
       `Visible = false` and the two entries may flip independently; both journeys assert the
       invisible entry's refusal until then, on the Grenade's precedent. The bounce value and
