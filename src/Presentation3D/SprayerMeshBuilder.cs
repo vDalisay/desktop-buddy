@@ -93,23 +93,9 @@ public static class SprayerMeshBuilder
 
         return new List<Block>
         {
-            // Pressure canister: slung behind and above the grip, and the heaviest mass in
-            // the silhouette. This is the block that stops it reading as a pistol.
-            new(
-                new Vector3(-length * 0.11f, length * 0.10f, 0.0f),
-                new Vector3(length * 0.34f, length * 0.52f, length * 0.34f),
-                body),
-            // Its collar and its base cap, in accent, so the canister reads as a tank with
-            // ends rather than as a plain slab.
-            new(
-                new Vector3(-length * 0.11f, length * 0.36f, 0.0f),
-                new Vector3(length * 0.24f, length * 0.08f, length * 0.24f),
-                accent),
-            new(
-                new Vector3(-length * 0.11f, -length * 0.15f, 0.0f),
-                new Vector3(length * 0.28f, length * 0.07f, length * 0.28f),
-                accent),
-            // The yoke that carries the canister forward onto the receiver.
+            // The rounded canister is a separate mesh in CursorSprayerVisual3D. Keeping a
+            // second box in the same volume made it intersect on only one facing direction.
+            // This yoke is the sole bridge from that tank to the receiver.
             new(
                 new Vector3(length * 0.06f, length * 0.10f, 0.0f),
                 new Vector3(length * 0.22f, length * 0.13f, length * 0.14f),

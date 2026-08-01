@@ -29,6 +29,7 @@ namespace DesktopBuddy.Presentation3D;
 public partial class CursorSprayerVisual3D : Node3D
 {
     private readonly List<MeshInstance3D> _puffs = new();
+    private readonly List<ShaderMaterial> _puffMaterials = new();
 
     private FireSprayerComponent _sprayer = null!;
     private FireSprayerProfile _profile = null!;
@@ -36,9 +37,9 @@ public partial class CursorSprayerVisual3D : Node3D
     private Node3D _orientation = null!;
     private Node3D _stream = null!;
     private MeshInstance3D _mesh = null!;
+    private MeshInstance3D _canister = null!;
     private MeshInstance3D _pilot = null!;
     private StandardMaterial3D _material = null!;
-    private StandardMaterial3D _mistMaterial = null!;
     private StandardMaterial3D _pilotMaterial = null!;
     private bool _presentationActive;
     private int _ticks;
@@ -50,6 +51,21 @@ public partial class CursorSprayerVisual3D : Node3D
 
     /// <summary>Mist puffs currently drawn — the reduced-particles oracle for the stream.</summary>
     public int VisiblePuffCount { get; private set; }
+
+    /// <summary>Largest presentation-only upward lift in the current cloud.</summary>
+    public float MaxPuffRisePx { get; private set; }
+
+    /// <summary>True when the stream uses the procedural fire/smoke shader.</summary>
+    public bool UsesCloudShader => _puffMaterials.Count > 0;
+
+    /// <summary>True when the separate cylindrical fuel tank is part of the visible model.</summary>
+    public bool IsCanisterVisible => IsWeaponVisible && _canister.Visible;
+
+    public float CanisterDepthOffset => IsInitialized ? _canister.Position.Z : float.NaN;
+
+    public float CanisterDiameterPx => IsInitialized && _canister.Mesh is CapsuleMesh capsule
+        ? capsule.Radius * 2.0f
+        : 0.0f;
 
     /// <summary>
     /// Where the drawn nozzle mouth is, in 2D world pixels, read back out of the node's real
@@ -118,6 +134,7 @@ public partial class CursorSprayerVisual3D : Node3D
             PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
         };
         _orientation.AddChild(_mesh);
+        BuildCanister();
         BuildPilotLight();
 
         // The stream hangs off the root rather than off the rolled orientation: a puff is
@@ -140,6 +157,7 @@ public partial class CursorSprayerVisual3D : Node3D
         {
             Visible = false;
             VisiblePuffCount = 0;
+            MaxPuffRisePx = 0.0f;
         }
     }
 
@@ -218,6 +236,7 @@ public partial class CursorSprayerVisual3D : Node3D
     {
         IReadOnlyList<SprayDropletBody> droplets = _sprayer.Droplets;
         int visible = 0;
+        float maximumRise = 0.0f;
         for (int index = 0; index < _puffs.Count; index++)
         {
             MeshInstance3D puff = _puffs[index];
@@ -236,71 +255,93 @@ public partial class CursorSprayerVisual3D : Node3D
 
             float life = Mathf.Clamp(droplet.LifeFraction, 0.0f, 1.0f);
             float swell = 1.0f + ((_profile.MistSpreadFactor - 1.0f) * Mathf.Sqrt(life));
-            float size = droplet.Radius * swell * 2.0f;
+            float size = droplet.Radius * (2.6f + swell) * 3.0f;
+            float rise = _settings.ReducedMotion
+                ? 0.0f
+                : _profile.VisualLengthPx * 0.70f * Mathf.Pow(life, 1.35f);
 
             Vector3 position = WorldPlaneMapping.To3D(droplet.GlobalPosition);
+            position.Y += rise;
             position.Z = _profile.VisualDepthOffset - (_profile.VisualLengthPx * 0.25f);
             puff.GlobalPosition = position;
-            // Each puff carries its own slow roll, taken from its pool index, so overlapping
-            // billows do not read as one rigid shape sliding along.
-            puff.Rotation = new Vector3(0.0f, 0.0f, (index * 0.7853982f) + (life * 1.6f));
-            puff.Scale = new Vector3(size, size, size);
+            Vector2 velocity = droplet.LinearVelocity.LengthSquared() > 1.0f
+                ? droplet.LinearVelocity
+                : droplet.LaunchVelocity;
+            float angle = velocity == Vector2.Zero
+                ? 0.0f
+                : WorldPlaneMapping.To3DRotationZ(velocity.Angle());
+            puff.Rotation = new Vector3(0.0f, 0.0f, angle + (Mathf.Sin(index + life * 4.0f) * 0.12f));
+            puff.Scale = new Vector3(size * 1.45f, size, 1.0f);
+            ShaderMaterial material = _puffMaterials[index];
+            material.SetShaderParameter("age", life);
+            material.SetShaderParameter("phase", _ticks / (float)Engine.PhysicsTicksPerSecond);
             puff.Visible = true;
             visible++;
+            maximumRise = Mathf.Max(maximumRise, rise);
         }
 
-        // One shared material for the whole plume: the per-puff difference is size and
-        // position, and a per-puff material would be a Resource allocated on the render path.
-        // The tint is the stream's average age, which is what the eye reads as "the fire is
-        // hot at the nozzle and sooty at the far end" once the puffs overlap.
-        _mistMaterial.AlbedoColor = new Color(
-            _profile.FlameColor.Lerp(_profile.SmokeColor, 0.55f),
-            _settings.ReducedMotion ? 0.16f : 0.24f);
         VisiblePuffCount = visible;
+        MaxPuffRisePx = maximumRise;
     }
 
     private void BuildMist(int capacity)
     {
-        _mistMaterial = new StandardMaterial3D
-        {
-            ResourceName = "ProvisionalSprayMistMaterial",
-            AlbedoColor = new Color(_profile.FlameColor, 0.24f),
-            EmissionEnabled = true,
-            Emission = _profile.FlameColor,
-            EmissionEnergyMultiplier = 1.5f,
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            BlendMode = BaseMaterial3D.BlendModeEnum.Add,
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-            // Soft billows must not carve depth holes in each other.
-            NoDepthTest = false,
-            DisableReceiveShadows = true,
-        };
+        Shader shader = GD.Load<Shader>("res://shaders/sprayer_cloud.gdshader") ??
+                        throw new InvalidOperationException("The sprayer cloud shader is missing.");
 
-        // One sphere Resource shared by every puff, built once. Spheres rather than quads:
-        // in a presentation whose whole point is that the room is solid, a flat disc pretending
-        // to be a cloud is the thing that gives the trick away — the same reason the grenade's
-        // fireball is a real sphere.
-        var billow = new SphereMesh
-        {
-            Radius = 0.5f,
-            Height = 1.0f,
-            RadialSegments = 10,
-            Rings = 5,
-        };
+        // Front-facing cards let the shader erode the silhouette into irregular foam instead
+        // of leaving a chain of obviously spherical pellets.
+        var billow = new QuadMesh { Size = Vector2.One };
         for (int index = 0; index < Math.Max(1, capacity); index++)
         {
+            var material = new ShaderMaterial
+            {
+                ResourceName = $"SprayerCloudMaterial_{index + 1}",
+                Shader = shader,
+            };
+            material.SetShaderParameter("core_color", _profile.FlameCoreColor);
+            material.SetShaderParameter("flame_color", _profile.FlameColor);
+            material.SetShaderParameter("smoke_color", _profile.SmokeColor.Lightened(0.22f));
+            material.SetShaderParameter("seed", index * 0.731f);
             var puff = new MeshInstance3D
             {
                 Name = $"MistPuff_{index + 1}",
                 Mesh = billow,
-                MaterialOverride = _mistMaterial,
+                MaterialOverride = material,
                 Visible = false,
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
             };
             _stream.AddChild(puff);
             _puffs.Add(puff);
+            _puffMaterials.Add(material);
         }
+    }
+
+    private void BuildCanister()
+    {
+        float length = _profile.VisualLengthPx;
+        var canisterMaterial = new StandardMaterial3D
+        {
+            ResourceName = "SprayerCanisterMaterial",
+            AlbedoColor = _profile.BodyColor.Lightened(0.18f),
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
+            Roughness = 0.68f,
+            Metallic = 0.08f,
+        };
+        _canister = new MeshInstance3D
+        {
+            Name = "FuelCanister",
+            Mesh = new CapsuleMesh
+            {
+                Radius = length * 0.135f,
+                Height = length * 0.46f,
+                RadialSegments = 16,
+                Rings = 4,
+            },
+            MaterialOverride = canisterMaterial,
+            Position = new Vector3(-length * 0.08f, length * 0.08f, 0.0f),
+        };
+        _orientation.AddChild(_canister);
     }
 
     private void BuildPilotLight()

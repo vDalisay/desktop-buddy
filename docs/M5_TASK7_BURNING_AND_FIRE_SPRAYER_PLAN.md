@@ -142,7 +142,7 @@ ignitionPart, BurnEquivalentImpulse, partWorldPoint)`:
   later), and the `min(10, pain × 0.1)` mood loss.
 - `BurnEquivalentImpulse` provisional **200** — tune at Task C to **3–6 pain per
   event**, giving a full 4 s burn ≈ 25–45 total pain and a sustained 8 s cap burn
-  ≈ 55–90: painful, profitable, and **never a knockout by itself** (§3 default 1).
+  ≈ 55–90: painful, profitable, and **never a pain-driven knockout by itself** (§3 default 1).
 - Burning **survives knockout** (master-plan check): the model keeps ticking and events
   keep applying under the existing unconscious-buddy rules — the same "a blast cannot
   retrigger a running knockout" behavior the grenade documented.
@@ -217,7 +217,7 @@ All four defaults below are owner decisions, not provisional guesses. Record the
 `DECISIONS.md` at Task F's bookkeeping as accepted 2026-07-31; the feel gate still
 owns the *tuning* (numbers), but these *rules* are settled.
 
-1. **A full burn never KOs by itself.** Even a sustained 8 s cap burn peaks below the
+1. **A single-part full burn never KOs through pain by itself.** Even a sustained 8 s cap burn peaks below the
    100-pain rolling window. (Alternative: hotter — a max burn alone can KO.)
 2. **The sprayer has no ammunition, heat, or duration limit** — hold primary forever.
    Guns author "unlimited reserve"; the spec is silent for the sprayer, and a fuel
@@ -248,7 +248,7 @@ the numbers **in this section** (grenade-plan style).
 mood delta = `min(10, pain × 0.1)` per event, payout attributed `tool.fire_sprayer`,
 harmful memory entered), `a_burning_buddy_drops_its_ball_and_panics` (real ladder:
 held object released via priority-3 abort, hazard layer active),
-`burning_survives_knockout_but_not_hard_reposition`, `a_full_cap_burn_never_knocks_out`
+`burning_survives_knockout_but_not_hard_reposition`, `a_single_part_full_cap_burn_never_knocks_out`
 (§3 default 1 proven, not assumed). Seeds 1/7/13.
 
 **Task D — Presentation, FR-017.3 seam, audio.** §2.5 complete, both presentation
@@ -311,12 +311,37 @@ and writes it through the per-part lit material and the legacy fill that already
 part's skin colour. None of it touches the droplet physics, the fan geometry, the ignition
 path, or the burn economy — `burning_status`'s measured numbers are unmoved.
 
+### Owner feel-gate pass 2 (2026-08-01) — shader cloud and canister
+
+The remaining ball-like 3D puffs are replaced by a procedural hot-fire-to-smoke shader and
+overlap into one foamy stream. Older drawable puffs lift upward as vapor without moving their
+colliders, and a separate cylindrical fuel canister makes the tank unambiguous. The
+`burning_status` scenario pins the shader, lift, and canister seams.
+
+### Owner feel-gate pass 3 (2026-08-01) — body fire and panic
+
+The right-facing red blob was intersecting duplicate canister geometry. The box tank is gone;
+the one retained rounded canister is smaller, neutral, and centered at zero depth. Each part
+touched in the current burn now carries the stream's shader cloud with a rising smoke trail.
+The existing hazard drive reuses the accepted panic-hand arc and runs at an authored `1.35x`
+locomotion scale. Burn physics, attribution, timing, and economy remain unchanged.
+
+### Owner feel-gate pass 4 (2026-08-01) — full-body knockout and limb scorch
+
+When all six physical parts have remained alight together for `600` routed ticks, Burning
+holds the buddy unconscious until the fire ends. This is a status hold through the existing
+damage/consciousness component, not added pain. Scorch on a hand, foot, or head also darkens
+only its adjacent arm, leg, or neck connector; torso scorch does not spread to every limb.
+The `burning_status` scenario pins the `599/600` boundary, wake-on-expiry, endpoint connector
+tint, and torso non-propagation.
+
 ### Validation sweep (2026-08-01)
 
 - `dotnet test`: **1036 passed, 0 failed** (baseline `999`; +18 `BurningStatusModelTests`,
   +19 `ScorchStateModelTests` after the feel-gate pass).
 - `tools\quick_validate.bat`: **passed**, now 30 steps.
-- `burning_status` (now 17 checks): seeds `1/7/13` green in `Mii3D`; seeds `1/7` green in legacy.
+- `burning_status` (now 21 checks): seed `1` green in `Mii3D` after feel-gate pass 4;
+  prior seeds `1/7/13` green in `Mii3D` and `1/7` green in legacy.
 - `m5_fire_sprayer`: seeds `1/7` green in `Mii3D`; seeds `1/7` green in legacy.
 - Neighbours unchanged: `pistol_fire` (1), `nerf_versus_pistol` (7), `grenade_fuse` (1, 13),
   `object_toss_discard` (7), `behavior_priority_ladder` (1, 13), `boot_smoke` (1), and the

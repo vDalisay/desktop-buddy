@@ -43,12 +43,14 @@ public partial class FireSprayerComponent : Node2D
 
     /// <summary>The six authoritative parts, indexed by <see cref="BuddyPartId"/>.</summary>
     private readonly ScorchPhase[] _scorch = new ScorchPhase[6];
+    private readonly bool[] _burningParts = new bool[6];
 
     private SprayDropletBody[] _pool = Array.Empty<SprayDropletBody>();
     private CursorAimState _aim = CursorAimState.Initial;
     private BurningPhase _burn = BurningPhase.None;
     private BuddyPartId _ignitionPart = BuddyPartId.Torso;
     private int _burnInteractionId;
+    private int _fullBodyBurnTicks;
     private int _emitCountdown;
     private int _dropletIndex;
     private Vector2 _cursor;
@@ -93,9 +95,33 @@ public partial class FireSprayerComponent : Node2D
 
     public bool IsBurning => _burn.IsBurning;
     public int BurnTicksRemaining => _burn.TicksRemaining;
+    public int FullBodyBurnTicks => _fullBodyBurnTicks;
+    public bool FullBodyBurnKnockoutActive { get; private set; }
 
-    /// <summary>Which part the fire is on. Only meaningful while burning.</summary>
+    /// <summary>Most recently ignited part, used for attributed burn pain.</summary>
     public BuddyPartId IgnitionPart => _ignitionPart;
+
+    /// <summary>True when this part has caught during the current burn episode.</summary>
+    public bool IsPartBurning(BuddyPartId part)
+    {
+        int index = (int)part;
+        return _burn.IsBurning && index >= 0 && index < _burningParts.Length &&
+               _burningParts[index];
+    }
+
+    public int BurningPartCount
+    {
+        get
+        {
+            if (!_burn.IsBurning)
+                return 0;
+
+            int count = 0;
+            for (int index = 0; index < _burningParts.Length; index++)
+                if (_burningParts[index]) count++;
+            return count;
+        }
+    }
 
     /// <summary>The attribution id of the burn currently running; re-minted per episode.</summary>
     public int BurnInteractionId => _burnInteractionId;
@@ -283,6 +309,9 @@ public partial class FireSprayerComponent : Node2D
     public void ClearBurning()
     {
         _burn = BurningStatus.Clear(_burn);
+        Array.Clear(_burningParts);
+        _fullBodyBurnTicks = 0;
+        FullBodyBurnKnockoutActive = false;
         // Scorch goes out with the fire on this entry point and no other: the hard
         // reposition's contract is that it clears Burning "and other temporary statuses",
         // and a soot mark that survived a fail-safe reposition would be exactly the kind of
@@ -357,6 +386,7 @@ public partial class FireSprayerComponent : Node2D
         }
 
         AdvanceBurning();
+        AdvanceFullBodyKnockout();
         AdvanceScorch();
         UpdateFleeDirection();
         _previousCursor = _cursor;
@@ -451,9 +481,9 @@ public partial class FireSprayerComponent : Node2D
 
     /// <summary>
     /// Fire touched the buddy. This is the whole of a droplet's effect: refresh the burn and
-    /// remember where the fire is. It never becomes an impact.
+    /// remember which parts are alight. It never becomes an impact.
     /// </summary>
-    private void ApplyFireContact(BuddyPartId part, Vector2 worldPoint)
+    internal void ApplyFireContact(BuddyPartId part, Vector2 worldPoint)
     {
         BurningApplyResult applied = BurningStatus.Apply(_burn, Profile.ToBurningConstants());
         if (!applied.IsValid)
@@ -463,12 +493,14 @@ public partial class FireSprayerComponent : Node2D
         _ignitionPart = part;
         if (applied.Ignited)
         {
+            Array.Clear(_burningParts);
             // One burn, one interaction id, re-minted whenever a lapsed burn reignites, so
             // rolling-pain bookkeeping sees a continuous burn as one source.
             _burnInteractionId = InteractionIds.Next();
             IgnitionCount++;
             Ignited?.Invoke(worldPoint);
         }
+        _burningParts[(int)part] = true;
     }
 
     private void AdvanceBurning()
@@ -478,6 +510,8 @@ public partial class FireSprayerComponent : Node2D
 
         BurningTickResult result = BurningStatus.Tick(_burn, Profile.ToBurningConstants());
         _burn = result.Phase;
+        if (!_burn.IsBurning)
+            Array.Clear(_burningParts);
         if (!result.PainEventDue)
             return;
 
@@ -500,17 +534,39 @@ public partial class FireSprayerComponent : Node2D
         BurnEventApplied?.Invoke(pain);
     }
 
+    private void AdvanceFullBodyKnockout()
+    {
+        if (!_burn.IsBurning)
+        {
+            _fullBodyBurnTicks = 0;
+            FullBodyBurnKnockoutActive = false;
+            return;
+        }
+
+        if (FullBodyBurnKnockoutActive)
+            return;
+
+        if (BurningPartCount < _burningParts.Length)
+        {
+            _fullBodyBurnTicks = 0;
+            return;
+        }
+
+        _fullBodyBurnTicks++;
+        FullBodyBurnKnockoutActive = _fullBodyBurnTicks >= Profile.FullBodyKnockoutTicks;
+    }
+
     /// <summary>
-    /// Advances every part's scorch mark. Only the part the fire is actually on counts as
-    /// burning, so a stream that moves from a leg to the head leaves two marks at different
-    /// strengths rather than darkening the whole buddy evenly.
+    /// Advances every part's scorch mark. Parts touched in this episode keep burning until
+    /// the episode ends, so moving from a leg to the head leaves two independently growing
+    /// marks rather than darkening the whole buddy evenly.
     /// </summary>
     private void AdvanceScorch()
     {
         ScorchConstants constants = Profile.ToScorchConstants();
         for (int index = 0; index < _scorch.Length; index++)
         {
-            bool burning = _burn.IsBurning && index == (int)_ignitionPart;
+            bool burning = IsPartBurning((BuddyPartId)index);
             if (!burning && !_scorch[index].IsMarked)
                 continue;
 

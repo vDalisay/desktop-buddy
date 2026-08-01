@@ -20,6 +20,10 @@ public partial class BehaviorArbiterProfile : GameResource
     /// </summary>
     [Export(PropertyHint.Range, "0,1,0.05")]
     public float ObstacleHopHorizontalRatio { get; set; } = 0.3f;
+
+    /// <summary>Locomotion multiplier while Burning owns the hazard layer.</summary>
+    [Export(PropertyHint.Range, "1,2,0.05")]
+    public float BurningLocomotionScale { get; set; } = 1.35f;
     [Export] public SocialBandProfile Fearful { get; set; } = null!;
     [Export] public SocialBandProfile Wary { get; set; } = null!;
     [Export] public SocialBandProfile Neutral { get; set; } = null!;
@@ -31,6 +35,8 @@ public partial class BehaviorArbiterProfile : GameResource
         HopPropensityThreshold is >= 0 and <= 100 &&
         float.IsFinite(ObstacleHopHorizontalRatio) &&
         ObstacleHopHorizontalRatio is >= 0.0f and <= 1.0f &&
+        float.IsFinite(BurningLocomotionScale) &&
+        BurningLocomotionScale is >= 1.0f and <= 2.0f &&
         Valid(Fearful) && Valid(Wary) && Valid(Neutral) &&
         Valid(Content) && Valid(Delighted);
 
@@ -55,6 +61,8 @@ public partial class BehaviorArbiterProfile : GameResource
         {
             errors.Add($"{nameof(ObstacleHopHorizontalRatio)} must be within [0, 1]");
         }
+        if (!float.IsFinite(BurningLocomotionScale) || BurningLocomotionScale is < 1.0f or > 2.0f)
+            errors.Add($"{nameof(BurningLocomotionScale)} must be within [1, 2]");
         Require(errors, Fearful, nameof(Fearful));
         Require(errors, Wary, nameof(Wary));
         Require(errors, Neutral, nameof(Neutral));

@@ -262,10 +262,15 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   authored damage quantity and everything after it is the shared curve. At the authored
   `430` it scores `4.57` pain per event against the shipped conversion profile: `36.6` over
   a full four-second burn, `73.1` over a sustained eight-second cap burn, and at most `45.7`
-  inside any rolling five-second window — so `a_full_cap_burn_never_knocks_out` is proven
-  rather than assumed (owner default 1). Mood loss is measured across the single routed tick
+  inside any rolling five-second window — so `a_single_part_full_cap_burn_never_knocks_out`
+  is proven rather than assumed. The owner-confirmed exception is also exact: all six parts
+  alight together remain conscious through tick `599`, force unconsciousness on tick `600`,
+  and release that hold only when the fire subsides. Mood loss is measured across the single routed tick
   one event lands on, not across the whole burn, because persistent mood also carries the
   shared passive drift; on that tick it is exactly `min(10, pain x 0.1)`.
+- Per-part scorch presentation also covers the visual connectors: a hand darkens its arm, a
+  foot its leg, and the head its neck. The same scenario asserts torso scorch does not fan out
+  to every connector.
 - Burning's panic is one snapshot bool, so the scenario asserts it through the *real* ladder:
   a buddy holding a ball is set alight, priority `3` takes actuation from `ObjectAction`, and
   the ball is released by the existing higher-priority abort. Burning survives a knockout
@@ -295,6 +300,13 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   in `597` of its authored `600`, with the 3D albedo landing back on exactly the authored
   colour rather than near it. A hard reposition wipes a mark that has not finished fading,
   on the same `Clear()` entry point that puts the burn itself out.
+- The Fire Sprayer presentation check requires a visible cylindrical canister and a live
+  shader-backed cloud with positive upward vapor lift while spraying. These remain visual
+  assertions; the settings-parity check continues to pin identical gameplay.
+- The Burning presentation keeps two shader-cloud fire puffs on every part touched during the
+  current episode and sends older puffs upward as smoke. The panic check also requires both
+  panic-hand targets and an authored locomotion multiplier above `1.0` (`1.35` currently),
+  while the ordinary burn pain and settings-parity assertions remain unchanged.
 - The `m5_fire_sprayer` journey repeats the slice through real pointer, button, and key input
   on seeds `1/7`, in both presentation modes: the catalogue carries `tool.fire_sprayer` at
   its authored price but does **not** advertise it (the entry stays `Visible = false` until

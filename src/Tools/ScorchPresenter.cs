@@ -70,6 +70,7 @@ public partial class ScorchPresenter : Node
             float darkness = Sprayer.ScorchOf(id);
             part.SetScorch(darkness, scorch);
             VisualPresenter.SetPartScorch(id, darkness, scorch);
+            VisualPresenter.SetEndpointConnectorScorch(id, darkness, scorch);
             if (darkness > 0.0f)
                 marked++;
             peak = Mathf.Max(peak, darkness);

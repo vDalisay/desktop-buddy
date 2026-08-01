@@ -30,9 +30,9 @@ namespace DesktopBuddy.Testing;
 ///   interaction id, so one stream can never double-dip.</item>
 ///   <item>Contact grants 4 s and sustained contact pins the remaining duration at the 8 s
 ///   cap (FR-010.7, FR-010.8).</item>
-///   <item>Burn ticks pay and hurt on the shared formula, with the shared
-///   <c>min(10, pain x 0.1)</c> mood loss, and never knock the buddy out by themselves
-///   (owner default 1).</item>
+///   <item>Burn ticks pay and hurt on the shared formula. A single-part burn stays below
+///   the pain knockout; all six parts burning together for five seconds forces
+///   unconsciousness until the fire expires.</item>
 ///   <item>Burning raises the priority-3 hazard through the real ladder, which is what
 ///   drops a held object and makes the buddy run.</item>
 ///   <item>Burning survives a knockout and is cleared by a hard reposition.</item>
@@ -92,6 +92,19 @@ public sealed class BurningStatusScenario : IScenario
             await Tick(tree);
         int emittedWhileHeld = sprayer.DropletsLaunched - launchedBefore;
         bool sprayingWhileHeld = sprayer.IsSpraying;
+        bool show3D = lab.Mode == Presentation3D.PresentationMode.Mii3D;
+        bool shaderCloudVisible = show3D
+            ? lab.SprayerVisual.UsesCloudShader &&
+              lab.SprayerVisual.VisiblePuffCount > 0 &&
+              lab.SprayerVisual.MaxPuffRisePx > 0.0f
+            : sprayer.DrawsLegacySprayer && sprayer.DrawEnabledDropletCount > 0;
+        bool canisterVisible = show3D
+            ? lab.SprayerVisual.IsCanisterVisible &&
+              Mathf.IsZeroApprox(lab.SprayerVisual.CanisterDepthOffset) &&
+              lab.SprayerVisual.CanisterDiameterPx < profile.VisualLengthPx * 0.3f
+            : sprayer.DrawsLegacySprayer;
+        int shaderPuffCount = lab.SprayerVisual.VisiblePuffCount;
+        float shaderPuffRise = lab.SprayerVisual.MaxPuffRisePx;
 
         sprayer.SetPrimaryHeld(false);
         await Tick(tree);
@@ -112,6 +125,13 @@ public sealed class BurningStatusScenario : IScenario
             $"held_ticks={holdTicks} emitted={emittedWhileHeld} expected~{expected} " +
             $"stopped_same_tick={stoppedSameTick} after_release={emittedAfterRelease} " +
             $"exhausted={sprayer.PoolExhaustedCount}"));
+        checks.Add(new StartupCheck(
+            "sprayer_draws_a_lifted_shader_cloud_and_visible_canister",
+            shaderCloudVisible && canisterVisible,
+            $"shader={lab.SprayerVisual.UsesCloudShader} puffs={shaderPuffCount} " +
+            $"rise={shaderPuffRise:F2}px canister={canisterVisible} " +
+            $"canister_depth={lab.SprayerVisual.CanisterDepthOffset:F2} " +
+            $"diameter={lab.SprayerVisual.CanisterDiameterPx:F2}px"));
 
         // --- FR-014: the stream is bounded by its own pool, not by the registry ---
         await Idle(tree, sprayer, profile.DropletLifetimeTicks + 4);
@@ -215,10 +235,9 @@ public sealed class BurningStatusScenario : IScenario
             $"payout_milli={payout} tool_pain_milli={toolPainMilli} " +
             $"harmful={lab.Progress.IsContentHarmful(ContentIds.ToolFireSprayer)}"));
 
-        // --- A full cap burn never knocks out by itself (owner default 1) ---
-        // The burn above ran at the cap for a full 900 ticks with no other damage in play.
+        // --- One burning part remains below the normal pain knockout ---
         checks.Add(new StartupCheck(
-            "a_full_cap_burn_never_knocks_out",
+            "a_single_part_full_cap_burn_never_knocks_out",
             lab.Buddy.CurrentConsciousness == Consciousness.Conscious &&
             lab.Progress.Statistics.Knockouts == 0L,
             $"consciousness={lab.Buddy.CurrentConsciousness} " +
@@ -226,6 +245,58 @@ public sealed class BurningStatusScenario : IScenario
             $"burn_events={burnEvents} total_pain={sprayer.TotalBurnPain:F1}"));
 
         lab.Pipeline.ImpactAccepted -= OnImpact;
+
+        // --- All six parts together for exactly five seconds force unconsciousness ---
+        sprayer.ClearBurning();
+        await Tick(tree);
+        for (int tick = 0; tick < profile.FullBodyKnockoutTicks - 1; tick++)
+        {
+            IgniteEveryPart(sprayer, lab);
+            await Tick(tree);
+        }
+
+        bool consciousAt599 = lab.Buddy.CurrentConsciousness == Consciousness.Conscious &&
+                              !sprayer.FullBodyBurnKnockoutActive &&
+                              sprayer.FullBodyBurnTicks == profile.FullBodyKnockoutTicks - 1;
+        IgniteEveryPart(sprayer, lab);
+        await Tick(tree);
+        bool unconsciousAt600 = lab.Buddy.CurrentConsciousness == Consciousness.Unconscious &&
+                                sprayer.FullBodyBurnKnockoutActive;
+
+        for (int tick = 0; tick < profile.BurnCapTicks + 20 && sprayer.IsBurning; tick++)
+            await Tick(tree);
+        await Tick(tree);
+        checks.Add(new StartupCheck(
+            "all_parts_burning_for_five_seconds_knocks_out_until_fire_subsides",
+            consciousAt599 && unconsciousAt600 && !sprayer.IsBurning &&
+            !sprayer.FullBodyBurnKnockoutActive &&
+            lab.Buddy.CurrentConsciousness == Consciousness.Conscious,
+            $"at_599={consciousAt599} ticks={profile.FullBodyKnockoutTicks} " +
+            $"at_600={unconsciousAt600} burning_after={sprayer.IsBurning} " +
+            $"active_after={sprayer.FullBodyBurnKnockoutActive} " +
+            $"consciousness_after={lab.Buddy.CurrentConsciousness}"));
+
+        // One endpoint owns its adjacent connector tint; torso scorch alone owns none.
+        sprayer.ClearBurning();
+        await Tick(tree);
+        int leftArm = FindConnector(lab, BuddyPartId.LeftHand);
+        Color authoredArm = lab.VisualPresenter.AuthoredConnectorAlbedo(leftArm);
+        sprayer.ApplyFireContact(BuddyPartId.LeftHand, lab.Buddy.Rig.LeftHand.GlobalPosition);
+        await Tick(tree);
+        bool handDarkensArm = leftArm >= 0 &&
+                              lab.VisualPresenter.ConnectorAlbedo(leftArm) != authoredArm;
+        sprayer.ClearBurning();
+        await Tick(tree);
+        sprayer.ApplyFireContact(BuddyPartId.Torso, lab.Buddy.Rig.Torso.GlobalPosition);
+        await Tick(tree);
+        bool torsoLeavesArmClean = lab.VisualPresenter.ConnectorAlbedo(leftArm) == authoredArm;
+        checks.Add(new StartupCheck(
+            "scorched_endpoints_darken_only_their_adjacent_limb_connector",
+            handDarkensArm && torsoLeavesArmClean,
+            $"left_arm={leftArm} hand_darkened={handDarkensArm} " +
+            $"torso_left_clean={torsoLeavesArmClean}"));
+        sprayer.ClearBurning();
+        await Tick(tree);
 
         // --- Panic and the dropped ball, through the real ladder ---
         await WaitForBurnOut(tree, sprayer, profile.BurnCapTicks + 60);
@@ -240,20 +311,47 @@ public sealed class BurningStatusScenario : IScenario
         sprayer.SetPrimaryHeld(false);
         bool hazardOwned = false;
         bool released = false;
+        bool panicHands = false;
+        float peakHazardLocomotionScale = 0.0f;
+        int peakBurningParts = 0;
+        int peakBodyFirePuffs = 0;
+        int peakLegacyFirePuffs = 0;
         for (int tick = 0; tick < 180; tick++)
         {
             await Tick(tree);
-            hazardOwned |= lab.Buddy.Arbiter.Diagnostics.Owner == BehaviorPriority.Hazard;
+            if (lab.Buddy.Arbiter.Diagnostics.Owner == BehaviorPriority.Hazard)
+            {
+                hazardOwned = true;
+                peakHazardLocomotionScale = Mathf.Max(
+                    peakHazardLocomotionScale,
+                    lab.Buddy.Arbiter.DriveIntent.LocomotionScale);
+                panicHands |= lab.Buddy.Arbiter.DriveIntent.PanicLeftHandActive &&
+                              lab.Buddy.Arbiter.DriveIntent.PanicRightHandActive;
+            }
             released |= !lab.Buddy.ObjectInteraction.IsHolding;
+            peakBurningParts = Mathf.Max(peakBurningParts, sprayer.BurningPartCount);
+            peakBodyFirePuffs = Mathf.Max(peakBodyFirePuffs, lab.FireVisual.VisiblePuffCount);
+            peakLegacyFirePuffs = Mathf.Max(
+                peakLegacyFirePuffs,
+                lab.FireVisualLegacy.DrawnFlameCount + lab.FireVisualLegacy.DrawnEmberCount);
         }
 
         checks.Add(new StartupCheck(
             "a_burning_buddy_drops_its_ball_and_panics",
-            holding && sprayer.IsBurning && hazardOwned && released,
+            holding && sprayer.IsBurning && hazardOwned && released && panicHands &&
+            peakHazardLocomotionScale > 1.0f,
             $"was_holding={holding} owner_before={ownerWhileHolding} burning={sprayer.IsBurning} " +
             $"hazard_owned={hazardOwned} released={released} " +
             $"owner_now={lab.Buddy.Arbiter.Diagnostics.Owner} " +
-            $"flee={sprayer.HazardFleeDirection}"));
+            $"flee={sprayer.HazardFleeDirection} locomotion={peakHazardLocomotionScale:F2} " +
+            $"panic_hands={panicHands}"));
+        checks.Add(new StartupCheck(
+            "every_lit_part_uses_the_shader_cloud_and_leaves_smoke",
+            peakBurningParts > 0 && (show3D
+                ? peakBodyFirePuffs >= peakBurningParts * 2
+                : peakLegacyFirePuffs >= peakBurningParts * 2),
+            $"mode={lab.Mode} burning_parts={peakBurningParts} " +
+            $"shader_puffs={peakBodyFirePuffs} legacy_puffs={peakLegacyFirePuffs}"));
 
         // --- Burning survives a knockout, and a hard reposition puts it out ---
         int eventsBeforeKnockout = sprayer.BurnPainEventCount;
@@ -646,7 +744,7 @@ public sealed class BurningStatusScenario : IScenario
         Transform2D[] pose)
     {
         sprayer.SetPrimaryHeld(false);
-        sprayer.ClearBurning();
+        sprayer.CancelImmediately();
         // Holster first. Drawing the sprayer again resets the shared aim to Initial, so the
         // scripted pointer walk below establishes the same forward both times instead of
         // slewing out of whatever direction the previous section left the weapon pointing.
@@ -677,6 +775,24 @@ public sealed class BurningStatusScenario : IScenario
         }
 
         return null;
+    }
+
+    private static int FindConnector(BuddyLab lab, BuddyPartId endpoint)
+    {
+        for (int index = 0; index < lab.VisualPresenter.Profile.Connectors.Count; index++)
+        {
+            var connector = lab.VisualPresenter.Profile.Connectors[index];
+            if (connector is not null && (connector.PartA == endpoint || connector.PartB == endpoint))
+                return index;
+        }
+
+        return -1;
+    }
+
+    private static void IgniteEveryPart(FireSprayerComponent sprayer, BuddyLab lab)
+    {
+        foreach (PuppetPartBody part in lab.Buddy.Rig.Parts)
+            sprayer.ApplyFireContact(part.PartId, part.GlobalPosition);
     }
 
     private static void UnpinBuddy(BuddyLab lab)

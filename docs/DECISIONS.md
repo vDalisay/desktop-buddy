@@ -1248,8 +1248,8 @@ grants every implemented M5 tool at boot for mechanical tuning and would answer
 any code was written, so the implementation carried them out rather than proposing them. The
 owner's feel gate still owns the *tuning* — the numbers — but these rules are settled.
 
-1. **A full burn never knocks the buddy out by itself.** Even a sustained eight-second cap
-   burn peaks below the `100`-pain rolling window. Implemented and proven rather than
+1. **A single-part full burn never knocks the buddy out through pain alone.** Even a
+   sustained eight-second cap burn peaks below the `100`-pain rolling window. Implemented and proven rather than
    assumed: `BurnEquivalentImpulse = 430` scores `4.57` pain per event against the shipped
    conversion profile, so a rolling five-second window holds at most ten events — `45.7`.
    A four-second burn totals `36.6` and a sustained cap burn `73.1`.
@@ -1279,6 +1279,17 @@ Burning sets `BehaviorSnapshot.HazardPresent` and the existing ladder does the r
 `3` outranks `ObjectAction`, so a committed catch or eat aborts through the existing
 higher-priority abort — which *is* "drops held items" — and stays below `Unconscious`, so a
 knocked-out burning buddy lies there and burns. No new behavior system exists in this slice.
+
+**Owner feel-gate rule 2026-08-01: all six parts alight for five continuous seconds forces
+unconsciousness until the fire subsides.** The threshold is `600` routed ticks. It is a
+separate status hold, not an invented pain multiplier: the shared rolling-pain model remains
+unchanged, and the fire hold cannot wake the buddy early if its ordinary knockout is still
+active. At `599` ticks the buddy remains conscious; tick `600` forces unconsciousness; natural
+burn expiry or explicit fire cleanup releases only this hold.
+
+**Scorch propagates from an endpoint to its own visual connector only.** A scorched hand
+darkens its adjacent arm, a foot its leg, and the head its neck. Torso scorch alone does not
+darken every connector, so there is no torso-to-whole-rig propagation.
 
 **The FR-017.3 effects seam ships here, not in the M7 accessibility pass.** `ProgressSave`
 already carried `ReducedMotion`, `ScreenShake`, `ReducedParticles` and `PhotosensitivitySafe`
@@ -1332,6 +1343,25 @@ ignition path, or the burn economy — `burning_status`'s measured numbers are u
 until the owner plays it on real Windows, so the `m5_fire_sprayer` journey's catalogue leg
 asserts today's real promise — carried at its authored price, not advertised — and flips to a
 sale by editing one authored flag.
+
+**Owner feel gate, second pass (2026-08-01).** The owner kept the mechanics and requested a
+presentation-only revision: the fuel canister must read clearly, and the emitted fire must be
+a large foamy cloud rather than discrete puffs. The stream now uses a procedural shader to
+blend a hot core into smoky breakup, follows the existing physical forward stream, and gains
+presentation-only upward vapor lift. The model carries a separate cylindrical fuel canister.
+Ignition geometry, droplet physics, burn timing, pain, payout, and panic remain unchanged.
+
+**Owner feel gate, third pass (2026-08-01).** The separate fuel canister was oversized and
+intersected the box-built tank, exposing a red blob only when aiming right. The duplicate tank
+volume is removed; one smaller neutral rounded canister now sits on the weapon's zero-depth
+plane and remains symmetric under the existing determinant-positive left roll.
+
+Burning presentation now uses the stream's procedural fire/smoke shader on every part touched
+during the current burn episode. Two hot puffs stay on each lit part while older puffs rise and
+cool into a smoke trail. A touched part remains visually alight until the burn ends; this does
+not change which most-recent part receives the burn's attributed pain event. While Burning owns
+the hazard layer, locomotion is authored at `1.35x` and both free arms reuse the accepted
+grab-resistance panic-flail arc at full strength. No new behavior or damage lane exists.
 
 ## Planning Rule
 

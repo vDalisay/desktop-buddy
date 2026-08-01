@@ -195,7 +195,7 @@ public partial class BehaviorArbiter : Node
             Activity.SetActivity(ActivityId.Wave);
         }
 
-        DriveIntent = BuildDriveIntent(grabbedPart, toolReaction);
+        DriveIntent = BuildDriveIntent(routedTick, grabbedPart, toolReaction);
         if (_allocationProbeEnabled)
         {
             AllocationSamples++;
@@ -242,11 +242,15 @@ public partial class BehaviorArbiter : Node
     }
 
     private DriveIntent BuildDriveIntent(
+        long routedTick,
         BuddyPartId? grabbedPart,
         in ToolReactionIntent toolReaction)
     {
         if (Intent.Owner == BehaviorPriority.GrabResistance)
             return BuildResistanceIntent(grabbedPart);
+
+        if (Intent.Owner == BehaviorPriority.Hazard && _statusHazard)
+            return BuildBurningHazardIntent(routedTick);
 
         if (Intent.Owner is BehaviorPriority.Hazard or BehaviorPriority.Social &&
             toolReaction.Active)
@@ -331,6 +335,28 @@ public partial class BehaviorArbiter : Node
             PanicRightHandActive: grabbedPart != BuddyPartId.RightHand,
             LeftPanicHandTarget: shoulder + ToGodot(flail.LeftHandOffset),
             RightPanicHandTarget: shoulder + ToGodot(flail.RightHandOffset));
+    }
+
+    private DriveIntent BuildBurningHazardIntent(long routedTick)
+    {
+        ActiveDriveProfile drive = ActiveDrive.Profile;
+        var tuning = new PanicFlailTuning(
+            drive.PanicFlailAmplitude,
+            drive.PanicFlailLift,
+            drive.PanicFlailCycleTicks,
+            drive.PanicFlailAsymmetry,
+            drive.PanicFlailReachBias);
+        PanicFlailSample flail = PanicFlail.Sample(
+            unchecked((int)routedTick), 1.0f, Intent.WalkDirection, tuning);
+        Vector2 shoulder = Rig.Torso.GlobalPosition + drive.PanicHandOriginOffset;
+
+        return BasicDrive(Intent.WalkDirection, Profile.BurningLocomotionScale) with
+        {
+            PanicLeftHandActive = true,
+            PanicRightHandActive = true,
+            LeftPanicHandTarget = shoulder + ToGodot(flail.LeftHandOffset),
+            RightPanicHandTarget = shoulder + ToGodot(flail.RightHandOffset),
+        };
     }
 
     private static DriveIntent BuildToolReactionIntent(in ToolReactionIntent reaction) =>

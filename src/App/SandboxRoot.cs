@@ -324,6 +324,7 @@ public partial class SandboxRoot : Node2D
         // every contact this tick was scored against.
         Grenades.PhysicsTick();
         FireSprayer.PhysicsTick();
+        Pipeline.SetFireUnconsciousness(FireSprayer.FullBodyBurnKnockoutActive);
         // Burning is an immediate hazard in its own right (RAGDOLL §4 priority 3): one
         // snapshot bool, and the existing ladder does the panic and the drop.
         Buddy.Arbiter.SetStatusHazard(FireSprayer.IsBurning, FireSprayer.HazardFleeDirection);

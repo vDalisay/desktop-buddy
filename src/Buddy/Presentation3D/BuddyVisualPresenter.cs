@@ -248,6 +248,41 @@ public partial class BuddyVisualPresenter : Node3D
             material.AlbedoColor = wanted;
     }
 
+    /// <summary>Darkens connectors only from their scorched non-torso endpoint.</summary>
+    public void SetEndpointConnectorScorch(BuddyPartId endpoint, float amount, Color scorchColor)
+    {
+        if (!IsInitialized || endpoint == BuddyPartId.Torso)
+            return;
+
+        float clamped = Mathf.Clamp(amount, 0.0f, 1.0f);
+        for (int index = 0; index < _connectorDefinitions.Length; index++)
+        {
+            ConnectorVisualDefinition definition = _connectorDefinitions[index];
+            if (definition.PartA != endpoint && definition.PartB != endpoint)
+                continue;
+
+            if (_connectorMeshes[index].MaterialOverride is StandardMaterial3D material)
+            {
+                Color wanted = clamped <= 0.0f
+                    ? definition.Color
+                    : definition.Color.Lerp(scorchColor, clamped);
+                if (material.AlbedoColor != wanted)
+                    material.AlbedoColor = wanted;
+            }
+        }
+    }
+
+    public Color ConnectorAlbedo(int index) =>
+        IsInitialized && index >= 0 && index < _connectorMeshes.Length &&
+        _connectorMeshes[index].MaterialOverride is StandardMaterial3D material
+            ? material.AlbedoColor
+            : Colors.White;
+
+    public Color AuthoredConnectorAlbedo(int index) =>
+        IsInitialized && index >= 0 && index < _connectorDefinitions.Length
+            ? _connectorDefinitions[index].Color
+            : Colors.White;
+
     /// <summary>The albedo one part is currently rendered with, for scenario readouts.</summary>
     public Color PartAlbedo(BuddyPartId partId)
     {

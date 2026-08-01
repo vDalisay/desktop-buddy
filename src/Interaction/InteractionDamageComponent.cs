@@ -108,6 +108,7 @@ public partial class InteractionDamageComponent : Node
     private double _fixedDelta;
     private long _ticks;
     private bool _knockoutDrivenUnconscious;
+    private bool _fireDrivenUnconscious;
     private int _claimedSwingSource = -1;
     private int _claimedSwingEpoch = -1;
 
@@ -306,7 +307,8 @@ public partial class InteractionDamageComponent : Node
         if (_knockoutDrivenUnconscious && !state.KnockoutActive)
         {
             _knockoutDrivenUnconscious = false;
-            Buddy.SetConsciousness(Consciousness.Conscious);
+            if (!_fireDrivenUnconscious)
+                Buddy.SetConsciousness(Consciousness.Conscious);
             KnockoutEnded?.Invoke(now);
         }
 
@@ -317,6 +319,20 @@ public partial class InteractionDamageComponent : Node
             FeedbackCount++;
             RewardFeedbackEmitted?.Invoke(burst);
         }
+    }
+
+    /// <summary>Holds unconsciousness while a qualified full-body fire remains active.</summary>
+    public void SetFireUnconsciousness(bool active)
+    {
+        RequireInitialized();
+        if (_fireDrivenUnconscious == active)
+            return;
+
+        _fireDrivenUnconscious = active;
+        if (active)
+            Buddy.SetConsciousness(Consciousness.Unconscious);
+        else if (!_knockoutDrivenUnconscious)
+            Buddy.SetConsciousness(Consciousness.Conscious);
     }
 
     /// <summary>
@@ -681,6 +697,7 @@ public partial class InteractionDamageComponent : Node
         _care.Reset();
         _nerfMood.Reset();
         _knockoutDrivenUnconscious = false;
+        _fireDrivenUnconscious = false;
         _claimedSwingSource = -1;
         _claimedSwingEpoch = -1;
         // Persistent mood and harmful history intentionally survive (§5): hard

@@ -7,8 +7,8 @@ using Godot;
 namespace DesktopBuddy.Tools;
 
 /// <summary>
-/// The legacy-circles view of a burning buddy: a flame flicker on the ignition part with
-/// ember motes rising off it. The house rule is that every visual ships in both
+/// The legacy-circles view of a burning buddy: hot puffs on every lit part with smoke rising
+/// off them. The house rule is that every visual ships in both
 /// presentation modes, and <see cref="Presentation3D.FireVisual3D"/> is the frontal one.
 ///
 /// <para>Render-only, driven entirely from routed-tick counters and from the ember's own
@@ -87,52 +87,45 @@ public partial class FireVisual2D : Node2D
         if (!IsInitialized || !_presentationActive || !_sprayer.IsBurning)
             return;
 
-        PuppetPartBody? part = FindPart(_sprayer.IgnitionPart);
-        if (part is null)
-            return;
-
-        Vector2 centre = part.GlobalPosition;
-        float radius = part.Radius;
-        // One cycle of the capped flicker, sampled off the routed tick so a paused
-        // laboratory holds the flame still with everything else.
-        float cycleTicks = Mathf.Max(1.0f, Engine.PhysicsTicksPerSecond / FlickerHz);
-        float phase = (_ticks % cycleTicks) / cycleTicks;
-        float pulse = 0.5f + (0.5f * Mathf.Sin(phase * Mathf.Tau));
-
-        // Body of flame: two nested discs, the hot core inside the cooler skirt, the same
-        // colour language the grenade's fireball uses.
-        float skirt = radius * (1.15f + (0.25f * pulse));
-        DrawCircle(
-            centre - new Vector2(0.0f, radius * 0.25f),
-            skirt,
-            new Color(_profile.FlameColor, 0.42f + (0.12f * pulse)),
-            true, -1.0f, true);
-        DrawCircle(
-            centre - new Vector2(0.0f, radius * 0.45f),
-            skirt * 0.55f,
-            new Color(_profile.FlameCoreColor, 0.68f + (0.18f * pulse)),
-            true, -1.0f, true);
-
-        // Tongues licking upward. Their angles come from the index, never from noise.
-        const int tongues = 5;
-        for (int index = 0; index < tongues; index++)
+        for (int partIndex = 0; partIndex < 6; partIndex++)
         {
-            float spread = ((index / (tongues - 1.0f)) * 2.0f) - 1.0f;
-            var direction = new Vector2(spread * 0.55f, -1.0f).Normalized();
-            float length = radius * (1.1f + (0.6f * Mathf.Abs(Mathf.Sin((phase + (index * 0.17f)) * Mathf.Tau))));
-            DrawLine(
-                centre,
-                centre + (direction * length),
-                new Color(_profile.FlameColor, 0.75f),
-                Mathf.Max(1.0f, radius * 0.22f),
-                true);
-            DrawnFlameCount++;
-        }
+            var partId = (BuddyPartId)partIndex;
+            if (!_sprayer.IsPartBurning(partId))
+                continue;
 
-        DrawEmbers(centre, radius, phase);
+            PuppetPartBody? part = FindPart(partId);
+            if (part is not null)
+                DrawPartCloud(part, partIndex);
+        }
     }
 
-    private void DrawEmbers(Vector2 centre, float radius, float phase)
+    private void DrawPartCloud(PuppetPartBody part, int partIndex)
+    {
+        Vector2 centre = part.GlobalPosition;
+        float radius = part.Radius;
+        float cycleTicks = Mathf.Max(1.0f, Engine.PhysicsTicksPerSecond / FlickerHz);
+        float phase = ((_ticks + (partIndex * 7)) % cycleTicks) / cycleTicks;
+        float pulse = 0.5f + (0.5f * Mathf.Sin(phase * Mathf.Tau));
+
+        // Two overlapping hot puffs use the stream's colour language and avoid the old
+        // single white oval that swallowed an entire body part.
+        float skirt = radius * (0.9f + (0.18f * pulse));
+        DrawCircle(
+            centre - new Vector2(radius * 0.22f, radius * 0.18f),
+            skirt,
+            new Color(_profile.FlameColor, 0.58f + (0.12f * pulse)),
+            true, -1.0f, true);
+        DrawCircle(
+            centre + new Vector2(radius * 0.18f, -radius * 0.42f),
+            skirt * 0.82f,
+            new Color(_profile.FlameCoreColor, 0.72f + (0.12f * pulse)),
+            true, -1.0f, true);
+        DrawnFlameCount += 2;
+
+        DrawSmoke(centre, radius, phase, partIndex);
+    }
+
+    private void DrawSmoke(Vector2 centre, float radius, float phase, int partIndex)
     {
         int count = Mathf.Clamp(_profile.EmberCount, 0, 64);
         if (count == 0)
@@ -146,20 +139,21 @@ public partial class FireVisual2D : Node2D
             if (index % stride != 0)
                 continue;
 
-            // Golden-angle fan by index, exactly the grenade's ember idiom, so the motes
-            // are spread without a random source anywhere near presentation.
             float angle = index * 2.399963f;
             float lateral = Mathf.Cos(angle) * radius * 0.8f;
-            float life = (((_ticks + (index * cycle / count)) % cycle) / (float)cycle);
-            float rise = reach * life;
-            float alpha = 0.85f * (1.0f - (life * life));
+            float life = (((_ticks + (index * cycle / count) + (partIndex * 11)) % cycle) /
+                          (float)cycle);
+            float rise = reach * (_settings.ReducedMotion ? 0.35f : 2.0f) * life;
+            float alpha = 0.52f * (1.0f - (life * life));
             var mote = new Vector2(
-                centre.X + lateral + (Mathf.Sin((life + phase) * Mathf.Tau) * radius * 0.2f),
+                centre.X + lateral + (_settings.ReducedMotion
+                    ? 0.0f
+                    : Mathf.Sin((life + phase) * Mathf.Tau) * radius * 0.2f),
                 centre.Y - rise);
             DrawCircle(
                 mote,
-                Mathf.Max(0.8f, radius * 0.13f * (1.0f - life)),
-                new Color(_profile.EmberColor, alpha),
+                Mathf.Max(1.0f, radius * (0.35f + (life * 0.75f))),
+                new Color(_profile.FlameColor.Lerp(_profile.SmokeColor, life), alpha),
                 true, -1.0f, true);
             DrawnEmberCount++;
         }

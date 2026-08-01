@@ -97,15 +97,19 @@ public partial class FireSprayerProfile : GameResource
     /// <summary>Ticks between two attributed burn pain events — <c>60</c> is 0.5 s.</summary>
     [Export(PropertyHint.Range, "1,1200,1,or_greater")] public int BurnPainIntervalTicks { get; set; } = 60;
 
+    /// <summary>Continuous all-part burn ticks before fire forces unconsciousness.</summary>
+    [Export(PropertyHint.Range, "1,3600,1,or_greater")] public int FullBodyKnockoutTicks { get; set; } = 600;
+
     /// <summary>
     /// The equivalent impulse one burn event hands the shared pain curve.
     ///
     /// <para>Measured against the shipped conversion profile (anchors 350/700/1500/3000 to
     /// pain 0/20/55/100) on 2026-08-01: <c>430</c> scores <b>4.57 pain</b> per event, so a
     /// full 4 s burn totals about <b>36.6</b> pain over eight events and a sustained 8 s cap
-    /// burn about <b>73.1</b> over sixteen — painful and profitable, and never a knockout by
-    /// itself, because the most any rolling 5 s window can hold is ten events (<b>45.7</b>)
-    /// against the 100-pain threshold (owner default 1).</para>
+    /// burn about <b>73.1</b> over sixteen — painful and profitable, and never a pain-driven
+    /// knockout by itself, because the most any rolling 5 s window can hold is ten events
+    /// (<b>45.7</b>) against the 100-pain threshold. The separate all-six-part fire hold is
+    /// authored by <see cref="FullBodyKnockoutTicks"/>.</para>
     /// </summary>
     [Export(PropertyHint.Range, "1,20000,1,or_greater")] public float BurnEquivalentImpulse { get; set; } = 430.0f;
 
@@ -323,6 +327,11 @@ public partial class FireSprayerProfile : GameResource
             errors.Add(
                 $"{nameof(BurnApplyTicks)} and {nameof(BurnPainIntervalTicks)} must be " +
                 $"positive and {nameof(BurnCapTicks)} at least {nameof(BurnApplyTicks)}");
+        }
+
+        if (FullBodyKnockoutTicks < 1)
+        {
+            errors.Add($"{nameof(FullBodyKnockoutTicks)} must be at least one tick");
         }
 
         if (!float.IsFinite(BurnEquivalentImpulse) || BurnEquivalentImpulse <= 0.0f)
