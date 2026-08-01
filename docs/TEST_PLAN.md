@@ -250,10 +250,10 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 - The `shotgun_spread` scenario is the M5 Task 9 Shotgun gate, run under seeds `1/7/13`. The
   cadence half of the slice is a profile table on the shared `GunMachine` — capacity `5`,
   `108`-tick (`0.9 s`) interval, `240`-tick (`2 s`) reload, `6` pellets — so the scenario spends
-  most of its checks on what is not data. `six_pellets_leave_on_one_press_along_the_authored_fan`
-  compares each pellet's launch angle against the platform's own index formula
-  (`2i/(n-1) - 1` of the authored half-angle, so `-5/-3/-1/+1/+3/+5` degrees at `6` pellets):
-  the fan is even and deterministic, never scatter, which is the owner-accepted default.
+  most of its checks on what is not data. `six_pellets_leave_on_one_press_inside_a_randomized_cone`
+  proves that every shot selects a fresh seeded-random half-angle inside the authored
+  `12–20°` band and every pellet remains inside that shot's cone; five shots must produce
+  more than one cone while a repeated seed reproduces the same sequence.
   `every_pellet_of_one_press_shares_one_interaction_id` reads the shared identity directly.
   `point_blank_one_part_scores_exactly_once` is the dedup consequence stated out loud — six
   pellets into one head are **one** accepted impact, not six — and
@@ -270,9 +270,12 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   totals `9.0–26.0`. There is no per-tool damage anywhere; the difference is authored muzzle
   speed and pellet mass only. It also pins `point_blank_pellets_never_tunnel_through_the_target`
   (the `pistol_fire` geometric test applied to six bodies at once),
-  `the_reload_ejects_a_shell_that_cannot_touch_the_buddy` (the cosmetic magazine lane's rules
-  verbatim — layer `0`, `RoomBounds` mask, a contact probe on the chest that must do nothing,
-  and never a loose-object slot), and
+  `every_shot_ejects_a_red_shell_that_cannot_touch_the_buddy` (the cosmetic casing lane's
+  rules — red shell body, layer `0`, `RoomBounds` mask, a contact probe on the chest that must
+  do nothing, and never a loose-object slot), the click-after-shot pump state and visible
+  forend stroke, `shotgun_knockback_falls_with_travel_but_never_below_the_old_physical_hit`
+  (six point-blank `600` impulses equal twice the Grenade's `1800`, middle distance is lower, and
+  the extra reaches zero without subtracting the original contact), and
   `the_shotgun_kick_reads_bigger_than_the_pistol_and_never_stacks` (`3.0 px` against the
   Pistol's `1.5`, three shells back to back peaking inside one envelope).
 - `ContactSettleTicks` is `4` for the Shotgun rather than the Pistol's `2`, and that is a
@@ -285,9 +288,10 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   seeds `1/7`: the shop still **refuses** a sale because the catalogue entry stays
   `Visible = false` until the owner's feel gate (the Grenade's leg had exactly this shape
   before acceptance), the `L` lab key draws a loaded five-shell magazine, pointer travel aims
-  it, one primary press releases six pellets carrying one interaction identity, a burst hurts
-  the buddy and enters harmful memory as `tool.shotgun`, `R` reloads a partial magazine, an
-  emptied magazine dry-fires into the two-second automatic reload, and Grab holsters it.
+  it, one primary press releases six pellets carrying one interaction identity and ejects a
+  red shell, the next real-input click cycles the pump, a burst hurts the buddy and enters
+  harmful memory as `tool.shotgun`, `R` reloads a partial tube, an emptied tube dry-fires into
+  the two-second automatic reload, and Grab holsters it.
 - Fire duration refreshes from four seconds up to the eight-second cap; Repair Kit clears it.
 - Pullback launch direction is opposite the drag vector and its preview matches the resulting ballistic path within the configured tolerance.
 - The `baseball_pullback` scenario drives Baseball through the real pointer input path and

@@ -1605,6 +1605,17 @@ public partial class JourneyRunner : Node
         // The shared-shot identity, read through the component rather than inferred: a
         // trigger pull is one interaction however many pellets it puts in the air.
         state["the_six_pellets_of_one_press_share_one_interaction"] = sharedId != 0;
+        state["each_shot_ejects_a_red_shell"] =
+            profile.EjectsCasingOnShot && gun.CasingsEjected == 1 && gun.ActiveCasingCount == 1;
+
+        // The next click cycles the pump; it never fires a second burst itself.
+        int pumpBefore = gun.PumpStartCount;
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+        await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+        bool pumpStarted = gun.PumpStartCount == pumpBefore + 1 && gun.IsPumping;
+        await WaitPhysicsTicks(tree, profile.PumpTicks);
+        state["the_click_after_a_shot_cocks_the_pump"] =
+            pumpStarted && !gun.IsPumping && !gun.NeedsPump;
 
         // Then keep shooting until a burst lands, re-aiming at a buddy that is moving and
         // being knocked about — the same "does a hit hurt" question the Pistol journey asks.
@@ -1615,6 +1626,12 @@ public partial class JourneyRunner : Node
             await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
             await M4ObjectScenarioSupport.WaitFor(
                 tree, () => shotImpact is not null, profile.ShotIntervalTicks);
+            if (gun.NeedsPump)
+            {
+                await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+                await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+                await WaitPhysicsTicks(tree, profile.PumpTicks);
+            }
             Log.Info(
                 "Journey",
                 $"M5 shotgun aimed burst {shot}: aim={gun.AimForward} " +
@@ -1646,6 +1663,12 @@ public partial class JourneyRunner : Node
         // Empty the magazine, then pull once more: the dry fire is what reloads.
         for (int shell = 0; shell < profile.MagazineCapacity; shell++)
         {
+            if (gun.NeedsPump)
+            {
+                await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+                await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+                await WaitPhysicsTicks(tree, profile.PumpTicks);
+            }
             await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
             await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
             await WaitPhysicsTicks(tree, profile.ShotIntervalTicks);
@@ -1653,6 +1676,12 @@ public partial class JourneyRunner : Node
 
         bool emptied = gun.RoundsRemaining == 0 && !gun.IsReloading;
         int dryBefore = gun.DryFireCount;
+        if (gun.NeedsPump)
+        {
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
+            await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
+            await WaitPhysicsTicks(tree, profile.PumpTicks);
+        }
         await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
         await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
         state["an_empty_magazine_dry_fires_into_an_automatic_reload"] =
@@ -1674,7 +1703,7 @@ public partial class JourneyRunner : Node
             $"dry={gun.DryFireCount} reloads={gun.ReloadCompleteCount} " +
             $"shared_id={sharedId} pain={shotImpact?.Pain:F2} " +
             $"impulse={shotImpact?.Impulse:F1} part={shotImpact?.Part} " +
-            $"shells_ejected={gun.MagazinesDropped}");
+            $"shells_ejected={gun.CasingsEjected} pumps={gun.PumpStartCount}");
     }
 
     /// <summary>

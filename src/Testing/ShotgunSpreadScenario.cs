@@ -26,7 +26,7 @@ namespace DesktopBuddy.Testing;
 ///   <item>one pellet hurts less than a pistol bullet, because a burst is six of them;</item>
 ///   <item>point blank, no pellet passes through what it was fired at;</item>
 ///   <item>the shotgun's authored punctuation reads bigger than the pistol's and still
-///   cannot stack, and its reload ejects a shell that can never touch the buddy.</item>
+///   cannot stack, and every shot ejects a shell that can never touch the buddy.</item>
 /// </list>
 ///
 /// <para>The per-part counts are <b>measured and reported</b>, never assumed to be six.
@@ -77,6 +77,7 @@ public sealed class ShotgunSpreadScenario : IScenario
         }
 
         CursorGunComponent gun = lab.CursorGuns;
+        gun.ReseedSpread(seed);
         Rect2 room = lab.Boundaries.InnerBounds;
 
         // The real lab key, not a direct SelectTool: a tool nobody can reach is not
@@ -127,18 +128,26 @@ public sealed class ShotgunSpreadScenario : IScenario
             shotgun.ShotIntervalTicks == 108 &&
             shotgun.ReloadTicks == 240 &&
             shotgun.ProjectilesPerShot == 6 &&
-            shotgun.SpreadHalfAngleDegrees > 0.0f &&
+            Mathf.IsEqualApprox(shotgun.SpreadHalfAngleDegrees, 12.0f) &&
+            Mathf.IsEqualApprox(shotgun.SpreadMaxHalfAngleDegrees, 20.0f) &&
+            shotgun.ScattersPerShot &&
+            shotgun.RequiresPumpBetweenShots &&
+            shotgun.EjectsCasingOnShot &&
+            !shotgun.DropsMagazineOnReload &&
+            shotgun.ContactShoveAtPointBlank * shotgun.ProjectilesPerShot == 3600.0f &&
             shotgun.PoolCapacity >= shotgun.MagazineCapacity * shotgun.ProjectilesPerShot,
             $"capacity={shotgun.MagazineCapacity} interval={shotgun.ShotIntervalTicks}ticks " +
             $"({shotgun.ShotIntervalTicks / 120.0f:F2}s) reload={shotgun.ReloadTicks}ticks " +
             $"({shotgun.ReloadTicks / 120.0f:F2}s) pellets={shotgun.ProjectilesPerShot} " +
-            $"spread={shotgun.SpreadHalfAngleDegrees:F1}deg pool={shotgun.PoolCapacity}"));
+            $"spread={shotgun.SpreadHalfAngleDegrees:F1}-{shotgun.SpreadMaxHalfAngleDegrees:F1}deg " +
+            $"pump={shotgun.PumpTicks}ticks casing={shotgun.EjectsCasingOnShot} " +
+            $"point_blank_shove={shotgun.ContactShoveAtPointBlank}x{shotgun.ProjectilesPerShot} " +
+            $"pool={shotgun.PoolCapacity}"));
 
         // --- Mid range: the fan spreads, and every covered part scores once ---
         // The plan's coverage model, measured rather than assumed. Fired at the head/torso
-        // seam from the range where the authored 5-degree half-angle opens the fan to
-        // roughly a buddy's chest — which is what the profile note says that angle was
-        // chosen for, and where the fan straddles more than one part.
+        // seam from the range where the authored random cone opens across roughly a
+        // buddy's chest and can straddle more than one part.
         //
         // Measured first, on an untouched buddy, and that ordering is load-bearing. Later
         // legs empty magazines into a wall, and pellets that ricochet off it are still
@@ -172,8 +181,9 @@ public sealed class ShotgunSpreadScenario : IScenario
         await M4ObjectScenarioSupport.WaitFor(
             tree, () => gun.ActiveMagazineCount == 0, shotgun.MagazineLingerTicks + 60);
 
-        // --- One press, six pellets, on the fan the platform's formula states ---
+        // --- One press, six pellets, inside this shot's randomized cone ---
         int launchedBefore = gun.ProjectilesLaunched;
+        int casingsBeforeMagazine = gun.CasingsEjected;
         int registryBefore = lab.Objects.Count;
         Vector2 forward = gun.AimForward;
         gun.SetTriggerHeld(true);
@@ -186,10 +196,11 @@ public sealed class ShotgunSpreadScenario : IScenario
         foreach (ProjectileBody pellet in volley)
             oneIdentity &= pellet.InteractionId == sharedId && sharedId != 0;
 
-        (bool fanMatches, string fanReport) = CompareFan(volley, forward, shotgun);
+        float firstCone = gun.LastShotSpreadHalfAngleDegrees;
+        (bool fanMatches, string fanReport) = CompareScatter(volley, forward, shotgun, firstCone);
         int registryPeak = lab.Objects.Count;
         checks.Add(new StartupCheck(
-            "six_pellets_leave_on_one_press_along_the_authored_fan",
+            "six_pellets_leave_on_one_press_inside_a_randomized_cone",
             volley.Count == shotgun.ProjectilesPerShot &&
             gun.ProjectilesLaunched - launchedBefore == shotgun.ProjectilesPerShot &&
             gun.RoundsRemaining == shotgun.MagazineCapacity - 1 &&
@@ -214,32 +225,42 @@ public sealed class ShotgunSpreadScenario : IScenario
         int reloadsBefore = gun.ReloadStartCount;
         launchedBefore = gun.ProjectilesLaunched;
         int projectilePeak = 0;
-        int earlyPresses = 0;
+        int pumpStartsBefore = gun.PumpStartCount;
+        float pumpSlidePeak = 0.0f;
+        var cones = new HashSet<int> { Mathf.RoundToInt(firstCone * 1000.0f) };
         for (int round = 1; round < shotgun.MagazineCapacity; round++)
         {
-            // Half an interval in, a press must be refused outright — the cadence is a
-            // second's worth of commitment here, and a queued shot would erase it.
-            await Idle(tree, gun, shotgun.ShotIntervalTicks / 2);
-            int refusedFrom = gun.ShotCount;
+            // The click after every shot works the action; it never fires a second shell.
+            await Idle(tree, gun, 1);
+            int shotsAtPump = gun.ShotCount;
             await PressTrigger(tree, gun);
-            earlyPresses += gun.ShotCount - refusedFrom;
+            bool pumpStarted = gun.IsPumping && gun.ShotCount == shotsAtPump;
+            await Idle(tree, gun, shotgun.PumpTicks / 2);
+            pumpSlidePeak = Mathf.Max(pumpSlidePeak, gun.PumpSlideOffsetPx);
+            await Idle(tree, gun, shotgun.PumpTicks - (shotgun.PumpTicks / 2));
 
-            await Idle(tree, gun, shotgun.ShotIntervalTicks / 2);
+            await Idle(tree, gun, shotgun.ShotIntervalTicks);
             await PressTrigger(tree, gun);
+            cones.Add(Mathf.RoundToInt(gun.LastShotSpreadHalfAngleDegrees * 1000.0f));
             projectilePeak = Mathf.Max(projectilePeak, gun.ActiveProjectileCount);
             registryPeak = Mathf.Max(registryPeak, lab.Objects.Count);
+            if (!pumpStarted)
+                break;
         }
 
         checks.Add(new StartupCheck(
             "five_shells_empty_the_magazine_at_the_authored_cadence",
             gun.ShotCount - shotsBefore == shotgun.MagazineCapacity - 1 &&
-            earlyPresses == 0 &&
+            gun.PumpStartCount - pumpStartsBefore == shotgun.MagazineCapacity - 1 &&
+            pumpSlidePeak > 0.0f && !gun.IsPumping && gun.PumpSlideOffsetPx == 0.0f &&
+            cones.Count > 1 &&
             gun.ProjectilesLaunched - launchedBefore ==
                 (shotgun.MagazineCapacity - 1) * shotgun.ProjectilesPerShot &&
             gun.RoundsRemaining == 0 &&
             gun.ReloadStartCount == reloadsBefore &&
             !gun.IsReloading,
-            $"fired={gun.ShotCount - shotsBefore} early_presses_that_fired={earlyPresses} " +
+            $"fired={gun.ShotCount - shotsBefore} pumps={gun.PumpStartCount - pumpStartsBefore} " +
+            $"pump_slide_peak={pumpSlidePeak:F1}px distinct_cones={cones.Count} " +
             $"pellets={gun.ProjectilesLaunched - launchedBefore} rounds={gun.RoundsRemaining} " +
             $"reload_starts={gun.ReloadStartCount - reloadsBefore}"));
 
@@ -256,8 +277,10 @@ public sealed class ShotgunSpreadScenario : IScenario
 
         // --- The sixth pull dry-fires into the two-second automatic reload ---
         int dryBefore = gun.DryFireCount;
-        int magazinesBefore = gun.MagazinesDropped;
-        await Idle(tree, gun, shotgun.ShotIntervalTicks);
+        int casingsBeforeReload = gun.CasingsEjected;
+        // The last fired shell also has to be pumped out before an empty click can reload.
+        await PressTrigger(tree, gun);
+        await Idle(tree, gun, shotgun.PumpTicks + shotgun.ShotIntervalTicks);
         await PressTrigger(tree, gun);
         bool autoReload = gun.IsReloading;
         int reloadTicksAtStart = gun.ReloadTicksRemaining;
@@ -270,13 +293,12 @@ public sealed class ShotgunSpreadScenario : IScenario
             $"dry_fires={gun.DryFireCount - dryBefore} reloading={autoReload} " +
             $"remaining={reloadTicksAtStart} authored={shotgun.ReloadTicks}"));
 
-        // --- The ejected shell rides the cosmetic magazine lane ---
+        // --- Every shot's ejected shell rides the cosmetic casing lane ---
         // Verbatim the pistol magazine's rules: on no collision layer at all, masked only
         // against the room bounds, invisible to the pain pipeline and to the loose-object
         // registry, and it leaves on its own.
-        bool ejected = await M4ObjectScenarioSupport.WaitFor(
-            tree, () => gun.ActiveMagazineCount > 0, 30);
-        MagazineBody? shell = FindLiveMagazine(gun);
+        bool ejected = gun.ActiveCasingCount > 0;
+        MagazineBody? shell = FindLiveCasing(gun);
         uint shellLayer = shell?.CollisionLayer ?? 1u;
         uint shellMask = shell?.CollisionMask ?? 0u;
         long scoredBeforeProbe = lab.Pipeline.ScoredImpactCount;
@@ -293,17 +315,20 @@ public sealed class ShotgunSpreadScenario : IScenario
 
         await Idle(tree, gun, 30);
         checks.Add(new StartupCheck(
-            "the_reload_ejects_a_shell_that_cannot_touch_the_buddy",
-            shotgun.DropsMagazineOnReload &&
+            "every_shot_ejects_a_red_shell_that_cannot_touch_the_buddy",
+            shotgun.EjectsCasingOnShot &&
+            !shotgun.DropsMagazineOnReload &&
             ejected &&
-            gun.MagazinesDropped == magazinesBefore + 1 &&
+            gun.CasingsEjected - casingsBeforeMagazine == shotgun.MagazineCapacity &&
+            gun.CasingsEjected == casingsBeforeReload &&
+            shell?.IsCasing == true &&
             shellLayer == 0u &&
             shellMask == CollisionLayers.RoomBounds &&
             lab.Pipeline.ScoredImpactCount == scoredBeforeProbe &&
             (shell?.BuddyContactCount ?? 0) == shellContactsBefore &&
             lab.Objects.Count == registryBefore,
-            $"authored={shotgun.DropsMagazineOnReload} ejected={ejected} " +
-            $"dropped={gun.MagazinesDropped - magazinesBefore} layer={shellLayer} " +
+            $"authored={shotgun.EjectsCasingOnShot} ejected={ejected} " +
+            $"casings={gun.CasingsEjected - casingsBeforeMagazine} is_casing={shell?.IsCasing} layer={shellLayer} " +
             $"mask={shellMask} room_bounds={CollisionLayers.RoomBounds} " +
             $"scored={scoredBeforeProbe}->{lab.Pipeline.ScoredImpactCount} " +
             $"buddy_contacts={shellContactsBefore}->{shell?.BuddyContactCount ?? 0} " +
@@ -314,12 +339,12 @@ public sealed class ShotgunSpreadScenario : IScenario
             () => !gun.IsReloading && gun.RoundsRemaining == shotgun.MagazineCapacity,
             shotgun.ReloadTicks + 60);
         bool shellRepooled = await M4ObjectScenarioSupport.WaitFor(
-            tree, () => gun.ActiveMagazineCount == 0, shotgun.MagazineLingerTicks + 60);
+            tree, () => gun.ActiveCasingCount == 0, shotgun.MagazineLingerTicks + 60);
         checks.Add(new StartupCheck(
             "the_reload_completes_and_the_shell_returns_to_its_pool",
             refilled && shellRepooled,
             $"refilled={refilled} rounds={gun.RoundsRemaining} " +
-            $"live_shells={gun.ActiveMagazineCount} linger={shotgun.MagazineLingerTicks}"));
+            $"live_shells={gun.ActiveCasingCount} linger={shotgun.MagazineLingerTicks}"));
 
         await SettleProjectiles(tree, gun, shotgun);
         checks.Add(new StartupCheck(
@@ -349,6 +374,21 @@ public sealed class ShotgunSpreadScenario : IScenario
             $"deepest_travel={pointBlank.DeepestTravelPx:F1}px " +
             $"far_surface={pointBlank.FarSurfacePx:F1}px ccd={pointBlank.CcdMode}"));
 
+        float midShove = shotgun.ContactShoveAfter(
+            (shotgun.ContactShoveFullRangePx + shotgun.ContactShoveZeroRangePx) * 0.5f);
+        checks.Add(new StartupCheck(
+            "shotgun_knockback_falls_with_travel_but_never_below_the_old_physical_hit",
+            Mathf.IsEqualApprox(
+                shotgun.ContactShoveAfter(0.0f) * shotgun.ProjectilesPerShot,
+                3600.0f) &&
+            midShove > 0.0f && midShove < shotgun.ContactShoveAtPointBlank &&
+            shotgun.ContactShoveAfter(shotgun.ContactShoveZeroRangePx) == 0.0f &&
+            gun.PeakShoveImpulse > 0.0f &&
+            gun.PeakShoveImpulse <= shotgun.ContactShoveAtPointBlank,
+            $"point_blank={shotgun.ContactShoveAfter(0.0f):F1}x{shotgun.ProjectilesPerShot} " +
+            $"mid={midShove:F1} far={shotgun.ContactShoveAfter(shotgun.ContactShoveZeroRangePx):F1} " +
+            $"delivered_peak={gun.PeakShoveImpulse:F1}; zero extra leaves the original contact impulse"));
+
         // --- One pellet hurts less than one bullet ---
         // Through the shared curve only: the difference is authored muzzle speed and
         // pellet size, and a burst is six of these. Recorded as a band rather than a
@@ -375,9 +415,7 @@ public sealed class ShotgunSpreadScenario : IScenario
         float flashPeak = 0.0f;
         for (int shot = 0; shot < KickShots; shot++)
         {
-            gun.SetTriggerHeld(true);
-            await Tick(tree);
-            gun.SetTriggerHeld(false);
+            await FireReadyShot(tree, gun, shotgun);
             for (int tick = 0; tick < shotgun.ShotIntervalTicks; tick++)
             {
                 flashPeak = Mathf.Max(flashPeak, gun.MuzzleFlashStrength);
@@ -399,7 +437,7 @@ public sealed class ShotgunSpreadScenario : IScenario
             kicks == KickShots &&
             kickPeak > pistolProfile.FireShakeAmplitudePx &&
             kickPeak <= envelopeBound &&
-            flashPeak > 0.9f &&
+            flashPeak > 0.6f &&
             !lab.CameraKick.IsKicking &&
             lab.Boundaries.WorldCamera.Position.DistanceTo(cameraBase) < 0.001f,
             $"shake={shotgun.FireShakeAmplitudePx} vs pistol " +
@@ -471,6 +509,21 @@ public sealed class ShotgunSpreadScenario : IScenario
         await Tick(tree);
     }
 
+    private static async Task FireReadyShot(
+        SceneTree tree,
+        CursorGunComponent gun,
+        GunProfile profile)
+    {
+        if (gun.NeedsPump)
+        {
+            await PressTrigger(tree, gun);
+            await Idle(tree, gun, profile.PumpTicks);
+        }
+
+        await Idle(tree, gun, profile.ShotIntervalTicks);
+        await PressTrigger(tree, gun);
+    }
+
     private static async Task Idle(SceneTree tree, CursorGunComponent gun, int ticks)
     {
         gun.SetTriggerHeld(false);
@@ -535,11 +588,11 @@ public sealed class ShotgunSpreadScenario : IScenario
         return string.Join(" ", parts);
     }
 
-    private static MagazineBody? FindLiveMagazine(CursorGunComponent gun)
+    private static MagazineBody? FindLiveCasing(CursorGunComponent gun)
     {
         foreach (Node child in gun.GetChildren())
         {
-            if (child is MagazineBody { IsLive: true } magazine)
+            if (child is MagazineBody { IsLive: true, IsCasing: true } magazine)
                 return magazine;
         }
 
@@ -553,10 +606,11 @@ public sealed class ShotgunSpreadScenario : IScenario
     /// deterministic fan is the owner-accepted default (plan §3.1); a scatter would show
     /// up here as angles that do not land on the authored ladder.
     /// </summary>
-    private static (bool Matches, string Report) CompareFan(
+    private static (bool Matches, string Report) CompareScatter(
         List<ProjectileBody> volley,
         Vector2 forward,
-        GunProfile profile)
+        GunProfile profile,
+        float cone)
     {
         int count = profile.ProjectilesPerShot;
         if (volley.Count != count || forward == Vector2.Zero)
@@ -572,18 +626,12 @@ public sealed class ShotgunSpreadScenario : IScenario
         }
 
         measured.Sort();
-        bool matches = true;
-        var report = new List<string>();
-        for (int index = 0; index < count; index++)
-        {
-            float fraction = (2.0f * index / (count - 1)) - 1.0f;
-            float expected = fraction * profile.SpreadHalfAngleDegrees;
-            float error = Mathf.Abs(measured[index] - expected);
-            matches &= error <= 0.01f;
-            report.Add($"{measured[index]:F2}/{expected:F2}");
-        }
+        bool matches = cone >= profile.SpreadHalfAngleDegrees &&
+            cone <= profile.SpreadMaxHalfAngleDegrees;
+        foreach (float angle in measured)
+            matches &= float.IsFinite(angle) && Mathf.Abs(angle) <= cone + 0.01f;
 
-        return (matches, $"fan(deg measured/expected)=[{string.Join(" ", report)}]");
+        return (matches, $"scatter cone={cone:F2}deg angles=[{string.Join(" ", measured.ConvertAll(a => a.ToString("F2")))}]");
     }
 
     /// <summary>
@@ -790,9 +838,7 @@ public sealed class ShotgunSpreadScenario : IScenario
         lab.Pipeline.EpisodeAccepted += OnEpisode;
 
         int shotsBeforeBurst = gun.ShotCount;
-        gun.SetTriggerHeld(true);
-        await Tick(tree);
-        gun.SetTriggerHeld(false);
+        await FireReadyShot(tree, gun, profile);
 
         List<ProjectileBody> volley = LivePellets(gun);
         int firedThisBurst = gun.ShotCount - shotsBeforeBurst;

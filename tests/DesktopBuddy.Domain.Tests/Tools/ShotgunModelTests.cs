@@ -1,3 +1,4 @@
+using System;
 using DesktopBuddy.Domain.Tools;
 using Xunit;
 
@@ -22,9 +23,10 @@ public sealed class ShotgunModelTests
     private const int IntervalTicks = 108;
     private const int ReloadTicks = 240;
     private const int Pellets = 6;
+    private const int PumpTicks = 24;
 
     private static readonly GunConstants Shotgun =
-        new(Capacity, IntervalTicks, ReloadTicks, Pellets);
+        new(Capacity, IntervalTicks, ReloadTicks, Pellets, true, PumpTicks);
 
     [Fact]
     public void ShotgunConstantsMatchTheAuthoredSeconds()
@@ -34,6 +36,8 @@ public sealed class ShotgunModelTests
         Assert.Equal(2.0, (double)ReloadTicks / TicksPerSecond, 6);
         Assert.Equal(5, Shotgun.MagazineCapacity);
         Assert.Equal(6, Shotgun.ProjectilesPerShot);
+        Assert.True(Shotgun.RequiresPumpBetweenShots);
+        Assert.Equal(PumpTicks, Shotgun.PumpTicks);
     }
 
     [Fact]
@@ -47,6 +51,7 @@ public sealed class ShotgunModelTests
         Assert.Equal(Pellets, result.Projectiles);
         Assert.Equal(Capacity - 1, gun.Rounds);
         Assert.Equal(1, gun.Phase.ShotEpoch);
+        Assert.True(gun.Phase.ChamberEmpty);
     }
 
     [Fact]
@@ -70,19 +75,23 @@ public sealed class ShotgunModelTests
     }
 
     [Fact]
-    public void APressInsideTheNinetyHundredthsSecondCadenceIsSpentWithoutFiringLater()
+    public void TheClickAfterAShotWorksThePumpEvenInsideTheCadenceWindow()
     {
         var gun = new Gun(Shotgun);
         gun.Tick(triggerHeld: true);
 
-        // One tick short of the interval: refused, and it must not linger.
-        Assert.False(gun.PullAfter(IntervalTicks - 2).Fired);
+        GunResult pump = gun.PullAfter(1);
 
-        int firedAfterwards = 0;
-        for (int tick = 0; tick < IntervalTicks * 2; tick++)
-            firedAfterwards += gun.Tick(triggerHeld: true).Fired ? 1 : 0;
+        Assert.True(pump.PumpStarted);
+        Assert.False(pump.Fired);
+        Assert.Equal(PumpTicks, gun.Phase.PumpTicksRemaining);
+        Assert.True(gun.Phase.ChamberEmpty);
 
-        Assert.Equal(0, firedAfterwards);
+        gun.Idle(PumpTicks - 1);
+        Assert.True(gun.Phase.IsPumping);
+        GunResult completed = gun.Idle(1);
+        Assert.True(completed.PumpCompleted);
+        Assert.False(gun.Phase.ChamberEmpty);
         Assert.Equal(Capacity - 1, gun.Rounds);
     }
 
@@ -92,7 +101,7 @@ public sealed class ShotgunModelTests
         var gun = new Gun(Shotgun);
         gun.Tick(triggerHeld: true);
 
-        GunResult onTheBoundary = gun.PullAfter(IntervalTicks - 1);
+        GunResult onTheBoundary = gun.PullWhenReady();
 
         Assert.True(onTheBoundary.Fired);
         Assert.Equal(Pellets, onTheBoundary.Projectiles);
@@ -108,7 +117,7 @@ public sealed class ShotgunModelTests
         int pellets = 0;
         for (int shell = 0; shell < Capacity; shell++)
         {
-            GunResult result = gun.PullAfter(IntervalTicks);
+            GunResult result = gun.PullWhenReady();
             Assert.True(result.Fired);
             pellets += result.Projectiles;
             reloadStarts += result.ReloadStarted ? 1 : 0;
@@ -127,7 +136,7 @@ public sealed class ShotgunModelTests
         var gun = new Gun(Shotgun);
         gun.Empty();
 
-        GunResult sixth = gun.PullAfter(IntervalTicks);
+        GunResult sixth = gun.PullWhenReady();
 
         Assert.False(sixth.Fired);
         Assert.Equal(0, sixth.Projectiles);
@@ -142,7 +151,7 @@ public sealed class ShotgunModelTests
     {
         var gun = new Gun(Shotgun);
         gun.Empty();
-        gun.PullAfter(IntervalTicks);
+        gun.PullWhenReady();
 
         for (int tick = 1; tick < ReloadTicks; tick++)
         {
@@ -163,7 +172,7 @@ public sealed class ShotgunModelTests
     {
         var gun = new Gun(Shotgun);
         gun.Empty();
-        gun.PullAfter(IntervalTicks);
+        gun.PullWhenReady();
 
         int fired = 0;
         int pellets = 0;
@@ -185,7 +194,7 @@ public sealed class ShotgunModelTests
     {
         var gun = new Gun(Shotgun);
         gun.Empty();
-        gun.PullAfter(IntervalTicks);
+        gun.PullWhenReady();
         gun.Idle(ReloadTicks / 2);
         int remaining = gun.Phase.ReloadTicksRemaining;
 
@@ -229,7 +238,7 @@ public sealed class ShotgunModelTests
         for (int magazine = 0; magazine < 4; magazine++)
         {
             gun.Empty();
-            gun.PullAfter(IntervalTicks);
+            gun.PullWhenReady();
             gun.Idle(ReloadTicks);
             Assert.Equal(Capacity, gun.Rounds);
         }
@@ -269,6 +278,19 @@ public sealed class ShotgunModelTests
             return Tick(triggerHeld: true);
         }
 
+        public GunResult PullWhenReady()
+        {
+            if (Phase.ChamberEmpty)
+            {
+                GunResult pump = PullAfter(1);
+                Assert.True(pump.PumpStarted);
+                Idle(_constants.PumpTicks);
+            }
+
+            int wait = Math.Max(1, _constants.ShotIntervalTicks - Phase.TicksSinceShot - 1);
+            return PullAfter(wait);
+        }
+
         public GunResult Idle(int ticks)
         {
             GunResult result = default;
@@ -281,7 +303,7 @@ public sealed class ShotgunModelTests
         public void Empty()
         {
             while (Rounds > 0)
-                PullAfter(_constants.ShotIntervalTicks);
+                PullWhenReady();
         }
     }
 }

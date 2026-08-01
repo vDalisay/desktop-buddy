@@ -4,6 +4,12 @@
 Measured numbers are recorded in §2.3; the catalogue entry stays `Visible = false` until the
 owner plays it. Original plan text below is unchanged except where marked MEASURED.
 
+**2026-08-01 owner-feedback addendum:** the implementation now follows the superseding
+decision recorded in `DECISIONS.md`: seeded-random `12–20°` per-shot scatter, one red casing
+per shot, click-to-pump between shots, distance-falling extra knockback with the old physical
+hit as its floor, and a doubled-length stock. The original pre-implementation defaults below
+remain as history, not the current acceptance contract.
+
 Refines the master plan's Task 9 stub to handoff fidelity. The gun platform was built to make this slice cheap —
 "the Shotgun is a `.tres` plus a content ID, not new input code"
 (`CursorGunComponent` doc comment) — and this plan holds it to that: the only real

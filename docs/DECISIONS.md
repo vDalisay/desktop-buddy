@@ -1288,6 +1288,28 @@ requires the pool to cover a whole magazine in flight, which for this gun is `5 
 its provisional `100` credits until the owner plays the slice, and the `m5_shotgun` journey
 asserts that refusal — the shape the Grenade's leg had before its own acceptance.
 
+## Shotgun Owner Feedback — Scatter, Pump, Shells, Stock, and Knockback (2026-08-01)
+
+This owner feedback supersedes the Task 9 even-fan and reload-ejected-shell choices above.
+
+- Every shot selects a new seeded-random spread half-angle between `12°` and `20°`; each of
+  its six pellets independently selects an angle inside that shot's cone. Seeded runs remain
+  replayable, but successive shots no longer repeat one fixed ladder.
+- Every fired shot ejects one pooled cosmetic red shotgun shell. Reloading ejects no magazine.
+- The primary click after a shot cycles the pump over `24` routed ticks and chambers the next
+  shell; that click cannot fire. The forend follows the stroke in both presentation modes.
+- Each pellet adds distance-falling knockback without changing pain. At point blank the six
+  authored `600` impulses total `3600`, twice the Grenade's `1800` center shove, when all
+  connect. The extra
+  shove reaches zero by `260 px`, leaving the projectile's former physical contact response as
+  the minimum, never reducing it.
+- The procedural Shotgun stock is doubled lengthwise behind the cursor and gains restrained
+  receiver/butt details; no imported model or new asset dependency is introduced.
+
+The owner played this revision on 2026-08-01, liked the changes, and doubled only the maximum
+point-blank knockback from `300` to `600` per pellet. Falloff distances and the physical-hit
+floor are unchanged.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

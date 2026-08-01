@@ -47,6 +47,25 @@ public static class GunMeshBuilder
                 $"'{profile.ContentId}' has no authored gun silhouette.", nameof(profile)),
         };
 
+        return Build(blocks);
+    }
+
+    /// <summary>The Shotgun's separately animated wooden forend.</summary>
+    public static ArrayMesh BuildShotgunPump(GunProfile profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        float length = profile.VisualLengthPx;
+        return Build(new[]
+        {
+            new Block(
+                new Vector3(length * 0.60f, -length * 0.09f, 0.0f),
+                new Vector3(length * 0.24f, length * 0.13f, length * 0.13f),
+                profile.AccentColor),
+        });
+    }
+
+    private static ArrayMesh Build(IReadOnlyList<Block> blocks)
+    {
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
         foreach (Block block in blocks)
@@ -69,9 +88,10 @@ public static class GunMeshBuilder
         float length = profile.VisualLengthPx;
         float height = length * EnvelopeHeightFraction;
         float depth = length * EnvelopeDepthFraction;
+        float back = profile.Visual3DKind == GunVisual3DKind.Shotgun ? 0.40f : 0.12f;
         return new Aabb(
-            new Vector3(-length * 0.12f, -height, -depth),
-            new Vector3(length * 1.12f, height * 2.0f, depth * 2.0f));
+            new Vector3(-length * back, -height, -depth),
+            new Vector3(length * (1.0f + back), height * 2.0f, depth * 2.0f));
     }
 
     public static bool IsInsideEnvelope(Vector3 vertex, Aabb envelope, float epsilon = 0.001f)
@@ -198,11 +218,6 @@ public static class GunMeshBuilder
                 new Vector3(length * 0.59f, -length * 0.09f, 0.0f),
                 new Vector3(length * 0.54f, length * 0.07f, length * 0.07f),
                 body),
-            // Pump forend: the wood the shooting hand works, wrapped around that tube.
-            new(
-                new Vector3(length * 0.60f, -length * 0.09f, 0.0f),
-                new Vector3(length * 0.24f, length * 0.13f, length * 0.13f),
-                wood),
             // Receiver: the thick block the barrel screws into.
             new(
                 new Vector3(length * 0.26f, -length * 0.02f, 0.0f),
@@ -213,11 +228,20 @@ public static class GunMeshBuilder
                 new Vector3(length * 0.24f, -length * 0.16f, 0.0f),
                 new Vector3(length * 0.15f, length * 0.035f, length * 0.08f),
                 body),
-            // Stock, running back past the cursor.
+            // Stock, doubled lengthwise from the first pass and carried behind the cursor.
             new(
-                new Vector3(length * 0.06f, -length * 0.10f, 0.0f),
-                new Vector3(length * 0.28f, length * 0.15f, length * 0.12f),
+                new Vector3(-length * 0.08f, -length * 0.10f, 0.0f),
+                new Vector3(length * 0.56f, length * 0.15f, length * 0.12f),
                 wood),
+            // Dark butt plate and receiver cap keep the longer stock from reading as a box.
+            new(
+                new Vector3(-length * 0.35f, -length * 0.10f, 0.0f),
+                new Vector3(length * 0.04f, length * 0.18f, length * 0.14f),
+                body),
+            new(
+                new Vector3(length * 0.39f, -length * 0.02f, 0.0f),
+                new Vector3(length * 0.035f, length * 0.21f, length * 0.15f),
+                body),
             // Grip, hanging below the cursor the way both other guns' do.
             new(
                 new Vector3(length * 0.14f, -length * 0.26f, 0.0f),

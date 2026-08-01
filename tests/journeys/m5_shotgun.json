@@ -1,6 +1,6 @@
 {
   "id": "m5_shotgun",
-  "description": "The Shotgun end to end through real input: the shop still refuses one because the catalogue entry stays invisible until the owner's feel gate, the lab tool key draws a loaded five-shell magazine, pointer travel aims it, one primary press releases six pellets that share a single interaction identity and hurt the buddy, the R action reloads a partial magazine, an emptied magazine dry-fires into the two-second automatic reload, and selecting Grab puts the gun away.",
+  "description": "The Shotgun end to end through real input: one press releases six scattered pellets and ejects a red shell, the next click cycles the pump, hits hurt the buddy, R reloads the tube, an empty pull starts the automatic reload, and Grab holsters it.",
   "milestone": 5,
   "setup": {
     "scene": "buddy_lab",
@@ -15,6 +15,8 @@
     { "predicate": "pointer_motion_aims_the_shotgun" },
     { "predicate": "one_press_releases_exactly_six_pellets" },
     { "predicate": "the_six_pellets_of_one_press_share_one_interaction" },
+    { "predicate": "each_shot_ejects_a_red_shell" },
+    { "predicate": "the_click_after_a_shot_cocks_the_pump" },
     { "predicate": "a_shotgun_burst_hurts_the_buddy" },
     { "predicate": "the_shotgun_is_remembered_as_harmful" },
     { "predicate": "the_reload_key_refills_a_partial_magazine" },

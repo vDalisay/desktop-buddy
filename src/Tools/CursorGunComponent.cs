@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
@@ -34,6 +35,22 @@ namespace DesktopBuddy.Tools;
 [GlobalClass]
 public partial class CursorGunComponent : Node2D
 {
+    /// <summary>
+    /// Salt for this component's scatter stream. Distinct per consumer family, per the
+    /// <see cref="IRandomSource"/> contract: where a shotgun's pellets land must not be able
+    /// to perturb where the buddy decides to walk.
+    /// </summary>
+    private const ulong SpreadStreamSalt = 0x5A17_D06E_5C47_7E11UL;
+
+    /// <summary>
+    /// The scatter stream before anything reseeds it. A gun that fired in a scene nobody
+    /// seeded must still be reproducible, so this is a fixed constant rather than a clock.
+    /// </summary>
+    private const ulong DefaultSpreadSeed = 0x9E37_79B9_7F4A_7C15UL;
+
+    /// <summary>Steps the per-shot cone and each pellet's angle are quantised to.</summary>
+    private const int SpreadResolution = 4096;
+
     [Export] public Godot.Collections.Array<GunProfile> Profiles { get; set; } = new();
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public BoundaryController Boundaries { get; set; } = null!;
@@ -51,6 +68,7 @@ public partial class CursorGunComponent : Node2D
     private int _flashDuration;
     private int _recoilTicks;
     private int _recoilDuration;
+    private IRandomSource _spread = new SeededRandomSource(DefaultSpreadSeed);
 
     public bool IsInitialized { get; private set; }
 
@@ -115,11 +133,42 @@ public partial class CursorGunComponent : Node2D
         }
     }
 
+    /// <summary>Spent cases currently on the cosmetic ejection lane.</summary>
+    public int ActiveCasingCount
+    {
+        get
+        {
+            int count = 0;
+            for (int index = 0; index < _runtimes.Count; index++)
+                count += _runtimes[index].LiveCasings;
+            return count;
+        }
+    }
+
     public int MagazinesDropped { get; private set; }
+    public int CasingsEjected { get; private set; }
 
     public int RoundsRemaining => _active?.Phase.Rounds ?? 0;
     public bool IsReloading => _active?.Phase.IsReloading ?? false;
     public int ReloadTicksRemaining => _active?.Phase.ReloadTicksRemaining ?? 0;
+    public bool IsPumping => _active?.Phase.IsPumping ?? false;
+    public bool NeedsPump => _active?.Phase.ChamberEmpty ?? false;
+    public int PumpTicksRemaining => _active?.Phase.PumpTicksRemaining ?? 0;
+
+    /// <summary>Current pump-forend travel back toward the stock, in world pixels.</summary>
+    public float PumpSlideOffsetPx
+    {
+        get
+        {
+            if (_active is not { Phase.IsPumping: true } gun || gun.Profile.PumpTicks <= 0)
+                return 0.0f;
+
+            float progress = 1.0f - ((float)gun.Phase.PumpTicksRemaining / gun.Profile.PumpTicks);
+            float stroke = 1.0f - Mathf.Abs((2.0f * progress) - 1.0f);
+            return gun.Profile.VisualLengthPx * gun.Profile.PumpSlideFraction *
+                Mathf.Clamp(stroke, 0.0f, 1.0f);
+        }
+    }
 
     // Telemetry consumed by scenarios, journeys, and the laboratory panel.
 
@@ -138,6 +187,14 @@ public partial class CursorGunComponent : Node2D
     public int ReloadCompleteCount { get; private set; }
     public int ProjectilesLaunched { get; private set; }
     public int PoolExhaustedCount { get; private set; }
+    public int PumpStartCount { get; private set; }
+    public int PumpCompleteCount { get; private set; }
+
+    /// <summary>The randomized half-angle selected for the most recent real shot.</summary>
+    public float LastShotSpreadHalfAngleDegrees { get; private set; }
+
+    public float ShoveImpulseDelivered => _active?.ShoveImpulseDelivered ?? 0.0f;
+    public float PeakShoveImpulse => _active?.PeakShoveImpulse ?? 0.0f;
 
     /// <summary>
     /// The identity every pellet of the last multi-projectile shot was stamped with, or
@@ -355,6 +412,12 @@ public partial class CursorGunComponent : Node2D
         if (shot.ReloadCompleted)
             ReloadCompleteCount++;
 
+        if (shot.PumpStarted)
+            PumpStartCount++;
+
+        if (shot.PumpCompleted)
+            PumpCompleteCount++;
+
         if (shot.DryFired)
             DryFireCount++;
 
@@ -394,6 +457,9 @@ public partial class CursorGunComponent : Node2D
         // which is the behaviour the pistol and nerf regressions pin.
         int? sharedShotId = shot.Projectiles > 1 ? InteractionIds.Next() : null;
         LastShotInteractionId = sharedShotId ?? 0;
+        // Drawn once for the whole shot, before any pellet: the cone is a property of the
+        // trigger pull, and drawing it per pellet would be a different weapon.
+        ChooseShotCone(profile);
         for (int index = 0; index < shot.Projectiles; index++)
         {
             ProjectileBody? projectile = gun.TryTake();
@@ -410,26 +476,78 @@ public partial class CursorGunComponent : Node2D
             projectile.Launch(muzzle, direction * profile.MuzzleSpeed, sharedShotId);
             ProjectilesLaunched++;
         }
+
+        if (profile.EjectsCasingOnShot)
+            EjectCasing(gun);
     }
 
     /// <summary>
-    /// Fans a multi-projectile shot evenly across the authored cone. The pattern is
-    /// deterministic rather than random: a seeded scenario has to be able to state
-    /// where every pellet went, and a fixed fan is also a more readable spread than
-    /// noise at these speeds.
+    /// Where pellet <paramref name="index"/> of a shot goes.
+    ///
+    /// <para>A gun that authors no <see cref="GunProfile.SpreadMaxHalfAngleDegrees"/> fans
+    /// its pellets evenly across the one authored cone, index by index — the platform's
+    /// original deterministic pattern, kept because a future gun may want it.</para>
+    ///
+    /// <para>A gun that does scatters instead: <see cref="ChooseShotCone"/> has already drawn
+    /// this shot's half-angle from the authored band, and each pellet now draws its own angle
+    /// inside it, so no two bursts are the same burst. Both draws come from this component's
+    /// seeded stream, never from <see cref="System.Random"/>, so a replayed seed still
+    /// reproduces every pellet exactly.</para>
     /// </summary>
-    private static Vector2 SpreadDirection(
+    private Vector2 SpreadDirection(
         Vector2 forward,
         int index,
         int count,
         GunProfile profile)
     {
-        if (count <= 1 || profile.SpreadHalfAngleDegrees <= 0.0f)
+        if (count <= 1 || LastShotSpreadHalfAngleDegrees <= 0.0f)
             return forward;
 
-        float fraction = (2.0f * index / (count - 1)) - 1.0f;
-        return forward.Rotated(Mathf.DegToRad(fraction * profile.SpreadHalfAngleDegrees));
+        if (!profile.ScattersPerShot)
+        {
+            float fraction = (2.0f * index / (count - 1)) - 1.0f;
+            return forward.Rotated(
+                Mathf.DegToRad(fraction * LastShotSpreadHalfAngleDegrees));
+        }
+
+        return forward.Rotated(Mathf.DegToRad(
+            ((Unit() * 2.0f) - 1.0f) * LastShotSpreadHalfAngleDegrees));
     }
+
+    /// <summary>
+    /// Draws the cone this one trigger pull opens to, and records it. A scattering gun takes
+    /// a fresh half-angle from its authored band on every shot — the owner's feedback is that
+    /// a shotgun which patterns identically twice does not read as a shotgun — and every gun
+    /// without a band simply reports its single authored angle.
+    /// </summary>
+    private void ChooseShotCone(GunProfile profile)
+    {
+        if (!profile.ScattersPerShot)
+        {
+            LastShotSpreadHalfAngleDegrees = profile.SpreadHalfAngleDegrees;
+            return;
+        }
+
+        LastShotSpreadHalfAngleDegrees = Mathf.Lerp(
+            profile.SpreadHalfAngleDegrees, profile.SpreadMaxHalfAngleDegrees, Unit());
+    }
+
+    /// <summary>One draw from the scatter stream, in <c>[0,1)</c>.</summary>
+    private float Unit() => _spread.NextInt(0, SpreadResolution) / (float)SpreadResolution;
+
+    /// <summary>
+    /// Reseeds the scatter stream. Called from whatever reseeds the rest of the simulation,
+    /// so a replayed seed replays the pellet pattern too; the salt keeps this stream separate
+    /// from the buddy's own decisions.
+    /// </summary>
+    public void ReseedSpread(ulong seed)
+    {
+        Seed = seed;
+        _spread = new SeededRandomSource(seed ^ SpreadStreamSalt);
+    }
+
+    /// <summary>The seed the scatter stream is running from.</summary>
+    public ulong Seed { get; private set; } = DefaultSpreadSeed;
 
     private void AdvanceProjectiles()
     {
@@ -500,6 +618,25 @@ public partial class CursorGunComponent : Node2D
             forward.X >= 0.0f ? 6.0f : -6.0f,
             profile.MagazineLingerTicks);
         MagazinesDropped++;
+    }
+
+    private void EjectCasing(GunRuntime gun)
+    {
+        MagazineBody? casing = gun.TakeCasing();
+        if (casing is null)
+            return;
+
+        GunProfile profile = gun.Profile;
+        Vector2 forward = AimForward == Vector2.Zero ? Vector2.Right : AimForward;
+        Vector2 up = new Vector2(forward.Y, -forward.X);
+        Vector2 port = _cursor + (forward * (profile.VisualLengthPx * 0.28f)) +
+                       (up * (profile.VisualLengthPx * 0.10f));
+        casing.Drop(
+            ClampInsideRoom(port, profile.VisualLengthPx * profile.CasingLengthFraction),
+            (-forward * 55.0f) + (up * 95.0f),
+            forward.X >= 0.0f ? 10.0f : -10.0f,
+            profile.MagazineLingerTicks);
+        CasingsEjected++;
     }
 
     private GunProfile? ProfileFor(ToolId tool)
@@ -589,6 +726,19 @@ public partial class CursorGunComponent : Node2D
         DrawColoredPolygon(
             new[] { At(0.06f, 0.13f), At(0.26f, 0.13f), At(0.22f, 0.47f), At(0.04f, 0.47f) },
             profile.AccentColor);
+        if (profile.Visual3DKind == GunVisual3DKind.Shotgun)
+        {
+            float slide = PumpSlideOffsetPx / length;
+            DrawColoredPolygon(
+                new[] { At(0.48f - slide, 0.05f), At(0.72f - slide, 0.05f),
+                        At(0.72f - slide, 0.20f), At(0.48f - slide, 0.20f) },
+                profile.AccentColor);
+            // Twice the old stock length, extending behind the cursor.
+            DrawColoredPolygon(
+                new[] { At(-0.36f, -0.03f), At(0.20f, -0.03f),
+                        At(0.20f, 0.16f), At(-0.36f, 0.16f) },
+                profile.AccentColor);
+        }
         // The tip accent sits on the barrel mouth itself, which is the point of it.
         DrawColoredPolygon(
             new[] { Tip(-0.09f, -0.15f), Tip(0.0f, -0.15f), Tip(0.0f, 0.15f), Tip(-0.09f, 0.15f) },
@@ -651,6 +801,7 @@ public partial class CursorGunComponent : Node2D
     {
         private ProjectileBody[] _pool = Array.Empty<ProjectileBody>();
         private MagazineBody[] _magazines = Array.Empty<MagazineBody>();
+        private MagazineBody[] _casings = Array.Empty<MagazineBody>();
 
         public GunRuntime(GunProfile profile)
         {
@@ -660,6 +811,12 @@ public partial class CursorGunComponent : Node2D
         }
 
         public GunProfile Profile { get; }
+
+        /// <summary>Extra knockback this gun's shots have delivered, summed over the session.</summary>
+        public float ShoveImpulseDelivered { get; private set; }
+
+        /// <summary>The largest single projectile shove this gun has delivered.</summary>
+        public float PeakShoveImpulse { get; private set; }
 
         public GunPhase Phase { get; set; }
 
@@ -700,12 +857,38 @@ public partial class CursorGunComponent : Node2D
             }
         }
 
+        public int LiveCasings
+        {
+            get
+            {
+                int live = 0;
+                for (int index = 0; index < _casings.Length; index++)
+                {
+                    if (_casings[index].IsLive)
+                        live++;
+                }
+
+                return live;
+            }
+        }
+
         public MagazineBody? TakeMagazine()
         {
             for (int index = 0; index < _magazines.Length; index++)
             {
                 if (!_magazines[index].IsLive)
                     return _magazines[index];
+            }
+
+            return null;
+        }
+
+        public MagazineBody? TakeCasing()
+        {
+            for (int index = 0; index < _casings.Length; index++)
+            {
+                if (!_casings[index].IsLive)
+                    return _casings[index];
             }
 
             return null;
@@ -723,16 +906,28 @@ public partial class CursorGunComponent : Node2D
                 _pool[index] = projectile;
             }
 
-            if (!Profile.DropsMagazineOnReload)
-                return;
-
-            _magazines = new MagazineBody[GunProfile.MagazinePoolCapacity];
-            for (int index = 0; index < _magazines.Length; index++)
+            if (Profile.DropsMagazineOnReload)
             {
-                var magazine = new MagazineBody { Name = $"{prefix}-magazine-{index + 1}" };
-                magazine.Configure(Profile);
-                parent.AddChild(magazine);
-                _magazines[index] = magazine;
+                _magazines = new MagazineBody[GunProfile.MagazinePoolCapacity];
+                for (int index = 0; index < _magazines.Length; index++)
+                {
+                    var magazine = new MagazineBody { Name = $"{prefix}-magazine-{index + 1}" };
+                    magazine.Configure(Profile);
+                    parent.AddChild(magazine);
+                    _magazines[index] = magazine;
+                }
+            }
+
+            if (Profile.EjectsCasingOnShot)
+            {
+                _casings = new MagazineBody[GunProfile.CasingPoolCapacity];
+                for (int index = 0; index < _casings.Length; index++)
+                {
+                    var casing = new MagazineBody { Name = $"{prefix}-casing-{index + 1}" };
+                    casing.Configure(Profile, asCasing: true);
+                    parent.AddChild(casing);
+                    _casings[index] = casing;
+                }
             }
         }
 
@@ -755,20 +950,31 @@ public partial class CursorGunComponent : Node2D
                 if (projectile.State == ProjectileState.Pooled)
                     continue;
 
-                if (projectile.Advance(
-                        Profile.ProjectileLifetimeTicks,
-                        Profile.ProjectileMaxTravelPx,
-                        Profile.ContactSettleTicks,
-                        Profile.SpentLingerTicks))
-                {
+                bool finished = projectile.Advance(
+                    Profile.ProjectileLifetimeTicks,
+                    Profile.ProjectileMaxTravelPx,
+                    Profile.ContactSettleTicks,
+                    Profile.SpentLingerTicks);
+                // After the advance, so the travel the falloff reads includes the step the
+                // shot took into its target rather than the one before it.
+                float shove = projectile.TryApplyContactShove(Profile);
+                ShoveImpulseDelivered += shove;
+                if (shove > PeakShoveImpulse)
+                    PeakShoveImpulse = shove;
+                if (finished)
                     projectile.Park();
-                }
             }
 
             for (int index = 0; index < _magazines.Length; index++)
             {
                 if (_magazines[index].Advance())
                     _magazines[index].Park();
+            }
+
+            for (int index = 0; index < _casings.Length; index++)
+            {
+                if (_casings[index].Advance())
+                    _casings[index].Park();
             }
         }
     }

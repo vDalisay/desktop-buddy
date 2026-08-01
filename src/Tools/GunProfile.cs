@@ -58,8 +58,30 @@ public partial class GunProfile : GameResource
     /// <summary>
     /// Half-angle of the spread cone in degrees, or <c>0</c> for a single true shot.
     /// A multi-projectile gun without spread would stack every pellet on one line.
+    ///
+    /// <para>When <see cref="SpreadMaxHalfAngleDegrees"/> is authored above this, it is the
+    /// <b>tightest</b> cone a shot may open to rather than the only one — see there.</para>
     /// </summary>
     [Export(PropertyHint.Range, "0,45,0.1")] public float SpreadHalfAngleDegrees { get; set; }
+
+    /// <summary>
+    /// The widest cone a shot may open to, in degrees, or <c>0</c> to keep the gun on the
+    /// even deterministic fan at <see cref="SpreadHalfAngleDegrees"/> exactly.
+    ///
+    /// <para>Authored above the minimum, the gun scatters instead: every trigger pull draws
+    /// its own half-angle from <c>[min, max]</c>, and every pellet then draws its own angle
+    /// inside that cone, both from the gun's seeded stream. Two identical bursts are no
+    /// longer the same burst, which is the owner's 2026-08-01 shotgun feedback and a
+    /// deliberate reversal of the plan's §3.1 even-fan default. A seeded run still replays
+    /// exactly, because the stream is the simulation's own (see
+    /// <c>CursorGunComponent.ReseedSpread</c>) rather than <see cref="System.Random"/>.</para>
+    /// </summary>
+    [Export(PropertyHint.Range, "0,45,0.1")] public float SpreadMaxHalfAngleDegrees { get; set; }
+
+    /// <summary>True when this gun scatters per shot rather than fanning evenly.</summary>
+    public bool ScattersPerShot =>
+        float.IsFinite(SpreadMaxHalfAngleDegrees) &&
+        SpreadMaxHalfAngleDegrees > SpreadHalfAngleDegrees;
 
     // --- Aim (shared by every cursor weapon, RAGDOLL §9.1) ---
 
@@ -157,6 +179,63 @@ public partial class GunProfile : GameResource
     /// </summary>
     [Export(PropertyHint.Range, "1,256,1,or_greater")] public int PoolCapacity { get; set; } = 24;
 
+    // --- Contact shove (the knockback a landed projectile adds to its own impulse) ---
+
+    /// <summary>
+    /// Extra shove, in impulse units, one projectile puts through a dynamic body it hits
+    /// at point-blank range, on top of the momentum its own contact already transfers.
+    /// Zero — every gun before the Shotgun — leaves the physical hit as the only knockback,
+    /// which is the behaviour the pistol and nerf regressions pin.
+    ///
+    /// <para><b>This is knockback only and never pain.</b> Pain is scored from the impulse
+    /// the <i>solver</i> reports, and this is applied afterwards as a central impulse on the
+    /// routed tick, exactly the lane the grenade's blast shove uses and for exactly the same
+    /// reason: how hard a hit throws a buddy and how much it hurts are two authored
+    /// quantities, and tying them together makes one untunable without the other.</para>
+    ///
+    /// <para>Authored <b>per projectile</b>. The Shotgun's <c>600</c> makes a whole
+    /// six-pellet point-blank burst <c>3600</c>, twice the grenade's <c>1800</c> centre
+    /// shove per the owner's follow-up; a burst that half-connects throws proportionally
+    /// less.</para>
+    /// </summary>
+    [Export(PropertyHint.Range, "0,4000,1,or_greater")] public float ContactShoveAtPointBlank { get; set; }
+
+    /// <summary>
+    /// Pixels of flight within which a projectile still delivers the full
+    /// <see cref="ContactShoveAtPointBlank"/>. Roughly the length of the drawn gun plus an
+    /// arm: inside it the muzzle is effectively against the target.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,2000,1,or_greater")] public float ContactShoveFullRangePx { get; set; } = 60.0f;
+
+    /// <summary>
+    /// Pixels of flight past which the extra shove is gone entirely and a hit knocks the
+    /// target about by its own momentum alone. That bare physical hit is the floor the
+    /// owner asked for: the shove <b>adds</b> and never subtracts, so a long shot is exactly
+    /// as hard as it was before this lane existed and a close one is far harder.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,4000,1,or_greater")] public float ContactShoveZeroRangePx { get; set; } = 260.0f;
+
+    /// <summary>
+    /// The extra shove a projectile that has flown <paramref name="travelledPx"/> delivers.
+    /// Full inside the near radius, linear to nothing at the far one — the same two-radius
+    /// shape the grenade's blast falloff uses, so the two read as one idea.
+    /// </summary>
+    public float ContactShoveAfter(float travelledPx)
+    {
+        if (ContactShoveAtPointBlank <= 0.0f || !float.IsFinite(travelledPx))
+            return 0.0f;
+
+        if (travelledPx <= ContactShoveFullRangePx)
+            return ContactShoveAtPointBlank;
+
+        float span = ContactShoveZeroRangePx - ContactShoveFullRangePx;
+        if (span <= 0.0f || travelledPx >= ContactShoveZeroRangePx)
+            return 0.0f;
+
+        return ContactShoveAtPointBlank *
+            Mathf.Clamp(1.0f - ((travelledPx - ContactShoveFullRangePx) / span), 0.0f, 1.0f);
+    }
+
     [Export] public Color ProjectileColor { get; set; } = new("ffe08a");
     [Export] public Color TrailColor { get; set; } = new("ffb347");
 
@@ -217,14 +296,53 @@ public partial class GunProfile : GameResource
     /// <summary>Whether starting a reload ejects a cosmetic magazine onto the floor.</summary>
     [Export] public bool DropsMagazineOnReload { get; set; }
 
-    /// <summary>Ticks a dropped magazine lies on the floor before it fades and re-pools.</summary>
+    /// <summary>
+    /// Whether every shot throws a spent case out of the ejection port. A shotgun has no
+    /// magazine to drop, so this is the lane it uses instead: the same pooled cosmetic body,
+    /// drawn at <see cref="CasingColor"/> and <see cref="CasingLengthFraction"/>, thrown up
+    /// and back rather than dropped straight down.
+    /// </summary>
+    [Export] public bool EjectsCasingOnShot { get; set; }
+
+    /// <summary>The spent case's colour — a shotgun shell's red hull.</summary>
+    [Export] public Color CasingColor { get; set; } = new("b8323c");
+
+    /// <summary>Length of the drawn case as a fraction of <see cref="VisualLengthPx"/>.</summary>
+    [Export(PropertyHint.Range, "0.02,0.4,0.005")] public float CasingLengthFraction { get; set; } = 0.12f;
+
+    /// <summary>Ticks a dropped magazine or spent case lies on the floor before it fades and re-pools.</summary>
     [Export(PropertyHint.Range, "30,3600,1,or_greater")] public int MagazineLingerTicks { get; set; } = 600;
+
+    // --- Pump action ---
+
+    /// <summary>
+    /// Whether a fired shell leaves the chamber empty until the player works the action, so
+    /// the next primary press pumps instead of firing (see <see cref="GunMachine"/>).
+    /// </summary>
+    [Export] public bool RequiresPumpBetweenShots { get; set; }
+
+    /// <summary>Ticks one pump stroke takes; the trigger is dead for the duration.</summary>
+    [Export(PropertyHint.Range, "1,120,1,or_greater")] public int PumpTicks { get; set; } = 24;
+
+    /// <summary>
+    /// How far the forend slides back along the barrel at the top of the stroke, as a
+    /// fraction of <see cref="VisualLengthPx"/>. Presentation only — the stroke's gameplay
+    /// cost is <see cref="PumpTicks"/>, and the mesh must never be what a rule reads.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,0.5,0.005")] public float PumpSlideFraction { get; set; } = 0.16f;
 
     /// <summary>Pixels of agreement required between the authored muzzle and the mesh tip.</summary>
     public const float MuzzleAgreementPx = 2.0f;
 
     /// <summary>Cosmetic magazines a dropping gun preallocates.</summary>
     public const int MagazinePoolCapacity = 3;
+
+    /// <summary>
+    /// Spent cases an ejecting gun preallocates. Larger than the magazine pool because a
+    /// case comes out on every shot rather than every reload: at the Shotgun's cadence a
+    /// whole magazine can be on the floor before the first case has finished lingering.
+    /// </summary>
+    public const int CasingPoolCapacity = 8;
 
     /// <summary>Where the barrel mouth is, in pixels ahead of the cursor.</summary>
     public float VisualMuzzleTipPx => VisualLengthPx * MuzzleTipFraction;
@@ -244,7 +362,9 @@ public partial class GunProfile : GameResource
         MagazineCapacity,
         ShotIntervalTicks,
         ReloadTicks,
-        ProjectilesPerShot);
+        ProjectilesPerShot,
+        RequiresPumpBetweenShots,
+        PumpTicks);
 
     /// <summary>The engine-free aim constants this profile authors.</summary>
     public CursorAimConstants ToAimConstants() => new(
@@ -267,7 +387,9 @@ public partial class GunProfile : GameResource
         {
             errors.Add(
                 $"{nameof(MagazineCapacity)}, {nameof(ShotIntervalTicks)}, " +
-                $"{nameof(ReloadTicks)}, and {nameof(ProjectilesPerShot)} must all be positive");
+                $"{nameof(ReloadTicks)}, and {nameof(ProjectilesPerShot)} must all be " +
+                $"positive, and {nameof(PumpTicks)} positive when " +
+                $"{nameof(RequiresPumpBetweenShots)} is set");
         }
 
         if (!ToAimConstants().IsWellFormed())
@@ -290,6 +412,37 @@ public partial class GunProfile : GameResource
         if (!float.IsFinite(SpreadHalfAngleDegrees) || SpreadHalfAngleDegrees < 0.0f)
         {
             errors.Add($"{nameof(SpreadHalfAngleDegrees)} must be finite and non-negative");
+        }
+
+        // Zero disables scatter; anything else must really be a band, or a "randomized"
+        // gun would silently be a fixed one at whichever end happened to win.
+        if (!float.IsFinite(SpreadMaxHalfAngleDegrees) || SpreadMaxHalfAngleDegrees < 0.0f ||
+            (SpreadMaxHalfAngleDegrees > 0.0f &&
+             SpreadMaxHalfAngleDegrees <= SpreadHalfAngleDegrees))
+        {
+            errors.Add(
+                $"{nameof(SpreadMaxHalfAngleDegrees)} must be finite and either zero or " +
+                $"greater than {nameof(SpreadHalfAngleDegrees)}");
+        }
+
+        if (!float.IsFinite(ContactShoveAtPointBlank) || ContactShoveAtPointBlank < 0.0f ||
+            !float.IsFinite(ContactShoveFullRangePx) || ContactShoveFullRangePx < 0.0f ||
+            !float.IsFinite(ContactShoveZeroRangePx) ||
+            ContactShoveZeroRangePx <= ContactShoveFullRangePx)
+        {
+            errors.Add(
+                $"{nameof(ContactShoveAtPointBlank)} and {nameof(ContactShoveFullRangePx)} " +
+                $"must be finite and non-negative, and {nameof(ContactShoveZeroRangePx)} " +
+                $"must exceed {nameof(ContactShoveFullRangePx)}");
+        }
+
+        if (!float.IsFinite(CasingLengthFraction) || CasingLengthFraction <= 0.0f ||
+            PumpTicks < 1 ||
+            !float.IsFinite(PumpSlideFraction) || PumpSlideFraction < 0.0f)
+        {
+            errors.Add(
+                $"{nameof(CasingLengthFraction)} and {nameof(PumpTicks)} must be positive " +
+                $"and {nameof(PumpSlideFraction)} finite and non-negative");
         }
 
         if (!float.IsFinite(MuzzleSpeed) || MuzzleSpeed <= 0.0f)
