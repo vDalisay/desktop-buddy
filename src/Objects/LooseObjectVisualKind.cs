@@ -15,4 +15,7 @@ public enum LooseObjectVisualKind
 
     /// <summary>A generic drink can — no wordmark, no real product's trade dress.</summary>
     Can,
+
+    /// <summary>A first-aid case: white lid, coloured base, a cross, and a carry handle.</summary>
+    RepairKit,
 }

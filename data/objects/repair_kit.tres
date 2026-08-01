@@ -25,3 +25,5 @@ RestSpeedThreshold = 5.0
 RestTicksRequired = 60
 FillColor = Color(0.960784, 0.960784, 0.941176, 1)
 OutlineColor = Color(0.788235, 0.113725, 0.145098, 1)
+Visual3D = 3
+VisualDepthOffset = 6.0

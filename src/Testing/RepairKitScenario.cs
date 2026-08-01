@@ -5,9 +5,10 @@ using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Damage;
-using DesktopBuddy.Interaction;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Presentation3D;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -109,6 +110,9 @@ public sealed class RepairKitScenario : IScenario
             $"mood={lab.Progress.Mood:F1} was={moodBefore:F1} cooldown={cooldownAfter} " +
             $"treat_before={treatInterestBefore:F1} " +
             $"after={lab.Progress.InterestIn(FunActivityId.Treat):F1}"));
+
+        // --- The case is drawn as a model, once ---
+        checks.Add(await DrawnOnce(tree, lab, kit!));
 
         // --- Task B: the player-thrown route ---
         // A missed throw applies nothing and waits (FR-008.10). Thrown along the floor away
@@ -260,6 +264,59 @@ public sealed class RepairKitScenario : IScenario
     /// contact route itself is proven by the thrown-kit checks above; what is under test here
     /// is what the application does to a knockout.</para>
     /// </summary>
+    /// <summary>
+    /// The kit authors a shape, so it must be drawn as one — and as exactly one. Mesh on and
+    /// flat circle off in the 3D presentation, the reverse in legacy, never both, and no vertex
+    /// outside the builder's stated envelope for the collider radius.
+    /// </summary>
+    private static async Task<StartupCheck> DrawnOnce(
+        SceneTree tree, BuddyLab lab, LooseObjectProfile kit)
+    {
+        Rect2 room = lab.Boundaries.InnerBounds;
+        LooseObjectBody? body = lab.SpawnLooseObject(
+            kit,
+            new Vector2(room.GetCenter().X, room.Position.Y + 40.0f),
+            Vector2.Zero,
+            playerThrown: false);
+        if (body is null)
+            return new StartupCheck("the_kit_is_drawn_once_as_a_case", false, "no body");
+
+        // Kept out of the buddy's way: this leg is about drawing, not behaviour.
+        lab.Objects.MarkBuddyReleased(body, ignoreTicks: 600);
+        for (int tick = 0; tick < 12; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+        LooseObjectVisual3D presenter = lab.LooseObjectVisual;
+        bool adopted = presenter.IsDrawing(body.RuntimeId);
+        bool once = presenter.MeshVisible(body.RuntimeId) != body.Visible;
+
+        float reach = 0.0f;
+        Mesh? mesh = presenter.MeshFor(body.RuntimeId);
+        if (mesh is not null)
+        {
+            Godot.Collections.Array surface = mesh.SurfaceGetArrays(0);
+            foreach (Vector3 vertex in surface[(int)Mesh.ArrayType.Vertex].AsVector3Array())
+                reach = Mathf.Max(reach, vertex.Length());
+        }
+
+        float envelope = LooseObjectMeshBuilder.EnvelopeRadius(kit.Radius);
+        bool insideEnvelope = mesh is not null && reach <= envelope + 0.01f;
+
+        string detail =
+            $"mode={lab.Mode} adopted={adopted} once={once} " +
+            $"reach={reach:F1}/{envelope:F1} drawn={presenter.DrawnCount}";
+
+        lab.Objects.Unregister(body);
+        body.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        return new StartupCheck(
+            "the_kit_is_drawn_once_as_a_case",
+            adopted && once && insideEnvelope,
+            detail);
+    }
+
     private static async Task<List<StartupCheck>> PainAndKnockoutChecks(SceneTree tree)
     {
         var checks = new List<StartupCheck>();

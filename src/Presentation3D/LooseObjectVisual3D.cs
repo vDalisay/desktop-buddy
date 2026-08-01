@@ -211,6 +211,8 @@ public partial class LooseObjectVisual3D : Node3D
                 profile.Radius, profile.FillColor, profile.OutlineColor),
             LooseObjectVisualKind.Can => LooseObjectMeshBuilder.Can(
                 profile.Radius, profile.FillColor, profile.OutlineColor),
+            LooseObjectVisualKind.RepairKit => LooseObjectMeshBuilder.RepairKit(
+                profile.Radius, profile.FillColor, profile.OutlineColor),
             _ => throw new InvalidOperationException(
                 $"No loose-object mesh for {profile.Visual3D}."),
         };
