@@ -145,10 +145,13 @@ Gotchas that WILL fail a run if you forget them:
 
 **Milestone 5 catalogue work.** Follow
 `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`. Task 0 (catalogue spine) is done: the
-15 `data/catalogue/*.tres` definitions, the engine-free `ToolCatalogue`/
-`CataloguePolicy` rules, and the authoritative `EconomyService.Purchase(contentId)`
-boundary. Progression reset is deliberately **not** implemented — it waits on the
-owner's erase/preserve matrix. Task 2 (FR-014 budget) extracted the cap rule to
+Resource-authored catalogue, engine-free `ToolCatalogue`/`CataloguePolicy` rules,
+and authoritative `EconomyService.Purchase(contentId)` boundary. The current
+pre-Task-11 data contains the legacy hidden `upgrade.strength`; Task 11 replaces it
+with selectable `tool.power_grab`, producing exactly 16 selectable interactions.
+Reset Progress is not implemented yet, but its erase/preserve matrix is owner-resolved;
+Task 13 implements the confirmed atomic-reset contract in
+`docs/M5_TASK11_TO_13_HANDOFF_PLAN.md`. Task 2 (FR-014 budget) extracted the cap rule to
 `Domain/Interaction/LooseObjectAdmissionPolicy` and gated it with `object_budget`;
 its projectile half waits for the Task 5 guns. Task 3 (Meal) is owner-ACCEPTED
 (2026-07-30) and shop-visible. Task 4's Home-Run Bat refinement is also
@@ -176,8 +179,9 @@ array, with the rules in the engine-free `Domain/Tools/CursorAimModel` and
 it: the **Nerf Blaster** (`tool.nerf_blaster`, `ToolId 14`, lab key `N`) is the toy the
 player owns first and the **Pistol** (`J`) is the real one, and nothing separates them but
 their authored numbers — a point-blank dart scores measured zero pain where a bullet scores
-`13`. The launch catalogue is therefore sixteen entries, with the blaster at progression
-slot 7 ahead of the Pistol. Both are drawn at four times the old barrel's size by
+`13`. The locked launch catalogue is sixteen selectable interactions. Nerf is a permanent
+purchase between Meal and Pistol; the exact twelve-item order and the 209-minute
+completionist schedule are in `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md`. Both are drawn at four times the old barrel's size by
 `Presentation3D/GunMeshBuilder` + `CursorGunVisual3D` (procedural vertex-coloured boxes, no
 imported art), with a flat version of the same silhouette in the legacy 2D view. The grip
 sits at the cursor, so rounds are born 53–61 px ahead of the pointer — anything aiming a gun
