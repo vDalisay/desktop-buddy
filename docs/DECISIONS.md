@@ -1607,6 +1607,107 @@ Two consequences settled during implementation:
 2026-07-25 stays as history, superseded by the 2026-07-29 owner decision recorded above, the
 same way the grenade fuse supersession was recorded. FR-008.6 was already amended.
 
+## Power Grab, 16-Tool Catalogue, 209-Minute Economy, and Full Progress Reset (Owner decision, 2026-08-02)
+
+This entry supersedes the 2026-07-25 passive **Strength Upgrade** decision and resolves every
+owner question that blocked M5 Tasks 11–13.
+
+### Catalogue and identity
+
+- **The Nerf Blaster remains launch content.** The launch catalogue contains exactly
+  **16 selectable interactions**; there is no passive-upgrade-only entry.
+- **Power Grab replaces the unimplemented passive Strength Upgrade concept.** It is a
+  one-time permanent shop purchase and a separately selectable inventory tool. Normal Grab
+  remains a starting tool and remains selectable after Power Grab is purchased.
+- The shipped stable identity is new: `ToolId.PowerGrab` appended after every existing
+  ordinal and content ID `tool.power_grab`. Do **not** repurpose `upgrade.strength`.
+  That hidden pre-release placeholder becomes a deprecated migration alias only; a schema
+  migration maps any development save that owns it to `tool.power_grab`, and new saves
+  and new writes never emit it.
+- The exact purchasable display/progression order is:
+  `Baseball → Baseball Bat → Meal → Nerf → Pistol → Soccer Ball → Grenade →
+  Fire Sprayer → Power Grab → Repair Kit → Shotgun → Drink`.
+
+### Power Grab product contract
+
+- Power Grab uses the same acquisition, pointer controls, target eligibility, secondary
+  cancel, and limb-stretch maximum as Normal Grab.
+- It applies its extra authority to buddy parts **and** eligible loose objects.
+- It feels dramatically stronger but remains controllable: pull stiffness/authority and
+  the force ceiling increase by Resource-authored, laboratory-calibrated factors.
+- A limb held beyond the normal stretch limit remains bounded at that same safe limit and
+  continues its visible strain response, but it never reaches the Normal Grab forced
+  snap/release outcome. Only player release/cancel or centralized safety recovery ends it.
+- Fear resistance remains physically generated and visibly expressed. Power Grab overpowers
+  the outcome; it does not suppress the buddy's fear or struggling.
+- Intentional release scales the held body's velocity and uses a separately calibrated,
+  higher safe cap. This applies to buddy parts and loose objects. Cancel/recovery releases
+  do not become powered throws.
+- Power Grab has no direct damage, payout, mood, statistics, or hidden economy multiplier.
+  Any extra pain or earnings arise only from later physical contacts through the shared
+  impact/pain/reward pipeline.
+- Exact force factors, release factor, and safe cap are delegated laboratory tuning. They
+  are accepted only after quantitative regression and an owner side-by-side Normal/Power
+  Grab feel pass.
+
+### Economy order and cumulative targets
+
+The completionist reference buys in the order above. Target times are cumulative running
+minutes:
+
+| Item | Target | Gap from prior | Class |
+| --- | ---: | ---: | --- |
+| Baseball | 3 | 3 | regular |
+| Baseball Bat | 7 | 4 | regular |
+| Meal | 13 | 6 | regular |
+| Nerf | 21 | 8 | regular |
+| Pistol | 41 | 20 | high value |
+| Soccer Ball | 52 | 11 | regular |
+| Grenade | 76 | 24 | high value |
+| Fire Sprayer | 104 | 28 | high value |
+| Power Grab | 120 | 16 | regular |
+| Repair Kit | 138 | 18 | regular |
+| Shotgun | 184 | 46 | high value |
+| Drink | 209 | 25 | regular |
+
+Pistol, Grenade, Fire Sprayer, and Shotgun are the four high-value tools. Their normal
+escalating gap is doubled immediately **before** the purchase. The resulting completionist
+target is `209` minutes; the former two-hour/120-minute catalogue close is superseded.
+
+The shop has no prerequisite chain. A player may save for and buy any visible affordable
+item, leaving cheaper entries unowned. Calibration therefore runs:
+
+1. the completionist in-order strategy above, which alone is judged against each target;
+2. save-for-preference strategies for high-value items and other later entries, which prove
+   unrestricted skipping, correct spend, and stable ownership without pretending their
+   actual purchase times must match the completionist table.
+
+The representative session is a casual player across `209` running minutes:
+approximately `120` minutes actively interacting and `89` minutes background/passive.
+Active play includes experimentation, care/non-paying interactions, ordinary misses,
+pauses, and non-optimal hits; it is not continuous optimized attacking. Completionist
+median purchase times must land within `±15%` of each target across the approved fixed
+seed set. Peak passive earnings remain approximately `25%` of benchmark active attack
+earnings. Prices remain whole displayed credits and there is no per-tool payout factor.
+
+### Reset Progress
+
+- **Reset Progress means a complete fresh gameplay save.** It clears balance, all purchased
+  ownership, current selection (back to Normal Grab), mood, fullness/hunger, harmful and
+  learned buddy memory/state, fun/novelty state, generated buddy traits, local gameplay
+  statistics/counters, achievement-progress counters, and cumulative run/active/hidden
+  time. Fresh traits and other new-save values are produced through the existing new-save
+  factory rather than zero-filled ad hoc.
+- It preserves local preferences: language, audio, controls, accessibility/comfort,
+  presentation, window position/size, zoom, and dock layout/state.
+- Already-awarded platform achievements remain awarded. Only their local progress counters
+  reset; the game does not call a platform-wide achievement clear.
+- The operation is reachable only through a destructive confirmation dialog that names the
+  erased categories, defaults focus to Cancel, and emits an explicit confirmed result.
+  Dismissal, Escape, missing confirmation, or save failure leaves progress unchanged.
+- A confirmed reset uses the normal atomic persistence boundary and immediate flush. The UI
+  never mutates individual progress fields or calls a second reset path.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.
