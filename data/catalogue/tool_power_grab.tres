@@ -3,14 +3,14 @@
 [ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
 
 [resource]
-resource_name = "CatalogueStrengthUpgrade"
+resource_name = "CataloguePowerGrab"
 script = ExtResource("1")
-ContentId = "upgrade.strength"
-Kind = 3
-PriceCredits = 0
-ProgressionOrder = 15
-Visible = false
-NameKey = "shop.upgrade.strength.name"
-DescriptionKey = "shop.upgrade.strength.description"
+ContentId = "tool.power_grab"
+Kind = 1
+PriceCredits = 105
+ProgressionOrder = 12
+Visible = true
+NameKey = "shop.tool.power_grab.name"
+DescriptionKey = "shop.tool.power_grab.description"
 RequiresLaunchScene = false
 RequiresIcon = false

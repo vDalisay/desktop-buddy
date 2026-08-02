@@ -83,9 +83,9 @@ public sealed class ProgressSavePolicyTests
     {
         // Schema 4 has no stomach state. Resuming full would silently refuse the first meal
         // the player offered after upgrading.
-        string legacy = ProgressSavePolicy.Serialize(new ProgressSave { Mood = 12.0f })
-            .Replace("\"schemaVersion\": 5", "\"schemaVersion\": 4")
-            .Replace("\"schemaVersion\":5", "\"schemaVersion\":4");
+        string legacy = Downgrade(
+            ProgressSavePolicy.Serialize(new ProgressSave { Mood = 12.0f }),
+            4);
 
         SaveDecodeResult decoded = ProgressSavePolicy.Decode(legacy);
 
@@ -329,4 +329,100 @@ public sealed class ProgressSavePolicyTests
         Assert.Contains("\"windowX\":123", settings);
         Assert.Contains("\"alwaysOnTop\":false", settings);
     }
+
+    [Fact]
+    public void APaidStrengthUpgradeBecomesThePowerGrabTool()
+    {
+        // FR-019.9: the passive upgrade was never implemented, so the player who bought it
+        // owns the tool that replaced it — not a refund, not a silently dropped purchase.
+        string legacy = Downgrade(
+            ProgressSavePolicy.Serialize(new ProgressSave
+            {
+                Revision = 11,
+                BalanceMilliCredits = 4_200,
+                UnlockedToolIds = [ContentIds.ToolGrab, ContentIds.UpgradeStrength],
+                SelectedToolId = ContentIds.ToolGrab,
+                Statistics = new ProgressStatisticsSave { ScoredImpacts = 17 },
+                Times = new CumulativeTimesSave { RunSeconds = 90.0 },
+            }),
+            5);
+
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode(legacy);
+
+        Assert.Equal(SaveDecodeStatus.Valid, decoded.Status);
+        Assert.Equal(ProgressSave.CurrentSchemaVersion, decoded.Save!.SchemaVersion);
+        Assert.Contains(ContentIds.ToolPowerGrab, decoded.Save.UnlockedToolIds);
+        Assert.DoesNotContain(ContentIds.UpgradeStrength, decoded.Save.UnlockedToolIds);
+        Assert.Contains(ContentIds.ToolGrab, decoded.Save.UnlockedToolIds);
+
+        // Everything the migration does not name passes through untouched.
+        Assert.Equal(11, decoded.Save.Revision);
+        Assert.Equal(4_200, decoded.Save.BalanceMilliCredits);
+        Assert.Equal(ContentIds.ToolGrab, decoded.Save.SelectedToolId);
+        Assert.Equal(17, decoded.Save.Statistics.ScoredImpacts);
+        Assert.Equal(90.0, decoded.Save.Times.RunSeconds);
+    }
+
+    [Fact]
+    public void ASaveThatNeverBoughtTheUpgradeIsNotGrantedPowerGrab()
+    {
+        string legacy = Downgrade(
+            ProgressSavePolicy.Serialize(new ProgressSave
+            {
+                UnlockedToolIds = [ContentIds.ToolGrab, ContentIds.ToolPet],
+            }),
+            5);
+
+        ProgressSave migrated = ProgressSavePolicy.Decode(legacy).Save!;
+
+        Assert.DoesNotContain(ContentIds.ToolPowerGrab, migrated.UnlockedToolIds);
+        Assert.Equal(
+            [ContentIds.ToolGrab, ContentIds.ToolPet],
+            migrated.UnlockedToolIds);
+    }
+
+    [Fact]
+    public void MigratingASaveThatAlreadyOwnsBothGrantsPowerGrabExactlyOnce()
+    {
+        string legacy = Downgrade(
+            ProgressSavePolicy.Serialize(new ProgressSave
+            {
+                UnlockedToolIds =
+                [
+                    ContentIds.ToolGrab,
+                    ContentIds.UpgradeStrength,
+                    ContentIds.ToolPowerGrab,
+                ],
+            }),
+            5);
+
+        ProgressSave migrated = ProgressSavePolicy.Decode(legacy).Save!;
+
+        Assert.Single(migrated.UnlockedToolIds, ContentIds.ToolPowerGrab);
+        Assert.DoesNotContain(ContentIds.UpgradeStrength, migrated.UnlockedToolIds);
+    }
+
+    [Fact]
+    public void ACurrentSaveNeverEmitsTheRetiredUpgradeId()
+    {
+        string json = ProgressSavePolicy.Serialize(new ProgressSave
+        {
+            UnlockedToolIds = [ContentIds.ToolGrab, ContentIds.ToolPowerGrab],
+        });
+
+        Assert.DoesNotContain(ContentIds.UpgradeStrength, json);
+        Assert.Contains(ContentIds.ToolPowerGrab, json);
+    }
+
+    /// <summary>
+    /// Rewrites a current-schema payload's version stamp so a migration can be exercised
+    /// without committing a fixture that goes stale the next time a field is added.
+    /// </summary>
+    private static string Downgrade(string json, int schemaVersion) => json
+        .Replace(
+            $"\"schemaVersion\": {ProgressSave.CurrentSchemaVersion}",
+            $"\"schemaVersion\": {schemaVersion}")
+        .Replace(
+            $"\"schemaVersion\":{ProgressSave.CurrentSchemaVersion}",
+            $"\"schemaVersion\":{schemaVersion}");
 }

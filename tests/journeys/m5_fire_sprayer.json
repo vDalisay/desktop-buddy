@@ -11,7 +11,7 @@
   "steps": [],
   "assertions": [
     {
-      "predicate": "the_catalogue_carries_the_sprayer_but_does_not_advertise_it_yet"
+      "predicate": "the_catalogue_offers_the_accepted_sprayer"
     },
     {
       "predicate": "sprayer_key_draws_a_sprayer_with_no_magazine"

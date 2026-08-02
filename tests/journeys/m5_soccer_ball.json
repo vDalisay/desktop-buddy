@@ -10,7 +10,7 @@
   },
   "steps": [],
   "assertions": [
-    { "predicate": "the_soccer_ball_is_not_on_sale_until_the_owner_gates_it" },
+    { "predicate": "the_shop_sells_the_soccer_ball_at_its_authored_price" },
     { "predicate": "the_soccer_key_places_one_owned_ball" },
     { "predicate": "the_ball_is_carried_by_the_normal_grab" },
     { "predicate": "the_good_mood_buddy_takes_receive_position" },

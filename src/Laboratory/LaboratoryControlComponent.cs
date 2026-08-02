@@ -212,6 +212,11 @@ public partial class LaboratoryControlComponent : Node
             case Key.Key4:
                 SetTimeScale(2.0);
                 break;
+            // Shift+G for the stronger grab: it is the same tool with more behind it, and
+            // every unshifted letter that could stand for "power" is already taken.
+            case Key.G when key.ShiftPressed && HasPipeline:
+                Pipeline!.SelectTool(ToolId.PowerGrab);
+                break;
             case Key.G when HasPipeline:
                 Pipeline!.SelectTool(ToolId.Grab);
                 break;

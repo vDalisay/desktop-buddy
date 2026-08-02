@@ -43,6 +43,12 @@ public enum GrabStretchState
 /// gets stored and released.
 /// </param>
 /// <param name="MaximumSnapImpulse">Bound on the fling so no pull can launch the buddy absurdly.</param>
+/// <param name="AllowSnap">
+/// Whether a sustained strain may end in a snap. Power Grab clears this: the buddy struggles
+/// visibly and forever but can never force an escape (M5 §1.2). Everything else about the
+/// limit — clamp distance, hysteresis, buzz — is identical either way, because it is the same
+/// tuning object with one flag changed.
+/// </param>
 public readonly record struct GrabStretchTuning(
     float LimitHandWidths,
     int ShakeTicks,
@@ -53,7 +59,8 @@ public readonly record struct GrabStretchTuning(
     float ReleaseHysteresis,
     float SnapImpulseBase,
     float SnapImpulsePerOverpullPixel,
-    float MaximumSnapImpulse)
+    float MaximumSnapImpulse,
+    bool AllowSnap = true)
 {
     public static GrabStretchTuning Default => new(
         LimitHandWidths: 5.0f,
@@ -188,13 +195,19 @@ public sealed class GrabStretchLimiter
 
         float overpull = MathF.Max(0.0f, distance - limit);
         _peakOverpull = MathF.Max(_peakOverpull, overpull);
-        _strainTicks++;
+        // ponytail: a non-snapping strain saturates at ShakeTicks rather than counting on
+        // forever. The shake phase is stable there (RampFactor(0) is the peak) and the
+        // counter cannot overflow on a hold left running for hours. If a Power hold ever
+        // needs to escalate past the peak, that is a new ramp curve, not a bigger counter.
+        _strainTicks = _tuning.AllowSnap
+            ? _strainTicks + 1
+            : Math.Min(_strainTicks + 1, _tuning.ShakeTicks);
         State = GrabStretchState.Straining;
 
         Vector2 clamped = anchor + (direction * limit);
         int remaining = Math.Max(0, _tuning.ShakeTicks - _strainTicks);
 
-        if (remaining > 0)
+        if (remaining > 0 || !_tuning.AllowSnap)
         {
             return new GrabStretchResult(
                 GrabStretchState.Straining,

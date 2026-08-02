@@ -198,6 +198,7 @@ public partial class BuddyLab : Node2D
             Economy.Unlock(ContentIds.ToolFireSprayer);
             Economy.Unlock(ContentIds.ToolShotgun);
             Economy.Unlock(ContentIds.ToolRepairKit);
+            Economy.Unlock(ContentIds.ToolPowerGrab);
         }
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();
@@ -651,7 +652,9 @@ public partial class BuddyLab : Node2D
     private void OnToolChanged(ToolId previous, ToolId selected)
     {
         SwingHitLag.Cancel();
-        if (previous == ToolId.Grab && Grab.IsGrabbing)
+        // By category: switching away from either grab variant drops what is held, and the
+        // drop is never a powered throw.
+        if (ToolCatalog.CategoryOf(previous) == ToolCategory.Grab && Grab.IsGrabbing)
         {
             Grab.Release(countsAsThrow: false);
         }

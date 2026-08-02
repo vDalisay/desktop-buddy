@@ -114,4 +114,50 @@ public sealed class GrabTetherTests
         Assert.Throws<ArgumentOutOfRangeException>(
             () => GrabTether.CapReleaseVelocity(new Vector2(1.0f, 0.0f), -1.0f));
     }
+
+    [Theory]
+    [InlineData(float.NaN, 0.0f)]
+    [InlineData(float.PositiveInfinity, 0.0f)]
+    [InlineData(0.0f, float.NegativeInfinity)]
+    public void CapReleaseVelocity_NonFiniteVelocity_IsADeadDrop(float x, float y)
+    {
+        // Releasing a glitched velocity would write NaN into the body's position and take
+        // the rest of the run with it. Both grab variants route through here.
+        Vector2 result = GrabTether.CapReleaseVelocity(new Vector2(x, y), 900.0f);
+
+        Assert.Equal(Vector2.Zero, result);
+    }
+
+    [Fact]
+    public void CapReleaseVelocity_PoweredThrow_BeatsTheNormalCapAndStopsAtItsOwn()
+    {
+        // M5 §3.2: a Power throw multiplies first, then caps against its own higher ceiling.
+        const float normalCap = 900.0f;
+        const float powerCap = 1_300.0f;
+        const float multiplier = 1.6f;
+        var velocity = new Vector2(600.0f, -800.0f); // 1000 px/s, already over the normal cap
+
+        Vector2 normal = GrabTether.CapReleaseVelocity(velocity, normalCap);
+        Vector2 powered = GrabTether.CapReleaseVelocity(velocity * multiplier, powerCap);
+
+        Assert.True(powered.Length() > normal.Length());
+        Assert.True(powered.Length() <= powerCap);
+        Assert.Equal(powerCap, powered.Length(), 0.01f);
+
+        // Direction survives the multiply-then-cap ordering.
+        Vector2 normalDirection = Vector2.Normalize(normal);
+        Vector2 poweredDirection = Vector2.Normalize(powered);
+        Assert.Equal(normalDirection.X, poweredDirection.X, 0.0001f);
+        Assert.Equal(normalDirection.Y, poweredDirection.Y, 0.0001f);
+    }
+
+    [Fact]
+    public void CapReleaseVelocity_PoweredThrowBelowItsCap_KeepsTheFullMultipliedSpeed()
+    {
+        var velocity = new Vector2(300.0f, 0.0f);
+
+        Vector2 powered = GrabTether.CapReleaseVelocity(velocity * 1.6f, 1_300.0f);
+
+        Assert.Equal(480.0f, powered.Length(), 0.01f);
+    }
 }

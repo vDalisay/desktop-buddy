@@ -26,6 +26,9 @@ public sealed class ToolSelectionTests
     [InlineData(ToolId.Tickle, ToolCategory.Care)]
     [InlineData(ToolId.BoxingGlove, ToolCategory.Damage)]
     [InlineData(ToolId.Baseball, ToolCategory.PhysicsToy)]
+    // Power Grab shares the Grab category so every "is this a grab tool" gate — pointer
+    // acquisition, tool-switch release — covers both variants without naming either.
+    [InlineData(ToolId.PowerGrab, ToolCategory.Grab)]
     public void CategoryOf_ClassifiesTools(ToolId tool, ToolCategory expected) =>
         Assert.Equal(expected, ToolCatalog.CategoryOf(tool));
 

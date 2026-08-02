@@ -35,10 +35,27 @@ public sealed class BootSmokeScenario : IScenario
         int shopEntries = shop.Count;
         int selectable = CataloguePolicy.SelectableEntries(catalogue).Count;
         checks.Add(new StartupCheck(
-            "unfinished_entries_are_not_shown",
-            shopEntries < CataloguePolicy.LaunchContentIds.Count &&
-            !CataloguePolicy.IsSelectable(catalogue, ContentIds.UpgradeStrength),
+            "starting_tools_are_selectable_but_never_sold",
+            shopEntries == CataloguePolicy.LaunchContentIds.Count -
+                CataloguePolicy.NewSaveUnlockedContentIds.Count &&
+            selectable == CataloguePolicy.LaunchContentIds.Count,
             $"shop={shopEntries} selectable={selectable}"));
+
+        // Power Grab replaced the passive upgrade: unlike what it replaced, it is both sold
+        // and selectable, and the retired ID is gone from the shipped data entirely.
+        checks.Add(new StartupCheck(
+            "power_grab_is_sold_and_selectable",
+            CataloguePolicy.IsSelectable(catalogue, ContentIds.ToolPowerGrab) &&
+            catalogue.TryGet(ContentIds.ToolPowerGrab, out CatalogueEntry powerGrab) &&
+            powerGrab is { Visible: true, IsStarting: false } &&
+            !catalogue.Contains(ContentIds.UpgradeStrength),
+            $"selectable={CataloguePolicy.IsSelectable(catalogue, ContentIds.ToolPowerGrab)}"));
+
+        IReadOnlyList<string> catalogueErrors = CataloguePolicy.ValidateLaunchCatalogue(catalogue);
+        checks.Add(new StartupCheck(
+            "launch_catalogue_matches_the_progression_schedule",
+            catalogueErrors.Count == 0,
+            catalogueErrors.Count == 0 ? "ok" : string.Join("; ", catalogueErrors)));
 
         bool acceptedBatShopVisible = false;
         foreach (CatalogueEntry entry in shop)

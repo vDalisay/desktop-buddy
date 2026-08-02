@@ -9,28 +9,49 @@ namespace DesktopBuddy.Domain.Tests.Content;
 public sealed class CataloguePolicyTests
 {
     [Fact]
-    public void TheUpgradeIsNeverSelectableOwnedOrNot()
+    public void TheRetiredUpgradeIsNeverATool()
     {
-        // FR-019: the Strength Upgrade is shop content, never a tool. Ownership is not part
-        // of this rule — there is no state in which it appears in the tool grid.
+        // FR-019.9: Power Grab replaced the passive upgrade. The old ID survives for the
+        // schema-5 migration only — it is still known, and it is still never a tool.
         ToolCatalogue catalogue = TestCatalogues.AllVisible();
 
         Assert.DoesNotContain(
-            CataloguePolicy.SelectableEntries(catalogue),
-            entry => entry.ContentId == ContentIds.UpgradeStrength);
+            CataloguePolicy.LaunchContentIds,
+            id => id == ContentIds.UpgradeStrength);
         Assert.False(CataloguePolicy.IsSelectable(catalogue, ContentIds.UpgradeStrength));
         Assert.False(ContentIds.IsTool(ContentIds.UpgradeStrength));
         Assert.False(ContentIds.TryParseTool(ContentIds.UpgradeStrength, out _));
     }
 
     [Fact]
-    public void TheUpgradeIsOfferedInTheShop()
+    public void PowerGrabIsBothSoldAndSelectable()
     {
+        // FR-019: unlike the upgrade it replaced, Power Grab is an ordinary purchasable tool.
         ToolCatalogue catalogue = TestCatalogues.AllVisible();
 
         Assert.Contains(
             CataloguePolicy.ShopEntries(catalogue),
-            entry => entry.ContentId == ContentIds.UpgradeStrength);
+            entry => entry.ContentId == ContentIds.ToolPowerGrab);
+        Assert.Contains(
+            CataloguePolicy.SelectableEntries(catalogue),
+            entry => entry.ContentId == ContentIds.ToolPowerGrab);
+        Assert.True(CataloguePolicy.IsSelectable(catalogue, ContentIds.ToolPowerGrab));
+    }
+
+    [Fact]
+    public void TheSelectableSetIsTheSixteenLaunchInteractions()
+    {
+        // 11D-5: no dock exists yet, so this is the proof that every launch entry — Power
+        // Grab included — reaches the tool grid, and that the shop offers the twelve
+        // purchasables in the §1.1 schedule order.
+        ToolCatalogue catalogue = TestCatalogues.AllVisible();
+
+        Assert.Equal(
+            CataloguePolicy.LaunchContentIds,
+            CataloguePolicy.SelectableEntries(catalogue).Select(entry => entry.ContentId));
+        Assert.Equal(
+            CataloguePolicy.LaunchContentIds.Skip(CataloguePolicy.NewSaveUnlockedContentIds.Count),
+            CataloguePolicy.ShopEntries(catalogue).Select(entry => entry.ContentId));
     }
 
     [Fact]
@@ -132,6 +153,23 @@ public sealed class CataloguePolicyTests
             CataloguePolicy.LaunchContentIds.Count,
             CataloguePolicy.LaunchContentIds.Distinct().Count());
         Assert.Empty(CataloguePolicy.ValidateLaunchCatalogue(TestCatalogues.AllVisible()));
+    }
+
+    [Fact]
+    public void APurchasableOutOfScheduleOrderIsReported()
+    {
+        // Task 12 prices each slot by its position, so an entry that quietly moves would
+        // re-price the wrong item against the wrong target time.
+        List<CatalogueEntry> entries = [.. TestCatalogues.AllVisible().Entries];
+        int power = entries.FindIndex(entry => entry.ContentId == ContentIds.ToolPowerGrab);
+        int drink = entries.FindIndex(entry => entry.ContentId == ContentIds.ToolDrink);
+        (entries[power], entries[drink]) = (
+            entries[power] with { ProgressionOrder = entries[drink].ProgressionOrder },
+            entries[drink] with { ProgressionOrder = entries[power].ProgressionOrder });
+
+        Assert.Contains(
+            CataloguePolicy.ValidateLaunchCatalogue(new ToolCatalogue(entries)),
+            error => error.Contains("purchasable slot"));
     }
 
     [Fact]

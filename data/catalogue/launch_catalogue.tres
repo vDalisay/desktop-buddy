@@ -16,7 +16,7 @@
 [ext_resource type="Resource" path="res://data/catalogue/tool_drink.tres" id="14"]
 [ext_resource type="Resource" path="res://data/catalogue/tool_shotgun.tres" id="15"]
 [ext_resource type="Resource" path="res://data/catalogue/tool_repair_kit.tres" id="16"]
-[ext_resource type="Resource" path="res://data/catalogue/upgrade_strength.tres" id="17"]
+[ext_resource type="Resource" path="res://data/catalogue/tool_power_grab.tres" id="17"]
 
 [resource]
 resource_name = "M5LaunchCatalogueProvisional"

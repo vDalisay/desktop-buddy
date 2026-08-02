@@ -1,9 +1,10 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://src/Laboratory/DualProfileLab.cs" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="2"]
 [ext_resource type="Script" path="res://src/Grab/GrabTetherController.cs" id="3_grab"]
 [ext_resource type="Resource" path="res://data/buddy/lab_grab_tether.tres" id="4_grab_profile"]
+[ext_resource type="Resource" path="res://data/buddy/power_grab_profile.tres" id="90_power_grab_profile"]
 [ext_resource type="Script" path="res://src/Laboratory/LabPointerGrabComponent.cs" id="5_pointer"]
 
 [sub_resource type="RectangleShape2D" id="Horizontal"]
@@ -33,6 +34,7 @@ Profile = ExtResource("4_grab_profile")
 
 [node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab")]
 script = ExtResource("5_pointer")
+PowerProfile = ExtResource("90_power_grab_profile")
 Grab = NodePath("../GrabTetherController")
 
 [node name="TwoRooms" type="StaticBody2D" parent="."]

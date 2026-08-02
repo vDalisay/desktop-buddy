@@ -65,6 +65,12 @@ public static class GrabTether
         }
 
         float speedSquared = velocity.LengthSquared();
+        // A non-finite velocity is a physics glitch upstream, not a fast throw. Releasing it
+        // would write NaN into the body's position and poison the rest of the run, so it
+        // becomes a dead drop — the one outcome that cannot corrupt anything.
+        if (!float.IsFinite(speedSquared))
+            return Vector2.Zero;
+
         float maximumSquared = maximumSpeed * maximumSpeed;
         if (speedSquared <= maximumSquared || speedSquared <= Epsilon)
         {

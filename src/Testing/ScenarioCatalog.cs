@@ -24,6 +24,7 @@ public static class ScenarioCatalog
         ["grab_hang_orientation"] = () => new GrabHangOrientationScenario(),
         ["grab_swing_pendulum"] = () => new GrabSwingPendulumScenario(),
         ["grab_resistance"] = () => new GrabResistanceScenario(),
+        ["power_grab"] = () => new PowerGrabScenario(),
         ["grab_hard_recovery"] = () => new GrabHardRecoveryScenario(),
         ["room_resize_zoom"] = () => new RoomResizeZoomScenario(),
         ["idle_soak"] = () => new IdleSoakScenario(),

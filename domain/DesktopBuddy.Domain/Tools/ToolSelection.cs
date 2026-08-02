@@ -29,6 +29,12 @@ public enum ToolId
     /// the real gun everywhere it has shipped.
     /// </summary>
     NerfBlaster = 14,
+
+    /// <summary>
+    /// The purchasable stronger grab. Appended rather than inserted next to
+    /// <see cref="Grab"/>: ordinals are persisted.
+    /// </summary>
+    PowerGrab = 15,
 }
 
 /// <summary>How a tool physically acts on the buddy (RAGDOLL §9).</summary>
@@ -45,7 +51,7 @@ public static class ToolCatalog
 {
     public static ToolCategory CategoryOf(ToolId tool) => tool switch
     {
-        ToolId.Grab => ToolCategory.Grab,
+        ToolId.Grab or ToolId.PowerGrab => ToolCategory.Grab,
         ToolId.Pet or ToolId.Tickle => ToolCategory.Care,
         // Consumables act through the care/consume machinery, not the damage pipeline;
         // their pain, when a launch hurts, still arrives as an ordinary physical impact.

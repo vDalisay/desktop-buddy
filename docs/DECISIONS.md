@@ -1708,6 +1708,82 @@ earnings. Prices remain whole displayed credits and there is no per-tool payout 
 - A confirmed reset uses the normal atomic persistence boundary and immediate flush. The UI
   never mutates individual progress fields or calls a second reset path.
 
+## M5 Tasks 11–13 implementation decisions (2026-08-02)
+
+Delegated choices made while implementing packets 11A–11E of
+`docs/M5_TASK11_TO_13_HANDOFF_PLAN.md`. Product rules are unchanged; these are the
+implementation-level calls the plan left to the agent, plus three places the plan's
+instructions did not match the shipped code.
+
+### Provisional `PowerGrabProfile` values (`data/buddy/power_grab_profile.tres`)
+
+| Export | Provisional | Why |
+|---|---:|---|
+| `StiffnessMultiplier` | `2.5` | secondary knob; the tether is force-clamped on any real drag |
+| `DampingMultiplier` | `1.58` | `√2.5`, which holds the PD damping ratio constant |
+| `MaximumForceMultiplier` | `3.0` | the knob the player actually feels |
+| `ReleaseVelocityMultiplier` | `1.6` | throw feel |
+| `ReleaseSpeedCap` | `1300.0` | 10.8 px/tick at 120 Hz, 68% of a 16 px wall |
+
+These five are the owner feel gate's only knobs. Two constraints bound them:
+
+- **Damping scales as `√(stiffness multiplier)`, not linearly.** The tether's damping ratio
+  is `c / (2√(k·m))`. The shipped `lab_grab_tether.tres` is `Stiffness = 700`,
+  `Damping = 35`, so the 2.5-mass torso sits at ratio `0.418`; `×2.5` stiffness with `×1.58`
+  damping holds it at `0.418`. Scaling stiffness alone makes Power *less* damped than
+  Normal — more overshoot, the opposite of "controllable". Move the two together.
+- **`ReleaseSpeedCap` has a hard ceiling of 1900 px/s**, enforced in
+  `PowerGrabProfile.Validate`. Room walls are 16 px and the tick is 120 Hz, so 1920 px/s
+  clears a wall per step, and grabbed parts run with CCD disabled. Raising it past 1900
+  requires adding CCD to the grabbed part, which is a different task.
+
+**Correction to the handoff plan's note 3.** The plan derived its force numbers from the
+`GrabTetherProfile` class defaults (`Stiffness = 220`, `MaximumForce = 6000`). Every shipped
+scene loads `lab_grab_tether.tres`, which authors `700` and `18000`. The effective Power
+clamp is therefore `54 000`, not `18 000` — 3× what the plan's arithmetic assumed. The
+multiplier is left at `×3` as the provisional the owner judges, but the feel gate should
+expect it to be strong; the note-2 damping rule is unaffected, since it is a ratio.
+
+### Deviations from the plan's instructions
+
+1. **`tool_power_grab.tres` is `Kind = 1`, not the plan's `Kind = 0`.** `Kind` is
+   `CatalogueEntryKind`, where `0` is `StartingTool` — a free tool owned on every new save.
+   `tool_grab.tres` uses `0` because Normal Grab *is* a starting tool. Power Grab is
+   `PurchasableTool`; `0` would have made it free and broken the starting-set validation.
+2. **`GrabTether.CapReleaseVelocity` gained a non-finite-velocity guard.** The plan's 11B-3
+   said to assert an existing guard; the only guard was on the cap argument, so a NaN or
+   infinite velocity propagated straight into the released body's position. It is now a dead
+   drop (`Vector2.Zero`). This is a fix in the shared function, so it covers Normal Grab too.
+3. **Throw attribution follows the selected tool (11C-5).** `SandboxRoot.OnGrabReleased`
+   attributed every player throw to `tool.grab`; it now attributes to the selected grab
+   variant's content ID, since the per-tool statistics dictionaries are keyed by tool and a
+   Power throw filed under Normal would be a real event under the wrong key.
+
+### Catalogue visibility (11D-2)
+
+Soccer Ball, Fire Sprayer, Shotgun, and Drink were `Visible = false` despite owner
+acceptance on 2026-08-01; making them shop-visible is the overdue post-acceptance step.
+**Repair Kit is shop-visible ahead of its own feel gate** so Task 12 can price the full
+twelve-item schedule. If the owner would rather it stay hidden until then, its journey leg
+goes back to asserting the refusal and 12D must be re-run after acceptance.
+
+Five journey legs that asserted "not on sale until the owner gates it" became sale legs
+through the existing `BuysFromShop` helper. No assertion was deleted; each now asserts the
+purchase the slice always owed.
+
+### Lab shortcut
+
+Power Grab is selected in the laboratory with **Shift+G** (`LaboratoryControlComponent` and
+`LabPointerGrabComponent`). Every unshifted letter that could stand for "power" was already
+bound, and Shift+G reads as "the same tool, more behind it". `BuddyLab` grants
+`tool.power_grab` alongside the other implemented M5 tools so the key works at the feel gate.
+
+### Deferred
+
+The confirmation *modal* for Reset Progress (13A-2b) ships with
+`docs/UI_FLOATING_DOCK_PLAN.md` Task 7 and binds to the armed tray event; there is no shop
+UI or dock in this repo to put one in today.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

@@ -30,13 +30,15 @@ public static class CataloguePolicy
     };
 
     /// <summary>
-    /// The complete FR-013.2 launch catalogue: fifteen interactions plus the FR-019
-    /// upgrade. Listed in the confirmed progression order of FR-013.4, with the starting
-    /// tools first and the upgrade last (its schedule slot is an FR-019.7 decision).
+    /// The complete FR-013.2 launch catalogue: sixteen selectable interactions, no passive
+    /// upgrade. Listed in the confirmed progression order of the M5 Tasks 11–13 §1.1
+    /// schedule, with the four starting tools first and the twelve purchasables after.
     ///
     /// <para>FR-013.2 confirmed fourteen interactions; the Nerf Blaster is the fifteenth,
     /// added when M5 split the toy gun from the real one so the guns arrive as a
-    /// progression rather than as one weapon the owner could not place.</para>
+    /// progression rather than as one weapon the owner could not place. Power Grab is the
+    /// sixteenth: it replaced the former passive Strength upgrade, which now survives only
+    /// as a save migration.</para>
     /// </summary>
     public static readonly IReadOnlyList<string> LaunchContentIds = new[]
     {
@@ -45,17 +47,17 @@ public static class CataloguePolicy
         ContentIds.ToolTickle,
         ContentIds.ToolBoxingGlove,
         ContentIds.ToolBaseball,
-        ContentIds.ToolMeal,
         ContentIds.ToolBaseballBat,
+        ContentIds.ToolMeal,
         ContentIds.ToolNerfBlaster,
         ContentIds.ToolPistol,
+        ContentIds.ToolSoccerBall,
         ContentIds.ToolGrenade,
         ContentIds.ToolFireSprayer,
-        ContentIds.ToolSoccerBall,
-        ContentIds.ToolDrink,
-        ContentIds.ToolShotgun,
+        ContentIds.ToolPowerGrab,
         ContentIds.ToolRepairKit,
-        ContentIds.UpgradeStrength,
+        ContentIds.ToolShotgun,
+        ContentIds.ToolDrink,
     };
 
     /// <summary>Entries the shop may offer: visible, not a starting tool, in order.</summary>
@@ -167,6 +169,42 @@ public static class CataloguePolicy
         foreach (string extra in starting)
         {
             errors.Add($"'{extra}' is marked as a starting entry but a new save does not own it");
+        }
+
+        // Progression-order uniqueness is already ToolCatalogue.Validate's job, and the
+        // catalogue is sorted by it, so the sequence check below is the ordering assert.
+        // The purchasable sequence is the calibration schedule: Task 12 prices each slot by
+        // its position, so an entry silently moving would re-price the wrong item.
+        var expected = new List<string>(LaunchContentIds.Count);
+        foreach (string id in LaunchContentIds)
+        {
+            bool starts = false;
+            foreach (string startingId in NewSaveUnlockedContentIds)
+                starts |= string.Equals(startingId, id, StringComparison.Ordinal);
+            if (!starts)
+                expected.Add(id);
+        }
+
+        var actual = new List<string>(expected.Count);
+        foreach (CatalogueEntry entry in ShopEntries(catalogue))
+            actual.Add(entry.ContentId);
+
+        if (expected.Count != actual.Count)
+        {
+            errors.Add(
+                $"the shop must offer {expected.Count} purchasable entries; found {actual.Count}");
+        }
+        else
+        {
+            for (int index = 0; index < expected.Count; index++)
+            {
+                if (!string.Equals(expected[index], actual[index], StringComparison.Ordinal))
+                {
+                    errors.Add(
+                        $"purchasable slot {index} must be '{expected[index]}'; " +
+                        $"found '{actual[index]}'");
+                }
+            }
         }
 
         return errors;

@@ -1,0 +1,20 @@
+{
+  "id": "m5_power_grab",
+  "description": "Power Grab end to end: the shop sells it once at its authored price and refuses a second charge, it becomes selectable when owned, a deliberate release uses its own higher speed cap, switching back to Normal Grab drops what is held instead of flinging it, and both grabs plus the selection survive a save/load round trip at schema 6.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_power_grab",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "the_shop_sells_power_grab_at_its_authored_price" },
+    { "predicate": "buying_power_grab_twice_charges_once" },
+    { "predicate": "power_grab_is_selectable_once_owned" },
+    { "predicate": "a_power_throw_uses_the_power_cap" },
+    { "predicate": "switching_back_to_normal_grab_drops_what_is_held" },
+    { "predicate": "both_grabs_and_the_selection_survive_a_reload" }
+  ]
+}

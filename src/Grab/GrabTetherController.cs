@@ -33,6 +33,14 @@ public partial class GrabTetherController : Node2D
     private RigidBody2D? _target;
     private PuppetPartBody? _leashedPart;
     private GrabStretchLimiter _stretch = new();
+
+    /// <summary>
+    /// The same limiter with snapping disabled, prebuilt so acquiring a Power Grab allocates
+    /// nothing. Which one is live is the whole Normal/Power variant model: <c>_power is null</c>.
+    /// </summary>
+    private GrabStretchLimiter _powerStretch = new();
+    private PowerGrabProfile? _power;
+    private bool _loggedInvalidPowerProfile;
     private Vector2 _localGrabPoint;
     private Vector2 _cursorAnchor;
     private Vector2 _previousCursor;
@@ -51,7 +59,13 @@ public partial class GrabTetherController : Node2D
     /// <summary>How far past the limit the cursor currently is, in px.</summary>
     public float StretchOverpull { get; private set; }
     /// <summary>Largest overpull of the current strain — what the fling scales from.</summary>
-    public float PeakStretchOverpull => _stretch.PeakOverpull;
+    public float PeakStretchOverpull => ActiveStretch.PeakOverpull;
+    /// <summary>Routed ticks the held limb has been straining at the limit.</summary>
+    public int StretchStrainTicks => ActiveStretch.StrainTicks;
+    /// <summary>True while the current grab is the purchased Power variant.</summary>
+    public bool IsPowerGrab => _power is not null;
+
+    private GrabStretchLimiter ActiveStretch => _power is null ? _stretch : _powerStretch;
     /// <summary>Impulse applied by the most recent snap-back fling.</summary>
     public float LastSnapImpulse { get; private set; }
     /// <summary>Snap-back flings since this controller was initialized.</summary>
@@ -64,7 +78,7 @@ public partial class GrabTetherController : Node2D
             throw new InvalidOperationException("GrabTetherController requires a valid GrabTetherProfile.");
         }
 
-        _stretch = new GrabStretchLimiter(new GrabStretchTuning(
+        var tuning = new GrabStretchTuning(
             Profile.StretchLimitHandWidths,
             Profile.StretchShakeTicks,
             Profile.StretchShakeAmplitude,
@@ -74,12 +88,23 @@ public partial class GrabTetherController : Node2D
             Profile.StretchReleaseHysteresis,
             Profile.SnapImpulseBase,
             Profile.SnapImpulsePerOverpullPixel,
-            Profile.MaximumSnapImpulse));
+            Profile.MaximumSnapImpulse);
+        _stretch = new GrabStretchLimiter(tuning);
+        // Built from the identical tuning, so Power cannot drift on reach, hysteresis, or
+        // buzz — the one thing it may not do is let the buddy snap free.
+        _powerStretch = new GrabStretchLimiter(tuning with { AllowSnap = false });
         IsInitialized = true;
     }
 
-    /// <summary>Acquire <paramref name="target"/> at a world point; returns false for an invalid body.</summary>
-    public bool TryGrab(RigidBody2D target, Vector2 worldPoint)
+    /// <summary>
+    /// Acquire <paramref name="target"/> at a world point; returns false for an invalid body.
+    /// </summary>
+    /// <param name="power">
+    /// The purchased Power Grab tuning, or <c>null</c> for Normal Grab. An invalid resource
+    /// falls back to Normal rather than failing the grab: a mis-authored tuning must not cost
+    /// the player the tool they bought.
+    /// </param>
+    public bool TryGrab(RigidBody2D target, Vector2 worldPoint, PowerGrabProfile? power = null)
     {
         RequireInitialized();
         if (!GodotObject.IsInstanceValid(target))
@@ -87,11 +112,25 @@ public partial class GrabTetherController : Node2D
             return false;
         }
 
+        if (power is not null &&
+            (!GodotObject.IsInstanceValid(power) || power.Validate().Count > 0))
+        {
+            if (!_loggedInvalidPowerProfile)
+            {
+                GD.PushError(
+                    "PowerGrabProfile failed validation; falling back to Normal Grab.");
+                _loggedInvalidPowerProfile = true;
+            }
+
+            power = null;
+        }
+
+        _power = power;
         _target = target;
         // Only a leashed buddy part stretches: a loose object has no arm, and the torso is
         // the anchor itself, so both keep the plain unlimited tether.
         _leashedPart = target as PuppetPartBody is { HasStretchLeash: true } part ? part : null;
-        _stretch.Reset();
+        ActiveStretch.Reset();
         StretchState = GrabStretchState.Slack;
         StretchTicksRemaining = 0;
         StretchOverpull = 0.0f;
@@ -127,7 +166,7 @@ public partial class GrabTetherController : Node2D
         Vector2 pullTarget = _cursorAnchor;
         if (_leashedPart is not null && GodotObject.IsInstanceValid(_leashedPart))
         {
-            GrabStretchResult stretch = _stretch.Tick(
+            GrabStretchResult stretch = ActiveStretch.Tick(
                 ToNumerics(_leashedPart.StretchAnchorWorld),
                 ToNumerics(_cursorAnchor),
                 _leashedPart.Radius);
@@ -148,12 +187,16 @@ public partial class GrabTetherController : Node2D
         Vector2 error = pullTarget - grabWorld;
         Vector2 relativeVelocity = pointVelocity - cursorVelocity;
 
+        // Power is the same tether with three numbers scaled. Read from Profile every tick as
+        // the Normal path already does, so a laboratory tweak still takes effect live.
         var input = new GrabTetherInput(
             ToNumerics(error),
             ToNumerics(relativeVelocity),
-            Profile.Stiffness,
-            Profile.Damping,
-            Profile.MaximumForce);
+            _power is null ? Profile.Stiffness : Profile.Stiffness * _power.StiffnessMultiplier,
+            _power is null ? Profile.Damping : Profile.Damping * _power.DampingMultiplier,
+            _power is null
+                ? Profile.MaximumForce
+                : Profile.MaximumForce * _power.MaximumForceMultiplier);
         GrabTetherResult result = GrabTether.Evaluate(input);
 
         Vector2 force = ToGodot(result.Force);
@@ -190,8 +233,18 @@ public partial class GrabTetherController : Node2D
         RigidBody2D? released = GodotObject.IsInstanceValid(_target) ? _target : null;
         if (GodotObject.IsInstanceValid(_target))
         {
+            // Only a deliberate throw gets the Power launch. Cancels, input loss, invalid
+            // targets, recovery, snap-back, and teardown all come through here with
+            // countsAsThrow false and are indistinguishable from Normal (M5 §1.2).
+            bool powered = countsAsThrow && _power is not null;
+            NumericsVector2 velocity = ToNumerics(_target.LinearVelocity);
+            if (powered)
+            {
+                velocity *= _power!.ReleaseVelocityMultiplier;
+            }
+
             NumericsVector2 capped = GrabTether.CapReleaseVelocity(
-                ToNumerics(_target.LinearVelocity), Profile.ThrowSpeedCap);
+                velocity, powered ? _power!.ReleaseSpeedCap : Profile.ThrowSpeedCap);
             _target.LinearVelocity = ToGodot(capped);
             LastReleaseSpeed = _target.LinearVelocity.Length();
         }
@@ -203,7 +256,8 @@ public partial class GrabTetherController : Node2D
 
         _target = null;
         _leashedPart = null;
-        _stretch.Reset();
+        ActiveStretch.Reset();
+        _power = null;
         StretchTicksRemaining = 0;
         StretchOverpull = 0.0f;
         CurrentGrab = default;

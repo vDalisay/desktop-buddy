@@ -24,6 +24,7 @@ public sealed class ContentIdsTests
     [InlineData(ToolId.Drink, "tool.drink")]
     [InlineData(ToolId.Shotgun, "tool.shotgun")]
     [InlineData(ToolId.RepairKit, "tool.repair_kit")]
+    [InlineData(ToolId.PowerGrab, "tool.power_grab")]
     public void ForTool_MapsToTheShippedOrdinalString(ToolId tool, string expected) =>
         Assert.Equal(expected, ContentIds.ForTool(tool));
 
@@ -75,6 +76,7 @@ public sealed class ContentIdsTests
         Assert.Equal(12, (int)ToolId.Shotgun);
         Assert.Equal(13, (int)ToolId.RepairKit);
         Assert.Equal(14, (int)ToolId.NerfBlaster);
+        Assert.Equal(15, (int)ToolId.PowerGrab);
     }
 
     [Fact]

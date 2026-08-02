@@ -29,8 +29,9 @@ internal static class TestCatalogues
 
     /// <summary>
     /// A catalogue shaped like the shipped one: the four starting tools, one finished
-    /// purchasable tool (Baseball), one unfinished purchasable tool (Meal), and the hidden
-    /// FR-019 upgrade.
+    /// purchasable tool (Baseball), one unfinished purchasable tool (Meal), and a hidden
+    /// passive upgrade. Nothing ships as a passive upgrade since Power Grab replaced the
+    /// Strength Upgrade, but the entry kind still exists and its rules still hold.
     /// </summary>
     public static ToolCatalogue Standard() => new(StandardEntries());
 
@@ -68,9 +69,7 @@ internal static class TestCatalogues
 
             CatalogueEntryKind kind = starting
                 ? CatalogueEntryKind.StartingTool
-                : id == ContentIds.UpgradeStrength
-                    ? CatalogueEntryKind.PassiveUpgrade
-                    : CatalogueEntryKind.PurchasableTool;
+                : CatalogueEntryKind.PurchasableTool;
             entries.Add(Entry(id, kind, starting ? 0 : 1_000 * (order + 1), order));
             order++;
         }

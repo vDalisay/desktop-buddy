@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="PowerGrabProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Grab/PowerGrabProfile.cs" id="1_power_grab"]
+
+[resource]
+resource_name = "ProvisionalM5PowerGrab"
+script = ExtResource("1_power_grab")
+StiffnessMultiplier = 2.5
+DampingMultiplier = 1.58
+MaximumForceMultiplier = 3.0
+ReleaseVelocityMultiplier = 1.6
+ReleaseSpeedCap = 1300.0

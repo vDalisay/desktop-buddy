@@ -317,6 +317,90 @@ public sealed class GrabStretchLimiterTests
         Assert.Equal(1.0f, limiter.RampFactor(50), 0.001f);
     }
 
+    [Fact]
+    public void ANonSnappingGrabClampsToTheIdenticalPoint()
+    {
+        // M5 §1.2: Power Grab has the *same* maximum stretch. It is the same tuning object
+        // with one flag changed, so this can only fail if someone forks the limit.
+        GrabStretchLimiter normal = New();
+        GrabStretchLimiter power = New(GrabStretchTuning.Default with { AllowSnap = false });
+
+        GrabStretchResult normalResult = normal.Tick(Anchor, Right(300.0f), HandRadius);
+        GrabStretchResult powerResult = power.Tick(Anchor, Right(300.0f), HandRadius);
+
+        Assert.Equal(normal.LimitFor(HandRadius), power.LimitFor(HandRadius));
+        Assert.Equal(normalResult.ClampedTarget, powerResult.ClampedTarget);
+        Assert.Equal(normalResult.Overpull, powerResult.Overpull);
+    }
+
+    [Fact]
+    public void ANonSnappingGrabKeepsTheIdenticalHysteresis()
+    {
+        GrabStretchLimiter normal = New();
+        GrabStretchLimiter power = New(GrabStretchTuning.Default with { AllowSnap = false });
+        float hysteresis = GrabStretchTuning.Default.ReleaseHysteresis;
+
+        Assert.Equal(
+            GrabStretchState.Straining,
+            normal.Tick(Anchor, Right(300.0f), HandRadius).State);
+        Assert.Equal(
+            GrabStretchState.Straining,
+            power.Tick(Anchor, Right(300.0f), HandRadius).State);
+
+        // Just inside the limit but within the dead band: both hold the strain.
+        Assert.Equal(
+            GrabStretchState.Straining,
+            normal.Tick(Anchor, Right(Limit - (hysteresis * 0.5f)), HandRadius).State);
+        Assert.Equal(
+            GrabStretchState.Straining,
+            power.Tick(Anchor, Right(Limit - (hysteresis * 0.5f)), HandRadius).State);
+
+        // Past the hysteresis: both go slack at the same distance.
+        Assert.Equal(
+            GrabStretchState.Slack,
+            normal.Tick(Anchor, Right(Limit - hysteresis - 1.0f), HandRadius).State);
+        Assert.Equal(
+            GrabStretchState.Slack,
+            power.Tick(Anchor, Right(Limit - hysteresis - 1.0f), HandRadius).State);
+    }
+
+    [Fact]
+    public void ANonSnappingGrabStrugglesForeverAndNeverEscapes()
+    {
+        GrabStretchLimiter limiter = New(GrabStretchTuning.Default with { AllowSnap = false });
+        int ticks = GrabStretchTuning.Default.ShakeTicks;
+
+        GrabStretchResult result = default;
+        for (int tick = 0; tick < ticks * 10; tick++)
+        {
+            result = limiter.Tick(Anchor, Right(300.0f), HandRadius);
+            Assert.Equal(GrabStretchState.Straining, result.State);
+            Assert.Equal(0.0f, result.SnapImpulse);
+        }
+
+        Assert.Equal(GrabStretchState.Straining, limiter.State);
+        // The counter saturates instead of running away, and the buzz sits at peak
+        // escalation — that is the visible struggle the buddy never wins.
+        Assert.Equal(ticks, limiter.StrainTicks);
+        Assert.Equal(0, result.ShakeTicksRemaining);
+    }
+
+    [Fact]
+    public void ResetReturnsANonSnappingLimiterToSlack()
+    {
+        GrabStretchLimiter limiter = New(GrabStretchTuning.Default with { AllowSnap = false });
+        for (int tick = 0; tick < 500; tick++)
+        {
+            limiter.Tick(Anchor, Right(300.0f), HandRadius);
+        }
+
+        limiter.Reset();
+
+        Assert.Equal(GrabStretchState.Slack, limiter.State);
+        Assert.Equal(0, limiter.StrainTicks);
+        Assert.Equal(0.0f, limiter.PeakOverpull);
+    }
+
     /// <summary>Peak buzz magnitude across a window of strain ticks.</summary>
     private static float PeakShakeInWindow(int fromStrainTick, int ticks)
     {

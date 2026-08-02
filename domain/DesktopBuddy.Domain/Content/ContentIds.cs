@@ -38,6 +38,7 @@ public static class ContentIds
     public const string ToolDrink = "tool.drink";
     public const string ToolShotgun = "tool.shotgun";
     public const string ToolRepairKit = "tool.repair_kit";
+    public const string ToolPowerGrab = "tool.power_grab";
 
     /// <summary>
     /// The FR-019 passive upgrade. Deliberately <b>not</b> a <see cref="ToolId"/>: it is
@@ -96,6 +97,7 @@ public static class ContentIds
         ToolId.Drink => ToolDrink,
         ToolId.Shotgun => ToolShotgun,
         ToolId.RepairKit => ToolRepairKit,
+        ToolId.PowerGrab => ToolPowerGrab,
         _ => throw new ArgumentOutOfRangeException(
             nameof(tool),
             tool,
@@ -155,6 +157,9 @@ public static class ContentIds
                 return true;
             case ToolRepairKit:
                 tool = ToolId.RepairKit;
+                return true;
+            case ToolPowerGrab:
+                tool = ToolId.PowerGrab;
                 return true;
             default:
                 tool = ToolSelection.DefaultTool;

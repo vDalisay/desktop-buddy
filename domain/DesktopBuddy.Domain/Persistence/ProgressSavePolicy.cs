@@ -55,14 +55,17 @@ public static class ProgressSavePolicy
 
             ProgressSave save = schema switch
             {
-                1 => MigrateV4(MigrateV3(MigrateV2(MigrateV1(document.RootElement)))),
-                2 => MigrateV4(MigrateV3(MigrateV2(
+                1 => MigrateV5(MigrateV4(MigrateV3(MigrateV2(MigrateV1(document.RootElement))))),
+                2 => MigrateV5(MigrateV4(MigrateV3(MigrateV2(
+                    JsonSerializer.Deserialize<ProgressSave>(json, Options)
+                    ?? throw new JsonException("Progress payload was null."))))),
+                3 => MigrateV5(MigrateV4(MigrateV3(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null.")))),
-                3 => MigrateV4(MigrateV3(
+                4 => MigrateV5(MigrateV4(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null."))),
-                4 => MigrateV4(
+                5 => MigrateV5(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null.")),
                 ProgressSave.CurrentSchemaVersion =>
@@ -230,9 +233,32 @@ public static class ProgressSavePolicy
     /// </summary>
     private static ProgressSave MigrateV4(ProgressSave save) => save with
     {
-        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        SchemaVersion = 5,
         Fullness = 0.0f,
     };
+
+    /// <summary>
+    /// Schema 5 owned the passive <c>upgrade.strength</c>. It is replaced in place by the
+    /// selectable Power Grab, so a player who paid for the upgrade keeps what they bought
+    /// and a player who never bought it gains nothing.
+    /// </summary>
+    private static ProgressSave MigrateV5(ProgressSave save)
+    {
+        if (!save.UnlockedToolIds.Contains(ContentIds.UpgradeStrength, StringComparer.Ordinal))
+            return save with { SchemaVersion = ProgressSave.CurrentSchemaVersion };
+
+        var unlocks = save.UnlockedToolIds
+            .Where(id => !string.Equals(id, ContentIds.UpgradeStrength, StringComparison.Ordinal))
+            .ToList();
+        if (!unlocks.Contains(ContentIds.ToolPowerGrab, StringComparer.Ordinal))
+            unlocks.Add(ContentIds.ToolPowerGrab);
+
+        return save with
+        {
+            SchemaVersion = ProgressSave.CurrentSchemaVersion,
+            UnlockedToolIds = unlocks,
+        };
+    }
 
     private static List<FunActivitySave> DefaultFunActivities()
     {

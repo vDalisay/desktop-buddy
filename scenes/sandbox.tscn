@@ -1,4 +1,4 @@
-[gd_scene load_steps=51 format=3]
+[gd_scene load_steps=52 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
@@ -9,6 +9,7 @@
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="7_buddy"]
 [ext_resource type="Script" path="res://src/Grab/GrabTetherController.cs" id="8_grab"]
 [ext_resource type="Resource" path="res://data/buddy/lab_grab_tether.tres" id="9_grab_profile"]
+[ext_resource type="Resource" path="res://data/buddy/power_grab_profile.tres" id="90_power_grab_profile"]
 [ext_resource type="Script" path="res://src/Laboratory/LabPointerGrabComponent.cs" id="10_pointer"]
 [ext_resource type="Script" path="res://src/Sandbox/PuppetRoomContainmentComponent.cs" id="11_containment"]
 [ext_resource type="Script" path="res://src/Interaction/InteractionDamageComponent.cs" id="12_pipeline"]
@@ -301,6 +302,7 @@ Profile = ExtResource("9_grab_profile")
 
 [node name="PointerToolInput" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "CursorTools", "CareTool", "CareCursor", "LauncherTool", "GrenadeTool", "GunTool", "SprayerTool")]
 script = ExtResource("10_pointer")
+PowerProfile = ExtResource("90_power_grab_profile")
 Grab = NodePath("../GrabTetherController")
 Pipeline = NodePath("../InteractionPipeline")
 CursorTools = NodePath("../CursorToolController")

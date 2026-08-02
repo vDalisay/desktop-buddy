@@ -103,8 +103,12 @@ public sealed record ProgressSave
     /// <c>5</c> adds <see cref="Fullness"/>. A schema-4 save loads with an empty stomach,
     /// which is the same state a new save starts in — the buddy is hungry after an upgrade,
     /// never mysteriously full.
+    ///
+    /// <para><c>6</c> replaces the passive <c>upgrade.strength</c> ownership with the
+    /// selectable <c>tool.power_grab</c>: a player who bought the upgrade owns the tool
+    /// that replaced it, and nobody is granted it who had not paid.</para>
     /// </summary>
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public long Revision { get; init; }

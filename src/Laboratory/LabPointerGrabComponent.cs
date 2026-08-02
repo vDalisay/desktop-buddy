@@ -36,6 +36,12 @@ public partial class LabPointerGrabComponent : Node2D
 
     [Export] public GrabTetherController Grab { get; set; } = null!;
 
+    /// <summary>
+    /// Tuning for the purchased Power Grab. Null leaves every grab Normal, which is what a
+    /// scene that has not wired the resource gets — not a crash and not a stronger grab.
+    /// </summary>
+    [Export] public PowerGrabProfile? PowerProfile { get; set; }
+
     // Optional tool routing (buddy lab only; the dual-profile lab wires none of
     // these and keeps the grab-only behavior). When present, the pointer feeds
     // the selected tool instead of always grabbing: care strokes and the glove
@@ -226,7 +232,8 @@ public partial class LabPointerGrabComponent : Node2D
 
             ToolId? selected = key.PhysicalKeycode switch
             {
-                Key.G => ToolId.Grab,
+                // Shift+G matches LaboratoryControlComponent: same tool, more behind it.
+                Key.G => key.ShiftPressed ? ToolId.PowerGrab : ToolId.Grab,
                 Key.B => ToolId.BoxingGlove,
                 Key.K => ToolId.BaseballBat,
                 Key.J => ToolId.Pistol,
@@ -416,10 +423,12 @@ public partial class LabPointerGrabComponent : Node2D
         if (_pendingPress)
         {
             _pendingPress = false;
-            if (tool == ToolId.Grab && !Grab.IsGrabbing &&
+            // By category, not by enum: Normal and Power Grab acquire identically, and the
+            // only difference between them travels in the profile argument below.
+            if (ToolCatalog.CategoryOf(tool) == ToolCategory.Grab && !Grab.IsGrabbing &&
                 TryPick(cursor, out RigidBody2D? body))
             {
-                if (Grab.TryGrab(body!, cursor))
+                if (Grab.TryGrab(body!, cursor, tool == ToolId.PowerGrab ? PowerProfile : null))
                 {
                     _ownsGrab = true;
                     LastPickedPart = body is PuppetPartBody part ? part.PartId : null;

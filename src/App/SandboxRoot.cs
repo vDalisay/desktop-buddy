@@ -611,7 +611,10 @@ public partial class SandboxRoot : Node2D
     private void OnToolChanged(ToolId previous, ToolId selected)
     {
         SwingHitLag.Cancel();
-        if (previous == ToolId.Grab && Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
+        // By category: switching away from either grab variant drops what is held, and the
+        // drop is never a powered throw.
+        if (ToolCatalog.CategoryOf(previous) == ToolCategory.Grab && Grab.IsGrabbing)
+            Grab.Release(countsAsThrow: false);
     }
 
     private void OnGrabReleased(RigidBody2D body, bool countsAsThrow)
@@ -620,7 +623,20 @@ public partial class SandboxRoot : Node2D
             return;
 
         if (countsAsThrow)
-            Objects.MarkPlayerThrown(loose, ContentIds.ToolGrab);
+        {
+            // Attribute to the tool that actually threw it: the per-tool statistics
+            // dictionaries are keyed by tool, so filing a Power throw under Normal would put
+            // a real event under the wrong key.
+            ToolId thrower = Pipeline is not null && GodotObject.IsInstanceValid(Pipeline)
+                ? Pipeline.SelectedTool
+                : ToolId.Grab;
+            Objects.MarkPlayerThrown(
+                loose,
+                ContentIds.ForTool(
+                    ToolCatalog.CategoryOf(thrower) == ToolCategory.Grab
+                        ? thrower
+                        : ToolId.Grab));
+        }
         else
             Objects.MarkBuddyReleased(loose);
     }

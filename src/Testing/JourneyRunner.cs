@@ -21,6 +21,7 @@ using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Economy;
+using DesktopBuddy.Grab;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Interaction;
@@ -746,6 +747,10 @@ public partial class JourneyRunner : Node
         {
             await ExerciseM5RepairKitAsync(state, lab);
         }
+        else if (exercise == "m5_power_grab")
+        {
+            await ExerciseM5PowerGrabAsync(state, lab);
+        }
         else if (exercise is null && journey.TryGetProperty("steps", out JsonElement steps) &&
                  steps.ValueKind == JsonValueKind.Array && steps.GetArrayLength() > 0)
         {
@@ -1352,15 +1357,14 @@ public partial class JourneyRunner : Node
         Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
         float side = torso.X <= room.GetCenter().X ? 1.0f : -1.0f;
 
-        // --- The shop will not sell one yet ---
-        // The catalogue entry stays `Visible = false` until the owner's feel gate, and the shop
-        // refuses it for exactly that reason rather than for the balance. Ownership here comes
-        // from the development laboratory catalogue, the same way every other ungated M5 tool
-        // is granted; when the owner flips the entry visible this becomes a real purchase.
-        PurchaseResult refused = lab.Economy.Purchase(ContentIds.ToolSoccerBall);
-        state["the_soccer_ball_is_not_on_sale_until_the_owner_gates_it"] =
-            !refused.Succeeded &&
-            refused.Status == PurchaseStatus.NotAvailable &&
+        // --- The shop sells one ---
+        // The owner accepted Task 8 on 2026-08-01 and the catalogue entry went
+        // `Visible = true` (M5 packet 11D-2), so this leg is the purchase the slice always
+        // owed rather than the refusal that stood in for it. Sold against a fresh saveless
+        // state at the shipped price, because the lab grants every implemented M5 tool.
+        bool soldSoccer = BuysFromShop(lab, ContentIds.ToolSoccerBall);
+        state["the_shop_sells_the_soccer_ball_at_its_authored_price"] =
+            soldSoccer &&
             soccerProfile is not null &&
             lab.Progress.IsToolUnlocked(ContentIds.ToolSoccerBall) &&
             lab.Objects.Count == 0;
@@ -1518,7 +1522,7 @@ public partial class JourneyRunner : Node
 
         Log.Info(
             "Journey",
-            $"M5 soccer sale={refused.Status} launches={lab.Launcher.LaunchCount} " +
+            $"M5 soccer sold={soldSoccer} launches={lab.Launcher.LaunchCount} " +
             $"cancels={lab.Launcher.CancelCount} own_tuning={ownTuning} " +
             $"speed={lab.Launcher.LastLaunchVelocity.Length():F1} " +
             $"ordinary_held={ordinaryHeld} corner_rescue={cornerRescue} " +
@@ -1529,8 +1533,8 @@ public partial class JourneyRunner : Node
     }
 
     /// <summary>
-    /// The M5 Drink slice through real input, happy path and refusal path: the shop still
-    /// withholds it until the owner's feel gate, key <c>9</c> places one owned can, the buddy
+    /// The M5 Drink slice through real input, happy path and refusal path: the shop sells it,
+    /// key <c>9</c> places one owned can, the buddy
     /// fetches and drinks it for its authored <c>+5</c> mood and starts a 60 s cooldown, and a
     /// second can inside that minute is refused for the timer without costing the buddy
     /// anything — no mood, no restarted cooldown, no punishment.
@@ -1543,10 +1547,10 @@ public partial class JourneyRunner : Node
         LooseObjectProfile? drinkProfile = FindLaunchable(lab, ContentIds.ToolDrink);
         Rect2 room = lab.Boundaries.InnerBounds;
 
-        PurchaseResult refusedSale = lab.Economy.Purchase(ContentIds.ToolDrink);
-        state["the_drink_is_not_on_sale_until_the_owner_gates_it"] =
-            !refusedSale.Succeeded &&
-            refusedSale.Status == PurchaseStatus.NotAvailable &&
+        // Task 8 accepted 2026-08-01; the entry went `Visible = true` in M5 packet 11D-2.
+        bool soldDrink = BuysFromShop(lab, ContentIds.ToolDrink);
+        state["the_shop_sells_the_drink_at_its_authored_price"] =
+            soldDrink &&
             drinkProfile is not null &&
             lab.Progress.IsToolUnlocked(ContentIds.ToolDrink) &&
             lab.Objects.Count == 0;
@@ -1614,7 +1618,7 @@ public partial class JourneyRunner : Node
 
         Log.Info(
             "Journey",
-            $"M5 drink sale={refusedSale.Status} drank={drank} " +
+            $"M5 drink sold={soldDrink} drank={drank} " +
             $"successes={lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
             $"mood={moodBefore:F1}->{lab.Progress.Mood:F1} " +
             $"fullness={fullnessWhenOffered:F1}->{lab.Progress.Fullness:F1} " +
@@ -1623,8 +1627,8 @@ public partial class JourneyRunner : Node
     }
 
     /// <summary>
-    /// The M5 Repair Kit end to end through real input: the shop still withholds it until the
-    /// owner's feel gate, key <c>0</c> places one owned kit, a kit flung wide heals nobody and
+    /// The M5 Repair Kit end to end through real input: the shop sells it, key <c>0</c>
+    /// places one owned kit, a kit flung wide heals nobody and
     /// waits where it lands, and a kit released against a burning buddy puts the fire out and
     /// pays its authored mood.
     /// </summary>
@@ -1636,10 +1640,12 @@ public partial class JourneyRunner : Node
         Rect2 room = lab.Boundaries.InnerBounds;
         LooseObjectProfile? kitProfile = FindLaunchable(lab, ContentIds.ToolRepairKit);
 
-        PurchaseResult refusedSale = lab.Economy.Purchase(ContentIds.ToolRepairKit);
-        state["the_repair_kit_is_not_on_sale_until_the_owner_gates_it"] =
-            !refusedSale.Succeeded &&
-            refusedSale.Status == PurchaseStatus.NotAvailable &&
+        // Shop-visible ahead of its own feel gate (M5 packet 11D-2), so Task 12 can price the
+        // full twelve-item schedule. If the owner would rather it stay hidden until then,
+        // this leg goes back to asserting the refusal and 12D reruns after acceptance.
+        bool soldKit = BuysFromShop(lab, ContentIds.ToolRepairKit);
+        state["the_shop_sells_the_repair_kit_at_its_authored_price"] =
+            soldKit &&
             kitProfile is not null &&
             lab.Progress.IsToolUnlocked(ContentIds.ToolRepairKit) &&
             lab.Objects.Count == 0;
@@ -1706,10 +1712,95 @@ public partial class JourneyRunner : Node
 
         Log.Info(
             "Journey",
-            $"M5 repair kit sale={refusedSale.Status} flung_wide={flungWide} " +
+            $"M5 repair kit sold={soldKit} flung_wide={flungWide} " +
             $"healed={healed} burning_after={lab.FireSprayer.IsBurning} " +
             $"contact_care={lab.Buddy.ObjectInteraction.ContactCareCount} " +
             $"mood_gained={moodGained:F2} objects={lab.Objects.Count}");
+    }
+
+    /// <summary>
+    /// The M5 Power Grab slice end to end: the shop sells it exactly once, selecting it
+    /// grabs and throws through the ordinary pointer path, switching back to Normal Grab
+    /// drops what is held rather than flinging it, and both grabs plus the selection survive
+    /// a save/load round trip.
+    /// </summary>
+    private async System.Threading.Tasks.Task ExerciseM5PowerGrabAsync(
+        Dictionary<string, bool> state,
+        BuddyLab lab)
+    {
+        SceneTree tree = GetTree();
+
+        // --- The shop sells it, once ---
+        bool sold = BuysFromShop(lab, ContentIds.ToolPowerGrab);
+        bool profileWired = lab.Pointer.PowerProfile is not null &&
+            lab.Pointer.PowerProfile.Validate().Count == 0;
+        state["the_shop_sells_power_grab_at_its_authored_price"] = sold && profileWired;
+
+        // A second purchase against the lab's own already-owning progress charges nothing.
+        long balanceBefore = lab.Economy.BalanceMilliCredits;
+        PurchaseResult second = lab.Economy.Purchase(ContentIds.ToolPowerGrab);
+        state["buying_power_grab_twice_charges_once"] =
+            !second.Succeeded &&
+            second.Status == PurchaseStatus.AlreadyOwned &&
+            lab.Economy.BalanceMilliCredits == balanceBefore &&
+            lab.Progress.IsToolUnlocked(ContentIds.ToolPowerGrab);
+
+        // --- Selecting it and using it ---
+        state["power_grab_is_selectable_once_owned"] =
+            SelectAndConfirm(lab, ToolId.PowerGrab);
+
+        PuppetPartBody torso = lab.Buddy.Rig.Torso;
+        PowerGrabProfile power = lab.Pointer.PowerProfile!;
+        float normalCap = lab.Grab.Profile.ThrowSpeedCap;
+
+        lab.Grab.TryGrab(torso, torso.GlobalPosition, power);
+        bool held = lab.Grab.IsGrabbing && lab.Grab.IsPowerGrab;
+        torso.LinearVelocity = new Vector2(normalCap * 3.0f, 0.0f);
+        lab.Grab.Release(countsAsThrow: true);
+        await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        float poweredThrow = lab.Grab.LastReleaseSpeed;
+        state["a_power_throw_uses_the_power_cap"] =
+            held && poweredThrow > normalCap && poweredThrow <= power.ReleaseSpeedCap + 0.5f;
+
+        // --- Switching back to Normal Grab drops, never flings ---
+        lab.Grab.TryGrab(torso, torso.GlobalPosition, power);
+        torso.LinearVelocity = new Vector2(normalCap * 3.0f, 0.0f);
+        bool backToNormal = SelectAndConfirm(lab, ToolId.Grab);
+        await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        state["switching_back_to_normal_grab_drops_what_is_held"] =
+            backToNormal && !lab.Grab.IsGrabbing &&
+            lab.Grab.LastReleaseSpeed <= normalCap + 0.5f;
+
+        // --- Both grabs and the selection survive a save/load round trip ---
+        SelectAndConfirm(lab, ToolId.PowerGrab);
+        ProgressSave saved = ProgressSave.FromSnapshot(lab.Progress.Snapshot());
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode(ProgressSavePolicy.Serialize(saved));
+        BuddyProgressState reloaded = decoded.Save is null
+            ? new BuddyProgressState(1.0)
+            : ProgressSavePolicy.CreateState(
+                decoded.Save, lab.Pipeline.RequirePainProfile().CashPerPain);
+
+        state["both_grabs_and_the_selection_survive_a_reload"] =
+            decoded.Status == SaveDecodeStatus.Valid &&
+            decoded.Save!.SchemaVersion == ProgressSave.CurrentSchemaVersion &&
+            reloaded.IsToolUnlocked(ContentIds.ToolGrab) &&
+            reloaded.IsToolUnlocked(ContentIds.ToolPowerGrab) &&
+            reloaded.SelectedTool == ToolId.PowerGrab &&
+            reloaded.BalanceMilliCredits == lab.Economy.BalanceMilliCredits;
+
+        SelectAndConfirm(lab, ToolId.Grab);
+
+        Log.Info(
+            "Journey",
+            $"M5 power grab sold={sold} throw={poweredThrow:F1} normal_cap={normalCap:F1} " +
+            $"power_cap={power.ReleaseSpeedCap:F1} schema={decoded.Save?.SchemaVersion} " +
+            $"selected={reloaded.SelectedTool}");
+    }
+
+    private static bool SelectAndConfirm(BuddyLab lab, ToolId tool)
+    {
+        lab.Pipeline.SelectTool(tool);
+        return lab.Pipeline.SelectedTool == tool;
     }
 
     /// <summary>
@@ -1992,17 +2083,17 @@ public partial class JourneyRunner : Node
         FireSprayerProfile profile = sprayer.Profile;
 
         // --- The catalogue leg, at the slice's current visibility ---
-        // The owner's feel gate has not run yet, so `tool_fire_sprayer.tres` is still
-        // `Visible = false` and the shop must NOT offer it. That is the grenade journey's
-        // pre-acceptance shape: assert what the catalogue really promises today, so the
-        // leg flips to a sale by editing one authored flag rather than by rewriting a test.
+        // The owner accepted Task 7 on 2026-08-01, so `tool_fire_sprayer.tres` flipped to
+        // `Visible = true` with the other accepted slices (M5 packet 11D-2) and the shop
+        // must now offer it. As before, the leg tracks the authored flag rather than a
+        // hard-coded verdict, so the next visibility change is a data edit.
         bool listed = lab.Economy.Catalogue.TryGet(
             ContentIds.ToolFireSprayer, out CatalogueEntry entry);
         bool offered = false;
         foreach (CatalogueEntry candidate in CataloguePolicy.ShopEntries(lab.Economy.Catalogue))
             offered |= candidate.ContentId == ContentIds.ToolFireSprayer;
-        state["the_catalogue_carries_the_sprayer_but_does_not_advertise_it_yet"] =
-            listed && !entry.Visible && !offered && entry.PriceMilliCredits > 0L &&
+        state["the_catalogue_offers_the_accepted_sprayer"] =
+            listed && entry.Visible && offered && entry.PriceMilliCredits > 0L &&
             lab.Progress.IsToolUnlocked(ContentIds.ToolFireSprayer);
 
         // The development telemetry panel covers the left contact zone and consumes mouse
@@ -2137,14 +2228,12 @@ public partial class JourneyRunner : Node
     {
         SceneTree tree = GetTree();
 
-        // --- Not on sale yet ---
-        // The catalogue entry is authored `Visible = false` and stays that way until the
-        // owner plays the slice (plan Task E). The refusal is the assertion; when the entry
-        // goes visible this becomes a real purchase, as the Grenade's did.
-        PurchaseResult refused = lab.Economy.Purchase(ContentIds.ToolShotgun);
-        state["the_shotgun_is_not_on_sale_until_the_owner_gates_it"] =
-            !refused.Succeeded &&
-            refused.Status == PurchaseStatus.NotAvailable &&
+        // --- On sale ---
+        // The owner accepted Task 9 on 2026-08-01 and the catalogue entry went
+        // `Visible = true` (M5 packet 11D-2), so the sale is the assertion now, exercised
+        // against a fresh saveless state exactly as the Grenade's is.
+        state["the_shop_sells_the_shotgun_at_its_authored_price"] =
+            BuysFromShop(lab, ContentIds.ToolShotgun) &&
             lab.Progress.IsToolUnlocked(ContentIds.ToolShotgun);
 
         // The development telemetry panel covers the left contact zone and consumes mouse
