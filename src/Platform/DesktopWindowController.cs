@@ -8,42 +8,38 @@ using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
 namespace DesktopBuddy.Platform;
 
 /// <summary>
-/// Godot-side desktop window service (`ARCHITECTURE.md` §9). It applies window
-/// flags, size, and position through Godot APIs, resolves placement with the
-/// Godot-free <see cref="WindowPlacementPolicy"/>, and delegates the native-only
-/// concerns (monitor topology, DPI, Work-Mode passthrough) to an injected
-/// <see cref="IWindowsDesktopAdapter"/>. Editor/headless runs inject the emulated
-/// adapter, so composition and the mode-transition journeys stay green with no
-/// Windows dependency. Transparency falls back to an opaque bordered box when the
-/// adapter reports it is unavailable, without touching gameplay. All window state
-/// is applied and captured as one immutable <see cref="WindowSettings"/> unit, so
-/// editor mode cannot restore only a subset.
+/// Godot-side desktop window service. Window footprint and interaction mode are independent:
+/// Compact always captures its complete client rectangle, while FullscreenOverlay may either
+/// capture the monitor in Play mode or use the native toolbar-only passthrough policy in Work.
 /// </summary>
 public partial class DesktopWindowController : Node, IDesktopWindowService
 {
     private const string Category = "Window";
-    // V-sync already caps rendering at the display rate. With V-sync disabled,
-    // cap this always-on overlay so it cannot free-spin a desktop GPU.
     private const int VsyncOffMaximumFps = 240;
 
     private IWindowsDesktopAdapter _adapter = new EmulatedWindowsDesktopAdapter();
     private bool _headless;
     private Rect2I _lastAppliedRect = WindowSettings.Defaults.Rect;
     private WindowSettings _lastAppliedSettings = WindowSettings.Defaults;
+    private WindowSettings _compactSettings = WindowSettings.Defaults;
     private IReadOnlyList<Rect2I> _workModeHitRegions = Array.Empty<Rect2I>();
+    private bool _suppressClientBoundsChanged;
+    private Rect2I? _pendingTransitionRect;
 
     public DomainInputMode InputMode { get; private set; } = DomainInputMode.Work;
+    public WindowLayoutMode LayoutMode { get; private set; } = WindowLayoutMode.Compact;
+    public int FullscreenMonitor { get; private set; }
     public bool TransparencyActive { get; private set; }
-    /// <summary>
-    /// The configured platform adapter, so the composition root can bind the §24
-    /// suspend/resume/session-lock seam without owning adapter selection itself.
-    /// </summary>
+    public bool FullscreenOverlayAvailable => _adapter.TransparencyAvailable;
+    public Rect2I CompactRect => _compactSettings.Rect;
+
     public IWindowsDesktopAdapter Adapter => _adapter;
     public WindowSettings CurrentSettings => CaptureWindowSettings();
     public int AppliedSettingsCount { get; private set; }
 
     public event Action<Rect2I>? ClientBoundsChanged;
     public event Action? WindowFocusLost;
+    public event Action<WindowLayoutMode>? LayoutModeChanged;
 
     /// <summary>Inject the native/emulated adapter before adding to the tree.</summary>
     public void Configure(IWindowsDesktopAdapter adapter)
@@ -61,7 +57,8 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             window.FocusExited += OnFocusExited;
         }
 
-        Log.Info(Category, $"DesktopWindowController ready (native={_adapter.IsNative} headless={_headless}).");
+        Log.Info(Category,
+            $"DesktopWindowController ready (native={_adapter.IsNative} headless={_headless}).");
     }
 
     public Rect2I UsableMonitorRect => ResolveContainingMonitor(CurrentWindowRect());
@@ -72,6 +69,8 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         TransparencyActive = wantTransparent;
         _lastAppliedRect = settings.Rect;
         _lastAppliedSettings = settings with { Transparent = wantTransparent };
+        if (LayoutMode == WindowLayoutMode.Compact)
+            _compactSettings = _lastAppliedSettings;
         AppliedSettingsCount++;
 
         if (_headless)
@@ -83,8 +82,11 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         window.AlwaysOnTop = settings.AlwaysOnTop;
         window.Transparent = wantTransparent;
         GetViewport().TransparentBg = wantTransparent;
-        window.Size = settings.Rect.Size;
-        window.Position = settings.Rect.Position;
+        if (window.Mode == Window.ModeEnum.Windowed)
+        {
+            window.Size = settings.Rect.Size;
+            window.Position = settings.Rect.Position;
+        }
         ApplyRenderSettings(settings);
 
         if (!wantTransparent && settings.Transparent)
@@ -111,14 +113,54 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     public WindowSettings RecoverWindowSettings(WindowSettings captured) =>
         captured with { Rect = ResolvePlacement(captured.Rect) };
 
+    /// <summary>
+    /// Applies the native input policy for the current layout. Compact captures all pixels in
+    /// both modes; only full-screen Work enables passthrough outside the supplied toolbar/UI
+    /// regions.
+    /// </summary>
     public void SetInputMode(DomainInputMode mode, IReadOnlyList<Rect2I> workModeHitRegions)
     {
         InputMode = mode;
         _workModeHitRegions = workModeHitRegions ?? Array.Empty<Rect2I>();
-        if (mode == DomainInputMode.Work)
-            _adapter.SetWorkModeHitRegions(_workModeHitRegions);
+        ApplyCurrentInputPolicy();
+    }
+
+    public bool TrySetLayoutMode(WindowLayoutMode mode, int monitorIndex = 0)
+    {
+        int resolvedMonitor = ResolveMonitorIndex(monitorIndex);
+        if (mode == WindowLayoutMode.FullscreenOverlay && !_adapter.TransparencyAvailable)
+        {
+            Log.Warn(Category,
+                "Full-screen overlay requested but per-pixel transparency is unavailable.");
+            return false;
+        }
+
+        if (mode == LayoutMode &&
+            (mode != WindowLayoutMode.FullscreenOverlay || resolvedMonitor == FullscreenMonitor))
+        {
+            return true;
+        }
+
+        if (LayoutMode == WindowLayoutMode.Compact)
+            _compactSettings = CaptureWindowSettings();
+
+        _suppressClientBoundsChanged = true;
+        FullscreenMonitor = resolvedMonitor;
+        LayoutMode = mode;
+
+        if (mode == WindowLayoutMode.FullscreenOverlay)
+            EnterFullscreenOverlay(resolvedMonitor);
         else
-            _adapter.SetPlayModeCapture();
+            EnterCompact();
+
+        ApplyCurrentInputPolicy();
+        LayoutModeChanged?.Invoke(mode);
+
+        _pendingTransitionRect = mode == WindowLayoutMode.FullscreenOverlay
+            ? MonitorRect(resolvedMonitor)
+            : _compactSettings.Rect;
+        Callable.From(FinishLayoutTransition).CallDeferred();
+        return true;
     }
 
     public void RestoreBottomRight(int marginPixels)
@@ -129,10 +171,6 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         MoveTo(anchored);
     }
 
-    /// <summary>
-    /// Resolve the launch placement: first launch anchors lower-right on the primary
-    /// monitor; a stored rect is recovered against the current monitor topology.
-    /// </summary>
     public Rect2I ResolvePlacement(Rect2I? storedRect)
     {
         IReadOnlyList<Rect2I> monitors = _adapter.GetUsableMonitorRects();
@@ -147,6 +185,94 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         return ToRect2I(first);
     }
 
+    private void EnterFullscreenOverlay(int monitorIndex)
+    {
+        Rect2I target = MonitorRect(monitorIndex);
+        _lastAppliedRect = target;
+        _lastAppliedSettings = _compactSettings with
+        {
+            Rect = target,
+            Transparent = true,
+            Borderless = true,
+            Resizable = false,
+        };
+        TransparencyActive = true;
+
+        if (_headless)
+            return;
+
+        Window window = GetWindow();
+        window.CurrentScreen = monitorIndex;
+        window.Borderless = true;
+        window.Unresizable = true;
+        window.AlwaysOnTop = _compactSettings.AlwaysOnTop;
+        window.Transparent = true;
+        GetViewport().TransparentBg = true;
+        window.Mode = Window.ModeEnum.Fullscreen;
+        ApplyRenderSettings(_compactSettings);
+    }
+
+    private void EnterCompact()
+    {
+        WindowSettings recovered = RecoverWindowSettings(_compactSettings);
+        _compactSettings = recovered;
+        _lastAppliedSettings = recovered;
+        _lastAppliedRect = recovered.Rect;
+        TransparencyActive = recovered.Transparent && _adapter.TransparencyAvailable;
+
+        if (_headless)
+            return;
+
+        Window window = GetWindow();
+        window.Mode = Window.ModeEnum.Windowed;
+        ApplyWindowSettings(recovered);
+    }
+
+    private void ApplyCurrentInputPolicy()
+    {
+        if (LayoutMode == WindowLayoutMode.FullscreenOverlay &&
+            InputMode == DomainInputMode.Work)
+        {
+            _adapter.SetWorkModeHitRegions(_workModeHitRegions);
+        }
+        else
+        {
+            _adapter.SetPlayModeCapture();
+        }
+    }
+
+    private void FinishLayoutTransition()
+    {
+        Rect2I rect = _pendingTransitionRect ?? CurrentWindowRect();
+        _pendingTransitionRect = null;
+        _lastAppliedRect = rect;
+        _lastAppliedSettings = _lastAppliedSettings with { Rect = rect };
+        _suppressClientBoundsChanged = false;
+        ClientBoundsChanged?.Invoke(rect);
+    }
+
+    private Rect2I MonitorRect(int monitorIndex)
+    {
+        if (!_headless)
+        {
+            Vector2I position = DisplayServer.ScreenGetPosition(monitorIndex);
+            Vector2I size = DisplayServer.ScreenGetSize(monitorIndex);
+            if (size.X > 0 && size.Y > 0)
+                return new Rect2I(position, size);
+        }
+
+        IReadOnlyList<Rect2I> monitors = _adapter.GetUsableMonitorRects();
+        return monitors[Math.Clamp(monitorIndex, 0, monitors.Count - 1)];
+    }
+
+    private int ResolveMonitorIndex(int requested)
+    {
+        int count = _headless
+            ? _adapter.GetUsableMonitorRects().Count
+            : Math.Max(1, DisplayServer.GetScreenCount());
+        return Math.Clamp(requested, 0, count - 1);
+    }
+
     private void ApplyRenderSettings(WindowSettings settings)
     {
         var msaa = settings.MsaaLevel switch
@@ -156,13 +282,10 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             8 => Viewport.Msaa.Msaa8X,
             _ => Viewport.Msaa.Disabled,
         };
-        // 2D MSAA is unimplemented on the GLES3 backend behind the accepted
-        // gl_compatibility renderer (DECISIONS 2026-07-13), and setting it there only
-        // prints an engine warning. The 3D presentation pass does support it.
         GetViewport().Msaa2D = RenderingServer.GetCurrentRenderingMethod() == "gl_compatibility"
             ? Viewport.Msaa.Disabled
             : msaa;
-        GetViewport().Msaa3D = msaa; // M3.5: 3D presentation pass shares the MSAA setting.
+        GetViewport().Msaa3D = msaa;
         DisplayServer.WindowSetVsyncMode(settings.Vsync
             ? DisplayServer.VSyncMode.Enabled
             : DisplayServer.VSyncMode.Disabled);
@@ -173,6 +296,8 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     {
         _lastAppliedRect = ToRect2I(rect);
         _lastAppliedSettings = _lastAppliedSettings with { Rect = _lastAppliedRect };
+        if (LayoutMode == WindowLayoutMode.Compact)
+            _compactSettings = _lastAppliedSettings;
         if (_headless)
             return;
 
@@ -212,7 +337,10 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         Rect2I rect = CurrentWindowRect();
         _lastAppliedRect = rect;
         _lastAppliedSettings = CaptureWindowSettings();
-        ClientBoundsChanged?.Invoke(rect);
+        if (LayoutMode == WindowLayoutMode.Compact)
+            _compactSettings = _lastAppliedSettings;
+        if (!_suppressClientBoundsChanged)
+            ClientBoundsChanged?.Invoke(rect);
     }
 
     private void OnFocusExited() => WindowFocusLost?.Invoke();
@@ -227,6 +355,8 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         _ => 0,
     };
 
-    private static PixelRect ToPixelRect(Rect2I r) => new(r.Position.X, r.Position.Y, r.Size.X, r.Size.Y);
-    private static Rect2I ToRect2I(PixelRect r) => new(r.X, r.Y, r.Width, r.Height);
+    private static PixelRect ToPixelRect(Rect2I r) =>
+        new(r.Position.X, r.Position.Y, r.Size.X, r.Size.Y);
+    private static Rect2I ToRect2I(PixelRect r) =>
+        new(r.X, r.Y, r.Width, r.Height);
 }
