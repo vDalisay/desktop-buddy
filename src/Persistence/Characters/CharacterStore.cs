@@ -23,7 +23,7 @@ public sealed class CharacterStore
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _paths = new CharacterPaths(resolvedRoot);
-        _utcNow = utcNow ?? static () => DateTimeOffset.UtcNow;
+        _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
     }
 
     public CharacterPaths Paths => _paths;
