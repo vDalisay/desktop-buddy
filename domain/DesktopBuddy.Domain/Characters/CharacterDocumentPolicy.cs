@@ -66,6 +66,7 @@ public static class CharacterDocumentPolicy
                 schemaVersion++;
             }
 
+            ValidateKnownJsonShapes(current);
             RawCharacterDocument raw = current.Deserialize<RawCharacterDocument>(Options)
                 ?? throw new JsonException("Character payload was null.");
             CharacterDocument document = CreateCurrent(raw);
@@ -107,6 +108,59 @@ public static class CharacterDocumentPolicy
         }
 
         return JsonSerializer.Serialize(document, Options);
+    }
+
+    private static void ValidateKnownJsonShapes(JsonElement root)
+    {
+        if (root.TryGetProperty("partColors", out JsonElement partColors))
+        {
+            RequireKind(partColors, JsonValueKind.Object, "partColors");
+            RequireOptionalKind(partColors, "head", JsonValueKind.String, "partColors.head");
+            RequireOptionalKind(partColors, "torso", JsonValueKind.String, "partColors.torso");
+            RequireOptionalKind(partColors, "leftHand", JsonValueKind.String, "partColors.leftHand");
+            RequireOptionalKind(partColors, "rightHand", JsonValueKind.String, "partColors.rightHand");
+            RequireOptionalKind(partColors, "leftFoot", JsonValueKind.String, "partColors.leftFoot");
+            RequireOptionalKind(partColors, "rightFoot", JsonValueKind.String, "partColors.rightFoot");
+        }
+
+        if (!root.TryGetProperty("features", out JsonElement features))
+            return;
+
+        RequireKind(features, JsonValueKind.Object, "features");
+        ValidateFeatureShape(features, "eyes");
+        ValidateFeatureShape(features, "brows");
+        ValidateFeatureShape(features, "mouth");
+        ValidateFeatureShape(features, "torsoAccent");
+    }
+
+    private static void ValidateFeatureShape(JsonElement features, string propertyName)
+    {
+        if (!features.TryGetProperty(propertyName, out JsonElement feature))
+            return;
+
+        string path = $"features.{propertyName}";
+        RequireKind(feature, JsonValueKind.Object, path);
+        RequireOptionalKind(feature, "featureId", JsonValueKind.String, $"{path}.featureId");
+        RequireOptionalKind(feature, "offsetX", JsonValueKind.Number, $"{path}.offsetX");
+        RequireOptionalKind(feature, "offsetY", JsonValueKind.Number, $"{path}.offsetY");
+        RequireOptionalKind(feature, "scale", JsonValueKind.Number, $"{path}.scale");
+        RequireOptionalKind(feature, "color", JsonValueKind.String, $"{path}.color");
+    }
+
+    private static void RequireOptionalKind(
+        JsonElement parent,
+        string propertyName,
+        JsonValueKind expected,
+        string path)
+    {
+        if (parent.TryGetProperty(propertyName, out JsonElement value))
+            RequireKind(value, expected, path);
+    }
+
+    private static void RequireKind(JsonElement value, JsonValueKind expected, string path)
+    {
+        if (value.ValueKind != expected)
+            throw new JsonException($"{path} must be a JSON {expected.ToString().ToLowerInvariant()}.");
     }
 
     private static CharacterDocument CreateCurrent(RawCharacterDocument raw)
