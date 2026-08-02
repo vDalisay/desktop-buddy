@@ -8,20 +8,10 @@ using Godot;
 namespace DesktopBuddy.Platform;
 
 /// <summary>
-/// Native Windows implementation of <see cref="IWindowsDesktopAdapter"/>
-/// (`ARCHITECTURE.md` §9). It obtains the real HWND from Godot, subclasses the
-/// window procedure to answer <c>WM_NCHITTEST</c> with <c>HTTRANSPARENT</c> over
-/// transparent pixels in Work Mode (so clicks fall through to the desktop) and
-/// <c>HTCLIENT</c> over the interactive regions, enumerates usable monitor work
-/// areas, and reports per-monitor DPI. It never uses <c>SetWindowRgn</c> (that
-/// clips presentation as well as input); it restores the original procedure on
-/// <see cref="Shutdown"/>.
-///
-/// UNVERIFIED SKELETON: this must be exercised on real Windows 10/11 hardware
-/// (`TEST_PLAN.md` §5) — CI and headless use the emulated adapter, so a defect
-/// here cannot affect the automated gates. Tray icon, global hotkey,
-/// launch-at-login, and the §24 lifecycle messages extend this in a follow-up
-/// slice; they are not part of the current seam surface.
+/// Native Windows monitor/DPI/lifecycle adapter. Full-screen Work passthrough is now owned by
+/// Godot's native <see cref="Window.MousePassthrough"/> flag and a separate toolbar window.
+/// The legacy region-based WM_NCHITTEST seam remains lazy for compatibility with older tests,
+/// but normal production composition never activates or subclasses the Godot window.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
@@ -41,8 +31,6 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     private readonly List<Rect2I> _monitorRects = new();
     private readonly List<IntPtr> _monitorHandles = new();
 
-    // Keep the delegate rooted for the lifetime of the subclass, or the GC will
-    // collect it and the window procedure pointer will dangle.
     private WndProc? _hookDelegate;
     private IntPtr _originalWndProc = IntPtr.Zero;
     private bool _subclassed;
@@ -55,11 +43,7 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     public bool TransparencyAvailable { get; }
     public bool IsWindowVisible => IsWindowVisibleNative(_hwnd);
 
-    // Declared so the lifecycle coordinator binds to one seam regardless of adapter.
-    // Raising them needs WM_POWERBROADCAST and WTSRegisterSessionNotification on the
-    // subclassed window procedure; that work joins the M2 owner-manual Windows matrix
-    // rather than blocking this milestone (M4 plan, Task 5).
-#pragma warning disable CS0067 // Event is never used: native power/session wiring is pending.
+#pragma warning disable CS0067
     public event Action? SystemSuspending;
     public event Action? SystemResumed;
     public event Action<bool>? SessionLockChanged;
@@ -70,12 +54,16 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
         long handle = DisplayServer.WindowGetNativeHandle(DisplayServer.HandleType.WindowHandle);
         _hwnd = new IntPtr(handle);
 
-        bool allowed = (bool)ProjectSettings.GetSetting("display/window/per_pixel_transparency/allowed", false);
+        bool allowed = (bool)ProjectSettings.GetSetting(
+            "display/window/per_pixel_transparency/allowed",
+            false);
         TransparencyAvailable = allowed && DwmIsCompositionEnabledSafe();
 
         RefreshMonitors();
-        Subclass();
-        Log.Info(Category, $"Native adapter attached (hwnd=0x{handle:X} monitors={_monitorRects.Count} transparency={TransparencyAvailable}).");
+        Log.Info(Category,
+            $"Native adapter attached without WndProc subclassing " +
+            $"(hwnd=0x{handle:X} monitors={_monitorRects.Count} " +
+            $"transparency={TransparencyAvailable}).");
     }
 
     public IReadOnlyList<Rect2I> GetUsableMonitorRects()
@@ -87,11 +75,13 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     public float GetDpiScale(int monitorIndex)
     {
         if (monitorIndex < 0 || monitorIndex >= _monitorHandles.Count)
-        {
             return 1.0f;
-        }
 
-        if (GetDpiForMonitor(_monitorHandles[monitorIndex], MdtEffectiveDpi, out uint dpiX, out _) == 0)
+        if (GetDpiForMonitor(
+                _monitorHandles[monitorIndex],
+                MdtEffectiveDpi,
+                out uint dpiX,
+                out _) == 0)
         {
             return dpiX / 96.0f;
         }
@@ -99,13 +89,18 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
         return 1.0f;
     }
 
+    /// <summary>
+    /// Legacy-only selective hit-testing seam. Production no longer calls this because
+    /// HTTRANSPARENT does not reliably forward to arbitrary applications. Subclassing is
+    /// therefore delayed until an explicit legacy caller requests it.
+    /// </summary>
     public void SetWorkModeHitRegions(IReadOnlyList<Rect2I> regions)
     {
-        // Regions arrive already projected into client pixels by the shell
-        // (`SandboxProjection`), which is what WM_NCHITTEST needs. DPI is not yet
-        // folded in — the client rects are logical pixels; per-monitor DPI scaling
-        // of the hit test lands with the InputCollector coordinate layer
-        // (`ARCHITECTURE.md` §10).
+        ArgumentNullException.ThrowIfNull(regions);
+        Subclass();
+        if (!_subclassed)
+            return;
+
         if (regions.Count > _hitRegions.Length)
             Array.Resize(ref _hitRegions, regions.Count);
         for (int index = 0; index < regions.Count; index++)
@@ -114,10 +109,7 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
         _workModeActive = true;
     }
 
-    public void SetPlayModeCapture()
-    {
-        _workModeActive = false;
-    }
+    public void SetPlayModeCapture() => _workModeActive = false;
 
     public void SetWindowVisible(bool visible)
     {
@@ -129,9 +121,7 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
 
         ShowWindow(_hwnd, visible ? SwRestore : SwHide);
         if (IsWindowVisibleNative(_hwnd) != visible)
-        {
             Log.Error(Category, $"Native main-window visibility did not become {visible}.");
-        }
     }
 
     public void Shutdown()
@@ -144,24 +134,20 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
         }
 
         _hookDelegate = null;
-        Log.Info(Category, "Native adapter restored window procedure.");
+        Log.Info(Category, "Native adapter shut down.");
     }
 
     private void Subclass()
     {
         if (_subclassed || _hwnd == IntPtr.Zero)
-        {
             return;
-        }
 
         _hookDelegate = HookProc;
         IntPtr hookPtr = Marshal.GetFunctionPointerForDelegate(_hookDelegate);
         _originalWndProc = SetWindowLongPtr(_hwnd, GwlpWndProc, hookPtr);
         _subclassed = _originalWndProc != IntPtr.Zero;
         if (!_subclassed)
-        {
-            Log.Error(Category, "Failed to subclass the window procedure; Work-Mode passthrough is unavailable.");
-        }
+            Log.Error(Category, "Failed to install legacy region hit-test hook.");
     }
 
     private IntPtr HookProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
@@ -169,7 +155,11 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
         if (msg == WmNcHitTest && _workModeActive)
         {
             long packed = lParam.ToInt64();
-            var point = new POINT { X = unchecked((short)(packed & 0xFFFF)), Y = unchecked((short)((packed >> 16) & 0xFFFF)) };
+            var point = new POINT
+            {
+                X = unchecked((short)(packed & 0xFFFF)),
+                Y = unchecked((short)((packed >> 16) & 0xFFFF)),
+            };
             if (ScreenToClient(hWnd, ref point))
             {
                 bool inside = PointInAnyRegion(point.X, point.Y);
@@ -203,7 +193,6 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
 
         if (_monitorRects.Count == 0)
         {
-            // Fall back to the primary monitor's work area if enumeration failed.
             IntPtr primary = MonitorFromWindow(_hwnd, MonitorDefaultToPrimary);
             if (TryGetWorkArea(primary, out Rect2I rect))
             {
@@ -250,11 +239,12 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
         }
     }
 
-    // ---- Win32 interop ----
-
     private delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
-
-    private delegate bool MonitorEnumProc(IntPtr hMonitor, IntPtr hdc, ref RECT rect, IntPtr data);
+    private delegate bool MonitorEnumProc(
+        IntPtr hMonitor,
+        IntPtr hdc,
+        ref RECT rect,
+        IntPtr data);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT
@@ -285,7 +275,12 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
     [DllImport("user32.dll", EntryPoint = "CallWindowProcW")]
-    private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    private static extern IntPtr CallWindowProc(
+        IntPtr lpPrevWndFunc,
+        IntPtr hWnd,
+        uint msg,
+        IntPtr wParam,
+        IntPtr lParam);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -293,7 +288,11 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr lprcClip, MonitorEnumProc lpfnEnum, IntPtr dwData);
+    private static extern bool EnumDisplayMonitors(
+        IntPtr hdc,
+        IntPtr lprcClip,
+        MonitorEnumProc lpfnEnum,
+        IntPtr dwData);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -311,8 +310,13 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     private static extern bool IsWindowVisibleNative(IntPtr hWnd);
 
     [DllImport("shcore.dll")]
-    private static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
+    private static extern int GetDpiForMonitor(
+        IntPtr hMonitor,
+        int dpiType,
+        out uint dpiX,
+        out uint dpiY);
 
     [DllImport("dwmapi.dll")]
-    private static extern int DwmIsCompositionEnabled([MarshalAs(UnmanagedType.Bool)] out bool enabled);
+    private static extern int DwmIsCompositionEnabled(
+        [MarshalAs(UnmanagedType.Bool)] out bool enabled);
 }
