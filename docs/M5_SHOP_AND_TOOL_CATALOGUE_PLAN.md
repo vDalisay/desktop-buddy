@@ -16,17 +16,18 @@ catalogue growth, not an M4 gate regression.
 
 - `docs/PRODUCT_REQUIREMENTS.md` — FR-003.2 (retractable panel), FR-011.15
   (milli-credits, whole-credit display), FR-012.5 (shared cash-per-pain), **FR-013**
-  (catalogue, ownership, progression schedule, 2-hour target, reset confirmation),
-  **FR-014** (24-object budget), FR-015.7 (purchase → immediate flush), FR-017.3
-  (effects honor reduced-motion/particles/photosensitivity), **FR-019** (Strength
-  Upgrade).
+  (16 interactions, ownership, 209-minute schedule, unrestricted skipping, full
+  Reset Progress), **FR-014** (24-object budget), FR-015.7 (purchase → immediate
+  flush), FR-017.3 (effects honor reduced-motion/particles/photosensitivity),
+  **FR-019** (selectable Power Grab).
 - `docs/RAGDOLL_AND_GAMEPLAY_SPEC.md` — §8 (passive multiplier anchors, 25 % passive
   benchmark), **§9 launch tool contracts** (shared controls, per-tool table, §9.3
   Burning), §10 (loose objects and cleanup).
 - `docs/ROADMAP.md` — Milestone 5 deliverables and the confirmed progression order.
-- `docs/DECISIONS.md` — "Owner Feel Pass and Shop Addition (2026-07-25)" (FR-019 origin
-  + its open decisions), "M5 Baseball Input — Revised (2026-07-28)" (spawn/Grab/
-  secondary-chord contract, provisional launch tuning, player-ownership rule).
+- `docs/DECISIONS.md` — “Power Grab, 16-Tool Catalogue, 209-Minute Economy, and
+  Full Progress Reset” (2026-08-02) is the owner authority for Tasks 11–13;
+  earlier Strength notes are superseded history. “M5 Baseball Input — Revised”
+  (2026-07-28) remains the launch-control authority.
 - `docs/UI_FLOATING_DOCK_PLAN.md` — a **draft** proposal for the FR-003.2 panel, not an
   approved implementation contract. Before any dock task begins, the owner must approve
   an original clean-room direction, record it in `DECISIONS.md`, replace the untracked
