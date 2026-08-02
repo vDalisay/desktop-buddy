@@ -1,11 +1,10 @@
 # Milestone 5 — Shop and Full Tool Catalogue
 
-Status: **PLAN — written 2026-07-29.** M4 is owner-accepted (2026-07-27). The first M5
-slice, **Baseball**, is already in progress on `main` (atomic purchase boundary, locked
-selection, immediate purchase save, shared pullback launcher, provisional tuning,
-`baseball_pullback` real-input scenario); its price and final physical preset stay
-uncalibrated until Task 12. This plan orders the remaining catalogue, the dock panel
-binding, the Strength Upgrade, and the economy calibration that closes the milestone.
+Status: **ACTIVE PLAN — written 2026-07-29, Tasks 11–13 resolved/refined 2026-08-02.**
+M4 is owner-accepted. Tasks 11–13 now have a complete architecture handoff in
+`docs/M5_TASK11_TO_13_HANDOFF_PLAN.md`. Power Grab replaces the former passive
+Strength Upgrade, the launch catalogue contains 16 selectable interactions, and the
+official completionist economy horizon is 209 minutes.
 
 Initial baseline at plan-writing time: domain 648/648, 41 scenarios / 11 journeys
 green across seeds 1 and 7 in both presentations, quick suite 15/15. Current
@@ -43,28 +42,27 @@ catalogue growth, not an M4 gate regression.
 
 ## Scope
 
-Deliver, in the confirmed order:
+Deliver:
 
-1. Catalogue spine: all `15` entries as data, generalized locked-selection and
-   purchase flow, reset confirmation, "no unfinished entry shown" rule.
-2. Floating dock (after its owner-approved clean-room revision) and its Task 6
-   catalogue/shop binding.
-3. Existing loose-object-budget integration audit and extension for every new M5
-   loose-object spawn (FR-014); no second budget owner.
-4. Tool slices in progression order: **Meal, Baseball Bat, Pistol, Grenade,
-   Fire Sprayer (+ Burning), Soccer Ball, Drink, Shotgun, Repair Kit**, then the
-   **Strength Upgrade** (FR-019).
-5. Economy calibration: cash-per-pain, base passive rate, all prices, the FR-013.4
-   3-to-120-minute schedule, FR-013.5 two-hour affordability across the enlarged
-   `15`-entry catalogue, and the Strength Upgrade's slot (FR-019.7). Baseball's final
-   preset and price land here too.
+1. Catalogue spine and dock binding for exactly 16 selectable interactions: four starting
+   tools plus twelve permanent purchasable tools. Reset Progress uses the confirmed
+   destructive confirmation and exact erase/preserve matrix.
+2. Existing loose-object-budget integration for every M5 spawn; no second budget owner.
+3. The locked purchase order:
+   **Baseball → Baseball Bat → Meal → Nerf → Pistol → Soccer Ball → Grenade →
+   Fire Sprayer → Power Grab → Repair Kit → Shotgun → Drink**.
+4. Power Grab as a selectable, permanent stronger-grab tool while Normal Grab remains
+   available.
+5. Production-path economy calibration to cumulative targets
+   **3, 7, 13, 21, 41, 52, 76, 104, 120, 138, 184, and 209 minutes**, each ±15% median,
+   plus unrestricted save/skip strategy regressions.
+6. Composition, reset, full regression, performance, documentation, and owner exit gates.
 
 Out of scope (do not build):
 
 - Steam stats/achievements sync, tray icon, launch-with-login — Milestone 6.
 - Final art/icons/SFX, accessibility pass, tutorial copy — Milestone 7.
-- Cosmetic progression, including the retained face-style variants A/C — Deferred
-  Roadmap. The style-selectable face painter seam already exists; leave it alone.
+- Cosmetic progression, including retained face-style variants A/C — Deferred Roadmap.
 - Blood, painting, multiple buddies, Workshop — Deferred Roadmap.
 
 ## Prime invariants — every task
@@ -151,25 +149,23 @@ Out of scope (do not build):
 ## Architecture — new and changed seams
 
 - **`src/Content/ToolDefinition.cs` + `data/catalogue/*.tres`** — the authoritative
-  static catalogue. Each of the `15` definitions carries stable content ID, entry kind
-  (`StartingTool | PurchasableTool | CareConsumable | PassiveUpgrade`), authoritative
-  milli-credit price, progression-order index, finished/visible state, stable
-  translation keys, icon reference, use mode, and required PackedScene/profile
-  references. Startup validation rejects duplicates, invalid prices/order, missing
-  translation keys/assets, and incomplete visible definitions.
+  16-interaction static catalogue. Every entry is selectable; the four starters are free
+  and the twelve shop entries are permanent purchases. Definitions carry stable content
+  ID, kind, authoritative milli-credit price, order, visibility/completeness, translation
+  keys, icon, ToolId/use mode, and required scene/profile references. Startup validation
+  rejects duplicates, invalid prices/order, missing assets, incomplete visible entries,
+  and any entry without a total ToolId mapping.
 - **`Domain/Content/CataloguePolicy.cs`** — engine-free filtering and purchase/selection
-  rules over immutable snapshots produced from the validated Resources. Passive upgrades
-  never appear in tool selection; starting entries are never purchasable; invisible,
-  unknown, and invalid entries cannot be purchased or selected. This type owns no
-  authored prices, display metadata, or Godot references.
-- **`ToolId` appends:** `Meal = 5, BaseballBat = 6, Pistol = 7, Grenade = 8,
-  FireSprayer = 9, SoccerBall = 10, Drink = 11, Shotgun = 12, RepairKit = 13`, and
-  `NerfBlaster = 14` — the starter toy gun added when M5 Task 5's refinement split the
-  toy from the real one, which takes the FR-013.2 launch catalogue to fifteen
-  interactions plus the upgrade.
-  `ContentIds` gains `tool.*` constants for each plus `upgrade.strength`;
-  `ForTool`/`TryParseTool`/`IsKnown` extended in the same commit that adds the enum
-  member (the total-mapping throw enforces this).
+  rules over immutable snapshots produced from validated Resources. Starting entries are
+  never purchasable; invisible, unknown, invalid, or unowned entries cannot be selected.
+  Catalogue order is not a prerequisite chain. This type owns no authored prices, display
+  metadata, or Godot references.
+- **Stable identity:** retain every existing `ToolId` ordinal through
+  `NerfBlaster = 14`; append `PowerGrab = 15`. Add
+  `ContentIds.ToolPowerGrab = "tool.power_grab"` and extend every total mapping in the
+  same commit. Never repurpose `upgrade.strength`; it is a deprecated schema-5 migration
+  alias only. Schema 6 maps legacy ownership to Power Grab and new writes never emit the
+  legacy ID.
 - **`Domain/Tools/CursorAimModel.cs`** — shared cursor-weapon aim: forward = latest
   non-trivial mouse-motion vector; wheel offsets aim up/down; next non-trivial motion
   clears the offset (spec §9.1). Pure, seeded-input testable.
@@ -191,48 +187,50 @@ Out of scope (do not build):
   `Domain/Interaction/LooseObjectAdmissionPolicy.cs` for unit testing, the registry
   delegates to that policy and retains runtime identity, flags, cleanup, and capacity;
   there is never a second `ObjectBudget`.
-- **Grab-strength modifier seam (FR-019, owner-gated).** After the owner resolves the
-  open product choices, grab tether force, force ceiling, stretch limit,
-  release-velocity scale, and the upgraded release velocity's own calibrated safe
-  maximum become inputs resolved through an `IGrabStrengthSource`. The snap/strain rule
-  must encode the confirmed owner choice, not assume absolute immunity. The default
-  source remains identity, so behavior is bit-identical until the upgrade is owned.
-- **Economy lab.** A domain-test simulation harness (`EconomySimulation`) that replays
-  a scripted active/passive session profile against the real `PainCurve`/
-  `RewardLedger`/`PassiveIncome` math and reports time-to-afford per entry. This is
-  the FR-013.4/13.5 measuring instrument; calibration edits data, not code.
+- **Power Grab resolver.** Add a Godot-free `GrabVariant` and immutable
+  `GrabResolvedSettings`. A Resource adapter derives Power values from the Normal
+  `GrabTetherProfile`, samples once at acquisition, and stores them on the active grab.
+  Normal and Power share the controller, target query, tether solver, stretch maximum,
+  hysteresis, strain feedback, cancellation, and hard safety recovery. Power disables
+  only sustained-stretch escape and applies its stronger release only for an intentional
+  release. Tool changes cancel the live grab; they never mutate it.
+- **Economy lab.** A deterministic domain `EconomySimulation` replays benchmark contacts
+  through the real `ImpactRouter`/`PainCurve`/`RewardLedger`, passive intervals through
+  `PassiveIncome`, and purchase intents through the real catalogue purchase boundary.
+  The Godot adapter loads actual Resources and emits fingerprinted JSON/Markdown. Traces
+  describe behavior independently of prices; only typed Resources are calibrated.
+- **Reset transaction.** A typed confirmed-reset service builds first-run gameplay state,
+  copies preserved preference data, validates and atomically saves the candidate, then
+  swaps the in-memory state. Cancel/dismiss/failure cannot mutate memory or disk; platform
+  achievements are not revoked.
 
 ## Delegated defaults — record in `DECISIONS.md` at the gate
 
-Provisional, agent-tunable, owner sees results not numbers:
+Agent-tunable, owner reviews results rather than choosing raw values:
 
-- Burning tick cadence/pain per tick/mood loss, spray particle look, burn visuals.
-- Grenade blast radius/impulse/falloff and pellet spread pattern (feel-gated).
-- Pullback profiles per object (Meal, Grenade, Soccer Ball, Drink, Repair Kit) and
-  gun projectile speeds/masses.
-- Safe/evictable classification for each new M5 loose-object profile inside
-  FR-014.3's constraints; eviction order remains oldest eligible safe object.
+- Burning cadence/pain, spray presentation, grenade radius/impulse/falloff, pellet spread.
+- Pullback profiles and gun projectile speeds/masses.
+- Safe/evictable classification inside FR-014; eviction stays oldest eligible safe object.
+- Power Grab pull-force/damping/release multipliers and higher safe cap. Values live in
+  typed Resources, preserve the shared Normal stretch limit, and remain provisional until
+  the Normal-versus-Power owner feel gate.
+- Final prices, cash-per-pain, and passive rate, calibrated to the locked 209-minute table.
 
-**Owner-only, do not infer** (blocking where noted):
+Resolved owner decisions (do not reopen):
 
-- Strength Upgrade: product name, tiers (FR-019 currently says exactly one), snap
-  immunity absolute vs longer strain window, every magnitude, price and schedule slot
-  — **blocks Task 11 implementation and Task 12 close** (open since 2026-07-25).
-- Progression reset: the exact erase/preserve matrix for balance, unlocks, selection,
-  mood, harmful memory, fun/personality data, statistics, achievements, accumulated
-  time, user settings, and dock state — **blocks the reset operation in Task 0 and its
-  UI in Task 1**. FR-013.6 confirms the dialog, not this scope.
-- Dock: approve an original clean-room design and the complete Settings surface, then
-  record it in `DECISIONS.md` and revise `UI_FLOATING_DOCK_PLAN.md` — **blocks all dock
-  tasks**. The current draft's Nintendo/Mii wording is not implementation authority.
-- Control scheme confirmation for each pullback launchable at its slice (§9.1: only
-  Baseball's chord is confirmed so far; propose "same grabbed-object chord" per slice
-  and get a yes) — **blocks the corresponding Meal, Grenade, Soccer Ball, Drink, or
-  Repair Kit slice before input behavior is implemented**.
-- The representative active/passive play-mix benchmark used for FR-013.5 — confirm
-  the scripted session profile before calibration numbers are accepted.
-- Final prices, cash-per-pain, base passive rate (calibration outputs, owner-accepted
-  at Task 12).
+- Power Grab is one selectable permanent purchase between Fire Sprayer and Repair Kit;
+  Normal Grab remains selectable; Power cannot be escaped through sustained strain.
+- The exact 16-interaction catalogue and Nerf position are locked.
+- The representative benchmark is about 120 active plus 89 background minutes; official
+  targets are completionist medians ±15%, with separate skip/save strategies.
+- Reset clears all gameplay progression/counters but preserves preferences and already
+  awarded platform achievements.
+
+Still external/owner-gated:
+
+- clean-room dock direction and complete Settings surface as described in the dock plan;
+- per-slice control/feel confirmation where an earlier task still calls for it;
+- final Windows/reference-hardware and owner feel/pacing acceptance.
 
 ## Tasks
 
@@ -449,92 +447,58 @@ are reachable at all (a KO'd or burning buddy can never eat): player contact-app
 a thrown kit, flagged as an owner-gate default; RAGDOLL's stale 120 s cooldown rows are
 amended at its bookkeeping task.
 
-### Task 11 — Strength Upgrade (FR-019) — **blocked pending owner decisions**
+### Task 11 — Power Grab (FR-019)
 
-Implementation remains blocked until the owner resolves the complete decision packet:
-product name, tier count, force/ceiling/stretch/release factors, upgraded safe cap,
-snap/strain semantics, fear-response preservation, activation boundary, schedule slot,
-and price authority. Record the answer in `DECISIONS.md`; do not leave the repository's
-known owner question absent from `OPEN_QUESTIONS.md` while it is unresolved.
+Implement the architecture and ordered packets in
+`docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §3:
 
-After resolution, extend the existing Grab solver/limiter through one Resource-backed,
-allocation-free `IGrabStrengthSource`. The unowned identity path must be exactly today's
-tether, stretch/snap, and release behavior. The owned path applies only the confirmed
-quantities, remains inside its confirmed caps, preserves visible fear resistance, and adds
-no direct damage, payout, mood, statistics, or selection behavior. The upgrade remains
-`upgrade.strength`, never a `ToolId`.
+1. append `ToolId.PowerGrab = 15`, add `tool.power_grab`, and migrate schema 5
+   `upgrade.strength` ownership to schema 6 without repurposing the old ID;
+2. add immutable per-acquisition Normal/Power resolved settings and typed release reasons;
+3. extend the one stretch limiter/controller so Power shares the Normal stretch maximum
+   but cannot force-snap from sustained strain;
+4. route both grab selections through the same target query/controller, with a safe cancel
+   on tool change;
+5. replace the hidden passive catalogue entry with a selectable Power Grab entry;
+6. prove buddy/loose-object behavior, release caps, failure releases, persistence,
+   migration, long-hold safety, and downstream damage/economy invariance.
 
-**Accept:** pure golden identity/owned/boundary tests; quantitative
-`strength_upgrade` scenario; purchase → relaunch → real-pointer Grab journey
-`m5_strength_upgrade`; neighbor Grab/damage regression; both presentations; owner
-Windows feel gate. It stays `Visible = false` until the owner gate and Task 12 price are
-both complete.
+**Accept:** unit/migration/catalogue tests, `power_grab` scenario and
+`m5_power_grab` journey in both presentations on committed seeds, then owner accepts the
+side-by-side “dramatic but controllable” feel.
 
-**Refined (2026-08-01):** authoritative implementation packets, exact file seams,
-owner-decision table, negative proofs, test matrix, and stop conditions are in
-`docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §2–§3. Follow that document instead of
-expanding this summary ad hoc.
+### Task 12 — Economy calibration and simulation
 
-### Task 12 — Economy calibration and simulation — **blocked on benchmark + catalogue reconciliation**
+Follow `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §4. The runner replays production
+economy paths and loads actual Resources; no duplicate launch prices or simplified payout
+formula are allowed.
 
-Resolve two inputs before accepting calibration: (1) the owner-approved mixed
-active/passive trace, seeds, purchase policy, ordinary-event definition, and tolerance
-bands; (2) the current catalogue conflict — accepted Nerf/code contain fifteen
-selectable interactions plus Strength (`16` total), while current FR-013.2 says
-`15` total and omits Nerf. Do not silently calibrate either interpretation.
+Official completionist cumulative targets are:
 
-Build the engine-free `EconomySimulation` first. Replay raw contacts through the real
-`ImpactRouter` dedup, `PainCurve`, `RewardLedger`, and sequential catalogue spend;
-replay passive intervals through the real `PassiveIncome`. A Godot integration scenario
-`economy_calibration` must load the actual catalogue, pain, and mood-economy Resources,
-write deterministic JSON/Markdown results, and fail on target, ratio, catalogue, or proof
-obligation violations. Pure tests use small synthetic catalogues and never duplicate final
-Resource prices.
+`3, 7, 13, 21, 41, 52, 76, 104, 120, 138, 184, 209` minutes for the exact order in
+Scope, each within ±15% of the median. Pistol, Grenade, Fire Sprayer, and Shotgun are the
+only high-value items. Also run unrestricted save/skip strategies, including saving for
+each high-value item and preferring Power Grab.
 
-Calibrate only existing typed Resource values: cash-per-pain, neutral passive rate,
-whole-credit prices/order, and the explicitly delegated Baseball preset/catch ceiling.
-Do not alter the impulse-to-pain curve merely to fit prices and do not introduce per-tool
-money multipliers. Calibration never promotes an owner-unaccepted slice.
+**Accept:** deterministic fingerprinted JSON/Markdown for all seeds/strategies; every
+completionist row in band; active dominance; peak passive approximately 25% of active;
+ordinary events do not skip multiple milestones; real dedup proves
+positive/zero/positive; owner accepts the final pacing report.
 
-**Accept:** owner-approved median target bands, final full-catalogue time, Strength
-slot/price, and TEST_PLAN §4's four direct proofs: active dominance, peak-passive ratio,
-ordinary-event no-multi-skip, and real dedup/reuse awards `positive, zero, positive`.
-Run the complete registered scenario/journey matrix in both presentations and obtain the
-owner's live pacing acceptance.
+### Task 13 — Reset Progress, composition, regression, docs, and owner exit
 
-**Refined (2026-08-01):** the replay data model, real-Resource adapter, required report
-fields, ordered packets, executable proof algorithms, tuning boundaries, and definition
-of done are in `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §2.1/§2.3 and §4.
+Follow `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §5. Add a transactional confirmed reset
+that atomically commits a first-run gameplay payload while copying preferences and never
+revoking platform achievements. Add full before/after and failure-path tests.
 
-### Task 13 — Composition, regression, docs, owner exit gate — **externally gated**
+Generate the launch inventory and regression matrix from authoritative registries. Update
+`m5_shop_progression` to purchase/use/reload all twelve items in order, exercise a skip
+strategy, switch Normal/Power Grab, confirm and cancel reset, and verify reload at
+checkpoints. Keep the accelerated journey separate from Task 12's 209-minute calibration.
 
-Prereq: Tasks 0–12 engineering-complete; every slice owner-accepted and visible; exact
-catalogue reconciled; dock catalogue binding and owner-confirmed reset complete;
-`economy_calibration` green; every M5 entry already owns its behavior/error scenario and
-real-input journey. Missing slice work returns to that task rather than hiding in closeout.
-
-Add a registry-derived inventory check and a real-dock multi-phase
-`m5_shop_progression`: fresh save → legitimate earning → ordered UI purchases with
-failure paths → immediate save → relaunch at first/middle/final checkpoints → exact final
-ownership/balance. Strength is bought in its confirmed slot and never enters selection.
-Long pacing remains Task 12's simulation concern; committed phase fixtures may establish
-legitimately earned persistent preconditions but may not mutate balance/ownership behind
-the UI during an assertion phase.
-
-Generate the full scenario/journey sweep from authoritative registries, not a curated
-list: every ID × seeds 1/7 × `mii3d`/`legacy` × fixed 120 Hz, unique artifacts, complete
-matrix, non-zero exit on any unexpected red/skip. Add a warmed whole-routed-tick stress
-scenario with exactly 24 loose objects plus peak bounded projectile/pellet/spray pools,
-zero managed allocations, and pool/count/lifetime proofs. Keep that deterministic layer
-separate from the real i5-8400/UHD 630 Windows CPU/RAM/FPS/hidden/soak benchmark.
-
-Close by reconciling ARCHITECTURE, TEST_PLAN, DECISIONS, requirements/spec/ROADMAP, and
-CHECKLIST. An agent may report automated gates; only observed reference-hardware and owner
-Windows feel/pacing/clean-room gates can close M5.
-
-**Refined (2026-08-01):** hard prerequisites, exact progression phases, registry-derived
-matrix, two-layer performance protocol, docs audit, evidence ownership matrix, and handoff
-template are in `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §5–§7.
+**Accept:** exact 16-item inventory, schema/reset/progression journeys, complete registered
+scenario/journey sweep, allocation/stress/Windows evidence, reconciled docs, owner
+Power/economy/catalogue gates, and the dock clean-room gate.
 
 ## New test surface (summary)
 
@@ -571,6 +535,16 @@ and at Task 13 the reference-hardware/allocation/pool performance gate. "Done wi
 running the suite" remains the failure mode this plan exists to prevent.
 
 ## Progress
+
+- 2026-08-02 — **Tasks 11–13 product decisions resolved and architecture handoff
+  replaced.** Locked the 16 selectable interactions and purchase order, replaced the
+  passive Strength concept with selectable Power Grab, specified schema-6 legacy
+  migration, adopted the 209-minute completionist schedule and casual 120-active/
+  89-background benchmark, defined skip-strategy coverage, and fixed the Reset Progress
+  erase/preserve matrix. `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` now contains ordered
+  file-level packets, runtime contracts, transaction boundaries, simulation/report
+  contracts, failure paths, and acceptance tests suitable for a smaller implementation
+  agent.
 
 - 2026-08-01 — **Tasks 11–13 refined to agent-handoff fidelity.** Added
   `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` with owner decision packets, exact existing
