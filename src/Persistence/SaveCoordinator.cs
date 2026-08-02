@@ -41,6 +41,8 @@ public sealed class SaveCoordinator
             _selection.Changed += OnSelectionChanged;
     }
 
+    public CharacterSelectionState? CharacterSelection => _selection;
+
     public bool IsDirty =>
         _progress.Revision != Interlocked.Read(ref _savedRevision) ||
         (_selection is not null &&
@@ -69,7 +71,6 @@ public sealed class SaveCoordinator
     public Task FlushProgressAsync(CancellationToken token = default) =>
         RequestFlushAsync(token);
 
-    /// <summary>Explicit event path used by character activation and active deletion.</summary>
     public Task FlushSelectionImmediatelyAsync(CancellationToken token = default) =>
         RequestFlushAsync(token);
 
