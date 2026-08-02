@@ -5,7 +5,7 @@
 Read these before changing code, in this order:
 
 1. `docs/DECISIONS.md` — owner-confirmed decisions.
-2. `docs/M5_5_CHARACTER_EDITOR_SOURCE_ALIGNMENT.md` — normative Milestone 5.5 supplement; A0 is complete and A1 is the next executable task.
+2. `docs/M5_5_CHARACTER_EDITOR_SOURCE_ALIGNMENT.md` — normative Milestone 5.5 supplement and A0 scope gate. Its historical “may begin A1” completion sentence is superseded by the Current State below.
 3. `docs/PRODUCT_REQUIREMENTS.md` — baseline observable behavior and acceptance criteria, as supplemented for Milestone 5.5.
 4. `docs/RAGDOLL_AND_GAMEPLAY_SPEC.md` — physics/gameplay contract.
 5. `docs/ARCHITECTURE.md` — baseline ownership, interfaces, data flow, and failure behavior, as supplemented for Milestone 5.5.
@@ -22,8 +22,9 @@ If documents conflict, apply the order above. Stop and ask the project owner onl
 - Milestones 0–5 are complete; Milestone 5 was owner-accepted on 2026-08-02.
 - Progress persistence is schema 6 at the M5 exit baseline. Reset Progress rewrites the existing `BuddyProgressState` in place through `Adopt`; Milestone 5.5 must extend that architecture rather than replace it.
 - Milestone 5.5 Character Editor Phase A is scheduled now, before Milestone 6.
-- Phase A Task A0 is complete through `docs/M5_5_CHARACTER_EDITOR_SOURCE_ALIGNMENT.md` and this file. **Task A1 is the next executable task.**
+- Phase A Tasks A0 and A1 are complete. A1 established the engine-free schema-v1 character document, normalization/validation/migration policies, shipped stable feature catalog, appearance-only compiler, and boundary tests. **Task A2 is the next executable task.**
 - The retractable dock/settings surface remains separate scheduled work. Character Editor A8 must integrate with the approved production settings/panel surface and must not create a competing settings architecture.
+- The Linux PR workflow currently has six pre-existing `ProgressStoreTests` failures caused by Windows-style in-memory test paths. Do not attribute those failures to A1 or modify persistence behavior as part of A2; verify the assigned task’s focused tests independently and report the baseline red honestly.
 - Target exactly Godot 4.6.1 .NET/C# and Windows 10/11 x86_64 for the first Steam release.
 
 ## Non-Negotiable Architecture
