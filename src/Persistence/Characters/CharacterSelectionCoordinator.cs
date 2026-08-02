@@ -28,10 +28,6 @@ public readonly record struct CharacterActivationResult(
         CharacterActivationStatus.Queued or CharacterActivationStatus.BuiltInQueued;
 }
 
-/// <summary>
-/// Loads and compiles outside the physics tick, then atomically swaps the visual appearance
-/// and persisted selection at the next fixed tick. Repeated requests are last-request-wins.
-/// </summary>
 public sealed class CharacterSelectionCoordinator
 {
     private readonly object _sync = new();
@@ -71,20 +67,14 @@ public sealed class CharacterSelectionCoordinator
 
         if (characterId is null)
         {
-            Queue(new PendingActivation(sequence, null, null, persistSelection: true));
-            return new CharacterActivationResult(
-                CharacterActivationStatus.BuiltInQueued,
-                null);
+            Queue(new PendingActivation(sequence, null, null, PersistSelection: true));
+            return new CharacterActivationResult(CharacterActivationStatus.BuiltInQueued, null);
         }
 
         CharacterLoadResult loaded = await _store.LoadAsync(characterId.Value, token)
             .ConfigureAwait(false);
         if (loaded.Status == CharacterLoadStatus.Cancelled)
-        {
-            return new CharacterActivationResult(
-                CharacterActivationStatus.Cancelled,
-                characterId);
-        }
+            return new CharacterActivationResult(CharacterActivationStatus.Cancelled, characterId);
 
         if (!loaded.IsSuccess || loaded.Document is null)
         {
@@ -94,7 +84,7 @@ public sealed class CharacterSelectionCoordinator
                 CharacterLoadStatus.UnsupportedFutureVersion => CharacterActivationStatus.FutureVersionFallback,
                 _ => CharacterActivationStatus.InvalidFallback,
             };
-            Queue(new PendingActivation(sequence, null, null, persistSelection: false, fallback));
+            Queue(new PendingActivation(sequence, null, null, PersistSelection: false, fallback));
             return new CharacterActivationResult(fallback, characterId, loaded.Detail);
         }
 
@@ -105,7 +95,7 @@ public sealed class CharacterSelectionCoordinator
                 sequence,
                 null,
                 null,
-                persistSelection: false,
+                PersistSelection: false,
                 CharacterActivationStatus.CompileFailedFallback));
             return new CharacterActivationResult(
                 CharacterActivationStatus.CompileFailedFallback,
@@ -113,32 +103,18 @@ public sealed class CharacterSelectionCoordinator
                 string.Join("; ", compiled.Errors));
         }
 
-        Queue(new PendingActivation(
-            sequence,
-            characterId,
-            compiled.Appearance,
-            persistSelection: true));
+        Queue(new PendingActivation(sequence, characterId, compiled.Appearance, PersistSelection: true));
         return new CharacterActivationResult(CharacterActivationStatus.Queued, characterId);
     }
 
-    /// <summary>
-    /// Startup applies a selected character when load+compile succeeds. Missing, corrupt,
-    /// future-version, or unknown selections show built-in visuals without rewriting the
-    /// stored ID; only an explicit player choice mutates selection.
-    /// </summary>
     public async Task<CharacterActivationResult> LoadStartupAsync(CancellationToken token)
     {
         Guid? selected = _selection.ActiveCharacterId;
         if (selected is null)
         {
             Queue(new PendingActivation(
-                Interlocked.Increment(ref _nextSequence),
-                null,
-                null,
-                persistSelection: false));
-            return new CharacterActivationResult(
-                CharacterActivationStatus.BuiltInQueued,
-                null);
+                Interlocked.Increment(ref _nextSequence), null, null, PersistSelection: false));
+            return new CharacterActivationResult(CharacterActivationStatus.BuiltInQueued, null);
         }
 
         CharacterLoadResult loaded = await _store.LoadAsync(selected.Value, token)
@@ -155,11 +131,7 @@ public sealed class CharacterSelectionCoordinator
                 _ => CharacterActivationStatus.InvalidFallback,
             };
             Queue(new PendingActivation(
-                Interlocked.Increment(ref _nextSequence),
-                null,
-                null,
-                persistSelection: false,
-                fallback));
+                Interlocked.Increment(ref _nextSequence), null, null, PersistSelection: false, fallback));
             return new CharacterActivationResult(fallback, selected, loaded.Detail);
         }
 
@@ -170,7 +142,7 @@ public sealed class CharacterSelectionCoordinator
                 Interlocked.Increment(ref _nextSequence),
                 null,
                 null,
-                persistSelection: false,
+                PersistSelection: false,
                 CharacterActivationStatus.CompileFailedFallback));
             return new CharacterActivationResult(
                 CharacterActivationStatus.CompileFailedFallback,
@@ -179,10 +151,7 @@ public sealed class CharacterSelectionCoordinator
         }
 
         Queue(new PendingActivation(
-            Interlocked.Increment(ref _nextSequence),
-            selected,
-            compiled.Appearance,
-            persistSelection: false));
+            Interlocked.Increment(ref _nextSequence), selected, compiled.Appearance, PersistSelection: false));
         return new CharacterActivationResult(CharacterActivationStatus.Queued, selected);
     }
 
@@ -195,15 +164,11 @@ public sealed class CharacterSelectionCoordinator
         if (result.IsSuccess && _selection.ActiveCharacterId == characterId)
         {
             Queue(new PendingActivation(
-                Interlocked.Increment(ref _nextSequence),
-                null,
-                null,
-                persistSelection: true));
+                Interlocked.Increment(ref _nextSequence), null, null, PersistSelection: true));
         }
         return result;
     }
 
-    /// <summary>Call exactly once from the authoritative fixed-tick route.</summary>
     public void PhysicsTick()
     {
         PendingActivation? pending;
@@ -250,7 +215,6 @@ public sealed class CharacterSelectionCoordinator
         }
         catch
         {
-            // SaveCoordinator records LastFailure and leaves the selection revision dirty.
         }
     }
 
