@@ -11,7 +11,7 @@ namespace DesktopBuddy.Ui;
 /// </summary>
 public partial class DesktopToolbarWindow : Window
 {
-    public static readonly Vector2I ToolbarSize = new(760, 48);
+    public static readonly Vector2I ToolbarSize = new(480, 48);
 
     public HBoxContainer Bar { get; private set; } = null!;
 
@@ -49,7 +49,7 @@ public partial class DesktopToolbarWindow : Window
     public void Place(Rect2I mainWindowRect, WindowLayoutMode layoutMode)
     {
         int x = mainWindowRect.Position.X +
-            Math.Max(8, (mainWindowRect.Size.X - Size.X) / 2);
+            Math.Max(0, (mainWindowRect.Size.X - Size.X) / 2);
         int y = mainWindowRect.Position.Y + 8;
         Position = new Vector2I(x, y);
         if (!Visible)
