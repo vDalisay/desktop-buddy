@@ -22,9 +22,9 @@ If documents conflict, apply the order above. Stop and ask the project owner onl
 - Milestones 0–5 are complete; Milestone 5 was owner-accepted on 2026-08-02.
 - Progress persistence is schema 6 at the M5 exit baseline. Reset Progress rewrites the existing `BuddyProgressState` in place through `Adopt`; Milestone 5.5 must extend that architecture rather than replace it.
 - Milestone 5.5 Character Editor Phase A is scheduled now, before Milestone 6.
-- Phase A Tasks A0 and A1 are complete. A1 established the engine-free schema-v1 character document, normalization/validation/migration policies, shipped stable feature catalog, appearance-only compiler, and boundary tests. **Task A2 is the next executable task.**
+- Phase A Tasks A0–A2 are complete. A1 established the engine-free character schema/compiler. A2 extracted `BuddyVisualRigView`, retained gameplay sampling in `BuddyVisualPresenter`, added the physics-free static preview source, locked trusted geometry against appearance mutation, and moved scorch over active custom base colors. **Task A3 is the next executable task.**
 - The retractable dock/settings surface remains separate scheduled work. Character Editor A8 must integrate with the approved production settings/panel surface and must not create a competing settings architecture.
-- The Linux PR workflow currently has six pre-existing `ProgressStoreTests` failures caused by Windows-style in-memory test paths. Do not attribute those failures to A1 or modify persistence behavior as part of A2; verify the assigned task’s focused tests independently and report the baseline red honestly.
+- The Linux PR workflow currently has six pre-existing `ProgressStoreTests` failures caused by Windows-style in-memory test paths. Do not attribute those failures to A1/A2 or modify persistence behavior as part of A3; verify the assigned task’s focused tests independently and report the baseline red honestly.
 - Target exactly Godot 4.6.1 .NET/C# and Windows 10/11 x86_64 for the first Steam release.
 
 ## Non-Negotiable Architecture
