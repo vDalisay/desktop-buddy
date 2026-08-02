@@ -155,22 +155,55 @@ Hard repositioning is a centralized, auditable operation. It releases the active
 
 ## 6. Player Grab and Fear Resistance
 
-Grab can target any of the six buddy bodies or any eligible loose object. It is a damped elastic tether between the cursor anchor and the selected body's acquired local point, not direct position assignment.
+Normal Grab and Power Grab target any of the six buddy bodies or any eligible loose object.
+Both use the same damped elastic tether between the cursor anchor and the selected body's
+acquired local point; neither directly assigns position.
 
-The grab lifecycle is:
+The shared grab lifecycle is:
 
-1. On valid primary acquisition, capture the target body and local anchor.
-2. Each physics tick, calculate tether displacement and relative velocity.
-3. Apply a bounded spring/damper pull to the target while exposing extension/force for feedback and tests.
-4. If the target is a conscious fearful buddy part, the behavior system requests motion away from the grab direction and the drive applies bounded opposing intent.
-5. Resistance visibly increases tether stretch but never breaks the player's grab by itself.
-6. On primary release or secondary cancel/drop, remove the tether and preserve the body's current motion subject to the configured throw-velocity cap.
+1. On valid primary acquisition, capture the target body, local anchor, and the selected
+   Grab variant's immutable resolved settings. Settings do not change mid-grab.
+2. Each routed physics tick, calculate tether displacement and relative velocity.
+3. Apply the existing bounded spring/damper solver while exposing extension/force for feedback
+   and tests.
+4. If the target is a conscious fearful buddy part, the behavior system requests motion away
+   from the grab direction and the drive applies bounded opposing intent.
+5. On primary release, preserve the body's current motion subject to the selected variant's
+   release scale and safe cap. Secondary cancel, fail-safe, and hard recovery release without
+   a powered-throw scale.
 
-Fear resistance must be physically expressed; it may not fake resistance by slowing the cursor, detaching the tether, or ignoring target movement. An unconscious buddy provides no active resistance. The exact relationship between mood/transient fear/tool history and resistance strength is empirical tuning.
+Normal Grab is a starting tool. Its existing Resource-authored stiffness, maximum force,
+throw cap, safe limb-stretch maximum, strain countdown, and forced snap/release remain the
+identity baseline.
 
-Grab does not reduce damage rewards. A valid impact on a tethered buddy uses the normal impact/payout rules, including the `0.5x` unconscious multiplier when applicable.
+Power Grab is a separately selected, one-time purchased tool:
 
-Entering or leaving Work Mode never changes the selected tool. Interacting with the buddy resumes that selected tool rather than substituting a safe Grab. Secondary input cancels or drops the current interaction without changing tool selection.
+- acquisition, eligible targets, input, damping, and limb-stretch maximum are identical to
+  Normal Grab;
+- pull stiffness/authority and maximum force use higher Resource-authored calibrated values
+  for buddy parts and loose objects;
+- a limb at the shared stretch maximum continues bounded visible strain for as long as the
+  player holds it and never reaches Normal Grab's forced snap/release result;
+- fear resistance and struggling remain generated and visible;
+- intentional release uses a calibrated scale and its own higher safe velocity cap;
+- ownership/selection alone produces no damage, payout, mood, statistics, or economy change.
+
+A tool change while a grab is active first cancels/releases the current interaction through
+the ordinary non-powered cancel path. The newly selected variant applies on the next
+acquisition; runtime tuning never swaps beneath an active tether.
+
+Fear resistance must be physically expressed; it may not fake resistance by slowing the
+cursor, detaching the tether, or ignoring target movement. An unconscious buddy provides no
+active resistance. The exact relationship between mood/transient fear/tool history and
+resistance strength is empirical tuning.
+
+Grab does not reduce damage rewards. A valid later impact on a formerly tethered buddy or
+object uses the normal attribution/payout rules, including the `0.5x` unconscious multiplier
+when applicable; Power Grab adds no payout multiplier.
+
+Entering or leaving Work Mode never changes the selected tool. Interacting with the buddy
+resumes that selected tool rather than substituting Normal Grab. Secondary input cancels or
+drops the current interaction without changing tool selection.
 
 ## 7. Contact, Pain, Knockout, and Money Pipeline
 
@@ -308,24 +341,31 @@ Every purchased tool is permanently unlocked for unlimited use. There is one ear
 
 ### 9.2 Tool-by-tool behavior
 
-| Tool | Availability target | Required behavior |
+| Tool | Completionist target | Required behavior |
 | --- | ---: | --- |
-| Grab | Starting | Acquire any buddy part or eligible loose object with the damped elastic tether in section 6. Fearful conscious buddies resist; release preserves capped throw motion. |
+| Normal Grab | Starting | Acquire any buddy part or eligible loose object through the shared section 6 tether using the identity settings. Fearful conscious buddies resist; limbs use the existing safe stretch/strain/snap behavior; intentional release preserves motion under the Normal Grab cap. |
 | Pet | Starting | Held rubbing stroke over valid buddy contact. Hidden distance satisfaction plus the `3`-second cadence gates `+1` mood; a per-selection favorite part contributes `1.2x`. `:3` rubbing and brief completion smile communicate progress; no immediate cash. |
 | Tickle | Starting | Held stroke over valid buddy contact. Friendly for `6` cumulative seconds, then Angry with negative mood/flee behavior until `8` seconds without contact. Distinct hand animation, expression, sound, and away-hop timing are confirmed in `DECISIONS.md`. |
-| Boxing Glove | Starting | Low-lag cursor-tethered physical collider. Real swing speed/impulse drives pain with no glove multiplier. Learned harm can trigger physical hand guarding while the buddy flees: the body-relative guard direction follows the pointer with bounded lag and does not attach to the glove or inject net pull toward it. Guarded-hand contact uses the documented target-side `0.5x` absorption factor. Maximum-pain/knockout strikes use the confirmed brief hit-stop with a visibly slow early portion and contact-centered impact feedback. |
+| Boxing Glove | Starting | Low-lag cursor-tethered physical collider. Real swing speed/impulse drives pain with no glove multiplier. Learned harm can trigger physical hand guarding while the buddy flees. |
 | Baseball | `3` minutes | Pullback-launched loose physical object. It may be caught, held, inspected, or tossed; a completed safe catch grants `+1` mood. Final physical preset is empirical. |
-| Meal | `6` minutes | Pullback-launched care object. Successful consumption grants `+10` mood, then enforces a `60`-second reuse cooldown. |
-| Baseball Bat | `20` minutes | Cursor-tethered physical collider. Swing velocity and contact impulse determine pain through the shared pipeline. |
-| Pistol | `30` minutes | Cursor gun with physical CCD projectile. Magazine `8`; minimum shot interval `0.25` seconds; reload `1.2` seconds; unlimited reserve ammunition. Fires once per primary press, reloads with `R`, and auto-reloads when fired empty. |
-| Grenade | `40` minutes | Pullback-launched explosive. **Amended by the owner 2026-07-31 (`DECISIONS.md`, "Grenade — Pin Mechanic, Post-Release Fuse, and Blast"), superseding the `2.5`-second launch fuse:** a pinned grenade is inert forever, the first secondary press — which is also the pullback's begin — pulls the pin one-way, and the `3.0`-second (`360` routed tick) fuse starts when player control ends, by launch release or by grab release. Nothing pauses or resets a live fuse. An inexperienced buddy may investigate/catch it, including a live one; harmful grenade memory causes flee/discard behavior. The blast is an impulse source through the shared pain curve, with distance falloff as its only authored quantity. Blast tuning is empirical. |
-| Fire Sprayer | `50` minutes | Cursor weapon using shared motion/wheel aim. Holding primary sprays continuously. Contact applies Burning as specified below. |
-| Soccer Ball | `65` minutes | Pullback-launched loose physical object. It never enters ordinary catch/scoop/hold; the sole hand exception is a Content/Delighted corner rescue: pick up a ball inside the authored wall distance, carry and face inward while watching it, place it in front, then kick inward. A player touch enables an underfoot trap; floor contact preserves that permission, while side-wall or ceiling contact clears it until the next player touch. Away from walls, Content/Delighted buddies track and chase a free ball and choose seeded straight or arched kicks. While the player holds it, they continuously track it while travelling and repeatedly retreat for five seconds then pause briefly; release immediately restores chase. The Soccer Ball alone is excluded from ambient obstacle hopping. Final physical preset is empirical and distinct data from Baseball. |
-| Drink | `80` minutes | Pullback-launched care object. Successful consumption grants `+5` mood, then enforces a `60`-second reuse cooldown. |
-| Shotgun | `100` minutes | Cursor gun firing `6` physical CCD pellets in a newly randomized `12–20°` half-angle cone per shot. Capacity `5`; minimum shot interval `0.9` seconds; reload `2` seconds; unlimited reserve ammunition. Each shot ejects a cosmetic red shell and leaves the chamber requiring a pump click before another firing click. Added pellet knockback falls with travel: all six point-blank pellets total twice the Grenade's center shove, while long shots retain the original physical contact as the minimum. Reloads with `R` and auto-reloads when fired empty. |
-| Repair Kit | `120` minutes | Pullback-launched or grab-flung care object. Successful application grants `+20` mood and clears transient pain and harmful statuses; it never shortens an active knockout. **No cooldown and no appetite gate** (owner, 2026-07-29: "it is not food, so nothing rations it"), superseding the `120`-second cooldown this row and the care table used to carry. Applies on player-thrown contact with a buddy part as well as by consumption, because a knocked-out or burning buddy cannot pick anything up (owner, 2026-07-31). |
+| Baseball Bat | `7` minutes | Cursor-tethered physical collider. Swing velocity and contact impulse determine pain through the shared pipeline. |
+| Meal | `13` minutes | Pullback-launched care object. Successful consumption grants `+10` mood and fills its authored share of the hidden hunger bar; appetite, not a reuse timer, gates another Meal. |
+| Nerf Blaster | `21` minutes | Selectable cursor gun with the accepted toy presentation, magazine/cadence/reload, physical dart, transient tolerance, and mood rules in FR-011.17–18 and `DECISIONS.md`. It remains physical and uses no hidden damage or payout multiplier. |
+| Pistol | `41` minutes | Cursor gun with physical bounded-travel projectile. Magazine `8`; minimum shot interval `0.25` seconds; reload `1.2` seconds; unlimited reserve. Fires once per primary press, reloads with `R`, and auto-reloads when fired empty. |
+| Soccer Ball | `52` minutes | Pullback-launched foot-only loose object with the accepted chase, trap, corner-rescue, retreat, and kick behavior. It never enters ordinary catch/scoop/hold. Its physical preset is distinct from Baseball. |
+| Grenade | `76` minutes | Pullback-launched explosive using the accepted pin mechanic: pinned is inert; first secondary/pullback begin removes the pin; the `3.0`-second fuse starts when player control ends and never pauses or resets. Blast impulse/pain use the shared pipeline with distance falloff. |
+| Fire Sprayer | `104` minutes | Cursor weapon using shared motion/wheel aim. Holding primary sprays continuously; contact applies/refreshes Burning under section 9.3 and the accepted presentation/accessibility rules. |
+| Power Grab | `120` minutes | One-time purchased, separately selectable section 6 Grab variant. It uses the same targets, controls, damping, and stretch maximum as Normal Grab; higher Resource-authored pull/force authority applies to buddy parts and loose objects; visible fear/strain remains; forced snap/release is disabled while held; intentional release uses its own higher safe cap. No direct economy/damage modifier. |
+| Repair Kit | `138` minutes | Pullback-launched or grab-flung care object. Successful application grants `+20` mood, clears transient pain and harmful statuses, and never shortens an active knockout. It has no cooldown or appetite gate and may apply on player-thrown buddy contact or consumption. |
+| Shotgun | `184` minutes | Cursor gun firing `6` physical bounded-travel pellets in the accepted seeded-random `12–20°` half-angle cone. Capacity `5`; minimum shot interval `0.9` seconds; reload `2` seconds; unlimited reserve. Each shot ejects a cosmetic shell and requires a pump click before the next firing click; distance-falling knockback does not modify pain. |
+| Drink | `209` minutes | Pullback-launched care object. Successful consumption grants `+5` mood and fills its authored share of the hidden hunger bar; appetite, not a reuse timer, gates another Drink. |
 
-Target times are cumulative-play pacing goals, not hard time gates. Prices and income are tuned so a representative mixed active/passive player can buy in this sequence, with the complete current catalogue at approximately `2` hours.
+Target times are cumulative completionist calibration goals, not hard locks or purchase
+prerequisites. Every visible affordable item may be bought in any order. The completionist
+strategy above is measured against the target table; additional save-for-preference strategies
+prove that a player may skip entries and retain correct balance/ownership. The casual benchmark
+covers approximately `120` active-interaction minutes and `89` background/passive minutes,
+with median target results within `±15%` and full completion near `209` minutes.
 
 ### 9.3 Burning
 
