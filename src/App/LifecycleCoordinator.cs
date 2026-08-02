@@ -9,8 +9,8 @@ using Godot;
 namespace DesktopBuddy.App;
 
 /// <summary>
-/// Sole runtime owner of monotonic mood drift, passive income, and cumulative
-/// run/active/hidden time. It remains alive while the gameplay tree is paused.
+/// Sole runtime owner of monotonic mood drift, passive income, cumulative time, and the
+/// aggregate gameplay pause coordinator. It remains alive while the gameplay tree is paused.
 /// </summary>
 public partial class LifecycleCoordinator : Node
 {
@@ -28,21 +28,17 @@ public partial class LifecycleCoordinator : Node
     private int _foregroundMaxFps;
     private bool _presentationThrottled;
     private bool _shuttingDown;
+    private bool _editorModeActive;
 
     public bool IsInitialized { get; private set; }
     public bool IsHiddenToTray { get; private set; }
-
-    /// <summary>
-    /// A locked Windows session keeps running as hidden time with no discontinuity
-    /// exclusion, and the prior presentation state is restored on unlock (FR-016.8).
-    /// </summary>
     public bool IsSessionLocked { get; private set; }
     public bool IsPresentationThrottled => _presentationThrottled;
+    public bool IsEditorModeActive => _editorModeActive;
     public double AcceptedRunningSeconds { get; private set; }
     public int ExcludedSpanCount => _clock?.ExcludedSpanCount ?? 0;
-
-    /// <summary>True while clock spans count as hidden rather than foreground time.</summary>
     public bool AccruesAsHidden => IsHiddenToTray || IsSessionLocked;
+    public GameplayPauseCoordinator PauseCoordinator { get; private set; } = null!;
 
     public void Configure(
         BuddyProgressState progress,
@@ -60,8 +56,7 @@ public partial class LifecycleCoordinator : Node
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
         _profile = profile ?? throw new ArgumentNullException(nameof(profile));
-        _activeInteraction = activeInteraction ??
-            throw new ArgumentNullException(nameof(activeInteraction));
+        _activeInteraction = activeInteraction ?? throw new ArgumentNullException(nameof(activeInteraction));
         if (!profile.IsRuntimeValid)
             throw new ArgumentException("Mood economy profile is invalid.", nameof(profile));
         _resumePresentation = resumePresentation;
@@ -72,10 +67,20 @@ public partial class LifecycleCoordinator : Node
         IsInitialized = true;
     }
 
+    public override void _EnterTree()
+    {
+        if (PauseCoordinator is null)
+            PauseCoordinator = new GameplayPauseCoordinator(GetTree());
+    }
+
     public override void _Process(double delta)
     {
-        if (!IsInitialized || _shuttingDown || !_clock.TrySample(out double elapsed))
+        if (!IsInitialized || _shuttingDown || _editorModeActive ||
+            !_clock.TrySample(out double elapsed))
+        {
             return;
+        }
+
         _pendingSeconds += elapsed;
         double cadence = AccruesAsHidden
             ? _profile.HiddenUpdateSeconds
@@ -87,21 +92,33 @@ public partial class LifecycleCoordinator : Node
         ApplyAcceptedSpan(accepted);
     }
 
+    public void SetEditorMode(bool active)
+    {
+        if (!IsInitialized || _shuttingDown || active == _editorModeActive)
+            return;
+
+        if (active)
+            SettleCurrentBucket();
+        _editorModeActive = active;
+        _clock.Reset();
+        _pendingSeconds = 0.0;
+        PauseCoordinator.Set(GameplayPauseReason.CharacterEditor, active);
+    }
+
     public void SetHiddenToTray(bool hidden)
     {
         if (!IsInitialized || _shuttingDown || hidden == IsHiddenToTray)
             return;
         SettleCurrentBucket();
         IsHiddenToTray = hidden;
+        PauseCoordinator.Set(GameplayPauseReason.HiddenToTray, hidden);
         if (hidden)
         {
             _setWindowVisibility?.Invoke(false);
-            GetTree().Paused = true;
             ThrottlePresentation();
         }
         else
         {
-            GetTree().Paused = false;
             RestorePresentation();
             _setWindowVisibility?.Invoke(true);
         }
@@ -113,7 +130,7 @@ public partial class LifecycleCoordinator : Node
             return;
         SettleCurrentBucket();
         _clock.Reset();
-        GetTree().Paused = true;
+        PauseCoordinator.Set(GameplayPauseReason.Suspended, true);
     }
 
     public void NotifyResumed(bool remainHidden)
@@ -123,20 +140,14 @@ public partial class LifecycleCoordinator : Node
         _clock.Reset();
         _pendingSeconds = 0.0;
         IsHiddenToTray = remainHidden;
-        GetTree().Paused = remainHidden;
+        PauseCoordinator.Set(GameplayPauseReason.Suspended, false);
+        PauseCoordinator.Set(GameplayPauseReason.HiddenToTray, remainHidden);
         if (remainHidden)
             ThrottlePresentation();
         else
             RestorePresentation();
     }
 
-    /// <summary>
-    /// A session lock is not a suspension: the machine keeps running, so mood drift and
-    /// passive income continue and the span is never excluded as a discontinuity
-    /// (FR-016.8). The clock is deliberately <b>not</b> reset. Gameplay keeps simulating —
-    /// only the time-accounting bucket changes — and unlocking restores nothing because
-    /// nothing was torn down.
-    /// </summary>
     public void NotifySessionLock(bool locked)
     {
         if (!IsInitialized || _shuttingDown || locked == IsSessionLocked)
@@ -145,22 +156,20 @@ public partial class LifecycleCoordinator : Node
         IsSessionLocked = locked;
     }
 
-    /// <summary>
-    /// Settles the final accepted span and stops lifecycle mutation before a clean-exit
-    /// snapshot. Suspended time was already re-anchored on resume and is never included.
-    /// Idempotent so the explicit close path and the tree-exit fallback can both call it.
-    /// </summary>
     public void BeginShutdown()
     {
         if (!IsInitialized || _shuttingDown)
             return;
-        SettleCurrentBucket();
+        if (!_editorModeActive)
+            SettleCurrentBucket();
         _shuttingDown = true;
         SetProcess(false);
     }
 
     private void SettleCurrentBucket()
     {
+        if (_editorModeActive)
+            return;
         if (_clock.TrySample(out double elapsed))
             _pendingSeconds += elapsed;
         if (_pendingSeconds > 0.0)
@@ -188,27 +197,17 @@ public partial class LifecycleCoordinator : Node
         Engine.MaxFps = _foregroundMaxFps;
         RenderingServer.RenderLoopEnabled = true;
         _presentationThrottled = false;
-        // Re-anchor interpolation before the first visible frame so the restarted render
-        // loop cannot tween bodies from their pre-hide transforms (FR-015.10). The physics
-        // step accumulator itself stays bounded by the project's
-        // physics/common/max_physics_steps_per_frame setting.
         _resumePresentation?.Invoke();
     }
 
     private void ApplyAcceptedSpan(double elapsed)
     {
         _progress.DriftMood(elapsed);
-        // Novelty recovers on the same monotonic accepted span mood drifts on, so a toy the
-        // buddy tired of becomes interesting again by the passage of time rather than by
-        // anything the player does (owner instruction 2026-07-27).
         _progress.RechargeFun(elapsed);
         long milliCredits = _income.Accrue(_progress.Mood, elapsed);
         _economy.DepositPassive(milliCredits);
         bool hidden = AccruesAsHidden;
         bool active = !hidden && _activeInteraction();
-        // Appetite burns on the same accepted span, at the rate for what is actually going on
-        // (owner decision 2026-07-29): barely anything while the player works or the buddy is
-        // hidden, more while it is being played with.
         _progress.DrainHunger(elapsed, ClassifyHunger(hidden, active));
         _progress.AccrueTime(
             elapsed,
