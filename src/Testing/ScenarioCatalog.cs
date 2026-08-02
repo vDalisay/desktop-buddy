@@ -70,6 +70,7 @@ public static class ScenarioCatalog
         ["burning_status"] = () => new BurningStatusScenario(),
         ["shotgun_spread"] = () => new ShotgunSpreadScenario(),
         ["repair_kit"] = () => new RepairKitScenario(),
+        ["economy_calibration"] = () => new EconomyCalibrationScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;

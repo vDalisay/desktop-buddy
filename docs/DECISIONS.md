@@ -1784,6 +1784,88 @@ The confirmation *modal* for Reset Progress (13A-2b) ships with
 `docs/UI_FLOATING_DOCK_PLAN.md` Task 7 and binds to the armed tray event; there is no shop
 UI or dock in this repo to put one in today.
 
+## M5 Task 12 â€” Economy calibration (2026-08-02)
+
+Implemented from `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` Â§4. Evidence:
+`.artifacts/quick/economy_calibration/economy_benchmark.{json,md}`, produced by the
+`economy_calibration` scenario (quick-suite step 40) over seeds `1/7/13/29/101` and all
+seven strategies. Economy fingerprint at acceptance: `928231c3ec21e973`.
+
+### Final calibrated values
+
+The three authoritative knobs, all Resources â€” no price or rate literal exists anywhere
+else in the build:
+
+| Resource | Value | Was |
+|---|---:|---:|
+| `lab_pain_conversion.tres` `CashPerPain` | `0.018` | `1.0` |
+| `m4_mood_economy.tres` `NeutralCreditsPerMinute` | `0.64` | `1.0` |
+
+| Purchasable | Price | Was | Target | Median | Deviation |
+|---|---:|---:|---:|---:|---:|
+| `tool.baseball` | 7 | 3 | 3 min | 3.36 | +11.8% |
+| `tool.baseball_bat` | 20 | 20 | 7 min | 7.24 | +3.4% |
+| `tool.meal` | 16 | 6 | 13 min | 13.59 | +4.5% |
+| `tool.nerf_blaster` | 22 | 12 | 21 min | 21.69 | +3.3% |
+| `tool.pistol` | 70 | 30 | 41 min | 43.26 | +5.5% |
+| `tool.soccer_ball` | 27 | 65 | 52 min | 52.18 | +0.4% |
+| `tool.grenade` | 80 | 40 | 76 min | 76.28 | +0.4% |
+| `tool.fire_sprayer` | 80 | 50 | 104 min | 107.34 | +3.2% |
+| `tool.power_grab` | 37 | 105 | 120 min | 120.01 | +0.0% |
+| `tool.repair_kit` | 50 | 120 | 138 min | 137.25 | -0.6% |
+| `tool.shotgun` | 133 | 100 | 184 min | 184.28 | +0.2% |
+| `tool.drink` | 69 | 80 | 209 min | 200.68 | -4.0% |
+
+The shipped prices were each set when their own tool landed, against no schedule, so the
+plan's expected full re-pricing pass is what happened. `CashPerPain = 1.0` was never a
+calibrated number either: at that coefficient one good hit paid 120 credits â€” more than the
+whole shipped catalogue's twelfth item.
+
+### How the numbers were derived
+
+Prices are not guesses and were not hand-smoothed:
+
+1. `CashPerPain` and `NeutralCreditsPerMinute` were solved together from the two rate
+   obligations â€” peak-mood passive at 25% of the measured active rate, and a total
+   209-minute income near the shipped catalogue's scale â€” then rounded to two authored
+   figures (`0.018`, `0.64`).
+2. Each price started as the median cumulative income between its Â§1.1 target and the one
+   before it, measured by replaying truncated traces through the real ledger.
+3. Two rows were then iterated to convergence, earliest-first, as Â§4.4 prescribes:
+   `tool.baseball` (6 â†’ 7) and `tool.drink` (124 â†’ 69).
+
+**Why the last item is the cheap one.** The Drink's slot ends exactly where the trace ends,
+so it has no slack: at 124 credits only two of five seeds ever reached it. Its price is set
+by the *slowest* seed's total income, not the median, because obligation 5 requires the
+completionist to finish all twelve on every seed. Any item targeted at the end of the
+session inherits this; it is a property of the 209-minute schedule, not of the Drink.
+
+### Delegated implementation calls
+
+- **The runner is `BuddyProgressState`-driven.** Â§4.1 lists `ImpactRouter` â†’ `PainCurve` â†’
+  `RewardLedger`, `PassiveIncome`, and `CataloguePolicy.EvaluatePurchase` + the atomic
+  spend. Those are exactly the parts `BuddyProgressState` already composes, so the benchmark
+  drives that one aggregate rather than re-wiring the same five types beside it. There is no
+  payout arithmetic in `Economy/Benchmark/` at all.
+- **Contact source identity is the tool.** A `BenchmarkEvent` carries no instance id, so the
+  router's episode key uses an FNV-1a hash of the content ID â€” a stable hash, because
+  `string.GetHashCode` is randomized per process and the report must be byte-identical
+  across runs.
+- **Time advances in 1-second slices**, matching the shipped `ForegroundUpdateSeconds`
+  cadence, so mood drift and the mood-scaled passive rate stay coupled the way
+  `LifecycleCoordinator` couples them.
+- **The trace alternates short segments** (3â€“9 active minutes against 2â€“7 background) and
+  opens with 1â€“3 background minutes. Long segments made the median income curve lumpy and
+  produced inverted opening prices; the short-burst shape is also what a desktop buddy
+  actually gets.
+- **`power_grab_preference` skips the Meal.** Â§4.3 requires it to leave an earlier regular
+  unowned at the end. Re-ordering alone cannot do that â€” with the schedule calibrated, every
+  permutation finishes all twelve by 209 minutes â€” so the strategy omits one earlier regular
+  outright.
+- **The trace is tool-agnostic.** Which tool a contact is attributed to changes harmful
+  memory and per-tool statistics keys, never the payout, so one trace serves every strategy
+  regardless of what that strategy owns.
+
 ## Character Editor Phase A — Scheduled and Decisions Resolved (2026-08-02)
 
 The owner scheduled **Phase A of `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`** — the

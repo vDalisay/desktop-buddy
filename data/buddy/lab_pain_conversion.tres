@@ -8,4 +8,4 @@ script = ExtResource("1_pain")
 ImpulseAnchors = PackedFloat32Array(350, 700, 1500, 3000)
 PainAnchors = PackedFloat32Array(0, 20, 55, 100)
 MinimumImpulse = 350.0
-CashPerPain = 1.0
+CashPerPain = 0.018

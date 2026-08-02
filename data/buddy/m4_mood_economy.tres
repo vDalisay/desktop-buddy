@@ -4,7 +4,7 @@
 
 [resource]
 script = ExtResource("1_profile")
-NeutralCreditsPerMinute = 1.0
+NeutralCreditsPerMinute = 0.64
 ForegroundUpdateSeconds = 1.0
 HiddenUpdateSeconds = 0.1
 DiscontinuitySeconds = 5.0

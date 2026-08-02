@@ -65,12 +65,17 @@ public sealed class HiddenClockAccrualScenario : IScenario
         long balance = sandbox.Progress.BalanceMilliCredits;
         double hidden = sandbox.Progress.Times.HiddenSeconds;
         double foreground = sandbox.Progress.Times.RunSeconds - hidden;
+        // The expected payout is derived from the authored rate at neutral mood, not from a
+        // literal: the rate is Task 12 calibration output and moves without this scenario's
+        // meaning changing.
+        long expected = (long)(sandbox.Progress.Times.RunSeconds *
+                               sandbox.MoodEconomy.NeutralCreditsPerMinute / 60.0 * 1000.0);
         checks.Add(new StartupCheck(
             "hidden_accrues_mood_income_and_time",
-            balance is >= 1005 and <= 1010 &&
+            Mathf.Abs(balance - expected) <= 3 &&
             hidden is >= 59.9 and <= 60.2 &&
             foreground is >= 0.39 and <= 0.41,
-            $"balance={balance} run={sandbox.Progress.Times.RunSeconds:F3} " +
+            $"balance={balance} expected={expected} run={sandbox.Progress.Times.RunSeconds:F3} " +
             $"hidden={hidden:F3} foreground={foreground:F3}"));
         checks.Add(new StartupCheck(
             "hidden_accrual_autosaves",

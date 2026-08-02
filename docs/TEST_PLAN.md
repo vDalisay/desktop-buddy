@@ -703,6 +703,28 @@ The benchmark must prove:
 - prices are monotonic positive integers in catalogue order only where explicitly required by the approved data; target times, not guessed price curves, are the calibration authority;
 - changing a price or payout Resource changes the report fingerprint and result without changing the benchmark trace.
 
+### 4.5 As implemented (M5 Task 12)
+
+The runner is `domain/DesktopBuddy.Domain/Economy/Benchmark/`: `BenchmarkTraceGenerator`
+(the seed is the fixture â€” no trace file is committed), `EconomyBenchmark.Run`,
+`BenchmarkStrategies` (the seven strategies, as data), `BenchmarkObligations` (the six
+proofs), `BenchmarkFingerprint`, and `BenchmarkReport` (JSON + Markdown). The runner drives
+`BuddyProgressState`, which is what already composes the Â§4.1 seams, so no payout arithmetic
+exists anywhere in the benchmark.
+
+The `economy_calibration` scenario (quick-suite step 40) loads
+`data/buddy/lab_pain_conversion.tres`, `data/buddy/m4_mood_economy.tres`, and the shipped
+catalogue, validates all three, sweeps seeds `1/7/13/29/101` against all seven strategies,
+runs the sweep a second time to prove the report is byte-identical, and writes
+`economy_benchmark.json` / `economy_benchmark.md` to the artifacts directory. It fails the
+run â€” not just prints â€” when a completionist median leaves Â±15%, when a seed never reaches
+an item, or when any obligation fails. The calibrated values and the reasoning behind each
+one are in `docs/DECISIONS.md` under "M5 Task 12 â€” Economy calibration".
+
+Prices are deliberately **not** monotonic in catalogue order. The measured schedule is the
+authority (Â§4.4), and the Drink's price is bounded by the slowest seed's total income
+because its target lands at the very end of the trace.
+
 ## 5. Standalone Windows Matrix
 
 Run outside the embedded Godot editor window.

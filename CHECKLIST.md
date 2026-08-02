@@ -4,9 +4,14 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-08-01, after M5 Task 10 (Repair Kit) Tasks A-D. Tasks 5-9 are
-owner-accepted and on sale; the Repair Kit is code-complete and waits only on its
-owner feel gate, so `tool_repair_kit.tres` stays `Visible = false`.
+Last updated: 2026-08-02, after M5 Task 12 (economy calibration). Tasks 5-9 are
+owner-accepted; Task 10 (Repair Kit) and Task 11 (Power Grab) are code-complete and
+wait only on their owner feel gates. All twelve purchasables are now `Visible = true`,
+including the Repair Kit — Task 12 could not price a schedule it was unable to buy
+(`DECISIONS.md`, "Catalogue visibility (11D-2)"). **Task 12 is done and its whole
+catalogue is re-priced:** every completionist median is inside ±15% of the 209-minute
+schedule and all six proof obligations pass (`economy_calibration`, quick-suite step 40).
+Task 13 (Reset Progress, integration, M5 exit) is next.
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
