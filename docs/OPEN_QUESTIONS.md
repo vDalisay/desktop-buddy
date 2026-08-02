@@ -1,7 +1,13 @@
 # Desktop Buddy — Open Questions for the Project Owner
 
-Status: No outstanding owner questions. OQ-7 through OQ-10 were resolved by the owner
-on 2026-07-20 and recorded in `docs/DECISIONS.md`.
+Status: No outstanding owner questions as of 2026-08-02. The M5 catalogue,
+Power Grab, economy benchmark, and Reset Progress decisions are resolved and recorded
+in `docs/DECISIONS.md`; Tasks 11–13 have no remaining product-design blockers.
+The remaining dock clean-room, Windows, pacing, and feel checks are acceptance/evidence
+gates, not unanswered behavior questions.
+
+OQ-7 through OQ-10 were resolved by the owner on 2026-07-20 and recorded in
+`docs/DECISIONS.md`.
 
 OQ-1 through OQ-6 (thrown-object attribution expiry, zoom room floor, localization scope, session-lock treatment, OS cursor presentation, and the Steamworks binding) were resolved by the owner on 2026-07-11 and recorded in `docs/DECISIONS.md`.
 
