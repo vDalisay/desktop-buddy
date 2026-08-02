@@ -60,6 +60,7 @@ public static class ScenarioCatalog
         ["character_selection_save_failure_dirty"] = () => new CharacterSelectionSaveFailureDirtyScenario(),
         ["character_active_delete_reverts"] = () => new CharacterActiveDeleteRevertsScenario(),
         ["character_selection_fallback"] = () => new CharacterSelectionFallbackScenario(),
+        ["work_play_window_behavior"] = () => new WorkPlayWindowBehaviorScenario(),
         ["object_catch_hold"] = () => new ObjectCatchHoldScenario(),
         ["object_toss_discard"] = () => new ObjectTossDiscardScenario(),
         ["corner_scoop"] = () => new CornerScoopScenario(),
