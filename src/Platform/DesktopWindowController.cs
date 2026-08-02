@@ -156,7 +156,12 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             8 => Viewport.Msaa.Msaa8X,
             _ => Viewport.Msaa.Disabled,
         };
-        GetViewport().Msaa2D = msaa;
+        // 2D MSAA is unimplemented on the GLES3 backend behind the accepted
+        // gl_compatibility renderer (DECISIONS 2026-07-13), and setting it there only
+        // prints an engine warning. The 3D presentation pass does support it.
+        GetViewport().Msaa2D = RenderingServer.GetCurrentRenderingMethod() == "gl_compatibility"
+            ? Viewport.Msaa.Disabled
+            : msaa;
         GetViewport().Msaa3D = msaa; // M3.5: 3D presentation pass shares the MSAA setting.
         DisplayServer.WindowSetVsyncMode(settings.Vsync
             ? DisplayServer.VSyncMode.Enabled

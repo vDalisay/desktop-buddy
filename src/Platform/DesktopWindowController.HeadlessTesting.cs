@@ -17,4 +17,12 @@ public partial class DesktopWindowController
         _lastAppliedSettings = _lastAppliedSettings with { Rect = bounds };
         ClientBoundsChanged?.Invoke(bounds);
     }
+
+    /// <summary>Headless scenario seam for an OS focus-loss notification.</summary>
+    public void NotifyHeadlessFocusLost()
+    {
+        if (DisplayServer.GetName() != "headless")
+            throw new InvalidOperationException("Synthetic focus loss is headless-only.");
+        WindowFocusLost?.Invoke();
+    }
 }

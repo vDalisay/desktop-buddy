@@ -8,17 +8,24 @@ using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
+using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
+using DesktopBuddy.Shop;
+using DesktopBuddy.Ui;
 using Godot;
 
 namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
-/// Production Phase A editor host. The compact dock Settings entry and its Character Editor
-/// action are the approved UI_FLOATING_DOCK_PLAN surface; the editor itself remains a
-/// same-window overlay and contains one physics-free BuddyVisualRigView preview.
+/// Production Phase A editor host. The editor is a same-window overlay containing one
+/// physics-free BuddyVisualRigView preview.
+///
+/// It also composes the interim dock: a top toolbar whose Shop, Tools and Settings entries
+/// each open a free-floating desktop window. ponytail: that dock belongs to FR-003.2 and
+/// should move to its own host once the approved dock design lands — it lives here only
+/// because this is the node already composed over the sandbox.
 /// </summary>
 public partial class CharacterEditorHost : CanvasLayer
 {
@@ -32,7 +39,12 @@ public partial class CharacterEditorHost : CanvasLayer
     private BuddyVisualRigView _preview = null!;
     private StaticBuddyVisualTransformSource _previewSource = null!;
     private Control _editorRoot = null!;
-    private PanelContainer _settingsPanel = null!;
+    private SettingsPanel _settingsPanel = null!;
+    private ShopPanel _shopPanel = null!;
+    private ToolSelectionPanel _toolPanel = null!;
+    private DockWindow _shopWindow = null!;
+    private DockWindow _toolWindow = null!;
+    private DockWindow _settingsWindow = null!;
     private ItemList _libraryList = null!;
     private LineEdit _nameEdit = null!;
     private Label _status = null!;
@@ -47,6 +59,10 @@ public partial class CharacterEditorHost : CanvasLayer
     public CharacterEditorSession Session => _session;
     public BuddyVisualRigView PreviewRig => _preview;
     public Button SettingsButton { get; private set; } = null!;
+    public Button ShopButton { get; private set; } = null!;
+    public Button ToolsButton { get; private set; } = null!;
+    public ToolSelectionPanel Tools => _toolPanel;
+    public ShopPanel Shop => _shopPanel;
     public Button OpenCharacterEditorButton { get; private set; } = null!;
     public Button NewButton { get; private set; } = null!;
     public Button DuplicateButton { get; private set; } = null!;
@@ -76,7 +92,7 @@ public partial class CharacterEditorHost : CanvasLayer
     {
         if (!IsInitialized || IsEditorOpen)
             return;
-        _settingsPanel.Visible = false;
+        _settingsWindow.Hide();
         _mode.Enter();
         _editorRoot.Visible = true;
         await _session.RefreshPageAsync(_page * 24, 24);
@@ -144,7 +160,8 @@ public partial class CharacterEditorHost : CanvasLayer
             ProcessMode = ProcessModeEnum.Always,
         };
         _preview.Initialize(_sandbox.Buddy.VisualProfile, _previewSource);
-        ApplyStaticPreviewPose();
+        // The pose is applied in BuildEditingArea, once the rig is inside the tree:
+        // global transforms are meaningless — and log an error each — before that.
     }
 
     private void BuildUi()
@@ -160,39 +177,71 @@ public partial class CharacterEditorHost : CanvasLayer
 
     private void BuildDock(Control root)
     {
+        // A slim toolbar pinned to the top of the buddy box: the three entries sit in a row
+        // rather than stacking over the buddy.
         var dockMargin = new MarginContainer
         {
             Name = "FloatingDock",
             MouseFilter = Control.MouseFilterEnum.Stop,
         };
-        dockMargin.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
-        dockMargin.OffsetLeft = -220;
-        dockMargin.OffsetTop = -120;
-        dockMargin.OffsetRight = -16;
-        dockMargin.OffsetBottom = -16;
+        dockMargin.SetAnchorsPreset(Control.LayoutPreset.TopWide);
+        dockMargin.OffsetLeft = 8;
+        dockMargin.OffsetTop = 8;
+        dockMargin.OffsetRight = -8;
+        dockMargin.OffsetBottom = 40;
         root.AddChild(dockMargin);
 
-        var dock = new VBoxContainer();
+        var dock = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Begin };
+        dock.AddThemeConstantOverride("separation", 6);
         dockMargin.AddChild(dock);
-        SettingsButton = Button("Settings", "DockSettingsButton");
-        SettingsButton.Pressed += () =>
-        {
-            _settingsPanel.Visible = !_settingsPanel.Visible;
-            CallDeferred(MethodName.RefreshDockHitRegions);
-        };
-        dock.AddChild(SettingsButton);
 
-        _settingsPanel = new PanelContainer
-        {
-            Name = "DockSettingsPanel",
-            Visible = false,
-        };
-        dock.AddChild(_settingsPanel);
-        var settingsBox = new VBoxContainer();
-        _settingsPanel.AddChild(settingsBox);
-        OpenCharacterEditorButton = Button("Character Editor", "OpenCharacterEditorButton");
-        OpenCharacterEditorButton.Pressed += async () => await OpenEditorAsync();
-        settingsBox.AddChild(OpenCharacterEditorButton);
+        // Every dock panel is a free-floating desktop window, so none of them are clipped to
+        // the buddy box and the player can park them anywhere.
+        _shopPanel = new ShopPanel();
+        _shopPanel.Configure(_context.Progress, _context.Economy, CatalogueLoader.Catalogue);
+        _shopWindow = OpenableWindow("Shop", _shopPanel, _shopPanel.Refresh);
+
+        _toolPanel = new ToolSelectionPanel();
+        _toolPanel.Configure(_context.Progress, _sandbox.Pipeline, CatalogueLoader.Catalogue);
+        _toolWindow = OpenableWindow("Tools", _toolPanel, _toolPanel.Refresh);
+
+        _settingsPanel = new SettingsPanel();
+        _settingsPanel.Configure();
+        OpenCharacterEditorButton = _settingsPanel.AddAction(
+            "Character Editor",
+            "Create and edit the buddy's appearance.",
+            async () => await OpenEditorAsync());
+        _settingsWindow = OpenableWindow("Settings", _settingsPanel, null);
+
+        // Buying a tool immediately makes it selectable, so keep the picker honest.
+        _shopPanel.Purchased += _toolPanel.Refresh;
+
+        ShopButton = Button("Shop", "DockShopButton");
+        ShopButton.Pressed += () => _shopWindow.Toggle(WindowAnchor(0));
+        dock.AddChild(ShopButton);
+
+        ToolsButton = Button("Tools", "DockToolsButton");
+        ToolsButton.Pressed += () => _toolWindow.Toggle(WindowAnchor(1));
+        dock.AddChild(ToolsButton);
+
+        SettingsButton = Button("Settings", "DockSettingsButton");
+        SettingsButton.Pressed += () => _settingsWindow.Toggle(WindowAnchor(2));
+        dock.AddChild(SettingsButton);
+    }
+
+    /// <summary>
+    /// Hosts one panel in its own desktop window and registers it with the shell, so focus
+    /// moving to it is understood as using the game rather than leaving it.
+    /// </summary>
+    private DockWindow OpenableWindow(string title, Control panel, Action? onOpening)
+    {
+        var window = new DockWindow();
+        window.Configure(title, new Vector2I(400, 420), panel);
+        if (onOpening is not null)
+            window.Opening += onOpening;
+        AddChild(window);
+        _sandbox.Shell.RegisterOwnedWindow(window);
+        return window;
     }
 
     private void BuildEditor(Control root)
@@ -397,11 +446,17 @@ public partial class CharacterEditorHost : CanvasLayer
             Size = new Vector2I(420, 360),
             TransparentBg = false,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
+            // Without its own World3D the preview shares the main viewport's world, so the
+            // preview rig also renders into the desktop window as a second, T-posing buddy.
+            OwnWorld3D = true,
         };
         previewContainer.AddChild(viewport);
         var world = new Node3D { ProcessMode = ProcessModeEnum.Always };
         viewport.AddChild(world);
-        _preview.Reparent(world);
+        // The preview rig is built detached and has no parent yet, so this is its first
+        // entry into the tree — Reparent would fail and leave it orphaned and invisible.
+        world.AddChild(_preview);
+        ApplyStaticPreviewPose();
         var camera = new Camera3D
         {
             Position = new Vector3(0, 0, 600),
@@ -545,15 +600,32 @@ public partial class CharacterEditorHost : CanvasLayer
         RefreshAll();
     }
 
+    /// <summary>
+    /// Where a dock window lands the first time it opens: beside the game window, stepped so a
+    /// second one does not cover the first. After that the player's own placement is kept.
+    /// </summary>
+    private Vector2I WindowAnchor(int slot)
+    {
+        Rect2I game = _sandbox.Window.CurrentSettings.Rect;
+        return new Vector2I(
+            game.Position.X - 420 + (slot * 32),
+            game.Position.Y + (slot * 32));
+    }
+
     private void RefreshDockHitRegions()
     {
         if (!IsInitialized || IsEditorOpen)
             return;
         // The sandbox owns the Work-Mode region list (it rebuilds it from the moving
         // buddy bodies every frame); the dock only contributes its own rectangles.
-        var regions = new List<Rect2> { SettingsButton.GetGlobalRect() };
-        if (_settingsPanel.Visible)
-            regions.Add(_settingsPanel.GetGlobalRect());
+        // Only in-window controls need hit regions. The shop and tool windows are separate
+        // desktop windows with their own hit testing, so they are deliberately absent.
+        var regions = new List<Rect2>
+        {
+            ShopButton.GetGlobalRect(),
+            ToolsButton.GetGlobalRect(),
+            SettingsButton.GetGlobalRect(),
+        };
         _sandbox.SetOverlayWorkModeHitRegions(regions);
     }
 

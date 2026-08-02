@@ -35,6 +35,10 @@ public readonly record struct CharacterEditorActionResult(
 /// Phase A working-copy state machine. Every edit mutates only the preview document and
 /// preview rig; the live buddy changes exclusively through UseCharacterAsync and the A6
 /// fixed-tick selection coordinator.
+///
+/// <b>Never use <c>ConfigureAwait(false)</c> here.</b> This type raises events and returns to
+/// callers that touch Godot Controls and the window service, and both may only be used on the
+/// main thread. Resuming on the Godot synchronization context is what keeps that true.
 /// </summary>
 public sealed class CharacterEditorSession
 {
@@ -85,7 +89,7 @@ public sealed class CharacterEditorSession
         int count = 24,
         CancellationToken token = default)
     {
-        CurrentPage = await _library.ReadPageAsync(offset, count, token).ConfigureAwait(false);
+        CurrentPage = await _library.ReadPageAsync(offset, count, token);
         PageOffset = offset;
         PageSize = count;
         LibraryChanged?.Invoke();
@@ -97,7 +101,7 @@ public sealed class CharacterEditorSession
     {
         if (IsDirty)
             return RequireDecision(CharacterEditorPendingAction.Select, characterId);
-        return await SelectCoreAsync(characterId, token).ConfigureAwait(false);
+        return await SelectCoreAsync(characterId, token);
     }
 
     public CharacterEditorActionResult NewCharacter(string displayName = "New Character")
@@ -167,13 +171,12 @@ public sealed class CharacterEditorSession
         if (WorkingDocument is null)
             return Failure("There is no working character to save.");
 
-        CharacterSaveResult saved = await _store.SaveAsync(WorkingDocument, token)
-            .ConfigureAwait(false);
+        CharacterSaveResult saved = await _store.SaveAsync(WorkingDocument, token);
         if (!saved.IsSuccess || saved.Document is null)
             return Failure(saved.Detail ?? $"Character save failed: {saved.Status}.");
 
         SetWorking(saved.Document, saved.Document);
-        await RefreshPageAsync(PageOffset, PageSize, token).ConfigureAwait(false);
+        await RefreshPageAsync(PageOffset, PageSize, token);
         return new CharacterEditorActionResult(true);
     }
 
@@ -181,14 +184,14 @@ public sealed class CharacterEditorSession
         CancellationToken token = default)
     {
         CharacterEditorActionResult saved = IsDirty
-            ? await SaveAsync(token).ConfigureAwait(false)
+            ? await SaveAsync(token)
             : new CharacterEditorActionResult(true);
         if (!saved.Completed || WorkingDocument is null)
             return saved;
 
         CharacterActivationResult activation = await _selection.QueueUseCharacterAsync(
             WorkingDocument.Id,
-            token).ConfigureAwait(false);
+            token);
         return activation.WasQueued
             ? new CharacterEditorActionResult(true)
             : Failure(activation.Detail ?? $"Character activation failed: {activation.Status}.");
@@ -203,8 +206,7 @@ public sealed class CharacterEditorSession
             return RequireDecision(CharacterEditorPendingAction.Delete, WorkingDocument.Id);
 
         Guid id = WorkingDocument.Id;
-        CharacterDeleteResult deleted = await _selection.DeleteCharacterAsync(id, token)
-            .ConfigureAwait(false);
+        CharacterDeleteResult deleted = await _selection.DeleteCharacterAsync(id, token);
         if (!deleted.IsSuccess)
             return Failure(deleted.Detail ?? $"Character deletion failed: {deleted.Status}.");
 
@@ -212,7 +214,7 @@ public sealed class CharacterEditorSession
         _savedDocument = null;
         RefreshPreview();
         Changed?.Invoke();
-        await RefreshPageAsync(PageOffset, PageSize, token).ConfigureAwait(false);
+        await RefreshPageAsync(PageOffset, PageSize, token);
         return new CharacterEditorActionResult(true);
     }
 
@@ -237,7 +239,7 @@ public sealed class CharacterEditorSession
             return new CharacterEditorActionResult(false);
         if (decision == UnsavedDecision.Save)
         {
-            CharacterEditorActionResult saved = await SaveAsync(token).ConfigureAwait(false);
+            CharacterEditorActionResult saved = await SaveAsync(token);
             if (!saved.Completed)
                 return saved;
         }
@@ -256,10 +258,10 @@ public sealed class CharacterEditorSession
         {
             CharacterEditorPendingAction.Close => ResolveClose(),
             CharacterEditorPendingAction.Select when characterId.HasValue =>
-                await SelectCoreAsync(characterId.Value, token).ConfigureAwait(false),
+                await SelectCoreAsync(characterId.Value, token),
             CharacterEditorPendingAction.New => NewCharacter(),
             CharacterEditorPendingAction.Duplicate => Duplicate(),
-            CharacterEditorPendingAction.Delete => await DeleteAsync(token).ConfigureAwait(false),
+            CharacterEditorPendingAction.Delete => await DeleteAsync(token),
             _ => new CharacterEditorActionResult(true),
         };
     }
@@ -268,8 +270,7 @@ public sealed class CharacterEditorSession
         Guid characterId,
         CancellationToken token)
     {
-        CharacterLoadResult loaded = await _store.LoadAsync(characterId, token)
-            .ConfigureAwait(false);
+        CharacterLoadResult loaded = await _store.LoadAsync(characterId, token);
         if (!loaded.IsSuccess || loaded.Document is null)
             return Failure(loaded.Detail ?? $"Character load failed: {loaded.Status}.");
         SetWorking(loaded.Document, loaded.Document);

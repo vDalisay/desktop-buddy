@@ -25,6 +25,10 @@ window/size/borderless=true
 window/size/always_on_top=true
 window/size/transparent=true
 window/per_pixel_transparency/allowed=true
+; Dock panels (shop, tools) are real desktop windows: the player drags them anywhere,
+; they are not clipped to the transparent buddy box, and they are their own HWNDs, so
+; Work-Mode click-through hit regions never apply to them.
+window/subwindows/embed_subwindows=false
 
 [dotnet]
 

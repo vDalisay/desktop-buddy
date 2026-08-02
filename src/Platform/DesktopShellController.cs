@@ -38,6 +38,7 @@ public partial class DesktopShellController : Node
     private IReadOnlyList<Rect2I>? _dynamicWorkModeHitRegions;
     private IReadOnlyList<Rect2>? _dynamicWorkModeWorldHitRegions;
     private readonly Rect2I[] _fallbackWorkModeHitRegion = new Rect2I[1];
+    private readonly List<Window> _ownedWindows = [];
 
     public DomainInputMode Mode => _mode.Current;
     public int ModeChangeCount { get; private set; }
@@ -109,7 +110,14 @@ public partial class DesktopShellController : Node
     }
 
     /// <summary>Return control to Work Mode from a tray action or any recovery path.</summary>
-    public void ReturnToWorkMode() => Apply(ShellInputEvent.TrayReturnToWork);
+    public void ReturnToWorkMode()
+    {
+        // This is the last-resort recovery path, so it outranks editor isolation: if the
+        // editor ever failed to hand the window back, the user would otherwise be left with
+        // a shell that ignores every mode transition forever.
+        EditorBoundaryIsolationActive = false;
+        Apply(ShellInputEvent.TrayReturnToWork);
+    }
 
     /// <summary>
     /// Replaces the coarse startup box with live client-pixel interaction regions.
@@ -133,6 +141,14 @@ public partial class DesktopShellController : Node
 
     private void Apply(ShellInputEvent input)
     {
+        // The character editor owns the whole window while it is open: it is opaque,
+        // bordered and Play-mode, and gameplay is paused so the Work-Mode hit regions
+        // stop being refreshed. Letting a click, Escape or focus loss flip the shell
+        // back to Work would install those stale regions and make every pixel of the
+        // editor outside them pass through to the desktop.
+        if (EditorBoundaryIsolationActive)
+            return;
+
         if (_mode.Apply(input))
         {
             ModeChangeCount++;
@@ -211,7 +227,31 @@ public partial class DesktopShellController : Node
 
     private void OnClientBoundsChanged(Rect2I bounds) => _pendingClientSize = bounds.Size;
 
-    private void OnWindowFocusLost() => Apply(ShellInputEvent.FocusLost);
+    /// <summary>
+    /// Windows this app owns (the shop, tools and settings panels). Focus moving to one of
+    /// them is the player using the game, not leaving it.
+    /// </summary>
+    public void RegisterOwnedWindow(Window window)
+    {
+        ArgumentNullException.ThrowIfNull(window);
+        if (!_ownedWindows.Contains(window))
+            _ownedWindows.Add(window);
+    }
+
+    // Deferred by one frame: at the instant the main window reports focus loss the dock
+    // window has not taken focus yet, so an immediate check would always miss it.
+    private void OnWindowFocusLost() => CallDeferred(MethodName.ResolveFocusLoss);
+
+    private void ResolveFocusLoss()
+    {
+        foreach (Window owned in _ownedWindows)
+        {
+            if (GodotObject.IsInstanceValid(owned) && owned.Visible && owned.HasFocus())
+                return;
+        }
+
+        Apply(ShellInputEvent.FocusLost);
+    }
 
     private void OnLayoutApplied(RoomLayout layout, Rect2 innerBounds)
     {
