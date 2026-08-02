@@ -25,8 +25,9 @@ public static class ProgressReset
     }
 
     /// <summary>
-    /// Resets gameplay state and optional character selection in place. A failed durable
-    /// write restores both exact prior snapshots; local character documents are untouched.
+    /// Resets gameplay state and optional character selection in place. One explicit
+    /// durable write owns the transaction; a failed write restores both exact prior
+    /// snapshots and never touches local character documents.
     /// </summary>
     public static async Task<bool> ResetAsync(
         BuddyProgressState progress,
@@ -43,7 +44,7 @@ public static class ProgressReset
         CharacterSelectionSnapshot? selectionBefore = characterSelection?.Snapshot();
         ProgressSnapshot fresh = CreateNewProgress(progress.CashPerPain).Snapshot();
         progress.Adopt(fresh with { Revision = before.Revision + 1 });
-        characterSelection?.ResetToBuiltIn();
+        characterSelection?.SetActiveForExplicitTransaction(null);
 
         try
         {
