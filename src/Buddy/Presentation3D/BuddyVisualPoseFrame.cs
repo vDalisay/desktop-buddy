@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Presentation;
 using Godot;
@@ -18,18 +19,51 @@ public readonly record struct BuddyVisualPartPose(
 /// Immutable frame passed from a gameplay/preview presenter into <see cref="BuddyVisualRigView"/>.
 /// It contains resolved visual values only and owns no mutable gameplay authority.
 /// </summary>
-public readonly record struct BuddyVisualPoseFrame(
-    BuddyVisualPartPose Head,
-    BuddyVisualPartPose Torso,
-    BuddyVisualPartPose LeftHand,
-    BuddyVisualPartPose RightHand,
-    BuddyVisualPartPose LeftFoot,
-    BuddyVisualPartPose RightFoot,
-    float BodyYawRadians,
-    FaceRenderState? FaceState,
-    string FallbackFace,
-    float FallbackFaceRotation)
+public readonly struct BuddyVisualPoseFrame
 {
+    private static long _createdCount;
+
+    public BuddyVisualPoseFrame(
+        BuddyVisualPartPose head,
+        BuddyVisualPartPose torso,
+        BuddyVisualPartPose leftHand,
+        BuddyVisualPartPose rightHand,
+        BuddyVisualPartPose leftFoot,
+        BuddyVisualPartPose rightFoot,
+        float bodyYawRadians,
+        FaceRenderState? faceState,
+        string fallbackFace,
+        float fallbackFaceRotation)
+    {
+        ArgumentNullException.ThrowIfNull(fallbackFace);
+        Sequence = Interlocked.Increment(ref _createdCount);
+        Head = head;
+        Torso = torso;
+        LeftHand = leftHand;
+        RightHand = rightHand;
+        LeftFoot = leftFoot;
+        RightFoot = rightFoot;
+        BodyYawRadians = bodyYawRadians;
+        FaceState = faceState;
+        FallbackFace = fallbackFace;
+        FallbackFaceRotation = fallbackFaceRotation;
+    }
+
+    /// <summary>Monotonic process-local frame identity used by scenarios and diagnostics.</summary>
+    public long Sequence { get; }
+    public BuddyVisualPartPose Head { get; }
+    public BuddyVisualPartPose Torso { get; }
+    public BuddyVisualPartPose LeftHand { get; }
+    public BuddyVisualPartPose RightHand { get; }
+    public BuddyVisualPartPose LeftFoot { get; }
+    public BuddyVisualPartPose RightFoot { get; }
+    public float BodyYawRadians { get; }
+    public FaceRenderState? FaceState { get; }
+    public string FallbackFace { get; }
+    public float FallbackFaceRotation { get; }
+
+    public static long CreatedCount => Interlocked.Read(ref _createdCount);
+
     public BuddyVisualPartPose Part(BuddyPartId partId) => partId switch
     {
         BuddyPartId.Head => Head,
