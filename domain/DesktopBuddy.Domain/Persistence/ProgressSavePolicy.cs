@@ -55,17 +55,20 @@ public static class ProgressSavePolicy
 
             ProgressSave save = schema switch
             {
-                1 => MigrateV5(MigrateV4(MigrateV3(MigrateV2(MigrateV1(document.RootElement))))),
-                2 => MigrateV5(MigrateV4(MigrateV3(MigrateV2(
+                1 => MigrateV6(MigrateV5(MigrateV4(MigrateV3(MigrateV2(MigrateV1(document.RootElement)))))),
+                2 => MigrateV6(MigrateV5(MigrateV4(MigrateV3(MigrateV2(
+                    JsonSerializer.Deserialize<ProgressSave>(json, Options)
+                    ?? throw new JsonException("Progress payload was null.")))))),
+                3 => MigrateV6(MigrateV5(MigrateV4(MigrateV3(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null."))))),
-                3 => MigrateV5(MigrateV4(MigrateV3(
+                4 => MigrateV6(MigrateV5(MigrateV4(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null.")))),
-                4 => MigrateV5(MigrateV4(
+                5 => MigrateV6(MigrateV5(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null."))),
-                5 => MigrateV5(
+                6 => MigrateV6(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null.")),
                 ProgressSave.CurrentSchemaVersion =>
@@ -87,9 +90,6 @@ public static class ProgressSavePolicy
         catch (Exception exception) when (
             exception is InvalidOperationException or FormatException or OverflowException)
         {
-            // A wrong-typed field inside a legacy payload is corruption, not a crash:
-            // it must quarantine and recover like any other malformed save, never
-            // escape to the composition root and take the launch down with it.
             return new SaveDecodeResult(SaveDecodeStatus.Malformed, null, exception.Message);
         }
     }
@@ -99,6 +99,8 @@ public static class ProgressSavePolicy
         ArgumentNullException.ThrowIfNull(save);
         if (save.SchemaVersion != ProgressSave.CurrentSchemaVersion)
             throw new ArgumentException("Progress schema is not current.", nameof(save));
+        if (save.ActiveCharacterId == Guid.Empty)
+            throw new ArgumentException("Active character ID cannot be the empty GUID.", nameof(save));
         if (save.UnlockedToolIds is null ||
             save.HarmfulContentIds is null ||
             save.FunActivities is null ||
@@ -140,15 +142,10 @@ public static class ProgressSavePolicy
         if (!selectedKnown ||
             !save.UnlockedToolIds.Contains(ContentIds.ForTool(parsed), StringComparer.Ordinal))
         {
-            // Both cases are "this build cannot activate that selection". Retain the
-            // original either way: a tool this build knows but has not unlocked is
-            // still data a later build (or a repaired unlock list) must not lose.
             unknownSelected = selected;
             selected = ContentIds.ToolGrab;
         }
 
-        // Ownership covers every catalogue entry, not only the selectable ones: the FR-019
-        // upgrade is bought and owned like anything else while never being a tool.
         var activeUnlocks = save.UnlockedToolIds
             .Where(ContentIds.IsCatalogueEntry)
             .ToArray();
@@ -198,23 +195,12 @@ public static class ProgressSavePolicy
             save.Fullness);
     }
 
-    /// <summary>
-    /// Migrates a payload written before fun activities existed. Such a buddy never had its
-    /// tastes rolled, so it is given the neutral default and full novelty rather than a fresh
-    /// sample: a personality is drawn once at creation, and rolling one here would hand the
-    /// same save a different character on every load.
-    /// </summary>
     private static ProgressSave MigrateV2(ProgressSave save) => save with
     {
         SchemaVersion = 3,
         FunActivities = DefaultFunActivities(),
     };
 
-    /// <summary>
-    /// Schema 3 stored novelty but not the hysteresis latch. Preserve that version's
-    /// conservative reload behavior for existing saves; schema 4 then records the exact
-    /// latch so future reloads no longer change the live fun verdict.
-    /// </summary>
     private static ProgressSave MigrateV3(ProgressSave save) => save with
     {
         SchemaVersion = 4,
@@ -226,26 +212,16 @@ public static class ProgressSavePolicy
             .ToList(),
     };
 
-    /// <summary>
-    /// Schema 4 predates the appetite bar. Such a save has no stomach state at all, so it
-    /// resumes empty — the same place a new save starts. Loading a pre-hunger buddy as full
-    /// would silently refuse the first meal the player offered after upgrading.
-    /// </summary>
     private static ProgressSave MigrateV4(ProgressSave save) => save with
     {
         SchemaVersion = 5,
         Fullness = 0.0f,
     };
 
-    /// <summary>
-    /// Schema 5 owned the passive <c>upgrade.strength</c>. It is replaced in place by the
-    /// selectable Power Grab, so a player who paid for the upgrade keeps what they bought
-    /// and a player who never bought it gains nothing.
-    /// </summary>
     private static ProgressSave MigrateV5(ProgressSave save)
     {
         if (!save.UnlockedToolIds.Contains(ContentIds.UpgradeStrength, StringComparer.Ordinal))
-            return save with { SchemaVersion = ProgressSave.CurrentSchemaVersion };
+            return save with { SchemaVersion = 6 };
 
         var unlocks = save.UnlockedToolIds
             .Where(id => !string.Equals(id, ContentIds.UpgradeStrength, StringComparison.Ordinal))
@@ -255,10 +231,16 @@ public static class ProgressSavePolicy
 
         return save with
         {
-            SchemaVersion = ProgressSave.CurrentSchemaVersion,
+            SchemaVersion = 6,
             UnlockedToolIds = unlocks,
         };
     }
+
+    private static ProgressSave MigrateV6(ProgressSave save) => save with
+    {
+        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        ActiveCharacterId = null,
+    };
 
     private static List<FunActivitySave> DefaultFunActivities()
     {
@@ -277,11 +259,6 @@ public static class ProgressSavePolicy
         return activities;
     }
 
-    /// <summary>
-    /// Migrates the pre-Task-0 integer-ID payload. Every legacy field is read through a
-    /// <c>Try*</c> accessor: a v1 save is by definition written by an older build, so a
-    /// wrong-typed field is corruption to be quarantined, never an exception to escape.
-    /// </summary>
     private static ProgressSave MigrateV1(JsonElement root)
     {
         var unknown = new List<string>();
@@ -371,11 +348,6 @@ public static class ProgressSavePolicy
         return result;
     }
 
-    /// <summary>
-    /// A blank ID, an out-of-range drain, or a non-finite meter is corruption. An entry
-    /// naming an activity this build does not know is <b>not</b>: it is a newer build's data
-    /// passing through, and it is retained untouched.
-    /// </summary>
     private static void ValidateFunActivities(IEnumerable<FunActivitySave> activities)
     {
         foreach (FunActivitySave activity in activities)
@@ -383,10 +355,7 @@ public static class ProgressSavePolicy
             if (activity is null || string.IsNullOrWhiteSpace(activity.ActivityId))
                 throw new ArgumentException("A fun activity entry is missing its ID.");
             if (activity.Drain is < FunPreferences.MinDrain or > FunPreferences.MaxDrain)
-            {
-                throw new ArgumentException(
-                    $"Fun activity '{activity.ActivityId}' has an out-of-range drain.");
-            }
+                throw new ArgumentException($"Fun activity '{activity.ActivityId}' has an out-of-range drain.");
             if (!float.IsFinite(activity.Interest) ||
                 activity.Interest < FunInterestModel.MinimumInterest ||
                 activity.Interest > FunInterestModel.MaximumInterest)
@@ -397,11 +366,6 @@ public static class ProgressSavePolicy
         }
     }
 
-    /// <summary>
-    /// Rebuilds the personality's tastes and the live meters from the payload. Entries this
-    /// build does not know are skipped; activities the payload omits keep the neutral
-    /// default taste and full novelty.
-    /// </summary>
     private static (BuddyTraits Traits, List<FunActivityInterest> Interest) ReadFun(
         ProgressSave save)
     {
