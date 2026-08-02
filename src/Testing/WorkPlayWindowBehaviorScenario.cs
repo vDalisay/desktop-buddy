@@ -44,8 +44,12 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
 
             checks.Add(new StartupCheck(
                 "compact_work_captures_entire_client",
-                adapter.PlayModeCaptured && sandbox.Window.InputMode == InputMode.Work,
-                $"captured={adapter.PlayModeCaptured} mode={sandbox.Window.InputMode}"));
+                adapter.PlayModeCaptured &&
+                !sandbox.Window.MainWindowMousePassthrough &&
+                sandbox.Window.InputMode == InputMode.Work,
+                $"native_capture={adapter.PlayModeCaptured} " +
+                $"passthrough={sandbox.Window.MainWindowMousePassthrough} " +
+                $"mode={sandbox.Window.InputMode}"));
 
             var bridge = new GameplayInputModeBridge
             {
@@ -65,8 +69,6 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                 selectedInWork,
                 $"selected={sandbox.Pipeline.SelectedTool} enabled={bridge.GameplayInputEnabled} active={sandbox.CursorTools.IsActive}"));
 
-            // The activation click is delivered only to the shell. The pointer was disabled
-            // at dispatch time, so this click cannot become a held primary action.
             sandbox.Shell._UnhandledInput(new InputEventMouseButton
             {
                 ButtonIndex = MouseButton.Left,
@@ -82,8 +84,6 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                 activationConsumed,
                 $"mode={sandbox.Shell.Mode} primary={sandbox.Pointer.IsPrimaryHeld} active={sandbox.CursorTools.IsActive}"));
 
-            // A new motion event after Play establishes a fresh cursor anchor and permits the
-            // selected tool to spawn on the next routed tick.
             sandbox.Pointer._Input(new InputEventMouseMotion { Position = new Vector2(420, 280) });
             sandbox.Pointer.ResolvePendingInput();
             sandbox.CursorTools.PhysicsTick(1.0 / 120.0);
@@ -107,62 +107,48 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
             bool enteredFullscreen = sandbox.Window.TrySetLayoutMode(
                 WindowLayoutMode.FullscreenOverlay,
                 0);
-
-            // Install the test toolbar after entering full-screen and assert immediately.
-            // The normal sandbox refresh owns moving buddy rectangles each physics tick; this
-            // gate is specifically proving the shell strips those six and forwards only UI.
-            var worldRegions = new List<Rect2>();
-            var clientRegions = new List<Rect2I>();
-            for (int index = 0; index < 6; index++)
-            {
-                worldRegions.Add(new Rect2(index * 10, 0, 8, 8));
-                clientRegions.Add(new Rect2I(index * 10, 0, 8, 8));
-            }
-            Rect2I toolbarA = new(20, 20, 160, 32);
-            Rect2I toolbarB = new(190, 20, 180, 32);
-            worldRegions.Add(new Rect2(toolbarA.Position, toolbarA.Size));
-            worldRegions.Add(new Rect2(toolbarB.Position, toolbarB.Size));
-            clientRegions.Add(toolbarA);
-            clientRegions.Add(toolbarB);
-            sandbox.Shell.UpdateWorkModeHitRegions(worldRegions, clientRegions);
-
-            bool toolbarOnly = enteredFullscreen &&
+            bool fullscreenWorkPassthrough = enteredFullscreen &&
                 sandbox.Window.LayoutMode == WindowLayoutMode.FullscreenOverlay &&
-                !adapter.PlayModeCaptured &&
-                adapter.LastWorkModeHitRegions.Count == 2 &&
-                adapter.LastWorkModeHitRegions[0] == toolbarA &&
-                adapter.LastWorkModeHitRegions[1] == toolbarB;
+                sandbox.Window.MainWindowMousePassthrough &&
+                adapter.PlayModeCaptured &&
+                adapter.LastWorkModeHitRegions.Count == 0;
             checks.Add(new StartupCheck(
-                "fullscreen_work_uses_toolbar_only_passthrough",
-                toolbarOnly,
-                $"layout={sandbox.Window.LayoutMode} captured={adapter.PlayModeCaptured} regions={adapter.LastWorkModeHitRegions.Count}"));
+                "fullscreen_work_passes_entire_main_window_through",
+                fullscreenWorkPassthrough,
+                $"layout={sandbox.Window.LayoutMode} " +
+                $"passthrough={sandbox.Window.MainWindowMousePassthrough} " +
+                $"legacy_regions={adapter.LastWorkModeHitRegions.Count}"));
 
             sandbox.Shell.ToggleInteractionMode();
             bool fullscreenPlayCapture = sandbox.Shell.Mode == InputMode.Play &&
+                !sandbox.Window.MainWindowMousePassthrough &&
                 adapter.PlayModeCaptured;
             checks.Add(new StartupCheck(
                 "fullscreen_play_captures_monitor",
                 fullscreenPlayCapture,
-                $"mode={sandbox.Shell.Mode} captured={adapter.PlayModeCaptured}"));
+                $"mode={sandbox.Shell.Mode} passthrough={sandbox.Window.MainWindowMousePassthrough}"));
 
             sandbox.Shell.ToggleInteractionMode();
             bool fullscreenWorkRestored = sandbox.Shell.Mode == InputMode.Work &&
-                !adapter.PlayModeCaptured;
+                sandbox.Window.MainWindowMousePassthrough;
             checks.Add(new StartupCheck(
                 "fullscreen_toggle_restores_work_passthrough",
                 fullscreenWorkRestored,
-                $"mode={sandbox.Shell.Mode} captured={adapter.PlayModeCaptured}"));
+                $"mode={sandbox.Shell.Mode} passthrough={sandbox.Window.MainWindowMousePassthrough}"));
 
             sandbox.Window.TrySetLayoutMode(WindowLayoutMode.Compact, 0);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             bool compactRestored = sandbox.Window.LayoutMode == WindowLayoutMode.Compact &&
                 sandbox.Window.CompactRect == compactRect &&
                 sandbox.Window.CurrentSettings.Rect == compactRect &&
+                !sandbox.Window.MainWindowMousePassthrough &&
                 adapter.PlayModeCaptured;
             checks.Add(new StartupCheck(
                 "layout_roundtrip_restores_compact_rect",
                 compactRestored,
-                $"layout={sandbox.Window.LayoutMode} compact={sandbox.Window.CompactRect} current={sandbox.Window.CurrentSettings.Rect}"));
+                $"layout={sandbox.Window.LayoutMode} compact={sandbox.Window.CompactRect} " +
+                $"current={sandbox.Window.CurrentSettings.Rect} " +
+                $"passthrough={sandbox.Window.MainWindowMousePassthrough}"));
 
             var unavailable = new EmulatedWindowsDesktopAdapter(
                 [new Rect2I(0, 0, 1920, 1040)],
