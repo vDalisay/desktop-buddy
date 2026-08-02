@@ -161,9 +161,16 @@ design direction still needs owner approval before implementation starts.
 
 ## Milestone 5.5 — Character Editor (Phase A)
 
-Scheduled by the owner 2026-08-02, after the Milestone 5 exit gate and before Milestone 6 —
-it has no Steam dependency. Full plan and owner decisions:
-`docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md` (Phase A, Tasks A1–A7).
+Implementation status (2026-08-03): **complete and merged.** Tasks A0–A9 are present on
+`main`, including the engine-free schema/compiler, trusted shared visual rig, parameterized
+feature renderers, face/accent compositors, failure-safe character store, fixed-tick active
+selection, editor window lifecycle, working-copy editor UI, and the Phase A exit
+scenario/journey. Real-application fixes and the merged Work/Play redesign preserve editor
+window restoration and input ownership.
+
+Originally scheduled by the owner 2026-08-02, after the Milestone 5 exit gate and before
+Milestone 6. Full plan and owner decisions:
+`docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md` (Phase A, Tasks A1–A9).
 
 Deliver:
 
@@ -178,12 +185,15 @@ Deliver:
 
 Exit criteria:
 
-- Phase A scenarios and journey pass, including the physics invariant across a character
-  swap and the window-restore path.
-- Customization remains visual-only by construction: no schema field or editor control
+- [x] Phase A scenarios and journey pass, including the physics invariant across a
+  character swap and the window-restore path.
+- [x] Customization remains visual-only by construction: no schema field or editor control
   reaches rig, drive, mass, collision, or tuning.
 
-Painting (Phase B) and Steam Workshop (Phase C) remain deferred with their own gates.
+Phase A completion technically unblocks Phase B painting. Phase B remains formally deferred
+until its Task B0 scheduling and source-of-truth gate is explicitly activated; no painting
+implementation should begin merely from the Phase A merge. Steam Workshop (Phase C) remains
+deferred and requires Milestone 6.
 
 ## Milestone 6 — Steam and Release Systems
 
@@ -218,8 +228,16 @@ Do not implement these during the milestones above:
 
 - Optional blood/bleeding.
 - Buddy painting (freehand paint — Phase B of `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`).
-  The parametric character editor, Phase A of the same plan, was scheduled 2026-08-02 as
-  Milestone 5.5 and is no longer deferred.
+  Phase A is complete, so painting is technically unblocked, but it remains deferred until
+  the owner explicitly schedules Task B0 and the higher-priority source documents authorize
+  Phase B work.
+- Catalogue, economy, and Work/Play UX research described in
+  `docs/UX_CATALOGUE_AND_MODE_RESEARCH_BACKLOG.md`: investigate a unified Shop/Tools
+  catalogue where owned entries can be equipped from the same menu; rebalance prices
+  together with current active/passive earnings; and prototype smoother mode/layout
+  transitions, including the corner cage/room drag concept and clean-room research into
+  other desktop-companion interaction patterns. This design backlog is non-blocking for
+  Phase B and does not authorize production UX changes yet.
 - Cosmetic progression.
 - Steam Workshop and custom buddy packages (Phase C, requires M6).
 - Work Mode typing companion: an optional nonintrusive corner activity where the buddy
