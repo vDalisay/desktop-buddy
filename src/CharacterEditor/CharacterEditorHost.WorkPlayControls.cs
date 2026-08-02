@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.Domain.Platform;
 using Godot;
 
@@ -12,6 +13,8 @@ namespace DesktopBuddy.CharacterEditor;
 public partial class CharacterEditorHost
 {
     private bool _workPlayControlsComposed;
+    private Rect2 _lastModeButtonRect;
+    private Rect2 _lastSettingsButtonRect;
 
     public Button InteractionModeButton { get; private set; } = null!;
     public Button WindowLayoutButton { get; private set; } = null!;
@@ -20,6 +23,21 @@ public partial class CharacterEditorHost
     {
         if (!_workPlayControlsComposed && IsInitialized)
             ComposeWorkPlayControls();
+
+        if (!_workPlayControlsComposed || IsEditorOpen ||
+            !GodotObject.IsInstanceValid(InteractionModeButton))
+        {
+            return;
+        }
+
+        Rect2 modeRect = InteractionModeButton.GetGlobalRect();
+        Rect2 settingsRect = SettingsButton.GetGlobalRect();
+        if (modeRect != _lastModeButtonRect || settingsRect != _lastSettingsButtonRect)
+        {
+            _lastModeButtonRect = modeRect;
+            _lastSettingsButtonRect = settingsRect;
+            RefreshWorkPlayDockHitRegions();
+        }
     }
 
     private void ComposeWorkPlayControls()
@@ -59,7 +77,7 @@ public partial class CharacterEditorHost
         TreeExiting += DisconnectWorkPlayControls;
         _workPlayControlsComposed = true;
         UpdateWorkPlayLabels();
-        Callable.From(RefreshDockHitRegions).CallDeferred();
+        Callable.From(RefreshWorkPlayDockHitRegions).CallDeferred();
     }
 
     private void OnInteractionModeChanged(InputMode mode) => UpdateWorkPlayLabels();
@@ -67,7 +85,7 @@ public partial class CharacterEditorHost
     private void OnWindowLayoutChanged(WindowLayoutMode mode)
     {
         UpdateWorkPlayLabels();
-        Callable.From(RefreshDockHitRegions).CallDeferred();
+        Callable.From(RefreshWorkPlayDockHitRegions).CallDeferred();
     }
 
     private void UpdateWorkPlayLabels()
@@ -90,6 +108,26 @@ public partial class CharacterEditorHost
             : fullscreen
                 ? "Restore the saved compact buddy window."
                 : "Cover the monitor transparently; Work passes empty-area clicks through.";
+    }
+
+    /// <summary>
+    /// Replaces the legacy three-button overlay list with all four in-window controls. This
+    /// is essential in full-screen Work: any omitted button is HTTRANSPARENT and cannot be
+    /// clicked to return to Play.
+    /// </summary>
+    private void RefreshWorkPlayDockHitRegions()
+    {
+        if (!_workPlayControlsComposed || IsEditorOpen)
+            return;
+
+        var regions = new List<Rect2>
+        {
+            ShopButton.GetGlobalRect(),
+            ToolsButton.GetGlobalRect(),
+            SettingsButton.GetGlobalRect(),
+            InteractionModeButton.GetGlobalRect(),
+        };
+        _sandbox.SetOverlayWorkModeHitRegions(regions);
     }
 
     private void DisconnectWorkPlayControls()
