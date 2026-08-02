@@ -1,0 +1,416 @@
+using System;
+using System.Collections.Generic;
+using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Presentation;
+using Godot;
+
+namespace DesktopBuddy.Buddy.Presentation3D.Characters;
+
+internal enum EyeVariant
+{
+    SoftOval,
+    RoundDot,
+    HorizontalLed,
+}
+
+internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
+{
+    private readonly EyeVariant _variant;
+
+    public ProceduralEyeRenderer(string featureId, EyeVariant variant)
+    {
+        FeatureId = featureId;
+        _variant = variant;
+    }
+
+    public string FeatureId { get; }
+
+    public IReadOnlyList<CharacterDrawCommand> Build(
+        in CompiledFeatureAppearance appearance,
+        FaceEyePose pose,
+        bool blinking,
+        Vector2 pupilOffset,
+        Color trustedOutlineColor)
+    {
+        var commands = new List<CharacterDrawCommand>(12);
+        Color fill = CharacterFeatureColors.ToGodot(appearance.Color);
+        NormalizedFeatureTransform transform = appearance.Transform;
+        Vector2 left = new(-0.34f, 0.16f);
+        Vector2 right = new(0.34f, 0.16f);
+
+        if (blinking)
+        {
+            AddStroke(commands, CharacterGeometry.Arc(left, 0.12f, 0.07f, Mathf.Pi, Mathf.Tau),
+                0.035f, fill, trustedOutlineColor, transform);
+            AddStroke(commands, CharacterGeometry.Arc(right, 0.12f, 0.07f, Mathf.Pi, Mathf.Tau),
+                0.035f, fill, trustedOutlineColor, transform);
+            return commands;
+        }
+
+        switch (pose)
+        {
+            case FaceEyePose.HappyArc:
+                AddStroke(commands, CharacterGeometry.Arc(left, 0.13f, 0.12f, 0.0f, Mathf.Pi),
+                    0.035f, fill, trustedOutlineColor, transform);
+                AddStroke(commands, CharacterGeometry.Arc(right, 0.13f, 0.12f, 0.0f, Mathf.Pi),
+                    0.035f, fill, trustedOutlineColor, transform);
+                return commands;
+            case FaceEyePose.Scrunch:
+                AddStroke(commands, [left + new Vector2(-0.11f, 0.08f), left, left + new Vector2(0.11f, -0.08f)],
+                    0.035f, fill, trustedOutlineColor, transform);
+                AddStroke(commands, [right + new Vector2(-0.11f, -0.08f), right, right + new Vector2(0.11f, 0.08f)],
+                    0.035f, fill, trustedOutlineColor, transform);
+                return commands;
+            case FaceEyePose.Cross:
+                AddCross(commands, left, fill, trustedOutlineColor, transform);
+                AddCross(commands, right, fill, trustedOutlineColor, transform);
+                return commands;
+        }
+
+        float height = pose == FaceEyePose.Narrow ? 0.065f : pose == FaceEyePose.Wide ? 0.18f : 0.13f;
+        AddOpenEye(commands, left, height, fill, trustedOutlineColor, transform);
+        AddOpenEye(commands, right, height, fill, trustedOutlineColor, transform);
+
+        if (pose is FaceEyePose.Open or FaceEyePose.Narrow or FaceEyePose.Wide)
+        {
+            Vector2 boundedPupil = new(
+                Mathf.Clamp(pupilOffset.X, -1.0f, 1.0f) * 0.035f,
+                Mathf.Clamp(pupilOffset.Y, -1.0f, 1.0f) * 0.035f);
+            AddCircle(commands, left + boundedPupil, 0.035f, trustedOutlineColor,
+                trustedOutlineColor, transform, outlineExpansion: 0.012f);
+            AddCircle(commands, right + boundedPupil, 0.035f, trustedOutlineColor,
+                trustedOutlineColor, transform, outlineExpansion: 0.012f);
+        }
+
+        return commands;
+    }
+
+    private void AddOpenEye(
+        List<CharacterDrawCommand> commands,
+        Vector2 center,
+        float height,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform)
+    {
+        switch (_variant)
+        {
+            case EyeVariant.SoftOval:
+                AddPolygon(commands, CharacterGeometry.Ellipse(center, 0.105f, height), fill, outline, transform);
+                break;
+            case EyeVariant.RoundDot:
+                AddCircle(commands, center, Mathf.Max(0.075f, height * 0.72f), fill, outline, transform);
+                break;
+            case EyeVariant.HorizontalLed:
+                AddPolygon(commands, CharacterGeometry.Rectangle(center,
+                    new Vector2(0.14f, Mathf.Max(0.045f, height * 0.42f))), fill, outline, transform);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+    }
+
+    private static void AddCross(
+        List<CharacterDrawCommand> commands,
+        Vector2 center,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform)
+    {
+        AddStroke(commands, [center + new Vector2(-0.09f, 0.09f), center + new Vector2(0.09f, -0.09f)],
+            0.035f, fill, outline, transform);
+        AddStroke(commands, [center + new Vector2(-0.09f, -0.09f), center + new Vector2(0.09f, 0.09f)],
+            0.035f, fill, outline, transform);
+    }
+
+    internal static void AddCircle(
+        List<CharacterDrawCommand> commands,
+        Vector2 center,
+        float radius,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform,
+        float outlineExpansion = 0.02f)
+    {
+        Vector2 transformed = CharacterFeatureTransform.Apply(center, transform);
+        float scaledRadius = CharacterFeatureTransform.ApplyLength(radius, transform);
+        commands.Add(CharacterDrawCommand.Circle(transformed, scaledRadius + outlineExpansion, outline));
+        commands.Add(CharacterDrawCommand.Circle(transformed, scaledRadius, fill));
+    }
+
+    internal static void AddPolygon(
+        List<CharacterDrawCommand> commands,
+        Vector2[] points,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform)
+    {
+        Vector2[] transformed = CharacterFeatureTransform.Apply(points, transform);
+        var closed = new Vector2[transformed.Length + 1];
+        Array.Copy(transformed, closed, transformed.Length);
+        closed[^1] = transformed[0];
+        commands.Add(CharacterDrawCommand.Stroke(closed,
+            CharacterFeatureTransform.ApplyLength(0.055f, transform), outline));
+        commands.Add(CharacterDrawCommand.Polygon(transformed, fill));
+    }
+
+    internal static void AddStroke(
+        List<CharacterDrawCommand> commands,
+        Vector2[] points,
+        float width,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform)
+    {
+        Vector2[] transformed = CharacterFeatureTransform.Apply(points, transform);
+        commands.Add(CharacterDrawCommand.Stroke(transformed,
+            CharacterFeatureTransform.ApplyLength(width + 0.035f, transform), outline));
+        commands.Add(CharacterDrawCommand.Stroke(transformed,
+            CharacterFeatureTransform.ApplyLength(width, transform), fill));
+    }
+}
+
+internal enum BrowVariant
+{
+    SoftArc,
+    Straight,
+    Segmented,
+}
+
+internal sealed class ProceduralBrowRenderer : ICharacterBrowRenderer
+{
+    private readonly BrowVariant _variant;
+
+    public ProceduralBrowRenderer(string featureId, BrowVariant variant)
+    {
+        FeatureId = featureId;
+        _variant = variant;
+    }
+
+    public string FeatureId { get; }
+
+    public IReadOnlyList<CharacterDrawCommand> Build(
+        in CompiledFeatureAppearance appearance,
+        FaceBrowPose pose,
+        Color trustedOutlineColor)
+    {
+        if (pose == FaceBrowPose.None)
+            return Array.Empty<CharacterDrawCommand>();
+
+        var commands = new List<CharacterDrawCommand>(8);
+        Color fill = CharacterFeatureColors.ToGodot(appearance.Color);
+        NormalizedFeatureTransform transform = appearance.Transform;
+        float y = pose == FaceBrowPose.Raised ? 0.52f : 0.44f;
+        AddOne(commands, -0.34f, y, isLeft: true, pose, fill, trustedOutlineColor, transform);
+        AddOne(commands, 0.34f, y, isLeft: false, pose, fill, trustedOutlineColor, transform);
+        return commands;
+    }
+
+    private void AddOne(
+        List<CharacterDrawCommand> commands,
+        float x,
+        float y,
+        bool isLeft,
+        FaceBrowPose pose,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform)
+    {
+        float innerSign = isLeft ? 1.0f : -1.0f;
+        float tilt = pose switch
+        {
+            FaceBrowPose.AngledIn => -0.10f,
+            FaceBrowPose.Worried => 0.10f,
+            _ => 0.0f,
+        };
+        Vector2 outer = new(x - innerSign * 0.14f, y - tilt);
+        Vector2 inner = new(x + innerSign * 0.14f, y + tilt);
+
+        switch (_variant)
+        {
+            case BrowVariant.SoftArc:
+                ProceduralEyeRenderer.AddStroke(commands,
+                    CharacterGeometry.Arc(new Vector2(x, y - 0.02f), 0.15f, 0.07f,
+                        0.12f * Mathf.Pi, 0.88f * Mathf.Pi),
+                    0.026f, fill, outline, transform);
+                break;
+            case BrowVariant.Straight:
+                ProceduralEyeRenderer.AddStroke(commands, [outer, inner],
+                    0.03f, fill, outline, transform);
+                break;
+            case BrowVariant.Segmented:
+                Vector2 midpoint = outer.Lerp(inner, 0.5f);
+                ProceduralEyeRenderer.AddStroke(commands, [outer, midpoint - new Vector2(innerSign * 0.025f, 0.0f)],
+                    0.035f, fill, outline, transform);
+                ProceduralEyeRenderer.AddStroke(commands, [midpoint + new Vector2(innerSign * 0.025f, 0.0f), inner],
+                    0.035f, fill, outline, transform);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+    }
+}
+
+internal enum MouthVariant
+{
+    Rounded,
+    Pixel,
+    Line,
+}
+
+internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
+{
+    private readonly MouthVariant _variant;
+
+    public ProceduralMouthRenderer(string featureId, MouthVariant variant)
+    {
+        FeatureId = featureId;
+        _variant = variant;
+    }
+
+    public string FeatureId { get; }
+
+    public IReadOnlyList<CharacterDrawCommand> Build(
+        in CompiledFeatureAppearance appearance,
+        FaceMouthPose pose,
+        Color trustedOutlineColor)
+    {
+        var commands = new List<CharacterDrawCommand>(10);
+        Color fill = CharacterFeatureColors.ToGodot(appearance.Color);
+        NormalizedFeatureTransform transform = appearance.Transform;
+        Vector2 center = new(0.0f, -0.35f);
+
+        switch (pose)
+        {
+            case FaceMouthPose.Flat:
+            case FaceMouthPose.ChewClosed:
+                AddPath(commands, [center + new Vector2(-0.12f, 0.0f), center + new Vector2(0.12f, 0.0f)], fill, trustedOutlineColor, transform);
+                break;
+            case FaceMouthPose.Smile:
+                AddPath(commands, CharacterGeometry.Arc(center + new Vector2(0.0f, 0.06f), 0.18f, 0.12f, Mathf.Pi, Mathf.Tau), fill, trustedOutlineColor, transform);
+                break;
+            case FaceMouthPose.OpenSmile:
+            case FaceMouthPose.ChewOpen:
+                ProceduralEyeRenderer.AddPolygon(commands,
+                    CharacterGeometry.Ellipse(center, 0.17f, pose == FaceMouthPose.ChewOpen ? 0.12f : 0.16f),
+                    fill, trustedOutlineColor, transform);
+                break;
+            case FaceMouthPose.CatSmile:
+                AddPath(commands, CharacterGeometry.Arc(center + new Vector2(-0.09f, 0.04f), 0.10f, 0.08f, Mathf.Pi, Mathf.Tau), fill, trustedOutlineColor, transform);
+                AddPath(commands, CharacterGeometry.Arc(center + new Vector2(0.09f, 0.04f), 0.10f, 0.08f, Mathf.Pi, Mathf.Tau), fill, trustedOutlineColor, transform);
+                break;
+            case FaceMouthPose.Frown:
+                AddPath(commands, CharacterGeometry.Arc(center - new Vector2(0.0f, 0.05f), 0.18f, 0.12f, 0.0f, Mathf.Pi), fill, trustedOutlineColor, transform);
+                break;
+            case FaceMouthPose.Squiggle:
+                AddPath(commands,
+                    [center + new Vector2(-0.16f, 0.0f), center + new Vector2(-0.06f, 0.06f), center + new Vector2(0.05f, -0.06f), center + new Vector2(0.16f, 0.0f)],
+                    fill, trustedOutlineColor, transform);
+                break;
+            case FaceMouthPose.SmallO:
+                ProceduralEyeRenderer.AddPolygon(commands, CharacterGeometry.Ellipse(center, 0.08f, 0.10f),
+                    fill, trustedOutlineColor, transform);
+                break;
+            case FaceMouthPose.Slant:
+                AddPath(commands, [center + new Vector2(-0.13f, -0.05f), center + new Vector2(0.13f, 0.05f)], fill, trustedOutlineColor, transform);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(pose), pose, null);
+        }
+
+        return commands;
+    }
+
+    private void AddPath(
+        List<CharacterDrawCommand> commands,
+        Vector2[] path,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform)
+    {
+        if (_variant == MouthVariant.Pixel)
+        {
+            Vector2[] stepped = Pixelate(path);
+            ProceduralEyeRenderer.AddStroke(commands, stepped, 0.045f, fill, outline, transform);
+            return;
+        }
+
+        float width = _variant == MouthVariant.Line ? 0.025f : 0.04f;
+        ProceduralEyeRenderer.AddStroke(commands, path, width, fill, outline, transform);
+    }
+
+    private static Vector2[] Pixelate(Vector2[] path)
+    {
+        if (path.Length < 2)
+            return path;
+        var result = new List<Vector2>(path.Length * 2) { path[0] };
+        for (int index = 1; index < path.Length; index++)
+        {
+            Vector2 previous = path[index - 1];
+            Vector2 current = path[index];
+            result.Add(new Vector2(current.X, previous.Y));
+            result.Add(current);
+        }
+        return result.ToArray();
+    }
+}
+
+internal enum AccentVariant
+{
+    None,
+    Panel,
+    Chevron,
+    Bolts,
+}
+
+internal sealed class ProceduralAccentRenderer : ICharacterAccentRenderer
+{
+    private readonly AccentVariant _variant;
+
+    public ProceduralAccentRenderer(string featureId, AccentVariant variant)
+    {
+        FeatureId = featureId;
+        _variant = variant;
+    }
+
+    public string FeatureId { get; }
+
+    public IReadOnlyList<CharacterDrawCommand> Build(
+        in CompiledFeatureAppearance appearance,
+        Color trustedOutlineColor)
+    {
+        if (_variant == AccentVariant.None)
+            return Array.Empty<CharacterDrawCommand>();
+
+        var commands = new List<CharacterDrawCommand>(8);
+        Color fill = CharacterFeatureColors.ToGodot(appearance.Color);
+        NormalizedFeatureTransform transform = appearance.Transform;
+        switch (_variant)
+        {
+            case AccentVariant.Panel:
+                ProceduralEyeRenderer.AddPolygon(commands,
+                    CharacterGeometry.Rectangle(Vector2.Zero, new Vector2(0.42f, 0.32f)),
+                    fill, trustedOutlineColor, transform);
+                break;
+            case AccentVariant.Chevron:
+                ProceduralEyeRenderer.AddStroke(commands,
+                    [new Vector2(-0.42f, 0.22f), new Vector2(0.0f, -0.18f), new Vector2(0.42f, 0.22f)],
+                    0.09f, fill, trustedOutlineColor, transform);
+                break;
+            case AccentVariant.Bolts:
+                foreach (Vector2 point in new[]
+                {
+                    new Vector2(-0.30f, 0.22f), new Vector2(0.30f, 0.22f),
+                    new Vector2(-0.30f, -0.22f), new Vector2(0.30f, -0.22f),
+                })
+                {
+                    ProceduralEyeRenderer.AddCircle(commands, point, 0.08f,
+                        fill, trustedOutlineColor, transform);
+                }
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+        return commands;
+    }
+}
