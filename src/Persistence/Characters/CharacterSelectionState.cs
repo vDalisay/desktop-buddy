@@ -26,18 +26,15 @@ public sealed class CharacterSelectionState
 
     public CharacterSelectionSnapshot Snapshot() => new(ActiveCharacterId, Revision);
 
-    public bool SetActive(Guid? id)
-    {
-        if (id == Guid.Empty)
-            throw new ArgumentOutOfRangeException(nameof(id));
-        if (ActiveCharacterId == id)
-            return false;
+    public bool SetActive(Guid? id) => SetActiveCore(id, notify: true);
 
-        ActiveCharacterId = id;
-        Revision++;
-        Changed?.Invoke(id);
-        return true;
-    }
+    /// <summary>
+    /// Transaction-only mutation for Reset Progress. The caller already owns one explicit
+    /// all-or-nothing progress write, so raising the ordinary immediate-save event here
+    /// would create a competing write and break rollback ordering.
+    /// </summary>
+    internal bool SetActiveForExplicitTransaction(Guid? id) =>
+        SetActiveCore(id, notify: false);
 
     public void Adopt(CharacterSelectionState source)
     {
@@ -49,17 +46,31 @@ public sealed class CharacterSelectionState
 
     /// <summary>
     /// Rollback-only seam used by all-or-nothing Reset Progress. It restores the exact
-    /// prior selection snapshot rather than advancing dirty revision counters.
+    /// prior selection snapshot without creating a new dirty revision or retrying the
+    /// failed write through the ordinary selection-change event.
     /// </summary>
     public void Restore(in CharacterSelectionSnapshot snapshot)
     {
         Validate(snapshot.ActiveCharacterId, snapshot.Revision);
         ActiveCharacterId = snapshot.ActiveCharacterId;
         Revision = snapshot.Revision;
-        Changed?.Invoke(ActiveCharacterId);
     }
 
     public void ResetToBuiltIn() => SetActive(null);
+
+    private bool SetActiveCore(Guid? id, bool notify)
+    {
+        if (id == Guid.Empty)
+            throw new ArgumentOutOfRangeException(nameof(id));
+        if (ActiveCharacterId == id)
+            return false;
+
+        ActiveCharacterId = id;
+        Revision++;
+        if (notify)
+            Changed?.Invoke(id);
+        return true;
+    }
 
     private static void Validate(Guid? activeCharacterId, long revision)
     {
