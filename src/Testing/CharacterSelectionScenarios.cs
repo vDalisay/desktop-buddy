@@ -22,7 +22,7 @@ internal static class CharacterSelectionScenarioSupport
         {
             PartColors = CharacterDocument.CreateDefault(id, name).PartColors with
             {
-                Head = headColor,
+                Head = Rgba32.Parse(headColor),
             },
         };
 
@@ -318,7 +318,8 @@ public sealed class CharacterSelectionFallbackScenario : IScenario
             Guid missing = Guid.Parse("66000000-0000-4000-8000-000000000007");
             var selection = new CharacterSelectionState(missing);
             var memory = new InMemoryProgressStore();
-            SaveCoordinator saves = CharacterSelectionScenarioSupport.Saves(selection, memory, out _);
+            SaveCoordinator saves = CharacterSelectionScenarioSupport.Saves(
+                selection, memory, out BuddyProgressState resetProgress);
             var coordinator = new CharacterSelectionCoordinator(
                 store, selection, lab.VisualPresenter.RigView, saves);
 
@@ -335,7 +336,7 @@ public sealed class CharacterSelectionFallbackScenario : IScenario
             CharacterSelectionSnapshot beforeReset = selection.Snapshot();
             memory.NextProgressFailure = new IOException("reset failure");
             bool reset = await ProgressReset.ResetAsync(
-                new BuddyProgressState(1.0), saves,
+                resetProgress, saves,
                 characterSelection: selection);
             bool rollback = !reset && selection.Snapshot() == beforeReset;
             checks.Add(new StartupCheck("a6_reset_failure_restores_selection", rollback,
