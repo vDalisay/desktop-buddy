@@ -195,6 +195,7 @@ public partial class Bootstrap : Node
             TimeSource: null,
             CharacterSelection: characterSelection,
             Characters: characters);
+        sandbox.Shell.ConfigureRuntime(settings, saves);
         sandbox.Configure(context);
         var characterRuntime = new CharacterSelectionRuntime
         {
