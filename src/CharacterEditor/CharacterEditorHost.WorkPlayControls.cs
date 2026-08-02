@@ -46,7 +46,7 @@ public partial class CharacterEditorHost
         if (mainRect != _lastToolbarMainRect)
         {
             _lastToolbarMainRect = mainRect;
-            _desktopToolbar.Place(mainRect, _sandbox.Shell.LayoutMode);
+            _desktopToolbar.Place(mainRect);
         }
     }
 
@@ -112,7 +112,7 @@ public partial class CharacterEditorHost
         UpdateWorkPlayLabels();
         _lastToolbarMainRect = default;
         _lastToolbarVisible = true;
-        _desktopToolbar.Place(_sandbox.Window.CurrentSettings.Rect, _sandbox.Shell.LayoutMode);
+        _desktopToolbar.Place(_sandbox.Window.CurrentSettings.Rect);
     }
 
     private void OnInteractionModeChanged(InputMode mode) => UpdateWorkPlayLabels();

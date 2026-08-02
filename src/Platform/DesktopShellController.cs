@@ -32,7 +32,6 @@ public partial class DesktopShellController : Node
     private double _storedZoom = 1.0;
     private double _effectiveZoom = 1.0;
     private IReadOnlyList<Rect2I>? _dynamicWorkModeHitRegions;
-    private IReadOnlyList<Rect2>? _dynamicWorkModeWorldHitRegions;
     private readonly Rect2I[] _fallbackWorkModeHitRegion = new Rect2I[1];
     private readonly List<Rect2I> _fullscreenUiHitRegions = [];
     private readonly List<Window> _ownedWindows = [];
@@ -206,12 +205,11 @@ public partial class DesktopShellController : Node
         IReadOnlyList<Rect2> worldRegions,
         IReadOnlyList<Rect2I> clientRegions)
     {
-        _dynamicWorkModeWorldHitRegions =
-            worldRegions ?? throw new ArgumentNullException(nameof(worldRegions));
-        _dynamicWorkModeHitRegions =
-            clientRegions ?? throw new ArgumentNullException(nameof(clientRegions));
+        ArgumentNullException.ThrowIfNull(worldRegions);
+        ArgumentNullException.ThrowIfNull(clientRegions);
         if (worldRegions.Count != clientRegions.Count)
             throw new ArgumentException("World and client hit-region counts must match.");
+        _dynamicWorkModeHitRegions = clientRegions;
         LastWorkModeHitRegions = clientRegions;
         ApplyMode(force: false);
     }
@@ -277,6 +275,28 @@ public partial class DesktopShellController : Node
         return LastWorkModeHitRegions;
     }
 
+    /// <summary>
+    /// Refreshes the registered settings snapshot from the live window without writing. The
+    /// quit path calls this because a plain window move emits no size signal, so the stored
+    /// compact rectangle would otherwise only ever be as fresh as the last mode toggle.
+    /// </summary>
+    public void CaptureWindowStateForSave()
+    {
+        if (_saves is null)
+            return;
+
+        Rect2I compact = Window.LayoutMode == WindowLayoutMode.Compact
+            ? Window.CaptureWindowSettings().Rect
+            : Window.CompactWindowSettings.Rect;
+        _settings = WindowInteractionSettings.WithState(
+            _settings,
+            Window.LayoutMode,
+            _mode.Current,
+            compact,
+            Window.FullscreenMonitor);
+        _saves.RegisterSettings(_settings);
+    }
+
     private void OnClientBoundsChanged(Rect2I bounds) => _pendingClientSize = bounds.Size;
 
     public void RegisterOwnedWindow(Window window)
@@ -332,13 +352,7 @@ public partial class DesktopShellController : Node
         if (_saves is null)
             return;
 
-        _settings = WindowInteractionSettings.WithState(
-            _settings,
-            Window.LayoutMode,
-            _mode.Current,
-            Window.CompactRect,
-            Window.FullscreenMonitor);
-        _saves.RegisterSettings(_settings);
+        CaptureWindowStateForSave();
         await _saves.SaveRegisteredSettingsAsync();
     }
 

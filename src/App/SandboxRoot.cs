@@ -508,6 +508,7 @@ public partial class SandboxRoot : Node2D
             // Forced: this is the last chance to write, so a mutation that landed during
             // the flush must not be abandoned.
             await Saves.FlushProgressAsync(force: true);
+            Shell.CaptureWindowStateForSave();
             await Saves.SaveSettingsAsync(Settings);
         }
         catch (Exception exception)

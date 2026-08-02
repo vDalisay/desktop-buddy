@@ -1,5 +1,4 @@
 using System;
-using DesktopBuddy.Domain.Platform;
 using Godot;
 
 namespace DesktopBuddy.Ui;
@@ -46,7 +45,7 @@ public partial class DesktopToolbarWindow : Window
         CloseRequested += Show;
     }
 
-    public void Place(Rect2I mainWindowRect, WindowLayoutMode layoutMode)
+    public void Place(Rect2I mainWindowRect)
     {
         int x = mainWindowRect.Position.X +
             Math.Max(0, (mainWindowRect.Size.X - Size.X) / 2);
