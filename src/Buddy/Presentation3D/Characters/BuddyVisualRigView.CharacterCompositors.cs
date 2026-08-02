@@ -1,10 +1,10 @@
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
+using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Presentation;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Presentation3D;
-
-using Characters;
 
 public partial class BuddyVisualRigView
 {
