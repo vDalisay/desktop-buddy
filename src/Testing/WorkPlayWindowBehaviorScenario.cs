@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Platform;
@@ -54,6 +55,7 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
             sandbox.AddChild(bridge);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
+            sandbox.Progress.Unlock(ContentIds.ToolBaseballBat);
             sandbox.Pipeline.SelectTool(ToolId.BaseballBat);
             bool selectedInWork = sandbox.Pipeline.SelectedTool == ToolId.BaseballBat &&
                 !bridge.GameplayInputEnabled &&
@@ -86,7 +88,7 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
             sandbox.Pointer.ResolvePendingInput();
             sandbox.CursorTools.PhysicsTick(1.0 / 120.0);
             bool spawnedAfterFreshMotion = sandbox.CursorTools.IsActive &&
-                sandbox.CursorTools.ActiveContentId is not null;
+                sandbox.CursorTools.ActiveContentId == ContentIds.ToolBaseballBat;
             checks.Add(new StartupCheck(
                 "play_spawns_bat_only_after_fresh_motion",
                 spawnedAfterFreshMotion,
@@ -102,6 +104,13 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                 workClearedTool,
                 $"mode={sandbox.Shell.Mode} active={sandbox.CursorTools.IsActive} selected={sandbox.Pipeline.SelectedTool}"));
 
+            bool enteredFullscreen = sandbox.Window.TrySetLayoutMode(
+                WindowLayoutMode.FullscreenOverlay,
+                0);
+
+            // Install the test toolbar after entering full-screen and assert immediately.
+            // The normal sandbox refresh owns moving buddy rectangles each physics tick; this
+            // gate is specifically proving the shell strips those six and forwards only UI.
             var worldRegions = new List<Rect2>();
             var clientRegions = new List<Rect2I>();
             for (int index = 0; index < 6; index++)
@@ -117,10 +126,6 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
             clientRegions.Add(toolbarB);
             sandbox.Shell.UpdateWorkModeHitRegions(worldRegions, clientRegions);
 
-            bool enteredFullscreen = sandbox.Window.TrySetLayoutMode(
-                WindowLayoutMode.FullscreenOverlay,
-                0);
-            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             bool toolbarOnly = enteredFullscreen &&
                 sandbox.Window.LayoutMode == WindowLayoutMode.FullscreenOverlay &&
                 !adapter.PlayModeCaptured &&
