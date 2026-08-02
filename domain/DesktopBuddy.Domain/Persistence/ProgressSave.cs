@@ -73,26 +73,11 @@ public sealed record ProgressExtensionsSave
     public Dictionary<string, string> Values { get; init; } = new(StringComparer.Ordinal);
 }
 
-/// <summary>
-/// One buddy's taste for a fun activity and how much novelty it currently has left. Both
-/// halves persist: taste is identity sampled once at creation, and interest is live state
-/// that fades with repetition and recharges with time (owner instruction 2026-07-27).
-/// </summary>
 public sealed record FunActivitySave
 {
-    /// <summary>Stable fun-activity content ID.</summary>
     public string ActivityId { get; init; } = ContentIds.FunCatch;
-
-    /// <summary>Interest cost of one engagement — this buddy's taste for the activity.</summary>
     public int Drain { get; init; } = FunPreferences.Default.CatchDrain;
-
-    /// <summary>Remaining novelty, <c>0–100</c>.</summary>
     public float Interest { get; init; } = FunInterestModel.MaximumInterest;
-
-    /// <summary>
-    /// The hysteresis latch. It must persist separately because an interest below the
-    /// comeback threshold can still be fun when it has not yet reached zero.
-    /// </summary>
     public bool Bored { get; init; }
 }
 
@@ -100,37 +85,22 @@ public sealed record FunActivitySave
 public sealed record ProgressSave
 {
     /// <summary>
-    /// <c>5</c> adds <see cref="Fullness"/>. A schema-4 save loads with an empty stomach,
-    /// which is the same state a new save starts in — the buddy is hungry after an upgrade,
-    /// never mysteriously full.
-    ///
-    /// <para><c>6</c> replaces the passive <c>upgrade.strength</c> ownership with the
-    /// selectable <c>tool.power_grab</c>: a player who bought the upgrade owns the tool
-    /// that replaced it, and nobody is granted it who had not paid.</para>
+    /// Schema 7 adds the nullable active character ID. The character document remains in
+    /// the machine-local character library; only the selected GUID is cloud progress.
     /// </summary>
-    public const int CurrentSchemaVersion = 6;
+    public const int CurrentSchemaVersion = 7;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public long Revision { get; init; }
     public long BalanceMilliCredits { get; init; }
     public List<string> UnlockedToolIds { get; init; } = [];
     public string SelectedToolId { get; init; } = ContentIds.ToolGrab;
+    public Guid? ActiveCharacterId { get; init; }
     public float Mood { get; init; }
-
-    /// <summary>
-    /// Hidden appetite, in points of the <c>200</c>-point bar (owner decision 2026-07-29).
-    /// Persisted like mood: a relaunch must not reset the buddy's stomach.
-    /// </summary>
     public float Fullness { get; init; }
     public List<string> HarmfulContentIds { get; init; } = [];
     public int ObstacleHopPropensity { get; init; } = BuddyTraits.Default.ObstacleHopPropensity;
-
-    /// <summary>
-    /// Per-activity taste and remaining novelty. Written for every activity this build
-    /// knows; an entry naming an activity a later build added is retained but inert.
-    /// </summary>
     public List<FunActivitySave> FunActivities { get; init; } = [];
-
     public ProgressStatisticsSave Statistics { get; init; } = new();
     public CumulativeTimesSave Times { get; init; } = new();
     public ProgressExtensionsSave Extensions { get; init; } = new();
@@ -138,7 +108,9 @@ public sealed record ProgressSave
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? UnknownFields { get; init; }
 
-    public static ProgressSave FromSnapshot(in ProgressSnapshot snapshot)
+    public static ProgressSave FromSnapshot(
+        in ProgressSnapshot snapshot,
+        Guid? activeCharacterId = null)
     {
         var extensions = new ProgressExtensionsSave
         {
@@ -156,6 +128,7 @@ public sealed record ProgressSave
             BalanceMilliCredits = snapshot.BalanceMilliCredits,
             UnlockedToolIds = [.. snapshot.UnlockedToolIds],
             SelectedToolId = snapshot.SelectedToolId,
+            ActiveCharacterId = activeCharacterId,
             Mood = snapshot.Mood,
             Fullness = snapshot.Fullness,
             HarmfulContentIds = [.. snapshot.HarmfulContentIds],
@@ -196,11 +169,6 @@ public sealed record ProgressSave
         };
     }
 
-    /// <summary>
-    /// Pairs each activity's taste (from the personality) with its live novelty. Interest
-    /// defaults to full for any activity the snapshot did not report, so a state composed
-    /// without fun data still writes a coherent payload.
-    /// </summary>
     private static List<FunActivitySave> BuildFunActivities(in ProgressSnapshot snapshot)
     {
         var activities = new List<FunActivitySave>(FunInterestModel.ActivityCount);
