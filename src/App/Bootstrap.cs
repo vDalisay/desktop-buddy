@@ -185,7 +185,7 @@ public partial class Bootstrap : Node
             }
         }
 
-        sandbox.Configure(new RunContext(
+        var context = new RunContext(
             progress,
             economy,
             store,
@@ -194,7 +194,14 @@ public partial class Bootstrap : Node
             progressLoad.Status,
             TimeSource: null,
             CharacterSelection: characterSelection,
-            Characters: characters));
+            Characters: characters);
+        sandbox.Configure(context);
+        var characterRuntime = new CharacterSelectionRuntime
+        {
+            Name = nameof(CharacterSelectionRuntime),
+        };
+        characterRuntime.Configure(sandbox, context);
+        sandbox.AddChild(characterRuntime);
         AddChild(sandbox);
     }
 
