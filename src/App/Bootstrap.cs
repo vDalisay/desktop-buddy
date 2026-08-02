@@ -9,6 +9,7 @@ using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
+using DesktopBuddy.Platform;
 using DesktopBuddy.Testing;
 using Godot;
 
@@ -197,12 +198,21 @@ public partial class Bootstrap : Node
             Characters: characters);
         sandbox.Shell.ConfigureRuntime(settings, saves);
         sandbox.Configure(context);
+
         var characterRuntime = new CharacterSelectionRuntime
         {
             Name = nameof(CharacterSelectionRuntime),
         };
         characterRuntime.Configure(sandbox, context);
         sandbox.AddChild(characterRuntime);
+
+        var inputBridge = new GameplayInputModeBridge
+        {
+            Name = nameof(GameplayInputModeBridge),
+        };
+        inputBridge.Configure(sandbox);
+        sandbox.AddChild(inputBridge);
+
         AddChild(sandbox);
     }
 
