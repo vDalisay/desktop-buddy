@@ -15,9 +15,10 @@ shop, paint (stub), and system commands.
 
 - `docs/PRODUCT_REQUIREMENTS.md` — FR-003.1 (money always visible in compact
   HUD), FR-003.2 (retractable panel), FR-003.4 (coalesced `+$N.N` feedback),
-  FR-011.15 (whole-credit display), FR-019 (Strength Upgrade occupies shop slot
-  but never tool selection), §9 (painting out of launch scope), §10 (paint =
-  future scope).
+  FR-011.15 (whole-credit display), FR-013 (16 selectable interactions,
+  unrestricted purchases, and confirmed Reset Progress), FR-019 (Power Grab is
+  purchased in the shop and becomes selectable), §9 (painting out of launch
+  scope), §10 (paint = future scope).
 - `docs/ROADMAP.md` — Milestone 5 "retractable tool/shop/settings panel";
   final responsive UI layouts polish lands later.
 - `docs/ARCHITECTURE.md` — §5 (stable string IDs, `IProgressStore`), §9
@@ -69,7 +70,8 @@ shop, paint (stub), and system commands.
 4. **Persistence.** Dock position (normalized to window size), orientation,
    and collapsed state persist via the M4 save architecture (`IProgressStore`,
    ARCHITECTURE §5/§12). Absent/corrupt values fall back to defaults
-   (vertical, right-center, expanded).
+   (vertical, right-center, expanded). Reset Progress preserves this dock state
+   and all other preference/settings fields.
 5. **Content phasing.** Tools/shop content binds to the M5 catalogue; until it
    exists the grid reads from a placeholder catalogue resource. Paint flyout
    ships hidden behind a debug flag (future-scope §10) — build the seam, not
@@ -92,8 +94,13 @@ New namespace `DesktopBuddy.UI.Dock` under `src/UI/Dock/`:
 - **`DockFlyoutHost`** (`PanelContainer`) — one card; swaps content sections
   (tools / shop / paint / system); bloom-in tween; `Opened`/`Closed` events.
 - **`DockToolsSection`**, **`DockShopSection`**, **`DockSystemSection`**
-  (Control scripts) — content controls. System section raises the existing
-  `TrayCommandComponent` seams; it holds no lifecycle logic itself.
+  (Control scripts) — content controls. System raises existing tray seams and a
+  Reset Progress intent; it holds no lifecycle or persistence logic.
+- **`ResetProgressDialog`** — modal confirmation view only. It lists erased and
+  preserved categories, defaults focus to Cancel, maps Escape/window-close to
+  Cancel, and produces a typed confirmation token only from the destructive
+  button. The application reset service owns candidate construction, validation,
+  atomic persistence, and committed-state publication.
 - **`DockTheme.tres`** — Theme resource with the StyleBoxFlats, colors, and
   font sizes from the design language; all controls read from theme, no
   per-node style overrides.
@@ -171,20 +178,44 @@ window then hidden; collapsed dock still shows balance.
 
 ### Task 6 — Tools + shop sections (M5 catalogue binding)
 
-`DockToolsSection` grid bound to catalogue: owned tools selectable (selection
-ring + check badge), unowned greyed with lock + wobble; selection raises the
-tool-change seam the M5 tool system defines. `DockShopSection` rows with
-price buttons; purchase flow calls the M5 purchase service; owned rows swap
-price button for `OWNED` chip; Strength Upgrade appears in shop but never in
-the tools grid (FR-019). Until the catalogue lands, both sections read a
-placeholder `DockCatalogueStub` resource so Tasks 1–5 are not blocked.
+`DockToolsSection` binds to `CataloguePolicy.SelectableEntries`: owned tools
+are selectable (selection ring + check badge); unowned tools remain absent or
+locked according to the accepted catalogue presentation. `DockShopSection`
+binds to all visible unowned purchasables, uses the authoritative purchase
+service, and swaps a successful row to `OWNED`.
 
-**Accept:** unit — FR-019 filtering (passive upgrades excluded from tools
-grid); insufficient-funds purchase rejected with feedback and no state
-change; purchase marks owned, unlocks tool cell, and persists. Headless —
-buy → tool appears unlocked after relaunch.
+Power Grab appears in the shop between Fire Sprayer and Repair Kit. After its
+one-time purchase it becomes a normal selectable inventory cell; Normal Grab
+remains selectable. The dock must not carry a passive-upgrade exception or a
+hand-maintained tool list. Catalogue display order is not a prerequisite chain:
+a later visible entry can be bought while earlier entries remain unowned.
 
-### Task 7 — Paint stub (flagged off)
+**Accept:** exact four starting/twelve purchasable grid; insufficient funds and
+duplicate purchase are non-mutating; save/skip purchase works; Power Grab unlocks
+a selectable cell; Normal/Power switching persists and safely cancels an active
+grab; relaunch derives the same inventory from catalogue plus ownership.
+
+### Task 7 — Reset Progress confirmation
+
+Add Reset Progress to the System section. Selecting it opens
+`ResetProgressDialog`; the first action never mutates progress. Copy names the
+erased categories: money, purchased tools, mood/buddy memory and traits, gameplay
+statistics, achievement progress, and play timers. It also states that settings,
+window/dock preferences, and already-unlocked platform achievements are kept.
+
+Cancel has initial focus. Escape, outside-dismiss, and window close equal Cancel.
+Only the explicit destructive confirmation calls the typed reset service. Disable
+repeat activation while the transaction is pending; on success refresh presenters
+from committed state and close the dialog; on failure retain the dialog/state and
+show a recoverable error.
+
+**Accept:** confirmed reset produces first-run gameplay with Normal Grab selected;
+all language/audio/control/accessibility/comfort/presentation/window/zoom/dock
+preferences compare equal; platform achievements receive no revoke call; cancel,
+dismiss, missing/stale confirmation, validation failure, and injected save failure
+leave complete in-memory and persisted snapshots equal to before.
+
+### Task 8 — Paint stub (flagged off)
 
 Paint button hidden unless a debug/config flag enables it. Flyout renders
 swatches + brush/fill/wash selector but emits a no-op `PaintIntent` event.
@@ -195,10 +226,12 @@ flyout opens and intent events fire; nothing else changes.
 
 ## Sequencing and ownership
 
-Tasks 1–5 are buildable now against existing M4-era code (only the
-placeholder catalogue is stubbed). Task 6 blocks on the M5 catalogue/purchase
-services; build it in the M5 milestone branch. Task 7 anytime after Task 4.
-Recommended order: 1 → 2 → 3 → 4 → 5, then 6/7 with M5.
+Tasks 1–5 are buildable against existing shell/save seams after the dock's clean-room
+design gate. Task 6 consumes the M5 catalogue/purchase/selection services. Task 7
+consumes the Task 13 transactional reset service and must not implement its own
+mutation. Task 8 follows Task 4 and remains flagged off.
+
+Recommended order: 1 → 2 → 3 → 4 → 5 → 6 → 7; Task 8 may follow Task 4.
 
 ## Out of scope
 
