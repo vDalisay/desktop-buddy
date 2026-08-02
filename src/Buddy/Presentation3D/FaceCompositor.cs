@@ -86,6 +86,12 @@ public partial class FaceCompositor : Node
         Evaluate();
     }
 
+    public override void _Process(double delta)
+    {
+        if (IsInitialized)
+            Evaluate();
+    }
+
     public override void _ExitTree()
     {
         if (IsInitialized && GodotObject.IsInstanceValid(Buddy))
