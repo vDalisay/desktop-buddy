@@ -81,8 +81,9 @@ public sealed class CharacterCompilerTests
         {
             Assert.True(catalog.TryGetSlot(id, out CharacterFeatureSlot slot));
             Assert.Contains(id, catalog.GetIds(slot));
-            Assert.Single(Enum.GetValues<CharacterFeatureSlot>().Where(candidate =>
-                catalog.Contains(candidate, id)));
+            Assert.Single(
+                Enum.GetValues<CharacterFeatureSlot>(),
+                candidate => catalog.Contains(candidate, id));
         }
     }
 
