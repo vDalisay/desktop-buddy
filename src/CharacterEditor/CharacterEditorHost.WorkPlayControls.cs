@@ -1,42 +1,52 @@
 using System;
-using System.Collections.Generic;
 using DesktopBuddy.Domain.Platform;
+using DesktopBuddy.Ui;
 using Godot;
 
 namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
-/// Extends the existing horizontal dock and Settings window with the explicit interaction
-/// toggle and compact/full-screen overlay choice. It intentionally reuses the production dock
-/// surface rather than introducing a second settings architecture.
+/// Extends the approved dock/settings surface with explicit interaction and window-layout
+/// controls. The horizontal bar is moved into its own native window so the full-screen main
+/// overlay can pass every mouse event through in Work mode without losing its recovery toggle.
 /// </summary>
 public partial class CharacterEditorHost
 {
     private bool _workPlayControlsComposed;
-    private Rect2 _lastModeButtonRect;
-    private Rect2 _lastSettingsButtonRect;
+    private DesktopToolbarWindow _desktopToolbar = null!;
+    private Rect2I _lastToolbarMainRect;
+    private bool _lastToolbarVisible;
 
     public Button InteractionModeButton { get; private set; } = null!;
     public Button WindowLayoutButton { get; private set; } = null!;
+    public DesktopToolbarWindow DesktopToolbar => _desktopToolbar;
 
     public override void _Process(double delta)
     {
         if (!_workPlayControlsComposed && IsInitialized)
             ComposeWorkPlayControls();
 
-        if (!_workPlayControlsComposed || IsEditorOpen ||
-            !GodotObject.IsInstanceValid(InteractionModeButton))
-        {
+        if (!_workPlayControlsComposed || !GodotObject.IsInstanceValid(_desktopToolbar))
             return;
+
+        bool wantedVisible = !IsEditorOpen && _sandbox.Window.Adapter.IsWindowVisible;
+        if (_lastToolbarVisible != wantedVisible)
+        {
+            _lastToolbarVisible = wantedVisible;
+            if (wantedVisible)
+                _desktopToolbar.Show();
+            else
+                _desktopToolbar.Hide();
         }
 
-        Rect2 modeRect = InteractionModeButton.GetGlobalRect();
-        Rect2 settingsRect = SettingsButton.GetGlobalRect();
-        if (modeRect != _lastModeButtonRect || settingsRect != _lastSettingsButtonRect)
+        if (!wantedVisible)
+            return;
+
+        Rect2I mainRect = _sandbox.Window.CurrentSettings.Rect;
+        if (mainRect != _lastToolbarMainRect)
         {
-            _lastModeButtonRect = modeRect;
-            _lastSettingsButtonRect = settingsRect;
-            RefreshWorkPlayDockHitRegions();
+            _lastToolbarMainRect = mainRect;
+            _desktopToolbar.Place(mainRect, _sandbox.Shell.LayoutMode);
         }
     }
 
@@ -49,10 +59,8 @@ public partial class CharacterEditorHost
             return;
         }
 
-        // The host's full-rect Control is a layout parent, not an input surface. Leaving the
-        // Godot default MouseFilter.Stop here consumes every visually empty transparent click
-        // before Compact Work can activate Play and before Play can route tools. Actual dock,
-        // editor and prompt controls keep their own Stop filters.
+        // The full-rect Control is layout only. Actual editor/prompt Controls still stop
+        // input, while transparent empty space reaches Compact Work activation or gameplay.
         Control? uiRoot = GetNodeOrNull<Control>("CharacterEditorUiRoot");
         if (GodotObject.IsInstanceValid(uiRoot))
             uiRoot!.MouseFilter = Control.MouseFilterEnum.Ignore;
@@ -63,7 +71,6 @@ public partial class CharacterEditorHost
             FocusMode = Control.FocusModeEnum.None,
         };
         InteractionModeButton.Pressed += _sandbox.Shell.ToggleInteractionMode;
-        SettingsButton.GetParent().AddChild(InteractionModeButton);
 
         WindowLayoutButton = _settingsPanel.AddAction(
             "Window Layout",
@@ -80,12 +87,32 @@ public partial class CharacterEditorHost
             });
         WindowLayoutButton.Name = "WindowLayoutToggleButton";
 
+        _desktopToolbar = new DesktopToolbarWindow();
+        _desktopToolbar.Configure();
+        AddChild(_desktopToolbar);
+        _sandbox.Shell.RegisterOwnedWindow(_desktopToolbar);
+
+        Control oldBar = SettingsButton.GetParent<Control>();
+        Control? oldDockContainer = oldBar.GetParentOrNull<Control>();
+        ShopButton.Reparent(_desktopToolbar.Bar);
+        ToolsButton.Reparent(_desktopToolbar.Bar);
+        SettingsButton.Reparent(_desktopToolbar.Bar);
+        _desktopToolbar.Bar.AddChild(InteractionModeButton);
+        if (GodotObject.IsInstanceValid(oldDockContainer))
+            oldDockContainer!.Visible = false;
+
+        // No controls remain in the main overlay. In full-screen Work it can therefore be
+        // entirely mouse-passthrough while this separate HWND stays interactive.
+        _sandbox.SetOverlayWorkModeHitRegions(Array.Empty<Rect2>());
+
         _sandbox.Shell.InputModeChanged += OnInteractionModeChanged;
         _sandbox.Shell.WindowLayoutChanged += OnWindowLayoutChanged;
         TreeExiting += DisconnectWorkPlayControls;
         _workPlayControlsComposed = true;
         UpdateWorkPlayLabels();
-        Callable.From(RefreshWorkPlayDockHitRegions).CallDeferred();
+        _lastToolbarMainRect = default;
+        _lastToolbarVisible = true;
+        _desktopToolbar.Place(_sandbox.Window.CurrentSettings.Rect, _sandbox.Shell.LayoutMode);
     }
 
     private void OnInteractionModeChanged(InputMode mode) => UpdateWorkPlayLabels();
@@ -93,7 +120,7 @@ public partial class CharacterEditorHost
     private void OnWindowLayoutChanged(WindowLayoutMode mode)
     {
         UpdateWorkPlayLabels();
-        Callable.From(RefreshWorkPlayDockHitRegions).CallDeferred();
+        _lastToolbarMainRect = default;
     }
 
     private void UpdateWorkPlayLabels()
@@ -116,26 +143,6 @@ public partial class CharacterEditorHost
             : fullscreen
                 ? "Restore the saved compact buddy window."
                 : "Cover the monitor transparently; Work passes empty-area clicks through.";
-    }
-
-    /// <summary>
-    /// Replaces the legacy three-button overlay list with all four in-window controls. This
-    /// is essential in full-screen Work: any omitted button is HTTRANSPARENT and cannot be
-    /// clicked to return to Play.
-    /// </summary>
-    private void RefreshWorkPlayDockHitRegions()
-    {
-        if (!_workPlayControlsComposed || IsEditorOpen)
-            return;
-
-        var regions = new List<Rect2>
-        {
-            ShopButton.GetGlobalRect(),
-            ToolsButton.GetGlobalRect(),
-            SettingsButton.GetGlobalRect(),
-            InteractionModeButton.GetGlobalRect(),
-        };
-        _sandbox.SetOverlayWorkModeHitRegions(regions);
     }
 
     private void DisconnectWorkPlayControls()
