@@ -1,0 +1,39 @@
+name: A3 Focused Verification
+
+on:
+  push:
+    branches:
+      - m5-5-a3-renderers
+  pull_request:
+
+env:
+  GODOT_VERSION: 4.6.1-stable
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build
+        run: dotnet build DesktopBuddy.sln -c Debug
+      - name: Download Godot
+        run: |
+          set -euo pipefail
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          curl -fL --retry 3 -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          unzip -q godot.zip
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+      - name: Import
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
+      - name: Renderer coverage
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=expression_renderer_coverage --seed=1
+      - name: Existing face composition
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=face_composition --seed=1
