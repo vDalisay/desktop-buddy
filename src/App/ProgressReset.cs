@@ -37,6 +37,7 @@ public static class ProgressReset
     {
         ArgumentNullException.ThrowIfNull(progress);
         ArgumentNullException.ThrowIfNull(saves);
+        characterSelection ??= saves.CharacterSelection;
 
         ProgressSnapshot before = progress.Snapshot();
         CharacterSelectionSnapshot? selectionBefore = characterSelection?.Snapshot();
