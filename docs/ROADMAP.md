@@ -89,7 +89,12 @@ Exit criteria:
 
 ## Milestone 5 — Shop and Full Tool Catalogue
 
-Implementation status (2026-07-27): the first ordered slice, **Baseball**, is in progress.
+Implementation status (2026-08-02): **complete and owner-accepted.** All twelve ordered
+slices plus Power Grab are implemented, the catalogue is the confirmed sixteen entries, the
+economy is calibrated (Task 12), and Task 13 landed Reset Progress, the composition audit,
+and the `m5_shop_progression` journey. The dock moved out of scope on the same day.
+
+Historical status (2026-07-27): the first ordered slice, **Baseball**, was in progress.
 The atomic permanent-purchase boundary, locked selection rule, immediate purchase save,
 shared pullback launcher, typed provisional Baseball/launcher tuning, and real-input
 scenario are implemented. In the development laboratory, key `5` only spawns/replaces one
@@ -114,9 +119,11 @@ Deliver tools in the confirmed progression order:
 11. Shotgun
 12. Drink
 
-Also deliver the retractable tool/shop/settings panel, pullback trajectory launcher,
-cursor-direction guns, object budget, permanent purchases, unrestricted save-for-preference
-shopping, and confirmed full-gameplay reset.
+Also deliver the pullback trajectory launcher, cursor-direction guns, object budget,
+permanent purchases, unrestricted save-for-preference shopping, and the confirmed
+full-gameplay reset service. The retractable tool/shop/settings panel was **moved out of
+this milestone** by owner decision 2026-08-02 and is tracked by
+`docs/UI_FLOATING_DOCK_PLAN.md`; it carries the reset's player-facing button with it.
 
 Power Grab supersedes the unimplemented passive Strength Upgrade concept. Milestone 5 must
 deliver it as a separately selectable, one-time permanent tool while preserving Normal Grab:
@@ -135,8 +142,22 @@ deliver it as a separately selectable, one-time permanent tool while preserving 
 
 Exit criteria:
 
-- Every tool has automated behavior/error tests and clean-room presentation.
-- Economy simulation meets the 3-to-209-minute completionist target schedule, unrestricted skipping strategies, the casual 120-active/89-background benchmark, and the active/passive ratio.
+- [x] Every tool has automated behavior/error tests and clean-room presentation. Sixteen
+  interactions, twelve of them purchasable; each has its own scenario and `m5_*` journey, and
+  `m5_shop_progression` walks one save through the whole catalogue.
+- [x] Economy simulation meets the 3-to-209-minute completionist target schedule,
+  unrestricted skipping strategies, the casual 120-active/89-background benchmark, and the
+  active/passive ratio (Task 12, `economy_calibration`, five seeds × seven strategies).
+- [x] Owner gates: Repair Kit feel, Power Grab feel, the economy pacing report, and the
+  catalogue — all accepted 2026-08-02 (`DECISIONS.md`, "M5 owner gates accepted").
+- [x] External gate: the Windows 10/11 standalone matrix (`TEST_PLAN.md` §5), accepted by
+  owner attestation 2026-08-02, minus the reset row.
+
+**Milestone 5 is COMPLETE (owner-accepted 2026-08-02).** The FR-003.2 retractable
+tool/shop/settings dock was moved out of the exit criteria by owner decision the same day
+and is the next scheduled work item; until it ships, Reset Progress has no player-facing
+route, which is an accepted known gap. See `docs/UI_FLOATING_DOCK_PLAN.md` — its clean-room
+design direction still needs owner approval before implementation starts.
 
 ## Milestone 5.5 — Character Editor (Phase A)
 

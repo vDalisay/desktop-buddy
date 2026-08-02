@@ -17,6 +17,8 @@ public sealed class BootSmokeScenario : IScenario
 {
     public string Id => "boot_smoke";
 
+    private const string PowerGrabProfilePath = "res://data/buddy/power_grab_profile.tres";
+
     public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
     {
         // The shipped catalogue is a startup invariant like the physics tick and the layer
@@ -72,6 +74,37 @@ public sealed class BootSmokeScenario : IScenario
             acceptedBatShopVisible,
             $"visible={acceptedBatShopVisible} shop={shopEntries}"));
 
+        // 13B-4: every composition root grabs with the same authored Power Grab profile. The
+        // scene files are the authority for what each root is wired to, so they are what is
+        // compared — a fourth root pointing at its own copy is the drift this catches.
+        string[] roots =
+        [
+            "res://scenes/sandbox.tscn",
+            "res://scenes/buddy_lab.tscn",
+            "res://scenes/dual_profile_lab.tscn",
+        ];
+        var missingProfile = new List<string>();
+        foreach (string scene in roots)
+        {
+            if (!Godot.FileAccess.FileExists(scene))
+            {
+                missingProfile.Add($"{scene} (missing)");
+                continue;
+            }
+
+            using Godot.FileAccess file = Godot.FileAccess.Open(
+                scene, Godot.FileAccess.ModeFlags.Read);
+            if (!file.GetAsText().Contains(PowerGrabProfilePath))
+                missingProfile.Add(scene);
+        }
+
+        checks.Add(new StartupCheck(
+            "every_composition_root_shares_one_power_grab_profile",
+            missingProfile.Count == 0,
+            missingProfile.Count == 0
+                ? PowerGrabProfilePath
+                : $"not wired to {PowerGrabProfilePath}: {string.Join("; ", missingProfile)}"));
+
         var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
         bool loaded = packed is not null;
         checks.Add(new StartupCheck("sandbox_scene_loadable", loaded, "res://scenes/sandbox.tscn"));
@@ -89,6 +122,16 @@ public sealed class BootSmokeScenario : IScenario
             checks.Add(new StartupCheck("sandbox_composed", composed,
                 $"{instance.GetType().Name} insideTree={instance.IsInsideTree()}"));
 
+            // The catalogue is loaded once and shared: the shop a scene sells from is the
+            // same object the startup validator just checked, not a second parse of it.
+            bool sameCatalogue = instance is SandboxRoot root &&
+                ReferenceEquals(root.Economy.Catalogue, catalogue);
+            checks.Add(new StartupCheck(
+                "the_sandbox_sells_from_the_validated_catalogue",
+                sameCatalogue,
+                $"shared={sameCatalogue}"));
+            composed &= sameCatalogue;
+
             instance.QueueFree();
         }
         else
@@ -96,7 +139,8 @@ public sealed class BootSmokeScenario : IScenario
             checks.Add(new StartupCheck("sandbox_composed", false, "scene not loaded"));
         }
 
-        bool passed = report.Ok && acceptedBatShopVisible && loaded && composed;
+        bool passed = report.Ok && acceptedBatShopVisible && loaded && composed &&
+            catalogueErrors.Count == 0 && missingProfile.Count == 0;
         return new ScenarioResult(passed, checks, messages);
     }
 }

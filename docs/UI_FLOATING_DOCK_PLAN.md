@@ -150,19 +150,24 @@ LastWorkModeHitRegions` — regions include dock rect; drag updates them;
 collapse shrinks them; opening a flyout adds its rect; closing removes it;
 buddy region still present throughout.
 
-### Task 4 — Flyout host + system section
+### Task 4 — Flyout host + Settings menu
+
+**Owner decision 2026-08-02:** the dock carries a dedicated **Settings** button, and its
+menu is the settings surface FR-003.2 requires. Reset Progress is a button inside it
+(Task 7) and is reachable nowhere else — no hotkey, no tray item, no top-level dock button.
 
 `DockFlyoutHost` with bloom tween, single-open invariant, outside-click and
 Escape close, edge-flip placement (opens on the free side of the dock,
-mirroring the mockup's `reposition()` logic). `DockSystemSection` rows: Sound
+mirroring the mockup's `reposition()` logic). `DockSettingsSection` rows: Sound
 toggle (binds existing audio bus setting), Zoom toggle (existing shell zoom),
 Hide to tray → `TrayCommandComponent.RequestHideShow()`, Save & quit →
-`RequestSaveAndQuit()`.
+`RequestSaveAndQuit()`, and Reset Progress last, visually separated as destructive.
 
 **Accept:** headless — open/close cycle; only one flyout open; flyout rect
-tracked in hit regions (Task 3 scenario extended); system rows raise the same
+tracked in hit regions (Task 3 scenario extended); settings rows raise the same
 events the hotkeys raise (assert via `HideShowRequestCount` /
-`SaveAndQuitRequestCount`).
+`SaveAndQuitRequestCount`); the Reset Progress row only *arms*
+(`ResetProgressRequestCount == 1`, `ResetProgressConfirmCount == 0`, save unchanged).
 
 ### Task 5 — Money migration
 
@@ -197,7 +202,15 @@ grab; relaunch derives the same inventory from catalogue plus ownership.
 
 ### Task 7 — Reset Progress confirmation
 
-Add Reset Progress to the System section. Selecting it opens
+**The seam already exists (M5 Task 13A).** `TrayCommandComponent.RequestResetProgress()`
+arms a reset and raises `ResetProgressRequested` — this is the dialog's cue, and it mutates
+nothing. `ConfirmResetProgress()` within the arming window raises `ResetProgressConfirmed`,
+which the composition root turns into `ProgressReset.ResetAsync`; `CancelResetProgress()`,
+a lapsed window, or any other tray command disarms it. The dialog binds to those three
+calls and must not implement a second mutation path or its own reset service.
+
+Add Reset Progress to the Settings menu built in Task 4 — the settings button on the dock
+is the only route to it. Selecting it opens
 `ResetProgressDialog`; the first action never mutates progress. Copy names the
 erased categories: money, purchased tools, mood/buddy memory and traits, gameplay
 statistics, achievement progress, and play timers. It also states that settings,

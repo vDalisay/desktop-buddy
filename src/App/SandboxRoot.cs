@@ -266,6 +266,7 @@ public partial class SandboxRoot : Node2D
         TrayCommands = new TrayCommandComponent { Name = nameof(TrayCommandComponent) };
         TrayCommands.HideShowToggled += OnTrayHideShowToggled;
         TrayCommands.SaveAndQuitRequested += RequestSaveAndQuit;
+        TrayCommands.ResetProgressConfirmed += OnResetProgressConfirmed;
         AddChild(TrayCommands);
 
         // §24 power/session stimuli reach the lifecycle clock through the platform
@@ -399,6 +400,7 @@ public partial class SandboxRoot : Node2D
         {
             TrayCommands.HideShowToggled -= OnTrayHideShowToggled;
             TrayCommands.SaveAndQuitRequested -= RequestSaveAndQuit;
+            TrayCommands.ResetProgressConfirmed -= OnResetProgressConfirmed;
         }
         if (DisplayServer.GetName() != "headless" && IsInsideTree())
             GetWindow().CloseRequested -= OnCloseRequested;
@@ -457,6 +459,25 @@ public partial class SandboxRoot : Node2D
     public void SetHiddenToTray(bool hidden) => Lifecycle.SetHiddenToTray(hidden);
 
     private void OnTrayHideShowToggled() => SetHiddenToTray(!Lifecycle.IsHiddenToTray);
+
+    /// <summary>
+    /// The confirmed reset. The state is rewritten in place, so nothing is re-bound here; the
+    /// live pose, grab, and held object are dropped through the same seam a resumed session
+    /// uses, because a fresh save must not resume mid-interaction.
+    /// </summary>
+    private async void OnResetProgressConfirmed()
+    {
+        bool reset = await ProgressReset.ResetAsync(Progress, Saves, Economy);
+        if (!reset)
+        {
+            Log.Error("Persistence", "Reset Progress failed to write; progress is unchanged.");
+            return;
+        }
+
+        OnSessionResumed();
+        Buddy.Recovery.ResetForSessionResume();
+        Log.Info("Persistence", "Progress reset to a first run; settings untouched.");
+    }
 
     private void OnSystemSuspending() => Lifecycle.NotifySuspended();
 

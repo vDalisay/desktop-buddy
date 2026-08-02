@@ -4,14 +4,17 @@ Fast orientation for the next agent. Authoritative specs live in `docs/`
 (`DECISIONS.md` wins conflicts). This file is a *status snapshot*, not a spec —
 when it disagrees with a green test run, trust the run and update this file.
 
-Last updated: 2026-08-02, after M5 Task 12 (economy calibration). Tasks 5-9 are
-owner-accepted; Task 10 (Repair Kit) and Task 11 (Power Grab) are code-complete and
-wait only on their owner feel gates. All twelve purchasables are now `Visible = true`,
+Last updated: 2026-08-02, after M5 Task 13 (reset, composition audit, M5 exit). Tasks 5-9
+are owner-accepted; Task 10 (Repair Kit) and Task 11 (Power Grab) are code-complete and
+wait only on their owner feel gates. All twelve purchasables are `Visible = true`,
 including the Repair Kit — Task 12 could not price a schedule it was unable to buy
-(`DECISIONS.md`, "Catalogue visibility (11D-2)"). **Task 12 is done and its whole
-catalogue is re-priced:** every completionist median is inside ±15% of the 209-minute
-schedule and all six proof obligations pass (`economy_calibration`, quick-suite step 40).
-Task 13 (Reset Progress, integration, M5 exit) is next.
+(`DECISIONS.md`, "Catalogue visibility (11D-2)"). Task 12 re-priced the whole catalogue:
+every completionist median is inside ±15% of the 209-minute schedule and all six proof
+obligations pass (`economy_calibration`, quick-suite step 40). **Task 13 is done:** Reset
+Progress (`ProgressReset` + the armed `TrayCommandComponent` seam), the composition audit,
+and the `m5_shop_progression` journey (quick-suite step 41). What remains of M5 is not
+code — the two owner feel gates, the Windows 10/11 run, and the dock (with the reset
+confirmation modal) in `docs/UI_FLOATING_DOCK_PLAN.md`.
 **Start here: `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`** for current M5 work;
 `docs/M4_PERSONALITY_CARE_PERSISTENCE_PLAN.md` records the completed,
 owner-accepted M4 implementation.
@@ -34,8 +37,12 @@ owner-accepted M4 implementation.
 - **Milestone 4 (Personality, care, persistence): complete; owner accepted
   2026-07-27.** Post-acceptance persistence/lifecycle corrections landed
   2026-07-29.
-- **Milestone 5 (Shop and full tool catalogue): in progress.** The Baseball
-  slice is present; the remaining ordered work is in the M5 plan.
+- **Milestone 5 (Shop and full tool catalogue): complete; owner accepted
+  2026-08-02.** All five exit gates signed off. The FR-003.2 dock was moved out of
+  M5 the same day and is the next scheduled work item, pending its clean-room
+  design approval; until it ships, Reset Progress has no player-facing route —
+  the service and its armed tray seam exist and are tested, nothing in the UI
+  reaches them. This is an accepted known gap, not a defect.
 
 ### Known red
 
@@ -63,11 +70,11 @@ deadlocks headless runs. Wrap each headless run in a hard timeout.
 
 | Layer | Command | Status |
 | --- | --- | --- |
-| Domain unit | `dotnet test` | 1114/1114 green |
+| Domain unit | `dotnet test` | 1150/1150 green |
 | Build | `dotnet build DesktopBuddy.sln -c Debug` | 0 warn / 0 err |
 | Scenarios (57) | `<godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>` | Current targeted lifecycle scenarios green; the latest full both-presentation catalogue result remains the recorded M4/M5 baseline |
-| Journeys (21) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix green |
-| Quick suite | `tools\quick_validate.bat` | 37/37 |
+| Journeys (22) | `<godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --artifacts=<dir>` | `care_persistence` real-input two-process journey green; latest full matrix green |
+| Quick suite | `tools\quick_validate.bat` | 41/41 |
 
 Scenario ids live in `src/Testing/ScenarioCatalog.cs`; journey ids are the
 filenames in `tests/journeys/`. Every scenario and journey is also rerun under
@@ -148,7 +155,17 @@ Gotchas that WILL fail a run if you forget them:
 
 ## 5. Suggested next step
 
-**Milestone 5 catalogue work.** Follow
+**Milestone 5 is closed (owner-accepted 2026-08-02).** Two candidates are next: the
+dock (`docs/UI_FLOATING_DOCK_PLAN.md`, blocked on its clean-room design approval) and
+Milestone 5.5 (Character Editor Phase A,
+`docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`) — the ordering between them is the owner's
+call. Task 13 landed Reset Progress — the state is rewritten in
+place through `BuddyProgressState.Adopt`, so nothing re-binds and a failed write rolls
+back exactly; the trigger is `TrayCommandComponent.RequestResetProgress()` +
+`ConfirmResetProgress()`, and the dock's Task 7 dialog binds to that seam rather than
+mutating anything itself.
+
+Historical M5 detail follows. Follow
 `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`. Task 0 (catalogue spine) is done: the
 Resource-authored catalogue, engine-free `ToolCatalogue`/`CataloguePolicy` rules,
 and authoritative `EconomyService.Purchase(contentId)` boundary. The current

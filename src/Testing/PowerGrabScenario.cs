@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
@@ -26,6 +27,7 @@ public sealed class PowerGrabScenario : IScenario
     private const int DragTicks = 90;
     private const float DragReach = 96.0f;
     private const int SoakTicks = 10_000;
+    private const int AllocationProbeTicks = 240;
     private const float LooseObjectLinearDamp = 1.5f;
     private const float LooseObjectAngularDamp = 2.0f;
 
@@ -153,6 +155,31 @@ public sealed class PowerGrabScenario : IScenario
             $"non_finite={soak.SawNonFinite}"));
 
         lab.Grab.Release(countsAsThrow: false);
+
+        // 13D-2: the Power path is the Normal path times four floats. Driven directly, with
+        // no awaits in the measured window, so what is measured is the tether tick and not
+        // the test's own async machinery.
+        PuppetPartBody probeHand = lab.Buddy.Rig.LeftHand;
+        long normalBytes = DriveAllocatedBytes(lab.Grab, probeHand, null);
+        long powerBytes = DriveAllocatedBytes(lab.Grab, probeHand, power);
+        checks.Add(new StartupCheck(
+            "the_power_path_allocates_nothing_per_tick",
+            powerBytes == 0 && normalBytes == 0,
+            $"normal={normalBytes}B power={powerBytes}B over {AllocationProbeTicks} ticks " +
+            "(grab, drag, and release included)"));
+
+        // ...and a 10 000-tick hold plus teardown leaves nothing of the rig behind.
+        int bodiesBefore = CountBodies(lab);
+        lab.Grab.TryGrab(probeHand, probeHand.GlobalPosition, power);
+        for (int tick = 0; tick < 120; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        lab.Grab.Release(countsAsThrow: false);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        int bodiesAfter = CountBodies(lab);
+        checks.Add(new StartupCheck(
+            "a_long_power_hold_orphans_no_bodies",
+            bodiesAfter == bodiesBefore && !lab.Grab.IsGrabbing,
+            $"bodies={bodiesBefore}->{bodiesAfter} holding={lab.Grab.IsGrabbing}"));
 
         messages.Add(
             $"normal_extension={normal.MedianExtension:F2}px " +
@@ -293,6 +320,46 @@ public sealed class PowerGrabScenario : IScenario
             lab.Grab.IsGrabbing,
             insideRoom,
             sawNonFinite);
+    }
+
+    /// <summary>
+    /// Grabs, drags, and releases <paramref name="ticks"/> times without yielding, and
+    /// reports the managed bytes that cost. One warm-up pass runs first so JIT and the
+    /// tether's one-time limiter construction are not counted as per-tick allocation.
+    /// </summary>
+    private static long DriveAllocatedBytes(
+        GrabTetherController grab,
+        PuppetPartBody target,
+        PowerGrabProfile? power)
+    {
+        const double Delta = 1.0 / 120.0;
+        Vector2 cursor = target.GlobalPosition + new Vector2(24.0f, 0.0f);
+        for (int warmUp = 0; warmUp < 2; warmUp++)
+        {
+            grab.TryGrab(target, target.GlobalPosition, power);
+            grab.MoveCursor(cursor);
+            grab.PhysicsTick(Delta);
+            grab.Release(countsAsThrow: false);
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int tick = 0; tick < AllocationProbeTicks; tick++)
+        {
+            grab.TryGrab(target, target.GlobalPosition, power);
+            grab.MoveCursor(cursor);
+            grab.PhysicsTick(Delta);
+            grab.Release(countsAsThrow: false);
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - before;
+    }
+
+    private static int CountBodies(Node root)
+    {
+        int bodies = root is RigidBody2D ? 1 : 0;
+        foreach (Node child in root.GetChildren())
+            bodies += CountBodies(child);
+        return bodies;
     }
 
     private static bool IsFinite(Vector2 value) =>

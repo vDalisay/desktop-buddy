@@ -1866,6 +1866,133 @@ session inherits this; it is a property of the 209-minute schedule, not of the D
   memory and per-tool statistics keys, never the payout, so one trace serves every strategy
   regardless of what that strategy owns.
 
+## M5 owner gates accepted (2026-08-02)
+
+The owner accepted four of the five M5 exit gates on 2026-08-02:
+
+| Gate | Evidence accepted |
+|---|---|
+| Repair Kit feel (Task 10) | ACCEPTED |
+| Power Grab feel (Task 11) | ACCEPTED — the five `power_grab_profile.tres` values are now final, not provisional |
+| Economy pacing report (Task 12) | ACCEPTED — `.artifacts/quick/economy_calibration/economy_benchmark.{json,md}`, five seeds × seven strategies, fingerprint `928231c3ec21e973` |
+| Catalogue (Task 13) | ACCEPTED — sixteen interactions, twelve purchasable, final calibrated prices |
+| Windows 10/11 standalone matrix | ACCEPTED by owner attestation — signed off without the reset row, which is unreachable until the dock ships (see below). No matrix artifact was produced in the implementing session; this is the owner's own verification, recorded on their statement. |
+
+**Milestone 5 is closed on these five gates.**
+
+### The FR-003.2 dock does not block M5 exit (owner decision, 2026-08-02)
+
+The retractable tool/shop/settings panel moves **out of the M5 exit criteria** and becomes
+the next scheduled work item after M5, ahead of or alongside Milestone 5.5 (the owner's
+ordering call). Rationale: every service the dock consumes — catalogue, purchase, selection,
+reset — is implemented and tested; the dock is the presentation of them, and it is still in
+design approval (its clean-room direction is unapproved, which would otherwise block M5 on a
+design gate rather than on gameplay).
+
+Consequences to hold onto:
+
+- **Reset Progress has no player-facing route in the shipped build until the dock lands.**
+  The service and the armed tray seam exist and are tested; nothing in the UI reaches them.
+  This is a known, accepted gap at M5 exit, not an oversight.
+- FR-003.2 remains a requirement in full; it is unimplemented and now tracked by the dock
+  plan's own milestone.
+
+### Reset Progress lives in the dock's Settings menu (owner decision, 2026-08-02)
+
+The dock carries a **Settings** button; the settings menu it opens carries the **Reset
+Progress** button. That is the only route to a reset. Consequences:
+
+- **No debug hotkey and no tray menu item.** The `TrayCommandComponent` arm/confirm seam
+  stays the mechanism, but the *player-facing trigger* is the settings button alone. Nothing
+  reaches the reset in a build without a dock.
+- **The Windows 10/11 gate is signed off without the reset row**, because that row is
+  unreachable until the dock ships. Reset's Windows verification moves to the dock's own
+  acceptance.
+- This also discharges the M5 plan's standing note that the dock plan must be revised to
+  include the required Settings surface.
+
+## M5 Task 13 — Reset, composition audit, and M5 exit (2026-08-02)
+
+Implemented from `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §5. Delegated implementation calls:
+
+### Reset rewrites the state in place instead of swapping the reference
+
+The plan's 13A-1 said to build a fresh `BuddyProgressState` and re-point every holder of the
+old one at it. Seven live objects hold that reference (`EconomyService`, `SaveCoordinator`,
+`InteractionDamageComponent`, `LifecycleCoordinator`, `BehaviorArbiter`,
+`ObjectInteractionComponent`, and the root itself), and a re-pointing pass has to be correct
+in all seven forever — a re-bind that is forgotten shows up as a presenter quietly reading a
+dead save.
+
+`BuddyProgressState.Adopt(ProgressSnapshot)` installs a whole payload over the existing
+instance instead, through the same private `Apply` the constructor uses, so construction and
+reset cannot drift. The reset still builds its fresh state with the shared first-run factory
+(`ProgressReset.CreateNewProgress`, moved out of `Bootstrap` and called by both) and adopts
+that snapshot, so a reset player and a new player are made the same way. Consequences:
+
+- No re-binding code exists, and the "no service holds a pre-reset state" assertion (13D-3)
+  is structural rather than a test that has to keep up with the composition root.
+- **Rollback is exact.** The prior snapshot is adopted back when the write throws, so a
+  failed reset leaves memory and disk byte-identical. The save file is never deleted.
+- The HUD needs one nudge, since a reset is neither a spend nor a deposit:
+  `EconomyService.NotifyBalanceChanged()`, called only on the success path.
+
+### The two-step confirmation lives on `TrayCommandComponent`
+
+`RequestResetProgress()` **arms** and raises `ResetProgressRequested` (the dock modal's cue);
+`ConfirmResetProgress()` inside a 30-second window raises `ResetProgressConfirmed` and returns
+`true`. A lapsed window, `CancelResetProgress()`, or any other tray command disarms it. Cancel
+is therefore the default with or without a dialog, and the contract is assertable today. The
+modal copy itself remains deferred to `docs/UI_FLOATING_DOCK_PLAN.md` Task 7, as recorded
+above.
+
+### Composition audit findings (13B)
+
+- `ValidateLaunchCatalogue` now also rejects a non-ownable entry, a non-selectable entry, two
+  entries selling the same `ToolId`, and any appearance of `upgrade.strength`.
+- One hand-maintained tool list existed: `BuddyLab` unlocked twelve content IDs by name for
+  laboratory tuning. It now derives from `CataloguePolicy.SelectableEntries`. The remaining
+  `ToolId.Grab/Pet/Tickle` references are per-tool behaviour switches and the laboratory's
+  dev keymap — not catalogue lists, and left alone.
+- `boot_smoke` gained two checks: all three composition roots wire the same
+  `power_grab_profile.tres`, and the sandbox sells from the same catalogue instance the
+  startup validator checked.
+- `upgrade.strength` survives only in `ContentIds`, the v5→v6 migration, migration tests, and
+  the two guards above.
+
+### 13D-2 found a real allocation on the Power path
+
+`GrabTetherController.TryGrab` called `PowerGrabProfile.Validate()` on every acquisition,
+and `Validate` builds an error list: 120 bytes per Power grab, against 0 for Normal. The
+verdict is now cached per profile instance (`IsUsablePowerProfile`), since an authored
+Resource does not change under a running game; a different profile revalidates, and the
+freed-instance check still runs every time. Measured by the new `power_grab` check: `0 B`
+over 240 grab/drag/release cycles on both paths.
+
+Two 13D-2 bullets are structurally true and deliberately not asserted: Power adds no
+physics query (`TryPick` is untouched — the profile only changes force numbers), and the
+tool-change subscription cannot duplicate, because it is subscribed in `_Ready` and
+unsubscribed in `_ExitTree` of the same per-scene component instance. The orphaned-body
+bullet **is** asserted, since that one can regress silently.
+
+### Localization keys, not a localization catalogue
+
+The 13E row asking for `shop.tool.power_grab.*` plus the reset-modal keys in "the
+localization catalogue" has nothing to add them to: this build has no translation file at
+all — no CSV, no `.po`, no `internationalization/locale/translations` setting. Keys are
+declared where they are used: `tool_power_grab.tres` already authors
+`shop.tool.power_grab.name` / `.description`. The reset-modal keys are named by
+`docs/UI_FLOATING_DOCK_PLAN.md` Task 7 and are authored with the dialog that displays them.
+Standing up a translation catalogue for two unshown strings would be a localization task
+nobody has scheduled.
+
+### What `m5_shop_progression` does not assert
+
+Step 15 of 13C-1 asks that each purchased tool's characteristic effect fire at least once.
+The journey asserts that all sixteen are owned and selectable through the production pipeline;
+the effects themselves stay with the twelve `m5_*` journeys that already fire each tool for
+real, rather than being re-implemented once more in a thirteenth.
+
 ## Character Editor Phase A — Scheduled and Decisions Resolved (2026-08-02)
 
 The owner scheduled **Phase A of `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`** — the

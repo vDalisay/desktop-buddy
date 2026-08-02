@@ -56,9 +56,10 @@ The implementation must expose one command for pure tests, one command for headl
 - Live pose, objects, projectiles, pain, knockout, and temporary statuses never enter progress data.
 - Atomic replacement preserves the previous backup if a write fails.
 - Corrupt primary data is quarantined, then backup/default recovery occurs without crashing.
-- Reset Progress builds a fresh gameplay payload, validates it, writes it through the normal atomic-save path, and only then swaps the in-memory progress reference.
+- Reset Progress builds a fresh gameplay payload with the shared first-run factory, installs it over the one live `BuddyProgressState` (`Adopt`), and writes it through the normal atomic-save path. A failed write is rolled back to the exact prior snapshot, so the reset is all-or-nothing in memory and on disk; the save file is never deleted.
 - A confirmed reset clears balance, purchases, selected tool, mood/fullness, harmful and novelty memory, traits, local gameplay statistics, local achievement-progress counters, and cumulative play/economy timers. The post-reset selection is Normal Grab.
-- Reset Progress preserves language, audio, controls, accessibility, comfort, presentation, window, zoom, and dock preferences because those values are copied from the existing settings payload rather than reconstructed from defaults.
+- Reset Progress preserves language, audio, controls, accessibility, comfort, presentation, window, zoom, and dock preferences because it never writes the settings payload at all — they are a separate file written by a separate call. Asserted as `SettingsWriteCount == 0` across a confirmed reset, not as copy-forward code.
+- Local achievement counters are asserted **absent**, not preserved: no achievements subsystem exists yet, and `ProgressResetTests.ResetMatrix_HasNoAchievementSurfaceYet` fails the day one lands so this matrix gets revisited.
 - Cancel, dialog dismissal, missing confirmation, validation failure, and save failure leave both memory and disk unchanged. Tests compare complete before/after snapshots, not a subset of fields.
 - Cloud payload excludes machine-specific settings.
 - Already-awarded platform achievements are never revoked by Reset Progress; only local progress counters are reset.
@@ -724,6 +725,21 @@ one are in `docs/DECISIONS.md` under "M5 Task 12 â€” Economy calibration".
 Prices are deliberately **not** monotonic in catalogue order. The measured schedule is the
 authority (Â§4.4), and the Drink's price is bounded by the slowest seed's total income
 because its target lands at the very end of the trace.
+
+### 4.6 As implemented (M5 Tasks 11 and 13)
+
+| Area | Where |
+|---|---|
+| Power Grab tether limits, release cap, non-finite guard (11B) | `tests/DesktopBuddy.Domain.Tests/Physics/`, `power_grab` scenario |
+| Power Grab end to end, sale to reload (11E) | `m5_power_grab` journey, seeds 1/7, both presentation modes |
+| Economy calibration, five seeds × seven strategies (12C) | `economy_calibration` scenario, quick-suite step 40 |
+| Reset matrix, rollback, settings untouched, achievement guard (13A) | `tests/DesktopBuddy.Domain.Tests/Persistence/ProgressResetTests.cs` |
+| Catalogue totality: one entry per `ToolId`, no retired upgrade (13B) | `tests/DesktopBuddy.Domain.Tests/Content/CataloguePolicyTests.cs` |
+| One shared Power Grab profile across all composition roots (13B-4) | `boot_smoke` scenario |
+| Full progression, checkpoints, skip, reset, and cancel branches (13C) | `m5_shop_progression` journey, quick-suite step 41 |
+
+The quick suite is 41 steps. Baselines at Task 13: domain tests **1150**, quick suite
+**41/41**.
 
 ## 5. Standalone Windows Matrix
 

@@ -1,7 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Economy;
+using DesktopBuddy.Domain.Tools;
 using Xunit;
 
 namespace DesktopBuddy.Domain.Tests.Content;
@@ -198,5 +200,56 @@ public sealed class CataloguePolicyTests
             Assert.True(ContentIds.IsCatalogueEntry(id), id);
             Assert.True(ContentIds.IsKnown(id), id);
         }
+    }
+
+    [Fact]
+    public void EverySelectableLaunchEntryMapsToExactlyOneTool()
+    {
+        // 13B-1: the shipped catalogue is sixteen tools and nothing else — no attribution
+        // ID, no retired upgrade, and no two entries selling the same tool.
+        ToolCatalogue catalogue = TestCatalogues.AllVisible();
+        var tools = new HashSet<ToolId>();
+
+        foreach (CatalogueEntry entry in CataloguePolicy.SelectableEntries(catalogue))
+        {
+            Assert.True(ContentIds.TryParseTool(entry.ContentId, out ToolId tool), entry.ContentId);
+            Assert.True(tools.Add(tool), entry.ContentId);
+        }
+
+        Assert.Equal(catalogue.Count, tools.Count);
+        Assert.Empty(CataloguePolicy.ValidateLaunchCatalogue(catalogue));
+    }
+
+    [Fact]
+    public void ARetiredUpgradeInTheCatalogueIsReported()
+    {
+        List<CatalogueEntry> entries = [.. TestCatalogues.AllVisible().Entries];
+        entries[entries.Count - 1] = entries[^1] with
+        {
+            ContentId = ContentIds.UpgradeStrength,
+            Kind = CatalogueEntryKind.PassiveUpgrade,
+        };
+
+        Assert.Contains(
+            CataloguePolicy.ValidateLaunchCatalogue(new ToolCatalogue(entries)),
+            error => error.Contains("retired passive upgrade"));
+    }
+
+    [Fact]
+    public void ForToolIsTotalOverEveryToolId()
+    {
+        // 13B-2: the check that catches a future appended ToolId that was never wired into
+        // the content vocabulary or the launch catalogue.
+        var ids = new HashSet<string>();
+        foreach (ToolId tool in Enum.GetValues<ToolId>())
+        {
+            string contentId = ContentIds.ForTool(tool);
+            Assert.True(ids.Add(contentId), contentId);
+            Assert.True(ContentIds.TryParseTool(contentId, out ToolId roundTrip));
+            Assert.Equal(tool, roundTrip);
+            Assert.Contains(contentId, CataloguePolicy.LaunchContentIds);
+        }
+
+        Assert.Equal(CataloguePolicy.LaunchContentIds.Count, ids.Count);
     }
 }

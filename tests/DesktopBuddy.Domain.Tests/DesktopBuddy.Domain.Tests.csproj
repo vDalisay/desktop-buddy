@@ -33,6 +33,8 @@
     <Compile Include="..\..\src\Persistence\JsonProgressStore.cs" Link="RuntimePersistence\JsonProgressStore.cs" />
     <Compile Include="..\..\src\Persistence\SaveCoordinator.cs" Link="RuntimePersistence\SaveCoordinator.cs" />
     <Compile Include="..\..\src\App\GameClock.cs" Link="RuntimeLifecycle\GameClock.cs" />
+    <Compile Include="..\..\src\Economy\EconomyService.cs" Link="RuntimeEconomy\EconomyService.cs" />
+    <Compile Include="..\..\src\App\ProgressReset.cs" Link="RuntimePersistence\ProgressReset.cs" />
   </ItemGroup>
 
 </Project>

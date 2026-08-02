@@ -84,7 +84,7 @@ Names may change, but ownership may not collapse into `AppRoot`, `BuddyRoot`, or
 | `BehaviorActivityComponent` | Fixed-tick duration and gameplay intent for behavior-backed activities (Eat now) | Visual clips, applying forces |
 | `BehaviorArbiter` | Priority resolution and immutable actuation/object intents | Applying forces or changing money |
 | `ObjectInteractionComponent` | Candidate sensing and catch/hold/inspect/consume/discard/toss action lifecycle | General locomotion or store ownership |
-| `GrabTetherController` | Acquisition, elastic cursor force, strain, release/cancel, velocity cap | Fear decision or damage calculation |
+| `GrabTetherController` | Acquisition, elastic cursor force, strain, release/cancel, velocity cap; both grab variants, Normal and Power | Fear decision or damage calculation |
 | `PainKnockoutComponent` | Pain events/window, knockout timer and consciousness events | Physics contact discovery or payout |
 | `MoodMemoryComponent` | Persistent mood, bands, transient emotions, harmful records, crossing reset | Physics, inventory, audio playback |
 | `StatusEffectComponent` | Burning/status timers and semantic tick events | Direct UI/VFX or persistence writes |
@@ -93,6 +93,10 @@ Names may change, but ownership may not collapse into `AppRoot`, `BuddyRoot`, or
 | `RewardLedger` | Formula, currency mutation, income windows, reward/stat events | Measuring collision impulse |
 
 The buddy root connects component events and passes commands. It contains no per-frame game logic beyond routing the fixed-tick call order.
+
+**Power Grab is the same controller, not a second one.** `GrabTetherController.TryGrab` takes an optional `PowerGrabProfile`: passing one grabs with the stronger authored numbers, passing nothing grabs normally. There is deliberately **no** resolver, strategy, or variant type — the selected tool decides which profile the caller passes, every composition root wires the same `res://data/buddy/power_grab_profile.tres`, and the boot smoke gate asserts they still do.
+
+**Reset Progress** (`ProgressReset`) rewrites the one `BuddyProgressState` in place through `BuddyProgressState.Adopt`, using the same first-run factory a brand-new player gets, and writes it through the normal `SaveCoordinator`. Because the instance identity never changes, nothing composed at startup is re-bound and no service can be left holding a pre-reset state; a failed write is rolled back to the exact prior snapshot. Local settings are a separate payload and are never written by this path.
 
 ## 5. Core Types and Interfaces
 

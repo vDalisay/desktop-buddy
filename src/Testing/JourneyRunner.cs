@@ -311,6 +311,12 @@ public partial class JourneyRunner : Node
             return state;
         }
 
+        if (exercise == "m5_shop_progression")
+        {
+            await ComputeShopProgressionStateAsync(state, seed);
+            return state;
+        }
+
         if (string.Equals(scene, "buddy_lab", StringComparison.Ordinal))
         {
             await ComputeBuddyLabStateAsync(state, seed, timeoutPhysicsTicks, root);
@@ -1801,6 +1807,277 @@ public partial class JourneyRunner : Node
     {
         lab.Pipeline.SelectTool(tool);
         return lab.Pipeline.SelectedTool == tool;
+    }
+
+    /// <summary>
+    /// The M5 Task 13C full progression journey: one save from a first run to owning all
+    /// sixteen interactions, through the production ledger and the production shop — never a
+    /// balance poke — with reload checkpoints, the no-prerequisite proof, and the reset and
+    /// cancel branches.
+    ///
+    /// <para>Per-tool <b>effects</b> are not re-proven here: the twelve <c>m5_*</c> journeys
+    /// each fire their own tool for real. What this asserts about the sixteen is that every
+    /// one of them is owned, selectable, and actually selected through the production
+    /// pipeline once its purchase lands.</para>
+    ///
+    /// <para>Deterministic earnings, not real time: Task 12's calibration scenario owns how
+    /// long the schedule really takes.</para>
+    /// </summary>
+    private async System.Threading.Tasks.Task ComputeShopProgressionStateAsync(
+        Dictionary<string, bool> state,
+        ulong seed)
+    {
+        SceneTree tree = GetTree();
+        var packed = GD.Load<PackedScene>("res://scenes/buddy_lab.tscn");
+        if (packed is null || packed.Instantiate() is not BuddyLab lab)
+        {
+            state["lab_composed"] = false;
+            return;
+        }
+
+        ToolCatalogue catalogue = CatalogueLoader.Catalogue;
+        double cashPerPain = lab.Pipeline.RequirePainProfile().CashPerPain;
+        // An injected context is what keeps the laboratory's "grant every tool" convenience
+        // out of the way: this run owns exactly what it has bought.
+        BuddyProgressState progress = ProgressReset.CreateNewProgress(cashPerPain);
+        var store = new InMemoryProgressStore();
+        var economy = new EconomyService(progress, catalogue);
+        var saves = new SaveCoordinator(progress, store, -1);
+        lab.Configure(new RunContext(
+            progress, economy, store, saves, new LocalSettingsSave(), SaveLoadStatus.NewSave));
+        tree.Root.AddChild(lab);
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        lab.Controls.Reseed(seed);
+        state["lab_composed"] = lab.IsInsideTree() && lab.Buddy.IsInitialized;
+
+        // --- Step 1: a first run owns the four starters and nothing else ---
+        state["a_new_save_owns_only_the_four_starters"] =
+            OwnedCount(progress, catalogue) == CataloguePolicy.NewSaveUnlockedContentIds.Count &&
+            AllOwned(progress, CataloguePolicy.NewSaveUnlockedContentIds) &&
+            progress.BalanceMilliCredits == 0 &&
+            progress.SelectedTool == ToolId.Grab;
+
+        // --- Steps 2-14: buy the twelve in schedule order, earning through the ledger ---
+        IReadOnlyList<CatalogueEntry> shop = CataloguePolicy.ShopEntries(catalogue);
+        bool boughtInOrder = shop.Count == 12;
+        bool doubleChargeRefused = true;
+        bool checkpointsReload = true;
+        long earnedThroughLedger = 0;
+        int owned = OwnedCount(progress, catalogue);
+        foreach (CatalogueEntry entry in shop)
+        {
+            earnedThroughLedger += EarnUpTo(economy, progress, entry.PriceMilliCredits);
+            long balanceBefore = progress.BalanceMilliCredits;
+            PurchaseResult sale = economy.Purchase(entry.ContentId);
+            owned++;
+            boughtInOrder &=
+                sale.Succeeded &&
+                sale.PriceMilliCredits == entry.PriceMilliCredits &&
+                progress.BalanceMilliCredits == balanceBefore - entry.PriceMilliCredits &&
+                progress.IsToolUnlocked(entry.ContentId) &&
+                OwnedCount(progress, catalogue) == owned;
+
+            long afterSale = progress.BalanceMilliCredits;
+            PurchaseResult again = economy.Purchase(entry.ContentId);
+            doubleChargeRefused &=
+                !again.Succeeded &&
+                again.Status == PurchaseStatus.AlreadyOwned &&
+                progress.BalanceMilliCredits == afterSale;
+
+            // 13C-2 checkpoints: a reload mid-progression must return the same save.
+            if (entry.ContentId is ContentIds.ToolNerfBlaster or ContentIds.ToolPowerGrab)
+                checkpointsReload &= await ReloadMatchesAsync(saves, store, progress, cashPerPain);
+        }
+
+        state["the_twelve_are_bought_in_schedule_order_at_their_authored_prices"] = boughtInOrder;
+        state["a_second_purchase_of_an_owned_tool_charges_nothing"] = doubleChargeRefused;
+        state["the_balance_only_ever_moved_through_the_ledger"] =
+            progress.Statistics.EarnedMilliCredits == earnedThroughLedger;
+        state["a_reload_mid_progression_restores_the_same_save"] = checkpointsReload;
+
+        // --- Step 15: every owned tool is selectable through the production pipeline ---
+        bool allSelectable = true;
+        foreach (ToolId tool in Enum.GetValues<ToolId>())
+            allSelectable &= progress.IsToolUnlocked(ContentIds.ForTool(tool)) &&
+                SelectAndConfirm(lab, tool);
+        state["all_sixteen_are_owned_and_selectable"] =
+            allSelectable && OwnedCount(progress, catalogue) == catalogue.Count;
+
+        // --- Step 16: switching grab variants mid-hold drops, never flings ---
+        PuppetPartBody torso = lab.Buddy.Rig.Torso;
+        PowerGrabProfile? power = lab.Pointer.PowerProfile;
+        float normalCap = lab.Grab.Profile.ThrowSpeedCap;
+        bool switchDrops = false;
+        if (power is not null && SelectAndConfirm(lab, ToolId.PowerGrab))
+        {
+            lab.Grab.TryGrab(torso, torso.GlobalPosition, power);
+            torso.LinearVelocity = new Vector2(normalCap * 3.0f, 0.0f);
+            bool held = lab.Grab.IsGrabbing && lab.Grab.IsPowerGrab;
+            bool backToNormal = SelectAndConfirm(lab, ToolId.Grab);
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            bool dropped = !lab.Grab.IsGrabbing && lab.Grab.LastReleaseSpeed <= normalCap + 0.5f;
+            // And the new selection grabs again, so the switch left nothing latched.
+            lab.Grab.TryGrab(torso, torso.GlobalPosition);
+            bool regrabbed = lab.Grab.IsGrabbing && !lab.Grab.IsPowerGrab;
+            lab.Grab.Release(countsAsThrow: false);
+            switchDrops = held && backToNormal && dropped && regrabbed;
+        }
+
+        state["switching_grab_variants_while_holding_drops_what_is_held"] = switchDrops;
+
+        // --- Step 17: the catalogue is still the shipped one at the end of the run ---
+        state["the_completed_catalogue_still_validates"] =
+            CataloguePolicy.ValidateLaunchCatalogue(catalogue).Count == 0 &&
+            OwnedCount(progress, catalogue) == catalogue.Count;
+
+        // --- 13C-3: no prerequisite graph — an expensive tool needs money, not neighbours ---
+        var skipper = ProgressReset.CreateNewProgress(cashPerPain);
+        var skipEconomy = new EconomyService(skipper, catalogue);
+        catalogue.TryGet(ContentIds.ToolShotgun, out CatalogueEntry shotgun);
+        EarnUpTo(skipEconomy, skipper, shotgun.PriceMilliCredits);
+        PurchaseResult skipSale = skipEconomy.Purchase(ContentIds.ToolShotgun);
+        state["a_cheaper_tool_is_never_a_prerequisite"] =
+            skipSale.Succeeded &&
+            skipper.IsToolUnlocked(ContentIds.ToolShotgun) &&
+            !skipper.IsToolUnlocked(ContentIds.ToolBaseball) &&
+            !skipper.IsToolUnlocked(ContentIds.ToolMeal) &&
+            !skipper.IsToolUnlocked(ContentIds.ToolSoccerBall);
+
+        // --- 13A-2 / 13C-5: the cancel branch, on its own copy of the completed save ---
+        await saves.FlushProgressAsync(force: true);
+        ProgressSave completed = store.Progress!;
+        string completedJson = ProgressSavePolicy.Serialize(completed);
+        BuddyProgressState cancelState = ProgressSavePolicy.CreateState(completed, cashPerPain);
+        var cancelStore = new InMemoryProgressStore();
+        var cancelSaves = new SaveCoordinator(cancelState, cancelStore);
+        var cancelTray = new TrayCommandComponent { Name = "CancelBranchTray" };
+        int cancelResets = 0;
+        cancelTray.ResetProgressConfirmed += () => cancelResets++;
+        lab.AddChild(cancelTray);
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+        cancelTray.RequestResetProgress();
+        bool armed = cancelTray.ResetIsArmed;
+        cancelTray.CancelResetProgress();
+        bool confirmAfterCancel = cancelTray.ConfirmResetProgress();
+        bool confirmWithoutArm = cancelTray.ConfirmResetProgress();
+        state["an_unconfirmed_reset_changes_nothing"] =
+            armed && !confirmAfterCancel && !confirmWithoutArm && cancelResets == 0 &&
+            cancelTray.ResetProgressRequestCount == 1 &&
+            !cancelSaves.IsDirty &&
+            ProgressSavePolicy.Serialize(
+                ProgressSave.FromSnapshot(cancelState.Snapshot())) == completedJson;
+
+        // --- 13C-4: the reset branch, from the completed state, through the tray ---
+        var tray = new TrayCommandComponent { Name = "ResetBranchTray" };
+        bool resetPerformed = false;
+        tray.ResetProgressConfirmed += () => resetPerformed = true;
+        lab.AddChild(tray);
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        tray.RequestResetProgress();
+        bool confirmed = tray.ConfirmResetProgress();
+        bool wrote = resetPerformed && await ProgressReset.ResetAsync(progress, saves, economy);
+
+        LoadResult<ProgressSave> reloaded = await store.LoadProgressAsync(CancellationToken.None);
+        BuddyProgressState afterReload = reloaded.Value is null
+            ? new BuddyProgressState(cashPerPain)
+            : ProgressSavePolicy.CreateState(reloaded.Value, cashPerPain);
+        state["a_confirmed_reset_returns_the_save_to_a_first_run"] =
+            confirmed && wrote &&
+            progress.BalanceMilliCredits == 0 &&
+            progress.SelectedTool == ToolId.Grab &&
+            OwnedCount(progress, catalogue) == CataloguePolicy.NewSaveUnlockedContentIds.Count &&
+            progress.Mood == 0.0f &&
+            progress.Statistics.ScoredImpacts == 0 &&
+            progress.Times.RunSeconds == 0.0 &&
+            // ...and the reset player is the same object the scene has been holding all run.
+            ReferenceEquals(lab.Progress, progress) &&
+            economy.BalanceMilliCredits == 0;
+        state["the_reset_save_reloads_as_a_first_run"] =
+            afterReload.BalanceMilliCredits == 0 &&
+            OwnedCount(afterReload, catalogue) ==
+                CataloguePolicy.NewSaveUnlockedContentIds.Count &&
+            reloaded.Value!.SchemaVersion == ProgressSave.CurrentSchemaVersion &&
+            // Settings are a different payload; the reset never wrote one.
+            store.SettingsWriteCount == 0;
+
+        Log.Info(
+            "Journey",
+            $"M5 shop progression bought={shop.Count} owned_at_peak={catalogue.Count} " +
+            $"earned={earnedThroughLedger}milli reset_owned={OwnedCount(progress, catalogue)} " +
+            $"schema={reloaded.Value?.SchemaVersion} settings_writes={store.SettingsWriteCount}");
+
+        lab.QueueFree();
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        GodotInteropShutdown.PrepareForQuit();
+        await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+    }
+
+    private static int OwnedCount(BuddyProgressState progress, ToolCatalogue catalogue)
+    {
+        int owned = 0;
+        foreach (CatalogueEntry entry in catalogue.Entries)
+        {
+            if (progress.IsToolUnlocked(entry.ContentId))
+                owned++;
+        }
+
+        return owned;
+    }
+
+    private static bool AllOwned(BuddyProgressState progress, IReadOnlyList<string> contentIds)
+    {
+        bool all = true;
+        foreach (string id in contentIds)
+            all &= progress.IsToolUnlocked(id);
+        return all;
+    }
+
+    /// <summary>
+    /// Earns through the production ledger until the balance covers <paramref name="price"/>,
+    /// and returns what was earned. Both income routes are exercised: scored damage, then a
+    /// passive deposit for the remainder — never a direct balance poke.
+    /// </summary>
+    private static long EarnUpTo(
+        EconomyService economy,
+        BuddyProgressState progress,
+        long price)
+    {
+        long earned = economy.AcceptDamage(
+            ContentIds.ToolBoxingGlove,
+            8.0f,
+            PayoutRegion.Torso,
+            DamageConsciousness.Conscious,
+            now: 0.0,
+            new ImpactMoodEffect(ImpactMoodEffectKind.Harm));
+        long shortfall = price - progress.BalanceMilliCredits;
+        if (shortfall > 0)
+        {
+            economy.DepositPassive(shortfall);
+            earned += shortfall;
+        }
+
+        return earned;
+    }
+
+    /// <summary>Flushes, reloads from the store, and reports whether the save came back whole.</summary>
+    private static async System.Threading.Tasks.Task<bool> ReloadMatchesAsync(
+        SaveCoordinator saves,
+        InMemoryProgressStore store,
+        BuddyProgressState progress,
+        double cashPerPain)
+    {
+        await saves.FlushProgressAsync(force: true);
+        LoadResult<ProgressSave> loaded = await store.LoadProgressAsync(CancellationToken.None);
+        if (loaded.Value is null)
+            return false;
+
+        BuddyProgressState reloaded = ProgressSavePolicy.CreateState(loaded.Value, cashPerPain);
+        return loaded.Value.SchemaVersion == ProgressSave.CurrentSchemaVersion &&
+            reloaded.BalanceMilliCredits == progress.BalanceMilliCredits &&
+            reloaded.SelectedTool == progress.SelectedTool &&
+            ProgressSavePolicy.Serialize(ProgressSave.FromSnapshot(reloaded.Snapshot())) ==
+                ProgressSavePolicy.Serialize(ProgressSave.FromSnapshot(progress.Snapshot()));
     }
 
     /// <summary>

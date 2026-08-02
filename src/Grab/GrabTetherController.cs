@@ -41,6 +41,12 @@ public partial class GrabTetherController : Node2D
     private GrabStretchLimiter _powerStretch = new();
     private PowerGrabProfile? _power;
     private bool _loggedInvalidPowerProfile;
+
+    // Validate() builds an error list, so calling it per acquisition would allocate on a
+    // gameplay path. The verdict is cached per profile instance instead: authored Resources
+    // do not change under a running game, and a different profile revalidates.
+    private PowerGrabProfile? _validatedPower;
+    private bool _validatedPowerIsUsable;
     private Vector2 _localGrabPoint;
     private Vector2 _cursorAnchor;
     private Vector2 _previousCursor;
@@ -112,8 +118,7 @@ public partial class GrabTetherController : Node2D
             return false;
         }
 
-        if (power is not null &&
-            (!GodotObject.IsInstanceValid(power) || power.Validate().Count > 0))
+        if (power is not null && !IsUsablePowerProfile(power))
         {
             if (!_loggedInvalidPowerProfile)
             {
@@ -140,6 +145,20 @@ public partial class GrabTetherController : Node2D
         CurrentGrab = new GrabState(true, target, worldPoint, worldPoint);
         Telemetry = new GrabTelemetry(true, 0.0f, Vector2.Zero, false, LastReleaseSpeed);
         return true;
+    }
+
+    private bool IsUsablePowerProfile(PowerGrabProfile power)
+    {
+        if (!GodotObject.IsInstanceValid(power))
+            return false;
+
+        if (!ReferenceEquals(power, _validatedPower))
+        {
+            _validatedPower = power;
+            _validatedPowerIsUsable = power.Validate().Count == 0;
+        }
+
+        return _validatedPowerIsUsable;
     }
 
     /// <summary>Move the cursor anchor the tether pulls toward (sandbox coordinates).</summary>

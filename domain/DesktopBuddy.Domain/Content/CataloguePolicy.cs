@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Economy;
+using DesktopBuddy.Domain.Tools;
 
 namespace DesktopBuddy.Domain.Content;
 
@@ -153,11 +154,42 @@ public static class CataloguePolicy
                 $"(FR-013.2); found {catalogue.Count}");
         }
 
+        // The composition audit (M5 Task 13B): the shipped catalogue may only hold entries
+        // this build can own and select, and the FR-019 passive upgrade is gone for good —
+        // 'upgrade.strength' survives only as a v5→v6 save migration.
         var starting = new HashSet<string>(StringComparer.Ordinal);
+        var tools = new HashSet<ToolId>();
         foreach (CatalogueEntry entry in catalogue.Entries)
         {
             if (entry.IsStarting)
                 starting.Add(entry.ContentId);
+
+            if (entry.ContentId == ContentIds.UpgradeStrength)
+            {
+                errors.Add(
+                    $"'{ContentIds.UpgradeStrength}' is a retired passive upgrade and must " +
+                    "not appear in the launch catalogue (M5 Task 11)");
+                continue;
+            }
+
+            if (!ContentIds.IsCatalogueEntry(entry.ContentId))
+            {
+                errors.Add($"'{entry.ContentId}' is not an ownable catalogue entry");
+                continue;
+            }
+
+            if (!entry.IsSelectable)
+            {
+                errors.Add($"'{entry.ContentId}' is not selectable; every launch entry is a tool");
+            }
+            else if (!ContentIds.TryParseTool(entry.ContentId, out ToolId tool))
+            {
+                errors.Add($"selectable entry '{entry.ContentId}' maps to no tool");
+            }
+            else if (!tools.Add(tool))
+            {
+                errors.Add($"tool '{tool}' is sold by more than one catalogue entry");
+            }
         }
 
         foreach (string id in NewSaveUnlockedContentIds)

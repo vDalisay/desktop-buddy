@@ -69,7 +69,7 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 **Linked stories:** US-01, US-06
 
 1. **FR-003.1:** WHILE the sandbox is visible, the current money total SHALL remain visible in a compact HUD.
-2. **FR-003.2:** WHEN the player opens tools, shop, or settings THEN the game SHALL present those controls in a retractable in-window panel.
+2. **FR-003.2:** WHEN the player opens tools, shop, or settings THEN the game SHALL present those controls in a retractable in-window panel. The panel SHALL carry a dedicated **Settings** control, and Reset Progress SHALL be reachable **only** as a button inside that settings surface — never as a hotkey, a tray command, or a top-level dock button (owner decision 2026-08-02).
 3. **FR-003.3:** WHILE mood changes, the game SHALL communicate it through the buddy's head-circle emoticons, posture, movement, and reactions and SHALL NOT expose a permanent numeric mood meter.
 4. **FR-003.4:** WHEN damage rewards occur within a `0.25`-second interval THEN the game SHALL coalesce them into brief `+$N.N` feedback while keeping the pain value hidden.
 5. **FR-003.5:** WHEN a Boxing Glove impact reaches maximum pain or triggers knockout THEN the game SHALL present the confirmed brief hit-stop with a visibly slow early portion, an impact flash/ring centered on the solver-reported world contact point, canvas-only jolt, glove recoil, face, and nonverbal sound feedback without moving the operating-system window.

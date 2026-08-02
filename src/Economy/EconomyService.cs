@@ -102,6 +102,13 @@ public sealed class EconomyService
         return result;
     }
 
+    /// <summary>
+    /// Re-announces the current balance. The one caller is a confirmed progress reset, which
+    /// rewrites the balance in place rather than through a spend or a deposit; the HUD still
+    /// has to hear about it.
+    /// </summary>
+    public void NotifyBalanceChanged() => BalanceChanged?.Invoke(_progress.BalanceMilliCredits);
+
     /// <summary>Returns a completed coalesced reward burst, or <c>null</c>.</summary>
     public RewardFeedback? PollFeedback(double now) => _progress.PollRewardFeedback(now);
 }

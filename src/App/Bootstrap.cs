@@ -1,12 +1,10 @@
 using System;
-using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Automation;
 using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
-using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
@@ -158,7 +156,7 @@ public partial class Bootstrap : Node
         bool newSemanticState = progressLoad.Status is
             SaveLoadStatus.NewSave or SaveLoadStatus.DefaultsRecovered;
         BuddyProgressState progress = newSemanticState
-            ? CreateNewProgress(cashPerPain)
+            ? ProgressReset.CreateNewProgress(cashPerPain)
             : ProgressSavePolicy.CreateState(
                 progressLoad.Value ?? throw new InvalidOperationException("Load returned no progress."),
                 cashPerPain);
@@ -201,13 +199,5 @@ public partial class Bootstrap : Node
     {
         GodotInteropShutdown.PrepareForQuit();
         GetTree().Quit(exitCode);
-    }
-
-    private static BuddyProgressState CreateNewProgress(double cashPerPain)
-    {
-        ulong traitSeed = BitConverter.ToUInt64(
-            System.Security.Cryptography.RandomNumberGenerator.GetBytes(sizeof(ulong)));
-        BuddyTraits traits = BuddyTraits.Sample(new SeededRandomSource(traitSeed));
-        return new BuddyProgressState(cashPerPain, traits: traits);
     }
 }

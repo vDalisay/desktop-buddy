@@ -469,6 +469,8 @@ Implement the architecture and ordered packets in
 `m5_power_grab` journey in both presentations on committed seeds, then owner accepts the
 side-by-side “dramatic but controllable” feel.
 
+**Status:** implemented 2026-08-02 (commit `6d77837`). Only the owner feel gate remains.
+
 ### Task 12 — Economy calibration and simulation
 
 Follow `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §4. The runner replays production
@@ -487,11 +489,17 @@ completionist row in band; active dominance; peak passive approximately 25% of a
 ordinary events do not skip multiple milestones; real dedup proves
 positive/zero/positive; owner accepts the final pacing report.
 
+**Status:** complete 2026-08-02 (commit `7de2e81`); the whole catalogue was re-priced.
+
 ### Task 13 — Reset Progress, composition, regression, docs, and owner exit
 
 Follow `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md` §5. Add a transactional confirmed reset
-that atomically commits a first-run gameplay payload while copying preferences and never
+that atomically commits a first-run gameplay payload while preserving preferences and never
 revoking platform achievements. Add full before/after and failure-path tests.
+
+Preferences are preserved because reset never writes the settings payload — it is a
+separate file written by a separate call — not by copy-forward code. Platform achievements
+are untouched because no achievements adapter exists to call.
 
 Generate the launch inventory and regression matrix from authoritative registries. Update
 `m5_shop_progression` to purchase/use/reload all twelve items in order, exercise a skip
@@ -743,3 +751,31 @@ running the suite" remains the failure mode this plan exists to prevent.
   Verified: build 0/0, domain 971/971, quick suite 26/26, `pistol_fire` seeds 1/7/13 plus
   legacy presentation, `m5_pistol` seeds 1/7 in both presentations, and a 32-scenario /
   6-journey regression sweep on seed 1 all green.
+- 2026-08-02 — **Task 13 complete (reset, composition audit, regression, docs).**
+  `src/App/ProgressReset.cs` owns the confirmed reset: it builds a first-run state with the
+  shared factory (`CreateNewProgress`, moved out of `Bootstrap` so a new player and a reset
+  player are made the same way) and installs it over the live `BuddyProgressState` through
+  the new `Adopt`, which routes to the same private `Apply` the constructor uses. Rewriting
+  in place rather than swapping the reference means none of the seven holders of that
+  reference has to be re-bound, and a failed write is rolled back to the exact prior
+  snapshot — all-or-nothing in memory and on disk, with the save file never deleted.
+  Settings are preserved by not being written; there is no copy-forward code.
+  The trigger is the existing tray seam: `TrayCommandComponent.RequestResetProgress()` arms
+  and raises `ResetProgressRequested`, `ConfirmResetProgress()` inside a 30 s window raises
+  `ResetProgressConfirmed`, and a cancel, a lapse, or any other tray command disarms it —
+  so "Cancel is the default, two affirmative actions" is assertable with no dialog in the
+  build. The modal stays with `docs/UI_FLOATING_DOCK_PLAN.md` Task 7.
+  Composition audit: `ValidateLaunchCatalogue` now rejects a non-ownable or non-selectable
+  entry, two entries selling one `ToolId`, and any `upgrade.strength`; `BuddyLab`'s
+  hand-listed dev unlocks now derive from `CataloguePolicy.SelectableEntries` (the only
+  hand-maintained tool list found); `boot_smoke` asserts all three composition roots share
+  `power_grab_profile.tres` and that the sandbox sells from the validated catalogue.
+  New journey `m5_shop_progression` (13 assertions, quick-suite step 41) walks one save from
+  a first run to all sixteen owned — purchases through `EconomyService`, earnings through
+  the ledger, reload checkpoints after Nerf and Power Grab, the no-prerequisite skip proof,
+  and the reset and cancel branches. `power_grab` gained the per-tick allocation probe
+  (Power allocates 0 B, same as Normal) and an orphaned-body check.
+  Verified: build 0/0, domain 1150/1150, quick suite 41/41, `m5_shop_progression` seeds 1/7
+  in both presentations, and a full scenario/journey sweep in `legacy`.
+  **Remaining for M5 exit: the Repair Kit and Power Grab owner feel gates, the Windows 10/11
+  standalone run, and the dock (which carries the reset confirmation modal).**

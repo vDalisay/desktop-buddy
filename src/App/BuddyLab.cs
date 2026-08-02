@@ -183,22 +183,17 @@ public partial class BuddyLab : Node2D
             Economy = _runContext.Economy;
             Saves = _runContext.Saves;
         }
-        // Development laboratory catalogue: implemented M5 tools are available for
-        // mechanical tuning without granting them on a real new save.
+        // Development laboratory catalogue: every selectable catalogue entry is available for
+        // mechanical tuning without granting it on a real new save. Derived from the
+        // catalogue, never hand-listed (M5 Task 13B) — a tool added to the catalogue is a
+        // tool the lab can pick up the same day.
         if (_runContext is null)
         {
-            Economy.Unlock(ContentIds.ToolBaseball);
-            Economy.Unlock(ContentIds.ToolMeal);
-            Economy.Unlock(ContentIds.ToolBaseballBat);
-            Economy.Unlock(ContentIds.ToolNerfBlaster);
-            Economy.Unlock(ContentIds.ToolPistol);
-            Economy.Unlock(ContentIds.ToolGrenade);
-            Economy.Unlock(ContentIds.ToolSoccerBall);
-            Economy.Unlock(ContentIds.ToolDrink);
-            Economy.Unlock(ContentIds.ToolFireSprayer);
-            Economy.Unlock(ContentIds.ToolShotgun);
-            Economy.Unlock(ContentIds.ToolRepairKit);
-            Economy.Unlock(ContentIds.ToolPowerGrab);
+            foreach (CatalogueEntry entry in
+                CataloguePolicy.SelectableEntries(Economy.Catalogue))
+            {
+                Economy.Unlock(entry.ContentId);
+            }
         }
         Pipeline.Initialize(Progress, Economy);
         Objects.Initialize();

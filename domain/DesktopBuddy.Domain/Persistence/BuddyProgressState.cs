@@ -96,12 +96,14 @@ public enum ProgressChange
 /// </summary>
 public sealed class BuddyProgressState
 {
-    private readonly MoodModel _mood;
-    private readonly HungerModel _hunger;
-    private readonly RewardLedger _ledger;
-    private readonly ToolSelection _tools = new();
+    private readonly double _cashPerPain;
+    // Assigned by Apply, which both the constructor and Adopt route through.
+    private MoodModel _mood = null!;
+    private HungerModel _hunger = null!;
+    private RewardLedger _ledger = null!;
+    private ToolSelection _tools = null!;
     private readonly HashSet<string> _unlockedTools = new(StringComparer.Ordinal);
-    private readonly FunInterestModel _fun;
+    private FunInterestModel _fun = null!;
 
     private long _scoredImpacts;
     private long _knockouts;
@@ -140,9 +142,47 @@ public sealed class BuddyProgressState
         IEnumerable<FunActivityInterest>? funInterest = null,
         float initialFullness = 0.0f)
     {
+        _cashPerPain = cashPerPain;
+        Apply(
+            initialMood,
+            harmfulContentIds,
+            unlockedToolIds,
+            traits,
+            statistics,
+            times,
+            revision,
+            initialBalanceMilliCredits,
+            selectedToolId,
+            extensions,
+            funInterest,
+            initialFullness);
+    }
+
+    /// <summary>
+    /// Installs one complete persistent payload over whatever this instance held. Shared by
+    /// construction and by <see cref="Adopt"/> so a reset and a brand-new save cannot drift.
+    /// </summary>
+    private void Apply(
+        float initialMood,
+        IEnumerable<string>? harmfulContentIds,
+        IEnumerable<string>? unlockedToolIds,
+        BuddyTraits? traits,
+        ProgressStatistics statistics,
+        CumulativeTimes times,
+        long revision,
+        long initialBalanceMilliCredits,
+        string? selectedToolId,
+        ProgressExtensionData? extensions,
+        IEnumerable<FunActivityInterest>? funInterest,
+        float initialFullness)
+    {
+        _tools = new ToolSelection();
+        _unlockedTools.Clear();
+        _toolUses.Clear();
+        _toolPainMilli.Clear();
         _mood = new MoodModel(initialMood, harmfulContentIds);
         _hunger = new HungerModel(initialFullness: initialFullness);
-        _ledger = new RewardLedger(cashPerPain, initialBalanceMilliCredits);
+        _ledger = new RewardLedger(_cashPerPain, initialBalanceMilliCredits);
         Traits = traits ?? BuddyTraits.Default;
         Revision = revision;
         Extensions = extensions;
@@ -212,10 +252,37 @@ public sealed class BuddyProgressState
         Times = times;
     }
 
+    /// <summary>
+    /// Replaces every persistent field with the given snapshot, in place. The instance
+    /// identity is deliberately preserved: services and presenters composed once at startup
+    /// keep reading the state they were injected with, so a reset (or its rollback) cannot
+    /// leave a stale binding behind. Raises no <see cref="Changed"/> event — the caller owns
+    /// the write and whatever refresh follows it.
+    /// </summary>
+    public void Adopt(ProgressSnapshot snapshot)
+    {
+        Apply(
+            snapshot.Mood,
+            snapshot.HarmfulContentIds,
+            snapshot.UnlockedToolIds,
+            snapshot.Traits,
+            snapshot.Statistics,
+            snapshot.Times,
+            snapshot.Revision,
+            snapshot.BalanceMilliCredits,
+            snapshot.SelectedToolId,
+            snapshot.Extensions,
+            snapshot.FunInterest,
+            snapshot.Fullness);
+    }
+
     /// <summary>Discrete semantic changes only — never per-tick drift (see class remarks).</summary>
     public event Action<ProgressChange>? Changed;
 
     public long Revision { get; private set; }
+
+    /// <summary>The approved shared economy coefficient this state was created with (FR-012.5).</summary>
+    public double CashPerPain => _cashPerPain;
 
     public float Mood => _mood.Mood;
     public MoodBand MoodBand => _mood.Band;

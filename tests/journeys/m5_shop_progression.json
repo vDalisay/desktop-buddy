@@ -1,0 +1,27 @@
+{
+  "id": "m5_shop_progression",
+  "description": "The full M5 progression on one save: a first run owns the four starters, the twelve purchasables are bought in schedule order through the production ledger and shop, a second purchase of an owned tool charges nothing, mid-progression reloads restore the same save at schema 6, all sixteen interactions end up owned and selectable, switching grab variants mid-hold drops rather than flings, an expensive tool needs money rather than cheaper neighbours, an armed-but-unconfirmed reset changes nothing, and a confirmed reset returns the save to a first run without ever writing the settings payload.",
+  "milestone": 5,
+  "setup": {
+    "scene": "buddy_lab",
+    "exercise": "m5_shop_progression",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "lab_composed" },
+    { "predicate": "a_new_save_owns_only_the_four_starters" },
+    { "predicate": "the_twelve_are_bought_in_schedule_order_at_their_authored_prices" },
+    { "predicate": "a_second_purchase_of_an_owned_tool_charges_nothing" },
+    { "predicate": "the_balance_only_ever_moved_through_the_ledger" },
+    { "predicate": "a_reload_mid_progression_restores_the_same_save" },
+    { "predicate": "all_sixteen_are_owned_and_selectable" },
+    { "predicate": "switching_grab_variants_while_holding_drops_what_is_held" },
+    { "predicate": "the_completed_catalogue_still_validates" },
+    { "predicate": "a_cheaper_tool_is_never_a_prerequisite" },
+    { "predicate": "an_unconfirmed_reset_changes_nothing" },
+    { "predicate": "a_confirmed_reset_returns_the_save_to_a_first_run" },
+    { "predicate": "the_reset_save_reloads_as_a_first_run" }
+  ]
+}
