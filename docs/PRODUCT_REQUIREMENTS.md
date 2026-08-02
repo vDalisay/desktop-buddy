@@ -7,7 +7,7 @@ Runtime: Godot 4.6.1 .NET with C#
 
 ## 1. Overview
 
-Desktop Buddy is a transparent desktop-idler sandbox containing one autonomous, immortal, six-body robot/mannequin. The player can distract, care for, throw objects to, grab, and slapstick-attack the buddy while doing other work. Physical interaction earns money; positive care improves the buddy's mood and increases passive income. Money permanently unlocks a launch catalogue of tools over an approximately two-hour progression horizon.
+Desktop Buddy is a transparent desktop-idler sandbox containing one autonomous, immortal, six-body robot/mannequin. The player can distract, care for, throw objects to, grab, and slapstick-attack the buddy while doing other work. Physical interaction earns money; positive care improves the buddy's mood and increases passive income. Money permanently unlocks a launch catalogue of tools over an approximately 209-minute completionist progression horizon; players may freely skip entries and save for preferred tools.
 
 The product is a clean-room spiritual successor to *Interactive Buddy*. Newgrounds v1.01 is the primary reference for mechanical feel; archived v1.02 behavior is a secondary comparison only when it does not conflict with v1.01. No original art, audio, dialogue, skins, branding, or other expressive content may be copied.
 
@@ -229,12 +229,14 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 
 **Linked stories:** US-03, US-06
 
-1. **FR-013.1:** WHEN a new save is created THEN money SHALL be `0`, Grab SHALL be selected, and Grab, Pet, Tickle, and Boxing Glove SHALL be available immediately.
-2. **FR-013.2:** WHEN the launch catalogue is complete THEN it SHALL contain Grab, Pet, Tickle, Boxing Glove, Baseball, Soccer Ball, Baseball Bat, Pistol, Shotgun, Grenade, Fire Sprayer, Meal, Drink, Repair Kit, and the Strength Upgrade of FR-019 (`15` entries).
+1. **FR-013.1:** WHEN a new save is created THEN money SHALL be `0`, Normal Grab SHALL be selected, and Normal Grab, Pet, Tickle, and Boxing Glove SHALL be available immediately.
+2. **FR-013.2:** WHEN the launch catalogue is complete THEN it SHALL contain exactly `16` selectable interactions: Normal Grab, Pet, Tickle, Boxing Glove, Baseball, Baseball Bat, Meal, Nerf Blaster, Pistol, Soccer Ball, Grenade, Fire Sprayer, Power Grab, Repair Kit, Shotgun, and Drink.
 3. **FR-013.3:** WHEN the player purchases an item THEN ownership SHALL become immediate and permanent, use SHALL be unlimited subject to confirmed cooldowns/cadence, and the item SHALL NOT be sellable or refundable.
-4. **FR-013.4:** WHEN prices and income coefficients are calibrated using the approved cumulative-play benchmark THEN the expected purchase sequence SHALL target Baseball at `3` minutes, Meal at `6`, Baseball Bat at `20`, Pistol at `30`, Grenade at `40`, Fire Sprayer at `50`, Soccer Ball at `65`, Drink at `80`, Shotgun at `100`, and Repair Kit at `120` minutes. The Strength Upgrade has no confirmed slot in this schedule; its position is a Milestone 5 calibration decision (see FR-019.7).
-5. **FR-013.5:** WHEN progression calibration is accepted THEN the complete current interaction catalogue SHALL be affordable in approximately `2` hours of cumulative play under the approved active/passive play mix.
-6. **FR-013.6:** WHEN the player requests progression reset THEN the game SHALL require explicit confirmation before erasing progress.
+4. **FR-013.4:** WHEN prices and income coefficients are calibrated using the approved completionist benchmark THEN cumulative purchase times SHALL target Baseball at `3` minutes, Baseball Bat at `7`, Meal at `13`, Nerf Blaster at `21`, Pistol at `41`, Soccer Ball at `52`, Grenade at `76`, Fire Sprayer at `104`, Power Grab at `120`, Repair Kit at `138`, Shotgun at `184`, and Drink at `209`. Pistol, Grenade, Fire Sprayer, and Shotgun are high-value entries whose preceding normal progression gap is doubled.
+5. **FR-013.5:** WHEN progression calibration is accepted THEN a casual completionist who follows the FR-013.4 order SHALL be able to own the complete launch catalogue in approximately `209` cumulative running minutes under the approved benchmark of approximately `120` active-interaction minutes plus `89` background/passive minutes, with median per-entry results within `±15%` across the approved deterministic seeds.
+6. **FR-013.6:** WHEN the player requests Reset Progress THEN the game SHALL show an explicit destructive confirmation naming the erased categories and defaulting to Cancel; only confirmation SHALL restore a fresh gameplay save by clearing currency, purchases, selection, mood/fullness, buddy memories/learned and fun state, generated traits, local gameplay/stat/achievement-progress counters, and cumulative times. Language, audio, controls, accessibility/comfort, presentation, window/zoom, and dock preferences SHALL persist, and already-awarded platform achievements SHALL NOT be revoked. Cancellation, dismissal, missing confirmation, or persistence failure SHALL leave progress unchanged.
+7. **FR-013.7:** WHEN the shop is shown THEN it SHALL impose no purchase-prerequisite chain: every visible entry MAY be bought whenever affordable, so players MAY skip cheaper entries and save for a preferred later item. The FR-013.4 schedule remains the in-order completionist calibration reference; additional save-for-preference simulations SHALL prove unrestricted skipping and correct persistence.
+8. **FR-013.8:** WHEN Reset Progress succeeds THEN the fresh state SHALL be written through the normal atomic persistence boundary and immediate event-save path; settings storage SHALL not be replaced or reset.
 
 ### FR-014 — Loose-Object Budget
 
@@ -307,30 +309,24 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 
 ## 5. Non-Functional Requirements
 
-### FR-019 — Strength Upgrade (Milestone 5 shop item)
+### FR-019 — Power Grab (Milestone 5 selectable shop tool)
 
 **Linked stories:** US-03, US-06
 
-Owner-requested 2026-07-25. This is the catalogue's first **passive permanent upgrade** rather
-than a selectable tool: it is purchased once and then modifies how Grab behaves, so it occupies
-a shop slot but never appears in tool selection.
+Owner-confirmed 2026-08-02, superseding the unimplemented passive “Strength Upgrade”
+concept. Power Grab is purchased once, appears as a separate selectable inventory tool, and
+does not replace the starting Normal Grab.
 
-1. **FR-019.1:** WHEN the player owns the Strength Upgrade THEN the grab tether's pull force and force ceiling SHALL increase by a calibrated factor, giving the player more control over the buddy.
-2. **FR-019.2:** WHEN the player owns the Strength Upgrade THEN the FR-006.6 stretch limit SHALL increase by a calibrated factor, so a limb can be pulled visibly further than an unupgraded grab allows.
-3. **FR-019.3:** WHEN the player owns the Strength Upgrade THEN the FR-006.8 snap-back SHALL NOT occur: a strained limb SHALL continue to strain for as long as the player holds it, and the buddy SHALL NOT be able to break free of the grab by snapping its limb back.
-4. **FR-019.4:** WHEN the player owns the Strength Upgrade THEN the FR-006.4 release velocity SHALL be scaled by a calibrated yank factor, subject to its own calibrated safe maximum, so throws are stronger.
-5. **FR-019.5:** WHEN the Strength Upgrade is owned THEN buddy fear resistance (FR-006.2) SHALL still be generated and still be visible; the upgrade increases the player's authority over the outcome and SHALL NOT remove the buddy's reaction.
-6. **FR-019.6:** WHEN the Strength Upgrade is owned THEN it SHALL grant no damage, payout, or mood modifier of its own; its economic effect SHALL arrive only through the stronger manipulation it enables.
-7. **FR-019.7:** WHEN Milestone 5 economy calibration is performed THEN the Strength Upgrade's price and its slot in the FR-013.4 progression schedule SHALL be set, and the FR-013.5 two-hour affordability target SHALL be re-validated against the enlarged `15`-entry catalogue.
-
-**Open questions for the owner (do not infer):**
-
-- **Name.** "Strength Upgrade" is a working label, not a confirmed product name.
-- **Tiers.** One purchase, or several escalating tiers? FR-019 currently specifies exactly one.
-- **Snap immunity scope.** FR-019.3 removes snap-back entirely. The alternative is a longer strain
-  window rather than true immunity, which keeps the mechanic alive at high upgrade levels.
-- **Magnitudes.** Every "calibrated factor" above is deliberately unset; they are Milestone 5
-  tuning, judged against FR-013.4/13.5.
+1. **FR-019.1:** WHEN Power Grab is purchased THEN `tool.power_grab` SHALL become permanently selectable while Normal Grab remains owned and selectable.
+2. **FR-019.2:** WHEN Power Grab is selected THEN it SHALL use Normal Grab's acquisition targets, pointer controls, secondary cancel/drop behavior, and current safe limb-stretch maximum, for both buddy parts and eligible loose objects.
+3. **FR-019.3:** WHEN Power Grab pulls a held target THEN its tether stiffness/authority and maximum-force ceiling SHALL use higher calibrated Resource-authored values that feel dramatically stronger than Normal Grab while remaining controllable.
+4. **FR-019.4:** WHEN a buddy limb reaches the Normal Grab stretch maximum under Power Grab THEN it SHALL remain bounded at that same maximum and continue visibly straining, but SHALL NOT reach the Normal Grab forced snap/release outcome while held.
+5. **FR-019.5:** WHEN Power Grab holds a conscious fearful buddy part THEN fear resistance and struggling SHALL remain physically generated and visibly expressed; Power Grab SHALL increase player authority over the result and SHALL NOT remove the reaction.
+6. **FR-019.6:** WHEN the player intentionally releases Power Grab THEN the held buddy part or loose object SHALL receive the calibrated release-velocity scale subject to Power Grab's own higher calibrated safe maximum. Cancel, fail-safe, and recovery releases SHALL NOT become powered throws.
+7. **FR-019.7:** WHEN Power Grab is selected or owned THEN it SHALL grant no direct damage, payout, mood, statistics, or hidden economy modifier; economic effect SHALL arise only from later physical contacts accepted by the shared impact/pain/reward pipeline.
+8. **FR-019.8:** WHEN Power Grab tuning is accepted THEN its exact force factors, release scale, and safe cap SHALL be stored in typed Resources, covered by quantitative Normal-versus-Power regression, allocate nothing on the routed gameplay tick, and pass an owner side-by-side Windows feel review.
+9. **FR-019.9:** WHEN legacy pre-release progress containing `upgrade.strength` is loaded THEN that deprecated hidden placeholder SHALL migrate to `tool.power_grab`; new saves and writes SHALL never emit or offer `upgrade.strength`, and the old ID SHALL NOT be repurposed as a selectable tool.
+10. **FR-019.10:** WHEN economy calibration is performed THEN Power Grab SHALL occupy the FR-013.4 slot after Fire Sprayer and before Repair Kit, targeting `120` cumulative completionist minutes.
 
 ### NFR-001 — Platform and Release Compatibility
 
@@ -412,7 +408,7 @@ a shop slot but never appears in tool selection.
 | Reward coalescing | `0.25 s`, displayed as `+$N.N` | FR-003.4 |
 | Passive mood anchors | `0.25x` at `-100`, `1.0x` neutral, `2.0x` at `+100` | FR-012.2 |
 | Passive/active target | peak passive approximately `25%` of active attack earnings | FR-012.3 |
-| Progression targets | `3, 6, 20, 30, 40, 50, 65, 80, 100, 120 min` | FR-013.4–FR-013.5 |
+| Progression targets | `3, 7, 13, 21, 41, 52, 76, 104, 120, 138, 184, 209 min` | FR-013.4–FR-013.5 |
 | Loose-object cap | `24` | FR-014 |
 | Dirty autosave interval | `30 s` plus event saves | FR-015.6–FR-015.7 |
 | Presentation defaults | V-sync On; `2x` MSAA; Master/SFX `50%` | FR-017.6–FR-017.8 |
@@ -436,7 +432,7 @@ The first Steam release includes:
 - One original six-body buddy in one transparent, resizable Windows sandbox and one save slot.
 - Autonomous idle, approach, flee, walk, jump, catch, hold, inspect, consume, toss, unconscious, and self-recovery behavior.
 - Work/Play input modes, click passthrough, global recovery hotkey, tray controls, responsive HUD/panel, window persistence, zoom, and confirmed presentation settings.
-- The fourteen launch interactions listed in FR-013.2, permanent shop ownership, one earnable currency, damage earnings, mood, care, passive income, and the two-hour target progression.
+- The sixteen selectable launch interactions listed in FR-013.2, permanent shop ownership, unrestricted save-for-preference purchasing, one earnable currency, damage earnings, mood, care, passive income, and the 209-minute completionist target progression.
 - Versioned resilient local saving, Steam Cloud progression, Steam stats, and the ten launch achievements.
 - Mouse and keyboard input, original nonverbal audio, non-graphic slapstick presentation, and the confirmed accessibility/performance options.
 
@@ -456,7 +452,7 @@ The first Steam release includes:
 
 - Optional non-realistic bleeding, subject to a separate product and presentation specification.
 - Buddy coloring and paint interactions as content padding.
-- Cosmetic progression capable of extending the progression curve beyond the current two-hour catalogue target.
+- Cosmetic progression capable of extending the progression curve beyond the current 209-minute catalogue target.
 - Steam Workshop support for custom buddies; architecture may avoid needless lock-in, but no Workshop API, mod format, compatibility contract, or custom-buddy tooling is required now.
 - **Work Mode typing companion:** an optional, nonintrusive Work Mode presentation in which
   the buddy sits in a corner, wears glasses, works at a miniature PC, and animates typing
@@ -491,6 +487,6 @@ The first Steam release includes:
 3. **Simulation gate:** Seeded headless scenarios pass documented tolerance envelopes for spring stretch, standing and recovery timing, grab resistance, collision attribution, contact deduplication, projectiles, Burning duration, object catching, and repeated-run stability.
 4. **Overlay gate:** Manual Windows 10/11 tests pass for transparency, pointer passthrough, outside-click Work Mode, global/tray recovery, Always on Top, lower-right placement, multi-monitor clamping, DPI persistence, and layouts at `4:3`, `16:10`, `16:9`, and `21:9` across all zoom levels.
 5. **Persistence gate:** Automated fault tests pass for atomic replacement, rolling-backup recovery, corrupt-file quarantine, semantic/non-semantic field boundaries, event autosaves, safe standing resume, and no sleep/clock-gap catch-up.
-6. **Economy gate:** A documented playtest benchmark demonstrates the ordered affordability targets and approximately two-hour full-catalogue target while peak passive income remains approximately `25%` of active attack earnings.
+6. **Economy gate:** A documented casual-player benchmark demonstrates the FR-013.4 completionist targets through approximately `209` minutes, unrestricted save-for-preference strategies, and peak passive income at approximately `25%` of active attack earnings.
 7. **Performance gate:** Reference-hardware benchmarks report the NFR-002 foreground and hidden budgets with the fixed `120 Hz` simulation and `24` loose objects.
 8. **Steam gate:** Achievement/stat queueing, reconnection sync, progression-only Cloud behavior, and full local fallback pass with Steam available, offline, and initialization-failed.
