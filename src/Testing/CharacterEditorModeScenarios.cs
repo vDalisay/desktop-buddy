@@ -26,6 +26,14 @@ internal static class CharacterEditorModeScenarioSupport
         sandbox.Shell,
         sandbox.Lifecycle);
 
+    /// <summary>Flips Work/Play through the shell's real mode hotkey.</summary>
+    public static void Toggle(SandboxRoot sandbox) =>
+        sandbox.Shell._Input(new InputEventAction
+        {
+            Action = InputActions.ToggleInputMode,
+            Pressed = true,
+        });
+
     public static ScenarioResult Result(IReadOnlyList<StartupCheck> checks, ulong seed) =>
         new(checks.All(static check => check.Passed), checks, [$"seed={seed}"]);
 
@@ -52,6 +60,53 @@ public sealed class EditorModeLifecycleAccountingScenario : IScenario
         try
         {
             var coordinator = CharacterEditorModeScenarioSupport.Coordinator(sandbox);
+
+            // Reproduce how a player actually reaches the editor: clicking the dock puts
+            // the shell in Play first. Once the editor owns the window, a click on its UI,
+            // Escape, or focus loss must NOT flip the shell back to Work — the regions it
+            // would install are the pre-editor ones frozen by the pause, and every pixel
+            // outside them turns click-through, killing the editor.
+            CharacterEditorModeScenarioSupport.Toggle(sandbox);
+            bool playBeforeEditor = sandbox.Shell.Mode == DomainInputMode.Play;
+            coordinator.Enter();
+            sandbox.Shell._Input(new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = new Vector2(900.0f, 640.0f),
+            });
+            sandbox.Shell._Input(new InputEventKey { PhysicalKeycode = Key.Escape, Pressed = true });
+            sandbox.Window.NotifyHeadlessFocusLost();
+            bool stayedInteractive = playBeforeEditor &&
+                sandbox.Shell.Mode == DomainInputMode.Play &&
+                sandbox.Window.InputMode == DomainInputMode.Play;
+            checks.Add(new StartupCheck("a7_editor_keeps_the_window_interactive", stayedInteractive,
+                $"play_before={playBeforeEditor} shell={sandbox.Shell.Mode} window={sandbox.Window.InputMode} " +
+                $"isolation={sandbox.Shell.EditorBoundaryIsolationActive} active={coordinator.IsActive}"));
+            coordinator.Exit();
+            CharacterEditorModeScenarioSupport.Toggle(sandbox);
+
+            // Opening a dock window (shop/tools/settings) takes OS focus from the game window.
+            // That must not drop the shell to Work Mode, or the cursor tool stops receiving
+            // pointer motion over transparent space and freezes near the buddy.
+            CharacterEditorModeScenarioSupport.Toggle(sandbox);
+            bool playBeforeDockWindow = sandbox.Shell.Mode == DomainInputMode.Play;
+            var owned = new Window { Visible = true };
+            tree.Root.AddChild(owned);
+            sandbox.Shell.RegisterOwnedWindow(owned);
+            owned.GrabFocus();
+            sandbox.Window.NotifyHeadlessFocusLost();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            bool keptPlayForOwnedWindow = playBeforeDockWindow &&
+                sandbox.Shell.Mode == DomainInputMode.Play;
+            checks.Add(new StartupCheck("a7_dock_window_focus_keeps_play_mode",
+                keptPlayForOwnedWindow,
+                $"play_before={playBeforeDockWindow} shell={sandbox.Shell.Mode} " +
+                $"focused={owned.HasFocus()}"));
+            owned.QueueFree();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            CharacterEditorModeScenarioSupport.Toggle(sandbox);
+
             long routedBefore = sandbox.Buddy.RoutedTicks;
             double acceptedBefore = sandbox.Lifecycle.AcceptedRunningSeconds;
             bool entered = coordinator.Enter();
