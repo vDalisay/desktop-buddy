@@ -1,0 +1,20 @@
+{
+  "id": "character_editor_create_use_and_react",
+  "description": "Phase A exit: create a character, edit every category, randomize at a fixed seed, save, use it at a fixed tick, keep a reaction overlay on top of it, and restore the selection on restart.",
+  "milestone": 5.5,
+  "setup": {
+    "scene": "sandbox",
+    "exercise": "character_editor_phase_a_exit",
+    "seed": 1,
+    "timeout_physics_ticks": 720
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "a9_all_editor_categories_editable" },
+    { "predicate": "a9_fixed_seed_randomize" },
+    { "predicate": "a9_save_clears_dirty_and_persists" },
+    { "predicate": "a9_use_commits_at_fixed_tick" },
+    { "predicate": "a9_reaction_overlay_retains_character" },
+    { "predicate": "a9_restart_restores_selected_character" }
+  ]
+}

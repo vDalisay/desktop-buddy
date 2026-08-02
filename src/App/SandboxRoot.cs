@@ -43,6 +43,7 @@ public partial class SandboxRoot : Node2D
         new Rect2I[PuppetRigProfile.RequiredPartCount];
     private readonly Rect2[] _buddyWorkModeWorldRegions =
         new Rect2[PuppetRigProfile.RequiredPartCount];
+    private IReadOnlyList<Rect2> _overlayWorkModeHitRegions = [];
 
     private LooseObjectBody? _shownGrenade;
 
@@ -584,9 +585,36 @@ public partial class SandboxRoot : Node2D
                 new Rect2I(projected.X, projected.Y, projected.Width, projected.Height);
         }
 
-        Shell.UpdateWorkModeHitRegions(
-            _buddyWorkModeWorldRegions,
-            _buddyWorkModeHitRegions);
+        if (_overlayWorkModeHitRegions.Count == 0)
+        {
+            Shell.UpdateWorkModeHitRegions(
+                _buddyWorkModeWorldRegions,
+                _buddyWorkModeHitRegions);
+            return;
+        }
+
+        var world = new List<Rect2>(_buddyWorkModeWorldRegions);
+        var client = new List<Rect2I>(_buddyWorkModeHitRegions);
+        Transform2D canvas = GetViewport().GetCanvasTransform().AffineInverse();
+        foreach (Rect2 overlay in _overlayWorkModeHitRegions)
+        {
+            world.Add(new Rect2(canvas * overlay.Position, canvas.BasisXform(overlay.Size)));
+            client.Add(new Rect2I(
+                (Vector2I)overlay.Position.Floor(),
+                (Vector2I)overlay.Size.Ceil()));
+        }
+        Shell.UpdateWorkModeHitRegions(world, client);
+    }
+
+    /// <summary>
+    /// Work-Mode regions owned by same-window overlay UI (the dock and its menus), in
+    /// viewport pixels. They are appended to the per-frame buddy regions rather than
+    /// replacing them, so an open menu never makes the buddy itself pass through.
+    /// </summary>
+    public void SetOverlayWorkModeHitRegions(IReadOnlyList<Rect2> regions)
+    {
+        _overlayWorkModeHitRegions = regions ?? throw new ArgumentNullException(nameof(regions));
+        RefreshWorkModeHitRegions();
     }
 
     /// <summary>

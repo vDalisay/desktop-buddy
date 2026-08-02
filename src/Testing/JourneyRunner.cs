@@ -317,6 +317,18 @@ public partial class JourneyRunner : Node
             return state;
         }
 
+        // The Phase A exit journey is the exit scenario run through the journey
+        // entrypoint: it owns its own editor/lab composition, so its checks become
+        // journey predicates directly.
+        if (exercise == "character_editor_phase_a_exit")
+        {
+            ScenarioResult result =
+                await new CharacterEditorPhaseAExitScenario().RunAsync(GetTree(), seed);
+            foreach (StartupCheck check in result.Checks)
+                state[check.Name] = check.Passed;
+            return state;
+        }
+
         if (string.Equals(scene, "buddy_lab", StringComparison.Ordinal))
         {
             await ComputeBuddyLabStateAsync(state, seed, timeoutPhysicsTicks, root);

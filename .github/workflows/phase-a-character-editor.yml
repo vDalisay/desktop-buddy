@@ -1,0 +1,89 @@
+name: Phase A Character Editor
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  phase-a:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.6.1-stable
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Build solution
+        run: dotnet build DesktopBuddy.sln -c Debug
+      - name: Domain tests excluding documented Linux path baseline
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
+      - name: Download pinned Godot
+        run: |
+          set -euo pipefail
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          curl -fL --retry 3 -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          unzip -q godot.zip
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+      - name: Headless import
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
+      - name: A3 renderer coverage
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=expression_renderer_coverage --seed=1
+      - name: A4 appearance invalidation
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_appearance_invalidation --seed=1
+      - name: A5 backup recovery
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_invalid_primary_backup_recovery --seed=1
+      - name: A5 quarantine
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_invalid_quarantine --seed=1
+      - name: A5 future schema
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_future_schema_fallback --seed=1
+      - name: A5 bounded library
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=library_large_enumeration --seed=1
+      - name: A5 transactions
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_store_transactions --seed=1
+      - name: A6 migration
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_selection_migration --seed=1
+      - name: A6 physics invariant
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_swap_physics_invariant --seed=1
+      - name: A6 immediate save
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_selection_immediate_save --seed=1
+      - name: A6 save failure remains dirty
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_selection_save_failure_dirty --seed=1
+      - name: A6 active delete fallback
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_active_delete_reverts --seed=1
+      - name: A6 startup fallback and reset
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_selection_fallback --seed=1
+      - name: A7 lifecycle accounting
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_mode_lifecycle_accounting --seed=1
+      - name: A7 exact window restore
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_window_restore --seed=1
+      - name: A7 monitor recovery
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_window_monitor_removed --seed=1
+      - name: A7 resize isolation
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_resize_boundary_isolation --seed=1
+      - name: A8 working-copy state machine
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_editor_state_machine --seed=1
+      - name: A8 deterministic randomization
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_editor_randomization --seed=1
+      - name: A8 physics-free preview
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_preview_has_no_physics --seed=1
+      - name: A9 exit scenario seed 1
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=character_editor_create_use_and_react --seed=1
+      - name: A9 exit journey seed 1
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=character_editor_create_use_and_react --seed=1
+      - name: A9 exit journey seed 7
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=character_editor_create_use_and_react --seed=7
+      - name: Presentation regression
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=presentation_3d --seed=1
+      - name: Face regression
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=face_composition --seed=1
+      - name: Window regression
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=room_resize_zoom --seed=1
+      - name: Lifecycle regression
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=hidden_clock_accrual --seed=1

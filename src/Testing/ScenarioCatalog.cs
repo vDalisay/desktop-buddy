@@ -87,12 +87,20 @@ public static class ScenarioCatalog
         ["economy_calibration"] = () => new EconomyCalibrationScenario(),
     };
 
-    public static IReadOnlyCollection<string> Ids => Factories.Keys;
+    public static IReadOnlyCollection<string> Ids
+    {
+        get
+        {
+            var ids = new List<string>(Factories.Keys);
+            ids.AddRange(PhaseACharacterScenarioCatalog.Ids);
+            return ids;
+        }
+    }
 
     public static IScenario? Find(string? id)
     {
         if (id is not null && Factories.TryGetValue(id, out Func<IScenario>? factory))
             return factory();
-        return null;
+        return PhaseACharacterScenarioCatalog.Find(id);
     }
 }
