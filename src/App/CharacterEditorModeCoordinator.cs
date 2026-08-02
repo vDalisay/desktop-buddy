@@ -7,13 +7,16 @@ using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
 namespace DesktopBuddy.App;
 
 public readonly record struct CharacterEditorModeSnapshot(
-    WindowSettings WindowSettings,
+    WindowSettings CompactWindowSettings,
+    WindowLayoutMode LayoutMode,
+    int FullscreenMonitor,
     DomainInputMode InputMode);
 
 /// <summary>
 /// Owns the temporary single-window editor transition. It captures and restores every
-/// mutated window flag, freezes gameplay/lifecycle accounting through the single pause
-/// owner, and prevents editor resizes from reaching gameplay boundaries.
+/// mutated window flag, layout mode and interaction policy, freezes gameplay/lifecycle
+/// accounting through the single pause owner, and prevents editor resizes from reaching
+/// gameplay boundaries.
 /// </summary>
 public sealed class CharacterEditorModeCoordinator
 {
@@ -46,14 +49,21 @@ public sealed class CharacterEditorModeCoordinator
         if (IsActive)
             return false;
 
-        WindowSettings captured = _window.CaptureWindowSettings();
-        _snapshot = new CharacterEditorModeSnapshot(captured, _window.InputMode);
+        WindowSettings compact = _window.CompactWindowSettings;
+        _snapshot = new CharacterEditorModeSnapshot(
+            compact,
+            _window.LayoutMode,
+            _window.FullscreenMonitor,
+            _window.InputMode);
         _shell.BeginEditorBoundaryIsolation();
         _lifecycle.SetEditorMode(true);
 
-        Rect2I candidate = new(captured.Rect.Position, EditorClientSize);
+        if (_window.LayoutMode == WindowLayoutMode.FullscreenOverlay)
+            _window.TrySetLayoutMode(WindowLayoutMode.Compact, _window.FullscreenMonitor);
+
+        Rect2I candidate = new(compact.Rect.Position, EditorClientSize);
         Rect2I recovered = _window.ResolvePlacement(candidate);
-        _window.ApplyWindowSettings(captured with
+        _window.ApplyWindowSettings(compact with
         {
             Rect = recovered,
             Transparent = false,
@@ -72,10 +82,21 @@ public sealed class CharacterEditorModeCoordinator
         if (_snapshot is not CharacterEditorModeSnapshot captured)
             return false;
 
-        WindowSettings restored = _window.RecoverWindowSettings(captured.WindowSettings);
-        _window.ApplyWindowSettings(restored);
+        WindowSettings restoredCompact = _window.RecoverWindowSettings(
+            captured.CompactWindowSettings);
+        if (_window.LayoutMode != WindowLayoutMode.Compact)
+            _window.TrySetLayoutMode(WindowLayoutMode.Compact, captured.FullscreenMonitor);
+        _window.ApplyWindowSettings(restoredCompact);
+
+        if (captured.LayoutMode == WindowLayoutMode.FullscreenOverlay)
+        {
+            _window.TrySetLayoutMode(
+                WindowLayoutMode.FullscreenOverlay,
+                captured.FullscreenMonitor);
+        }
+
         _window.SetInputMode(captured.InputMode, _shell.LastWorkModeHitRegions);
-        _shell.EndEditorBoundaryIsolation(restored.Rect.Size);
+        _shell.EndEditorBoundaryIsolation(_window.CurrentSettings.Rect.Size);
         _snapshot = null;
         _lifecycle.SetEditorMode(false);
         ExitCount++;
