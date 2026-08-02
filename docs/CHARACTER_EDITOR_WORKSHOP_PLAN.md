@@ -1,11 +1,14 @@
 # Character Editor, Custom Painting, and Steam Workshop — Deferred Feature Plan
 
-Status: detailed pre-planning written 2026-07-14 at owner request. This feature is a
-**nice-to-have and remains deferred**: `docs/ROADMAP.md` "Deferred Roadmap" already lists
-buddy painting/coloring, cosmetics, and Steam Workshop/custom buddy packages, and
-`AGENTS.md` forbids prebuilding deferred features. **No implementation may begin until the
-owner schedules this milestone and resolves the decisions in the last section into
-`docs/DECISIONS.md`.** Dependencies: the M3.5 slice must be complete and accepted
+Status: **Phase A is scheduled** (owner, 2026-08-02) and runs after the Milestone 5 exit
+gate, before Milestone 6 — it has no Steam dependency. Owner decisions 1, 2, 3, 4, 5, and 7
+are resolved and recorded in `docs/DECISIONS.md`; decision 6 (Workshop moderation stance)
+is deferred with Phase C. **Phases B and C remain deferred** and unschedulable: they keep
+their own owner gates, and `AGENTS.md` forbids prebuilding them — no paint or Workshop code,
+type, schema field, or UI affordance may land during Phase A beyond the two seams this plan
+names explicitly (the compositor's empty paint slot in A2, and nothing else).
+
+Dependencies: the M3.5 slice must be complete and accepted
 (`docs/M3_5_3D_PRESENTATION_PLAN.md` — the `BuddyVisualProfile` seam and
 `BuddyVisualPresenter` are this plan's rendering substrate, and M3.5 Task 4's injectable
 transform-source seam is what lets Task A6 drive the presenter with fixed rest-pose
@@ -61,16 +64,18 @@ through Steam Workshop plus a file-based fallback. Three independently shippable
    tick (the queued-request pattern `BoundaryController` already uses), never mid-tick.
    Swap is a pure view change; a scenario witnesses accepted-pain equality across a swap.
 4. **Expressions stay readable**: reaction/knockout expressions composite *above* the
-   paint layer so gameplay states (`"x_x"`, `">_<"`) can never be painted over
-   (pending owner decision 3).
+   paint layer so gameplay states (`"x_x"`, `">_<"`) can never be painted over. Owner
+   decision 3 resolved 2026-08-02: **always above, not user-suppressible** — this is a
+   fixed layer-order invariant with no setting and no second code path.
 5. **Editor mode is not gameplay**: entering the editor pauses the sandbox (the
    hidden-to-tray suspension path); the §23 zero-allocation rule applies to simulation
    ticks only, but the compositor still re-renders on change, not per frame.
 6. **Persistence discipline**: character files follow the §12 atomic
    temp-flush-replace/backup/quarantine pattern; unknown active-character GUIDs fall back
    to the built-in buddy while preserving the stored value (§12 unknown-ID rule).
-   Character files are excluded from Steam Cloud (owner decision 4); `progress.json`
-   remains the only Cloud file (§13).
+   Character files are excluded from Steam Cloud (owner decision 4, resolved 2026-08-02:
+   **local + Workshop only**); `progress.json` remains the only Cloud file (§13), carrying
+   the active-character GUID and nothing else.
 7. **Clean-room + UGC boundary**: everything *shipped* (feature sprites, defaults, UI) is
    original; what *users* draw is user content governed by the Phase C policy and
    Steam's UGC terms, not by the clean-room audit.
@@ -82,11 +87,25 @@ through Steam Workshop plus a file-based fallback. Three independently shippable
 
 ### Task A1 — Character document schema (Domain, headless-testable)
 `CharacterDocument` in `Domain/Characters`: GUID id, display name, `schemaVersion`,
-per-part colors, and a bounded feature list (per feature: type index into the shipped
-atlas, position offset, scale, rotation, color — final axes are owner decision 1).
+per-part colors, and a bounded feature list. Owner decision 1 resolved 2026-08-02 —
+**lean axis set**, exactly four feature slots:
+
+| Slot | Axes |
+| --- | --- |
+| Eyes | type index into the shipped atlas, offset, scale, color |
+| Brows | type index, offset, scale, color |
+| Mouth | type index, offset, scale, color |
+| Body accent (one) | type index, offset, scale, color |
+
+Per-feature **rotation is out of scope**, as are head/body shape modifiers — the fixed
+collision primitives are physics, and constraint 1 keeps them unreachable. Per-part base
+color applies to all six M3.5 parts. The slot set is fixed data in the schema; adding a
+fifth slot later is a migration, not a Phase A option.
+
 `Validate()` and `ClampToBounds()`; sequential migrations mirroring the save-DTO pattern.
 xUnit: bounds and clamping, JSON roundtrip, migration N→N+1, unknown-major rejection,
-name length/character limits.
+name length/character limits, unknown type index → clamp to the atlas default rather than
+reject (a document from a build with a larger atlas must load, per the §12 unknown-ID rule).
 
 ### Task A2 — Feature atlas and part compositor (integration/presentation)
 Original robot feature art (eyes, brows, mouths, and robot accents) drawn procedurally
@@ -128,6 +147,17 @@ GUID persisted in `progress.json` (extension-safe). Library operations: create,
 duplicate, rename, delete (soft confirm), select-active. Deletion of the active
 character reverts to built-in.
 
+Owner decision 7 resolved 2026-08-02: **no library cap**. Two consequences are
+requirements, not optimizations, because nothing else bounds the count:
+
+- Startup and library-open enumerate **directory entries and each `character.json`'s name
+  field only**; full document parse, compile, and thumbnail render happen for the active
+  character and for a list entry when it is selected — never for the whole library.
+- The library panel list is paged or virtualized, so its cost is per visible row.
+
+Scenario `library_large_enumeration`: 500 synthetic character directories, assert startup
+completes and that exactly one document is compiled (the active one).
+
 ### Task A6 — Editor UI (integration/presentation)
 `scenes/editor/character_editor.tscn`: part selector, parameter controls, color pickers,
 seeded randomize (injectable RNG per §23 — presentation stream), name entry, library
@@ -135,20 +165,37 @@ panel, and a live preview that reuses `BuddyVisualPresenter` through the M3.5 Ta
 transform-source seam, fed **fixed rest-pose transforms** — the preview runs no physics.
 Entry from the settings/panel surface; sandbox paused while open — and because that
 pause suspends the tree, the editor branch itself must run with `ProcessMode`
-Always/WhenPaused or the editor UI freezes with the sandbox; window sizing per owner
-decision 2. Every string is a translation key.
+Always/WhenPaused or the editor UI freezes with the sandbox. Every string is a
+translation key.
+
+Owner decisions 2 and 5 resolved 2026-08-02:
+
+- **Window strategy — temporary resize, same window.** On entry the existing shell stores
+  its geometry, resizes to the editor working size, and turns opaque (per-pixel
+  transparency off, borders as in Work Mode); on exit it restores the stored size,
+  position, and transparency. No second window: the M2 focus, always-on-top, DPI, and
+  off-screen-recovery paths stay single-window. The restore must survive an editor exit on
+  a monitor that has since disappeared — reuse the M2 off-screen recovery rather than
+  writing a second placement rule.
+- **Access — free from launch.** A settings-panel entry available on every save, with no
+  credit cost, catalogue prerequisite, or unlock flag. The editor is deliberately not an
+  economy sink; nothing here touches the M5 balance. No editor achievements in Phase A
+  (achievement definitions are M6 scope and the confirmed ten are already fixed).
 
 ### Task A7 — Phase A scenarios and journey (integration/testing)
 Scenarios: `editor_document_roundtrip` (create → save → load → compile → applied at a
 safe-boundary swap), `editor_invalid_quarantine` (corrupt file → quarantine + built-in
 fallback + preserved GUID), `expression_map_coverage` (every reaction state resolves to a
 pose and re-renders the compositor), `character_swap_physics_invariant` (strike before
-and after a swap; accepted pain equal). Journey: create → randomize → save → select →
-strike → correct expression state, through the real input path. MCP interactive pass per
-`AGENTS.md` before promotion.
+and after a swap; accepted pain equal), `editor_window_restore` (enter → exit returns the
+stored size, position, and transparency; and enter → exit with the entry monitor gone
+lands on-screen through the M2 recovery path), `library_large_enumeration` (A5). Journey:
+create → randomize → save → select → strike → correct expression state, through the real
+input path. MCP interactive pass per `AGENTS.md` before promotion.
 
 **Phase A exit gate (owner-manual):** editor usability and parametric-face parity accepted
-on real Windows; default-buddy pipeline unification approved.
+on real Windows; the enter/exit window transition accepted on a real multi-monitor desktop;
+default-buddy pipeline unification approved (the A2 head-front-quad question).
 
 ## Phase B — Painting
 
@@ -238,33 +285,35 @@ agreement not yet accepted, offline behavior.
 
 **Phase C exit gate (owner-manual):** depot matrix passes; policy doc approved.
 
-## Owner decisions required before scheduling
+## Owner decisions
 
-Per `AGENTS.md`, move these into `docs/OPEN_QUESTIONS.md` when this milestone is
-scheduled, and resolve them into `docs/DECISIONS.md` before implementation:
+Resolved by the owner 2026-08-02 and recorded in `docs/DECISIONS.md`:
 
-1. The parametric feature-axis list and art direction for the original robot features.
-2. Editor window strategy inside the 480×360-minimum transparent shell (temporary
-   resize, separate opaque window, or maximize-within-window).
-3. Expressions always composite above paint (recommended for gameplay readability), or
-   user-suppressible per character.
-4. Character files local + Workshop only (recommended; `progress.json` stays the sole
-   Cloud file per §13), or extend Steam Cloud.
-5. Editor access free at launch versus progression-gated; any editor/Workshop
-   achievements.
-6. Workshop content-rating stance and sign-off on the report/hide policy.
-7. Local library cap (recommend a soft cap around 64 with list paging).
+| # | Decision | Resolution | Lands in |
+| --- | --- | --- | --- |
+| 1 | Feature axes and art direction | Lean set: eyes, brows, mouth, one body accent; type/offset/scale/color each; no rotation, no shape modifiers | A1, A2, A6 |
+| 2 | Editor window strategy | Temporary resize of the same window, opaque while open, geometry and transparency restored on exit | A6, A7 |
+| 3 | Expressions vs paint | Always composite above paint; not user-suppressible | Constraint 4, B5 |
+| 4 | Character file Cloud scope | Local + Workshop only; `progress.json` stays the sole Cloud file | Constraint 6, A5 |
+| 5 | Editor access | Free from launch, no progression gate, no Phase A achievements | A6 |
+| 7 | Local library cap | Uncapped, with lazy enumeration and a paged list | A5 |
+
+Still outstanding, deferred with its phase:
+
+6. **Workshop content-rating stance and report/hide policy sign-off.** Phase C only. Move
+   to `docs/OPEN_QUESTIONS.md` when Phase C is scheduled — it cannot be scheduled before
+   Milestone 6 regardless.
 
 ## Effort estimate
 
-| Phase | Focused effort | Ships alone? |
-| --- | --- | --- |
-| A — Parametric editor | 3–5 weeks | Yes — full creator without paint/Workshop |
-| B — Painting | 2–3 weeks | Yes — on top of A |
-| C — Workshop | 2–3 weeks (after M6) | Yes — on top of A (B optional) |
+| Phase | Focused effort | Status | Ships alone? |
+| --- | --- | --- | --- |
+| A — Parametric editor | 3–5 weeks | **Scheduled** — after the M5 exit gate, before M6 | Yes — full creator without paint/Workshop |
+| B — Painting | 2–3 weeks | Deferred | Yes — on top of A |
+| C — Workshop | 2–3 weeks (after M6) | Deferred | Yes — on top of A (B optional) |
 
-Total 7–11 focused weeks. Phase gates are owner-manual; each phase leaves the game
-shippable.
+Total 7–11 focused weeks if all three ever run. Phase gates are owner-manual; each phase
+leaves the game shippable. Scheduled scope today is Phase A alone: 3–5 weeks.
 
 ## Progress
 
@@ -281,6 +330,14 @@ Workshop GUID-collision policy added to C4, the headless GPU boundary made expli
 (A4/B5 assert against CPU-side data only), the authoritative face-state list pinned to
 the resolver's actual ten states (A3), and the editor branch's `ProcessMode` under
 sandbox pause noted (A6).
+
+**Scheduled 2026-08-02.** The owner scheduled **Phase A only**, to run after the Milestone 5
+exit gate and before Milestone 6, and resolved decisions 1, 2, 3, 4, 5, and 7 (decision 6
+deferred with Phase C). Those resolutions are folded into constraints 4 and 6 and into
+tasks A1, A5, A6, and A7 above, and recorded in `docs/DECISIONS.md`. Phases B and C stay
+deferred; the only forward seam Phase A may build is the compositor's empty paint slot
+(A2). Both hard dependencies — M3.5 and M3.6 — are complete and accepted, so Phase A is
+unblocked apart from M5 finishing. No tasks started.
 
 Amended again 2026-07-14 for the owner's expressiveness direction: the face compositor
 and `FaceExpressionMap` now build first in the M3.6 expressive slice

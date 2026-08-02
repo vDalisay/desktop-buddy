@@ -6,6 +6,12 @@ in `docs/DECISIONS.md`; Tasks 11–13 have no remaining product-design blockers.
 The remaining dock clean-room, Windows, pacing, and feel checks are acceptance/evidence
 gates, not unanswered behavior questions.
 
+The Character Editor Phase A decisions (feature axes, editor window, expression layering,
+Cloud scope, access gating, library cap) were resolved by the owner on 2026-08-02 and
+recorded in `docs/DECISIONS.md`. The one remaining question in that plan — the Workshop
+content-rating and report/hide policy — is Phase C scope and belongs here only when Phase C
+is scheduled, which cannot happen before Milestone 6.
+
 OQ-7 through OQ-10 were resolved by the owner on 2026-07-20 and recorded in
 `docs/DECISIONS.md`.
 

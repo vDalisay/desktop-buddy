@@ -138,6 +138,32 @@ Exit criteria:
 - Every tool has automated behavior/error tests and clean-room presentation.
 - Economy simulation meets the 3-to-209-minute completionist target schedule, unrestricted skipping strategies, the casual 120-active/89-background benchmark, and the active/passive ratio.
 
+## Milestone 5.5 — Character Editor (Phase A)
+
+Scheduled by the owner 2026-08-02, after the Milestone 5 exit gate and before Milestone 6 —
+it has no Steam dependency. Full plan and owner decisions:
+`docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md` (Phase A, Tasks A1–A7).
+
+Deliver:
+
+- Versioned `CharacterDocument` schema with per-part colors and four parametric feature
+  slots (eyes, brows, mouth, one body accent), plus the document→visual-profile compiler.
+- Parametric feature atlas and part compositor extending the M3.6 face compositor, and the
+  `FaceExpressionMap` extended so every reaction state resolves per character.
+- Uncapped local character library with the Section 12 atomic write/backup/quarantine
+  discipline, lazy enumeration, and the active-character GUID in `progress.json`.
+- Editor UI, free from launch, opened by temporarily resizing the shell opaque and
+  restoring its geometry and transparency on exit.
+
+Exit criteria:
+
+- Phase A scenarios and journey pass, including the physics invariant across a character
+  swap and the window-restore path.
+- Customization remains visual-only by construction: no schema field or editor control
+  reaches rig, drive, mass, collision, or tuning.
+
+Painting (Phase B) and Steam Workshop (Phase C) remain deferred with their own gates.
+
 ## Milestone 6 — Steam and Release Systems
 
 Deliver:
@@ -170,9 +196,11 @@ Exit criteria:
 Do not implement these during the milestones above:
 
 - Optional blood/bleeding.
-- Buddy painting and coloring.
+- Buddy painting (freehand paint — Phase B of `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`).
+  The parametric character editor, Phase A of the same plan, was scheduled 2026-08-02 as
+  Milestone 5.5 and is no longer deferred.
 - Cosmetic progression.
-- Steam Workshop and custom buddy packages.
+- Steam Workshop and custom buddy packages (Phase C, requires M6).
 - Work Mode typing companion: an optional nonintrusive corner activity where the buddy
   wears glasses, works at a miniature PC, reacts to the player's keypresses by typing,
   and displays a keypress counter. While active, it also provides extra passive earnings

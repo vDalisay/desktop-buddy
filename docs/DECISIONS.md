@@ -1784,6 +1784,45 @@ The confirmation *modal* for Reset Progress (13A-2b) ships with
 `docs/UI_FLOATING_DOCK_PLAN.md` Task 7 and binds to the armed tray event; there is no shop
 UI or dock in this repo to put one in today.
 
+## Character Editor Phase A — Scheduled and Decisions Resolved (2026-08-02)
+
+The owner scheduled **Phase A of `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`** — the
+parametric character editor — as Milestone 5.5, to run after the Milestone 5 exit gate and
+before Milestone 6. Phases B (painting) and C (Steam Workshop) **remain deferred** and keep
+their own owner gates; Phase C additionally requires Milestone 6.
+
+Six of the plan's seven owner decisions are resolved:
+
+1. **Feature axes — lean set.** Four feature slots: eyes, brows, mouth, and one body
+   accent, each with a type index into the shipped atlas, offset, scale, and color, plus
+   per-part base color on all six parts. No per-feature rotation and no head/body shape
+   modifiers. Adding a slot later is a schema migration, not a Phase A option.
+2. **Editor window — temporary resize of the same window.** Entering the editor stores the
+   shell's geometry, resizes it opaque to the editor working size, and restores size,
+   position, and transparency on exit. No second window; the Milestone 2 focus,
+   always-on-top, DPI, and off-screen-recovery paths stay single-window and are reused for
+   the restore.
+3. **Expressions always composite above paint.** Not user-suppressible. Knockout and pain
+   faces can never be obscured; this is a fixed layer-order invariant with no setting.
+4. **Character files are local + Workshop only.** `progress.json` remains the sole Steam
+   Cloud file per ARCHITECTURE Section 13, carrying the active-character GUID and nothing
+   else. Characters travel by Workshop or `.buddychar` export, never by Cloud.
+5. **The editor is free from launch.** A settings-panel entry on every save, with no credit
+   cost, catalogue prerequisite, or unlock flag. It is deliberately not an economy sink and
+   does not touch the Milestone 5 balance. No editor achievements in Phase A; the confirmed
+   ten remain fixed Milestone 6 scope.
+7. **The local library is uncapped.** Because nothing bounds the count, two properties are
+   requirements rather than optimizations: startup and library-open enumerate directory
+   entries and each document's name field only — full parse, compile, and thumbnail happen
+   for the active character and for a selected entry, never for the whole library — and the
+   library list is paged or virtualized.
+
+Decision 6 (Workshop content-rating stance and report/hide policy) is **not** resolved. It
+is Phase C scope and moves to `docs/OPEN_QUESTIONS.md` when Phase C is scheduled.
+
+Unchanged and still binding: customization is visual-only forever, enforced structurally by
+the compiler's output type, and exactly one buddy is active at a time.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.
