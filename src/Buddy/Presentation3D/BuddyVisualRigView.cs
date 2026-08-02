@@ -46,6 +46,9 @@ public partial class BuddyVisualRigView : Node3D
     private StandardMaterial3D? _facePlateMaterial;
     private StandardMaterial3D? _accentPlateMaterial;
     private string _displayedFace = string.Empty;
+    private CompiledCharacterAppearance? _activeAppearance;
+    private long _appearanceMutationCount;
+    private long _partMaterialMutationCount;
 
     public bool IsInitialized { get; private set; }
     public Node3D BodyYaw { get; private set; } = null!;
@@ -58,6 +61,9 @@ public partial class BuddyVisualRigView : Node3D
     public int ConnectorVisualCount => IsInitialized ? _connectorMeshes.Length : 0;
     public BuddyVisualProfile TrustedProfile => _trustedProfile;
     public IBuddyVisualTransformSource GeometrySource => _geometrySource;
+    public CompiledCharacterAppearance? ActiveAppearance => _activeAppearance;
+    public long AppearanceMutationCount => _appearanceMutationCount;
+    public long PartMaterialMutationCount => _partMaterialMutationCount;
 
     /// <summary>
     /// The compositor remains an external sampler during A2. The rig owns only its plate
@@ -124,19 +130,41 @@ public partial class BuddyVisualRigView : Node3D
     }
 
     /// <summary>
-    /// Step 6 supplies the narrow appearance mutation. The method exists now so the shared
-    /// public boundary cannot drift while node ownership is extracted.
+    /// Applies only the narrow appearance boundary. Trusted meshes, sockets, connector
+    /// definitions, profile, transform source, and presentation tuning remain untouched.
+    /// Feature values are retained for A3/A4 renderers; A2 mutates only part material colors.
     /// </summary>
-    public void ApplyAppearance(in CompiledCharacterAppearance appearance) =>
-        throw new NotSupportedException("Character appearance application lands in A2 step 6.");
+    public void ApplyAppearance(in CompiledCharacterAppearance appearance)
+    {
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(appearance);
+        if (Equals(_activeAppearance, appearance))
+            return;
+
+        BuddyVisualRigTrustSnapshot trust = CaptureTrustSnapshot();
+        ApplyPartColorSet(appearance.PartColors);
+        _activeAppearance = appearance;
+        _appearanceMutationCount++;
+
+        if (!TrustedGeometryMatches(trust))
+        {
+            throw new InvalidOperationException(
+                "Applying a character appearance changed trusted visual geometry.");
+        }
+    }
 
     public void ApplyBuiltInAppearance()
     {
         if (!IsInitialized)
             return;
 
+        bool changed = _activeAppearance is not null;
         for (int index = 0; index < _partMeshes.Length; index++)
-            SetActiveBaseColor(index, _partDefinitions[index].Color);
+            changed |= SetActiveBaseColor(index, _partDefinitions[index].Color);
+
+        _activeAppearance = null;
+        if (changed)
+            _appearanceMutationCount++;
 
         if (GodotObject.IsInstanceValid(TorsoAccentPlate))
             TorsoAccentPlate.Visible = false;
@@ -290,25 +318,49 @@ public partial class BuddyVisualRigView : Node3D
             ? _connectorDefinitions[index].Color
             : Colors.White;
 
-    private void SetActiveBaseColor(int index, Color color)
+    private void ApplyPartColorSet(in PartColorSet colors)
     {
-        _activeBaseColors[index] = color;
-        ApplyPartColor(index);
+        SetActiveBaseColor((int)BuddyPartId.Head, ToGodotColor(colors.Head));
+        SetActiveBaseColor((int)BuddyPartId.Torso, ToGodotColor(colors.Torso));
+        SetActiveBaseColor((int)BuddyPartId.LeftHand, ToGodotColor(colors.LeftHand));
+        SetActiveBaseColor((int)BuddyPartId.RightHand, ToGodotColor(colors.RightHand));
+        SetActiveBaseColor((int)BuddyPartId.LeftFoot, ToGodotColor(colors.LeftFoot));
+        SetActiveBaseColor((int)BuddyPartId.RightFoot, ToGodotColor(colors.RightFoot));
     }
 
-    private void ApplyPartColor(int index)
+    private bool SetActiveBaseColor(int index, Color color)
+    {
+        if (_activeBaseColors[index] == color)
+            return false;
+
+        _activeBaseColors[index] = color;
+        ApplyPartColor(index);
+        return true;
+    }
+
+    private bool ApplyPartColor(int index)
     {
         if (_partMeshes[index].MaterialOverride is not StandardMaterial3D material)
-            return;
+            return false;
 
         float scorch = _scorchAmounts[index];
         Color baseColor = _activeBaseColors[index];
         Color wanted = scorch <= 0.0f
             ? baseColor
             : baseColor.Lerp(_scorchColors[index], scorch);
-        if (material.AlbedoColor != wanted)
-            material.AlbedoColor = wanted;
+        if (material.AlbedoColor == wanted)
+            return false;
+
+        material.AlbedoColor = wanted;
+        _partMaterialMutationCount++;
+        return true;
     }
+
+    private static Color ToGodotColor(Rgba32 color) => new(
+        color.R / 255.0f,
+        color.G / 255.0f,
+        color.B / 255.0f,
+        1.0f);
 
     private void BuildParts()
     {
