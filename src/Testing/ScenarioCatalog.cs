@@ -46,6 +46,7 @@ public static class ScenarioCatalog
         ["tool_feel_reactions"] = () => new ToolFeelReactionScenario(),
         ["presentation_3d"] = () => new Presentation3DScenario(),
         ["presentation_look"] = () => new PresentationLookScenario(),
+        ["character_rig_view"] = () => new CharacterRigViewScenario(),
         ["object_catch_hold"] = () => new ObjectCatchHoldScenario(),
         ["object_toss_discard"] = () => new ObjectTossDiscardScenario(),
         ["corner_scoop"] = () => new CornerScoopScenario(),

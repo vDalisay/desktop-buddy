@@ -48,7 +48,10 @@ jobs:
           URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
           curl -fL --retry 3 -o godot.zip "$URL"
           unzip -q godot.zip
-          echo "GODOT_BIN=$PWD/${NAME}/${NAME}" >> "$GITHUB_ENV"
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
 
       - name: Headless editor import
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
@@ -113,6 +116,9 @@ jobs:
       - name: M3 presentation scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=m3_presentation --seed=1
 
+      - name: A2 shared rig view scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=character_rig_view --seed=1
+
       - name: M3 tool feel and reactions scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=tool_feel_reactions --seed=1
 
@@ -135,10 +141,14 @@ jobs:
       - run: dotnet build DesktopBuddy.sln -c Debug
       - name: Download pinned Godot
         run: |
+          set -euo pipefail
           NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
           curl -fL -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
           unzip -q godot.zip
-          echo "GODOT_BIN=$PWD/${NAME}/${NAME}" >> "$GITHUB_ENV"
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
       - name: Full 30-minute idle soak scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=idle_soak --seed=1 --artifacts=.artifacts/idle_soak
       - name: Full 30-minute idle soak journey
