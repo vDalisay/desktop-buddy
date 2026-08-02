@@ -49,6 +49,14 @@ public partial class CharacterEditorHost
             return;
         }
 
+        // The host's full-rect Control is a layout parent, not an input surface. Leaving the
+        // Godot default MouseFilter.Stop here consumes every visually empty transparent click
+        // before Compact Work can activate Play and before Play can route tools. Actual dock,
+        // editor and prompt controls keep their own Stop filters.
+        Control? uiRoot = GetNodeOrNull<Control>("CharacterEditorUiRoot");
+        if (GodotObject.IsInstanceValid(uiRoot))
+            uiRoot!.MouseFilter = Control.MouseFilterEnum.Ignore;
+
         InteractionModeButton = new Button
         {
             Name = "DockInteractionModeButton",
