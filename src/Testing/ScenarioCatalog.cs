@@ -55,7 +55,7 @@ public static class ScenarioCatalog
         ["library_large_enumeration"] = () => new LibraryLargeEnumerationScenario(),
         ["character_store_transactions"] = () => new CharacterStoreTransactionsScenario(),
         ["character_selection_migration"] = () => new CharacterSelectionMigrationScenario(),
-        ["character_swap_physics_invariant"] = () => new CharacterSwapPhysicsInvariantScenario(),
+        ["character_swap_physics_invariant"] = () => new CharacterSwapPhysicsInvariantPreparedScenario(),
         ["character_selection_immediate_save"] = () => new CharacterSelectionImmediateSaveScenario(),
         ["character_selection_save_failure_dirty"] = () => new CharacterSelectionSaveFailureDirtyScenario(),
         ["character_active_delete_reverts"] = () => new CharacterActiveDeleteRevertsScenario(),
