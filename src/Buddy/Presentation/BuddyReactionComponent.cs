@@ -32,6 +32,8 @@ public partial class BuddyReactionComponent : Node
     private int _learnedThreatFaceTicks;
     private int _laughTicks;
 
+    public event Action<string>? FaceChanged;
+
     public bool IsInitialized { get; private set; }
     public string CurrentFace { get; private set; } = ":)";
     public float CurrentFear { get; private set; }
@@ -148,7 +150,7 @@ public partial class BuddyReactionComponent : Node
         CurrentFear = Mathf.Clamp(FearOverride ?? resolvedFear, 0.0f, 1.0f);
         Buddy.GrabResistance.FearLevel = CurrentFear;
 
-        CurrentFace = Buddy.CurrentConsciousness == Consciousness.Unconscious ? "x_x" :
+        string resolvedFace = Buddy.CurrentConsciousness == Consciousness.Unconscious ? "x_x" :
             _painTicks > 0 ? ">_<" :
             _pistolSadTicks > 0 ? ":(" :
             Pipeline.SelectedTool == ToolId.Tickle &&
@@ -170,6 +172,17 @@ public partial class BuddyReactionComponent : Node
                 MoodBand.Delighted => "^_^",
                 _ => ":)",
             };
+
+        if (!string.Equals(CurrentFace, resolvedFace, StringComparison.Ordinal))
+        {
+            CurrentFace = resolvedFace;
+            FaceChanged?.Invoke(CurrentFace);
+        }
+        else
+        {
+            CurrentFace = resolvedFace;
+        }
+
         Buddy.Rig.Head.SetFace(CurrentFace);
     }
 
