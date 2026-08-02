@@ -40,8 +40,10 @@ public static class ProgressSavePolicy
         try
         {
             using JsonDocument document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("schemaVersion", out JsonElement schemaElement) ||
-                !schemaElement.TryGetInt32(out int schema))
+            bool hasSchema =
+                document.RootElement.TryGetProperty("schemaVersion", out JsonElement schemaElement) ||
+                document.RootElement.TryGetProperty("SchemaVersion", out schemaElement);
+            if (!hasSchema || !schemaElement.TryGetInt32(out int schema))
             {
                 return new SaveDecodeResult(SaveDecodeStatus.Malformed, null, "Missing schemaVersion.");
             }
