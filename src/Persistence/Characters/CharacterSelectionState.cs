@@ -2,6 +2,10 @@ using System;
 
 namespace DesktopBuddy.Persistence.Characters;
 
+public readonly record struct CharacterSelectionSnapshot(
+    Guid? ActiveCharacterId,
+    long Revision);
+
 /// <summary>
 /// Focused persistent companion to BuddyProgressState. It owns only active character
 /// selection and a revision so the existing progress writer can save both atomically.
@@ -10,10 +14,7 @@ public sealed class CharacterSelectionState
 {
     public CharacterSelectionState(Guid? activeCharacterId = null, long revision = 0)
     {
-        if (activeCharacterId == Guid.Empty)
-            throw new ArgumentOutOfRangeException(nameof(activeCharacterId));
-        if (revision < 0)
-            throw new ArgumentOutOfRangeException(nameof(revision));
+        Validate(activeCharacterId, revision);
         ActiveCharacterId = activeCharacterId;
         Revision = revision;
     }
@@ -22,6 +23,8 @@ public sealed class CharacterSelectionState
 
     public Guid? ActiveCharacterId { get; private set; }
     public long Revision { get; private set; }
+
+    public CharacterSelectionSnapshot Snapshot() => new(ActiveCharacterId, Revision);
 
     public bool SetActive(Guid? id)
     {
@@ -44,5 +47,25 @@ public sealed class CharacterSelectionState
         Changed?.Invoke(ActiveCharacterId);
     }
 
+    /// <summary>
+    /// Rollback-only seam used by all-or-nothing Reset Progress. It restores the exact
+    /// prior selection snapshot rather than advancing dirty revision counters.
+    /// </summary>
+    public void Restore(in CharacterSelectionSnapshot snapshot)
+    {
+        Validate(snapshot.ActiveCharacterId, snapshot.Revision);
+        ActiveCharacterId = snapshot.ActiveCharacterId;
+        Revision = snapshot.Revision;
+        Changed?.Invoke(ActiveCharacterId);
+    }
+
     public void ResetToBuiltIn() => SetActive(null);
+
+    private static void Validate(Guid? activeCharacterId, long revision)
+    {
+        if (activeCharacterId == Guid.Empty)
+            throw new ArgumentOutOfRangeException(nameof(activeCharacterId));
+        if (revision < 0)
+            throw new ArgumentOutOfRangeException(nameof(revision));
+    }
 }
