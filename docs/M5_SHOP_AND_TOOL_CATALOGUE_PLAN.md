@@ -81,8 +81,9 @@ Out of scope (do not build):
   author.
 - **Stable string IDs (ARCHITECTURE §5).** Every catalogue entry gets a `ContentIds`
   constant; `ForTool` stays a total mapping; `ToolId` appends only. Persisted IDs are
-  never repurposed. The Strength Upgrade is **not** a `ToolId` — it is a content ID
-  only, because it must never enter tool selection (FR-019).
+  never repurposed. Power Grab appends `ToolId.PowerGrab = 15` and uses
+  `tool.power_grab`. Deprecated `upgrade.strength` is read only by the schema-5
+  migration and is never emitted by current saves.
 - **No allocations on the 120 Hz path.** Pellets, particles, and trajectory previews
   use pooled/preallocated storage.
 - **Attribution through the shared pipeline.** Every new tool's pain flows through
@@ -502,22 +503,23 @@ Power/economy/catalogue gates, and the dock clean-room gate.
 
 ## New test surface (summary)
 
-Unit: Resource-to-snapshot catalogue validation, catalogue rules/FR-019 filter,
-authoritative purchase validation, locked selection, owner-confirmed reset scope,
-optional extracted loose-object admission policy, `CursorAimModel`, `GunModel`
-(2 profiles), `BurningStatus`, grab-strength sources after owner resolution,
-`EconomySimulation`. Scenarios: `object_budget`, `meal_consume`, `bat_swing`,
+Unit coverage includes Resource-to-snapshot catalogue validation, authoritative purchase
+and free-skip rules, locked selection, schema-5 Strength-alias migration, immutable
+Normal/Power grab resolution, shared stretch/escape policy, typed release reasons,
+transactional Reset Progress and complete failure-path equality, and production-path
+`EconomySimulation`.
+
+New/updated scenarios include `object_budget`, `meal_consume`, `bat_swing`,
 `pistol_fire`, `grenade_fuse`, `burning_status`, `soccer_and_drink`,
-`shotgun_spread`, `repair_kit`, `strength_upgrade` (+ existing `baseball_pullback`).
-Journeys: `m5_shop_progression` plus one journey per M5 tool/care slice covering its
-happy path and applicable cancel/secondary/error path (Baseball, Meal, Baseball Bat,
-Pistol, Grenade, Fire Sprayer, Soccer Ball, Drink, Shotgun, Repair Kit), plus the
-Strength Upgrade purchase/effect journey after its owner gate. Journey files follow
-the existing milestone-prefix convention in `tests/journeys/` — `m5_baseball`,
-`m5_meal`, … `m5_strength_upgrade` — and each starts from the fresh-save fixture with
-its tool unlocked in setup, per `AGENT_VERIFICATION_AND_E2E.md` (declared seed +
-declared save fixture, no fixed sleeps). All scenarios seeds 1 + 7, both
-presentations, `--fixed-fps 120`.
+`shotgun_spread`, `repair_kit`, `power_grab`, and `economy_calibration`, plus
+existing `baseball_pullback`. Journeys include one real-input `m5_<tool>` journey per
+slice, `m5_power_grab`, and the registry-derived `m5_shop_progression` covering
+purchase order, free skipping, Normal/Power switching, reload checkpoints, confirmed
+reset, and cancelled reset.
+
+Use declared seeds and fixtures, no fixed sleeps. Run seeds 1 and 7 at minimum, both
+`mii3d` and `legacy`, with `--fixed-fps 120`. Task 12's economy seed set contains
+at least five committed seeds and reports medians.
 
 ## Verification
 
