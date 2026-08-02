@@ -44,7 +44,7 @@ public readonly struct BuddyVisualPoseFrame
         LeftFoot = leftFoot;
         RightFoot = rightFoot;
         BodyYawRadians = bodyYawRadians;
-        FaceState = faceState;
+        FaceState = faceState ?? ResolveFallbackState(fallbackFace);
         FallbackFace = fallbackFace;
         FallbackFaceRotation = fallbackFaceRotation;
     }
@@ -74,4 +74,22 @@ public readonly struct BuddyVisualPoseFrame
         BuddyPartId.RightFoot => RightFoot,
         _ => throw new ArgumentOutOfRangeException(nameof(partId), partId, "Unknown buddy part."),
     };
+
+    private static FaceRenderState? ResolveFallbackState(string fallbackFace)
+    {
+        if (string.IsNullOrEmpty(fallbackFace) ||
+            !FaceExpressionCatalog.TryResolve(fallbackFace, out FaceFeaturePose pose))
+        {
+            return null;
+        }
+
+        return FaceComposer.Compose(
+            pose,
+            blinkClosed: false,
+            chewActive: false,
+            chewFrame: 0,
+            faceSuppressed: false,
+            pupilX: 0.0f,
+            pupilY: 0.0f);
+    }
 }
