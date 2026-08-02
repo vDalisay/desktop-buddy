@@ -27,7 +27,10 @@ jobs:
           NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
           curl -fL --retry 3 -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
           unzip -q godot.zip
-          echo "GODOT_BIN=$PWD/${NAME}/${NAME}" >> "$GITHUB_ENV"
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
       - name: Headless editor import
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
       - name: A2 shared rig view
