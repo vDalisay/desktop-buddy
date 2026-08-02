@@ -9,8 +9,8 @@ using Godot;
 namespace DesktopBuddy.App;
 
 /// <summary>
-/// Sole runtime owner of monotonic mood drift, passive income, and cumulative
-/// run/active/hidden time. It remains alive while the gameplay tree is paused.
+/// Sole runtime owner of monotonic mood drift, passive income, cumulative time, and the
+/// aggregate gameplay pause coordinator. It remains alive while the gameplay tree is paused.
 /// </summary>
 public partial class LifecycleCoordinator : Node
 {
@@ -28,21 +28,22 @@ public partial class LifecycleCoordinator : Node
     private int _foregroundMaxFps;
     private bool _presentationThrottled;
     private bool _shuttingDown;
+    private bool _editorModeActive;
 
     public bool IsInitialized { get; private set; }
     public bool IsHiddenToTray { get; private set; }
-
     /// <summary>
     /// A locked Windows session keeps running as hidden time with no discontinuity
     /// exclusion, and the prior presentation state is restored on unlock (FR-016.8).
     /// </summary>
     public bool IsSessionLocked { get; private set; }
     public bool IsPresentationThrottled => _presentationThrottled;
+    public bool IsEditorModeActive => _editorModeActive;
     public double AcceptedRunningSeconds { get; private set; }
     public int ExcludedSpanCount => _clock?.ExcludedSpanCount ?? 0;
-
     /// <summary>True while clock spans count as hidden rather than foreground time.</summary>
     public bool AccruesAsHidden => IsHiddenToTray || IsSessionLocked;
+    public GameplayPauseCoordinator PauseCoordinator { get; private set; } = null!;
 
     public void Configure(
         BuddyProgressState progress,
@@ -72,10 +73,20 @@ public partial class LifecycleCoordinator : Node
         IsInitialized = true;
     }
 
+    public override void _EnterTree()
+    {
+        if (PauseCoordinator is null)
+            PauseCoordinator = new GameplayPauseCoordinator(GetTree());
+    }
+
     public override void _Process(double delta)
     {
-        if (!IsInitialized || _shuttingDown || !_clock.TrySample(out double elapsed))
+        if (!IsInitialized || _shuttingDown || _editorModeActive ||
+            !_clock.TrySample(out double elapsed))
+        {
             return;
+        }
+
         _pendingSeconds += elapsed;
         double cadence = AccruesAsHidden
             ? _profile.HiddenUpdateSeconds
@@ -87,21 +98,33 @@ public partial class LifecycleCoordinator : Node
         ApplyAcceptedSpan(accepted);
     }
 
+    public void SetEditorMode(bool active)
+    {
+        if (!IsInitialized || _shuttingDown || active == _editorModeActive)
+            return;
+
+        if (active)
+            SettleCurrentBucket();
+        _editorModeActive = active;
+        _clock.Reset();
+        _pendingSeconds = 0.0;
+        PauseCoordinator.Set(GameplayPauseReason.CharacterEditor, active);
+    }
+
     public void SetHiddenToTray(bool hidden)
     {
         if (!IsInitialized || _shuttingDown || hidden == IsHiddenToTray)
             return;
         SettleCurrentBucket();
         IsHiddenToTray = hidden;
+        PauseCoordinator.Set(GameplayPauseReason.HiddenToTray, hidden);
         if (hidden)
         {
             _setWindowVisibility?.Invoke(false);
-            GetTree().Paused = true;
             ThrottlePresentation();
         }
         else
         {
-            GetTree().Paused = false;
             RestorePresentation();
             _setWindowVisibility?.Invoke(true);
         }
@@ -113,7 +136,7 @@ public partial class LifecycleCoordinator : Node
             return;
         SettleCurrentBucket();
         _clock.Reset();
-        GetTree().Paused = true;
+        PauseCoordinator.Set(GameplayPauseReason.Suspended, true);
     }
 
     public void NotifyResumed(bool remainHidden)
@@ -123,7 +146,8 @@ public partial class LifecycleCoordinator : Node
         _clock.Reset();
         _pendingSeconds = 0.0;
         IsHiddenToTray = remainHidden;
-        GetTree().Paused = remainHidden;
+        PauseCoordinator.Set(GameplayPauseReason.Suspended, false);
+        PauseCoordinator.Set(GameplayPauseReason.HiddenToTray, remainHidden);
         if (remainHidden)
             ThrottlePresentation();
         else
@@ -154,13 +178,16 @@ public partial class LifecycleCoordinator : Node
     {
         if (!IsInitialized || _shuttingDown)
             return;
-        SettleCurrentBucket();
+        if (!_editorModeActive)
+            SettleCurrentBucket();
         _shuttingDown = true;
         SetProcess(false);
     }
 
     private void SettleCurrentBucket()
     {
+        if (_editorModeActive)
+            return;
         if (_clock.TrySample(out double elapsed))
             _pendingSeconds += elapsed;
         if (_pendingSeconds > 0.0)

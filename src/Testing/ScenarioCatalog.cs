@@ -47,6 +47,19 @@ public static class ScenarioCatalog
         ["presentation_3d"] = () => new Presentation3DScenario(),
         ["presentation_look"] = () => new PresentationLookScenario(),
         ["character_rig_view"] = () => new CharacterRigViewScenario(),
+        ["expression_renderer_coverage"] = () => new ExpressionRendererCoverageScenario(),
+        ["character_appearance_invalidation"] = () => new CharacterAppearanceInvalidationScenario(),
+        ["editor_invalid_primary_backup_recovery"] = () => new EditorInvalidPrimaryBackupRecoveryScenario(),
+        ["editor_invalid_quarantine"] = () => new EditorInvalidQuarantineScenario(),
+        ["editor_future_schema_fallback"] = () => new EditorFutureSchemaFallbackScenario(),
+        ["library_large_enumeration"] = () => new LibraryLargeEnumerationScenario(),
+        ["character_store_transactions"] = () => new CharacterStoreTransactionsScenario(),
+        ["character_selection_migration"] = () => new CharacterSelectionMigrationScenario(),
+        ["character_swap_physics_invariant"] = () => new CharacterSwapPhysicsInvariantPreparedScenario(),
+        ["character_selection_immediate_save"] = () => new CharacterSelectionImmediateSaveScenario(),
+        ["character_selection_save_failure_dirty"] = () => new CharacterSelectionSaveFailureDirtyScenario(),
+        ["character_active_delete_reverts"] = () => new CharacterActiveDeleteRevertsScenario(),
+        ["character_selection_fallback"] = () => new CharacterSelectionFallbackScenario(),
         ["object_catch_hold"] = () => new ObjectCatchHoldScenario(),
         ["object_toss_discard"] = () => new ObjectTossDiscardScenario(),
         ["corner_scoop"] = () => new CornerScoopScenario(),
@@ -74,15 +87,20 @@ public static class ScenarioCatalog
         ["economy_calibration"] = () => new EconomyCalibrationScenario(),
     };
 
-    public static IReadOnlyCollection<string> Ids => Factories.Keys;
+    public static IReadOnlyCollection<string> Ids
+    {
+        get
+        {
+            var ids = new List<string>(Factories.Keys);
+            ids.AddRange(PhaseACharacterScenarioCatalog.Ids);
+            return ids;
+        }
+    }
 
     public static IScenario? Find(string? id)
     {
         if (id is not null && Factories.TryGetValue(id, out Func<IScenario>? factory))
-        {
             return factory();
-        }
-
-        return null;
+        return PhaseACharacterScenarioCatalog.Find(id);
     }
 }

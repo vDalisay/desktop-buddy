@@ -2,12 +2,14 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Persistence.Characters;
 
 namespace DesktopBuddy.Persistence;
 
 /// <summary>
 /// Single serialized progress writer with revision-based dirty tracking and
-/// valid-running-time autosave coalescing.
+/// valid-running-time autosave coalescing. Schema-7 character selection is captured in the
+/// same durable progress write as the gameplay snapshot.
 /// </summary>
 public sealed class SaveCoordinator
 {
@@ -15,29 +17,39 @@ public sealed class SaveCoordinator
 
     private readonly object _sync = new();
     private readonly BuddyProgressState _progress;
+    private readonly CharacterSelectionState? _selection;
     private readonly IProgressStore _store;
     private Task _activeFlush = Task.CompletedTask;
     private long _savedRevision;
+    private long _savedSelectionRevision;
     private double _dirtyRunningSeconds;
 
     public SaveCoordinator(
         BuddyProgressState progress,
         IProgressStore store,
-        long? savedRevision = null)
+        long? savedRevision = null,
+        CharacterSelectionState? selection = null,
+        long? savedSelectionRevision = null)
     {
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _selection = selection;
         _savedRevision = savedRevision ?? progress.Revision;
+        _savedSelectionRevision = savedSelectionRevision ?? selection?.Revision ?? 0;
         _progress.Changed += OnProgressChanged;
+        if (_selection is not null)
+            _selection.Changed += OnSelectionChanged;
     }
 
-    public bool IsDirty => _progress.Revision != Interlocked.Read(ref _savedRevision);
+    public CharacterSelectionState? CharacterSelection => _selection;
+
+    public bool IsDirty =>
+        _progress.Revision != Interlocked.Read(ref _savedRevision) ||
+        (_selection is not null &&
+            _selection.Revision != Interlocked.Read(ref _savedSelectionRevision));
+
     public Exception? LastFailure { get; private set; }
 
-    /// <summary>
-    /// Counts only accepted running spans. Hidden accrual mutates Revision and
-    /// therefore marks dirty exactly like foreground accrual.
-    /// </summary>
     public Task TickAsync(double validRunningSeconds, CancellationToken token = default)
     {
         if (validRunningSeconds <= 0.0 || !IsDirty)
@@ -48,17 +60,6 @@ public sealed class SaveCoordinator
         return RequestFlushAsync(token);
     }
 
-    /// <summary>
-    /// Requests a durable write. Coalescing callers (autosave, focus loss) join an
-    /// in-flight flush and let anything newer stay dirty for the next request.
-    /// </summary>
-    /// <param name="force">
-    /// Set only by paths that have no next request — Save &amp; Quit and clean exit. After
-    /// joining an in-flight flush it runs at most <b>one</b> additional pass to capture a
-    /// mutation that arrived during the durable write. Bounded to one pass on purpose:
-    /// continuously advancing running-time revisions must never trap the quit in a
-    /// catch-up loop.
-    /// </param>
     public async Task FlushProgressAsync(bool force, CancellationToken token = default)
     {
         await RequestFlushAsync(token).ConfigureAwait(false);
@@ -68,6 +69,9 @@ public sealed class SaveCoordinator
     }
 
     public Task FlushProgressAsync(CancellationToken token = default) =>
+        RequestFlushAsync(token);
+
+    public Task FlushSelectionImmediatelyAsync(CancellationToken token = default) =>
         RequestFlushAsync(token);
 
     private Task RequestFlushAsync(CancellationToken token)
@@ -93,21 +97,19 @@ public sealed class SaveCoordinator
             if (!IsDirty)
                 return;
 
-            // One flush owns one coherent main-thread snapshot. A mutation that
-            // arrives during the durable write remains dirty for the next request;
-            // continuously advancing running-time revisions must never starve an
-            // explicit save/quit behind an endless catch-up loop.
             ProgressSnapshot snapshot = _progress.Snapshot();
-            ProgressSave save = ProgressSave.FromSnapshot(snapshot);
+            long selectionRevision = _selection?.Revision ?? 0;
+            Guid? activeCharacterId = _selection?.ActiveCharacterId;
+            ProgressSave save = ProgressSave.FromSnapshot(snapshot, activeCharacterId);
             await _store.SaveProgressAsync(save, token).ConfigureAwait(false);
             Interlocked.Exchange(ref _savedRevision, snapshot.Revision);
+            Interlocked.Exchange(ref _savedSelectionRevision, selectionRevision);
             _dirtyRunningSeconds = 0.0;
             LastFailure = null;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             LastFailure = exception;
-            // Do not advance _savedRevision: failure intentionally retains dirty state.
             throw;
         }
     }
@@ -118,6 +120,9 @@ public sealed class SaveCoordinator
             _ = FlushImmediateEventAsync();
     }
 
+    private void OnSelectionChanged(Guid? activeCharacterId) =>
+        _ = FlushImmediateEventAsync();
+
     private async Task FlushImmediateEventAsync()
     {
         try
@@ -126,8 +131,7 @@ public sealed class SaveCoordinator
         }
         catch
         {
-            // FlushLoopAsync records LastFailure and deliberately leaves the
-            // revision dirty. The next autosave/event/clean exit retries it.
+            // Failure remains visible through LastFailure and both revisions remain dirty.
         }
     }
 }

@@ -15,7 +15,9 @@ namespace DesktopBuddy.Platform;
 /// <see cref="IWindowsDesktopAdapter"/>. Editor/headless runs inject the emulated
 /// adapter, so composition and the mode-transition journeys stay green with no
 /// Windows dependency. Transparency falls back to an opaque bordered box when the
-/// adapter reports it is unavailable, without touching gameplay.
+/// adapter reports it is unavailable, without touching gameplay. All window state
+/// is applied and captured as one immutable <see cref="WindowSettings"/> unit, so
+/// editor mode cannot restore only a subset.
 /// </summary>
 public partial class DesktopWindowController : Node, IDesktopWindowService
 {
@@ -27,16 +29,18 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     private IWindowsDesktopAdapter _adapter = new EmulatedWindowsDesktopAdapter();
     private bool _headless;
     private Rect2I _lastAppliedRect = WindowSettings.Defaults.Rect;
+    private WindowSettings _lastAppliedSettings = WindowSettings.Defaults;
     private IReadOnlyList<Rect2I> _workModeHitRegions = Array.Empty<Rect2I>();
 
     public DomainInputMode InputMode { get; private set; } = DomainInputMode.Work;
     public bool TransparencyActive { get; private set; }
-
     /// <summary>
     /// The configured platform adapter, so the composition root can bind the §24
     /// suspend/resume/session-lock seam without owning adapter selection itself.
     /// </summary>
     public IWindowsDesktopAdapter Adapter => _adapter;
+    public WindowSettings CurrentSettings => CaptureWindowSettings();
+    public int AppliedSettingsCount { get; private set; }
 
     public event Action<Rect2I>? ClientBoundsChanged;
     public event Action? WindowFocusLost;
@@ -66,42 +70,55 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     {
         bool wantTransparent = settings.Transparent && _adapter.TransparencyAvailable;
         TransparencyActive = wantTransparent;
-
         _lastAppliedRect = settings.Rect;
+        _lastAppliedSettings = settings with { Transparent = wantTransparent };
+        AppliedSettingsCount++;
 
         if (_headless)
-        {
             return;
-        }
 
         Window window = GetWindow();
-        window.Borderless = true;
+        window.Borderless = settings.Borderless;
+        window.Unresizable = !settings.Resizable;
         window.AlwaysOnTop = settings.AlwaysOnTop;
         window.Transparent = wantTransparent;
         GetViewport().TransparentBg = wantTransparent;
         window.Size = settings.Rect.Size;
         window.Position = settings.Rect.Position;
-
         ApplyRenderSettings(settings);
 
         if (!wantTransparent && settings.Transparent)
-        {
             Log.Warn(Category, "Transparency unavailable; using opaque bordered fallback.");
-        }
     }
+
+    public WindowSettings CaptureWindowSettings()
+    {
+        if (_headless)
+            return _lastAppliedSettings with { Rect = _lastAppliedRect };
+
+        Window window = GetWindow();
+        return new WindowSettings(
+            new Rect2I(window.Position, window.Size),
+            window.Transparent,
+            window.AlwaysOnTop,
+            MsaaLevel(GetViewport().Msaa2D),
+            DisplayServer.WindowGetVsyncMode() != DisplayServer.VSyncMode.Disabled,
+            window.Borderless,
+            !window.Unresizable);
+    }
+
+    /// <summary>Recover a captured rect against the current monitor topology.</summary>
+    public WindowSettings RecoverWindowSettings(WindowSettings captured) =>
+        captured with { Rect = ResolvePlacement(captured.Rect) };
 
     public void SetInputMode(DomainInputMode mode, IReadOnlyList<Rect2I> workModeHitRegions)
     {
         InputMode = mode;
         _workModeHitRegions = workModeHitRegions ?? Array.Empty<Rect2I>();
         if (mode == DomainInputMode.Work)
-        {
             _adapter.SetWorkModeHitRegions(_workModeHitRegions);
-        }
         else
-        {
             _adapter.SetPlayModeCapture();
-        }
     }
 
     public void RestoreBottomRight(int marginPixels)
@@ -121,14 +138,10 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         IReadOnlyList<Rect2I> monitors = _adapter.GetUsableMonitorRects();
         var usable = new List<PixelRect>(monitors.Count);
         foreach (Rect2I rect in monitors)
-        {
             usable.Add(ToPixelRect(rect));
-        }
 
         if (storedRect is Rect2I stored)
-        {
             return ToRect2I(WindowPlacementPolicy.Recover(ToPixelRect(stored), usable).Rect);
-        }
 
         PixelRect first = WindowPlacementPolicy.FirstLaunch(usable[0]);
         return ToRect2I(first);
@@ -154,10 +167,9 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     private void MoveTo(PixelRect rect)
     {
         _lastAppliedRect = ToRect2I(rect);
+        _lastAppliedSettings = _lastAppliedSettings with { Rect = _lastAppliedRect };
         if (_headless)
-        {
             return;
-        }
 
         Window window = GetWindow();
         window.Size = new Vector2I(rect.Width, rect.Height);
@@ -167,10 +179,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     private Rect2I CurrentWindowRect()
     {
         if (_headless)
-        {
             return _lastAppliedRect;
-        }
-
         Window window = GetWindow();
         return new Rect2I(window.Position, window.Size);
     }
@@ -190,7 +199,6 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
                 best = i;
             }
         }
-
         return monitors[best];
     }
 
@@ -198,6 +206,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     {
         Rect2I rect = CurrentWindowRect();
         _lastAppliedRect = rect;
+        _lastAppliedSettings = CaptureWindowSettings();
         ClientBoundsChanged?.Invoke(rect);
     }
 
@@ -205,7 +214,14 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
 
     public override void _ExitTree() => _adapter.Shutdown();
 
-    private static PixelRect ToPixelRect(Rect2I r) => new(r.Position.X, r.Position.Y, r.Size.X, r.Size.Y);
+    private static int MsaaLevel(Viewport.Msaa value) => value switch
+    {
+        Viewport.Msaa.Msaa2X => 2,
+        Viewport.Msaa.Msaa4X => 4,
+        Viewport.Msaa.Msaa8X => 8,
+        _ => 0,
+    };
 
+    private static PixelRect ToPixelRect(Rect2I r) => new(r.Position.X, r.Position.Y, r.Size.X, r.Size.Y);
     private static Rect2I ToRect2I(PixelRect r) => new(r.X, r.Y, r.Width, r.Height);
 }

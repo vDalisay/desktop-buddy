@@ -8,6 +8,7 @@ using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Testing;
 using Godot;
 
@@ -74,9 +75,7 @@ public partial class Bootstrap : Node
     private void ComposeAutomation(RunnerArguments args)
     {
         if (!args.AutomationEnabled)
-        {
             return;
-        }
 
         if (!BuildInfo.AutomationAllowed)
         {
@@ -91,8 +90,6 @@ public partial class Bootstrap : Node
 
     private async Task BootSandboxAsync()
     {
-        // The authored catalogue is validated with the rest of the startup invariants: a
-        // build that cannot say what it sells must not reach the shop (ARCHITECTURE §16).
         GameResource[] resources;
         try
         {
@@ -107,11 +104,7 @@ public partial class Bootstrap : Node
 
         StartupReport report = StartupValidator.Validate(resources);
         if (!report.Ok)
-        {
-            // Fail-fast in development so misconfiguration is caught immediately;
-            // errors were already logged by the validator.
             Log.Error(Category, "Startup validation failed; sandbox may be unstable.");
-        }
 
         var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
         if (packed is null)
@@ -124,6 +117,7 @@ public partial class Bootstrap : Node
         double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
         string progressPath = ProjectSettings.GlobalizePath("user://progress.json");
         string settingsPath = ProjectSettings.GlobalizePath("user://settings.json");
+        string characterRoot = ProjectSettings.GlobalizePath("user://characters");
         var store = new JsonProgressStore(progressPath, settingsPath);
 
         LoadResult<ProgressSave> progressLoad;
@@ -147,7 +141,6 @@ public partial class Bootstrap : Node
 
         if (progressLoad.Status == SaveLoadStatus.UnsupportedFutureVersion)
         {
-            // Never quarantine, replace, or downgrade a save created by a newer build.
             Log.Error(Category, $"Progress is from a newer build: {progressLoad.Detail}");
             QuitSafely(3);
             return;
@@ -155,16 +148,24 @@ public partial class Bootstrap : Node
 
         bool newSemanticState = progressLoad.Status is
             SaveLoadStatus.NewSave or SaveLoadStatus.DefaultsRecovered;
+        ProgressSave? loadedProgress = progressLoad.Value;
         BuddyProgressState progress = newSemanticState
             ? ProgressReset.CreateNewProgress(cashPerPain)
             : ProgressSavePolicy.CreateState(
-                progressLoad.Value ?? throw new InvalidOperationException("Load returned no progress."),
+                loadedProgress ?? throw new InvalidOperationException("Load returned no progress."),
                 cashPerPain);
+        var characterSelection = new CharacterSelectionState(
+            newSemanticState ? null : loadedProgress?.ActiveCharacterId);
+        var characters = new CharacterStore(
+            new CharacterFileSystem(),
+            characterRoot);
         var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
         var saves = new SaveCoordinator(
             progress,
             store,
-            newSemanticState ? -1 : progress.Revision);
+            newSemanticState ? -1 : progress.Revision,
+            characterSelection,
+            newSemanticState ? -1 : characterSelection.Revision);
         var settings = settingsLoad.Value ?? new LocalSettingsSave();
 
         if (progressLoad.QuarantinedPath is not null)
@@ -176,7 +177,6 @@ public partial class Bootstrap : Node
         {
             try
             {
-                // Persist identity immediately so a short first run cannot resample traits.
                 await saves.FlushProgressAsync(force: true);
             }
             catch (Exception exception)
@@ -185,13 +185,23 @@ public partial class Bootstrap : Node
             }
         }
 
-        sandbox.Configure(new RunContext(
+        var context = new RunContext(
             progress,
             economy,
             store,
             saves,
             settings,
-            progressLoad.Status));
+            progressLoad.Status,
+            TimeSource: null,
+            CharacterSelection: characterSelection,
+            Characters: characters);
+        sandbox.Configure(context);
+        var characterRuntime = new CharacterSelectionRuntime
+        {
+            Name = nameof(CharacterSelectionRuntime),
+        };
+        characterRuntime.Configure(sandbox, context);
+        sandbox.AddChild(characterRuntime);
         AddChild(sandbox);
     }
 
