@@ -28,13 +28,18 @@ public readonly record struct CharacterActivationResult(
         CharacterActivationStatus.Queued or CharacterActivationStatus.BuiltInQueued;
 }
 
+/// <summary>
+/// Loads and compiles outside the physics tick, then atomically swaps the visual appearance
+/// and persisted selection at the next fixed tick. Repeated requests are last-request-wins.
+/// The bound SaveCoordinator observes CharacterSelectionState.Changed and is therefore the
+/// single immediate-save trigger for a committed selection change.
+/// </summary>
 public sealed class CharacterSelectionCoordinator
 {
     private readonly object _sync = new();
     private readonly CharacterStore _store;
     private readonly CharacterSelectionState _selection;
     private readonly BuddyVisualRigView _rigView;
-    private readonly SaveCoordinator _saves;
     private readonly CharacterFeatureCatalog _catalog;
     private PendingActivation? _pending;
     private long _nextSequence;
@@ -49,7 +54,13 @@ public sealed class CharacterSelectionCoordinator
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _rigView = rigView ?? throw new ArgumentNullException(nameof(rigView));
-        _saves = saves ?? throw new ArgumentNullException(nameof(saves));
+        ArgumentNullException.ThrowIfNull(saves);
+        if (!ReferenceEquals(saves.CharacterSelection, selection))
+        {
+            throw new ArgumentException(
+                "Character selection coordinator requires a save coordinator bound to the same selection state.",
+                nameof(saves));
+        }
         _catalog = catalog ?? CharacterFeatureCatalog.Shipped;
     }
 
@@ -107,6 +118,11 @@ public sealed class CharacterSelectionCoordinator
         return new CharacterActivationResult(CharacterActivationStatus.Queued, characterId);
     }
 
+    /// <summary>
+    /// Startup applies a selected character when load+compile succeeds. Missing, corrupt,
+    /// future-version, or unknown selections show built-in visuals without rewriting the
+    /// stored ID; only an explicit player choice mutates selection.
+    /// </summary>
     public async Task<CharacterActivationResult> LoadStartupAsync(CancellationToken token)
     {
         Guid? selected = _selection.ActiveCharacterId;
@@ -169,6 +185,7 @@ public sealed class CharacterSelectionCoordinator
         return result;
     }
 
+    /// <summary>Call exactly once from the authoritative fixed-tick route.</summary>
     public void PhysicsTick()
     {
         PendingActivation? pending;
@@ -193,9 +210,6 @@ public sealed class CharacterSelectionCoordinator
         AppliedCharacterId = activation.CharacterId;
         AppliedSequence = activation.Sequence;
         LastFallbackStatus = activation.FallbackStatus;
-
-        if (activation.PersistSelection)
-            _ = FlushSelectionSafelyAsync();
     }
 
     private void Queue(in PendingActivation activation)
@@ -204,17 +218,6 @@ public sealed class CharacterSelectionCoordinator
         {
             if (_pending is null || activation.Sequence >= _pending.Value.Sequence)
                 _pending = activation;
-        }
-    }
-
-    private async Task FlushSelectionSafelyAsync()
-    {
-        try
-        {
-            await _saves.FlushSelectionImmediatelyAsync().ConfigureAwait(false);
-        }
-        catch
-        {
         }
     }
 
