@@ -5,23 +5,30 @@ namespace DesktopBuddy.Domain.Tests.Platform;
 
 public sealed class InputModeStateMachineTests
 {
-    [Theory]
-    [InlineData(ShellInputEvent.BuddyInteraction)]
-    [InlineData(ShellInputEvent.MenuInteraction)]
-    [InlineData(ShellInputEvent.ToolSelected)]
-    public void PlayRequestingEvents_EnterPlayFromWork(ShellInputEvent input)
+    [Fact]
+    public void GameplayCanvasInteraction_EntersPlayFromWork()
     {
         var machine = new InputModeStateMachine(InputMode.Work);
-        Assert.True(machine.Apply(input));
+        Assert.True(machine.Apply(ShellInputEvent.BuddyInteraction));
         Assert.Equal(InputMode.Play, machine.Current);
     }
 
     [Theory]
+    [InlineData(ShellInputEvent.MenuInteraction)]
+    [InlineData(ShellInputEvent.ToolSelected)]
     [InlineData(ShellInputEvent.OutsideClick)]
+    [InlineData(ShellInputEvent.FocusLost)]
+    [InlineData(ShellInputEvent.InactivityTick)]
+    public void PassiveOrUiEvents_DoNotChangeMode(ShellInputEvent input)
+    {
+        Assert.Equal(InputMode.Work, InputModeStateMachine.Next(InputMode.Work, input));
+        Assert.Equal(InputMode.Play, InputModeStateMachine.Next(InputMode.Play, input));
+    }
+
+    [Theory]
     [InlineData(ShellInputEvent.EscapePressed)]
     [InlineData(ShellInputEvent.TrayReturnToWork)]
-    [InlineData(ShellInputEvent.FocusLost)]
-    public void WorkRequestingEvents_ReturnToWorkFromPlay(ShellInputEvent input)
+    public void RecoveryEvents_ReturnToWorkFromPlay(ShellInputEvent input)
     {
         var machine = new InputModeStateMachine(InputMode.Play);
         Assert.True(machine.Apply(input));
@@ -39,32 +46,17 @@ public sealed class InputModeStateMachineTests
     }
 
     [Fact]
-    public void InactivityTick_NeverChangesMode()
+    public void GameplayCanvasInteraction_IsIdempotentInPlay()
     {
-        Assert.Equal(InputMode.Work, InputModeStateMachine.Next(InputMode.Work, ShellInputEvent.InactivityTick));
-        Assert.Equal(InputMode.Play, InputModeStateMachine.Next(InputMode.Play, ShellInputEvent.InactivityTick));
-
         var machine = new InputModeStateMachine(InputMode.Play);
-        Assert.False(machine.Apply(ShellInputEvent.InactivityTick));
+        Assert.False(machine.Apply(ShellInputEvent.BuddyInteraction));
         Assert.Equal(InputMode.Play, machine.Current);
     }
 
     [Theory]
-    [InlineData(ShellInputEvent.BuddyInteraction)]
-    [InlineData(ShellInputEvent.MenuInteraction)]
-    [InlineData(ShellInputEvent.ToolSelected)]
-    public void PlayRequestingEvents_AreIdempotentInPlay(ShellInputEvent input)
-    {
-        var machine = new InputModeStateMachine(InputMode.Play);
-        Assert.False(machine.Apply(input));
-        Assert.Equal(InputMode.Play, machine.Current);
-    }
-
-    [Theory]
-    [InlineData(ShellInputEvent.OutsideClick)]
     [InlineData(ShellInputEvent.EscapePressed)]
     [InlineData(ShellInputEvent.TrayReturnToWork)]
-    public void WorkRequestingEvents_AreIdempotentInWork(ShellInputEvent input)
+    public void RecoveryEvents_AreIdempotentInWork(ShellInputEvent input)
     {
         var machine = new InputModeStateMachine(InputMode.Work);
         Assert.False(machine.Apply(input));
