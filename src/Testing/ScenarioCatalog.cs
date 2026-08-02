@@ -48,6 +48,7 @@ public static class ScenarioCatalog
         ["presentation_look"] = () => new PresentationLookScenario(),
         ["character_rig_view"] = () => new CharacterRigViewScenario(),
         ["expression_renderer_coverage"] = () => new ExpressionRendererCoverageScenario(),
+        ["character_appearance_invalidation"] = () => new CharacterAppearanceInvalidationScenario(),
         ["object_catch_hold"] = () => new ObjectCatchHoldScenario(),
         ["object_toss_discard"] = () => new ObjectTossDiscardScenario(),
         ["corner_scoop"] = () => new CornerScoopScenario(),
@@ -80,10 +81,7 @@ public static class ScenarioCatalog
     public static IScenario? Find(string? id)
     {
         if (id is not null && Factories.TryGetValue(id, out Func<IScenario>? factory))
-        {
             return factory();
-        }
-
         return null;
     }
 }
