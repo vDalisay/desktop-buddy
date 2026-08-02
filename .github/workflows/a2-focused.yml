@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - m5-5-a2-step8-verification
+  pull_request:
 
 env:
   GODOT_VERSION: 4.6.1-stable
