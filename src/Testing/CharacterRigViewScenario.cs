@@ -76,10 +76,11 @@ public sealed class CharacterRigViewScenario : IScenario
         bool secondApplied = Approximately(
             preview.ActiveBasePartAlbedo(BuddyPartId.Head),
             ToGodotColor(second.PartColors.Head));
+        bool geometryUnchanged = preview.TrustedGeometryMatches(trust);
         checks.Add(new StartupCheck(
             "a2_appearance_changes_only_visual_bases",
-            firstApplied && secondApplied && preview.TrustedGeometryMatches(trust),
-            $"first={firstApplied} second={secondApplied} trust={preview.TrustedGeometryMatches(trust)}"));
+            firstApplied && secondApplied && geometryUnchanged,
+            $"first={firstApplied} second={secondApplied} trust={geometryUnchanged}"));
 
         preview.SetPartScorch(BuddyPartId.Head, 0.5f, Colors.Black);
         CompiledCharacterAppearance scorchedSwap = first with
@@ -119,12 +120,13 @@ public sealed class CharacterRigViewScenario : IScenario
         BuddyVisualPresenterSamplingSnapshot sampling =
             lab.VisualPresenter.CaptureSamplingSnapshot();
         bool frameRouted = BuddyVisualPoseFrame.CreatedCount > frameCountBefore &&
-            ReferenceEquals(lab.VisualPresenter.RigView.GeometrySource,
-                lab.VisualPresenter.RigView.GeometrySource) &&
+            lab.VisualPresenter.RigView.GeometrySource is LiveBuddyVisualTransformSource &&
             ReferenceEquals(sampling.Buddy, lab.Buddy) &&
-            sampling.Facing == lab.VisualPresenter.Facing &&
-            sampling.Activities == lab.VisualPresenter.Activities &&
-            sampling.HeadLookAt == lab.VisualPresenter.HeadLookAt;
+            ReferenceEquals(sampling.PosePipeline, lab.VisualPresenter.PosePipeline) &&
+            ReferenceEquals(sampling.Facing, lab.VisualPresenter.Facing) &&
+            ReferenceEquals(sampling.Activities, lab.VisualPresenter.Activities) &&
+            ReferenceEquals(sampling.HeadLookAt, lab.VisualPresenter.HeadLookAt) &&
+            ReferenceEquals(sampling.ImpactVisualOffset, lab.VisualPresenter.ImpactVisualOffset);
         checks.Add(new StartupCheck(
             "a2_presenter_routes_resolved_pose_frames",
             frameRouted,
