@@ -1,123 +1,92 @@
-# M5 Tasks 11–13 — Strength, Economy, and Milestone Closeout Handoff
+# M5 Tasks 11–13 — Power Grab, Economy, and Closeout Handoff
 
-**Status: PLAN — written 2026-08-01, not yet implemented.** This document refines
-Tasks 11–13 of `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md` to implementation-handoff
-fidelity. It does not authorize unresolved product choices. A smaller implementation
-agent should be able to follow the ordered work packets below without rediscovering the
-architecture or inventing behavior.
+**Status: IMPLEMENTATION-READY PLAN — owner decisions resolved 2026-08-02.** This is the detailed handoff for Tasks 11–13 of `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`. It supersedes the former passive “Strength Upgrade” proposal and the former 120-minute completion target.
 
-Authoritative contracts, in conflict order: `docs/DECISIONS.md`,
-`docs/PRODUCT_REQUIREMENTS.md` (FR-006.2/.4/.6/.8, FR-011.8–10/.15,
-FR-012, FR-013, FR-014, FR-015.7, FR-019, NFR-002, NFR-006),
-`docs/RAGDOLL_AND_GAMEPLAY_SPEC.md` (§6–§9), `docs/ARCHITECTURE.md`,
-`docs/TEST_PLAN.md` (§4 and §7), `docs/ROADMAP.md`, and
-`docs/AGENT_VERIFICATION_AND_E2E.md` (§2–§7). If those documents still conflict at
-implementation time, stop and ask the owner; this plan never breaks the tie.
+A small implementation agent should follow the packets in order, use the named existing seams, and stop only at the explicitly identified owner feel/Windows gates. Product choices in this document are closed. If implementation reveals a contradiction with current code, preserve the invariants here and report the exact seam conflict instead of inventing a new behavior.
 
----
+## 1. Locked product contract
 
-## 1. Dependency graph and completion language
+### 1.1 Launch catalogue
 
-Work in this order:
+There are exactly 16 selectable interactions at launch.
 
-1. Resolve the blocking owner/source-of-truth questions in §2.
-2. Finish and owner-accept Task 10 (Repair Kit).
-3. Implement Task 11, then pass its automated, real-input, and owner-feel gates.
-4. Freeze the complete accepted catalogue and implement Task 12 against that exact set.
-5. Finish the dock catalogue binding/reset work, then perform Task 13.
+Starting inventory:
 
-Task 12 may build its engine-free measuring instrument while Task 11 is being tuned, but
-it may not publish final prices or a green verdict before the Strength slot and catalogue
-membership are confirmed. Task 13 is blocked until every catalogue slice has
-`Visible = true`, the dock is bound to the real catalogue, and Task 12 is accepted.
+1. Normal Grab
+2. Pet
+3. Tickle
+4. Boxing Glove
 
-Use these terms literally in commits and handoffs:
+Purchasable order:
 
-- **implemented:** code and focused automated tests exist;
-- **engineering-complete:** focused tests, scenario, and real-input journey pass;
-- **shop-visible:** engineering-complete plus owner feel acceptance recorded in
-  `DECISIONS.md`, then and only then `Visible = true`;
-- **milestone-closed:** Task 13's full automated, Windows, performance, docs, and owner
-  gates all pass. An agent cannot self-certify owner or reference-hardware gates.
+| # | Stable content ID | Display name | Cumulative target |
+|---:|---|---|---:|
+| 1 | `tool.baseball` | Baseball | 3 min |
+| 2 | `tool.baseball_bat` | Baseball Bat | 7 min |
+| 3 | `tool.meal` | Meal | 13 min |
+| 4 | `tool.nerf` | Nerf | 21 min |
+| 5 | `tool.pistol` | Pistol | 41 min |
+| 6 | `tool.soccer_ball` | Soccer Ball | 52 min |
+| 7 | `tool.grenade` | Grenade | 76 min |
+| 8 | `tool.fire_sprayer` | Fire Sprayer | 104 min |
+| 9 | `tool.power_grab` | Power Grab | 120 min |
+| 10 | `tool.repair_kit` | Repair Kit | 138 min |
+| 11 | `tool.shotgun` | Shotgun | 184 min |
+| 12 | `tool.drink` | Drink | 209 min |
 
-No task may hide an unrun gate behind “not available.” Record it as `BLOCKED`, name the
-required owner/machine, and leave the task open.
+The catalogue order is display/calibration order, not a prerequisite graph. A player may save for and purchase any visible item once affordable.
 
-## 2. Mandatory preflight — resolve before behavior or calibration
+### 1.2 Power Grab
 
-### 2.1 Catalogue count conflict — blocks Tasks 12 and 13
+Power Grab is a one-time permanent purchase and a separate selectable inventory tool. Normal Grab remains permanently selectable.
 
-The repository currently disagrees with itself:
+Power Grab:
 
-- `DECISIONS.md` records the Nerf Blaster owner gate as accepted and on sale;
-- `CataloguePolicy.LaunchContentIds` and `data/catalogue/launch_catalogue.tres` contain
-  fifteen selectable interactions **plus** `upgrade.strength` (`16` entries total);
-- current FR-013.2 says `15` entries total and omits the Nerf Blaster;
-- several older M5 plan sentences alternate between “15 entries” and “fifteen
-  interactions plus the upgrade.”
+- can acquire buddy parts and the same eligible loose objects as Normal Grab;
+- feels dramatically stronger but controllable;
+- uses the same maximum limb-stretch distance as Normal Grab;
+- retains visible fear and struggling while a buddy part is held;
+- never lets the buddy force an escape through the normal sustained-stretch snap rule;
+- gives intentional release a stronger launch and a separate, higher safe speed cap;
+- does not power-launch on cancel, input loss, invalid target, recovery, or scene teardown;
+- changes no damage, payout, mood, statistics, passive income, or other economy multiplier.
 
-Do not delete the accepted Nerf, change the requirement, or calibrate one interpretation
-silently. Ask the owner which launch catalogue is authoritative. Record the answer in
-`DECISIONS.md`, then amend FR-013.2/.5, `CataloguePolicy` comments/tests,
-`launch_catalogue.tres`, ROADMAP, and M5 wording in one bookkeeping commit so they all
-name the same exact ordered set and count. Task 12 takes that resulting ordered
-`ToolCatalogue` snapshot as input; it never owns a second hard-coded catalogue list.
+Exact force and release numbers are Resource tuning, not hard-coded product constants. The implementation agent chooses safe provisional values, records them in `docs/DECISIONS.md`, and presents Normal-versus-Power comparison evidence at the owner feel gate.
 
-### 2.2 Strength decision packet — blocks Task 11 behavior
+### 1.3 Economy benchmark
 
-Ask the owner for one complete answer containing every row below. Put the resolved values
-in `DECISIONS.md` before changing grab behavior; keep the unanswered packet in
-`OPEN_QUESTIONS.md` meanwhile.
+The official schedule is the 209-minute completionist schedule in §1.1. Each median cumulative purchase time must be within ±15%.
 
-| Decision | Required answer | Implementation consequence |
-| --- | --- | --- |
-| Product name | final player-facing name and translation-key wording | catalogue strings; do not leave “Strength Upgrade” as guessed launch copy |
-| Tiers | exactly one purchase, or a specified tier model | FR-019 and persistence/catalogue schema; current code supports one owned ID only |
-| Force factor | finite factor for `Stiffness` | effective tether input |
-| Force-ceiling factor | finite factor for `MaximumForce` | effective tether input |
-| Stretch factor | finite factor for `StretchLimitHandWidths` | effective limiter tuning |
-| Release factor | finite factor applied before capping | release calculation |
-| Upgraded safe cap | finite px/s maximum distinct from the base `ThrowSpeedCap` | final release cap |
-| Strain/snap rule | absolute immunity, or exact longer-window rule | `GrabStretchLimiter` policy; no hybrid guess |
-| Fear response | confirm existing resistance remains generated/visible unchanged | scenario observation, never a resistance bypass |
-| Activation boundary | effect begins on next grab or may change a grab already in progress | how the runtime source is sampled |
-| Progression slot | exact position among the confirmed purchasable order | Resource order and simulation targets |
-| Price handling | fixed owner price, or permission for Task 12 to derive/tune it | `upgrade_strength.tres` and economy acceptance |
+Only Pistol, Grenade, Fire Sprayer, and Shotgun are high-value items. Their larger grind occurs immediately before each purchase. The representative trace spans about 120 active-interaction minutes plus 89 running background/passive minutes. Active play includes experimentation, care, misses, pauses, and non-optimal attacks.
 
-If tiers are not exactly one, stop and revise FR-019, the catalogue/persistence design,
-this Task 11 packet, and Task 12 before implementation. Do not stretch the single boolean
-ownership seam into an implicit tier system.
+The completionist strategy is the only strategy judged against target times. Separate save/skip strategies prove that the shop allows free choice without prerequisite purchases.
 
-### 2.3 Economy benchmark decision packet — blocks Task 12 acceptance
+### 1.4 Reset Progress
 
-The owner must approve the representative mixed-session benchmark, not merely its final
-numbers. Record:
+A confirmed Reset Progress returns gameplay progression to a first-run state. It clears currency, ownership, selected tool, mood/fullness, learned/harmful memory, novelty/fun memory, traits, local gameplay statistics, local achievement-progress counters, and cumulative gameplay/economy timers. Normal Grab becomes selected.
 
-- the exact ordered active actions and idle/care intervals represented by one session;
-- the distribution or fixed counts used by each seed, including body regions,
-  consciousness, misses, legitimate repeat episodes, and duplicate callbacks;
-- whether purchases happen immediately when affordable and whether post-purchase balance
-  carries forward (recommended model: yes/yes, but owner must confirm);
-- the seed set and median rule;
-- tolerance around each cumulative target minute, the `~120 min` full-catalogue target,
-  and the `~25%` peak-passive ratio;
-- what qualifies as one “ordinary event” for the no-multi-skip obligation;
-- the Strength Upgrade target minute after §2.2 is resolved.
+It preserves language, audio, controls, accessibility, comfort, presentation, window, zoom, and dock preferences. Already-awarded platform achievements remain awarded.
 
-Store the approved trace definition as readable test data/code next to the simulation;
-do not generate a trace from the prices being tuned. Prices are outputs, never inputs to
-the player-behavior generator.
+The confirmation dialog must explicitly list the categories erased, use Cancel as the safe/default action, and require a second affirmative action. Cancel, dismissal, missing confirmation, validation failure, or save failure changes nothing.
 
-### 2.4 Task 13 external gates — identify operators before starting
+## 2. Dependency graph and implementation order
 
-Record who will perform the real-Windows owner playthrough and who has access to the
-i5-8400/UHD 630-class reference machine. The implementation agent prepares commands,
-artifacts, and result templates. Only observed runs may populate measurements. Headless CI
-cannot be relabeled as the NFR-002 reference-hardware result.
+1. **11A identity and migration**
+2. **11B pure grab policy**
+3. **11C Godot adapter and selection routing**
+4. **11D catalogue/UI/data**
+5. **11E automated scenarios and owner feel evidence**
+6. **12A simulation contracts**
+7. **12B production-path replay adapter**
+8. **12C traces, strategies, report**
+9. **12D calibrate Resources**
+10. **13A Reset Progress transaction and UI**
+11. **13B composition audit and progression journey**
+12. **13C full regression, performance, docs, owner exits**
 
-### 2.5 Baseline capture
+Do not calibrate prices before the Power Grab catalogue entry and schema migration are present. Do not close M5 before the reset failure-path tests and full-catalogue journey pass.
 
-Before Task 11 code, run and record in this document's implementation progress entry:
+Before the first code edit, capture the current verdict of:
 
 ```text
 dotnet test
@@ -125,476 +94,421 @@ dotnet build DesktopBuddy.sln -c Debug
 tools\quick_validate.bat
 ```
 
-Also record: commit SHA, domain test count, quick-suite count, full scenario IDs, full
-journey IDs, and every existing red/skip with its documented reason. Do not absorb a
-baseline movement silently.
+Record pre-existing failures separately. Do not weaken an assertion or exclude a test to make a packet green.
 
----
+## 3. Task 11 — Power Grab
 
-## 3. Task 11 — Strength Upgrade (FR-019)
+### 3.1 Existing seams to extend
 
-### 3.1 Existing seams — use these, do not create substitutes
+Use the existing implementation rather than parallel substitutes:
 
-- Ownership already persists under stable content ID `upgrade.strength` in
-  `BuddyProgressState`; it is a `PassiveUpgrade`, not a `ToolId`.
-- `CataloguePolicy.SelectableEntries` already excludes passive upgrades and the purchase
-  boundary already performs atomic spend/unlock/save flushing.
-- `GrabTether.Evaluate` owns stiffness/damping/maximum-force math;
-  `GrabTether.CapReleaseVelocity` owns the direction-preserving release cap.
-- `GrabStretchLimiter` owns stretch clamp, strain buzz, ease-off hysteresis, and snap;
-  `GrabTetherController` is the Godot adapter that samples Resources and applies forces.
-- Base authored values live in `GrabTetherProfile`; preserve them as the unowned baseline.
-- Fear resistance is produced outside the tether solver. The upgrade must not short-circuit
-  that producer or change its visible reaction.
+- `domain/DesktopBuddy.Domain/Tools/ToolSelection.cs`: stable `ToolId` values and tool categories.
+- `domain/DesktopBuddy.Domain/Content/ContentIds.cs`: stable string IDs, tool mapping, known/catalogue predicates.
+- `domain/DesktopBuddy.Domain/Physics/GrabTether.cs`: tether force evaluation and direction-preserving release cap.
+- `domain/DesktopBuddy.Domain/Physics/GrabStretchLimiter.cs`: stretch clamp, hysteresis, strain/buzz, and normal snap policy.
+- `src/Grab/GrabTetherController.cs`: Godot sampling/application boundary.
+- `src/Laboratory/LabPointerGrabComponent.cs`: pointer acquisition currently keyed directly to `ToolId.Grab`.
+- `src/Grab/GrabTetherProfile.cs` and existing launch `.tres`: authored Normal Grab values.
+- `BuddyProgressState`, `ProgressSave`, and `ProgressSavePolicy`: ownership and explicit schema migration.
+- existing catalogue purchase/selection services: atomic spend, ownership, selection, and immediate save flush.
 
-Do not add a second Grab controller, duplicate the base profile, put the upgrade in
-`ToolId`, add a damage multiplier, or branch on a player-facing string.
+Domain code remains Godot-free. Godot Resources are sampled and validated at the adapter boundary. UI code does not calculate physics.
 
-### 3.2 Target design
+### 3.2 Runtime contract
 
-Add an immutable, engine-free resolved snapshot, provisionally named
-`GrabStrengthSettings`, containing only the confirmed mechanical quantities and the
-confirmed strain mode. Add `IGrabStrengthSource` with one allocation-free read method or
-property that returns that snapshot.
+Add a domain identity such as:
 
-Implement exactly two source states for the current one-tier contract:
+```csharp
+public enum GrabVariant
+{
+    Normal = 0,
+    Power = 1,
+}
+```
 
-1. **identity/unowned:** effective values equal the existing `GrabTetherProfile` values;
-2. **owned:** factors and upgraded cap come from one validated typed Resource and ownership
-   comes from `BuddyProgressState`/`ContentIds.UpgradeStrength`.
+Add an immutable resolved settings value. Exact field names may match existing conventions, but the information boundary must be equivalent to:
 
-Resolve all effective inputs in one place. The controller consumes the resolved stiffness,
-maximum force, stretch limit, release scale/cap, and strain mode; no downstream class asks
-the progress state again. Damping, buzz presentation, hysteresis, and snap impulse values
-remain base values unless the owner packet explicitly changes them.
+```csharp
+public readonly record struct GrabResolvedSettings(
+    GrabVariant Variant,
+    GrabTetherSettings Tether,
+    float MaximumStretch,
+    bool AllowSustainedStretchEscape,
+    float IntentionalReleaseVelocityMultiplier,
+    float IntentionalReleaseSpeedCap);
+```
 
-Suggested file ownership (names may change only if an existing convention requires it):
+Rules:
 
-- `domain/DesktopBuddy.Domain/Physics/GrabStrengthSettings.cs` — immutable snapshot,
-  strain-mode enum, validation, identity composition;
-- `src/Grab/IGrabStrengthSource.cs` — read contract;
-- `src/Grab/ProgressGrabStrengthSource.cs` — progress ownership + Resource adapter;
-- `src/Grab/GrabStrengthUpgradeProfile.cs` and
-  `data/buddy/grab_strength_upgrade.tres` — confirmed factors/cap/mode;
-- `src/Grab/GrabTetherController.cs` — consume one resolved snapshot;
-- `tests/DesktopBuddy.Domain.Tests/Physics/GrabStrengthSettingsTests.cs` plus focused
-  additions to `GrabTetherTests`/`GrabStretchLimiterTests`;
-- `src/Testing/StrengthUpgradeScenario.cs`, `tests/journeys/m5_strength_upgrade.json`
-  or the repository's current code-backed journey registration equivalent.
+- resolve settings once when acquisition succeeds;
+- store the resolved value in the active-grab state;
+- never read mutable Resources during a physics tick;
+- never change a live tether when the selected tool changes;
+- a selection change while held cancels safely, then the next acquisition uses the new selection;
+- Normal uses the existing authored values and existing escape deadline;
+- Power derives from the Normal profile plus Power modifiers, uses the identical maximum stretch, and sets `AllowSustainedStretchEscape = false`;
+- both variants keep the same clamp/ease-off hysteresis and strain feedback;
+- disabling sustained-stretch escape does not disable invalid-state, out-of-bounds, teardown, hard-recovery, or input-loss releases;
+- counters in an indefinitely held Power Grab saturate or reset safely and cannot overflow;
+- no per-tick allocation or string/ID parsing is allowed.
 
-The runtime sampling boundary must match the §2.2 owner answer. Whichever boundary is
-chosen, it must be deterministic, documented, and tested. Never reconstruct Resources or
-allocate on the 120 Hz path.
+Model release intent explicitly. Add a small enum or equivalent typed reason:
 
-### 3.3 Implementation packets — land in order
+```csharp
+public enum GrabReleaseReason
+{
+    Intentional,
+    SelectionChanged,
+    InputLost,
+    TargetInvalid,
+    Recovery,
+    SceneExit,
+}
+```
 
-**Task 11A — Decision and data shell.** Resolve §2.2; amend FR-019 if the owner changes
-its snap/tier wording; add the typed profile/snapshot/source contract and validation. Keep
-`upgrade_strength.tres` at `Visible = false` and price `0` until its product and economy
-decisions are real.
+Only `Intentional` plus `GrabVariant.Power` applies the Power release multiplier and Power cap. All other reasons use the current safe non-powered release path. Apply the multiplier to the sampled release velocity first, then use the existing direction-preserving cap. A zero or invalid velocity remains zero/safe.
 
-Accept:
+### 3.3 Resource boundary
 
-- non-finite, zero/negative where invalid, sub-identity authority factors (unless explicitly
-  approved), and a safe cap inconsistent with the confirmed rule are rejected at startup;
-- identity composition returns the exact existing floats, not approximately equivalent
-  re-authored values;
-- the Resource owns every confirmed tuning number; domain code contains no launch
-  magnitudes.
+Keep `GrabTetherProfile` as the Normal baseline. Add `src/Grab/PowerGrabProfile.cs` (or a clearly equivalent typed Resource) with only Power-specific modifiers:
 
-**Task 11B — Tether authority.** Inject the source into `GrabTetherController` through the
-composition root. Feed effective stiffness and maximum force into the existing
-`GrabTether.Evaluate`; do not fork its solver.
+- pull/max-force multiplier;
+- optional damping/control multiplier if required for controllability;
+- intentional-release velocity multiplier;
+- intentional-release speed cap.
 
-Accept (pure tests first):
+Add `src/Grab/GrabSettingsResolver.cs` or an `IGrabSettingsSource` adapter that validates finite positive values, combines the Normal profile with the Power modifiers, and returns `GrabResolvedSettings`. Invalid Resource data fails closed to validated Normal-safe values and emits one actionable diagnostic at composition time, not every physics tick.
 
-- a golden table of representative anchor error/relative velocity inputs compares old
-  direct `GrabTether.Evaluate` results with identity-source results using exact equality;
-- owned results apply both confirmed force quantities and remain bounded by the upgraded
-  ceiling;
-- damping and force direction are unchanged;
-- source reads allocate zero bytes in a warmed loop.
+Do not duplicate an entire Normal profile into a Power Resource. The identical stretch maximum must come from the same validated Normal field so the two variants cannot drift.
 
-**Task 11C — Stretch and strain/snap policy.** Parameterize the existing limiter with the
-resolved stretch limit and confirmed strain mode. Preserve the complete unowned state
-machine and all existing tests byte-for-byte in outcome. Absolute immunity means no
-`Snapped` state or forced release for any held duration; a longer-window decision means the
-exact confirmed duration and eventual outcome. In either case keep the bounded clamp and
-visible strain response specified by the owner.
+Provisional tuning guidance is intentionally bounded but not owner-fixed: start with a clearly perceptible pull-force increase, add damping only to suppress oscillation, and keep both release caps below velocities that tunnel through the current fixed-step collision setup. Change Resources, not solver code, during feel calibration.
 
-Accept:
+### 3.4 Identity and save migration packet (11A)
 
-- unowned `Slack → Straining → Snapped`, hysteresis cancellation, peak overpull, and snap
-  impulse tests remain green;
-- owned limit equals the confirmed factor times the authored base limit;
-- an owned hold beyond the old 360-tick boundary follows the confirmed outcome;
-- hard reposition, release, and re-grab reset both modes;
-- loose objects and torso remain exempt from limb stretch exactly as today.
+Implement these exact identity rules:
 
-**Task 11D — Stronger release.** On intentional release, scale the sampled velocity by the
-confirmed factor, then call the existing direction-preserving cap with the upgraded safe
-maximum. Cancellation, hard reposition, and snap-driven release must not be converted into
-an intentional upgraded yank. Keep `Released(... countsAsThrow)` semantics intact.
+- append `ToolId.PowerGrab = 15`; never renumber existing ordinals `0..14`;
+- add `ContentIds.ToolPowerGrab = "tool.power_grab"`;
+- update `ForTool`, `TryParse`, `IsKnown`, and catalogue predicates;
+- map Power Grab to the existing Grab category so pointer behavior is category-driven;
+- never repurpose `upgrade.strength`.
 
-Accept:
+Bump the progress schema from 5 to 6. In the explicit v5→v6 migration:
 
-- below-cap velocity scales in the same direction;
-- above-cap velocity lands exactly at the upgraded safe maximum;
-- zero velocity stays zero and finite;
-- unowned release is exactly today's result;
-- no money, pain, mood, statistics, or harmful-memory mutation occurs merely from owning
-  or activating the modifier. Any later collision earns only through the shared impact
-  pipeline.
+1. clone/normalize the v5 payload through the existing migration policy;
+2. if owned IDs contain `upgrade.strength`, add `tool.power_grab`;
+3. remove `upgrade.strength`;
+4. preserve balance, all other ownership, selection, statistics, timestamps, settings, and unknown-ID handling exactly as current policy requires;
+5. make the transform idempotent;
+6. serialize only schema 6 and never write `upgrade.strength`.
 
-**Task 11E — Scenario and real-input journey.** Register `strength_upgrade` and
-`m5_strength_upgrade`.
+The deprecated string may remain as a read-only migration alias/comment. It must not be a launch catalogue entry or selectable identity.
 
-The scenario must create two otherwise identical runs:
+Tests:
 
-1. unowned: prove current FR-006.8 stretch/snap behavior and baseline release cap;
-2. owned: prove the exact confirmed force authority, larger measured reach, release yank
-   and cap, and strain/snap outcome.
+- every existing ToolId retains its numeric value;
+- PowerGrab round-trips through content mapping;
+- v5 with legacy ownership migrates to Power Grab exactly once;
+- v5 without legacy ownership does not gain Power Grab;
+- schema-6 round-trip emits no legacy ID;
+- repeated normalization is unchanged.
 
-Both runs must also prove fear resistance stays non-zero and visibly routed, the upgrade
-never appears in selectable entries, selecting `upgrade.strength` is rejected, ownership
-survives save round-trip, and no direct reward/mood/stat change comes from the modifier.
-Use quantitative telemetry with tolerances, not “looked stronger.”
+### 3.5 Pure policy packet (11B)
 
-The journey starts from a declared fresh-save fixture, exercises the real purchase seam at
-the authored price (or uses the established exact-price saveless buyer before the dock is
-available), relaunches to prove ownership, then drives Grab through real pointer input. It
-covers a normal stronger yank and the applicable strain/snap secondary/error path. No fixed
-sleeps.
+Extend `GrabStretchLimiter` through typed policy input rather than copying it. At the same stretch samples:
 
-Accept: scenario seeds `1`, `7`, and `13`; journey seeds `1` and `7`; both presentations;
-`--fixed-fps 120`; existing `grab_release`, `grab_resistance`, `grab_dangle`,
-`grab_hard_recovery`, and `payout_by_region` remain green.
+- Normal and Power clamp at the same maximum;
+- both enter/leave strain with the same hysteresis;
+- Normal snaps at the existing deadline;
+- Power remains held beyond that deadline and continues bounded strain feedback;
+- hard safety release remains available for Power.
 
-**Task 11F — Owner feel gate and promotion.** Owner compares unowned/owned on real Windows
-and explicitly accepts the product name, control authority, reach, yank, cap, and strain
-response. Record the decision and measured values. Only then assign the Task 12-approved
-price/slot and set `Visible = true`; if Task 12 has not finalized the price, Task 11 may be
-engineering-complete but cannot be shop-visible.
+Extend release tests:
 
-### 3.4 Task 11 definition of done
+- Normal intentional release uses the current cap;
+- Power intentional release is faster for the same valid input and never exceeds its higher cap;
+- cancellation reasons never receive the Power multiplier;
+- cap preserves direction;
+- NaN/infinity/zero inputs fail safely.
 
-All 11A–F accepts pass; the identity path is regression-proven; there is one Resource-backed
-modifier seam; FR-019.5/.6 negative proofs exist; the upgrade is purchase-only and never
-selectable; real-input evidence is promoted; the owner gate is recorded. If any owner row
-is unresolved, report Task 11 as blocked, not partially done.
+Add invariance tests proving Power selection alone does not alter `PainCurve`, `RewardLedger`, mood, or statistics for an identical accepted downstream impact.
 
----
+### 3.6 Godot routing packet (11C)
+
+Replace the hard-coded `tool == ToolId.Grab` acquisition gate in `LabPointerGrabComponent` with a typed category/variant resolver:
+
+- Normal Grab selection → Grab category + Normal variant;
+- Power Grab selection, when owned → Grab category + Power variant;
+- every non-grab tool → no pointer-grab acquisition;
+- unowned Power Grab cannot be selected; corrupted selection normalizes to Normal Grab.
+
+On successful acquisition, pass the resolved immutable settings into `GrabTetherController.TryGrab`. Store release reason explicitly on every exit. Subscribe to the existing selection-change signal/service once; when it changes during an active grab, cancel with `SelectionChanged`. Disconnect during teardown.
+
+Preserve existing target eligibility. Power Grab must not introduce a new collision query, broader physics layer mask, or a second controller. Buddy-part and eligible-loose-object acquisition should differ only by the resolved variant.
+
+Composition roots (`BuddyLab`, `SandboxRoot`, and production main composition) must inject the same resolver/profile data. Scenarios may inject deterministic profiles but cannot bypass the production controller.
+
+### 3.7 Catalogue/UI/data packet (11D)
+
+Create `data/catalogue/tool_power_grab.tres` using the existing selectable-tool entry type. Replace the hidden `upgrade_strength.tres` entry in the launch catalogue; do not increase the catalogue beyond 16 total interactions.
+
+The entry must have:
+
+- stable ID `tool.power_grab`;
+- Tool kind/category, not PassiveUpgrade;
+- `ToolId.PowerGrab`;
+- one-time ownership;
+- shop order between Fire Sprayer and Repair Kit;
+- icon/name/description/localization keys following current catalogue conventions.
+
+The dock derives owned/selectable tools from `CataloguePolicy.SelectableEntries`; it must show Power Grab after purchase and retain Normal Grab. Purchase does not auto-replace Normal Grab unless the existing general purchase policy selects newly bought tools for every tool. Whichever general behavior is already authoritative must be consistent for all items; do not special-case Power Grab.
+
+Update catalogue validation to assert:
+
+- 16 unique launch interactions;
+- four free starters and twelve purchasables;
+- exact purchasable order in §1.1;
+- every selectable entry maps to exactly one ToolId;
+- no `upgrade.strength` entry;
+- Power Grab appears in shop while unowned and inventory only while owned.
+
+### 3.8 Scenario and feel packet (11E)
+
+Add headless scenario `power_grab` and journey `m5_power_grab`. Use committed deterministic seeds, including 1 and 7.
+
+The scenario must measure Normal and Power against the same starting pose/target:
+
+- successful buddy-part acquisition;
+- successful eligible loose-object acquisition;
+- peak/median target-distance error or equivalent pull-strength metric showing a material Power increase;
+- same maximum stretch;
+- visible fear/struggle signal remains active;
+- hold beyond the normal snap deadline: Normal releases, Power does not;
+- intentional release speed: Power > Normal and <= Power cap;
+- selection change, input loss, hard recovery, and scene exit: safe non-powered release;
+- long hold: finite state, bounded counters, no escaped bodies.
+
+The journey buys Power Grab, selects it, switches back to Normal Grab, and reloads the save to prove ownership/selection persistence.
+
+Task 11 is complete when unit tests, both presentation modes of the scenario/journey, catalogue validation, v5 migration, and owner side-by-side feel acceptance pass. The owner gate judges “dramatic but controllable”; automation guards safety and relative behavior.
 
 ## 4. Task 12 — Economy simulation and calibration
 
-### 4.1 Ownership and non-goals
+### 4.1 Architecture
 
-`EconomySimulation` is an engine-free measuring instrument, not a new economy. It must call
-the real domain rules:
+Create a pure domain runner; suggested surfaces:
 
-```text
-raw ContactSample
-  -> ImpactRouter (real 0.15 s source/body dedup)
-  -> PainCurve (real authored anchors supplied as an immutable snapshot)
-  -> RewardLedger (real region/consciousness/cash-per-pain formula)
-  -> sequential Purchase/TrySpend against the real ToolCatalogue snapshot
-
-elapsed running interval + mood trace
-  -> PassiveIncome (real piecewise mood multiplier and fractional carry)
-  -> the same balance
+```csharp
+public sealed record EconomyBenchmarkTrace(...);
+public sealed record EconomyStrategy(...);
+public sealed record EconomyRunResult(...);
+public interface IEconomyBenchmarkRunner
+{
+    EconomyRunResult Run(
+        EconomyBenchmarkTrace trace,
+        EconomyStrategy strategy,
+        EconomyResolvedSettings settings);
+}
 ```
 
-Do not add per-tool payout coefficients, random catch-up income, price-dependent player
-behavior, a second purchase rule, or a closed-form spreadsheet that bypasses these types.
-The simulation may report results but may not mutate runtime saves.
+The trace contains timestamped behavior, never prices: accepted/missed contact candidates, care actions if they affect mood, active/background state changes, and elapsed running intervals. The strategy contains only purchase intent/order. The resolved settings contain immutable values sampled from actual Resources and the real `ToolCatalogue`.
 
-### 4.2 Exact new surfaces
+Replay the production path:
 
-Suggested domain files:
+- contact candidate → `ImpactRouter` → `PainCurve` → `RewardLedger`;
+- running passive interval → `PassiveIncome`;
+- purchase intent → existing atomic catalogue purchase policy/service.
 
-- `domain/DesktopBuddy.Domain/Economy/EconomyBenchmark.cs` — immutable trace/session
-  records, approved targets/tolerances supplied by caller;
-- `domain/DesktopBuddy.Domain/Economy/EconomySimulation.cs` — replay and result;
-- `domain/DesktopBuddy.Domain/Economy/EconomySimulationResult.cs` — per-seed active,
-  passive, purchase-time, award, and proof-obligation metrics;
-- `tests/DesktopBuddy.Domain.Tests/Economy/EconomySimulationTests.cs` — model/unit and
-  deterministic golden tests.
+Do not call UI controllers, physics bodies, wall-clock time, random APIs without a supplied seed, or filesystem APIs from the domain runner. Do not create a “simplified payout” formula.
 
-Suggested Godot test adapter:
+Add a Godot scenario adapter `economy_calibration` that loads the real launch catalogue plus pain, payout, mood, and passive Resources, validates them once, fingerprints the inputs, and calls the domain runner. Unit tests use synthetic settings only for boundary cases.
 
-- `src/Testing/EconomyCalibrationScenario.cs` loads
-  `data/catalogue/launch_catalogue.tres`, `data/buddy/lab_pain_conversion.tres`, and
-  `data/buddy/m4_mood_economy.tres`, converts them once to immutable inputs, runs the
-  simulation, fails on the accepted tolerances, and writes one JSON plus one Markdown
-  report under `--artifacts`;
-- register stable scenario ID `economy_calibration` in `ScenarioCatalog` and TEST_PLAN;
-- optionally add `tools/run_economy_calibration.bat` as a thin command wrapper only. The
-  scenario remains the authority.
+### 4.2 Trace contract
 
-Do not duplicate final catalogue prices in the unit-test project. Pure unit tests use
-small synthetic catalogues to prove replay rules; the Godot scenario is the integration
-gate that consumes the actual `.tres` prices and coefficients.
+Commit at least five fixed seeds. Each representative completionist trace spans 209 running minutes, approximately:
 
-### 4.3 Trace and result contract
+- 120 active-interaction minutes;
+- 89 background/passive minutes.
 
-Each active trace event contains at least: routed tick/time, source interaction ID,
-content ID, target part, impulse, relative velocity, and consciousness at acceptance.
-Duplicate callbacks appear as separate raw events with the same source/body episode key so
-the real router suppresses them. A legitimate later reuse either has the approved inactivity
-gap or a new interaction ID. Each passive interval contains duration and mood. Seed variation
-changes only the owner-approved player/session inputs.
+Include experimentation, care, misses, pauses, varied regions/intensities, and non-optimal contacts. Trace generation must be independent of price and payout values. A Resource change may alter results but never regenerate player behavior.
 
-For each seed, replay the ordered purchasable catalogue. When the approved policy says an
-item is bought, subtract its real Resource price immediately and carry the remaining balance.
-Record cumulative affordability/purchase time for every entry, including Strength at its
-confirmed slot. Report at least:
+Keep active/background classification explicit so the report can calculate both income sources. Closed/suspended time is absent or marked non-running and produces no catch-up.
 
-- active, passive, and total earned milli-credits;
-- accepted/suppressed contacts and per-event awards;
-- purchase time, target, signed error, and pass/fail per entry;
-- maximum single ordinary-event award and maximum milestones skipped;
-- active credits/minute, maximum-mood passive credits/minute, and their ratio;
-- final purchase time and remaining balance;
-- per-metric median across the approved seed set.
+### 4.3 Strategies
 
-All arithmetic that reaches balances/prices remains integer milli-credits. Report formatting
-may use decimals; acceptance never depends on locale-formatted strings or binary-float display.
+Implement strategy IDs as data, not conditionals embedded in the runner:
 
-### 4.4 Implementation packets — instrument first, values last
+- `completionist_in_order`: attempt each §1.1 item at the first affordable timestamp; this is the only target-time strategy;
+- `save_for_pistol`, `save_for_grenade`, `save_for_fire_sprayer`, `save_for_shotgun`;
+- at least one regular-item skip strategy;
+- `power_grab_preference`: save for Power Grab while leaving at least one earlier regular item unowned.
 
-**Task 12A — Preflight reconciliation.** Resolve §2.1 and §2.3. Freeze the exact ordered
-catalogue, target table, seed set, tolerances, purchase policy, and ordinary-event definition
-in DECISIONS/requirements. Inventory every current `PriceCredits`, `CashPerPain`,
-`NeutralCreditsPerMinute`, Baseball physical preset, and catch ceiling as a baseline report.
+A failed insufficient-funds attempt charges nothing and does not own the item. A successful purchase charges exactly once. Earlier ownership is never synthesized to satisfy display order.
 
-**Task 12B — Pure replay engine.** Implement trace replay through the real domain types and
-sequential spend. Unit tests use tiny constructed inputs and prove deterministic repeat,
-integer carry, purchase carry-forward, an unaffordable item staying pending, and stable median
-calculation for odd/even seed counts per the owner-approved convention.
+### 4.4 Report and acceptance
 
-**Task 12C — Four proof obligations as executable metrics.** Implement TEST_PLAN §4 exactly:
+Emit deterministic JSON and Markdown with:
 
-1. **Active dominance:** compare separately accumulated active and passive income over the
-   same approved session window; active must exceed passive and satisfy the approved band.
-2. **Peak passive ≈25%:** calculate max-mood passive rate from the real
-   `NeutralCreditsPerMinute` and `PassiveIncome.MoodMultiplier(+100)`, divided by benchmark
-   active rate; compare to the approved tolerance around `0.25`.
-3. **No ordinary multi-skip:** after each sequential purchase state, apply each approved
-   ordinary event and count newly affordable consecutive milestones; the maximum must be
-   the owner-approved limit (normally one, but do not infer).
-4. **Reuse pays, duplicates do not:** feed a first callback, a duplicate inside the real
-   contact episode, and a legitimate reuse after the approved re-arm/new-interaction
-   boundary. Assert awards `positive, zero, positive` through `ImpactRouter` and the ledger,
-   not with a simulation-only boolean.
+- schema/report version;
+- Resource/content fingerprints;
+- seed and strategy ID;
+- active/background/running minutes;
+- active/passive/total income;
+- duplicate-contact rejection count;
+- each purchase attempt and successful cumulative timestamp;
+- ending balance and ownership;
+- maximum payout from one ordinary event;
+- pass/fail per proof obligation.
 
-**Task 12D — Real-Resource integration report.** Add `economy_calibration`. It validates and
-loads actual Resources, prints the full per-seed/median table, and fails non-zero when any
-target, proof obligation, catalogue membership/order, or two-hour result is outside the
-approved band. Two identical invocations at the same commit/seed set must produce byte-identical
-JSON after excluding explicitly non-deterministic metadata such as wall-clock generation time;
-prefer omitting such metadata entirely.
+Stable ordering and invariant numeric formatting are required for useful diffs. Output paths are supplied by the scenario runner; domain code returns values only.
 
-**Task 12E — Calibration pass.** Change values only in their existing typed Resources:
+Official completionist median targets are exactly the table in §1.1, each ±15%. Additional strategies pass by proving unrestricted purchases and accounting invariants, not by matching the completionist schedule.
 
-- `PainConversionProfile.CashPerPain` in `data/buddy/lab_pain_conversion.tres`;
-- `MoodEconomyProfile.NeutralCreditsPerMinute` in
-  `data/buddy/m4_mood_economy.tres`;
-- each non-starting catalogue `PriceCredits` and confirmed `ProgressionOrder`;
-- Baseball preset/catch ceiling only through their existing typed profile Resources.
+Proof obligations:
 
-Do not tune the impulse-to-pain anchors merely to make prices fit; they remain gameplay feel
-unless a separate owner-approved physics recalibration is opened. Iterate by committing the
-generated before/after report with the final decision entry, not generated transient noise.
-Accepted slices retain their current visibility; calibration never promotes an unaccepted
-slice.
+1. active income dominates total representative income;
+2. peak-mood passive rate is approximately 25% of benchmark active rate (documented validation band 20–30%);
+3. no ordinary accepted event skips multiple intended milestones;
+4. a positive / duplicate-zero / later-positive sequence passes the real router and ledger;
+5. all twelve catalogue entries are observed once, with no hidden prerequisite;
+6. report fingerprints change when an economy Resource changes, while trace identity stays fixed.
 
-**Task 12F — Regression and live pacing gate.** Run unit/build, quick suite, targeted
-`economy_calibration` twice, then the complete scenario and journey catalogues on seeds `1`
-and `7` in both presentations at 120 Hz. Owner plays the approved mixed session on real
-Windows and accepts pacing. Record final coefficients, prices, target errors, ratio, full
-catalogue time, commit SHA, and artifacts in `DECISIONS.md`/TEST_PLAN. Remove “provisional”
-wording only from values actually accepted.
+### 4.5 Calibration packet (12D)
 
-### 4.5 Task 12 definition of done
+Tune only typed Resource values: catalogue prices, cash-per-pain/payout curve, and passive-income settings. Keep damage, physics, or benchmark behavior unchanged unless a separately documented bug requires it.
 
-The actual Resource catalogue and coefficients pass every approved target using the approved
-median/tolerances; TEST_PLAN §4's four obligations are directly exercised; the output is
-deterministic and reviewable; all prices are authoritative whole credits; owner pacing is
-accepted; no tool-specific money multiplier exists; Task 12 did not change visibility.
+Calibration loop:
 
----
+1. run all committed completionist seeds;
+2. compute the median timestamp per item;
+3. identify the earliest out-of-band row;
+4. adjust the smallest authoritative Resource surface that controls the miss;
+5. rerun every seed and strategy;
+6. record the final values, report artifact paths, and rationale in `docs/DECISIONS.md`.
 
-## 5. Task 13 — Composition, regression, docs, and M5 exit
+The shape should give quick early unlocks and increasingly larger gaps. The four high-value items receive the exceptional immediately-preceding grind. Do not force prices to be mathematically smooth if the measured target schedule requires otherwise.
 
-### 5.1 Hard prerequisites
+Task 12 is complete when every official median is in band, every additional strategy passes, all proof obligations pass, outputs are deterministic, and no final launch price is duplicated in test/runner source.
 
-Stop before implementation if any row is false:
+## 5. Task 13 — Reset, integration, and M5 exit
 
-- Tasks 0–12 are engineering-complete;
-- every launch entry passed its owner feel gate and every non-starting entry is visible;
-- the §2.1 catalogue count/order conflict is resolved everywhere;
-- dock plan Tasks 1–6 and the real catalogue binding are complete;
-- reset erase/preserve matrix and confirmation UI are owner-confirmed and complete;
-- `economy_calibration` passes final Resource data;
-- every M5 slice already has a registered real-input journey.
+### 5.1 Reset transaction architecture (13A)
 
-Task 13 composes and closes; it does not finish missing tool behavior under a generic
-“integration fix” commit. Send a missing slice back to its task and rerun its gate.
+Keep confirmation UI separate from mutation. Add or extend a domain/application service with a contract equivalent to:
 
-### 5.2 Preflight inventory (machine-readable, no hand-maintained subset)
+```csharp
+public interface IProgressResetService
+{
+    ResetResult ResetConfirmed(ResetConfirmation confirmation);
+}
+```
 
-Add one test/helper that derives the required inventory from authoritative registries:
+The service accepts a typed confirmation token produced only by the affirmative dialog action. It must:
 
-- launch entries from the validated `ToolCatalogue`;
-- scenarios from `ScenarioCatalog.Ids`;
-- journeys from the Journey runner's registry/files;
-- visible shop/selectable rows from `CataloguePolicy`.
+1. reject absent/stale confirmation without mutation;
+2. snapshot the current persisted and in-memory state;
+3. construct fresh gameplay progress using the same first-run factory used by a new player;
+4. explicitly copy the preserved preference payload from the snapshot;
+5. preserve the platform-achievement adapter's awarded state while zeroing local counters;
+6. validate/normalize the candidate;
+7. atomically write and flush through the normal save repository;
+8. publish/swap the new in-memory state only after write success;
+9. notify catalogue, dock, mood, and statistics presenters from the committed state;
+10. return a typed success/failure result.
 
-Assert exact set relationships:
+Never implement reset as field-by-field UI mutation, file deletion, or “write defaults and hope.” If the save fails, retain the exact old state in memory and on disk. Do not issue platform achievement-revocation calls.
 
-- every non-starting catalogue entry is visible and offered in the shop;
-- every selectable entry has one M5 behavior journey; `upgrade.strength` is shop-only and
-  has its upgrade journey;
-- no invisible or unknown entry appears in dock tools/shop;
-- each expected M5 scenario/journey ID exists exactly once;
-- the performance and economy scenarios are registered but are not mistaken for per-tool
-  journeys.
+The confirmation dialog copy must name: money, purchases/tools, mood and buddy memory/traits, gameplay statistics, achievement progress, and play timers. It must also state that settings/window preferences and already-unlocked platform achievements are kept. Cancel receives initial focus; Escape/close equals Cancel; only the destructive button creates the confirmation token.
 
-Generate the full sweep from these registries. Do not paste a curated list into a script that
-will miss the next registered scenario (the M3.6 regression failure this gate exists to prevent).
+Automated reset matrix:
 
-### 5.3 `m5_shop_progression` — exact journey contract
+| Category | Confirmed reset |
+|---|---|
+| Balance, ownership, selection | Fresh; Normal Grab selected |
+| Mood, fullness, memories, novelty, traits | Fresh |
+| Local gameplay stats/achievement counters/timers | Zero/fresh |
+| Language/audio/controls/accessibility/comfort | Preserved exactly |
+| Presentation/window/zoom/dock preferences | Preserved exactly |
+| Platform-awarded achievements | Untouched |
+| Live physics/transients | Reinitialized through normal scene/state refresh |
 
-Add a multi-phase journey through the **real dock UI and purchase boundary**:
+Test cancel, dismissal, stale/missing confirmation, candidate-validation failure, and injected atomic-save failure with complete before/after equality.
 
-1. Phase A starts from the committed fresh-save fixture: `0` balance, Grab selected, exact
-   starting ownership, no unknown IDs.
-2. Earn enough for the first purchase through real gameplay input (Boxing Glove is available)
-   and/or approved time acceleration of the real passive path. No direct balance mutation in
-   journey steps.
-3. Open the dock through real input, verify the ordered visible shop, purchase the first
-   item, verify exact authored charge, `OWNED`, immediate availability, and an immediate-save
-   flush signal.
-4. Continue through the exact owner-confirmed purchasable order. Long pacing is already
-   proven by Task 12, so the journey may use a committed **progress fixture between phases**
-   containing legitimately earned balance if runtime would otherwise be excessive; that
-   fixture must pass normal save loading and may set only persistent preconditions. It may
-   not call `Deposit`, `Unlock`, or `Purchase` behind the UI during an assertion phase.
-5. Attempt one insufficient-funds purchase and verify feedback plus zero mutation. Attempt an
-   already-owned purchase and verify zero double charge. Confirm Strength never enters tool
-   selection.
-6. Relaunch at least after the first, middle, and final purchases. Each phase verifies balance,
-   ownership, selection validity, and catalogue order survived through the real save path.
-7. End with every confirmed purchasable entry owned, final balance correct, all selectable
-   tools usable, Strength effect owned, no unknown IDs, and no unfinished entry visible.
+### 5.2 Composition audit (13B)
 
-Use `wait_signal`/`wait_predicate` with explicit timeouts. No fixed sleeps, direct component
-calls, or lab-wide “grant every tool” bootstrap in this journey. Keep per-tool behavior in the
-existing `m5_<tool>` journeys; progression proves shop/persistence composition and does not
-retest every mechanic.
+Build a machine-readable launch inventory from the actual catalogue. Assert:
 
-### 5.4 Full regression runner
+- 16 selectable interactions;
+- four starting, twelve purchasable;
+- exact IDs/order/ToolId mapping;
+- unique IDs and valid Resource references;
+- every ToolId reachable from intended composition roots;
+- every purchasable has localization, icon, price, shop row, save round-trip, and scenario/journey coverage;
+- `upgrade.strength` exists only in migration coverage;
+- all roots inject the same catalogue and grab-settings resolver.
 
-Add or extend a thin script to:
+Search for and remove stale hand-maintained tool lists from UI, tests, analytics, and composition. Where an ordered view is required, derive it from catalogue data.
 
-1. discover every scenario/journey ID from the application's list command or committed
-   registry export;
-2. run every ID with seeds `1` and `7`, presentations `mii3d` and `legacy`, and
-   `--fixed-fps 120`;
-3. give each run a unique artifacts directory and preserve first-failure logs;
-4. continue after failures to produce a complete matrix, then exit non-zero if any cell is
-   red or unexpectedly skipped;
-5. write JSON/Markdown summary containing commit SHA, command, ID, seed, presentation,
-   duration, verdict, and artifact path.
+### 5.3 Full progression journey
 
-Window-only tests remain separate and explicitly named; they are not silently skipped by a
-headless green summary. `tools\quick_validate.bat` remains the fast suite, not the M5 exit
-suite.
+Update/create `m5_shop_progression` using the actual catalogue and save repository. It must:
 
-### 5.5 Performance gate — two layers, never conflated
+1. start with only Normal Grab, Pet, Tickle, and Boxing Glove selectable;
+2. earn through production reward/passive paths;
+3. purchase the exact twelve-item order;
+4. verify balance decreases once and ownership persists after each purchase;
+5. select/use every purchased tool, including Normal/Power Grab switching;
+6. reload at multiple checkpoints, including after Nerf and Power Grab;
+7. execute a separate branch that skips affordable regular items and buys a preferred later item;
+8. confirm final catalogue completeness at the Drink purchase;
+9. run Reset Progress confirmation, verify the reset matrix, then reload and verify first-run gameplay plus preserved preferences;
+10. separately prove Cancel leaves the completed save intact.
 
-**Layer A: deterministic in-game stress/allocation scenario.** Add stable ID
-`m5_performance` (or extend an existing explicit performance scenario) that:
+Do not make this journey the 209-real-minute calibration run. It may inject deterministic sufficient earnings through the production ledger while Task 12 owns time calibration.
 
-- warms all relevant code/pools before measuring;
-- holds exactly `24` registered loose objects, including protected/unsafe cases;
-- drives representative peak pistol/shotgun projectile pools, grenade/fire-spray particles,
-  status/presentation components, and both presentation modes;
-- proves bullets/pellets/VFX do not alter the loose-object count;
-- samples the **whole routed gameplay tick**, not only the existing object-registry and
-  arbiter sub-probes, using allocation deltas outside the measured body;
-- asserts zero managed bytes after warm-up and bounded live/pooled counts and lifetimes;
-- records tick-time distribution and GC collection counts as diagnostic evidence without
-  pretending headless timing equals the reference-hardware FPS gate.
+### 5.4 Regression and performance
 
-Do not leave allocation instrumentation enabled in release behavior. Avoid telemetry/log
-formatting inside the measured tick.
+Run:
 
-**Layer B: real reference-hardware benchmark.** Provide one documented Windows command and
-result template for `480x360` on i5-8400/UHD 630-class hardware. Measure:
+- all .NET tests;
+- Debug build;
+- quick validation;
+- every milestone headless scenario and journey in `mii3d` and `legacy`;
+- Power Grab seeds 1 and 7;
+- economy calibration for every committed seed/strategy;
+- full progression seeds 1 and 7;
+- standalone Windows 10/11 matrix;
+- the established 30-minute soak/performance capture.
 
-- fixed 120 Hz physics and at least 60 rendered FPS;
-- total process CPU target `<5%` and resident memory `<300 MB` in the representative active
-  scene;
-- hidden-to-tray CPU target `<0.5%`;
-- four-hour visible and eight-hour hidden soak growth;
-- GC collections/frame-time spikes and bounded pool/object/save-queue counts.
+Performance evidence must keep domain-allocation measurements separate from Godot frame/process measurements. Power Grab adds no per-tick allocation, duplicate subscription, extra query, or orphaned physics body. Reset leaves no stale presenters or services bound to the pre-reset progress instance.
 
-Record OS, CPU/GPU, build configuration, commit SHA, sample/warm-up durations, monitor/tool
-used, raw logs, and pass/fail. If reference hardware is unavailable, Layer A may be green but
-Task 13 stays externally blocked.
+### 5.5 Documentation and external gates
 
-### 5.6 Documentation and clean-room audit
+After implementation, update actual architecture documentation to match shipped code, not planned names. At minimum update:
 
-Update in the same closeout wave:
+- `docs/ARCHITECTURE.md`;
+- `docs/PRODUCT_REQUIREMENTS.md`;
+- `docs/TEST_PLAN.md`;
+- `docs/DECISIONS.md`;
+- `docs/ROADMAP.md`;
+- `docs/M5_SHOP_AND_TOOL_CATALOGUE_PLAN.md`;
+- `docs/UI_FLOATING_DOCK_PLAN.md`;
+- `docs/OPEN_QUESTIONS.md`;
+- catalogue authoring/localization documentation affected by final Resources.
 
-- `docs/ARCHITECTURE.md`: actual catalogue/purchase, Strength source, gun/projectile,
-  Burning/status, object-budget, simulation, full-sweep, and allocation ownership;
-- `docs/TEST_PLAN.md`: final per-tool scenario/journey map, `economy_calibration`,
-  `m5_shop_progression`, full-sweep command, performance/soak procedure and observed result;
-- `docs/DECISIONS.md`: every owner packet answer, final coefficients/prices, feel gates, and
-  external acceptance results;
-- `docs/PRODUCT_REQUIREMENTS.md`, `docs/ROADMAP.md`, and
-  `docs/RAGDOLL_AND_GAMEPLAY_SPEC.md`: reconcile accepted supersessions and exact catalogue
-  count/order; remove stale provisional claims only where decided;
-- `CHECKLIST.md`: rewrite against observed current state; no unchecked item may be described
-  as done;
-- this master M5 plan: progress entries with final counts/commands and M5 status.
+Owner/external gates remain evidence gates, not design questions:
 
-Search the shipped project for copied reference branding/assets and for debug-only unfinished
-content exposure. The lab may retain its documented dev-only routes; exported shop/tool UI
-may not. Verify release export filters exclude automation/MCP artifacts as already required.
+- Normal vs Power Grab side-by-side feel: dramatic, controllable, safe;
+- Windows 10/11 overlay, input, dock, reset dialog, and presentation checks;
+- final economy report review;
+- final catalogue/interaction acceptance;
+- clean-room/art direction gate already required by the dock plan.
 
-### 5.7 Owner exit matrix
-
-Task 13 closes only when one evidence row exists for each:
-
-| Gate | Required evidence | Who may accept |
-| --- | --- | --- |
-| Full automated matrix | generated all-ID × seed × presentation report, zero unexpected red/skip | implementation agent/CI |
-| Shop progression | `m5_shop_progression` artifacts across relaunch | implementation agent/CI |
-| Per-tool coverage | inventory proof: behavior/error scenario + real-input journey per entry | implementation agent/CI |
-| Economy | Task 12 final report and live pacing decision | owner |
-| Performance Layer A | warmed allocation/pool scenario artifacts | implementation agent/CI |
-| Performance Layer B | reference-hardware active/hidden/soak report | owner or named hardware operator |
-| Windows feel | every interaction plus Strength and dock exercised on real Windows | owner |
-| Clean-room presentation | explicit audit with no copied expressive content | owner |
-| Documentation | source-of-truth consistency check and final checklist | implementation agent + owner for decisions |
-
-### 5.8 Task 13 definition of done
-
-The real dock sells the exact approved catalogue from a fresh save through final ownership;
-all ownership persists; the generated full matrix is green in both presentations; every M5
-entry has behavior/error and real-input coverage; deterministic and hardware performance
-gates pass; docs describe the implemented system without stale conflicts; the owner records
-Windows feel, pacing, and clean-room acceptance. Otherwise M5 remains open with the exact
-blocking row named.
-
----
+Task 13 is complete only when all automated evidence is green, Windows and owner gates are recorded, no stale “Strength Upgrade” behavior remains outside migration/history, and M5 exit criteria are checked in the roadmap.
 
 ## 6. Required validation commands
 
-Every packet uses the repository-standard commands:
+Use repository-standard commands and preserve verdicts/artifacts:
 
 ```text
 dotnet test
@@ -604,28 +518,19 @@ tools\quick_validate.bat
 <godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --presentation=<mode> --artifacts=<dir>
 ```
 
-Use `mii3d` and `legacy`; Task 11 targeted seeds are stated in §3.3; Tasks 12/13 use the
-approved simulation seeds plus full catalogue seeds `1` and `7`. Close any Godot editor
-before headless runs. Revert the known MCP blank-line change to `project.godot` before any
-commit. Never claim a command was run without preserving its verdict.
+Run `mii3d` and `legacy`. Close any Godot editor before headless runs. Revert any known tool-induced blank-line-only change to `project.godot` before committing. Never state that a command passed without retaining its verdict.
 
-## 7. Handoff response template
+## 7. Agent handoff response template
 
-Each implementing agent ends with this exact information:
+Each implementation packet reports:
 
-```text
-Task/subtask:
-Commit SHA:
-Status: implemented | engineering-complete | shop-visible | BLOCKED
-Changed files:
-Requirements/decisions used:
-Automated commands and exact counts:
-Interactive real-input behavior driven:
-Artifacts:
-Owner gate still required:
-Known reds/skips:
-Next unblocked packet:
-```
+1. packet ID and scope;
+2. files changed;
+3. contracts/invariants implemented;
+4. migration behavior, if applicable;
+5. exact validation commands and verdicts;
+6. artifact/report paths;
+7. remaining owner/external gate;
+8. next packet.
 
-This format is part of the handoff contract: it prevents an implementation-only result from
-being mistaken for an accepted product slice.
+A packet is not complete if it leaves a product TODO, hard-coded duplicate data, untested migration/failure path, or undocumented Resource default.
