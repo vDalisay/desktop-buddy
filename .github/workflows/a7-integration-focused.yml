@@ -1,0 +1,38 @@
+name: A7 Integration Verification
+
+on:
+  push:
+    branches:
+      - m5-5-a7-verify
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.6.1-stable
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet build DesktopBuddy.sln -c Debug
+      - name: Download Godot
+        run: |
+          set -euo pipefail
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          curl -fL --retry 3 -o godot.zip "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          unzip -q godot.zip
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+      - run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
+      - run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_mode_lifecycle_accounting --seed=1
+      - run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_window_restore --seed=1
+      - run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_window_monitor_removed --seed=1
+      - run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=editor_resize_boundary_isolation --seed=1
+      - run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=hidden_clock_accrual --seed=1
+      - run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=suspend_no_catchup --seed=1
+      - run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=room_resize_zoom --seed=1
