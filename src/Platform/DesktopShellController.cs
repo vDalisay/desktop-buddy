@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Platform;
+using DesktopBuddy.Persistence;
 using DesktopBuddy.Sandbox;
 using Godot;
 using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
@@ -11,17 +15,9 @@ using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
 namespace DesktopBuddy.Platform;
 
 /// <summary>
-/// Drives the desktop shell: it composes the window service and the Work/Play
-/// <see cref="InputModeStateMachine"/>, translates shell input (the in-app mode
-/// hotkey, Escape, clicks inside/outside the box, focus loss) into mode
-/// transitions, and rebuilds the sandbox boundary on a physics boundary when the
-/// window resizes (`ARCHITECTURE.md` §9). The mode hotkey/Escape are shell-owned
-/// platform controls, distinct from the gameplay <c>ToolInputFrame</c> path that
-/// the InputCollector will own — so reading them here does not violate the
-/// single-input-reader rule for gameplay.
-///
-/// Recovery invariant (ROADMAP M2 exit): the tray/global-toggle/Escape paths can
-/// always return the shell to Work Mode, so the user never loses control.
+/// Owns the independent interaction-mode and window-layout state machines. Compact windows
+/// always capture their full client area. Full-screen Work captures only same-window toolbar
+/// controls and passes every other pixel to the desktop; full-screen Play captures the monitor.
 /// </summary>
 public partial class DesktopShellController : Node
 {
@@ -30,7 +26,7 @@ public partial class DesktopShellController : Node
     [Export] public DesktopWindowController Window { get; set; } = null!;
     [Export] public BoundaryController Boundaries { get; set; } = null!;
 
-    private readonly InputModeStateMachine _mode = new(DomainInputMode.Work);
+    private InputModeStateMachine _mode = new(DomainInputMode.Work);
     private Rect2 _innerBounds;
     private Vector2I? _pendingClientSize;
     private double _storedZoom = 1.0;
@@ -38,45 +34,87 @@ public partial class DesktopShellController : Node
     private IReadOnlyList<Rect2I>? _dynamicWorkModeHitRegions;
     private IReadOnlyList<Rect2>? _dynamicWorkModeWorldHitRegions;
     private readonly Rect2I[] _fallbackWorkModeHitRegion = new Rect2I[1];
+    private readonly List<Rect2I> _fullscreenUiHitRegions = [];
     private readonly List<Window> _ownedWindows = [];
+    private LocalSettingsSave _settings = new();
+    private SaveCoordinator? _saves;
+    private bool _runtimeConfigured;
 
     public DomainInputMode Mode => _mode.Current;
+    public WindowLayoutMode LayoutMode => Window.LayoutMode;
+    public bool GameplayInputEnabled => Mode == DomainInputMode.Play;
     public int ModeChangeCount { get; private set; }
     public double EffectiveZoom => _effectiveZoom;
+    public LocalSettingsSave CurrentLocalSettings => _settings;
 
-    /// <summary>The client-pixel Work-Mode hit regions last sent to the window service (test observability).</summary>
-    public IReadOnlyList<Rect2I> LastWorkModeHitRegions { get; private set; } = Array.Empty<Rect2I>();
+    public IReadOnlyList<Rect2I> LastWorkModeHitRegions { get; private set; } =
+        Array.Empty<Rect2I>();
+
+    public event Action<DomainInputMode>? InputModeChanged;
+    public event Action<WindowLayoutMode>? WindowLayoutChanged;
+
+    /// <summary>Inject loaded machine-local settings before the sandbox enters the tree.</summary>
+    public void ConfigureRuntime(LocalSettingsSave settings, SaveCoordinator saves)
+    {
+        if (IsInsideTree())
+            throw new InvalidOperationException("Desktop shell runtime must be configured before _Ready.");
+        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _saves = saves ?? throw new ArgumentNullException(nameof(saves));
+        _saves.RegisterSettings(_settings);
+        DomainInputMode initial = WindowInteractionSettings.ReadInputMode(_settings);
+        if (WindowInteractionSettings.ReadLayout(_settings) == WindowLayoutMode.FullscreenOverlay)
+            initial = DomainInputMode.Work;
+        _mode = new InputModeStateMachine(initial);
+        _runtimeConfigured = true;
+    }
 
     public override void _Ready()
     {
         if (!GodotObject.IsInstanceValid(Window) || !GodotObject.IsInstanceValid(Boundaries))
         {
-            throw new InvalidOperationException("DesktopShellController requires an injected window controller and boundary.");
+            throw new InvalidOperationException(
+                "DesktopShellController requires an injected window controller and boundary.");
         }
 
-        // Select the native Windows adapter on a real standalone run; headless,
-        // editor, and non-Windows runs get the emulated adapter. Must precede any
-        // window query (ResolvePlacement) below.
         Window.Configure(WindowsDesktopAdapterFactory.Create());
-
         Window.ClientBoundsChanged += OnClientBoundsChanged;
         Window.WindowFocusLost += OnWindowFocusLost;
+        Window.LayoutModeChanged += OnWindowLayoutChanged;
         Boundaries.LayoutApplied += OnLayoutApplied;
 
+        Rect2I? storedRect = _runtimeConfigured && _settings.Revision > 0
+            ? WindowInteractionSettings.CompactRect(_settings)
+            : null;
+        Rect2I placement = Window.ResolvePlacement(storedRect);
+        WindowSettings launch = WindowSettings.Defaults with
+        {
+            Rect = placement,
+            Transparent = true,
+            AlwaysOnTop = _settings.AlwaysOnTop,
+            MsaaLevel = _settings.Msaa,
+            Vsync = _settings.VSync,
+        };
+        Window.ApplyWindowSettings(launch);
+
+        WindowLayoutMode requestedLayout = _runtimeConfigured
+            ? WindowInteractionSettings.ReadLayout(_settings)
+            : WindowLayoutMode.Compact;
+        int monitor = _runtimeConfigured
+            ? WindowInteractionSettings.ReadFullscreenMonitor(_settings)
+            : 0;
+        if (!Window.TrySetLayoutMode(requestedLayout, monitor))
+            Window.TrySetLayoutMode(WindowLayoutMode.Compact, monitor);
+        if (Window.LayoutMode == WindowLayoutMode.FullscreenOverlay)
+            _mode = new InputModeStateMachine(DomainInputMode.Work);
+
         Vector2I clientSize = ResolveClientSize();
-
-        // Apply the launch placement (first launch anchors lower-right) and the
-        // transparent/borderless/topmost window flags with an opaque fallback.
-        Rect2I placement = Window.ResolvePlacement(storedRect: null);
-        Window.ApplyWindowSettings(WindowSettings.Defaults with { Rect = placement });
-
         Boundaries.Initialize(clientSize, _storedZoom);
         ApplyMode(force: true);
 
-        Log.Info(Category, $"Shell composed (mode={_mode.Current} transparency={Window.TransparencyActive}).");
+        Log.Info(Category,
+            $"Shell composed (layout={Window.LayoutMode} mode={_mode.Current} transparency={Window.TransparencyActive}).");
     }
 
-    /// <summary>Routed from the sandbox fixed tick: apply a queued resize to the boundary.</summary>
     public void PhysicsTick()
     {
         if (_pendingClientSize is Vector2I size)
@@ -90,7 +128,7 @@ public partial class DesktopShellController : Node
     {
         if (@event.IsActionPressed(InputActions.ToggleInputMode))
         {
-            Apply(ShellInputEvent.GlobalToggle);
+            ToggleInteractionMode();
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -99,31 +137,71 @@ public partial class DesktopShellController : Node
         {
             Apply(ShellInputEvent.EscapePressed);
             GetViewport().SetInputAsHandled();
-            return;
-        }
-
-        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click)
-        {
-            bool interactive = PointInWorkModeHitRegions(click.Position);
-            Apply(interactive ? ShellInputEvent.BuddyInteraction : ShellInputEvent.OutsideClick);
         }
     }
 
-    /// <summary>Return control to Work Mode from a tray action or any recovery path.</summary>
+    /// <summary>
+    /// In Compact Work, the complete transparent client box accepts input. A left click not
+    /// consumed by UI enters Play and is itself swallowed, so it can never also grab, swing,
+    /// shoot, or spray. Full-screen Work receives no empty-area events by native design.
+    /// </summary>
+    public override void _UnhandledInput(InputEvent @event)
+    {
+        if (EditorBoundaryIsolationActive ||
+            Window.LayoutMode != WindowLayoutMode.Compact ||
+            _mode.Current != DomainInputMode.Work)
+        {
+            return;
+        }
+
+        if (@event is InputEventMouseButton
+            {
+                Pressed: true,
+                ButtonIndex: MouseButton.Left,
+            })
+        {
+            Apply(ShellInputEvent.BuddyInteraction);
+            GetViewport().SetInputAsHandled();
+        }
+    }
+
+    public void ToggleInteractionMode() => Apply(ShellInputEvent.GlobalToggle);
+
+    public async Task<bool> ToggleWindowLayoutAsync()
+    {
+        WindowLayoutMode wanted = Window.LayoutMode == WindowLayoutMode.Compact
+            ? WindowLayoutMode.FullscreenOverlay
+            : WindowLayoutMode.Compact;
+        if (wanted == WindowLayoutMode.FullscreenOverlay &&
+            !Window.FullscreenOverlayAvailable)
+        {
+            return false;
+        }
+
+        if (wanted == WindowLayoutMode.FullscreenOverlay &&
+            _mode.Current != DomainInputMode.Work)
+        {
+            Apply(ShellInputEvent.EscapePressed);
+        }
+
+        bool changed = Window.TrySetLayoutMode(
+            wanted,
+            WindowInteractionSettings.ReadFullscreenMonitor(_settings));
+        if (!changed)
+            return false;
+
+        ApplyMode(force: false);
+        await PersistWindowStateAsync();
+        return true;
+    }
+
+    /// <summary>Return control to Work Mode from a tray action or recovery path.</summary>
     public void ReturnToWorkMode()
     {
-        // This is the last-resort recovery path, so it outranks editor isolation: if the
-        // editor ever failed to hand the window back, the user would otherwise be left with
-        // a shell that ignores every mode transition forever.
         EditorBoundaryIsolationActive = false;
         Apply(ShellInputEvent.TrayReturnToWork);
     }
 
-    /// <summary>
-    /// Replaces the coarse startup box with live client-pixel interaction regions.
-    /// The sandbox root supplies a stable preallocated list; the native adapter
-    /// copies its values so moving bodies cannot race a Win32 hit-test callback.
-    /// </summary>
     public void UpdateWorkModeHitRegions(
         IReadOnlyList<Rect2> worldRegions,
         IReadOnlyList<Rect2I> clientRegions)
@@ -135,17 +213,11 @@ public partial class DesktopShellController : Node
         if (worldRegions.Count != clientRegions.Count)
             throw new ArgumentException("World and client hit-region counts must match.");
         LastWorkModeHitRegions = clientRegions;
-        if (_mode.Current == DomainInputMode.Work)
-            Window.SetInputMode(_mode.Current, clientRegions);
+        ApplyMode(force: false);
     }
 
     private void Apply(ShellInputEvent input)
     {
-        // The character editor owns the whole window while it is open: it is opaque,
-        // bordered and Play-mode, and gameplay is paused so the Work-Mode hit regions
-        // stop being refreshed. Letting a click, Escape or focus loss flip the shell
-        // back to Work would install those stale regions and make every pixel of the
-        // editor outside them pass through to the desktop.
         if (EditorBoundaryIsolationActive)
             return;
 
@@ -153,26 +225,33 @@ public partial class DesktopShellController : Node
         {
             ModeChangeCount++;
             ApplyMode(force: false);
+            InputModeChanged?.Invoke(_mode.Current);
+            _ = PersistWindowStateObservedAsync();
         }
     }
 
     private void ApplyMode(bool force)
     {
-        Window.SetInputMode(_mode.Current, WorkModeHitRegions());
+        Window.SetInputMode(_mode.Current, NativeFullscreenWorkHitRegions());
         if (force)
-        {
             ModeChangeCount = 0;
-        }
     }
 
-    /// <summary>
-    /// Work-Mode interactive regions in <b>client pixels</b> (what the native
-    /// adapter's <c>WM_NCHITTEST</c> needs). The sandbox box is projected from
-    /// world units through the effective zoom (`SandboxProjection`). Until the
-    /// buddy and menu panels compose (later milestones), the visible box is the
-    /// interactive region and the transparent exterior passes through; sub-regions
-    /// (buddy, menu) are added when they exist.
-    /// </summary>
+    private IReadOnlyList<Rect2I> NativeFullscreenWorkHitRegions()
+    {
+        if (Window.LayoutMode != WindowLayoutMode.FullscreenOverlay)
+            return Array.Empty<Rect2I>();
+
+        _fullscreenUiHitRegions.Clear();
+        IReadOnlyList<Rect2I> source = WorkModeHitRegions();
+        // SandboxRoot appends same-window overlay regions after the six moving buddy parts.
+        // In full-screen Work the buddy is display-only; only toolbar/UI rects remain solid.
+        int firstUi = Math.Min(PuppetRigProfile.RequiredPartCount, source.Count);
+        for (int index = firstUi; index < source.Count; index++)
+            _fullscreenUiHitRegions.Add(source[index]);
+        return _fullscreenUiHitRegions;
+    }
+
     private IReadOnlyList<Rect2I> WorkModeHitRegions()
     {
         if (_dynamicWorkModeHitRegions is { Count: > 0 } dynamicRegions)
@@ -198,39 +277,8 @@ public partial class DesktopShellController : Node
         return LastWorkModeHitRegions;
     }
 
-    private bool PointInWorkModeHitRegions(Vector2 clientPoint)
-    {
-        if (_dynamicWorkModeWorldHitRegions is { Count: > 0 } worldRegions)
-        {
-            Vector2 worldPoint =
-                GetViewport().GetCanvasTransform().AffineInverse() * clientPoint;
-            for (int index = 0; index < worldRegions.Count; index++)
-            {
-                if (worldRegions[index].HasPoint(worldPoint))
-                    return true;
-            }
-
-            return false;
-        }
-
-        IReadOnlyList<Rect2I> regions = WorkModeHitRegions();
-        int x = Mathf.RoundToInt(clientPoint.X);
-        int y = Mathf.RoundToInt(clientPoint.Y);
-        for (int index = 0; index < regions.Count; index++)
-        {
-            if (regions[index].HasPoint(new Vector2I(x, y)))
-                return true;
-        }
-
-        return false;
-    }
-
     private void OnClientBoundsChanged(Rect2I bounds) => _pendingClientSize = bounds.Size;
 
-    /// <summary>
-    /// Windows this app owns (the shop, tools and settings panels). Focus moving to one of
-    /// them is the player using the game, not leaving it.
-    /// </summary>
     public void RegisterOwnedWindow(Window window)
     {
         ArgumentNullException.ThrowIfNull(window);
@@ -238,8 +286,6 @@ public partial class DesktopShellController : Node
             _ownedWindows.Add(window);
     }
 
-    // Deferred by one frame: at the instant the main window reports focus loss the dock
-    // window has not taken focus yet, so an immediate check would always miss it.
     private void OnWindowFocusLost() => CallDeferred(MethodName.ResolveFocusLoss);
 
     private void ResolveFocusLoss()
@@ -253,25 +299,60 @@ public partial class DesktopShellController : Node
         Apply(ShellInputEvent.FocusLost);
     }
 
+    private void OnWindowLayoutChanged(WindowLayoutMode mode)
+    {
+        ApplyMode(force: false);
+        WindowLayoutChanged?.Invoke(mode);
+    }
+
     private void OnLayoutApplied(RoomLayout layout, Rect2 innerBounds)
     {
         _innerBounds = innerBounds;
         _effectiveZoom = layout.EffectiveZoom;
-        // A resize/zoom rebuild re-derives the interactive region in client pixels.
-        Window.SetInputMode(_mode.Current, WorkModeHitRegions());
+        ApplyMode(force: false);
     }
 
     private Vector2I ResolveClientSize()
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
         var size = new Vector2I((int)viewport.X, (int)viewport.Y);
-        if (size.X < RoomLayoutPolicy.MinimumRoomWidth || size.Y < RoomLayoutPolicy.MinimumRoomHeight)
+        if (size.X < RoomLayoutPolicy.MinimumRoomWidth ||
+            size.Y < RoomLayoutPolicy.MinimumRoomHeight)
         {
-            // Headless viewports can report zero before the first render frame.
-            size = new Vector2I(RoomLayoutPolicy.DefaultClientWidth, RoomLayoutPolicy.DefaultClientHeight);
+            size = new Vector2I(
+                RoomLayoutPolicy.DefaultClientWidth,
+                RoomLayoutPolicy.DefaultClientHeight);
         }
 
         return size;
+    }
+
+    private async Task PersistWindowStateAsync()
+    {
+        if (_saves is null)
+            return;
+
+        _settings = WindowInteractionSettings.WithState(
+            _settings,
+            Window.LayoutMode,
+            _mode.Current,
+            Window.CompactRect,
+            Window.FullscreenMonitor);
+        _saves.RegisterSettings(_settings);
+        await _saves.SaveRegisteredSettingsAsync();
+    }
+
+    private async Task PersistWindowStateObservedAsync()
+    {
+        try
+        {
+            await PersistWindowStateAsync();
+        }
+        catch (Exception exception)
+        {
+            Log.Error(Category,
+                $"Window/input settings save failed; runtime state remains active: {exception.Message}");
+        }
     }
 
     public override void _ExitTree()
@@ -280,11 +361,10 @@ public partial class DesktopShellController : Node
         {
             Window.ClientBoundsChanged -= OnClientBoundsChanged;
             Window.WindowFocusLost -= OnWindowFocusLost;
+            Window.LayoutModeChanged -= OnWindowLayoutChanged;
         }
 
         if (GodotObject.IsInstanceValid(Boundaries))
-        {
             Boundaries.LayoutApplied -= OnLayoutApplied;
-        }
     }
 }
