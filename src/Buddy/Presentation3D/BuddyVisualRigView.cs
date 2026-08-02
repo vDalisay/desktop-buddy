@@ -24,6 +24,12 @@ public partial class BuddyVisualRigView : Node3D
     private readonly PartVisualDefinition[] _partDefinitions =
         new PartVisualDefinition[PuppetRigProfile.RequiredPartCount];
     private readonly float[] _meshRadii = new float[PuppetRigProfile.RequiredPartCount];
+    private readonly Color[] _activeBaseColors =
+        new Color[PuppetRigProfile.RequiredPartCount];
+    private readonly float[] _scorchAmounts =
+        new float[PuppetRigProfile.RequiredPartCount];
+    private readonly Color[] _scorchColors =
+        new Color[PuppetRigProfile.RequiredPartCount];
     private readonly Texture2D?[] _surfaceUnderlays =
         new Texture2D?[PuppetRigProfile.RequiredPartCount];
 
@@ -130,10 +136,7 @@ public partial class BuddyVisualRigView : Node3D
             return;
 
         for (int index = 0; index < _partMeshes.Length; index++)
-        {
-            if (_partMeshes[index].MaterialOverride is StandardMaterial3D material)
-                material.AlbedoColor = _partDefinitions[index].Color;
-        }
+            SetActiveBaseColor(index, _partDefinitions[index].Color);
 
         if (GodotObject.IsInstanceValid(TorsoAccentPlate))
             TorsoAccentPlate.Visible = false;
@@ -142,17 +145,12 @@ public partial class BuddyVisualRigView : Node3D
     public void SetPartScorch(BuddyPartId partId, float amount, Color scorchColor)
     {
         int index = CheckedPartIndex(partId);
-        if (!IsInitialized ||
-            _partMeshes[index].MaterialOverride is not StandardMaterial3D material)
-        {
+        if (!IsInitialized)
             return;
-        }
 
-        Color authored = _partDefinitions[index].Color;
-        float clamped = Mathf.Clamp(amount, 0.0f, 1.0f);
-        Color wanted = clamped <= 0.0f ? authored : authored.Lerp(scorchColor, clamped);
-        if (material.AlbedoColor != wanted)
-            material.AlbedoColor = wanted;
+        _scorchAmounts[index] = Mathf.Clamp(amount, 0.0f, 1.0f);
+        _scorchColors[index] = scorchColor;
+        ApplyPartColor(index);
     }
 
     public void SetEndpointConnectorScorch(
@@ -263,6 +261,24 @@ public partial class BuddyVisualRigView : Node3D
         return IsInitialized ? _partDefinitions[index].Color : Colors.White;
     }
 
+    public Color ActiveBasePartAlbedo(BuddyPartId partId)
+    {
+        int index = CheckedPartIndex(partId);
+        return IsInitialized ? _activeBaseColors[index] : Colors.White;
+    }
+
+    public float PartScorchAmount(BuddyPartId partId)
+    {
+        int index = CheckedPartIndex(partId);
+        return IsInitialized ? _scorchAmounts[index] : 0.0f;
+    }
+
+    public Color PartScorchColor(BuddyPartId partId)
+    {
+        int index = CheckedPartIndex(partId);
+        return IsInitialized ? _scorchColors[index] : Colors.Transparent;
+    }
+
     public Color ConnectorAlbedo(int index) =>
         IsInitialized && index >= 0 && index < _connectorMeshes.Length &&
         _connectorMeshes[index].MaterialOverride is StandardMaterial3D material
@@ -273,6 +289,26 @@ public partial class BuddyVisualRigView : Node3D
         IsInitialized && index >= 0 && index < _connectorDefinitions.Length
             ? _connectorDefinitions[index].Color
             : Colors.White;
+
+    private void SetActiveBaseColor(int index, Color color)
+    {
+        _activeBaseColors[index] = color;
+        ApplyPartColor(index);
+    }
+
+    private void ApplyPartColor(int index)
+    {
+        if (_partMeshes[index].MaterialOverride is not StandardMaterial3D material)
+            return;
+
+        float scorch = _scorchAmounts[index];
+        Color baseColor = _activeBaseColors[index];
+        Color wanted = scorch <= 0.0f
+            ? baseColor
+            : baseColor.Lerp(_scorchColors[index], scorch);
+        if (material.AlbedoColor != wanted)
+            material.AlbedoColor = wanted;
+    }
 
     private void BuildParts()
     {
