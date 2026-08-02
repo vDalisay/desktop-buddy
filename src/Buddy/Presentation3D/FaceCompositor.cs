@@ -81,6 +81,7 @@ public partial class FaceCompositor : Node
 
         Reseed(Buddy.AutonomousMotion.Seed);
         Buddy.AutonomyReseeded += Reseed;
+        Reactions.FaceChanged += OnFaceChanged;
         _lastRoutedTick = Buddy.RoutedTicks;
         IsInitialized = true;
         Evaluate();
@@ -94,8 +95,13 @@ public partial class FaceCompositor : Node
 
     public override void _ExitTree()
     {
-        if (IsInitialized && GodotObject.IsInstanceValid(Buddy))
+        if (!IsInitialized)
+            return;
+
+        if (GodotObject.IsInstanceValid(Buddy))
             Buddy.AutonomyReseeded -= Reseed;
+        if (GodotObject.IsInstanceValid(Reactions))
+            Reactions.FaceChanged -= OnFaceChanged;
     }
 
     public void Reseed(ulong seed) => _blink = new BlinkModel(
@@ -148,5 +154,11 @@ public partial class FaceCompositor : Node
         }
 
         return state;
+    }
+
+    private void OnFaceChanged(string face)
+    {
+        if (IsInitialized)
+            Evaluate();
     }
 }
