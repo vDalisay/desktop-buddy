@@ -102,33 +102,41 @@ shown.
 Deliver tools in the confirmed progression order:
 
 1. Baseball
-2. Meal
-3. Baseball Bat
-4. Pistol
-5. Grenade
-6. Fire Sprayer
-7. Soccer Ball
-8. Drink
-9. Shotgun
+2. Baseball Bat
+3. Meal
+4. Nerf Blaster
+5. Pistol
+6. Soccer Ball
+7. Grenade
+8. Fire Sprayer
+9. Power Grab
 10. Repair Kit
-11. Strength Upgrade (owner-requested 2026-07-25; unscheduled in the FR-013.4 sequence
-    pending calibration — see FR-019)
+11. Shotgun
+12. Drink
 
 Also deliver the retractable tool/shop/settings panel, pullback trajectory launcher,
-cursor-direction guns, object budget, permanent purchases, and reset confirmation.
+cursor-direction guns, object budget, permanent purchases, unrestricted save-for-preference
+shopping, and confirmed full-gameplay reset.
 
-The Strength Upgrade is the catalogue's first **passive permanent upgrade** rather than a
-selectable tool, so Milestone 5 must additionally deliver:
+Power Grab supersedes the unimplemented passive Strength Upgrade concept. Milestone 5 must
+deliver it as a separately selectable, one-time permanent tool while preserving Normal Grab:
 
-- A shop entry that is purchasable but never enters tool selection.
-- An owned-upgrade modifier path into the grab tether (force, force ceiling, stretch limit,
-  release velocity) with the FR-006.8 snap-back disabled while owned.
-- Re-validation of the FR-013.5 two-hour affordability target against `15` catalogue entries.
+- Append `ToolId.PowerGrab` and stable content ID `tool.power_grab`; never repurpose the
+  deprecated hidden `upgrade.strength` placeholder, and migrate any development save that
+  owns it.
+- Reuse the one Grab acquisition/tether pipeline. Select Normal versus Power settings at
+  acquisition, keep the same safe stretch limit, preserve visible fear resistance, and
+  suppress only Power Grab's forced snap/release.
+- Apply Resource-authored higher pull/force authority and a separately capped stronger
+  intentional release to buddy parts and eligible loose objects, with no direct economy or
+  damage multiplier.
+- Validate the exact 16-entry selectable catalogue, the FR-013.4 `3…209` completionist
+  schedule, and unrestricted skipping strategies.
 
 Exit criteria:
 
 - Every tool has automated behavior/error tests and clean-room presentation.
-- Economy simulation meets the 3-to-120-minute target schedule and active/passive ratio.
+- Economy simulation meets the 3-to-209-minute completionist target schedule, unrestricted skipping strategies, the casual 120-active/89-background benchmark, and the active/passive ratio.
 
 ## Milestone 6 — Steam and Release Systems
 
