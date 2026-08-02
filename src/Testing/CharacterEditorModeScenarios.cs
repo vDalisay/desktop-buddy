@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
-using DesktopBuddy.Domain.Platform;
+using DesktopBuddy.Persistence;
 using DesktopBuddy.Platform;
 using Godot;
 using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
@@ -16,18 +16,24 @@ internal static class CharacterEditorModeScenarioSupport
         SceneTree tree)
     {
         var time = new ManualMonotonicTimeSource();
-        (SandboxRoot Sandbox, Persistence.InMemoryProgressStore Store)? loaded =
+        (SandboxRoot Sandbox, InMemoryProgressStore Store)? loaded =
             await M4LifecycleScenarioSupport.Load(tree, time);
         return loaded is null ? null : (loaded.Value.Sandbox, time);
     }
 
     public static CharacterEditorModeCoordinator Coordinator(SandboxRoot sandbox) => new(
         sandbox.Window,
-        sandbox.DesktopShell,
+        sandbox.Shell,
         sandbox.Lifecycle);
 
     public static ScenarioResult Result(IReadOnlyList<StartupCheck> checks, ulong seed) =>
         new(checks.All(static check => check.Passed), checks, [$"seed={seed}"]);
+
+    public static bool Contains(Rect2I outer, Rect2I inner) =>
+        inner.Position.X >= outer.Position.X &&
+        inner.Position.Y >= outer.Position.Y &&
+        inner.End.X <= outer.End.X &&
+        inner.End.Y <= outer.End.Y;
 }
 
 public sealed class EditorModeLifecycleAccountingScenario : IScenario
@@ -117,7 +123,7 @@ public sealed class EditorWindowRestoreScenario : IScenario
                 Borderless: true,
                 Resizable: false);
             sandbox.Window.ApplyWindowSettings(initial);
-            sandbox.Window.SetInputMode(DomainInputMode.Work, sandbox.DesktopShell.LastWorkModeHitRegions);
+            sandbox.Window.SetInputMode(DomainInputMode.Work, sandbox.Shell.LastWorkModeHitRegions);
             var coordinator = CharacterEditorModeScenarioSupport.Coordinator(sandbox);
 
             coordinator.Enter();
@@ -173,7 +179,7 @@ public sealed class EditorWindowMonitorRemovedScenario : IScenario
             sandbox.Window.Configure(new EmulatedWindowsDesktopAdapter([primary]));
             coordinator.Exit();
             WindowSettings restored = sandbox.Window.CurrentSettings;
-            bool recovered = primary.Encloses(restored.Rect) &&
+            bool recovered = CharacterEditorModeScenarioSupport.Contains(primary, restored.Rect) &&
                 restored.Transparent == captured.Transparent &&
                 restored.AlwaysOnTop == captured.AlwaysOnTop &&
                 restored.Borderless == captured.Borderless &&
@@ -213,28 +219,29 @@ public sealed class EditorResizeBoundaryIsolationScenario : IScenario
             };
             sandbox.Window.ApplyWindowSettings(initial);
             var coordinator = CharacterEditorModeScenarioSupport.Coordinator(sandbox);
-            int revisionBefore = sandbox.Boundary.LayoutRevision;
+            int appliedBefore = sandbox.Boundaries.AppliedLayoutCount;
             coordinator.Enter();
             sandbox.Window.NotifyHeadlessClientBoundsChanged(new Rect2I(120, 120, 900, 650));
             sandbox.Window.NotifyHeadlessClientBoundsChanged(new Rect2I(120, 120, 1000, 700));
             sandbox.Window.NotifyHeadlessClientBoundsChanged(new Rect2I(120, 120, 820, 610));
-            bool isolated = sandbox.Boundary.LayoutRevision == revisionBefore &&
-                sandbox.DesktopShell.EditorResizeObservationCount == 3;
+            bool isolated = sandbox.Boundaries.AppliedLayoutCount == appliedBefore &&
+                sandbox.Shell.EditorResizeObservationCount == 3;
             checks.Add(new StartupCheck("a7_editor_resize_does_not_rebuild_gameplay", isolated,
-                $"revision={revisionBefore}->{sandbox.Boundary.LayoutRevision} " +
-                $"observed={sandbox.DesktopShell.EditorResizeObservationCount}"));
+                $"layouts={appliedBefore}->{sandbox.Boundaries.AppliedLayoutCount} " +
+                $"observed={sandbox.Shell.EditorResizeObservationCount}"));
 
             coordinator.Exit();
-            int beforeRestoredTick = sandbox.Boundary.LayoutRevision;
-            sandbox.DesktopShell.PhysicsTick();
-            bool exactlyOne = sandbox.Boundary.LayoutRevision == beforeRestoredTick + 1 &&
-                sandbox.DesktopShell.RestoredBoundaryRequestCount == 1 &&
-                sandbox.Boundary.LastLayout.ClientWidth == initial.Rect.Size.X &&
-                sandbox.Boundary.LastLayout.ClientHeight == initial.Rect.Size.Y;
+            int beforeRestoredTick = sandbox.Boundaries.AppliedLayoutCount;
+            sandbox.Shell.PhysicsTick();
+            sandbox.Boundaries.PhysicsTick();
+            bool exactlyOne = sandbox.Boundaries.AppliedLayoutCount == beforeRestoredTick + 1 &&
+                sandbox.Shell.RestoredBoundaryRequestCount == 1 &&
+                sandbox.Boundaries.CurrentLayout.ClientWidth == initial.Rect.Size.X &&
+                sandbox.Boundaries.CurrentLayout.ClientHeight == initial.Rect.Size.Y;
             checks.Add(new StartupCheck("a7_exit_applies_one_restored_boundary", exactlyOne,
-                $"revision={beforeRestoredTick}->{sandbox.Boundary.LayoutRevision} " +
-                $"requests={sandbox.DesktopShell.RestoredBoundaryRequestCount} " +
-                $"layout={sandbox.Boundary.LastLayout.ClientWidth}x{sandbox.Boundary.LastLayout.ClientHeight}"));
+                $"layouts={beforeRestoredTick}->{sandbox.Boundaries.AppliedLayoutCount} " +
+                $"requests={sandbox.Shell.RestoredBoundaryRequestCount} " +
+                $"layout={sandbox.Boundaries.CurrentLayout.ClientWidth}x{sandbox.Boundaries.CurrentLayout.ClientHeight}"));
         }
         finally
         {
