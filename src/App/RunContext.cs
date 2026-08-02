@@ -1,6 +1,7 @@
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Persistence.Characters;
 
 namespace DesktopBuddy.App;
 
@@ -15,4 +16,6 @@ public sealed record RunContext(
     SaveCoordinator Saves,
     LocalSettingsSave Settings,
     SaveLoadStatus LoadStatus,
-    IMonotonicTimeSource? TimeSource = null);
+    IMonotonicTimeSource? TimeSource = null,
+    CharacterSelectionState? CharacterSelection = null,
+    CharacterStore? Characters = null);
