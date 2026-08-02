@@ -9,8 +9,9 @@ namespace DesktopBuddy.Platform;
 
 /// <summary>
 /// Godot-side desktop window service. Window footprint and interaction mode are independent:
-/// Compact always captures its complete client rectangle, while FullscreenOverlay may either
-/// capture the monitor in Play mode or use the native toolbar-only passthrough policy in Work.
+/// Compact always captures its complete client rectangle. FullscreenOverlay captures the
+/// monitor in Play and uses Godot's supported whole-window mouse passthrough in Work. The
+/// horizontal recovery toolbar is a separate native window and therefore remains interactive.
 /// </summary>
 public partial class DesktopWindowController : Node, IDesktopWindowService
 {
@@ -31,6 +32,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     public int FullscreenMonitor { get; private set; }
     public bool TransparencyActive { get; private set; }
     public bool FullscreenOverlayAvailable => _adapter.TransparencyAvailable;
+    public bool MainWindowMousePassthrough { get; private set; }
     public Rect2I CompactRect => _compactSettings.Rect;
 
     public IWindowsDesktopAdapter Adapter => _adapter;
@@ -73,21 +75,23 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             _compactSettings = _lastAppliedSettings;
         AppliedSettingsCount++;
 
-        if (_headless)
-            return;
-
-        Window window = GetWindow();
-        window.Borderless = settings.Borderless;
-        window.Unresizable = !settings.Resizable;
-        window.AlwaysOnTop = settings.AlwaysOnTop;
-        window.Transparent = wantTransparent;
-        GetViewport().TransparentBg = wantTransparent;
-        if (window.Mode == Window.ModeEnum.Windowed)
+        if (!_headless)
         {
-            window.Size = settings.Rect.Size;
-            window.Position = settings.Rect.Position;
+            Window window = GetWindow();
+            window.Borderless = settings.Borderless;
+            window.Unresizable = !settings.Resizable;
+            window.AlwaysOnTop = settings.AlwaysOnTop;
+            window.Transparent = wantTransparent;
+            GetViewport().TransparentBg = wantTransparent;
+            if (window.Mode == Window.ModeEnum.Windowed)
+            {
+                window.Size = settings.Rect.Size;
+                window.Position = settings.Rect.Position;
+            }
+            ApplyRenderSettings(settings);
         }
-        ApplyRenderSettings(settings);
+
+        ApplyCurrentInputPolicy();
 
         if (!wantTransparent && settings.Transparent)
             Log.Warn(Category, "Transparency unavailable; using opaque bordered fallback.");
@@ -114,9 +118,10 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         captured with { Rect = ResolvePlacement(captured.Rect) };
 
     /// <summary>
-    /// Applies the native input policy for the current layout. Compact captures all pixels in
-    /// both modes; only full-screen Work enables passthrough outside the supplied toolbar/UI
-    /// regions.
+    /// Applies semantic interaction mode. Native hit-region subclassing is deliberately
+    /// disabled: HTTRANSPARENT only redispatches within one UI thread and did not pass clicks
+    /// to arbitrary desktop applications. Full-screen Work instead toggles the native Godot
+    /// window's whole-window MousePassthrough flag.
     /// </summary>
     public void SetInputMode(DomainInputMode mode, IReadOnlyList<Rect2I> workModeHitRegions)
     {
@@ -138,6 +143,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         if (mode == LayoutMode &&
             (mode != WindowLayoutMode.FullscreenOverlay || resolvedMonitor == FullscreenMonitor))
         {
+            ApplyCurrentInputPolicy();
             return true;
         }
 
@@ -220,25 +226,22 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         _lastAppliedRect = recovered.Rect;
         TransparencyActive = recovered.Transparent && _adapter.TransparencyAvailable;
 
-        if (_headless)
-            return;
-
-        Window window = GetWindow();
-        window.Mode = Window.ModeEnum.Windowed;
+        if (!_headless)
+            GetWindow().Mode = Window.ModeEnum.Windowed;
         ApplyWindowSettings(recovered);
     }
 
     private void ApplyCurrentInputPolicy()
     {
-        if (LayoutMode == WindowLayoutMode.FullscreenOverlay &&
-            InputMode == DomainInputMode.Work)
-        {
-            _adapter.SetWorkModeHitRegions(_workModeHitRegions);
-        }
-        else
-        {
-            _adapter.SetPlayModeCapture();
-        }
+        bool passthrough = LayoutMode == WindowLayoutMode.FullscreenOverlay &&
+            InputMode == DomainInputMode.Work;
+        MainWindowMousePassthrough = passthrough;
+
+        // Explicitly disable the obsolete WM_NCHITTEST path. The separate native toolbar
+        // window owns all Work-mode controls while the main overlay passes every mouse event.
+        _adapter.SetPlayModeCapture();
+        if (!_headless)
+            GetWindow().MousePassthrough = passthrough;
     }
 
     private void FinishLayoutTransition()
@@ -345,7 +348,12 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
 
     private void OnFocusExited() => WindowFocusLost?.Invoke();
 
-    public override void _ExitTree() => _adapter.Shutdown();
+    public override void _ExitTree()
+    {
+        if (!_headless && GodotObject.IsInstanceValid(GetWindow()))
+            GetWindow().MousePassthrough = false;
+        _adapter.Shutdown();
+    }
 
     private static int MsaaLevel(Viewport.Msaa value) => value switch
     {
