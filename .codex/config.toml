@@ -1,3 +1,5 @@
+model_verbosity = "low"
+model_reasoning_summary = "concise"
 [mcp_servers.desktop-buddy-godot-mcp]
 command = "cmd.exe"
 args = ["/d", "/c", "tools\\start_godot_mcp.bat"]
