@@ -113,6 +113,9 @@ jobs:
       - name: M3 presentation scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=m3_presentation --seed=1
 
+      - name: A2 shared rig view scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=character_rig_view --seed=1
+
       - name: M3 tool feel and reactions scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=tool_feel_reactions --seed=1
 
