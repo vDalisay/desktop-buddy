@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Text.Json;
 using DesktopBuddy.Domain.Characters;
 using Xunit;
@@ -144,6 +143,13 @@ public sealed class CharacterDocumentPolicyTests
     [InlineData("{}")]
     [InlineData("{\"schemaVersion\":1,\"id\":\"not-a-guid\",\"displayName\":\"Buddy\"}")]
     [InlineData("{\"schemaVersion\":1,\"id\":\"12345678-1234-4567-89ab-1234567890ab\",\"displayName\":\"Buddy\",\"partColors\":{\"head\":\"red\"}}")]
+    [InlineData("{\"schemaVersion\":1,\"id\":\"12345678-1234-4567-89ab-1234567890ab\",\"displayName\":\"Buddy\",\"partColors\":null}")]
+    [InlineData("{\"schemaVersion\":1,\"id\":\"12345678-1234-4567-89ab-1234567890ab\",\"displayName\":\"Buddy\",\"partColors\":{\"head\":null}}")]
+    [InlineData("{\"schemaVersion\":1,\"id\":\"12345678-1234-4567-89ab-1234567890ab\",\"displayName\":\"Buddy\",\"features\":null}")]
+    [InlineData("{\"schemaVersion\":1,\"id\":\"12345678-1234-4567-89ab-1234567890ab\",\"displayName\":\"Buddy\",\"features\":{\"eyes\":null}}")]
+    [InlineData("{\"schemaVersion\":1,\"id\":\"12345678-1234-4567-89ab-1234567890ab\",\"displayName\":\"Buddy\",\"features\":{\"eyes\":{\"featureId\":null}}}")]
+    [InlineData("{\"schemaVersion\":1,\"id\":\"12345678-1234-4567-89ab-1234567890ab\",\"displayName\":\"Buddy\",\"features\":{\"eyes\":{\"offsetX\":null}}}")]
+    [InlineData("{\"schemaVersion\":1,\"id\":\"12345678-1234-4567-89ab-1234567890ab\",\"displayName\":\"Buddy\",\"features\":{\"eyes\":{\"color\":null}}}")]
     public void MalformedRequiredValues_AreClassifiedWithoutThrowing(string json)
     {
         CharacterDecodeResult result = CharacterDocumentPolicy.DecodeAndMigrate(json);
