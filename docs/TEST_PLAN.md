@@ -49,13 +49,19 @@ The implementation must expose one command for pure tests, one command for headl
 - Falling below 60 and crossing again permits another reset.
 - Closed/suspended time produces no catch-up income or mood change; hidden-to-tray running time does.
 
-### Persistence and Steam Abstraction
+### Persistence, Reset Progress, and Steam Abstraction
 
 - Current save data round-trips without loss and older supported versions migrate explicitly.
+- Schema-5 saves that own deprecated `upgrade.strength` migrate exactly once to ownership of `tool.power_grab`; new saves never emit the deprecated ID.
 - Live pose, objects, projectiles, pain, knockout, and temporary statuses never enter progress data.
 - Atomic replacement preserves the previous backup if a write fails.
 - Corrupt primary data is quarantined, then backup/default recovery occurs without crashing.
+- Reset Progress builds a fresh gameplay payload, validates it, writes it through the normal atomic-save path, and only then swaps the in-memory progress reference.
+- A confirmed reset clears balance, purchases, selected tool, mood/fullness, harmful and novelty memory, traits, local gameplay statistics, local achievement-progress counters, and cumulative play/economy timers. The post-reset selection is Normal Grab.
+- Reset Progress preserves language, audio, controls, accessibility, comfort, presentation, window, zoom, and dock preferences because those values are copied from the existing settings payload rather than reconstructed from defaults.
+- Cancel, dialog dismissal, missing confirmation, validation failure, and save failure leave both memory and disk unchanged. Tests compare complete before/after snapshots, not a subset of fields.
 - Cloud payload excludes machine-specific settings.
+- Already-awarded platform achievements are never revoked by Reset Progress; only local progress counters are reset.
 - Steam initialization failure selects the local implementation.
 - Offline stat/achievement events queue once and synchronize idempotently after reconnection.
 
@@ -82,6 +88,12 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
   resistance while retaining passive structural springs, so the conscious rig behaves like
   an unconscious ragdoll without its parts sliding to their link limits. Release restores
   normal drive. A supported grab retains standing and conscious reactions.
+- Normal Grab and Power Grab share acquisition, tether, cancellation, safety recovery, and maximum limb-stretch limits.
+- The active grab mode is resolved from the selected tool at acquisition and stored as immutable per-grab settings. Changing selection cancels the current grab; it cannot mutate a live tether.
+- Power Grab accepts buddy parts and eligible loose objects, applies the tuned stronger force profile, and still visibly drives the buddy's fear/struggle presentation.
+- A buddy cannot escape Power Grab from the normal stretch/snap timer. Saturating counters and a long-duration scenario prove that disabling voluntary escape cannot overflow or disable hard safety recovery.
+- Intentional Power Grab release applies its separate release multiplier and higher safe speed cap. Cancel, invalid target, hard recovery, scene exit, and input loss use the non-powered safety release.
+- Power Grab changes no damage, payout, mood, statistics, or economy multipliers; equivalent downstream collision samples produce equivalent downstream results.
 - Release velocity is preserved and capped.
 - A real head grab/release and an accepted head impact each start a two-second calm window;
   bounded head-righting torque begins only after it, restores a conscious head, re-arms on
@@ -631,14 +643,65 @@ Every scenario uses seeded scripted inputs and asserts ranges/tolerances rather 
 
 ## 4. Economy Simulation
 
-Create deterministic benchmark input traces for a representative mixed active/passive player. Tune prices and cash-per-pain together until median target purchases occur near cumulative minutes `3`, `6`, `20`, `30`, `40`, `50`, `65`, `80`, `100`, and `120` in the approved order.
+### 4.1 Production-path architecture
 
-The benchmark must also prove:
+The calibration runner is deterministic domain code, not a second economy implementation. It must replay timestamped benchmark actions through the production seams in this order:
 
-- Active attacking remains the dominant income source.
-- Maximum-mood passive income is approximately 25% of benchmark active income.
-- No single ordinary event skips multiple intended unlock milestones.
-- Repeated legitimate use remains rewarding; duplicate physics callbacks do not print money.
+1. active `ContactSample` input through `ImpactRouter -> PainCurve -> RewardLedger`;
+2. elapsed running intervals through `PassiveIncome`;
+3. purchase attempts through the real `ToolCatalogue` and purchase service;
+4. balance, ownership, and cumulative purchase timestamps into a structured result.
+
+A Godot adapter scenario named `economy_calibration` loads the actual launch catalogue and the actual pain, payout, mood, and passive-income Resources, converts them to immutable domain settings, and invokes the pure runner. Pure unit tests may use deliberately synthetic catalogues to test edge cases, but no test or runner may duplicate the launch prices in source code.
+
+The benchmark trace describes player behavior only. Its contacts, care actions, misses, pauses, active/background intervals, and purchase strategy must not be generated from or adjusted by prices. Fixed seeds make every run reproducible; use at least five committed seeds and report the median. The report writer emits stable-key-order JSON plus a human-readable Markdown summary so diffs expose all calibration changes.
+
+### 4.2 Official completionist targets
+
+The official acceptance strategy buys every item in order at the first affordable opportunity. The median cumulative purchase time for every row must be within ±15% of its target.
+
+| # | Item | Target minute | Gap from prior | Pricing class |
+|---:|---|---:|---:|---|
+| 1 | Baseball | 3 | 3 | Regular |
+| 2 | Baseball Bat | 7 | 4 | Regular |
+| 3 | Meal | 13 | 6 | Regular |
+| 4 | Nerf | 21 | 8 | Regular |
+| 5 | Pistol | 41 | 20 | High value |
+| 6 | Soccer Ball | 52 | 11 | Regular |
+| 7 | Grenade | 76 | 24 | High value |
+| 8 | Fire Sprayer | 104 | 28 | High value |
+| 9 | Power Grab | 120 | 16 | Regular |
+| 10 | Repair Kit | 138 | 18 | Regular |
+| 11 | Shotgun | 184 | 46 | High value |
+| 12 | Drink | 209 | 25 | Regular |
+
+Only Pistol, Grenade, Fire Sprayer, and Shotgun use the high-value pricing treatment. The larger grind is immediately before the high-value purchase. The old 120-minute catalogue-completion target is superseded by this 209-minute schedule.
+
+The representative casual trace contains approximately 120 minutes of active interaction and 89 minutes of running background/passive time across the 209-minute horizon. Active play includes experimentation, care, misses, pauses, and non-optimal hits; it is not a perfect damage loop.
+
+### 4.3 Additional strategy coverage
+
+The shop has no prerequisite chain. In addition to the judged completionist strategy, run deterministic save/skip strategies that:
+
+- save directly for each high-value item;
+- skip at least two regular items before buying a later preferred item;
+- buy Power Grab before an earlier affordable regular item;
+- leave an affordable item unbought for at least one purchase interval.
+
+These runs are behavioral regressions, not target-time failures. They pass when the requested owned item can be purchased at sufficient balance, skipped items remain unowned, the balance is charged once, and later purchases remain possible. Never force-buy an earlier catalogue row merely to keep a simulation schedule.
+
+### 4.4 Proof obligations and report contract
+
+Every calibration report must include Resource/content fingerprints, seed, strategy ID, active minutes, background minutes, active income, passive income, purchase timestamps, ending balance, duplicate-contact rejects, and ordinary-event maximum payout. CI fails if any official completionist median is outside ±15%, a catalogue entry is missing/duplicated, or a proof obligation fails.
+
+The benchmark must prove:
+
+- active interaction remains the dominant income source over the complete representative trace;
+- maximum-mood passive income is approximately 25% of benchmark active income; use a documented 20–30% validation band unless the owner later approves a narrower one;
+- no single ordinary accepted event crosses more than one intended catalogue milestone;
+- a positive / duplicate-zero / later-positive contact sequence passes through the real router and ledger, proving legitimate repeated use pays while duplicate physics callbacks do not;
+- prices are monotonic positive integers in catalogue order only where explicitly required by the approved data; target times, not guessed price curves, are the calibration authority;
+- changing a price or payout Resource changes the report fingerprint and result without changing the benchmark trace.
 
 ## 5. Standalone Windows Matrix
 
