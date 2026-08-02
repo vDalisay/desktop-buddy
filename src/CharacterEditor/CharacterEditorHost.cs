@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
@@ -548,13 +549,12 @@ public partial class CharacterEditorHost : CanvasLayer
     {
         if (!IsInitialized || IsEditorOpen)
             return;
-        var regions = new List<Rect2I>
-        {
-            ToRect(SettingsButton.GetGlobalRect()),
-        };
+        // The sandbox owns the Work-Mode region list (it rebuilds it from the moving
+        // buddy bodies every frame); the dock only contributes its own rectangles.
+        var regions = new List<Rect2> { SettingsButton.GetGlobalRect() };
         if (_settingsPanel.Visible)
-            regions.Add(ToRect(_settingsPanel.GetGlobalRect()));
-        _sandbox.Shell.UpdateWorkModeHitRegions(regions);
+            regions.Add(_settingsPanel.GetGlobalRect());
+        _sandbox.SetOverlayWorkModeHitRegions(regions);
     }
 
     private Button AddAction(Control parent, string text, Func<Task> action)

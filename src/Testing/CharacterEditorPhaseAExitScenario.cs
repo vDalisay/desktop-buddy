@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.CharacterEditor;
@@ -84,12 +85,12 @@ public sealed class CharacterEditorPhaseAExitScenario : IScenario
                 $"seed=7 length={randomized.Length}"));
 
             CharacterEditorActionResult saved = await context.Session.SaveAsync();
-            Guid id = context.Session.WorkingDocument?.Id
+            Guid savedId = context.Session.WorkingDocument?.Id
                 ?? throw new InvalidOperationException("Save lost the working document.");
             bool saveCleared = saved.Completed && !context.Session.IsDirty &&
-                (await context.Store.LoadAsync(id, CancellationToken.None)).IsSuccess;
+                (await context.Store.LoadAsync(savedId, CancellationToken.None)).IsSuccess;
             checks.Add(new StartupCheck("a9_save_clears_dirty_and_persists", saveCleared,
-                $"id={id} dirty={context.Session.IsDirty}"));
+                $"id={savedId} dirty={context.Session.IsDirty}"));
 
             CharacterEditorActionResult use = await context.Session.UseCharacterAsync();
             bool beforeTick = context.Selection.ActiveCharacterId is null &&
@@ -97,8 +98,8 @@ public sealed class CharacterEditorPhaseAExitScenario : IScenario
             context.Coordinator.PhysicsTick();
             await context.Saves.FlushSelectionImmediatelyAsync();
             bool activated = use.Completed && beforeTick &&
-                context.Selection.ActiveCharacterId == id &&
-                context.Lab.VisualPresenter.RigView.ActiveAppearance?.CharacterId == id &&
+                context.Selection.ActiveCharacterId == savedId &&
+                context.Lab.VisualPresenter.RigView.ActiveAppearance?.CharacterId == savedId &&
                 context.Lab.VisualPresenter.RigView.TrustedGeometryMatches(liveTrust);
             checks.Add(new StartupCheck("a9_use_commits_at_fixed_tick", activated,
                 $"before={beforeTick} selected={context.Selection.ActiveCharacterId}"));
@@ -109,12 +110,12 @@ public sealed class CharacterEditorPhaseAExitScenario : IScenario
                 Colors.Black);
             bool reactionRetained =
                 context.Lab.VisualPresenter.RigView.PartScorchAmount(BuddyPartId.Head) > 0.0f &&
-                context.Lab.VisualPresenter.RigView.ActiveAppearance?.CharacterId == id &&
+                context.Lab.VisualPresenter.RigView.ActiveAppearance?.CharacterId == savedId &&
                 context.Lab.VisualPresenter.RigView.TrustedGeometryMatches(liveTrust);
             checks.Add(new StartupCheck("a9_reaction_overlay_retains_character", reactionRetained,
                 $"scorch={context.Lab.VisualPresenter.RigView.PartScorchAmount(BuddyPartId.Head):F2}"));
 
-            var restartSelection = new CharacterSelectionState(id);
+            var restartSelection = new CharacterSelectionState(savedId);
             var restartMemory = new InMemoryProgressStore();
             var restartProgress = new DesktopBuddy.Domain.Persistence.BuddyProgressState(1.0);
             var restartSaves = new SaveCoordinator(
@@ -132,8 +133,8 @@ public sealed class CharacterEditorPhaseAExitScenario : IScenario
                 CancellationToken.None);
             restartCoordinator.PhysicsTick();
             bool restart = startup.WasQueued &&
-                restartSelection.ActiveCharacterId == id &&
-                context.Lab.VisualPresenter.RigView.ActiveAppearance?.CharacterId == id;
+                restartSelection.ActiveCharacterId == savedId &&
+                context.Lab.VisualPresenter.RigView.ActiveAppearance?.CharacterId == savedId;
             checks.Add(new StartupCheck("a9_restart_restores_selected_character", restart,
                 $"startup={startup.Status} selected={restartSelection.ActiveCharacterId}"));
         }

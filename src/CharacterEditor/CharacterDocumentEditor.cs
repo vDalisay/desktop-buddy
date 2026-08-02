@@ -81,11 +81,54 @@ public static class CharacterDocumentEditor
         in NormalizedFeatureTransform transform)
     {
         JsonObject feature = Feature(Root(document), slot);
-        JsonObject transformObject = RequiredObject(feature, "transform");
-        SetProperty(transformObject, "offsetX", JsonValue.Create(transform.OffsetX));
-        SetProperty(transformObject, "offsetY", JsonValue.Create(transform.OffsetY));
-        SetProperty(transformObject, "scale", JsonValue.Create(transform.Scale));
+        SetProperty(feature, "offsetX", JsonValue.Create(transform.OffsetX));
+        SetProperty(feature, "offsetY", JsonValue.Create(transform.OffsetY));
+        SetProperty(feature, "scale", JsonValue.Create(transform.Scale));
         return Decode(feature.GetRoot().AsObject());
+    }
+
+    public static Rgba32 ReadPartColor(CharacterDocument document, CharacterPartSlot slot)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        CharacterPartColors colors = document.PartColors;
+        return slot switch
+        {
+            CharacterPartSlot.Head => colors.Head,
+            CharacterPartSlot.Torso => colors.Torso,
+            CharacterPartSlot.LeftHand => colors.LeftHand,
+            CharacterPartSlot.RightHand => colors.RightHand,
+            CharacterPartSlot.LeftFoot => colors.LeftFoot,
+            _ => colors.RightFoot,
+        };
+    }
+
+    public static string ReadFeatureId(CharacterDocument document, CharacterFeatureSlot slot) =>
+        ReadFeature(document, slot).FeatureId;
+
+    public static NormalizedFeatureTransform ReadFeatureTransform(
+        CharacterDocument document,
+        CharacterFeatureSlot slot)
+    {
+        CharacterFeatureDocument feature = ReadFeature(document, slot);
+        return new NormalizedFeatureTransform(feature.OffsetX, feature.OffsetY, feature.Scale);
+    }
+
+    public static Rgba32 ReadFeatureColor(CharacterDocument document, CharacterFeatureSlot slot) =>
+        ReadFeature(document, slot).Color;
+
+    private static CharacterFeatureDocument ReadFeature(
+        CharacterDocument document,
+        CharacterFeatureSlot slot)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        CharacterFeatureSet features = document.Features;
+        return slot switch
+        {
+            CharacterFeatureSlot.Eyes => features.Eyes,
+            CharacterFeatureSlot.Brows => features.Brows,
+            CharacterFeatureSlot.Mouth => features.Mouth,
+            _ => features.TorsoAccent,
+        };
     }
 
     public static CharacterDocument SetFeatureColor(

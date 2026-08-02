@@ -23,7 +23,9 @@ The Phase B surface-underlay seam remains null. Freehand painting, paint files, 
 
 ## Automated exit gate
 
-`.github/workflows/phase-a-character-editor.yml` rebuilds the solution, runs all non-baseline domain tests, imports Godot, executes every A3–A8 focused scenario, runs the A9 exit scenario, runs the A9 journey at seeds 1 and 7, and repeats presentation/window/lifecycle regressions.
+`.github/workflows/phase-a-character-editor.yml` rebuilds the solution, runs all non-baseline domain tests, imports Godot, executes every A3–A8 focused scenario, runs the A9 exit scenario, runs the A9 journey at seeds 1 and 7, and repeats presentation/window/lifecycle regressions. It replaces the temporary per-task focused workflows, which are removed as each task lands.
+
+`character_editor_create_use_and_react` is one scenario reached two ways: `tests/journeys/character_editor_create_use_and_react.json` runs the same scenario through the `--journey` entrypoint and asserts its checks as journey predicates, matching the existing JSON journey vocabulary.
 
 The known Linux-only `ProgressStoreTests` Windows-path baseline remains documented separately and is excluded only from this focused workflow; production persistence behavior is not weakened.
 

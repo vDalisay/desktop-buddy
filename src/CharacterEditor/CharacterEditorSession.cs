@@ -155,7 +155,7 @@ public sealed class CharacterEditorSession
 
     public CharacterEditorActionResult SetFeatureTransform(
         CharacterFeatureSlot slot,
-        in NormalizedFeatureTransform transform) =>
+        NormalizedFeatureTransform transform) =>
         Mutate(document => CharacterDocumentEditor.SetFeatureTransform(document, slot, transform));
 
     public CharacterEditorActionResult SetFeatureColor(CharacterFeatureSlot slot, Rgba32 color) =>

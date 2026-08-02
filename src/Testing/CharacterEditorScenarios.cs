@@ -7,6 +7,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Persistence;
@@ -38,7 +39,7 @@ internal static class CharacterEditorScenarioSupport
         var coordinator = new CharacterSelectionCoordinator(
             store, selection, lab.VisualPresenter.RigView, saves);
         var source = new StaticBuddyVisualTransformSource(lab.Buddy.Rig.Profile, Vector2.Zero);
-        var preview = new BuddyVisualRigView { Name = "EditorPreview", ProcessMode = ProcessModeEnum.Always };
+        var preview = new BuddyVisualRigView { Name = "EditorPreview", ProcessMode = Node.ProcessModeEnum.Always };
         lab.AddChild(preview);
         preview.Initialize(lab.Buddy.VisualProfile, source);
         preview.ApplyPose(Frame(source));
