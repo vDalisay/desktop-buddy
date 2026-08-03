@@ -16,7 +16,9 @@ public interface ICharacterFileSystem
     IReadOnlyList<string> EnumerateDirectories(string path);
     string ReadAllText(string path);
     byte[] ReadPrefix(string path, int maximumBytes);
+    byte[] ReadAllBytes(string path, int maximumBytes);
     void WriteAllTextDurable(string path, string content);
+    void WriteAllBytesDurable(string path, ReadOnlySpan<byte> content);
     void ReplaceFileWithBackup(string temporaryPath, string primaryPath, string backupPath);
     void MoveFile(string sourcePath, string destinationPath);
     void MoveDirectory(string sourcePath, string destinationPath);
@@ -66,10 +68,24 @@ public sealed class CharacterFileSystem : ICharacterFileSystem
         return result;
     }
 
+    public byte[] ReadAllBytes(string path, int maximumBytes)
+    {
+        if (maximumBytes <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maximumBytes));
+        var info = new FileInfo(path);
+        if (info.Length > maximumBytes)
+            throw new InvalidDataException($"File exceeds the {maximumBytes}-byte limit.");
+        return File.ReadAllBytes(path);
+    }
+
     public void WriteAllTextDurable(string path, string content)
     {
         ArgumentNullException.ThrowIfNull(content);
-        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(content);
+        WriteAllBytesDurable(path, System.Text.Encoding.UTF8.GetBytes(content));
+    }
+
+    public void WriteAllBytesDurable(string path, ReadOnlySpan<byte> content)
+    {
         using var stream = new FileStream(
             path,
             FileMode.Create,
@@ -77,7 +93,7 @@ public sealed class CharacterFileSystem : ICharacterFileSystem
             FileShare.None,
             bufferSize: 4096,
             FileOptions.WriteThrough);
-        stream.Write(bytes, 0, bytes.Length);
+        stream.Write(content);
         stream.Flush(flushToDisk: true);
     }
 
