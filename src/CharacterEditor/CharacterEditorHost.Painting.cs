@@ -21,15 +21,28 @@ public partial class CharacterEditorHost
 
     public override void _Process(double delta)
     {
-        if (!IsInitialized || _paintTextures is null || _paintCanvas is null)
+        if (!IsInitialized)
             return;
+        if (_paintCanvas is null)
+        {
+            TryAttachPaintingWorkspace();
+            return;
+        }
         _paintTextures.FlushFrame(_paintCanvas.Workspace.Surfaces);
     }
 
-    private void BuildPaintingArea(
-        VBoxContainer controls,
-        SubViewportContainer previewContainer,
-        Camera3D camera)
+    private void TryAttachPaintingWorkspace()
+    {
+        if (FindChild("CharacterPreview", recursive: true, owned: false) is not SubViewportContainer preview ||
+            preview.GetParent() is not VBoxContainer controls ||
+            preview.FindChild("Camera3D", recursive: true, owned: false) is not Camera3D camera)
+        {
+            return;
+        }
+        BuildPaintingArea(controls, preview, camera);
+    }
+
+    private void BuildPaintingArea(VBoxContainer controls, SubViewportContainer previewContainer, Camera3D camera)
     {
         _paintCamera = camera;
         _paintTextures = new PaintTextureBridge(_preview);
@@ -38,27 +51,15 @@ public partial class CharacterEditorHost
         _paintModeButton.Pressed += TogglePaintMode;
         controls.AddChild(_paintModeButton);
 
-        _paintControls = new VBoxContainer
-        {
-            Name = "CharacterPaintControls",
-            Visible = false,
-        };
+        _paintControls = new VBoxContainer { Name = "CharacterPaintControls", Visible = false };
         controls.AddChild(_paintControls);
 
         var toolRow = new HBoxContainer();
         _paintControls.AddChild(toolRow);
         Button brush = Button("Brush", "PaintBrushButton");
         Button eraser = Button("Eraser", "PaintEraserButton");
-        brush.Pressed += () =>
-        {
-            _paintCanvas.Workspace.SelectedTool = PaintTool.Brush;
-            RefreshPaintStatus();
-        };
-        eraser.Pressed += () =>
-        {
-            _paintCanvas.Workspace.SelectedTool = PaintTool.Eraser;
-            RefreshPaintStatus();
-        };
+        brush.Pressed += () => { _paintCanvas.Workspace.SelectedTool = PaintTool.Brush; RefreshPaintStatus(); };
+        eraser.Pressed += () => { _paintCanvas.Workspace.SelectedTool = PaintTool.Eraser; RefreshPaintStatus(); };
         toolRow.AddChild(brush);
         toolRow.AddChild(eraser);
 
@@ -81,16 +82,8 @@ public partial class CharacterEditorHost
         _paintControls.AddChild(sizeRow);
         Button smaller = Button("−", "PaintSizeDecreaseButton");
         Button larger = Button("+", "PaintSizeIncreaseButton");
-        smaller.Pressed += () =>
-        {
-            _paintCanvas.Workspace.AdjustBrush(-1);
-            RefreshPaintStatus();
-        };
-        larger.Pressed += () =>
-        {
-            _paintCanvas.Workspace.AdjustBrush(1);
-            RefreshPaintStatus();
-        };
+        smaller.Pressed += () => { _paintCanvas.Workspace.AdjustBrush(-1); RefreshPaintStatus(); };
+        larger.Pressed += () => { _paintCanvas.Workspace.AdjustBrush(1); RefreshPaintStatus(); };
         _brushSize = new Label { Name = "PaintBrushSize" };
         sizeRow.AddChild(new Label { Text = "Brush size" });
         sizeRow.AddChild(smaller);
@@ -102,8 +95,7 @@ public partial class CharacterEditorHost
         _undoPaintButton = Button("Undo", "PaintUndoButton");
         _undoPaintButton.Pressed += () =>
         {
-            if (_paintCanvas.Workspace.Undo())
-                QueueAllPaintTextures();
+            if (_paintCanvas.Workspace.Undo()) QueueAllPaintTextures();
             RefreshPaintStatus();
         };
         commandRow.AddChild(_undoPaintButton);
@@ -123,11 +115,7 @@ public partial class CharacterEditorHost
         viewRow.AddChild(zoomIn);
         viewRow.AddChild(resetView);
 
-        _paintStatus = new Label
-        {
-            Name = "PaintHoverStatus",
-            Text = "Move over a body part to paint.",
-        };
+        _paintStatus = new Label { Name = "PaintHoverStatus", Text = "Move over a body part to paint." };
         _paintControls.AddChild(_paintStatus);
         _paintControls.AddChild(new Label
         {
@@ -135,18 +123,10 @@ public partial class CharacterEditorHost
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         });
 
-        _paintCanvas = new PaintCanvasControl
-        {
-            Name = "CharacterPaintCanvas",
-            Visible = false,
-        };
+        _paintCanvas = new PaintCanvasControl { Name = "CharacterPaintCanvas", Visible = false };
         _paintCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         previewContainer.AddChild(_paintCanvas);
-        _paintCanvas.WorkspaceChanged += () =>
-        {
-            QueueAllPaintTextures();
-            RefreshPaintStatus();
-        };
+        _paintCanvas.WorkspaceChanged += () => { QueueAllPaintTextures(); RefreshPaintStatus(); };
         _paintCanvas.ViewChanged += ApplyPaintView;
         _paintCanvas.HoverChanged += _ => RefreshPaintStatus();
 
@@ -172,9 +152,7 @@ public partial class CharacterEditorHost
         bool enabled = !_paintControls.Visible;
         _paintControls.Visible = enabled;
         _paintCanvas.Visible = enabled;
-        _paintCanvas.MouseFilter = enabled
-            ? Control.MouseFilterEnum.Stop
-            : Control.MouseFilterEnum.Ignore;
+        _paintCanvas.MouseFilter = enabled ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
         _paintModeButton.Text = enabled ? "Appearance Controls" : "Paint";
         if (enabled)
         {
