@@ -24,7 +24,11 @@ public partial class DesktopToolbarWindow : Window
         Transparent = true;
         AlwaysOnTop = true;
         Unresizable = true;
-        Unfocusable = true;
+        // Focusable on purpose. An unfocusable bar cannot take activation back once the main
+        // window has it, and stops receiving mouse events entirely — no hover, no clicks. The
+        // shell already treats focus moving to an owned window as still using the game, so
+        // taking focus here does not drop Play mode (DesktopShellController.ResolveFocusLoss).
+        Unfocusable = false;
         MousePassthrough = false;
         ProcessMode = ProcessModeEnum.Always;
 
@@ -48,8 +52,8 @@ public partial class DesktopToolbarWindow : Window
     /// <summary>
     /// Re-asserts topmost. The main window is always-on-top too, so activating it — any click
     /// inside the buddy box — raises it above this bar, which then renders behind the money
-    /// counter and stops receiving clicks. Toggling the flag reorders without taking focus;
-    /// this window is unfocusable, so it must never be raised by activating it.
+    /// counter. Toggling the flag reorders the bar without activating it, so raising it never
+    /// steals focus from the game.
     /// </summary>
     public void RaiseAboveOwner()
     {

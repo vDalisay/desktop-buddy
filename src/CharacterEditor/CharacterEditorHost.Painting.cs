@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using DesktopBuddy.Domain.Painting;
 using Godot;
 
@@ -34,8 +35,14 @@ public partial class CharacterEditorHost
     private void TryAttachPaintingWorkspace()
     {
         if (FindChild("CharacterPreview", recursive: true, owned: false) is not SubViewportContainer preview ||
-            preview.GetParent() is not VBoxContainer controls ||
-            preview.FindChild("Camera3D", recursive: true, owned: false) is not Camera3D camera)
+            preview.GetParent() is not VBoxContainer controls)
+        {
+            return;
+        }
+        // The preview camera is added without a name, so Godot calls it "@Camera3D@3" and a
+        // name lookup finds nothing. Search by type instead.
+        if (preview.FindChildren("*", nameof(Camera3D), recursive: true, owned: false)
+                .FirstOrDefault() is not Camera3D camera)
         {
             return;
         }
