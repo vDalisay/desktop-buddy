@@ -23,6 +23,7 @@ set "LOG_DIR=!PROJECT_ROOT!\artifacts\logs"
 if not exist "!LOG_DIR!" mkdir "!LOG_DIR!" >nul 2>&1
 set "BUILD_LOG=!LOG_DIR!\play_game-build-latest.log"
 set "LOG_FILE=!LOG_DIR!\play_game-latest.log"
+set "EXIT_FILE=!LOG_DIR!\play_game-exit-code.txt"
 
 echo.
 echo [play_game] Project: !PROJECT_ROOT!
@@ -34,10 +35,13 @@ pushd "!PROJECT_ROOT!"
 dotnet build "!PROJECT_ROOT!\DesktopBuddy.csproj" --configuration Debug --nologo --verbosity minimal -flp:"logfile=!BUILD_LOG!;verbosity=normal"
 set "BUILD_RESULT=!ERRORLEVEL!"
 if not "!BUILD_RESULT!"=="0" (
+  >"!EXIT_FILE!" echo build=!BUILD_RESULT!
   echo.
   echo [play_game] Build failed with code !BUILD_RESULT!.
   echo [play_game] Godot was not launched, preventing a stale C# assembly from running.
   echo [play_game] Full build log: !BUILD_LOG!
+  echo.
+  pause
   popd
   endlocal & exit /b %BUILD_RESULT%
 )
@@ -48,21 +52,30 @@ echo [play_game] Godot: !GODOT_RUN_EXE!
 echo [play_game] Runtime log: !LOG_FILE!
 echo [play_game] Dock diagnostics are prefixed with [DockDiagnostics].
 echo [play_game] Input diagnostics are prefixed with [InputDiagnostics].
+echo [play_game] Toolbar diagnostics are prefixed with [ToolbarDiagnostics].
 echo.
 
 "!GODOT_RUN_EXE!" --verbose --log-file "!LOG_FILE!" --path "!PROJECT_ROOT!" %*
 set "RESULT=!ERRORLEVEL!"
+>"!EXIT_FILE!" echo runtime=!RESULT!
 popd
 
 echo.
 echo [play_game] Godot exited with code !RESULT!.
 echo [play_game] Full runtime log: !LOG_FILE!
+echo [play_game] Exit code file: !EXIT_FILE!
+if not "!RESULT!"=="0" (
+  echo.
+  echo [play_game] Abnormal exit detected. The terminal will remain open for inspection.
+  pause
+)
 endlocal & exit /b %RESULT%
 
 :help
 echo Builds and launches the real game while keeping Godot output attached to this terminal.
 echo Build output is written to artifacts\logs\play_game-build-latest.log.
 echo Runtime output is written to artifacts\logs\play_game-latest.log.
+echo The last build/runtime exit code is written to artifacts\logs\play_game-exit-code.txt.
 echo The game is not launched when the current C# source fails to compile.
 echo Extra arguments are passed through, e.g. --presentation=legacy.
 echo Uses GODOT_PATH or auto-discovers the pinned editor. See README.md for the search order.
