@@ -207,10 +207,6 @@ public partial class CharacterEditorHost : CanvasLayer
 
         _settingsPanel = new SettingsPanel();
         _settingsPanel.Configure();
-        OpenCharacterEditorButton = _settingsPanel.AddAction(
-            "Character Editor",
-            "Create and edit the buddy's appearance.",
-            async () => await OpenEditorAsync());
         _settingsWindow = OpenableWindow("Settings", _settingsPanel, null);
 
         // Buying a tool immediately makes it selectable, so keep the picker honest.
@@ -227,6 +223,13 @@ public partial class CharacterEditorHost : CanvasLayer
         SettingsButton = Button("Settings", "DockSettingsButton");
         SettingsButton.Pressed += () => _settingsWindow.Toggle(WindowAnchor(2));
         dock.AddChild(SettingsButton);
+
+        // Owner decision 2026-08-03: the editor gets its own bar button rather than a
+        // Settings row, so entering it is one click.
+        OpenCharacterEditorButton = Button("Character Editor", "DockCharacterEditorButton");
+        OpenCharacterEditorButton.TooltipText = "Create and edit the buddy's appearance.";
+        OpenCharacterEditorButton.Pressed += async () => await OpenEditorAsync();
+        dock.AddChild(OpenCharacterEditorButton);
     }
 
     /// <summary>
@@ -616,6 +619,13 @@ public partial class CharacterEditorHost : CanvasLayer
     {
         if (!IsInitialized || IsEditorOpen)
             return;
+        if (_workPlayControlsComposed)
+        {
+            // The bar lives in its own HWND with its own hit testing. Re-registering the
+            // buttons' rects here would block a stale rectangle of the overlay instead.
+            _sandbox.SetOverlayWorkModeHitRegions(Array.Empty<Rect2>());
+            return;
+        }
         // The sandbox owns the Work-Mode region list (it rebuilds it from the moving
         // buddy bodies every frame); the dock only contributes its own rectangles.
         // Only in-window controls need hit regions. The shop and tool windows are separate

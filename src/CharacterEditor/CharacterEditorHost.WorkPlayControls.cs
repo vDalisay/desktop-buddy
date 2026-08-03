@@ -96,6 +96,7 @@ public partial class CharacterEditorHost
 
         Control oldBar = SettingsButton.GetParent<Control>();
         Control? oldDockContainer = oldBar.GetParentOrNull<Control>();
+        OpenCharacterEditorButton.Reparent(_desktopToolbar.Bar);
         ShopButton.Reparent(_desktopToolbar.Bar);
         ToolsButton.Reparent(_desktopToolbar.Bar);
         SettingsButton.Reparent(_desktopToolbar.Bar);
