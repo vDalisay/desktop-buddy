@@ -5,6 +5,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Persistence.Characters;
@@ -52,13 +54,88 @@ public sealed class PaintFrontalUvMappingScenario : IScenario
         var checks = new List<StartupCheck>();
         FrontalPaintMapper mapper = FrontalPaintMapper.CreateDefault();
         PaintPoint[] points = [
-            new(0, -1.42), new(0, -0.15), new(-1.02, -0.12),
-            new(1.02, -0.12), new(-0.43, 1.08), new(0.43, 1.08)];
+            new(0, -50), new(0, 0), new(-38, -5), new(38, -5), new(-22, 55), new(22, 55)];
         bool allHit = points.All(point => mapper.TryMap(point, out PaintHit hit) && hit.IsValid);
         checks.Add(new StartupCheck("phase_b_all_parts_have_finite_uv", allHit, $"hits={points.Length}"));
-        checks.Add(new StartupCheck("phase_b_empty_canvas_misses", !mapper.TryMap(new PaintPoint(9, 9), out _), "far point"));
+        checks.Add(new StartupCheck("phase_b_empty_canvas_misses", !mapper.TryMap(new PaintPoint(300, 300), out _), "far point"));
+        checks.Add(CheckShapesMatchTrustedRig(mapper));
+        checks.Add(CheckCanvasFraming());
         return Task.FromResult(PaintingScenarioSupport.Result(checks, seed));
     }
+
+    /// <summary>
+    /// Canvas pointer positions must resolve through the same framing the preview camera uses:
+    /// 400 world units vertically, widened by the SubViewport aspect.
+    /// </summary>
+    private static StartupCheck CheckCanvasFraming()
+    {
+        var canvas = new CharacterEditor.PaintCanvasControl
+        {
+            Size = new Vector2(420, 360),
+            ViewportSize = new Vector2(420, 360),
+        };
+        try
+        {
+            // Canvas centre is the torso origin; these are the head and right foot rest centres.
+            bool matches =
+                canvas.PartAt(new Vector2(210, 180)) == PaintPart.Torso &&
+                canvas.PartAt(new Vector2(210, 135)) == PaintPart.Head &&
+                canvas.PartAt(new Vector2(230, 230)) == PaintPart.RightFoot &&
+                canvas.PartAt(new Vector2(4, 4)) is null;
+            return new StartupCheck(
+                "phase_b_canvas_pointer_matches_camera_framing",
+                matches,
+                $"head={canvas.PartAt(new Vector2(210, 135))} foot={canvas.PartAt(new Vector2(230, 230))}");
+        }
+        finally
+        {
+            canvas.Free();
+        }
+    }
+
+    /// <summary>
+    /// The engine-free mapper hard-codes the trusted rest anatomy, so this is the one check that
+    /// fails if `lab_puppet_rig.tres` or the torso capsule height ever drifts away from it.
+    /// </summary>
+    private static StartupCheck CheckShapesMatchTrustedRig(FrontalPaintMapper mapper)
+    {
+        var rig = GD.Load<PuppetRigProfile>("res://data/buddy/lab_puppet_rig.tres");
+        var visual = GD.Load<BuddyVisualProfile>("res://data/buddy/lab_buddy_visual.tres");
+        if (rig is null || visual is null)
+            return new StartupCheck("phase_b_mapper_matches_trusted_rig", false, "trusted resources missing");
+
+        var detail = new List<string>();
+        foreach (PaintPartShape shape in mapper.Shapes)
+        {
+            var partId = (BuddyPartId)(int)shape.Part;
+            PuppetPartDefinition? part = rig.FindPart(partId);
+            PartVisualDefinition? appearance = visual.FindPart(partId);
+            if (part is null || appearance is null)
+            {
+                detail.Add($"{shape.Part}=missing");
+                continue;
+            }
+            double radius = part.Radius * appearance.MeshRadiusScale;
+            double expectedY = shape.Part == PaintPart.Torso
+                ? radius * visual.CapsuleHeightScale / 2.0
+                : radius;
+            if (!Approximately(shape.Center.X, part.RestPosition.X) ||
+                !Approximately(shape.Center.Y, part.RestPosition.Y) ||
+                !Approximately(shape.RadiusX, radius) ||
+                !Approximately(shape.RadiusY, expectedY) ||
+                !Approximately(shape.Depth, appearance.DepthOffset))
+            {
+                detail.Add($"{shape.Part}=drifted");
+            }
+        }
+
+        return new StartupCheck(
+            "phase_b_mapper_matches_trusted_rig",
+            detail.Count == 0,
+            detail.Count == 0 ? "trusted rest anatomy" : string.Join(",", detail));
+    }
+
+    private static bool Approximately(double left, double right) => Math.Abs(left - right) < 0.001;
 }
 
 public sealed class PaintStrokeAndEraserScenario : IScenario
@@ -200,7 +277,7 @@ public sealed class PaintPreviewHasNoPhysicsScenario : IScenario
         var checks = new List<StartupCheck>
         {
             new("phase_b_canvas_is_control", typeof(CharacterEditor.PaintCanvasControl).IsSubclassOf(typeof(Control)), assembly),
-            new("phase_b_workspace_is_engine_free", typeof(PaintWorkspace).Assembly != typeof(Control).Assembly, typeof(PaintWorkspace).Assembly.FullName),
+            new("phase_b_workspace_is_engine_free", typeof(PaintWorkspace).Assembly != typeof(Control).Assembly, typeof(PaintWorkspace).Assembly.FullName ?? string.Empty),
         };
         return Task.FromResult(PaintingScenarioSupport.Result(checks, seed));
     }

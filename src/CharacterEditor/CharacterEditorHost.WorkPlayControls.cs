@@ -23,6 +23,8 @@ public partial class CharacterEditorHost
 
     public override void _Process(double delta)
     {
+        ProcessPainting();
+
         if (!_workPlayControlsComposed && IsInitialized)
             ComposeWorkPlayControls();
 

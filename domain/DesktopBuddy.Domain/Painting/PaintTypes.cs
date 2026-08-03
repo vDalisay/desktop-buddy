@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace DesktopBuddy.Domain.Painting;
 
@@ -113,32 +114,53 @@ public sealed class PaintViewState
     }
 }
 
+/// <summary>
+/// One trusted part silhouette in 2D world units (pixels, Y-down), ordered nearest-first by
+/// <see cref="Depth"/> so overlapping parts resolve like the rendered depth lanes.
+/// </summary>
+public readonly record struct PaintPartShape(
+    PaintPart Part, PaintPoint Center, double RadiusX, double RadiusY, double Depth);
+
 public sealed class FrontalPaintMapper
 {
-    private readonly Primitive[] _primitives;
-    private FrontalPaintMapper(Primitive[] primitives) => _primitives = primitives;
+    private readonly PaintPartShape[] _shapes;
+    private FrontalPaintMapper(PaintPartShape[] shapes) => _shapes = shapes;
 
-    public static FrontalPaintMapper CreateDefault() => new(new[]
+    public IReadOnlyList<PaintPartShape> Shapes => _shapes;
+
+    public static FrontalPaintMapper Create(IEnumerable<PaintPartShape> shapes)
     {
-        new Primitive(PaintPart.Head, new PaintPoint(0.0, -1.42), 0.48, 0.48, false, 0.0),
-        new Primitive(PaintPart.Torso, new PaintPoint(0.0, -0.15), 0.62, 0.78, false, 0.1),
-        new Primitive(PaintPart.LeftHand, new PaintPoint(-1.02, -0.12), 0.34, 0.34, true, 0.2),
-        new Primitive(PaintPart.RightHand, new PaintPoint(1.02, -0.12), 0.34, 0.34, false, 0.2),
-        new Primitive(PaintPart.LeftFoot, new PaintPoint(-0.43, 1.08), 0.38, 0.30, true, 0.3),
-        new Primitive(PaintPart.RightFoot, new PaintPoint(0.43, 1.08), 0.38, 0.30, false, 0.3),
+        ArgumentNullException.ThrowIfNull(shapes);
+        return new(shapes.OrderByDescending(shape => shape.Depth).ToArray());
+    }
+
+    /// <summary>
+    /// The trusted rest anatomy of `data/buddy/lab_puppet_rig.tres` plus the torso capsule
+    /// height from `lab_buddy_visual.tres`, in the same world units the preview camera frames.
+    /// The `paint_frontal_uv_mapping` scenario fails if the trusted resources drift from this.
+    /// Every part mesh is an unmirrored primitive, so left and right limbs share one UV
+    /// convention: screen-symmetric points map to reversed U.
+    /// </summary>
+    public static FrontalPaintMapper CreateDefault() => Create(new[]
+    {
+        new PaintPartShape(PaintPart.Head, new PaintPoint(0.0, -50.0), 24.0, 24.0, 96.0),
+        new PaintPartShape(PaintPart.LeftHand, new PaintPoint(-38.0, -5.0), 15.0, 15.0, 48.0),
+        new PaintPartShape(PaintPart.RightHand, new PaintPoint(38.0, -5.0), 15.0, 15.0, 48.0),
+        new PaintPartShape(PaintPart.Torso, new PaintPoint(0.0, 0.0), 28.0, 35.0, 0.0),
+        new PaintPartShape(PaintPart.LeftFoot, new PaintPoint(-22.0, 55.0), 17.0, 17.0, -48.0),
+        new PaintPartShape(PaintPart.RightFoot, new PaintPoint(22.0, 55.0), 17.0, 17.0, -48.0),
     });
 
     public bool TryMap(PaintPoint point, out PaintHit hit)
     {
         if (!point.IsFinite) { hit = default; return false; }
-        foreach (Primitive primitive in _primitives)
+        foreach (PaintPartShape primitive in _shapes)
         {
             double localX = (point.X - primitive.Center.X) / primitive.RadiusX;
             double localY = (point.Y - primitive.Center.Y) / primitive.RadiusY;
             double radiusSquared = (localX * localX) + (localY * localY);
             if (radiusSquared > 1.0) continue;
             double u = 0.5 + (Math.Asin(Math.Clamp(localX, -1.0, 1.0)) / Math.PI);
-            if (primitive.MirrorU) u = 1.0 - u;
             double v = 0.5 + (Math.Asin(Math.Clamp(localY, -1.0, 1.0)) / Math.PI);
             double depth = primitive.Depth - Math.Sqrt(Math.Max(0.0, 1.0 - radiusSquared));
             hit = new PaintHit(primitive.Part, new PaintPoint(u, v), depth);
@@ -147,7 +169,4 @@ public sealed class FrontalPaintMapper
         hit = default;
         return false;
     }
-
-    private readonly record struct Primitive(
-        PaintPart Part, PaintPoint Center, double RadiusX, double RadiusY, bool MirrorU, double Depth);
 }

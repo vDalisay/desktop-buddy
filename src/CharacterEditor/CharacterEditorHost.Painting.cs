@@ -19,7 +19,7 @@ public partial class CharacterEditorHost
     public bool IsPaintMode => _paintControls is not null && _paintControls.Visible;
     public PaintWorkspace PaintWorkspace => _paintCanvas.Workspace;
 
-    public override void _Process(double delta)
+    private void ProcessPainting()
     {
         if (!IsInitialized)
             return;
@@ -124,6 +124,8 @@ public partial class CharacterEditorHost
         });
 
         _paintCanvas = new PaintCanvasControl { Name = "CharacterPaintCanvas", Visible = false };
+        if (previewContainer.GetChildOrNull<SubViewport>(0) is SubViewport viewport)
+            _paintCanvas.ViewportSize = viewport.Size;
         _paintCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         previewContainer.AddChild(_paintCanvas);
         _paintCanvas.WorkspaceChanged += () => { QueueAllPaintTextures(); RefreshPaintStatus(); };
@@ -154,10 +156,11 @@ public partial class CharacterEditorHost
         _paintCanvas.Visible = enabled;
         _paintCanvas.MouseFilter = enabled ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
         _paintModeButton.Text = enabled ? "Appearance Controls" : "Paint";
+        // Paint mode drives the shared preview camera, so leaving it restores the default framing.
+        _paintCanvas.ResetView();
         if (enabled)
         {
             QueueAllPaintTextures();
-            ApplyPaintView();
             _paintCanvas.GrabFocus();
         }
         RefreshPaintStatus();
@@ -178,11 +181,10 @@ public partial class CharacterEditorHost
     private void ApplyPaintView()
     {
         if (_paintCamera is null) return;
-        _paintCamera.Size = (float)(400.0 / _paintCanvas.View.Zoom);
-        _paintCamera.Position = new Vector3(
-            (float)(_paintCanvas.View.Pan.X * 160.0),
-            (float)(_paintCanvas.View.Pan.Y * 160.0),
-            600);
+        _paintCamera.Size = (float)(PaintCanvasControl.BaseCameraSize / _paintCanvas.View.Zoom);
+        // The canvas maps pointer positions in 2D world units (Y-down); 3D is Y-up.
+        PaintPoint center = _paintCanvas.CameraCenter;
+        _paintCamera.Position = new Vector3((float)center.X, (float)-center.Y, 600);
         RefreshPaintStatus();
     }
 

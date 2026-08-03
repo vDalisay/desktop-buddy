@@ -12,9 +12,23 @@ public partial class PaintCanvasControl : Control
     private bool _panning;
     private Vector2 _lastPointer;
 
+    /// <summary>Vertical world extent the preview's orthographic camera frames at zoom 1.</summary>
+    public const double BaseCameraSize = 400.0;
+
     public PaintWorkspace Workspace { get; } = new();
     public PaintViewState View { get; } = new();
     public PaintPart? HoveredPart { get; private set; }
+
+    /// <summary>
+    /// Render size of the preview SubViewport. The container stretches that image over this
+    /// control, so the horizontal world span follows the viewport's aspect, not the control's.
+    /// </summary>
+    public Vector2 ViewportSize { get; set; } = new(420, 360);
+
+    /// <summary>World-space point the camera is centred on, in 2D world units (Y-down).</summary>
+    public PaintPoint CameraCenter => new(
+        View.Pan.X * (BaseCameraSize / 2.0),
+        View.Pan.Y * (BaseCameraSize / 2.0));
 
     public event Action? WorkspaceChanged;
     public event Action? ViewChanged;
@@ -102,7 +116,9 @@ public partial class PaintCanvasControl : Control
                 int direction = button.ButtonIndex == MouseButton.WheelUp ? 1 : -1;
                 if (Input.IsKeyPressed(Key.Ctrl))
                 {
-                    View.SetZoom(View.Zoom + (direction * 0.2), CanvasToModel(button.Position));
+                    // SetZoom anchors on a point expressed in Pan units, not world units.
+                    PaintPoint focus = CanvasToWorld(button.Position) * (2.0 / BaseCameraSize);
+                    View.SetZoom(View.Zoom + (direction * 0.2), focus);
                     ViewChanged?.Invoke();
                 }
                 else
@@ -139,21 +155,25 @@ public partial class PaintCanvasControl : Control
         QueueRedraw();
     }
 
+    /// <summary>Part under a canvas-space pointer position, or null on a miss.</summary>
+    public PaintPart? PartAt(Vector2 canvasPosition) => Map(canvasPosition)?.Part;
+
     private PaintHit? Map(Vector2 canvas)
     {
-        PaintPoint point = CanvasToModel(canvas);
+        PaintPoint point = CanvasToWorld(canvas);
         return _mapper.TryMap(point, out PaintHit hit) ? hit : null;
     }
 
-    private PaintPoint CanvasToModel(Vector2 canvas)
+    private PaintPoint CanvasToWorld(Vector2 canvas)
     {
         double width = Math.Max(1.0, Size.X);
         double height = Math.Max(1.0, Size.Y);
-        double normalizedX = ((canvas.X / width) - 0.5) * 3.4;
-        double normalizedY = ((canvas.Y / height) - 0.5) * 4.0;
+        double aspect = Math.Max(0.01, ViewportSize.X) / Math.Max(0.01, ViewportSize.Y);
+        double verticalSpan = BaseCameraSize / View.Zoom;
+        PaintPoint center = CameraCenter;
         return new PaintPoint(
-            (normalizedX / View.Zoom) - View.Pan.X,
-            (normalizedY / View.Zoom) - View.Pan.Y);
+            center.X + (((canvas.X / width) - 0.5) * verticalSpan * aspect),
+            center.Y + (((canvas.Y / height) - 0.5) * verticalSpan));
     }
 
     private void SetHover(PaintPart? part)

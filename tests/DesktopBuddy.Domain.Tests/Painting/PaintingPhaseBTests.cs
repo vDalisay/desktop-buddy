@@ -11,13 +11,13 @@ public sealed class PaintingPhaseBTests
     {
         FrontalPaintMapper mapper = FrontalPaintMapper.CreateDefault();
 
-        AssertHit(mapper, new PaintPoint(0, -1.42), PaintPart.Head);
-        AssertHit(mapper, new PaintPoint(0, -0.15), PaintPart.Torso);
-        AssertHit(mapper, new PaintPoint(-1.02, -0.12), PaintPart.LeftHand);
-        AssertHit(mapper, new PaintPoint(1.02, -0.12), PaintPart.RightHand);
-        AssertHit(mapper, new PaintPoint(-0.43, 1.08), PaintPart.LeftFoot);
-        AssertHit(mapper, new PaintPoint(0.43, 1.08), PaintPart.RightFoot);
-        Assert.False(mapper.TryMap(new PaintPoint(3, 3), out _));
+        AssertHit(mapper, new PaintPoint(0, -50), PaintPart.Head);
+        AssertHit(mapper, new PaintPoint(0, 0), PaintPart.Torso);
+        AssertHit(mapper, new PaintPoint(-38, -5), PaintPart.LeftHand);
+        AssertHit(mapper, new PaintPoint(38, -5), PaintPart.RightHand);
+        AssertHit(mapper, new PaintPoint(-22, 55), PaintPart.LeftFoot);
+        AssertHit(mapper, new PaintPoint(22, 55), PaintPart.RightFoot);
+        Assert.False(mapper.TryMap(new PaintPoint(300, 300), out _));
     }
 
     [Fact]
@@ -25,11 +25,21 @@ public sealed class PaintingPhaseBTests
     {
         FrontalPaintMapper mapper = FrontalPaintMapper.CreateDefault();
 
-        Assert.True(mapper.TryMap(new PaintPoint(-0.92, -0.12), out PaintHit left));
-        Assert.True(mapper.TryMap(new PaintPoint(0.92, -0.12), out PaintHit right));
+        Assert.True(mapper.TryMap(new PaintPoint(-34, -5), out PaintHit left));
+        Assert.True(mapper.TryMap(new PaintPoint(34, -5), out PaintHit right));
 
         Assert.Equal(1.0 - right.Uv.X, left.Uv.X, 8);
         Assert.Equal(right.Uv.Y, left.Uv.Y, 8);
+    }
+
+    [Fact]
+    public void OverlappingParts_ResolveToTheNearestDepthLane()
+    {
+        FrontalPaintMapper mapper = FrontalPaintMapper.CreateDefault();
+
+        // Inside both the torso ellipse and the left hand; the hand sits in the nearer lane.
+        Assert.True(mapper.TryMap(new PaintPoint(-25, -5), out PaintHit hit));
+        Assert.Equal(PaintPart.LeftHand, hit.Part);
     }
 
     [Fact]

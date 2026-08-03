@@ -73,7 +73,10 @@ public sealed class PaintWorkspace
     public bool IsDirty { get; private set; }
     public IReadOnlyDictionary<PaintPart, PaintSurface> Surfaces => _surfaces;
 
-    public void AdjustBrush(int steps) => SetBrushDiameter(BrushDiameter + (steps * PaintPolicy.BrushStep));
+    public void AdjustBrush(int steps) => BrushDiameter = (int)Math.Clamp(
+        BrushDiameter + ((long)steps * PaintPolicy.BrushStep),
+        PaintPolicy.MinBrushDiameter,
+        PaintPolicy.MaxBrushDiameter);
     public void SetBrushDiameter(int diameter) =>
         BrushDiameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
 

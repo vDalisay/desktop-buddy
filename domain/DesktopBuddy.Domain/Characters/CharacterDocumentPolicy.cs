@@ -15,6 +15,8 @@ public static class CharacterDocumentPolicy
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
+        // Undeclared paint paths stay absent; explicit JSON null remains malformed on decode.
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
     private static readonly IReadOnlyDictionary<int, Func<JsonElement, JsonElement>> Migrations =
