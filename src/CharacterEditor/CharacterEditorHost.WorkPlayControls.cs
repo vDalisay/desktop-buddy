@@ -14,11 +14,8 @@ public partial class CharacterEditorHost
 {
     private bool _workPlayControlsComposed;
     private DesktopToolbarWindow _desktopToolbar = null!;
-    private const double ToolbarRaiseInterval = 1.0;
-
     private Rect2I _lastToolbarMainRect;
     private bool _lastToolbarVisible;
-    private double _toolbarRaiseCountdown = ToolbarRaiseInterval;
 
     public Button InteractionModeButton { get; private set; } = null!;
     public Button WindowLayoutButton { get; private set; } = null!;
@@ -59,17 +56,6 @@ public partial class CharacterEditorHost
         {
             _lastToolbarMainRect = mainRect;
             _desktopToolbar.Place(mainRect);
-            RaiseToolbar();
-        }
-
-        // ponytail: anything topmost can bury the bar — the shell re-applying window flags, or
-        // another app entirely — and Godot cannot query z-order, so this re-asserts on a slow
-        // tick rather than trying to enumerate every cause. Drop it if a cheap "am I buried?"
-        // query ever exists.
-        _toolbarRaiseCountdown -= delta;
-        if (_toolbarRaiseCountdown <= 0.0)
-        {
-            _toolbarRaiseCountdown = ToolbarRaiseInterval;
             RaiseToolbar();
         }
     }

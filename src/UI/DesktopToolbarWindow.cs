@@ -11,6 +11,7 @@ namespace DesktopBuddy.Ui;
 public partial class DesktopToolbarWindow : Window
 {
     public static readonly Vector2I ToolbarSize = new(480, 48);
+    private const int BarPadding = 16;
 
     public HBoxContainer Bar { get; private set; } = null!;
 
@@ -57,14 +58,25 @@ public partial class DesktopToolbarWindow : Window
     /// </summary>
     public void RaiseAboveOwner()
     {
-        if (!Visible)
-            return;
-        AlwaysOnTop = false;
-        AlwaysOnTop = true;
+        // Re-applied, never toggled off first. Godot's Windows backend re-runs SetWindowPos with
+        // SWP_FRAMECHANGED on every change, and dropping out of the topmost band even for one
+        // call recalculates the frame of a transparent borderless window.
+        if (Visible)
+            AlwaysOnTop = true;
     }
 
     public void Place(Rect2I mainWindowRect)
     {
+        // The window is unresizable, so a row wider than the authored size would be clipped
+        // and its buttons would simply not be there. Grow to whatever the entries need.
+        int content = (int)Math.Ceiling(Bar.GetCombinedMinimumSize().X) + BarPadding;
+        int width = Math.Max(ToolbarSize.X, content);
+        if (Size.X != width)
+        {
+            MinSize = new Vector2I(width, ToolbarSize.Y);
+            Size = new Vector2I(width, ToolbarSize.Y);
+        }
+
         int x = mainWindowRect.Position.X +
             Math.Max(0, (mainWindowRect.Size.X - Size.X) / 2);
         int y = mainWindowRect.Position.Y + 8;
