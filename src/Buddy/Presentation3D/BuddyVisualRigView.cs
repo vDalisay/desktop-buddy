@@ -32,6 +32,8 @@ public partial class BuddyVisualRigView : Node3D
         new Color[PuppetRigProfile.RequiredPartCount];
     private readonly Texture2D?[] _surfaceUnderlays =
         new Texture2D?[PuppetRigProfile.RequiredPartCount];
+    private readonly MeshInstance3D?[] _paintLayers =
+        new MeshInstance3D?[PuppetRigProfile.RequiredPartCount];
 
     private MeshInstance3D[] _connectorMeshes = Array.Empty<MeshInstance3D>();
     private ConnectorVisualDefinition[] _connectorDefinitions =
@@ -211,11 +213,16 @@ public partial class BuddyVisualRigView : Node3D
     {
         int index = CheckedPartIndex(partId);
         _surfaceUnderlays[index] = texture;
-        if (IsInitialized &&
-            _partMeshes[index].MaterialOverride is StandardMaterial3D material)
+        // Bridges unbind during teardown, which can run after the rig's nodes are freed.
+        if (!IsInitialized || _paintLayers[index] is not MeshInstance3D layer ||
+            !GodotObject.IsInstanceValid(layer))
         {
-            material.AlbedoTexture = texture;
+            return;
         }
+
+        if (layer.MaterialOverride is StandardMaterial3D material)
+            material.AlbedoTexture = texture;
+        layer.Visible = texture is not null;
     }
 
     internal Texture2D? SurfaceUnderlay(BuddyPartId partId) =>
@@ -352,6 +359,13 @@ public partial class BuddyVisualRigView : Node3D
             return false;
 
         material.AlbedoColor = wanted;
+        // Paint sits on its own shell above the base colour, so it has to scorch with it.
+        if (_paintLayers[index]?.MaterialOverride is StandardMaterial3D paint)
+        {
+            paint.AlbedoColor = scorch <= 0.0f
+                ? Colors.White
+                : Colors.White.Lerp(_scorchColors[index], scorch);
+        }
         _partMaterialMutationCount++;
         return true;
     }
@@ -400,6 +414,19 @@ public partial class BuddyVisualRigView : Node3D
             };
             socket.AddChild(outline);
             _partOutlines[index] = outline;
+
+            // Paint shell: the same trusted mesh, grown just clear of the body so the painted
+            // pixels read above the base colour while blank pixels are discarded and reveal it.
+            var paintLayer = new MeshInstance3D
+            {
+                Name = "Paint",
+                Mesh = meshInstance.Mesh,
+                MaterialOverride = _materials.CreatePaintMaterial(),
+                Visible = false,
+                PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+            };
+            socket.AddChild(paintLayer);
+            _paintLayers[index] = paintLayer;
 
             if (id == BuddyPartId.Head)
                 BuildFace(socket, radius);

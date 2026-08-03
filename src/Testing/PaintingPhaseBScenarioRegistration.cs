@@ -28,5 +28,6 @@ internal static class PaintingPhaseBScenarioRegistration
         factories["paint_persistence_roundtrip"] = () => new PaintPersistenceRoundtripScenario();
         factories["paint_invalid_png_rejected"] = () => new PaintInvalidPngRejectedScenario();
         factories["paint_preview_has_no_physics"] = () => new PaintPreviewHasNoPhysicsScenario();
+        factories["paint_under_expression_layer_order"] = () => new PaintLayerOrderScenario();
     }
 }

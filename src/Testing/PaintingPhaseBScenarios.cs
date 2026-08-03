@@ -38,6 +38,14 @@ internal static class PaintingScenarioSupport
         return result;
     }
 
+    public static Dictionary<PaintPart, byte[]> PaintedBytes(params PaintPart[] parts)
+    {
+        var result = new Dictionary<PaintPart, byte[]>();
+        foreach ((PaintPart part, ReadOnlyMemory<byte> pixels) in Painted(parts))
+            result.Add(part, pixels.ToArray());
+        return result;
+    }
+
     public static void Cleanup(string root)
     {
         try { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
@@ -264,6 +272,72 @@ public sealed class PaintInvalidPngRejectedScenario : IScenario
             checks.Add(new StartupCheck("phase_b_corrupt_png_rejected", !loaded.IsSuccess, loaded.Detail ?? "rejected"));
         }
         finally { PaintingScenarioSupport.Cleanup(root); }
+        return PaintingScenarioSupport.Result(checks, seed);
+    }
+}
+
+/// <summary>
+/// Paint renders on its own shell above the base colour: blank pixels reveal the selected base
+/// colour, painted pixels keep the picked colour, decals stay above paint, and paint scorches.
+/// </summary>
+public sealed class PaintLayerOrderScenario : IScenario
+{
+    public string Id => "paint_under_expression_layer_order";
+
+    public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
+    {
+        var checks = new List<StartupCheck>();
+        BuddyLab? lab = await ScenarioSteps.CreateControlledImpactLab(tree, 10.0f, 20.0f);
+        if (lab is null)
+        {
+            checks.Add(new StartupCheck("phase_b_lab_loadable", false, "buddy_lab"));
+            return new ScenarioResult(false, checks, [$"seed={seed}"]);
+        }
+
+        var preview = new BuddyVisualRigView { Name = "PhaseBPaintLayerPreview" };
+        lab.AddChild(preview);
+        preview.Initialize(lab.Buddy.VisualProfile, new StaticBuddyVisualTransformSource(
+            lab.Buddy.Rig.Profile, Vector2.Zero));
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+        MeshInstance3D head = preview.GetPartMesh(BuddyPartId.Head);
+        MeshInstance3D? layer = head.GetParent().GetNodeOrNull<MeshInstance3D>("Paint");
+        checks.Add(new StartupCheck(
+            "phase_b_unpainted_parts_show_base_colour",
+            layer is not null && !layer.Visible &&
+            (head.MaterialOverride as StandardMaterial3D)?.AlbedoTexture is null,
+            $"layer={layer?.Visible}"));
+
+        Color baseColour = preview.ActiveBasePartAlbedo(BuddyPartId.Head);
+        var bridge = new RuntimePaintTextureBridge(preview);
+        bridge.Apply(PaintingScenarioSupport.PaintedBytes(PaintPart.Head));
+        var paintMaterial = layer?.MaterialOverride as StandardMaterial3D;
+        checks.Add(new StartupCheck(
+            "phase_b_paint_binds_above_untouched_base",
+            layer is { Visible: true } &&
+            paintMaterial?.AlbedoTexture is not null &&
+            paintMaterial.Transparency == BaseMaterial3D.TransparencyEnum.AlphaScissor &&
+            paintMaterial.AlbedoColor == Colors.White &&
+            (head.MaterialOverride as StandardMaterial3D)?.AlbedoTexture is null &&
+            preview.ActiveBasePartAlbedo(BuddyPartId.Head) == baseColour,
+            $"albedo={paintMaterial?.AlbedoColor}"));
+
+        checks.Add(new StartupCheck(
+            "phase_b_decals_stay_above_paint",
+            preview.FacePlate is null ||
+            preview.FacePlate.Position.Z > BuddyLookMaterialLibrary.PaintShellGrowAmount,
+            $"plate_z={preview.FacePlate?.Position.Z} grow={BuddyLookMaterialLibrary.PaintShellGrowAmount}"));
+
+        preview.SetPartScorch(BuddyPartId.Head, 1.0f, Colors.Black);
+        checks.Add(new StartupCheck(
+            "phase_b_paint_scorches_with_the_body",
+            paintMaterial?.AlbedoColor == Colors.Black,
+            $"scorched={paintMaterial?.AlbedoColor}"));
+
+        bridge.Dispose();
+        preview.QueueFree();
+        lab.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return PaintingScenarioSupport.Result(checks, seed);
     }
 }

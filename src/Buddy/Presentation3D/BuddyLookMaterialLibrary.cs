@@ -49,6 +49,30 @@ public sealed class BuddyLookMaterialLibrary
         Metallic = 0.0f,
     };
 
+    /// <summary>
+    /// World units the paint shell grows clear of its body mesh. It must stay below the
+    /// trusted face/accent plate epsilon so decals keep rendering above paint, and above zero
+    /// so the shell never z-fights the body. Both cameras are orthographic, so depth is linear
+    /// and this margin is ample — raise it only if the shell shows through a plate.
+    /// </summary>
+    public const float PaintShellGrowAmount = 0.05f;
+
+    /// <summary>
+    /// Returns a NEW paint-shell material. Albedo stays white so the painted pixels keep the
+    /// colour the player picked; the scissor discards blank pixels so the base colour shows
+    /// through. Painted pixels are fully opaque by construction, so no alpha sorting is needed.
+    /// </summary>
+    public StandardMaterial3D CreatePaintMaterial()
+    {
+        StandardMaterial3D material = CreateLitMaterial(Colors.White);
+        material.ResourceName = "BuddyLookPaintMaterial";
+        material.Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor;
+        material.AlphaScissorThreshold = 0.5f;
+        material.Grow = true;
+        material.GrowAmount = PaintShellGrowAmount;
+        return material;
+    }
+
     /// <summary>The one shared unshaded ink material used by every inverted-hull outline shell.</summary>
     public StandardMaterial3D OutlineMaterial => _outline ??= CreateOutlineMaterial();
 
