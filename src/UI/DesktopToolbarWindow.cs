@@ -63,13 +63,11 @@ public partial class DesktopToolbarWindow : Window
         ArgumentNullException.ThrowIfNull(control);
         control.Reparent(Bar, keepGlobalTransform: false);
         control.Visible = true;
-        control.TopLevel = false;
         control.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         control.Position = Vector2.Zero;
         control.ResetSize();
         control.MouseFilter = Control.MouseFilterEnum.Stop;
         Bar.QueueSort();
-        Bar.UpdateMinimumSize();
     }
 
     /// <summary>
