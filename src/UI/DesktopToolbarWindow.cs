@@ -11,7 +11,6 @@ namespace DesktopBuddy.Ui;
 public partial class DesktopToolbarWindow : Window
 {
     public static readonly Vector2I ToolbarSize = new(480, 48);
-    private const int BarPadding = 16;
 
     public HBoxContainer Bar { get; private set; } = null!;
 
@@ -20,7 +19,7 @@ public partial class DesktopToolbarWindow : Window
         Name = nameof(DesktopToolbarWindow);
         Title = "Desktop Buddy Controls";
         Size = ToolbarSize;
-        MinSize = ToolbarSize;
+        MinSize = new Vector2I(1, ToolbarSize.Y);
         Borderless = true;
         Transparent = true;
         AlwaysOnTop = true;
@@ -29,9 +28,6 @@ public partial class DesktopToolbarWindow : Window
         MousePassthrough = false;
         ProcessMode = ProcessModeEnum.Always;
 
-        // Keep this child window in the owner's z-order group. Without transient ownership,
-        // activating the buddy window can place it over the toolbar and make the controls
-        // appear or behave as though they disappeared.
         Transient = true;
         TransientToFocused = false;
         Exclusive = false;
@@ -47,17 +43,13 @@ public partial class DesktopToolbarWindow : Window
         {
             Alignment = BoxContainer.AlignmentMode.Center,
             MouseFilter = Control.MouseFilterEnum.Stop,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         Bar.AddThemeConstantOverride("separation", 6);
         panel.AddChild(Bar);
         CloseRequested += Show;
     }
 
-    /// <summary>
-    /// Moves an existing dock control into this native window without retaining coordinates
-    /// from the main window. Reparent's default keeps the global transform, which can leave a
-    /// button hundreds of pixels outside this 48 px toolbar until another layout invalidation.
-    /// </summary>
     public void Attach(Control control)
     {
         ArgumentNullException.ThrowIfNull(control);
@@ -70,10 +62,6 @@ public partial class DesktopToolbarWindow : Window
         Bar.QueueSort();
     }
 
-    /// <summary>
-    /// Re-asserts topmost. Transient ownership normally keeps the toolbar above the buddy
-    /// window; this remains as a defensive repair after platform window-flag changes.
-    /// </summary>
     public void RaiseAboveOwner()
     {
         if (Visible)
@@ -82,18 +70,17 @@ public partial class DesktopToolbarWindow : Window
 
     public void Place(Rect2I mainWindowRect)
     {
-        int content = (int)Math.Ceiling(Bar.GetCombinedMinimumSize().X) + BarPadding;
-        int width = Math.Max(ToolbarSize.X, content);
-        if (Size.X != width)
+        // Match the live owner bounds exactly. The toolbar must not expand beyond the compact
+        // buddy window or center itself against a stale saved rectangle.
+        int width = Math.Max(1, mainWindowRect.Size.X);
+        Vector2I wantedSize = new(width, ToolbarSize.Y);
+        if (Size != wantedSize)
         {
-            MinSize = new Vector2I(width, ToolbarSize.Y);
-            Size = new Vector2I(width, ToolbarSize.Y);
+            MinSize = new Vector2I(1, ToolbarSize.Y);
+            Size = wantedSize;
         }
 
-        int x = mainWindowRect.Position.X +
-            Math.Max(0, (mainWindowRect.Size.X - Size.X) / 2);
-        int y = mainWindowRect.Position.Y + 8;
-        Position = new Vector2I(x, y);
+        Position = new Vector2I(mainWindowRect.Position.X, mainWindowRect.Position.Y + 8);
         if (!Visible)
             Show();
     }
