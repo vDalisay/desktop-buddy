@@ -6,16 +6,19 @@ using Godot;
 namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
-/// Extends the approved dock/settings surface with explicit interaction and window-layout
-/// controls. The horizontal bar is moved into its own native window so the full-screen main
-/// overlay can pass every mouse event through in Work mode without losing its recovery toggle.
+/// Keeps the normal dock inside the compact buddy window. A separate native toolbar is used
+/// only for the full-screen overlay, whose Work mode deliberately passes the main window
+/// through to the desktop.
 /// </summary>
 public partial class CharacterEditorHost
 {
     private bool _workPlayControlsComposed;
+    private Control _compactDockContainer = null!;
     private DesktopToolbarWindow _desktopToolbar = null!;
+    private Button _fullscreenModeButton = null!;
     private Rect2I _lastToolbarMainRect;
     private bool _lastToolbarVisible;
+    private bool _lastCompactDockVisible;
 
     public Button InteractionModeButton { get; private set; } = null!;
     public Button WindowLayoutButton { get; private set; } = null!;
@@ -27,27 +30,11 @@ public partial class CharacterEditorHost
 
         if (!_workPlayControlsComposed && IsInitialized)
             ComposeWorkPlayControls();
-
-        if (!_workPlayControlsComposed || !GodotObject.IsInstanceValid(_desktopToolbar))
+        if (!_workPlayControlsComposed)
             return;
 
-        bool wantedVisible = !IsEditorOpen && _sandbox.Window.Adapter.IsWindowVisible;
-        if (_lastToolbarVisible != wantedVisible)
-        {
-            _lastToolbarVisible = wantedVisible;
-            if (wantedVisible)
-            {
-                _desktopToolbar.Show();
-                RaiseToolbar();
-                Callable.From(PlaceToolbarAfterLayout).CallDeferred();
-            }
-            else
-            {
-                _desktopToolbar.Hide();
-            }
-        }
-
-        if (!wantedVisible)
+        UpdateDockVisibility();
+        if (!_lastToolbarVisible)
             return;
 
         Rect2I mainRect = LiveMainWindowRect();
@@ -72,13 +59,19 @@ public partial class CharacterEditorHost
         if (GodotObject.IsInstanceValid(uiRoot))
             uiRoot!.MouseFilter = Control.MouseFilterEnum.Ignore;
 
+        Control compactBar = SettingsButton.GetParent<Control>();
+        _compactDockContainer = compactBar.GetParent<Control>();
+        _compactDockContainer.Visible = true;
+
         InteractionModeButton = new Button
         {
             Name = "DockInteractionModeButton",
             FocusMode = Control.FocusModeEnum.None,
+            MouseFilter = Control.MouseFilterEnum.Stop,
             TooltipText = "Switch between interacting with the buddy and clicking through to the desktop.",
         };
         InteractionModeButton.Pressed += _sandbox.Shell.ToggleInteractionMode;
+        compactBar.AddChild(InteractionModeButton);
 
         WindowLayoutButton = _settingsPanel.AddAction(
             "Window Layout",
@@ -95,26 +88,27 @@ public partial class CharacterEditorHost
             });
         WindowLayoutButton.Name = "WindowLayoutToggleButton";
 
-        _desktopToolbar = new DesktopToolbarWindow();
+        // Full-screen Work passes the main window through to the desktop, so it needs a small
+        // independent recovery surface. These are proxy controls; no existing Control is ever
+        // reparented across native windows.
+        _desktopToolbar = new DesktopToolbarWindow { Visible = false };
         _desktopToolbar.Configure();
         AddChild(_desktopToolbar);
         _sandbox.Shell.RegisterOwnedWindow(_desktopToolbar);
+        _desktopToolbar.AddAction("Editor", "FullscreenEditorButton", () => _ = OpenEditorAsync());
+        _desktopToolbar.AddAction("Shop", "FullscreenShopButton", () =>
+            _shopWindow.Toggle(WindowAnchor(0)));
+        _desktopToolbar.AddAction("Tools", "FullscreenToolsButton", () =>
+            _toolWindow.Toggle(WindowAnchor(1)));
+        _desktopToolbar.AddAction("Settings", "FullscreenSettingsButton", () =>
+            _settingsWindow.Toggle(WindowAnchor(2)));
+        _fullscreenModeButton = _desktopToolbar.AddAction(
+            "Play",
+            "FullscreenInteractionModeButton",
+            _sandbox.Shell.ToggleInteractionMode);
 
-        Control oldBar = SettingsButton.GetParent<Control>();
-        Control? oldDockContainer = oldBar.GetParentOrNull<Control>();
-
-        // Compact labels keep the native toolbar inside the narrow compact buddy window.
-        OpenCharacterEditorButton.Text = "Editor";
-        OpenCharacterEditorButton.TooltipText = "Open the Character Editor.";
-        _desktopToolbar.Attach(OpenCharacterEditorButton);
-        _desktopToolbar.Attach(ShopButton);
-        _desktopToolbar.Attach(ToolsButton);
-        _desktopToolbar.Attach(SettingsButton);
-        _desktopToolbar.Bar.AddChild(InteractionModeButton);
-        InteractionModeButton.Visible = true;
-        if (GodotObject.IsInstanceValid(oldDockContainer))
-            oldDockContainer!.Visible = false;
-
+        // The native toolbar is the only solid control in full-screen Work. Compact mode
+        // captures its complete client rectangle and uses the original in-window dock.
         _sandbox.SetOverlayWorkModeHitRegions(Array.Empty<Rect2>());
 
         _sandbox.Shell.InputModeChanged += OnInteractionModeChanged;
@@ -122,10 +116,41 @@ public partial class CharacterEditorHost
         GetWindow().FocusEntered += RaiseToolbar;
         TreeExiting += DisconnectWorkPlayControls;
         _workPlayControlsComposed = true;
-        UpdateWorkPlayLabels();
         _lastToolbarMainRect = default;
-        _lastToolbarVisible = true;
-        Callable.From(PlaceToolbarAfterLayout).CallDeferred();
+        _lastToolbarVisible = false;
+        _lastCompactDockVisible = true;
+        UpdateWorkPlayLabels();
+        UpdateDockVisibility(force: true);
+    }
+
+    private void UpdateDockVisibility(bool force = false)
+    {
+        bool fullscreen = _sandbox.Shell.LayoutMode == WindowLayoutMode.FullscreenOverlay;
+        bool compactVisible = !IsEditorOpen && !fullscreen;
+        if (force || compactVisible != _lastCompactDockVisible)
+        {
+            _lastCompactDockVisible = compactVisible;
+            if (GodotObject.IsInstanceValid(_compactDockContainer))
+                _compactDockContainer.Visible = compactVisible;
+            Callable.From(RefreshDockHitRegions).CallDeferred();
+        }
+
+        bool toolbarVisible = !IsEditorOpen && fullscreen &&
+            _sandbox.Window.Adapter.IsWindowVisible;
+        if (!force && toolbarVisible == _lastToolbarVisible)
+            return;
+
+        _lastToolbarVisible = toolbarVisible;
+        if (toolbarVisible)
+        {
+            _desktopToolbar.Show();
+            _lastToolbarMainRect = default;
+            Callable.From(PlaceToolbarAfterLayout).CallDeferred();
+        }
+        else
+        {
+            _desktopToolbar.Hide();
+        }
     }
 
     private Rect2I LiveMainWindowRect()
@@ -136,8 +161,12 @@ public partial class CharacterEditorHost
 
     private void PlaceToolbarAfterLayout()
     {
-        if (!_workPlayControlsComposed || !GodotObject.IsInstanceValid(_desktopToolbar))
+        if (!_workPlayControlsComposed || !_lastToolbarVisible ||
+            !GodotObject.IsInstanceValid(_desktopToolbar))
+        {
             return;
+        }
+
         _lastToolbarMainRect = LiveMainWindowRect();
         _desktopToolbar.Place(_lastToolbarMainRect);
         RaiseToolbar();
@@ -153,12 +182,12 @@ public partial class CharacterEditorHost
     {
         UpdateWorkPlayLabels();
         _lastToolbarMainRect = default;
-        Callable.From(PlaceToolbarAfterLayout).CallDeferred();
+        UpdateDockVisibility(force: true);
     }
 
     private void RaiseToolbar()
     {
-        if (_workPlayControlsComposed && GodotObject.IsInstanceValid(_desktopToolbar))
+        if (_lastToolbarVisible && GodotObject.IsInstanceValid(_desktopToolbar))
             _desktopToolbar.RaiseAboveOwner();
     }
 
@@ -167,9 +196,9 @@ public partial class CharacterEditorHost
         if (!_workPlayControlsComposed)
             return;
 
-        InteractionModeButton.Text = _sandbox.Shell.Mode == InputMode.Work
-            ? "Play"
-            : "Work";
+        string modeLabel = _sandbox.Shell.Mode == InputMode.Work ? "Play" : "Work";
+        InteractionModeButton.Text = modeLabel;
+        _fullscreenModeButton.Text = modeLabel;
 
         bool fullscreen = _sandbox.Shell.LayoutMode == WindowLayoutMode.FullscreenOverlay;
         WindowLayoutButton.Text = fullscreen
