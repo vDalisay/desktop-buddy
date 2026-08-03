@@ -12,6 +12,7 @@ public sealed record CharacterDocument
     public string DisplayName { get; init; } = string.Empty;
     public CharacterPartColors PartColors { get; init; } = CharacterPartColors.BuiltIn;
     public CharacterFeatureSet Features { get; init; } = CharacterFeatureSet.BuiltIn;
+    public CharacterPaintManifest Paint { get; init; } = CharacterPaintManifest.Empty;
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; init; } = new(StringComparer.Ordinal);
