@@ -25,13 +25,16 @@ public partial class DesktopToolbarWindow : Window
         Transparent = true;
         AlwaysOnTop = true;
         Unresizable = true;
-        // Focusable on purpose. An unfocusable bar cannot take activation back once the main
-        // window has it, and stops receiving mouse events entirely — no hover, no clicks. The
-        // shell already treats focus moving to an owned window as still using the game, so
-        // taking focus here does not drop Play mode (DesktopShellController.ResolveFocusLoss).
         Unfocusable = false;
         MousePassthrough = false;
         ProcessMode = ProcessModeEnum.Always;
+
+        // Keep this child window in the owner's z-order group. Without transient ownership,
+        // activating the buddy window can place it over the toolbar and make the controls
+        // appear or behave as though they disappeared.
+        Transient = true;
+        TransientToFocused = false;
+        Exclusive = false;
 
         var panel = new PanelContainer
         {
@@ -51,24 +54,36 @@ public partial class DesktopToolbarWindow : Window
     }
 
     /// <summary>
-    /// Re-asserts topmost. The main window is always-on-top too, so activating it — any click
-    /// inside the buddy box — raises it above this bar, which then renders behind the money
-    /// counter. Toggling the flag reorders the bar without activating it, so raising it never
-    /// steals focus from the game.
+    /// Moves an existing dock control into this native window without retaining coordinates
+    /// from the main window. Reparent's default keeps the global transform, which can leave a
+    /// button hundreds of pixels outside this 48 px toolbar until another layout invalidation.
+    /// </summary>
+    public void Attach(Control control)
+    {
+        ArgumentNullException.ThrowIfNull(control);
+        control.Reparent(Bar, keepGlobalTransform: false);
+        control.Visible = true;
+        control.TopLevel = false;
+        control.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        control.Position = Vector2.Zero;
+        control.ResetSize();
+        control.MouseFilter = Control.MouseFilterEnum.Stop;
+        Bar.QueueSort();
+        Bar.UpdateMinimumSize();
+    }
+
+    /// <summary>
+    /// Re-asserts topmost. Transient ownership normally keeps the toolbar above the buddy
+    /// window; this remains as a defensive repair after platform window-flag changes.
     /// </summary>
     public void RaiseAboveOwner()
     {
-        // Re-applied, never toggled off first. Godot's Windows backend re-runs SetWindowPos with
-        // SWP_FRAMECHANGED on every change, and dropping out of the topmost band even for one
-        // call recalculates the frame of a transparent borderless window.
         if (Visible)
             AlwaysOnTop = true;
     }
 
     public void Place(Rect2I mainWindowRect)
     {
-        // The window is unresizable, so a row wider than the authored size would be clipped
-        // and its buttons would simply not be there. Grow to whatever the entries need.
         int content = (int)Math.Ceiling(Bar.GetCombinedMinimumSize().X) + BarPadding;
         int width = Math.Max(ToolbarSize.X, content);
         if (Size.X != width)
