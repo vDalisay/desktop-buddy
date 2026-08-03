@@ -50,7 +50,7 @@ public partial class CharacterEditorHost
         if (!wantedVisible)
             return;
 
-        Rect2I mainRect = _sandbox.Window.CurrentSettings.Rect;
+        Rect2I mainRect = LiveMainWindowRect();
         if (mainRect != _lastToolbarMainRect)
         {
             _lastToolbarMainRect = mainRect;
@@ -76,6 +76,7 @@ public partial class CharacterEditorHost
         {
             Name = "DockInteractionModeButton",
             FocusMode = Control.FocusModeEnum.None,
+            TooltipText = "Switch between interacting with the buddy and clicking through to the desktop.",
         };
         InteractionModeButton.Pressed += _sandbox.Shell.ToggleInteractionMode;
 
@@ -101,6 +102,10 @@ public partial class CharacterEditorHost
 
         Control oldBar = SettingsButton.GetParent<Control>();
         Control? oldDockContainer = oldBar.GetParentOrNull<Control>();
+
+        // Compact labels keep the native toolbar inside the narrow compact buddy window.
+        OpenCharacterEditorButton.Text = "Editor";
+        OpenCharacterEditorButton.TooltipText = "Open the Character Editor.";
         _desktopToolbar.Attach(OpenCharacterEditorButton);
         _desktopToolbar.Attach(ShopButton);
         _desktopToolbar.Attach(ToolsButton);
@@ -120,17 +125,20 @@ public partial class CharacterEditorHost
         UpdateWorkPlayLabels();
         _lastToolbarMainRect = default;
         _lastToolbarVisible = true;
-
-        // Container minimum sizes are only authoritative after the reparented controls have
-        // completed one layout pass in their new native window.
         Callable.From(PlaceToolbarAfterLayout).CallDeferred();
+    }
+
+    private Rect2I LiveMainWindowRect()
+    {
+        Window mainWindow = GetWindow();
+        return new Rect2I(mainWindow.Position, mainWindow.Size);
     }
 
     private void PlaceToolbarAfterLayout()
     {
         if (!_workPlayControlsComposed || !GodotObject.IsInstanceValid(_desktopToolbar))
             return;
-        _lastToolbarMainRect = _sandbox.Window.CurrentSettings.Rect;
+        _lastToolbarMainRect = LiveMainWindowRect();
         _desktopToolbar.Place(_lastToolbarMainRect);
         RaiseToolbar();
     }
@@ -145,7 +153,7 @@ public partial class CharacterEditorHost
     {
         UpdateWorkPlayLabels();
         _lastToolbarMainRect = default;
-        RaiseToolbar();
+        Callable.From(PlaceToolbarAfterLayout).CallDeferred();
     }
 
     private void RaiseToolbar()
@@ -160,8 +168,8 @@ public partial class CharacterEditorHost
             return;
 
         InteractionModeButton.Text = _sandbox.Shell.Mode == InputMode.Work
-            ? "TOGGLE PLAY MODE"
-            : "TOGGLE WORK MODE";
+            ? "Play"
+            : "Work";
 
         bool fullscreen = _sandbox.Shell.LayoutMode == WindowLayoutMode.FullscreenOverlay;
         WindowLayoutButton.Text = fullscreen
