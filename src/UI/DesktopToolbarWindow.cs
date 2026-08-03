@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Diagnostics;
 using Godot;
 
 namespace DesktopBuddy.Ui;
@@ -10,6 +11,7 @@ namespace DesktopBuddy.Ui;
 /// </summary>
 public partial class DesktopToolbarWindow : Window
 {
+    private const string DiagnosticsCategory = "ToolbarDiagnostics";
     public static readonly Vector2I ToolbarSize = new(480, 48);
     private const int HorizontalPadding = 16;
 
@@ -17,6 +19,8 @@ public partial class DesktopToolbarWindow : Window
 
     public void Configure()
     {
+        Log.Info(DiagnosticsCategory, "Configuring native full-screen recovery toolbar.");
+
         Name = nameof(DesktopToolbarWindow);
         Title = "Desktop Buddy Controls";
         Size = ToolbarSize;
@@ -28,7 +32,11 @@ public partial class DesktopToolbarWindow : Window
         Unfocusable = false;
         MousePassthrough = false;
         ProcessMode = ProcessModeEnum.Always;
-        Transient = true;
+
+        // Windows/Godot rejects a transient always-on-top native window. The toolbar must stay
+        // above the full-screen overlay, so it is an independent top-level window whose owner
+        // controls visibility and placement explicitly.
+        Transient = false;
         TransientToFocused = false;
         Exclusive = false;
 
@@ -47,6 +55,10 @@ public partial class DesktopToolbarWindow : Window
         Bar.AddThemeConstantOverride("separation", 6);
         panel.AddChild(Bar);
         CloseRequested += Show;
+
+        Log.Info(DiagnosticsCategory,
+            $"Native toolbar configured: transient={Transient} alwaysOnTop={AlwaysOnTop} " +
+            $"visible={Visible} size={Size}.");
     }
 
     public Button AddAction(string text, string name, Action action)
