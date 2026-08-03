@@ -37,10 +37,9 @@ public partial class CharacterEditorHost
             _lastToolbarVisible = wantedVisible;
             if (wantedVisible)
             {
-                // Leaving the editor restores the main window's always-on-top flag, which
-                // re-raises it over the bar without any focus or mode change to hook.
                 _desktopToolbar.Show();
                 RaiseToolbar();
+                Callable.From(PlaceToolbarAfterLayout).CallDeferred();
             }
             else
             {
@@ -69,8 +68,6 @@ public partial class CharacterEditorHost
             return;
         }
 
-        // The full-rect Control is layout only. Actual editor/prompt Controls still stop
-        // input, while transparent empty space reaches Compact Work activation or gameplay.
         Control? uiRoot = GetNodeOrNull<Control>("CharacterEditorUiRoot");
         if (GodotObject.IsInstanceValid(uiRoot))
             uiRoot!.MouseFilter = Control.MouseFilterEnum.Ignore;
@@ -104,16 +101,15 @@ public partial class CharacterEditorHost
 
         Control oldBar = SettingsButton.GetParent<Control>();
         Control? oldDockContainer = oldBar.GetParentOrNull<Control>();
-        OpenCharacterEditorButton.Reparent(_desktopToolbar.Bar);
-        ShopButton.Reparent(_desktopToolbar.Bar);
-        ToolsButton.Reparent(_desktopToolbar.Bar);
-        SettingsButton.Reparent(_desktopToolbar.Bar);
+        _desktopToolbar.Attach(OpenCharacterEditorButton);
+        _desktopToolbar.Attach(ShopButton);
+        _desktopToolbar.Attach(ToolsButton);
+        _desktopToolbar.Attach(SettingsButton);
         _desktopToolbar.Bar.AddChild(InteractionModeButton);
+        InteractionModeButton.Visible = true;
         if (GodotObject.IsInstanceValid(oldDockContainer))
             oldDockContainer!.Visible = false;
 
-        // No controls remain in the main overlay. In full-screen Work it can therefore be
-        // entirely mouse-passthrough while this separate HWND stays interactive.
         _sandbox.SetOverlayWorkModeHitRegions(Array.Empty<Rect2>());
 
         _sandbox.Shell.InputModeChanged += OnInteractionModeChanged;
@@ -124,7 +120,19 @@ public partial class CharacterEditorHost
         UpdateWorkPlayLabels();
         _lastToolbarMainRect = default;
         _lastToolbarVisible = true;
-        _desktopToolbar.Place(_sandbox.Window.CurrentSettings.Rect);
+
+        // Container minimum sizes are only authoritative after the reparented controls have
+        // completed one layout pass in their new native window.
+        Callable.From(PlaceToolbarAfterLayout).CallDeferred();
+    }
+
+    private void PlaceToolbarAfterLayout()
+    {
+        if (!_workPlayControlsComposed || !GodotObject.IsInstanceValid(_desktopToolbar))
+            return;
+        _lastToolbarMainRect = _sandbox.Window.CurrentSettings.Rect;
+        _desktopToolbar.Place(_lastToolbarMainRect);
+        RaiseToolbar();
     }
 
     private void OnInteractionModeChanged(InputMode mode)
@@ -140,10 +148,6 @@ public partial class CharacterEditorHost
         RaiseToolbar();
     }
 
-    /// <summary>
-    /// Both windows are always-on-top, so activating the main window buries the bar. Raise it
-    /// again whenever the main window is activated or the shell re-applies its window flags.
-    /// </summary>
     private void RaiseToolbar()
     {
         if (_workPlayControlsComposed && GodotObject.IsInstanceValid(_desktopToolbar))
