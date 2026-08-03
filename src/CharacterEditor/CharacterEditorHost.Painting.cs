@@ -16,6 +16,7 @@ public partial class CharacterEditorHost
     private Button _undoPaintButton = null!;
     private Camera3D _paintCamera = null!;
     private ConfirmationDialog _eraseAllConfirmation = null!;
+    private bool _paintAttachStarted;
 
     public bool IsPaintMode => _paintControls is not null && _paintControls.Visible;
     public PaintWorkspace PaintWorkspace => _paintCanvas.Workspace;
@@ -26,7 +27,10 @@ public partial class CharacterEditorHost
             return;
         if (_paintCanvas is null)
         {
-            TryAttachPaintingWorkspace();
+            // Build once. A throw in here used to be retried every frame, which buried the
+            // one real error under a wall of identical ones.
+            if (!_paintAttachStarted)
+                TryAttachPaintingWorkspace();
             return;
         }
         _paintTextures.FlushFrame(_paintCanvas.Workspace.Surfaces);
@@ -46,6 +50,7 @@ public partial class CharacterEditorHost
         {
             return;
         }
+        _paintAttachStarted = true;
         BuildPaintingArea(controls, preview, camera);
     }
 
@@ -53,6 +58,18 @@ public partial class CharacterEditorHost
     {
         _paintCamera = camera;
         _paintTextures = new PaintTextureBridge(_preview);
+
+        // The canvas exists before anything that binds to it: wiring a control to
+        // _paintCanvas.Method while the field is still null throws on the delegate, not on use.
+        _paintCanvas = new PaintCanvasControl { Name = "CharacterPaintCanvas", Visible = false };
+        if (previewContainer.GetChildOrNull<SubViewport>(0) is SubViewport viewport)
+            _paintCanvas.ViewportSize = viewport.Size;
+        _paintCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        previewContainer.AddChild(_paintCanvas);
+        _paintCanvas.WorkspaceChanged += () => { QueueAllPaintTextures(); RefreshPaintStatus(); };
+        _paintCanvas.ViewChanged += ApplyPaintView;
+        _paintCanvas.HoverChanged += _ => RefreshPaintStatus();
+
         _paintModeButton = Button("Paint", "PaintModeButton");
         _paintModeButton.TooltipText = "Paint directly on the buddy body.";
         _paintModeButton.Pressed += TogglePaintMode;
@@ -135,15 +152,6 @@ public partial class CharacterEditorHost
             Text = "Left drag: paint • Wheel: brush size • Middle drag or Space+drag: pan • Ctrl+wheel: zoom",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         });
-
-        _paintCanvas = new PaintCanvasControl { Name = "CharacterPaintCanvas", Visible = false };
-        if (previewContainer.GetChildOrNull<SubViewport>(0) is SubViewport viewport)
-            _paintCanvas.ViewportSize = viewport.Size;
-        _paintCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        previewContainer.AddChild(_paintCanvas);
-        _paintCanvas.WorkspaceChanged += () => { QueueAllPaintTextures(); RefreshPaintStatus(); };
-        _paintCanvas.ViewChanged += ApplyPaintView;
-        _paintCanvas.HoverChanged += _ => RefreshPaintStatus();
 
         _eraseAllConfirmation = new ConfirmationDialog
         {
