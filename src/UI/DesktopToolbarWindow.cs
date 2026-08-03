@@ -15,6 +15,9 @@ public partial class DesktopToolbarWindow : Window
     public static readonly Vector2I ToolbarSize = new(480, 48);
     private const int HorizontalPadding = 16;
 
+    private int _foregroundFrames;
+    private bool _wasVisible;
+
     public HBoxContainer Bar { get; private set; } = null!;
 
     public void Configure()
@@ -26,7 +29,10 @@ public partial class DesktopToolbarWindow : Window
         Size = ToolbarSize;
         MinSize = ToolbarSize;
         Borderless = true;
-        Transparent = true;
+
+        // The recovery toolbar does not need per-pixel transparency. Keeping it opaque makes
+        // the buttons unambiguous and avoids transparent-child-window compositor edge cases.
+        Transparent = false;
         AlwaysOnTop = true;
         Unresizable = true;
         Unfocusable = false;
@@ -34,8 +40,8 @@ public partial class DesktopToolbarWindow : Window
         ProcessMode = ProcessModeEnum.Always;
 
         // Windows/Godot rejects a transient always-on-top native window. The toolbar must stay
-        // above the full-screen overlay, so it is an independent top-level window whose owner
-        // controls visibility and placement explicitly.
+        // above the overlay, so it is an independent top-level window whose owner controls
+        // visibility and placement explicitly.
         Transient = false;
         TransientToFocused = false;
         Exclusive = false;
@@ -45,6 +51,18 @@ public partial class DesktopToolbarWindow : Window
             MouseFilter = Control.MouseFilterEnum.Stop,
         };
         panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
+        {
+            BgColor = new Color(0.075f, 0.08f, 0.1f, 0.98f),
+            CornerRadiusTopLeft = 6,
+            CornerRadiusTopRight = 6,
+            CornerRadiusBottomLeft = 6,
+            CornerRadiusBottomRight = 6,
+            ContentMarginLeft = 8,
+            ContentMarginRight = 8,
+            ContentMarginTop = 5,
+            ContentMarginBottom = 5,
+        });
         AddChild(panel);
 
         Bar = new HBoxContainer
@@ -52,13 +70,28 @@ public partial class DesktopToolbarWindow : Window
             Alignment = BoxContainer.AlignmentMode.Center,
             MouseFilter = Control.MouseFilterEnum.Stop,
         };
+        Bar.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         Bar.AddThemeConstantOverride("separation", 6);
         panel.AddChild(Bar);
         CloseRequested += Show;
 
         Log.Info(DiagnosticsCategory,
             $"Native toolbar configured: transient={Transient} alwaysOnTop={AlwaysOnTop} " +
-            $"visible={Visible} size={Size}.");
+            $"transparent={Transparent} visible={Visible} size={Size}.");
+    }
+
+    public override void _Process(double delta)
+    {
+        if (Visible && !_wasVisible)
+            _foregroundFrames = 4;
+
+        if (Visible && _foregroundFrames > 0)
+        {
+            _foregroundFrames--;
+            RaiseAboveOwner(grabFocus: _foregroundFrames == 2);
+        }
+
+        _wasVisible = Visible;
     }
 
     public Button AddAction(string text, string name, Action action)
@@ -70,16 +103,24 @@ public partial class DesktopToolbarWindow : Window
             Name = name,
             FocusMode = Control.FocusModeEnum.All,
             MouseFilter = Control.MouseFilterEnum.Stop,
+            CustomMinimumSize = new Vector2(72, 32),
         };
         button.Pressed += action;
         Bar.AddChild(button);
         return button;
     }
 
-    public void RaiseAboveOwner()
+    public void RaiseAboveOwner(bool grabFocus = false)
     {
-        if (Visible)
-            AlwaysOnTop = true;
+        if (!Visible)
+            return;
+
+        // Reassert topmost after the main overlay changes native mode/size. Toggling the flag
+        // forces Windows to restack this independent HWND above the monitor-sized overlay.
+        AlwaysOnTop = false;
+        AlwaysOnTop = true;
+        if (grabFocus)
+            GrabFocus();
     }
 
     public void Place(Rect2I mainWindowRect)
