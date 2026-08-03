@@ -190,10 +190,49 @@ Exit criteria:
 - [x] Customization remains visual-only by construction: no schema field or editor control
   reaches rig, drive, mass, collision, or tuning.
 
-Phase A completion technically unblocks Phase B painting. Phase B remains formally deferred
-until its Task B0 scheduling and source-of-truth gate is explicitly activated; no painting
-implementation should begin merely from the Phase A merge. Steam Workshop (Phase C) remains
-deferred and requires Milestone 6.
+## Milestone 5.6 — Character Painting (Phase B)
+
+Scheduling status (2026-08-03): **active. Task B0 is complete; Task B1 is next.** The
+normative scope, requirements, architecture, budgets, task order, and verification are in
+`docs/M5_5_PHASE_B_PAINTING_SOURCE_ALIGNMENT.md`.
+
+Design target:
+
+- A simplified, original, clean-room behavioral analogue of MECCHA CHAMELEON's direct
+  body-painting interaction, without copying code, assets, UI layout, branding, or
+  distinctive presentation.
+- A zoomed locked-frontal paint view of the current character working copy, with panning,
+  visible zoom controls, and Reset View.
+- A color wheel, one circular brush, mouse-wheel and visible-button brush-size controls,
+  eraser, Undo, and confirmed undoable Erase All.
+- Direct surface-under-brush targeting across the six trusted body parts.
+- Six optional 512×512 RGBA8 CPU-authoritative paint surfaces bound below face/accent decals.
+- Sequential character-schema migration and atomic whitelisted PNG persistence.
+- A 64 MiB CPU editing budget, 8 MiB active GPU paint budget, 2 MiB encoded cap per PNG,
+  and 12 MiB aggregate paint payload cap.
+
+Ordered tasks:
+
+1. B1 — frontal ray-to-UV mapping and paint-view camera/pose/zoom/pan.
+2. B2 — CPU surfaces, circular brush, eraser, bounded Undo, and undoable Erase All.
+3. B3 — underlay preview/runtime binding and upload invalidation.
+4. B4 — production painting UI and working-copy integration.
+5. B5 — schema migration and atomic PNG persistence/recovery.
+6. B6 — full automated, real-input, performance, Windows, and owner feel/fidelity gate.
+
+Exit criteria:
+
+- All required domain tests, headless scenarios, and
+  `character_paint_save_use_restart` journey pass.
+- Painting remains visual-only and does not rebuild or mutate the physics rig.
+- Face and torso-accent decals remain above paint.
+- Pixel-identical undo, save/reload, and editor-to-runtime fidelity gates pass.
+- CPU/GPU/file budgets and at-most-one-upload-per-dirty-part-per-rendered-frame hold.
+- Owner accepts brush feel, frontal framing, pan/zoom, Undo/Erase All behavior, and runtime
+  fidelity on real Windows.
+
+Phase C Steam Workshop remains deferred and still requires Milestone 6 and its own C0 policy
+gate.
 
 ## Milestone 6 — Steam and Release Systems
 
@@ -227,10 +266,6 @@ Exit criteria:
 Do not implement these during the milestones above:
 
 - Optional blood/bleeding.
-- Buddy painting (freehand paint — Phase B of `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`).
-  Phase A is complete, so painting is technically unblocked, but it remains deferred until
-  the owner explicitly schedules Task B0 and the higher-priority source documents authorize
-  Phase B work.
 - Catalogue, economy, and Work/Play UX research described in
   `docs/UX_CATALOGUE_AND_MODE_RESEARCH_BACKLOG.md`: investigate a unified Shop/Tools
   catalogue where owned entries can be equipped from the same menu; rebalance prices
@@ -238,8 +273,11 @@ Do not implement these during the milestones above:
   transitions, including the corner cage/room drag concept and clean-room research into
   other desktop-companion interaction patterns. This design backlog is non-blocking for
   Phase B and does not authorize production UX changes yet.
+- Painting extensions outside the locked Phase B scope: eyedropper, material sliders,
+  pattern/gradient/spray/smudge tools, layers/blend modes, custom brushes, tablet pressure,
+  3D orbit/back-side painting, and cosmetic paint progression.
 - Cosmetic progression.
-- Steam Workshop and custom buddy packages (Phase C, requires M6).
+- Steam Workshop and custom buddy packages (Phase C, requires M6 and C0).
 - Work Mode typing companion: an optional nonintrusive corner activity where the buddy
   wears glasses, works at a miniature PC, reacts to the player's keypresses by typing,
   and displays a keypress counter. While active, it also provides extra passive earnings
