@@ -17,25 +17,21 @@ public sealed record PaintCommand(IReadOnlyList<PaintPatch> Patches)
 public sealed class PaintUndoHistory
 {
     private readonly LinkedList<PaintCommand> _commands = new();
-
     public long MemoryBytes { get; private set; }
     public bool CanUndo => _commands.Count > 0;
 
     public void Push(PaintCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
-        if (command.Patches.Count == 0)
-            return;
+        if (command.Patches.Count == 0) return;
         if (command.MemoryBytes > PaintPolicy.UndoBudgetBytes)
             throw new InvalidOperationException("A paint command exceeds the complete undo budget.");
-
         while (_commands.Count > 0 && MemoryBytes + command.MemoryBytes > PaintPolicy.UndoBudgetBytes)
         {
             PaintCommand oldest = _commands.First!.Value;
             MemoryBytes -= oldest.MemoryBytes;
             _commands.RemoveFirst();
         }
-
         _commands.AddLast(command);
         MemoryBytes += command.MemoryBytes;
     }
@@ -78,7 +74,6 @@ public sealed class PaintWorkspace
     public IReadOnlyDictionary<PaintPart, PaintSurface> Surfaces => _surfaces;
 
     public void AdjustBrush(int steps) => SetBrushDiameter(BrushDiameter + (steps * PaintPolicy.BrushStep));
-
     public void SetBrushDiameter(int diameter) =>
         BrushDiameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
 
@@ -95,14 +90,12 @@ public sealed class PaintWorkspace
 
     public void ContinueGesture(PaintHit? hit)
     {
-        if (!_gestureActive)
-            return;
+        if (!_gestureActive) return;
         if (hit is null || !hit.Value.IsValid)
         {
             _lastHit = null;
             return;
         }
-
         PaintHit current = hit.Value;
         CaptureBefore(current.Part);
         if (_lastHit is PaintHit previous && previous.Part == current.Part)
@@ -114,8 +107,7 @@ public sealed class PaintWorkspace
 
     public void EndGesture()
     {
-        if (!_gestureActive)
-            return;
+        if (!_gestureActive) return;
         List<PaintPatch> patches = new();
         PaintRect whole = new(0, 0, PaintPolicy.SurfaceSize, PaintPolicy.SurfaceSize);
         foreach ((PaintPart part, byte[] before) in _gestureBefore)
@@ -124,8 +116,7 @@ public sealed class PaintWorkspace
                 patches.Add(new PaintPatch(part, whole, before));
         }
         _undo.Push(new PaintCommand(patches));
-        if (patches.Count > 0)
-            IsDirty = true;
+        if (patches.Count > 0) IsDirty = true;
         _gestureBefore.Clear();
         _gestureActive = false;
         _lastHit = null;
@@ -139,26 +130,25 @@ public sealed class PaintWorkspace
         foreach ((PaintPart part, PaintSurface surface) in _surfaces)
         {
             byte[] before = surface.ClonePixels();
-            if (Array.TrueForAll(before, value => value == 0))
-                continue;
+            if (Array.TrueForAll(before, value => value == 0)) continue;
             patches.Add(new PaintPatch(part, whole, before));
             surface.Clear();
         }
         _undo.Push(new PaintCommand(patches));
-        if (patches.Count > 0)
-            IsDirty = true;
+        if (patches.Count > 0) IsDirty = true;
     }
 
     public bool Undo()
     {
         EndGesture();
-        if (!_undo.TryPop(out PaintCommand command))
-            return false;
+        if (!_undo.TryPop(out PaintCommand command)) return false;
         foreach (PaintPatch patch in command.Patches)
             _surfaces[patch.Part].Restore(patch.Rectangle, patch.Before);
         IsDirty = true;
         return true;
     }
+
+    public void MarkDirty() => IsDirty = true;
 
     public void MarkSaved()
     {
