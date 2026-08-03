@@ -1,8 +1,8 @@
 name: Phase A Character Editor
 
+# Temporarily manual-only while the Linux workflow failures are investigated.
+# Restore push/pull_request triggers when CI is ready to be re-enabled.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 jobs:
