@@ -45,6 +45,20 @@ public partial class DesktopToolbarWindow : Window
         CloseRequested += Show;
     }
 
+    /// <summary>
+    /// Re-asserts topmost. The main window is always-on-top too, so activating it — any click
+    /// inside the buddy box — raises it above this bar, which then renders behind the money
+    /// counter and stops receiving clicks. Toggling the flag reorders without taking focus;
+    /// this window is unfocusable, so it must never be raised by activating it.
+    /// </summary>
+    public void RaiseAboveOwner()
+    {
+        if (!Visible)
+            return;
+        AlwaysOnTop = false;
+        AlwaysOnTop = true;
+    }
+
     public void Place(Rect2I mainWindowRect)
     {
         int x = mainWindowRect.Position.X +

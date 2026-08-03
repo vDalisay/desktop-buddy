@@ -110,6 +110,7 @@ public partial class CharacterEditorHost
 
         _sandbox.Shell.InputModeChanged += OnInteractionModeChanged;
         _sandbox.Shell.WindowLayoutChanged += OnWindowLayoutChanged;
+        GetWindow().FocusEntered += RaiseToolbar;
         TreeExiting += DisconnectWorkPlayControls;
         _workPlayControlsComposed = true;
         UpdateWorkPlayLabels();
@@ -118,12 +119,27 @@ public partial class CharacterEditorHost
         _desktopToolbar.Place(_sandbox.Window.CurrentSettings.Rect);
     }
 
-    private void OnInteractionModeChanged(InputMode mode) => UpdateWorkPlayLabels();
+    private void OnInteractionModeChanged(InputMode mode)
+    {
+        UpdateWorkPlayLabels();
+        RaiseToolbar();
+    }
 
     private void OnWindowLayoutChanged(WindowLayoutMode mode)
     {
         UpdateWorkPlayLabels();
         _lastToolbarMainRect = default;
+        RaiseToolbar();
+    }
+
+    /// <summary>
+    /// Both windows are always-on-top, so activating the main window buries the bar. Raise it
+    /// again whenever the main window is activated or the shell re-applies its window flags.
+    /// </summary>
+    private void RaiseToolbar()
+    {
+        if (_workPlayControlsComposed && GodotObject.IsInstanceValid(_desktopToolbar))
+            _desktopToolbar.RaiseAboveOwner();
     }
 
     private void UpdateWorkPlayLabels()
@@ -154,5 +170,6 @@ public partial class CharacterEditorHost
             return;
         _sandbox.Shell.InputModeChanged -= OnInteractionModeChanged;
         _sandbox.Shell.WindowLayoutChanged -= OnWindowLayoutChanged;
+        GetWindow().FocusEntered -= RaiseToolbar;
     }
 }
