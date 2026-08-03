@@ -20,11 +20,19 @@ public partial class PaintCanvasControl : Control
     public event Action? ViewChanged;
     public event Action<PaintPart?>? HoverChanged;
 
-    public override void _Ready()
+    public override async void _Ready()
     {
         MouseFilter = MouseFilterEnum.Stop;
         FocusMode = FocusModeEnum.All;
         ClipContents = true;
+        Node? ancestor = GetParent();
+        while (ancestor is not null && ancestor is not CharacterEditorHost)
+            ancestor = ancestor.GetParent();
+        if (ancestor is CharacterEditorHost host)
+        {
+            await host.AttachPaintSessionAsync(this);
+            WorkspaceChanged?.Invoke();
+        }
     }
 
     public override void _GuiInput(InputEvent input)
@@ -112,8 +120,7 @@ public partial class PaintCanvasControl : Control
     {
         if (input is InputEventKey key && key.Pressed && key.CtrlPressed && key.Keycode == Key.Z)
         {
-            if (Workspace.Undo())
-                WorkspaceChanged?.Invoke();
+            if (Workspace.Undo()) WorkspaceChanged?.Invoke();
             AcceptEvent();
         }
     }
