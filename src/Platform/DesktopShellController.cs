@@ -60,10 +60,7 @@ public partial class DesktopShellController : Node
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
         _saves.RegisterSettings(_settings);
-        DomainInputMode initial = WindowInteractionSettings.ReadInputMode(_settings);
-        if (WindowInteractionSettings.ReadLayout(_settings) == WindowLayoutMode.FullscreenOverlay)
-            initial = DomainInputMode.Work;
-        _mode = new InputModeStateMachine(initial);
+        _mode = new InputModeStateMachine(WindowInteractionSettings.ReadInputMode(_settings));
         _runtimeConfigured = true;
     }
 
@@ -103,8 +100,6 @@ public partial class DesktopShellController : Node
             : 0;
         if (!Window.TrySetLayoutMode(requestedLayout, monitor))
             Window.TrySetLayoutMode(WindowLayoutMode.Compact, monitor);
-        if (Window.LayoutMode == WindowLayoutMode.FullscreenOverlay)
-            _mode = new InputModeStateMachine(DomainInputMode.Work);
 
         Vector2I clientSize = ResolveClientSize();
         Boundaries.Initialize(clientSize, _storedZoom);
@@ -175,12 +170,6 @@ public partial class DesktopShellController : Node
             !Window.FullscreenOverlayAvailable)
         {
             return false;
-        }
-
-        if (wanted == WindowLayoutMode.FullscreenOverlay &&
-            _mode.Current != DomainInputMode.Work)
-        {
-            Apply(ShellInputEvent.EscapePressed);
         }
 
         bool changed = Window.TrySetLayoutMode(

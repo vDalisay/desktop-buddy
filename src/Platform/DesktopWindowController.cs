@@ -201,6 +201,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             Transparent = true,
             Borderless = true,
             Resizable = false,
+            AlwaysOnTop = false,
         };
         TransparencyActive = true;
 
@@ -211,9 +212,15 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         window.CurrentScreen = monitorIndex;
         window.Borderless = true;
         window.Unresizable = true;
-        window.AlwaysOnTop = _compactSettings.AlwaysOnTop;
         window.Transparent = true;
         GetViewport().TransparentBg = true;
+
+        // The overlay must not be topmost, and the flag has to be cleared before entering
+        // fullscreen: Godot refuses always-on-top on a fullscreen window and clearing it
+        // afterwards drops the window back to Windowed. A topmost owner also sits above its own
+        // owned windows, which left the toolbar and panels visible through the transparent
+        // pixels but never hit-testable. Covering the monitor already puts the overlay in front.
+        window.AlwaysOnTop = false;
         window.Mode = Window.ModeEnum.Fullscreen;
         ApplyRenderSettings(_compactSettings);
     }
@@ -242,6 +249,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         _adapter.SetPlayModeCapture();
         if (!_headless)
             GetWindow().MousePassthrough = passthrough;
+        LogWindowState("input-policy");
     }
 
     private void FinishLayoutTransition()
@@ -252,6 +260,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         _lastAppliedSettings = _lastAppliedSettings with { Rect = rect };
         _suppressClientBoundsChanged = false;
         ClientBoundsChanged?.Invoke(rect);
+        LogWindowState("layout-transition");
     }
 
     private Rect2I MonitorRect(int monitorIndex)
@@ -340,7 +349,13 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         Rect2I rect = CurrentWindowRect();
         _lastAppliedRect = rect;
         _lastAppliedSettings = CaptureWindowSettings();
-        if (LayoutMode == WindowLayoutMode.Compact)
+        // Only record a compact rect from a settled compact window. TrySetLayoutMode flips
+        // LayoutMode to Compact before EnterCompact leaves native fullscreen, so the resize
+        // Windows sends on the way out still reports the monitor-sized overlay. Recording it
+        // overwrote the saved compact rect with the whole screen, and because the placement
+        // policy caps size at the monitor rather than a fixed ceiling, nothing rejected it —
+        // compact then restored full-screen-sized forever after.
+        if (LayoutMode == WindowLayoutMode.Compact && !_suppressClientBoundsChanged)
             _compactSettings = _lastAppliedSettings;
         if (!_suppressClientBoundsChanged)
             ClientBoundsChanged?.Invoke(rect);

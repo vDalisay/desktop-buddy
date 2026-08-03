@@ -419,6 +419,40 @@ implementation of every M4 task is unblocked.
 - **Window persistence:** Position, size, monitor, and DPI context are saved. Invalid or off-screen positions are clamped back into a usable monitor area.
 - **Topmost behavior:** Always-on-top is enabled by default and may be disabled in settings.
 
+### Native window ownership (Windows)
+
+Settled 2026-08-04 after a run of speculative z-order fixes. These are invariants, not
+preferences — breaking any of them makes the game look correct and accept no clicks.
+
+- **The full-screen overlay is never topmost.** Windows places a topmost owner *above* its own
+  non-topmost owned windows. With `AlwaysOnTop` set, the toolbar and panels stayed visible
+  through the transparent pixels but every click over them hit-tested to the overlay. Covering
+  the monitor already puts the overlay in front; topmost buys nothing. Compact keeps the user's
+  always-on-top setting.
+- **Clear `AlwaysOnTop` before entering fullscreen, not after.** Godot refuses always-on-top on
+  a fullscreen window, and clearing it afterwards silently drops the window back to `Windowed`.
+- **Non-exclusive `Window.ModeEnum.Fullscreen` only.** Exclusive fullscreen permits one
+  effective window per screen.
+- **Godot's `Transient` does not create a native owner here.** It records the relationship in
+  the scene tree; enumerating the process HWNDs showed `owner=0` on every child window, so
+  Windows z-ordered them by activation alone. `DockWindow.ShowOwned` sets `GWLP_HWNDPARENT` to
+  the main HWND once per show. An owned window is unconditionally above its owner, so no
+  restacking is needed. Verify with `GetWindow(hwnd, GW_OWNER)`, never with the Godot property.
+- **Do not set `ForceNative`.** `display/window/subwindows/embed_subwindows` is already false, so
+  every subwindow is native. Setting it creates the HWND at tree-entry, before the owner can be
+  bound.
+- **Never repair window state from `_Process`.** Per-frame `AlwaysOnTop` toggling, `GrabFocus`
+  loops, forced Work/Play correction, and rewriting Fullscreen to Windowed each fought the
+  layout transition and masked the real fault. Diagnostics observe; they do not mutate.
+- **Layout and interaction modes are independent.** Entering full-screen must not force Work or
+  Play. `FullscreenOverlay` + `Work` is the only state with main-window `MousePassthrough`.
+- **Only a settled compact window may write the compact rect.** `TrySetLayoutMode` sets
+  `LayoutMode` before the native transition runs, so the resize Windows sends while leaving
+  fullscreen still reports monitor geometry. Recording it overwrote the saved compact rect with
+  the whole screen — and since maximum size is the monitor rather than a fixed ceiling, nothing
+  rejected it, so compact restored full-screen-sized on every later launch.
+  `OnSizeChanged` therefore ignores resizes while a layout transition is in flight.
+
 ## Tool Control Conventions
 
 - **Gentle tools:** Pet and Tickle use held click-and-drag strokes over buddy body parts.

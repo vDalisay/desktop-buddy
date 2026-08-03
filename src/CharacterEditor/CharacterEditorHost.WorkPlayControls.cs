@@ -54,7 +54,6 @@ public partial class CharacterEditorHost
         {
             _lastToolbarMainRect = mainRect;
             _desktopToolbar.Place(mainRect);
-            RaiseToolbar();
         }
     }
 
@@ -120,6 +119,9 @@ public partial class CharacterEditorHost
             "Play",
             "FullscreenInteractionModeButton",
             _sandbox.Shell.ToggleInteractionMode);
+        // Recovery must never depend on opening Settings first.
+        _desktopToolbar.AddAction("Compact", "FullscreenCompactButton", () => _ =
+            _sandbox.Shell.ToggleWindowLayoutAsync());
 
         // The native toolbar is the only solid control in full-screen Work. Compact mode
         // captures its complete client rectangle and uses the original in-window dock.
@@ -127,7 +129,6 @@ public partial class CharacterEditorHost
 
         _sandbox.Shell.InputModeChanged += OnInteractionModeChanged;
         _sandbox.Shell.WindowLayoutChanged += OnWindowLayoutChanged;
-        GetWindow().FocusEntered += RaiseToolbar;
         TreeExiting += DisconnectWorkPlayControls;
         _workPlayControlsComposed = true;
         _lastToolbarMainRect = default;
@@ -162,7 +163,7 @@ public partial class CharacterEditorHost
         _lastToolbarVisible = toolbarVisible;
         if (toolbarVisible)
         {
-            _desktopToolbar.Show();
+            DockWindow.ShowOwned(_desktopToolbar);
             _lastToolbarMainRect = default;
             Callable.From(PlaceToolbarAfterLayout).CallDeferred();
         }
@@ -188,13 +189,11 @@ public partial class CharacterEditorHost
 
         _lastToolbarMainRect = LiveMainWindowRect();
         _desktopToolbar.Place(_lastToolbarMainRect);
-        RaiseToolbar();
     }
 
     private void OnInteractionModeChanged(InputMode mode)
     {
         UpdateWorkPlayLabels();
-        RaiseToolbar();
         TraceDockState("input-mode-change", force: true);
     }
 
@@ -204,12 +203,6 @@ public partial class CharacterEditorHost
         _lastToolbarMainRect = default;
         UpdateDockVisibility(force: true);
         TraceDockState("window-layout-change", force: true);
-    }
-
-    private void RaiseToolbar()
-    {
-        if (_lastToolbarVisible && GodotObject.IsInstanceValid(_desktopToolbar))
-            _desktopToolbar.RaiseAboveOwner();
     }
 
     private void UpdateWorkPlayLabels()
@@ -368,6 +361,5 @@ public partial class CharacterEditorHost
             return;
         _sandbox.Shell.InputModeChanged -= OnInteractionModeChanged;
         _sandbox.Shell.WindowLayoutChanged -= OnWindowLayoutChanged;
-        GetWindow().FocusEntered -= RaiseToolbar;
     }
 }
