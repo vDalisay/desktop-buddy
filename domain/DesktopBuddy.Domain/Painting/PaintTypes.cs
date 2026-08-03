@@ -3,21 +3,8 @@ using System.Collections.Generic;
 
 namespace DesktopBuddy.Domain.Painting;
 
-public enum PaintPart
-{
-    Head,
-    Torso,
-    LeftHand,
-    RightHand,
-    LeftFoot,
-    RightFoot,
-}
-
-public enum PaintTool
-{
-    Brush,
-    Eraser,
-}
+public enum PaintPart { Head, Torso, LeftHand, RightHand, LeftFoot, RightFoot }
+public enum PaintTool { Brush, Eraser }
 
 public readonly record struct PaintColor(byte R, byte G, byte B)
 {
@@ -28,19 +15,14 @@ public readonly record struct PaintPoint(double X, double Y)
 {
     public double Length => Math.Sqrt((X * X) + (Y * Y));
     public bool IsFinite => double.IsFinite(X) && double.IsFinite(Y);
-
-    public static PaintPoint operator +(PaintPoint left, PaintPoint right) =>
-        new(left.X + right.X, left.Y + right.Y);
-    public static PaintPoint operator -(PaintPoint left, PaintPoint right) =>
-        new(left.X - right.X, left.Y - right.Y);
-    public static PaintPoint operator *(PaintPoint point, double scalar) =>
-        new(point.X * scalar, point.Y * scalar);
+    public static PaintPoint operator +(PaintPoint left, PaintPoint right) => new(left.X + right.X, left.Y + right.Y);
+    public static PaintPoint operator -(PaintPoint left, PaintPoint right) => new(left.X - right.X, left.Y - right.Y);
+    public static PaintPoint operator *(PaintPoint point, double scalar) => new(point.X * scalar, point.Y * scalar);
 }
 
 public readonly record struct PaintHit(PaintPart Part, PaintPoint Uv, double Depth)
 {
-    public bool IsValid =>
-        Uv.IsFinite && double.IsFinite(Depth) &&
+    public bool IsValid => Uv.IsFinite && double.IsFinite(Depth) &&
         Uv.X >= 0.0 && Uv.X <= 1.0 && Uv.Y >= 0.0 && Uv.Y <= 1.0;
 }
 
@@ -58,6 +40,8 @@ public static class PaintPolicy
     public const long EditingBudgetBytes = 64L * 1024 * 1024;
     public const int MaxEncodedPartBytes = 2 * 1024 * 1024;
     public const int MaxAggregateEncodedBytes = 12 * 1024 * 1024;
+    public const int MaximumEncodedPngBytes = MaxEncodedPartBytes;
+    public const int MaximumAggregateEncodedBytes = MaxAggregateEncodedBytes;
 
     public static IReadOnlyDictionary<PaintPart, string> WhitelistedPaths { get; } =
         new Dictionary<PaintPart, string>
@@ -83,20 +67,21 @@ public static class PaintPolicy
         part = default;
         return false;
     }
+
+    public static bool IsWhitelistedPath(PaintPart part, string path) =>
+        TryResolvePart(path, out PaintPart resolved) && resolved == part;
 }
 
 public sealed class PaintViewState
 {
     public const double MinimumZoom = 1.0;
     public const double MaximumZoom = 8.0;
-
     public double Zoom { get; private set; } = MinimumZoom;
     public PaintPoint Pan { get; private set; }
 
     public void SetZoom(double zoom, PaintPoint focalCanvasPoint)
     {
-        if (!double.IsFinite(zoom))
-            zoom = zoom > 0 ? MaximumZoom : MinimumZoom;
+        if (!double.IsFinite(zoom)) zoom = zoom > 0 ? MaximumZoom : MinimumZoom;
         double previous = Zoom;
         Zoom = Math.Clamp(zoom, MinimumZoom, MaximumZoom);
         if (focalCanvasPoint.IsFinite && previous > 0.0)
@@ -110,9 +95,7 @@ public sealed class PaintViewState
 
     public void PanBy(PaintPoint delta)
     {
-        if (!delta.IsFinite)
-            return;
-        Pan = Clamp(Pan + delta);
+        if (delta.IsFinite) Pan = Clamp(Pan + delta);
     }
 
     public void Reset()
@@ -133,7 +116,6 @@ public sealed class PaintViewState
 public sealed class FrontalPaintMapper
 {
     private readonly Primitive[] _primitives;
-
     private FrontalPaintMapper(Primitive[] primitives) => _primitives = primitives;
 
     public static FrontalPaintMapper CreateDefault() => new(new[]
@@ -148,38 +130,24 @@ public sealed class FrontalPaintMapper
 
     public bool TryMap(PaintPoint point, out PaintHit hit)
     {
-        if (!point.IsFinite)
-        {
-            hit = default;
-            return false;
-        }
-
+        if (!point.IsFinite) { hit = default; return false; }
         foreach (Primitive primitive in _primitives)
         {
             double localX = (point.X - primitive.Center.X) / primitive.RadiusX;
             double localY = (point.Y - primitive.Center.Y) / primitive.RadiusY;
             double radiusSquared = (localX * localX) + (localY * localY);
-            if (radiusSquared > 1.0)
-                continue;
-
+            if (radiusSquared > 1.0) continue;
             double u = 0.5 + (Math.Asin(Math.Clamp(localX, -1.0, 1.0)) / Math.PI);
-            if (primitive.MirrorU)
-                u = 1.0 - u;
+            if (primitive.MirrorU) u = 1.0 - u;
             double v = 0.5 + (Math.Asin(Math.Clamp(localY, -1.0, 1.0)) / Math.PI);
             double depth = primitive.Depth - Math.Sqrt(Math.Max(0.0, 1.0 - radiusSquared));
             hit = new PaintHit(primitive.Part, new PaintPoint(u, v), depth);
             return true;
         }
-
         hit = default;
         return false;
     }
 
     private readonly record struct Primitive(
-        PaintPart Part,
-        PaintPoint Center,
-        double RadiusX,
-        double RadiusY,
-        bool MirrorU,
-        double Depth);
+        PaintPart Part, PaintPoint Center, double RadiusX, double RadiusY, bool MirrorU, double Depth);
 }
