@@ -54,6 +54,12 @@ public partial class CharacterEditorHost
         _paintControls = new VBoxContainer { Name = "CharacterPaintControls", Visible = false };
         controls.AddChild(_paintControls);
 
+        // Both were appended after the preview, which puts them past the bottom of the
+        // scrolling column. Paint controls belong directly above the buddy they act on.
+        int previewIndex = previewContainer.GetIndex();
+        controls.MoveChild(_paintModeButton, previewIndex);
+        controls.MoveChild(_paintControls, previewIndex + 1);
+
         var toolRow = new HBoxContainer();
         _paintControls.AddChild(toolRow);
         Button brush = Button("Brush", "PaintBrushButton");
