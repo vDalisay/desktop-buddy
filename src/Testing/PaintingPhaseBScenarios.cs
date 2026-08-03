@@ -124,13 +124,13 @@ public sealed class PaintFrontalUvMappingScenario : IScenario
                 continue;
             }
             double radius = part.Radius * appearance.MeshRadiusScale;
-            double expectedY = shape.Part == PaintPart.Torso
-                ? radius * visual.CapsuleHeightScale / 2.0
-                : radius;
-            if (!Approximately(shape.Center.X, part.RestPosition.X) ||
+            bool capsule = shape.Kind == PaintShapeKind.Capsule;
+            double expectedHalfHeight = capsule ? radius * visual.CapsuleHeightScale / 2.0 : radius;
+            if (capsule != (partId == BuddyPartId.Torso) ||
+                !Approximately(shape.Center.X, part.RestPosition.X) ||
                 !Approximately(shape.Center.Y, part.RestPosition.Y) ||
-                !Approximately(shape.RadiusX, radius) ||
-                !Approximately(shape.RadiusY, expectedY) ||
+                !Approximately(shape.Radius, radius) ||
+                !Approximately(shape.HalfHeight, expectedHalfHeight) ||
                 !Approximately(shape.Depth, appearance.DepthOffset))
             {
                 detail.Add($"{shape.Part}=drifted");
@@ -153,8 +153,10 @@ public sealed class PaintStrokeAndEraserScenario : IScenario
     {
         var checks = new List<StartupCheck>();
         var workspace = new PaintWorkspace();
-        PaintHit a = new(PaintPart.Head, new PaintPoint(0.2, 0.5), 0);
-        PaintHit b = new(PaintPart.Head, new PaintPoint(0.8, 0.5), 0);
+        // Kept inside half the texture width: u is cyclic, so a wider span would correctly
+        // wrap the short way round the seam instead of crossing the middle.
+        PaintHit a = new(PaintPart.Head, new PaintPoint(0.35, 0.5), 0);
+        PaintHit b = new(PaintPart.Head, new PaintPoint(0.65, 0.5), 0);
         string blank = workspace.Surfaces[PaintPart.Head].ComputeHash();
         workspace.BeginGesture(a); workspace.ContinueGesture(b); workspace.EndGesture();
         string painted = workspace.Surfaces[PaintPart.Head].ComputeHash();

@@ -114,12 +114,21 @@ public sealed class PaintViewState
     }
 }
 
+public enum PaintShapeKind { Sphere, Capsule }
+
 /// <summary>
 /// One trusted part silhouette in 2D world units (pixels, Y-down), ordered nearest-first by
 /// <see cref="Depth"/> so overlapping parts resolve like the rendered depth lanes.
+/// <see cref="HalfHeight"/> equals <see cref="Radius"/> for a sphere; for a capsule it is half
+/// the mesh height including both caps.
 /// </summary>
 public readonly record struct PaintPartShape(
-    PaintPart Part, PaintPoint Center, double RadiusX, double RadiusY, double Depth);
+    PaintPart Part,
+    PaintPoint Center,
+    double Radius,
+    double HalfHeight,
+    PaintShapeKind Kind,
+    double Depth);
 
 public sealed class FrontalPaintMapper
 {
@@ -143,30 +152,99 @@ public sealed class FrontalPaintMapper
     /// </summary>
     public static FrontalPaintMapper CreateDefault() => Create(new[]
     {
-        new PaintPartShape(PaintPart.Head, new PaintPoint(0.0, -50.0), 24.0, 24.0, 96.0),
-        new PaintPartShape(PaintPart.LeftHand, new PaintPoint(-38.0, -5.0), 15.0, 15.0, 48.0),
-        new PaintPartShape(PaintPart.RightHand, new PaintPoint(38.0, -5.0), 15.0, 15.0, 48.0),
-        new PaintPartShape(PaintPart.Torso, new PaintPoint(0.0, 0.0), 28.0, 35.0, 0.0),
-        new PaintPartShape(PaintPart.LeftFoot, new PaintPoint(-22.0, 55.0), 17.0, 17.0, -48.0),
-        new PaintPartShape(PaintPart.RightFoot, new PaintPoint(22.0, 55.0), 17.0, 17.0, -48.0),
+        new PaintPartShape(PaintPart.Head, new PaintPoint(0.0, -50.0), 24.0, 24.0, PaintShapeKind.Sphere, 96.0),
+        new PaintPartShape(PaintPart.LeftHand, new PaintPoint(-38.0, -5.0), 15.0, 15.0, PaintShapeKind.Sphere, 48.0),
+        new PaintPartShape(PaintPart.RightHand, new PaintPoint(38.0, -5.0), 15.0, 15.0, PaintShapeKind.Sphere, 48.0),
+        new PaintPartShape(PaintPart.Torso, new PaintPoint(0.0, 0.0), 28.0, 35.0, PaintShapeKind.Capsule, 0.0),
+        new PaintPartShape(PaintPart.LeftFoot, new PaintPoint(-22.0, 55.0), 17.0, 17.0, PaintShapeKind.Sphere, -48.0),
+        new PaintPartShape(PaintPart.RightFoot, new PaintPoint(22.0, 55.0), 17.0, 17.0, PaintShapeKind.Sphere, -48.0),
     });
 
     public bool TryMap(PaintPoint point, out PaintHit hit)
     {
         if (!point.IsFinite) { hit = default; return false; }
-        foreach (PaintPartShape primitive in _shapes)
+        foreach (PaintPartShape shape in _shapes)
         {
-            double localX = (point.X - primitive.Center.X) / primitive.RadiusX;
-            double localY = (point.Y - primitive.Center.Y) / primitive.RadiusY;
-            double radiusSquared = (localX * localX) + (localY * localY);
-            if (radiusSquared > 1.0) continue;
-            double u = 0.5 + (Math.Asin(Math.Clamp(localX, -1.0, 1.0)) / Math.PI);
-            double v = 0.5 + (Math.Asin(Math.Clamp(localY, -1.0, 1.0)) / Math.PI);
-            double depth = primitive.Depth - Math.Sqrt(Math.Max(0.0, 1.0 - radiusSquared));
-            hit = new PaintHit(primitive.Part, new PaintPoint(u, v), depth);
-            return true;
+            // Screen offset from the part centre. Y is world Y-down; the meshes are Y-up.
+            double x = point.X - shape.Center.X;
+            double yUp = -(point.Y - shape.Center.Y);
+            if (shape.Kind == PaintShapeKind.Capsule
+                    ? TryMapCapsule(shape, x, yUp, out PaintPoint uv, out double z)
+                    : TryMapSphere(shape, x, yUp, out uv, out z))
+            {
+                hit = new PaintHit(shape.Part, uv, shape.Depth + z);
+                return true;
+            }
         }
         hit = default;
         return false;
+    }
+
+    /// <summary>
+    /// Godot's SphereMesh runs u from the camera-facing pole: front 0, +x 0.25, back 0.5,
+    /// -x 0.75 — so the texture seam falls down the middle of the visible face — and v from
+    /// the top pole to the bottom. Verified against the generated mesh arrays.
+    /// </summary>
+    private static bool TryMapSphere(PaintPartShape shape, double x, double yUp, out PaintPoint uv, out double z)
+    {
+        uv = default;
+        z = 0.0;
+        double radius = shape.Radius;
+        double planar = (x * x) + (yUp * yUp);
+        if (radius <= 0.0 || planar > radius * radius)
+            return false;
+
+        z = Math.Sqrt(Math.Max(0.0, (radius * radius) - planar));
+        uv = new PaintPoint(
+            Wrap(Math.Atan2(x, z) / Tau),
+            Math.Acos(Math.Clamp(yUp / radius, -1.0, 1.0)) / Math.PI);
+        return true;
+    }
+
+    /// <summary>
+    /// Godot's CapsuleMesh offsets u by half a turn — front 0.5, so the seam sits at the back —
+    /// and splits v into three equal bands: top cap, cylinder, bottom cap, whatever their real
+    /// proportions. Verified against the generated mesh arrays.
+    /// </summary>
+    private static bool TryMapCapsule(PaintPartShape shape, double x, double yUp, out PaintPoint uv, out double z)
+    {
+        uv = default;
+        z = 0.0;
+        double radius = shape.Radius;
+        double mid = shape.HalfHeight - radius;
+        if (radius <= 0.0 || mid < 0.0 || Math.Abs(x) > radius || Math.Abs(yUp) > shape.HalfHeight)
+            return false;
+
+        double v;
+        if (Math.Abs(yUp) <= mid)
+        {
+            z = Math.Sqrt(Math.Max(0.0, (radius * radius) - (x * x)));
+            double band = mid <= 0.0 ? 0.5 : (mid - yUp) / (2.0 * mid);
+            v = OneThird + (band * OneThird);
+        }
+        else
+        {
+            double capOffset = Math.Abs(yUp) - mid;
+            double planar = (x * x) + (capOffset * capOffset);
+            if (planar > radius * radius)
+                return false;
+            z = Math.Sqrt(Math.Max(0.0, (radius * radius) - planar));
+            double capFraction = 2.0 / Math.PI * (yUp > 0.0
+                ? Math.Acos(Math.Clamp(capOffset / radius, -1.0, 1.0))
+                : Math.Asin(Math.Clamp(capOffset / radius, -1.0, 1.0)));
+            v = yUp > 0.0 ? capFraction * OneThird : (2.0 * OneThird) + (capFraction * OneThird);
+        }
+
+        uv = new PaintPoint(Wrap(0.5 + (Math.Atan2(x, z) / Tau)), Math.Clamp(v, 0.0, 1.0));
+        return true;
+    }
+
+    private const double Tau = Math.PI * 2.0;
+    private const double OneThird = 1.0 / 3.0;
+
+    private static double Wrap(double u)
+    {
+        double wrapped = u - Math.Floor(u);
+        return wrapped >= 1.0 ? 0.0 : wrapped;
     }
 }

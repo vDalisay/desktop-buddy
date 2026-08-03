@@ -39,9 +39,11 @@ public sealed class PaintSurface
         double centerX = uv.X * (PaintPolicy.SurfaceSize - 1);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
         double radius = diameter / 2.0;
-        int minX = Math.Clamp((int)Math.Floor(centerX - radius), 0, PaintPolicy.SurfaceSize - 1);
+        // Horizontal bounds stay unclamped so a brush on the seam wraps to the far edge;
+        // vertical bounds clamp, because the poles are not cyclic.
+        int minX = (int)Math.Floor(centerX - radius);
+        int maxX = (int)Math.Ceiling(centerX + radius);
         int minY = Math.Clamp((int)Math.Floor(centerY - radius), 0, PaintPolicy.SurfaceSize - 1);
-        int maxX = Math.Clamp((int)Math.Ceiling(centerX + radius), 0, PaintPolicy.SurfaceSize - 1);
         int maxY = Math.Clamp((int)Math.Ceiling(centerY + radius), 0, PaintPolicy.SurfaceSize - 1);
         double radiusSquared = radius * radius;
         bool changed = false;
@@ -55,7 +57,10 @@ public sealed class PaintSurface
                 if ((dx * dx) + (dy * dy) > radiusSquared)
                     continue;
 
-                int index = ((y * PaintPolicy.SurfaceSize) + x) * PaintPolicy.BytesPerPixel;
+                // U wraps around the mesh, so a brush over the seam continues on the far edge
+                // instead of being clipped.
+                int wrappedX = ((x % PaintPolicy.SurfaceSize) + PaintPolicy.SurfaceSize) % PaintPolicy.SurfaceSize;
+                int index = ((y * PaintPolicy.SurfaceSize) + wrappedX) * PaintPolicy.BytesPerPixel;
                 byte r = tool == PaintTool.Eraser ? (byte)0 : color.R;
                 byte g = tool == PaintTool.Eraser ? (byte)0 : color.G;
                 byte b = tool == PaintTool.Eraser ? (byte)0 : color.B;
@@ -76,7 +81,9 @@ public sealed class PaintSurface
         if (!changed)
             return default;
         Revision++;
-        return new PaintRect(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1);
+        return minX < 0 || maxX > PaintPolicy.SurfaceSize - 1
+            ? new PaintRect(0, minY, PaintPolicy.SurfaceSize, (maxY - minY) + 1)
+            : new PaintRect(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1);
     }
 
     public PaintRect Stroke(
@@ -86,6 +93,11 @@ public sealed class PaintSurface
         PaintTool tool,
         PaintColor color)
     {
+        // U is cyclic: a stroke across the seam takes the short way round rather than dragging
+        // paint the long way across the whole texture.
+        if (Math.Abs(to.X - from.X) > 0.5)
+            to = new PaintPoint(to.X + (to.X < from.X ? 1.0 : -1.0), to.Y);
+
         double distancePixels = (to - from).Length * PaintPolicy.SurfaceSize;
         double spacing = Math.Max(1.0, diameter * 0.22);
         int steps = Math.Max(1, (int)Math.Ceiling(distancePixels / spacing));

@@ -32,14 +32,55 @@ public sealed class PaintingPhaseBTests
         Assert.Equal(right.Uv.Y, left.Uv.Y, 8);
     }
 
+    [Theory]
+    // Measured from Godot's generated mesh arrays: a sphere's camera-facing pole is the u seam,
+    // its sides are 0.25/0.75; the capsule is offset half a turn, so its front is 0.5.
+    [InlineData(0.0, -50.0, 0.0, 0.5)]        // head centre — front pole, equator
+    [InlineData(24.0, -50.0, 0.25, 0.5)]      // head right silhouette
+    [InlineData(-24.0, -50.0, 0.75, 0.5)]     // head left silhouette
+    [InlineData(0.0, -74.0, 0.0, 0.0)]        // head top pole
+    [InlineData(0.0, -26.0, 0.0, 1.0)]        // head bottom pole
+    [InlineData(0.0, 0.0, 0.5, 0.5)]          // torso centre — capsule front, mid band
+    [InlineData(28.0, 7.0, 0.75, 2.0 / 3.0)]  // torso right silhouette, below the hand
+    [InlineData(0.0, -7.0, 0.5, 1.0 / 3.0)]   // torso cylinder/top-cap boundary
+    [InlineData(0.0, 7.0, 0.5, 2.0 / 3.0)]    // torso cylinder/bottom-cap boundary
+    [InlineData(0.0, 35.0, 0.5, 1.0)]         // torso bottom (its top is behind the head)
+    public void FrontalHits_MatchTheGeneratedMeshUvLayout(double x, double y, double u, double v)
+    {
+        FrontalPaintMapper mapper = FrontalPaintMapper.CreateDefault();
+
+        Assert.True(mapper.TryMap(new PaintPoint(x, y), out PaintHit hit));
+        Assert.Equal(u, hit.Uv.X, 2);
+        Assert.Equal(v, hit.Uv.Y, 2);
+    }
+
+    [Fact]
+    public void SeamStroke_TakesTheShortWayAcrossTheWrap()
+    {
+        PaintSurface surface = new();
+        PaintSurface reference = new();
+
+        // 0.98 -> 0.02 is 4% the short way and 96% the long way.
+        surface.Stroke(new PaintPoint(0.98, 0.5), new PaintPoint(0.02, 0.5), 8, PaintTool.Brush, PaintColor.White);
+        reference.Stamp(new PaintPoint(0.5, 0.5), 8, PaintTool.Brush, PaintColor.White);
+
+        int painted = CountOpaque(surface);
+        int oneStamp = CountOpaque(reference);
+        Assert.InRange(painted, oneStamp, oneStamp * 4);
+    }
+
     [Fact]
     public void OverlappingParts_ResolveToTheNearestDepthLane()
     {
         FrontalPaintMapper mapper = FrontalPaintMapper.CreateDefault();
 
-        // Inside both the torso ellipse and the left hand; the hand sits in the nearer lane.
+        // Inside both the torso and the left hand; the hand sits in the nearer lane.
         Assert.True(mapper.TryMap(new PaintPoint(-25, -5), out PaintHit hit));
         Assert.Equal(PaintPart.LeftHand, hit.Part);
+
+        // The head covers the top of the torso, so that overlap paints the head.
+        Assert.True(mapper.TryMap(new PaintPoint(0, -35), out PaintHit covered));
+        Assert.Equal(PaintPart.Head, covered.Part);
     }
 
     [Fact]
@@ -114,6 +155,18 @@ public sealed class PaintingPhaseBTests
         Assert.Equal(48L * 1024 * 1024, PaintPolicy.UndoBudgetBytes);
         Assert.Equal(64L * 1024 * 1024, PaintPolicy.EditingBudgetBytes);
         Assert.Equal(6, PaintPolicy.WhitelistedPaths.Count);
+    }
+
+    private static int CountOpaque(PaintSurface surface)
+    {
+        int count = 0;
+        ReadOnlySpan<byte> pixels = surface.Pixels.Span;
+        for (int index = 3; index < pixels.Length; index += 4)
+        {
+            if (pixels[index] != 0)
+                count++;
+        }
+        return count;
     }
 
     private static void AssertHit(FrontalPaintMapper mapper, PaintPoint point, PaintPart expected)
