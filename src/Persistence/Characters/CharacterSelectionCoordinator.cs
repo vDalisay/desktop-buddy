@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Persistence;
 
 namespace DesktopBuddy.Persistence.Characters;
@@ -24,20 +26,19 @@ public readonly record struct CharacterActivationResult(
     Guid? RequestedCharacterId,
     string? Detail = null)
 {
-    public bool WasQueued => Status is
-        CharacterActivationStatus.Queued or CharacterActivationStatus.BuiltInQueued;
+    public bool WasQueued => Status is CharacterActivationStatus.Queued or CharacterActivationStatus.BuiltInQueued;
 }
 
 /// <summary>
-/// Loads and compiles outside the physics tick, then atomically swaps the visual appearance
-/// and persisted selection at the next fixed tick. Repeated requests are last-request-wins.
-/// The bound SaveCoordinator observes CharacterSelectionState.Changed and is therefore the
-/// single immediate-save trigger for a committed selection change.
+/// Loads, validates, decodes and compiles outside the physics tick, then atomically swaps the
+/// narrow visual appearance at the next fixed tick. Prepared paint bytes are published for a
+/// main-thread render-frame bridge; no PNG or file work reaches PhysicsTick.
 /// </summary>
 public sealed class CharacterSelectionCoordinator
 {
     private readonly object _sync = new();
     private readonly CharacterStore _store;
+    private readonly CharacterPaintStore _paintStore;
     private readonly CharacterSelectionState _selection;
     private readonly BuddyVisualRigView _rigView;
     private readonly CharacterFeatureCatalog _catalog;
@@ -52,136 +53,53 @@ public sealed class CharacterSelectionCoordinator
         CharacterFeatureCatalog? catalog = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _paintStore = new CharacterPaintStore(new CharacterFileSystem(), store.Paths.Root);
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _rigView = rigView ?? throw new ArgumentNullException(nameof(rigView));
         ArgumentNullException.ThrowIfNull(saves);
         if (!ReferenceEquals(saves.CharacterSelection, selection))
-        {
-            throw new ArgumentException(
-                "Character selection coordinator requires a save coordinator bound to the same selection state.",
-                nameof(saves));
-        }
+            throw new ArgumentException("Coordinator requires the same character selection state.", nameof(saves));
         _catalog = catalog ?? CharacterFeatureCatalog.Shipped;
     }
 
     public long AppliedSequence { get; private set; }
     public Guid? AppliedCharacterId { get; private set; }
     public CharacterActivationStatus? LastFallbackStatus { get; private set; }
+    public IReadOnlyDictionary<PaintPart, byte[]> AppliedPaintPayload { get; private set; } =
+        new Dictionary<PaintPart, byte[]>();
+    public long AppliedPaintSequence { get; private set; }
 
     public async Task<CharacterActivationResult> QueueUseCharacterAsync(
         Guid? characterId,
         CancellationToken token)
     {
-        if (characterId == Guid.Empty)
-            throw new ArgumentOutOfRangeException(nameof(characterId));
+        if (characterId == Guid.Empty) throw new ArgumentOutOfRangeException(nameof(characterId));
         long sequence = Interlocked.Increment(ref _nextSequence);
-
         if (characterId is null)
         {
-            Queue(new PendingActivation(sequence, null, null, PersistSelection: true));
+            Queue(BuiltIn(sequence, persistSelection: true));
             return new CharacterActivationResult(CharacterActivationStatus.BuiltInQueued, null);
         }
-
-        CharacterLoadResult loaded = await _store.LoadAsync(characterId.Value, token)
-            .ConfigureAwait(false);
-        if (loaded.Status == CharacterLoadStatus.Cancelled)
-            return new CharacterActivationResult(CharacterActivationStatus.Cancelled, characterId);
-
-        if (!loaded.IsSuccess || loaded.Document is null)
-        {
-            CharacterActivationStatus fallback = loaded.Status switch
-            {
-                CharacterLoadStatus.NotFound => CharacterActivationStatus.NotFoundFallback,
-                CharacterLoadStatus.UnsupportedFutureVersion => CharacterActivationStatus.FutureVersionFallback,
-                _ => CharacterActivationStatus.InvalidFallback,
-            };
-            Queue(new PendingActivation(sequence, null, null, PersistSelection: false, fallback));
-            return new CharacterActivationResult(fallback, characterId, loaded.Detail);
-        }
-
-        CharacterCompileResult compiled = CharacterCompiler.Compile(loaded.Document, _catalog);
-        if (!compiled.IsSuccess || compiled.Appearance is null)
-        {
-            Queue(new PendingActivation(
-                sequence,
-                null,
-                null,
-                PersistSelection: false,
-                CharacterActivationStatus.CompileFailedFallback));
-            return new CharacterActivationResult(
-                CharacterActivationStatus.CompileFailedFallback,
-                characterId,
-                string.Join("; ", compiled.Errors));
-        }
-
-        Queue(new PendingActivation(sequence, characterId, compiled.Appearance, PersistSelection: true));
-        return new CharacterActivationResult(CharacterActivationStatus.Queued, characterId);
+        return await PrepareAsync(characterId.Value, sequence, persistSelection: true, token);
     }
 
-    /// <summary>
-    /// Startup applies a selected character when load+compile succeeds. Missing, corrupt,
-    /// future-version, or unknown selections show built-in visuals without rewriting the
-    /// stored ID; only an explicit player choice mutates selection.
-    /// </summary>
     public async Task<CharacterActivationResult> LoadStartupAsync(CancellationToken token)
     {
         Guid? selected = _selection.ActiveCharacterId;
+        long sequence = Interlocked.Increment(ref _nextSequence);
         if (selected is null)
         {
-            Queue(new PendingActivation(
-                Interlocked.Increment(ref _nextSequence), null, null, PersistSelection: false));
+            Queue(BuiltIn(sequence, persistSelection: false));
             return new CharacterActivationResult(CharacterActivationStatus.BuiltInQueued, null);
         }
-
-        CharacterLoadResult loaded = await _store.LoadAsync(selected.Value, token)
-            .ConfigureAwait(false);
-        if (loaded.Status == CharacterLoadStatus.Cancelled)
-            return new CharacterActivationResult(CharacterActivationStatus.Cancelled, selected);
-
-        if (!loaded.IsSuccess || loaded.Document is null)
-        {
-            CharacterActivationStatus fallback = loaded.Status switch
-            {
-                CharacterLoadStatus.NotFound => CharacterActivationStatus.NotFoundFallback,
-                CharacterLoadStatus.UnsupportedFutureVersion => CharacterActivationStatus.FutureVersionFallback,
-                _ => CharacterActivationStatus.InvalidFallback,
-            };
-            Queue(new PendingActivation(
-                Interlocked.Increment(ref _nextSequence), null, null, PersistSelection: false, fallback));
-            return new CharacterActivationResult(fallback, selected, loaded.Detail);
-        }
-
-        CharacterCompileResult compiled = CharacterCompiler.Compile(loaded.Document, _catalog);
-        if (!compiled.IsSuccess || compiled.Appearance is null)
-        {
-            Queue(new PendingActivation(
-                Interlocked.Increment(ref _nextSequence),
-                null,
-                null,
-                PersistSelection: false,
-                CharacterActivationStatus.CompileFailedFallback));
-            return new CharacterActivationResult(
-                CharacterActivationStatus.CompileFailedFallback,
-                selected,
-                string.Join("; ", compiled.Errors));
-        }
-
-        Queue(new PendingActivation(
-            Interlocked.Increment(ref _nextSequence), selected, compiled.Appearance, PersistSelection: false));
-        return new CharacterActivationResult(CharacterActivationStatus.Queued, selected);
+        return await PrepareAsync(selected.Value, sequence, persistSelection: false, token);
     }
 
-    public async Task<CharacterDeleteResult> DeleteCharacterAsync(
-        Guid characterId,
-        CancellationToken token)
+    public async Task<CharacterDeleteResult> DeleteCharacterAsync(Guid characterId, CancellationToken token)
     {
-        CharacterDeleteResult result = await _store.DeleteAsync(characterId, token)
-            .ConfigureAwait(false);
+        CharacterDeleteResult result = await _store.DeleteAsync(characterId, token).ConfigureAwait(false);
         if (result.IsSuccess && _selection.ActiveCharacterId == characterId)
-        {
-            Queue(new PendingActivation(
-                Interlocked.Increment(ref _nextSequence), null, null, PersistSelection: true));
-        }
+            Queue(BuiltIn(Interlocked.Increment(ref _nextSequence), persistSelection: true));
         return result;
     }
 
@@ -194,22 +112,74 @@ public sealed class CharacterSelectionCoordinator
             pending = _pending;
             _pending = null;
         }
-
-        if (pending is null)
-            return;
+        if (pending is null) return;
 
         PendingActivation activation = pending.Value;
-        if (activation.Appearance is null)
-            _rigView.ApplyBuiltInAppearance();
-        else
-            _rigView.ApplyAppearance(activation.Appearance);
+        if (activation.Appearance is null) _rigView.ApplyBuiltInAppearance();
+        else _rigView.ApplyAppearance(activation.Appearance);
         _rigView.RefreshCharacterCompositors();
 
-        if (activation.PersistSelection)
-            _selection.SetActive(activation.CharacterId);
+        AppliedPaintPayload = activation.Paint;
+        AppliedPaintSequence = activation.Sequence;
+        if (activation.PersistSelection) _selection.SetActive(activation.CharacterId);
         AppliedCharacterId = activation.CharacterId;
         AppliedSequence = activation.Sequence;
         LastFallbackStatus = activation.FallbackStatus;
+    }
+
+    private async Task<CharacterActivationResult> PrepareAsync(
+        Guid characterId,
+        long sequence,
+        bool persistSelection,
+        CancellationToken token)
+    {
+        CharacterPaintLoadResult loaded = await _paintStore.LoadAsync(characterId, token).ConfigureAwait(false);
+        if (loaded.Character.Status == CharacterLoadStatus.Cancelled)
+            return new CharacterActivationResult(CharacterActivationStatus.Cancelled, characterId);
+        if (!loaded.IsSuccess || loaded.Character.Document is null)
+        {
+            CharacterActivationStatus fallback = loaded.Character.Status switch
+            {
+                CharacterLoadStatus.NotFound => CharacterActivationStatus.NotFoundFallback,
+                CharacterLoadStatus.UnsupportedFutureVersion => CharacterActivationStatus.FutureVersionFallback,
+                _ => CharacterActivationStatus.InvalidFallback,
+            };
+            Queue(BuiltIn(sequence, persistSelection: false, fallback));
+            return new CharacterActivationResult(fallback, characterId, loaded.Detail ?? loaded.Character.Detail);
+        }
+
+        CharacterCompileResult compiled = CharacterCompiler.Compile(loaded.Character.Document, _catalog);
+        if (!compiled.IsSuccess || compiled.Appearance is null)
+        {
+            Queue(BuiltIn(sequence, persistSelection: false, CharacterActivationStatus.CompileFailedFallback));
+            return new CharacterActivationResult(
+                CharacterActivationStatus.CompileFailedFallback,
+                characterId,
+                string.Join("; ", compiled.Errors));
+        }
+
+        Queue(new PendingActivation(
+            sequence,
+            characterId,
+            compiled.Appearance,
+            ClonePaint(loaded.Surfaces),
+            persistSelection));
+        return new CharacterActivationResult(CharacterActivationStatus.Queued, characterId);
+    }
+
+    private static PendingActivation BuiltIn(
+        long sequence,
+        bool persistSelection,
+        CharacterActivationStatus? fallback = null) =>
+        new(sequence, null, null, new Dictionary<PaintPart, byte[]>(), persistSelection, fallback);
+
+    private static IReadOnlyDictionary<PaintPart, byte[]> ClonePaint(
+        IReadOnlyDictionary<PaintPart, byte[]> source)
+    {
+        var clone = new Dictionary<PaintPart, byte[]>();
+        foreach ((PaintPart part, byte[] bytes) in source)
+            clone.Add(part, (byte[])bytes.Clone());
+        return clone;
     }
 
     private void Queue(in PendingActivation activation)
@@ -225,6 +195,7 @@ public sealed class CharacterSelectionCoordinator
         long Sequence,
         Guid? CharacterId,
         CompiledCharacterAppearance? Appearance,
+        IReadOnlyDictionary<PaintPart, byte[]> Paint,
         bool PersistSelection,
         CharacterActivationStatus? FallbackStatus = null);
 }
