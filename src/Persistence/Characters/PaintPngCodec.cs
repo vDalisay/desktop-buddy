@@ -1,13 +1,12 @@
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using DesktopBuddy.Domain.Painting;
 
 namespace DesktopBuddy.Persistence.Characters;
 
-/// <summary>Minimal, deterministic non-interlaced RGBA8 PNG codec for trusted paint surfaces.</summary>
+/// <summary>Minimal deterministic non-interlaced RGBA8 PNG codec for trusted paint surfaces.</summary>
 public static class PaintPngCodec
 {
     private static ReadOnlySpan<byte> Signature => [137, 80, 78, 71, 13, 10, 26, 10];
@@ -16,12 +15,11 @@ public static class PaintPngCodec
     {
         if (rgba.Length != PaintPolicy.SurfaceBytes)
             throw new ArgumentException("Paint pixels must be exactly 512x512 RGBA8.", nameof(rgba));
-
         using var output = new MemoryStream();
         output.Write(Signature);
         Span<byte> ihdr = stackalloc byte[13];
-        BinaryPrimitives.WriteUInt32BigEndian(ihdr, PaintPolicy.SurfaceSize);
-        BinaryPrimitives.WriteUInt32BigEndian(ihdr[4..], PaintPolicy.SurfaceSize);
+        BinaryPrimitives.WriteUInt32BigEndian(ihdr, (uint)PaintPolicy.SurfaceSize);
+        BinaryPrimitives.WriteUInt32BigEndian(ihdr[4..], (uint)PaintPolicy.SurfaceSize);
         ihdr[8] = 8;
         ihdr[9] = 6;
         WriteChunk(output, "IHDR"u8, ihdr);
@@ -49,7 +47,7 @@ public static class PaintPngCodec
     {
         if (png.Length == 0 || png.Length > PaintPolicy.MaximumEncodedPngBytes)
             throw new InvalidDataException("Paint PNG is empty or exceeds the 2 MiB limit.");
-        if (png.Length < Signature.Length || !png[..8].SequenceEqual(Signature))
+        if (png.Length < 8 || !png[..8].SequenceEqual(Signature))
             throw new InvalidDataException("Paint file is not a PNG.");
 
         int offset = 8;
@@ -78,12 +76,10 @@ public static class PaintPngCodec
                 if (sawHeader || data.Length != 13)
                     throw new InvalidDataException("PNG header is invalid.");
                 sawHeader = true;
-                if (BinaryPrimitives.ReadUInt32BigEndian(data) != PaintPolicy.SurfaceSize ||
-                    BinaryPrimitives.ReadUInt32BigEndian(data[4..]) != PaintPolicy.SurfaceSize ||
+                if (BinaryPrimitives.ReadUInt32BigEndian(data) != (uint)PaintPolicy.SurfaceSize ||
+                    BinaryPrimitives.ReadUInt32BigEndian(data[4..]) != (uint)PaintPolicy.SurfaceSize ||
                     data[8] != 8 || data[9] != 6 || data[10] != 0 || data[11] != 0 || data[12] != 0)
-                {
                     throw new InvalidDataException("Paint PNG must be 512x512 non-interlaced RGBA8.");
-                }
             }
             else if (type.SequenceEqual("IDAT"u8))
             {
@@ -108,8 +104,7 @@ public static class PaintPngCodec
             throw new InvalidDataException("PNG is incomplete.");
         compressed.Position = 0;
         int rowBytes = PaintPolicy.SurfaceSize * PaintPolicy.BytesPerPixel;
-        int expectedRaw = (rowBytes + 1) * PaintPolicy.SurfaceSize;
-        byte[] filtered = new byte[expectedRaw];
+        byte[] filtered = new byte[(rowBytes + 1) * PaintPolicy.SurfaceSize];
         using (var zlib = new ZLibStream(compressed, CompressionMode.Decompress))
         {
             int total = 0;
@@ -167,13 +162,13 @@ public static class PaintPngCodec
 
     private static void WriteChunk(Stream stream, ReadOnlySpan<byte> type, ReadOnlySpan<byte> data)
     {
-        Span<byte> length = stackalloc byte[4];
-        BinaryPrimitives.WriteUInt32BigEndian(length, (uint)data.Length);
-        stream.Write(length);
+        Span<byte> value = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(value, (uint)data.Length);
+        stream.Write(value);
         stream.Write(type);
         stream.Write(data);
-        BinaryPrimitives.WriteUInt32BigEndian(length, Crc32(type, data));
-        stream.Write(length);
+        BinaryPrimitives.WriteUInt32BigEndian(value, Crc32(type, data));
+        stream.Write(value);
     }
 
     private static uint Crc32(ReadOnlySpan<byte> type, ReadOnlySpan<byte> data)
