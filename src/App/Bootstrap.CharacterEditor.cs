@@ -1,4 +1,6 @@
+using System;
 using DesktopBuddy.CharacterEditor;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Persistence.Characters;
 using Godot;
 
@@ -6,6 +8,8 @@ namespace DesktopBuddy.App;
 
 public partial class Bootstrap
 {
+    private const string CharacterEditorStartupCategory = "CharacterEditorStartup";
+
     public override void _EnterTree()
     {
         ChildEnteredTree += OnBootstrapChildEntered;
@@ -15,27 +19,53 @@ public partial class Bootstrap
     {
         if (child is not SandboxRoot sandbox)
             return;
+
+        Log.Info(CharacterEditorStartupCategory,
+            "Sandbox entered the tree; scheduling Character Editor composition.");
         Callable.From(() => ComposeCharacterEditor(sandbox)).CallDeferred();
     }
 
     private static void ComposeCharacterEditor(SandboxRoot sandbox)
     {
-        if (!GodotObject.IsInstanceValid(sandbox) ||
-            sandbox.GetNodeOrNull<CharacterEditorHost>(nameof(CharacterEditorHost)) is not null)
+        try
         {
-            return;
+            Log.Info(CharacterEditorStartupCategory,
+                $"Composition started: sandboxValid={GodotObject.IsInstanceValid(sandbox)}.");
+
+            if (!GodotObject.IsInstanceValid(sandbox) ||
+                sandbox.GetNodeOrNull<CharacterEditorHost>(nameof(CharacterEditorHost)) is not null)
+            {
+                Log.Info(CharacterEditorStartupCategory,
+                    "Composition skipped because the sandbox is invalid or the host already exists.");
+                return;
+            }
+
+            CharacterSelectionRuntime? selectionRuntime =
+                sandbox.GetNodeOrNull<CharacterSelectionRuntime>(nameof(CharacterSelectionRuntime));
+            if (selectionRuntime is null)
+            {
+                Log.Warn(CharacterEditorStartupCategory,
+                    "Composition skipped because CharacterSelectionRuntime was not found.");
+                return;
+            }
+
+            var host = new CharacterEditorHost
+            {
+                Name = nameof(CharacterEditorHost),
+            };
+            Log.Info(CharacterEditorStartupCategory, "CharacterEditorHost constructed.");
+
+            host.Configure(sandbox, selectionRuntime.Context, selectionRuntime);
+            Log.Info(CharacterEditorStartupCategory, "CharacterEditorHost configured; adding to sandbox.");
+
+            sandbox.AddChild(host);
+            Log.Info(CharacterEditorStartupCategory,
+                $"CharacterEditorHost added successfully: path={host.GetPath()} insideTree={host.IsInsideTree()}.");
         }
-
-        CharacterSelectionRuntime? selectionRuntime =
-            sandbox.GetNodeOrNull<CharacterSelectionRuntime>(nameof(CharacterSelectionRuntime));
-        if (selectionRuntime is null)
-            return;
-
-        var host = new CharacterEditorHost
+        catch (Exception exception)
         {
-            Name = nameof(CharacterEditorHost),
-        };
-        host.Configure(sandbox, selectionRuntime.Context, selectionRuntime);
-        sandbox.AddChild(host);
+            Log.Error(CharacterEditorStartupCategory,
+                $"Character Editor composition failed: {exception}");
+        }
     }
 }
