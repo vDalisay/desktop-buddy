@@ -6,9 +6,10 @@ using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
 namespace DesktopBuddy.Platform;
 
 /// <summary>
-/// Runtime diagnostics and a defensive invariant for the native input state. The semantic
-/// layout may briefly disagree with the actual Windows mode during startup or a failed layout
-/// transition; a visible windowed buddy box must never remain wholly mouse-passthrough.
+/// Runtime diagnostics and defensive native-window invariants. On Windows a transparent
+/// always-on-top native Fullscreen window can cover sibling top-level windows from the same
+/// process. FullscreenOverlay therefore settles as a borderless monitor-sized Windowed window,
+/// which preserves transparency, click-through, and reliable recovery-toolbar stacking.
 /// </summary>
 public partial class DesktopWindowController
 {
@@ -16,6 +17,7 @@ public partial class DesktopWindowController
 
     private ulong _inputDiagnosticFrame;
     private string? _lastInputDiagnosticSignature;
+    private bool _overlayWindowStabilized;
 
     public override void _Process(double delta)
     {
@@ -24,11 +26,42 @@ public partial class DesktopWindowController
             return;
 
         Window window = GetWindow();
-        bool nativeFullscreen = window.Mode == Window.ModeEnum.Fullscreen;
+        bool semanticFullscreen = LayoutMode == WindowLayoutMode.FullscreenOverlay;
+
+        if (semanticFullscreen && window.Mode == Window.ModeEnum.Fullscreen)
+        {
+            int monitor = System.Math.Clamp(FullscreenMonitor, 0, DisplayServer.GetScreenCount() - 1);
+            Vector2I position = DisplayServer.ScreenGetPosition(monitor);
+            Vector2I size = DisplayServer.ScreenGetSize(monitor);
+
+            // Leave native Fullscreen first. A borderless monitor-sized window is visually
+            // identical for this transparent overlay but does not suppress the sibling toolbar.
+            window.Mode = Window.ModeEnum.Windowed;
+            window.CurrentScreen = monitor;
+            window.Borderless = true;
+            window.Unresizable = true;
+            window.Transparent = true;
+            window.AlwaysOnTop = _compactSettings.AlwaysOnTop;
+            GetViewport().TransparentBg = true;
+            if (size.X > 0 && size.Y > 0)
+            {
+                window.Size = size;
+                window.Position = position;
+            }
+
+            _overlayWindowStabilized = true;
+            Log.Info(InputDiagnosticsCategory,
+                $"Stabilized full-screen overlay as borderless window: monitor={monitor} " +
+                $"rect={new Rect2I(position, size)} nativeMode={window.Mode}.");
+        }
+        else if (!semanticFullscreen)
+        {
+            _overlayWindowStabilized = false;
+        }
+
         bool requestedPassthrough =
-            LayoutMode == WindowLayoutMode.FullscreenOverlay &&
-            InputMode == DomainInputMode.Work;
-        bool allowedPassthrough = requestedPassthrough && nativeFullscreen;
+            semanticFullscreen && InputMode == DomainInputMode.Work;
+        bool allowedPassthrough = requestedPassthrough;
         bool actualPassthrough = window.MousePassthrough;
 
         if (actualPassthrough != allowedPassthrough)
@@ -40,8 +73,6 @@ public partial class DesktopWindowController
                 $"allowedPassthrough={allowedPassthrough} actualPassthrough={actualPassthrough}. " +
                 "Correcting the native window state now.");
 
-            // The old WM_NCHITTEST path must not remain active while correcting Godot's
-            // whole-window passthrough flag.
             _adapter.SetPlayModeCapture();
             window.MousePassthrough = allowedPassthrough;
             MainWindowMousePassthrough = allowedPassthrough;
@@ -50,6 +81,7 @@ public partial class DesktopWindowController
 
         string state =
             $"layout={LayoutMode};input={InputMode};nativeMode={window.Mode};" +
+            $"overlayStabilized={_overlayWindowStabilized};" +
             $"windowRect={new Rect2I(window.Position, window.Size)};" +
             $"visible={window.Visible};hasFocus={window.HasFocus()};" +
             $"requestedPassthrough={requestedPassthrough};" +
