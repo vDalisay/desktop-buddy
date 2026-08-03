@@ -1,6 +1,7 @@
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Platform;
 using Godot;
+using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
 
 namespace DesktopBuddy.Platform;
 
@@ -26,7 +27,7 @@ public partial class DesktopWindowController
         bool nativeFullscreen = window.Mode == Window.ModeEnum.Fullscreen;
         bool requestedPassthrough =
             LayoutMode == WindowLayoutMode.FullscreenOverlay &&
-            InputMode == Domain.Platform.InputMode.Work;
+            InputMode == DomainInputMode.Work;
         bool allowedPassthrough = requestedPassthrough && nativeFullscreen;
         bool actualPassthrough = window.MousePassthrough;
 
@@ -47,9 +48,9 @@ public partial class DesktopWindowController
             actualPassthrough = window.MousePassthrough;
         }
 
-        string signature =
-            $"frame={_inputDiagnosticFrame};layout={LayoutMode};input={InputMode};" +
-            $"nativeMode={window.Mode};windowRect={new Rect2I(window.Position, window.Size)};" +
+        string state =
+            $"layout={LayoutMode};input={InputMode};nativeMode={window.Mode};" +
+            $"windowRect={new Rect2I(window.Position, window.Size)};" +
             $"visible={window.Visible};hasFocus={window.HasFocus()};" +
             $"requestedPassthrough={requestedPassthrough};" +
             $"allowedPassthrough={allowedPassthrough};actualPassthrough={actualPassthrough};" +
@@ -57,14 +58,14 @@ public partial class DesktopWindowController
 
         bool startupSample = _inputDiagnosticFrame is 1 or 30 or 120 or 300;
         if (!startupSample && string.Equals(
-                signature[(signature.IndexOf(';') + 1)..],
+                state,
                 _lastInputDiagnosticSignature,
                 System.StringComparison.Ordinal))
         {
             return;
         }
 
-        _lastInputDiagnosticSignature = signature[(signature.IndexOf(';') + 1)..];
-        Log.Info(InputDiagnosticsCategory, signature);
+        _lastInputDiagnosticSignature = state;
+        Log.Info(InputDiagnosticsCategory, $"frame={_inputDiagnosticFrame};{state}");
     }
 }
