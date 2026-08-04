@@ -18,7 +18,7 @@ public readonly record struct AccentRenderKey(
 
 public static class BuiltInCharacterAppearance
 {
-    private static readonly Rgba32 FeatureColor = Rgba32.Parse("#183042");
+    private static readonly Rgba32 FeatureColor = Rgba32.Parse("#2A1A12");
 
     public static CompiledCharacterAppearance Value { get; } = new(
         Guid.Empty,
@@ -30,7 +30,7 @@ public static class BuiltInCharacterAppearance
             CharacterPartColors.BuiltInFoot,
             CharacterPartColors.BuiltInFoot),
         new CompiledFeatureAppearance(
-            CharacterFeatureIds.EyesSoftOval,
+            CharacterFeatureIds.EyesButton,
             NormalizedFeatureTransform.Identity,
             FeatureColor),
         new CompiledFeatureAppearance(
