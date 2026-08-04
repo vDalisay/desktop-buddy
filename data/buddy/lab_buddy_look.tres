@@ -1,20 +1,25 @@
-[gd_resource type="Resource" script_class="BuddyLookProfile" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="BuddyLookProfile" load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyLookProfile.cs" id="1_look"]
+[ext_resource type="Texture2D" path="res://assets/buddy/stitched_doll_fabric.svg" id="2_fabric"]
+[ext_resource type="Texture2D" path="res://assets/buddy/stitched_doll_seams.svg" id="3_seams"]
 
 [resource]
-resource_name = "AcceptedM35BuddyLook"
+resource_name = "StitchedDollBuddyLook"
 script = ExtResource("1_look")
 DiffuseMode = 1
 SpecularMode = 1
-Specular = 0.08
+Specular = 0.04
 Roughness = 1.0
-KeyColor = Color(1, 0.98, 0.94, 1)
+KeyColor = Color(1, 0.96, 0.88, 1)
 KeyEnergy = 0.75
 KeyEulerDegrees = Vector3(-35, -30, 0)
-FillColor = Color(0.85, 0.9, 1, 1)
+FillColor = Color(0.82, 0.87, 0.96, 1)
 FillEnergy = 0.7
 FillEulerDegrees = Vector3(0, 0, 0)
 ShadowsEnabled = false
-OutlineColor = Color(0.094, 0.188, 0.259, 1)
+OutlineColor = Color(0.16, 0.09, 0.05, 1)
 OutlineGrowAmount = 1.5
+FabricTexture = ExtResource("2_fabric")
+SeamTexture = ExtResource("3_seams")
+SeamGrowAmount = 0.075
