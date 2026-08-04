@@ -29,6 +29,37 @@ public sealed class PaintSurface
     public long Revision { get; private set; }
     public ReadOnlyMemory<byte> Pixels => _pixels;
 
+    public static PaintRect StampBounds(PaintPoint uv, int diameter)
+    {
+        diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
+        double centerX = uv.X * (PaintPolicy.SurfaceSize - 1);
+        double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
+        double radius = diameter / 2.0;
+        int minX = (int)Math.Floor(centerX - radius);
+        int maxX = (int)Math.Ceiling(centerX + radius);
+        int minY = Math.Clamp((int)Math.Floor(centerY - radius), 0, PaintPolicy.SurfaceSize - 1);
+        int maxY = Math.Clamp((int)Math.Ceiling(centerY + radius), 0, PaintPolicy.SurfaceSize - 1);
+        return minX < 0 || maxX > PaintPolicy.SurfaceSize - 1
+            ? new PaintRect(0, minY, PaintPolicy.SurfaceSize, (maxY - minY) + 1)
+            : new PaintRect(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1);
+    }
+
+    public static PaintRect StrokeBounds(PaintPoint from, PaintPoint to, int diameter)
+    {
+        to = NormalizeStrokeTarget(from, to);
+        double distancePixels = (to - from).Length * PaintPolicy.SurfaceSize;
+        double spacing = Math.Max(1.0, diameter * 0.22);
+        int steps = Math.Max(1, (int)Math.Ceiling(distancePixels / spacing));
+        PaintRect dirty = default;
+        for (int step = 0; step <= steps; step++)
+        {
+            double t = step / (double)steps;
+            PaintPoint point = from + ((to - from) * t);
+            dirty = PaintRect.Union(dirty, StampBounds(point, diameter));
+        }
+        return dirty;
+    }
+
     public PaintRect Stamp(
         PaintPoint uv,
         int diameter,
@@ -81,9 +112,7 @@ public sealed class PaintSurface
         if (!changed)
             return default;
         Revision++;
-        return minX < 0 || maxX > PaintPolicy.SurfaceSize - 1
-            ? new PaintRect(0, minY, PaintPolicy.SurfaceSize, (maxY - minY) + 1)
-            : new PaintRect(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1);
+        return StampBounds(uv, diameter);
     }
 
     public PaintRect Stroke(
@@ -95,8 +124,7 @@ public sealed class PaintSurface
     {
         // U is cyclic: a stroke across the seam takes the short way round rather than dragging
         // paint the long way across the whole texture.
-        if (Math.Abs(to.X - from.X) > 0.5)
-            to = new PaintPoint(to.X + (to.X < from.X ? 1.0 : -1.0), to.Y);
+        to = NormalizeStrokeTarget(from, to);
 
         double distancePixels = (to - from).Length * PaintPolicy.SurfaceSize;
         double spacing = Math.Max(1.0, diameter * 0.22);
@@ -160,4 +188,11 @@ public sealed class PaintSurface
     }
 
     public string ComputeHash() => Convert.ToHexString(SHA256.HashData(_pixels));
+
+    private static PaintPoint NormalizeStrokeTarget(PaintPoint from, PaintPoint to)
+    {
+        if (Math.Abs(to.X - from.X) > 0.5)
+            return new PaintPoint(to.X + (to.X < from.X ? 1.0 : -1.0), to.Y);
+        return to;
+    }
 }
