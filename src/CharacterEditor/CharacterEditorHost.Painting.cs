@@ -62,8 +62,6 @@ public partial class CharacterEditorHost
         // The canvas exists before anything that binds to it: wiring a control to
         // _paintCanvas.Method while the field is still null throws on the delegate, not on use.
         _paintCanvas = new PaintCanvasControl { Name = "CharacterPaintCanvas", Visible = false };
-        if (previewContainer.GetChildOrNull<SubViewport>(0) is SubViewport viewport)
-            _paintCanvas.ViewportSize = viewport.Size;
         _paintCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         previewContainer.AddChild(_paintCanvas);
         _paintCanvas.WorkspaceChanged += () => { QueueAllPaintTextures(); RefreshPaintStatus(); };
