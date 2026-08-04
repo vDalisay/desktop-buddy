@@ -28,9 +28,10 @@ internal static class PaintingPhaseBScenarioRegistration
         factories["paint_memory_budget"] = () => new PaintMemoryBudgetScenario();
         factories["paint_persistence_roundtrip"] = () => new PaintPersistenceRoundtripScenario();
         factories["paint_invalid_png_rejected"] = () => new PaintInvalidPngRejectedScenario();
-        factories["paint_save_failure_preserves_working_copy"] = () => new PaintSaveFailurePreservesWorkingCopyScenario();
         factories["paint_preview_has_no_physics"] = () => new PaintPreviewHasNoPhysicsScenario();
-        factories["paint_runtime_fidelity"] = () => new PaintRuntimeFidelityScenario();
         factories["paint_under_expression_layer_order"] = () => new PaintLayerOrderScenario();
+        factories["paint_save_failure_preserves_working_copy"] = () => new PaintSaveFailurePreservesWorkingCopyScenario();
+        factories["paint_runtime_fidelity"] = () => new PaintRuntimeFidelityScenario();
+        factories["character_paint_save_use_restart"] = () => new CharacterPaintSaveUseRestartScenario();
     }
 }
