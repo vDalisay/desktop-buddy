@@ -26,10 +26,10 @@ public sealed record CharacterDocument
 
 public sealed record CharacterPartColors
 {
-    public static Rgba32 BuiltInHead { get; } = Rgba32.Parse("#7AC7FF");
-    public static Rgba32 BuiltInTorso { get; } = Rgba32.Parse("#45A3E0");
-    public static Rgba32 BuiltInHand { get; } = Rgba32.Parse("#8FD4FF");
-    public static Rgba32 BuiltInFoot { get; } = Rgba32.Parse("#61B8F0");
+    public static Rgba32 BuiltInHead { get; } = Rgba32.Parse("#C69A6B");
+    public static Rgba32 BuiltInTorso { get; } = Rgba32.Parse("#AA7446");
+    public static Rgba32 BuiltInHand { get; } = Rgba32.Parse("#D1A374");
+    public static Rgba32 BuiltInFoot { get; } = Rgba32.Parse("#B88052");
 
     public static CharacterPartColors BuiltIn { get; } = new();
 
@@ -46,7 +46,7 @@ public sealed record CharacterFeatureSet
     public static CharacterFeatureSet BuiltIn { get; } = new();
 
     public CharacterFeatureDocument Eyes { get; init; } = CharacterFeatureDocument.Create(
-        CharacterFeatureIds.EyesSoftOval);
+        CharacterFeatureIds.EyesButton);
     public CharacterFeatureDocument Brows { get; init; } = CharacterFeatureDocument.Create(
         CharacterFeatureIds.BrowsSoftArc);
     public CharacterFeatureDocument Mouth { get; init; } = CharacterFeatureDocument.Create(
@@ -61,7 +61,7 @@ public sealed record CharacterFeatureDocument
     public double OffsetX { get; init; }
     public double OffsetY { get; init; }
     public double Scale { get; init; } = 1.0;
-    public Rgba32 Color { get; init; } = Rgba32.Parse("#183042");
+    public Rgba32 Color { get; init; } = Rgba32.Parse("#2A1A12");
 
     public static CharacterFeatureDocument Create(string featureId) => new()
     {
