@@ -19,12 +19,6 @@ public partial class PaintCanvasControl : Control
     public PaintViewState View { get; } = new();
     public PaintPart? HoveredPart { get; private set; }
 
-    /// <summary>
-    /// Render size of the preview SubViewport. The container stretches that image over this
-    /// control, so the horizontal world span follows the viewport's aspect, not the control's.
-    /// </summary>
-    public Vector2 ViewportSize { get; set; } = new(420, 360);
-
     /// <summary>World-space point the camera is centred on, in 2D world units (Y-down).</summary>
     public PaintPoint CameraCenter => new(
         View.Pan.X * (BaseCameraSize / 2.0),
@@ -168,7 +162,12 @@ public partial class PaintCanvasControl : Control
     {
         double width = Math.Max(1.0, Size.X);
         double height = Math.Max(1.0, Size.Y);
-        double aspect = Math.Max(0.01, ViewportSize.X) / Math.Max(0.01, ViewportSize.Y);
+
+        // SubViewportContainer.Stretch resizes the preview viewport to the container after
+        // layout. This FullRect input layer shares that live rectangle, so its aspect is also
+        // the camera aspect. Caching the viewport's initial 420x360 size compresses horizontal
+        // pointer movement after the editor widens and makes a drag stroke lag behind its cursor.
+        double aspect = width / height;
         double verticalSpan = BaseCameraSize / View.Zoom;
         PaintPoint center = CameraCenter;
         return new PaintPoint(
