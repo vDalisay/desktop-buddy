@@ -14,9 +14,9 @@ using Godot;
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// Deterministic Phase B journey core. The production editor controls are covered by the
-/// Windows owner-input gate; this core proves the same working-copy, persistence, activation,
-/// runtime-binding, and restart boundaries under the journey runner.
+/// Deterministic Phase B journey core. Pointer strokes, wheel sizing, erasing, and keyboard
+/// Undo enter through Godot's real input queue and the production PaintCanvasControl. Semantic
+/// assertions then prove working-copy, persistence, activation, runtime binding, and restart.
 /// </summary>
 public sealed class CharacterPaintSaveUseRestartScenario : IScenario
 {
@@ -28,23 +28,37 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
         CharacterEditorScenarioSupport.Context context =
             await CharacterEditorScenarioSupport.Create(tree, Id);
         RuntimePaintTextureBridge? runtimeBridge = null;
+        PaintCanvasControl? canvas = null;
         try
         {
             var paintStore = new CharacterPaintStore(new CharacterFileSystem(), context.Root);
-            var workspace = new PaintWorkspace();
-            await context.Session.AttachPaintingAsync(paintStore, workspace);
+            canvas = new PaintCanvasControl
+            {
+                Name = "JourneyPaintCanvas",
+                Position = Vector2.Zero,
+                Size = new Vector2(420, 360),
+                ViewportSize = new Vector2(420, 360),
+                MouseFilter = Control.MouseFilterEnum.Stop,
+                FocusMode = Control.FocusModeEnum.All,
+                ZIndex = 4096,
+            };
+            tree.Root.AddChild(canvas);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            canvas.GrabFocus();
 
+            PaintWorkspace workspace = canvas.Workspace;
+            await context.Session.AttachPaintingAsync(paintStore, workspace);
             CharacterEditorActionResult created = context.Session.NewCharacter("Paint Journey Buddy");
             Guid id = context.Session.WorkingDocument?.Id ?? Guid.Empty;
+
+            int brushBeforeWheel = workspace.BrushDiameter;
+            await SendWheel(tree, new Vector2(210, 135), up: true);
+            int brushAfterWheel = workspace.BrushDiameter;
+
             workspace.SelectedColor = new PaintColor(32, 144, 220);
-            workspace.AdjustBrush(2);
-            workspace.BeginGesture(new PaintHit(PaintPart.Head, new PaintPoint(0.48, 0.46), 0));
-            workspace.ContinueGesture(new PaintHit(PaintPart.Head, new PaintPoint(0.58, 0.52), 0));
-            workspace.EndGesture();
+            await Stroke(tree, new Vector2(210, 135), new Vector2(220, 140));
             workspace.SelectedColor = new PaintColor(220, 72, 48);
-            workspace.BeginGesture(new PaintHit(PaintPart.Torso, new PaintPoint(0.42, 0.40), 0));
-            workspace.ContinueGesture(new PaintHit(PaintPart.Torso, new PaintPoint(0.62, 0.62), 0));
-            workspace.EndGesture();
+            await Stroke(tree, new Vector2(210, 180), new Vector2(222, 190));
 
             string headPainted = workspace.Surfaces[PaintPart.Head].ComputeHash();
             string torsoPainted = workspace.Surfaces[PaintPart.Torso].ComputeHash();
@@ -53,16 +67,19 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
                 workspace.Surfaces[PaintPart.Head].Pixels.Span.IndexOfAnyExcept((byte)0) >= 0 &&
                 workspace.Surfaces[PaintPart.Torso].Pixels.Span.IndexOfAnyExcept((byte)0) >= 0;
             checks.Add(new StartupCheck(
+                "b6_journey_routes_pointer_and_wheel_through_input",
+                brushAfterWheel > brushBeforeWheel && paintedTwo,
+                $"brush={brushBeforeWheel}->{brushAfterWheel} head={canvas.PartAt(new Vector2(210, 135))} torso={canvas.PartAt(new Vector2(210, 180))}"));
+            checks.Add(new StartupCheck(
                 "b6_journey_paints_two_parts_and_tracks_dirty",
                 paintedTwo,
                 $"id={id} dirty={context.Session.IsDirty} undo={workspace.CanUndo}"));
 
             workspace.SelectedTool = PaintTool.Eraser;
-            workspace.BeginGesture(new PaintHit(PaintPart.Head, new PaintPoint(0.50, 0.48), 0));
-            workspace.EndGesture();
+            await Stroke(tree, new Vector2(210, 135), new Vector2(214, 138));
             bool eraseChanged = workspace.Surfaces[PaintPart.Head].ComputeHash() != headPainted;
-            bool eraseUndo = workspace.Undo() &&
-                workspace.Surfaces[PaintPart.Head].ComputeHash() == headPainted;
+            await SendUndo(tree);
+            bool eraseUndo = workspace.Surfaces[PaintPart.Head].ComputeHash() == headPainted;
             checks.Add(new StartupCheck(
                 "b6_journey_eraser_undo_is_exact",
                 eraseChanged && eraseUndo,
@@ -146,6 +163,7 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
         finally
         {
             runtimeBridge?.Dispose();
+            canvas?.QueueFree();
             await CharacterEditorScenarioSupport.Cleanup(tree, context);
         }
 
@@ -153,5 +171,82 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
             checks.All(static check => check.Passed),
             checks,
             [$"seed={seed}"]);
+    }
+
+    private static async Task Stroke(SceneTree tree, Vector2 from, Vector2 to)
+    {
+        Input.ParseInputEvent(new InputEventMouseMotion
+        {
+            Position = from,
+            GlobalPosition = from,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            ButtonMask = MouseButtonMask.Left,
+            Pressed = true,
+            Position = from,
+            GlobalPosition = from,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventMouseMotion
+        {
+            ButtonMask = MouseButtonMask.Left,
+            Position = to,
+            GlobalPosition = to,
+            Relative = to - from,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = MouseButton.Left,
+            Pressed = false,
+            Position = to,
+            GlobalPosition = to,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+    }
+
+    private static async Task SendWheel(SceneTree tree, Vector2 position, bool up)
+    {
+        MouseButton button = up ? MouseButton.WheelUp : MouseButton.WheelDown;
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = button,
+            Pressed = true,
+            Factor = 1.0f,
+            Position = position,
+            GlobalPosition = position,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventMouseButton
+        {
+            ButtonIndex = button,
+            Pressed = false,
+            Position = position,
+            GlobalPosition = position,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+    }
+
+    private static async Task SendUndo(SceneTree tree)
+    {
+        Input.ParseInputEvent(new InputEventKey
+        {
+            Keycode = Key.Z,
+            PhysicalKeycode = Key.Z,
+            CtrlPressed = true,
+            Pressed = true,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventKey
+        {
+            Keycode = Key.Z,
+            PhysicalKeycode = Key.Z,
+            CtrlPressed = true,
+            Pressed = false,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
     }
 }
