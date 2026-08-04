@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<rect width="64" height="64" fill="#F3EFE8"/>
+<path d="M0 1H64 M0 5H64 M0 9H64 M0 13H64 M0 17H64 M0 21H64 M0 25H64 M0 29H64 M0 33H64 M0 37H64 M0 41H64 M0 45H64 M0 49H64 M0 53H64 M0 57H64 M0 61H64" stroke="#C8BFB1" stroke-width="1" fill="none"/>
+<path d="M0 2H64 M0 6H64 M0 10H64 M0 14H64 M0 18H64 M0 22H64 M0 26H64 M0 30H64 M0 34H64 M0 38H64 M0 42H64 M0 46H64 M0 50H64 M0 54H64 M0 58H64 M0 62H64" stroke="#FFFFFF" stroke-opacity=".35" stroke-width="1" fill="none"/>
+<path d="M2 0V64 M6 0V64 M10 0V64 M14 0V64 M18 0V64 M22 0V64 M26 0V64 M30 0V64 M34 0V64 M38 0V64 M42 0V64 M46 0V64 M50 0V64 M54 0V64 M58 0V64 M62 0V64" stroke="#B8AD9E" stroke-opacity=".62" stroke-width="1" fill="none"/>
+<path d="M3 0V64 M7 0V64 M11 0V64 M15 0V64 M19 0V64 M23 0V64 M27 0V64 M31 0V64 M35 0V64 M39 0V64 M43 0V64 M47 0V64 M51 0V64 M55 0V64 M59 0V64 M63 0V64" stroke="#FFFFFF" stroke-opacity=".28" stroke-width="1" fill="none"/>
+<path d="M3 17L38 15 M20 7L57 9 M8 36L45 38 M13 53L60 51" stroke="#9F9384" stroke-opacity=".38" stroke-width="1" fill="none"/>
+</svg>
