@@ -12,6 +12,7 @@ public partial class BuddyVisualRigView
     private ParametricFaceCompositor? _characterFaceCompositor;
     private BodyAccentCompositor? _characterAccentCompositor;
     private FaceRenderState? _previewFaceState;
+    private bool _stitchedDollSurfaceInitialized;
 
     public FaceRenderKey? LastCharacterFaceRenderKey => _characterFaceCompositor?.LastRenderKey;
     public AccentRenderKey? LastCharacterAccentRenderKey => _characterAccentCompositor?.LastRenderKey;
@@ -20,8 +21,11 @@ public partial class BuddyVisualRigView
 
     public override void _Process(double delta)
     {
-        if (IsInitialized)
-            RefreshCharacterCompositors();
+        if (!IsInitialized)
+            return;
+
+        EnsureStitchedDollSurface();
+        RefreshCharacterCompositors();
     }
 
     /// <summary>
@@ -50,6 +54,7 @@ public partial class BuddyVisualRigView
         if (!IsInitialized)
             return;
 
+        EnsureStitchedDollSurface();
         EnsureCharacterCompositors();
         CompiledCharacterAppearance appearance = _activeAppearance ?? BuiltInCharacterAppearance.Value;
         FaceRenderState state = _previewFaceState ?? LastFaceState ??
@@ -59,6 +64,33 @@ public partial class BuddyVisualRigView
         _characterFaceCompositor.SetState(state);
         _characterAccentCompositor!.SetAppearance(appearance.TorsoAccent);
         BindCharacterCompositorTextures();
+    }
+
+    /// <summary>
+    /// Adds one transparent seam shell to each trusted part mesh. It is created once after
+    /// initialization, shares the trusted geometry, renders above the player-paint shell, and
+    /// never participates in physics, hit mapping, persistence, or appearance compilation.
+    /// </summary>
+    private void EnsureStitchedDollSurface()
+    {
+        if (_stitchedDollSurfaceInitialized)
+            return;
+
+        _stitchedDollSurfaceInitialized = true;
+        if (_trustedProfile.Look.SeamTexture is null)
+            return;
+
+        for (int index = 0; index < PuppetRigProfile.RequiredPartCount; index++)
+        {
+            var seamLayer = new MeshInstance3D
+            {
+                Name = "Stitches",
+                Mesh = _partMeshes[index].Mesh,
+                MaterialOverride = _materials.CreateSeamMaterial(),
+                PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+            };
+            _sockets[index].AddChild(seamLayer);
+        }
     }
 
     private void EnsureCharacterCompositors()
