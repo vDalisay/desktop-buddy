@@ -21,6 +21,7 @@ internal static class PaintingPhaseBScenarioRegistration
         var factories = (Dictionary<string, Func<IScenario>>?)field.GetValue(null)
             ?? throw new InvalidOperationException("Scenario registry was not initialized.");
         factories["paint_frontal_uv_mapping"] = () => new PaintFrontalUvMappingScenario();
+        factories["paint_canvas_aspect_mapping"] = () => new PaintCanvasAspectMappingScenario();
         factories["paint_stroke_and_eraser"] = () => new PaintStrokeAndEraserScenario();
         factories["paint_multi_part_stroke_undo"] = () => new PaintMultiPartStrokeUndoScenario();
         factories["paint_erase_all_undo"] = () => new PaintEraseAllUndoScenario();
