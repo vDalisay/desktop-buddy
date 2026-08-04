@@ -6,20 +6,20 @@ namespace DesktopBuddy.Domain.Tests.Presentation;
 
 public sealed class BuddyLookDataTests
 {
-    /// <summary>The owner-accepted Variant C defaults, mirrored from lab_buddy_look.tres.</summary>
+    /// <summary>The current stitched-doll lighting and outline values from lab_buddy_look.tres.</summary>
     private static BuddyLookData Accepted() => new(
         DiffuseMode: 1,
         SpecularMode: 1,
-        Specular: 0.08f,
+        Specular: 0.04f,
         Roughness: 1.0f,
-        KeyColor: new LookColor(1.0f, 0.98f, 0.94f, 1.0f),
+        KeyColor: new LookColor(1.0f, 0.96f, 0.88f, 1.0f),
         KeyEnergy: 0.75f,
         KeyEulerDegrees: new LookEuler(-35.0f, -30.0f, 0.0f),
-        FillColor: new LookColor(0.85f, 0.90f, 1.0f, 1.0f),
+        FillColor: new LookColor(0.82f, 0.87f, 0.96f, 1.0f),
         FillEnergy: 0.70f,
         FillEulerDegrees: new LookEuler(0.0f, 0.0f, 0.0f),
         ShadowsEnabled: false,
-        OutlineColor: new LookColor(0.094f, 0.188f, 0.259f, 1.0f),
+        OutlineColor: new LookColor(0.16f, 0.09f, 0.05f, 1.0f),
         OutlineGrowAmount: 1.5f);
 
     [Fact]
@@ -96,7 +96,7 @@ public sealed class BuddyLookDataTests
     {
         BuddyLookData look = Accepted() with
         {
-            KeyColor = new LookColor(float.NaN, 0.98f, 0.94f, 1.0f),
+            KeyColor = new LookColor(float.NaN, 0.96f, 0.88f, 1.0f),
         };
 
         Assert.Contains(look.Validate(), error => error.Contains("key light colour"));
@@ -107,7 +107,7 @@ public sealed class BuddyLookDataTests
     {
         BuddyLookData look = Accepted() with
         {
-            OutlineColor = new LookColor(0.094f, float.PositiveInfinity, 0.259f, 1.0f),
+            OutlineColor = new LookColor(0.16f, float.PositiveInfinity, 0.05f, 1.0f),
         };
 
         Assert.Contains(look.Validate(), error => error.Contains("outline colour"));
