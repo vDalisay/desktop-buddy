@@ -24,6 +24,7 @@ public sealed class CharacterFeatureRendererRegistry
     {
         Catalog = catalog ?? CharacterFeatureCatalog.Shipped;
 
+        Add(new ButtonEyeRenderer());
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesSoftOval, EyeVariant.SoftOval));
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesRoundDot, EyeVariant.RoundDot));
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesHorizontalLed, EyeVariant.HorizontalLed));
