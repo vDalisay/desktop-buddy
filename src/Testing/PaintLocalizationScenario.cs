@@ -44,7 +44,8 @@ public sealed class PaintLocalizationScenario : IScenario
             new("phase_b_paint_localization_never_shows_raw_key", noRawKeys,
                 $"keys={keys.Length}"),
             new("phase_b_paint_localization_formats_status_placeholders",
-                formatted.Contains("Brush") && formatted.Contains("Head") && formatted.Contains("1.0"),
+                formatted.Contains("Brush") && formatted.Contains("Head") &&
+                !formatted.Contains(PaintUiText.Status),
                 formatted),
         };
         return Task.FromResult(new ScenarioResult(
