@@ -19,6 +19,13 @@ public partial class PaintCanvasControl : Control
     public PaintViewState View { get; } = new();
     public PaintPart? HoveredPart { get; private set; }
 
+    /// <summary>
+    /// Retained for source compatibility with existing painting scenarios. Runtime pointer
+    /// mapping deliberately uses this control's live Size because the stretched preview adopts
+    /// the same post-layout rectangle.
+    /// </summary>
+    public Vector2 ViewportSize { get; set; } = new(420, 360);
+
     /// <summary>World-space point the camera is centred on, in 2D world units (Y-down).</summary>
     public PaintPoint CameraCenter => new(
         View.Pan.X * (BaseCameraSize / 2.0),
