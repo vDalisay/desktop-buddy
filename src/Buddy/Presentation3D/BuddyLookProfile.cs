@@ -5,15 +5,11 @@ using Godot;
 namespace DesktopBuddy.Buddy.Presentation3D;
 
 /// <summary>
-/// Typed, immutable image of the owner-accepted Variant C production look (2026-07-15):
-/// soft matte toon shading from a built-in <see cref="StandardMaterial3D"/> (Lambert diffuse,
-/// toon specular), a transparent-safe shadowless two-light rig, and an ink inverted-hull
-/// outline. This is the required nested reference of <see cref="BuddyVisualProfile"/>; the
-/// future character editor may replace base colours and bounded look options but never writes
-/// rig/drive tuning. All tunables live here as data — never as code literals
-/// (M3_5_MATERIALS_AND_LOOK_PLAN.md). The one production style is a single typed configuration;
-/// the enum fields exist to mirror the Godot material settings for validation and inspection,
-/// not as a shader-choice catalog.
+/// Typed, immutable image of the owner-accepted production look: soft matte toon shading,
+/// a transparent-safe shadowless two-light rig, an ink inverted-hull outline, and optional
+/// surface-detail textures. The character editor may replace base colours and paint pixels,
+/// but never writes rig/drive tuning. All look tunables live here as data rather than code
+/// literals (M3_5_MATERIALS_AND_LOOK_PLAN.md).
 /// </summary>
 [GlobalClass]
 public partial class BuddyLookProfile : GameResource
@@ -43,12 +39,33 @@ public partial class BuddyLookProfile : GameResource
     [Export(PropertyHint.Range, "0.001,64,0.001,or_greater")]
     public float OutlineGrowAmount { get; set; } = 1.5f;
 
+    /// <summary>
+    /// Neutral woven texture multiplied by each part's selected base colour. It belongs to
+    /// the trusted look, not character paint, so painting remains a separate transparent shell.
+    /// </summary>
+    [Export] public Texture2D? FabricTexture { get; set; }
+
+    /// <summary>
+    /// Transparent seam-and-thread texture rendered above the paint shell and below face/accent
+    /// decals. A null value disables the seam layer without changing trusted geometry.
+    /// </summary>
+    [Export] public Texture2D? SeamTexture { get; set; }
+
+    [Export(PropertyHint.Range, "0.051,0.099,0.001")]
+    public float SeamGrowAmount { get; set; } = 0.075f;
+
     public override Godot.Collections.Array<string> Validate()
     {
         var errors = new Godot.Collections.Array<string>();
         foreach (string error in ToData().Validate())
-        {
             errors.Add(error);
+
+        if (!float.IsFinite(SeamGrowAmount) ||
+            SeamGrowAmount <= BuddyLookMaterialLibrary.PaintShellGrowAmount ||
+            SeamGrowAmount >= 0.1f)
+        {
+            errors.Add(
+                $"{nameof(SeamGrowAmount)} must stay above the paint shell and below face/accent decals.");
         }
 
         return errors;
