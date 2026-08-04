@@ -68,8 +68,8 @@ public partial class CharacterEditorHost
         _paintCanvas.ViewChanged += ApplyPaintView;
         _paintCanvas.HoverChanged += _ => RefreshPaintStatus();
 
-        _paintModeButton = Button("Paint", "PaintModeButton");
-        _paintModeButton.TooltipText = "Paint directly on the buddy body.";
+        _paintModeButton = Button(PaintUiText.Get(PaintUiText.Open), "PaintModeButton");
+        _paintModeButton.TooltipText = PaintUiText.Get(PaintUiText.OpenTooltip);
         _paintModeButton.Pressed += TogglePaintMode;
         controls.AddChild(_paintModeButton);
 
@@ -84,8 +84,8 @@ public partial class CharacterEditorHost
 
         var toolRow = new HBoxContainer();
         _paintControls.AddChild(toolRow);
-        Button brush = Button("Brush", "PaintBrushButton");
-        Button eraser = Button("Eraser", "PaintEraserButton");
+        Button brush = Button(PaintUiText.Get(PaintUiText.Brush), "PaintBrushButton");
+        Button eraser = Button(PaintUiText.Get(PaintUiText.Eraser), "PaintEraserButton");
         brush.Pressed += () => { _paintCanvas.Workspace.SelectedTool = PaintTool.Brush; RefreshPaintStatus(); };
         eraser.Pressed += () => { _paintCanvas.Workspace.SelectedTool = PaintTool.Eraser; RefreshPaintStatus(); };
         toolRow.AddChild(brush);
@@ -95,7 +95,7 @@ public partial class CharacterEditorHost
         {
             Name = "PaintColorWheel",
             Color = Colors.White,
-            TooltipText = "Choose an opaque paint color.",
+            TooltipText = PaintUiText.Get(PaintUiText.ColorTooltip),
         };
         color.ColorChanged += value =>
         {
@@ -113,29 +113,29 @@ public partial class CharacterEditorHost
         smaller.Pressed += () => { _paintCanvas.Workspace.AdjustBrush(-1); RefreshPaintStatus(); };
         larger.Pressed += () => { _paintCanvas.Workspace.AdjustBrush(1); RefreshPaintStatus(); };
         _brushSize = new Label { Name = "PaintBrushSize" };
-        sizeRow.AddChild(new Label { Text = "Brush size" });
+        sizeRow.AddChild(new Label { Text = PaintUiText.Get(PaintUiText.BrushSize) });
         sizeRow.AddChild(smaller);
         sizeRow.AddChild(_brushSize);
         sizeRow.AddChild(larger);
 
         var commandRow = new HBoxContainer();
         _paintControls.AddChild(commandRow);
-        _undoPaintButton = Button("Undo", "PaintUndoButton");
+        _undoPaintButton = Button(PaintUiText.Get(PaintUiText.Undo), "PaintUndoButton");
         _undoPaintButton.Pressed += () =>
         {
             if (_paintCanvas.Workspace.Undo()) QueueAllPaintTextures();
             RefreshPaintStatus();
         };
         commandRow.AddChild(_undoPaintButton);
-        Button eraseAll = Button("Erase All", "PaintEraseAllButton");
+        Button eraseAll = Button(PaintUiText.Get(PaintUiText.EraseAll), "PaintEraseAllButton");
         eraseAll.Pressed += () => _eraseAllConfirmation.PopupCentered();
         commandRow.AddChild(eraseAll);
 
         var viewRow = new HBoxContainer();
         _paintControls.AddChild(viewRow);
-        Button zoomOut = Button("Zoom −", "PaintZoomOutButton");
-        Button zoomIn = Button("Zoom +", "PaintZoomInButton");
-        Button resetView = Button("Reset View", "PaintResetViewButton");
+        Button zoomOut = Button(PaintUiText.Get(PaintUiText.ZoomOut), "PaintZoomOutButton");
+        Button zoomIn = Button(PaintUiText.Get(PaintUiText.ZoomIn), "PaintZoomInButton");
+        Button resetView = Button(PaintUiText.Get(PaintUiText.ResetView), "PaintResetViewButton");
         zoomOut.Pressed += () => SetPaintZoom(_paintCanvas.View.Zoom - 0.2);
         zoomIn.Pressed += () => SetPaintZoom(_paintCanvas.View.Zoom + 0.2);
         resetView.Pressed += _paintCanvas.ResetView;
@@ -143,20 +143,24 @@ public partial class CharacterEditorHost
         viewRow.AddChild(zoomIn);
         viewRow.AddChild(resetView);
 
-        _paintStatus = new Label { Name = "PaintHoverStatus", Text = "Move over a body part to paint." };
+        _paintStatus = new Label
+        {
+            Name = "PaintHoverStatus",
+            Text = PaintUiText.Get(PaintUiText.HoverHelp),
+        };
         _paintControls.AddChild(_paintStatus);
         _paintControls.AddChild(new Label
         {
-            Text = "Left drag: paint • Wheel: brush size • Middle drag or Space+drag: pan • Ctrl+wheel: zoom",
+            Text = PaintUiText.Get(PaintUiText.InputHelp),
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         });
 
         _eraseAllConfirmation = new ConfirmationDialog
         {
             Name = "PaintEraseAllConfirmation",
-            Title = "Erase all paint?",
-            DialogText = "This clears paint from all six body parts. You can undo it once confirmed.",
-            OkButtonText = "Erase All",
+            Title = PaintUiText.Get(PaintUiText.EraseAllTitle),
+            DialogText = PaintUiText.Get(PaintUiText.EraseAllBody),
+            OkButtonText = PaintUiText.Get(PaintUiText.EraseAll),
         };
         _eraseAllConfirmation.Confirmed += () =>
         {
@@ -174,7 +178,8 @@ public partial class CharacterEditorHost
         _paintControls.Visible = enabled;
         _paintCanvas.Visible = enabled;
         _paintCanvas.MouseFilter = enabled ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
-        _paintModeButton.Text = enabled ? "Appearance Controls" : "Paint";
+        _paintModeButton.Text = PaintUiText.Get(
+            enabled ? PaintUiText.AppearanceControls : PaintUiText.Open);
         // Paint mode drives the shared preview camera, so leaving it restores the default framing.
         _paintCanvas.ResetView();
         if (enabled)
@@ -212,7 +217,15 @@ public partial class CharacterEditorHost
         if (_paintCanvas is null || _paintStatus is null) return;
         _brushSize.Text = _paintCanvas.Workspace.BrushDiameter.ToString();
         _undoPaintButton.Disabled = !_paintCanvas.Workspace.CanUndo;
-        string hovered = _paintCanvas.HoveredPart?.ToString() ?? "Canvas";
-        _paintStatus.Text = $"{_paintCanvas.Workspace.SelectedTool} • {hovered} • Zoom {_paintCanvas.View.Zoom:0.0}×";
+        string hovered = _paintCanvas.HoveredPart?.ToString() ?? PaintUiText.Get(PaintUiText.Canvas);
+        string tool = PaintUiText.Get(
+            _paintCanvas.Workspace.SelectedTool == PaintTool.Brush
+                ? PaintUiText.Brush
+                : PaintUiText.Eraser);
+        _paintStatus.Text = PaintUiText.Format(
+            PaintUiText.Status,
+            tool,
+            hovered,
+            _paintCanvas.View.Zoom);
     }
 }
