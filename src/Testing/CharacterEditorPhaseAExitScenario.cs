@@ -18,6 +18,8 @@ namespace DesktopBuddy.Testing;
 /// <summary>
 /// Phase A release journey core: create, edit every category, deterministic randomize,
 /// save, fixed-tick use, reaction-overlay retention, and restart selection persistence.
+/// Phase B reuses this established journey entrypoint and appends its paint save/use/restart
+/// predicates so the runner does not invent a second automation framework.
 /// </summary>
 public sealed class CharacterEditorPhaseAExitScenario : IScenario
 {
@@ -142,6 +144,10 @@ public sealed class CharacterEditorPhaseAExitScenario : IScenario
         {
             await CharacterEditorScenarioSupport.Cleanup(tree, context);
         }
+
+        ScenarioResult paintJourney =
+            await new CharacterPaintSaveUseRestartScenario().RunAsync(tree, seed);
+        checks.AddRange(paintJourney.Checks);
 
         return new ScenarioResult(
             checks.All(static check => check.Passed),
