@@ -7,14 +7,8 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 /// Builds the shipping soft-toon materials from a <see cref="BuddyLookProfile"/>. Owns no
 /// scene nodes: the presenter asks for one lit material per part/connector mesh and a single
 /// shared unshaded ink outline material at initialization, then reuses those references every
-/// frame. Nothing here is called from <c>_Process</c>, so the render path never creates or
-/// mutates a material Resource (M3_5_MATERIALS_AND_LOOK_PLAN.md L2, global constraint 4 /
-/// ARCHITECTURE §23 allocation policy).
-///
-/// Every mesh gets its OWN lit material instance even when albedos match: a future per-part
-/// mutation (damage flash, character-editor recolor preview) must never recolor an unrelated
-/// part or connector through a shared instance. Only the outline ink material is shared —
-/// outline shells are never tinted per part.
+/// frame. Every mesh gets its own lit material instance so per-part tinting and scorch never
+/// bleed across parts.
 /// </summary>
 public sealed class BuddyLookMaterialLibrary
 {
@@ -33,14 +27,15 @@ public sealed class BuddyLookMaterialLibrary
     }
 
     /// <summary>
-    /// Returns a NEW soft-toon <see cref="StandardMaterial3D"/> whose albedo is
-    /// <paramref name="albedo"/>. Called once per mesh at build time; each mesh owns its
-    /// instance so per-part tinting can never bleed across parts or connectors.
+    /// Returns a new soft-toon material. The neutral fabric texture is multiplied by the
+    /// supplied albedo, preserving character-editor recolouring while giving every body part
+    /// the same woven-cloth surface language.
     /// </summary>
     public StandardMaterial3D CreateLitMaterial(Color albedo) => new()
     {
         ResourceName = "BuddyLookLitMaterial",
         AlbedoColor = albedo,
+        AlbedoTexture = _look.FabricTexture,
         ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
         DiffuseMode = _look.DiffuseMode,
         SpecularMode = _look.SpecularMode,
@@ -51,25 +46,40 @@ public sealed class BuddyLookMaterialLibrary
 
     /// <summary>
     /// World units the paint shell grows clear of its body mesh. It must stay below the
-    /// trusted face/accent plate epsilon so decals keep rendering above paint, and above zero
-    /// so the shell never z-fights the body. Both cameras are orthographic, so depth is linear
-    /// and this margin is ample — raise it only if the shell shows through a plate.
+    /// trusted face/accent plate epsilon so decals keep rendering above paint.
     /// </summary>
     public const float PaintShellGrowAmount = 0.05f;
 
     /// <summary>
-    /// Returns a NEW paint-shell material. Albedo stays white so the painted pixels keep the
-    /// colour the player picked; the scissor discards blank pixels so the base colour shows
-    /// through. Painted pixels are fully opaque by construction, so no alpha sorting is needed.
+    /// Returns a new paint-shell material. It deliberately clears the trusted fabric texture:
+    /// paint pixels are already authored RGBA colour and blank pixels must reveal the fabric
+    /// base underneath.
     /// </summary>
     public StandardMaterial3D CreatePaintMaterial()
     {
         StandardMaterial3D material = CreateLitMaterial(Colors.White);
         material.ResourceName = "BuddyLookPaintMaterial";
+        material.AlbedoTexture = null;
         material.Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor;
         material.AlphaScissorThreshold = 0.5f;
         material.Grow = true;
         material.GrowAmount = PaintShellGrowAmount;
+        return material;
+    }
+
+    /// <summary>
+    /// Returns a new seam shell material. The transparent stitches render above player paint
+    /// but below the trusted face and torso-accent plates.
+    /// </summary>
+    public StandardMaterial3D CreateSeamMaterial()
+    {
+        StandardMaterial3D material = CreateLitMaterial(Colors.White);
+        material.ResourceName = "BuddyLookSeamMaterial";
+        material.AlbedoTexture = _look.SeamTexture;
+        material.Transparency = BaseMaterial3D.TransparencyEnum.AlphaScissor;
+        material.AlphaScissorThreshold = 0.2f;
+        material.Grow = true;
+        material.GrowAmount = _look.SeamGrowAmount;
         return material;
     }
 
