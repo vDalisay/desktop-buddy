@@ -22,7 +22,7 @@ public sealed class CharacterCompilerTests
         Assert.Empty(result.Warnings);
         CompiledCharacterAppearance appearance = Assert.IsType<CompiledCharacterAppearance>(
             result.Appearance);
-        Assert.Equal(CharacterFeatureIds.EyesSoftOval, appearance.Eyes.ResolvedFeatureId);
+        Assert.Equal(CharacterFeatureIds.EyesButton, appearance.Eyes.ResolvedFeatureId);
         Assert.Equal(CharacterFeatureIds.BrowsSoftArc, appearance.Brows.ResolvedFeatureId);
         Assert.Equal(CharacterFeatureIds.MouthRounded, appearance.Mouth.ResolvedFeatureId);
         Assert.Equal(CharacterFeatureIds.AccentNone, appearance.TorsoAccent.ResolvedFeatureId);
@@ -51,8 +51,8 @@ public sealed class CharacterCompilerTests
         Assert.True(result.IsSuccess);
         CharacterCompileWarning warning = Assert.Single(result.Warnings);
         Assert.Equal("eyes.future", warning.OriginalFeatureId);
-        Assert.Equal(CharacterFeatureIds.EyesSoftOval, warning.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.EyesSoftOval, result.Appearance!.Eyes.ResolvedFeatureId);
+        Assert.Equal(CharacterFeatureIds.EyesButton, warning.ResolvedFeatureId);
+        Assert.Equal(CharacterFeatureIds.EyesButton, result.Appearance!.Eyes.ResolvedFeatureId);
         Assert.Equal(0.5, result.Appearance.Eyes.Transform.OffsetX);
         Assert.Equal("eyes.future", document.Features.Eyes.FeatureId);
     }
