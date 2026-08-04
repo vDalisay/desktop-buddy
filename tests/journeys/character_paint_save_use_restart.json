@@ -1,0 +1,20 @@
+{
+  "id": "character_paint_save_use_restart",
+  "description": "Phase B closure: paint two parts, verify Eraser and Erase All Undo, save and use the character, bind exact runtime paint, and restore selection and pixels after restart.",
+  "milestone": 5.6,
+  "setup": {
+    "scene": "sandbox",
+    "exercise": "character_editor_phase_a_exit",
+    "seed": 1,
+    "timeout_physics_ticks": 1200
+  },
+  "steps": [],
+  "assertions": [
+    { "predicate": "b6_journey_paints_two_parts_and_tracks_dirty" },
+    { "predicate": "b6_journey_eraser_undo_is_exact" },
+    { "predicate": "b6_journey_erase_all_confirmation_result_is_undoable" },
+    { "predicate": "b6_journey_save_and_use_activates_exact_paint" },
+    { "predicate": "b6_journey_saved_pngs_match_editor_pixels" },
+    { "predicate": "b6_journey_restart_restores_selection_pixels_and_rig" }
+  ]
+}
