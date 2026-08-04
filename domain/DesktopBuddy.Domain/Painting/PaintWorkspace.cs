@@ -58,10 +58,49 @@ public sealed class PaintUndoHistory
 
 public sealed class PaintWorkspace
 {
+    private sealed class GesturePatchBuilder
+    {
+        public PaintRect Rectangle { get; private set; }
+        public byte[] Before { get; private set; } = Array.Empty<byte>();
+
+        public void Expand(PaintSurface surface, PaintRect candidate)
+        {
+            if (candidate.IsEmpty)
+                return;
+
+            PaintRect union = PaintRect.Union(Rectangle, candidate);
+            if (union == Rectangle)
+                return;
+
+            byte[] expanded = surface.Capture(union);
+            if (!Rectangle.IsEmpty)
+                CopyPatch(Before, Rectangle, expanded, union);
+            Rectangle = union;
+            Before = expanded;
+        }
+
+        private static void CopyPatch(
+            ReadOnlySpan<byte> source,
+            PaintRect sourceRect,
+            Span<byte> destination,
+            PaintRect destinationRect)
+        {
+            int sourceStride = sourceRect.Width * PaintPolicy.BytesPerPixel;
+            int destinationStride = destinationRect.Width * PaintPolicy.BytesPerPixel;
+            int destinationX = (sourceRect.X - destinationRect.X) * PaintPolicy.BytesPerPixel;
+            int destinationY = sourceRect.Y - destinationRect.Y;
+            for (int row = 0; row < sourceRect.Height; row++)
+            {
+                source.Slice(row * sourceStride, sourceStride).CopyTo(
+                    destination.Slice(((destinationY + row) * destinationStride) + destinationX, sourceStride));
+            }
+        }
+    }
+
     private readonly Dictionary<PaintPart, PaintSurface> _surfaces =
         Enum.GetValues<PaintPart>().ToDictionary(part => part, _ => new PaintSurface());
     private readonly PaintUndoHistory _undo = new();
-    private readonly Dictionary<PaintPart, byte[]> _gestureBefore = new();
+    private readonly Dictionary<PaintPart, GesturePatchBuilder> _gestureBefore = new();
     private PaintHit? _lastHit;
     private bool _gestureActive;
 
@@ -87,7 +126,7 @@ public sealed class PaintWorkspace
         EndGesture();
         _gestureActive = true;
         _lastHit = hit;
-        CaptureBefore(hit.Part);
+        CaptureBefore(hit.Part, PaintSurface.StampBounds(hit.Uv, BrushDiameter));
         _surfaces[hit.Part].Stamp(hit.Uv, BrushDiameter, SelectedTool, SelectedColor);
     }
 
@@ -100,11 +139,27 @@ public sealed class PaintWorkspace
             return;
         }
         PaintHit current = hit.Value;
-        CaptureBefore(current.Part);
         if (_lastHit is PaintHit previous && previous.Part == current.Part)
-            _surfaces[current.Part].Stroke(previous.Uv, current.Uv, BrushDiameter, SelectedTool, SelectedColor);
+        {
+            CaptureBefore(
+                current.Part,
+                PaintSurface.StrokeBounds(previous.Uv, current.Uv, BrushDiameter));
+            _surfaces[current.Part].Stroke(
+                previous.Uv,
+                current.Uv,
+                BrushDiameter,
+                SelectedTool,
+                SelectedColor);
+        }
         else
-            _surfaces[current.Part].Stamp(current.Uv, BrushDiameter, SelectedTool, SelectedColor);
+        {
+            CaptureBefore(current.Part, PaintSurface.StampBounds(current.Uv, BrushDiameter));
+            _surfaces[current.Part].Stamp(
+                current.Uv,
+                BrushDiameter,
+                SelectedTool,
+                SelectedColor);
+        }
         _lastHit = current;
     }
 
@@ -112,11 +167,13 @@ public sealed class PaintWorkspace
     {
         if (!_gestureActive) return;
         List<PaintPatch> patches = new();
-        PaintRect whole = new(0, 0, PaintPolicy.SurfaceSize, PaintPolicy.SurfaceSize);
-        foreach ((PaintPart part, byte[] before) in _gestureBefore)
+        foreach ((PaintPart part, GesturePatchBuilder builder) in _gestureBefore)
         {
-            if (!before.AsSpan().SequenceEqual(_surfaces[part].Pixels.Span))
-                patches.Add(new PaintPatch(part, whole, before));
+            if (builder.Rectangle.IsEmpty)
+                continue;
+            byte[] after = _surfaces[part].Capture(builder.Rectangle);
+            if (!builder.Before.AsSpan().SequenceEqual(after))
+                patches.Add(new PaintPatch(part, builder.Rectangle, builder.Before));
         }
         _undo.Push(new PaintCommand(patches));
         if (patches.Count > 0) IsDirty = true;
@@ -167,9 +224,13 @@ public sealed class PaintWorkspace
         IsDirty = false;
     }
 
-    private void CaptureBefore(PaintPart part)
+    private void CaptureBefore(PaintPart part, PaintRect rectangle)
     {
-        if (!_gestureBefore.ContainsKey(part))
-            _gestureBefore[part] = _surfaces[part].ClonePixels();
+        if (!_gestureBefore.TryGetValue(part, out GesturePatchBuilder? builder))
+        {
+            builder = new GesturePatchBuilder();
+            _gestureBefore.Add(part, builder);
+        }
+        builder.Expand(_surfaces[part], rectangle);
     }
 }
