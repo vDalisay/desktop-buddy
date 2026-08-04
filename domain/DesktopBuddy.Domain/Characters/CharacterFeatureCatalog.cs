@@ -15,6 +15,7 @@ public enum CharacterFeatureSlot
 
 public static class CharacterFeatureIds
 {
+    public const string EyesButton = "eyes.button";
     public const string EyesSoftOval = "eyes.soft_oval";
     public const string EyesRoundDot = "eyes.round_dot";
     public const string EyesHorizontalLed = "eyes.horizontal_led";
@@ -93,11 +94,12 @@ public sealed class CharacterFeatureCatalog
 
     public static CharacterFeatureCatalog Shipped { get; } = new(
         [
+            CharacterFeatureIds.EyesButton,
             CharacterFeatureIds.EyesSoftOval,
             CharacterFeatureIds.EyesRoundDot,
             CharacterFeatureIds.EyesHorizontalLed,
         ],
-        CharacterFeatureIds.EyesSoftOval,
+        CharacterFeatureIds.EyesButton,
         [
             CharacterFeatureIds.BrowsSoftArc,
             CharacterFeatureIds.BrowsStraight,
