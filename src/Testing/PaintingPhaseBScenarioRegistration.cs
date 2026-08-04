@@ -32,6 +32,7 @@ internal static class PaintingPhaseBScenarioRegistration
         factories["paint_under_expression_layer_order"] = () => new PaintLayerOrderScenario();
         factories["paint_save_failure_preserves_working_copy"] = () => new PaintSaveFailurePreservesWorkingCopyScenario();
         factories["paint_runtime_fidelity"] = () => new PaintRuntimeFidelityScenario();
+        factories["paint_upload_coalescing"] = () => new PaintUploadCoalescingScenario();
         factories["character_paint_save_use_restart"] = () => new CharacterPaintSaveUseRestartScenario();
     }
 }
