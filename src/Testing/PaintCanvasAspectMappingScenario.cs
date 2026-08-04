@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using DesktopBuddy.App;
 using DesktopBuddy.Domain.Painting;
 using Godot;
 
