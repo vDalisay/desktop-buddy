@@ -45,7 +45,9 @@ public partial class Win98WindowFrame : PanelContainer
 
     public override void _Ready()
     {
-        MouseFilter = MouseFilterEnum.Stop;
+        // The shell chrome is in front of gameplay, but unhandled input must continue into
+        // the buddy viewport. Title-bar controls explicitly stop the events they own.
+        MouseFilter = MouseFilterEnum.Pass;
         Theme = Win98ThemeFactory.Create();
         CustomMinimumSize = new Vector2(320, 240);
         Build();
@@ -78,7 +80,10 @@ public partial class Win98WindowFrame : PanelContainer
 
     private void Build()
     {
-        var outer = new MarginContainer();
+        var outer = new MarginContainer
+        {
+            MouseFilter = MouseFilterEnum.Pass,
+        };
         outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         outer.AddThemeConstantOverride("margin_left", 3);
         outer.AddThemeConstantOverride("margin_top", 3);
@@ -86,7 +91,10 @@ public partial class Win98WindowFrame : PanelContainer
         outer.AddThemeConstantOverride("margin_bottom", 3);
         AddChild(outer);
 
-        var column = new VBoxContainer();
+        var column = new VBoxContainer
+        {
+            MouseFilter = MouseFilterEnum.Pass,
+        };
         column.AddThemeConstantOverride("separation", 2);
         outer.AddChild(column);
 
@@ -103,7 +111,11 @@ public partial class Win98WindowFrame : PanelContainer
         ContentHost.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Colors.Transparent));
         column.AddChild(ContentHost);
 
-        var status = new PanelContainer { CustomMinimumSize = new Vector2(0, 22) };
+        var status = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(0, 22),
+            MouseFilter = MouseFilterEnum.Stop,
+        };
         status.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
         column.AddChild(status);
         _statusLabel = new Label
@@ -112,6 +124,7 @@ public partial class Win98WindowFrame : PanelContainer
             Text = "Ready",
             VerticalAlignment = VerticalAlignment.Center,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         status.AddChild(_statusLabel);
     }
@@ -123,11 +136,15 @@ public partial class Win98WindowFrame : PanelContainer
             Name = "TitleBar",
             CustomMinimumSize = new Vector2(0, Win98ThemeFactory.TitleBarHeight),
             MouseDefaultCursorShape = CursorShape.Move,
+            MouseFilter = MouseFilterEnum.Stop,
         };
         bar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.ActiveTitle));
         bar.GuiInput += OnTitleBarInput;
 
-        var row = new HBoxContainer();
+        var row = new HBoxContainer
+        {
+            MouseFilter = MouseFilterEnum.Pass,
+        };
         row.AddThemeConstantOverride("separation", 2);
         bar.AddChild(row);
 
@@ -137,6 +154,7 @@ public partial class Win98WindowFrame : PanelContainer
             CustomMinimumSize = new Vector2(18, 0),
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         icon.AddThemeColorOverride("font_color", Colors.White);
         row.AddChild(icon);
@@ -147,6 +165,7 @@ public partial class Win98WindowFrame : PanelContainer
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             VerticalAlignment = VerticalAlignment.Center,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         _titleLabel.AddThemeColorOverride("font_color", Colors.White);
         _titleLabel.AddThemeFontSizeOverride("font_size", 14);
@@ -166,6 +185,7 @@ public partial class Win98WindowFrame : PanelContainer
             TooltipText = tooltip,
             CustomMinimumSize = new Vector2(20, 18),
             FocusMode = FocusModeEnum.All,
+            MouseFilter = MouseFilterEnum.Stop,
         };
         button.Pressed += action;
         return button;
