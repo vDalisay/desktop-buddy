@@ -45,12 +45,14 @@ public partial class Win98WindowFrame : PanelContainer
 
     public override void _Ready()
     {
-        // The shell chrome is in front of gameplay, but unhandled input must continue into
-        // the buddy viewport. Title-bar controls explicitly stop the events they own.
         MouseFilter = MouseFilterEnum.Pass;
         Theme = Win98ThemeFactory.Create();
         CustomMinimumSize = new Vector2(320, 240);
+
+        // The root panel must never paint the theme's opaque default over gameplay.
+        AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Colors.Transparent));
         Build();
+        SetViewportOpacity(0.5f);
     }
 
     public override void _GuiInput(InputEvent inputEvent)
@@ -76,6 +78,17 @@ public partial class Win98WindowFrame : PanelContainer
         _titleBar.AddThemeStyleboxOverride(
             "panel",
             Win98ThemeFactory.Flat(active ? Win98ThemeFactory.ActiveTitle : Win98ThemeFactory.InactiveTitle));
+    }
+
+    /// <summary>Changes only the play-area fill; chrome remains fully opaque and readable.</summary>
+    public void SetViewportOpacity(float opacity)
+    {
+        if (!GodotObject.IsInstanceValid(ContentHost))
+            return;
+
+        float alpha = Mathf.Clamp(opacity, 0f, 0.9f);
+        Color fill = new(Win98ThemeFactory.Face.R, Win98ThemeFactory.Face.G, Win98ThemeFactory.Face.B, alpha);
+        ContentHost.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(fill));
     }
 
     private void Build()
@@ -108,7 +121,6 @@ public partial class Win98WindowFrame : PanelContainer
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        ContentHost.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Colors.Transparent));
         column.AddChild(ContentHost);
 
         var status = new PanelContainer
