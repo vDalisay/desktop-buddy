@@ -89,3 +89,4 @@ renderer/rendering_method.mobile="gl_compatibility"
 
 [autoload]
 
+Win98ShellBootstrap="*res://src/UI/Win98/Win98ShellBootstrap.cs"
