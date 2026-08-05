@@ -11,7 +11,7 @@ namespace DesktopBuddy.UI.Win98;
 public partial class Win98PaintPreviewBootstrap : Node
 {
     private CharacterEditorHost? _host;
-    private bool? _lastHiddenState;
+    private bool? _lastAppliedHiddenState;
 
     public override void _Process(double delta)
     {
@@ -19,40 +19,39 @@ public partial class Win98PaintPreviewBootstrap : Node
         {
             _host = GetTree().Root.FindChild(
                 nameof(CharacterEditorHost), recursive: true, owned: false) as CharacterEditorHost;
-            _lastHiddenState = null;
+            _lastAppliedHiddenState = null;
         }
 
         if (!GodotObject.IsInstanceValid(_host) || !_host!.IsInitialized)
             return;
 
         bool hideConnectors = _host.IsEditorOpen && _host.IsPaintMode;
-        if (_lastHiddenState == hideConnectors)
+        if (_lastAppliedHiddenState == hideConnectors)
             return;
 
-        SetPreviewConnectorVisibility(!hideConnectors);
-        _lastHiddenState = hideConnectors;
+        // Do not cache the requested state until the preview rig actually exists and accepts
+        // it. The editor composes its preview over deferred frames; caching too early meant the
+        // first hide request was lost permanently.
+        if (TrySetPreviewConnectorVisibility(!hideConnectors))
+            _lastAppliedHiddenState = hideConnectors;
     }
 
     public override void _ExitTree()
     {
         if (GodotObject.IsInstanceValid(_host) && _host!.IsInitialized)
-            SetPreviewConnectorVisibility(true);
+            TrySetPreviewConnectorVisibility(true);
     }
 
-    private void SetPreviewConnectorVisibility(bool visible)
+    private bool TrySetPreviewConnectorVisibility(bool visible)
     {
         if (!GodotObject.IsInstanceValid(_host))
-            return;
+            return false;
 
         var preview = _host!.PreviewRig;
         if (!GodotObject.IsInstanceValid(preview) || !preview.IsInitialized)
-            return;
+            return false;
 
-        for (int index = 0; index < preview.ConnectorVisualCount; index++)
-        {
-            Node3D connector = preview.GetConnectorVisual(index);
-            if (GodotObject.IsInstanceValid(connector))
-                connector.Visible = visible;
-        }
+        preview.SetConnectorVisualsVisible(visible);
+        return true;
     }
 }
