@@ -6,61 +6,29 @@ using Godot;
 namespace DesktopBuddy.UI.Win98;
 
 /// <summary>
-/// Adds the classic File / Edit / View command row to the integrated paint editor. Commands
+/// Adds the classic File / Edit / View menu row to the integrated paint editor. Commands
 /// delegate to the editor's existing buttons, so there is one behavior path for pointer,
 /// keyboard, footer and menu activation.
 /// </summary>
 public partial class Win98PaintMenuBootstrap : Node
 {
-    private readonly List<(Button MenuCommand, Button Source)> _mirroredCommands = [];
     private CharacterEditorHost? _host;
     private HBoxContainer? _menuBar;
-    private PanelContainer? _commandPanel;
-    private HBoxContainer? _commandRow;
-    private Button? _fileButton;
-    private Button? _editButton;
-    private Button? _viewButton;
-    private string? _activeMenu;
 
     public override void _Ready()
     {
         // CharacterEditorModeCoordinator pauses the gameplay tree while editing. This bootstrap
-        // must remain alive for deferred composition, menu state and Escape handling.
+        // must remain alive for deferred composition.
         ProcessMode = ProcessModeEnum.Always;
     }
 
     public override void _Process(double delta)
     {
-        ResolveHost();
-        if (!GodotObject.IsInstanceValid(_host) || !_host!.IsEditorOpen)
-        {
-            CloseMenu();
-            return;
-        }
-
-        if (!GodotObject.IsInstanceValid(_menuBar))
-            TryBuild();
-
-        foreach ((Button menuCommand, Button source) in _mirroredCommands)
-        {
-            if (GodotObject.IsInstanceValid(menuCommand) && GodotObject.IsInstanceValid(source))
-                menuCommand.Disabled = source.Disabled;
-        }
-    }
-
-    public override void _UnhandledKeyInput(InputEvent input)
-    {
-        if (_activeMenu is null || input is not InputEventKey { Pressed: true, Keycode: Key.Escape })
-            return;
-
-        CloseMenu();
-        GetViewport().SetInputAsHandled();
-    }
-
-    private void ResolveHost()
-    {
         if (!GodotObject.IsInstanceValid(_host))
             _host = GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
+
+        if (GodotObject.IsInstanceValid(_host) && _host!.IsEditorOpen && !GodotObject.IsInstanceValid(_menuBar))
+            TryBuild();
     }
 
     private void TryBuild()
@@ -76,170 +44,88 @@ public partial class Win98PaintMenuBootstrap : Node
         {
             Name = "Win98PaintMenuBar",
             MouseFilter = Control.MouseFilterEnum.Stop,
-            CustomMinimumSize = new Vector2(0, 24),
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.ControlHeight),
         };
         _menuBar.AddThemeConstantOverride("separation", 0);
         editorColumn.AddChild(_menuBar);
         editorColumn.MoveChild(_menuBar, editorBody.GetIndex());
 
-        _fileButton = AddMenuButton("File", "File commands");
-        _editButton = AddMenuButton("Edit", "Painting history commands");
-        _viewButton = AddMenuButton("View", "Viewport commands");
-        _fileButton.Pressed += () => ToggleMenu("File");
-        _editButton.Pressed += () => ToggleMenu("Edit");
-        _viewButton.Pressed += () => ToggleMenu("View");
-
-        _commandPanel = new PanelContainer
-        {
-            Name = "Win98PaintMenuCommands",
-            Visible = false,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-        };
-        _commandPanel.AddThemeStyleboxOverride(
-            "panel",
-            Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
-        editorColumn.AddChild(_commandPanel);
-        editorColumn.MoveChild(_commandPanel, _menuBar.GetIndex() + 1);
-
-        _commandRow = new HBoxContainer
-        {
-            Name = "Win98PaintMenuCommandRow",
-            MouseFilter = Control.MouseFilterEnum.Stop,
-        };
-        _commandRow.AddThemeConstantOverride("separation", 2);
-        _commandPanel.AddChild(_commandRow);
+        AddMenu("File", [
+            ("Save", () => Source("SaveCharacterButton")),
+            ("Use Character", () => Source("UseCharacterButton")),
+            (null, null),
+            ("Close", () => Source("CloseCharacterEditorButton")),
+        ]);
+        AddMenu("Edit", [
+            ("Undo", () => Source("PaintUndoButton")),
+            ("Redo", () => Source("PaintRedoButton")),
+            (null, null),
+            ("Erase All…", () => Source("PaintEraseAllButton")),
+        ]);
+        AddMenu("View", [
+            ("Zoom Out", () => Source("PaintZoomOutButton")),
+            ("Zoom In", () => Source("PaintZoomInButton")),
+            ("Reset View", () => Source("PaintResetViewButton")),
+            (null, null),
+            ("Rotate Left", () => RotateSource(0)),
+            ("Rotate Right", () => RotateSource(1)),
+        ]);
     }
 
-    private Button AddMenuButton(string text, string tooltip)
+    /// <summary>Items are (label, source-button lookup); a null label adds a separator.</summary>
+    private void AddMenu(string title, List<(string? Text, Func<Button?>? Source)> items)
     {
-        var button = new Button
+        var button = new MenuButton
         {
-            Text = text,
-            TooltipText = tooltip,
-            ToggleMode = true,
+            Text = title,
+            Flat = false,
+            SwitchOnHover = true,
             FocusMode = Control.FocusModeEnum.All,
-            MouseFilter = Control.MouseFilterEnum.Stop,
-            CustomMinimumSize = new Vector2(52, 24),
+            CustomMinimumSize = new Vector2(52, Win98ThemeFactory.ControlHeight),
         };
         _menuBar!.AddChild(button);
-        return button;
-    }
 
-    private void ToggleMenu(string menu)
-    {
-        if (string.Equals(_activeMenu, menu, StringComparison.Ordinal))
+        PopupMenu popup = button.GetPopup();
+        popup.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
+        popup.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Flat(Win98ThemeFactory.Selection));
+        popup.AddThemeColorOverride("font_color", Win98ThemeFactory.Dark);
+        popup.AddThemeColorOverride("font_hover_color", Win98ThemeFactory.Light);
+        popup.AddThemeColorOverride("font_disabled_color", Win98ThemeFactory.Shadow);
+
+        for (int index = 0; index < items.Count; index++)
         {
-            CloseMenu();
-            return;
+            (string? text, Func<Button?>? _) = items[index];
+            if (text is null)
+                popup.AddSeparator();
+            else
+                popup.AddItem(text, index);
         }
 
-        _activeMenu = menu;
-        _fileButton!.ButtonPressed = menu == "File";
-        _editButton!.ButtonPressed = menu == "Edit";
-        _viewButton!.ButtonPressed = menu == "View";
-        RebuildCommands(menu);
-        _commandPanel!.Visible = true;
-    }
-
-    private void RebuildCommands(string menu)
-    {
-        foreach (Node child in _commandRow!.GetChildren())
+        // Disabled state lives on the editor's own buttons, so re-read it each time the menu opens
+        // instead of mirroring it every frame.
+        popup.AboutToPopup += () =>
         {
-            _commandRow.RemoveChild(child);
-            child.QueueFree();
-        }
-        _mirroredCommands.Clear();
+            for (int index = 0; index < items.Count; index++)
+            {
+                int item = popup.GetItemIndex(index);
+                if (item >= 0)
+                    popup.SetItemDisabled(item, items[index].Source?.Invoke()?.Disabled ?? true);
+            }
+        };
 
-        switch (menu)
+        popup.IdPressed += id =>
         {
-            case "File":
-                AddMirroredCommand("Save", "SaveCharacterButton", "Save the current character.");
-                AddMirroredCommand("Use Character", "UseCharacterButton", "Save and use this character.");
-                AddSeparator();
-                AddMirroredCommand("Close", "CloseCharacterEditorButton", "Close the paint editor.");
-                break;
-
-            case "Edit":
-                AddMirroredCommand("Undo", "PaintUndoButton", "Undo the last paint action (Ctrl+Z).");
-                AddMirroredCommand("Redo", "PaintRedoButton", "Redo the last paint action (Ctrl+Y).");
-                AddSeparator();
-                AddMirroredCommand("Erase All…", "PaintEraseAllButton", "Erase all paint after confirmation.");
-                break;
-
-            case "View":
-                AddMirroredCommand("Zoom Out", "PaintZoomOutButton", "Zoom out.");
-                AddMirroredCommand("Zoom In", "PaintZoomInButton", "Zoom in.");
-                AddMirroredCommand("Reset View", "PaintResetViewButton", "Restore the default framing.");
-                AddSeparator();
-                AddRotateCommand("Rotate Left", 0, "Rotate the buddy 90° left.");
-                AddRotateCommand("Rotate Right", 1, "Rotate the buddy 90° right.");
-                break;
-        }
-    }
-
-    private void AddMirroredCommand(string text, string sourceName, string tooltip)
-    {
-        if (_host!.FindChild(sourceName, true, false) is not Button source)
-            return;
-
-        Button command = CommandButton(text, tooltip);
-        command.Disabled = source.Disabled;
-        command.Pressed += () =>
-        {
-            if (!source.Disabled)
+            Button? source = items[(int)id].Source?.Invoke();
+            if (source is not null && !source.Disabled)
                 source.EmitSignal(Button.SignalName.Pressed);
-            CloseMenu();
         };
-        _commandRow!.AddChild(command);
-        _mirroredCommands.Add((command, source));
     }
 
-    private void AddRotateCommand(string text, int childIndex, string tooltip)
-    {
-        if (_host!.FindChild("PaintRotateRow", true, false) is not HBoxContainer row ||
-            childIndex < 0 || childIndex >= row.GetChildCount() ||
-            row.GetChild(childIndex) is not Button source)
-        {
-            return;
-        }
+    private Button? Source(string name) => _host!.FindChild(name, true, false) as Button;
 
-        Button command = CommandButton(text, tooltip);
-        command.Pressed += () =>
-        {
-            source.EmitSignal(Button.SignalName.Pressed);
-            CloseMenu();
-        };
-        _commandRow!.AddChild(command);
-    }
-
-    private void AddSeparator()
-    {
-        _commandRow!.AddChild(new VSeparator
-        {
-            CustomMinimumSize = new Vector2(4, 24),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        });
-    }
-
-    private static Button CommandButton(string text, string tooltip) => new()
-    {
-        Text = text,
-        TooltipText = tooltip,
-        FocusMode = Control.FocusModeEnum.All,
-        MouseFilter = Control.MouseFilterEnum.Stop,
-        CustomMinimumSize = new Vector2(76, 26),
-    };
-
-    private void CloseMenu()
-    {
-        _activeMenu = null;
-        if (GodotObject.IsInstanceValid(_commandPanel))
-            _commandPanel!.Visible = false;
-        if (GodotObject.IsInstanceValid(_fileButton))
-            _fileButton!.ButtonPressed = false;
-        if (GodotObject.IsInstanceValid(_editButton))
-            _editButton!.ButtonPressed = false;
-        if (GodotObject.IsInstanceValid(_viewButton))
-            _viewButton!.ButtonPressed = false;
-    }
+    private Button? RotateSource(int childIndex) =>
+        _host!.FindChild("PaintRotateRow", true, false) is HBoxContainer row &&
+        childIndex < row.GetChildCount()
+            ? row.GetChild(childIndex) as Button
+            : null;
 }

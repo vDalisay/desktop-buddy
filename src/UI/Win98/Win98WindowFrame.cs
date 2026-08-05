@@ -154,7 +154,7 @@ public partial class Win98WindowFrame : PanelContainer
 
         var status = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 22),
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.StatusBarHeight),
             MouseFilter = MouseFilterEnum.Stop,
         };
         status.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));

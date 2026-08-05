@@ -19,6 +19,7 @@ public static class Win98ThemeFactory
 
     public const int Border = 2;
     public const int TitleBarHeight = 22;
+    public const int StatusBarHeight = 22;
     public const int ControlHeight = 24;
     public const int Gap = 4;
 

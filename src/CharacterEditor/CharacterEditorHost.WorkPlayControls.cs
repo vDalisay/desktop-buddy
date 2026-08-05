@@ -32,6 +32,7 @@ public partial class CharacterEditorHost
     public override void _Process(double delta)
     {
         ProcessPainting();
+        AlignEditorToWindowChrome();
         _dockDiagnosticFrame++;
 
         if (!_workPlayControlsComposed && IsInitialized)

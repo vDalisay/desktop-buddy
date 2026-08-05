@@ -39,6 +39,7 @@ public partial class CharacterEditorHost : CanvasLayer
     private BuddyVisualRigView _preview = null!;
     private StaticBuddyVisualTransformSource _previewSource = null!;
     private Control _editorRoot = null!;
+    private UI.Win98.Win98WindowFrame? _windowFrame;
     private SettingsPanel _settingsPanel = null!;
     private ShopPanel _shopPanel = null!;
     private ToolSelectionPanel _toolPanel = null!;
@@ -95,6 +96,7 @@ public partial class CharacterEditorHost : CanvasLayer
         _settingsWindow.Hide();
         _mode.Enter();
         _editorRoot.Visible = true;
+        SetMoneyHudVisible(false);
         await _session.RefreshPageAsync(_page * 24, 24);
         if (_session.WorkingDocument is null && _session.CurrentPage.Count > 0)
             await _session.SelectAsync(_session.CurrentPage[0].CharacterId);
@@ -107,6 +109,7 @@ public partial class CharacterEditorHost : CanvasLayer
             return;
         _unsavedPanel.Visible = false;
         _editorRoot.Visible = false;
+        SetMoneyHudVisible(true);
         _mode.Exit();
         RefreshDockHitRegions();
     }
@@ -247,6 +250,39 @@ public partial class CharacterEditorHost : CanvasLayer
         return window;
     }
 
+    /// <summary>
+    /// The editor is a full-rect overlay on its own CanvasLayer, above the layer that draws the
+    /// Win98 frame. Track the frame's content rect rather than assuming chrome heights: the title
+    /// and status bars grow with their font and stylebox margins, and the window is resizable.
+    /// </summary>
+    private void AlignEditorToWindowChrome()
+    {
+        if (!IsInitialized || !_editorRoot.Visible)
+            return;
+
+        if (!GodotObject.IsInstanceValid(_windowFrame))
+        {
+            _windowFrame = GetTree().Root
+                .FindChild(nameof(UI.Win98.Win98WindowFrame), true, false) as UI.Win98.Win98WindowFrame;
+            if (!GodotObject.IsInstanceValid(_windowFrame))
+                return;
+        }
+
+        Rect2 content = _windowFrame!.ContentViewportRect;
+        if (content.Size.Y <= 0f)
+            return;
+
+        _editorRoot.OffsetTop = content.Position.Y;
+        _editorRoot.OffsetBottom = content.End.Y - GetViewport().GetVisibleRect().Size.Y;
+    }
+
+    /// <summary>The credit balance belongs to gameplay: it has no meaning while painting.</summary>
+    private void SetMoneyHudVisible(bool visible)
+    {
+        if (GetTree()?.Root.FindChild("MoneyHud", true, false) is Control hud)
+            hud.Visible = visible;
+    }
+
     private void BuildEditor(Control root)
     {
         _editorRoot = new PanelContainer
@@ -258,14 +294,10 @@ public partial class CharacterEditorHost : CanvasLayer
         _editorRoot.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         root.AddChild(_editorRoot);
 
+        // No caption row: the Win98 frame's title bar already names the window.
         var main = new VBoxContainer();
+        main.AddThemeConstantOverride("separation", 0);
         _editorRoot.AddChild(main);
-        var title = new Label
-        {
-            Text = "Character Editor",
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
-        main.AddChild(title);
 
         var body = new HSplitContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         main.AddChild(body);
