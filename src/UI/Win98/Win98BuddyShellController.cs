@@ -90,7 +90,7 @@ public partial class Win98BuddyShellController : CanvasLayer
             },
         };
         GetTree().Root.AddChild(_backdrop);
-        ApplyBackdropOpacity(0.5f);
+        ApplyBackdropOpacity(Win98WindowFrame.CompactOpacity);
     }
 
     private void ApplyBackdropOpacity(float opacity)
@@ -231,7 +231,9 @@ public partial class Win98BuddyShellController : CanvasLayer
     private void ApplyLayoutMode(WindowLayoutMode mode)
     {
         Frame.Visible = true;
-        Frame.SetViewportOpacity(mode == WindowLayoutMode.Compact ? 0.5f : 0.9f);
+        Frame.SetViewportOpacity(mode == WindowLayoutMode.Compact
+            ? Win98WindowFrame.CompactOpacity
+            : Win98WindowFrame.FullscreenOpacity);
         ApplyBackdropOpacity(Frame.ViewportOpacity);
         Frame.StatusText = mode == WindowLayoutMode.Compact ? "Ready" : "Full interaction mode";
     }

@@ -32,7 +32,11 @@ public partial class Win98WindowFrame : PanelContainer
     private int _resizeCorner = -1;
 
     public Control ContentHost { get; private set; } = null!;
-    public float ViewportOpacity { get; private set; } = 0.5f;
+    /// <summary>Window-body tint in Compact; FullscreenOverlay uses <see cref="FullscreenOpacity"/>.</summary>
+    public const float CompactOpacity = 0.9f;
+    public const float FullscreenOpacity = 0.9f;
+
+    public float ViewportOpacity { get; private set; } = CompactOpacity;
     public Rect2 ContentViewportRect =>
         GodotObject.IsInstanceValid(ContentHost) ? ContentHost.GetGlobalRect() : new Rect2();
 
@@ -66,7 +70,7 @@ public partial class Win98WindowFrame : PanelContainer
 
         AddThemeStyleboxOverride("panel", TransparentPanel());
         Build();
-        SetViewportOpacity(0.5f);
+        SetViewportOpacity(CompactOpacity);
     }
 
     public override void _GuiInput(InputEvent inputEvent)
