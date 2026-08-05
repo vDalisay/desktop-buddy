@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Shop;
@@ -17,6 +18,7 @@ public partial class Win98CommandBarBootstrap : Node
     private Control _legacyDock = null!;
     private DesktopWindowController _window = null!;
     private Win98WindowFrame _frame = null!;
+    private CharacterEditorHost _editorHost = null!;
 
     private ShopPanel _shop = null!;
     private ToolSelectionPanel _tools = null!;
@@ -54,6 +56,13 @@ public partial class Win98CommandBarBootstrap : Node
         _bar.Visible = !editorOpen;
         _flyout.Visible = compact && !editorOpen && _activeSection is not null;
 
+        // The frame lives on a higher CanvasLayer than the editor. Pass-through is not enough
+        // here: a full-window Control on the higher layer still wins hit testing. Ignore the
+        // frame root while editing so the editor and paint canvas receive pointer input.
+        _frame.MouseFilter = editorOpen
+            ? Control.MouseFilterEnum.Ignore
+            : Control.MouseFilterEnum.Pass;
+
         if (GodotObject.IsInstanceValid(_legacyDock))
             _legacyDock.Visible = false;
 
@@ -67,7 +76,12 @@ public partial class Win98CommandBarBootstrap : Node
         MirrorModeLabel();
     }
 
-    public override void _ExitTree() => ReturnPanelsToNativeWindows();
+    public override void _ExitTree()
+    {
+        if (GodotObject.IsInstanceValid(_frame))
+            _frame.MouseFilter = Control.MouseFilterEnum.Pass;
+        ReturnPanelsToNativeWindows();
+    }
 
     private void TryCompose()
     {
@@ -75,6 +89,7 @@ public partial class Win98CommandBarBootstrap : Node
         _legacyDock = FindControl("FloatingDock");
         _frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame ?? null!;
         _window = GetTree().Root.FindChild(nameof(DesktopWindowController), true, false) as DesktopWindowController ?? null!;
+        _editorHost = GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost ?? null!;
         _shop = GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel ?? null!;
         _tools = GetTree().Root.FindChild("ToolSelectionPanel", true, false) as ToolSelectionPanel ?? null!;
         _settings = GetTree().Root.FindChild("SettingsPanel", true, false) as SettingsPanel ?? null!;
@@ -85,6 +100,7 @@ public partial class Win98CommandBarBootstrap : Node
             !GodotObject.IsInstanceValid(_legacyDock) ||
             !GodotObject.IsInstanceValid(_frame) ||
             !GodotObject.IsInstanceValid(_window) ||
+            !GodotObject.IsInstanceValid(_editorHost) ||
             !GodotObject.IsInstanceValid(_shop) ||
             !GodotObject.IsInstanceValid(_tools) ||
             !GodotObject.IsInstanceValid(_settings) ||
@@ -113,9 +129,6 @@ public partial class Win98CommandBarBootstrap : Node
         };
         _bar.Theme = Win98ThemeFactory.Create();
         _bar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.Face));
-        // The frame sits on CanvasLayer 100 with MouseFilter.Pass across the whole window, so
-        // anything parented to the editor's lower layer never sees a click. The bar and its
-        // flyout ride the frame's layer, drawn (and hit-tested) after it.
         Node overlay = _frame.GetParent();
         overlay.AddChild(_bar);
 
@@ -131,7 +144,7 @@ public partial class Win98CommandBarBootstrap : Node
         _shopButton = AddMenuCommand(row, "Shop", "Open the shop.", () => OpenSection(_shopButton, _shop, "Shop"));
         _toolsButton = AddMenuCommand(row, "Tools", "Choose the active tool.", () => OpenSection(_toolsButton, _tools, "Tools"));
         _settingsButton = AddMenuCommand(row, "Settings", "Open game and window settings.", () => OpenSection(_settingsButton, _settings, "Settings"));
-        _editorButton = AddMenuCommand(row, "Paint / Character", "Open the character editor.", OpenEditor);
+        _editorButton = AddMenuCommand(row, "Paint / Character", "Open the paint workspace.", OpenEditor);
         _modeButton = AddMenuCommand(row, "Work", "Switch between Play and Work input modes.", ToggleMode);
 
         _sections[_shopButton] = _shop;
@@ -197,7 +210,6 @@ public partial class Win98CommandBarBootstrap : Node
             MouseFilter = Control.MouseFilterEnum.Stop,
             CustomMinimumSize = new Vector2(Mathf.Max(42f, text.Length * 8f + 16f), 22f),
         };
-        // Classic menu strip: no chrome at rest, a 1px raised bevel on hover, sunk when open.
         button.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Flat(Colors.Transparent));
         button.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 1));
         button.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
@@ -241,10 +253,10 @@ public partial class Win98CommandBarBootstrap : Node
         UpdatePressedStates(null);
     }
 
-    private void OpenEditor()
+    private async void OpenEditor()
     {
         CloseFlyout();
-        _legacyEditorButton.EmitSignal(Button.SignalName.Pressed);
+        await _editorHost.OpenPaintEditorAsync();
     }
 
     private void ToggleMode() => _legacyModeButton.EmitSignal(Button.SignalName.Pressed);
@@ -319,8 +331,6 @@ public partial class Win98CommandBarBootstrap : Node
         if (!GodotObject.IsInstanceValid(_bar))
             return;
 
-        // The bar lives under _uiRoot, so it must be placed in global space against the
-        // frame's content rect (which already starts below the title bar), not the viewport.
         Rect2 content = _frame.ContentViewportRect;
         if (content.Size.X <= 0f)
             return;
