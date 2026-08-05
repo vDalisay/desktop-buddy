@@ -214,7 +214,10 @@ public partial class PaintCanvasControl : Control
 
         foreach (PaintPartShape shape in _mapper.Shapes)
         {
-            double centerScreenX = (shape.Center.X * cos) + (shape.Depth * sin);
+            // PaintPartShape.Depth is a painter-ordering lane (head 96, feet -48), not a real Z
+            // offset, so it must never move a part on screen: at yaw 90 it threw the head 96
+            // units sideways. It only biases occlusion, fading out as the rig turns side-on.
+            double centerScreenX = shape.Center.X * cos;
             double centerDepth = (-shape.Center.X * sin) + (shape.Depth * cos);
             double screenX = point.X - centerScreenX;
             double yUp = -(point.Y - shape.Center.Y);
