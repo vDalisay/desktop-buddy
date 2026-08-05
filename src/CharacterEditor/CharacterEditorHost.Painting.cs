@@ -212,16 +212,20 @@ public partial class CharacterEditorHost
         viewRow.AddChild(zoomIn);
         viewRow.AddChild(resetView);
 
+        // Both labels moved to the Win98 status bar (Win98PaintStatusBootstrap); kept hidden so
+        // the localization scenario and RefreshPaintStatus keep working unchanged.
         _paintStatus = new Label
         {
             Name = "PaintHoverStatus",
             Text = PaintUiText.Get(PaintUiText.HoverHelp),
+            Visible = false,
         };
         _paintControls.AddChild(_paintStatus);
         _paintControls.AddChild(new Label
         {
             Text = PaintUiText.Get(PaintUiText.InputHelp),
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            Visible = false,
         });
 
         _eraseAllConfirmation = new ConfirmationDialog

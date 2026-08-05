@@ -20,6 +20,8 @@ public partial class Win98PaintStatusBootstrap : Node
     private bool _paintStatusActive;
     private string _lastStatus = string.Empty;
 
+    public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
+
     public override void _Process(double delta)
     {
         _refreshRemaining -= delta;
@@ -59,7 +61,7 @@ public partial class Win98PaintStatusBootstrap : Node
             _host = GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
 
         if (!GodotObject.IsInstanceValid(_canvas))
-            _canvas = GetTree().Root.FindChild(nameof(PaintCanvasControl), true, false) as PaintCanvasControl;
+            _canvas = GetTree().Root.FindChild("CharacterPaintCanvas", true, false) as PaintCanvasControl;
 
         if (!GodotObject.IsInstanceValid(_frame))
             _frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
