@@ -62,7 +62,12 @@ public partial class Win98WindowFrame : PanelContainer
 
     public override void _Ready()
     {
-        MouseFilter = MouseFilterEnum.Pass;
+        // The frame is a full-rect chrome shell over lower CanvasLayers (buddy, editor). Only
+        // its actual chrome — title bar, status bar, grips — may take the mouse: MouseFilter.Pass
+        // would still win picking and propagate to ancestors only, so a Pass root swallows every
+        // click meant for the layers underneath. Press/release for drag and resize are owned by
+        // the title bar and grips themselves, so the root needs no events of its own.
+        MouseFilter = MouseFilterEnum.Ignore;
         Theme = Win98ThemeFactory.Create();
         CustomMinimumSize = new Vector2(
             RoomLayoutPolicy.MinimumRoomWidth,
@@ -116,7 +121,7 @@ public partial class Win98WindowFrame : PanelContainer
     {
         var outer = new MarginContainer
         {
-            MouseFilter = MouseFilterEnum.Pass,
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
         outer.AddThemeConstantOverride("margin_left", 0);
@@ -127,7 +132,7 @@ public partial class Win98WindowFrame : PanelContainer
 
         var column = new VBoxContainer
         {
-            MouseFilter = MouseFilterEnum.Pass,
+            MouseFilter = MouseFilterEnum.Ignore,
         };
         column.AddThemeConstantOverride("separation", 0);
         outer.AddChild(column);

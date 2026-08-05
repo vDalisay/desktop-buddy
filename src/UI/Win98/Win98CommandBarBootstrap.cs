@@ -43,6 +43,12 @@ public partial class Win98CommandBarBootstrap : Node
     private Control? _activeSection;
     private bool _composed;
 
+    // Opening the editor pauses the tree (GameplayPauseReason.CharacterEditor). A pausable
+    // autoload would stop here, leaving the frame at MouseFilter.Pass and the menu bar
+    // visible over the editor — and a paused full-rect Control still wins mouse picking,
+    // so every editor button becomes unclickable.
+    public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
+
     public override void _Process(double delta)
     {
         if (!_composed)
@@ -55,13 +61,6 @@ public partial class Win98CommandBarBootstrap : Node
         bool editorOpen = IsEditorOpen();
         _bar.Visible = !editorOpen;
         _flyout.Visible = compact && !editorOpen && _activeSection is not null;
-
-        // The frame lives on a higher CanvasLayer than the editor. Pass-through is not enough
-        // here: a full-window Control on the higher layer still wins hit testing. Ignore the
-        // frame root while editing so the editor and paint canvas receive pointer input.
-        _frame.MouseFilter = editorOpen
-            ? Control.MouseFilterEnum.Ignore
-            : Control.MouseFilterEnum.Pass;
 
         if (GodotObject.IsInstanceValid(_legacyDock))
             _legacyDock.Visible = false;
@@ -76,12 +75,7 @@ public partial class Win98CommandBarBootstrap : Node
         MirrorModeLabel();
     }
 
-    public override void _ExitTree()
-    {
-        if (GodotObject.IsInstanceValid(_frame))
-            _frame.MouseFilter = Control.MouseFilterEnum.Pass;
-        ReturnPanelsToNativeWindows();
-    }
+    public override void _ExitTree() => ReturnPanelsToNativeWindows();
 
     private void TryCompose()
     {
