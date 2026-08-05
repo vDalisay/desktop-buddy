@@ -9,20 +9,31 @@ namespace DesktopBuddy.UI.Win98;
 /// </summary>
 public partial class Win98WindowFrame : PanelContainer
 {
+    public const int ResizeTopLeft = 0;
+    public const int ResizeTopRight = 1;
+    public const int ResizeBottomLeft = 2;
+    public const int ResizeBottomRight = 3;
+
     [Signal] public delegate void MinimizeRequestedEventHandler();
     [Signal] public delegate void MaximizeRestoreRequestedEventHandler();
     [Signal] public delegate void CloseRequestedEventHandler();
     [Signal] public delegate void TitleDragStartedEventHandler(Vector2 globalPointer);
     [Signal] public delegate void TitleDragMovedEventHandler(Vector2 globalPointer);
     [Signal] public delegate void TitleDragEndedEventHandler(Vector2 globalPointer);
+    [Signal] public delegate void ResizeStartedEventHandler(int corner, Vector2 globalPointer);
+    [Signal] public delegate void ResizeEndedEventHandler(int corner, Vector2 globalPointer);
 
     private Label _titleLabel = null!;
     private Label _statusLabel = null!;
     private PanelContainer _titleBar = null!;
-    private ColorRect _viewportTint = null!;
     private bool _dragging;
+    private bool _resizing;
+    private int _resizeCorner = -1;
 
     public Control ContentHost { get; private set; } = null!;
+    public float ViewportOpacity { get; private set; } = 0.5f;
+    public Rect2 ContentViewportRect =>
+        GodotObject.IsInstanceValid(ContentHost) ? ContentHost.GetGlobalRect() : Rect2.Zero;
 
     public string WindowTitle
     {
@@ -50,7 +61,6 @@ public partial class Win98WindowFrame : PanelContainer
         Theme = Win98ThemeFactory.Create();
         CustomMinimumSize = new Vector2(320, 240);
 
-        // Never let the PanelContainer's default Win98 face paint over the game render.
         AddThemeStyleboxOverride("panel", TransparentPanel());
         Build();
         SetViewportOpacity(0.5f);
@@ -58,18 +68,29 @@ public partial class Win98WindowFrame : PanelContainer
 
     public override void _GuiInput(InputEvent inputEvent)
     {
-        if (!_dragging)
-            return;
-
-        if (inputEvent is InputEventMouseMotion motion)
+        if (_dragging && inputEvent is InputEventMouseMotion motion)
         {
             EmitSignal(SignalName.TitleDragMoved, motion.GlobalPosition);
             AcceptEvent();
+            return;
         }
-        else if (inputEvent is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false } released)
+
+        if (inputEvent is not InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false } released)
+            return;
+
+        if (_dragging)
         {
             _dragging = false;
             EmitSignal(SignalName.TitleDragEnded, released.GlobalPosition);
+            AcceptEvent();
+        }
+
+        if (_resizing)
+        {
+            int corner = _resizeCorner;
+            _resizing = false;
+            _resizeCorner = -1;
+            EmitSignal(SignalName.ResizeEnded, corner, released.GlobalPosition);
             AcceptEvent();
         }
     }
@@ -81,19 +102,8 @@ public partial class Win98WindowFrame : PanelContainer
             Win98ThemeFactory.Flat(active ? Win98ThemeFactory.ActiveTitle : Win98ThemeFactory.InactiveTitle));
     }
 
-    /// <summary>Changes only the play-area tint; game rendering remains visible beneath it.</summary>
-    public void SetViewportOpacity(float opacity)
-    {
-        if (!GodotObject.IsInstanceValid(_viewportTint))
-            return;
-
-        float alpha = Mathf.Clamp(opacity, 0f, 1f);
-        _viewportTint.Color = new Color(
-            Win98ThemeFactory.Face.R,
-            Win98ThemeFactory.Face.G,
-            Win98ThemeFactory.Face.B,
-            alpha);
-    }
+    public void SetViewportOpacity(float opacity) =>
+        ViewportOpacity = Mathf.Clamp(opacity, 0f, 0.95f);
 
     private void Build()
     {
@@ -102,17 +112,17 @@ public partial class Win98WindowFrame : PanelContainer
             MouseFilter = MouseFilterEnum.Pass,
         };
         outer.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        outer.AddThemeConstantOverride("margin_left", 3);
-        outer.AddThemeConstantOverride("margin_top", 3);
-        outer.AddThemeConstantOverride("margin_right", 3);
-        outer.AddThemeConstantOverride("margin_bottom", 3);
+        outer.AddThemeConstantOverride("margin_left", 0);
+        outer.AddThemeConstantOverride("margin_top", 0);
+        outer.AddThemeConstantOverride("margin_right", 0);
+        outer.AddThemeConstantOverride("margin_bottom", 0);
         AddChild(outer);
 
         var column = new VBoxContainer
         {
             MouseFilter = MouseFilterEnum.Pass,
         };
-        column.AddThemeConstantOverride("separation", 2);
+        column.AddThemeConstantOverride("separation", 0);
         outer.AddChild(column);
 
         _titleBar = BuildTitleBar();
@@ -125,30 +135,10 @@ public partial class Win98WindowFrame : PanelContainer
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        ContentHost.AddThemeStyleboxOverride("panel", TransparentPanel());
-        column.AddChild(ContentHost);
-
-        // A dedicated ColorRect gives predictable source-alpha blending. Using the alpha on a
-        // StyleBoxFlat was rendered opaque by the compatibility renderer on the shipping path.
-        _viewportTint = new ColorRect
-        {
-            Name = "ViewportTint",
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        _viewportTint.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        ContentHost.AddChild(_viewportTint);
-
-        // Draw only the recessed border above the tint, with a transparent center.
-        var viewportBorder = new PanelContainer
-        {
-            Name = "ViewportBorder",
-            MouseFilter = MouseFilterEnum.Ignore,
-        };
-        viewportBorder.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        var borderStyle = Win98ThemeFactory.Recessed(Colors.Transparent);
+        var borderStyle = Win98ThemeFactory.Recessed(Colors.Transparent, 1);
         borderStyle.DrawCenter = false;
-        viewportBorder.AddThemeStyleboxOverride("panel", borderStyle);
-        ContentHost.AddChild(viewportBorder);
+        ContentHost.AddThemeStyleboxOverride("panel", borderStyle);
+        column.AddChild(ContentHost);
 
         var status = new PanelContainer
         {
@@ -157,6 +147,7 @@ public partial class Win98WindowFrame : PanelContainer
         };
         status.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
         column.AddChild(status);
+
         _statusLabel = new Label
         {
             Name = "StatusText",
@@ -166,6 +157,11 @@ public partial class Win98WindowFrame : PanelContainer
             MouseFilter = MouseFilterEnum.Ignore,
         };
         status.AddChild(_statusLabel);
+
+        AddChild(CreateResizeGrip("TopLeftGrip", ResizeTopLeft, CursorShape.Fdiagsize, Side.Left, Side.Top));
+        AddChild(CreateResizeGrip("TopRightGrip", ResizeTopRight, CursorShape.Bdiagsize, Side.Right, Side.Top));
+        AddChild(CreateResizeGrip("BottomLeftGrip", ResizeBottomLeft, CursorShape.Bdiagsize, Side.Left, Side.Bottom));
+        AddChild(CreateResizeGrip("BottomRightGrip", ResizeBottomRight, CursorShape.Fdiagsize, Side.Right, Side.Bottom));
     }
 
     private PanelContainer BuildTitleBar()
@@ -230,9 +226,34 @@ public partial class Win98WindowFrame : PanelContainer
         return button;
     }
 
+    private Control CreateResizeGrip(string name, int corner, CursorShape cursor, Side horizontal, Side vertical)
+    {
+        var grip = new Control
+        {
+            Name = name,
+            MouseFilter = MouseFilterEnum.Stop,
+            MouseDefaultCursorShape = cursor,
+            CustomMinimumSize = new Vector2(16, 16),
+            Size = new Vector2(16, 16),
+            FocusMode = FocusModeEnum.None,
+        };
+
+        grip.SetAnchorsPreset(LayoutPreset.TopLeft);
+        grip.AnchorLeft = horizontal == Side.Left ? 0f : 1f;
+        grip.AnchorRight = horizontal == Side.Left ? 0f : 1f;
+        grip.AnchorTop = vertical == Side.Top ? 0f : 1f;
+        grip.AnchorBottom = vertical == Side.Top ? 0f : 1f;
+        grip.OffsetLeft = horizontal == Side.Left ? 0f : -16f;
+        grip.OffsetRight = horizontal == Side.Left ? 16f : 0f;
+        grip.OffsetTop = vertical == Side.Top ? 0f : -16f;
+        grip.OffsetBottom = vertical == Side.Top ? 16f : 0f;
+        grip.GuiInput += inputEvent => OnResizeGripInput(corner, inputEvent);
+        return grip;
+    }
+
     private void OnTitleBarInput(InputEvent inputEvent)
     {
-        if (inputEvent is not InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
+        if (_resizing || inputEvent is not InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
             return;
 
         if (button.Pressed)
@@ -244,6 +265,27 @@ public partial class Win98WindowFrame : PanelContainer
         {
             _dragging = false;
             EmitSignal(SignalName.TitleDragEnded, button.GlobalPosition);
+        }
+
+        AcceptEvent();
+    }
+
+    private void OnResizeGripInput(int corner, InputEvent inputEvent)
+    {
+        if (inputEvent is not InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
+            return;
+
+        if (button.Pressed)
+        {
+            _resizing = true;
+            _resizeCorner = corner;
+            EmitSignal(SignalName.ResizeStarted, corner, button.GlobalPosition);
+        }
+        else if (_resizing && _resizeCorner == corner)
+        {
+            _resizing = false;
+            _resizeCorner = -1;
+            EmitSignal(SignalName.ResizeEnded, corner, button.GlobalPosition);
         }
 
         AcceptEvent();
