@@ -22,8 +22,10 @@ public partial class Win98BuddyShellController : CanvasLayer
     private Vector2I _resizeStartPointer;
     private Rect2I _resizeStartWindowRect;
 
-    private CanvasLayer _backdropLayer = null!;
-    private ColorRect _backdropRect = null!;
+    // The buddy is a 3D presentation, and Godot composites every canvas item — including
+    // negative CanvasLayers — on top of the 3D pass. A ColorRect backdrop therefore always
+    // painted over the buddy; the window-body tint has to be the 3D clear colour instead.
+    private WorldEnvironment _backdrop = null!;
 
     public override void _Ready()
     {
@@ -48,7 +50,6 @@ public partial class Win98BuddyShellController : CanvasLayer
         Frame.StatusText = "Ready";
         Frame.SetActive(true);
         ApplyLayoutMode(Window.LayoutMode);
-        SyncBackdropToFrame();
     }
 
     public override void _Process(double delta)
@@ -62,8 +63,6 @@ public partial class Win98BuddyShellController : CanvasLayer
 
         if (_resizing && Window.LayoutMode == WindowLayoutMode.Compact && DisplayServer.GetName() != "headless")
             ApplyResizeFromPointer(DisplayServer.MouseGetPosition());
-
-        SyncBackdropToFrame();
     }
 
     public override void _ExitTree()
@@ -74,40 +73,34 @@ public partial class Win98BuddyShellController : CanvasLayer
             Window.WindowFocusLost -= OnWindowFocusLost;
         }
 
-        if (GodotObject.IsInstanceValid(_backdropLayer))
-            _backdropLayer.QueueFree();
+        if (GodotObject.IsInstanceValid(_backdrop))
+            _backdrop.QueueFree();
     }
 
     private void EnsureBackdropLayer()
     {
-        _backdropLayer = new CanvasLayer
+        _backdrop = new WorldEnvironment
         {
-            Name = "Win98BackdropLayer",
-            Layer = -5,
+            Name = "Win98BackdropEnvironment",
+            Environment = new Godot.Environment
+            {
+                BackgroundMode = Godot.Environment.BGMode.Color,
+                // Ambient stays off: the lighting rig owns the buddy's look.
+                AmbientLightSource = Godot.Environment.AmbientSource.Disabled,
+            },
         };
-        _backdropRect = new ColorRect
-        {
-            Name = "BackdropRect",
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-            Color = new Color(
+        GetTree().Root.AddChild(_backdrop);
+        ApplyBackdropOpacity(0.5f);
+    }
+
+    private void ApplyBackdropOpacity(float opacity)
+    {
+        if (GodotObject.IsInstanceValid(_backdrop))
+            _backdrop.Environment.BackgroundColor = new Color(
                 Win98ThemeFactory.Face.R,
                 Win98ThemeFactory.Face.G,
                 Win98ThemeFactory.Face.B,
-                0.5f),
-        };
-        _backdropLayer.AddChild(_backdropRect);
-        GetTree().Root.AddChild(_backdropLayer);
-    }
-
-    private void SyncBackdropToFrame()
-    {
-        if (!GodotObject.IsInstanceValid(Frame) || !GodotObject.IsInstanceValid(_backdropRect))
-            return;
-
-        Rect2 rect = Frame.ContentViewportRect;
-        _backdropRect.Visible = Frame.Visible && rect.Size.X > 0f && rect.Size.Y > 0f;
-        _backdropRect.Position = rect.Position;
-        _backdropRect.Size = rect.Size;
+                opacity);
     }
 
     private void OnMinimizeRequested()
@@ -188,9 +181,7 @@ public partial class Win98BuddyShellController : CanvasLayer
         Vector2I delta = pointer - _resizeStartPointer;
         Vector2I pos = _resizeStartWindowRect.Position;
         Vector2I size = _resizeStartWindowRect.Size;
-        Vector2I minimum = new(
-            Mathf.RoundToInt(Frame.CustomMinimumSize.X),
-            Mathf.RoundToInt(Frame.CustomMinimumSize.Y));
+        Vector2I minimum = GetWindow().MinSize;
 
         switch (_resizeCorner)
         {
@@ -241,14 +232,7 @@ public partial class Win98BuddyShellController : CanvasLayer
     {
         Frame.Visible = true;
         Frame.SetViewportOpacity(mode == WindowLayoutMode.Compact ? 0.5f : 0.9f);
-        if (GodotObject.IsInstanceValid(_backdropRect))
-        {
-            _backdropRect.Color = new Color(
-                Win98ThemeFactory.Face.R,
-                Win98ThemeFactory.Face.G,
-                Win98ThemeFactory.Face.B,
-                Frame.ViewportOpacity);
-        }
+        ApplyBackdropOpacity(Frame.ViewportOpacity);
         Frame.StatusText = mode == WindowLayoutMode.Compact ? "Ready" : "Full interaction mode";
     }
 

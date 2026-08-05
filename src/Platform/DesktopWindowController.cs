@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Platform;
 using Godot;
 using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
@@ -78,6 +79,11 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         if (!_headless)
         {
             Window window = GetWindow();
+            // The room policy rejects client boxes below its floor, so the OS window may
+            // never get there: this clamps every resize path (grips, OS drag, restore).
+            window.MinSize = new Vector2I(
+                RoomLayoutPolicy.MinimumRoomWidth,
+                RoomLayoutPolicy.MinimumRoomHeight);
             window.Borderless = settings.Borderless;
             window.Unresizable = !settings.Resizable;
             window.AlwaysOnTop = settings.AlwaysOnTop;

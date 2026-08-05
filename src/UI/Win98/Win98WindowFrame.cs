@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Domain.Physics;
 using Godot;
 
 namespace DesktopBuddy.UI.Win98;
@@ -59,7 +60,9 @@ public partial class Win98WindowFrame : PanelContainer
     {
         MouseFilter = MouseFilterEnum.Pass;
         Theme = Win98ThemeFactory.Create();
-        CustomMinimumSize = new Vector2(320, 240);
+        CustomMinimumSize = new Vector2(
+            RoomLayoutPolicy.MinimumRoomWidth,
+            RoomLayoutPolicy.MinimumRoomHeight);
 
         AddThemeStyleboxOverride("panel", TransparentPanel());
         Build();
@@ -158,10 +161,18 @@ public partial class Win98WindowFrame : PanelContainer
         };
         status.AddChild(_statusLabel);
 
-        AddChild(CreateResizeGrip("TopLeftGrip", ResizeTopLeft, CursorShape.Fdiagsize, Side.Left, Side.Top));
-        AddChild(CreateResizeGrip("TopRightGrip", ResizeTopRight, CursorShape.Bdiagsize, Side.Right, Side.Top));
-        AddChild(CreateResizeGrip("BottomLeftGrip", ResizeBottomLeft, CursorShape.Bdiagsize, Side.Left, Side.Bottom));
-        AddChild(CreateResizeGrip("BottomRightGrip", ResizeBottomRight, CursorShape.Fdiagsize, Side.Right, Side.Bottom));
+        // Grips live under a plain Control: a Container child would be stretched to the
+        // full rect, which is what made the resize cursor cover the whole window.
+        var grips = new Control
+        {
+            Name = "ResizeGrips",
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        AddChild(grips);
+        grips.AddChild(CreateResizeGrip("TopLeftGrip", ResizeTopLeft, CursorShape.Fdiagsize, Side.Left, Side.Top));
+        grips.AddChild(CreateResizeGrip("TopRightGrip", ResizeTopRight, CursorShape.Bdiagsize, Side.Right, Side.Top));
+        grips.AddChild(CreateResizeGrip("BottomLeftGrip", ResizeBottomLeft, CursorShape.Bdiagsize, Side.Left, Side.Bottom));
+        grips.AddChild(CreateResizeGrip("BottomRightGrip", ResizeBottomRight, CursorShape.Fdiagsize, Side.Right, Side.Bottom));
     }
 
     private PanelContainer BuildTitleBar()
@@ -228,13 +239,14 @@ public partial class Win98WindowFrame : PanelContainer
 
     private Control CreateResizeGrip(string name, int corner, CursorShape cursor, Side horizontal, Side vertical)
     {
+        const float grab = 8f;
         var grip = new Control
         {
             Name = name,
             MouseFilter = MouseFilterEnum.Stop,
             MouseDefaultCursorShape = cursor,
-            CustomMinimumSize = new Vector2(16, 16),
-            Size = new Vector2(16, 16),
+            CustomMinimumSize = new Vector2(grab, grab),
+            Size = new Vector2(grab, grab),
             FocusMode = FocusModeEnum.None,
         };
 
@@ -243,10 +255,10 @@ public partial class Win98WindowFrame : PanelContainer
         grip.AnchorRight = horizontal == Side.Left ? 0f : 1f;
         grip.AnchorTop = vertical == Side.Top ? 0f : 1f;
         grip.AnchorBottom = vertical == Side.Top ? 0f : 1f;
-        grip.OffsetLeft = horizontal == Side.Left ? 0f : -16f;
-        grip.OffsetRight = horizontal == Side.Left ? 16f : 0f;
-        grip.OffsetTop = vertical == Side.Top ? 0f : -16f;
-        grip.OffsetBottom = vertical == Side.Top ? 16f : 0f;
+        grip.OffsetLeft = horizontal == Side.Left ? 0f : -grab;
+        grip.OffsetRight = horizontal == Side.Left ? grab : 0f;
+        grip.OffsetTop = vertical == Side.Top ? 0f : -grab;
+        grip.OffsetBottom = vertical == Side.Top ? grab : 0f;
         grip.GuiInput += inputEvent => OnResizeGripInput(corner, inputEvent);
         return grip;
     }
