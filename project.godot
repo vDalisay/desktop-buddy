@@ -90,3 +90,4 @@ renderer/rendering_method.mobile="gl_compatibility"
 
 Win98ShellBootstrap="*res://src/UI/Win98/Win98ShellBootstrap.cs"
 Win98CommandBarBootstrap="*res://src/UI/Win98/Win98CommandBarBootstrap.cs"
+Win98PaintEntryBootstrap="*res://src/UI/Win98/Win98PaintEntryBootstrap.cs"
