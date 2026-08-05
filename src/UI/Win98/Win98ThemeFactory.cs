@@ -21,8 +21,7 @@ public static class Win98ThemeFactory
 
     public static Theme Create()
     {
-        var theme = new Theme();
-        theme.SetDefaultFontSize(14);
+        var theme = new Theme { DefaultFontSize = 14 };
 
         SetFontColors(theme, "Label", Dark, Dark);
         SetFontColors(theme, "Button", Dark, Dark);
@@ -36,7 +35,6 @@ public static class Win98ThemeFactory
         theme.SetStylebox("focus", "Button", FocusBox());
         theme.SetStylebox("disabled", "Button", Raised(Face, 2));
         theme.SetColor("font_disabled_color", "Button", Shadow);
-        theme.SetConstant("outline_size", "Button", 0);
 
         theme.SetStylebox("normal", "LineEdit", Recessed(Light, 2));
         theme.SetStylebox("focus", "LineEdit", Recessed(Light, 2));
@@ -58,24 +56,14 @@ public static class Win98ThemeFactory
     public static StyleBoxFlat Raised(Color fill, int width = Border)
     {
         var box = Flat(fill);
-        box.BorderWidthLeft = width;
-        box.BorderWidthTop = width;
-        box.BorderWidthRight = width;
-        box.BorderWidthBottom = width;
-        box.BorderColor = Shadow;
-        box.SetBorderColor(Light, Shadow);
+        ConfigureBorder(box, width, Shadow, Light, new Vector2(-1, -1));
         return box;
     }
 
     public static StyleBoxFlat Recessed(Color fill, int width = Border)
     {
         var box = Flat(fill);
-        box.BorderWidthLeft = width;
-        box.BorderWidthTop = width;
-        box.BorderWidthRight = width;
-        box.BorderWidthBottom = width;
-        box.BorderColor = Dark;
-        box.SetBorderColor(Shadow, Light);
+        ConfigureBorder(box, width, Dark, Shadow, new Vector2(1, 1));
         return box;
     }
 
@@ -104,10 +92,6 @@ public static class Win98ThemeFactory
         box.BorderWidthBottom = 1;
         box.BorderColor = Dark;
         box.DrawCenter = false;
-        box.ExpandMarginLeft = -4;
-        box.ExpandMarginTop = -4;
-        box.ExpandMarginRight = -4;
-        box.ExpandMarginBottom = -4;
         return box;
     }
 
@@ -119,13 +103,20 @@ public static class Win98ThemeFactory
         theme.SetColor("font_focus_color", type, focus);
     }
 
-    private static void SetBorderColor(this StyleBoxFlat box, Color upperLeft, Color lowerRight)
+    private static void ConfigureBorder(
+        StyleBoxFlat box,
+        int width,
+        Color border,
+        Color highlight,
+        Vector2 highlightOffset)
     {
-        // Godot StyleBoxFlat exposes one border color. Layering two boxes supplies the
-        // authentic light upper-left / dark lower-right bevel in Win98Bevel.
-        box.BorderColor = lowerRight;
-        box.ShadowColor = upperLeft;
+        box.BorderWidthLeft = width;
+        box.BorderWidthTop = width;
+        box.BorderWidthRight = width;
+        box.BorderWidthBottom = width;
+        box.BorderColor = border;
+        box.ShadowColor = highlight;
         box.ShadowSize = 1;
-        box.ShadowOffset = new Vector2(-1, -1);
+        box.ShadowOffset = highlightOffset;
     }
 }
