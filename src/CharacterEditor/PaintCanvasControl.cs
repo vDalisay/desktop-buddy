@@ -84,7 +84,8 @@ public partial class PaintCanvasControl : Control
             if (button.ButtonIndex == MouseButton.Middle || spacePan)
             {
                 _panning = button.Pressed;
-                if (_panning) GrabFocus();
+                if (_panning)
+                    GrabFocus();
                 AcceptEvent();
                 return;
             }
@@ -117,7 +118,6 @@ public partial class PaintCanvasControl : Control
                 int direction = button.ButtonIndex == MouseButton.WheelUp ? 1 : -1;
                 if (Input.IsKeyPressed(Key.Ctrl))
                 {
-                    // SetZoom anchors on a point expressed in Pan units, not world units.
                     PaintPoint focus = CanvasToWorld(button.Position) * (2.0 / BaseCameraSize);
                     View.SetZoom(View.Zoom + (direction * 0.2), focus);
                     ViewChanged?.Invoke();
@@ -135,11 +135,20 @@ public partial class PaintCanvasControl : Control
 
     public override void _UnhandledKeyInput(InputEvent input)
     {
-        if (input is InputEventKey key && key.Pressed && key.CtrlPressed && key.Keycode == Key.Z)
-        {
-            if (Workspace.Undo()) WorkspaceChanged?.Invoke();
-            AcceptEvent();
-        }
+        if (input is not InputEventKey { Pressed: true, CtrlPressed: true } key)
+            return;
+
+        bool handled = false;
+        if (key.Keycode == Key.Z && !key.ShiftPressed)
+            handled = Workspace.Undo();
+        else if (key.Keycode == Key.Y || (key.Keycode == Key.Z && key.ShiftPressed))
+            handled = Workspace.Redo();
+
+        if (!handled)
+            return;
+
+        WorkspaceChanged?.Invoke();
+        AcceptEvent();
     }
 
     public override void _Draw()
@@ -169,11 +178,6 @@ public partial class PaintCanvasControl : Control
     {
         double width = Math.Max(1.0, Size.X);
         double height = Math.Max(1.0, Size.Y);
-
-        // SubViewportContainer.Stretch resizes the preview viewport to the container after
-        // layout. This FullRect input layer shares that live rectangle, so its aspect is also
-        // the camera aspect. Caching the viewport's initial 420x360 size compresses horizontal
-        // pointer movement after the editor widens and makes a drag stroke lag behind its cursor.
         double aspect = width / height;
         double verticalSpan = BaseCameraSize / View.Zoom;
         PaintPoint center = CameraCenter;
@@ -184,7 +188,8 @@ public partial class PaintCanvasControl : Control
 
     private void SetHover(PaintPart? part)
     {
-        if (HoveredPart == part) return;
+        if (HoveredPart == part)
+            return;
         HoveredPart = part;
         HoverChanged?.Invoke(part);
     }
