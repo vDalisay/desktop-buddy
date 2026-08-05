@@ -63,6 +63,11 @@ public partial class Win98BuddyShellController : CanvasLayer
 
         if (_resizing && Window.LayoutMode == WindowLayoutMode.Compact && DisplayServer.GetName() != "headless")
             ApplyResizeFromPointer(DisplayServer.MouseGetPosition());
+
+        // DesktopWindowController re-applies its own transparency whenever it re-applies
+        // window settings, so the opaque-compact choice has to be re-asserted (it no-ops
+        // unless the flags actually drifted).
+        ApplyWindowTransparency(Window.LayoutMode, Frame.ViewportOpacity);
     }
 
     public override void _ExitTree()
@@ -101,6 +106,24 @@ public partial class Win98BuddyShellController : CanvasLayer
                 Win98ThemeFactory.Face.G,
                 Win98ThemeFactory.Face.B,
                 opacity);
+    }
+
+    /// <summary>
+    /// A fully opaque body cannot be produced by the clear colour alone: the window keeps
+    /// per-pixel transparency, so the desktop still shows through. Compact at opacity 1 is a
+    /// plain window, so drop transparency there; the fullscreen overlay always keeps it.
+    /// </summary>
+    private void ApplyWindowTransparency(WindowLayoutMode mode, float opacity)
+    {
+        if (DisplayServer.GetName() == "headless")
+            return;
+
+        bool transparent = mode != WindowLayoutMode.Compact || opacity < 1f;
+        if (GetWindow().Transparent == transparent && GetViewport().TransparentBg == transparent)
+            return;
+
+        GetWindow().Transparent = transparent;
+        GetViewport().TransparentBg = transparent;
     }
 
     private void OnMinimizeRequested()
@@ -235,6 +258,7 @@ public partial class Win98BuddyShellController : CanvasLayer
             ? Win98WindowFrame.CompactOpacity
             : Win98WindowFrame.FullscreenOpacity);
         ApplyBackdropOpacity(Frame.ViewportOpacity);
+        ApplyWindowTransparency(mode, Frame.ViewportOpacity);
         Frame.StatusText = mode == WindowLayoutMode.Compact ? "Ready" : "Full interaction mode";
     }
 

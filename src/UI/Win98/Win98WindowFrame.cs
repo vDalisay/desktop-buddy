@@ -33,8 +33,8 @@ public partial class Win98WindowFrame : PanelContainer
 
     public Control ContentHost { get; private set; } = null!;
     /// <summary>Window-body tint in Compact; FullscreenOverlay uses <see cref="FullscreenOpacity"/>.</summary>
-    public const float CompactOpacity = 0.9f;
-    public const float FullscreenOpacity = 0.9f;
+    public const float CompactOpacity = 1f;
+    public const float FullscreenOpacity = 1f;
 
     public float ViewportOpacity { get; private set; } = CompactOpacity;
     public Rect2 ContentViewportRect =>
@@ -110,7 +110,7 @@ public partial class Win98WindowFrame : PanelContainer
     }
 
     public void SetViewportOpacity(float opacity) =>
-        ViewportOpacity = Mathf.Clamp(opacity, 0f, 0.95f);
+        ViewportOpacity = Mathf.Clamp(opacity, 0f, 1f);
 
     private void Build()
     {

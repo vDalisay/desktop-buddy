@@ -113,7 +113,11 @@ public partial class Win98CommandBarBootstrap : Node
         };
         _bar.Theme = Win98ThemeFactory.Create();
         _bar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.Face));
-        _uiRoot.AddChild(_bar);
+        // The frame sits on CanvasLayer 100 with MouseFilter.Pass across the whole window, so
+        // anything parented to the editor's lower layer never sees a click. The bar and its
+        // flyout ride the frame's layer, drawn (and hit-tested) after it.
+        Node overlay = _frame.GetParent();
+        overlay.AddChild(_bar);
 
         var row = new HBoxContainer
         {
@@ -143,7 +147,7 @@ public partial class Win98CommandBarBootstrap : Node
         };
         _flyout.Theme = _bar.Theme;
         _flyout.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
-        _uiRoot.AddChild(_flyout);
+        overlay.AddChild(_flyout);
 
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 0);
@@ -189,11 +193,14 @@ public partial class Win98CommandBarBootstrap : Node
         {
             Text = text,
             TooltipText = tooltip,
-            Flat = true,
             FocusMode = Control.FocusModeEnum.All,
             MouseFilter = Control.MouseFilterEnum.Stop,
             CustomMinimumSize = new Vector2(Mathf.Max(42f, text.Length * 8f + 16f), 22f),
         };
+        // Classic menu strip: no chrome at rest, a 1px raised bevel on hover, sunk when open.
+        button.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Flat(Colors.Transparent));
+        button.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 1));
+        button.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
         button.Pressed += action;
         parent.AddChild(button);
         return button;
@@ -312,9 +319,16 @@ public partial class Win98CommandBarBootstrap : Node
         if (!GodotObject.IsInstanceValid(_bar))
             return;
 
-        Vector2 viewport = GetViewport().GetVisibleRect().Size;
-        _bar.Position = new Vector2(0f, Win98ThemeFactory.TitleBarHeight);
-        _bar.Size = new Vector2(viewport.X, 24f);
+        // The bar lives under _uiRoot, so it must be placed in global space against the
+        // frame's content rect (which already starts below the title bar), not the viewport.
+        Rect2 content = _frame.ContentViewportRect;
+        if (content.Size.X <= 0f)
+            return;
+
+        float height = Mathf.Max(24f, _bar.GetCombinedMinimumSize().Y);
+        _bar.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        _bar.GlobalPosition = content.Position;
+        _bar.Size = new Vector2(content.Size.X, height);
     }
 
     private void LayoutFlyout()
@@ -322,11 +336,15 @@ public partial class Win98CommandBarBootstrap : Node
         if (!GodotObject.IsInstanceValid(_flyout) || !GodotObject.IsInstanceValid(_bar))
             return;
 
-        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        Rect2 content = _frame.ContentViewportRect;
         Rect2 menuRect = _bar.GetGlobalRect();
-        float width = Mathf.Min(460f, Mathf.Max(300f, viewport.X - 8f));
-        float height = Mathf.Min(420f, Mathf.Max(180f, viewport.Y - menuRect.End.Y - 26f));
-        _flyout.Position = new Vector2(menuRect.Position.X, menuRect.End.Y);
+        if (content.Size.X <= 0f)
+            return;
+
+        float width = Mathf.Min(460f, content.Size.X);
+        float height = Mathf.Max(180f, content.End.Y - menuRect.End.Y);
+        _flyout.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        _flyout.GlobalPosition = new Vector2(menuRect.Position.X, menuRect.End.Y);
         _flyout.Size = new Vector2(width, height);
     }
 
