@@ -59,8 +59,8 @@ public partial class PaintCanvasControl : Control
             if (_panning)
             {
                 View.PanBy(new PaintPoint(
-                    motion.Relative.X / Math.Max(1.0, Size.X),
-                    motion.Relative.Y / Math.Max(1.0, Size.Y)));
+                    -motion.Relative.X / Math.Max(1.0, Size.X),
+                    -motion.Relative.Y / Math.Max(1.0, Size.Y)));
                 ViewChanged?.Invoke();
             }
             else

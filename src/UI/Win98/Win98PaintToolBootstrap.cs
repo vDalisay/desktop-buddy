@@ -15,6 +15,9 @@ public partial class Win98PaintToolBootstrap : Node
     private Button? _eraser;
     private Button? _pan;
 
+    // The editor pauses the tree while open, which is exactly when its tool picker exists.
+    public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
+
     public override void _Process(double delta)
     {
         if (GodotObject.IsInstanceValid(_canvas) && GodotObject.IsInstanceValid(_pan))
@@ -53,7 +56,6 @@ public partial class Win98PaintToolBootstrap : Node
         _eraser!.Pressed += SelectEraser;
         _pan.Pressed += SelectPan;
         SelectBrush();
-        SetProcess(false);
     }
 
     private void SelectBrush()
