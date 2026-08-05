@@ -19,6 +19,7 @@ public partial class PaintCanvasControl : Control
     public PaintWorkspace Workspace { get; } = new();
     public PaintViewState View { get; } = new();
     public PaintPart? HoveredPart { get; private set; }
+    public PaintPart? ActivePartFilter { get; set; }
     public bool PanToolActive { get; set; }
 
     /// <summary>
@@ -192,10 +193,16 @@ public partial class PaintCanvasControl : Control
                 ? Mathf.DegToRad(_host.PreviewRig.RotationDegrees.Y)
                 : 0.0;
 
+        PaintHit? hit;
         if (Math.Abs(yaw) <= 0.000001)
-            return _mapper.TryMap(point, out PaintHit frontal) ? frontal : null;
+            hit = _mapper.TryMap(point, out PaintHit frontal) ? frontal : null;
+        else
+            hit = TryMapRotated(point, yaw, out PaintHit rotated) ? rotated : null;
 
-        return TryMapRotated(point, yaw, out PaintHit rotated) ? rotated : null;
+        return hit is PaintHit valid &&
+            (ActivePartFilter is null || valid.Part == ActivePartFilter.Value)
+                ? valid
+                : null;
     }
 
     /// <summary>
@@ -214,9 +221,6 @@ public partial class PaintCanvasControl : Control
 
         foreach (PaintPartShape shape in _mapper.Shapes)
         {
-            // PaintPartShape.Depth is a painter-ordering lane (head 96, feet -48), not a real Z
-            // offset, so it must never move a part on screen: at yaw 90 it threw the head 96
-            // units sideways. It only biases occlusion, fading out as the rig turns side-on.
             double centerScreenX = shape.Center.X * cos;
             double centerDepth = (-shape.Center.X * sin) + (shape.Depth * cos);
             double screenX = point.X - centerScreenX;
@@ -301,8 +305,6 @@ public partial class PaintCanvasControl : Control
             }
         }
 
-        // Inverse Y rotation from camera-space surface coordinates to the primitive's local
-        // x/z coordinates. UV U then follows Godot's SphereMesh/CapsuleMesh conventions.
         double localX = (screenX * cos) - (surfaceDepth * sin);
         double localZ = (screenX * sin) + (surfaceDepth * cos);
         double uOffset = shape.Kind == PaintShapeKind.Capsule ? 0.5 : 0.0;
