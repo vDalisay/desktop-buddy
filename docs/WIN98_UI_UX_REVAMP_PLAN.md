@@ -314,6 +314,17 @@ Implement in two stages:
 
 No fake layer controls may be shipped.
 
+**Placement (owner decision, 2026-08-05).** The presentation-stage layer panel lives in the
+left character column, directly under the character list, not as a right-hand column. Layers
+are per-character paint surfaces, so they read correctly beside the character they belong to,
+and keeping them out of the right column leaves the buddy viewport its full width.
+
+**"Customizable items" removed.** That column previously ended with a disabled "No items
+equipped" placeholder for hats and other equipment. Equipment is moving to a separate clothing
+shop, so the placeholder was deleted rather than relocated — per §6.14, unsupported future
+functionality must be absent rather than decorative, and the layer panel now occupies that
+slot. Equipment must not reappear in the paint editor; it ships in the shop.
+
 ### 6.14 Phase 3 acceptance criteria
 
 - Editor visually reads as one classic paint application.

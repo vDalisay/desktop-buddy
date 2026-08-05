@@ -41,10 +41,17 @@ public partial class Win98PaintLayersBootstrap : Node
 
     private void TryCompose()
     {
-        if (_canvas!.FindParent("Win98PaintWorkspace") is not HBoxContainer workspace)
+        // The layer list lives in the character column, in the slot the retired "Customizable
+        // items" placeholder used to occupy: layers belong next to the character being painted,
+        // and equipment moved out to its own clothing shop.
+        if (_canvas!.FindParent("Win98PaintWorkspace") is not HBoxContainer workspace ||
+            workspace.FindChild("Win98CharacterColumnBody", recursive: true, owned: false)
+                is not VBoxContainer host)
+        {
             return;
+        }
 
-        if (workspace.FindChild("Win98PaintLayerPanel", recursive: false, owned: false) is PanelContainer existing)
+        if (host.FindChild("Win98PaintLayerPanel", recursive: false, owned: false) is PanelContainer existing)
         {
             _panel = existing;
             return;
@@ -53,14 +60,16 @@ public partial class Win98PaintLayersBootstrap : Node
         _panel = new PanelContainer
         {
             Name = "Win98PaintLayerPanel",
-            CustomMinimumSize = new Vector2(150, 0),
+            CustomMinimumSize = new Vector2(0, 150),
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         _panel.AddThemeStyleboxOverride(
             "panel",
             Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
-        workspace.AddChild(_panel);
+        host.AddChild(_panel);
+        // Keep the Duplicate/Delete/Randomize row pinned to the bottom of the column.
+        host.MoveChild(_panel, host.GetChildCount() - 2);
 
         var column = new VBoxContainer
         {
@@ -108,6 +117,7 @@ public partial class Win98PaintLayersBootstrap : Node
             selector.Select((int)index + 1);
             SelectLayer(selector, (long)index + 1);
         };
+        Win98ItemListCheck.Attach(list);
         column.AddChild(list);
 
         _status = new Label

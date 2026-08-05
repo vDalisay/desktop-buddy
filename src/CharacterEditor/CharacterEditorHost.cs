@@ -320,6 +320,7 @@ public partial class CharacterEditorHost : CanvasLayer
             if (entry.IsEnabled)
                 Handle(await _session.SelectAsync(entry.CharacterId));
         };
+        UI.Win98.Win98ItemListCheck.Attach(_libraryList);
         libraryColumn.AddChild(_libraryList);
         var pager = new HBoxContainer();
         libraryColumn.AddChild(pager);

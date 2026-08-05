@@ -13,6 +13,9 @@ public static class Win98ThemeFactory
     public static readonly Color ActiveTitle = Color.Color8(0, 0, 128);
     public static readonly Color InactiveTitle = Color.Color8(128, 128, 128);
     public static readonly Color Selection = Color.Color8(0, 0, 128);
+    /// <summary>Deliberately non-period hover blue: complements the navy selection without
+    /// being mistaken for it, and keeps white hover text readable.</summary>
+    public static readonly Color HoverSelection = Color.Color8(72, 132, 208);
 
     public const int Border = 2;
     public const int TitleBarHeight = 22;
@@ -43,10 +46,17 @@ public static class Win98ThemeFactory
         theme.SetStylebox("panel", "ScrollContainer", Recessed(Light, 2));
         theme.SetStylebox("panel", "PopupPanel", Raised(Face, 2));
         theme.SetStylebox("panel", "ItemList", Recessed(Light, 2));
+        theme.SetColor("font_color", "ItemList", Dark);
         theme.SetColor("font_selected_color", "ItemList", Light);
+        theme.SetColor("font_hovered_color", "ItemList", Light);
         theme.SetColor("font_hovered_selected_color", "ItemList", Light);
         theme.SetStylebox("selected", "ItemList", Flat(Selection));
         theme.SetStylebox("selected_focus", "ItemList", Flat(Selection));
+        // Hover must fill, not just recolor the glyphs: white text on the light list background
+        // was unreadable.
+        theme.SetStylebox("hovered", "ItemList", Flat(HoverSelection));
+        theme.SetStylebox("hovered_selected", "ItemList", Flat(HoverSelection));
+        theme.SetStylebox("hovered_selected_focus", "ItemList", Flat(HoverSelection));
 
         theme.SetConstant("separation", "HBoxContainer", Gap);
         theme.SetConstant("separation", "VBoxContainer", Gap);

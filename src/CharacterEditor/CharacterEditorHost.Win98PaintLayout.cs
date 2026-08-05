@@ -84,7 +84,7 @@ public partial class CharacterEditorHost
         frame.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _win98PaintWorkspace.AddChild(frame);
 
-        var column = new VBoxContainer();
+        var column = new VBoxContainer { Name = "Win98CharacterColumnBody" };
         column.AddThemeConstantOverride("separation", 2);
         frame.AddChild(column);
         column.AddChild(new Label
@@ -102,19 +102,10 @@ public partial class CharacterEditorHost
         NewButton.TooltipText = "Add a new character.";
         NewButton.CustomMinimumSize = new Vector2(0, 38);
 
+        // The former "Customizable items" placeholder lived here. Equipment belongs to the
+        // planned clothing shop, not the paint editor, so the slot now holds the semantic
+        // layer panel (added by Win98PaintLayersBootstrap) instead of a decorative list.
         column.AddChild(new HSeparator());
-        column.AddChild(new Label { Text = "Customizable items" });
-        var items = new ItemList
-        {
-            Name = "FutureCustomizationItemList",
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(0, 130),
-            MouseFilter = Control.MouseFilterEnum.Stop,
-        };
-        items.AddItem("No items equipped");
-        items.SetItemDisabled(0, true);
-        items.SetItemTooltip(0, "Hats and other customization items will appear here.");
-        column.AddChild(items);
 
         var manage = new HBoxContainer();
         manage.AddThemeConstantOverride("separation", 2);
