@@ -31,6 +31,10 @@ public partial class Win98ShellBootstrap : Node
             Name = nameof(Win98BuddyShellController),
             Layer = 100,
             Window = windowController,
+            // Window chrome is not gameplay: the editor pauses the tree, and paused controls
+            // stop receiving GUI input, which killed drag, resize and the caption buttons.
+            // Children (the frame) inherit this, so the whole chrome stays live.
+            ProcessMode = ProcessModeEnum.Always,
         };
 
         var frame = new Win98WindowFrame

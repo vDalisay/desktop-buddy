@@ -16,6 +16,9 @@ public partial class Win98PaintLayersBootstrap : Node
     private PanelContainer? _panel;
     private Label? _status;
 
+    // The editor pauses the tree while open, which is exactly when its paint workspace exists.
+    public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
+
     public override void _Process(double delta)
     {
         if (!GodotObject.IsInstanceValid(_canvas))
@@ -120,7 +123,7 @@ public partial class Win98PaintLayersBootstrap : Node
             Text = "Select a layer to prevent strokes from touching overlapping body parts.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
-        help.AddThemeColorOverride("font_color", Win98ThemeFactory.DisabledText);
+        help.AddThemeColorOverride("font_color", Win98ThemeFactory.Shadow);
         column.AddChild(help);
     }
 
