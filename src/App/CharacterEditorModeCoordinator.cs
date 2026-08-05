@@ -68,7 +68,8 @@ public sealed class CharacterEditorModeCoordinator
             Rect = recovered,
             Transparent = false,
             AlwaysOnTop = false,
-            Borderless = false,
+            // The Win98 frame draws its own title bar; a native one would stack a second bar on top.
+            Borderless = true,
             Resizable = true,
         });
         _window.SetInputMode(DomainInputMode.Play, Array.Empty<Rect2I>());

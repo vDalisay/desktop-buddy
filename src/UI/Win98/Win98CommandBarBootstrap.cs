@@ -250,7 +250,7 @@ public partial class Win98CommandBarBootstrap : Node
     private async void OpenEditor()
     {
         CloseFlyout();
-        await _editorHost.OpenPaintEditorAsync();
+        await _editorHost.OpenWin98PaintEditorAsync();
     }
 
     private void ToggleMode() => _legacyModeButton.EmitSignal(Button.SignalName.Pressed);

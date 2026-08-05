@@ -187,7 +187,7 @@ public sealed class EditorWindowRestoreScenario : IScenario
             coordinator.Enter();
             WindowSettings editor = sandbox.Window.CurrentSettings;
             bool editorState = editor.Rect.Size == CharacterEditorModeCoordinator.EditorClientSize &&
-                !editor.Transparent && !editor.AlwaysOnTop && !editor.Borderless && editor.Resizable &&
+                !editor.Transparent && !editor.AlwaysOnTop && editor.Borderless && editor.Resizable &&
                 sandbox.Window.InputMode == DomainInputMode.Play;
             checks.Add(new StartupCheck("a7_editor_window_state", editorState,
                 $"rect={editor.Rect} transparent={editor.Transparent} borderless={editor.Borderless}"));
