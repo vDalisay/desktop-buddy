@@ -19,6 +19,7 @@ public partial class Win98WindowFrame : PanelContainer
     private Label _titleLabel = null!;
     private Label _statusLabel = null!;
     private PanelContainer _titleBar = null!;
+    private ColorRect _viewportTint = null!;
     private bool _dragging;
 
     public Control ContentHost { get; private set; } = null!;
@@ -49,8 +50,8 @@ public partial class Win98WindowFrame : PanelContainer
         Theme = Win98ThemeFactory.Create();
         CustomMinimumSize = new Vector2(320, 240);
 
-        // The root panel must never paint the theme's opaque default over gameplay.
-        AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Colors.Transparent));
+        // Never let the PanelContainer's default Win98 face paint over the game render.
+        AddThemeStyleboxOverride("panel", TransparentPanel());
         Build();
         SetViewportOpacity(0.5f);
     }
@@ -80,15 +81,18 @@ public partial class Win98WindowFrame : PanelContainer
             Win98ThemeFactory.Flat(active ? Win98ThemeFactory.ActiveTitle : Win98ThemeFactory.InactiveTitle));
     }
 
-    /// <summary>Changes only the play-area fill; chrome remains fully opaque and readable.</summary>
+    /// <summary>Changes only the play-area tint; game rendering remains visible beneath it.</summary>
     public void SetViewportOpacity(float opacity)
     {
-        if (!GodotObject.IsInstanceValid(ContentHost))
+        if (!GodotObject.IsInstanceValid(_viewportTint))
             return;
 
-        float alpha = Mathf.Clamp(opacity, 0f, 0.9f);
-        Color fill = new(Win98ThemeFactory.Face.R, Win98ThemeFactory.Face.G, Win98ThemeFactory.Face.B, alpha);
-        ContentHost.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(fill));
+        float alpha = Mathf.Clamp(opacity, 0f, 1f);
+        _viewportTint.Color = new Color(
+            Win98ThemeFactory.Face.R,
+            Win98ThemeFactory.Face.G,
+            Win98ThemeFactory.Face.B,
+            alpha);
     }
 
     private void Build()
@@ -121,7 +125,30 @@ public partial class Win98WindowFrame : PanelContainer
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             MouseFilter = MouseFilterEnum.Ignore,
         };
+        ContentHost.AddThemeStyleboxOverride("panel", TransparentPanel());
         column.AddChild(ContentHost);
+
+        // A dedicated ColorRect gives predictable source-alpha blending. Using the alpha on a
+        // StyleBoxFlat was rendered opaque by the compatibility renderer on the shipping path.
+        _viewportTint = new ColorRect
+        {
+            Name = "ViewportTint",
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        _viewportTint.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        ContentHost.AddChild(_viewportTint);
+
+        // Draw only the recessed border above the tint, with a transparent center.
+        var viewportBorder = new PanelContainer
+        {
+            Name = "ViewportBorder",
+            MouseFilter = MouseFilterEnum.Ignore,
+        };
+        viewportBorder.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        var borderStyle = Win98ThemeFactory.Recessed(Colors.Transparent);
+        borderStyle.DrawCenter = false;
+        viewportBorder.AddThemeStyleboxOverride("panel", borderStyle);
+        ContentHost.AddChild(viewportBorder);
 
         var status = new PanelContainer
         {
@@ -220,5 +247,17 @@ public partial class Win98WindowFrame : PanelContainer
         }
 
         AcceptEvent();
+    }
+
+    private static StyleBoxFlat TransparentPanel()
+    {
+        var style = Win98ThemeFactory.Flat(Colors.Transparent);
+        style.DrawCenter = false;
+        style.BorderWidthLeft = 0;
+        style.BorderWidthTop = 0;
+        style.BorderWidthRight = 0;
+        style.BorderWidthBottom = 0;
+        style.ShadowSize = 0;
+        return style;
     }
 }
