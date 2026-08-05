@@ -165,6 +165,15 @@ public partial class PaintCanvasControl : Control
         QueueRedraw();
     }
 
+    /// <summary>Sets the viewport pan from the editor's classic horizontal/vertical scrollbars.</summary>
+    public void SetPanNormalized(double x, double y)
+    {
+        PaintPoint current = View.Pan;
+        View.PanBy(new PaintPoint(x - current.X, y - current.Y));
+        ViewChanged?.Invoke();
+        QueueRedraw();
+    }
+
     /// <summary>Part under a canvas-space pointer position, or null on a miss.</summary>
     public PaintPart? PartAt(Vector2 canvasPosition) => Map(canvasPosition)?.Part;
 
