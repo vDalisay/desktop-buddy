@@ -33,7 +33,7 @@ public partial class Win98WindowFrame : PanelContainer
     public Control ContentHost { get; private set; } = null!;
     public float ViewportOpacity { get; private set; } = 0.5f;
     public Rect2 ContentViewportRect =>
-        GodotObject.IsInstanceValid(ContentHost) ? ContentHost.GetGlobalRect() : Rect2.Zero;
+        GodotObject.IsInstanceValid(ContentHost) ? ContentHost.GetGlobalRect() : new Rect2();
 
     public string WindowTitle
     {
