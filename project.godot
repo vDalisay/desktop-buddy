@@ -25,9 +25,8 @@ window/size/borderless=true
 window/size/always_on_top=true
 window/size/transparent=true
 window/per_pixel_transparency/allowed=true
-; Dock panels (shop, tools) are real desktop windows: the player drags them anywhere,
-; they are not clipped to the transparent buddy box, and they are their own HWNDs, so
-; Work-Mode click-through hit regions never apply to them.
+; Native subwindows remain available for the fullscreen recovery path. Compact mode now
+; reparents Shop, Tools and Settings into the integrated Win98 command-bar flyout.
 window/subwindows/embed_subwindows=false
 
 [dotnet]
@@ -90,3 +89,4 @@ renderer/rendering_method.mobile="gl_compatibility"
 [autoload]
 
 Win98ShellBootstrap="*res://src/UI/Win98/Win98ShellBootstrap.cs"
+Win98CommandBarBootstrap="*res://src/UI/Win98/Win98CommandBarBootstrap.cs"
