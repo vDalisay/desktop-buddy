@@ -14,6 +14,9 @@ public partial class CharacterEditorHost
     private Label _brushSize = null!;
     private Button _paintModeButton = null!;
     private Button _undoPaintButton = null!;
+    private Button _redoPaintButton = null!;
+    private ColorPickerButton _paintColorPicker = null!;
+    private ColorRect _currentColorSwatch = null!;
     private Camera3D _paintCamera = null!;
     private ConfirmationDialog _eraseAllConfirmation = null!;
     private bool _paintAttachStarted;
@@ -27,8 +30,6 @@ public partial class CharacterEditorHost
             return;
         if (_paintCanvas is null)
         {
-            // Build once. A throw in here used to be retried every frame, which buried the
-            // one real error under a wall of identical ones.
             if (!_paintAttachStarted)
                 TryAttachPaintingWorkspace();
             return;
@@ -43,8 +44,6 @@ public partial class CharacterEditorHost
         {
             return;
         }
-        // The preview camera is added without a name, so Godot calls it "@Camera3D@3" and a
-        // name lookup finds nothing. Search by type instead.
         if (preview.FindChildren("*", nameof(Camera3D), recursive: true, owned: false)
                 .FirstOrDefault() is not Camera3D camera)
         {
@@ -59,8 +58,6 @@ public partial class CharacterEditorHost
         _paintCamera = camera;
         _paintTextures = new PaintTextureBridge(_preview);
 
-        // The canvas exists before anything that binds to it: wiring a control to
-        // _paintCanvas.Method while the field is still null throws on the delegate, not on use.
         _paintCanvas = new PaintCanvasControl { Name = "CharacterPaintCanvas", Visible = false };
         _paintCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         previewContainer.AddChild(_paintCanvas);
@@ -74,64 +71,98 @@ public partial class CharacterEditorHost
         controls.AddChild(_paintModeButton);
 
         _paintControls = new VBoxContainer { Name = "CharacterPaintControls", Visible = false };
+        _paintControls.AddThemeConstantOverride("separation", 2);
         controls.AddChild(_paintControls);
 
-        // Both were appended after the preview, which puts them past the bottom of the
-        // scrolling column. Paint controls belong directly above the buddy they act on.
         int previewIndex = previewContainer.GetIndex();
         controls.MoveChild(_paintModeButton, previewIndex);
         controls.MoveChild(_paintControls, previewIndex + 1);
 
-        var toolRow = new HBoxContainer();
+        var toolRow = new HBoxContainer { Name = "PaintToolRow" };
+        toolRow.AddThemeConstantOverride("separation", 2);
         _paintControls.AddChild(toolRow);
         Button brush = Button(PaintUiText.Get(PaintUiText.Brush), "PaintBrushButton");
         Button eraser = Button(PaintUiText.Get(PaintUiText.Eraser), "PaintEraserButton");
-        brush.Pressed += () => { _paintCanvas.Workspace.SelectedTool = PaintTool.Brush; RefreshPaintStatus(); };
-        eraser.Pressed += () => { _paintCanvas.Workspace.SelectedTool = PaintTool.Eraser; RefreshPaintStatus(); };
+        brush.ToggleMode = true;
+        eraser.ToggleMode = true;
+        brush.ButtonPressed = true;
+        brush.Pressed += () =>
+        {
+            _paintCanvas.Workspace.SelectedTool = PaintTool.Brush;
+            brush.ButtonPressed = true;
+            eraser.ButtonPressed = false;
+            RefreshPaintStatus();
+        };
+        eraser.Pressed += () =>
+        {
+            _paintCanvas.Workspace.SelectedTool = PaintTool.Eraser;
+            brush.ButtonPressed = false;
+            eraser.ButtonPressed = true;
+            RefreshPaintStatus();
+        };
         toolRow.AddChild(brush);
         toolRow.AddChild(eraser);
 
-        var color = new ColorPickerButton
+        _currentColorSwatch = new ColorRect
+        {
+            Name = "PaintCurrentColor",
+            Color = Colors.White,
+            CustomMinimumSize = new Vector2(28, 24),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            TooltipText = "Current paint color",
+        };
+        toolRow.AddChild(_currentColorSwatch);
+
+        _paintColorPicker = new ColorPickerButton
         {
             Name = "PaintColorWheel",
             Color = Colors.White,
             TooltipText = PaintUiText.Get(PaintUiText.ColorTooltip),
+            CustomMinimumSize = new Vector2(84, 24),
         };
-        color.ColorChanged += value =>
-        {
-            _paintCanvas.Workspace.SelectedColor = new PaintColor(
-                (byte)Math.Clamp(Math.Round(value.R * 255), 0, 255),
-                (byte)Math.Clamp(Math.Round(value.G * 255), 0, 255),
-                (byte)Math.Clamp(Math.Round(value.B * 255), 0, 255));
-        };
-        toolRow.AddChild(color);
+        _paintColorPicker.ColorChanged += SetPaintColor;
+        toolRow.AddChild(_paintColorPicker);
 
-        var sizeRow = new HBoxContainer();
+        BuildPresetPalette();
+
+        var sizeRow = new HBoxContainer { Name = "PaintBrushSizeRow" };
+        sizeRow.AddThemeConstantOverride("separation", 2);
         _paintControls.AddChild(sizeRow);
         Button smaller = Button("−", "PaintSizeDecreaseButton");
         Button larger = Button("+", "PaintSizeIncreaseButton");
         smaller.Pressed += () => { _paintCanvas.Workspace.AdjustBrush(-1); RefreshPaintStatus(); };
         larger.Pressed += () => { _paintCanvas.Workspace.AdjustBrush(1); RefreshPaintStatus(); };
-        _brushSize = new Label { Name = "PaintBrushSize" };
+        _brushSize = new Label
+        {
+            Name = "PaintBrushSize",
+            CustomMinimumSize = new Vector2(34, 0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         sizeRow.AddChild(new Label { Text = PaintUiText.Get(PaintUiText.BrushSize) });
         sizeRow.AddChild(smaller);
         sizeRow.AddChild(_brushSize);
         sizeRow.AddChild(larger);
 
-        var commandRow = new HBoxContainer();
+        var commandRow = new HBoxContainer { Name = "PaintHistoryRow" };
+        commandRow.AddThemeConstantOverride("separation", 2);
         _paintControls.AddChild(commandRow);
         _undoPaintButton = Button(PaintUiText.Get(PaintUiText.Undo), "PaintUndoButton");
-        _undoPaintButton.Pressed += () =>
-        {
-            if (_paintCanvas.Workspace.Undo()) QueueAllPaintTextures();
-            RefreshPaintStatus();
-        };
+        _undoPaintButton.TooltipText = "Undo the last paint action (Ctrl+Z).";
+        _undoPaintButton.Pressed += UndoPaint;
         commandRow.AddChild(_undoPaintButton);
+
+        _redoPaintButton = Button("Redo", "PaintRedoButton");
+        _redoPaintButton.TooltipText = "Redo the last undone paint action (Ctrl+Y or Ctrl+Shift+Z).";
+        _redoPaintButton.Pressed += RedoPaint;
+        commandRow.AddChild(_redoPaintButton);
+
         Button eraseAll = Button(PaintUiText.Get(PaintUiText.EraseAll), "PaintEraseAllButton");
         eraseAll.Pressed += () => _eraseAllConfirmation.PopupCentered();
         commandRow.AddChild(eraseAll);
 
-        var viewRow = new HBoxContainer();
+        var viewRow = new HBoxContainer { Name = "PaintViewRow" };
+        viewRow.AddThemeConstantOverride("separation", 2);
         _paintControls.AddChild(viewRow);
         Button zoomOut = Button(PaintUiText.Get(PaintUiText.ZoomOut), "PaintZoomOutButton");
         Button zoomIn = Button(PaintUiText.Get(PaintUiText.ZoomIn), "PaintZoomInButton");
@@ -172,6 +203,82 @@ public partial class CharacterEditorHost
         RefreshPaintStatus();
     }
 
+    private void BuildPresetPalette()
+    {
+        var paletteFrame = new PanelContainer
+        {
+            Name = "PaintPresetPalette",
+            MouseFilter = Control.MouseFilterEnum.Stop,
+        };
+        _paintControls.AddChild(paletteFrame);
+
+        var palette = new GridContainer
+        {
+            Name = "PaintPresetPaletteGrid",
+            Columns = 8,
+        };
+        palette.AddThemeConstantOverride("h_separation", 1);
+        palette.AddThemeConstantOverride("v_separation", 1);
+        paletteFrame.AddChild(palette);
+
+        Color[] colors =
+        [
+            Colors.Black, new Color("#808080"), Colors.White, new Color("#800000"),
+            Colors.Red, new Color("#808000"), Colors.Yellow, new Color("#008000"),
+            Colors.Lime, new Color("#008080"), Colors.Cyan, new Color("#000080"),
+            Colors.Blue, new Color("#800080"), Colors.Magenta, new Color("#C0C0C0"),
+        ];
+
+        for (int index = 0; index < colors.Length; index++)
+        {
+            Color preset = colors[index];
+            var swatch = new Button
+            {
+                Name = $"PaintPalette{index}",
+                CustomMinimumSize = new Vector2(22, 18),
+                TooltipText = $"Use #{preset.ToHtml(false)}",
+                FocusMode = Control.FocusModeEnum.All,
+            };
+            var normal = new StyleBoxFlat { BgColor = preset };
+            normal.SetBorderWidthAll(1);
+            normal.BorderColor = Colors.Black;
+            swatch.AddThemeStyleboxOverride("normal", normal);
+            swatch.AddThemeStyleboxOverride("hover", normal);
+            swatch.AddThemeStyleboxOverride("pressed", normal);
+            swatch.Pressed += () =>
+            {
+                _paintColorPicker.Color = preset;
+                SetPaintColor(preset);
+            };
+            palette.AddChild(swatch);
+        }
+    }
+
+    private void SetPaintColor(Color value)
+    {
+        _paintCanvas.Workspace.SelectedColor = new PaintColor(
+            (byte)Math.Clamp(Math.Round(value.R * 255), 0, 255),
+            (byte)Math.Clamp(Math.Round(value.G * 255), 0, 255),
+            (byte)Math.Clamp(Math.Round(value.B * 255), 0, 255));
+        if (GodotObject.IsInstanceValid(_currentColorSwatch))
+            _currentColorSwatch.Color = value;
+        RefreshPaintStatus();
+    }
+
+    private void UndoPaint()
+    {
+        if (_paintCanvas.Workspace.Undo())
+            QueueAllPaintTextures();
+        RefreshPaintStatus();
+    }
+
+    private void RedoPaint()
+    {
+        if (_paintCanvas.Workspace.Redo())
+            QueueAllPaintTextures();
+        RefreshPaintStatus();
+    }
+
     private void TogglePaintMode()
     {
         bool enabled = !_paintControls.Visible;
@@ -180,7 +287,6 @@ public partial class CharacterEditorHost
         _paintCanvas.MouseFilter = enabled ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
         _paintModeButton.Text = PaintUiText.Get(
             enabled ? PaintUiText.AppearanceControls : PaintUiText.Open);
-        // Paint mode drives the shared preview camera, so leaving it restores the default framing.
         _paintCanvas.ResetView();
         if (enabled)
         {
@@ -204,9 +310,9 @@ public partial class CharacterEditorHost
 
     private void ApplyPaintView()
     {
-        if (_paintCamera is null) return;
+        if (_paintCamera is null)
+            return;
         _paintCamera.Size = (float)(PaintCanvasControl.BaseCameraSize / _paintCanvas.View.Zoom);
-        // The canvas maps pointer positions in 2D world units (Y-down); 3D is Y-up.
         PaintPoint center = _paintCanvas.CameraCenter;
         _paintCamera.Position = new Vector3((float)center.X, (float)-center.Y, 600);
         RefreshPaintStatus();
@@ -214,9 +320,11 @@ public partial class CharacterEditorHost
 
     private void RefreshPaintStatus()
     {
-        if (_paintCanvas is null || _paintStatus is null) return;
+        if (_paintCanvas is null || _paintStatus is null)
+            return;
         _brushSize.Text = _paintCanvas.Workspace.BrushDiameter.ToString();
         _undoPaintButton.Disabled = !_paintCanvas.Workspace.CanUndo;
+        _redoPaintButton.Disabled = !_paintCanvas.Workspace.CanRedo;
         string hovered = _paintCanvas.HoveredPart?.ToString() ?? PaintUiText.Get(PaintUiText.Canvas);
         string tool = PaintUiText.Get(
             _paintCanvas.Workspace.SelectedTool == PaintTool.Brush
