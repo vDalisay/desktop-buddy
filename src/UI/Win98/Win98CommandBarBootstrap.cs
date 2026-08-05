@@ -8,16 +8,15 @@ using Godot;
 namespace DesktopBuddy.UI.Win98;
 
 /// <summary>
-/// W2 migration layer for the compact horizontal menu. It replaces the temporary button row
-/// and native compact-mode panel windows with one persistent Win98 command bar and one in-scene
-/// flyout. Fullscreen keeps the existing recovery toolbar/native windows until its dedicated
-/// menu pass lands.
+/// Hosts the Shop, Tools, Settings and editor commands in the classic menu strip directly
+/// beneath the Win98 title bar. Compact mode uses one in-scene flyout instead of native windows.
 /// </summary>
 public partial class Win98CommandBarBootstrap : Node
 {
     private Control _uiRoot = null!;
     private Control _legacyDock = null!;
     private DesktopWindowController _window = null!;
+    private Win98WindowFrame _frame = null!;
 
     private ShopPanel _shop = null!;
     private ToolSelectionPanel _tools = null!;
@@ -35,13 +34,11 @@ public partial class Win98CommandBarBootstrap : Node
     private Button _settingsButton = null!;
     private Button _editorButton = null!;
     private Button _modeButton = null!;
-    private Button _collapseButton = null!;
     private Button _legacyEditorButton = null!;
     private Button _legacyModeButton = null!;
 
     private readonly Dictionary<Button, Control> _sections = [];
     private Control? _activeSection;
-    private bool _collapsed;
     private bool _composed;
 
     public override void _Process(double delta)
@@ -54,11 +51,9 @@ public partial class Win98CommandBarBootstrap : Node
 
         bool compact = _window.LayoutMode == WindowLayoutMode.Compact;
         bool editorOpen = IsEditorOpen();
-        _bar.Visible = compact && !editorOpen;
-        _flyout.Visible = compact && !editorOpen && !_collapsed && _activeSection is not null;
+        _bar.Visible = !editorOpen;
+        _flyout.Visible = compact && !editorOpen && _activeSection is not null;
 
-        // The old row is still controlled by CharacterEditorHost. Keep it out of the compact
-        // layout without modifying that host's initialization and diagnostics seams.
         if (GodotObject.IsInstanceValid(_legacyDock))
             _legacyDock.Visible = false;
 
@@ -67,7 +62,8 @@ public partial class Win98CommandBarBootstrap : Node
         else
             EnsureCompactPanelOwnership();
 
-        LayoutForViewport();
+        LayoutMenuBar();
+        LayoutFlyout();
         MirrorModeLabel();
     }
 
@@ -77,17 +73,17 @@ public partial class Win98CommandBarBootstrap : Node
     {
         _uiRoot = FindControl("CharacterEditorUiRoot");
         _legacyDock = FindControl("FloatingDock");
-        _window = GetTree().Root.FindChild(
-            nameof(DesktopWindowController), recursive: true, owned: false) as DesktopWindowController
-            ?? null!;
-        _shop = GetTree().Root.FindChild("ShopPanel", recursive: true, owned: false) as ShopPanel ?? null!;
-        _tools = GetTree().Root.FindChild("ToolSelectionPanel", recursive: true, owned: false) as ToolSelectionPanel ?? null!;
-        _settings = GetTree().Root.FindChild("SettingsPanel", recursive: true, owned: false) as SettingsPanel ?? null!;
+        _frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame ?? null!;
+        _window = GetTree().Root.FindChild(nameof(DesktopWindowController), true, false) as DesktopWindowController ?? null!;
+        _shop = GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel ?? null!;
+        _tools = GetTree().Root.FindChild("ToolSelectionPanel", true, false) as ToolSelectionPanel ?? null!;
+        _settings = GetTree().Root.FindChild("SettingsPanel", true, false) as SettingsPanel ?? null!;
         _legacyEditorButton = FindButton("DockCharacterEditorButton");
         _legacyModeButton = FindButton("DockInteractionModeButton");
 
         if (!GodotObject.IsInstanceValid(_uiRoot) ||
             !GodotObject.IsInstanceValid(_legacyDock) ||
+            !GodotObject.IsInstanceValid(_frame) ||
             !GodotObject.IsInstanceValid(_window) ||
             !GodotObject.IsInstanceValid(_shop) ||
             !GodotObject.IsInstanceValid(_tools) ||
@@ -114,26 +110,25 @@ public partial class Win98CommandBarBootstrap : Node
         {
             Name = "Win98CommandBar",
             MouseFilter = Control.MouseFilterEnum.Stop,
-            ZIndex = 80,
         };
         _bar.Theme = Win98ThemeFactory.Create();
-        _bar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
+        _bar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.Face));
         _uiRoot.AddChild(_bar);
 
         var row = new HBoxContainer
         {
             Name = "CommandRow",
-            Alignment = BoxContainer.AlignmentMode.Center,
+            Alignment = BoxContainer.AlignmentMode.Begin,
+            MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        row.AddThemeConstantOverride("separation", 2);
+        row.AddThemeConstantOverride("separation", 0);
         _bar.AddChild(row);
 
-        _shopButton = AddCommand(row, "Shop", "Open the shop inside the game window.", () => OpenSection(_shopButton, _shop, "Shop"));
-        _toolsButton = AddCommand(row, "Tools", "Choose the active tool.", () => OpenSection(_toolsButton, _tools, "Tools"));
-        _settingsButton = AddCommand(row, "Settings", "Open game and window settings.", () => OpenSection(_settingsButton, _settings, "Settings"));
-        _editorButton = AddCommand(row, "Paint / Character", "Open the character editor.", OpenEditor);
-        _modeButton = AddCommand(row, "Work", "Switch between Play and Work input modes.", ToggleMode);
-        _collapseButton = AddCommand(row, "◀", "Collapse or expand the command bar.", ToggleCollapsed);
+        _shopButton = AddMenuCommand(row, "Shop", "Open the shop.", () => OpenSection(_shopButton, _shop, "Shop"));
+        _toolsButton = AddMenuCommand(row, "Tools", "Choose the active tool.", () => OpenSection(_toolsButton, _tools, "Tools"));
+        _settingsButton = AddMenuCommand(row, "Settings", "Open game and window settings.", () => OpenSection(_settingsButton, _settings, "Settings"));
+        _editorButton = AddMenuCommand(row, "Paint / Character", "Open the character editor.", OpenEditor);
+        _modeButton = AddMenuCommand(row, "Work", "Switch between Play and Work input modes.", ToggleMode);
 
         _sections[_shopButton] = _shop;
         _sections[_toolsButton] = _tools;
@@ -174,7 +169,7 @@ public partial class Win98CommandBarBootstrap : Node
         };
         _flyoutTitle.AddThemeColorOverride("font_color", Colors.White);
         titleRow.AddChild(_flyoutTitle);
-        var close = AddCommand(titleRow, "×", "Close this menu.", CloseFlyout);
+        var close = AddMenuCommand(titleRow, "×", "Close this menu.", CloseFlyout);
         close.CustomMinimumSize = new Vector2(22, 18);
 
         _flyoutBody = new PanelContainer
@@ -188,15 +183,16 @@ public partial class Win98CommandBarBootstrap : Node
         column.AddChild(_flyoutBody);
     }
 
-    private static Button AddCommand(Control parent, string text, string tooltip, Action action)
+    private static Button AddMenuCommand(Control parent, string text, string tooltip, Action action)
     {
         var button = new Button
         {
             Text = text,
             TooltipText = tooltip,
+            Flat = true,
             FocusMode = Control.FocusModeEnum.All,
             MouseFilter = Control.MouseFilterEnum.Stop,
-            CustomMinimumSize = new Vector2(68, 26),
+            CustomMinimumSize = new Vector2(Mathf.Max(42f, text.Length * 8f + 16f), 22f),
         };
         button.Pressed += action;
         parent.AddChild(button);
@@ -205,6 +201,9 @@ public partial class Win98CommandBarBootstrap : Node
 
     private void OpenSection(Button button, Control section, string title)
     {
+        if (_window.LayoutMode != WindowLayoutMode.Compact)
+            return;
+
         EnsureCompactPanelOwnership();
         if (_activeSection == section && _flyout.Visible)
         {
@@ -218,13 +217,14 @@ public partial class Win98CommandBarBootstrap : Node
             _tools.Refresh();
 
         if (section.GetParent() != _flyoutBody)
-            section.Reparent(_flyoutBody, keepGlobalTransform: false);
+            section.Reparent(_flyoutBody, false);
         section.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         section.Visible = true;
         _activeSection = section;
         _flyoutTitle.Text = title;
         _flyout.Visible = true;
         UpdatePressedStates(button);
+        LayoutFlyout();
     }
 
     private void CloseFlyout()
@@ -232,20 +232,6 @@ public partial class Win98CommandBarBootstrap : Node
         _flyout.Visible = false;
         _activeSection = null;
         UpdatePressedStates(null);
-    }
-
-    private void ToggleCollapsed()
-    {
-        _collapsed = !_collapsed;
-        _shopButton.Visible = !_collapsed;
-        _toolsButton.Visible = !_collapsed;
-        _settingsButton.Visible = !_collapsed;
-        _editorButton.Visible = !_collapsed;
-        _modeButton.Visible = !_collapsed;
-        _collapseButton.Text = _collapsed ? "▶" : "◀";
-        if (_collapsed)
-            CloseFlyout();
-        LayoutForViewport();
     }
 
     private void OpenEditor()
@@ -284,7 +270,7 @@ public partial class Win98CommandBarBootstrap : Node
         if (_activeSection == panel && panel.GetParent() == _flyoutBody)
             return;
         if (panel.GetParent() != _uiRoot)
-            panel.Reparent(_uiRoot, keepGlobalTransform: false);
+            panel.Reparent(_uiRoot, false);
         panel.Visible = false;
     }
 
@@ -303,7 +289,7 @@ public partial class Win98CommandBarBootstrap : Node
     {
         if (!GodotObject.IsInstanceValid(panel) || !GodotObject.IsInstanceValid(home) || panel.GetParent() == home)
             return;
-        panel.Reparent(home, keepGlobalTransform: false);
+        panel.Reparent(home, false);
         panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         panel.Visible = true;
     }
@@ -321,19 +307,27 @@ public partial class Win98CommandBarBootstrap : Node
             window.Hide();
     }
 
-    private void LayoutForViewport()
+    private void LayoutMenuBar()
     {
-        Vector2 viewport = GetViewport().GetVisibleRect().Size;
-        float barWidth = Mathf.Min(_collapsed ? 82f : 520f, Mathf.Max(120f, viewport.X - 16f));
-        float barHeight = 34f;
-        _bar.Position = new Vector2((viewport.X - barWidth) * 0.5f, viewport.Y - barHeight - 28f);
-        _bar.Size = new Vector2(barWidth, barHeight);
+        if (!GodotObject.IsInstanceValid(_bar))
+            return;
 
-        float flyoutWidth = Mathf.Min(460f, Mathf.Max(300f, viewport.X - 24f));
-        float availableHeight = Mathf.Max(180f, viewport.Y - barHeight - 78f);
-        float flyoutHeight = Mathf.Min(420f, availableHeight);
-        _flyout.Position = new Vector2((viewport.X - flyoutWidth) * 0.5f, _bar.Position.Y - flyoutHeight - 2f);
-        _flyout.Size = new Vector2(flyoutWidth, flyoutHeight);
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        _bar.Position = new Vector2(0f, Win98ThemeFactory.TitleBarHeight);
+        _bar.Size = new Vector2(viewport.X, 24f);
+    }
+
+    private void LayoutFlyout()
+    {
+        if (!GodotObject.IsInstanceValid(_flyout) || !GodotObject.IsInstanceValid(_bar))
+            return;
+
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        Rect2 menuRect = _bar.GetGlobalRect();
+        float width = Mathf.Min(460f, Mathf.Max(300f, viewport.X - 8f));
+        float height = Mathf.Min(420f, Mathf.Max(180f, viewport.Y - menuRect.End.Y - 26f));
+        _flyout.Position = new Vector2(menuRect.Position.X, menuRect.End.Y);
+        _flyout.Size = new Vector2(width, height);
     }
 
     private bool IsEditorOpen()
@@ -343,8 +337,8 @@ public partial class Win98CommandBarBootstrap : Node
     }
 
     private Control FindControl(string name) =>
-        GetTree().Root.FindChild(name, recursive: true, owned: false) as Control ?? null!;
+        GetTree().Root.FindChild(name, true, false) as Control ?? null!;
 
     private Button FindButton(string name) =>
-        GetTree().Root.FindChild(name, recursive: true, owned: false) as Button ?? null!;
+        GetTree().Root.FindChild(name, true, false) as Button ?? null!;
 }
