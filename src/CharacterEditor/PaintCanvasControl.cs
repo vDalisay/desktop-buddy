@@ -18,6 +18,7 @@ public partial class PaintCanvasControl : Control
     public PaintWorkspace Workspace { get; } = new();
     public PaintViewState View { get; } = new();
     public PaintPart? HoveredPart { get; private set; }
+    public bool PanToolActive { get; set; }
 
     /// <summary>
     /// Retained for source compatibility with existing painting scenarios. Runtime pointer
@@ -80,8 +81,9 @@ public partial class PaintCanvasControl : Control
         if (input is InputEventMouseButton button)
         {
             _lastPointer = button.Position;
-            bool spacePan = Input.IsKeyPressed(Key.Space) && button.ButtonIndex == MouseButton.Left;
-            if (button.ButtonIndex == MouseButton.Middle || spacePan)
+            bool leftPan = button.ButtonIndex == MouseButton.Left &&
+                (PanToolActive || Input.IsKeyPressed(Key.Space));
+            if (button.ButtonIndex == MouseButton.Middle || leftPan)
             {
                 _panning = button.Pressed;
                 if (_panning)
@@ -153,6 +155,9 @@ public partial class PaintCanvasControl : Control
 
     public override void _Draw()
     {
+        if (PanToolActive)
+            return;
+
         float diameter = (float)(Workspace.BrushDiameter * View.Zoom * Math.Min(Size.X, Size.Y) /
             (PaintPolicy.SurfaceSize * 2.0));
         DrawArc(_lastPointer, Math.Max(2, diameter / 2), 0, Mathf.Tau, 32, Colors.White, 1.5f);
