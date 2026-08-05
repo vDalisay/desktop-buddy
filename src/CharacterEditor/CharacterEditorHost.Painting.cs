@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using DesktopBuddy.Domain.Painting;
 using Godot;
 
@@ -23,6 +24,43 @@ public partial class CharacterEditorHost
 
     public bool IsPaintMode => _paintControls is not null && _paintControls.Visible;
     public PaintWorkspace PaintWorkspace => _paintCanvas.Workspace;
+
+    /// <summary>
+    /// Opens the editor directly in its paint workspace. This is the product entry point used
+    /// by the Win98 Paint / Character menu; the appearance form remains reachable through the
+    /// in-editor mode button rather than being shown first.
+    /// </summary>
+    public async Task OpenPaintEditorAsync()
+    {
+        await OpenEditorAsync();
+        if (!IsEditorOpen)
+            return;
+
+        // Painting is attached after the base editor UI and preview camera have entered the
+        // tree. Give that deferred composition a bounded opportunity to complete.
+        for (int frame = 0; frame < 120 && !GodotObject.IsInstanceValid(_paintCanvas); frame++)
+        {
+            if (!_paintAttachStarted)
+                TryAttachPaintingWorkspace();
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+
+        if (!GodotObject.IsInstanceValid(_paintCanvas) ||
+            !GodotObject.IsInstanceValid(_paintControls))
+        {
+            return;
+        }
+
+        SetPaintMode(true);
+
+        // The legacy appearance form and preview share one ScrollContainer. Move directly to
+        // the paint toolbar/canvas so opening Paint never lands at the top of the long form.
+        if (FindChild("CharacterControlsScroll", true, false) is ScrollContainer scroll)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            scroll.ScrollVertical = Mathf.RoundToInt(_paintControls.Position.Y);
+        }
+    }
 
     private void ProcessPainting()
     {
@@ -279,12 +317,21 @@ public partial class CharacterEditorHost
         RefreshPaintStatus();
     }
 
-    private void TogglePaintMode()
+    private void TogglePaintMode() => SetPaintMode(!IsPaintMode);
+
+    private void SetPaintMode(bool enabled)
     {
-        bool enabled = !_paintControls.Visible;
+        if (!GodotObject.IsInstanceValid(_paintControls) ||
+            !GodotObject.IsInstanceValid(_paintCanvas))
+        {
+            return;
+        }
+
         _paintControls.Visible = enabled;
         _paintCanvas.Visible = enabled;
-        _paintCanvas.MouseFilter = enabled ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
+        _paintCanvas.MouseFilter = enabled
+            ? Control.MouseFilterEnum.Stop
+            : Control.MouseFilterEnum.Ignore;
         _paintModeButton.Text = PaintUiText.Get(
             enabled ? PaintUiText.AppearanceControls : PaintUiText.Open);
         _paintCanvas.ResetView();
