@@ -13,6 +13,10 @@ public partial class Win98PaintPreviewBootstrap : Node
     private CharacterEditorHost? _host;
     private bool? _lastAppliedHiddenState;
 
+    // Opening the editor pauses the tree (GameplayPauseReason.CharacterEditor), so an
+    // inherit-mode autoload would stop processing exactly when paint mode opens.
+    public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
+
     public override void _Process(double delta)
     {
         if (!GodotObject.IsInstanceValid(_host))
