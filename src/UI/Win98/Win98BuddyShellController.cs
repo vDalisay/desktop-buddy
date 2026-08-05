@@ -14,7 +14,7 @@ public partial class Win98BuddyShellController : CanvasLayer
     [Export] public Win98WindowFrame Frame { get; set; } = null!;
 
     private Vector2I _dragStartWindowPosition;
-    private Vector2 _dragStartPointer;
+    private Vector2I _dragStartPointer;
     private bool _dragging;
 
     public override void _Ready()
@@ -36,6 +36,18 @@ public partial class Win98BuddyShellController : CanvasLayer
         Frame.StatusText = "Ready";
         Frame.SetActive(true);
         ApplyLayoutMode(Window.LayoutMode);
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!_dragging || Window.LayoutMode != WindowLayoutMode.Compact || DisplayServer.GetName() == "headless")
+            return;
+
+        // Poll the desktop cursor rather than relying on window-local mouse motion. Windows can
+        // suspend redraw/motion delivery while a borderless window is being repositioned.
+        Vector2I pointer = DisplayServer.MouseGetPosition();
+        Vector2I target = _dragStartWindowPosition + (pointer - _dragStartPointer);
+        DisplayServer.WindowSetPosition(target, GetWindow().GetWindowId());
     }
 
     public override void _ExitTree()
@@ -65,7 +77,6 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void OnCloseRequested()
     {
-        // Reuse the existing root close-request path so save/quit policy remains intact.
         if (DisplayServer.GetName() != "headless")
             GetWindow().EmitSignal(Godot.Window.SignalName.CloseRequested);
     }
@@ -76,20 +87,14 @@ public partial class Win98BuddyShellController : CanvasLayer
             return;
 
         _dragging = true;
-        _dragStartPointer = globalPointer;
+        _dragStartPointer = DisplayServer.MouseGetPosition();
         _dragStartWindowPosition = GetWindow().Position;
         Frame.StatusText = "Moving window";
     }
 
     private void OnTitleDragMoved(Vector2 globalPointer)
     {
-        if (!_dragging || Window.LayoutMode != WindowLayoutMode.Compact)
-            return;
-
-        Vector2 delta = globalPointer - _dragStartPointer;
-        GetWindow().Position = _dragStartWindowPosition + new Vector2I(
-            Mathf.RoundToInt(delta.X),
-            Mathf.RoundToInt(delta.Y));
+        // Movement is intentionally handled by _Process using desktop-space cursor coordinates.
     }
 
     private void OnTitleDragEnded(Vector2 globalPointer)
@@ -97,9 +102,7 @@ public partial class Win98BuddyShellController : CanvasLayer
         if (!_dragging)
             return;
 
-        OnTitleDragMoved(globalPointer);
         _dragging = false;
-
         WindowSettings captured = Window.CaptureWindowSettings();
         Window.ApplyWindowSettings(Window.RecoverWindowSettings(captured));
         Frame.StatusText = "Ready";
@@ -110,7 +113,11 @@ public partial class Win98BuddyShellController : CanvasLayer
     private void ApplyLayoutMode(WindowLayoutMode mode)
     {
         bool compact = mode == WindowLayoutMode.Compact;
-        Frame.Visible = compact;
+
+        // The application chrome remains visible in both modes. Full interaction mode uses a
+        // denser backdrop while compact mode keeps the desktop and buddy visible through it.
+        Frame.Visible = true;
+        Frame.SetViewportOpacity(compact ? 0.5f : 0.9f);
         Frame.StatusText = compact ? "Ready" : "Full interaction mode";
     }
 
