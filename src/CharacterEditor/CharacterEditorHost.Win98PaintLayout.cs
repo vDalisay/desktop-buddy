@@ -134,6 +134,7 @@ public partial class CharacterEditorHost
         frame.AddChild(scroll);
         _paintControls.Reparent(scroll, false);
         _paintControls.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        _paintControls.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _paintControls.AddThemeConstantOverride("separation", 3);
 
         Control? toolRow = FindChild("PaintToolRow", true, false) as Control;
@@ -169,8 +170,18 @@ public partial class CharacterEditorHost
         rotateRow.AddChild(rotateRight);
         _paintControls.AddChild(rotateRow);
 
-        if (FindChild("PaintHistoryRow", true, false) is Control history)
-            _paintControls.MoveChild(rotateRow, history.GetIndex());
+        // Rotate / undo-redo-erase / zoom-reset sit at the foot of the tool box; the spacer
+        // eats the surplus height above them.
+        _paintControls.AddChild(new Control
+        {
+            Name = "PaintToolSpacer",
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        });
+        foreach (string name in new[] { "PaintToolSpacer", "PaintRotateRow", "PaintHistoryRow", "PaintViewRow" })
+        {
+            if (_paintControls.FindChild(name, false, false) is Control row)
+                _paintControls.MoveChild(row, _paintControls.GetChildCount() - 1);
+        }
 
         foreach (string name in new[] { "PaintBrushSizeRow", "PaintHistoryRow", "PaintViewRow" })
         {
@@ -181,6 +192,22 @@ public partial class CharacterEditorHost
                 {
                     if (child is Button button)
                         button.CustomMinimumSize = new Vector2(30, 26);
+                }
+            }
+        }
+
+        // Rotate and the undo / redo / erase-all row share the rail width evenly.
+        foreach (string name in new[] { "PaintRotateRow", "PaintHistoryRow" })
+        {
+            if (FindChild(name, true, false) is not Control row)
+                continue;
+            row.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            foreach (Node child in row.GetChildren())
+            {
+                if (child is Button button)
+                {
+                    button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+                    button.CustomMinimumSize = new Vector2(0, 26);
                 }
             }
         }

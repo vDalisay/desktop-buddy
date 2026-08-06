@@ -272,46 +272,25 @@ public partial class CharacterEditorHost
         };
         _paintControls.AddChild(paletteFrame);
 
+        var paletteScroll = new ScrollContainer
+        {
+            Name = "PaintPresetPaletteScroll",
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        paletteFrame.AddChild(paletteScroll);
+
         var palette = new GridContainer
         {
             Name = "PaintPresetPaletteGrid",
             Columns = 8,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         palette.AddThemeConstantOverride("h_separation", 1);
         palette.AddThemeConstantOverride("v_separation", 1);
-        paletteFrame.AddChild(palette);
+        paletteScroll.AddChild(palette);
 
-        Color[] colors =
-        [
-            Colors.Black, new Color("#808080"), Colors.White, new Color("#800000"),
-            Colors.Red, new Color("#808000"), Colors.Yellow, new Color("#008000"),
-            Colors.Lime, new Color("#008080"), Colors.Cyan, new Color("#000080"),
-            Colors.Blue, new Color("#800080"), Colors.Magenta, new Color("#C0C0C0"),
-        ];
-
-        for (int index = 0; index < colors.Length; index++)
-        {
-            Color preset = colors[index];
-            var swatch = new Button
-            {
-                Name = $"PaintPalette{index}",
-                CustomMinimumSize = new Vector2(22, 18),
-                TooltipText = $"Use #{preset.ToHtml(false)}",
-                FocusMode = Control.FocusModeEnum.All,
-            };
-            var normal = new StyleBoxFlat { BgColor = preset };
-            normal.SetBorderWidthAll(1);
-            normal.BorderColor = Colors.Black;
-            swatch.AddThemeStyleboxOverride("normal", normal);
-            swatch.AddThemeStyleboxOverride("hover", normal);
-            swatch.AddThemeStyleboxOverride("pressed", normal);
-            swatch.Pressed += () =>
-            {
-                _paintColorPicker.Color = preset;
-                SetPaintColor(preset);
-            };
-            palette.AddChild(swatch);
-        }
     }
 
     private void SetPaintColor(Color value)

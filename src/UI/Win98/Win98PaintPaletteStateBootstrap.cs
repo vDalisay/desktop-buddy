@@ -15,7 +15,6 @@ public partial class Win98PaintPaletteStateBootstrap : Node
     private PaintCanvasControl? _canvas;
     private GridContainer? _palette;
     private double _refreshRemaining;
-    private PaintColor? _lastColor;
     private int _lastChildCount = -1;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
@@ -36,13 +35,11 @@ public partial class Win98PaintPaletteStateBootstrap : Node
             RebuildSwatches();
 
         PaintColor selected = _canvas!.Workspace.SelectedColor;
-        if (_lastColor == selected)
-            return;
-
-        _lastColor = selected;
-        foreach ((Button button, PaintColor color) in _swatches)
+        // Colors are re-read from the tooltip every pass so re-coloured swatches (palette
+        // editing) keep the selection marker on the right block.
+        foreach (Button button in _swatches.Keys)
         {
-            if (GodotObject.IsInstanceValid(button))
+            if (GodotObject.IsInstanceValid(button) && TryReadColor(button, out PaintColor color))
                 button.SetPressedNoSignal(color == selected);
         }
     }
@@ -70,7 +67,6 @@ public partial class Win98PaintPaletteStateBootstrap : Node
             button.AddThemeStyleboxOverride("focus", selectedStyle);
             _swatches[button] = color;
         }
-        _lastColor = null;
     }
 
     private static bool TryReadColor(Button button, out PaintColor color)

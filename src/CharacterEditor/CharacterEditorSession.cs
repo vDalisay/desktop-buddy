@@ -26,6 +26,8 @@ public readonly record struct CharacterEditorActionResult(
 /// </summary>
 public sealed class CharacterEditorSession
 {
+    private const string PaletteKey = "palette";
+
     private readonly CharacterStore _store;
     private readonly CharacterLibraryIndex _library;
     private readonly CharacterSelectionCoordinator _selection;
@@ -116,6 +118,31 @@ public sealed class CharacterEditorSession
             _paintWorkspace.MarkDirty();
         return new CharacterEditorActionResult(true);
     }
+
+    /// <summary>
+    /// Per-character paint palette, carried in the document's extension data so it saves,
+    /// loads and participates in the dirty/discard rules without a schema change.
+    /// </summary>
+    public IReadOnlyList<string> Palette =>
+        WorkingDocument is not null &&
+        WorkingDocument.ExtensionData.TryGetValue(PaletteKey, out System.Text.Json.JsonElement stored) &&
+        stored.ValueKind == System.Text.Json.JsonValueKind.Array
+            ? stored.EnumerateArray()
+                .Where(item => item.ValueKind == System.Text.Json.JsonValueKind.String)
+                .Select(item => item.GetString()!)
+                .ToArray()
+            : [];
+
+    public CharacterEditorActionResult SetPalette(IReadOnlyList<string> hexColors) => Mutate(document =>
+    {
+        var extensionData = new Dictionary<string, System.Text.Json.JsonElement>(
+            document.ExtensionData,
+            StringComparer.Ordinal)
+        {
+            [PaletteKey] = System.Text.Json.JsonSerializer.SerializeToElement(hexColors),
+        };
+        return document with { ExtensionData = extensionData };
+    });
 
     public CharacterEditorActionResult Rename(string displayName) =>
         WorkingDocument is null

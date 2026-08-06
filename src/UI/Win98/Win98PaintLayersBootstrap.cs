@@ -105,6 +105,7 @@ public partial class Win98PaintLayersBootstrap : Node
             _list.AddItem(FormatPart(part));
         _list.Select(0);
         _list.ItemSelected += SelectLayer;
+        _list.ItemActivated += ToggleLayerVisibility;
         Win98ItemListCheck.Attach(_list);
         column.AddChild(_list);
 
@@ -151,6 +152,15 @@ public partial class Win98PaintLayersBootstrap : Node
 
         _canvas.QueueRedraw();
         _list?.ReleaseFocus();
+    }
+
+    /// <summary>Double-clicking a layer flips its "Show selected layer" checkbox.</summary>
+    private void ToggleLayerVisibility(long index)
+    {
+        if (index <= 0 || !GodotObject.IsInstanceValid(_visibleToggle))
+            return;
+        SelectLayer(index);
+        _visibleToggle!.ButtonPressed = !_visibleToggle.ButtonPressed;
     }
 
     private void SetSelectedLayerVisible(bool visible)

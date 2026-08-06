@@ -33,6 +33,9 @@ public partial class Win98PaintUxPolishBootstrap : Node
     private PanelContainer? _newCharacterPanel;
     private LineEdit? _newCharacterName;
     private Label? _motivation;
+    private PanelContainer? _deletePanel;
+    private Control? _deleteBlocker;
+    private Label? _deleteMessage;
     private string? _pendingNewName;
     private Guid? _pendingPreviousCharacter;
 
@@ -50,7 +53,10 @@ public partial class Win98PaintUxPolishBootstrap : Node
 
         _library ??= GetTree().Root.FindChild("CharacterLibraryList", true, false) as ItemList;
         if (GetTree().Root.FindChild("CharacterEditorUiRoot", true, false) is Control root)
+        {
             EnsureNewCharacterPrompt(root);
+            EnsureDeletePrompt(root);
+        }
 
         CorrectCharacterColumn();
         CorrectToolRail();
@@ -117,34 +123,38 @@ public partial class Win98PaintUxPolishBootstrap : Node
         if (_newButton.GetIndex() != desiredIndex)
             column.MoveChild(_newButton, desiredIndex);
 
-        foreach (Node child in column.GetChildren())
+        // The pager lives inside the reparented CharacterLibrary column, i.e. a grandchild of
+        // this column — search recursively or it stays visible.
+        Button? previous = column.FindChild("PreviousButton", true, false) as Button;
+        Button? next = column.FindChild("NextButton", true, false) as Button;
+        Control? pager = previous?.GetParent() as Control ?? next?.GetParent() as Control;
+        if (GodotObject.IsInstanceValid(pager))
         {
-            if (child is HBoxContainer row &&
-                (row.FindChild("PreviousButton", true, false) is Button ||
-                 row.FindChild("NextButton", true, false) is Button))
-            {
-                row.Visible = false;
-                foreach (Node item in row.GetChildren())
-                    if (item is Control control) control.FocusMode = Control.FocusModeEnum.None;
-            }
+            pager!.Visible = false;
+            pager.FocusMode = Control.FocusModeEnum.None;
+            foreach (Node item in pager.GetChildren())
+                if (item is Control control) control.FocusMode = Control.FocusModeEnum.None;
         }
 
         Button duplicate = _host.DuplicateButton;
+        // The host's Delete acts immediately; the product flow asks first, so it is replaced
+        // by a confirming button of our own.
         Button delete = _host.DeleteButton;
+        delete.Visible = false;
+        delete.FocusMode = Control.FocusModeEnum.None;
         _host.RandomizeButton.Visible = false;
         _host.RandomizeButton.FocusMode = Control.FocusModeEnum.None;
 
         if (duplicate.GetParent() is HBoxContainer manage)
         {
+            Button confirmDelete = EnsureConfirmingDeleteButton(manage);
+            manage.AddThemeConstantOverride("separation", 2);
+            confirmDelete.Disabled = delete.Disabled;
             duplicate.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            delete.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
             duplicate.CustomMinimumSize = new Vector2(0, 30);
-            delete.CustomMinimumSize = new Vector2(0, 30);
-            if (delete.GetParent() != manage)
-                delete.Reparent(manage, false);
             foreach (Node child in manage.GetChildren())
             {
-                if (child != duplicate && child != delete && child is Control control)
+                if (child != duplicate && child != confirmDelete && child is Control control)
                     control.Visible = false;
             }
         }
@@ -244,13 +254,18 @@ public partial class Win98PaintUxPolishBootstrap : Node
                 return;
             legacy.Name = "UnsavedPromptContent";
             var margin = new MarginContainer { Name = "UnsavedPromptMargin" };
-            margin.AddThemeConstantOverride("margin_left", 14);
-            margin.AddThemeConstantOverride("margin_top", 10);
-            margin.AddThemeConstantOverride("margin_right", 14);
-            margin.AddThemeConstantOverride("margin_bottom", 14);
             panel.AddChild(margin);
             legacy.Reparent(margin, false);
             box = legacy;
+        }
+        // The title bar is the first child of the content box, so the surrounding margin must
+        // stay flush with the panel border or the blue bar floats like the screenshot shows.
+        if (box.GetParent() is MarginContainer promptMargin)
+        {
+            promptMargin.AddThemeConstantOverride("margin_left", 0);
+            promptMargin.AddThemeConstantOverride("margin_top", 0);
+            promptMargin.AddThemeConstantOverride("margin_right", 0);
+            promptMargin.AddThemeConstantOverride("margin_bottom", 12);
         }
         box.AddThemeConstantOverride("separation", 10);
 
@@ -284,6 +299,91 @@ public partial class Win98PaintUxPolishBootstrap : Node
         if (spacer.GetParent() is null) box.AddChild(spacer);
         Move(box, spacer, Math.Max(1, actions.GetIndex() - 1));
         Move(box, actions, box.GetChildCount() - 1);
+    }
+
+    private Button EnsureConfirmingDeleteButton(HBoxContainer manage)
+    {
+        if (manage.FindChild("Win98DeleteCharacterButton", false, false) is Button existing)
+            return existing;
+
+        var button = new Button
+        {
+            Name = "Win98DeleteCharacterButton",
+            Text = "Delete",
+            TooltipText = "Delete the selected character.",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            CustomMinimumSize = new Vector2(0, 30),
+            FocusMode = Control.FocusModeEnum.All,
+        };
+        button.Pressed += OpenDeletePrompt;
+        manage.AddChild(button);
+        return button;
+    }
+
+    private void EnsureDeletePrompt(Control root)
+    {
+        if (GodotObject.IsInstanceValid(_deletePanel))
+            return;
+
+        _deleteBlocker = Win98Dialog.Blocker(root, "Win98DeleteCharacterModalBlocker");
+        if (root.FindChild("Win98DeleteCharacterPrompt", false, false) is PanelContainer existing)
+        {
+            _deletePanel = existing;
+            _deleteMessage = existing.FindChild("DeleteCharacterMessage", true, false) as Label;
+            return;
+        }
+
+        _deletePanel = Win98Dialog.Create(
+            "Win98DeleteCharacterPrompt",
+            "Are you sure?",
+            new Vector2(410, 200),
+            out VBoxContainer body,
+            CloseDeletePrompt);
+        root.AddChild(_deletePanel);
+
+        _deleteMessage = new Label
+        {
+            Name = "DeleteCharacterMessage",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        body.AddChild(_deleteMessage);
+        body.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+
+        var actions = new HBoxContainer
+        {
+            Name = "DeleteCharacterActions",
+            Alignment = BoxContainer.AlignmentMode.Center,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkEnd,
+        };
+        actions.AddThemeConstantOverride("separation", 8);
+        body.AddChild(actions);
+        Win98Dialog.Action(actions, "Cancel", CloseDeletePrompt);
+        Win98Dialog.Action(actions, "Delete", ConfirmDelete);
+    }
+
+    private void OpenDeletePrompt()
+    {
+        if (!GodotObject.IsInstanceValid(_deletePanel) || !GodotObject.IsInstanceValid(_host))
+            return;
+        string name = _host!.Session.WorkingDocument?.DisplayName ?? "this character";
+        _deleteMessage!.Text = $"You are about to delete {name}. Are you sure?";
+        _deleteBlocker!.Visible = true;
+        _deletePanel!.Visible = true;
+        _deletePanel.MoveToFront();
+    }
+
+    private void CloseDeletePrompt()
+    {
+        if (GodotObject.IsInstanceValid(_deletePanel)) _deletePanel!.Visible = false;
+        if (GodotObject.IsInstanceValid(_deleteBlocker)) _deleteBlocker!.Visible = false;
+    }
+
+    private async void ConfirmDelete()
+    {
+        CloseDeletePrompt();
+        if (GodotObject.IsInstanceValid(_host))
+            await _host!.Session.DeleteAsync();
     }
 
     private void EnsureNewCharacterPrompt(Control root)
@@ -459,8 +559,26 @@ public partial class Win98PaintUxPolishBootstrap : Node
     {
         if (GetTree().Root.FindChild("PaintColorWheel", true, false) is not ColorPickerButton picker)
             return;
-        if (picker.Icon is null)
-            picker.Icon = GD.Load<Texture2D>("res://assets/ui/win98/paint_bucket_brushes.svg");
+        // ColorPickerButton paints its color swatch over the whole button *after* the button
+        // draws, so Icon/Text are invisible. Overlay the glyph as a child instead.
+        picker.Icon = null;
+        if (picker.FindChild("PaintColorWheelIcon", false, false) is null)
+        {
+            var overlay = new TextureRect
+            {
+                Name = "PaintColorWheelIcon",
+                Texture = GD.Load<Texture2D>("res://assets/ui/win98/paint_bucket_brushes.svg"),
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+                StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            };
+            picker.AddChild(overlay);
+            overlay.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            overlay.OffsetLeft = 5;
+            overlay.OffsetTop = 5;
+            overlay.OffsetRight = -5;
+            overlay.OffsetBottom = -5;
+        }
         picker.Text = string.Empty;
         picker.TooltipText = "Open the full color picker.";
         picker.ExpandIcon = false;
