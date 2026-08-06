@@ -19,6 +19,7 @@ public partial class Win98PaintStatusBootstrap : Node
     private double _refreshRemaining;
     private bool _paintStatusActive;
     private string _lastStatus = string.Empty;
+    private string _lastTitle = string.Empty;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
 
@@ -41,6 +42,7 @@ public partial class Win98PaintStatusBootstrap : Node
 
             _paintStatusActive = false;
             _lastStatus = string.Empty;
+            _lastTitle = string.Empty;
             return;
         }
 
@@ -52,7 +54,14 @@ public partial class Win98PaintStatusBootstrap : Node
             _lastStatus = status;
         }
 
-        _frame!.WindowTitle = "Desktop Buddy - Paint";
+        string title = _canvas!.Workspace.IsDirty
+            ? "Desktop Buddy - Paint *"
+            : "Desktop Buddy - Paint";
+        if (!string.Equals(title, _lastTitle, StringComparison.Ordinal))
+        {
+            _frame!.WindowTitle = title;
+            _lastTitle = title;
+        }
     }
 
     private void ResolveNodes()
@@ -83,11 +92,14 @@ public partial class Win98PaintStatusBootstrap : Node
                 ? "Eyedropper"
                 : workspace.SelectedTool == PaintTool.Eraser ? "Eraser" : "Brush";
         string target = FormatPart(_canvas.ActivePartFilter);
+        string hover = _canvas.HoveredPart is PaintPart hovered
+            ? FormatPart(hovered)
+            : "No paintable surface";
         int zoomPercent = Mathf.RoundToInt((float)(_canvas.View.Zoom * 100.0));
         int rotation = ResolveQuarterTurnRotation();
         string dirty = workspace.IsDirty ? "Modified" : "Saved";
 
-        return $"{tool}  |  Target: {target}  |  Size: {workspace.BrushDiameter}px  |  " +
+        return $"{tool}  |  Target: {target}  |  Hover: {hover}  |  Size: {workspace.BrushDiameter}px  |  " +
                $"Zoom: {zoomPercent}%  |  Rotation: {rotation}°  |  {dirty}";
     }
 
