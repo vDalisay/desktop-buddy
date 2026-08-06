@@ -88,24 +88,24 @@ public partial class Win98PaintMenuBootstrap : Node
         editorColumn.MoveChild(_menuBar, editorBody.GetIndex());
 
         AddMenu("File", Key.F, [
-            ("Save", () => Source("SaveCharacterButton")),
-            ("Use Character", () => Source("UseCharacterButton")),
+            ("Save\tCtrl+S", () => Source("SaveCharacterButton")),
+            ("Use Character\tCtrl+Enter", () => Source("UseCharacterButton")),
             (null, null),
-            ("Close", () => Source("CloseCharacterEditorButton")),
+            ("Close\tCtrl+W", () => Source("CloseCharacterEditorButton")),
         ]);
         AddMenu("Edit", Key.E, [
-            ("Undo", () => Source("PaintUndoButton")),
-            ("Redo", () => Source("PaintRedoButton")),
+            ("Undo\tCtrl+Z", () => Source("PaintUndoButton")),
+            ("Redo\tCtrl+Y", () => Source("PaintRedoButton")),
             (null, null),
             ("Erase All…", () => Source("PaintEraseAllButton")),
         ]);
         AddMenu("View", Key.V, [
-            ("Zoom Out", () => Source("PaintZoomOutButton")),
-            ("Zoom In", () => Source("PaintZoomInButton")),
-            ("Reset View", () => Source("PaintResetViewButton")),
+            ("Zoom Out\t-", () => Source("PaintZoomOutButton")),
+            ("Zoom In\t+", () => Source("PaintZoomInButton")),
+            ("Reset View\tHome", () => Source("PaintResetViewButton")),
             (null, null),
-            ("Rotate Left", () => RotateSource(0)),
-            ("Rotate Right", () => RotateSource(1)),
+            ("Rotate Left\tR", () => RotateSource(0)),
+            ("Rotate Right\tT", () => RotateSource(1)),
         ]);
     }
 
