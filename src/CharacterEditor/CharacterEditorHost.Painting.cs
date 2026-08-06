@@ -168,8 +168,8 @@ public partial class CharacterEditorHost
         _paintControls.AddChild(sizeRow);
         Button smaller = Button("−", "PaintSizeDecreaseButton");
         Button larger = Button("+", "PaintSizeIncreaseButton");
-        smaller.Pressed += () => { _paintCanvas.Workspace.AdjustBrush(-1); RefreshPaintStatus(); };
-        larger.Pressed += () => { _paintCanvas.Workspace.AdjustBrush(1); RefreshPaintStatus(); };
+        HoldRepeat(smaller, -1);
+        HoldRepeat(larger, 1);
         _brushSize = new Label
         {
             Name = "PaintBrushSize",
@@ -243,6 +243,24 @@ public partial class CharacterEditorHost
         };
         AddChild(_eraseAllConfirmation);
         RefreshPaintStatus();
+    }
+
+    /// <summary>Brush size step on press, then auto-repeat while the button stays held.</summary>
+    private void HoldRepeat(Button button, int step)
+    {
+        var timer = new Timer { Name = "Repeat", OneShot = false, ProcessMode = Node.ProcessModeEnum.Always };
+        button.AddChild(timer);
+
+        void Step()
+        {
+            _paintCanvas.Workspace.AdjustBrush(step);
+            _paintCanvas.QueueRedraw();
+            RefreshPaintStatus();
+        }
+
+        timer.Timeout += () => { timer.WaitTime = 0.05; Step(); };
+        button.ButtonDown += () => { Step(); timer.Start(0.35); };
+        button.ButtonUp += timer.Stop;
     }
 
     private void BuildPresetPalette()

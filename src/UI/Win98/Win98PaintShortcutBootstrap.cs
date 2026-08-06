@@ -36,7 +36,8 @@ public partial class Win98PaintShortcutBootstrap : Node
 
     public override void _UnhandledKeyInput(InputEvent input)
     {
-        if (input is not InputEventKey { Pressed: true, Echo: false } key ||
+        if (input is not InputEventKey { Pressed: true } key ||
+            (key.Echo && key.Keycode is not (Key.Bracketleft or Key.Bracketright)) ||
             !GodotObject.IsInstanceValid(_canvas) ||
             !_canvas!.IsVisibleInTree() ||
             IsTextEntryFocused())
@@ -52,7 +53,18 @@ public partial class Win98PaintShortcutBootstrap : Node
         if (!GodotObject.IsInstanceValid(button) || button!.Disabled || !button.IsVisibleInTree())
             return;
 
-        button.EmitSignal(Button.SignalName.Pressed);
+        // Hold-repeat buttons (brush size) act on button down/up, not on Pressed.
+        if (button.HasNode("Repeat"))
+        {
+            button.EmitSignal(BaseButton.SignalName.ButtonDown);
+            button.EmitSignal(BaseButton.SignalName.ButtonUp);
+        }
+        else
+        {
+            button.EmitSignal(Button.SignalName.Pressed);
+        }
+
+
         GetViewport().SetInputAsHandled();
     }
 
@@ -72,8 +84,8 @@ public partial class Win98PaintShortcutBootstrap : Node
             Key.Minus => "PaintZoomOutButton",
             Key.Equal => "PaintZoomInButton",
             Key.Home => "PaintResetViewButton",
-            Key.R when key.ShiftPressed => RotateLeftCommand,
-            Key.R => RotateRightCommand,
+            Key.R => RotateLeftCommand,
+            Key.T => RotateRightCommand,
             _ => null,
         };
     }
@@ -112,8 +124,8 @@ public partial class Win98PaintShortcutBootstrap : Node
         AddShortcut("PaintZoomOutButton", "-");
         AddShortcut("PaintZoomInButton", "+");
         AddShortcut("PaintResetViewButton", "Home");
-        AddShortcut(ResolveButton(RotateLeftCommand), "Shift+R");
-        AddShortcut(ResolveButton(RotateRightCommand), "R");
+        AddShortcut(ResolveButton(RotateLeftCommand), "R");
+        AddShortcut(ResolveButton(RotateRightCommand), "T");
         _tooltipsDecorated = true;
     }
 
