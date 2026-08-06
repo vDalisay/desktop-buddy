@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.Domain.Painting;
 using Godot;
 
@@ -8,6 +9,7 @@ namespace DesktopBuddy.CharacterEditor;
 public partial class PaintCanvasControl : Control
 {
     private readonly FrontalPaintMapper _mapper = FrontalPaintMapper.CreateDefault();
+    private readonly HashSet<PaintPart> _hiddenParts = [];
     private CharacterEditorHost? _host;
     private bool _painting;
     private bool _panning;
@@ -188,11 +190,13 @@ public partial class PaintCanvasControl : Control
 
     public override void _ExitTree()
     {
-        if (!_painting)
-            return;
-        Workspace.EndGesture();
-        _painting = false;
-        Input.UseAccumulatedInput = true;
+        if (_painting)
+        {
+            Workspace.EndGesture();
+            _painting = false;
+            Input.UseAccumulatedInput = true;
+        }
+        _hiddenParts.Clear();
     }
 
     public override void _UnhandledKeyInput(InputEvent input)
@@ -239,6 +243,29 @@ public partial class PaintCanvasControl : Control
         QueueRedraw();
     }
 
+    /// <summary>Controls whether a semantic body-part layer participates in preview hit-testing.</summary>
+    public void SetPartVisible(PaintPart part, bool visible)
+    {
+        if (visible)
+            _hiddenParts.Remove(part);
+        else
+            _hiddenParts.Add(part);
+
+        if (!visible && HoveredPart == part)
+            SetHover(null);
+        QueueRedraw();
+    }
+
+    public bool IsPartVisible(PaintPart part) => !_hiddenParts.Contains(part);
+
+    public void ShowAllParts()
+    {
+        if (_hiddenParts.Count == 0)
+            return;
+        _hiddenParts.Clear();
+        QueueRedraw();
+    }
+
     /// <summary>Part under a canvas-space pointer position, or null on a miss.</summary>
     public PaintPart? PartAt(Vector2 canvasPosition) => Map(canvasPosition)?.Part;
 
@@ -265,6 +292,7 @@ public partial class PaintCanvasControl : Control
             hit = TryMapRotated(point, yaw, out PaintHit rotated) ? rotated : null;
 
         return hit is PaintHit valid &&
+            IsPartVisible(valid.Part) &&
             (ActivePartFilter is null || valid.Part == ActivePartFilter.Value)
                 ? valid
                 : null;
@@ -286,6 +314,9 @@ public partial class PaintCanvasControl : Control
 
         foreach (PaintPartShape shape in _mapper.Shapes)
         {
+            if (!IsPartVisible(shape.Part))
+                continue;
+
             double centerScreenX = shape.Center.X * cos;
             double centerDepth = (-shape.Center.X * sin) + (shape.Depth * cos);
             double screenX = point.X - centerScreenX;
