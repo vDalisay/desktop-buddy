@@ -62,12 +62,21 @@ public partial class Win98PaintFocusBootstrap : Node
     {
         foreach (Node child in node.GetChildren())
         {
-            if (child is Control control &&
-                control.FocusMode != Control.FocusModeEnum.None &&
-                control.Visible &&
-                control is not PopupMenu)
+            if (child is Control control)
             {
-                result.Add(control);
+                bool enabled = control is not BaseButton { Disabled: true };
+                if (enabled &&
+                    control.FocusMode != Control.FocusModeEnum.None &&
+                    control.IsVisibleInTree() &&
+                    control is not PopupMenu)
+                {
+                    result.Add(control);
+                }
+
+                // A hidden container makes its entire subtree unreachable even when descendants
+                // retain their local Visible flag. Avoid wiring stale controls behind collapsed UI.
+                if (!control.IsVisibleInTree())
+                    continue;
             }
 
             Collect(child, result);
