@@ -61,7 +61,9 @@ public partial class CharacterEditorHost
             Name = "Win98PaintWorkspace",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            CustomMinimumSize = new Vector2(760, 480),
+            // Keep the full three-column layout usable in smaller restored windows. At larger
+            // sizes the viewport still receives all surplus space through ExpandFill.
+            CustomMinimumSize = new Vector2(640, 420),
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         _win98PaintWorkspace.AddThemeConstantOverride("separation", 2);
@@ -80,7 +82,7 @@ public partial class CharacterEditorHost
     private void BuildCharacterColumn(VBoxContainer library)
     {
         var frame = RaisedPanel("Win98CharacterColumn");
-        frame.CustomMinimumSize = new Vector2(190, 0);
+        frame.CustomMinimumSize = new Vector2(168, 0);
         frame.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _win98PaintWorkspace.AddChild(frame);
 
@@ -95,7 +97,7 @@ public partial class CharacterEditorHost
 
         library.Reparent(column, false);
         library.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        library.CustomMinimumSize = new Vector2(180, 150);
+        library.CustomMinimumSize = new Vector2(158, 120);
 
         NewButton.Reparent(column, false);
         NewButton.Text = "+";
@@ -118,7 +120,7 @@ public partial class CharacterEditorHost
     private void BuildToolColumn()
     {
         var frame = RaisedPanel("Win98PaintToolColumn");
-        frame.CustomMinimumSize = new Vector2(124, 0);
+        frame.CustomMinimumSize = new Vector2(116, 0);
         frame.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
         _win98PaintWorkspace.AddChild(frame);
 
@@ -209,14 +211,14 @@ public partial class CharacterEditorHost
         var viewportFrame = RecessedPanel("Win98PaintViewportFrame");
         viewportFrame.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         viewportFrame.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        viewportFrame.CustomMinimumSize = new Vector2(420, 340);
+        viewportFrame.CustomMinimumSize = new Vector2(320, 260);
         viewportGrid.AddChild(viewportFrame);
 
         preview.Reparent(viewportFrame, false);
         preview.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         preview.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
         preview.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
-        preview.CustomMinimumSize = new Vector2(420, 340);
+        preview.CustomMinimumSize = new Vector2(320, 260);
 
         _paintVerticalScroll = new VScrollBar
         {
