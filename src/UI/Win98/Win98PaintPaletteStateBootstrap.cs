@@ -6,11 +6,7 @@ using Godot;
 
 namespace DesktopBuddy.UI.Win98;
 
-/// <summary>
-/// Gives the preset palette an explicit selected state. The foreground color is already shown
-/// in the large color well; this additionally recesses the matching preset so selection is not
-/// communicated by color alone.
-/// </summary>
+/// <summary>Shows the current foreground color as a pressed preset or custom palette swatch.</summary>
 public partial class Win98PaintPaletteStateBootstrap : Node
 {
     private const double RefreshIntervalSeconds = 0.05;
@@ -20,6 +16,7 @@ public partial class Win98PaintPaletteStateBootstrap : Node
     private GridContainer? _palette;
     private double _refreshRemaining;
     private PaintColor? _lastColor;
+    private int _lastChildCount = -1;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
 
@@ -30,18 +27,13 @@ public partial class Win98PaintPaletteStateBootstrap : Node
             return;
         _refreshRemaining = RefreshIntervalSeconds;
 
-        if (!GodotObject.IsInstanceValid(_canvas))
-        {
-            _canvas = GetTree().Root.FindChild(
-                "CharacterPaintCanvas", recursive: true, owned: false) as PaintCanvasControl;
-            _lastColor = null;
-        }
-
-        if (!GodotObject.IsInstanceValid(_palette))
-            TryCompose();
-
-        if (!GodotObject.IsInstanceValid(_canvas) || _swatches.Count == 0)
+        _canvas ??= GetTree().Root.FindChild("CharacterPaintCanvas", true, false) as PaintCanvasControl;
+        _palette ??= GetTree().Root.FindChild("PaintPresetPaletteGrid", true, false) as GridContainer;
+        if (!GodotObject.IsInstanceValid(_canvas) || !GodotObject.IsInstanceValid(_palette))
             return;
+
+        if (_palette!.GetChildCount() != _lastChildCount)
+            RebuildSwatches();
 
         PaintColor selected = _canvas!.Workspace.SelectedColor;
         if (_lastColor == selected)
@@ -55,23 +47,18 @@ public partial class Win98PaintPaletteStateBootstrap : Node
         }
     }
 
-    private void TryCompose()
+    private void RebuildSwatches()
     {
-        _palette = GetTree().Root.FindChild(
-            "PaintPresetPaletteGrid", recursive: true, owned: false) as GridContainer;
-        if (!GodotObject.IsInstanceValid(_palette))
-            return;
-
         _swatches.Clear();
-        foreach (Node child in _palette!.GetChildren())
+        _lastChildCount = _palette!.GetChildCount();
+        foreach (Node child in _palette.GetChildren())
         {
-            if (child is not Button button || !TryReadPreset(button, out PaintColor color))
+            if (child is not Button button || button.Name == "PaintAddCustomColorButton" ||
+                !TryReadColor(button, out PaintColor color))
                 continue;
 
             button.ToggleMode = true;
             button.ActionMode = BaseButton.ActionModeEnum.Release;
-            button.TooltipText = $"Use #{ToHex(color)}";
-
             var selectedStyle = new StyleBoxFlat
             {
                 BgColor = new Color(color.R / 255f, color.G / 255f, color.B / 255f),
@@ -81,13 +68,12 @@ public partial class Win98PaintPaletteStateBootstrap : Node
             button.AddThemeStyleboxOverride("pressed", selectedStyle);
             button.AddThemeStyleboxOverride("hover_pressed", selectedStyle);
             button.AddThemeStyleboxOverride("focus", selectedStyle);
-            _swatches.Add(button, color);
+            _swatches[button] = color;
         }
-
         _lastColor = null;
     }
 
-    private static bool TryReadPreset(Button button, out PaintColor color)
+    private static bool TryReadColor(Button button, out PaintColor color)
     {
         string tooltip = button.TooltipText;
         int hash = tooltip.LastIndexOf('#');
@@ -110,6 +96,4 @@ public partial class Win98PaintPaletteStateBootstrap : Node
             (byte)(rgb & 0xFF));
         return true;
     }
-
-    private static string ToHex(PaintColor color) => $"{color.R:X2}{color.G:X2}{color.B:X2}";
 }
