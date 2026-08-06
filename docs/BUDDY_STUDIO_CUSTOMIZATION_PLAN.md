@@ -1,6 +1,7 @@
 # Desktop Buddy — Buddy Studio Customization & Clothing Plan
 
 Status: **Owner UX decisions locked — implementation planning ready, scheduling not yet committed**  
+Revised 2026-08-06 after an architecture review: reuse pass over the existing character and catalogue types (§6–§8, §10), the §8.4 ownership-loss rule, and a three-category vertical slice shape for §16. No locked owner decision changed.  
 Planning branch: `win98-feel`  
 Depends on:
 
@@ -219,12 +220,12 @@ This is a structural guide, not an instruction to reproduce the supplied mockup 
 - Tiles use original preview art generated from the trusted cosmetic definition.
 - Owned/free/unowned state is visible without obscuring the cosmetic preview.
 - Selection is distinct from ownership: an unowned tile may be selected for preview.
-- Page controls appear only if the category has more items than one page.
-- Pagination must be deterministic and stable by authored catalogue order, never filesystem enumeration order.
-- `Page X/Y` is informational; Previous/Next are disabled at bounds.
+- Grid order is deterministic and stable by authored catalogue order, never filesystem enumeration order.
+- Overflow scrolls in the existing Win98 scroll container. Do not build pagination until a real category exceeds what a scroll pane handles comfortably; `Page X/Y`, Previous/Next and their bounds logic are deferred until then.
 
 ### Contextual transform panel
 
+- The existing offset/scale controls in `CharacterEditorHost` are the starting implementation; `Larger` / `Smaller` / `Move` re-skin that bound value path rather than introducing a second transform pipeline.
 - `Larger` / `Smaller` change uniform scale in bounded steps.
 - `Move` enters direct manipulation for the selected transformable feature.
 - While Move is active:
@@ -294,6 +295,8 @@ Purpose: the buddy's front face plate/frame style, not physics head geometry.
 - Launch Face definitions are non-transformable.
 - If a face definition is tintable, its single launch channel is `primary`.
 - Any future render-only shell that changes visible silhouette must still satisfy the paint-UV and physics invariants before it can ship.
+
+Open risk: constrained by the invariants above (no silhouette change, no head radius change, no paint-UV change), Face has the thinnest definition of the twelve categories and could ship as an empty tab. **One concrete, renderable Face definition must exist and be reviewed before the Face tab becomes visible.** If no such definition survives the invariants, the tab is hidden rather than shipped with a single no-op entry — this is an authoring outcome, not a change to the locked category list.
 
 ## 5.2 Hair
 
@@ -382,9 +385,9 @@ Current character schema is version 2 and contains:
 - legacy `features` (`eyes`, `brows`, `mouth`, `torsoAccent`);
 - `paint` manifest.
 
-Buddy Studio should introduce the next sequential schema version rather than overloading the legacy four-slot structure.
+Buddy Studio introduces the next sequential schema version. It **widens the existing `features` node to twelve keys** rather than adding a parallel `studio` node beside it: the four legacy slots already store exactly the per-category shape Buddy Studio needs (`featureId`, `offsetX`, `offsetY`, `scale`, colour), so schema 3 is additive plus one rename.
 
-Recommended canonical schema 3 shape:
+Canonical schema 3 shape:
 
 ```json
 {
@@ -392,7 +395,7 @@ Recommended canonical schema 3 shape:
   "id": "...",
   "displayName": "...",
   "partColors": { ... },
-  "studio": {
+  "features": {
     "face": { ... },
     "hair": { ... },
     "eyebrows": { ... },
@@ -409,6 +412,8 @@ Recommended canonical schema 3 shape:
   "paint": { ... }
 }
 ```
+
+`eyes`, `mouth` and `paint` keep their existing key names and values; `brows` is renamed to `eyebrows` and `torsoAccent` to `accessories`; the remaining eight keys are new. There is no second appearance node and no move of surviving data between nodes.
 
 Each category selection uses:
 
@@ -435,40 +440,40 @@ Rules:
 
 ### 6.1 Migration 2 -> 3
 
-Migration must preserve existing characters exactly as closely as the new renderer permits:
+Migration is additive plus two key renames. It must preserve existing characters exactly as closely as the new renderer permits:
 
-- `features.eyes` -> `studio.eyes`, retaining the existing eye cosmetic ID, transform and color;
-- `features.brows` -> `studio.eyebrows`, retaining the existing brow ID, transform and color;
-- `features.mouth` -> `studio.mouth`, retaining the existing mouth ID, transform and color;
-- `features.torsoAccent` -> `studio.accessories`, retaining the existing `accent.*` stable ID, transform and color;
+- `features.eyes` and `features.mouth` are untouched — same key, same ID, transform and color;
+- `features.brows` -> `features.eyebrows`, retaining the existing brow ID, transform and color;
+- `features.torsoAccent` -> `features.accessories`, retaining the existing `accent.*` stable ID, transform and color;
 - Face, Hair, Nose, Ears, Glasses, Headwear, Tops and Shoes receive shipped free defaults;
 - paint manifest is byte-for-byte semantically unchanged;
 - character GUID and display name are unchanged;
 - unknown extension data remains preserved.
 
-Do not serialize both `features` and `studio` as competing authoritative fields after migration. The migrated schema has one source of truth.
+`features` remains the one appearance source of truth; the renamed keys do not survive alongside their old names after migration.
 
 ---
 
 ## 7. Engine-free cosmetic catalogue
 
-The existing `CharacterFeatureCatalog` is too narrow for twelve categories and purchasing. Replace/extend it with a general engine-free catalogue rather than adding category-specific switch statements throughout UI and rendering.
-
-Recommended concepts:
+**Widen the existing types; do not stand up a parallel vocabulary next to them.** `CharacterFeatureCatalog` already owns ids-per-slot, per-slot defaults and duplicate-ID rejection, and `CharacterFeatureDocument` already is the per-category selection record. The general catalogue is those types generalized, not new ones beside them:
 
 ```text
-BuddyStudioCategory
-CosmeticDefinitionId
-CosmeticDefinition
-CosmeticTransformPolicy
-CosmeticColorChannelDefinition
-CosmeticCompatibilityPolicy
-CosmeticCatalogue
-CosmeticSelectionDocument
-BuddyStudioAppearanceDocument
-CompiledCosmeticSelection
-CompiledBuddyStudioAppearance
+CharacterFeatureSlot        widened from 4 values to the 12 locked categories
+CharacterFeatureCatalog     ids/defaults per category, plus the definition data below
+CharacterFeatureDocument    the per-category selection (id + transform + colors)
+CharacterCompiler           compiles selections; unchanged responsibility
 ```
+
+Genuinely new, because nothing in the current model expresses it:
+
+```text
+CosmeticDefinition          the per-ID rules the catalogue currently lacks
+CosmeticTransformPolicy     None | MoveAndUniformScale, plus bounds
+CosmeticColorChannel        stable channel ID + default
+```
+
+Compatibility is a `HidesHair` flag on the definition (§12), not a policy type. Do not introduce `BuddyStudio*` mirrors of types that already exist under `Characters/`.
 
 A `CosmeticDefinition` contains only engine-free rules/data:
 
@@ -513,45 +518,34 @@ Existing released IDs are retained rather than renamed only for cosmetic neatnes
 
 ## 8. Ownership and economy architecture
 
-Do **not** blindly add cosmetics to the current tool `CatalogueEntryKind` model. That model encodes tool-selection assumptions and the locked sixteen-entry tool progression schedule.
+**Cosmetics ride the existing catalogue and ownership set.** `CatalogueEntry` already carries exactly the commerce fields a cosmetic needs — `ContentId`, `PriceMilliCredits`, `ProgressionOrder`, `Visible`, `NameKey`, `DescriptionKey` — with the same "no unfinished shop entry is shown" gate this plan requires, and ownership is already a set of content-ID strings (`unlockedToolIds` in the progress snapshot). A second commerce stack would duplicate the ledger integration, the idempotency rules, the reset contract and their tests for no new behavior.
 
-Buddy Studio should use a separate cosmetic commerce catalogue while reusing the same underlying credit ledger and durable progression transaction concepts.
+What actually changes:
 
-Recommended domain concepts:
+- add `CatalogueEntryKind.Cosmetic`;
+- `IsSelectable => Kind is not (PassiveUpgrade or Cosmetic)` — cosmetics never enter tool selection;
+- cosmetic content IDs are namespaced (`cosmetic.hair.short_sweep`, …) and are never parsed as tool IDs;
+- the tool shop filters to `Kind is not Cosmetic`, and Buddy Studio filters to `Kind is Cosmetic`, so neither surface lists the other's content;
+- cosmetic entries carry `ProgressionOrder` only for authored display order — **they are not part of, and must not renumber, the locked sixteen-entry tool progression schedule.** Any catalogue test that asserts the tool schedule is updated to assert it over `Kind is not Cosmetic`.
 
-```text
-CosmeticCommerceEntry
-CosmeticOwnershipPolicy
-CosmeticPurchasePolicy
-OwnedCosmeticSet
-CosmeticPurchaseResult
-```
-
-Each commerce entry contains:
-
-- cosmetic ID;
-- price in milli-credits;
-- visibility/release gate;
-- free/default flag;
-- optional localization metadata;
-- authored order/category reference.
+Free/default cosmetics are not catalogue entries at all: they are `IsFreeDefault` in the definition (§7) and are never sold, matching how `StartingTool` works today.
 
 ### 8.1 Progress persistence
 
-Add a versioned `OwnedCosmeticIds` collection to progression/save state.
+No new ownership collection and no progression schema migration: cosmetic IDs are added to the existing unlocked-content set, which is already a `string` set keyed by content ID.
 
 Ownership resolution:
 
 ```text
-owned = definition.IsFreeDefault || progress.OwnedCosmeticIds.Contains(cosmeticId)
+owned = definition.IsFreeDefault || progress.IsUnlocked(cosmeticId)
 ```
 
 Rules:
 
 - all current migrated defaults must be free so existing saves never lose their appearance;
-- purchasing adds the ID exactly once;
-- duplicate purchase attempts are idempotently rejected as already owned;
-- reset-progress behavior follows the already approved reset contract: cosmetic purchases are progression and are erased by Reset Progress, while application/window preferences remain preserved;
+- purchasing adds the ID exactly once; the existing `PurchaseResult.AlreadyOwned` covers duplicates;
+- unknown/future cosmetic IDs in a save survive a load/save cycle through the existing extension-data path, exactly as unknown tool IDs do today;
+- reset-progress behavior follows the already approved reset contract: cosmetic purchases are progression and are erased by Reset Progress, while application/window preferences remain preserved — subject to §8.4, which governs what that does to already-saved characters;
 - platform achievements remain governed by the existing reset policy and are unrelated to cosmetics.
 
 ### 8.2 Purchase transaction
@@ -581,6 +575,19 @@ Price constraints:
 - price is shown in the same displayed credit unit as the existing shop;
 - no loot boxes, random paid rolls, or implicit purchase through Randomize.
 
+### 8.4 Worn cosmetics survive ownership loss
+
+A character document outlives the progression that paid for its cosmetics: Reset Progress erases cosmetic ownership (§8.1), and a character may be copied in from another save. Without an explicit rule, every such character loads referencing unowned content and becomes permanently unsaveable under §9.
+
+The rule: **the ownership check gates selecting new cosmetics, never persisting cosmetics a character already wears.**
+
+- Loading never rewrites a character's appearance because of ownership; a worn cosmetic keeps rendering after Reset Progress.
+- A character that already wears an unowned cosmetic remains saveable with that cosmetic in place. Save is blocked only when the *current Studio session* selected an unowned item (§9) — the unowned-preview flag is session state, not a property of loaded data.
+- Deselecting an unowned worn cosmetic is one-way: it cannot be reselected until it is owned again.
+- Randomize (§10) still refuses unowned content, so randomizing a reset save legitimately strips its previously purchased look.
+
+This keeps §3.9–3.11 intact — no purchase is implied, no character file is silently rewritten, and no player loses an appearance they already had.
+
 ---
 
 ## 9. Working-copy and preview semantics
@@ -598,7 +605,7 @@ Recommended behavior:
 - selecting an unowned item updates the preview and marks that category as an unowned preview;
 - Buy converts the preview into a normal saveable working-copy selection after ownership succeeds;
 - navigating to another category does not accidentally purchase or discard the unowned preview;
-- Save is blocked while any category has an unowned preview;
+- Save is blocked while any category has an unowned preview *selected in this session*; a cosmetic the loaded character already wore is not a preview and does not block Save (§8.4);
 - Cancel drops all Studio working-copy / preview appearance changes and restores the saved baseline;
 - purchases survive Cancel because they belong to progression, not the character transaction.
 
@@ -608,14 +615,14 @@ This separation prevents a character file from ever durably referencing content 
 
 ## 10. Randomization architecture
 
-Create one engine-free randomizer rather than UI-driven repeated button presses.
+Extend the existing seeded `CharacterRandomizer` to twelve categories and ownership filtering. It is already the engine-free, seed-driven randomizer this section describes; a `BuddyStudioRandomizer` beside it would be the same code with a different name.
 
-Recommended API:
+The signature gains an owned-set parameter:
 
 ```text
-BuddyStudioRandomizer.Randomize(
+CharacterRandomizer.Randomize(
     CharacterDocument baseline,
-    CosmeticCatalogue catalogue,
+    CharacterFeatureCatalog catalogue,
     IReadOnlySet<string> ownedCosmeticIds,
     ulong seed)
 ```
@@ -779,6 +786,10 @@ Representative implementation content should cover the renderer types, not attem
 
 ## 16. Implementation slices
 
+**Slice shape: BS0–BS5 carry the full twelve-category schema but only three shipped categories.** The schedule risk here is authoring original art for eight new categories, not the domain code — so BS0–BS5 prove the whole pipeline against **Hair, Headwear and Tops**, which between them exercise every mechanism the other nine need: a head attachment, the hides-hair compatibility rule, a torso overlay above paint, a paid purchase, and a tintable channel. The schema, catalogue and category strip are twelve-wide from BS0; the nine unproven categories simply have no definitions yet and their tabs stay hidden under the existing "no nonfunctional command" rule.
+
+BS6 then fills content against a proven pipeline instead of discovering pipeline problems while twelve categories of art are in flight.
+
 ### BS0 — authority alignment and schema contract
 
 Files/doc areas:
@@ -789,10 +800,10 @@ Files/doc areas:
 
 Deliver:
 
-- schema 3 design implemented;
-- twelve stable category contract;
-- `CosmeticDefinition` / catalogue types;
-- 2 -> 3 migration;
+- schema 3 design implemented as the widened `features` node;
+- twelve stable category contract (`CharacterFeatureSlot` widened);
+- `CosmeticDefinition` / transform policy / color channels on the existing `CharacterFeatureCatalog`;
+- 2 -> 3 migration (additive plus the `brows` and `torsoAccent` renames);
 - normalizer/validator/compiler coverage;
 - existing eye/brow/mouth/accent IDs retained;
 - paint manifest unchanged.
@@ -808,7 +819,7 @@ Deliver:
 - engine-side visual registry;
 - visual-only anchor nodes;
 - category fallback behavior;
-- face/hair/nose/ears/glasses/headwear/top/shoe attachment seams;
+- head-crown and torso-front attachment seams, implemented for Hair, Headwear and Tops; the remaining anchors are declared by the contract but not built until their content exists;
 - semantic feature renderer generalization;
 - explicit render-layer policy;
 - headwear-hides-hair rule.
@@ -822,18 +833,19 @@ Gate:
 
 Deliver:
 
-- cosmetic commerce catalogue separate from tool progression;
-- progression schema migration for owned cosmetic IDs;
+- `CatalogueEntryKind.Cosmetic` plus the `IsSelectable` and shop/Studio filters;
+- cosmetic IDs riding the existing unlocked-content set (no new collection, no progression schema migration);
 - free/default ownership policy;
-- purchase policy using the existing ledger;
+- purchase through the existing catalogue purchase path and ledger;
 - immediate durable save request;
-- reset-progress integration;
-- representative free + paid cosmetics.
+- §8.4 worn-cosmetic-survives-ownership-loss behavior;
+- representative free + paid cosmetics in the three BS slice categories.
 
 Gate:
 
 - purchase is account-wide, idempotent, and survives switching buddies/restart;
-- tool economy ordering remains unchanged.
+- tool economy ordering and the locked sixteen-entry tool schedule are unchanged, asserted over `Kind is not Cosmetic`;
+- no cosmetic appears in the tool shop and no tool appears in Buddy Studio.
 
 ### BS3 — Buddy Studio Win98 shell
 
@@ -842,7 +854,7 @@ Deliver:
 - `Customize > Buddy Studio` command route;
 - preview pane;
 - twelve-category strip;
-- item grid and pagination;
+- scrolling item grid;
 - right color/purchase pane;
 - bottom Save / Cancel;
 - shared status bar;
@@ -883,13 +895,14 @@ Deliver:
 
 Gate:
 
-- 1,000+ deterministic randomization seeds produce only valid, owned/free complete appearances and never touch paint or credits.
+- 50 deterministic randomization seeds produce only valid, owned/free complete appearances and never touch paint or credits, plus one fixed-seed golden output.
 
 ### BS6 — content, verification, and owner acceptance
 
 Deliver:
 
-- real original launch content for every category;
+- real original launch content for the remaining nine categories, on the pipeline BS0–BS5 proved;
+- one concrete Face definition, or a hidden Face tab (§5.1);
 - final thumbnails/icons;
 - pricing pass for paid cosmetics;
 - Windows DPI matrix;
@@ -921,10 +934,10 @@ Add coverage for:
 - default fallback resolution;
 - multi-channel definition validation while launch entries use one channel;
 - owned/free resolution;
-- insufficient-credit purchase;
-- successful purchase;
-- duplicate purchase rejection;
-- reset-progress cosmetic ownership reset;
+- cosmetic entries are never selectable as tools and never appear in the tool shop;
+- the locked tool progression schedule is unchanged once cosmetic entries exist;
+- reset-progress clears cosmetic ownership;
+- a character wearing a cosmetic still loads, renders and saves after that cosmetic's ownership is reset (§8.4);
 - randomize never chooses unowned content;
 - randomize changes all twelve categories over representative seeds;
 - deterministic randomize output for a fixed seed;
