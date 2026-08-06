@@ -21,6 +21,7 @@ public partial class PaintCanvasControl : Control
     public PaintPart? HoveredPart { get; private set; }
     public PaintPart? ActivePartFilter { get; set; }
     public bool PanToolActive { get; set; }
+    public bool EyedropperToolActive { get; set; }
 
     /// <summary>
     /// Retained for source compatibility with existing painting scenarios. Runtime pointer
@@ -37,6 +38,7 @@ public partial class PaintCanvasControl : Control
     public event Action? WorkspaceChanged;
     public event Action? ViewChanged;
     public event Action<PaintPart?>? HoverChanged;
+    public event Action<PaintColor>? ColorSampled;
 
     public override async void _Ready()
     {
@@ -100,6 +102,19 @@ public partial class PaintCanvasControl : Control
                 if (button.Pressed)
                 {
                     PaintHit? hit = Map(button.Position);
+                    if (EyedropperToolActive)
+                    {
+                        if (hit is PaintHit sampleHit && TrySample(sampleHit, out PaintColor sampled))
+                        {
+                            Workspace.SelectedColor = sampled;
+                            ColorSampled?.Invoke(sampled);
+                            WorkspaceChanged?.Invoke();
+                        }
+                        GrabFocus();
+                        AcceptEvent();
+                        return;
+                    }
+
                     if (hit is PaintHit valid)
                     {
                         Workspace.BeginGesture(valid);
@@ -127,7 +142,7 @@ public partial class PaintCanvasControl : Control
                     View.SetZoom(View.Zoom + (direction * 0.2), focus);
                     ViewChanged?.Invoke();
                 }
-                else
+                else if (!EyedropperToolActive)
                 {
                     Workspace.AdjustBrush(direction);
                     WorkspaceChanged?.Invoke();
@@ -158,7 +173,7 @@ public partial class PaintCanvasControl : Control
 
     public override void _Draw()
     {
-        if (PanToolActive)
+        if (PanToolActive || EyedropperToolActive)
             return;
 
         float diameter = (float)(Workspace.BrushDiameter * View.Zoom * Math.Min(Size.X, Size.Y) /
@@ -184,6 +199,14 @@ public partial class PaintCanvasControl : Control
 
     /// <summary>Part under a canvas-space pointer position, or null on a miss.</summary>
     public PaintPart? PartAt(Vector2 canvasPosition) => Map(canvasPosition)?.Part;
+
+    private bool TrySample(PaintHit hit, out PaintColor color)
+    {
+        if (Workspace.Surfaces.TryGetValue(hit.Part, out PaintSurface? surface))
+            return surface.TrySample(hit.Uv, out color);
+        color = default;
+        return false;
+    }
 
     private PaintHit? Map(Vector2 canvas)
     {
