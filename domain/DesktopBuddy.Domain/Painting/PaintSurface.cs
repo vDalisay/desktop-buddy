@@ -139,6 +139,31 @@ public sealed class PaintSurface
         return dirty;
     }
 
+    /// <summary>
+    /// Samples one paint pixel. Transparent pixels return false so the editor can keep its
+    /// current foreground color when the user clicks an unpainted part of the buddy.
+    /// </summary>
+    public bool TrySample(PaintPoint uv, out PaintColor color)
+    {
+        if (!uv.IsFinite || uv.X < 0.0 || uv.X > 1.0 || uv.Y < 0.0 || uv.Y > 1.0)
+        {
+            color = default;
+            return false;
+        }
+
+        int x = Math.Clamp((int)Math.Round(uv.X * (PaintPolicy.SurfaceSize - 1)), 0, PaintPolicy.SurfaceSize - 1);
+        int y = Math.Clamp((int)Math.Round(uv.Y * (PaintPolicy.SurfaceSize - 1)), 0, PaintPolicy.SurfaceSize - 1);
+        int index = ((y * PaintPolicy.SurfaceSize) + x) * PaintPolicy.BytesPerPixel;
+        if (_pixels[index + 3] == 0)
+        {
+            color = default;
+            return false;
+        }
+
+        color = new PaintColor(_pixels[index], _pixels[index + 1], _pixels[index + 2]);
+        return true;
+    }
+
     public byte[] Capture(PaintRect rectangle)
     {
         if (rectangle.IsEmpty)
