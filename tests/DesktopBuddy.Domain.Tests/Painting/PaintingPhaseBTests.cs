@@ -106,6 +106,74 @@ public sealed class PaintingPhaseBTests
     }
 
     [Fact]
+    public void GestureStartedOffSurfacePaintsOnceTheDragCrossesTheCharacter()
+    {
+        PaintWorkspace workspace = new();
+        PaintHit onBody = new(PaintPart.Torso, new PaintPoint(0.5, 0.5), 0);
+        string before = workspace.Surfaces[PaintPart.Torso].ComputeHash();
+
+        workspace.BeginGesture(null);
+        workspace.ContinueGesture(onBody);
+        workspace.EndGesture();
+
+        Assert.NotEqual(before, workspace.Surfaces[PaintPart.Torso].ComputeHash());
+        Assert.True(workspace.Undo());
+        Assert.Equal(before, workspace.Surfaces[PaintPart.Torso].ComputeHash());
+    }
+
+    [Fact]
+    public void FastDragThatSkipsOverTheSilhouetteStillDrawsAContinuousStroke()
+    {
+        PaintWorkspace bridged = new();
+        PaintWorkspace direct = new();
+        PaintHit from = new(PaintPart.Torso, new PaintPoint(0.45, 0.45), 0);
+        PaintHit to = new(PaintPart.Torso, new PaintPoint(0.55, 0.55), 0);
+
+        bridged.BeginGesture(from);
+        bridged.ContinueGesture(null);
+        bridged.ContinueGesture(to);
+        bridged.EndGesture();
+
+        direct.BeginGesture(from);
+        direct.ContinueGesture(to);
+        direct.EndGesture();
+
+        Assert.Equal(
+            direct.Surfaces[PaintPart.Torso].ComputeHash(),
+            bridged.Surfaces[PaintPart.Torso].ComputeHash());
+    }
+
+    [Fact]
+    public void ReturningFarAcrossThePartDoesNotSmearAJoiningStroke()
+    {
+        PaintWorkspace workspace = new();
+        PaintPoint far = new(0.9, 0.9);
+
+        workspace.BeginGesture(new PaintHit(PaintPart.Torso, new PaintPoint(0.1, 0.1), 0));
+        workspace.ContinueGesture(null);
+        workspace.ContinueGesture(new PaintHit(PaintPart.Torso, far, 0));
+        workspace.EndGesture();
+
+        PaintSurface surface = workspace.Surfaces[PaintPart.Torso];
+        Assert.True(surface.TrySample(new PaintPoint(0.1, 0.1), out _));
+        Assert.True(surface.TrySample(far, out _));
+        Assert.False(surface.TrySample(new PaintPoint(0.5, 0.5), out _));
+    }
+
+    [Fact]
+    public void GestureThatNeverTouchesTheCharacterAddsNoUndoStep()
+    {
+        PaintWorkspace workspace = new();
+
+        workspace.BeginGesture(null);
+        workspace.ContinueGesture(null);
+        workspace.EndGesture();
+
+        Assert.False(workspace.CanUndo);
+        Assert.False(workspace.IsDirty);
+    }
+
+    [Fact]
     public void EraserAndEraseAll_AreByteExactUndoableCommands()
     {
         PaintWorkspace workspace = new();

@@ -164,29 +164,37 @@ public sealed class PaintWorkspace
     public void SetBrushDiameter(int diameter) =>
         BrushDiameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
 
-    public void BeginGesture(PaintHit hit)
+    /// <summary>
+    /// Starts a gesture. A miss (null or invalid hit) still opens the gesture so a press that
+    /// begins off the character can paint once the drag crosses onto it; nothing is stamped
+    /// while the pointer is off-surface.
+    /// </summary>
+    public void BeginGesture(PaintHit? hit)
     {
-        if (!hit.IsValid)
-            throw new ArgumentException("A paint gesture must begin on a valid surface hit.", nameof(hit));
         EndGesture();
         _gestureActive = true;
-        _lastHit = hit;
-        CaptureBefore(hit.Part, PaintSurface.StampBounds(hit.Uv, BrushDiameter));
-        _surfaces[hit.Part].Stamp(hit.Uv, BrushDiameter, SelectedTool, SelectedColor);
+        _lastHit = null;
+        if (hit is not PaintHit valid || !valid.IsValid)
+            return;
+
+        _lastHit = valid;
+        CaptureBefore(valid.Part, PaintSurface.StampBounds(valid.Uv, BrushDiameter));
+        _surfaces[valid.Part].Stamp(valid.Uv, BrushDiameter, SelectedTool, SelectedColor);
     }
 
     public void ContinueGesture(PaintHit? hit)
     {
         if (!_gestureActive)
             return;
+        // A miss keeps the previous hit: pointer samples arrive once per frame, so a quick drag
+        // skips clean over the buddy's small silhouette. Dropping continuity here turned every
+        // landing into an isolated dot.
         if (hit is null || !hit.Value.IsValid)
-        {
-            _lastHit = null;
             return;
-        }
 
         PaintHit current = hit.Value;
-        if (_lastHit is PaintHit previous && previous.Part == current.Part)
+        if (_lastHit is PaintHit previous && previous.Part == current.Part &&
+            IsBridgeable(previous.Uv, current.Uv))
         {
             CaptureBefore(current.Part, PaintSurface.StrokeBounds(previous.Uv, current.Uv, BrushDiameter));
             _surfaces[current.Part].Stroke(
@@ -229,6 +237,21 @@ public sealed class PaintWorkspace
         _gestureActive = false;
         _lastHit = null;
     }
+
+    /// <summary>
+    /// Whether two samples on one part are close enough to join. Beyond this the pointer left
+    /// the part and came back somewhere else, and a joining stroke would smear across the UV.
+    /// </summary>
+    private static bool IsBridgeable(PaintPoint from, PaintPoint to)
+    {
+        double dx = Math.Abs(to.X - from.X);
+        if (dx > 0.5)
+            dx = 1.0 - dx; // U is cyclic.
+        double dy = to.Y - from.Y;
+        return Math.Sqrt((dx * dx) + (dy * dy)) <= MaxBridgeUvDistance;
+    }
+
+    private const double MaxBridgeUvDistance = 0.25;
 
     public void EraseAll()
     {

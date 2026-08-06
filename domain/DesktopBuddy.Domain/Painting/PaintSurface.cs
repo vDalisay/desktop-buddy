@@ -29,6 +29,13 @@ public sealed class PaintSurface
     public long Revision { get; private set; }
     public ReadOnlyMemory<byte> Pixels => _pixels;
 
+    /// <summary>
+    /// Gap between stamps along an interpolated stroke, as a fraction of the brush diameter.
+    /// Lower lays more dots per unit of travel, so fast drags stay smooth. StrokeBounds must
+    /// use the same value as Stroke or the undo rectangle will not cover what was painted.
+    /// </summary>
+    private const double StampSpacingFactor = 0.08;
+
     public static PaintRect StampBounds(PaintPoint uv, int diameter)
     {
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
@@ -48,7 +55,7 @@ public sealed class PaintSurface
     {
         to = NormalizeStrokeTarget(from, to);
         double distancePixels = (to - from).Length * PaintPolicy.SurfaceSize;
-        double spacing = Math.Max(1.0, diameter * 0.22);
+        double spacing = Math.Max(0.5, diameter * StampSpacingFactor);
         int steps = Math.Max(1, (int)Math.Ceiling(distancePixels / spacing));
         PaintRect dirty = default;
         for (int step = 0; step <= steps; step++)
@@ -127,7 +134,7 @@ public sealed class PaintSurface
         to = NormalizeStrokeTarget(from, to);
 
         double distancePixels = (to - from).Length * PaintPolicy.SurfaceSize;
-        double spacing = Math.Max(1.0, diameter * 0.22);
+        double spacing = Math.Max(0.5, diameter * StampSpacingFactor);
         int steps = Math.Max(1, (int)Math.Ceiling(distancePixels / spacing));
         PaintRect dirty = default;
         for (int step = 0; step <= steps; step++)

@@ -12,6 +12,7 @@ public partial class PaintCanvasControl : Control
     private bool _painting;
     private bool _panning;
     private Vector2 _lastPointer;
+    private Vector2 _strokePointer;
 
     /// <summary>Vertical world extent the preview's orthographic camera frames at zoom 1.</summary>
     public const double BaseCameraSize = 400.0;
@@ -70,13 +71,9 @@ public partial class PaintCanvasControl : Control
             }
             else
             {
-                PaintHit? hit = Map(motion.Position);
-                SetHover(hit?.Part);
+                SetHover(Map(motion.Position)?.Part);
                 if (_painting)
-                {
-                    Workspace.ContinueGesture(hit);
-                    WorkspaceChanged?.Invoke();
-                }
+                    PaintAlongTo(motion.Position);
             }
             QueueRedraw();
             AcceptEvent();
@@ -115,18 +112,20 @@ public partial class PaintCanvasControl : Control
                         return;
                     }
 
-                    if (hit is PaintHit valid)
-                    {
-                        Workspace.BeginGesture(valid);
-                        _painting = true;
-                        WorkspaceChanged?.Invoke();
-                    }
+                    Workspace.BeginGesture(hit);
+                    _painting = true;
+                    _strokePointer = button.Position;
+                    // Godot coalesces motion to one event per frame, which is far too few paint
+                    // samples for a fast drag. Raw motion only costs while a stroke is live.
+                    Input.UseAccumulatedInput = false;
+                    WorkspaceChanged?.Invoke();
                     GrabFocus();
                 }
                 else if (_painting)
                 {
                     Workspace.EndGesture();
                     _painting = false;
+                    Input.UseAccumulatedInput = true;
                     WorkspaceChanged?.Invoke();
                 }
                 AcceptEvent();
@@ -151,6 +150,49 @@ public partial class PaintCanvasControl : Control
                 AcceptEvent();
             }
         }
+    }
+
+    /// <summary>
+    /// Resamples the pointer every frame while the button is held, so paint keeps flowing even
+    /// when no motion event arrives (mouse held still, or events dropped under load).
+    /// </summary>
+    public override void _Process(double delta)
+    {
+        if (!_painting)
+            return;
+        PaintAlongTo(GetLocalMousePosition());
+    }
+
+    /// <summary>
+    /// Paints from the last stroke position to <paramref name="canvas"/>, sampling the segment
+    /// in small screen-space steps. The buddy covers only a few dozen pixels, so one fast drag
+    /// swings the mapped UV a third of the way around a limb; interpolating on screen instead
+    /// keeps every step a short, mappable hop and lets part changes and silhouette misses fall
+    /// where they actually happened.
+    /// </summary>
+    private void PaintAlongTo(Vector2 canvas)
+    {
+        Vector2 from = _strokePointer;
+        int steps = Math.Clamp(
+            (int)Math.Ceiling(from.DistanceTo(canvas) / ScreenStepPixels), 1, MaxScreenSteps);
+        for (int step = 1; step <= steps; step++)
+            Workspace.ContinueGesture(Map(from.Lerp(canvas, step / (float)steps)));
+
+        _strokePointer = canvas;
+        WorkspaceChanged?.Invoke();
+    }
+
+    /// <summary>Screen-space gap between pointer resamples inside one stroke segment.</summary>
+    private const float ScreenStepPixels = 1.5f;
+    private const int MaxScreenSteps = 512;
+
+    public override void _ExitTree()
+    {
+        if (!_painting)
+            return;
+        Workspace.EndGesture();
+        _painting = false;
+        Input.UseAccumulatedInput = true;
     }
 
     public override void _UnhandledKeyInput(InputEvent input)
