@@ -85,6 +85,10 @@ public partial class Win98PaintStatusBootstrap : Node
 
     private string BuildStatus()
     {
+        string? focusedHelp = FocusedControlHelp();
+        if (!string.IsNullOrWhiteSpace(focusedHelp))
+            return focusedHelp;
+
         PaintWorkspace workspace = _canvas!.Workspace;
         string tool = _canvas.PanToolActive
             ? "Hand"
@@ -101,6 +105,28 @@ public partial class Win98PaintStatusBootstrap : Node
 
         return $"{tool}  |  Target: {target}  |  Hover: {hover}  |  Size: {workspace.BrushDiameter}px  |  " +
                $"Zoom: {zoomPercent}%  |  Rotation: {rotation}°  |  {dirty}";
+    }
+
+    /// <summary>
+    /// Classic desktop applications use the status bar for contextual command help. While a
+    /// keyboard-focusable editor control is active, show its tooltip or accessibility description;
+    /// returning focus to the canvas restores the live paint state summary.
+    /// </summary>
+    private string? FocusedControlHelp()
+    {
+        Control? focus = GetViewport().GuiGetFocusOwner();
+        if (!GodotObject.IsInstanceValid(focus) ||
+            ReferenceEquals(focus, _canvas) ||
+            !GodotObject.IsInstanceValid(_host) ||
+            !_host!.IsAncestorOf(focus))
+        {
+            return null;
+        }
+
+        string help = !string.IsNullOrWhiteSpace(focus!.TooltipText)
+            ? focus.TooltipText
+            : focus.AccessibilityDescription;
+        return string.IsNullOrWhiteSpace(help) ? null : $"Help: {help}";
     }
 
     private int ResolveQuarterTurnRotation()
