@@ -79,7 +79,9 @@ public partial class Win98PaintStatusBootstrap : Node
         PaintWorkspace workspace = _canvas!.Workspace;
         string tool = _canvas.PanToolActive
             ? "Hand"
-            : workspace.SelectedTool == PaintTool.Eraser ? "Eraser" : "Brush";
+            : _canvas.EyedropperToolActive
+                ? "Eyedropper"
+                : workspace.SelectedTool == PaintTool.Eraser ? "Eraser" : "Brush";
         string target = FormatPart(_canvas.ActivePartFilter);
         int zoomPercent = Mathf.RoundToInt((float)(_canvas.View.Zoom * 100.0));
         int rotation = ResolveQuarterTurnRotation();
