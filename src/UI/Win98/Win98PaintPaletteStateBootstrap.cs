@@ -50,13 +50,8 @@ public partial class Win98PaintPaletteStateBootstrap : Node
         _lastColor = selected;
         foreach ((Button button, PaintColor color) in _swatches)
         {
-            if (!GodotObject.IsInstanceValid(button))
-                continue;
-            bool active = color == selected;
-            button.SetPressedNoSignal(active);
-            button.AccessibilityDescription = active
-                ? $"Selected preset color #{ToHex(color)}"
-                : $"Preset color #{ToHex(color)}";
+            if (GodotObject.IsInstanceValid(button))
+                button.SetPressedNoSignal(color == selected);
         }
     }
 
