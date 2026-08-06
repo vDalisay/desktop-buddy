@@ -147,7 +147,7 @@ Use explicit background zones where the scene visually contains distinct wall, f
 
 ### 5.2 Color editor UX
 
-Expose the system through the completed Win98 UI framework, likely as a `Background` or `Room` category in the persistent command bar.
+Expose the system through the completed Win98 UI framework. The locked player-facing entry point is the horizontal command bar's **Customize** menu described in Section 11; background editing opens from **Customize → Paint Background**.
 
 The editor should provide:
 
@@ -432,20 +432,45 @@ Migration rules:
 
 The completed shared Win98 UI foundation must be reused.
 
-Recommended command-bar structure:
+### 11.1 Locked Customize command-bar entry point
+
+The existing horizontal command-bar entry currently labelled **Paint / Character** becomes **Customize**. It is a dropdown/attached in-scene menu using the same Win98 command-bar interaction model as the rest of the shell.
+
+Its initial entries are locked as:
+
+- **Paint Buddy** — opens the existing direct buddy-paint workspace;
+- **Paint Background** — opens the background color/preset editor defined by this plan;
+- **Buddy Studio** — opens the dedicated character appearance, facial-feature, accessory, and clothing customization workspace planned separately.
+
+Rules:
+
+- `Customize` replaces `Paint / Character`; do not add a second competing top-level entry.
+- The dropdown is attached to the horizontal task/command bar and must not spawn a detached OS window.
+- Only implemented destinations may be enabled in a shipping build. An unfinished destination is hidden or disabled with explicit development-only handling rather than behaving as a fake button.
+- Opening one Customize workspace must use the same unsaved-change and mode-transition ownership rules as Paint Buddy.
+- Focus returns to `Customize` when its dropdown closes.
+- Escape closes the dropdown before affecting gameplay.
+- **Paint Background** is the canonical player-facing route into background editing; future room/decor management may gain additional routes but must not replace this entry.
+
+### 11.2 Related Shop and room structure
+
+The broader command-bar structure may additionally expose permanent decor through the Shop and room-management commands once those systems are implemented:
 
 - Shop
   - Tools
   - Clothing
   - Decor
-- Room
-  - Background
+- Customize
+  - Paint Buddy
+  - Paint Background
+  - Buddy Studio
+- Room (future, when complete room profiles/decoration editing exist)
   - Decorations
   - Rooms
   - Import / Export
 - Settings
 
-The exact hierarchy may be adjusted after usability review, but environment customization must remain in-scene and must not reintroduce inaccessible detached game windows.
+The exact future `Room` hierarchy may be adjusted after usability review, but environment customization must remain in-scene and must not reintroduce inaccessible detached game windows.
 
 The room editor should use:
 
