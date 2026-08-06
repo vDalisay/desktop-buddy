@@ -67,8 +67,7 @@ public partial class Win98PaintFocusBootstrap : Node
                 bool enabled = control is not BaseButton { Disabled: true };
                 if (enabled &&
                     control.FocusMode != Control.FocusModeEnum.None &&
-                    control.IsVisibleInTree() &&
-                    control is not PopupMenu)
+                    control.IsVisibleInTree())
                 {
                     result.Add(control);
                 }
