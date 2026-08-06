@@ -64,14 +64,24 @@ public partial class Win98PaintShortcutBootstrap : Node
             button.EmitSignal(Button.SignalName.Pressed);
         }
 
-
         GetViewport().SetInputAsHandled();
     }
 
     private static string? ResolveCommand(InputEventKey key)
     {
-        if (key.CtrlPressed || key.AltPressed || key.MetaPressed)
+        if (key.AltPressed || key.MetaPressed)
             return null;
+
+        if (key.CtrlPressed)
+        {
+            return key.Keycode switch
+            {
+                Key.S when !key.ShiftPressed => "SaveCharacterButton",
+                Key.W when !key.ShiftPressed => "CloseCharacterEditorButton",
+                Key.Enter when !key.ShiftPressed => "UseCharacterButton",
+                _ => null,
+            };
+        }
 
         return key.Keycode switch
         {
@@ -126,6 +136,9 @@ public partial class Win98PaintShortcutBootstrap : Node
         AddShortcut("PaintResetViewButton", "Home");
         AddShortcut(ResolveButton(RotateLeftCommand), "R");
         AddShortcut(ResolveButton(RotateRightCommand), "T");
+        AddShortcut("SaveCharacterButton", "Ctrl+S");
+        AddShortcut("UseCharacterButton", "Ctrl+Enter");
+        AddShortcut("CloseCharacterEditorButton", "Ctrl+W");
         _tooltipsDecorated = true;
     }
 
