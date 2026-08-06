@@ -3,7 +3,7 @@
 ; since the parameters that go here are not all obvious.
 ;
 ; Format:
-;   [section] ; section goes between []
+;   [section] ; section between []
 ;   param=value
 
 config_version=5
@@ -99,3 +99,4 @@ Win98PaintShortcutBootstrap="*res://src/UI/Win98/Win98PaintShortcutBootstrap.cs"
 Win98PaintControlStateBootstrap="*res://src/UI/Win98/Win98PaintControlStateBootstrap.cs"
 Win98PaintFocusBootstrap="*res://src/UI/Win98/Win98PaintFocusBootstrap.cs"
 Win98PaintPaletteStateBootstrap="*res://src/UI/Win98/Win98PaintPaletteStateBootstrap.cs"
+Win98PaintUxPolishBootstrap="*res://src/UI/Win98/Win98PaintUxPolishBootstrap.cs"
