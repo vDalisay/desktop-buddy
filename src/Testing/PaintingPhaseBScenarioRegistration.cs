@@ -34,6 +34,7 @@ internal static class PaintingPhaseBScenarioRegistration
         factories["paint_runtime_fidelity"] = () => new PaintRuntimeFidelityScenario();
         factories["paint_upload_coalescing"] = () => new PaintUploadCoalescingScenario();
         factories["paint_localization_fallback"] = () => new PaintLocalizationScenario();
+        factories["paint_semantic_layer_filtering"] = () => new PaintSemanticLayerFilteringScenario();
         factories["character_paint_save_use_restart"] = () => new CharacterPaintSaveUseRestartScenario();
     }
 }
