@@ -9,6 +9,9 @@ namespace DesktopBuddy.UI.Win98;
 /// </summary>
 public partial class Win98PaintShortcutBootstrap : Node
 {
+    private const string RotateLeftCommand = "@rotate-left";
+    private const string RotateRightCommand = "@rotate-right";
+
     private PaintCanvasControl? _canvas;
     private bool _tooltipsDecorated;
 
@@ -45,7 +48,7 @@ public partial class Win98PaintShortcutBootstrap : Node
         if (command is null)
             return;
 
-        Button? button = GetTree().Root.FindChild(command, recursive: true, owned: false) as Button;
+        Button? button = ResolveButton(command);
         if (!GodotObject.IsInstanceValid(button) || button!.Disabled || !button.IsVisibleInTree())
             return;
 
@@ -69,10 +72,27 @@ public partial class Win98PaintShortcutBootstrap : Node
             Key.Minus => "PaintZoomOutButton",
             Key.Equal => "PaintZoomInButton",
             Key.Home => "PaintResetViewButton",
-            Key.R when key.ShiftPressed => "PaintRotateLeftButton",
-            Key.R => "PaintRotateRightButton",
+            Key.R when key.ShiftPressed => RotateLeftCommand,
+            Key.R => RotateRightCommand,
             _ => null,
         };
+    }
+
+    private Button? ResolveButton(string command)
+    {
+        if (command is RotateLeftCommand or RotateRightCommand)
+        {
+            if (GetTree().Root.FindChild(
+                    "PaintRotateRow", recursive: true, owned: false) is not HBoxContainer row)
+            {
+                return null;
+            }
+
+            int index = command == RotateLeftCommand ? 0 : 1;
+            return index < row.GetChildCount() ? row.GetChild(index) as Button : null;
+        }
+
+        return GetTree().Root.FindChild(command, recursive: true, owned: false) as Button;
     }
 
     private bool IsTextEntryFocused()
@@ -92,16 +112,18 @@ public partial class Win98PaintShortcutBootstrap : Node
         AddShortcut("PaintZoomOutButton", "-");
         AddShortcut("PaintZoomInButton", "+");
         AddShortcut("PaintResetViewButton", "Home");
-        AddShortcut("PaintRotateLeftButton", "Shift+R");
-        AddShortcut("PaintRotateRightButton", "R");
+        AddShortcut(ResolveButton(RotateLeftCommand), "Shift+R");
+        AddShortcut(ResolveButton(RotateRightCommand), "R");
         _tooltipsDecorated = true;
     }
 
-    private void AddShortcut(string buttonName, string shortcut)
+    private void AddShortcut(string buttonName, string shortcut) => AddShortcut(
+        GetTree().Root.FindChild(buttonName, recursive: true, owned: false) as Button,
+        shortcut);
+
+    private static void AddShortcut(Button? button, string shortcut)
     {
-        if (GetTree().Root.FindChild(buttonName, recursive: true, owned: false) is not Button button)
-            return;
-        if (button.TooltipText.Contains($"({shortcut})"))
+        if (!GodotObject.IsInstanceValid(button) || button!.TooltipText.Contains($"({shortcut})"))
             return;
         button.TooltipText = string.IsNullOrWhiteSpace(button.TooltipText)
             ? shortcut
