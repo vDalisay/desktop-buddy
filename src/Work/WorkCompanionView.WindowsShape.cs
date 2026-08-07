@@ -97,16 +97,17 @@ public partial class WorkCompanionView
         if (combined == 0)
             return;
 
-        // Coarse unions deliberately cover visible art plus a few animation pixels. The shape
-        // can be refined with authored alpha contours later without changing input semantics.
+        // Match the polished 720x430 layout. These intentionally overlap around the keyboard,
+        // buddy and desktop so tiny animation excursions never clip, while the large empty
+        // corners stay outside the HWND and therefore remain genuinely click-through.
         Rect2I[] regions =
         [
-            new Rect2I(8, 8, 102, 34),       // hover motion control
-            new Rect2I(4, 24, 255, 230),     // buddy
-            new Rect2I(349, 30, 178, 205),   // CRT/monitor + case
-            new Rect2I(164, 218, 184, 44),   // keyboard
-            new Rect2I(108, 224, 58, 44),    // mouse/cable interaction area
-            new Rect2I(14, 233, 532, 56),    // desk
+            new Rect2I(10, 8, 36, 30),       // hover-only motion control
+            new Rect2I(24, 54, 330, 310),    // buddy + hand animation safety
+            new Rect2I(430, 48, 246, 304),   // monitor, neck and PC chassis
+            new Rect2I(240, 320, 238, 58),   // keyboard
+            new Rect2I(158, 326, 92, 57),    // mouse + cable
+            new Rect2I(26, 342, 670, 86),    // desktop/front apron/legs
         ];
 
         bool built = true;
