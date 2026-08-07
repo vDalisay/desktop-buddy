@@ -91,6 +91,9 @@ public partial class WorkCompanionCoordinator : Node
             return false;
 
         _transitioning = true;
+        // Capture this before any awaited reward/character work. Entry can fail before the
+        // presentation is hidden, and rollback must never guess whether physics was running.
+        _sandboxPhysicsWasProcessing = _sandbox.IsPhysicsProcessing();
         try
         {
             _sandbox.Shell.ReturnToWorkMode();
@@ -113,7 +116,6 @@ public partial class WorkCompanionCoordinator : Node
             _sandbox.Window.EnterWorkCompanionWindow(workRect);
 
             HideNormalPresentation();
-            _sandboxPhysicsWasProcessing = _sandbox.IsPhysicsProcessing();
             _sandbox.SetPhysicsProcess(false);
 
             LocalSettingsSave settings = _sandbox.Shell.CurrentLocalSettings;
@@ -189,6 +191,7 @@ public partial class WorkCompanionCoordinator : Node
             _session = null;
             IsActive = false;
             ActiveChanged?.Invoke(false);
+            ShowExitSummaryIfEarned();
             Log.Info(Category, $"Work session ended; settledMilliCredits={_sessionSettledMilliCredits}.");
         }
         finally
@@ -199,8 +202,27 @@ public partial class WorkCompanionCoordinator : Node
 
     public override void _ExitTree()
     {
-        if (GodotObject.IsInstanceValid(_sandbox?.Shell))
+        if (GodotObject.IsInstanceValid(_sandbox) && GodotObject.IsInstanceValid(_sandbox.Shell))
             _sandbox.Shell.InputModeChanged -= OnShellInputModeChanged;
+
+        // Quit/shutdown can bypass the double-click exit path. Stop capture first, consume the
+        // final anonymous deltas, then synchronously checkpoint before nodes disappear. This is
+        // deliberately tree-exit-only; no hook callback ever performs disk I/O.
+        if (IsActive)
+        {
+            _activitySource?.Stop();
+            DrainActivity();
+            try
+            {
+                PersistPreferencesAsync(forcePosition: _positionDirty).GetAwaiter().GetResult();
+                _context.Saves.FlushProgressAsync(force: true).GetAwaiter().GetResult();
+            }
+            catch (Exception exception)
+            {
+                Log.Error(Category, $"Final Work Mode checkpoint failed: {exception.Message}");
+            }
+        }
+
         TearDownActivitySource();
         if (GodotObject.IsInstanceValid(_view))
             _view!.QueueFree();
@@ -344,6 +366,17 @@ public partial class WorkCompanionCoordinator : Node
         if (GodotObject.IsInstanceValid(_win98Frame))
             _win98Frame!.Visible = _win98FrameWasVisible;
         _win98Frame = null;
+    }
+
+    private void ShowExitSummaryIfEarned()
+    {
+        if (_sessionSettledMilliCredits <= 0)
+            return;
+        var frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
+        if (!GodotObject.IsInstanceValid(frame))
+            return;
+        double credits = _sessionSettledMilliCredits / 1000.0;
+        frame!.StatusText = $"Work session complete: +{credits:0.###} credits";
     }
 
     private void UpdateCounter()
