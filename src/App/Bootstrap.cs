@@ -158,7 +158,7 @@ public partial class Bootstrap : Node
                 cashPerPain);
         WorkProgressState workProgress = newSemanticState
             ? new WorkProgressState()
-            : loadedProgress?.Work.CreateState() ?? new WorkProgressState();
+            : loadedProgress?.Work?.CreateState() ?? new WorkProgressState();
         var characterSelection = new CharacterSelectionState(
             newSemanticState ? null : loadedProgress?.ActiveCharacterId);
         var characters = new CharacterStore(
