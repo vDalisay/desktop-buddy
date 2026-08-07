@@ -179,6 +179,29 @@ public sealed class WorkProgressState
         return new WorkProgressSnapshot(Revision, Lifetime, ids, FirstEntryGlassesGranted);
     }
 
+    /// <summary>
+    /// Replaces the complete durable Work state. This exists for the same explicit reset/
+    /// rollback transaction that adopts the main progress snapshot; ordinary gameplay must
+    /// mutate through Record/Claim/MarkFirstEntry instead.
+    /// </summary>
+    public void Adopt(WorkProgressSnapshot snapshot)
+    {
+        if (snapshot.Revision < 0 ||
+            snapshot.Lifetime.KeyboardPresses < 0 ||
+            snapshot.Lifetime.MouseClicks < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(snapshot));
+        }
+
+        Lifetime = snapshot.Lifetime;
+        FirstEntryGlassesGranted = snapshot.FirstEntryGlassesGranted;
+        _claimedLifetime.Clear();
+        foreach (string id in snapshot.ClaimedLifetimeMilestoneIds.Where(id => !string.IsNullOrWhiteSpace(id)))
+            _claimedLifetime.Add(id);
+        Revision = snapshot.Revision;
+        Changed?.Invoke();
+    }
+
     private void Touch()
     {
         Revision = Revision == long.MaxValue ? long.MaxValue : Revision + 1;
