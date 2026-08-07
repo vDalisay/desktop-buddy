@@ -2,6 +2,7 @@ using System;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Persistence.Characters;
+using DesktopBuddy.Work;
 using Godot;
 
 namespace DesktopBuddy.App;
@@ -48,6 +49,15 @@ public partial class Bootstrap
                     "Composition skipped because CharacterSelectionRuntime was not found.");
                 return;
             }
+
+            var workCoordinator = new WorkCompanionCoordinator
+            {
+                Name = nameof(WorkCompanionCoordinator),
+            };
+            workCoordinator.Configure(sandbox, selectionRuntime.Context);
+            sandbox.AddChild(workCoordinator);
+            Log.Info(CharacterEditorStartupCategory,
+                $"WorkCompanionCoordinator added successfully: path={workCoordinator.GetPath()} insideTree={workCoordinator.IsInsideTree()}.");
 
             var host = new CharacterEditorHost
             {
