@@ -41,18 +41,36 @@ public sealed record CharacterPartColors
     public Rgba32 RightFoot { get; init; } = BuiltInFoot;
 }
 
+/// <summary>
+/// Canonical Buddy Studio appearance selections. Eyebrows/Accessories are the schema-3
+/// names; Brows/TorsoAccent remain source-compatible aliases for the existing renderer/editor
+/// and are excluded from JSON so old code can migrate incrementally without duplicating data.
+/// </summary>
 public sealed record CharacterFeatureSet
 {
+    private CharacterFeatureDocument _eyebrows = CharacterFeatureDocument.Create(CharacterFeatureIds.BrowsSoftArc);
+    private CharacterFeatureDocument _accessories = CharacterFeatureDocument.Create(CharacterFeatureIds.AccentNone);
+
     public static CharacterFeatureSet BuiltIn { get; } = new();
 
-    public CharacterFeatureDocument Eyes { get; init; } = CharacterFeatureDocument.Create(
-        CharacterFeatureIds.EyesSoftOval);
-    public CharacterFeatureDocument Brows { get; init; } = CharacterFeatureDocument.Create(
-        CharacterFeatureIds.BrowsSoftArc);
-    public CharacterFeatureDocument Mouth { get; init; } = CharacterFeatureDocument.Create(
-        CharacterFeatureIds.MouthRounded);
-    public CharacterFeatureDocument TorsoAccent { get; init; } = CharacterFeatureDocument.Create(
-        CharacterFeatureIds.AccentNone);
+    public CharacterFeatureDocument Face { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.FaceClassicPlate);
+    public CharacterFeatureDocument Hair { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.HairNone);
+    public CharacterFeatureDocument Eyebrows { get => _eyebrows; init => _eyebrows = value; }
+    public CharacterFeatureDocument Eyes { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.EyesSoftOval);
+    public CharacterFeatureDocument Nose { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.NoseNone);
+    public CharacterFeatureDocument Mouth { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.MouthRounded);
+    public CharacterFeatureDocument Ears { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.EarsNone);
+    public CharacterFeatureDocument Accessories { get => _accessories; init => _accessories = value; }
+    public CharacterFeatureDocument Glasses { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.GlassesNone);
+    public CharacterFeatureDocument Headwear { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.HeadwearNone);
+    public CharacterFeatureDocument Tops { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.TopNone);
+    public CharacterFeatureDocument Shoes { get; init; } = CharacterFeatureDocument.Create(CharacterFeatureIds.ShoesNone);
+
+    [JsonIgnore]
+    public CharacterFeatureDocument Brows { get => _eyebrows; init => _eyebrows = value; }
+
+    [JsonIgnore]
+    public CharacterFeatureDocument TorsoAccent { get => _accessories; init => _accessories = value; }
 }
 
 public sealed record CharacterFeatureDocument
@@ -62,6 +80,13 @@ public sealed record CharacterFeatureDocument
     public double OffsetY { get; init; }
     public double Scale { get; init; } = 1.0;
     public Rgba32 Color { get; init; } = Rgba32.Parse("#183042");
+
+    /// <summary>
+    /// Named color-channel seam for Buddy Studio. Launch content still renders the legacy
+    /// Color property as its single primary channel; this map is introduced only after the
+    /// renderer consumes it, so schema 3 stays backward-compatible with current rendering.
+    /// </summary>
+    public Dictionary<string, Rgba32> Colors { get; init; } = new(StringComparer.Ordinal);
 
     public static CharacterFeatureDocument Create(string featureId) => new()
     {
