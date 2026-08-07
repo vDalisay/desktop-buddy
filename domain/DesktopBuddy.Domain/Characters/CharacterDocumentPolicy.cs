@@ -10,12 +10,11 @@ namespace DesktopBuddy.Domain.Characters;
 
 public static class CharacterDocumentPolicy
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
-        // Undeclared paint paths stay absent; explicit JSON null remains malformed on decode.
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
@@ -23,6 +22,7 @@ public static class CharacterDocumentPolicy
         new Dictionary<int, Func<JsonElement, JsonElement>>
         {
             [1] = MigrateSchema1To2,
+            [2] = MigrateSchema2To3,
         };
 
     public static CharacterDecodeResult DecodeAndMigrate(string json)
@@ -97,6 +97,57 @@ public static class CharacterDocumentPolicy
         return migrated.RootElement.Clone();
     }
 
+    private static JsonElement MigrateSchema2To3(JsonElement source)
+    {
+        JsonObject root = JsonNode.Parse(source.GetRawText())?.AsObject()
+            ?? throw new JsonException("Schema 2 payload was not an object.");
+        root["schemaVersion"] = 3;
+        JsonObject features = root["features"] as JsonObject ?? new JsonObject();
+        root["features"] = features;
+
+        if (features["brows"] is JsonNode brows)
+        {
+            features["eyebrows"] = brows.DeepClone();
+            features.Remove("brows");
+        }
+        if (features["torsoAccent"] is JsonNode accent)
+        {
+            features["accessories"] = accent.DeepClone();
+            features.Remove("torsoAccent");
+        }
+
+        AddDefaultFeature(features, "face", CharacterFeatureIds.FaceClassicPlate);
+        AddDefaultFeature(features, "hair", CharacterFeatureIds.HairNone);
+        AddDefaultFeature(features, "eyebrows", CharacterFeatureIds.BrowsSoftArc);
+        AddDefaultFeature(features, "eyes", CharacterFeatureIds.EyesSoftOval);
+        AddDefaultFeature(features, "nose", CharacterFeatureIds.NoseNone);
+        AddDefaultFeature(features, "mouth", CharacterFeatureIds.MouthRounded);
+        AddDefaultFeature(features, "ears", CharacterFeatureIds.EarsNone);
+        AddDefaultFeature(features, "accessories", CharacterFeatureIds.AccentNone);
+        AddDefaultFeature(features, "glasses", CharacterFeatureIds.GlassesNone);
+        AddDefaultFeature(features, "headwear", CharacterFeatureIds.HeadwearNone);
+        AddDefaultFeature(features, "tops", CharacterFeatureIds.TopNone);
+        AddDefaultFeature(features, "shoes", CharacterFeatureIds.ShoesNone);
+
+        using JsonDocument migrated = JsonDocument.Parse(root.ToJsonString());
+        return migrated.RootElement.Clone();
+    }
+
+    private static void AddDefaultFeature(JsonObject features, string propertyName, string featureId)
+    {
+        if (features[propertyName] is not null)
+            return;
+        features[propertyName] = new JsonObject
+        {
+            ["featureId"] = featureId,
+            ["offsetX"] = 0.0,
+            ["offsetY"] = 0.0,
+            ["scale"] = 1.0,
+            ["color"] = "#183042",
+            ["colors"] = new JsonObject(),
+        };
+    }
+
     private static void ValidateKnownJsonShapes(JsonElement root)
     {
         if (root.TryGetProperty("partColors", out JsonElement colors))
@@ -108,7 +159,11 @@ public static class CharacterDocumentPolicy
         if (root.TryGetProperty("features", out JsonElement features))
         {
             RequireKind(features, JsonValueKind.Object, "features");
-            foreach (string name in new[] { "eyes", "brows", "mouth", "torsoAccent" })
+            foreach (string name in new[]
+            {
+                "face", "hair", "eyebrows", "eyes", "nose", "mouth", "ears",
+                "accessories", "glasses", "headwear", "tops", "shoes",
+            })
                 ValidateFeatureShape(features, name);
         }
         if (root.TryGetProperty("paint", out JsonElement paint))
@@ -130,6 +185,7 @@ public static class CharacterDocumentPolicy
         RequireOptionalKind(feature, "offsetY", JsonValueKind.Number, $"{path}.offsetY");
         RequireOptionalKind(feature, "scale", JsonValueKind.Number, $"{path}.scale");
         RequireOptionalKind(feature, "color", JsonValueKind.String, $"{path}.color");
+        RequireOptionalKind(feature, "colors", JsonValueKind.Object, $"{path}.colors");
     }
 
     private static void RequireOptionalKind(JsonElement parent, string propertyName, JsonValueKind expected, string path)
@@ -190,10 +246,18 @@ public static class CharacterDocumentPolicy
             },
             Features = new CharacterFeatureSet
             {
+                Face = CreateFeature(features?.Face, featureDefaults.Face),
+                Hair = CreateFeature(features?.Hair, featureDefaults.Hair),
+                Eyebrows = CreateFeature(features?.Eyebrows, featureDefaults.Eyebrows),
                 Eyes = CreateFeature(features?.Eyes, featureDefaults.Eyes),
-                Brows = CreateFeature(features?.Brows, featureDefaults.Brows),
+                Nose = CreateFeature(features?.Nose, featureDefaults.Nose),
                 Mouth = CreateFeature(features?.Mouth, featureDefaults.Mouth),
-                TorsoAccent = CreateFeature(features?.TorsoAccent, featureDefaults.TorsoAccent),
+                Ears = CreateFeature(features?.Ears, featureDefaults.Ears),
+                Accessories = CreateFeature(features?.Accessories, featureDefaults.Accessories),
+                Glasses = CreateFeature(features?.Glasses, featureDefaults.Glasses),
+                Headwear = CreateFeature(features?.Headwear, featureDefaults.Headwear),
+                Tops = CreateFeature(features?.Tops, featureDefaults.Tops),
+                Shoes = CreateFeature(features?.Shoes, featureDefaults.Shoes),
             },
             Paint = manifest,
             ExtensionData = extensionData,
@@ -207,6 +271,9 @@ public static class CharacterDocumentPolicy
         OffsetY = raw?.OffsetY ?? defaults.OffsetY,
         Scale = raw?.Scale ?? defaults.Scale,
         Color = raw?.Color ?? defaults.Color,
+        Colors = raw?.Colors is null
+            ? new Dictionary<string, Rgba32>(defaults.Colors, StringComparer.Ordinal)
+            : new Dictionary<string, Rgba32>(raw.Colors, StringComparer.Ordinal),
     };
 
     private static CharacterDecodeResult Malformed(string detail) =>
@@ -235,10 +302,18 @@ public static class CharacterDocumentPolicy
 
     private sealed class RawFeatureSet
     {
+        public RawFeature? Face { get; init; }
+        public RawFeature? Hair { get; init; }
+        public RawFeature? Eyebrows { get; init; }
         public RawFeature? Eyes { get; init; }
-        public RawFeature? Brows { get; init; }
+        public RawFeature? Nose { get; init; }
         public RawFeature? Mouth { get; init; }
-        public RawFeature? TorsoAccent { get; init; }
+        public RawFeature? Ears { get; init; }
+        public RawFeature? Accessories { get; init; }
+        public RawFeature? Glasses { get; init; }
+        public RawFeature? Headwear { get; init; }
+        public RawFeature? Tops { get; init; }
+        public RawFeature? Shoes { get; init; }
     }
 
     private sealed class RawFeature
@@ -248,6 +323,7 @@ public static class CharacterDocumentPolicy
         public double? OffsetY { get; init; }
         public double? Scale { get; init; }
         public Rgba32? Color { get; init; }
+        public Dictionary<string, Rgba32>? Colors { get; init; }
     }
 
     private sealed class RawPaintManifest
