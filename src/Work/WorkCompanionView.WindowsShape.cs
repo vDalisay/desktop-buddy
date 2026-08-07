@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Work;
@@ -8,21 +9,78 @@ namespace DesktopBuddy.Work;
 /// Gives the borderless Work window a native Windows region matching the visible companion
 /// composition. Pixels outside these coarse art regions are not part of the HWND at all, so
 /// clicks pass to the application underneath instead of being swallowed by a transparent box.
+/// It also temporarily suspends the normal Win98 shell backdrop so Work stays truly transparent.
 /// </summary>
 public partial class WorkCompanionView
 {
     private const int RgnOr = 2;
     private nint _ownedWorkWindowHandle;
     private bool _nativeShapeApplied;
+    private Win98BuddyShellController? _normalWin98Shell;
+    private WorldEnvironment? _normalBackdrop;
+    private bool _normalShellWasProcessing;
+    private Color _normalBackdropColor;
+    private bool _normalShellIsolated;
 
     public override void _EnterTree()
     {
+        IsolateNormalShell();
         ApplyNativeWindowShape();
     }
 
     public override void _ExitTree()
     {
         ClearNativeWindowShape();
+        RestoreNormalShell();
+    }
+
+    private void IsolateNormalShell()
+    {
+        _normalWin98Shell = GetTree().Root.FindChild(
+            nameof(Win98BuddyShellController), true, false) as Win98BuddyShellController;
+        if (GodotObject.IsInstanceValid(_normalWin98Shell))
+        {
+            _normalShellWasProcessing = _normalWin98Shell!.IsProcessing();
+            _normalWin98Shell.SetProcess(false);
+        }
+
+        _normalBackdrop = GetTree().Root.FindChild(
+            "Win98BackdropEnvironment", true, false) as WorldEnvironment;
+        if (GodotObject.IsInstanceValid(_normalBackdrop) &&
+            GodotObject.IsInstanceValid(_normalBackdrop!.Environment))
+        {
+            _normalBackdropColor = _normalBackdrop.Environment.BackgroundColor;
+            _normalBackdrop.Environment.BackgroundColor = new Color(
+                _normalBackdropColor.R,
+                _normalBackdropColor.G,
+                _normalBackdropColor.B,
+                0.0f);
+        }
+
+        if (DisplayServer.GetName() != "headless")
+        {
+            GetWindow().Transparent = true;
+            GetViewport().TransparentBg = true;
+        }
+        _normalShellIsolated = true;
+    }
+
+    private void RestoreNormalShell()
+    {
+        if (!_normalShellIsolated)
+            return;
+
+        if (GodotObject.IsInstanceValid(_normalBackdrop) &&
+            GodotObject.IsInstanceValid(_normalBackdrop!.Environment))
+        {
+            _normalBackdrop.Environment.BackgroundColor = _normalBackdropColor;
+        }
+        if (GodotObject.IsInstanceValid(_normalWin98Shell))
+            _normalWin98Shell!.SetProcess(_normalShellWasProcessing);
+
+        _normalBackdrop = null;
+        _normalWin98Shell = null;
+        _normalShellIsolated = false;
     }
 
     private void ApplyNativeWindowShape()
