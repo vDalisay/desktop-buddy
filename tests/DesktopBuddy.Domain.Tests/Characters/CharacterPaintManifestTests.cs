@@ -10,14 +10,14 @@ public sealed class CharacterPaintManifestTests
     private const string Id = "12345678-1234-4567-89ab-1234567890ab";
 
     [Fact]
-    public void Schema1_MigratesSequentiallyToEmptySchema2PaintManifest()
+    public void Schema1_MigratesSequentiallyToEmptyCurrentSchemaPaintManifest()
     {
         CharacterDecodeResult result = CharacterDocumentPolicy.DecodeAndMigrate(
             $$"""{"schemaVersion":1,"id":"{{Id}}","displayName":"Buddy"}""");
 
         Assert.Equal(CharacterDecodeStatus.Valid, result.Status);
         CharacterDocument document = Assert.IsType<CharacterDocument>(result.Document);
-        Assert.Equal(2, document.SchemaVersion);
+        Assert.Equal(CharacterDocumentPolicy.CurrentSchemaVersion, document.SchemaVersion);
         Assert.Empty(document.Paint.Declared());
     }
 

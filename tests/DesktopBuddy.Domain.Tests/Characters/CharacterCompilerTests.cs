@@ -81,8 +81,10 @@ public sealed class CharacterCompilerTests
         {
             Assert.True(catalog.TryGetSlot(id, out CharacterFeatureSlot slot));
             Assert.Contains(id, catalog.GetIds(slot));
+            // Distinct(): TorsoAccent is a source-compat alias of Accessories, so GetValues
+            // yields that slot value twice.
             Assert.Single(
-                Enum.GetValues<CharacterFeatureSlot>(),
+                Enum.GetValues<CharacterFeatureSlot>().Distinct(),
                 candidate => catalog.Contains(candidate, id));
         }
     }

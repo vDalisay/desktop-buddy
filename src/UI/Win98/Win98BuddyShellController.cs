@@ -163,7 +163,7 @@ public partial class Win98BuddyShellController : CanvasLayer
         // Win98 frame remains a reusable source of drag intent.
     }
 
-    private void OnTitleDragEnded()
+    private void OnTitleDragEnded(Vector2 globalPointer)
     {
         _dragging = false;
         Frame.StatusText = "Ready";
@@ -181,7 +181,7 @@ public partial class Win98BuddyShellController : CanvasLayer
         Frame.StatusText = "Resizing window";
     }
 
-    private void OnResizeEnded()
+    private void OnResizeEnded(int corner, Vector2 globalPointer)
     {
         _resizing = false;
         _resizeCorner = -1;

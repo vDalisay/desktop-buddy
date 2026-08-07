@@ -102,6 +102,10 @@ public static class CharacterDocumentPolicy
         JsonObject root = JsonNode.Parse(source.GetRawText())?.AsObject()
             ?? throw new JsonException("Schema 2 payload was not an object.");
         root["schemaVersion"] = 3;
+        // Only fill in absent slots. A present-but-malformed "features" (or feature) must survive
+        // migration untouched so ValidateKnownJsonShapes can still reject it.
+        if (root.ContainsKey("features") && root["features"] is not JsonObject)
+            throw new JsonException("features must be an object.");
         JsonObject features = root["features"] as JsonObject ?? new JsonObject();
         root["features"] = features;
 
@@ -135,7 +139,9 @@ public static class CharacterDocumentPolicy
 
     private static void AddDefaultFeature(JsonObject features, string propertyName, string featureId)
     {
-        if (features[propertyName] is not null)
+        // ContainsKey, not a null check: an explicit JSON null indexes as a null JsonNode, and
+        // overwriting it here would launder malformed input into a valid document.
+        if (features.ContainsKey(propertyName))
             return;
         features[propertyName] = new JsonObject
         {

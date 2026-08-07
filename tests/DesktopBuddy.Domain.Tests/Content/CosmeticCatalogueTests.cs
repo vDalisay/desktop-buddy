@@ -1,5 +1,4 @@
 using DesktopBuddy.Domain.Content;
-using FluentAssertions;
 using Xunit;
 
 namespace DesktopBuddy.Domain.Tests.Content;
@@ -20,8 +19,8 @@ public sealed class CosmeticCatalogueTests
 
         var catalogue = new ToolCatalogue([entry]);
 
-        catalogue.Contains(ContentIds.CosmeticWorkGlasses).Should().BeTrue();
-        entry.IsSelectable.Should().BeFalse();
-        ContentIds.IsCosmetic(ContentIds.CosmeticWorkGlasses).Should().BeTrue();
+        Assert.True(catalogue.Contains(ContentIds.CosmeticWorkGlasses));
+        Assert.False(entry.IsSelectable);
+        Assert.True(ContentIds.IsCosmetic(ContentIds.CosmeticWorkGlasses));
     }
 }

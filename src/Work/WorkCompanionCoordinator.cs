@@ -6,6 +6,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Persistence.Characters;

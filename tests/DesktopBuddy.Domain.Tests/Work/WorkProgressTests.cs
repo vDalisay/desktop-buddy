@@ -1,6 +1,5 @@
 using System;
 using DesktopBuddy.Domain.Work;
-using FluentAssertions;
 using Xunit;
 
 namespace DesktopBuddy.Domain.Tests.Work;
@@ -14,9 +13,9 @@ public sealed class WorkProgressTests
         counters = counters.Add(WorkActivityKind.KeyboardPress, 3);
         counters = counters.Add(WorkActivityKind.MouseClick, 2);
 
-        counters.KeyboardPresses.Should().Be(3);
-        counters.MouseClicks.Should().Be(2);
-        counters.TotalActions.Should().Be(5);
+        Assert.Equal(3, counters.KeyboardPresses);
+        Assert.Equal(2, counters.MouseClicks);
+        Assert.Equal(5, counters.TotalActions);
     }
 
     [Fact]
@@ -35,8 +34,8 @@ public sealed class WorkProgressTests
         ]);
 
         session.Record(WorkActivityKind.KeyboardPress, 10);
-        session.Evaluate(lifetime, catalogue).Should().ContainSingle();
-        session.Evaluate(lifetime, catalogue).Should().BeEmpty();
+        Assert.Single(session.Evaluate(lifetime, catalogue));
+        Assert.Empty(session.Evaluate(lifetime, catalogue));
     }
 
     [Fact]
@@ -54,9 +53,9 @@ public sealed class WorkProgressTests
         ]);
 
         lifetime.Record(WorkActivityKind.KeyboardPress, 3);
-        new WorkSessionState().Evaluate(lifetime, catalogue).Should().ContainSingle();
-        new WorkSessionState().Evaluate(lifetime, catalogue).Should().BeEmpty();
-        lifetime.ClaimedLifetimeMilestoneIds.Should().Contain("work.lifetime.total.3");
+        Assert.Single(new WorkSessionState().Evaluate(lifetime, catalogue));
+        Assert.Empty(new WorkSessionState().Evaluate(lifetime, catalogue));
+        Assert.Contains("work.lifetime.total.3", lifetime.ClaimedLifetimeMilestoneIds);
     }
 
     [Fact]
@@ -64,8 +63,8 @@ public sealed class WorkProgressTests
     {
         var progress = new WorkProgressState();
 
-        progress.MarkFirstEntryGlassesGranted().Should().BeTrue();
-        progress.MarkFirstEntryGlassesGranted().Should().BeFalse();
-        progress.FirstEntryGlassesGranted.Should().BeTrue();
+        Assert.True(progress.MarkFirstEntryGlassesGranted());
+        Assert.False(progress.MarkFirstEntryGlassesGranted());
+        Assert.True(progress.FirstEntryGlassesGranted);
     }
 }
