@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
@@ -25,9 +26,9 @@ public static class ProgressReset
     }
 
     /// <summary>
-    /// Resets gameplay state and optional character selection in place. One explicit
-    /// durable write owns the transaction; a failed write restores both exact prior
-    /// snapshots and never touches local character documents.
+    /// Resets gameplay, Work progression and optional character selection in place. One explicit
+    /// durable write owns the transaction; a failed write restores all exact prior snapshots and
+    /// never touches machine-local settings or local character documents.
     /// </summary>
     public static async Task<bool> ResetAsync(
         BuddyProgressState progress,
@@ -39,12 +40,24 @@ public static class ProgressReset
         ArgumentNullException.ThrowIfNull(progress);
         ArgumentNullException.ThrowIfNull(saves);
         characterSelection ??= saves.CharacterSelection;
+        WorkProgressState? workProgress = saves.WorkProgress;
 
         ProgressSnapshot before = progress.Snapshot();
         CharacterSelectionSnapshot? selectionBefore = characterSelection?.Snapshot();
+        WorkProgressSnapshot? workBefore = workProgress?.Snapshot();
         ProgressSnapshot fresh = CreateNewProgress(progress.CashPerPain).Snapshot();
         progress.Adopt(fresh with { Revision = before.Revision + 1 });
         characterSelection?.SetActiveForExplicitTransaction(null);
+        if (workProgress is not null && workBefore.HasValue)
+        {
+            workProgress.Adopt(new WorkProgressSnapshot(
+                workBefore.Value.Revision == long.MaxValue
+                    ? long.MaxValue
+                    : workBefore.Value.Revision + 1,
+                default,
+                Array.Empty<string>(),
+                false));
+        }
 
         try
         {
@@ -55,6 +68,8 @@ public static class ProgressReset
             progress.Adopt(before);
             if (characterSelection is not null && selectionBefore.HasValue)
                 characterSelection.Restore(selectionBefore.Value);
+            if (workProgress is not null && workBefore.HasValue)
+                workProgress.Adopt(workBefore.Value);
             return false;
         }
 
