@@ -2,6 +2,8 @@ using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
+using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Presentation3D;
@@ -28,6 +30,7 @@ public partial class WorkCompanionView : CanvasLayer
     private Button _motionToggle = null!;
     private BuddyVisualRigView _rig = null!;
     private StaticBuddyVisualTransformSource _source = null!;
+    private CompiledCharacterAppearance? _appearanceOverride;
     private bool _showLifetime;
     private bool _animationsEnabled = true;
     private bool _dragCandidate;
@@ -44,17 +47,23 @@ public partial class WorkCompanionView : CanvasLayer
     public event Action? CounterModeToggleRequested;
     public event Action<bool>? AnimationPreferenceChanged;
     public event Action<Vector2I>? DraggedBy;
+    public event Action? DragFinished;
 
     public bool ShowLifetime => _showLifetime;
     public bool AnimationsEnabled => _animationsEnabled;
 
-    public void Configure(SandboxRoot sandbox, bool showLifetime, bool animationsEnabled)
+    public void Configure(
+        SandboxRoot sandbox,
+        bool showLifetime,
+        bool animationsEnabled,
+        CompiledCharacterAppearance? appearanceOverride = null)
     {
         if (IsInsideTree())
             throw new InvalidOperationException("WorkCompanionView must be configured before entering the tree.");
         _sandbox = sandbox ?? throw new ArgumentNullException(nameof(sandbox));
         _showLifetime = showLifetime;
         _animationsEnabled = animationsEnabled;
+        _appearanceOverride = appearanceOverride;
         ProcessMode = ProcessModeEnum.Always;
         Layer = 200;
     }
@@ -157,8 +166,11 @@ public partial class WorkCompanionView : CanvasLayer
             }
             else if (_dragCandidate)
             {
+                bool wasDragging = _dragging;
                 _dragCandidate = false;
                 _dragging = false;
+                if (wasDragging)
+                    DragFinished?.Invoke();
             }
         }
         else if (input is InputEventMouseMotion motion && _dragCandidate)
@@ -168,7 +180,8 @@ public partial class WorkCompanionView : CanvasLayer
                 _dragging = true;
             if (_dragging)
             {
-                Vector2I step = (Vector2I)motion.Relative.Round();
+                Vector2 rounded = motion.Relative.Round();
+                var step = new Vector2I((int)rounded.X, (int)rounded.Y);
                 if (step != Vector2I.Zero)
                     DraggedBy?.Invoke(step);
             }
@@ -262,7 +275,8 @@ public partial class WorkCompanionView : CanvasLayer
         world.AddChild(_rig);
 
         BuddyVisualRigView live = _sandbox.VisualPresenter.RigView;
-        if (live.ActiveAppearance is CompiledCharacterAppearance appearance)
+        CompiledCharacterAppearance? appearance = _appearanceOverride ?? live.ActiveAppearance;
+        if (appearance is not null)
             _rig.ApplyAppearance(appearance);
         for (int index = 0; index < PuppetRigProfile.RequiredPartCount; index++)
         {
@@ -305,7 +319,6 @@ public partial class WorkCompanionView : CanvasLayer
 
         BuddyVisualPartPose Pose(BuddyPartId id, Vector2 position)
         {
-            BuddyVisualTransform baseTransform = _source.ReadTransform(id);
             var transform = new BuddyVisualTransform(position, 0.0f, Vector2.Zero);
             return new BuddyVisualPartPose(
                 transform,
@@ -330,12 +343,10 @@ public partial class WorkCompanionView : CanvasLayer
     {
         public override void _Draw()
         {
-            // Desk surface.
             DrawRect(new Rect2(14, 235, 532, 50), new Color("#B77B43"));
             DrawRect(new Rect2(14, 235, 532, 4), new Color("#E6AE6B"));
             DrawRect(new Rect2(14, 282, 532, 5), new Color("#6D452A"));
 
-            // Retro PC base + monitor, deliberately original/simple clean-room shapes.
             DrawRect(new Rect2(330, 176, 198, 58), new Color("#D7D0A7"));
             DrawRect(new Rect2(338, 184, 182, 42), new Color("#BDB690"));
             DrawRect(new Rect2(349, 30, 178, 145), new Color("#DDD6AD"));
@@ -343,7 +354,6 @@ public partial class WorkCompanionView : CanvasLayer
             DrawRect(new Rect2(379, 58, 128, 82), new Color("#082712"));
             DrawLine(new Vector2(408, 176), new Vector2(408, 188), new Color("#8D876A"), 8);
 
-            // Keyboard and mouse.
             DrawRect(new Rect2(164, 221, 183, 37), new Color("#D9D2AD"));
             for (int row = 0; row < 3; row++)
                 for (int col = 0; col < 10; col++)
