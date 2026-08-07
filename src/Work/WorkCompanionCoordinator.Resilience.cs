@@ -2,6 +2,7 @@ using System;
 using System.Threading.Tasks;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Persistence.Characters;
 using Godot;
 
@@ -26,6 +27,13 @@ public partial class WorkCompanionCoordinator
     public override void _EnterTree()
     {
         SubscribeResilienceEvents();
+
+        // The pre-revamp shell defaulted to its click-through state named "Work". The revised
+        // feature is a deliberate companion mode, so loading an old/default setting must not
+        // silently launch the typing companion. Normalize once to normal Play; the top-level
+        // Work command then performs the explicit entry transition.
+        if (GodotObject.IsInstanceValid(_sandbox) && _sandbox.Shell.Mode == InputMode.Work)
+            Callable.From(NormalizeLegacyStartupMode).CallDeferred();
     }
 
     public override void _PhysicsProcess(double delta)
@@ -74,10 +82,20 @@ public partial class WorkCompanionCoordinator
         _ = CheckpointObservedAsync();
     }
 
+    private void NormalizeLegacyStartupMode()
+    {
+        if (!IsActive && !_transitioning && _sandbox.Shell.Mode == InputMode.Work)
+            _sandbox.Shell.ToggleInteractionMode();
+    }
+
     private void SubscribeResilienceEvents()
     {
-        if (_resilienceSubscribed || !GodotObject.IsInstanceValid(_sandbox?.Window))
+        if (_resilienceSubscribed ||
+            !GodotObject.IsInstanceValid(_sandbox) ||
+            !GodotObject.IsInstanceValid(_sandbox.Window))
+        {
             return;
+        }
 
         _sandbox.Window.Adapter.SystemSuspending += OnWorkSystemSuspending;
         _sandbox.Window.Adapter.SystemResumed += OnWorkSystemResumed;
@@ -87,8 +105,12 @@ public partial class WorkCompanionCoordinator
 
     private void UnsubscribeResilienceEvents()
     {
-        if (!_resilienceSubscribed || !GodotObject.IsInstanceValid(_sandbox?.Window))
+        if (!_resilienceSubscribed ||
+            !GodotObject.IsInstanceValid(_sandbox) ||
+            !GodotObject.IsInstanceValid(_sandbox.Window))
+        {
             return;
+        }
 
         _sandbox.Window.Adapter.SystemSuspending -= OnWorkSystemSuspending;
         _sandbox.Window.Adapter.SystemResumed -= OnWorkSystemResumed;
