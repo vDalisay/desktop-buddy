@@ -17,7 +17,6 @@ public static class CharacterDocumentValidator
 
         if (document.SchemaVersion != CharacterDocumentPolicy.CurrentSchemaVersion)
             Add(errors, "schemaVersion", "Character schema is not current.");
-
         if (document.Id == Guid.Empty)
             Add(errors, "id", "Character ID must be a non-empty GUID.");
 
@@ -32,10 +31,18 @@ public static class CharacterDocumentValidator
 
         if (document.Features is not null)
         {
+            ValidateFeature(document.Features.Face, "features.face", errors);
+            ValidateFeature(document.Features.Hair, "features.hair", errors);
+            ValidateFeature(document.Features.Eyebrows, "features.eyebrows", errors);
             ValidateFeature(document.Features.Eyes, "features.eyes", errors);
-            ValidateFeature(document.Features.Brows, "features.brows", errors);
+            ValidateFeature(document.Features.Nose, "features.nose", errors);
             ValidateFeature(document.Features.Mouth, "features.mouth", errors);
-            ValidateFeature(document.Features.TorsoAccent, "features.torsoAccent", errors);
+            ValidateFeature(document.Features.Ears, "features.ears", errors);
+            ValidateFeature(document.Features.Accessories, "features.accessories", errors);
+            ValidateFeature(document.Features.Glasses, "features.glasses", errors);
+            ValidateFeature(document.Features.Headwear, "features.headwear", errors);
+            ValidateFeature(document.Features.Tops, "features.tops", errors);
+            ValidateFeature(document.Features.Shoes, "features.shoes", errors);
         }
 
         return new CharacterValidationResult(errors.ToArray());
@@ -58,10 +65,7 @@ public static class CharacterDocumentValidator
         ReadOnlySpan<char> remaining = displayName.AsSpan();
         while (!remaining.IsEmpty)
         {
-            OperationStatus status = Rune.DecodeFromUtf16(
-                remaining,
-                out Rune rune,
-                out int consumed);
+            OperationStatus status = Rune.DecodeFromUtf16(remaining, out Rune rune, out int consumed);
             if (status != OperationStatus.Done)
             {
                 Add(errors, "displayName", "Display name contains invalid Unicode.");
@@ -70,10 +74,8 @@ public static class CharacterDocumentValidator
 
             scalarCount++;
             UnicodeCategory category = Rune.GetUnicodeCategory(rune);
-            if (category is UnicodeCategory.Control or
-                UnicodeCategory.LineSeparator or
-                UnicodeCategory.ParagraphSeparator ||
-                (rune.Value == '\r' || rune.Value == '\n') ||
+            if (category is UnicodeCategory.Control or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator ||
+                rune.Value is '\r' or '\n' ||
                 (rune.Value <= 0x7F && ForbiddenNameCharacters.IndexOf((char)rune.Value) >= 0))
             {
                 Add(errors, "displayName", "Display name contains a forbidden character.");
@@ -84,12 +86,7 @@ public static class CharacterDocumentValidator
         }
 
         if (scalarCount is < 1 or > 40)
-        {
-            Add(
-                errors,
-                "displayName",
-                "Display name must contain between 1 and 40 Unicode scalar values.");
-        }
+            Add(errors, "displayName", "Display name must contain between 1 and 40 Unicode scalar values.");
     }
 
     private static void ValidateFeature(
@@ -106,24 +103,25 @@ public static class CharacterDocumentValidator
         if (string.IsNullOrWhiteSpace(feature.FeatureId))
             Add(errors, $"{path}.featureId", "Feature ID is required.");
 
-        ValidateFiniteBounded(
-            feature.OffsetX,
-            NormalizedFeatureTransform.MinimumOffset,
-            NormalizedFeatureTransform.MaximumOffset,
-            $"{path}.offsetX",
-            errors);
-        ValidateFiniteBounded(
-            feature.OffsetY,
-            NormalizedFeatureTransform.MinimumOffset,
-            NormalizedFeatureTransform.MaximumOffset,
-            $"{path}.offsetY",
-            errors);
-        ValidateFiniteBounded(
-            feature.Scale,
-            NormalizedFeatureTransform.MinimumScale,
-            NormalizedFeatureTransform.MaximumScale,
-            $"{path}.scale",
-            errors);
+        ValidateFiniteBounded(feature.OffsetX, NormalizedFeatureTransform.MinimumOffset, NormalizedFeatureTransform.MaximumOffset, $"{path}.offsetX", errors);
+        ValidateFiniteBounded(feature.OffsetY, NormalizedFeatureTransform.MinimumOffset, NormalizedFeatureTransform.MaximumOffset, $"{path}.offsetY", errors);
+        ValidateFiniteBounded(feature.Scale, NormalizedFeatureTransform.MinimumScale, NormalizedFeatureTransform.MaximumScale, $"{path}.scale", errors);
+
+        if (feature.Colors is null)
+        {
+            Add(errors, $"{path}.colors", "Color channel collection is required.");
+        }
+        else
+        {
+            foreach (string channel in feature.Colors.Keys)
+            {
+                if (string.IsNullOrWhiteSpace(channel))
+                {
+                    Add(errors, $"{path}.colors", "Color channel IDs cannot be blank.");
+                    break;
+                }
+            }
+        }
     }
 
     private static void ValidateFiniteBounded(
