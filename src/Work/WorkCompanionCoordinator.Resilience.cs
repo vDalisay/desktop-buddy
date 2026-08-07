@@ -1,6 +1,8 @@
 using System;
 using System.Threading.Tasks;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Persistence.Characters;
 using Godot;
 
 namespace DesktopBuddy.Work;
@@ -18,6 +20,8 @@ public partial class WorkCompanionCoordinator
     private double _activityHealthElapsed;
     private bool _capturePausedForSuspend;
     private bool _resilienceSubscribed;
+    private bool _workCosmeticsApplied;
+    private bool _workCosmeticsLoading;
 
     public override void _EnterTree()
     {
@@ -26,8 +30,22 @@ public partial class WorkCompanionCoordinator
 
     public override void _PhysicsProcess(double delta)
     {
-        if (!IsActive || _transitioning)
+        if (!IsActive)
+        {
+            _workCosmeticsApplied = false;
+            _workCosmeticsLoading = false;
+            _workCheckpointElapsed = 0.0;
+            _activityHealthElapsed = 0.0;
             return;
+        }
+        if (_transitioning)
+            return;
+
+        if (!_workCosmeticsApplied && !_workCosmeticsLoading && GodotObject.IsInstanceValid(_view))
+        {
+            _workCosmeticsLoading = true;
+            _ = ApplyEquippedWorkCosmeticsObservedAsync();
+        }
 
         _workCheckpointElapsed += Math.Max(0.0, delta);
         _activityHealthElapsed += Math.Max(0.0, delta);
@@ -108,6 +126,40 @@ public partial class WorkCompanionCoordinator
         {
             Log.Error(Category, result.Detail ?? "Work activity capture could not restart after resume.");
             _ = ExitObservedAsync();
+        }
+    }
+
+    private async Task ApplyEquippedWorkCosmeticsObservedAsync()
+    {
+        try
+        {
+            string glassesId = CharacterFeatureIds.GlassesNone;
+            Guid? activeId = _context.CharacterSelection?.ActiveCharacterId;
+            if (activeId.HasValue && _context.Characters is not null)
+            {
+                CharacterLoadResult loaded = await _context.Characters.LoadAsync(
+                    activeId.Value,
+                    System.Threading.CancellationToken.None);
+                if (loaded.Document is not null)
+                {
+                    CharacterDocument normalized = CharacterDocumentNormalizer.Normalize(loaded.Document).Document;
+                    glassesId = normalized.Features.Glasses.FeatureId;
+                }
+            }
+
+            if (IsActive && GodotObject.IsInstanceValid(_view))
+                _view!.SetGlassesFeature(glassesId);
+            _workCosmeticsApplied = true;
+        }
+        catch (Exception exception)
+        {
+            // Cosmetic display failure must never disable counting or rewards.
+            Log.Error(Category, $"Work cosmetic sync failed: {exception.Message}");
+            _workCosmeticsApplied = true;
+        }
+        finally
+        {
+            _workCosmeticsLoading = false;
         }
     }
 
