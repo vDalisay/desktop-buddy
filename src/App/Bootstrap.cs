@@ -6,6 +6,7 @@ using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
@@ -155,6 +156,9 @@ public partial class Bootstrap : Node
             : ProgressSavePolicy.CreateState(
                 loadedProgress ?? throw new InvalidOperationException("Load returned no progress."),
                 cashPerPain);
+        WorkProgressState workProgress = newSemanticState
+            ? new WorkProgressState()
+            : loadedProgress?.Work.CreateState() ?? new WorkProgressState();
         var characterSelection = new CharacterSelectionState(
             newSemanticState ? null : loadedProgress?.ActiveCharacterId);
         var characters = new CharacterStore(
@@ -166,7 +170,9 @@ public partial class Bootstrap : Node
             store,
             newSemanticState ? -1 : progress.Revision,
             characterSelection,
-            newSemanticState ? -1 : characterSelection.Revision);
+            newSemanticState ? -1 : characterSelection.Revision,
+            workProgress,
+            newSemanticState ? -1 : workProgress.Revision);
         var settings = settingsLoad.Value ?? new LocalSettingsSave();
 
         if (progressLoad.QuarantinedPath is not null)
@@ -195,7 +201,8 @@ public partial class Bootstrap : Node
             progressLoad.Status,
             TimeSource: null,
             CharacterSelection: characterSelection,
-            Characters: characters);
+            Characters: characters,
+            WorkProgress: workProgress);
         sandbox.Shell.ConfigureRuntime(settings, saves);
         sandbox.Configure(context);
 
@@ -206,9 +213,6 @@ public partial class Bootstrap : Node
         characterRuntime.Configure(sandbox, context);
         sandbox.AddChild(characterRuntime);
 
-        // Let SandboxRoot initialize the real pointer and all tool controllers first. The
-        // bridge is added afterwards so its initial Work-mode application cannot be undone
-        // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
         var inputBridge = new GameplayInputModeBridge
