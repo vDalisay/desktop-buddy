@@ -18,10 +18,16 @@ public enum CatalogueEntryKind
     CareConsumable,
 
     /// <summary>
-    /// A purchasable entry that is never selectable as a tool — the FR-019 Strength
-    /// Upgrade is the only one. It changes existing behavior instead of adding a tool.
+    /// A purchasable entry that is never selectable as a tool. It changes existing
+    /// behavior instead of adding a tool.
     /// </summary>
     PassiveUpgrade,
+
+    /// <summary>
+    /// A permanent appearance unlock. Cosmetics use the existing purchase/ownership
+    /// ledger but never enter tool selection.
+    /// </summary>
+    Cosmetic,
 }
 
 /// <summary>
@@ -47,8 +53,8 @@ public readonly record struct CatalogueEntry(
     /// <summary>Starting entries are owned from the first save and are never sold.</summary>
     public bool IsStarting => Kind == CatalogueEntryKind.StartingTool;
 
-    /// <summary>Passive upgrades never enter tool selection (FR-019).</summary>
-    public bool IsSelectable => Kind != CatalogueEntryKind.PassiveUpgrade;
+    /// <summary>Passive upgrades and cosmetics never enter gameplay tool selection.</summary>
+    public bool IsSelectable => Kind is not (CatalogueEntryKind.PassiveUpgrade or CatalogueEntryKind.Cosmetic);
 
     /// <summary>A price the ledger can spend: positive and a whole displayed credit.</summary>
     public bool HasValidPrice =>
