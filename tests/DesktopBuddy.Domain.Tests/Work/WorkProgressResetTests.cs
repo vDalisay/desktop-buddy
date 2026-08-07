@@ -3,7 +3,6 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Work;
-using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
 using Xunit;
 
@@ -18,14 +17,13 @@ public sealed class WorkProgressResetTests
         var work = new WorkProgressState();
         var store = new InMemoryProgressStore();
         var saves = new SaveCoordinator(progress, store, work: work);
-        var economy = new EconomyService(progress, DesktopBuddy.Content.CatalogueLoader.Catalogue);
 
         work.Record(WorkActivityKind.KeyboardPress, 12_345);
         work.Record(WorkActivityKind.MouseClick, 678);
         Assert.True(work.ClaimLifetimeMilestone("work.test.claim"));
         Assert.True(work.MarkFirstEntryGlassesGranted());
 
-        Assert.True(await ProgressReset.ResetAsync(progress, saves, economy));
+        Assert.True(await ProgressReset.ResetAsync(progress, saves));
 
         Assert.Equal(0, work.Lifetime.KeyboardPresses);
         Assert.Equal(0, work.Lifetime.MouseClicks);
@@ -41,7 +39,6 @@ public sealed class WorkProgressResetTests
         var work = new WorkProgressState();
         var store = new InMemoryProgressStore();
         var saves = new SaveCoordinator(progress, store, work: work);
-        var economy = new EconomyService(progress, DesktopBuddy.Content.CatalogueLoader.Catalogue);
 
         work.Record(WorkActivityKind.KeyboardPress, 42);
         work.Record(WorkActivityKind.MouseClick, 9);
@@ -51,7 +48,7 @@ public sealed class WorkProgressResetTests
         WorkProgressSnapshot before = work.Snapshot();
 
         store.NextProgressFailure = new IOException("Injected reset failure.");
-        Assert.False(await ProgressReset.ResetAsync(progress, saves, economy));
+        Assert.False(await ProgressReset.ResetAsync(progress, saves));
 
         WorkProgressSnapshot after = work.Snapshot();
         Assert.Equal(before.Revision, after.Revision);
