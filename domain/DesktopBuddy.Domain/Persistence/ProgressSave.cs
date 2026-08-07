@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Work;
 
 namespace DesktopBuddy.Domain.Persistence;
 
@@ -73,6 +74,30 @@ public sealed record ProgressExtensionsSave
     public Dictionary<string, string> Values { get; init; } = new(StringComparer.Ordinal);
 }
 
+public sealed record WorkProgressSave
+{
+    public long Revision { get; init; }
+    public long KeyboardPresses { get; init; }
+    public long MouseClicks { get; init; }
+    public List<string> ClaimedLifetimeMilestoneIds { get; init; } = [];
+    public bool FirstEntryGlassesGranted { get; init; }
+
+    public static WorkProgressSave FromSnapshot(in WorkProgressSnapshot snapshot) => new()
+    {
+        Revision = snapshot.Revision,
+        KeyboardPresses = snapshot.Lifetime.KeyboardPresses,
+        MouseClicks = snapshot.Lifetime.MouseClicks,
+        ClaimedLifetimeMilestoneIds = [.. snapshot.ClaimedLifetimeMilestoneIds],
+        FirstEntryGlassesGranted = snapshot.FirstEntryGlassesGranted,
+    };
+
+    public WorkProgressState CreateState() => new(
+        new WorkCounterSnapshot(KeyboardPresses, MouseClicks),
+        ClaimedLifetimeMilestoneIds,
+        FirstEntryGlassesGranted,
+        Revision);
+}
+
 public sealed record FunActivitySave
 {
     public string ActivityId { get; init; } = ContentIds.FunCatch;
@@ -85,8 +110,8 @@ public sealed record FunActivitySave
 public sealed record ProgressSave
 {
     /// <summary>
-    /// Schema 7 adds the nullable active character ID. The character document remains in
-    /// the machine-local character library; only the selected GUID is cloud progress.
+    /// Schema 7 adds the nullable active character ID. Work progress is an additive
+    /// schema-7 field so existing schema-7 saves deserialize to an empty Work state.
     /// </summary>
     public const int CurrentSchemaVersion = 7;
 
@@ -103,6 +128,7 @@ public sealed record ProgressSave
     public List<FunActivitySave> FunActivities { get; init; } = [];
     public ProgressStatisticsSave Statistics { get; init; } = new();
     public CumulativeTimesSave Times { get; init; } = new();
+    public WorkProgressSave Work { get; init; } = new();
     public ProgressExtensionsSave Extensions { get; init; } = new();
 
     [JsonExtensionData]
@@ -110,7 +136,8 @@ public sealed record ProgressSave
 
     public static ProgressSave FromSnapshot(
         in ProgressSnapshot snapshot,
-        Guid? activeCharacterId = null)
+        Guid? activeCharacterId = null,
+        WorkProgressSnapshot? work = null)
     {
         var extensions = new ProgressExtensionsSave
         {
@@ -165,6 +192,7 @@ public sealed record ProgressSave
                 ActiveSeconds = snapshot.Times.ActiveSeconds,
                 HiddenSeconds = snapshot.Times.HiddenSeconds,
             },
+            Work = work.HasValue ? WorkProgressSave.FromSnapshot(work.Value) : new WorkProgressSave(),
             Extensions = extensions,
         };
     }
@@ -229,6 +257,13 @@ public sealed record LocalSettingsSave
     public string GlobalHotkey { get; init; } = "Ctrl+Shift+B";
     public bool LaunchWithWindows { get; init; }
     public string LastInputMode { get; init; } = "work";
+
+    // Work Mode is a machine-local presentation. Zero width/height means use default placement.
+    public int WorkWindowX { get; init; }
+    public int WorkWindowY { get; init; }
+    public bool WorkPositionSet { get; init; }
+    public bool WorkAnimationsEnabled { get; init; } = true;
+    public bool WorkShowLifetimeCounter { get; init; }
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? UnknownFields { get; init; }
