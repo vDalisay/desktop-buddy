@@ -21,10 +21,6 @@ public partial class Win98BuddyShellController : CanvasLayer
     private int _resizeCorner = -1;
     private Vector2I _resizeStartPointer;
     private Rect2I _resizeStartWindowRect;
-
-    // The buddy is a 3D presentation, and Godot composites every canvas item — including
-    // negative CanvasLayers — on top of the 3D pass. A ColorRect backdrop therefore always
-    // painted over the buddy; the window-body tint has to be the 3D clear colour instead.
     private WorldEnvironment _backdrop = null!;
 
     public override void _Ready()
@@ -54,19 +50,16 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     public override void _Process(double delta)
     {
-        if (_dragging && Window.LayoutMode == WindowLayoutMode.Compact && DisplayServer.GetName() != "headless")
+        if (_dragging && Window.LayoutMode == WindowLayoutMode.Compact && !Window.WorkCompanionActive && DisplayServer.GetName() != "headless")
         {
             Vector2I pointer = DisplayServer.MouseGetPosition();
             Vector2I target = _dragStartWindowPosition + (pointer - _dragStartPointer);
             DisplayServer.WindowSetPosition(target, GetWindow().GetWindowId());
         }
 
-        if (_resizing && Window.LayoutMode == WindowLayoutMode.Compact && DisplayServer.GetName() != "headless")
+        if (_resizing && Window.LayoutMode == WindowLayoutMode.Compact && !Window.WorkCompanionActive && DisplayServer.GetName() != "headless")
             ApplyResizeFromPointer(DisplayServer.MouseGetPosition());
 
-        // DesktopWindowController re-applies its own transparency whenever it re-applies
-        // window settings, so the opaque-compact choice has to be re-asserted (it no-ops
-        // unless the flags actually drifted).
         ApplyWindowTransparency(Window.LayoutMode, Frame.ViewportOpacity);
     }
 
@@ -90,7 +83,6 @@ public partial class Win98BuddyShellController : CanvasLayer
             Environment = new Godot.Environment
             {
                 BackgroundMode = Godot.Environment.BGMode.Color,
-                // Ambient stays off: the lighting rig owns the buddy's look.
                 AmbientLightSource = Godot.Environment.AmbientSource.Disabled,
             },
         };
@@ -108,16 +100,22 @@ public partial class Win98BuddyShellController : CanvasLayer
                 opacity);
     }
 
-    /// <summary>
-    /// A fully opaque body cannot be produced by the clear colour alone: the window keeps
-    /// per-pixel transparency, so the desktop still shows through. Compact at opacity 1 is a
-    /// plain window, so drop transparency there; the fullscreen overlay always keeps it.
-    /// </summary>
     private void ApplyWindowTransparency(WindowLayoutMode mode, float opacity)
     {
         if (DisplayServer.GetName() == "headless")
             return;
 
+        if (Window.WorkCompanionActive)
+        {
+            ApplyBackdropOpacity(0.0f);
+            if (!GetWindow().Transparent)
+                GetWindow().Transparent = true;
+            if (!GetViewport().TransparentBg)
+                GetViewport().TransparentBg = true;
+            return;
+        }
+
+        ApplyBackdropOpacity(mode == WindowLayoutMode.Compact ? opacity : 0.0f);
         bool transparent = mode != WindowLayoutMode.Compact || opacity < 1f;
         if (GetWindow().Transparent == transparent && GetViewport().TransparentBg == transparent)
             return;
@@ -150,7 +148,7 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void OnTitleDragStarted(Vector2 globalPointer)
     {
-        if (Window.LayoutMode != WindowLayoutMode.Compact || DisplayServer.GetName() == "headless" || _resizing)
+        if (Window.LayoutMode != WindowLayoutMode.Compact || Window.WorkCompanionActive || DisplayServer.GetName() == "headless" || _resizing)
             return;
 
         _dragging = true;
@@ -161,117 +159,88 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void OnTitleDragMoved(Vector2 globalPointer)
     {
+        // Native pointer sampling in _Process owns the drag. This event is retained so the
+        // Win98 frame remains a reusable source of drag intent.
     }
 
-    private void OnTitleDragEnded(Vector2 globalPointer)
+    private void OnTitleDragEnded()
     {
-        if (!_dragging)
-            return;
-
         _dragging = false;
-        WindowSettings captured = Window.CaptureWindowSettings();
-        Window.ApplyWindowSettings(Window.RecoverWindowSettings(captured));
         Frame.StatusText = "Ready";
     }
 
     private void OnResizeStarted(int corner, Vector2 globalPointer)
     {
-        if (Window.LayoutMode != WindowLayoutMode.Compact || DisplayServer.GetName() == "headless" || _dragging)
+        if (Window.LayoutMode != WindowLayoutMode.Compact || Window.WorkCompanionActive || DisplayServer.GetName() == "headless" || _dragging)
             return;
-
         _resizing = true;
         _resizeCorner = corner;
         _resizeStartPointer = DisplayServer.MouseGetPosition();
-        _resizeStartWindowRect = new Rect2I(GetWindow().Position, GetWindow().Size);
+        Window native = GetWindow();
+        _resizeStartWindowRect = new Rect2I(native.Position, native.Size);
         Frame.StatusText = "Resizing window";
     }
 
-    private void OnResizeEnded(int corner, Vector2 globalPointer)
+    private void OnResizeEnded()
     {
-        if (!_resizing)
-            return;
-
-        ApplyResizeFromPointer(DisplayServer.MouseGetPosition());
         _resizing = false;
         _resizeCorner = -1;
-        WindowSettings captured = Window.CaptureWindowSettings();
-        Window.ApplyWindowSettings(Window.RecoverWindowSettings(captured));
         Frame.StatusText = "Ready";
     }
 
     private void ApplyResizeFromPointer(Vector2I pointer)
     {
         Vector2I delta = pointer - _resizeStartPointer;
-        Vector2I pos = _resizeStartWindowRect.Position;
-        Vector2I size = _resizeStartWindowRect.Size;
-        Vector2I minimum = GetWindow().MinSize;
-
-        switch (_resizeCorner)
+        Rect2I rect = _resizeStartWindowRect;
+        Vector2I position = rect.Position;
+        Vector2I size = rect.Size;
+        bool left = _resizeCorner is 0 or 2;
+        bool top = _resizeCorner is 0 or 1;
+        if (left)
         {
-            case Win98WindowFrame.ResizeTopLeft:
-                pos += delta;
-                size -= delta;
-                break;
-            case Win98WindowFrame.ResizeTopRight:
-                pos.Y += delta.Y;
-                size.X += delta.X;
-                size.Y -= delta.Y;
-                break;
-            case Win98WindowFrame.ResizeBottomLeft:
-                pos.X += delta.X;
-                size.X -= delta.X;
-                size.Y += delta.Y;
-                break;
-            case Win98WindowFrame.ResizeBottomRight:
-                size += delta;
-                break;
+            position.X += delta.X;
+            size.X -= delta.X;
         }
-
-        if (size.X < minimum.X)
+        else size.X += delta.X;
+        if (top)
         {
-            int deficit = minimum.X - size.X;
-            if (_resizeCorner == Win98WindowFrame.ResizeTopLeft ||
-                _resizeCorner == Win98WindowFrame.ResizeBottomLeft)
-                pos.X -= deficit;
-            size.X = minimum.X;
+            position.Y += delta.Y;
+            size.Y -= delta.Y;
         }
-
-        if (size.Y < minimum.Y)
-        {
-            int deficit = minimum.Y - size.Y;
-            if (_resizeCorner == Win98WindowFrame.ResizeTopLeft ||
-                _resizeCorner == Win98WindowFrame.ResizeTopRight)
-                pos.Y -= deficit;
-            size.Y = minimum.Y;
-        }
-
-        DisplayServer.WindowSetPosition(pos, GetWindow().GetWindowId());
-        DisplayServer.WindowSetSize(size, GetWindow().GetWindowId());
+        else size.Y += delta.Y;
+        size.X = System.Math.Max(size.X, Domain.Physics.RoomLayoutPolicy.MinimumRoomWidth);
+        size.Y = System.Math.Max(size.Y, Domain.Physics.RoomLayoutPolicy.MinimumRoomHeight);
+        GetWindow().Position = position;
+        GetWindow().Size = size;
     }
 
     private void OnLayoutModeChanged(WindowLayoutMode mode) => ApplyLayoutMode(mode);
 
     private void ApplyLayoutMode(WindowLayoutMode mode)
     {
-        Frame.Visible = true;
-        Frame.SetViewportOpacity(mode == WindowLayoutMode.Compact
-            ? Win98WindowFrame.CompactOpacity
-            : Win98WindowFrame.FullscreenOpacity);
-        ApplyBackdropOpacity(Frame.ViewportOpacity);
+        if (mode == WindowLayoutMode.FullscreenOverlay)
+        {
+            Frame.Visible = false;
+            ApplyBackdropOpacity(0.0f);
+        }
+        else
+        {
+            Frame.Visible = true;
+            ApplyBackdropOpacity(Frame.ViewportOpacity);
+        }
         ApplyWindowTransparency(mode, Frame.ViewportOpacity);
-        Frame.StatusText = mode == WindowLayoutMode.Compact ? "Ready" : "Full interaction mode";
     }
 
     private void OnWindowFocusLost()
     {
-        _dragging = false;
-        _resizing = false;
-        Frame.SetActive(false);
+        if (GodotObject.IsInstanceValid(Frame))
+            Frame.SetActive(false);
+        CallDeferred(MethodName.RestoreActiveTitle);
     }
 
-    public override void _Notification(int what)
+    private void RestoreActiveTitle()
     {
-        if (what == NotificationApplicationFocusIn && GodotObject.IsInstanceValid(Frame))
+        if (GodotObject.IsInstanceValid(Frame) && GetWindow().HasFocus())
             Frame.SetActive(true);
     }
 }
