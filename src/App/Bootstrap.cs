@@ -213,6 +213,9 @@ public partial class Bootstrap : Node
         characterRuntime.Configure(sandbox, context);
         sandbox.AddChild(characterRuntime);
 
+        // Let SandboxRoot initialize the real pointer and all tool controllers first. The
+        // bridge is added afterwards so its initial Work-mode application cannot be undone
+        // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
         var inputBridge = new GameplayInputModeBridge

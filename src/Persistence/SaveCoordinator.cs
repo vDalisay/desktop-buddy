@@ -10,7 +10,9 @@ namespace DesktopBuddy.Persistence;
 /// <summary>
 /// Single serialized progress writer with revision-based dirty tracking and
 /// valid-running-time autosave coalescing. Character selection and Work lifetime progress
-/// are captured in the same durable progress write as the gameplay snapshot.
+/// are captured in the same durable progress write as the gameplay snapshot. The latest
+/// registered local settings snapshot is retained so a later quit-save cannot overwrite an
+/// immediate UI save with the stale settings object originally passed through the run context.
 /// </summary>
 public sealed class SaveCoordinator
 {
@@ -96,6 +98,11 @@ public sealed class SaveCoordinator
         }
     }
 
+    /// <summary>
+    /// Registers the settings snapshot that future quit/focus saves must use. This is
+    /// intentionally separate from persistence so callers may update several window fields
+    /// atomically before issuing one write.
+    /// </summary>
     public void RegisterSettings(LocalSettingsSave settings)
     {
         ArgumentNullException.ThrowIfNull(settings);

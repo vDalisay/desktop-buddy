@@ -79,8 +79,7 @@ public readonly record struct WorkMilestoneDefinition(
 public readonly record struct WorkMilestoneEarned(
     string MilestoneId,
     long RewardMilliCredits,
-    WorkMilestoneRepeatPolicy RepeatPolicy,
-    string TransactionId);
+    WorkMilestoneRepeatPolicy RepeatPolicy);
 
 /// <summary>Immutable, validated trusted milestone data.</summary>
 public sealed class WorkMilestoneCatalogue
@@ -190,7 +189,6 @@ public sealed class WorkProgressState
 public sealed class WorkSessionState
 {
     private readonly HashSet<string> _earnedSession = new(StringComparer.Ordinal);
-    private readonly List<WorkMilestoneEarned> _pending = [];
 
     public WorkSessionState(Guid? sessionId = null)
     {
@@ -199,7 +197,6 @@ public sealed class WorkSessionState
 
     public Guid SessionId { get; }
     public WorkCounterSnapshot Counters { get; private set; }
-    public IReadOnlyList<WorkMilestoneEarned> PendingRewards => _pending;
 
     public void Record(WorkActivityKind kind, long count = 1) => Counters = Counters.Add(kind, count);
 
@@ -227,24 +224,11 @@ public sealed class WorkSessionState
             if (!claimable)
                 continue;
 
-            string transactionId = definition.RepeatPolicy == WorkMilestoneRepeatPolicy.OnceLifetime
-                ? $"work:{definition.Id}:lifetime"
-                : $"work:{SessionId:D}:{definition.Id}";
-            var earned = new WorkMilestoneEarned(
+            newlyEarned.Add(new WorkMilestoneEarned(
                 definition.Id,
                 definition.RewardMilliCredits,
-                definition.RepeatPolicy,
-                transactionId);
-            _pending.Add(earned);
-            newlyEarned.Add(earned);
+                definition.RepeatPolicy));
         }
         return newlyEarned;
-    }
-
-    public IReadOnlyList<WorkMilestoneEarned> DrainPendingRewards()
-    {
-        WorkMilestoneEarned[] copy = _pending.ToArray();
-        _pending.Clear();
-        return copy;
     }
 }

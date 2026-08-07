@@ -39,6 +39,7 @@ public partial class WorkCompanionCoordinator : Node
     private bool _sandboxPhysicsWasProcessing;
     private long _pendingKeyboard;
     private long _pendingMouse;
+    private long _sessionSettledMilliCredits;
     private bool _positionDirty;
     private bool _transitioning;
 
@@ -125,6 +126,7 @@ public partial class WorkCompanionCoordinator : Node
             GetTree().Root.AddChild(_view);
 
             _session = new WorkSessionState();
+            _sessionSettledMilliCredits = 0;
             UpdateCounter();
 
             _activitySource = _activitySourceFactory();
@@ -166,17 +168,6 @@ public partial class WorkCompanionCoordinator : Node
             _activitySource?.Stop();
             DrainActivity();
 
-            long rewardMilli = 0;
-            if (_session is not null)
-            {
-                foreach (WorkMilestoneEarned earned in _session.DrainPendingRewards())
-                {
-                    rewardMilli = WorkCounterSnapshot.SaturatingAdd(rewardMilli, earned.RewardMilliCredits);
-                }
-            }
-            if (rewardMilli > 0)
-                _context.Economy.DepositWorkMilestone(rewardMilli);
-
             await PersistPreferencesAsync(forcePosition: _positionDirty).ConfigureAwait(false);
             await _context.Saves.FlushProgressAsync(force: true, token).ConfigureAwait(false);
 
@@ -193,7 +184,7 @@ public partial class WorkCompanionCoordinator : Node
             _session = null;
             IsActive = false;
             ActiveChanged?.Invoke(false);
-            Log.Info(Category, $"Work session ended; settledMilliCredits={rewardMilli}.");
+            Log.Info(Category, $"Work session ended; settledMilliCredits={_sessionSettledMilliCredits}.");
         }
         finally
         {
@@ -240,10 +231,22 @@ public partial class WorkCompanionCoordinator : Node
             _view?.NotifyActivity(WorkActivityKind.MouseClick);
         }
 
+        // Settle immediately. Evaluate claims a lifetime milestone as its claimability test and
+        // that claim is durable, so any gap between claiming and paying is a window in which a
+        // crash burns the reward permanently.
         IReadOnlyList<WorkMilestoneEarned> newlyEarned = _session.Evaluate(_work, _milestones);
         UpdateCounter();
         if (newlyEarned.Count > 0)
+        {
+            long rewardMilli = 0;
+            foreach (WorkMilestoneEarned earned in newlyEarned)
+                rewardMilli = WorkCounterSnapshot.SaturatingAdd(rewardMilli, earned.RewardMilliCredits);
+            if (rewardMilli > 0)
+                _context.Economy.DepositPassive(rewardMilli);
+            _sessionSettledMilliCredits = WorkCounterSnapshot.SaturatingAdd(
+                _sessionSettledMilliCredits, rewardMilli);
             _ = FlushMilestoneObservedAsync();
+        }
     }
 
     private async Task<CompiledCharacterAppearance?> ResolveAppearanceAsync(CancellationToken token)
