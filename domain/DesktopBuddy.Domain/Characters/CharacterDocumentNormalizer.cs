@@ -17,13 +17,18 @@ public static class CharacterDocumentNormalizer
 
         CharacterFeatureSet features = new()
         {
+            Face = NormalizeFeature(document.Features.Face, "features.face", changed),
+            Hair = NormalizeFeature(document.Features.Hair, "features.hair", changed),
+            Eyebrows = NormalizeFeature(document.Features.Eyebrows, "features.eyebrows", changed),
             Eyes = NormalizeFeature(document.Features.Eyes, "features.eyes", changed),
-            Brows = NormalizeFeature(document.Features.Brows, "features.brows", changed),
+            Nose = NormalizeFeature(document.Features.Nose, "features.nose", changed),
             Mouth = NormalizeFeature(document.Features.Mouth, "features.mouth", changed),
-            TorsoAccent = NormalizeFeature(
-                document.Features.TorsoAccent,
-                "features.torsoAccent",
-                changed),
+            Ears = NormalizeFeature(document.Features.Ears, "features.ears", changed),
+            Accessories = NormalizeFeature(document.Features.Accessories, "features.accessories", changed),
+            Glasses = NormalizeFeature(document.Features.Glasses, "features.glasses", changed),
+            Headwear = NormalizeFeature(document.Features.Headwear, "features.headwear", changed),
+            Tops = NormalizeFeature(document.Features.Tops, "features.tops", changed),
+            Shoes = NormalizeFeature(document.Features.Shoes, "features.shoes", changed),
         };
 
         var extensionData = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
@@ -66,11 +71,18 @@ public static class CharacterDocumentNormalizer
         if (!scale.Equals(feature.Scale))
             changed.Add($"{path}.scale");
 
+        var colors = feature.Colors is null
+            ? new Dictionary<string, Rgba32>(StringComparer.Ordinal)
+            : new Dictionary<string, Rgba32>(feature.Colors, StringComparer.Ordinal);
+        if (feature.Colors is null)
+            changed.Add($"{path}.colors");
+
         return feature with
         {
             OffsetX = offsetX,
             OffsetY = offsetY,
             Scale = scale,
+            Colors = colors,
         };
     }
 
