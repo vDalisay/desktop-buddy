@@ -65,6 +65,11 @@ public partial class WorkCompanionCoordinator : Node
         ProcessMode = ProcessModeEnum.Always;
     }
 
+    public override void _Ready()
+    {
+        _sandbox.Shell.InputModeChanged += OnShellInputModeChanged;
+    }
+
     public override void _Process(double delta)
     {
         if (!IsActive)
@@ -98,11 +103,11 @@ public partial class WorkCompanionCoordinator : Node
                 _context.CharacterSelection,
                 _context.Characters,
                 _context.Saves);
-            WorkFirstEntryRewardResult reward = await firstEntry.EnsureAsync(token).ConfigureAwait(false);
+            WorkFirstEntryRewardResult reward = await firstEntry.EnsureAsync(token);
             if (!string.IsNullOrWhiteSpace(reward.Detail))
                 Log.Warn(Category, reward.Detail!);
 
-            CompiledCharacterAppearance? appearance = await ResolveAppearanceAsync(token).ConfigureAwait(false);
+            CompiledCharacterAppearance? appearance = await ResolveAppearanceAsync(token);
 
             Rect2I workRect = _sandbox.Shell.ResolveInitialWorkCompanionRect(WorkCompanionView.PreferredSize);
             _sandbox.Window.EnterWorkCompanionWindow(workRect);
@@ -135,7 +140,7 @@ public partial class WorkCompanionCoordinator : Node
             if (!started.Success)
             {
                 Log.Error(Category, started.Detail ?? "Global Work activity source failed to start.");
-                await RollbackFailedEntryAsync().ConfigureAwait(false);
+                await RollbackFailedEntryAsync();
                 return false;
             }
 
@@ -148,7 +153,7 @@ public partial class WorkCompanionCoordinator : Node
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             Log.Error(Category, $"Work Mode entry failed: {exception}");
-            await RollbackFailedEntryAsync().ConfigureAwait(false);
+            await RollbackFailedEntryAsync();
             return false;
         }
         finally
@@ -168,8 +173,8 @@ public partial class WorkCompanionCoordinator : Node
             _activitySource?.Stop();
             DrainActivity();
 
-            await PersistPreferencesAsync(forcePosition: _positionDirty).ConfigureAwait(false);
-            await _context.Saves.FlushProgressAsync(force: true, token).ConfigureAwait(false);
+            await PersistPreferencesAsync(forcePosition: _positionDirty);
+            await _context.Saves.FlushProgressAsync(force: true, token);
 
             TearDownActivitySource();
             TearDownView();
@@ -194,9 +199,36 @@ public partial class WorkCompanionCoordinator : Node
 
     public override void _ExitTree()
     {
+        if (GodotObject.IsInstanceValid(_sandbox?.Shell))
+            _sandbox.Shell.InputModeChanged -= OnShellInputModeChanged;
         TearDownActivitySource();
         if (GodotObject.IsInstanceValid(_view))
             _view!.QueueFree();
+    }
+
+    private void OnShellInputModeChanged(InputMode mode)
+    {
+        if (mode == InputMode.Work && !IsActive && !_transitioning)
+            _ = EnterFromWorkCommandObservedAsync();
+    }
+
+    private async Task EnterFromWorkCommandObservedAsync()
+    {
+        try
+        {
+            bool entered = await EnterAsync();
+            // The old Work command changes the shell state before this coordinator hears the
+            // event. If entry is rejected (for example because the editor is open), restore
+            // Play rather than leaving the legacy click-through Work state half-entered.
+            if (!entered && !IsActive && _sandbox.Shell.Mode == InputMode.Work)
+                _sandbox.Shell.ToggleInteractionMode();
+        }
+        catch (Exception exception)
+        {
+            Log.Error(Category, $"Work Mode command failed: {exception}");
+            if (!IsActive && _sandbox.Shell.Mode == InputMode.Work)
+                _sandbox.Shell.ToggleInteractionMode();
+        }
     }
 
     private void OnRawActivity(WorkActivityKind kind)
@@ -255,7 +287,7 @@ public partial class WorkCompanionCoordinator : Node
         if (!activeId.HasValue || _context.Characters is null)
             return _sandbox.VisualPresenter.RigView.ActiveAppearance;
 
-        CharacterLoadResult loaded = await _context.Characters.LoadAsync(activeId.Value, token).ConfigureAwait(false);
+        CharacterLoadResult loaded = await _context.Characters.LoadAsync(activeId.Value, token);
         if (loaded.Document is null)
             return _sandbox.VisualPresenter.RigView.ActiveAppearance;
 
@@ -352,7 +384,7 @@ public partial class WorkCompanionCoordinator : Node
             rect.Position,
             forcePosition || _sandbox.Shell.CurrentLocalSettings.WorkPositionSet,
             _view!.AnimationsEnabled,
-            _view.ShowLifetime).ConfigureAwait(false);
+            _view.ShowLifetime);
         if (forcePosition)
             _positionDirty = false;
     }
@@ -361,7 +393,7 @@ public partial class WorkCompanionCoordinator : Node
     {
         try
         {
-            await PersistPreferencesAsync(forcePosition).ConfigureAwait(false);
+            await PersistPreferencesAsync(forcePosition);
         }
         catch (Exception exception)
         {
@@ -373,7 +405,7 @@ public partial class WorkCompanionCoordinator : Node
     {
         try
         {
-            await _context.Saves.FlushProgressAsync(force: true).ConfigureAwait(false);
+            await _context.Saves.FlushProgressAsync(force: true);
         }
         catch (Exception exception)
         {
@@ -385,7 +417,7 @@ public partial class WorkCompanionCoordinator : Node
     {
         try
         {
-            await ExitAsync().ConfigureAwait(false);
+            await ExitAsync();
         }
         catch (Exception exception)
         {
@@ -400,7 +432,7 @@ public partial class WorkCompanionCoordinator : Node
         RestoreNormalPresentation();
         if (_sandbox.Window.WorkCompanionActive)
             _sandbox.Window.ExitWorkCompanionWindow();
-        _sandbox.SetPhysicsProcess(_sandboxPhysicsWasProcessing || !_sandboxPhysicsWasProcessing);
+        _sandbox.SetPhysicsProcess(_sandboxPhysicsWasProcessing);
         _sandbox.Shell.SetProcessInput(true);
         _sandbox.Shell.SetProcessUnhandledInput(true);
         if (_sandbox.Shell.Mode == InputMode.Work)
