@@ -1,6 +1,6 @@
 # Desktop Buddy — Work Mode Typing Companion Plan
 
-Status: **Owner UX decisions locked — detailed implementation plan**  
+Status: **Owner accepted 2026-08-08 — WM0–WM5 implementation complete; release verification remains**
 Planning baseline: `main`  
 Depends on:
 

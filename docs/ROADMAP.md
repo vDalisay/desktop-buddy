@@ -249,6 +249,9 @@ entry grants the Work glasses cosmetic once.
 
 Slice status against plan Section 16:
 
+**Owner accepted 2026-08-08.** The remaining soak and Windows matrix are release
+verification gates; the accepted known gaps below remain non-blocking.
+
 - [x] WM0 — counters, milestone catalogue, repeat policy, schema migration, idempotent
   claim identities, and Reset Progress integration.
 - [x] WM1 — Windows global activity source with held-key suppression and privacy-safe

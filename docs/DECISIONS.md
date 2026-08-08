@@ -4,6 +4,13 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Work Mode Typing Companion — Owner Accepted (2026-08-08)
+
+The owner accepted the implemented Work Mode typing companion plan, including WM0–WM5 and
+the independent resize follow-up. The already-recorded accepted gaps remain non-blocking. The
+four-hour soak and standalone Windows monitor/DPI/input matrix remain release verification
+gates rather than implementation blockers.
+
 ## Work Mode Independent Resizing — Owner Approved (2026-08-08)
 
 Work Mode adds a hover-only diagonal resize button beside its motion and exit controls. Holding
