@@ -171,8 +171,33 @@ public sealed class CharacterEditorSession
 
     public CharacterEditorActionResult Randomize(ulong seed)
     {
+        if (WorkingDocument is null)
+            return Failure("There is no working character to randomize.");
         LastRandomSeed = seed;
-        return Mutate(document => CharacterRandomizer.Randomize(document, seed));
+        try
+        {
+            var owned = new HashSet<string>(StringComparer.Ordinal);
+            if (_economy is not null)
+            {
+                foreach (string cosmeticId in CharacterFeatureCatalog.Shipped.AllIds)
+                    if (CharacterFeatureCatalog.Shipped.TryGetDefinition(cosmeticId, out CosmeticDefinition definition) &&
+                        definition.OwnershipContentId is string contentId &&
+                        _economy.IsUnlocked(contentId))
+                        owned.Add(contentId);
+            }
+            CharacterDocument randomized = CharacterRandomizer.Randomize(
+                WorkingDocument,
+                CharacterFeatureCatalog.Shipped,
+                owned,
+                seed);
+            _unownedPreviews.Clear();
+            SetWorking(randomized, _savedDocument);
+            return new CharacterEditorActionResult(true);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or FormatException)
+        {
+            return Failure(exception.Message);
+        }
     }
 
     public CharacterEditorActionResult SetPartColor(CharacterPartSlot slot, Rgba32 color) =>

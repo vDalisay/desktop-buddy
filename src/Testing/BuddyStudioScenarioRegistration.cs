@@ -17,5 +17,6 @@ internal static class BuddyStudioScenarioRegistration
         var factories = (Dictionary<string, Func<IScenario>>?)field.GetValue(null)
             ?? throw new InvalidOperationException("Scenario registry was not initialized.");
         factories["buddy_studio_ownership_preview"] = () => new BuddyStudioOwnershipPreviewScenario();
+        factories["buddy_studio_randomize"] = () => new BuddyStudioRandomizeScenario();
     }
 }

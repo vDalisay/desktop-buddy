@@ -156,6 +156,30 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                 "bs4_deselected_unowned_worn_item_requires_repurchase",
                 deselectionIsOneWay,
                 $"preview={resetSession.HasUnownedPreviews} working={CharacterDocumentEditor.ReadFeatureId(resetSession.WorkingDocument!, CharacterFeatureSlot.Glasses)}"));
+
+            long balanceBeforeRandomize = resetEconomy.BalanceMilliCredits;
+            long progressRevisionBeforeRandomize = resetProgress.Revision;
+            CharacterPaintManifest paintBeforeRandomize = resetSession.WorkingDocument!.Paint;
+            CharacterEditorActionResult randomized = resetSession.Randomize(125);
+            bool sessionRandomizeSafe = randomized.Completed &&
+                !resetSession.HasUnownedPreviews && resetSession.CanSave &&
+                resetSession.LastRandomSeed == 125 &&
+                !resetSession.IsCosmeticOwned(CharacterFeatureIds.GlassesWorkClassic) &&
+                resetEconomy.BalanceMilliCredits == balanceBeforeRandomize &&
+                resetProgress.Revision == progressRevisionBeforeRandomize &&
+                resetSession.WorkingDocument.Paint == paintBeforeRandomize;
+            foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>().Distinct())
+            {
+                CosmeticDefinition selected = CharacterFeatureCatalog.Shipped.ResolveDefinition(
+                    slot,
+                    CharacterDocumentEditor.ReadFeatureId(resetSession.WorkingDocument, slot),
+                    out bool selectedKnown);
+                sessionRandomizeSafe &= selectedKnown && selected.IsFreeDefault;
+            }
+            checks.Add(new StartupCheck(
+                "bs5_session_randomize_discards_preview_without_purchase",
+                sessionRandomizeSafe,
+                $"preview={resetSession.HasUnownedPreviews} balance={balanceBeforeRandomize}->{resetEconomy.BalanceMilliCredits} revision={progressRevisionBeforeRandomize}->{resetProgress.Revision}"));
         }
         finally
         {
