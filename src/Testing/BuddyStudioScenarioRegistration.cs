@@ -18,5 +18,6 @@ internal static class BuddyStudioScenarioRegistration
             ?? throw new InvalidOperationException("Scenario registry was not initialized.");
         factories["buddy_studio_ownership_preview"] = () => new BuddyStudioOwnershipPreviewScenario();
         factories["buddy_studio_randomize"] = () => new BuddyStudioRandomizeScenario();
+        factories["buddy_studio_ui_composition"] = () => new BuddyStudioUiCompositionScenario();
     }
 }
