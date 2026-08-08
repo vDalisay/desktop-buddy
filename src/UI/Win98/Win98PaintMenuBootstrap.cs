@@ -126,11 +126,7 @@ public partial class Win98PaintMenuBootstrap : Node
         _altMenus[accelerator] = button;
 
         PopupMenu popup = button.GetPopup();
-        popup.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
-        popup.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Flat(Win98ThemeFactory.Selection));
-        popup.AddThemeColorOverride("font_color", Win98ThemeFactory.Dark);
-        popup.AddThemeColorOverride("font_hover_color", Win98ThemeFactory.Light);
-        popup.AddThemeColorOverride("font_disabled_color", Win98ThemeFactory.Shadow);
+        Win98MenuStyle.Apply(popup);
 
         for (int index = 0; index < items.Count; index++)
         {
