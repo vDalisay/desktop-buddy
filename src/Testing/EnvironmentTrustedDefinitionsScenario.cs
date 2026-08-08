@@ -4,9 +4,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Economy;
 using DesktopBuddy.Environment;
+using DesktopBuddy.Laboratory;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Sandbox;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -50,7 +54,7 @@ public sealed class EnvironmentTrustedDefinitionsScenario : IScenario
                 var presenter = new EnvironmentDecorationPresenter();
                 host.AddChild(presenter);
                 presenter.Configure(placed, resource);
-                bandsMatch &= presenter.ZIndex == EnvironmentDecorationPresenter.ZFor(definition.RenderBand);
+                bandsMatch &= Mathf.IsEqualApprox(presenter.Position.Z, EnvironmentDecorationPresenter.ZFor(definition.RenderBand));
                 physicsNodes += CountPhysics(presenter);
             }
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
@@ -197,9 +201,9 @@ public sealed class EnvironmentPlacementEngineScenario : IScenario
             $"placed={session.WorkingLayout.Decorations.Count} projected={session.ProjectedBalanceMilliCredits}"));
 
         controller.UpdateRoom(new RoomScreenBounds(200, 150, 1600, 1100));
-        var ghost = host.FindChild("EnvironmentPlacementGhost", true, false) as Node2D;
+        var ghost = host.FindChild("EnvironmentPlacementGhost", true, false) as Control;
         checks.Add(new StartupCheck("environment_ghost_preserves_canonical_position_on_resize",
-            GodotObject.IsInstanceValid(ghost) && ghost!.Position.IsEqualApprox(new Vector2(600, 975)),
+            GodotObject.IsInstanceValid(ghost) && (ghost!.Position + ghost.Size * .5f).IsEqualApprox(new Vector2(600, 975)),
             $"ghost={ghost?.Position}"));
         controller._UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
         checks.Add(new StartupCheck("environment_escape_cancels_ghost", !controller.Active,
@@ -209,4 +213,128 @@ public sealed class EnvironmentPlacementEngineScenario : IScenario
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return new ScenarioResult(checks.All(check => check.Passed), checks, [$"seed={seed}"]);
     }
+}
+
+public sealed class EnvironmentDecoratorScenario : IScenario
+{
+    public string Id => "environment_decorator";
+
+    public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
+    {
+        var checks = new List<StartupCheck>();
+        var progress = new BuddyProgressState(0.018);
+        progress.Deposit(250_000);
+        var environment = new EnvironmentProgressState();
+        var saves = new SaveCoordinator(progress, new InMemoryProgressStore(), environment: environment);
+        var economy = new EconomyService(progress, new ToolCatalogue([]));
+        var pointer = new LabPointerGrabComponent { Name = "EnvironmentDecoratorPointer" };
+        pointer.SetProcessInput(true);
+        pointer.SetProcessUnhandledInput(true);
+        var boundaries = new BoundaryController { Name = "EnvironmentDecoratorBoundaries" };
+        var visuals = new EnvironmentDecorationLayer { Name = "EnvironmentDecoratorVisuals" };
+        visuals.Configure(environment, boundaries);
+        var decorator = new EnvironmentDecorator { Name = "EnvironmentDecoratorScenario" };
+        decorator.Configure(progress, economy, pointer, environment, saves, visuals);
+        tree.Root.AddChild(pointer);
+        tree.Root.AddChild(boundaries);
+        tree.Root.AddChild(visuals);
+        tree.Root.AddChild(decorator);
+        try
+        {
+            decorator.Open();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            var blocker = decorator.FindChild("EnvironmentDecoratorInputSurface", true, false) as Control
+                ?? throw new InvalidOperationException("Decorator input surface was not composed.");
+            var catalogue = decorator.FindChild("EnvironmentCatalog", true, false) as DesktopBuddy.UI.Win98.Win98CatalogGrid
+                ?? throw new InvalidOperationException("Decorator catalogue was not composed.");
+            bool composed = decorator.IsOpen && blocker.Visible &&
+                blocker.MouseFilter == Control.MouseFilterEnum.Stop &&
+                decorator.FindChild("EnvironmentDecoratorPanel", true, false) is Control panel && panel.Visible &&
+                decorator.FindChild("EnvironmentCategories", true, false) is Control &&
+                decorator.FindChild("EnvironmentCatalog", true, false) is Control;
+            checks.Add(new StartupCheck("environment_decorator_composed", composed,
+                $"open={decorator.IsOpen} blocker={blocker.Visible}"));
+            checks.Add(new StartupCheck("environment_decorator_owns_pointer_input",
+                !pointer.IsProcessingInput() && !pointer.IsProcessingUnhandledInput(),
+                $"input={pointer.IsProcessingInput()} unhandled={pointer.IsProcessingUnhandledInput()}"));
+
+            EnvironmentDecorationResource lamp = EnvironmentDecorationRegistry.Authored.Entries[0];
+            Vector2 viewport = tree.Root.GetViewport().GetVisibleRect().Size;
+            Vector2 firstPoint = new(viewport.X * .7f, viewport.Y * .85f);
+            catalogue.Select(lamp.DefinitionId);
+            Press(decorator, "EnvironmentPlaceButton");
+            RoomInput(blocker, new InputEventMouseMotion { Position = firstPoint });
+            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            checks.Add(new StartupCheck("environment_decorator_stages_placement_funds",
+                decorator.VisibleWorkingLayout.Decorations.Count == 1 && decorator.VisibleProjectedBalance == 175_000,
+                $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance}"));
+
+            decorator._UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            Press(decorator, "EnvironmentMoveButton");
+            Vector2 movedPoint = new(viewport.X * .85f, viewport.Y * .82f);
+            RoomInput(blocker, new InputEventMouseMotion { Position = movedPoint });
+            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            Press(decorator, "EnvironmentRotateButton");
+            PlacedDecoration changed = decorator.VisibleWorkingLayout.Decorations.Single();
+            checks.Add(new StartupCheck("environment_decorator_moves_and_rotates_selected_instance",
+                changed.Position.X > .75f && changed.RotationDegrees == 90,
+                $"position={changed.Position} rotation={changed.RotationDegrees}"));
+            Press(decorator, "EnvironmentSellButton");
+            checks.Add(new StartupCheck("environment_decorator_sell_reverses_staged_cost",
+                decorator.VisibleWorkingLayout.Decorations.Count == 0 && decorator.VisibleProjectedBalance == 250_000,
+                $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance}"));
+
+            catalogue.Select(lamp.DefinitionId);
+            Press(decorator, "EnvironmentPlaceButton");
+            RoomInput(blocker, new InputEventMouseMotion { Position = firstPoint });
+            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            Press(decorator, "EnvironmentCancelButton");
+            Press(decorator, "EnvironmentDiscardButton");
+            checks.Add(new StartupCheck("environment_decorator_cancel_discards_layout_and_wallet",
+                !decorator.IsOpen && environment.Layout.Decorations.Count == 0 && progress.BalanceMilliCredits == 250_000 &&
+                pointer.IsProcessingInput() && pointer.IsProcessingUnhandledInput(),
+                $"open={decorator.IsOpen} saved={environment.Layout.Decorations.Count} balance={progress.BalanceMilliCredits}"));
+
+            var shop = new VBoxContainer { Name = "ShopItemList" };
+            var bootstrap = new EnvironmentCustomizationBootstrap { Name = "DecoratorLauncherBootstrap" };
+            tree.Root.AddChild(shop);
+            tree.Root.AddChild(bootstrap);
+            bool launcherAttached = bootstrap.AttachDecorLauncherForStartupTest(decorator);
+            var launcher = shop.FindChild("EnvironmentDecorateRoomButton", true, false) as Button;
+            launcher!.EmitSignal(Button.SignalName.Pressed);
+            checks.Add(new StartupCheck("environment_decorator_shop_launcher_opens_workspace",
+                launcherAttached && decorator.IsOpen, $"attached={launcherAttached} open={decorator.IsOpen}"));
+            catalogue.Select(lamp.DefinitionId);
+            Press(decorator, "EnvironmentPlaceButton");
+            RoomInput(blocker, new InputEventMouseMotion { Position = firstPoint });
+            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            Press(decorator, "EnvironmentDoneButton");
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            checks.Add(new StartupCheck("environment_decorator_done_commits_layout_and_wallet",
+                !decorator.IsOpen && environment.Layout.Decorations.Count == 1 && progress.BalanceMilliCredits == 175_000 &&
+                pointer.IsProcessingInput() && pointer.IsProcessingUnhandledInput(),
+                $"open={decorator.IsOpen} saved={environment.Layout.Decorations.Count} balance={progress.BalanceMilliCredits}"));
+            bootstrap.QueueFree();
+            shop.QueueFree();
+        }
+        finally
+        {
+            decorator.QueueFree();
+            visuals.QueueFree();
+            boundaries.QueueFree();
+            pointer.QueueFree();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        }
+        return new ScenarioResult(checks.All(check => check.Passed), checks, [$"seed={seed}"]);
+    }
+
+    private static void Press(Node root, string name) =>
+        ((Button)(root.FindChild(name, true, false) ?? throw new InvalidOperationException($"Missing {name}.")))
+            .EmitSignal(Button.SignalName.Pressed);
+
+    private static void RoomInput(Control blocker, InputEvent input) =>
+        blocker.EmitSignal(Control.SignalName.GuiInput, input);
 }

@@ -18,13 +18,22 @@ public partial class EnvironmentCustomizationBootstrap : Node
     private IDisposable? _registration;
     private EnvironmentBackgroundEditor? _backgroundEditor;
     private EnvironmentBackgroundPresenter? _backgroundPresenter;
+    private EnvironmentDecorationLayer? _decorationLayer;
+    private EnvironmentDecorator? _decorator;
+    private Button? _decorLauncher;
+    private HSeparator? _decorSeparator;
     internal bool HasPaintBackgroundRegistration => _registration is not null;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
 
     public override void _Process(double delta)
     {
-        if (_registration is not null || DisplayServer.GetName() == "headless") return;
+        if (DisplayServer.GetName() == "headless") return;
+        if (_registration is not null)
+        {
+            TryAttachDecorLauncher();
+            return;
+        }
         var sandbox = FindFirst<SandboxRoot>(GetTree().Root);
         var commandBar = FindFirst<Win98CommandBarBootstrap>(GetTree().Root);
         EnvironmentProgressState? state = sandbox?.Saves.EnvironmentProgress;
@@ -45,12 +54,21 @@ public partial class EnvironmentCustomizationBootstrap : Node
     {
         if (_registration is not null) return;
         _backgroundPresenter = new EnvironmentBackgroundPresenter { Name = nameof(EnvironmentBackgroundPresenter) };
-        if (FindFirst<SandboxRoot>(GetTree().Root) is SandboxRoot sandbox)
-            _backgroundPresenter.Configure(sandbox.Boundaries);
+        SandboxRoot? sandbox = FindFirst<SandboxRoot>(GetTree().Root);
+        if (sandbox is not null) _backgroundPresenter.Configure(sandbox.Boundaries);
         GetTree().Root.AddChild(_backgroundPresenter);
         _backgroundEditor = new EnvironmentBackgroundEditor { Name = nameof(EnvironmentBackgroundEditor) };
         _backgroundEditor.Configure(state, saves, _backgroundPresenter);
         GetTree().Root.AddChild(_backgroundEditor);
+        if (sandbox is not null)
+        {
+            _decorationLayer = new EnvironmentDecorationLayer { Name = nameof(EnvironmentDecorationLayer) };
+            _decorationLayer.Configure(state, sandbox.Boundaries);
+            GetTree().Root.AddChild(_decorationLayer);
+            _decorator = new EnvironmentDecorator { Name = nameof(EnvironmentDecorator) };
+            _decorator.Configure(sandbox.Progress, sandbox.Economy, sandbox.Pointer, state, saves, _decorationLayer);
+            GetTree().Root.AddChild(_decorator);
+        }
         _registration = commandBar.RegisterCustomizeCommand(
             new CustomizeCommandDefinition(
                 CustomizeCommandIds.PaintBackground,
@@ -59,7 +77,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
                 CustomizeCommandIds.PaintBackgroundOrder),
             _backgroundEditor.Open);
         Log.Info(LogCategory, "Paint Background registered in Customize.");
-        SetProcess(false);
+        TryAttachDecorLauncher();
     }
 
     public override void _ExitTree()
@@ -68,8 +86,43 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _registration = null;
         if (GodotObject.IsInstanceValid(_backgroundEditor)) _backgroundEditor!.QueueFree();
         if (GodotObject.IsInstanceValid(_backgroundPresenter)) _backgroundPresenter!.QueueFree();
+        if (GodotObject.IsInstanceValid(_decorationLayer)) _decorationLayer!.QueueFree();
+        if (GodotObject.IsInstanceValid(_decorator)) _decorator!.QueueFree();
+        if (GodotObject.IsInstanceValid(_decorLauncher)) _decorLauncher!.QueueFree();
+        if (GodotObject.IsInstanceValid(_decorSeparator)) _decorSeparator!.QueueFree();
         _backgroundEditor = null;
         _backgroundPresenter = null;
+        _decorationLayer = null;
+        _decorator = null;
+        _decorLauncher = null;
+        _decorSeparator = null;
+    }
+
+    private void TryAttachDecorLauncher()
+    {
+        if (GodotObject.IsInstanceValid(_decorLauncher) || !GodotObject.IsInstanceValid(_decorator)) return;
+        var list = GetTree().Root.FindChild("ShopItemList", true, false) as VBoxContainer;
+        if (!GodotObject.IsInstanceValid(list)) return;
+        _decorLauncher = new Button
+        {
+            Name = "EnvironmentDecorateRoomButton",
+            Text = "Decorate Room…",
+            TooltipText = "Buy and arrange room decorations.",
+            CustomMinimumSize = new Vector2(0, 34),
+        };
+        _decorLauncher.Pressed += _decorator!.Open;
+        _decorSeparator = new HSeparator { Name = "EnvironmentDecorSeparator" };
+        list!.AddChild(_decorSeparator);
+        list.AddChild(_decorLauncher);
+        Log.Info(LogCategory, "Environment Decorator registered in Shop.");
+        SetProcess(false);
+    }
+
+    internal bool AttachDecorLauncherForStartupTest(EnvironmentDecorator decorator)
+    {
+        _decorator = decorator ?? throw new ArgumentNullException(nameof(decorator));
+        TryAttachDecorLauncher();
+        return GodotObject.IsInstanceValid(_decorLauncher);
     }
 
     internal static SandboxRoot? FindSandboxForStartup(Node root) => FindFirst<SandboxRoot>(root);

@@ -8,7 +8,7 @@ public partial class EnvironmentPlacementController : Node
 {
     private EnvironmentEditSession? _session;
     private EnvironmentDecorationResource? _definition;
-    private EnvironmentDecorationPresenter? _ghost;
+    private ColorRect? _ghost;
     private Node? _ghostParent;
     private RoomScreenBounds _room;
 
@@ -35,7 +35,7 @@ public partial class EnvironmentPlacementController : Node
         if (Active && _ghost is not null)
         {
             (float x, float y) = EnvironmentPlacement.ToScreen(GhostPosition, room);
-            _ghost.Position = new Vector2(x, y);
+            _ghost.Position = new Vector2(x, y) - _ghost.Size * .5f;
         }
     }
 
@@ -44,13 +44,16 @@ public partial class EnvironmentPlacementController : Node
         if (_session is null || _ghostParent is null)
             throw new InvalidOperationException("Placement controller is not configured.");
         _definition = definition ?? throw new ArgumentNullException(nameof(definition));
-        DecorationDefinition domain = definition.ToDefinition();
         _ghost?.QueueFree();
-        _ghost = new EnvironmentDecorationPresenter { Name = "EnvironmentPlacementGhost", Modulate = new Color(1, 1, 1, .55f) };
+        _ghost = new ColorRect
+        {
+            Name = "EnvironmentPlacementGhost",
+            Color = new Color(definition.PrimaryColor, .55f),
+            Size = definition.VisualSize,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _ghost.PivotOffset = definition.VisualSize * .5f;
         _ghostParent.AddChild(_ghost);
-        _ghost.Configure(new PlacedDecoration(
-            new PlacedDecorationId(Guid.Parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")),
-            domain.Id, default, 0, domain.RenderBand, domain.PriceMilliCredits), definition);
         _ghost.ZIndex = 100;
         Active = true;
         GhostValid = false;
@@ -68,11 +71,11 @@ public partial class EnvironmentPlacementController : Node
         {
             GhostPosition = canonical;
             (float x, float y) = EnvironmentPlacement.ToScreen(canonical, _room);
-            _ghost.Position = new Vector2(x, y);
+            _ghost.Position = new Vector2(x, y) - _ghost.Size * .5f;
         }
-        else _ghost.Position = screenPosition;
+        else _ghost.Position = screenPosition - _ghost.Size * .5f;
         _ghost.Visible = true;
-        _ghost.Modulate = GhostValid ? new Color(1, 1, 1, .55f) : new Color(1, .35f, .35f, .55f);
+        _ghost.Modulate = GhostValid ? Colors.White : new Color(1, .35f, .35f, 1);
         Changed?.Invoke();
         return GhostValid;
     }

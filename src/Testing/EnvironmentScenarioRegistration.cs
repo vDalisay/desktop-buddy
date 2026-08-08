@@ -18,5 +18,6 @@ internal static class EnvironmentScenarioRegistration
         factories["environment_background_editor"] = () => new EnvironmentBackgroundEditorScenario();
         factories["environment_startup_registration"] = () => new EnvironmentStartupRegistrationScenario();
         factories["environment_placement_engine"] = () => new EnvironmentPlacementEngineScenario();
+        factories["environment_decorator"] = () => new EnvironmentDecoratorScenario();
     }
 }
