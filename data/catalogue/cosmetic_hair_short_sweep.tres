@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticHairShortSweep"
+script = ExtResource("1")
+ContentId = "cosmetic.hair.short_sweep"
+Kind = 4
+PriceCredits = 4
+ProgressionOrder = 16
+Visible = true
+NameKey = "buddy_studio.cosmetic.hair.short_sweep.name"
+DescriptionKey = "buddy_studio.cosmetic.hair.short_sweep.description"
+RequiresLaunchScene = false
+RequiresIcon = false

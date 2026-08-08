@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Economy;
@@ -31,6 +32,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private CharacterEditorSession _session = null!;
     private EconomyService _economy = null!;
     private Action _closeImmediately = null!;
+    private Func<Task> _flushProgress = static () => Task.CompletedTask;
     private Win98CategoryStrip _categories = null!;
     private Win98CatalogGrid _catalog = null!;
     private Win98ValuePanel _values = null!;
@@ -93,7 +95,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         CharacterEditorSession session,
         EconomyService economy,
         Control preview,
-        Action closeImmediately)
+        Action closeImmediately,
+        Func<Task>? flushProgress = null)
     {
         if (IsInsideTree())
             throw new InvalidOperationException("Buddy Studio must be configured before entering the tree.");
@@ -101,6 +104,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _previewInput = preview ?? throw new ArgumentNullException(nameof(preview));
         _closeImmediately = closeImmediately ?? throw new ArgumentNullException(nameof(closeImmediately));
+        _flushProgress = flushProgress ?? (static () => Task.CompletedTask);
         IsConfigured = true;
         ProcessMode = ProcessModeEnum.Always;
     }
@@ -308,7 +312,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         }
         _values = new Win98ValuePanel { Name = "BuddyStudioValues" };
         column.AddChild(_values);
-        _buy = Action(column, "Buy", PurchaseOrEquip);
+        _buy = Action(column, "Buy", () => _ = PurchaseOrEquipAsync());
         _buy.Name = "BuddyStudioBuy";
     }
 
@@ -374,6 +378,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             definition.Id,
             CosmeticName(definition),
             secondary,
+            BuddyStudioThumbnailCache.For(definition),
             Tooltip: owned ? "Available to save." : "Preview only until acquired.",
             BadgeText: owned ? "Owned" : "Preview");
     }
@@ -389,8 +394,11 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         string equippedId = CharacterDocumentEditor.ReadFeatureId(_session.WorkingDocument!, _slot);
         bool equipped = string.Equals(equippedId, definition.Id, StringComparison.Ordinal) &&
             !_session.HasOwnedPreview(_slot) && !_session.HasUnownedPreview(_slot);
+        CatalogueEntry entry = default;
         bool purchasable = !owned && definition.OwnershipContentId is string contentId &&
-            _economy.Catalogue.TryGet(contentId, out CatalogueEntry entry) && entry.Visible && entry.HasValidPrice;
+            _economy.Catalogue.TryGet(contentId, out entry) && entry.Visible &&
+            entry.Kind == CatalogueEntryKind.Cosmetic && entry.HasValidPrice;
+        bool affordable = !purchasable || entry.PriceMilliCredits <= _economy.BalanceMilliCredits;
         _values.SetRows(
         [
             new Win98ValueRowPresentation("status", "Status", owned ? "Owned" : "Preview", true),
@@ -398,9 +406,10 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             new Win98ValueRowPresentation("balance", "Balance", ContentDisplayName.Credits(_economy.BalanceMilliCredits)),
         ]);
         _buy.Text = owned ? (equipped ? "Equipped" : "Equip") : purchasable ? "Buy" : "Earned";
-        _buy.Disabled = equipped || (!owned && !purchasable);
+        _buy.Disabled = equipped || (!owned && (!purchasable || !affordable));
         _buy.TooltipText = equipped ? "This cosmetic is currently equipped."
             : owned ? "Equip this cosmetic on the working character."
+            : purchasable && !affordable ? "Earn more credits before buying this cosmetic."
             : purchasable ? "Buy this cosmetic permanently; equip it with the next action."
             : "This cosmetic is earned elsewhere and cannot be bought here.";
         bool hasColor = definition.ColorChannels.Count > 0;
@@ -436,14 +445,29 @@ public partial class BuddyStudioWorkspace : VBoxContainer
 
     private void SelectCosmetic(string cosmeticId) => Handle(_session.PreviewCosmetic(_slot, cosmeticId));
 
-    private void PurchaseOrEquip()
+    private async Task PurchaseOrEquipAsync()
     {
-        CharacterEditorActionResult result = _session.IsCosmeticOwned(
-            CharacterDocumentEditor.ReadFeatureId(_session.PreviewDocument!, _slot))
+        string cosmeticId = CharacterDocumentEditor.ReadFeatureId(_session.PreviewDocument!, _slot);
+        bool owned = _session.IsCosmeticOwned(cosmeticId);
+        CharacterEditorActionResult result = owned
             ? _session.EquipPreviewedCosmetic(_slot)
             : _session.BuyPreviewedCosmetic(_slot);
         Handle(result);
+        string? saveFailure = null;
+        if (result.Completed && !owned)
+        {
+            try
+            {
+                await _flushProgress();
+            }
+            catch (Exception error)
+            {
+                saveFailure = $"Purchase is owned; progress save will retry: {error.Message}";
+            }
+        }
         Refresh();
+        if (saveFailure is not null)
+            _status.Text = saveFailure;
     }
 
     private void Randomize()

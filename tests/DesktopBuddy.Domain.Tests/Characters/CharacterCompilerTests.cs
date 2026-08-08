@@ -123,7 +123,7 @@ public sealed class CharacterCompilerTests
     }
 
     [Fact]
-    public void ShippedDefinitions_ExposeStableStudioMetadataAndOnlyWorkGlassesArePaid()
+    public void ShippedDefinitions_ExposeStableStudioMetadataAndAuthoredOwnershipIds()
     {
         CharacterFeatureCatalog catalog = CharacterFeatureCatalog.Shipped;
 
@@ -136,10 +136,21 @@ public sealed class CharacterCompilerTests
             Assert.All(definitions, definition => Assert.StartsWith("buddy_studio.cosmetic.", definition.DisplayNameKey));
         }
 
-        Assert.True(catalog.TryGetDefinition(CharacterFeatureIds.GlassesWorkClassic, out CosmeticDefinition workGlasses));
-        Assert.False(workGlasses.IsFreeDefault);
+        string[] paidIds =
+        [
+            CharacterFeatureIds.HairShortSweep, CharacterFeatureIds.NoseButton,
+            CharacterFeatureIds.EarsRoundTabs, CharacterFeatureIds.GlassesWorkClassic,
+            CharacterFeatureIds.HeadwearSoftCap, CharacterFeatureIds.TopUtilityBib,
+            CharacterFeatureIds.ShoesSoftSteps,
+        ];
+        Assert.All(paidIds, id =>
+        {
+            Assert.True(catalog.TryGetDefinition(id, out CosmeticDefinition definition));
+            Assert.False(definition.IsFreeDefault);
+            Assert.NotNull(definition.OwnershipContentId);
+        });
         Assert.All(
-            catalog.AllIds.Where(id => id != CharacterFeatureIds.GlassesWorkClassic),
+            catalog.AllIds.Except(paidIds),
             id => Assert.True(catalog.TryGetDefinition(id, out CosmeticDefinition definition) && definition.IsFreeDefault));
     }
 
@@ -246,7 +257,7 @@ public sealed class CharacterCompilerTests
             CharacterFeatureIds.GlassesWorkClassic,
             out CosmeticDefinition glasses));
         Assert.Equal(ContentIds.CosmeticWorkGlasses, glasses.OwnershipContentId);
-        Assert.Null(CharacterFeatureCatalog.Shipped.ResolveDefinition(
+        Assert.Equal(ContentIds.CosmeticHairShortSweep, CharacterFeatureCatalog.Shipped.ResolveDefinition(
             CharacterFeatureSlot.Hair,
             CharacterFeatureIds.HairShortSweep,
             out _).OwnershipContentId);

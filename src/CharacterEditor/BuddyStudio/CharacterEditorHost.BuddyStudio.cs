@@ -26,7 +26,12 @@ public partial class CharacterEditorHost
             return false;
 
         _buddyStudio = new BuddyStudioWorkspace { Visible = false };
-        _buddyStudio.Configure(_session, _context.Economy, preview!, CloseBuddyStudioImmediately);
+        _buddyStudio.Configure(
+            _session,
+            _context.Economy,
+            preview!,
+            CloseBuddyStudioImmediately,
+            () => _context.Saves.FlushProgressAsync(force: true));
         _editorRoot.AddChild(_buddyStudio);
         return true;
     }

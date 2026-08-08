@@ -52,6 +52,14 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                     true,
                     "cosmetic.work_glasses.name",
                     "cosmetic.work_glasses.description"),
+                new CatalogueEntry(
+                    ContentIds.CosmeticHairShortSweep,
+                    CatalogueEntryKind.Cosmetic,
+                    2000,
+                    1,
+                    true,
+                    "cosmetic.hair.short_sweep.name",
+                    "cosmetic.hair.short_sweep.description"),
             ]);
             var economy = new EconomyService(progress, catalogue);
             var library = new CharacterLibraryIndex(new CharacterFileSystem(), context.Root);
@@ -202,6 +210,37 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                 "bs5_session_randomize_discards_preview_without_purchase",
                 sessionRandomizeSafe,
                 $"preview={resetSession.HasUnownedPreviews} balance={balanceBeforeRandomize}->{resetEconomy.BalanceMilliCredits} revision={progressRevisionBeforeRandomize}->{resetProgress.Revision}"));
+
+            await session.SelectAsync(baselineId);
+            session.PreviewCosmetic(CharacterFeatureSlot.Hair, CharacterFeatureIds.HairShortSweep);
+            CharacterEditorActionResult boughtHair = session.BuyPreviewedCosmetic(CharacterFeatureSlot.Hair);
+            CharacterEditorActionResult equippedHair = session.EquipPreviewedCosmetic(CharacterFeatureSlot.Hair);
+            CharacterEditorActionResult savedHair = await session.SaveAsync();
+            await saves.FlushProgressAsync(force: true);
+            ProgressSave persisted = progressStore.Progress!;
+            var restartedProgress = new BuddyProgressState(
+                cashPerPain: 0.01,
+                unlockedToolIds: persisted.UnlockedToolIds,
+                revision: persisted.Revision,
+                initialBalanceMilliCredits: persisted.BalanceMilliCredits,
+                selectedToolId: persisted.SelectedToolId);
+            var restartedEconomy = new EconomyService(restartedProgress, catalogue);
+            var restartedSession = new CharacterEditorSession(
+                context.Store,
+                library,
+                context.Coordinator,
+                context.Preview,
+                economy: restartedEconomy);
+            await restartedSession.SelectAsync(baselineId);
+            bool purchaseEquipSaveRestart = boughtHair.Completed && equippedHair.Completed && savedHair.Completed &&
+                restartedEconomy.IsUnlocked(ContentIds.CosmeticHairShortSweep) &&
+                restartedSession.IsCosmeticOwned(CharacterFeatureIds.HairShortSweep) &&
+                CharacterDocumentEditor.ReadFeatureId(
+                    restartedSession.WorkingDocument!, CharacterFeatureSlot.Hair) == CharacterFeatureIds.HairShortSweep;
+            checks.Add(new StartupCheck(
+                "bs7_purchase_equip_save_and_restart_preserve_ownership_and_appearance",
+                purchaseEquipSaveRestart,
+                $"bought={boughtHair.Completed} equipped={equippedHair.Completed} saved={savedHair.Completed} owned={restartedEconomy.IsUnlocked(ContentIds.CosmeticHairShortSweep)}"));
         }
         finally
         {

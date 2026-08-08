@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
+using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
@@ -25,7 +27,39 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
         var root = new Control { Name = "BuddyStudioScenarioRoot" };
         try
         {
-            var progress = new BuddyProgressState(0.01, initialBalanceMilliCredits: 5000);
+            string[] releasedCosmetics =
+            [
+                ContentIds.CosmeticHairShortSweep, ContentIds.CosmeticNoseButton,
+                ContentIds.CosmeticEarsRoundTabs, ContentIds.CosmeticHeadwearSoftCap,
+                ContentIds.CosmeticTopUtilityBib, ContentIds.CosmeticShoesSoftSteps,
+            ];
+            ToolCatalogue production = CatalogueLoader.Catalogue;
+            bool catalogueClosed = releasedCosmetics.All(id =>
+                    production.TryGet(id, out CatalogueEntry entry) &&
+                    entry.Kind == CatalogueEntryKind.Cosmetic && entry.Visible && entry.HasValidPrice) &&
+                CataloguePolicy.CosmeticEntries(production).Select(entry => entry.ContentId).SequenceEqual(releasedCosmetics) &&
+                !production.Contains(ContentIds.CosmeticWorkGlasses) &&
+                CataloguePolicy.ShopEntries(production).Count == 12 &&
+                CataloguePolicy.SelectableEntries(production).Count == 16;
+            checks.Add(new StartupCheck(
+                "bs7_authored_sales_are_studio_only_and_keep_sixteen_tool_schedule",
+                catalogueClosed,
+                $"cosmetics={CataloguePolicy.CosmeticEntries(production).Count} shop={CataloguePolicy.ShopEntries(production).Count} tools={CataloguePolicy.SelectableEntries(production).Count}"));
+
+            int definitions = 0;
+            bool thumbnails = true;
+            foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>().Distinct())
+            foreach (CosmeticDefinition definition in CharacterFeatureCatalog.Shipped.GetDefinitions(slot))
+            {
+                definitions++;
+                thumbnails &= GodotObject.IsInstanceValid(BuddyStudioThumbnailCache.For(definition));
+            }
+            checks.Add(new StartupCheck(
+                "bs7_original_thumbnails_are_cached_for_every_visible_definition",
+                thumbnails && BuddyStudioThumbnailCache.Count == definitions,
+                $"cached={BuddyStudioThumbnailCache.Count} definitions={definitions}"));
+
+            var progress = new BuddyProgressState(0.01, initialBalanceMilliCredits: 1000);
             var catalogue = new ToolCatalogue([
                 new CatalogueEntry(
                     ContentIds.CosmeticWorkGlasses,
@@ -54,8 +88,13 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             var paintCanvas = new Control { Name = "CharacterPaintCanvas", Visible = true };
             preview.AddChild(paintCanvas);
             root.AddChild(preview);
+            int durableSaves = 0;
             var workspace = new BuddyStudioWorkspace();
-            workspace.Configure(session, economy, preview, () => { });
+            workspace.Configure(session, economy, preview, () => { }, () =>
+            {
+                durableSaves++;
+                return Task.CompletedTask;
+            });
             root.AddChild(workspace);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             workspace.AttachPreview();
@@ -75,17 +114,24 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             workspace.SelectCategory(CharacterFeatureSlot.Glasses);
             workspace.CatalogGrid.Select(CharacterFeatureIds.GlassesWorkClassic);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            bool previewGated = session.HasUnownedPreviews && !session.CanSave &&
-                workspace.SaveAction.Disabled && !workspace.BuyAction.Disabled &&
+            bool insufficientGated = session.HasUnownedPreviews && !session.CanSave &&
+                workspace.SaveAction.Disabled && workspace.BuyAction.Disabled &&
                 workspace.CatalogGrid.SelectedId == CharacterFeatureIds.GlassesWorkClassic;
             checks.Add(new StartupCheck(
-                "bs6_unowned_preview_labels_and_gates_actions",
-                previewGated,
+                "bs7_insufficient_funds_disable_buy_without_losing_preview",
+                insufficientGated,
                 $"preview={session.HasUnownedPreviews} saveDisabled={workspace.SaveAction.Disabled} buyDisabled={workspace.BuyAction.Disabled}"));
+
+            economy.DepositPassive(4000);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            checks.Add(new StartupCheck(
+                "bs6_unowned_preview_enables_buy_when_funded",
+                !workspace.BuyAction.Disabled && !session.CanSave,
+                $"balance={economy.BalanceMilliCredits} buyDisabled={workspace.BuyAction.Disabled}"));
 
             workspace.BuyAction.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            bool purchaseRefresh = economy.IsUnlocked(ContentIds.CosmeticWorkGlasses) &&
+            bool purchaseRefresh = economy.IsUnlocked(ContentIds.CosmeticWorkGlasses) && durableSaves == 1 &&
                 session.CanSave && session.HasOwnedPreviews && workspace.SaveAction.Disabled &&
                 !workspace.BuyAction.Disabled && workspace.BuyAction.Text == "Equip" &&
                 CharacterDocumentEditor.ReadFeatureId(session.WorkingDocument!, CharacterFeatureSlot.Glasses) ==
@@ -93,7 +139,7 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             checks.Add(new StartupCheck(
                 "bs6_buy_refreshes_to_real_equip_action",
                 purchaseRefresh,
-                $"owned={economy.IsUnlocked(ContentIds.CosmeticWorkGlasses)} action={workspace.BuyAction.Text}"));
+                $"owned={economy.IsUnlocked(ContentIds.CosmeticWorkGlasses)} saves={durableSaves} action={workspace.BuyAction.Text}"));
 
             workspace.BuyAction.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
