@@ -17,5 +17,6 @@ internal static class EnvironmentScenarioRegistration
         factories["environment_trusted_definitions"] = () => new EnvironmentTrustedDefinitionsScenario();
         factories["environment_background_editor"] = () => new EnvironmentBackgroundEditorScenario();
         factories["environment_startup_registration"] = () => new EnvironmentStartupRegistrationScenario();
+        factories["environment_placement_engine"] = () => new EnvironmentPlacementEngineScenario();
     }
 }

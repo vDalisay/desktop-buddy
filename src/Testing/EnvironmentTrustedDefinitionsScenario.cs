@@ -168,3 +168,45 @@ public sealed class EnvironmentStartupRegistrationScenario : IScenario
         return new ScenarioResult(checks.All(check => check.Passed), checks, [$"seed={seed}"]);
     }
 }
+
+public sealed class EnvironmentPlacementEngineScenario : IScenario
+{
+    public string Id => "environment_placement_engine";
+
+    public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
+    {
+        var checks = new List<StartupCheck>();
+        EnvironmentDecorationResource lamp = EnvironmentDecorationRegistry.Authored.Entries[0];
+        var session = new EnvironmentEditSession(new EnvironmentLayout(), 250_000, EnvironmentDecorationRegistry.Domain);
+        var host = new Node2D { Name = "EnvironmentPlacementHost" };
+        var controller = new EnvironmentPlacementController { Name = "EnvironmentPlacementController" };
+        tree.Root.AddChild(host);
+        host.AddChild(controller);
+        controller.Configure(session, host, new RoomScreenBounds(100, 50, 800, 600));
+        controller.Begin(lamp);
+
+        bool wallRejected = !controller.UpdatePointer(new Vector2(300, 200)) && !controller.GhostValid;
+        bool floorAccepted = controller.UpdatePointer(new Vector2(300, 500)) && controller.GhostValid;
+        EnvironmentEditResult first = controller.CommitGhost();
+        EnvironmentEditResult second = controller.CommitGhost();
+        checks.Add(new StartupCheck("environment_free_pointer_anchor_validation",
+            wallRejected && floorAccepted, $"wallRejected={wallRejected} floorAccepted={floorAccepted}"));
+        checks.Add(new StartupCheck("environment_repeated_ghost_placement_costs_per_instance",
+            first.Succeeded && second.Succeeded && session.WorkingLayout.Decorations.Count == 2 &&
+            session.ProjectedBalanceMilliCredits == 100_000,
+            $"placed={session.WorkingLayout.Decorations.Count} projected={session.ProjectedBalanceMilliCredits}"));
+
+        controller.UpdateRoom(new RoomScreenBounds(200, 150, 1600, 1100));
+        var ghost = host.FindChild("EnvironmentPlacementGhost", true, false) as Node2D;
+        checks.Add(new StartupCheck("environment_ghost_preserves_canonical_position_on_resize",
+            GodotObject.IsInstanceValid(ghost) && ghost!.Position.IsEqualApprox(new Vector2(600, 975)),
+            $"ghost={ghost?.Position}"));
+        controller._UnhandledInput(new InputEventKey { Keycode = Key.Escape, Pressed = true });
+        checks.Add(new StartupCheck("environment_escape_cancels_ghost", !controller.Active,
+            $"active={controller.Active}"));
+
+        host.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return new ScenarioResult(checks.All(check => check.Passed), checks, [$"seed={seed}"]);
+    }
+}
