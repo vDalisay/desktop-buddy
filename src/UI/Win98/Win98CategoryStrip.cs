@@ -15,8 +15,8 @@ public readonly record struct Win98CategoryPresentation(
 
 /// <summary>
 /// Reusable Win98 category strip: original icon/text tabs, deterministic keyboard traversal,
-/// and horizontal scrolling without wrapping. It deliberately knows nothing about cosmetics,
-/// decorations, ownership, purchases, or persistence.
+/// mouse-wheel horizontal scrolling, and no wrapping. It deliberately knows nothing about
+/// cosmetics, decorations, ownership, purchases, or persistence.
 /// </summary>
 public partial class Win98CategoryStrip : HBoxContainer
 {
@@ -68,6 +68,7 @@ public partial class Win98CategoryStrip : HBoxContainer
         foreach ((string key, Button candidate) in _buttons)
             candidate.ButtonPressed = string.Equals(key, id, StringComparison.Ordinal);
         button.GrabFocus();
+        _scroll.CallDeferred(ScrollContainer.MethodName.EnsureControlVisible, button);
         if (notify)
             SelectionChanged?.Invoke(id);
         return true;
@@ -89,6 +90,7 @@ public partial class Win98CategoryStrip : HBoxContainer
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             MouseFilter = Control.MouseFilterEnum.Stop,
         };
+        _scroll.GuiInput += OnScrollInput;
         AddChild(_scroll);
 
         _row = new HBoxContainer { Name = "CategoryRow" };
@@ -110,12 +112,7 @@ public partial class Win98CategoryStrip : HBoxContainer
             CustomMinimumSize = new Vector2(28, Win98ThemeFactory.ControlHeight),
             TooltipText = direction < 0 ? "Scroll categories left." : "Scroll categories right.",
         };
-        button.Pressed += () =>
-        {
-            if (!GodotObject.IsInstanceValid(_scroll))
-                return;
-            _scroll.ScrollHorizontal = Math.Max(0, _scroll.ScrollHorizontal + direction * 120);
-        };
+        button.Pressed += () => ScrollBy(direction * 120);
         return button;
     }
 
@@ -151,8 +148,14 @@ public partial class Win98CategoryStrip : HBoxContainer
 
         if (_selectedId is null || !_buttons.TryGetValue(_selectedId, out Button? selected) || selected.Disabled)
         {
-            Win98CategoryPresentation? first = _items.FirstOrDefault(item => item.Enabled);
-            _selectedId = first?.Id;
+            _selectedId = null;
+            foreach (Win98CategoryPresentation item in _items)
+            {
+                if (!item.Enabled)
+                    continue;
+                _selectedId = item.Id;
+                break;
+            }
         }
 
         if (_selectedId is not null && _buttons.ContainsKey(_selectedId))
@@ -188,6 +191,31 @@ public partial class Win98CategoryStrip : HBoxContainer
             }
             candidate += direction;
         }
+    }
+
+    private void OnScrollInput(InputEvent input)
+    {
+        if (input is not InputEventMouseButton { Pressed: true } mouse)
+            return;
+
+        int direction = mouse.ButtonIndex switch
+        {
+            MouseButton.WheelUp => -1,
+            MouseButton.WheelDown => 1,
+            _ => 0,
+        };
+        if (direction == 0)
+            return;
+
+        ScrollBy(direction * 90);
+        AcceptEvent();
+    }
+
+    private void ScrollBy(int delta)
+    {
+        if (!GodotObject.IsInstanceValid(_scroll))
+            return;
+        _scroll.ScrollHorizontal = Math.Max(0, _scroll.ScrollHorizontal + delta);
     }
 
     private static string Sanitize(string id)
