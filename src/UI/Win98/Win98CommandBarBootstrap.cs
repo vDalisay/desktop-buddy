@@ -9,11 +9,15 @@ using Godot;
 namespace DesktopBuddy.UI.Win98;
 
 /// <summary>
-/// Hosts the Shop, Tools, Settings and editor commands in the classic menu strip directly
-/// beneath the Win98 title bar. Compact mode uses one in-scene flyout instead of native windows.
+/// Hosts Shop, Tools, Settings, Customize and Work in the classic menu strip directly beneath
+/// the Win98 title bar. Feature workspaces register Customize commands through the public
+/// registry seam instead of editing this shared shell file.
 /// </summary>
 public partial class Win98CommandBarBootstrap : Node
 {
+    private readonly CustomizeCommandRegistry _customizeCommands = new();
+    private readonly Dictionary<long, string> _customizePopupIds = [];
+
     private Control _uiRoot = null!;
     private Control _legacyDock = null!;
     private DesktopWindowController _window = null!;
@@ -34,10 +38,11 @@ public partial class Win98CommandBarBootstrap : Node
     private Button _shopButton = null!;
     private Button _toolsButton = null!;
     private Button _settingsButton = null!;
-    private Button _editorButton = null!;
+    private MenuButton _customizeButton = null!;
     private Button _modeButton = null!;
     private Button _legacyEditorButton = null!;
     private Button _legacyModeButton = null!;
+    private IDisposable? _paintBuddyRegistration;
 
     private readonly Dictionary<Button, Control> _sections = [];
     private Control? _activeSection;
@@ -47,7 +52,11 @@ public partial class Win98CommandBarBootstrap : Node
     // autoload would stop here, leaving the frame at MouseFilter.Pass and the menu bar
     // visible over the editor — and a paused full-rect Control still wins mouse picking,
     // so every editor button becomes unclickable.
-    public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
+    public override void _Ready()
+    {
+        ProcessMode = ProcessModeEnum.Always;
+        _customizeCommands.Changed += OnCustomizeCommandsChanged;
+    }
 
     public override void _Process(double delta)
     {
@@ -75,7 +84,25 @@ public partial class Win98CommandBarBootstrap : Node
         MirrorModeLabel();
     }
 
-    public override void _ExitTree() => ReturnPanelsToNativeWindows();
+    public override void _ExitTree()
+    {
+        _customizeCommands.Changed -= OnCustomizeCommandsChanged;
+        _paintBuddyRegistration?.Dispose();
+        _paintBuddyRegistration = null;
+        ReturnPanelsToNativeWindows();
+    }
+
+    /// <summary>
+    /// Stable feature-registration seam for the Customize dropdown. A registration may be
+    /// created before the command bar has composed; it appears the next time the popup opens.
+    /// Dispose the returned token when the owning feature leaves the tree.
+    /// </summary>
+    public IDisposable RegisterCustomizeCommand(
+        CustomizeCommandDefinition definition,
+        Action invoke,
+        Func<bool>? isVisible = null,
+        Func<bool>? isEnabled = null) =>
+        _customizeCommands.Register(definition, invoke, isVisible, isEnabled);
 
     private void TryCompose()
     {
@@ -138,7 +165,24 @@ public partial class Win98CommandBarBootstrap : Node
         _shopButton = AddMenuCommand(row, "Shop", "Open the shop.", () => OpenSection(_shopButton, _shop, "Shop"));
         _toolsButton = AddMenuCommand(row, "Tools", "Choose the active tool.", () => OpenSection(_toolsButton, _tools, "Tools"));
         _settingsButton = AddMenuCommand(row, "Settings", "Open game and window settings.", () => OpenSection(_settingsButton, _settings, "Settings"));
-        _editorButton = AddMenuCommand(row, "Paint / Character", "Open the paint workspace.", OpenEditor);
+        _customizeButton = AddMenuPopup(row, "Customize", "Open character and environment customization.");
+        PopupMenu customizePopup = _customizeButton.GetPopup();
+        Win98MenuStyle.Apply(customizePopup);
+        customizePopup.AboutToPopup += () =>
+        {
+            CloseFlyout();
+            RebuildCustomizePopup();
+        };
+        customizePopup.IdPressed += OnCustomizeCommandPressed;
+
+        _paintBuddyRegistration ??= RegisterCustomizeCommand(
+            new CustomizeCommandDefinition(
+                CustomizeCommandIds.PaintBuddy,
+                "Paint Buddy",
+                "Open the direct-paint character workspace.",
+                CustomizeCommandIds.PaintBuddyOrder),
+            OpenEditor);
+
         _modeButton = AddMenuCommand(row, "Work", "Switch between Play and Work input modes.", ToggleMode);
 
         _sections[_shopButton] = _shop;
@@ -204,12 +248,71 @@ public partial class Win98CommandBarBootstrap : Node
             MouseFilter = Control.MouseFilterEnum.Stop,
             CustomMinimumSize = new Vector2(Mathf.Max(42f, text.Length * 8f + 16f), 22f),
         };
-        button.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Flat(Colors.Transparent));
-        button.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 1));
-        button.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
+        ApplyMenuButtonStyle(button);
         button.Pressed += action;
         parent.AddChild(button);
         return button;
+    }
+
+    private static MenuButton AddMenuPopup(Control parent, string text, string tooltip)
+    {
+        var button = new MenuButton
+        {
+            Text = text,
+            TooltipText = tooltip,
+            Flat = false,
+            SwitchOnHover = true,
+            FocusMode = Control.FocusModeEnum.All,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            CustomMinimumSize = new Vector2(Mathf.Max(42f, text.Length * 8f + 16f), 22f),
+        };
+        ApplyMenuButtonStyle(button);
+        parent.AddChild(button);
+        return button;
+    }
+
+    private static void ApplyMenuButtonStyle(Button button)
+    {
+        button.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Flat(Colors.Transparent));
+        button.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 1));
+        button.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
+    }
+
+    private void RebuildCustomizePopup()
+    {
+        if (!GodotObject.IsInstanceValid(_customizeButton))
+            return;
+
+        PopupMenu popup = _customizeButton.GetPopup();
+        popup.Clear();
+        _customizePopupIds.Clear();
+        long popupId = 1;
+        foreach (CustomizeCommandSnapshot snapshot in _customizeCommands.Snapshot())
+        {
+            if (!snapshot.Visible)
+                continue;
+
+            popup.AddItem(snapshot.Definition.Label, (int)popupId);
+            int itemIndex = popup.GetItemIndex((int)popupId);
+            if (itemIndex >= 0)
+                popup.SetItemDisabled(itemIndex, !snapshot.Enabled);
+            _customizePopupIds[popupId] = snapshot.Definition.Id;
+            popupId++;
+        }
+    }
+
+    private void OnCustomizeCommandPressed(long popupId)
+    {
+        if (!_customizePopupIds.TryGetValue(popupId, out string? commandId))
+            return;
+        _customizeCommands.TryInvoke(commandId);
+        _customizeButton.CallDeferred(Control.MethodName.GrabFocus);
+    }
+
+    private void OnCustomizeCommandsChanged()
+    {
+        if (GodotObject.IsInstanceValid(_customizeButton) && _customizeButton.GetPopup().Visible)
+            RebuildCustomizePopup();
     }
 
     private void OpenSection(Button button, Control section, string title)
