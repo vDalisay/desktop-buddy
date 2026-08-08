@@ -65,7 +65,9 @@ public static class CharacterDocumentPolicy
     public static string Serialize(CharacterDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        CharacterValidationResult validation = CharacterDocumentValidator.Validate(document);
+        CharacterValidationResult validation = CharacterDocumentValidator.Validate(
+            document,
+            CharacterFeatureCatalog.Shipped);
         if (!validation.IsValid)
         {
             string detail = string.Join("; ", validation.Errors.Select(error => $"{error.Path}: {error.Message}"));

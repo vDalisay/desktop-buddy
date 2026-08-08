@@ -137,6 +137,55 @@ public sealed class CharacterDocumentPolicyTests
         Assert.Contains("schema 0", result.Detail ?? string.Empty);
     }
 
+    [Fact]
+    public void Schema2_MigratesRenamedSelectionsAndPreservesIdentityPaintTransformAndColor()
+    {
+        string json = $$"""
+            {
+              "schemaVersion": 2,
+              "id": "{{CharacterId:D}}",
+              "displayName": "Legacy",
+              "features": {
+                "brows": {
+                  "featureId": "brows.segmented",
+                  "offsetX": 0.25,
+                  "offsetY": -0.5,
+                  "scale": 1.1,
+                  "color": "#112233"
+                },
+                "torsoAccent": {
+                  "featureId": "accent.chevron",
+                  "offsetX": -0.25,
+                  "offsetY": 0.5,
+                  "scale": 0.9,
+                  "color": "#445566"
+                }
+              },
+              "paint": { "head": "paint/head.png" }
+            }
+            """;
+
+        CharacterDecodeResult result = CharacterDocumentPolicy.DecodeAndMigrate(json);
+
+        Assert.True(result.IsSuccess);
+        CharacterDocument document = result.Document!;
+        Assert.Equal(CharacterDocumentPolicy.CurrentSchemaVersion, document.SchemaVersion);
+        Assert.Equal(CharacterId, document.Id);
+        Assert.Equal("Legacy", document.DisplayName);
+        Assert.Equal(CharacterFeatureIds.BrowsSegmented, document.Features.Eyebrows.FeatureId);
+        Assert.Equal(0.25, document.Features.Eyebrows.OffsetX);
+        Assert.Equal(-0.5, document.Features.Eyebrows.OffsetY);
+        Assert.Equal(1.1, document.Features.Eyebrows.Scale);
+        Assert.Equal(Rgba32.Parse("#112233"), document.Features.Eyebrows.Color);
+        Assert.Equal(CharacterFeatureIds.AccentChevron, document.Features.Accessories.FeatureId);
+        Assert.Equal(Rgba32.Parse("#445566"), document.Features.Accessories.Color);
+        Assert.Equal("paint/head.png", document.Paint.Head);
+
+        string migrated = CharacterDocumentPolicy.Serialize(document);
+        Assert.DoesNotContain("\"brows\"", migrated, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"torsoAccent\"", migrated, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("not-json")]
     [InlineData("[]")]

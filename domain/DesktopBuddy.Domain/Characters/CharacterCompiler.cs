@@ -23,7 +23,7 @@ public static class CharacterCompiler
         }
 
         CharacterValidationResult validation =
-            CharacterDocumentValidator.Validate(normalizedDocument);
+            CharacterDocumentValidator.Validate(normalizedDocument, catalog);
         if (!validation.IsValid)
         {
             return new CharacterCompileResult(
@@ -33,30 +33,19 @@ public static class CharacterCompiler
         }
 
         var warnings = new List<CharacterCompileWarning>();
-        CompiledFeatureAppearance eyes = CompileFeature(
-            normalizedDocument.Features.Eyes,
-            CharacterFeatureSlot.Eyes,
-            "features.eyes.featureId",
-            catalog,
-            warnings);
-        CompiledFeatureAppearance brows = CompileFeature(
-            normalizedDocument.Features.Brows,
-            CharacterFeatureSlot.Brows,
-            "features.brows.featureId",
-            catalog,
-            warnings);
-        CompiledFeatureAppearance mouth = CompileFeature(
-            normalizedDocument.Features.Mouth,
-            CharacterFeatureSlot.Mouth,
-            "features.mouth.featureId",
-            catalog,
-            warnings);
-        CompiledFeatureAppearance accent = CompileFeature(
-            normalizedDocument.Features.TorsoAccent,
-            CharacterFeatureSlot.TorsoAccent,
-            "features.torsoAccent.featureId",
-            catalog,
-            warnings);
+        CharacterFeatureSet features = normalizedDocument.Features;
+        CompiledFeatureAppearance face = CompileFeature(features.Face, CharacterFeatureSlot.Face, "features.face.featureId", catalog, warnings);
+        CompiledFeatureAppearance hair = CompileFeature(features.Hair, CharacterFeatureSlot.Hair, "features.hair.featureId", catalog, warnings);
+        CompiledFeatureAppearance brows = CompileFeature(features.Eyebrows, CharacterFeatureSlot.Brows, "features.eyebrows.featureId", catalog, warnings);
+        CompiledFeatureAppearance eyes = CompileFeature(features.Eyes, CharacterFeatureSlot.Eyes, "features.eyes.featureId", catalog, warnings);
+        CompiledFeatureAppearance nose = CompileFeature(features.Nose, CharacterFeatureSlot.Nose, "features.nose.featureId", catalog, warnings);
+        CompiledFeatureAppearance mouth = CompileFeature(features.Mouth, CharacterFeatureSlot.Mouth, "features.mouth.featureId", catalog, warnings);
+        CompiledFeatureAppearance ears = CompileFeature(features.Ears, CharacterFeatureSlot.Ears, "features.ears.featureId", catalog, warnings);
+        CompiledFeatureAppearance accessories = CompileFeature(features.Accessories, CharacterFeatureSlot.Accessories, "features.accessories.featureId", catalog, warnings);
+        CompiledFeatureAppearance glasses = CompileFeature(features.Glasses, CharacterFeatureSlot.Glasses, "features.glasses.featureId", catalog, warnings);
+        CompiledFeatureAppearance headwear = CompileFeature(features.Headwear, CharacterFeatureSlot.Headwear, "features.headwear.featureId", catalog, warnings);
+        CompiledFeatureAppearance tops = CompileFeature(features.Tops, CharacterFeatureSlot.Tops, "features.tops.featureId", catalog, warnings);
+        CompiledFeatureAppearance shoes = CompileFeature(features.Shoes, CharacterFeatureSlot.Shoes, "features.shoes.featureId", catalog, warnings);
 
         CharacterPartColors colors = normalizedDocument.PartColors;
         var appearance = new CompiledCharacterAppearance(
@@ -68,10 +57,18 @@ public static class CharacterCompiler
                 colors.RightHand,
                 colors.LeftFoot,
                 colors.RightFoot),
-            eyes,
+            face,
+            hair,
             brows,
+            eyes,
+            nose,
             mouth,
-            accent);
+            ears,
+            accessories,
+            glasses,
+            headwear,
+            tops,
+            shoes);
 
         return new CharacterCompileResult(
             appearance,
@@ -86,7 +83,8 @@ public static class CharacterCompiler
         CharacterFeatureCatalog catalog,
         ICollection<CharacterCompileWarning> warnings)
     {
-        string resolved = catalog.Resolve(slot, feature.FeatureId, out bool known);
+        CosmeticDefinition definition = catalog.ResolveDefinition(slot, feature.FeatureId, out bool known);
+        string resolved = definition.Id;
         if (!known)
         {
             warnings.Add(new CharacterCompileWarning(
@@ -96,13 +94,24 @@ public static class CharacterCompiler
                 $"Unknown {slot} feature '{feature.FeatureId}' resolved to '{resolved}'."));
         }
 
+        var colors = new List<KeyValuePair<string, Rgba32>>(definition.ColorChannels.Count);
+        foreach (CosmeticColorChannelDefinition channel in definition.ColorChannels)
+        {
+            Rgba32 color = feature.Colors.TryGetValue(channel.Id, out Rgba32 selected)
+                ? selected
+                : channel.Id == CosmeticDefinition.PrimaryColorChannel
+                    ? feature.Color
+                    : channel.DefaultColor;
+            colors.Add(new KeyValuePair<string, Rgba32>(channel.Id, color));
+        }
+
+        bool knownInAnotherSlot = !known && catalog.TryGetDefinition(feature.FeatureId, out _);
         return new CompiledFeatureAppearance(
             resolved,
-            new NormalizedFeatureTransform(
-                feature.OffsetX,
-                feature.OffsetY,
-                feature.Scale),
-            feature.Color);
+            knownInAnotherSlot
+                ? definition.DefaultTransform
+                : new NormalizedFeatureTransform(feature.OffsetX, feature.OffsetY, feature.Scale),
+            new CompiledColorChannels(colors));
     }
 
     private static CharacterCompileResult Failure(CharacterValidationIssue error) => new(
