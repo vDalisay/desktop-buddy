@@ -137,7 +137,8 @@ public partial class CharacterEditorHost : CanvasLayer
             _context.Characters,
             library,
             _selectionRuntime.Coordinator,
-            _preview);
+            _preview,
+            economy: _context.Economy);
         _session.Changed += RefreshAll;
         _session.LibraryChanged += RefreshLibrary;
         _session.CloseResolved += closed =>

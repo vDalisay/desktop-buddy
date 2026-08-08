@@ -86,7 +86,8 @@ public sealed record CosmeticDefinition
         NormalizedFeatureTransform defaultTransform,
         IEnumerable<CosmeticColorChannelDefinition>? colorChannels,
         string fallbackId,
-        bool hidesHair = false)
+        bool hidesHair = false,
+        string? ownershipContentId = null)
     {
         if (string.IsNullOrWhiteSpace(id))
             throw new ArgumentException("Cosmetic ID is required.", nameof(id));
@@ -94,6 +95,12 @@ public sealed record CosmeticDefinition
             throw new ArgumentException("Display-name key is required.", nameof(displayNameKey));
         if (string.IsNullOrWhiteSpace(fallbackId))
             throw new ArgumentException("Fallback ID is required.", nameof(fallbackId));
+        if (isFreeDefault && ownershipContentId is not null)
+            throw new ArgumentException("Free cosmetics cannot carry a purchase content ID.", nameof(ownershipContentId));
+        if (!isFreeDefault &&
+            (string.IsNullOrWhiteSpace(ownershipContentId) ||
+             !ownershipContentId.StartsWith("cosmetic.", StringComparison.Ordinal)))
+            throw new ArgumentException("Paid cosmetics require an authored cosmetic content ID.", nameof(ownershipContentId));
         if (sortOrder < 0)
             throw new ArgumentOutOfRangeException(nameof(sortOrder));
         ArgumentNullException.ThrowIfNull(transformBounds);
@@ -117,11 +124,13 @@ public sealed record CosmeticDefinition
         ColorChannels = new ReadOnlyCollection<CosmeticColorChannelDefinition>(channels);
         FallbackId = fallbackId;
         HidesHair = hidesHair;
+        OwnershipContentId = ownershipContentId;
         if (HidesHair && Slot != CharacterFeatureSlot.Headwear)
             throw new ArgumentException("Only headwear may hide hair.", nameof(hidesHair));
     }
 
     public string Id { get; }
+    public string? OwnershipContentId { get; }
     public CharacterFeatureSlot Slot { get; }
     public string DisplayNameKey { get; }
     public int SortOrder { get; }

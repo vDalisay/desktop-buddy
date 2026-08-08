@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using DesktopBuddy.Domain.Content;
 
 namespace DesktopBuddy.Domain.Characters;
 
@@ -214,7 +215,15 @@ public sealed class CharacterFeatureCatalog
         yield return Definition(CharacterFeatureIds.AccentChevron, CharacterFeatureSlot.Accessories, 20, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.AccentNone, ink);
         yield return Definition(CharacterFeatureIds.AccentBolts, CharacterFeatureSlot.Accessories, 30, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.AccentNone, ink);
         yield return Definition(CharacterFeatureIds.GlassesNone, CharacterFeatureSlot.Glasses, 0, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone);
-        yield return Definition(CharacterFeatureIds.GlassesWorkClassic, CharacterFeatureSlot.Glasses, 10, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, ink);
+        yield return Definition(
+            CharacterFeatureIds.GlassesWorkClassic,
+            CharacterFeatureSlot.Glasses,
+            10,
+            false,
+            CosmeticTransformPolicy.MoveAndUniformScale,
+            CharacterFeatureIds.GlassesNone,
+            ink,
+            ownershipContentId: ContentIds.CosmeticWorkGlasses);
         yield return Definition(CharacterFeatureIds.HeadwearNone, CharacterFeatureSlot.Headwear, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone);
         yield return Definition(CharacterFeatureIds.HeadwearSoftCap, CharacterFeatureSlot.Headwear, 10, true, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#C95B63"), hidesHair: true);
         yield return Definition(CharacterFeatureIds.TopNone, CharacterFeatureSlot.Tops, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.TopNone);
@@ -231,7 +240,8 @@ public sealed class CharacterFeatureCatalog
         CosmeticTransformPolicy policy,
         string fallback,
         Rgba32? primary = null,
-        bool hidesHair = false) => new(
+        bool hidesHair = false,
+        string? ownershipContentId = null) => new(
             id,
             slot,
             $"buddy_studio.cosmetic.{id}.name",
@@ -242,7 +252,8 @@ public sealed class CharacterFeatureCatalog
             NormalizedFeatureTransform.Identity,
             primary is Rgba32 color ? [new CosmeticColorChannelDefinition(CosmeticDefinition.PrimaryColorChannel, color)] : [],
             fallback,
-            hidesHair);
+            hidesHair,
+            ownershipContentId);
 
     private static IEnumerable<CosmeticDefinition> CreateLegacyDefinitions(
         IEnumerable<string> eyeIds, string defaultEyeId,

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Content;
 using Xunit;
 
 namespace DesktopBuddy.Domain.Tests.Characters;
@@ -236,5 +237,18 @@ public sealed class CharacterCompilerTests
             out CosmeticDefinition cap));
         Assert.True(cap.HidesHair);
         Assert.Equal(CharacterFeatureIds.HairShortSweep, document.Features.Hair.FeatureId);
+    }
+
+    [Fact]
+    public void WorkGlasses_UseExistingExplicitOwnershipContentId()
+    {
+        Assert.True(CharacterFeatureCatalog.Shipped.TryGetDefinition(
+            CharacterFeatureIds.GlassesWorkClassic,
+            out CosmeticDefinition glasses));
+        Assert.Equal(ContentIds.CosmeticWorkGlasses, glasses.OwnershipContentId);
+        Assert.Null(CharacterFeatureCatalog.Shipped.ResolveDefinition(
+            CharacterFeatureSlot.Hair,
+            CharacterFeatureIds.HairShortSweep,
+            out _).OwnershipContentId);
     }
 }
