@@ -1,54 +1,92 @@
 using DesktopBuddy.Domain.Environment;
-using DesktopBuddy.UI.Win98;
+using DesktopBuddy.Sandbox;
 using Godot;
 
 namespace DesktopBuddy.Environment;
 
-public partial class EnvironmentBackgroundPresenter : CanvasLayer
+/// <summary>Opaque 3D room backdrop placed behind the z=0 buddy/gameplay plane.</summary>
+public partial class EnvironmentBackgroundPresenter : Node3D
 {
-    private ColorRect _wall = null!;
-    private ColorRect _floor = null!;
-    private Win98WindowFrame? _frame;
+    public const float BackdropZ = -100f;
+    private MeshInstance3D _wall = null!;
+    private MeshInstance3D _floor = null!;
+    private StandardMaterial3D _wallMaterial = null!;
+    private StandardMaterial3D _floorMaterial = null!;
+    private BoundaryController? _boundaries;
     private EnvironmentBackground _background = EnvironmentBackground.Default;
+
     public EnvironmentBackground Current => _background;
+
+    public void Configure(BoundaryController boundaries)
+    {
+        _boundaries = boundaries;
+        if (IsInsideTree()) BindBoundaries();
+    }
 
     public override void _Ready()
     {
-        Layer = -50;
-        _wall = Rect("EnvironmentWall");
-        _floor = Rect("EnvironmentFloor");
+        _wallMaterial = Material("EnvironmentWallMaterial");
+        _floorMaterial = Material("EnvironmentFloorMaterial");
+        _wall = Quad("EnvironmentWall", _wallMaterial);
+        _floor = Quad("EnvironmentFloor", _floorMaterial);
         AddChild(_wall);
         AddChild(_floor);
         Apply(_background);
+        BindBoundaries();
     }
 
-    public override void _Process(double delta)
+    public override void _ExitTree()
     {
-        if (!GodotObject.IsInstanceValid(_frame))
-            _frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
-        Rect2 room = GodotObject.IsInstanceValid(_frame)
-            ? _frame!.ContentViewportRect
-            : new Rect2(Vector2.Zero, GetViewport().GetVisibleRect().Size);
-        float split = room.Position.Y + room.Size.Y * .72f;
-        _wall.Position = room.Position;
-        _wall.Size = new Vector2(room.Size.X, split - room.Position.Y);
-        _floor.Position = new Vector2(room.Position.X, split);
-        _floor.Size = new Vector2(room.Size.X, room.End.Y - split);
+        if (GodotObject.IsInstanceValid(_boundaries)) _boundaries!.LayoutApplied -= OnLayoutApplied;
     }
 
     public void Apply(in EnvironmentBackground background)
     {
         _background = background;
-        if (!GodotObject.IsInstanceValid(_wall)) return;
-        _wall.Color = ToGodot(background.Wall);
-        _floor.Color = ToGodot(background.Floor);
+        if (!GodotObject.IsInstanceValid(_wallMaterial)) return;
+        _wallMaterial.AlbedoColor = ToGodot(background.Wall);
+        _floorMaterial.AlbedoColor = ToGodot(background.Floor);
     }
 
-    private static ColorRect Rect(string name) => new()
+    private void BindBoundaries()
+    {
+        if (!GodotObject.IsInstanceValid(_boundaries))
+        {
+            Layout(480, 360);
+            return;
+        }
+        _boundaries!.LayoutApplied -= OnLayoutApplied;
+        _boundaries.LayoutApplied += OnLayoutApplied;
+        if (_boundaries.IsInitialized)
+            Layout((float)_boundaries.CurrentLayout.RoomWidth, (float)_boundaries.CurrentLayout.RoomHeight);
+    }
+
+    private void OnLayoutApplied(DesktopBuddy.Domain.Physics.RoomLayout layout, Rect2 innerBounds) =>
+        Layout((float)layout.RoomWidth, (float)layout.RoomHeight);
+
+    private void Layout(float width, float height)
+    {
+        if (!GodotObject.IsInstanceValid(_wall) || width <= 0 || height <= 0) return;
+        float split = height * .72f;
+        float floorHeight = height - split;
+        ((QuadMesh)_wall.Mesh).Size = new Vector2(width, split);
+        _wall.Position = new Vector3(width * .5f, -split * .5f, BackdropZ);
+        ((QuadMesh)_floor.Mesh).Size = new Vector2(width, floorHeight);
+        _floor.Position = new Vector3(width * .5f, -(split + floorHeight * .5f), BackdropZ);
+    }
+
+    private static MeshInstance3D Quad(string name, Material material) => new()
     {
         Name = name,
-        MouseFilter = Control.MouseFilterEnum.Ignore,
-        ShowBehindParent = true,
+        Mesh = new QuadMesh { Material = material },
+        CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+    };
+
+    private static StandardMaterial3D Material(string name) => new()
+    {
+        ResourceName = name,
+        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        CullMode = BaseMaterial3D.CullModeEnum.Disabled,
     };
 
     private static Color ToGodot(EnvironmentColor color) =>

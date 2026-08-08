@@ -45,6 +45,8 @@ public partial class EnvironmentCustomizationBootstrap : Node
     {
         if (_registration is not null) return;
         _backgroundPresenter = new EnvironmentBackgroundPresenter { Name = nameof(EnvironmentBackgroundPresenter) };
+        if (FindFirst<SandboxRoot>(GetTree().Root) is SandboxRoot sandbox)
+            _backgroundPresenter.Configure(sandbox.Boundaries);
         GetTree().Root.AddChild(_backgroundPresenter);
         _backgroundEditor = new EnvironmentBackgroundEditor { Name = nameof(EnvironmentBackgroundEditor) };
         _backgroundEditor.Configure(state, saves, _backgroundPresenter);

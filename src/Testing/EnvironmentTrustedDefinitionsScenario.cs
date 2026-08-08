@@ -152,10 +152,16 @@ public sealed class EnvironmentStartupRegistrationScenario : IScenario
         tree.Root.AddChild(commandBar);
         tree.Root.AddChild(bootstrap);
         bootstrap.ComposeForStartupTest(environment, saves, commandBar);
+        var backdrop = tree.Root.FindChild(nameof(EnvironmentBackgroundPresenter), true, false) as EnvironmentBackgroundPresenter;
+        bool behindBuddy = GodotObject.IsInstanceValid(backdrop) && backdrop is Node3D &&
+            backdrop!.GetChildren().OfType<MeshInstance3D>().Count() == 2 &&
+            backdrop.GetChildren().OfType<MeshInstance3D>().All(mesh => mesh.Position.Z < 0f);
         checks.Add(new StartupCheck("environment_paint_background_command_registered",
             bootstrap.HasPaintBackgroundRegistration &&
             tree.Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) is EnvironmentBackgroundEditor,
             $"registered={bootstrap.HasPaintBackgroundRegistration}"));
+        checks.Add(new StartupCheck("environment_background_behind_buddy_plane", behindBuddy,
+            $"presenter={backdrop?.GetType().Name} z={EnvironmentBackgroundPresenter.BackdropZ}"));
         bootstrap.QueueFree();
         commandBar.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
