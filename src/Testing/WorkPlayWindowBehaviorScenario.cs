@@ -3,10 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Platform;
+using DesktopBuddy.Work;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -161,6 +165,60 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                 "fullscreen_overlay_refused_without_transparency",
                 refused,
                 $"available={sandbox.Window.FullscreenOverlayAvailable} layout={sandbox.Window.LayoutMode}"));
+
+            var workView = new WorkCompanionView { Name = "ScenarioWorkCompanionView" };
+            workView.Configure(sandbox, showLifetime: false, animationsEnabled: true);
+            tree.Root.AddChild(workView);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+            var computer = workView.FindChild("WorkComputerArt", true, false) as TextureRect;
+            var counter = workView.FindChild("WorkCrtCounter", true, false) as Control;
+            var rig = workView.FindChild("WorkBuddyRig", true, false) as BuddyVisualRigView;
+            bool compositionBuilt = GodotObject.IsInstanceValid(computer) &&
+                computer!.Position.IsEqualApprox(new Vector2(200, -70)) &&
+                computer.Size.IsEqualApprox(new Vector2(520, 520)) &&
+                GodotObject.IsInstanceValid(counter) &&
+                counter!.Position.IsEqualApprox(new Vector2(396, 91)) &&
+                counter.Size.IsEqualApprox(new Vector2(137, 104)) &&
+                GodotObject.IsInstanceValid(rig);
+            checks.Add(new StartupCheck(
+                "work_companion_uses_supplied_pc_and_screen_counter",
+                compositionBuilt,
+                $"computer={computer?.GetRect()} counter={counter?.GetRect()} rig={rig is not null}"));
+
+            if (GodotObject.IsInstanceValid(rig))
+            {
+                Node3D torso = rig!.GetPartSocket(BuddyPartId.Torso);
+                Node3D leftHand = rig.GetPartSocket(BuddyPartId.LeftHand);
+                Node3D rightHand = rig.GetPartSocket(BuddyPartId.RightHand);
+                float restingLeftY = leftHand.GlobalPosition.Y;
+                bool sidewaysContactPose = Mathf.IsEqualApprox(
+                        torso.GlobalRotation.Y,
+                        Mathf.Pi / 6.0f) &&
+                    leftHand.GlobalPosition.X > torso.GlobalPosition.X &&
+                    rightHand.GlobalPosition.X > leftHand.GlobalPosition.X &&
+                    leftHand.GlobalPosition.Y < torso.GlobalPosition.Y &&
+                    rightHand.GlobalPosition.Y < torso.GlobalPosition.Y;
+
+                workView.NotifyActivity(WorkActivityKind.KeyboardPress);
+                bool subtleHandBob = leftHand.GlobalPosition.Y > restingLeftY &&
+                    Mathf.IsEqualApprox(leftHand.GlobalPosition.Y - restingLeftY, 3.0f);
+                checks.Add(new StartupCheck(
+                    "work_companion_keeps_sideways_contact_pose_and_small_hand_bob",
+                    sidewaysContactPose && subtleHandBob,
+                    $"yaw={torso.GlobalRotation.Y} left={leftHand.GlobalPosition} " +
+                    $"right={rightHand.GlobalPosition} bob={leftHand.GlobalPosition.Y - restingLeftY}"));
+            }
+            else
+            {
+                checks.Add(new StartupCheck(
+                    "work_companion_keeps_sideways_contact_pose_and_small_hand_bob",
+                    false,
+                    "work rig missing"));
+            }
+
+            workView.QueueFree();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
         finally
         {
