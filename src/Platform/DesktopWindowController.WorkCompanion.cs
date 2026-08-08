@@ -8,6 +8,8 @@ namespace DesktopBuddy.Platform;
 
 public partial class DesktopWindowController
 {
+    public static readonly Vector2I MinimumWorkCompanionSize = new(360, 215);
+
     private WindowSettings? _preWorkCompanionSettings;
 
     public bool WorkCompanionActive { get; private set; }
@@ -36,7 +38,7 @@ public partial class DesktopWindowController
             Rect = recovered,
             Transparent = true,
             Borderless = true,
-            Resizable = false,
+            Resizable = true,
             AlwaysOnTop = true,
         };
 
@@ -52,9 +54,9 @@ public partial class DesktopWindowController
             window.Mode = Window.ModeEnum.Windowed;
             // Work Mode intentionally uses a much smaller footprint than the playable room.
             // The normal room minimum is restored in ExitWorkCompanionWindow.
-            window.MinSize = Vector2I.One;
+            window.MinSize = MinimumWorkCompanionSize;
             window.Borderless = true;
-            window.Unresizable = true;
+            window.Unresizable = false;
             window.AlwaysOnTop = true;
             window.Transparent = TransparencyActive;
             GetViewport().TransparentBg = TransparencyActive;
@@ -79,6 +81,29 @@ public partial class DesktopWindowController
             GetWindow().Position = recovered.Position;
     }
 
+    public void ResizeWorkCompanion(Vector2I requestedSize)
+    {
+        if (!WorkCompanionActive)
+            return;
+        Rect2I recovered = RecoverWorkCompanionRect(
+            new Rect2I(_lastAppliedRect.Position, requestedSize));
+        _lastAppliedRect = recovered;
+        _lastAppliedSettings = _lastAppliedSettings with { Rect = recovered };
+        if (!_headless)
+        {
+            Window window = GetWindow();
+            window.Size = recovered.Size;
+            window.Position = recovered.Position;
+        }
+        ClientBoundsChanged?.Invoke(recovered);
+    }
+
+    public void StartWorkCompanionResize()
+    {
+        if (WorkCompanionActive && !_headless)
+            GetWindow().StartResize(DisplayServer.WindowResizeEdge.BottomRight);
+    }
+
     public void ExitWorkCompanionWindow()
     {
         if (!WorkCompanionActive)
@@ -98,9 +123,7 @@ public partial class DesktopWindowController
         {
             Window window = GetWindow();
             window.Mode = Window.ModeEnum.Windowed;
-            window.MinSize = new Vector2I(
-                RoomLayoutPolicy.MinimumRoomWidth,
-                RoomLayoutPolicy.MinimumRoomHeight);
+            window.MinSize = CompactMinimumSize;
             window.Borderless = restore.Borderless;
             window.Unresizable = !restore.Resizable;
             window.AlwaysOnTop = restore.AlwaysOnTop;
@@ -140,8 +163,10 @@ public partial class DesktopWindowController
         }
 
         Vector2I size = new(
-            Math.Clamp(requested.Size.X, 220, Math.Max(220, target.Size.X)),
-            Math.Clamp(requested.Size.Y, 150, Math.Max(150, target.Size.Y)));
+            Math.Clamp(requested.Size.X, MinimumWorkCompanionSize.X,
+                Math.Max(MinimumWorkCompanionSize.X, target.Size.X)),
+            Math.Clamp(requested.Size.Y, MinimumWorkCompanionSize.Y,
+                Math.Max(MinimumWorkCompanionSize.Y, target.Size.Y)));
         const int recoverable = 48;
         int minX = target.Position.X - size.X + recoverable;
         int maxX = target.End.X - recoverable;

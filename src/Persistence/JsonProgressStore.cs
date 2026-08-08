@@ -225,6 +225,7 @@ public sealed class JsonProgressStore : IProgressStore
         if (settings.SchemaVersion != LocalSettingsSave.CurrentSchemaVersion ||
             settings.Revision < 0 ||
             settings.WindowWidth < 360 || settings.WindowHeight < 270 ||
+            settings.WorkWindowWidth < 0 || settings.WorkWindowHeight < 0 ||
             settings.Dpi <= 0 ||
             settings.ZoomPercent is not (75 or 100 or 125 or 150 or 175 or 200) ||
             !float.IsFinite(settings.MasterVolume) ||

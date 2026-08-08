@@ -34,6 +34,7 @@ namespace DesktopBuddy.Presentation3D;
 public static class GrenadeMeshBuilder
 {
     public const int RadialSegments = 20;
+    public const float BodyBottomRadiusFactor = 1.12f;
 
     /// <summary>
     /// How far past the <b>drawn</b> radius the built grenade may reach. The cap and lever
@@ -71,7 +72,7 @@ public static class GrenadeMeshBuilder
         // grooves stepped into the belly so the light has something to break on.
         var rings = new List<Ring>
         {
-            new(-drawn * 1.12f, 0.0f, body),
+            new(-drawn * BodyBottomRadiusFactor, 0.0f, body),
             new(-drawn * 0.98f, 0.46f * drawn, body),
             new(-drawn * 0.74f, 0.80f * drawn, body),
             new(-drawn * 0.62f, 0.88f * drawn, body),
@@ -170,6 +171,9 @@ public static class GrenadeMeshBuilder
         ArgumentNullException.ThrowIfNull(profile);
         return profile.DrawnRadiusPx(radius);
     }
+
+    public static float VisualGroundOffset(GrenadeProfile profile, float radius) =>
+        Mathf.Max(0.0f, DrawnRadius(profile, radius) * BodyBottomRadiusFactor - radius);
 
     /// <summary>
     /// The sphere every vertex of a built grenade must lie inside. Shared with verification

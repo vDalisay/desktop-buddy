@@ -40,7 +40,9 @@ public partial class WorkCompanionCoordinator : Node
     private long _pendingKeyboard;
     private long _pendingMouse;
     private long _sessionSettledMilliCredits;
-    private bool _positionDirty;
+    private bool _geometryDirty;
+    private double _resizeSaveDelay;
+    private Vector2I _lastWorkSize;
     private bool _transitioning;
 
     public bool IsActive { get; private set; }
@@ -68,6 +70,7 @@ public partial class WorkCompanionCoordinator : Node
     public override void _Ready()
     {
         _sandbox.Shell.InputModeChanged += OnShellInputModeChanged;
+        _sandbox.Window.ClientBoundsChanged += OnWorkClientBoundsChanged;
     }
 
     public override void _Process(double delta)
@@ -75,6 +78,12 @@ public partial class WorkCompanionCoordinator : Node
         if (!IsActive)
             return;
         DrainActivity();
+        if (_resizeSaveDelay > 0.0)
+        {
+            _resizeSaveDelay = Math.Max(0.0, _resizeSaveDelay - delta);
+            if (_resizeSaveDelay == 0.0)
+                _ = PersistPreferencesObservedAsync(forceGeometry: true);
+        }
     }
 
     public async Task<bool> EnterAsync(CancellationToken token = default)
@@ -103,12 +112,8 @@ public partial class WorkCompanionCoordinator : Node
             var firstEntry = new WorkFirstEntryRewardService(
                 _context.Progress,
                 _work,
-                _context.CharacterSelection,
-                _context.Characters,
                 _context.Saves);
-            WorkFirstEntryRewardResult reward = await firstEntry.EnsureAsync(token);
-            if (!string.IsNullOrWhiteSpace(reward.Detail))
-                Log.Warn(Category, reward.Detail!);
+            await firstEntry.EnsureAsync(token);
 
             CompiledCharacterAppearance? appearance = await ResolveAppearanceAsync(token);
 
@@ -128,11 +133,15 @@ public partial class WorkCompanionCoordinator : Node
             _view.ExitRequested += OnExitRequested;
             _view.CounterModeToggleRequested += OnCounterModeToggleRequested;
             _view.AnimationPreferenceChanged += OnAnimationPreferenceChanged;
+            _view.ResizeRequested += OnResizeRequested;
             _view.DraggedBy += OnDraggedBy;
             _view.DragFinished += OnDragFinished;
             GetTree().Root.AddChild(_view);
+            _lastWorkSize = _sandbox.Window.WorkCompanionRect.Size;
 
-            _session = new WorkSessionState();
+            _session = _work.ActiveSession is { } journal
+                ? new WorkSessionState(journal)
+                : new WorkSessionState();
             _sessionSettledMilliCredits = 0;
             UpdateCounter();
 
@@ -145,6 +154,9 @@ public partial class WorkCompanionCoordinator : Node
                 await RollbackFailedEntryAsync();
                 return false;
             }
+
+            _work.CheckpointSession(_session.Snapshot());
+            await _context.Saves.FlushProgressAsync(force: true, token);
 
             IsActive = true;
             ActiveChanged?.Invoke(true);
@@ -175,8 +187,25 @@ public partial class WorkCompanionCoordinator : Node
             _activitySource?.Stop();
             DrainActivity();
 
-            await PersistPreferencesAsync(forcePosition: _positionDirty);
-            await _context.Saves.FlushProgressAsync(force: true, token);
+            try
+            {
+                await PersistPreferencesAsync(forceGeometry: _geometryDirty);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                Log.Error(Category, $"Final Work preference save failed: {exception.Message}");
+            }
+            _work.ClearActiveSession();
+            try
+            {
+                await _context.Saves.FlushProgressAsync(force: true, token);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // A failed save remains dirty for the app-level quit/focus retry, but must not
+                // trap the player in a companion whose global capture has already stopped.
+                Log.Error(Category, $"Final Work progress save failed: {exception.Message}");
+            }
 
             TearDownActivitySource();
             TearDownView();
@@ -204,6 +233,8 @@ public partial class WorkCompanionCoordinator : Node
     {
         if (GodotObject.IsInstanceValid(_sandbox) && GodotObject.IsInstanceValid(_sandbox.Shell))
             _sandbox.Shell.InputModeChanged -= OnShellInputModeChanged;
+        if (GodotObject.IsInstanceValid(_sandbox) && GodotObject.IsInstanceValid(_sandbox.Window))
+            _sandbox.Window.ClientBoundsChanged -= OnWorkClientBoundsChanged;
 
         // Quit/shutdown can bypass the double-click exit path. Stop capture first, consume the
         // final anonymous deltas, then synchronously checkpoint before nodes disappear. This is
@@ -212,9 +243,10 @@ public partial class WorkCompanionCoordinator : Node
         {
             _activitySource?.Stop();
             DrainActivity();
+            _work.ClearActiveSession();
             try
             {
-                PersistPreferencesAsync(forcePosition: _positionDirty).GetAwaiter().GetResult();
+                PersistPreferencesAsync(forceGeometry: _geometryDirty).GetAwaiter().GetResult();
                 _context.Saves.FlushProgressAsync(force: true).GetAwaiter().GetResult();
             }
             catch (Exception exception)
@@ -276,19 +308,20 @@ public partial class WorkCompanionCoordinator : Node
         {
             _session.Record(WorkActivityKind.KeyboardPress, keyboard);
             _work.Record(WorkActivityKind.KeyboardPress, keyboard);
-            _view?.NotifyActivity(WorkActivityKind.KeyboardPress);
+            _view?.NotifyActivity(WorkActivityKind.KeyboardPress, keyboard);
         }
         if (mouse > 0)
         {
             _session.Record(WorkActivityKind.MouseClick, mouse);
             _work.Record(WorkActivityKind.MouseClick, mouse);
-            _view?.NotifyActivity(WorkActivityKind.MouseClick);
+            _view?.NotifyActivity(WorkActivityKind.MouseClick, mouse);
         }
 
         // Settle immediately. Evaluate claims a lifetime milestone as its claimability test and
         // that claim is durable, so any gap between claiming and paying is a window in which a
         // crash burns the reward permanently.
         IReadOnlyList<WorkMilestoneEarned> newlyEarned = _session.Evaluate(_work, _milestones);
+        _work.CheckpointSession(_session.Snapshot());
         UpdateCounter();
         if (newlyEarned.Count > 0)
         {
@@ -405,31 +438,41 @@ public partial class WorkCompanionCoordinator : Node
     {
         Rect2I current = _sandbox.Window.WorkCompanionRect;
         _sandbox.Window.MoveWorkCompanion(current.Position + delta);
-        _positionDirty = true;
+        _geometryDirty = true;
     }
 
-    private void OnDragFinished() => _ = PersistPreferencesObservedAsync(forcePosition: true);
+    private void OnDragFinished() => _ = PersistPreferencesObservedAsync(forceGeometry: true);
+    private void OnResizeRequested() => _sandbox.Window.StartWorkCompanionResize();
     private void OnExitRequested() => _ = ExitObservedAsync();
 
-    private async Task PersistPreferencesAsync(bool forcePosition = false)
+    private void OnWorkClientBoundsChanged(Rect2I rect)
+    {
+        if (!IsActive || rect.Size == _lastWorkSize)
+            return;
+        _lastWorkSize = rect.Size;
+        _geometryDirty = true;
+        _resizeSaveDelay = 0.35;
+    }
+
+    private async Task PersistPreferencesAsync(bool forceGeometry = false)
     {
         if (!GodotObject.IsInstanceValid(_view))
             return;
         Rect2I rect = _sandbox.Window.WorkCompanionRect;
         await _sandbox.Shell.SaveWorkPreferencesAsync(
-            rect.Position,
-            forcePosition || _sandbox.Shell.CurrentLocalSettings.WorkPositionSet,
+            rect,
+            forceGeometry || _sandbox.Shell.CurrentLocalSettings.WorkPositionSet,
             _view!.AnimationsEnabled,
             _view.ShowLifetime);
-        if (forcePosition)
-            _positionDirty = false;
+        if (forceGeometry)
+            _geometryDirty = false;
     }
 
-    private async Task PersistPreferencesObservedAsync(bool forcePosition = false)
+    private async Task PersistPreferencesObservedAsync(bool forceGeometry = false)
     {
         try
         {
-            await PersistPreferencesAsync(forcePosition);
+            await PersistPreferencesAsync(forceGeometry);
         }
         catch (Exception exception)
         {
@@ -485,6 +528,7 @@ public partial class WorkCompanionCoordinator : Node
         _activitySource.Activity -= OnRawActivity;
         _activitySource.Dispose();
         _activitySource = null;
+        _capturePausedForSuspend = false;
         Interlocked.Exchange(ref _pendingKeyboard, 0);
         Interlocked.Exchange(ref _pendingMouse, 0);
     }
@@ -499,6 +543,7 @@ public partial class WorkCompanionCoordinator : Node
         _view!.ExitRequested -= OnExitRequested;
         _view.CounterModeToggleRequested -= OnCounterModeToggleRequested;
         _view.AnimationPreferenceChanged -= OnAnimationPreferenceChanged;
+        _view.ResizeRequested -= OnResizeRequested;
         _view.DraggedBy -= OnDraggedBy;
         _view.DragFinished -= OnDragFinished;
         _view.QueueFree();

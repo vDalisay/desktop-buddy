@@ -366,6 +366,7 @@ public partial class GrenadeVisual3D : Node3D
             pinIn ? _pinnedMesh! : _pinPulledMesh!,
             _bodyMaterial,
             _profile.VisualDepthOffset);
+        _slot.PositionOffset2D = Vector2.Up * GrenadeMeshBuilder.VisualGroundOffset(_profile, radius);
     }
 
     private void BuildBlast()

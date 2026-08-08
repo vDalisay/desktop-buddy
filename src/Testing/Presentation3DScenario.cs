@@ -194,7 +194,10 @@ public sealed class Presentation3DScenario : IScenario
     {
         RoomLayout layout = lab.Boundaries.CurrentLayout;
         Vector2 viewportSize = lab.GetViewport().GetVisibleRect().Size;
-        float pixelsPerWorldUnit = viewportSize.Y / (float)layout.RoomHeight;
+        // The mapping the 3D camera must match is Camera2D's: room centre at the viewport
+        // centre, one world unit per EffectiveZoom pixels. The room no longer fills the
+        // viewport (frame chrome is inset out of it), so viewportHeight/RoomHeight is not it.
+        float pixelsPerWorldUnit = (float)layout.EffectiveZoom;
         Vector2 world = lab.Buddy.Rig.Torso.GlobalPosition;
         var roomCenter = new Vector2(
             (float)layout.RoomWidth * 0.5f,

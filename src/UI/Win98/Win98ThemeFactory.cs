@@ -20,6 +20,8 @@ public static class Win98ThemeFactory
     public const int Border = 2;
     public const int TitleBarHeight = 22;
     public const int StatusBarHeight = 22;
+    /// <summary>Centered world inset that places its floor on the status bar's top edge.</summary>
+    public const int ChromeHeight = 58;
     public const int ControlHeight = 24;
     public const int Gap = 4;
 

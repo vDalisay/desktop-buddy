@@ -29,6 +29,7 @@ public sealed class WorkProgressResetTests
         Assert.Equal(0, work.Lifetime.MouseClicks);
         Assert.Empty(work.ClaimedLifetimeMilestoneIds);
         Assert.False(work.FirstEntryGlassesGranted);
+        Assert.Null(work.ActiveSession);
         Assert.False(saves.IsDirty);
     }
 
@@ -44,6 +45,7 @@ public sealed class WorkProgressResetTests
         work.Record(WorkActivityKind.MouseClick, 9);
         work.ClaimLifetimeMilestone("work.test.claim");
         work.MarkFirstEntryGlassesGranted();
+        work.CheckpointSession(new WorkSessionState().Snapshot());
         await saves.FlushProgressAsync(force: true);
         WorkProgressSnapshot before = work.Snapshot();
 
@@ -55,6 +57,11 @@ public sealed class WorkProgressResetTests
         Assert.Equal(before.Lifetime, after.Lifetime);
         Assert.Equal(before.FirstEntryGlassesGranted, after.FirstEntryGlassesGranted);
         Assert.Equal(before.ClaimedLifetimeMilestoneIds, after.ClaimedLifetimeMilestoneIds);
+        Assert.Equal(before.ActiveSession?.SessionId, after.ActiveSession?.SessionId);
+        Assert.Equal(before.ActiveSession?.Counters, after.ActiveSession?.Counters);
+        Assert.Equal(
+            before.ActiveSession?.EarnedRepeatPerSessionMilestoneIds,
+            after.ActiveSession?.EarnedRepeatPerSessionMilestoneIds);
         Assert.False(saves.IsDirty);
     }
 }

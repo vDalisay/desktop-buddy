@@ -19,6 +19,11 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     private const string Category = "Window";
     private const int VsyncOffMaximumFps = 240;
 
+    /// <summary>Smallest compact window that still leaves a full room under the frame chrome.</summary>
+    public static readonly Vector2I CompactMinimumSize = new(
+        RoomLayoutPolicy.MinimumRoomWidth,
+        RoomLayoutPolicy.MinimumRoomHeight + UI.Win98.Win98ThemeFactory.ChromeHeight);
+
     private IWindowsDesktopAdapter _adapter = new EmulatedWindowsDesktopAdapter();
     private bool _headless;
     private Rect2I _lastAppliedRect = WindowSettings.Defaults.Rect;
@@ -81,9 +86,7 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             Window window = GetWindow();
             // The room policy rejects client boxes below its floor, so the OS window may
             // never get there: this clamps every resize path (grips, OS drag, restore).
-            window.MinSize = new Vector2I(
-                RoomLayoutPolicy.MinimumRoomWidth,
-                RoomLayoutPolicy.MinimumRoomHeight);
+            window.MinSize = CompactMinimumSize;
             window.Borderless = settings.Borderless;
             window.Unresizable = !settings.Resizable;
             window.AlwaysOnTop = settings.AlwaysOnTop;
@@ -361,7 +364,9 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         // overwrote the saved compact rect with the whole screen, and because the placement
         // policy caps size at the monitor rather than a fixed ceiling, nothing rejected it —
         // compact then restored full-screen-sized forever after.
-        if (LayoutMode == WindowLayoutMode.Compact && !_suppressClientBoundsChanged)
+        if (LayoutMode == WindowLayoutMode.Compact &&
+            !WorkCompanionActive &&
+            !_suppressClientBoundsChanged)
             _compactSettings = _lastAppliedSettings;
         if (!_suppressClientBoundsChanged)
             ClientBoundsChanged?.Invoke(rect);

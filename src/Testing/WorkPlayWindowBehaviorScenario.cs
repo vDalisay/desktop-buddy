@@ -3,10 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Platform;
+using DesktopBuddy.Work;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -161,6 +165,97 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                 "fullscreen_overlay_refused_without_transparency",
                 refused,
                 $"available={sandbox.Window.FullscreenOverlayAvailable} layout={sandbox.Window.LayoutMode}"));
+
+            var workView = new WorkCompanionView { Name = "ScenarioWorkCompanionView" };
+            workView.Configure(sandbox, showLifetime: false, animationsEnabled: true);
+            tree.Root.AddChild(workView);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+            var computer = workView.FindChild("WorkComputerArt", true, false) as TextureRect;
+            Node? generatedProps = workView.FindChild("WorkCompanionArt", true, false);
+            var counter = workView.FindChild("WorkCrtCounter", true, false) as Control;
+            var rig = workView.FindChild("WorkBuddyRig", true, false) as BuddyVisualRigView;
+            bool compositionBuilt = GodotObject.IsInstanceValid(computer) &&
+                computer!.Position.IsEqualApprox(new Vector2(245, -40)) &&
+                computer.Size.IsEqualApprox(new Vector2(460, 460)) &&
+                generatedProps is null &&
+                GodotObject.IsInstanceValid(counter) &&
+                counter!.Position.IsEqualApprox(new Vector2(418, 102)) &&
+                counter.Size.IsEqualApprox(new Vector2(121, 92)) &&
+                GodotObject.IsInstanceValid(rig);
+            checks.Add(new StartupCheck(
+                "work_companion_uses_smaller_pc_without_generated_furniture",
+                compositionBuilt,
+                $"computer={computer?.GetRect()} generatedProps={generatedProps is not null} " +
+                $"counter={counter?.GetRect()} rig={rig is not null}"));
+
+            if (GodotObject.IsInstanceValid(rig))
+            {
+                Node3D torso = rig!.GetPartSocket(BuddyPartId.Torso);
+                Node3D leftHand = rig.GetPartSocket(BuddyPartId.LeftHand);
+                Node3D rightHand = rig.GetPartSocket(BuddyPartId.RightHand);
+                float restingLeftY = leftHand.GlobalPosition.Y;
+                float restingRightY = rightHand.GlobalPosition.Y;
+                bool sidewaysPose = Mathf.IsEqualApprox(torso.GlobalRotation.Y, Mathf.Pi / 6.0f) &&
+                    leftHand.GlobalPosition.X > torso.GlobalPosition.X &&
+                    rightHand.GlobalPosition.X > leftHand.GlobalPosition.X;
+
+                // Every connector must stay at its clamped minimum length, so no stretched tube
+                // shows between the spheres (the owner's complaint about the earlier pass).
+                bool limbsTucked = true;
+                var tuckReport = new System.Text.StringBuilder();
+                for (int index = 0; index < rig.ConnectorVisualCount; index++)
+                {
+                    var connector = (MeshInstance3D)rig.GetConnectorVisual(index);
+                    float authoredLength = ((CapsuleMesh)connector.Mesh).Height;
+                    float drawnLength = connector.Scale.Y * authoredLength;
+                    limbsTucked &= drawnLength <= 1.01f;
+                    tuckReport.Append($"c{index}={drawnLength:0.0} ");
+                }
+
+                // Both hands must render in front of the torso sphere, not inside it.
+                bool handsInFront =
+                    leftHand.GlobalPosition.Z > torso.GlobalPosition.Z +
+                        rig.PartMeshRadius(BuddyPartId.Torso) &&
+                    rightHand.GlobalPosition.Z > torso.GlobalPosition.Z +
+                        rig.PartMeshRadius(BuddyPartId.Torso);
+
+                workView.NotifyActivity(WorkActivityKind.MouseClick);
+                bool leftUpRightDown = leftHand.GlobalPosition.Y > restingLeftY &&
+                    rightHand.GlobalPosition.Y < restingRightY;
+                workView.NotifyActivity(WorkActivityKind.MouseClick);
+                bool rightUpLeftDown = rightHand.GlobalPosition.Y > restingRightY &&
+                    leftHand.GlobalPosition.Y < restingLeftY;
+                checks.Add(new StartupCheck(
+                    "work_companion_faces_pc_sideways_with_tucked_limbs",
+                    sidewaysPose && limbsTucked && handsInFront &&
+                        leftUpRightDown && rightUpLeftDown,
+                    $"rotation={torso.GlobalRotation} {tuckReport}" +
+                    $"left={leftHand.GlobalPosition} right={rightHand.GlobalPosition}"));
+            }
+            else
+            {
+                checks.Add(new StartupCheck(
+                    "work_companion_faces_pc_sideways_with_tucked_limbs",
+                    false,
+                    "work rig missing"));
+            }
+
+            var exitButton = workView.FindChild("WorkExitButton", true, false) as Button;
+            var motionToggle = workView.FindChild("WorkMotionToggle", true, false) as Button;
+            bool exitRaised = false;
+            workView.ExitRequested += () => exitRaised = true;
+            exitButton?.EmitSignal(BaseButton.SignalName.Pressed);
+            checks.Add(new StartupCheck(
+                "work_corner_controls_expose_motion_and_exit",
+                exitRaised &&
+                    GodotObject.IsInstanceValid(motionToggle) &&
+                    motionToggle!.Position.X > 600.0f &&
+                    exitButton!.Position.X > motionToggle.Position.X,
+                $"exitRaised={exitRaised} motion={motionToggle?.GetRect()} exit={exitButton?.GetRect()}"));
+
+            workView.QueueFree();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
         finally
         {

@@ -146,8 +146,12 @@ public sealed class BaseballPullbackScenario : IScenario
                 torso.X + side * 120.0f,
                 bounds.Position.X + 125.0f,
                 bounds.End.X - 125.0f),
+            // Upper torso, deliberately: this used to read torso.Y and land there only because
+            // the room's floor clamp pulled it up. The clamp is a safety rail, not the aim — a
+            // shot that drifts down to the hands gets caught instead of scoring the hit this
+            // check is about.
             Mathf.Clamp(
-                torso.Y,
+                torso.Y - 8.0f,
                 bounds.Position.Y + 40.0f,
                 bounds.End.Y - 40.0f));
         await M4ObjectScenarioSupport.MovePointer(tree, lab, aimAnchor, MouseButtonMask.Left);

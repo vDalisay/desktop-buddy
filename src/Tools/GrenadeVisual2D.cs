@@ -152,7 +152,8 @@ public partial class GrenadeVisual2D : Node2D
 
         LooseObjectBody body = _body!;
         // The presenter sits at the world origin, so world coordinates draw directly.
-        Vector2 centre = body.GlobalPosition;
+        Vector2 centre = body.GlobalPosition +
+                         Vector2.Up * _profile.VisualGroundOffsetPx(body.Radius);
         // The drawn size, not the collider size — the same one authored number the mesh
         // builds at, so the two modes are one grenade at one size.
         float radius = _profile.DrawnRadiusPx(body.Radius);

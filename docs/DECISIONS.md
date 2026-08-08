@@ -4,6 +4,30 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Work Mode Typing Companion — Owner Accepted (2026-08-08)
+
+The owner accepted the implemented Work Mode typing companion plan, including WM0–WM5 and
+the independent resize follow-up. The already-recorded accepted gaps remain non-blocking. The
+four-hour soak and standalone Windows monitor/DPI/input matrix remain release verification
+gates rather than implementation blockers.
+
+## Work Mode Independent Resizing — Owner Approved (2026-08-08)
+
+Work Mode adds a hover-only diagonal resize button beside its motion and exit controls. Holding
+the button performs a native bottom-right window resize and uses the platform resize cursor.
+Work position and size persist as machine-local settings between Work entries. The normal game
+window retains its own last compact position and size; Work resize and app-save paths must never
+replace that normal geometry.
+
+## Work Mode Glasses Reward Revision — Owner Approved (2026-08-08)
+
+The first deliberate click of the top-level **Work** command unlocks the project-owned Work
+glasses cosmetic once through the shared account/save ownership model. The reward is **not
+automatically equipped** and never edits the active character document. Work Mode always
+respects the player's current glasses selection, including on first entry. This decision
+supersedes only the earlier auto-equip requirements in
+`docs/WORK_MODE_TYPING_COMPANION_PLAN.md`; the one-shot ownership grant remains binding.
+
 ## Milestone 4 Owner Gate — Accepted (2026-07-27)
 
 The owner accepted Milestone 4 in full after the repaired **Hide to Tray** path was

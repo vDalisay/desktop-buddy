@@ -81,6 +81,7 @@ public sealed record WorkProgressSave
     public long MouseClicks { get; init; }
     public List<string> ClaimedLifetimeMilestoneIds { get; init; } = [];
     public bool FirstEntryGlassesGranted { get; init; }
+    public WorkSessionSave? ActiveSession { get; init; }
 
     public static WorkProgressSave FromSnapshot(in WorkProgressSnapshot snapshot) => new()
     {
@@ -89,13 +90,38 @@ public sealed record WorkProgressSave
         MouseClicks = snapshot.Lifetime.MouseClicks,
         ClaimedLifetimeMilestoneIds = [.. snapshot.ClaimedLifetimeMilestoneIds],
         FirstEntryGlassesGranted = snapshot.FirstEntryGlassesGranted,
+        ActiveSession = snapshot.ActiveSession.HasValue
+            ? WorkSessionSave.FromSnapshot(snapshot.ActiveSession.Value)
+            : null,
     };
 
     public WorkProgressState CreateState() => new(
         new WorkCounterSnapshot(KeyboardPresses, MouseClicks),
         ClaimedLifetimeMilestoneIds,
         FirstEntryGlassesGranted,
-        Revision);
+        Revision,
+        ActiveSession?.CreateSnapshot());
+}
+
+public sealed record WorkSessionSave
+{
+    public Guid SessionId { get; init; }
+    public long KeyboardPresses { get; init; }
+    public long MouseClicks { get; init; }
+    public List<string> EarnedRepeatPerSessionMilestoneIds { get; init; } = [];
+
+    public static WorkSessionSave FromSnapshot(in WorkSessionSnapshot snapshot) => new()
+    {
+        SessionId = snapshot.SessionId,
+        KeyboardPresses = snapshot.Counters.KeyboardPresses,
+        MouseClicks = snapshot.Counters.MouseClicks,
+        EarnedRepeatPerSessionMilestoneIds = [.. snapshot.EarnedRepeatPerSessionMilestoneIds],
+    };
+
+    public WorkSessionSnapshot CreateSnapshot() => new(
+        SessionId,
+        new WorkCounterSnapshot(KeyboardPresses, MouseClicks),
+        EarnedRepeatPerSessionMilestoneIds);
 }
 
 public sealed record FunActivitySave
@@ -258,9 +284,11 @@ public sealed record LocalSettingsSave
     public bool LaunchWithWindows { get; init; }
     public string LastInputMode { get; init; } = "work";
 
-    // Work Mode is a machine-local presentation. Zero width/height means use default placement.
+    // Work Mode is a machine-local presentation. Zero width/height means use the default size.
     public int WorkWindowX { get; init; }
     public int WorkWindowY { get; init; }
+    public int WorkWindowWidth { get; init; }
+    public int WorkWindowHeight { get; init; }
     public bool WorkPositionSet { get; init; }
     public bool WorkAnimationsEnabled { get; init; } = true;
     public bool WorkShowLifetimeCounter { get; init; }

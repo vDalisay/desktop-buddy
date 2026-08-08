@@ -113,11 +113,17 @@ public readonly record struct WorkProgressSnapshot(
     long Revision,
     WorkCounterSnapshot Lifetime,
     IReadOnlyList<string> ClaimedLifetimeMilestoneIds,
-    bool FirstEntryGlassesGranted);
+    bool FirstEntryGlassesGranted,
+    WorkSessionSnapshot? ActiveSession = null);
+
+public readonly record struct WorkSessionSnapshot(
+    Guid SessionId,
+    WorkCounterSnapshot Counters,
+    IReadOnlyList<string> EarnedRepeatPerSessionMilestoneIds);
 
 /// <summary>
-/// Run-lifetime owner of durable Work Mode progress. Session counters intentionally live in
-/// <see cref="WorkSessionState"/> so starting a new session cannot accidentally rewrite lifetime history.
+/// Run-lifetime owner of durable Work Mode progress. Live session mutation stays in
+/// <see cref="WorkSessionState"/>; only its bounded aggregate recovery snapshot is journaled here.
 /// </summary>
 public sealed class WorkProgressState
 {
@@ -127,13 +133,15 @@ public sealed class WorkProgressState
         WorkCounterSnapshot lifetime = default,
         IEnumerable<string>? claimedLifetimeMilestoneIds = null,
         bool firstEntryGlassesGranted = false,
-        long revision = 0)
+        long revision = 0,
+        WorkSessionSnapshot? activeSession = null)
     {
         if (lifetime.KeyboardPresses < 0 || lifetime.MouseClicks < 0 || revision < 0)
             throw new ArgumentOutOfRangeException(nameof(lifetime));
         Lifetime = lifetime;
         FirstEntryGlassesGranted = firstEntryGlassesGranted;
         Revision = revision;
+        ActiveSession = ValidateSession(activeSession);
         if (claimedLifetimeMilestoneIds is not null)
             foreach (string id in claimedLifetimeMilestoneIds.Where(id => !string.IsNullOrWhiteSpace(id)))
                 _claimedLifetime.Add(id);
@@ -142,6 +150,7 @@ public sealed class WorkProgressState
     public long Revision { get; private set; }
     public WorkCounterSnapshot Lifetime { get; private set; }
     public bool FirstEntryGlassesGranted { get; private set; }
+    public WorkSessionSnapshot? ActiveSession { get; private set; }
     public IReadOnlyCollection<string> ClaimedLifetimeMilestoneIds => _claimedLifetime;
 
     public event Action? Changed;
@@ -173,10 +182,25 @@ public sealed class WorkProgressState
         return true;
     }
 
+    public void CheckpointSession(WorkSessionSnapshot session)
+    {
+        ActiveSession = ValidateSession(session);
+        Touch();
+    }
+
+    public bool ClearActiveSession()
+    {
+        if (!ActiveSession.HasValue)
+            return false;
+        ActiveSession = null;
+        Touch();
+        return true;
+    }
+
     public WorkProgressSnapshot Snapshot()
     {
         string[] ids = _claimedLifetime.OrderBy(id => id, StringComparer.Ordinal).ToArray();
-        return new WorkProgressSnapshot(Revision, Lifetime, ids, FirstEntryGlassesGranted);
+        return new WorkProgressSnapshot(Revision, Lifetime, ids, FirstEntryGlassesGranted, ActiveSession);
     }
 
     /// <summary>
@@ -195,6 +219,7 @@ public sealed class WorkProgressState
 
         Lifetime = snapshot.Lifetime;
         FirstEntryGlassesGranted = snapshot.FirstEntryGlassesGranted;
+        ActiveSession = ValidateSession(snapshot.ActiveSession);
         _claimedLifetime.Clear();
         foreach (string id in snapshot.ClaimedLifetimeMilestoneIds.Where(id => !string.IsNullOrWhiteSpace(id)))
             _claimedLifetime.Add(id);
@@ -207,6 +232,28 @@ public sealed class WorkProgressState
         Revision = Revision == long.MaxValue ? long.MaxValue : Revision + 1;
         Changed?.Invoke();
     }
+
+    private static WorkSessionSnapshot? ValidateSession(WorkSessionSnapshot? session)
+    {
+        if (!session.HasValue)
+            return null;
+        WorkSessionSnapshot value = session.Value;
+        if (value.SessionId == Guid.Empty ||
+            value.Counters.KeyboardPresses < 0 ||
+            value.Counters.MouseClicks < 0 ||
+            value.EarnedRepeatPerSessionMilestoneIds is null ||
+            value.EarnedRepeatPerSessionMilestoneIds.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new ArgumentException("Active Work session journal is invalid.", nameof(session));
+        }
+        return value with
+        {
+            EarnedRepeatPerSessionMilestoneIds = value.EarnedRepeatPerSessionMilestoneIds
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray(),
+        };
+    }
 }
 
 public sealed class WorkSessionState
@@ -218,10 +265,34 @@ public sealed class WorkSessionState
         SessionId = sessionId ?? Guid.NewGuid();
     }
 
+    public WorkSessionState(WorkSessionSnapshot snapshot)
+    {
+        if (snapshot.SessionId == Guid.Empty ||
+            snapshot.Counters.KeyboardPresses < 0 ||
+            snapshot.Counters.MouseClicks < 0 ||
+            snapshot.EarnedRepeatPerSessionMilestoneIds is null)
+        {
+            throw new ArgumentException("Work session snapshot is invalid.", nameof(snapshot));
+        }
+        SessionId = snapshot.SessionId;
+        Counters = snapshot.Counters;
+        foreach (string id in snapshot.EarnedRepeatPerSessionMilestoneIds)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("Work session milestone IDs cannot be blank.", nameof(snapshot));
+            _earnedSession.Add(id);
+        }
+    }
+
     public Guid SessionId { get; }
     public WorkCounterSnapshot Counters { get; private set; }
 
     public void Record(WorkActivityKind kind, long count = 1) => Counters = Counters.Add(kind, count);
+
+    public WorkSessionSnapshot Snapshot() => new(
+        SessionId,
+        Counters,
+        _earnedSession.OrderBy(id => id, StringComparer.Ordinal).ToArray());
 
     public IReadOnlyList<WorkMilestoneEarned> Evaluate(
         WorkProgressState lifetime,
