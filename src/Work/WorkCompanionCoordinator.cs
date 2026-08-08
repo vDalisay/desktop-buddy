@@ -276,13 +276,13 @@ public partial class WorkCompanionCoordinator : Node
         {
             _session.Record(WorkActivityKind.KeyboardPress, keyboard);
             _work.Record(WorkActivityKind.KeyboardPress, keyboard);
-            _view?.NotifyActivity(WorkActivityKind.KeyboardPress);
+            _view?.NotifyActivity(WorkActivityKind.KeyboardPress, keyboard);
         }
         if (mouse > 0)
         {
             _session.Record(WorkActivityKind.MouseClick, mouse);
             _work.Record(WorkActivityKind.MouseClick, mouse);
-            _view?.NotifyActivity(WorkActivityKind.MouseClick);
+            _view?.NotifyActivity(WorkActivityKind.MouseClick, mouse);
         }
 
         // Settle immediately. Evaluate claims a lifetime milestone as its claimability test and

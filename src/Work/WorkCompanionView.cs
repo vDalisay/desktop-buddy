@@ -12,8 +12,8 @@ using Godot;
 namespace DesktopBuddy.Work;
 
 /// <summary>
-/// Transparent Work-mode composition: physics-free buddy preview, supplied retro PC art,
-/// CRT counter, drag gesture, motion toggle and double-click exit gesture.
+/// Transparent Work-mode composition: sideways physics-free buddy preview, supplied retro PC
+/// art, CRT counter, drag gesture, motion toggle and double-click exit gesture.
 /// </summary>
 public partial class WorkCompanionView : CanvasLayer
 {
@@ -24,11 +24,13 @@ public partial class WorkCompanionView : CanvasLayer
     private const string ComputerTexturePath = "res://assets/work/retro_pc.png";
     private const double ReactionSeconds = 0.11;
     private const float DragThreshold = 5.0f;
+
+    // The buddy's own committed facing yaw (BuddyExpressionProfile.FacingYawDegrees), so the
+    // Work pose reads as the same sideways look it uses when walking toward something.
     private const float SidewaysYawRadians = Mathf.Pi / 6.0f;
 
     private SandboxRoot _sandbox = null!;
     private Control _root = null!;
-    private WorkCompanionArt _art = null!;
     private WorkCrtDisplay _counter = null!;
     private Button _motionToggle = null!;
     private BuddyVisualRigView _rig = null!;
@@ -40,9 +42,11 @@ public partial class WorkCompanionView : CanvasLayer
     private bool _dragging;
     private Vector2 _dragOrigin;
     private double _reactionRemaining;
+    private int _reactionSide = -1;
+    private int _nextReactionSide;
 
-    private static readonly Rect2 BuddyHitRect = new(18, 28, 400, 315);
-    private static readonly Rect2 CrtHitRect = new(396, 91, 137, 104);
+    private static readonly Rect2 BuddyHitRect = new(228, 78, 152, 228);
+    private static readonly Rect2 CrtHitRect = new(418, 102, 121, 92);
 
     public event Action? ExitRequested;
     public event Action? CounterModeToggleRequested;
@@ -100,10 +104,12 @@ public partial class WorkCompanionView : CanvasLayer
             _counter.SetScope(showLifetime);
     }
 
-    public void NotifyActivity(WorkActivityKind kind)
+    public void NotifyActivity(WorkActivityKind _, long count = 1)
     {
-        if (!_animationsEnabled)
+        if (!_animationsEnabled || count <= 0)
             return;
+        _reactionSide = (int)((_nextReactionSide + count - 1) & 1);
+        _nextReactionSide = (int)((_nextReactionSide + count) & 1);
         _reactionRemaining = ReactionSeconds;
         ApplyWorkPose();
     }
@@ -199,21 +205,13 @@ public partial class WorkCompanionView : CanvasLayer
         _root.AddChild(new TextureRect
         {
             Name = "WorkComputerArt",
-            Position = new Vector2(200, -70),
-            Size = new Vector2(520, 520),
+            Position = new Vector2(245, -40),
+            Size = new Vector2(460, 460),
             Texture = computerTexture,
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.Scale,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         });
-
-        _art = new WorkCompanionArt
-        {
-            Name = "WorkCompanionArt",
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        _art.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _root.AddChild(_art);
 
         _counter = new WorkCrtDisplay
         {
@@ -328,31 +326,40 @@ public partial class WorkCompanionView : CanvasLayer
         if (!GodotObject.IsInstanceValid(_rig))
             return;
 
-        // Keep the normal walking/rest silhouette and the accepted sideways presentation.
-        // Only the hands reach forward to rest on the top-left edge of the PC chassis.
+        // Same sideways silhouette the buddy uses when it walks: the shared 30 degree facing
+        // yaw, standing next to the PC with both hands reaching toward it. Every part offset
+        // stays inside the connector clamp (surface gap below ConnectorMinimumLength), so no
+        // stretched neck, arm or leg tube shows between the spheres.
         Vector2 torso = _source.ReadTransform(BuddyPartId.Torso).Position + new Vector2(49, 10);
         Vector2 head = torso + new Vector2(0, -50);
-        Vector2 leftHand = torso + new Vector2(45, 20);
-        Vector2 rightHand = torso + new Vector2(68, 23);
-        Vector2 leftFoot = torso + new Vector2(-22, 55);
-        Vector2 rightFoot = torso + new Vector2(22, 55);
+        Vector2 leftHand = torso + new Vector2(26, 22);
+        Vector2 rightHand = torso + new Vector2(40, 16);
+        Vector2 leftFoot = torso + new Vector2(-16, 40);
+        Vector2 rightFoot = torso + new Vector2(16, 40);
 
-        if (_animationsEnabled && _reactionRemaining > 0.0)
+        if (_animationsEnabled && _reactionRemaining > 0.0 && _reactionSide >= 0)
         {
-            leftHand += new Vector2(0, -3);
-            rightHand += new Vector2(0, -3);
+            if (_reactionSide == 0)
+            {
+                leftHand += new Vector2(0, -7);
+                rightHand += new Vector2(0, 3);
+            }
+            else
+            {
+                rightHand += new Vector2(0, -7);
+                leftHand += new Vector2(0, 3);
+            }
         }
 
         BuddyVisualPartPose Pose(BuddyPartId id, Vector2 position)
         {
             var transform = new BuddyVisualTransform(position, 0.0f, Vector2.Zero);
             Vector3 pivot = WorldPlaneMapping.To3D(torso);
-            Vector3 flatPosition = WorldPlaneMapping.To3D(position);
-            Vector3 sidewaysPosition = pivot +
-                new Basis(Vector3.Up, SidewaysYawRadians) * (flatPosition - pivot);
+            Vector3 flat = WorldPlaneMapping.To3D(position);
+            Vector3 yawed = pivot + (new Basis(Vector3.Up, SidewaysYawRadians) * (flat - pivot));
             return new BuddyVisualPartPose(
                 transform,
-                sidewaysPosition,
+                yawed,
                 new Vector3(0.0f, SidewaysYawRadians, 0.0f));
         }
 
@@ -363,85 +370,10 @@ public partial class WorkCompanionView : CanvasLayer
             Pose(BuddyPartId.RightHand, rightHand),
             Pose(BuddyPartId.LeftFoot, leftFoot),
             Pose(BuddyPartId.RightFoot, rightFoot),
-            SidewaysYawRadians,
+            0.0f,
             BuiltInCharacterAppearance.NeutralFaceState,
             string.Empty,
             0.0f));
-    }
-
-    /// <summary>Small foreground props retained around the supplied transparent PC art.</summary>
-    private partial class WorkCompanionArt : Control
-    {
-        private static readonly Color Outline = new("#2E2B22");
-        private static readonly Color BeigeLight = new("#E6DEB4");
-        private static readonly Color DeskTop = new("#B8793F");
-        private static readonly Color DeskLight = new("#D39A5A");
-        private static readonly Color DeskDark = new("#6E4327");
-
-        public override void _Draw()
-        {
-            DrawDesk();
-            DrawKeyboard();
-            DrawMouse();
-        }
-
-        private void DrawDesk()
-        {
-            // Slim top with a darker front apron gives the same readable furniture silhouette
-            // as the mockup without consuming most of the companion's vertical space.
-            DrawRect(new Rect2(28, 346, 664, 49), DeskTop);
-            DrawRect(new Rect2(28, 346, 664, 4), DeskLight);
-            DrawRect(new Rect2(28, 391, 664, 6), DeskDark);
-            DrawLine(new Vector2(28, 346), new Vector2(692, 346), Outline, 2.0f);
-            DrawLine(new Vector2(28, 397), new Vector2(692, 397), Outline, 2.0f);
-
-            // Front board/lip and two subtle legs, mostly hidden in normal taskbar placement.
-            DrawRect(new Rect2(50, 397, 620, 20), new Color("#89532F"));
-            DrawRect(new Rect2(58, 415, 54, 12), DeskDark);
-            DrawRect(new Rect2(610, 415, 54, 12), DeskDark);
-        }
-
-        private void DrawKeyboard()
-        {
-            DrawRect(new Rect2(245, 324, 226, 49), Outline);
-            DrawRect(new Rect2(249, 328, 218, 41), BeigeLight);
-
-            const int columns = 12;
-            const int rows = 3;
-            for (int row = 0; row < rows; row++)
-            {
-                for (int col = 0; col < columns; col++)
-                {
-                    float x = 258 + col * 16.2f + row * 2.0f;
-                    float y = 333 + row * 10.2f;
-                    DrawRect(new Rect2(x, y, 12.2f, 7.2f), Outline);
-                    DrawRect(new Rect2(x + 1, y + 1, 10.2f, 5.2f), new Color("#EFE8C8"));
-                }
-            }
-
-            DrawRect(new Rect2(297, 362, 105, 5), Outline);
-            DrawRect(new Rect2(300, 362, 99, 3), new Color("#EFE8C8"));
-        }
-
-        private void DrawMouse()
-        {
-            Vector2 center = new(186, 354);
-            DrawCircle(center, 23, Outline);
-            DrawCircle(center, 20, BeigeLight);
-            DrawLine(new Vector2(186, 334), new Vector2(186, 353), Outline, 2.0f);
-            DrawLine(new Vector2(186, 352), new Vector2(202, 358), Outline, 1.5f);
-
-            // Cable curves toward the keyboard using short clean segments; no per-frame state.
-            Vector2[] cable =
-            [
-                new Vector2(202, 365),
-                new Vector2(220, 374),
-                new Vector2(235, 374),
-                new Vector2(247, 367),
-            ];
-            for (int i = 0; i < cable.Length - 1; i++)
-                DrawLine(cable[i], cable[i + 1], Outline, 2.0f);
-        }
     }
 
     /// <summary>

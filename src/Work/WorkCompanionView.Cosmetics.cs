@@ -54,15 +54,15 @@ public partial class WorkCompanionView
             // presentation-only; Buddy Studio can later replace it with the shared authored
             // cosmetic socket renderer without changing Work ownership/persistence semantics.
             Color frame = new("#2C2018");
-            Vector2 left = new(283, 132);
-            Vector2 right = new(304, 132);
+            Vector2 left = new(283, 130);
+            Vector2 right = new(304, 130);
             const float radius = 10.0f;
             const float width = 3.0f;
             DrawArc(left, radius, 0, Mathf.Tau, 28, frame, width, true);
             DrawArc(right, radius, 0, Mathf.Tau, 28, frame, width, true);
-            DrawLine(new Vector2(293, 132), new Vector2(294, 132), frame, width, true);
-            DrawLine(new Vector2(273, 130), new Vector2(267, 127), frame, width - 1.0f, true);
-            DrawLine(new Vector2(314, 130), new Vector2(320, 127), frame, width - 1.0f, true);
+            DrawLine(new Vector2(293, 130), new Vector2(294, 130), frame, width, true);
+            DrawLine(new Vector2(273, 128), new Vector2(267, 125), frame, width - 1.0f, true);
+            DrawLine(new Vector2(314, 128), new Vector2(320, 125), frame, width - 1.0f, true);
         }
     }
 }

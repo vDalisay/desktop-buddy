@@ -97,17 +97,13 @@ public partial class WorkCompanionView
         if (combined == 0)
             return;
 
-        // Match the 720x430 supplied-art layout. These intentionally overlap around the keyboard,
-        // buddy and desktop so tiny animation excursions never clip, while the large empty
-        // corners stay outside the HWND and therefore remain genuinely click-through.
+        // Match the 720x430 sideways-buddy and supplied-PC layout. The rectangles overlap enough
+        // for tiny hand excursions while empty corners stay outside the HWND and click through.
         Rect2I[] regions =
         [
             new Rect2I(10, 8, 36, 30),       // hover-only motion control
-            new Rect2I(18, 28, 405, 318),    // sideways buddy + hand animation safety
-            new Rect2I(350, 45, 290, 300),   // supplied monitor, glow and PC chassis
-            new Rect2I(240, 320, 238, 58),   // keyboard
-            new Rect2I(158, 326, 92, 57),    // mouse + cable
-            new Rect2I(26, 342, 670, 86),    // desktop/front apron/legs
+            new Rect2I(228, 78, 152, 228),   // sideways buddy + alternating typing hands
+            new Rect2I(385, 68, 240, 270),   // smaller supplied monitor and PC chassis
         ];
 
         bool built = true;

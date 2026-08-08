@@ -172,19 +172,22 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
             var computer = workView.FindChild("WorkComputerArt", true, false) as TextureRect;
+            Node? generatedProps = workView.FindChild("WorkCompanionArt", true, false);
             var counter = workView.FindChild("WorkCrtCounter", true, false) as Control;
             var rig = workView.FindChild("WorkBuddyRig", true, false) as BuddyVisualRigView;
             bool compositionBuilt = GodotObject.IsInstanceValid(computer) &&
-                computer!.Position.IsEqualApprox(new Vector2(200, -70)) &&
-                computer.Size.IsEqualApprox(new Vector2(520, 520)) &&
+                computer!.Position.IsEqualApprox(new Vector2(245, -40)) &&
+                computer.Size.IsEqualApprox(new Vector2(460, 460)) &&
+                generatedProps is null &&
                 GodotObject.IsInstanceValid(counter) &&
-                counter!.Position.IsEqualApprox(new Vector2(396, 91)) &&
-                counter.Size.IsEqualApprox(new Vector2(137, 104)) &&
+                counter!.Position.IsEqualApprox(new Vector2(418, 102)) &&
+                counter.Size.IsEqualApprox(new Vector2(121, 92)) &&
                 GodotObject.IsInstanceValid(rig);
             checks.Add(new StartupCheck(
-                "work_companion_uses_supplied_pc_and_screen_counter",
+                "work_companion_uses_smaller_pc_without_generated_furniture",
                 compositionBuilt,
-                $"computer={computer?.GetRect()} counter={counter?.GetRect()} rig={rig is not null}"));
+                $"computer={computer?.GetRect()} generatedProps={generatedProps is not null} " +
+                $"counter={counter?.GetRect()} rig={rig is not null}"));
 
             if (GodotObject.IsInstanceValid(rig))
             {
@@ -192,27 +195,48 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                 Node3D leftHand = rig.GetPartSocket(BuddyPartId.LeftHand);
                 Node3D rightHand = rig.GetPartSocket(BuddyPartId.RightHand);
                 float restingLeftY = leftHand.GlobalPosition.Y;
-                bool sidewaysContactPose = Mathf.IsEqualApprox(
-                        torso.GlobalRotation.Y,
-                        Mathf.Pi / 6.0f) &&
+                float restingRightY = rightHand.GlobalPosition.Y;
+                bool sidewaysPose = Mathf.IsEqualApprox(torso.GlobalRotation.Y, Mathf.Pi / 6.0f) &&
                     leftHand.GlobalPosition.X > torso.GlobalPosition.X &&
-                    rightHand.GlobalPosition.X > leftHand.GlobalPosition.X &&
-                    leftHand.GlobalPosition.Y < torso.GlobalPosition.Y &&
-                    rightHand.GlobalPosition.Y < torso.GlobalPosition.Y;
+                    rightHand.GlobalPosition.X > leftHand.GlobalPosition.X;
 
-                workView.NotifyActivity(WorkActivityKind.KeyboardPress);
-                bool subtleHandBob = leftHand.GlobalPosition.Y > restingLeftY &&
-                    Mathf.IsEqualApprox(leftHand.GlobalPosition.Y - restingLeftY, 3.0f);
+                // Every limb must stay inside the connector clamp, so no stretched tube shows
+                // between the spheres (the owner's complaint about the earlier composition).
+                float torsoRadius = rig.PartMeshRadius(BuddyPartId.Torso);
+                bool limbsTucked = true;
+                var tuckReport = new System.Text.StringBuilder();
+                foreach (BuddyPartId part in new[]
+                {
+                    BuddyPartId.Head,
+                    BuddyPartId.LeftHand,
+                    BuddyPartId.RightHand,
+                    BuddyPartId.LeftFoot,
+                    BuddyPartId.RightFoot,
+                })
+                {
+                    float gap = rig.GetPartSocket(part).GlobalPosition
+                            .DistanceTo(torso.GlobalPosition) -
+                        torsoRadius - rig.PartMeshRadius(part);
+                    limbsTucked &= gap <= 1.0f;
+                    tuckReport.Append($"{part}gap={gap:0.0} ");
+                }
+
+                workView.NotifyActivity(WorkActivityKind.MouseClick);
+                bool leftUpRightDown = leftHand.GlobalPosition.Y > restingLeftY &&
+                    rightHand.GlobalPosition.Y < restingRightY;
+                workView.NotifyActivity(WorkActivityKind.MouseClick);
+                bool rightUpLeftDown = rightHand.GlobalPosition.Y > restingRightY &&
+                    leftHand.GlobalPosition.Y < restingLeftY;
                 checks.Add(new StartupCheck(
-                    "work_companion_keeps_sideways_contact_pose_and_small_hand_bob",
-                    sidewaysContactPose && subtleHandBob,
-                    $"yaw={torso.GlobalRotation.Y} left={leftHand.GlobalPosition} " +
-                    $"right={rightHand.GlobalPosition} bob={leftHand.GlobalPosition.Y - restingLeftY}"));
+                    "work_companion_faces_pc_sideways_with_tucked_limbs",
+                    sidewaysPose && limbsTucked && leftUpRightDown && rightUpLeftDown,
+                    $"rotation={torso.GlobalRotation} {tuckReport}" +
+                    $"left={leftHand.GlobalPosition} right={rightHand.GlobalPosition}"));
             }
             else
             {
                 checks.Add(new StartupCheck(
-                    "work_companion_keeps_sideways_contact_pose_and_small_hand_bob",
+                    "work_companion_faces_pc_sideways_with_tucked_limbs",
                     false,
                     "work rig missing"));
             }
