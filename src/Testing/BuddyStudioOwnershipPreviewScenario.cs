@@ -67,7 +67,7 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                 economy: economy);
             await session.SelectAsync(baselineId);
 
-            CharacterEditorActionResult previewed = session.SelectCosmetic(
+            CharacterEditorActionResult previewed = session.PreviewCosmetic(
                 CharacterFeatureSlot.Glasses,
                 CharacterFeatureIds.GlassesWorkClassic);
             Rgba32 savedColor = CharacterDocumentEditor.ReadFeatureColor(
@@ -97,10 +97,12 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
             await saves.FlushProgressAsync();
             bool purchaseCommitted =
                 bought.Completed && economy.IsUnlocked(ContentIds.CosmeticWorkGlasses) &&
-                !session.HasUnownedPreviews && session.CanSave &&
+                !session.HasUnownedPreviews && session.HasOwnedPreviews && session.CanSave &&
                 session.LastCosmeticPurchase?.Status == PurchaseStatus.Purchased &&
                 CharacterDocumentEditor.ReadFeatureId(
-                    session.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesWorkClassic &&
+                    session.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesNone &&
+                CharacterDocumentEditor.ReadFeatureId(
+                    session.PreviewDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesWorkClassic &&
                 progressStore.Progress?.UnlockedToolIds.Contains(
                     ContentIds.CosmeticWorkGlasses,
                     StringComparer.Ordinal) == true;
@@ -108,6 +110,26 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                 "bs4_preview_buy_uses_existing_economy_and_durable_unlock",
                 purchaseCommitted,
                 $"owned={economy.IsUnlocked(ContentIds.CosmeticWorkGlasses)} writes={progressStore.ProgressWriteCount}"));
+
+            CharacterEditorActionResult closeAfterPurchase = session.RequestClose();
+            bool purchaseSurvivesCancelWithoutEquip = closeAfterPurchase.Completed &&
+                economy.IsUnlocked(ContentIds.CosmeticWorkGlasses) && !session.HasOwnedPreviews &&
+                CharacterDocumentEditor.ReadFeatureId(
+                    session.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesNone;
+            checks.Add(new StartupCheck(
+                "bs6_cancel_discards_bought_preview_without_refund",
+                purchaseSurvivesCancelWithoutEquip,
+                $"closed={closeAfterPurchase.Completed} owned={economy.IsUnlocked(ContentIds.CosmeticWorkGlasses)}"));
+
+            session.PreviewCosmetic(CharacterFeatureSlot.Glasses, CharacterFeatureIds.GlassesWorkClassic);
+            CharacterEditorActionResult equipped = session.EquipPreviewedCosmetic(CharacterFeatureSlot.Glasses);
+            bool equipCommitted = equipped.Completed && !session.HasOwnedPreviews && session.IsDirty &&
+                CharacterDocumentEditor.ReadFeatureId(
+                    session.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesWorkClassic;
+            checks.Add(new StartupCheck(
+                "bs6_owned_or_bought_preview_requires_real_equip_mutation",
+                equipCommitted,
+                $"equipped={equipped.Completed} dirty={session.IsDirty} preview={session.HasOwnedPreviews}"));
 
             CharacterEditorActionResult close = session.RequestClose();
             await session.ResolveUnsavedAsync(UnsavedDecision.Discard);

@@ -50,7 +50,16 @@ internal static class BuddyStudioStartupProbe
             workspace = tree.Root.FindChild(nameof(BuddyStudioWorkspace), true, false) as BuddyStudioWorkspace;
             if (GodotObject.IsInstanceValid(host) && host!.IsEditorOpen &&
                 GodotObject.IsInstanceValid(workspace) && workspace!.IsVisibleInTree())
-                return Verdict(true, $"items=[{PopupItems(popup)}] workspace={workspace.GetPath()}");
+            {
+                bool paintButtonAbsent = workspace.FindChild("PaintModeButton", true, false) is null;
+                bool paintCanvasHidden = workspace.FindChild(
+                    "CharacterPaintCanvas", true, false) is not Control paintCanvas || !paintCanvas.Visible;
+                if (!paintButtonAbsent || !paintCanvasHidden)
+                    return Verdict(false,
+                        $"Studio leaked paint UI: buttonAbsent={paintButtonAbsent} canvasHidden={paintCanvasHidden}.");
+                return Verdict(true,
+                    $"items=[{PopupItems(popup)}] workspace={workspace.GetPath()} paintHidden=true");
+            }
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
 

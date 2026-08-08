@@ -37,6 +37,7 @@ public sealed class CharacterEditorSession
     private readonly Func<Guid> _newGuid;
     private readonly EconomyService? _economy;
     private readonly Dictionary<CharacterFeatureSlot, CharacterFeatureDocument> _unownedPreviews = [];
+    private readonly Dictionary<CharacterFeatureSlot, CharacterFeatureDocument> _ownedPreviews = [];
     private CharacterDocument? _savedDocument;
     private CharacterEditorPendingAction _pendingAction;
     private Guid? _pendingCharacterId;
@@ -73,9 +74,14 @@ public sealed class CharacterEditorSession
             CharacterDocumentEditor.Canonical(_savedDocument),
             StringComparison.Ordinal)) || (_paintWorkspace?.IsDirty ?? false) || HasUnownedPreviews);
     public bool HasUnownedPreviews => _unownedPreviews.Count > 0;
+    public bool HasOwnedPreviews => _ownedPreviews.Count > 0;
     public bool CanSave => WorkingDocument is not null && !HasUnownedPreviews;
     public IReadOnlyCollection<CharacterFeatureSlot> UnownedPreviewSlots =>
         _unownedPreviews.Keys.OrderBy(static slot => slot).ToArray();
+    public bool HasOwnedPreview(CharacterFeatureSlot slot) =>
+        _ownedPreviews.ContainsKey(CanonicalSlot(slot));
+    public bool HasUnownedPreview(CharacterFeatureSlot slot) =>
+        _unownedPreviews.ContainsKey(CanonicalSlot(slot));
     public PurchaseResult? LastCosmeticPurchase { get; private set; }
     public CharacterEditorPendingAction PendingAction => _pendingAction;
     public IReadOnlyList<CharacterIndexEntry> CurrentPage { get; private set; } = [];
@@ -191,6 +197,7 @@ public sealed class CharacterEditorSession
                 owned,
                 seed);
             _unownedPreviews.Clear();
+            _ownedPreviews.Clear();
             SetWorking(randomized, _savedDocument);
             return new CharacterEditorActionResult(true);
         }
@@ -248,6 +255,60 @@ public sealed class CharacterEditorSession
         return new CharacterEditorActionResult(true);
     }
 
+    /// <summary>
+    /// Shows a catalogue choice without equipping it. Owned/free previews remain saveable but
+    /// require an explicit Equip action; unowned previews retain the existing Save gate.
+    /// </summary>
+    public CharacterEditorActionResult PreviewCosmetic(CharacterFeatureSlot slot, string cosmeticId)
+    {
+        if (WorkingDocument is null)
+            return Failure("There is no working character to edit.");
+        if (!CharacterFeatureCatalog.Shipped.TryGetDefinition(cosmeticId, out CosmeticDefinition definition) ||
+            definition.Slot != CanonicalSlot(slot))
+            return Failure($"Cosmetic '{cosmeticId}' does not belong to {slot}.");
+
+        CharacterFeatureSlot canonical = CanonicalSlot(slot);
+        string equippedId = CharacterDocumentEditor.ReadFeatureId(WorkingDocument, canonical);
+        if (string.Equals(equippedId, cosmeticId, StringComparison.Ordinal))
+        {
+            _ownedPreviews.Remove(canonical);
+            _unownedPreviews.Remove(canonical);
+        }
+        else
+        {
+            CharacterFeatureDocument preview = CharacterDocumentEditor.ReadFeatureDocument(
+                ApplyDefinition(WorkingDocument, definition), canonical);
+            if (IsCosmeticOwned(cosmeticId))
+            {
+                _unownedPreviews.Remove(canonical);
+                _ownedPreviews[canonical] = preview;
+            }
+            else
+            {
+                _ownedPreviews.Remove(canonical);
+                _unownedPreviews[canonical] = preview;
+            }
+        }
+        LastError = null;
+        RefreshPreview();
+        Changed?.Invoke();
+        return new CharacterEditorActionResult(true);
+    }
+
+    public CharacterEditorActionResult EquipPreviewedCosmetic(CharacterFeatureSlot slot)
+    {
+        CharacterFeatureSlot canonical = CanonicalSlot(slot);
+        if (!_ownedPreviews.TryGetValue(canonical, out CharacterFeatureDocument? preview))
+            return Failure($"{slot} has no owned cosmetic preview to equip.");
+        if (!IsCosmeticOwned(preview.FeatureId))
+            return Failure($"Cosmetic '{preview.FeatureId}' is not owned.");
+
+        _ownedPreviews.Remove(canonical);
+        _unownedPreviews.Remove(canonical);
+        SetWorking(CharacterDocumentEditor.SetFeatureDocument(WorkingDocument!, canonical, preview), _savedDocument);
+        return new CharacterEditorActionResult(true);
+    }
+
     public CharacterEditorActionResult BuyPreviewedCosmetic(CharacterFeatureSlot slot)
     {
         CharacterFeatureSlot canonical = CanonicalSlot(slot);
@@ -270,11 +331,8 @@ public sealed class CharacterEditorSession
         if (!result.Succeeded && result.Status != PurchaseStatus.AlreadyOwned)
             return Failure($"Cosmetic purchase failed: {result.Status}.");
 
-        WorkingDocument = CharacterDocumentEditor.SetFeatureDocument(
-            WorkingDocument!,
-            canonical,
-            preview);
         _unownedPreviews.Remove(canonical);
+        _ownedPreviews[canonical] = preview;
         LastError = null;
         RefreshPreview();
         Changed?.Invoke();
@@ -333,6 +391,7 @@ public sealed class CharacterEditorSession
         WorkingDocument = null;
         _savedDocument = null;
         _unownedPreviews.Clear();
+        _ownedPreviews.Clear();
         ClearPaint(saved: true);
         RefreshPreview();
         Changed?.Invoke();
@@ -343,6 +402,12 @@ public sealed class CharacterEditorSession
     public CharacterEditorActionResult RequestClose()
     {
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Close, null);
+        if (_ownedPreviews.Count > 0)
+        {
+            _ownedPreviews.Clear();
+            RefreshPreview();
+            Changed?.Invoke();
+        }
         CloseResolved?.Invoke(true);
         return new CharacterEditorActionResult(true);
     }
@@ -372,6 +437,7 @@ public sealed class CharacterEditorSession
             WorkingDocument = null;
             _savedDocument = null;
             _unownedPreviews.Clear();
+            _ownedPreviews.Clear();
             ClearPaint(saved: true);
             RefreshPreview();
             Changed?.Invoke();
@@ -484,13 +550,16 @@ public sealed class CharacterEditorSession
         Func<CharacterDocument, CharacterDocument> mutation)
     {
         CharacterFeatureSlot canonical = CanonicalSlot(slot);
-        if (!_unownedPreviews.ContainsKey(canonical))
+        Dictionary<CharacterFeatureSlot, CharacterFeatureDocument>? previews =
+            _unownedPreviews.ContainsKey(canonical) ? _unownedPreviews :
+            _ownedPreviews.ContainsKey(canonical) ? _ownedPreviews : null;
+        if (previews is null)
             return Mutate(mutation);
         try
         {
             CharacterDocument preview = BuildPreviewDocument()!;
             CharacterDocument mutated = mutation(preview);
-            _unownedPreviews[canonical] = CharacterDocumentEditor.ReadFeatureDocument(mutated, canonical);
+            previews[canonical] = CharacterDocumentEditor.ReadFeatureDocument(mutated, canonical);
             LastError = null;
             RefreshPreview();
             Changed?.Invoke();
@@ -508,6 +577,8 @@ public sealed class CharacterEditorSession
             return null;
         CharacterDocument preview = WorkingDocument;
         foreach ((CharacterFeatureSlot slot, CharacterFeatureDocument feature) in _unownedPreviews)
+            preview = CharacterDocumentEditor.SetFeatureDocument(preview, slot, feature);
+        foreach ((CharacterFeatureSlot slot, CharacterFeatureDocument feature) in _ownedPreviews)
             preview = CharacterDocumentEditor.SetFeatureDocument(preview, slot, feature);
         return preview;
     }
@@ -546,7 +617,10 @@ public sealed class CharacterEditorSession
         WorkingDocument = working;
         _savedDocument = saved;
         if (clearPreviews)
+        {
             _unownedPreviews.Clear();
+            _ownedPreviews.Clear();
+        }
         LastError = null;
         RefreshPreview();
         Changed?.Invoke();

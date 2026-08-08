@@ -41,13 +41,17 @@ public partial class CharacterEditorHost
         if (GodotObject.IsInstanceValid(_legacyCharacterEditor))
             _legacyCharacterEditor!.Visible = false;
         _unsavedPanel.Visible = false;
+        _buddyStudio!.AttachPreview();
         _buddyStudio!.Visible = true;
     }
 
     private void CloseBuddyStudioImmediately()
     {
         if (GodotObject.IsInstanceValid(_buddyStudio))
+        {
+            _buddyStudio!.DetachPreview();
             _buddyStudio!.Visible = false;
+        }
         if (GodotObject.IsInstanceValid(_legacyCharacterEditor))
             _legacyCharacterEditor!.Visible = true;
         _unsavedPanel.Visible = false;

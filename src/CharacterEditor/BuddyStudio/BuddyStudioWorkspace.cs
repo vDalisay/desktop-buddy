@@ -42,6 +42,12 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private Label _name = null!;
     private Label _status = null!;
     private Control _previewInput = null!;
+    private VBoxContainer _previewColumn = null!;
+    private Node? _previewHome;
+    private int _previewHomeIndex;
+    private Control? _paintCanvas;
+    private bool _paintCanvasWasVisible;
+    private bool _previewAttached;
     private Control _dirtyBlocker = null!;
     private PanelContainer _dirtyDialog = null!;
     private CharacterFeatureSlot _slot = CharacterFeatureSlot.Face;
@@ -55,6 +61,33 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     public Button BuyAction => _buy;
     public Win98CategoryStrip CategoryStrip => _categories;
     public Win98CatalogGrid CatalogGrid => _catalog;
+
+    public void AttachPreview()
+    {
+        if (_previewAttached || !GodotObject.IsInstanceValid(_previewColumn))
+            return;
+        _previewHome = _previewInput.GetParent();
+        _previewHomeIndex = _previewInput.GetIndex();
+        _paintCanvas = _previewInput.FindChild("CharacterPaintCanvas", true, false) as Control;
+        if (GodotObject.IsInstanceValid(_paintCanvas))
+        {
+            _paintCanvasWasVisible = _paintCanvas!.Visible;
+            _paintCanvas.Visible = false;
+        }
+        _previewInput.Reparent(_previewColumn);
+        _previewAttached = true;
+    }
+
+    public void DetachPreview()
+    {
+        if (!_previewAttached || !GodotObject.IsInstanceValid(_previewHome))
+            return;
+        _previewInput.Reparent(_previewHome!);
+        _previewHome!.MoveChild(_previewInput, Math.Min(_previewHomeIndex, _previewHome.GetChildCount() - 1));
+        if (GodotObject.IsInstanceValid(_paintCanvas))
+            _paintCanvas!.Visible = _paintCanvasWasVisible;
+        _previewAttached = false;
+    }
 
     public void Configure(
         CharacterEditorSession session,
@@ -89,6 +122,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
 
     public override void _ExitTree()
     {
+        DetachPreview();
         if (IsConfigured)
         {
             _session.Changed -= Refresh;
@@ -193,27 +227,35 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     {
         var pane = Pane("BuddyStudioPreviewPane", 280);
         body.AddChild(pane);
-        var column = Column(pane);
-        column.AddChild(new Label { Text = "Preview" });
+        _previewColumn = Column(pane);
+        _previewColumn.AddChild(new Label { Text = "Preview" });
         _name = new Label { Name = "BuddyStudioCharacterName", HorizontalAlignment = HorizontalAlignment.Center };
-        column.AddChild(_name);
-        _previewInput.Reparent(column);
+        _previewColumn.AddChild(_name);
         _previewInput.CustomMinimumSize = new Vector2(270, 300);
         _previewInput.SizeFlagsVertical = SizeFlags.ExpandFill;
         _previewInput.MouseFilter = MouseFilterEnum.Stop;
         _previewInput.GuiInput += OnPreviewInput;
 
-        var transform = new GridContainer { Columns = 2 };
-        column.AddChild(transform);
+        var transform = new GridContainer
+        {
+            Name = "BuddyStudioTransformActions",
+            Columns = 2,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        _previewColumn.AddChild(transform);
         Button smaller = Action(transform, "Smaller", () => ScaleBy(-0.05));
+        smaller.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         smaller.Name = "BuddyStudioSmaller";
         Button larger = Action(transform, "Larger", () => ScaleBy(0.05));
+        larger.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         larger.Name = "BuddyStudioLarger";
         _move = Action(transform, "Move", () => SetMoveMode(!_moveMode));
+        _move.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _move.Name = "BuddyStudioMove";
         Button reset = Action(transform, "Reset", ResetTransform);
+        reset.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         reset.Name = "BuddyStudioReset";
-        Button random = Action(column, "Randomize", Randomize);
+        Button random = Action(_previewColumn, "Randomize", Randomize);
         random.Name = "BuddyStudioRandomize";
         random.TooltipText = "Choose from free and owned cosmetics only.";
     }
@@ -266,7 +308,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         }
         _values = new Win98ValuePanel { Name = "BuddyStudioValues" };
         column.AddChild(_values);
-        _buy = Action(column, "Buy", Buy);
+        _buy = Action(column, "Buy", PurchaseOrEquip);
         _buy.Name = "BuddyStudioBuy";
     }
 
@@ -344,6 +386,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         string id = CharacterDocumentEditor.ReadFeatureId(preview, _slot);
         CosmeticDefinition definition = CharacterFeatureCatalog.Shipped.ResolveDefinition(_slot, id, out _);
         bool owned = _session.IsCosmeticOwned(definition.Id);
+        string equippedId = CharacterDocumentEditor.ReadFeatureId(_session.WorkingDocument!, _slot);
+        bool equipped = string.Equals(equippedId, definition.Id, StringComparison.Ordinal) &&
+            !_session.HasOwnedPreview(_slot) && !_session.HasUnownedPreview(_slot);
         bool purchasable = !owned && definition.OwnershipContentId is string contentId &&
             _economy.Catalogue.TryGet(contentId, out CatalogueEntry entry) && entry.Visible && entry.HasValidPrice;
         _values.SetRows(
@@ -352,9 +397,11 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             new Win98ValueRowPresentation("price", "Price", owned ? "—" : PriceText(definition)),
             new Win98ValueRowPresentation("balance", "Balance", ContentDisplayName.Credits(_economy.BalanceMilliCredits)),
         ]);
-        _buy.Disabled = !purchasable;
-        _buy.TooltipText = owned ? "This cosmetic is already available."
-            : purchasable ? "Buy this cosmetic permanently."
+        _buy.Text = owned ? (equipped ? "Equipped" : "Equip") : purchasable ? "Buy" : "Earned";
+        _buy.Disabled = equipped || (!owned && !purchasable);
+        _buy.TooltipText = equipped ? "This cosmetic is currently equipped."
+            : owned ? "Equip this cosmetic on the working character."
+            : purchasable ? "Buy this cosmetic permanently; equip it with the next action."
             : "This cosmetic is earned elsewhere and cannot be bought here.";
         bool hasColor = definition.ColorChannels.Count > 0;
         _color.Disabled = !hasColor;
@@ -380,16 +427,22 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             return "Select or create a character first.";
         if (_session.HasUnownedPreviews)
             return "Previewing an unowned cosmetic — Save is unavailable.";
+        if (_session.HasOwnedPreviews)
+            return "Previewing an owned cosmetic — choose Equip to apply it.";
         if (_moveMode)
             return "Move: drag the preview or use arrows; Shift moves farther; Escape exits.";
         return _session.IsDirty ? "Unsaved changes." : "Ready.";
     }
 
-    private void SelectCosmetic(string cosmeticId) => Handle(_session.SelectCosmetic(_slot, cosmeticId));
+    private void SelectCosmetic(string cosmeticId) => Handle(_session.PreviewCosmetic(_slot, cosmeticId));
 
-    private void Buy()
+    private void PurchaseOrEquip()
     {
-        Handle(_session.BuyPreviewedCosmetic(_slot));
+        CharacterEditorActionResult result = _session.IsCosmeticOwned(
+            CharacterDocumentEditor.ReadFeatureId(_session.PreviewDocument!, _slot))
+            ? _session.EquipPreviewedCosmetic(_slot)
+            : _session.BuyPreviewedCosmetic(_slot);
+        Handle(result);
         Refresh();
     }
 
