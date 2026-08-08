@@ -1069,6 +1069,7 @@ Not part of launch Work Mode:
 - taskbar-edge snapping;
 - multiple Work buddy positions/profiles;
 - richer idle animations;
+- an additional polish pass for typing, click-reaction, transition, and idle animation timing;
 - achievement/platform integration for Work milestones after M6;
 - Steam stat mirroring of aggregate lifetime counters;
 - optional per-application exclusion lists **only if they can be implemented without recording/persisting application activity history**.

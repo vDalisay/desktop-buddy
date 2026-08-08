@@ -238,9 +238,10 @@ gate.
 
 ## Milestone 5.7 — Work Mode Typing Companion
 
-Scheduling status (2026-08-08): **active on branch `work-mode-revamp`.** Promoted out of the
-deferred list by owner decision; the normative scope, locked owner decisions, and slice
-gates are in `docs/WORK_MODE_TYPING_COMPANION_PLAN.md`.
+Scheduling status (2026-08-08): **complete for now; owner accepted.** The remaining soak and
+Windows matrix are release verification gates, and additional animation polish is tracked as
+a future nice-to-have rather than a completion blocker. The normative scope, locked owner
+decisions, and slice gates are in `docs/WORK_MODE_TYPING_COMPANION_PLAN.md`.
 
 Design target: an opt-in, nonintrusive corner companion. The buddy works at a miniature
 retro PC while the player works, a CRT counts accepted key presses and mouse clicks

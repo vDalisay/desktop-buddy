@@ -123,9 +123,7 @@ public partial class DesktopWindowController
         {
             Window window = GetWindow();
             window.Mode = Window.ModeEnum.Windowed;
-            window.MinSize = new Vector2I(
-                RoomLayoutPolicy.MinimumRoomWidth,
-                RoomLayoutPolicy.MinimumRoomHeight);
+            window.MinSize = CompactMinimumSize;
             window.Borderless = restore.Borderless;
             window.Unresizable = !restore.Resizable;
             window.AlwaysOnTop = restore.AlwaysOnTop;

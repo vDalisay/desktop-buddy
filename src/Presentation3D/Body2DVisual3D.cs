@@ -27,6 +27,7 @@ public partial class Body2DVisual3D : Node3D
     public bool IsInitialized { get; private set; }
     public bool IsAttached => GodotObject.IsInstanceValid(_target);
     public RigidBody2D? Target => IsAttached ? _target : null;
+    public Vector2 PositionOffset2D { get; set; }
     public MeshInstance3D Mesh => _mesh ?? throw new InvalidOperationException(
         "Body2DVisual3D has not been initialized.");
 
@@ -212,7 +213,8 @@ public partial class Body2DVisual3D : Node3D
         float fraction = Mathf.Clamp(
             (float)Engine.GetPhysicsInterpolationFraction(), 0.0f, 1.0f);
         Vector2 visualOffset = _pulseSource?.VisualOffset2D ?? Vector2.Zero;
-        Vector2 position2D = _previousPosition.Lerp(_currentPosition, fraction) + visualOffset;
+        Vector2 position2D = _previousPosition.Lerp(_currentPosition, fraction) +
+                             visualOffset + PositionOffset2D;
         float rotation2D = Mathf.LerpAngle(_previousRotation, _currentRotation, fraction);
 
         Vector3 position3D = WorldPlaneMapping.To3D(position2D);
@@ -233,7 +235,7 @@ public partial class Body2DVisual3D : Node3D
         _currentRotation = _target.GlobalRotation;
         _previousPosition = _currentPosition;
         _previousRotation = _currentRotation;
-        Vector3 position = WorldPlaneMapping.To3D(_currentPosition);
+        Vector3 position = WorldPlaneMapping.To3D(_currentPosition + PositionOffset2D);
         position.Z = _depthOffset;
         GlobalPosition = position;
         GlobalRotation = new Vector3(

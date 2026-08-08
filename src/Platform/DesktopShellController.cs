@@ -114,7 +114,7 @@ public partial class DesktopShellController : Node
         if (_pendingClientSize is Vector2I size)
         {
             _pendingClientSize = null;
-            Boundaries.RequestLayout(size, _storedZoom);
+            Boundaries.RequestLayout(RoomSizeFor(size), _storedZoom);
         }
     }
 
@@ -325,16 +325,28 @@ public partial class DesktopShellController : Node
     private Vector2I ResolveClientSize()
     {
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
-        var size = new Vector2I((int)viewport.X, (int)viewport.Y);
-        if (size.X < RoomLayoutPolicy.MinimumRoomWidth ||
-            size.Y < RoomLayoutPolicy.MinimumRoomHeight)
+        return RoomSizeFor(new Vector2I((int)viewport.X, (int)viewport.Y));
+    }
+
+    /// <summary>
+    /// Client box minus the Win98 frame chrome, so the room floor is the top of the status
+    /// bar instead of a line hidden behind it. Fullscreen and the Work companion hide the
+    /// frame, so they keep the whole client box.
+    /// </summary>
+    private Vector2I RoomSizeFor(Vector2I client)
+    {
+        if (Window.LayoutMode == WindowLayoutMode.Compact && !Window.WorkCompanionActive)
+            client.Y -= UI.Win98.Win98ThemeFactory.ChromeHeight;
+
+        if (client.X < RoomLayoutPolicy.MinimumRoomWidth ||
+            client.Y < RoomLayoutPolicy.MinimumRoomHeight)
         {
-            size = new Vector2I(
+            client = new Vector2I(
                 RoomLayoutPolicy.DefaultClientWidth,
                 RoomLayoutPolicy.DefaultClientHeight);
         }
 
-        return size;
+        return client;
     }
 
     private async Task PersistWindowStateAsync()

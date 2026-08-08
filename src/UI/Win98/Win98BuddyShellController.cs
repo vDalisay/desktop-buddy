@@ -40,7 +40,6 @@ public partial class Win98BuddyShellController : CanvasLayer
         Frame.ResizeEnded += OnResizeEnded;
 
         Window.LayoutModeChanged += OnLayoutModeChanged;
-        Window.WindowFocusLost += OnWindowFocusLost;
 
         Frame.WindowTitle = "Desktop Buddy";
         Frame.StatusText = "Ready";
@@ -61,6 +60,11 @@ public partial class Win98BuddyShellController : CanvasLayer
             ApplyResizeFromPointer(DisplayServer.MouseGetPosition());
 
         ApplyWindowTransparency(Window.LayoutMode, Frame.ViewportOpacity);
+
+        // Focus-driven title colour, sampled rather than event-driven: Work Mode takes and
+        // returns the window without a focus-lost/gained pair, which used to strand the bar grey.
+        if (DisplayServer.GetName() != "headless")
+            Frame.SetActive(GetWindow().HasFocus());
     }
 
     public override void _ExitTree()
@@ -68,7 +72,6 @@ public partial class Win98BuddyShellController : CanvasLayer
         if (GodotObject.IsInstanceValid(Window))
         {
             Window.LayoutModeChanged -= OnLayoutModeChanged;
-            Window.WindowFocusLost -= OnWindowFocusLost;
         }
 
         if (GodotObject.IsInstanceValid(_backdrop))
@@ -230,18 +233,5 @@ public partial class Win98BuddyShellController : CanvasLayer
             ApplyBackdropOpacity(Frame.ViewportOpacity);
         }
         ApplyWindowTransparency(mode, Frame.ViewportOpacity);
-    }
-
-    private void OnWindowFocusLost()
-    {
-        if (GodotObject.IsInstanceValid(Frame))
-            Frame.SetActive(false);
-        CallDeferred(MethodName.RestoreActiveTitle);
-    }
-
-    private void RestoreActiveTitle()
-    {
-        if (GodotObject.IsInstanceValid(Frame) && GetWindow().HasFocus())
-            Frame.SetActive(true);
     }
 }

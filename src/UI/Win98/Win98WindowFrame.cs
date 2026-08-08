@@ -107,8 +107,13 @@ public partial class Win98WindowFrame : PanelContainer
         }
     }
 
+    private bool _active = true;
+
     public void SetActive(bool active)
     {
+        if (active == _active)
+            return;
+        _active = active;
         _titleBar.AddThemeStyleboxOverride(
             "panel",
             Win98ThemeFactory.Flat(active ? Win98ThemeFactory.ActiveTitle : Win98ThemeFactory.InactiveTitle));

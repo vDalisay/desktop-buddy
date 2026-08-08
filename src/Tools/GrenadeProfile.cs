@@ -182,6 +182,10 @@ public partial class GrenadeProfile : GameResource
     /// </summary>
     public float DrawnRadiusPx(float colliderRadiusPx) => colliderRadiusPx * VisualScale;
 
+    /// <summary>Keeps the oversized visual's bottom on the authoritative collider bottom.</summary>
+    public float VisualGroundOffsetPx(float colliderRadiusPx) =>
+        Mathf.Max(0.0f, DrawnRadiusPx(colliderRadiusPx) - colliderRadiusPx);
+
     /// <summary>
     /// Which way ember <paramref name="index"/> of <paramref name="count"/> is thrown.
     /// Spread evenly and then nudged by an irrational step so the fan does not read as a

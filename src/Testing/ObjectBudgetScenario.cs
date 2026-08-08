@@ -57,6 +57,13 @@ public sealed class ObjectBudgetScenario : IScenario
                 room.Position.X + 20.0f,
                 room.End.X - 20.0f,
                 index / (float)(SpawnAttempts - 1));
+            // Keep the storm off the buddy itself. A ball landing on it knocks the carried one
+            // out of its hands, which then makes it evictable like any loose ball — a real
+            // behaviour, but not the admission rule these checks are about.
+            float torsoX = lab.Buddy.Rig.Torso.GlobalPosition.X;
+            if (Mathf.Abs(x - torsoX) < 70.0f)
+                x = x < torsoX ? torsoX - 70.0f : torsoX + 70.0f;
+
             LooseObjectBody? ball = lab.SpawnLooseObject(lab.SafeObjectProfile, new Vector2(x, floorY));
             if (ball is null)
                 refusals++;

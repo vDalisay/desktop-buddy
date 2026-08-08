@@ -88,6 +88,18 @@ public sealed class GrenadeFuseScenario : IScenario
             $"bound={GrenadeMeshBuilder.EnvelopeRadiusFactor}x drawn radius " +
             $"({GrenadeMeshBuilder.DrawnRadius(profile, 10.0f):F2}px from a 10px collider, " +
             $"scale={profile.VisualScale})"));
+        checks.Add(new StartupCheck(
+            "oversized_grenade_visual_keeps_its_bottom_on_the_collider",
+            Mathf.IsEqualApprox(
+                profile.DrawnRadiusPx(10.0f) - profile.VisualGroundOffsetPx(10.0f),
+                10.0f) &&
+            Mathf.IsEqualApprox(
+                profile.DrawnRadiusPx(10.0f) * GrenadeMeshBuilder.BodyBottomRadiusFactor -
+                    GrenadeMeshBuilder.VisualGroundOffset(profile, 10.0f),
+                10.0f),
+            $"drawn={profile.DrawnRadiusPx(10.0f):F2} " +
+            $"flat_offset={profile.VisualGroundOffsetPx(10.0f):F2} " +
+            $"mesh_offset={GrenadeMeshBuilder.VisualGroundOffset(profile, 10.0f):F2}"));
 
         Rect2 room = lab.Boundaries.InnerBounds;
         var bench = new Vector2(room.Position.X + 90.0f, room.Position.Y + 70.0f);

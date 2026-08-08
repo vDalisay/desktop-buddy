@@ -122,7 +122,12 @@ public partial class BoundaryController : StaticBody2D, IImpactSource
         float height = (float)layout.RoomHeight;
         float thickness = Profile.WallThickness;
 
-        ConfigureHorizontal(Floor, width, thickness, new Vector2(width * 0.5f, height - thickness * 0.5f));
+        // The floor sits just BELOW the room rect so its contact surface is the rect's bottom
+        // edge — the line the status bar draws. Inside-the-rect it made every body rest one
+        // wall thickness high, which read as the buddy floating over its own ground. The other
+        // three walls stay inside: they are hidden by the frame and their inset is tuned into
+        // the autonomy/wall scenarios.
+        ConfigureHorizontal(Floor, width, thickness, new Vector2(width * 0.5f, height + thickness * 0.5f));
         ConfigureHorizontal(Ceiling, width, thickness, new Vector2(width * 0.5f, thickness * 0.5f));
         ConfigureVertical(LeftWall, height, thickness, new Vector2(thickness * 0.5f, height * 0.5f));
         ConfigureVertical(RightWall, height, thickness, new Vector2(width - thickness * 0.5f, height * 0.5f));
@@ -134,9 +139,19 @@ public partial class BoundaryController : StaticBody2D, IImpactSource
         {
             // Match the Camera2D framing through WorldPlaneMapping: (x, y) -> (x, -y, 0),
             // camera at (W/2, -H/2, +CameraDistance) looking -Z, vertical extent = RoomHeight.
+            // The room no longer fills the window: the Win98 frame chrome is inset out of it,
+            // so Camera2D maps RoomHeight to only part of the viewport. KeepAspect.Height
+            // stretches this camera over the WHOLE viewport, so it must be given the viewport's
+            // world extent — using RoomHeight renders every 3D body larger than its physics
+            // body, which is what put the buddy's feet through the floor line.
+            float viewportWorldHeight = height;
+            Vector2 viewport = GetViewport()?.GetVisibleRect().Size ?? Vector2.Zero;
+            if (viewport.Y > 0f)
+                viewportWorldHeight = viewport.Y / (float)layout.EffectiveZoom;
+
             WorldCamera3D!.Projection = Camera3D.ProjectionType.Orthogonal;
             WorldCamera3D.KeepAspect = Camera3D.KeepAspectEnum.Height;
-            WorldCamera3D.Size = height;
+            WorldCamera3D.Size = viewportWorldHeight;
             WorldCamera3D.Position = new Vector3(width * 0.5f, -height * 0.5f, CameraDistance);
             WorldCamera3D.Rotation = Vector3.Zero; // identity basis looks down -Z
             // Global constraint 6: presenter-driven 3D nodes and this camera opt out of
@@ -149,7 +164,7 @@ public partial class BoundaryController : StaticBody2D, IImpactSource
             thickness,
             thickness,
             width - thickness * 2.0f,
-            height - thickness * 2.0f);
+            height - thickness);
         AppliedLayoutCount++;
         LayoutApplied?.Invoke(layout, InnerBounds);
     }
