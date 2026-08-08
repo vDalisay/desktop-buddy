@@ -19,7 +19,7 @@ public partial class WorkCompanionView
     private Win98BuddyShellController? _normalWin98Shell;
     private WorldEnvironment? _normalBackdrop;
     private bool _normalShellWasProcessing;
-    private Color _normalBackdropColor;
+    private Godot.Environment? _normalBackdropEnvironment;
     private bool _normalShellIsolated;
 
     public override void _EnterTree()
@@ -46,15 +46,14 @@ public partial class WorkCompanionView
 
         _normalBackdrop = GetTree().Root.FindChild(
             "Win98BackdropEnvironment", true, false) as WorldEnvironment;
+        // Detach the environment rather than fading its colour: a BGMode.Color background
+        // still clears the frame opaquely regardless of its alpha, which left the Win98
+        // face grey showing through every part of the shaped Work window.
         if (GodotObject.IsInstanceValid(_normalBackdrop) &&
             GodotObject.IsInstanceValid(_normalBackdrop!.Environment))
         {
-            _normalBackdropColor = _normalBackdrop.Environment.BackgroundColor;
-            _normalBackdrop.Environment.BackgroundColor = new Color(
-                _normalBackdropColor.R,
-                _normalBackdropColor.G,
-                _normalBackdropColor.B,
-                0.0f);
+            _normalBackdropEnvironment = _normalBackdrop.Environment;
+            _normalBackdrop.Environment = null;
         }
 
         if (DisplayServer.GetName() != "headless")
@@ -71,10 +70,11 @@ public partial class WorkCompanionView
             return;
 
         if (GodotObject.IsInstanceValid(_normalBackdrop) &&
-            GodotObject.IsInstanceValid(_normalBackdrop!.Environment))
+            GodotObject.IsInstanceValid(_normalBackdropEnvironment))
         {
-            _normalBackdrop.Environment.BackgroundColor = _normalBackdropColor;
+            _normalBackdrop!.Environment = _normalBackdropEnvironment;
         }
+        _normalBackdropEnvironment = null;
         if (GodotObject.IsInstanceValid(_normalWin98Shell))
             _normalWin98Shell!.SetProcess(_normalShellWasProcessing);
 

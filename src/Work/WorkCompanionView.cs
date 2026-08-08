@@ -237,9 +237,34 @@ public partial class WorkCompanionView : CanvasLayer
         };
         _motionToggle.Toggled += enabled => SetAnimationsEnabled(enabled);
         _root.AddChild(_motionToggle);
+
+        // Hover tracking lives on the Window, not on _root: Godot emits mouse_exited on a
+        // parent Control as soon as the pointer enters a child that accepts mouse input, so
+        // hovering the toggle used to hide it out from under the click.
         _motionToggle.Visible = false;
-        _root.MouseEntered += () => _motionToggle.Visible = true;
-        _root.MouseExited += () => _motionToggle.Visible = false;
+        Window window = GetWindow();
+        window.MouseEntered += ShowMotionToggle;
+        window.MouseExited += HideMotionToggle;
+        TreeExiting += () =>
+        {
+            if (GodotObject.IsInstanceValid(window))
+            {
+                window.MouseEntered -= ShowMotionToggle;
+                window.MouseExited -= HideMotionToggle;
+            }
+        };
+    }
+
+    private void ShowMotionToggle()
+    {
+        if (GodotObject.IsInstanceValid(_motionToggle))
+            _motionToggle.Visible = true;
+    }
+
+    private void HideMotionToggle()
+    {
+        if (GodotObject.IsInstanceValid(_motionToggle))
+            _motionToggle.Visible = false;
     }
 
     private void BuildBuddyPreview()

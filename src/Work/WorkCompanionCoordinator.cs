@@ -34,8 +34,8 @@ public partial class WorkCompanionCoordinator : Node
     private IWorkActivitySource? _activitySource;
     private WorkSessionState? _session;
     private WorkCompanionView? _view;
-    private Win98WindowFrame? _win98Frame;
-    private bool _win98FrameWasVisible;
+    private CanvasLayer? _win98Shell;
+    private bool _win98ShellWasVisible;
     private bool _sandboxPhysicsWasProcessing;
     private long _pendingKeyboard;
     private long _pendingMouse;
@@ -324,11 +324,14 @@ public partial class WorkCompanionCoordinator : Node
         _node3DVisibility.Clear();
         CaptureAndHide(_sandbox);
 
-        _win98Frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
-        if (GodotObject.IsInstanceValid(_win98Frame))
+        // Hide the whole shell layer, not just the frame: the command bar (Shop/Tools/Settings)
+        // and its flyouts are siblings of the frame and stayed visible over the companion.
+        _win98Shell = GetTree().Root.FindChild(
+            nameof(Win98BuddyShellController), true, false) as CanvasLayer;
+        if (GodotObject.IsInstanceValid(_win98Shell))
         {
-            _win98FrameWasVisible = _win98Frame!.Visible;
-            _win98Frame.Visible = false;
+            _win98ShellWasVisible = _win98Shell!.Visible;
+            _win98Shell.Visible = false;
         }
     }
 
@@ -363,9 +366,9 @@ public partial class WorkCompanionCoordinator : Node
         _canvasVisibility.Clear();
         _node3DVisibility.Clear();
 
-        if (GodotObject.IsInstanceValid(_win98Frame))
-            _win98Frame!.Visible = _win98FrameWasVisible;
-        _win98Frame = null;
+        if (GodotObject.IsInstanceValid(_win98Shell))
+            _win98Shell!.Visible = _win98ShellWasVisible;
+        _win98Shell = null;
     }
 
     private void ShowExitSummaryIfEarned()

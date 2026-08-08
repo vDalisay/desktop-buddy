@@ -92,7 +92,8 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void ApplyBackdropOpacity(float opacity)
     {
-        if (GodotObject.IsInstanceValid(_backdrop))
+        // Work Mode detaches the environment while it owns the window; skip until it returns.
+        if (GodotObject.IsInstanceValid(_backdrop) && GodotObject.IsInstanceValid(_backdrop.Environment))
             _backdrop.Environment.BackgroundColor = new Color(
                 Win98ThemeFactory.Face.R,
                 Win98ThemeFactory.Face.G,
