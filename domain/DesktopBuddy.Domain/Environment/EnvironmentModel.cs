@@ -94,6 +94,8 @@ public sealed record DecorationDefinition
     {
         if (id == default) throw new ArgumentException("A valid decoration ID is required.", nameof(id));
         if (string.IsNullOrWhiteSpace(displayNameKey)) throw new ArgumentException("A display-name key is required.", nameof(displayNameKey));
+        if (!Enum.IsDefined(category) || !Enum.IsDefined(anchorKind) || !Enum.IsDefined(renderBand) || !Enum.IsDefined(interaction))
+            throw new ArgumentOutOfRangeException(nameof(category), "Decoration policies must use declared enum values.");
         if (priceMilliCredits <= 0 || priceMilliCredits % 1000 != 0)
             throw new ArgumentOutOfRangeException(nameof(priceMilliCredits), "Decoration prices must be positive whole credits.");
         ValidateBand(category, anchorKind, renderBand);
@@ -161,7 +163,8 @@ public sealed class EnvironmentLayout
         {
             if (decoration.InstanceId == default || decoration.DefinitionId == default || !instanceIds.Add(decoration.InstanceId))
                 throw new ArgumentException("Placed decorations require unique valid instance and definition IDs.", nameof(decorations));
-            if (decoration.RotationDegrees is < 0 or >= 360 || decoration.PurchasePriceMilliCredits < 0 || decoration.PurchasePriceMilliCredits % 1000 != 0)
+            if (!Enum.IsDefined(decoration.RenderBand) || decoration.RotationDegrees is < 0 or >= 360 ||
+                decoration.PurchasePriceMilliCredits < 0 || decoration.PurchasePriceMilliCredits % 1000 != 0)
                 throw new ArgumentException("Placed decoration rotation or recorded purchase price is invalid.", nameof(decorations));
             if (decoration.RenderBand == DecorationRenderBand.Wallpaper && ++wallpaperCount > 1)
                 throw new ArgumentException("Only one wallpaper may occupy the room wallpaper slot.", nameof(decorations));

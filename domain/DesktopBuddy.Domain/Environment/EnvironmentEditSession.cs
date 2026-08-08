@@ -58,6 +58,8 @@ public sealed class EnvironmentEditSession
     public long PendingBalanceDeltaMilliCredits => _pendingDelta;
     public long ProjectedBalanceMilliCredits => StartingBalanceMilliCredits + _pendingDelta;
     public bool IsDirty => _pendingDelta != 0 || !_working.SequenceEqual(_baseline.Decorations);
+    public bool MatchesBaseline(EnvironmentLayout layout) =>
+        layout.SchemaVersion == _baseline.SchemaVersion && layout.Decorations.SequenceEqual(_baseline.Decorations);
     public EnvironmentLayout WorkingLayout => new(_working);
 
     public EnvironmentEditResult Place(DecorationDefinitionId definitionId, CanonicalRoomPosition position)

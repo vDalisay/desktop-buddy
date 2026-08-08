@@ -30,8 +30,10 @@ public sealed class EnvironmentProgressState
     public void Commit(EnvironmentLayout layout)
     {
         ArgumentNullException.ThrowIfNull(layout);
+        if (Revision == long.MaxValue)
+            throw new InvalidOperationException("Environment revision is exhausted.");
         Layout = layout;
-        Revision = Revision == long.MaxValue ? long.MaxValue : Revision + 1;
+        Revision++;
         Changed?.Invoke();
     }
 }
