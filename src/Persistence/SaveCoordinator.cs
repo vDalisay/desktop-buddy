@@ -114,6 +114,34 @@ public sealed class SaveCoordinator
         }
     }
 
+    public async Task CommitBackgroundAsync(
+        EnvironmentBackgroundEditSession session,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (_environment is null)
+            throw new InvalidOperationException("Environment progress was not composed.");
+        if (!session.IsDirty)
+            return;
+
+        EnvironmentProgressSnapshot before = _environment.Snapshot();
+        if (!session.MatchesBaseline(before.Layout))
+            throw new InvalidOperationException("The environment changed while the background editor was open.");
+        if (before.Revision == long.MaxValue)
+            throw new InvalidOperationException("The Environment revision is exhausted.");
+
+        _environment.Commit(session.PrepareLayout());
+        try
+        {
+            await FlushProgressAsync(token).ConfigureAwait(false);
+        }
+        catch
+        {
+            _environment.Adopt(before);
+            throw;
+        }
+    }
+
     public Exception? LastFailure { get; private set; }
 
     public Task TickAsync(double validRunningSeconds, CancellationToken token = default)

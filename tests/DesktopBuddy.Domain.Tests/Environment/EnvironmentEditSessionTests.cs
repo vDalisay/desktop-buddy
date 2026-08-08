@@ -105,6 +105,24 @@ public sealed class EnvironmentEditSessionTests
         Assert.Empty(state.Layout.Decorations);
     }
 
+    [Fact]
+    public void BackgroundWorkingCopyResetsCancelsAndPreservesDecorations()
+    {
+        var item = new PlacedDecoration(Id(70), Lamp.Id, Position(.2f, .8f), 0, Lamp.RenderBand, 75_000);
+        var custom = new EnvironmentBackground(new EnvironmentColor(10, 20, 30), new EnvironmentColor(40, 50, 60));
+        var baseline = new EnvironmentLayout([item], background: custom);
+        var session = new EnvironmentBackgroundEditSession(baseline);
+
+        session.SetColor(EnvironmentBackgroundZone.Wall, new EnvironmentColor(100, 110, 120));
+        Assert.True(session.IsDirty);
+        Assert.Equal([item], session.PrepareLayout().Decorations);
+        session.Reset();
+        Assert.Equal(EnvironmentBackground.Default, session.Working);
+        session.Cancel();
+        Assert.False(session.IsDirty);
+        Assert.Equal(custom, session.Working);
+    }
+
     private static DecorationCatalogue Catalogue() => new([Lamp, Plant]);
     private static CanonicalRoomPosition Position(float x, float y) => new(x, y);
     private static PlacedDecorationId Id(int value) => new(new Guid(value, 0, 0, new byte[8]));

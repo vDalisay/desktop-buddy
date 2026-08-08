@@ -128,6 +128,45 @@ public sealed class EnvironmentPersistenceTests
         Assert.Equal(before.Layout.Decorations, environment.Layout.Decorations);
     }
 
+    [Fact]
+    public async Task BackgroundCommitPersistsColorsWithoutChangingDecorationsOrWallet()
+    {
+        var progress = FundedProgress(250_000);
+        var baseline = new EnvironmentLayout([Placed(Id(40), .3f)]);
+        var environment = new EnvironmentProgressState(baseline);
+        var store = new InMemoryProgressStore();
+        var saves = new SaveCoordinator(progress, store, environment: environment);
+        var session = new EnvironmentBackgroundEditSession(baseline);
+        session.SetColor(EnvironmentBackgroundZone.Wall, new EnvironmentColor(12, 34, 56));
+
+        await saves.CommitBackgroundAsync(session);
+
+        Assert.Equal(250_000, progress.BalanceMilliCredits);
+        Assert.Equal(new EnvironmentColor(12, 34, 56), environment.Layout.Background.Wall);
+        Assert.Equal(baseline.Decorations, environment.Layout.Decorations);
+        Assert.Equal((byte)12, store.Progress!.Environment.Background.WallRed);
+    }
+
+    [Fact]
+    public void LayoutSchemaOneMigratesToDefaultBackground()
+    {
+        var environment = new EnvironmentProgressState(new EnvironmentLayout([Placed(Id(41), .4f)]));
+        string current = ProgressSavePolicy.Serialize(ProgressSave.FromSnapshot(
+            FundedProgress(0).Snapshot(), environment: environment.Snapshot()));
+        JsonObject root = JsonNode.Parse(current)!.AsObject();
+        JsonObject savedEnvironment = root["environment"]!.AsObject();
+        savedEnvironment["layoutSchemaVersion"] = 1;
+        savedEnvironment.Remove("background");
+
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode(root.ToJsonString());
+        EnvironmentProgressState restored = decoded.Save!.Environment.CreateState();
+
+        Assert.Equal(SaveDecodeStatus.Valid, decoded.Status);
+        Assert.Equal(EnvironmentLayout.CurrentSchemaVersion, restored.Layout.SchemaVersion);
+        Assert.Equal(EnvironmentBackground.Default, restored.Layout.Background);
+        Assert.Single(restored.Layout.Decorations);
+    }
+
     private static BuddyProgressState FundedProgress(long balance)
     {
         var progress = new BuddyProgressState(0.018);

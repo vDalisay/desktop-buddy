@@ -15,5 +15,6 @@ internal static class EnvironmentScenarioRegistration
         var factories = (Dictionary<string, Func<IScenario>>?)field.GetValue(null)
             ?? throw new InvalidOperationException("Scenario registry was not initialized.");
         factories["environment_trusted_definitions"] = () => new EnvironmentTrustedDefinitionsScenario();
+        factories["environment_background_editor"] = () => new EnvironmentBackgroundEditorScenario();
     }
 }

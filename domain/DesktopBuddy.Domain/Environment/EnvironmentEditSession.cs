@@ -60,7 +60,7 @@ public sealed class EnvironmentEditSession
     public bool IsDirty => _pendingDelta != 0 || !_working.SequenceEqual(_baseline.Decorations);
     public bool MatchesBaseline(EnvironmentLayout layout) =>
         layout.SchemaVersion == _baseline.SchemaVersion && layout.Decorations.SequenceEqual(_baseline.Decorations);
-    public EnvironmentLayout WorkingLayout => new(_working);
+    public EnvironmentLayout WorkingLayout => new(_working, background: _baseline.Background);
 
     public EnvironmentEditResult Place(DecorationDefinitionId definitionId, CanonicalRoomPosition position)
     {
@@ -118,7 +118,7 @@ public sealed class EnvironmentEditSession
     }
 
     public void Cancel() { _working = _baseline.Decorations.ToList(); _pendingDelta = 0; }
-    public EnvironmentCommit PrepareCommit() => new(new EnvironmentLayout(_working), ProjectedBalanceMilliCredits);
+    public EnvironmentCommit PrepareCommit() => new(new EnvironmentLayout(_working, background: _baseline.Background), ProjectedBalanceMilliCredits);
     private int Find(PlacedDecorationId id) => _working.FindIndex(item => item.InstanceId == id);
 
     private bool TryChangeDelta(long change)

@@ -468,7 +468,7 @@ public static class ProgressSavePolicy
 
     private static void ValidateEnvironment(EnvironmentProgressSave environment)
     {
-        if (environment.Revision < 0 || environment.PlacedDecorations is null)
+        if (environment.Revision < 0 || environment.PlacedDecorations is null || environment.Background is null)
             throw new ArgumentException("Environment progress payload is invalid.");
         try
         {
