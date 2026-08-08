@@ -4,6 +4,14 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Work Mode Independent Resizing — Owner Approved (2026-08-08)
+
+Work Mode adds a hover-only diagonal resize button beside its motion and exit controls. Holding
+the button performs a native bottom-right window resize and uses the platform resize cursor.
+Work position and size persist as machine-local settings between Work entries. The normal game
+window retains its own last compact position and size; Work resize and app-save paths must never
+replace that normal geometry.
+
 ## Work Mode Glasses Reward Revision — Owner Approved (2026-08-08)
 
 The first deliberate click of the top-level **Work** command unlocks the project-owned Work

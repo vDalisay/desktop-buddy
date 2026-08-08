@@ -321,12 +321,16 @@ public sealed class ProgressSavePolicyTests
         {
             WindowX = 123,
             WindowY = 456,
+            WorkWindowWidth = 600,
+            WorkWindowHeight = 358,
             AlwaysOnTop = false,
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
         Assert.DoesNotContain("windowX", progress);
         Assert.DoesNotContain("alwaysOnTop", progress);
         Assert.Contains("\"windowX\":123", settings);
+        Assert.Contains("\"workWindowWidth\":600", settings);
+        Assert.Contains("\"workWindowHeight\":358", settings);
         Assert.Contains("\"alwaysOnTop\":false", settings);
     }
 

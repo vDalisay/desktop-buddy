@@ -642,13 +642,14 @@ Semantic regions:
 - `BuddyExitRegion` — receives double-click exit and eligible drag starts;
 - `CrtToggleRegion` — single-click toggles Session/Lifetime;
 - `AnimationToggleRegion` — toggles reactive animation;
+- `ResizeRegion` — starts a native bottom-right resize while held;
 - `DragRegion` — desk/PC/buddy visible regions that are safe to drag;
 - transparent empty pixels — click through where supported by the existing shell's dynamic hit-region model.
 
 Resolve precedence deterministically:
 
 ```text
-AnimationToggle > CRT > BuddyDoubleClick > Drag > click-through
+Resize > AnimationToggle > CRT > BuddyDoubleClick > Drag > click-through
 ```
 
 A drag crossing the double-click timing window must not accidentally exit.
@@ -662,6 +663,10 @@ A drag crossing the double-click timing window must not accidentally exit.
 - do not count internal drag movement as Work actions;
 - ordinary global mouse-button-down events may still increment the aggregate click counter according to the activity source; dragging itself adds no extra count.
 
+The adjacent resize control uses the diagonal resize cursor and preserves the companion's visual
+proportions. Work size is clamped to the usable monitor area and persisted independently from the
+normal game window size.
+
 ---
 
 ## 11. Preferences versus progress
@@ -671,9 +676,9 @@ A drag crossing the double-click timing window must not accidentally exit.
 Keep these outside progression reset where existing project policy does so:
 
 - Work companion screen position;
+- Work companion size;
 - selected CRT display mode (Session/Lifetime);
 - reactive animation enabled/disabled;
-- optional future Work visual scale.
 
 ### Progress/save data
 

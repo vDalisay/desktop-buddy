@@ -38,6 +38,7 @@ public partial class WorkCompanionView : CanvasLayer
     private SandboxRoot _sandbox = null!;
     private Control _root = null!;
     private WorkCrtDisplay _counter = null!;
+    private Button _resizeButton = null!;
     private Button _motionToggle = null!;
     private Button _exitButton = null!;
     private BuddyVisualRigView _rig = null!;
@@ -51,15 +52,20 @@ public partial class WorkCompanionView : CanvasLayer
     private double _reactionRemaining;
     private int _reactionSide = -1;
     private int _nextReactionSide;
+    private Vector2I _lastWindowSize;
+    private Vector2 _compositionOffset;
+    private float _compositionScale = 1.0f;
 
     private static readonly Rect2 BuddyHitRect = new(228, 78, 152, 228);
     private static readonly Rect2 CrtHitRect = new(418, 102, 121, 92);
+    private static readonly Rect2 ResizeButtonRect = new(601, 10, 31, 25);
     private static readonly Rect2 MotionToggleRect = new(638, 10, 31, 25);
     private static readonly Rect2 ExitButtonRect = new(675, 10, 31, 25);
 
     public event Action? ExitRequested;
     public event Action? CounterModeToggleRequested;
     public event Action<bool>? AnimationPreferenceChanged;
+    public event Action? ResizeRequested;
     public event Action<Vector2I>? DraggedBy;
     public event Action? DragFinished;
 
@@ -89,10 +95,12 @@ public partial class WorkCompanionView : CanvasLayer
         ApplyWorkPose();
         SetCounterMode(_showLifetime);
         SetAnimationsEnabled(_animationsEnabled, notify: false);
+        SyncCompositionToWindow();
     }
 
     public override void _Process(double delta)
     {
+        SyncCompositionToWindow();
         if (_reactionRemaining <= 0.0)
             return;
         _reactionRemaining = Math.Max(0.0, _reactionRemaining - delta);
@@ -150,7 +158,7 @@ public partial class WorkCompanionView : CanvasLayer
 
         if (input is InputEventMouseButton button && button.ButtonIndex == MouseButton.Left)
         {
-            Vector2 position = button.Position;
+            Vector2 position = ToCompositionPosition(button.Position);
             if (button.Pressed)
             {
                 if (CrtHitRect.HasPoint(position))
@@ -168,12 +176,13 @@ public partial class WorkCompanionView : CanvasLayer
                     return;
                 }
 
-                if (!_motionToggle.GetGlobalRect().HasPoint(position) &&
-                    !_exitButton.GetGlobalRect().HasPoint(position))
+                if (!_resizeButton.GetGlobalRect().HasPoint(button.Position) &&
+                    !_motionToggle.GetGlobalRect().HasPoint(button.Position) &&
+                    !_exitButton.GetGlobalRect().HasPoint(button.Position))
                 {
                     _dragCandidate = true;
                     _dragging = false;
-                    _dragOrigin = position;
+                    _dragOrigin = button.Position;
                 }
             }
             else if (_dragCandidate)
@@ -205,9 +214,9 @@ public partial class WorkCompanionView : CanvasLayer
         _root = new Control
         {
             Name = "WorkCompanionRoot",
+            Size = PreferredSize,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        _root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         AddChild(_root);
 
         Texture2D computerTexture = GD.Load<Texture2D>(ComputerTexturePath) ??
@@ -232,8 +241,22 @@ public partial class WorkCompanionView : CanvasLayer
         };
         _root.AddChild(_counter);
 
-        // Both controls sit in the top-right corner above the monitor, clear of the buddy and
+        // Controls sit in the top-right corner above the monitor, clear of the buddy and
         // the CRT, and only appear while the pointer is over the companion.
+        _resizeButton = new Button
+        {
+            Name = "WorkResizeButton",
+            Position = ResizeButtonRect.Position,
+            Size = ResizeButtonRect.Size,
+            Text = "↘",
+            TooltipText = "Resize the Work companion.",
+            FocusMode = Control.FocusModeEnum.All,
+            MouseDefaultCursorShape = Control.CursorShape.Fdiagsize,
+        };
+        _resizeButton.AddThemeFontSizeOverride("font_size", 13);
+        _resizeButton.ButtonDown += () => ResizeRequested?.Invoke();
+        _root.AddChild(_resizeButton);
+
         _motionToggle = new Button
         {
             Name = "WorkMotionToggle",
@@ -284,11 +307,43 @@ public partial class WorkCompanionView : CanvasLayer
 
     private void SetHoverControlsVisible(bool visible)
     {
+        if (GodotObject.IsInstanceValid(_resizeButton))
+            _resizeButton.Visible = visible;
         if (GodotObject.IsInstanceValid(_motionToggle))
             _motionToggle.Visible = visible;
         if (GodotObject.IsInstanceValid(_exitButton))
             _exitButton.Visible = visible;
     }
+
+    private void SyncCompositionToWindow()
+    {
+        Vector2I size = GetWindow().Size;
+        if (size == _lastWindowSize || size.X <= 0 || size.Y <= 0)
+            return;
+        _lastWindowSize = size;
+        _compositionScale = Math.Max(0.01f, Math.Min(
+            size.X / (float)PreferredSize.X,
+            size.Y / (float)PreferredSize.Y));
+        Vector2 drawn = (Vector2)PreferredSize * _compositionScale;
+        _compositionOffset = ((Vector2)size - drawn) * 0.5f;
+        if (GodotObject.IsInstanceValid(_root))
+        {
+            _root.Position = _compositionOffset;
+            _root.Scale = Vector2.One * _compositionScale;
+        }
+        RefreshNativeWindowShape();
+    }
+
+    private Vector2 ToCompositionPosition(Vector2 windowPosition) =>
+        (windowPosition - _compositionOffset) / _compositionScale;
+
+    private Rect2I ScaleCompositionRect(Rect2I rect) => new(
+        new Vector2I(
+            Mathf.RoundToInt(_compositionOffset.X + rect.Position.X * _compositionScale),
+            Mathf.RoundToInt(_compositionOffset.Y + rect.Position.Y * _compositionScale)),
+        new Vector2I(
+            Mathf.CeilToInt(rect.Size.X * _compositionScale),
+            Mathf.CeilToInt(rect.Size.Y * _compositionScale)));
 
     private void BuildBuddyPreview()
     {

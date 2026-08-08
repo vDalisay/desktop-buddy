@@ -43,6 +43,7 @@ public sealed class WorkModeResilienceScenario : IScenario
             SaveLoadStatus.NewSave,
             WorkProgress: work);
         sandbox.Configure(context);
+        sandbox.Shell.ConfigureRuntime(context.Settings, saves);
         tree.Root.AddChild(sandbox);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
@@ -70,6 +71,7 @@ public sealed class WorkModeResilienceScenario : IScenario
 
         try
         {
+            Rect2I normalRect = sandbox.Window.CompactRect;
             bool entered = await coordinator.EnterAsync();
             checks.Add(new StartupCheck(
                 "work_first_click_unlocks_without_equipping",
@@ -81,6 +83,18 @@ public sealed class WorkModeResilienceScenario : IScenario
                 "work_disables_normal_gameplay_tick",
                 entered && !sandbox.IsPhysicsProcessing() && source.IsRunning,
                 $"physics={sandbox.IsPhysicsProcessing()} source={source.IsRunning}"));
+
+            var requestedWorkSize = new Vector2I(600, 358);
+            sandbox.Window.ResizeWorkCompanion(requestedWorkSize);
+            sandbox.Shell.CaptureWindowStateForSave();
+            checks.Add(new StartupCheck(
+                "work_resize_does_not_replace_normal_window_geometry",
+                sandbox.Window.WorkCompanionRect.Size == requestedWorkSize &&
+                    sandbox.Shell.CurrentLocalSettings.WindowWidth == normalRect.Size.X &&
+                    sandbox.Shell.CurrentLocalSettings.WindowHeight == normalRect.Size.Y,
+                $"work={sandbox.Window.WorkCompanionRect} normal={normalRect} " +
+                $"savedNormal={sandbox.Shell.CurrentLocalSettings.WindowWidth}x" +
+                $"{sandbox.Shell.CurrentLocalSettings.WindowHeight}"));
 
             source.Emit(WorkActivityKind.KeyboardPress);
             source.Emit(WorkActivityKind.KeyboardPress);
@@ -111,6 +125,7 @@ public sealed class WorkModeResilienceScenario : IScenario
                 $"starts={source.StartCount} stops={source.StopCount}"));
 
             await coordinator.ExitAsync();
+            LocalSettingsSave savedSettings = sandbox.Shell.CurrentLocalSettings;
             checks.Add(new StartupCheck(
                 "work_exit_clears_journal_and_restores_gameplay",
                 !coordinator.IsActive &&
@@ -122,6 +137,15 @@ public sealed class WorkModeResilienceScenario : IScenario
                 $"active={coordinator.IsActive} running={source.IsRunning} disposed={source.Disposed} " +
                 $"physics={sandbox.IsPhysicsProcessing()} window={sandbox.Window.WorkCompanionActive} " +
                 $"journal={work.ActiveSession.HasValue}/{store.Progress?.Work.ActiveSession is not null}"));
+            checks.Add(new StartupCheck(
+                "work_size_persists_separately_for_next_entry",
+                sandbox.Window.CompactRect == normalRect &&
+                    savedSettings.WorkWindowWidth == requestedWorkSize.X &&
+                    savedSettings.WorkWindowHeight == requestedWorkSize.Y &&
+                    sandbox.Shell.ResolveInitialWorkCompanionRect(WorkCompanionView.PreferredSize).Size ==
+                        requestedWorkSize,
+                $"normal={sandbox.Window.CompactRect} workSaved=" +
+                $"{savedSettings.WorkWindowWidth}x{savedSettings.WorkWindowHeight}"));
         }
         finally
         {

@@ -274,7 +274,8 @@ public partial class DesktopShellController : Node
         if (_saves is null)
             return;
 
-        Rect2I compact = Window.LayoutMode == WindowLayoutMode.Compact
+        Rect2I compact = Window.LayoutMode == WindowLayoutMode.Compact &&
+            !Window.WorkCompanionActive
             ? Window.CaptureWindowSettings().Rect
             : Window.CompactWindowSettings.Rect;
         _settings = WindowInteractionSettings.WithState(

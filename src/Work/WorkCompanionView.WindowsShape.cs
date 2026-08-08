@@ -97,18 +97,19 @@ public partial class WorkCompanionView
         if (combined == 0)
             return;
 
-        // Match the 720x430 sideways-buddy and supplied-PC layout. The rectangles overlap enough
+        // Match the scaled sideways-buddy and supplied-PC layout. The rectangles overlap enough
         // for tiny hand excursions while empty corners stay outside the HWND and click through.
         Rect2I[] regions =
         [
-            new Rect2I(632, 4, 78, 38),      // hover-only motion + exit controls
+            new Rect2I(595, 4, 115, 38),     // hover-only resize, motion + exit controls
             new Rect2I(228, 78, 152, 228),   // sideways buddy + alternating typing hands
             new Rect2I(385, 68, 240, 270),   // smaller supplied monitor and PC chassis
         ];
 
         bool built = true;
-        foreach (Rect2I region in regions)
+        foreach (Rect2I unscaled in regions)
         {
+            Rect2I region = ScaleCompositionRect(unscaled);
             nint part = CreateRectRgn(
                 region.Position.X,
                 region.Position.Y,
@@ -138,6 +139,12 @@ public partial class WorkCompanionView
 
         // After a successful SetWindowRgn Windows owns the HRGN handle.
         _nativeShapeApplied = true;
+    }
+
+    private void RefreshNativeWindowShape()
+    {
+        if (_nativeShapeApplied)
+            ApplyNativeWindowShape();
     }
 
     private void ClearNativeWindowShape()

@@ -284,9 +284,11 @@ public sealed record LocalSettingsSave
     public bool LaunchWithWindows { get; init; }
     public string LastInputMode { get; init; } = "work";
 
-    // Work Mode is a machine-local presentation. Zero width/height means use default placement.
+    // Work Mode is a machine-local presentation. Zero width/height means use the default size.
     public int WorkWindowX { get; init; }
     public int WorkWindowY { get; init; }
+    public int WorkWindowWidth { get; init; }
+    public int WorkWindowHeight { get; init; }
     public bool WorkPositionSet { get; init; }
     public bool WorkAnimationsEnabled { get; init; } = true;
     public bool WorkShowLifetimeCounter { get; init; }
