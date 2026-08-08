@@ -9,7 +9,11 @@ $ErrorActionPreference = "Stop"
 function Invoke-Git {
     param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
 
-    & git @Arguments
+    # Send git's normal stdout to the host instead of PowerShell's success pipeline.
+    # Several helper functions intentionally return a single value (for example a worktree
+    # path); allowing `git worktree add` output to leak into that pipeline turns the return
+    # value into Object[] and breaks downstream [string] parameter binding.
+    & git @Arguments | Out-Host
     if ($LASTEXITCODE -ne 0) {
         throw "git $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
     }
