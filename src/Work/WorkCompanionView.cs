@@ -29,10 +29,17 @@ public partial class WorkCompanionView : CanvasLayer
     // Work pose reads as the same sideways look it uses when walking toward something.
     private const float SidewaysYawRadians = Mathf.Pi / 6.0f;
 
+    // Clears the 28-unit torso radius so both hands read as reaching in front of the body:
+    // the yaw pushes the forward-reaching hands 13-20 units away from the camera, so the lane
+    // has to pay that back before it buys any clearance. Depth only — ortho camera, so screen
+    // position is unchanged.
+    private const float HandDepthLane = 70.0f;
+
     private SandboxRoot _sandbox = null!;
     private Control _root = null!;
     private WorkCrtDisplay _counter = null!;
     private Button _motionToggle = null!;
+    private Button _exitButton = null!;
     private BuddyVisualRigView _rig = null!;
     private StaticBuddyVisualTransformSource _source = null!;
     private CompiledCharacterAppearance? _appearanceOverride;
@@ -47,6 +54,8 @@ public partial class WorkCompanionView : CanvasLayer
 
     private static readonly Rect2 BuddyHitRect = new(228, 78, 152, 228);
     private static readonly Rect2 CrtHitRect = new(418, 102, 121, 92);
+    private static readonly Rect2 MotionToggleRect = new(638, 10, 31, 25);
+    private static readonly Rect2 ExitButtonRect = new(675, 10, 31, 25);
 
     public event Action? ExitRequested;
     public event Action? CounterModeToggleRequested;
@@ -159,7 +168,8 @@ public partial class WorkCompanionView : CanvasLayer
                     return;
                 }
 
-                if (!_motionToggle.GetGlobalRect().HasPoint(position))
+                if (!_motionToggle.GetGlobalRect().HasPoint(position) &&
+                    !_exitButton.GetGlobalRect().HasPoint(position))
                 {
                     _dragCandidate = true;
                     _dragging = false;
@@ -222,11 +232,13 @@ public partial class WorkCompanionView : CanvasLayer
         };
         _root.AddChild(_counter);
 
+        // Both controls sit in the top-right corner above the monitor, clear of the buddy and
+        // the CRT, and only appear while the pointer is over the companion.
         _motionToggle = new Button
         {
             Name = "WorkMotionToggle",
-            Position = new Vector2(12, 10),
-            Size = new Vector2(31, 25),
+            Position = MotionToggleRect.Position,
+            Size = MotionToggleRect.Size,
             ToggleMode = true,
             FocusMode = Control.FocusModeEnum.All,
             MouseDefaultCursorShape = Control.CursorShape.PointingHand,
@@ -235,33 +247,47 @@ public partial class WorkCompanionView : CanvasLayer
         _motionToggle.Toggled += enabled => SetAnimationsEnabled(enabled);
         _root.AddChild(_motionToggle);
 
+        _exitButton = new Button
+        {
+            Name = "WorkExitButton",
+            Position = ExitButtonRect.Position,
+            Size = ExitButtonRect.Size,
+            Text = "X",
+            TooltipText = "Leave Work Mode (same as double-clicking the buddy).",
+            FocusMode = Control.FocusModeEnum.All,
+            MouseDefaultCursorShape = Control.CursorShape.PointingHand,
+        };
+        _exitButton.AddThemeFontSizeOverride("font_size", 11);
+        _exitButton.Pressed += () => ExitRequested?.Invoke();
+        _root.AddChild(_exitButton);
+
         // Hover tracking lives on the Window, not on _root: Godot emits mouse_exited on a
         // parent Control as soon as the pointer enters a child that accepts mouse input, so
         // hovering the toggle used to hide it out from under the click.
-        _motionToggle.Visible = false;
+        SetHoverControlsVisible(false);
         Window window = GetWindow();
-        window.MouseEntered += ShowMotionToggle;
-        window.MouseExited += HideMotionToggle;
+        window.MouseEntered += ShowHoverControls;
+        window.MouseExited += HideHoverControls;
         TreeExiting += () =>
         {
             if (GodotObject.IsInstanceValid(window))
             {
-                window.MouseEntered -= ShowMotionToggle;
-                window.MouseExited -= HideMotionToggle;
+                window.MouseEntered -= ShowHoverControls;
+                window.MouseExited -= HideHoverControls;
             }
         };
     }
 
-    private void ShowMotionToggle()
-    {
-        if (GodotObject.IsInstanceValid(_motionToggle))
-            _motionToggle.Visible = true;
-    }
+    private void ShowHoverControls() => SetHoverControlsVisible(true);
 
-    private void HideMotionToggle()
+    private void HideHoverControls() => SetHoverControlsVisible(false);
+
+    private void SetHoverControlsVisible(bool visible)
     {
         if (GodotObject.IsInstanceValid(_motionToggle))
-            _motionToggle.Visible = false;
+            _motionToggle.Visible = visible;
+        if (GodotObject.IsInstanceValid(_exitButton))
+            _exitButton.Visible = visible;
     }
 
     private void BuildBuddyPreview()
@@ -357,6 +383,11 @@ public partial class WorkCompanionView : CanvasLayer
             Vector3 pivot = WorldPlaneMapping.To3D(torso);
             Vector3 flat = WorldPlaneMapping.To3D(position);
             Vector3 yawed = pivot + (new Basis(Vector3.Up, SidewaysYawRadians) * (flat - pivot));
+            // Tucked hands would otherwise sink into the torso sphere: the yaw alone only
+            // carries them ~20 units forward, less than the torso radius. The lane offset is
+            // depth only, so the (2D-derived) connector geometry stays clamped and invisible.
+            if (id is BuddyPartId.LeftHand or BuddyPartId.RightHand)
+                yawed.Z += HandDepthLane;
             return new BuddyVisualPartPose(
                 transform,
                 yawed,

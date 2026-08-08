@@ -200,26 +200,25 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                     leftHand.GlobalPosition.X > torso.GlobalPosition.X &&
                     rightHand.GlobalPosition.X > leftHand.GlobalPosition.X;
 
-                // Every limb must stay inside the connector clamp, so no stretched tube shows
-                // between the spheres (the owner's complaint about the earlier composition).
-                float torsoRadius = rig.PartMeshRadius(BuddyPartId.Torso);
+                // Every connector must stay at its clamped minimum length, so no stretched tube
+                // shows between the spheres (the owner's complaint about the earlier pass).
                 bool limbsTucked = true;
                 var tuckReport = new System.Text.StringBuilder();
-                foreach (BuddyPartId part in new[]
+                for (int index = 0; index < rig.ConnectorVisualCount; index++)
                 {
-                    BuddyPartId.Head,
-                    BuddyPartId.LeftHand,
-                    BuddyPartId.RightHand,
-                    BuddyPartId.LeftFoot,
-                    BuddyPartId.RightFoot,
-                })
-                {
-                    float gap = rig.GetPartSocket(part).GlobalPosition
-                            .DistanceTo(torso.GlobalPosition) -
-                        torsoRadius - rig.PartMeshRadius(part);
-                    limbsTucked &= gap <= 1.0f;
-                    tuckReport.Append($"{part}gap={gap:0.0} ");
+                    var connector = (MeshInstance3D)rig.GetConnectorVisual(index);
+                    float authoredLength = ((CapsuleMesh)connector.Mesh).Height;
+                    float drawnLength = connector.Scale.Y * authoredLength;
+                    limbsTucked &= drawnLength <= 1.01f;
+                    tuckReport.Append($"c{index}={drawnLength:0.0} ");
                 }
+
+                // Both hands must render in front of the torso sphere, not inside it.
+                bool handsInFront =
+                    leftHand.GlobalPosition.Z > torso.GlobalPosition.Z +
+                        rig.PartMeshRadius(BuddyPartId.Torso) &&
+                    rightHand.GlobalPosition.Z > torso.GlobalPosition.Z +
+                        rig.PartMeshRadius(BuddyPartId.Torso);
 
                 workView.NotifyActivity(WorkActivityKind.MouseClick);
                 bool leftUpRightDown = leftHand.GlobalPosition.Y > restingLeftY &&
@@ -229,7 +228,8 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                     leftHand.GlobalPosition.Y < restingLeftY;
                 checks.Add(new StartupCheck(
                     "work_companion_faces_pc_sideways_with_tucked_limbs",
-                    sidewaysPose && limbsTucked && leftUpRightDown && rightUpLeftDown,
+                    sidewaysPose && limbsTucked && handsInFront &&
+                        leftUpRightDown && rightUpLeftDown,
                     $"rotation={torso.GlobalRotation} {tuckReport}" +
                     $"left={leftHand.GlobalPosition} right={rightHand.GlobalPosition}"));
             }
@@ -240,6 +240,19 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                     false,
                     "work rig missing"));
             }
+
+            var exitButton = workView.FindChild("WorkExitButton", true, false) as Button;
+            var motionToggle = workView.FindChild("WorkMotionToggle", true, false) as Button;
+            bool exitRaised = false;
+            workView.ExitRequested += () => exitRaised = true;
+            exitButton?.EmitSignal(BaseButton.SignalName.Pressed);
+            checks.Add(new StartupCheck(
+                "work_corner_controls_expose_motion_and_exit",
+                exitRaised &&
+                    GodotObject.IsInstanceValid(motionToggle) &&
+                    motionToggle!.Position.X > 600.0f &&
+                    exitButton!.Position.X > motionToggle.Position.X,
+                $"exitRaised={exitRaised} motion={motionToggle?.GetRect()} exit={exitButton?.GetRect()}"));
 
             workView.QueueFree();
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);

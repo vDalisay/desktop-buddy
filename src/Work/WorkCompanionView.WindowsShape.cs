@@ -101,7 +101,7 @@ public partial class WorkCompanionView
         // for tiny hand excursions while empty corners stay outside the HWND and click through.
         Rect2I[] regions =
         [
-            new Rect2I(10, 8, 36, 30),       // hover-only motion control
+            new Rect2I(632, 4, 78, 38),      // hover-only motion + exit controls
             new Rect2I(228, 78, 152, 228),   // sideways buddy + alternating typing hands
             new Rect2I(385, 68, 240, 270),   // smaller supplied monitor and PC chassis
         ];
