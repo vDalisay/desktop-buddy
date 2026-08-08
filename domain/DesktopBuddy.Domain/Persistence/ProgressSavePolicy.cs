@@ -108,6 +108,7 @@ public static class ProgressSavePolicy
             save.FunActivities is null ||
             save.Statistics is null ||
             save.Times is null ||
+            save.Work is null ||
             save.Extensions is null ||
             save.Extensions.UnknownContentIds is null ||
             save.Extensions.Values is null ||
@@ -131,6 +132,7 @@ public static class ProgressSavePolicy
         ValidateIds(save.UnlockedToolIds, nameof(save.UnlockedToolIds));
         ValidateIds(save.HarmfulContentIds, nameof(save.HarmfulContentIds));
         ValidateCounters(save.Statistics);
+        ValidateWork(save.Work);
         if (string.IsNullOrWhiteSpace(save.SelectedToolId))
             throw new ArgumentException("Selected tool ID is required.", nameof(save));
     }
@@ -430,5 +432,25 @@ public static class ProgressSavePolicy
         {
             throw new ArgumentException("Progress statistics payload is invalid.");
         }
+    }
+
+    private static void ValidateWork(WorkProgressSave work)
+    {
+        if (work.Revision < 0 || work.KeyboardPresses < 0 || work.MouseClicks < 0 ||
+            work.ClaimedLifetimeMilestoneIds is null)
+        {
+            throw new ArgumentException("Work progress payload is invalid.");
+        }
+        ValidateIds(work.ClaimedLifetimeMilestoneIds, nameof(work.ClaimedLifetimeMilestoneIds));
+        if (work.ActiveSession is not { } session)
+            return;
+        if (session.SessionId == Guid.Empty || session.KeyboardPresses < 0 || session.MouseClicks < 0 ||
+            session.EarnedRepeatPerSessionMilestoneIds is null)
+        {
+            throw new ArgumentException("Active Work session journal is invalid.");
+        }
+        ValidateIds(
+            session.EarnedRepeatPerSessionMilestoneIds,
+            nameof(session.EarnedRepeatPerSessionMilestoneIds));
     }
 }

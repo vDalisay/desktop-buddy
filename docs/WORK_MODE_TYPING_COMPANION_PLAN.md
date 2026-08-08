@@ -10,7 +10,7 @@ Depends on:
 - existing passive-income / reward-ledger / atomic progress-save infrastructure;
 - Windows desktop placement, monitor clamp, transparency, always-on-top, and recovery behavior already established by the desktop shell.
 
-Recommended schedule: **after Buddy Studio's ownership/equipment slice is available**, because first-time Work Mode grants and auto-equips a glasses cosmetic. The Work Mode architecture itself must not depend on Steam.
+Recommended schedule: **after Buddy Studio's ownership slice is available**, because first-time Work Mode grants a glasses cosmetic. The Work Mode architecture itself must not depend on Steam.
 
 This document supersedes the older deferred-roadmap description of Work Mode as merely a buddy with glasses at a mini PC. The revised product target is a minimal transparent desktop companion inspired by the broad interaction idea of apps such as Bongo Cat while using completely original Desktop Buddy art, behavior, UI, code, sounds, and presentation.
 
@@ -199,7 +199,7 @@ Work Mode always uses the currently active custom buddy appearance:
 - shoes;
 - all other Buddy Studio appearance state that is visually compatible with the seated Work presentation.
 
-Work Mode does not force glasses after the first-entry reward transaction described below.
+Work Mode never forces or changes the equipped glasses selection.
 
 The Work presentation uses a dedicated seated visual pose rather than running the gameplay ragdoll simulation inside the tiny desktop companion.
 
@@ -212,12 +212,11 @@ Rules:
 - grant is account/save-wide;
 - grant occurs only once;
 - it uses the Buddy Studio cosmetic ownership service, not a separate Work-only inventory;
-- it is automatically equipped on the active buddy on that first entry;
-- the resulting character appearance is persisted through the normal character save path;
-- on every later Work entry, Work Mode respects whatever glasses selection the player chose in Buddy Studio;
+- it is not automatically equipped and does not edit the active character document;
+- on every Work entry, including the first, Work Mode respects whatever glasses selection the player chose in Buddy Studio;
 - changing/removing the reward glasses later never removes ownership;
-- Work Mode never silently re-equips them after the first-entry transaction;
-- if ownership was already present before first Work entry, do not create a duplicate ownership record; still perform the one-time auto-equip requirement unless the first-entry flag is already complete.
+- Work Mode never silently equips or re-equips them;
+- if ownership was already present before first Work entry, do not create a duplicate ownership record; complete the first-entry flag without changing equipment.
 
 The glasses definition needs a stable cosmetic content ID before implementation. The exact visual design/name is content authoring, not architecture.
 
@@ -267,7 +266,7 @@ Ordered transition:
 1. reject or resolve any modal/editor state that cannot safely transition;
 2. snapshot current normal-window geometry and presentation mode;
 3. resolve and compile the active character appearance;
-4. run the first-entry glasses reward/equip transaction if required;
+4. run the first-entry glasses ownership transaction if required;
 5. suspend normal gameplay simulation/activity presentation;
 6. create or activate the Work companion visual composition;
 7. resize/reposition the existing app window to the compact Work bounds;
@@ -526,26 +525,21 @@ The exact ledger API should follow the current repository's established transact
 
 ## 8. First-entry glasses transaction
 
-This crosses Work Mode, cosmetic ownership, active-character data, and persistence, so it must be explicit.
+This crosses Work Mode, cosmetic ownership, and persistence, so it must be explicit.
 
 Recommended order:
 
 1. check durable `FirstEntryGlassesGranted` flag;
 2. if already true, do nothing;
 3. ensure the glasses cosmetic ownership ID exists in the player's account/save ownership set;
-4. load the active character through the normal character repository/session boundary;
-5. set its Glasses category to the reward cosmetic;
-6. normalize/validate/atomically save the character;
-7. queue/apply the resulting appearance using the existing safe appearance boundary;
-8. persist cosmetic ownership if not already durable;
-9. set and persist `FirstEntryGlassesGranted = true`;
-10. continue Work Mode entry.
+4. set and persist `FirstEntryGlassesGranted = true` with cosmetic ownership;
+5. continue Work Mode entry without changing the active character.
 
 Failure requirements:
 
 - never grant duplicate ownership;
-- never corrupt the active character;
-- if character save fails, ownership may remain granted but the first-entry completion flag should remain false until the required auto-equip has successfully completed, allowing a safe retry;
+- never read, write, or otherwise change the active character document;
+- if progress save fails, keep the state dirty so the same ownership/flag transaction can be retried safely;
 - no rollback may subtract a legitimately granted account-wide cosmetic.
 
 ---
@@ -906,7 +900,7 @@ Deliver:
 - reward-ledger settlement;
 - pending/claimed persistence;
 - first-entry glasses ownership grant;
-- one-time active-character auto-equip;
+- no active-character equipment mutation;
 - payout summary UI.
 
 Exit gate:
@@ -993,7 +987,7 @@ Flow:
 1. start in normal windowed mode;
 2. enter Work;
 3. verify compact transparent composition;
-4. first entry grants/equips glasses once;
+4. first entry grants glasses ownership once without equipping it;
 5. feed real keyboard and L/R/M input through the Windows test harness where safe;
 6. verify wheel does not count;
 7. verify CRT current count;
@@ -1091,7 +1085,7 @@ Revised Work Mode is complete when:
 - Work companion starts lower-right above the taskbar, can be freely dragged, persists position, and recovers across monitor/DPI changes;
 - reactive typing/click animation works and can be disabled without disabling counting;
 - double-clicking the buddy exits, restores normal window geometry, and settles pending milestone rewards exactly once;
-- the first Work entry grants and auto-equips the free glasses once, while later entries respect player customization;
+- the first Work entry grants the free glasses once without equipping them, and every entry respects player customization;
 - milestone architecture supports at minimum 10k session actions, 10k session keyboard presses, and 1m lifetime actions;
 - reward amounts are economy-calibrated before release;
 - crash/restart cannot duplicate claims;

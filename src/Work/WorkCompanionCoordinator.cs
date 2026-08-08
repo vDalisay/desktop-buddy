@@ -103,12 +103,8 @@ public partial class WorkCompanionCoordinator : Node
             var firstEntry = new WorkFirstEntryRewardService(
                 _context.Progress,
                 _work,
-                _context.CharacterSelection,
-                _context.Characters,
                 _context.Saves);
-            WorkFirstEntryRewardResult reward = await firstEntry.EnsureAsync(token);
-            if (!string.IsNullOrWhiteSpace(reward.Detail))
-                Log.Warn(Category, reward.Detail!);
+            await firstEntry.EnsureAsync(token);
 
             CompiledCharacterAppearance? appearance = await ResolveAppearanceAsync(token);
 
@@ -132,7 +128,9 @@ public partial class WorkCompanionCoordinator : Node
             _view.DragFinished += OnDragFinished;
             GetTree().Root.AddChild(_view);
 
-            _session = new WorkSessionState();
+            _session = _work.ActiveSession is { } journal
+                ? new WorkSessionState(journal)
+                : new WorkSessionState();
             _sessionSettledMilliCredits = 0;
             UpdateCounter();
 
@@ -145,6 +143,9 @@ public partial class WorkCompanionCoordinator : Node
                 await RollbackFailedEntryAsync();
                 return false;
             }
+
+            _work.CheckpointSession(_session.Snapshot());
+            await _context.Saves.FlushProgressAsync(force: true, token);
 
             IsActive = true;
             ActiveChanged?.Invoke(true);
@@ -175,8 +176,25 @@ public partial class WorkCompanionCoordinator : Node
             _activitySource?.Stop();
             DrainActivity();
 
-            await PersistPreferencesAsync(forcePosition: _positionDirty);
-            await _context.Saves.FlushProgressAsync(force: true, token);
+            try
+            {
+                await PersistPreferencesAsync(forcePosition: _positionDirty);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                Log.Error(Category, $"Final Work preference save failed: {exception.Message}");
+            }
+            _work.ClearActiveSession();
+            try
+            {
+                await _context.Saves.FlushProgressAsync(force: true, token);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // A failed save remains dirty for the app-level quit/focus retry, but must not
+                // trap the player in a companion whose global capture has already stopped.
+                Log.Error(Category, $"Final Work progress save failed: {exception.Message}");
+            }
 
             TearDownActivitySource();
             TearDownView();
@@ -212,6 +230,7 @@ public partial class WorkCompanionCoordinator : Node
         {
             _activitySource?.Stop();
             DrainActivity();
+            _work.ClearActiveSession();
             try
             {
                 PersistPreferencesAsync(forcePosition: _positionDirty).GetAwaiter().GetResult();
@@ -289,6 +308,7 @@ public partial class WorkCompanionCoordinator : Node
         // that claim is durable, so any gap between claiming and paying is a window in which a
         // crash burns the reward permanently.
         IReadOnlyList<WorkMilestoneEarned> newlyEarned = _session.Evaluate(_work, _milestones);
+        _work.CheckpointSession(_session.Snapshot());
         UpdateCounter();
         if (newlyEarned.Count > 0)
         {
@@ -485,6 +505,7 @@ public partial class WorkCompanionCoordinator : Node
         _activitySource.Activity -= OnRawActivity;
         _activitySource.Dispose();
         _activitySource = null;
+        _capturePausedForSuspend = false;
         Interlocked.Exchange(ref _pendingKeyboard, 0);
         Interlocked.Exchange(ref _pendingMouse, 0);
     }

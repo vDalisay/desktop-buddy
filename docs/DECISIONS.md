@@ -4,6 +4,15 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Work Mode Glasses Reward Revision — Owner Approved (2026-08-08)
+
+The first deliberate click of the top-level **Work** command unlocks the project-owned Work
+glasses cosmetic once through the shared account/save ownership model. The reward is **not
+automatically equipped** and never edits the active character document. Work Mode always
+respects the player's current glasses selection, including on first entry. This decision
+supersedes only the earlier auto-equip requirements in
+`docs/WORK_MODE_TYPING_COMPANION_PLAN.md`; the one-shot ownership grant remains binding.
+
 ## Milestone 4 Owner Gate — Accepted (2026-07-27)
 
 The owner accepted Milestone 4 in full after the repaired **Hide to Tray** path was

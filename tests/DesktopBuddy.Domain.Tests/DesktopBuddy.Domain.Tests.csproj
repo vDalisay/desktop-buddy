@@ -36,6 +36,7 @@
     <Compile Include="..\..\src\App\GameClock.cs" Link="RuntimeLifecycle\GameClock.cs" />
     <Compile Include="..\..\src\Economy\EconomyService.cs" Link="RuntimeEconomy\EconomyService.cs" />
     <Compile Include="..\..\src\App\ProgressReset.cs" Link="RuntimePersistence\ProgressReset.cs" />
+    <Compile Include="..\..\src\Work\WorkFirstEntryRewardService.cs" Link="RuntimeWork\WorkFirstEntryRewardService.cs" />
   </ItemGroup>
 
 </Project>

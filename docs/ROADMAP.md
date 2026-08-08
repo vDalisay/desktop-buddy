@@ -258,15 +258,16 @@ Slice status against plan Section 16:
 - [x] WM3 — coalesced alternating typing/click reactions, hover-only motion toggle, CRT
   Session/Lifetime toggle, drag, double-click exit, and a hover-only `X` exit control.
 - [x] WM4 — milestone settlement into the passive ledger, first-entry glasses ownership
-  grant plus one-time auto-equip, and the exit payout summary.
-- [ ] WM5 — checkpointing, suspend/resume, and legacy-mode normalization are implemented;
-  the four-hour Work soak and the standalone Windows monitor/DPI matrix are outstanding
-  owner-run manual gates.
+  grant without auto-equip, and the exit payout summary.
+- [x] WM5 — crash-safe aggregate session journaling, periodic checkpointing, suspend/resume,
+  low-cost gameplay suspension, capture teardown, recovery, and legacy-mode normalization
+  are implemented and automated. The four-hour Work soak and the full standalone Windows
+  monitor/DPI matrix remain owner-run release gates.
 
 Known gaps, both accepted for now by owner decision 2026-08-08:
 
 - The Work companion renders the active character's compiled appearance but not its
-  parametric feature layers, so equipped glasses are owned and equipped yet invisible in
+  parametric feature layers, so glasses equipped by the player are owned and equipped yet invisible in
   Work Mode. The fix is to run the Phase A feature renderers on the Work rig; the earlier
   hand-drawn glasses overlay was deleted rather than kept as a stand-in.
 - First-entry onboarding copy (plan Sections 13.1/13.3) is unwritten: the privacy sentence

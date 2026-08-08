@@ -146,7 +146,8 @@ public partial class CharacterEditorHost
     private void UpdateDockVisibility(bool force = false)
     {
         bool fullscreen = _sandbox.Shell.LayoutMode == WindowLayoutMode.FullscreenOverlay;
-        bool compactVisible = !IsEditorOpen && !fullscreen;
+        bool compactVisible = !IsEditorOpen && !fullscreen &&
+            !_sandbox.Window.WorkCompanionActive;
         if (force || compactVisible != _lastCompactDockVisible)
         {
             _lastCompactDockVisible = compactVisible;
@@ -269,14 +270,19 @@ public partial class CharacterEditorHost
         Control? compactBar = GodotObject.IsInstanceValid(SettingsButton)
             ? SettingsButton.GetParentOrNull<Control>()
             : null;
+        Control? win98CommandBar = GetTree().Root.FindChild(
+            "Win98CommandBar", true, false) as Control;
         Rect2 viewportRect = GetViewport().GetVisibleRect();
         bool expectedCompact = !IsEditorOpen &&
-            _sandbox.Shell.LayoutMode == WindowLayoutMode.Compact;
+            _sandbox.Shell.LayoutMode == WindowLayoutMode.Compact &&
+            !_sandbox.Window.WorkCompanionActive &&
+            !(GodotObject.IsInstanceValid(win98CommandBar) && win98CommandBar!.IsVisibleInTree());
 
         string signature =
             $"expectedCompact={expectedCompact};editor={IsEditorOpen};" +
             $"layout={_sandbox.Shell.LayoutMode};mode={_sandbox.Shell.Mode};" +
             $"window={LiveMainWindowRect()};viewport={viewportRect};" +
+            $"win98Bar={DescribeControl(win98CommandBar)};" +
             $"uiRoot={DescribeControl(uiRoot)};" +
             $"dock={DescribeControl(_compactDockContainer)};" +
             $"bar={DescribeControl(compactBar)};" +
