@@ -119,7 +119,7 @@ try {
     }
 
     Write-Host "Fetching prepared parallel branches..."
-    Invoke-Git fetch origin environment-customization buddy-studio
+    Invoke-Git fetch origin --prune
 
     Ensure-LocalBranch -Branch "environment-customization"
     Ensure-LocalBranch -Branch "buddy-studio"
