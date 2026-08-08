@@ -122,8 +122,9 @@ Deliver tools in the confirmed progression order:
 Also deliver the pullback trajectory launcher, cursor-direction guns, object budget,
 permanent purchases, unrestricted save-for-preference shopping, and the confirmed
 full-gameplay reset service. The retractable tool/shop/settings panel was **moved out of
-this milestone** by owner decision 2026-08-02 and is tracked by
-`docs/UI_FLOATING_DOCK_PLAN.md`; it carries the reset's player-facing button with it.
+this milestone** by owner decision 2026-08-02, and its draft plan was **withdrawn by the
+owner 2026-08-08**; FR-003.2 stays a requirement with no active plan, and it still carries
+the reset's player-facing button with it.
 
 Power Grab supersedes the unimplemented passive Strength Upgrade concept. Milestone 5 must
 deliver it as a separately selectable, one-time permanent tool while preserving Normal Grab:
@@ -154,10 +155,11 @@ Exit criteria:
   owner attestation 2026-08-02, minus the reset row.
 
 **Milestone 5 is COMPLETE (owner-accepted 2026-08-02).** The FR-003.2 retractable
-tool/shop/settings dock was moved out of the exit criteria by owner decision the same day
-and is the next scheduled work item; until it ships, Reset Progress has no player-facing
-route, which is an accepted known gap. See `docs/UI_FLOATING_DOCK_PLAN.md` — its clean-room
-design direction still needs owner approval before implementation starts.
+tool/shop/settings dock was moved out of the exit criteria by owner decision the same day.
+Its draft plan (`docs/UI_FLOATING_DOCK_PLAN.md`) was **withdrawn and deleted by owner
+decision 2026-08-08**: the requirement stands, no design is approved, and no implementation
+is scheduled. Until some settings surface carries it, Reset Progress has no player-facing
+route, which remains an accepted known gap.
 
 ## Milestone 5.5 — Character Editor (Phase A)
 
@@ -234,6 +236,53 @@ Exit criteria:
 Phase C Steam Workshop remains deferred and still requires Milestone 6 and its own C0 policy
 gate.
 
+## Milestone 5.7 — Work Mode Typing Companion
+
+Scheduling status (2026-08-08): **active on branch `work-mode-revamp`.** Promoted out of the
+deferred list by owner decision; the normative scope, locked owner decisions, and slice
+gates are in `docs/WORK_MODE_TYPING_COMPANION_PLAN.md`.
+
+Design target: an opt-in, nonintrusive corner companion. The buddy works at a miniature
+retro PC while the player works, a CRT counts accepted key presses and mouse clicks
+(session or lifetime), milestones pay credits into the normal ledger, and the first ever
+entry grants the Work glasses cosmetic once.
+
+Slice status against plan Section 16:
+
+- [x] WM0 — counters, milestone catalogue, repeat policy, schema migration, idempotent
+  claim identities, and Reset Progress integration.
+- [x] WM1 — Windows global activity source with held-key suppression and privacy-safe
+  diagnostics: no raw key identity ever reaches the domain, logs, or saves.
+- [x] WM2 — transparent compact companion, supplied retro PC art, CRT counter, native
+  window shape, stored position, and semantic hit regions.
+- [x] WM3 — coalesced alternating typing/click reactions, hover-only motion toggle, CRT
+  Session/Lifetime toggle, drag, double-click exit, and a hover-only `X` exit control.
+- [x] WM4 — milestone settlement into the passive ledger, first-entry glasses ownership
+  grant plus one-time auto-equip, and the exit payout summary.
+- [ ] WM5 — checkpointing, suspend/resume, and legacy-mode normalization are implemented;
+  the four-hour Work soak and the standalone Windows monitor/DPI matrix are outstanding
+  owner-run manual gates.
+
+Known gaps, both accepted for now by owner decision 2026-08-08:
+
+- The Work companion renders the active character's compiled appearance but not its
+  parametric feature layers, so equipped glasses are owned and equipped yet invisible in
+  Work Mode. The fix is to run the Phase A feature renderers on the Work rig; the earlier
+  hand-drawn glasses overlay was deleted rather than kept as a stand-in.
+- First-entry onboarding copy (plan Sections 13.1/13.3) is unwritten: the privacy sentence
+  and the "double-click your buddy to return" teach do not exist in the build.
+
+Exit criteria:
+
+- Counters stay exact under rapid input even when animation cannot render every action, and
+  animation-off still counts and rewards.
+- No milestone pays twice across restart, crash, or re-entry, and the glasses grant happens
+  once.
+- Normal shell geometry, transparency, and input ownership restore exactly on exit, and
+  global capture always unregisters.
+- Work Mode is measurably cheaper than normal gameplay and survives the soak and the
+  monitor/DPI matrix.
+
 ## Milestone 6 — Steam and Release Systems
 
 Deliver:
@@ -278,10 +327,6 @@ Do not implement these during the milestones above:
   3D orbit/back-side painting, and cosmetic paint progression.
 - Cosmetic progression.
 - Steam Workshop and custom buddy packages (Phase C, requires M6 and C0).
-- Work Mode typing companion: an optional nonintrusive corner activity where the buddy
-  wears glasses, works at a miniature PC, reacts to the player's keypresses by typing,
-  and displays a keypress counter. While active, it also provides extra passive earnings
-  and periodically awards a bonus based on the keypresses recorded in that session.
 - Multiple buddies, profiles, multiplayer, Linux, or macOS.
 
 Architecture may leave explicit seams for future custom buddy definitions, but must not add a speculative mod loader or generalized scripting framework now.
