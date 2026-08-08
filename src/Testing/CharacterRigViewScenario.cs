@@ -84,6 +84,11 @@ public sealed class CharacterRigViewScenario : IScenario
             firstApplied && secondApplied && geometryUnchanged,
             $"first={firstApplied} second={secondApplied} trust={geometryUnchanged}"));
 
+        ImageTexture paintUnderlay = ImageTexture.CreateFromImage(
+            Image.CreateEmpty(2, 2, false, Image.Format.Rgba8));
+        preview.SetSurfaceUnderlay(BuddyPartId.Torso, paintUnderlay);
+        MeshInstance3D? trustedFacePlate = preview.FacePlate;
+        MeshInstance3D trustedAccentPlate = preview.TorsoAccentPlate;
         var attachmentColor = new Rgba32(110, 72, 54);
         CompiledCharacterAppearance attachments = second with
         {
@@ -99,23 +104,83 @@ public sealed class CharacterRigViewScenario : IScenario
                 CharacterFeatureIds.HeadwearSoftCap,
                 NormalizedFeatureTransform.Identity,
                 new Rgba32(201, 91, 99)),
+            Nose = new CompiledFeatureAppearance(
+                CharacterFeatureIds.NoseButton,
+                new NormalizedFeatureTransform(0, 0.08, 0.9),
+                new Rgba32(240, 160, 107)),
+            Ears = new CompiledFeatureAppearance(
+                CharacterFeatureIds.EarsRoundTabs,
+                NormalizedFeatureTransform.Identity,
+                new Rgba32(116, 185, 232)),
+            Tops = new CompiledFeatureAppearance(
+                CharacterFeatureIds.TopUtilityBib,
+                NormalizedFeatureTransform.Identity,
+                new Rgba32(227, 163, 58)),
+            Shoes = new CompiledFeatureAppearance(
+                CharacterFeatureIds.ShoesSoftSteps,
+                NormalizedFeatureTransform.Identity,
+                new Rgba32(90, 101, 117)),
         };
         preview.ApplyAppearance(attachments);
         Node3D? hair = preview.GetCosmeticVisual(CharacterFeatureSlot.Hair);
+        Node3D? nose = preview.GetCosmeticVisual(CharacterFeatureSlot.Nose);
+        Node3D? leftEar = preview.GetCosmeticVisual(CharacterFeatureSlot.Ears);
+        Node3D? rightEar = preview.GetPairedCosmeticVisual(CharacterFeatureSlot.Ears);
         Node3D? glasses = preview.GetCosmeticVisual(CharacterFeatureSlot.Glasses);
         Node3D? headwear = preview.GetCosmeticVisual(CharacterFeatureSlot.Headwear);
+        Node3D? top = preview.GetCosmeticVisual(CharacterFeatureSlot.Tops);
+        Node3D? leftShoe = preview.GetCosmeticVisual(CharacterFeatureSlot.Shoes);
+        Node3D? rightShoe = preview.GetPairedCosmeticVisual(CharacterFeatureSlot.Shoes);
         bool anchorsComplete = Enum.GetValues<BuddyCosmeticAnchorId>().All(anchor =>
             GodotObject.IsInstanceValid(preview.GetCosmeticAnchor(anchor)));
         bool attachmentsVisualOnly =
             GodotObject.IsInstanceValid(hair) &&
+            GodotObject.IsInstanceValid(nose) &&
+            GodotObject.IsInstanceValid(leftEar) &&
+            GodotObject.IsInstanceValid(rightEar) &&
             GodotObject.IsInstanceValid(glasses) &&
             GodotObject.IsInstanceValid(headwear) &&
+            GodotObject.IsInstanceValid(top) &&
+            GodotObject.IsInstanceValid(leftShoe) &&
+            GodotObject.IsInstanceValid(rightShoe) &&
             CountPhysicsAuthorities(preview) == 0 &&
             preview.TrustedGeometryMatches(trust);
         checks.Add(new StartupCheck(
             "bs1_trusted_anchors_and_visual_only_attachments",
             anchorsComplete && attachmentsVisualOnly,
             $"anchors={anchorsComplete} visual_only={attachmentsVisualOnly}"));
+        bool pairedAnchors =
+            ReferenceEquals(leftEar?.GetParent(), preview.GetCosmeticAnchor(BuddyCosmeticAnchorId.LeftEar)) &&
+            ReferenceEquals(rightEar?.GetParent(), preview.GetCosmeticAnchor(BuddyCosmeticAnchorId.RightEar)) &&
+            ReferenceEquals(leftShoe?.GetParent(), preview.GetCosmeticAnchor(BuddyCosmeticAnchorId.LeftFoot)) &&
+            ReferenceEquals(rightShoe?.GetParent(), preview.GetCosmeticAnchor(BuddyCosmeticAnchorId.RightFoot));
+        checks.Add(new StartupCheck(
+            "bs3_paired_families_use_trusted_anchors",
+            pairedAnchors,
+            $"ears={leftEar?.GetParent()?.Name}/{rightEar?.GetParent()?.Name} shoes={leftShoe?.GetParent()?.Name}/{rightShoe?.GetParent()?.Name}"));
+        int faceDetailMeshes = 0;
+        int topMeshes = 0;
+        int shoeMeshes = 0;
+        bool remainingLayers =
+            nose is not null && UsesRenderLayer(nose, BuddyCosmeticRenderLayer.FaceDetail, ref faceDetailMeshes) &&
+            leftEar is not null && UsesRenderLayer(leftEar, BuddyCosmeticRenderLayer.FaceDetail, ref faceDetailMeshes) &&
+            rightEar is not null && UsesRenderLayer(rightEar, BuddyCosmeticRenderLayer.FaceDetail, ref faceDetailMeshes) &&
+            top is not null && UsesRenderLayer(top, BuddyCosmeticRenderLayer.Top, ref topMeshes) &&
+            leftShoe is not null && UsesRenderLayer(leftShoe, BuddyCosmeticRenderLayer.Top, ref shoeMeshes) &&
+            rightShoe is not null && UsesRenderLayer(rightShoe, BuddyCosmeticRenderLayer.Top, ref shoeMeshes) &&
+            faceDetailMeshes == 3 && topMeshes == 3 && shoeMeshes == 2;
+        checks.Add(new StartupCheck(
+            "bs3_remaining_families_have_explicit_layers",
+            remainingLayers,
+            $"face/top/shoes={faceDetailMeshes}/{topMeshes}/{shoeMeshes}"));
+        bool establishedLayersPreserved =
+            ReferenceEquals(preview.FacePlate, trustedFacePlate) &&
+            ReferenceEquals(preview.TorsoAccentPlate, trustedAccentPlate) &&
+            ReferenceEquals(preview.SurfaceUnderlay(BuddyPartId.Torso), paintUnderlay);
+        checks.Add(new StartupCheck(
+            "bs3_face_accent_and_paint_layers_remain_authoritative",
+            establishedLayersPreserved,
+            $"face={ReferenceEquals(preview.FacePlate, trustedFacePlate)} accent={ReferenceEquals(preview.TorsoAccentPlate, trustedAccentPlate)} paint={ReferenceEquals(preview.SurfaceUnderlay(BuddyPartId.Torso), paintUnderlay)}"));
         int hairMeshes = 0;
         int glassesMeshes = 0;
         int headwearMeshes = 0;

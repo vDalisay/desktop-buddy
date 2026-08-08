@@ -210,8 +210,12 @@ public sealed class CharacterCompilerTests
             Features = CharacterFeatureSet.BuiltIn with
             {
                 Hair = CharacterFeatureSet.BuiltIn.Hair with { FeatureId = CharacterFeatureIds.HairShortSweep },
+                Nose = CharacterFeatureSet.BuiltIn.Nose with { FeatureId = CharacterFeatureIds.NoseButton },
+                Ears = CharacterFeatureSet.BuiltIn.Ears with { FeatureId = CharacterFeatureIds.EarsRoundTabs },
                 Glasses = CharacterFeatureSet.BuiltIn.Glasses with { FeatureId = CharacterFeatureIds.GlassesWorkClassic },
                 Headwear = CharacterFeatureSet.BuiltIn.Headwear with { FeatureId = CharacterFeatureIds.HeadwearSoftCap },
+                Tops = CharacterFeatureSet.BuiltIn.Tops with { FeatureId = CharacterFeatureIds.TopUtilityBib },
+                Shoes = CharacterFeatureSet.BuiltIn.Shoes with { FeatureId = CharacterFeatureIds.ShoesSoftSteps },
             },
         };
 
@@ -220,9 +224,13 @@ public sealed class CharacterCompilerTests
         Assert.True(result.IsSuccess);
         Assert.Equal(CharacterFeatureIds.HairShortSweep, result.Appearance!.Hair.ResolvedFeatureId);
         Assert.Equal(Rgba32.Parse("#6A4937"), result.Appearance.Hair.Color);
+        Assert.Equal(CharacterFeatureIds.NoseButton, result.Appearance.Nose.ResolvedFeatureId);
+        Assert.Equal(CharacterFeatureIds.EarsRoundTabs, result.Appearance.Ears.ResolvedFeatureId);
         Assert.Equal(CharacterFeatureIds.GlassesWorkClassic, result.Appearance.Glasses.ResolvedFeatureId);
         Assert.Equal(CharacterFeatureIds.HeadwearSoftCap, result.Appearance.Headwear.ResolvedFeatureId);
         Assert.Equal(Rgba32.Parse("#C95B63"), result.Appearance.Headwear.Color);
+        Assert.Equal(CharacterFeatureIds.TopUtilityBib, result.Appearance.Tops.ResolvedFeatureId);
+        Assert.Equal(CharacterFeatureIds.ShoesSoftSteps, result.Appearance.Shoes.ResolvedFeatureId);
         Assert.True(CharacterFeatureCatalog.Shipped.TryGetDefinition(
             result.Appearance.Headwear.ResolvedFeatureId,
             out CosmeticDefinition cap));

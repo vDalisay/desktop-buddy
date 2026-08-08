@@ -11,12 +11,24 @@ public partial class BuddyVisualRigView
 {
     private readonly Dictionary<BuddyCosmeticAnchorId, Node3D> _cosmeticAnchors = [];
     private BuddyCosmeticVisualCatalog? _cosmeticVisualCatalog;
+    private Node3D? _faceVisual;
     private Node3D? _hairVisual;
+    private Node3D? _noseVisual;
+    private Node3D? _earsVisual;
+    private Node3D? _rightEarsVisual;
     private Node3D? _glassesVisual;
     private Node3D? _headwearVisual;
+    private Node3D? _topVisual;
+    private Node3D? _shoesVisual;
+    private Node3D? _rightShoesVisual;
+    private CompiledFeatureAppearance? _faceAppearance;
     private CompiledFeatureAppearance? _hairAppearance;
+    private CompiledFeatureAppearance? _noseAppearance;
+    private CompiledFeatureAppearance? _earsAppearance;
     private CompiledFeatureAppearance? _glassesAppearance;
     private CompiledFeatureAppearance? _headwearAppearance;
+    private CompiledFeatureAppearance? _topAppearance;
+    private CompiledFeatureAppearance? _shoesAppearance;
 
     public Node3D GetCosmeticAnchor(BuddyCosmeticAnchorId anchor)
     {
@@ -27,9 +39,21 @@ public partial class BuddyVisualRigView
 
     public Node3D? GetCosmeticVisual(CharacterFeatureSlot slot) => slot switch
     {
+        CharacterFeatureSlot.Face => _faceVisual,
         CharacterFeatureSlot.Hair => _hairVisual,
+        CharacterFeatureSlot.Nose => _noseVisual,
+        CharacterFeatureSlot.Ears => _earsVisual,
         CharacterFeatureSlot.Glasses => _glassesVisual,
         CharacterFeatureSlot.Headwear => _headwearVisual,
+        CharacterFeatureSlot.Tops => _topVisual,
+        CharacterFeatureSlot.Shoes => _shoesVisual,
+        _ => null,
+    };
+
+    public Node3D? GetPairedCosmeticVisual(CharacterFeatureSlot slot) => slot switch
+    {
+        CharacterFeatureSlot.Ears => _rightEarsVisual,
+        CharacterFeatureSlot.Shoes => _rightShoesVisual,
         _ => null,
     };
 
@@ -38,9 +62,14 @@ public partial class BuddyVisualRigView
         EnsureCosmeticAnchors();
         _cosmeticVisualCatalog ??= new BuddyCosmeticVisualCatalog();
 
+        UpdateVisual(CharacterFeatureSlot.Face, appearance.Face, ref _faceAppearance, ref _faceVisual);
         UpdateVisual(CharacterFeatureSlot.Hair, appearance.Hair, ref _hairAppearance, ref _hairVisual);
+        UpdateVisual(CharacterFeatureSlot.Nose, appearance.Nose, ref _noseAppearance, ref _noseVisual);
+        UpdatePairedVisual(CharacterFeatureSlot.Ears, appearance.Ears, ref _earsAppearance, ref _earsVisual, ref _rightEarsVisual);
         UpdateVisual(CharacterFeatureSlot.Glasses, appearance.Glasses, ref _glassesAppearance, ref _glassesVisual);
         UpdateVisual(CharacterFeatureSlot.Headwear, appearance.Headwear, ref _headwearAppearance, ref _headwearVisual);
+        UpdateVisual(CharacterFeatureSlot.Tops, appearance.Tops, ref _topAppearance, ref _topVisual);
+        UpdatePairedVisual(CharacterFeatureSlot.Shoes, appearance.Shoes, ref _shoesAppearance, ref _shoesVisual, ref _rightShoesVisual);
 
         bool hidesHair = CharacterFeatureCatalog.Shipped.TryGetDefinition(
             appearance.Headwear.ResolvedFeatureId,
@@ -51,12 +80,24 @@ public partial class BuddyVisualRigView
 
     private void ClearCosmeticAppearance()
     {
+        RemoveVisual(ref _faceVisual);
         RemoveVisual(ref _hairVisual);
+        RemoveVisual(ref _noseVisual);
+        RemoveVisual(ref _earsVisual);
+        RemoveVisual(ref _rightEarsVisual);
         RemoveVisual(ref _glassesVisual);
         RemoveVisual(ref _headwearVisual);
+        RemoveVisual(ref _topVisual);
+        RemoveVisual(ref _shoesVisual);
+        RemoveVisual(ref _rightShoesVisual);
+        _faceAppearance = null;
         _hairAppearance = null;
+        _noseAppearance = null;
+        _earsAppearance = null;
         _glassesAppearance = null;
         _headwearAppearance = null;
+        _topAppearance = null;
+        _shoesAppearance = null;
     }
 
     private void UpdateVisual(
@@ -80,11 +121,49 @@ public partial class BuddyVisualRigView
         Node3D anchor = _cosmeticAnchors[visual.Anchor];
         activeVisual = new Node3D { Name = $"Cosmetic_{slot}" };
         anchor.AddChild(activeVisual);
-        BuildVisual(activeVisual, visual, appearance);
+        BuildVisual(activeVisual, null, visual, appearance);
+    }
+
+    private void UpdatePairedVisual(
+        CharacterFeatureSlot slot,
+        in CompiledFeatureAppearance appearance,
+        ref CompiledFeatureAppearance? activeAppearance,
+        ref Node3D? primaryVisual,
+        ref Node3D? secondaryVisual)
+    {
+        if (activeAppearance == appearance)
+            return;
+
+        RemoveVisual(ref primaryVisual);
+        RemoveVisual(ref secondaryVisual);
+        activeAppearance = appearance;
+        BuddyCosmeticVisualDefinition visual = _cosmeticVisualCatalog!.Resolve(
+            slot,
+            appearance.ResolvedFeatureId,
+            out _);
+        if (visual.Kind == BuddyCosmeticVisualKind.None)
+            return;
+        if (visual.SecondaryAnchor is not BuddyCosmeticAnchorId secondaryAnchor)
+            throw new InvalidOperationException($"Paired cosmetic '{visual.CosmeticId}' has no secondary anchor.");
+
+        primaryVisual = CreateVisualRoot(slot, visual.Anchor, "Left");
+        secondaryVisual = CreateVisualRoot(slot, secondaryAnchor, "Right");
+        BuildVisual(primaryVisual, secondaryVisual, visual, appearance);
+    }
+
+    private Node3D CreateVisualRoot(
+        CharacterFeatureSlot slot,
+        BuddyCosmeticAnchorId anchor,
+        string suffix)
+    {
+        var root = new Node3D { Name = $"Cosmetic_{slot}_{suffix}" };
+        _cosmeticAnchors[anchor].AddChild(root);
+        return root;
     }
 
     private void BuildVisual(
         Node3D root,
+        Node3D? pairedRoot,
         BuddyCosmeticVisualDefinition visual,
         in CompiledFeatureAppearance appearance)
     {
@@ -97,6 +176,18 @@ public partial class BuddyVisualRigView
                 AddEllipsoid(root, "SweepCenter", new Vector3(0.10f, 0.22f, 0.02f), new Vector3(0.92f, 0.34f, 0.38f), headRadius, color, visual.Layer);
                 AddEllipsoid(root, "SweepTip", new Vector3(0.48f, 0.02f, 0.01f), new Vector3(0.52f, 0.22f, 0.30f), headRadius, color, visual.Layer);
                 break;
+            case BuddyCosmeticVisualKind.NoseButton:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddEllipsoid(root, "Button", Vector3.Zero, new Vector3(0.24f, 0.18f, 0.14f), headRadius, color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.EarsRoundTabs:
+                if (pairedRoot is null)
+                    throw new InvalidOperationException("Ear visuals require both trusted ear anchors.");
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                ApplyFeatureTransform(pairedRoot, appearance.Transform, headRadius);
+                AddEllipsoid(root, "LeftTab", Vector3.Zero, new Vector3(0.28f, 0.48f, 0.22f), headRadius, color, visual.Layer);
+                AddEllipsoid(pairedRoot, "RightTab", Vector3.Zero, new Vector3(0.28f, 0.48f, 0.22f), headRadius, color, visual.Layer);
+                break;
             case BuddyCosmeticVisualKind.WorkClassicGlasses:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
                 AddGlasses(root, headRadius, color, visual.Layer);
@@ -104,6 +195,21 @@ public partial class BuddyVisualRigView
             case BuddyCosmeticVisualKind.HeadwearSoftCap:
                 AddEllipsoid(root, "Crown", Vector3.Zero, new Vector3(1.05f, 0.42f, 0.58f), headRadius, color, visual.Layer);
                 AddBox(root, "Brim", new Vector3(0.28f * headRadius, -0.18f * headRadius, 0.24f * headRadius), new Vector3(0.90f * headRadius, 0.12f * headRadius, 0.34f * headRadius), color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.TopUtilityBib:
+                float torsoRadius = PartMeshRadius(BuddyPartId.Torso);
+                AddBox(root, "Bib", Vector3.Zero, new Vector3(torsoRadius * 1.05f, torsoRadius * 0.82f, torsoRadius * 0.10f), color, visual.Layer);
+                AddBox(root, "LeftStrap", new Vector3(-torsoRadius * 0.34f, torsoRadius * 0.48f, 0), new Vector3(torsoRadius * 0.14f, torsoRadius * 0.42f, torsoRadius * 0.10f), color, visual.Layer);
+                AddBox(root, "RightStrap", new Vector3(torsoRadius * 0.34f, torsoRadius * 0.48f, 0), new Vector3(torsoRadius * 0.14f, torsoRadius * 0.42f, torsoRadius * 0.10f), color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.ShoesSoftSteps:
+                if (pairedRoot is null)
+                    throw new InvalidOperationException("Shoe visuals require both trusted foot anchors.");
+                float footRadius = PartMeshRadius(BuddyPartId.LeftFoot);
+                Vector3 shoePosition = new(0, -footRadius * 0.08f, footRadius * 0.14f);
+                Vector3 shoeScale = new(1.08f, 0.72f, 1.18f);
+                AddEllipsoid(root, "LeftStep", shoePosition / footRadius, shoeScale, footRadius, color, visual.Layer);
+                AddEllipsoid(pairedRoot, "RightStep", shoePosition / footRadius, shoeScale, footRadius, color, visual.Layer);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(visual), visual.Kind, "Unsupported trusted cosmetic visual kind.");
