@@ -16,5 +16,6 @@ internal static class EnvironmentScenarioRegistration
             ?? throw new InvalidOperationException("Scenario registry was not initialized.");
         factories["environment_trusted_definitions"] = () => new EnvironmentTrustedDefinitionsScenario();
         factories["environment_background_editor"] = () => new EnvironmentBackgroundEditorScenario();
+        factories["environment_startup_registration"] = () => new EnvironmentStartupRegistrationScenario();
     }
 }

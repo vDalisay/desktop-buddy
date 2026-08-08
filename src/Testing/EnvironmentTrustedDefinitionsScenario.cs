@@ -121,3 +121,44 @@ public sealed class EnvironmentBackgroundEditorScenario : IScenario
         return new ScenarioResult(checks.All(check => check.Passed), checks, [$"seed={seed}"]);
     }
 }
+
+public sealed class EnvironmentStartupRegistrationScenario : IScenario
+{
+    public string Id => "environment_startup_registration";
+
+    public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
+    {
+        var checks = new List<StartupCheck>();
+        string sceneText = FileAccess.GetFileAsString("res://scenes/sandbox.tscn");
+        string actualRootName = sceneText.Contains("[node name=\"Sandbox\" type=\"Node2D\"", StringComparison.Ordinal) &&
+            sceneText.Contains("path=\"res://src/App/SandboxRoot.cs\"", StringComparison.Ordinal)
+                ? "Sandbox"
+                : string.Empty;
+        var sandbox = new SandboxRoot { Name = actualRootName };
+        var host = new Node { Name = "NormalBootHost" };
+        host.AddChild(sandbox);
+        SandboxRoot? found = EnvironmentCustomizationBootstrap.FindSandboxForStartup(host);
+        bool actualNameDiffers = actualRootName == "Sandbox" && actualRootName != nameof(SandboxRoot);
+        checks.Add(new StartupCheck("environment_normal_boot_finds_typed_sandbox",
+            actualNameDiffers && ReferenceEquals(found, sandbox),
+            $"sceneName={sandbox.Name} type={sandbox.GetType().Name} found={found?.Name}"));
+        host.Free();
+
+        var progress = new BuddyProgressState(0.018);
+        var environment = new EnvironmentProgressState();
+        var saves = new SaveCoordinator(progress, new InMemoryProgressStore(), environment: environment);
+        var commandBar = new DesktopBuddy.UI.Win98.Win98CommandBarBootstrap { Name = "StartupTestCommandBar" };
+        var bootstrap = new EnvironmentCustomizationBootstrap { Name = "StartupTestEnvironmentBootstrap" };
+        tree.Root.AddChild(commandBar);
+        tree.Root.AddChild(bootstrap);
+        bootstrap.ComposeForStartupTest(environment, saves, commandBar);
+        checks.Add(new StartupCheck("environment_paint_background_command_registered",
+            bootstrap.HasPaintBackgroundRegistration &&
+            tree.Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) is EnvironmentBackgroundEditor,
+            $"registered={bootstrap.HasPaintBackgroundRegistration}"));
+        bootstrap.QueueFree();
+        commandBar.QueueFree();
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        return new ScenarioResult(checks.All(check => check.Passed), checks, [$"seed={seed}"]);
+    }
+}
