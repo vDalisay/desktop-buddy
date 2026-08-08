@@ -28,6 +28,7 @@ public static class CharacterFeatureIds
 {
     public const string FaceClassicPlate = "face.classic_plate";
     public const string HairNone = "hair.none";
+    public const string HairShortSweep = "hair.short_sweep";
     public const string EyesSoftOval = "eyes.soft_oval";
     public const string EyesRoundDot = "eyes.round_dot";
     public const string EyesHorizontalLed = "eyes.horizontal_led";
@@ -46,6 +47,7 @@ public static class CharacterFeatureIds
     public const string GlassesNone = "glasses.none";
     public const string GlassesWorkClassic = "glasses.work_classic";
     public const string HeadwearNone = "headwear.none";
+    public const string HeadwearSoftCap = "headwear.soft_cap";
     public const string TopNone = "top.none";
     public const string ShoesNone = "shoes.none";
 }
@@ -189,6 +191,7 @@ public sealed class CharacterFeatureCatalog
         Rgba32 ink = Rgba32.Parse("#183042");
         yield return Definition(CharacterFeatureIds.FaceClassicPlate, CharacterFeatureSlot.Face, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.FaceClassicPlate);
         yield return Definition(CharacterFeatureIds.HairNone, CharacterFeatureSlot.Hair, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.HairNone);
+        yield return Definition(CharacterFeatureIds.HairShortSweep, CharacterFeatureSlot.Hair, 10, true, CosmeticTransformPolicy.None, CharacterFeatureIds.HairNone, Rgba32.Parse("#6A4937"));
         yield return Definition(CharacterFeatureIds.BrowsSoftArc, CharacterFeatureSlot.Brows, 0, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.BrowsSoftArc, ink);
         yield return Definition(CharacterFeatureIds.BrowsStraight, CharacterFeatureSlot.Brows, 10, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.BrowsSoftArc, ink);
         yield return Definition(CharacterFeatureIds.BrowsSegmented, CharacterFeatureSlot.Brows, 20, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.BrowsSoftArc, ink);
@@ -200,13 +203,14 @@ public sealed class CharacterFeatureCatalog
         yield return Definition(CharacterFeatureIds.MouthPixel, CharacterFeatureSlot.Mouth, 10, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.MouthRounded, ink);
         yield return Definition(CharacterFeatureIds.MouthLine, CharacterFeatureSlot.Mouth, 20, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.MouthRounded, ink);
         yield return Definition(CharacterFeatureIds.EarsNone, CharacterFeatureSlot.Ears, 0, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EarsNone);
-        yield return Definition(CharacterFeatureIds.AccentNone, CharacterFeatureSlot.Accessories, 0, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.AccentNone);
+        yield return Definition(CharacterFeatureIds.AccentNone, CharacterFeatureSlot.Accessories, 0, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.AccentNone, ink);
         yield return Definition(CharacterFeatureIds.AccentPanel, CharacterFeatureSlot.Accessories, 10, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.AccentNone, ink);
         yield return Definition(CharacterFeatureIds.AccentChevron, CharacterFeatureSlot.Accessories, 20, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.AccentNone, ink);
         yield return Definition(CharacterFeatureIds.AccentBolts, CharacterFeatureSlot.Accessories, 30, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.AccentNone, ink);
         yield return Definition(CharacterFeatureIds.GlassesNone, CharacterFeatureSlot.Glasses, 0, true, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone);
         yield return Definition(CharacterFeatureIds.GlassesWorkClassic, CharacterFeatureSlot.Glasses, 10, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, ink);
         yield return Definition(CharacterFeatureIds.HeadwearNone, CharacterFeatureSlot.Headwear, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone);
+        yield return Definition(CharacterFeatureIds.HeadwearSoftCap, CharacterFeatureSlot.Headwear, 10, true, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#C95B63"), hidesHair: true);
         yield return Definition(CharacterFeatureIds.TopNone, CharacterFeatureSlot.Tops, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.TopNone);
         yield return Definition(CharacterFeatureIds.ShoesNone, CharacterFeatureSlot.Shoes, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.ShoesNone);
     }
@@ -218,7 +222,8 @@ public sealed class CharacterFeatureCatalog
         bool free,
         CosmeticTransformPolicy policy,
         string fallback,
-        Rgba32? primary = null) => new(
+        Rgba32? primary = null,
+        bool hidesHair = false) => new(
             id,
             slot,
             $"buddy_studio.cosmetic.{id}.name",
@@ -228,7 +233,8 @@ public sealed class CharacterFeatureCatalog
             policy == CosmeticTransformPolicy.None ? CosmeticTransformBounds.None : CosmeticTransformBounds.Standard,
             NormalizedFeatureTransform.Identity,
             primary is Rgba32 color ? [new CosmeticColorChannelDefinition(CosmeticDefinition.PrimaryColorChannel, color)] : [],
-            fallback);
+            fallback,
+            hidesHair);
 
     private static IEnumerable<CosmeticDefinition> CreateLegacyDefinitions(
         IEnumerable<string> eyeIds, string defaultEyeId,

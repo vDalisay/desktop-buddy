@@ -99,7 +99,7 @@ public static class CharacterCompiler
         {
             Rgba32 color = feature.Colors.TryGetValue(channel.Id, out Rgba32 selected)
                 ? selected
-                : channel.Id == CosmeticDefinition.PrimaryColorChannel
+                : channel.Id == CosmeticDefinition.PrimaryColorChannel && UsesLegacyPrimaryColor(slot)
                     ? feature.Color
                     : channel.DefaultColor;
             colors.Add(new KeyValuePair<string, Rgba32>(channel.Id, color));
@@ -113,6 +113,12 @@ public static class CharacterCompiler
                 : new NormalizedFeatureTransform(feature.OffsetX, feature.OffsetY, feature.Scale),
             new CompiledColorChannels(colors));
     }
+
+    private static bool UsesLegacyPrimaryColor(CharacterFeatureSlot slot) => slot is
+        CharacterFeatureSlot.Eyes or
+        CharacterFeatureSlot.Brows or
+        CharacterFeatureSlot.Mouth or
+        CharacterFeatureSlot.Accessories;
 
     private static CharacterCompileResult Failure(CharacterValidationIssue error) => new(
         null,

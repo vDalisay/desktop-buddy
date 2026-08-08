@@ -201,4 +201,32 @@ public sealed class CharacterCompilerTests
         Assert.False(result.IsSuccess);
         Assert.Contains(result.Errors, error => error.Path == "features.headwear.transform");
     }
+
+    [Fact]
+    public void RepresentativeAttachmentDefinitions_CompileTrustedDefaultsAndHideHairWithoutDeletingIt()
+    {
+        CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, "Buddy") with
+        {
+            Features = CharacterFeatureSet.BuiltIn with
+            {
+                Hair = CharacterFeatureSet.BuiltIn.Hair with { FeatureId = CharacterFeatureIds.HairShortSweep },
+                Glasses = CharacterFeatureSet.BuiltIn.Glasses with { FeatureId = CharacterFeatureIds.GlassesWorkClassic },
+                Headwear = CharacterFeatureSet.BuiltIn.Headwear with { FeatureId = CharacterFeatureIds.HeadwearSoftCap },
+            },
+        };
+
+        CharacterCompileResult result = CharacterCompiler.Compile(document, CharacterFeatureCatalog.Shipped);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CharacterFeatureIds.HairShortSweep, result.Appearance!.Hair.ResolvedFeatureId);
+        Assert.Equal(Rgba32.Parse("#6A4937"), result.Appearance.Hair.Color);
+        Assert.Equal(CharacterFeatureIds.GlassesWorkClassic, result.Appearance.Glasses.ResolvedFeatureId);
+        Assert.Equal(CharacterFeatureIds.HeadwearSoftCap, result.Appearance.Headwear.ResolvedFeatureId);
+        Assert.Equal(Rgba32.Parse("#C95B63"), result.Appearance.Headwear.Color);
+        Assert.True(CharacterFeatureCatalog.Shipped.TryGetDefinition(
+            result.Appearance.Headwear.ResolvedFeatureId,
+            out CosmeticDefinition cap));
+        Assert.True(cap.HidesHair);
+        Assert.Equal(CharacterFeatureIds.HairShortSweep, document.Features.Hair.FeatureId);
+    }
 }

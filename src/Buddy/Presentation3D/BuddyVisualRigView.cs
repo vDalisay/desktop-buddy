@@ -145,6 +145,7 @@ public partial class BuddyVisualRigView : Node3D
 
         BuddyVisualRigTrustSnapshot trust = CaptureTrustSnapshot();
         ApplyPartColorSet(appearance.PartColors);
+        ApplyCosmeticAppearance(appearance);
         _activeAppearance = appearance;
         _appearanceMutationCount++;
 
@@ -165,6 +166,7 @@ public partial class BuddyVisualRigView : Node3D
             changed |= SetActiveBaseColor(index, _partDefinitions[index].Color);
 
         _activeAppearance = null;
+        ClearCosmeticAppearance();
         if (changed)
             _appearanceMutationCount++;
 

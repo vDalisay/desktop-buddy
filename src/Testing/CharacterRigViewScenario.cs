@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
 using Godot;
 
@@ -81,6 +83,83 @@ public sealed class CharacterRigViewScenario : IScenario
             "a2_appearance_changes_only_visual_bases",
             firstApplied && secondApplied && geometryUnchanged,
             $"first={firstApplied} second={secondApplied} trust={geometryUnchanged}"));
+
+        var attachmentColor = new Rgba32(110, 72, 54);
+        CompiledCharacterAppearance attachments = second with
+        {
+            Hair = new CompiledFeatureAppearance(
+                CharacterFeatureIds.HairShortSweep,
+                NormalizedFeatureTransform.Identity,
+                attachmentColor),
+            Glasses = new CompiledFeatureAppearance(
+                CharacterFeatureIds.GlassesWorkClassic,
+                new NormalizedFeatureTransform(0.2, -0.15, 1.1),
+                new Rgba32(24, 48, 66)),
+            Headwear = new CompiledFeatureAppearance(
+                CharacterFeatureIds.HeadwearSoftCap,
+                NormalizedFeatureTransform.Identity,
+                new Rgba32(201, 91, 99)),
+        };
+        preview.ApplyAppearance(attachments);
+        Node3D? hair = preview.GetCosmeticVisual(CharacterFeatureSlot.Hair);
+        Node3D? glasses = preview.GetCosmeticVisual(CharacterFeatureSlot.Glasses);
+        Node3D? headwear = preview.GetCosmeticVisual(CharacterFeatureSlot.Headwear);
+        bool anchorsComplete = Enum.GetValues<BuddyCosmeticAnchorId>().All(anchor =>
+            GodotObject.IsInstanceValid(preview.GetCosmeticAnchor(anchor)));
+        bool attachmentsVisualOnly =
+            GodotObject.IsInstanceValid(hair) &&
+            GodotObject.IsInstanceValid(glasses) &&
+            GodotObject.IsInstanceValid(headwear) &&
+            CountPhysicsAuthorities(preview) == 0 &&
+            preview.TrustedGeometryMatches(trust);
+        checks.Add(new StartupCheck(
+            "bs1_trusted_anchors_and_visual_only_attachments",
+            anchorsComplete && attachmentsVisualOnly,
+            $"anchors={anchorsComplete} visual_only={attachmentsVisualOnly}"));
+        int hairMeshes = 0;
+        int glassesMeshes = 0;
+        int headwearMeshes = 0;
+        bool layersOrdered =
+            hair is not null && UsesRenderLayer(hair, BuddyCosmeticRenderLayer.Hair, ref hairMeshes) &&
+            glasses is not null && UsesRenderLayer(glasses, BuddyCosmeticRenderLayer.Glasses, ref glassesMeshes) &&
+            headwear is not null && UsesRenderLayer(headwear, BuddyCosmeticRenderLayer.Headwear, ref headwearMeshes) &&
+            hairMeshes > 0 && glassesMeshes > 0 && headwearMeshes > 0 &&
+            BuddyCosmeticRenderLayer.Hair < BuddyCosmeticRenderLayer.Glasses &&
+            BuddyCosmeticRenderLayer.Glasses < BuddyCosmeticRenderLayer.Headwear;
+        checks.Add(new StartupCheck(
+            "bs1_explicit_attachment_layer_order",
+            layersOrdered,
+            $"ordered={layersOrdered} meshes={hairMeshes}/{glassesMeshes}/{headwearMeshes}"));
+        checks.Add(new StartupCheck(
+            "bs1_headwear_hides_hair_without_deleting_selection",
+            hair is { Visible: false } &&
+            preview.ActiveAppearance?.Hair.ResolvedFeatureId == CharacterFeatureIds.HairShortSweep,
+            $"hair_visible={hair?.Visible} selected={preview.ActiveAppearance?.Hair.ResolvedFeatureId}"));
+
+        CompiledCharacterAppearance capRemoved = attachments with
+        {
+            Headwear = new CompiledFeatureAppearance(
+                CharacterFeatureIds.HeadwearNone,
+                NormalizedFeatureTransform.Identity,
+                new CompiledColorChannels([])),
+        };
+        preview.ApplyAppearance(capRemoved);
+        checks.Add(new StartupCheck(
+            "bs1_removing_headwear_restores_saved_hair",
+            preview.GetCosmeticVisual(CharacterFeatureSlot.Hair) is { Visible: true } restoredHair &&
+            ReferenceEquals(restoredHair, hair),
+            $"same_hair={ReferenceEquals(preview.GetCosmeticVisual(CharacterFeatureSlot.Hair), hair)}"));
+
+        var visualCatalog = new BuddyCosmeticVisualCatalog();
+        BuddyCosmeticVisualDefinition fallback = visualCatalog.Resolve(
+            CharacterFeatureSlot.Hair,
+            "hair.future",
+            out bool usedFallback);
+        checks.Add(new StartupCheck(
+            "bs1_missing_visual_falls_back_safely",
+            usedFallback && fallback.CosmeticId == CharacterFeatureIds.HairNone &&
+            fallback.Kind == BuddyCosmeticVisualKind.None,
+            $"fallback={fallback.CosmeticId} kind={fallback.Kind}"));
 
         preview.SetPartScorch(BuddyPartId.Head, 0.5f, Colors.Black);
         CompiledCharacterAppearance scorchedSwap = first with
@@ -181,6 +260,23 @@ public sealed class CharacterRigViewScenario : IScenario
         foreach (Node child in node.GetChildren())
             count += CountPhysicsAuthorities(child);
         return count;
+    }
+
+    private static bool UsesRenderLayer(
+        Node node,
+        BuddyCosmeticRenderLayer expected,
+        ref int meshCount)
+    {
+        bool matches = true;
+        if (node is MeshInstance3D mesh)
+        {
+            meshCount++;
+            matches = mesh.MaterialOverride?.RenderPriority == (int)expected;
+        }
+
+        foreach (Node child in node.GetChildren())
+            matches &= UsesRenderLayer(child, expected, ref meshCount);
+        return matches;
     }
 
     private static CompiledCharacterAppearance Appearance(
