@@ -37,6 +37,7 @@ public partial class CharacterEditorHost
             _context.Economy,
             preview!,
             camera!,
+            _status,
             CloseBuddyStudioImmediately,
             () => _context.Saves.FlushProgressAsync(force: true));
         _editorRoot.AddChild(_buddyStudio);

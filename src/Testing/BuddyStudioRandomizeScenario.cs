@@ -80,6 +80,8 @@ public sealed class BuddyStudioRandomizeScenario : IScenario
         var owned = new HashSet<string>(StringComparer.Ordinal)
         {
             ContentIds.CosmeticWorkGlasses,
+            ContentIds.CosmeticHairShortSweep,
+            ContentIds.CosmeticHeadwearSoftCap,
         };
         for (ulong candidateSeed = 1; candidateSeed <= 256; candidateSeed++)
         {
@@ -100,7 +102,11 @@ public sealed class BuddyStudioRandomizeScenario : IScenario
         }
         checks.Add(new StartupCheck(
             "bs5_paid_choices_require_existing_ownership",
-            paidExcluded && paidEligibleWhenOwned && owned.SetEquals([ContentIds.CosmeticWorkGlasses]),
+            paidExcluded && paidEligibleWhenOwned && owned.SetEquals([
+                ContentIds.CosmeticWorkGlasses,
+                ContentIds.CosmeticHairShortSweep,
+                ContentIds.CosmeticHeadwearSoftCap,
+            ]),
             $"excluded={paidExcluded} eligible={paidEligibleWhenOwned} owned_count={owned.Count}"));
         checks.Add(new StartupCheck(
             "bs5_hides_hair_never_deletes_randomized_hair",

@@ -44,6 +44,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private Button _buy = null!;
     private Button _save = null!;
     private Button _move = null!;
+    private Button _smaller = null!;
+    private Button _larger = null!;
+    private Button _resetTransform = null!;
     private Label _name = null!;
     private Label _status = null!;
     private Control _previewInput = null!;
@@ -51,6 +54,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private VBoxContainer _previewColumn = null!;
     private Node? _previewHome;
     private int _previewHomeIndex;
+    private Node? _statusHome;
+    private int _statusHomeIndex;
     private Control? _paintCanvas;
     private bool _paintCanvasWasVisible;
     private bool _previewAttached;
@@ -59,9 +64,14 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private float _cameraHomeSize;
     private Control _dirtyBlocker = null!;
     private PanelContainer _dirtyDialog = null!;
+    private Control _moveBlocker = null!;
     private CharacterFeatureSlot _slot = CharacterFeatureSlot.Face;
     private bool _refreshing;
     private bool _moveMode;
+    private bool _dragging;
+    private Control? _movePreviousFocus;
+    private int _previewHomeZIndex;
+    private CursorShape _previewHomeCursor;
     private float _viewZoom = 1.0f;
 
     public bool IsConfigured { get; private set; }
@@ -91,6 +101,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             _paintCanvas.Visible = false;
         }
         _previewInput.Reparent(_previewColumn);
+        _statusHome = _status.GetParent();
+        _statusHomeIndex = _status.GetIndex();
+        _status.Reparent(this);
         _previewAttached = true;
         ResetView();
     }
@@ -103,12 +116,19 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _previewHome!.MoveChild(_previewInput, Math.Min(_previewHomeIndex, _previewHome.GetChildCount() - 1));
         if (GodotObject.IsInstanceValid(_paintCanvas))
             _paintCanvas!.Visible = _paintCanvasWasVisible;
+        if (GodotObject.IsInstanceValid(_statusHome))
+        {
+            _status.Reparent(_statusHome!);
+            _statusHome!.MoveChild(_status, Math.Min(_statusHomeIndex, _statusHome.GetChildCount() - 1));
+        }
         if (_cameraStateCaptured && GodotObject.IsInstanceValid(_previewCamera))
         {
             _previewCamera.Position = _cameraHomePosition;
             _previewCamera.Size = _cameraHomeSize;
         }
         _cameraStateCaptured = false;
+        _statusHome = null;
+        SetMoveMode(false);
         _previewAttached = false;
     }
 
@@ -117,6 +137,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         EconomyService economy,
         Control preview,
         Camera3D previewCamera,
+        Label status,
         Action closeImmediately,
         Func<Task>? flushProgress = null)
     {
@@ -126,6 +147,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _previewInput = preview ?? throw new ArgumentNullException(nameof(preview));
         _previewCamera = previewCamera ?? throw new ArgumentNullException(nameof(previewCamera));
+        _status = status ?? throw new ArgumentNullException(nameof(status));
         _closeImmediately = closeImmediately ?? throw new ArgumentNullException(nameof(closeImmediately));
         _flushProgress = flushProgress ?? (static () => Task.CompletedTask);
         IsConfigured = true;
@@ -234,13 +256,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         var actions = new HBoxContainer { Name = "BuddyStudioActions" };
         actions.AddThemeConstantOverride("separation", 6);
         AddChild(actions);
-        _status = new Label
-        {
-            Name = "BuddyStudioStatus",
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        actions.AddChild(_status);
+        actions.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         _save = Action(actions, "Save", () => _ = SaveAsync());
         _save.Name = "BuddyStudioSave";
         _save.TooltipText = "Save this character (Ctrl+S).";
@@ -248,6 +264,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         cancel.Name = "BuddyStudioCancel";
 
         BuildDirtyDialog();
+        BuildMoveBlocker();
         _categories.Select(SlotId(_slot), notify: false);
     }
 
@@ -288,18 +305,18 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
         _previewColumn.AddChild(transform);
-        Button smaller = Action(transform, "Smaller", () => ScaleBy(-0.05));
-        smaller.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        smaller.Name = "BuddyStudioSmaller";
-        Button larger = Action(transform, "Larger", () => ScaleBy(0.05));
-        larger.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        larger.Name = "BuddyStudioLarger";
+        _smaller = Action(transform, "Smaller", () => ScaleBy(-0.05));
+        _smaller.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _smaller.Name = "BuddyStudioSmaller";
+        _larger = Action(transform, "Larger", () => ScaleBy(0.05));
+        _larger.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _larger.Name = "BuddyStudioLarger";
         _move = Action(transform, "Move", () => SetMoveMode(!_moveMode));
         _move.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _move.Name = "BuddyStudioMove";
-        Button reset = Action(transform, "Reset", ResetTransform);
-        reset.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        reset.Name = "BuddyStudioReset";
+        _resetTransform = Action(transform, "Reset", ResetTransform);
+        _resetTransform.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        _resetTransform.Name = "BuddyStudioReset";
         Button random = Action(_previewColumn, "Randomize", Randomize);
         random.Name = "BuddyStudioRandomize";
         random.TooltipText = "Choose from free and owned cosmetics only.";
@@ -368,12 +385,40 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             Text = "Save your Buddy Studio changes before closing?",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         });
-        var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        body.AddChild(new Control
+        {
+            Name = "BuddyStudioUnsavedSpacer",
+            SizeFlagsVertical = SizeFlags.ExpandFill,
+        });
+        var actions = new HBoxContainer
+        {
+            Name = "BuddyStudioUnsavedActions",
+            Alignment = BoxContainer.AlignmentMode.Center,
+        };
         body.AddChild(actions);
-        Win98Dialog.Action(actions, "Save", () => _ = ResolveCloseAsync(UnsavedDecision.Save));
-        Win98Dialog.Action(actions, "Discard", () => _ = ResolveCloseAsync(UnsavedDecision.Discard));
-        Win98Dialog.Action(actions, "Keep Editing", HideDirtyDialog);
+        Button save = Win98Dialog.Action(actions, "Save", () => _ = ResolveCloseAsync(UnsavedDecision.Save));
+        save.Name = "BuddyStudioUnsavedSave";
+        Button discard = Win98Dialog.Action(actions, "Discard", () => _ = ResolveCloseAsync(UnsavedDecision.Discard));
+        discard.Name = "BuddyStudioUnsavedDiscard";
+        Button keepEditing = Win98Dialog.Action(actions, "Keep Editing", HideDirtyDialog);
+        keepEditing.Name = "BuddyStudioUnsavedKeepEditing";
         _dirtyBlocker.AddChild(_dirtyDialog);
+    }
+
+    private void BuildMoveBlocker()
+    {
+        _moveBlocker = Win98Dialog.Blocker((Control)GetParent(), "BuddyStudioMoveBlocker");
+        _moveBlocker.ZIndex = 100;
+        _moveBlocker.FocusMode = FocusModeEnum.All;
+        _moveBlocker.TooltipText = "Click outside the portrait or press Escape to finish moving.";
+        _moveBlocker.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { Pressed: true })
+            {
+                SetMoveMode(false);
+                _moveBlocker.AcceptEvent();
+            }
+        };
     }
 
     private void Refresh()
@@ -446,7 +491,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             new Win98ValueRowPresentation("price", "Price", owned ? "—" : PriceText(definition)),
             new Win98ValueRowPresentation("balance", "Balance", ContentDisplayName.Credits(_economy.BalanceMilliCredits)),
         ]);
-        _buy.Text = owned ? (equipped ? "Equipped" : "Equip") : purchasable ? "Buy" : "Earned";
+        _buy.Text = owned ? (equipped ? "Equipped" : "Equip") :
+            purchasable ? "Buy" : "Earn in Work Mode";
         _buy.Disabled = equipped || (!owned && (!purchasable || !affordable));
         _buy.TooltipText = equipped ? "This cosmetic is currently equipped."
             : owned ? "Equip this cosmetic on the working character."
@@ -459,6 +505,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _color.Color = FromRgba(CharacterDocumentEditor.ReadFeatureColor(preview, _slot));
         bool transformable = definition.TransformPolicy == CosmeticTransformPolicy.MoveAndUniformScale;
         _move.Disabled = !transformable;
+        _smaller.Disabled = !transformable;
+        _larger.Disabled = !transformable;
+        _resetTransform.Disabled = !transformable;
         if (!transformable)
             SetMoveMode(false);
     }
@@ -543,7 +592,16 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private async System.Threading.Tasks.Task ResolveCloseAsync(UnsavedDecision decision)
     {
         HideDirtyDialog();
-        CharacterEditorActionResult result = await _session.ResolveUnsavedAsync(decision);
+        CharacterEditorActionResult result;
+        if (decision == UnsavedDecision.Save)
+        {
+            await _session.ResolveUnsavedAsync(UnsavedDecision.Cancel);
+            result = await _session.UseCharacterAsync();
+        }
+        else
+        {
+            result = await _session.ResolveUnsavedAsync(decision);
+        }
         Handle(result);
         if (result.Completed && decision != UnsavedDecision.Cancel)
             _closeImmediately();
@@ -609,7 +667,30 @@ public partial class BuddyStudioWorkspace : VBoxContainer
 
     private void SetMoveMode(bool enabled)
     {
-        _moveMode = enabled && !_move.Disabled;
+        bool next = enabled && !_move.Disabled;
+        if (next == _moveMode)
+            return;
+        if (next)
+        {
+            _movePreviousFocus = GetViewport().GuiGetFocusOwner();
+            _previewHomeZIndex = _previewInput.ZIndex;
+            _previewHomeCursor = _previewInput.MouseDefaultCursorShape;
+            _previewInput.ZIndex = _moveBlocker.ZIndex + 1;
+            _previewInput.MouseDefaultCursorShape = CursorShape.Move;
+            _moveBlocker.Visible = true;
+            _moveBlocker.GrabFocus();
+        }
+        else
+        {
+            _dragging = false;
+            _previewInput.ZIndex = _previewHomeZIndex;
+            _previewInput.MouseDefaultCursorShape = _previewHomeCursor;
+            _moveBlocker.Visible = false;
+            if (GodotObject.IsInstanceValid(_movePreviousFocus) && _movePreviousFocus!.IsVisibleInTree())
+                _movePreviousFocus.GrabFocus();
+            _movePreviousFocus = null;
+        }
+        _moveMode = next;
         _move.ButtonPressed = _moveMode;
         _move.Text = _moveMode ? "Moving…" : "Move";
         if (IsInsideTree())
@@ -647,7 +728,15 @@ public partial class BuddyStudioWorkspace : VBoxContainer
 
     private void OnPreviewInput(InputEvent input)
     {
-        if (!_moveMode || input is not InputEventMouseMotion { ButtonMask: MouseButtonMask.Left } motion)
+        if (!_moveMode)
+            return;
+        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } click)
+        {
+            _dragging = click.Pressed;
+            _previewInput.AcceptEvent();
+            return;
+        }
+        if (!_dragging || input is not InputEventMouseMotion { ButtonMask: MouseButtonMask.Left } motion)
             return;
         Vector2 size = _previewInput.Size;
         if (size.X <= 0 || size.Y <= 0)

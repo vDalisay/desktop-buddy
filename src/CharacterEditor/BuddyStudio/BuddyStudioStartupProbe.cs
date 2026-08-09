@@ -54,16 +54,19 @@ internal static class BuddyStudioStartupProbe
                 bool paintButtonAbsent = workspace.FindChild("PaintModeButton", true, false) is null;
                 bool paintCanvasHidden = workspace.FindChild(
                     "CharacterPaintCanvas", true, false) is not Control paintCanvas || !paintCanvas.Visible;
+                bool sharedStatus = workspace.FindChild("CharacterEditorStatus", true, false) is Label &&
+                    workspace.FindChild("BuddyStudioStatus", true, false) is null;
                 bool workingCharacterLoaded = host.Session.WorkingDocument is not null && host.Session.CanSave;
                 bool viewReady = workspace.FindChild("BuddyStudioZoomOut", true, false) is Button &&
                     workspace.FindChild("BuddyStudioZoomIn", true, false) is Button &&
                     workspace.FindChild("BuddyStudioResetView", true, false) is Button &&
                     workspace.PreviewFocus.IsEqualApprox(new Vector2(0, 50)) &&
                     workspace.PreviewCameraSize < 150;
-                if (!paintButtonAbsent || !paintCanvasHidden || !workingCharacterLoaded || !viewReady)
+                if (!paintButtonAbsent || !paintCanvasHidden || !sharedStatus ||
+                    !workingCharacterLoaded || !viewReady)
                     return Verdict(false,
                         $"Studio readiness failed: buttonAbsent={paintButtonAbsent} canvasHidden={paintCanvasHidden} " +
-                        $"working={workingCharacterLoaded} view={viewReady}.");
+                        $"sharedStatus={sharedStatus} working={workingCharacterLoaded} view={viewReady}.");
                 return Verdict(true,
                     $"items=[{PopupItems(popup)}] workspace={workspace.GetPath()} paintHidden=true " +
                     $"working={host.Session.WorkingDocument!.Id} focus={workspace.PreviewFocus} size={workspace.PreviewCameraSize}");

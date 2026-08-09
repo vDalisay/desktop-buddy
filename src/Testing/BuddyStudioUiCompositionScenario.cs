@@ -9,8 +9,11 @@ using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
+using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
+using DesktopBuddy.Work;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -60,15 +63,20 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 $"cached={BuddyStudioThumbnailCache.Count} definitions={definitions}"));
 
             var progress = new BuddyProgressState(0.01, initialBalanceMilliCredits: 1000);
+            var rewardStore = new InMemoryProgressStore();
+            var rewardSaves = new SaveCoordinator(progress, rewardStore);
+            var workProgress = new WorkProgressState();
+            var workRewardService =
+                new WorkFirstEntryRewardService(progress, workProgress, rewardSaves);
             var catalogue = new ToolCatalogue([
                 new CatalogueEntry(
-                    ContentIds.CosmeticWorkGlasses,
+                    ContentIds.CosmeticHairShortSweep,
                     CatalogueEntryKind.Cosmetic,
                     2000,
                     0,
                     true,
-                    "cosmetic.work_glasses.name",
-                    "cosmetic.work_glasses.description"),
+                    "cosmetic.hair.short_sweep.name",
+                    "cosmetic.hair.short_sweep.description"),
             ]);
             var economy = new EconomyService(progress, catalogue);
             var library = new CharacterLibraryIndex(new CharacterFileSystem(), context.Root);
@@ -95,9 +103,12 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             preview.AddChild(paintCanvas);
             preview.AddChild(camera);
             root.AddChild(preview);
+            var status = new Label { Name = "CharacterEditorStatus" };
+            root.AddChild(status);
             int durableSaves = 0;
+            bool closed = false;
             var workspace = new BuddyStudioWorkspace();
-            workspace.Configure(session, economy, preview, camera, () => { }, () =>
+            workspace.Configure(session, economy, preview, camera, status, () => closed = true, () =>
             {
                 durableSaves++;
                 return Task.CompletedTask;
@@ -139,22 +150,86 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 workspace.FindChild("BuddyStudioCatalogPane", true, false) is Control &&
                 workspace.FindChild("BuddyStudioInspectorPane", true, false) is Control &&
                 root.FindChild("BuddyStudioDirtyDialog", true, false) is PanelContainer &&
+                workspace.FindChild("BuddyStudioStatus", true, false) is null &&
+                status.GetParent() == workspace &&
                 !paintCanvas.Visible;
             checks.Add(new StartupCheck(
                 "bs6_shared_controls_compose_twelve_accessible_categories",
                 composed,
-                $"categories={categories}"));
+                $"categories={categories} statusParent={status.GetParent()?.Name}"));
 
             workspace.SelectCategory(CharacterFeatureSlot.Glasses);
             workspace.CatalogGrid.Select(CharacterFeatureIds.GlassesWorkClassic);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            bool lockedRewardCopy = session.HasUnownedPreviews && workspace.BuyAction.Disabled &&
+                workspace.BuyAction.Text == "Earn in Work Mode";
+            WorkFirstEntryRewardResult workReward = await workRewardService.EnsureAsync();
+            workspace.CatalogGrid.Select(CharacterFeatureIds.GlassesNone);
+            workspace.CatalogGrid.Select(CharacterFeatureIds.GlassesWorkClassic);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            bool earnedCanEquip = workReward.WasFirstEntry && workReward.OwnershipGranted &&
+                lockedRewardCopy &&
+                progress.IsToolUnlocked(ContentIds.CosmeticWorkGlasses) &&
+                !production.Contains(ContentIds.CosmeticWorkGlasses) &&
+                session.HasOwnedPreviews && workspace.BuyAction.Text == "Equip" &&
+                !workspace.BuyAction.Disabled;
+            checks.Add(new StartupCheck(
+                "bs7_work_reward_unlock_is_equip_only_and_never_purchasable",
+                earnedCanEquip,
+                $"locked={lockedRewardCopy} reward={workReward} owned={progress.IsToolUnlocked(ContentIds.CosmeticWorkGlasses)} action={workspace.BuyAction.Text}"));
+
+            Button glassesLarger = (Button)workspace.FindChild("BuddyStudioLarger", true, false);
+            double workingGlassesScale = CharacterDocumentEditor.ReadFeatureTransform(
+                session.WorkingDocument!, CharacterFeatureSlot.Glasses).Scale;
+            double previewGlassesScale = CharacterDocumentEditor.ReadFeatureTransform(
+                session.PreviewDocument!, CharacterFeatureSlot.Glasses).Scale;
+            glassesLarger.EmitSignal(BaseButton.SignalName.Pressed);
+            double scaledPreviewGlasses = CharacterDocumentEditor.ReadFeatureTransform(
+                session.PreviewDocument!, CharacterFeatureSlot.Glasses).Scale;
+            bool previewScaleChanged = scaledPreviewGlasses > previewGlassesScale &&
+                CharacterDocumentEditor.ReadFeatureTransform(
+                    session.WorkingDocument!, CharacterFeatureSlot.Glasses).Scale == workingGlassesScale;
+            checks.Add(new StartupCheck(
+                "bs7_supported_preview_scale_changes_without_early_equip",
+                previewScaleChanged,
+                $"working={workingGlassesScale} preview={previewGlassesScale}->{scaledPreviewGlasses}"));
+
+            workspace.BuyAction.EmitSignal(BaseButton.SignalName.Pressed);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            bool earnedEquipped = !session.HasOwnedPreviews &&
+                workspace.BuyAction.Text == "Equipped" && workspace.BuyAction.Disabled &&
+                CharacterDocumentEditor.ReadFeatureId(
+                    session.WorkingDocument!, CharacterFeatureSlot.Glasses) ==
+                    CharacterFeatureIds.GlassesWorkClassic;
+            checks.Add(new StartupCheck(
+                "bs7_earned_work_glasses_equip_the_working_character",
+                earnedEquipped,
+                $"action={workspace.BuyAction.Text} equipped={CharacterDocumentEditor.ReadFeatureId(session.WorkingDocument!, CharacterFeatureSlot.Glasses)}"));
+
+            workspace.SelectCategory(CharacterFeatureSlot.Hair);
+            workspace.CatalogGrid.Select(CharacterFeatureIds.HairShortSweep);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             bool insufficientGated = session.HasUnownedPreviews && !session.CanSave &&
                 workspace.SaveAction.Disabled && workspace.BuyAction.Disabled &&
-                workspace.CatalogGrid.SelectedId == CharacterFeatureIds.GlassesWorkClassic;
+                workspace.CatalogGrid.SelectedId == CharacterFeatureIds.HairShortSweep;
             checks.Add(new StartupCheck(
                 "bs7_insufficient_funds_disable_buy_without_losing_preview",
                 insufficientGated,
                 $"preview={session.HasUnownedPreviews} saveDisabled={workspace.SaveAction.Disabled} buyDisabled={workspace.BuyAction.Disabled}"));
+
+            ((Button)workspace.FindChild("BuddyStudioCancel", true, false))
+                .EmitSignal(BaseButton.SignalName.Pressed);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            ((Button)root.FindChild("BuddyStudioUnsavedSave", true, false))
+                .EmitSignal(BaseButton.SignalName.Pressed);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            bool failedCloseStaysOpen = !closed && workspace.Visible && session.HasUnownedPreviews &&
+                session.PendingAction == CharacterEditorPendingAction.None &&
+                status.Text.Contains("Buy or deselect", StringComparison.Ordinal);
+            checks.Add(new StartupCheck(
+                "bs7_cancel_unsaved_save_failure_keeps_studio_open",
+                failedCloseStaysOpen,
+                $"closed={closed} pending={session.PendingAction} status={status.Text}"));
 
             economy.DepositPassive(4000);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
@@ -165,22 +240,22 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
 
             workspace.BuyAction.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            bool purchaseRefresh = economy.IsUnlocked(ContentIds.CosmeticWorkGlasses) && durableSaves == 1 &&
-                session.CanSave && session.HasOwnedPreviews && workspace.SaveAction.Disabled &&
+            bool purchaseRefresh = economy.IsUnlocked(ContentIds.CosmeticHairShortSweep) && durableSaves == 1 &&
+                session.CanSave && session.HasOwnedPreviews &&
                 !workspace.BuyAction.Disabled && workspace.BuyAction.Text == "Equip" &&
-                CharacterDocumentEditor.ReadFeatureId(session.WorkingDocument!, CharacterFeatureSlot.Glasses) ==
-                    CharacterFeatureIds.GlassesNone;
+                CharacterDocumentEditor.ReadFeatureId(session.WorkingDocument!, CharacterFeatureSlot.Hair) ==
+                    CharacterFeatureIds.HairNone;
             checks.Add(new StartupCheck(
                 "bs6_buy_refreshes_to_real_equip_action",
                 purchaseRefresh,
-                $"owned={economy.IsUnlocked(ContentIds.CosmeticWorkGlasses)} saves={durableSaves} action={workspace.BuyAction.Text}"));
+                $"owned={economy.IsUnlocked(ContentIds.CosmeticHairShortSweep)} saves={durableSaves} action={workspace.BuyAction.Text}"));
 
             workspace.BuyAction.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             bool equipped = !session.HasOwnedPreviews && !workspace.SaveAction.Disabled &&
                 workspace.BuyAction.Disabled && workspace.BuyAction.Text == "Equipped" &&
-                CharacterDocumentEditor.ReadFeatureId(session.WorkingDocument!, CharacterFeatureSlot.Glasses) ==
-                    CharacterFeatureIds.GlassesWorkClassic;
+                CharacterDocumentEditor.ReadFeatureId(session.WorkingDocument!, CharacterFeatureSlot.Hair) ==
+                    CharacterFeatureIds.HairShortSweep;
             checks.Add(new StartupCheck(
                 "bs6_equip_action_mutates_working_copy",
                 equipped,
@@ -204,21 +279,82 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             workspace.SelectCategory(CharacterFeatureSlot.Eyes);
             Button move = (Button)workspace.FindChild("BuddyStudioMove", true, false);
             Button larger = (Button)workspace.FindChild("BuddyStudioLarger", true, false);
-            double beforeScale = CharacterDocumentEditor.ReadFeatureTransform(
-                session.PreviewDocument!, CharacterFeatureSlot.Eyes).Scale;
-            move.EmitSignal(BaseButton.SignalName.Pressed);
-            larger.EmitSignal(BaseButton.SignalName.Pressed);
-            double afterScale = CharacterDocumentEditor.ReadFeatureTransform(
-                session.PreviewDocument!, CharacterFeatureSlot.Eyes).Scale;
-            bool transforms = workspace.MoveMode && afterScale > beforeScale;
-            checks.Add(new StartupCheck(
-                "bs6_contextual_move_and_scale_controls_mutate_working_copy",
-                transforms,
-                $"move={workspace.MoveMode} scale={beforeScale}->{afterScale}"));
-
-            Control transformActions = (Control)workspace.FindChild("BuddyStudioTransformActions", true, false);
             Button smaller = (Button)workspace.FindChild("BuddyStudioSmaller", true, false);
             Button reset = (Button)workspace.FindChild("BuddyStudioReset", true, false);
+            double beforeScale = CharacterDocumentEditor.ReadFeatureTransform(
+                session.PreviewDocument!, CharacterFeatureSlot.Eyes).Scale;
+            larger.EmitSignal(BaseButton.SignalName.Pressed);
+            double largerScale = CharacterDocumentEditor.ReadFeatureTransform(
+                session.PreviewDocument!, CharacterFeatureSlot.Eyes).Scale;
+            smaller.EmitSignal(BaseButton.SignalName.Pressed);
+            double smallerScale = CharacterDocumentEditor.ReadFeatureTransform(
+                session.PreviewDocument!, CharacterFeatureSlot.Eyes).Scale;
+            for (int press = 0; press < 20; press++)
+                larger.EmitSignal(BaseButton.SignalName.Pressed);
+            double boundedScale = CharacterDocumentEditor.ReadFeatureTransform(
+                session.PreviewDocument!, CharacterFeatureSlot.Eyes).Scale;
+            CosmeticDefinition eyes = CharacterFeatureCatalog.Shipped.ResolveDefinition(
+                CharacterFeatureSlot.Eyes,
+                CharacterDocumentEditor.ReadFeatureId(session.PreviewDocument!, CharacterFeatureSlot.Eyes),
+                out _);
+            bool transforms = !larger.Disabled && !smaller.Disabled &&
+                largerScale > beforeScale && smallerScale < largerScale &&
+                boundedScale <= eyes.TransformBounds.MaximumScale;
+            checks.Add(new StartupCheck(
+                "bs7_supported_smaller_and_larger_mutate_bounded_scale",
+                transforms,
+                $"scale={beforeScale}->{largerScale}->{smallerScale}->{boundedScale} max={eyes.TransformBounds.MaximumScale}"));
+
+            int previewZ = preview.ZIndex;
+            Control.CursorShape previewCursor = preview.MouseDefaultCursorShape;
+            NormalizedFeatureTransform beforeMove = CharacterDocumentEditor.ReadFeatureTransform(
+                session.PreviewDocument!, CharacterFeatureSlot.Eyes);
+            move.EmitSignal(BaseButton.SignalName.Pressed);
+            workspace._UnhandledKeyInput(new InputEventKey
+            {
+                Pressed = true,
+                Keycode = Key.Escape,
+            });
+            bool escapeExited = !workspace.MoveMode;
+            move.EmitSignal(BaseButton.SignalName.Pressed);
+            Control moveBlocker = (Control)root.FindChild("BuddyStudioMoveBlocker", true, false);
+            preview.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+                Position = new Vector2(100, 100),
+            });
+            preview.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseMotion
+            {
+                ButtonMask = MouseButtonMask.Left,
+                Relative = new Vector2(12, -8),
+                Position = new Vector2(112, 92),
+            });
+            preview.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = false,
+                Position = new Vector2(112, 92),
+            });
+            NormalizedFeatureTransform afterMove = CharacterDocumentEditor.ReadFeatureTransform(
+                session.PreviewDocument!, CharacterFeatureSlot.Eyes);
+            bool focusedMove = escapeExited && workspace.MoveMode && moveBlocker.Visible &&
+                moveBlocker.MouseFilter == Control.MouseFilterEnum.Stop &&
+                preview.MouseDefaultCursorShape == Control.CursorShape.Move &&
+                workspace.CatalogGrid.Visible && afterMove != beforeMove;
+            moveBlocker.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
+            {
+                ButtonIndex = MouseButton.Left,
+                Pressed = true,
+            });
+            bool moveRestored = !workspace.MoveMode && !moveBlocker.Visible &&
+                preview.MouseDefaultCursorShape == previewCursor && preview.ZIndex == previewZ;
+            checks.Add(new StartupCheck(
+                "bs7_move_mode_focuses_direct_drag_and_restores_on_outside_click",
+                focusedMove && moveRestored,
+                $"focused={focusedMove} restored={moveRestored} transform={beforeMove}->{afterMove}"));
+
+            Control transformActions = (Control)workspace.FindChild("BuddyStudioTransformActions", true, false);
             bool fillsWidth = transformActions.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&
                 smaller.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&
                 larger.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&
@@ -229,13 +365,48 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 fillsWidth,
                 $"grid={transformActions.SizeFlagsHorizontal} buttons={smaller.SizeFlagsHorizontal}"));
 
+            workspace.SelectCategory(CharacterFeatureSlot.Hair);
+            bool forbiddenTransformDisabled =
+                smaller.Disabled && larger.Disabled && move.Disabled && reset.Disabled;
+            checks.Add(new StartupCheck(
+                "bs7_transform_controls_disable_only_for_forbidden_policy",
+                forbiddenTransformDisabled,
+                $"smaller={smaller.Disabled} larger={larger.Disabled} move={move.Disabled} reset={reset.Disabled}"));
+
+            workspace.SelectCategory(CharacterFeatureSlot.Eyes);
+            smaller.EmitSignal(BaseButton.SignalName.Pressed);
+            long savesBeforeClose = context.Store.SaveCount;
+            ((Button)workspace.FindChild("BuddyStudioCancel", true, false))
+                .EmitSignal(BaseButton.SignalName.Pressed);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            HBoxContainer unsavedActions =
+                (HBoxContainer)root.FindChild("BuddyStudioUnsavedActions", true, false);
+            Control unsavedSpacer = (Control)root.FindChild("BuddyStudioUnsavedSpacer", true, false);
+            bool centeredBottom = unsavedActions.Alignment == BoxContainer.AlignmentMode.Center &&
+                unsavedSpacer.SizeFlagsVertical.HasFlag(Control.SizeFlags.ExpandFill);
+            ((Button)root.FindChild("BuddyStudioUnsavedSave", true, false))
+                .EmitSignal(BaseButton.SignalName.Pressed);
+            for (int frame = 0; frame < 120 && !closed; frame++)
+            {
+                context.Coordinator.PhysicsTick();
+                await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            }
+            context.Coordinator.PhysicsTick();
+            checks.Add(new StartupCheck(
+                "bs7_cancel_unsaved_save_persists_applies_and_closes",
+                centeredBottom && closed && !session.IsDirty &&
+                    context.Store.SaveCount > savesBeforeClose &&
+                    context.Selection.ActiveCharacterId == id,
+                $"centered={centeredBottom} closed={closed} dirty={session.IsDirty} saves={savesBeforeClose}->{context.Store.SaveCount} active={context.Selection.ActiveCharacterId}"));
+
             workspace.DetachPreview();
             checks.Add(new StartupCheck(
                 "bs6_studio_hides_paint_but_restores_preview_paint_state",
                 paintCanvas.Visible && preview.GetParent() == root &&
+                    status.GetParent() == root &&
                     camera.Position.IsEqualApprox(new Vector3(0, 0, 600)) &&
                     Mathf.IsEqualApprox(camera.Size, 400),
-                $"paint={paintCanvas.Visible} previewParent={preview.GetParent()?.Name} camera={camera.Position}/{camera.Size}"));
+                $"paint={paintCanvas.Visible} previewParent={preview.GetParent()?.Name} statusParent={status.GetParent()?.Name} camera={camera.Position}/{camera.Size}"));
         }
         finally
         {
