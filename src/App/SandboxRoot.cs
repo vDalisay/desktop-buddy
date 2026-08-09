@@ -475,6 +475,11 @@ public partial class SandboxRoot : Node2D
             return;
         }
 
+        if (GetTree().Root.FindChild(nameof(DesktopBuddy.Environment.EnvironmentCustomizationBootstrap), true, false)
+            is DesktopBuddy.Environment.EnvironmentCustomizationBootstrap environment)
+        {
+            environment.ClearPaintedBackground();
+        }
         OnSessionResumed();
         Buddy.Recovery.ResetForSessionResume();
         Log.Info("Persistence", "Progress reset to a first run; settings untouched.");

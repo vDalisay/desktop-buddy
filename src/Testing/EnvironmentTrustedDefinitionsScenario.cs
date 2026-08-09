@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -11,6 +12,7 @@ using DesktopBuddy.Economy;
 using DesktopBuddy.Environment;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Sandbox;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -90,12 +92,11 @@ public sealed class EnvironmentBackgroundEditorScenario : IScenario
     public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
     {
         var checks = new List<StartupCheck>();
-        var progress = new BuddyProgressState(0.018);
-        var environment = new EnvironmentProgressState();
-        var saves = new SaveCoordinator(progress, new InMemoryProgressStore(), environment: environment);
+        string root = Path.Combine(Path.GetTempPath(), $"desktop-buddy-paint-{Guid.NewGuid():N}");
+        var store = new EnvironmentPaintStore(new CharacterFileSystem(), root);
         var presenter = new EnvironmentBackgroundPresenter { Name = "ScenarioBackgroundPresenter" };
         var editor = new EnvironmentBackgroundEditor { Name = "ScenarioBackgroundEditor" };
-        editor.Configure(environment, saves, presenter);
+        editor.Configure(presenter, store);
         tree.Root.AddChild(presenter);
         tree.Root.AddChild(editor);
         try
@@ -104,27 +105,118 @@ public sealed class EnvironmentBackgroundEditorScenario : IScenario
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             var blocker = editor.FindChild("EnvironmentBackgroundInputBlocker", true, false) as Control;
             var panel = editor.FindChild("PaintBackgroundPanel", true, false) as Control;
-            var picker = editor.FindChild("BackgroundColorPicker", true, false) as ColorPickerButton;
             bool usable = editor.IsOpen && GodotObject.IsInstanceValid(blocker) && blocker!.Visible &&
                 blocker.MouseFilter == Control.MouseFilterEnum.Stop && GodotObject.IsInstanceValid(panel) && panel!.Visible &&
-                GodotObject.IsInstanceValid(picker);
+                editor.FindChild("PaintShapesButton", true, false) is MenuButton &&
+                editor.FindChild("PaintUndoButton", true, false) is Button &&
+                editor.FindChild("PaintSwatches", true, false) is GridContainer;
             checks.Add(new StartupCheck("environment_background_editor_composed", usable,
                 $"open={editor.IsOpen} blocker={blocker?.Visible} panel={panel?.Visible}"));
 
-            Color selected = Color.Color8(12, 34, 56);
-            picker!.EmitSignal(ColorPickerButton.SignalName.ColorChanged, selected);
-            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            checks.Add(new StartupCheck("environment_background_live_preview",
-                presenter.Current.Wall == new EnvironmentColor(12, 34, 56),
-                $"wall={presenter.Current.Wall}"));
+            EnvironmentCanvas canvas = presenter.Canvas;
+            canvas.Color = new EnvironmentColor(200, 30, 40);
+            Rect2 room = EnvironmentRoomRect.Resolve(editor);
+            Vector2 from = room.Position + (room.Size * .3f);
+            Vector2 to = room.Position + (room.Size * .5f);
+
+            Press(blocker!, from);
+            bool hiddenWhilePainting = !panel!.Visible;
+            RoomInput(blocker!, new InputEventMouseMotion { Position = to });
+            Release(blocker!, to);
+            int paintedPixels = Painted(canvas);
+            checks.Add(new StartupCheck("environment_background_brush_paints_and_hides_the_window",
+                paintedPixels > 0 && hiddenWhilePainting && panel.Visible && canvas.IsDirty,
+                $"pixels={paintedPixels} hidden={hiddenWhilePainting} restored={panel.Visible}"));
+
+            bool undone = canvas.Undo();
+            checks.Add(new StartupCheck("environment_background_undo_restores_the_previous_image",
+                undone && Painted(canvas) == 0, $"undone={undone} pixels={Painted(canvas)}"));
+
+            canvas.Tool = EnvironmentPaintTool.Square;
+            Drag(blocker!, from, to);
+            int squarePixels = Painted(canvas);
+            canvas.Tool = EnvironmentPaintTool.Circle;
+            Drag(blocker!, from, to);
+            int circlePixels = Painted(canvas) - squarePixels;
+            canvas.Tool = EnvironmentPaintTool.Line;
+            Drag(blocker!, from, to);
+            checks.Add(new StartupCheck("environment_background_shapes_draw_pixels",
+                squarePixels > 0 && circlePixels > 0 && Painted(canvas) > squarePixels,
+                $"square={squarePixels} circle={circlePixels} total={Painted(canvas)}"));
+
+            canvas.Tool = EnvironmentPaintTool.PickColor;
+            canvas.Color = new EnvironmentColor(1, 2, 3);
+            Drag(blocker!, from, from);
+            bool picked = canvas.Color == new EnvironmentColor(200, 30, 40);
+            canvas.Tool = EnvironmentPaintTool.Fill;
+            canvas.Color = new EnvironmentColor(10, 90, 180);
+            Vector2 corner = room.Position + new Vector2(room.Size.X * .02f, room.Size.Y * .02f);
+            Drag(blocker!, corner, corner);
+            int filled = Filled(canvas, new EnvironmentColor(10, 90, 180));
+            checks.Add(new StartupCheck("environment_background_pick_and_fill_use_canvas_colors",
+                picked && filled > 1000, $"picked={picked} filled={filled}"));
+
+            byte[] beforeSave = canvas.ClonePixels();
+            await store.SaveAsync(canvas.Pixels);
+            canvas.MarkSaved();
+            canvas.Reset();
+            bool blank = Painted(canvas) == 0;
+            byte[]? reloaded = store.Load();
+            checks.Add(new StartupCheck("environment_background_persists_and_reset_blanks",
+                blank && reloaded is not null && reloaded.AsSpan().SequenceEqual(beforeSave),
+                $"blank={blank} reloaded={reloaded?.Length}"));
+
+            store.Delete();
+            checks.Add(new StartupCheck("environment_background_reset_progress_wipes_the_painting",
+                store.Load() is null, $"stored={store.Load() is not null}"));
         }
         finally
         {
             editor.QueueFree();
             presenter.QueueFree();
+            try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch (IOException) { }
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
         return new ScenarioResult(checks.All(check => check.Passed), checks, [$"seed={seed}"]);
+    }
+
+    private static void Drag(Control blocker, Vector2 from, Vector2 to)
+    {
+        Press(blocker, from);
+        RoomInput(blocker, new InputEventMouseMotion { Position = to });
+        Release(blocker, to);
+    }
+
+    private static void Press(Control blocker, Vector2 position) =>
+        RoomInput(blocker, new InputEventMouseButton { Position = position, ButtonIndex = MouseButton.Left, Pressed = true });
+
+    private static void Release(Control blocker, Vector2 position) =>
+        RoomInput(blocker, new InputEventMouseButton { Position = position, ButtonIndex = MouseButton.Left, Pressed = false });
+
+    private static void RoomInput(Control blocker, InputEvent input) =>
+        blocker.EmitSignal(Control.SignalName.GuiInput, input);
+
+    private static int Painted(EnvironmentCanvas canvas)
+    {
+        byte[] pixels = canvas.ClonePixels();
+        EnvironmentColor blank = EnvironmentCanvasPolicy.DefaultColor;
+        int count = 0;
+        for (int index = 0; index < pixels.Length; index += EnvironmentCanvasPolicy.BytesPerPixel)
+        {
+            if (pixels[index] != blank.Red || pixels[index + 1] != blank.Green || pixels[index + 2] != blank.Blue) count++;
+        }
+        return count;
+    }
+
+    private static int Filled(EnvironmentCanvas canvas, EnvironmentColor color)
+    {
+        byte[] pixels = canvas.ClonePixels();
+        int count = 0;
+        for (int index = 0; index < pixels.Length; index += EnvironmentCanvasPolicy.BytesPerPixel)
+        {
+            if (pixels[index] == color.Red && pixels[index + 1] == color.Green && pixels[index + 2] == color.Blue) count++;
+        }
+        return count;
     }
 }
 
@@ -135,7 +227,7 @@ public sealed class EnvironmentStartupRegistrationScenario : IScenario
     public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
     {
         var checks = new List<StartupCheck>();
-        string sceneText = FileAccess.GetFileAsString("res://scenes/sandbox.tscn");
+        string sceneText = Godot.FileAccess.GetFileAsString("res://scenes/sandbox.tscn");
         string actualRootName = sceneText.Contains("[node name=\"Sandbox\" type=\"Node2D\"", StringComparison.Ordinal) &&
             sceneText.Contains("path=\"res://src/App/SandboxRoot.cs\"", StringComparison.Ordinal)
                 ? "Sandbox"
@@ -160,14 +252,14 @@ public sealed class EnvironmentStartupRegistrationScenario : IScenario
         bootstrap.ComposeForStartupTest(environment, saves, commandBar);
         var backdrop = tree.Root.FindChild(nameof(EnvironmentBackgroundPresenter), true, false) as EnvironmentBackgroundPresenter;
         bool behindBuddy = GodotObject.IsInstanceValid(backdrop) && backdrop is Node3D &&
-            backdrop!.GetChildren().OfType<MeshInstance3D>().Count() == 2 &&
+            backdrop!.GetChildren().OfType<MeshInstance3D>().Count() == 1 &&
             backdrop.GetChildren().OfType<MeshInstance3D>().All(mesh => mesh.Position.Z < 0f);
         checks.Add(new StartupCheck("environment_paint_background_command_registered",
             bootstrap.HasPaintBackgroundRegistration &&
             tree.Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) is EnvironmentBackgroundEditor,
             $"registered={bootstrap.HasPaintBackgroundRegistration}"));
-        checks.Add(new StartupCheck("environment_background_behind_buddy_plane", behindBuddy,
-            $"presenter={backdrop?.GetType().Name} z={EnvironmentBackgroundPresenter.BackdropZ}"));
+        checks.Add(new StartupCheck("environment_painted_background_behind_buddy_plane", behindBuddy,
+            $"presenter={backdrop?.GetType().Name} quads={backdrop?.GetChildren().OfType<MeshInstance3D>().Count()} z={EnvironmentBackgroundPresenter.BackdropZ}"));
         bootstrap.QueueFree();
         commandBar.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
@@ -317,8 +409,8 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             checks.Add(new StartupCheck("environment_decorator_stages_placement_funds",
                 decorator.VisibleWorkingLayout.Decorations.Count == 1 && decorator.VisibleProjectedBalance == 175_000 &&
                 decorator.VisibleOwnedCount(lamp.ToDefinition().Id) == 1 && panel.Visible && otherUi.Visible && buddy2D.Visible && buddy3D.Visible &&
-                IsVisible(decorator, "EnvironmentMove ItemsButton") && IsVisible(decorator, "EnvironmentSellButton"),
-                $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance} controls={IsVisible(decorator, "EnvironmentMoveButton")}"));
+                IsVisible(decorator, "EnvironmentMove ItemsButton"),
+                $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance} move={IsVisible(decorator, "EnvironmentMove ItemsButton")}"));
 
             Press(decorator, "EnvironmentMove ItemsButton");
             Vector2 movedPoint = new(viewport.X * .85f, viewport.Y * .82f);
@@ -357,11 +449,9 @@ public sealed class EnvironmentDecoratorScenario : IScenario
                 !IsVisible(decorator, "EnvironmentPlacementGhost"),
                 $"restored={restored == changed} panel={panel.Visible} buddy2D={buddy2D.Visible} " +
                 $"ghost={IsVisible(decorator, "EnvironmentPlacementGhost")}"));
-            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
-            Press(decorator, "EnvironmentSellButton");
-            checks.Add(new StartupCheck("environment_decorator_sell_reverses_staged_cost",
-                decorator.VisibleWorkingLayout.Decorations.Count == 0 && decorator.VisibleProjectedBalance == 250_000,
-                $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance}"));
+            checks.Add(new StartupCheck("environment_decorator_has_no_sell_route",
+                decorator.FindChild("EnvironmentSellButton", true, false) is null,
+                $"sell={decorator.FindChild("EnvironmentSellButton", true, false) is not null}"));
 
             catalogue.Select(lamp.DefinitionId);
             Press(decorator, "EnvironmentBuyButton");
@@ -370,7 +460,7 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             Press(decorator, "EnvironmentPlacementCancelButton");
             checks.Add(new StartupCheck("environment_decorator_placement_cancel_restores_reservation",
-                decorator.VisibleWorkingLayout.Decorations.Count == 0 && decorator.VisibleProjectedBalance == 250_000 && panel.Visible &&
+                decorator.VisibleWorkingLayout.Decorations.Count == 1 && decorator.VisibleProjectedBalance == 175_000 && panel.Visible &&
                 buddy2D.Visible && buddy3D.Visible && face.Visible && accents.Visible,
                 $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance}"));
 

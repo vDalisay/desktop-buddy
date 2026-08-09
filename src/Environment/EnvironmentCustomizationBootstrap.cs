@@ -2,6 +2,8 @@ using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Persistence;
+using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.UI.Win98;
 using Godot;
 
@@ -19,9 +21,20 @@ public partial class EnvironmentCustomizationBootstrap : Node
     private IDisposable? _decoratorRegistration;
     private EnvironmentBackgroundEditor? _backgroundEditor;
     private EnvironmentBackgroundPresenter? _backgroundPresenter;
+    private EnvironmentPaintStore? _paintStore;
     private EnvironmentDecorationLayer? _decorationLayer;
     private EnvironmentDecorator? _decorator;
     private readonly EnvironmentPresentationVisibility _presentationVisibility = new();
+    internal EnvironmentPaintStore? PaintStore => _paintStore;
+
+    /// <summary>Reset Progress wipes the painted room along with the rest of the save.</summary>
+    public void ClearPaintedBackground()
+    {
+        _paintStore?.Delete();
+        if (!GodotObject.IsInstanceValid(_backgroundPresenter)) return;
+        _backgroundPresenter!.Canvas.Reset();
+        _backgroundPresenter.Canvas.MarkSaved();
+    }
     internal bool HasPaintBackgroundRegistration => _registration is not null;
     internal bool HasDecorateRoomRegistration => _decoratorRegistration is not null;
 
@@ -59,8 +72,12 @@ public partial class EnvironmentCustomizationBootstrap : Node
         SandboxRoot? sandbox = FindFirst<SandboxRoot>(GetTree().Root);
         if (sandbox is not null) _backgroundPresenter.Configure(sandbox.Boundaries);
         GetTree().Root.AddChild(_backgroundPresenter);
+        // The stored room painting is a local PNG asset; a missing or unreadable one simply leaves
+        // the room blank, so composition never depends on it.
+        _paintStore = new EnvironmentPaintStore(new CharacterFileSystem(), ProjectSettings.GlobalizePath("user://"));
+        if (_paintStore.Load() is byte[] painted) _backgroundPresenter.Canvas.Replace(painted);
         _backgroundEditor = new EnvironmentBackgroundEditor { Name = nameof(EnvironmentBackgroundEditor) };
-        _backgroundEditor.Configure(state, saves, _backgroundPresenter);
+        _backgroundEditor.Configure(_backgroundPresenter, _paintStore);
         GetTree().Root.AddChild(_backgroundEditor);
         if (sandbox is not null)
         {

@@ -75,7 +75,7 @@ public sealed class EnvironmentEditSession
     public bool IsDirty => HasReservation || _pendingDelta != 0 || !_working.SequenceEqual(_baseline.Decorations);
     public bool MatchesBaseline(EnvironmentLayout layout) =>
         layout.SchemaVersion == _baseline.SchemaVersion && layout.Decorations.SequenceEqual(_baseline.Decorations);
-    public EnvironmentLayout WorkingLayout => new(_working, background: _baseline.Background);
+    public EnvironmentLayout WorkingLayout => new(_working);
 
     public EnvironmentEditResult Place(DecorationDefinitionId definitionId, CanonicalRoomPosition position)
     {
@@ -197,7 +197,7 @@ public sealed class EnvironmentEditSession
     {
         commit = default;
         if (HasReservation || !TryProjectBalance(currentBalanceMilliCredits, out long balance)) return false;
-        commit = new EnvironmentCommit(new EnvironmentLayout(_working, background: _baseline.Background), balance);
+        commit = new EnvironmentCommit(new EnvironmentLayout(_working), balance);
         return true;
     }
     private int Find(PlacedDecorationId id) => _working.FindIndex(item => item.InstanceId == id);

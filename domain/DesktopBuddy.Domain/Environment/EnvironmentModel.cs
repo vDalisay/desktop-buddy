@@ -8,30 +8,8 @@ public enum DecorationCategory { Lamp, Sofa, Painting, Wallpaper, Plant, Table }
 public enum DecorationAnchorKind { Floor, Wall, RoomSurface }
 public enum DecorationInteractionKind { None }
 public enum DecorationRenderBand { Background, Wallpaper, WallDecoration, BehindBuddyFloor, FrontDecoration }
-public enum EnvironmentBackgroundZone { Wall, Floor }
 
 public readonly record struct EnvironmentColor(byte Red, byte Green, byte Blue, byte Alpha = byte.MaxValue);
-
-public readonly record struct EnvironmentBackground(EnvironmentColor Wall, EnvironmentColor Floor)
-{
-    public static EnvironmentBackground Default => new(
-        new EnvironmentColor(192, 192, 192),
-        new EnvironmentColor(128, 128, 128));
-
-    public EnvironmentColor ColorFor(EnvironmentBackgroundZone zone) => zone switch
-    {
-        EnvironmentBackgroundZone.Wall => Wall,
-        EnvironmentBackgroundZone.Floor => Floor,
-        _ => throw new ArgumentOutOfRangeException(nameof(zone), zone, null),
-    };
-
-    public EnvironmentBackground WithColor(EnvironmentBackgroundZone zone, EnvironmentColor color) => zone switch
-    {
-        EnvironmentBackgroundZone.Wall => this with { Wall = color },
-        EnvironmentBackgroundZone.Floor => this with { Floor = color },
-        _ => throw new ArgumentOutOfRangeException(nameof(zone), zone, null),
-    };
-}
 
 public readonly record struct DecorationDefinitionId
 {
@@ -170,12 +148,11 @@ public readonly record struct PlacedDecoration(PlacedDecorationId InstanceId, De
 
 public sealed class EnvironmentLayout
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
     public const int MaximumPlacedDecorations = 256;
     private readonly PlacedDecoration[] _decorations;
 
-    public EnvironmentLayout(IEnumerable<PlacedDecoration>? decorations = null, int schemaVersion = CurrentSchemaVersion,
-        EnvironmentBackground? background = null)
+    public EnvironmentLayout(IEnumerable<PlacedDecoration>? decorations = null, int schemaVersion = CurrentSchemaVersion)
     {
         if (schemaVersion != CurrentSchemaVersion)
             throw new ArgumentOutOfRangeException(nameof(schemaVersion), "Unsupported environment layout schema version.");
@@ -195,9 +172,7 @@ public sealed class EnvironmentLayout
                 throw new ArgumentException("Only one wallpaper may occupy the room wallpaper slot.", nameof(decorations));
         }
         SchemaVersion = schemaVersion;
-        Background = background ?? EnvironmentBackground.Default;
     }
     public int SchemaVersion { get; }
     public IReadOnlyList<PlacedDecoration> Decorations => _decorations;
-    public EnvironmentBackground Background { get; }
 }

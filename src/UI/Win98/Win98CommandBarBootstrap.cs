@@ -368,6 +368,9 @@ public partial class Win98CommandBarBootstrap : Node
             _customizePopupIds[popupId] = snapshot.Definition.Id;
             popupId++;
         }
+        // The popup keeps the size it was first shown at, which was measured while the menu was
+        // still empty; without this the two entries arrive inside a scrollbar.
+        popup.ResetSize();
     }
 
     private void OnCustomizeCommandPressed(long popupId)

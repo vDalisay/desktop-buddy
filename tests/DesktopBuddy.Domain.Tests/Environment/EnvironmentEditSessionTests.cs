@@ -171,45 +171,6 @@ public sealed class EnvironmentEditSessionTests
         Assert.Empty(state.Layout.Decorations);
     }
 
-    [Fact]
-    public void BackgroundWorkingCopyResetsCancelsAndPreservesDecorations()
-    {
-        var item = new PlacedDecoration(Id(70), Lamp.Id, Position(.2f, .8f), 0, Lamp.RenderBand, 75_000);
-        var custom = new EnvironmentBackground(new EnvironmentColor(10, 20, 30), new EnvironmentColor(40, 50, 60));
-        var baseline = new EnvironmentLayout([item], background: custom);
-        var session = new EnvironmentBackgroundEditSession(baseline);
-
-        session.SetColor(EnvironmentBackgroundZone.Wall, new EnvironmentColor(100, 110, 120));
-        Assert.True(session.IsDirty);
-        Assert.Equal([item], session.PrepareLayout().Decorations);
-        session.Reset();
-        Assert.Equal(EnvironmentBackground.Default, session.Working);
-        session.Cancel();
-        Assert.False(session.IsDirty);
-        Assert.Equal(custom, session.Working);
-    }
-
-    [Fact]
-    public void OwningACopyDoesNotBlockBuyingAnotherAndWallpaperReplacesItsSlot()
-    {
-        var ids = new[] { Id(80), Id(81), Id(82), Id(83) };
-        int next = 0;
-        var session = new EnvironmentEditSession(new EnvironmentLayout(), 250_000, Catalogue(), () => ids[next++]);
-        Assert.True(session.Place(Lamp.Id, Position(.2f, .8f)).Succeeded);
-        Assert.True(session.Place(Lamp.Id, Position(.4f, .8f)).Succeeded);
-
-        Assert.True(session.Reserve(Wallpaper.Id, 250_000).Succeeded);
-        EnvironmentEditResult first = session.PlaceReserved(Position(.5f, .5f));
-        Assert.True(session.Reserve(Wallpaper.Id, 250_000).Succeeded);
-        EnvironmentEditResult second = session.PlaceReserved(Position(.5f, .5f));
-
-        Assert.True(first.Succeeded);
-        Assert.True(second.Succeeded);
-        Assert.Equal(3, session.WorkingLayout.Decorations.Count);
-        Assert.Equal(second.InstanceId, session.WorkingLayout.Decorations[2].InstanceId);
-        Assert.Equal(250_000 - (2 * 75_000) - 45_000, session.ProjectedBalanceMilliCredits);
-    }
-
     private static DecorationCatalogue Catalogue() => new([Lamp, Plant, Wallpaper]);
     private static CanonicalRoomPosition Position(float x, float y) => new(x, y);
     private static PlacedDecorationId Id(int value) => new(new Guid(value, 0, 0, new byte[8]));

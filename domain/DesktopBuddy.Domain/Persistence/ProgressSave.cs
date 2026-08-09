@@ -161,54 +161,24 @@ public sealed record EnvironmentProgressSave
     public long Revision { get; init; }
     public int LayoutSchemaVersion { get; init; } = EnvironmentLayout.CurrentSchemaVersion;
     public List<PlacedDecorationSave> PlacedDecorations { get; init; } = [];
-    public EnvironmentBackgroundSave Background { get; init; } = new();
 
     public static EnvironmentProgressSave FromSnapshot(in EnvironmentProgressSnapshot snapshot) => new()
     {
         Revision = snapshot.Revision,
         LayoutSchemaVersion = snapshot.Layout.SchemaVersion,
         PlacedDecorations = snapshot.Layout.Decorations.Select(item => PlacedDecorationSave.FromPlaced(item)).ToList(),
-        Background = EnvironmentBackgroundSave.FromBackground(snapshot.Layout.Background),
     };
 
     public EnvironmentProgressState CreateState() => new(
         LayoutSchemaVersion switch
         {
-            1 => new EnvironmentLayout(PlacedDecorations.Select(item => item.CreatePlaced())),
-            EnvironmentLayout.CurrentSchemaVersion => new EnvironmentLayout(
-                PlacedDecorations.Select(item => item.CreatePlaced()),
-                background: Background.CreateBackground()),
+            // Schemas 1 and 2 carried flat wall/floor colours. Those are gone: the room background
+            // is a painted image now, so older saves migrate by keeping only their decorations.
+            1 or 2 or EnvironmentLayout.CurrentSchemaVersion =>
+                new EnvironmentLayout(PlacedDecorations.Select(item => item.CreatePlaced())),
             _ => throw new ArgumentOutOfRangeException(nameof(LayoutSchemaVersion), "Unsupported Environment layout schema."),
         },
         Revision);
-}
-
-public sealed record EnvironmentBackgroundSave
-{
-    public byte WallRed { get; init; } = 192;
-    public byte WallGreen { get; init; } = 192;
-    public byte WallBlue { get; init; } = 192;
-    public byte WallAlpha { get; init; } = 255;
-    public byte FloorRed { get; init; } = 128;
-    public byte FloorGreen { get; init; } = 128;
-    public byte FloorBlue { get; init; } = 128;
-    public byte FloorAlpha { get; init; } = 255;
-
-    public static EnvironmentBackgroundSave FromBackground(in EnvironmentBackground background) => new()
-    {
-        WallRed = background.Wall.Red,
-        WallGreen = background.Wall.Green,
-        WallBlue = background.Wall.Blue,
-        WallAlpha = background.Wall.Alpha,
-        FloorRed = background.Floor.Red,
-        FloorGreen = background.Floor.Green,
-        FloorBlue = background.Floor.Blue,
-        FloorAlpha = background.Floor.Alpha,
-    };
-
-    public EnvironmentBackground CreateBackground() => new(
-        new EnvironmentColor(WallRed, WallGreen, WallBlue, WallAlpha),
-        new EnvironmentColor(FloorRed, FloorGreen, FloorBlue, FloorAlpha));
 }
 
 public sealed record FunActivitySave

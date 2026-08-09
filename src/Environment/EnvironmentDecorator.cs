@@ -32,7 +32,6 @@ public partial class EnvironmentDecorator : CanvasLayer
     private Button _buy = null!;
     private Button _place = null!;
     private Button _move = null!;
-    private Button _sell = null!;
     private CheckBox _snap = null!;
     private OptionButton _grid = null!;
     private Label _status = null!;
@@ -214,7 +213,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _buy = Action(controls, "Buy", BuySelected);
         _place = Action(controls, "Place", BeginPlacement);
         _move = Action(controls, "Move Items", BeginMoveMode);
-        _sell = Action(controls, "Sell", SellSelected);
 
         _values = new Win98ValuePanel { Name = "EnvironmentBudget" };
         body.AddChild(_values);
@@ -348,15 +346,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (!result.Succeeded) _status.Text = result.Status.ToString();
     }
 
-    private void SellSelected()
-    {
-        if (_session is null || _selectedInstance == default) return;
-        EnvironmentEditResult result = _session.Sell(_selectedInstance);
-        if (result.Succeeded) { _selectedInstance = default; PreviewRoom(); }
-        _status.Text = result.Succeeded ? "Removed; refund is staged until Done." : result.Status.ToString();
-        Refresh();
-    }
-
     private void OnRoomInput(InputEvent input)
     {
         if (_session is null || _confirm.Visible) { _blocker.AcceptEvent(); return; }
@@ -427,8 +416,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_session is null) return;
         EnvironmentLayout layout = _session.WorkingLayout;
         if (_moveDragging && _selectedInstance != default)
-            layout = new EnvironmentLayout(
-                layout.Decorations.Where(item => item.InstanceId != _selectedInstance), background: layout.Background);
+            layout = new EnvironmentLayout(layout.Decorations.Where(item => item.InstanceId != _selectedInstance));
         _visuals.Preview(layout);
     }
 
@@ -461,7 +449,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         EndPlacementMode();
         _selectedDefinition = null;
         _selectedInstance = placed;
-        _status.Text = "Placed item selected. Move, Rotate, or Sell are available below.";
+        _status.Text = "Placed item selected. Move Items and Rotate are available below.";
         Refresh();
     }
 
@@ -573,21 +561,10 @@ public partial class EnvironmentDecorator : CanvasLayer
         _buy.Disabled = _selectedDefinition is null || _session?.HasReservation == true || projected < cost;
         _place.Disabled = !matchingReservation;
         _move.Visible = _session?.WorkingLayout.Decorations.Count > 0;
-        _sell.Visible = _selectedInstance != default;
         RefreshCatalogueBadges();
     }
 
-    private Rect2 RoomRect()
-    {
-        var frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
-        Rect2 room = GodotObject.IsInstanceValid(frame) ? frame!.ContentViewportRect : GetViewport().GetVisibleRect();
-        if (GetTree().Root.FindChild("Win98CommandBar", true, false) is Control bar && bar.Visible)
-        {
-            float top = Math.Max(room.Position.Y, bar.GetGlobalRect().End.Y);
-            room = new Rect2(room.Position.X, top, room.Size.X, Math.Max(1, room.End.Y - top));
-        }
-        return room;
-    }
+    private Rect2 RoomRect() => EnvironmentRoomRect.Resolve(this);
 
     private static RoomScreenBounds ToBounds(Rect2 room) => new(room.Position.X, room.Position.Y, room.Size.X, room.Size.Y);
     private void CancelUnusedReservation()
