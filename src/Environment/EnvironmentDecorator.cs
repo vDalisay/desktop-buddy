@@ -139,6 +139,9 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (IsOpen || _saving) return;
         _session = new EnvironmentEditSession(_state.Layout, _progress.BalanceMilliCredits, EnvironmentDecorationRegistry.Domain);
         _placement.Configure(_session, _blocker, ToBounds(RoomRect()));
+        // The blocker owns every event while the workspace is open; leaving the controller's own
+        // unhandled-input alive let it eat Escape before the workspace could end the active mode.
+        _placement.SetProcessUnhandledInput(false);
         _pointerInputBefore = _pointer.IsProcessingInput();
         _pointerUnhandledBefore = _pointer.IsProcessingUnhandledInput();
         _pointer.SetProcessInput(false);
@@ -328,6 +331,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         _selectedInstance = default;
         _panel.Visible = false;
         HideOtherUiForFocus();
+        HideBuddyForPlacement();
         _moveChrome.Visible = true;
         _moveRotateChrome.Visible = false;
     }
@@ -355,20 +359,21 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_placementMode && !_placement.Active) { _blocker.AcceptEvent(); return; }
         switch (input)
         {
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _moveMode:
+                SelectPlaced(click.Position);
+                _moveDragging = _selectedInstance != default;
+                _moveRotateChrome.Visible = _moveDragging;
+                BeginMoveGhost(click.Position);
+                break;
+            case InputEventMouseMotion motion when _moveMode:
+                MoveSelected(motion.Position);
+                break;
             case InputEventMouseMotion motion when _placement.Active:
                 _placement.UpdatePointer(motion.Position);
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _placement.Active:
                 _placement.UpdatePointer(click.Position);
                 _placement.CommitGhost();
-                break;
-            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _moveMode:
-                SelectPlaced(click.Position);
-                _moveDragging = _selectedInstance != default;
-                _moveRotateChrome.Visible = _moveDragging;
-                break;
-            case InputEventMouseMotion motion when _moveMode && _moveDragging:
-                MoveSelected(motion.Position);
                 break;
             case InputEventMouseButton { Pressed: false, ButtonIndex: MouseButton.Left } when _moveMode:
                 _moveDragging = false;
@@ -386,18 +391,22 @@ public partial class EnvironmentDecorator : CanvasLayer
         _blocker.AcceptEvent();
     }
 
+    /// <summary>Drives the shared placement ghost for the item picked up in Move Items.</summary>
+    private void BeginMoveGhost(Vector2 screen)
+    {
+        _placement.Cancel();
+        if (!TryFindPlaced(_selectedInstance, out PlacedDecoration selected)) return;
+        if (EnvironmentDecorationRegistry.Find(selected.DefinitionId) is not EnvironmentDecorationResource resource) return;
+        _placement.Begin(resource);
+        _placement.UpdatePointer(screen);
+    }
+
     private void MoveSelected(Vector2 screen)
     {
         if (_session is null || _selectedInstance == default) return;
-        if (!TryFindPlaced(_selectedInstance, out PlacedDecoration selected)) return;
-        EnvironmentDecorationResource? resource = EnvironmentDecorationRegistry.Find(selected.DefinitionId);
-        if (resource is null) return;
-        if (EnvironmentPlacement.TryMap(screen.X, screen.Y, ToBounds(RoomRect()), resource.ToDefinition().AnchorKind,
-            _snap.ButtonPressed, _placement.GridSize, out CanonicalRoomPosition canonical))
-        {
-            _session.Move(_selectedInstance, canonical);
-            _visuals.Preview(_session.WorkingLayout);
-        }
+        if (!_placement.UpdatePointer(screen) || !_moveDragging) return;
+        _session.Move(_selectedInstance, _placement.GhostPosition);
+        _visuals.Preview(_session.WorkingLayout);
     }
 
     private void SelectPlaced(Vector2 screen)
@@ -473,11 +482,13 @@ public partial class EnvironmentDecorator : CanvasLayer
 
     private void EndMoveMode()
     {
+        _placement.Cancel();
         _moveMode = false;
         _moveDragging = false;
         _moveBaseline = null;
         _moveChrome.Visible = false;
         _moveRotateChrome.Visible = false;
+        RestoreBuddyAfterPlacement();
         RestorePlacementUi();
         _panel.Visible = true;
     }
@@ -570,7 +581,9 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         foreach (Node child in node.GetChildren())
         {
-            if (child == _blocker || _blocker.IsAncestorOf(child)) continue;
+            // The Win98 shell chrome (title bar and command bar) stays put in every focus mode:
+            // hiding it took the blue bar away and moved RoomRect out from under the pointer.
+            if (child == _blocker || _blocker.IsAncestorOf(child) || child is Win98BuddyShellController) continue;
             if (child is Control control && control.Visible)
             {
                 control.Visible = false;

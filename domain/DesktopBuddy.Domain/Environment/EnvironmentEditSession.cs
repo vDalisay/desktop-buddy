@@ -92,8 +92,6 @@ public sealed class EnvironmentEditSession
         if (!_catalogue.TryGet(definitionId, out DecorationDefinition definition)) return new(EnvironmentEditStatus.UnknownDefinition);
         if (!definition.Visible) return new(EnvironmentEditStatus.HiddenDefinition);
         if (_working.Count >= EnvironmentLayout.MaximumPlacedDecorations) return new(EnvironmentEditStatus.LayoutFull);
-        if (definition.Category == DecorationCategory.Wallpaper && _working.Any(item => item.RenderBand == DecorationRenderBand.Wallpaper))
-            return new(EnvironmentEditStatus.InvalidPlacement);
         PlacedDecorationId instanceId = _createInstanceId();
         if (instanceId == default || _working.Any(item => item.InstanceId == instanceId)) return new(EnvironmentEditStatus.InvalidPlacement);
         if (!TryChangeDelta(-definition.PriceMilliCredits, currentBalanceMilliCredits)) return new(EnvironmentEditStatus.InsufficientFunds);
@@ -107,8 +105,19 @@ public sealed class EnvironmentEditSession
         if (!HasReservation) return new(EnvironmentEditStatus.NoReservation);
         if (!_catalogue.TryGet(_reservedDefinitionId, out DecorationDefinition definition)) return new(EnvironmentEditStatus.UnknownDefinition);
         if (_working.Count >= EnvironmentLayout.MaximumPlacedDecorations) return new(EnvironmentEditStatus.LayoutFull);
-        if (definition.Category == DecorationCategory.Wallpaper && _working.Any(item => item.RenderBand == DecorationRenderBand.Wallpaper))
-            return new(EnvironmentEditStatus.InvalidPlacement);
+        // The room has one wallpaper slot, so a newly bought wallpaper replaces (and refunds) the
+        // occupant instead of failing the purchase.
+        // ponytail: cancelling that placement does not bring the replaced wallpaper back, only its
+        // credits; stage the removal if owners ask for undo.
+        if (definition.RenderBand == DecorationRenderBand.Wallpaper)
+        {
+            int occupied = _working.FindIndex(item => item.RenderBand == DecorationRenderBand.Wallpaper);
+            if (occupied >= 0)
+            {
+                EnvironmentEditResult removed = Sell(_working[occupied].InstanceId);
+                if (!removed.Succeeded) return removed;
+            }
+        }
         PlacedDecorationId instanceId = _reservedInstanceId;
         _working.Add(new PlacedDecoration(instanceId, definition.Id, position, 0, definition.RenderBand, definition.PriceMilliCredits));
         ClearReservation();

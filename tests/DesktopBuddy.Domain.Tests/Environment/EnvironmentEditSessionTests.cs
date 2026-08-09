@@ -8,6 +8,9 @@ public sealed class EnvironmentEditSessionTests
 {
     private static readonly DecorationDefinition Lamp = new(new("decoration.lamp.classic"), "environment.lamp.classic",
         DecorationCategory.Lamp, 75_000, DecorationAnchorKind.Floor, new(true, 90), DecorationRenderBand.BehindBuddyFloor);
+    private static readonly DecorationDefinition Wallpaper = new(new("decoration.wallpaper.diagonal"), "environment.wallpaper.diagonal",
+        DecorationCategory.Wallpaper, 45_000, DecorationAnchorKind.RoomSurface, DecorationRotationPolicy.Fixed,
+        DecorationRenderBand.Wallpaper);
     private static readonly DecorationDefinition Plant = new(new("decoration.plant.potted"), "environment.plant.potted",
         DecorationCategory.Plant, 40_000, DecorationAnchorKind.Floor, new(true, 90), DecorationRenderBand.BehindBuddyFloor);
 
@@ -186,7 +189,28 @@ public sealed class EnvironmentEditSessionTests
         Assert.Equal(custom, session.Working);
     }
 
-    private static DecorationCatalogue Catalogue() => new([Lamp, Plant]);
+    [Fact]
+    public void OwningACopyDoesNotBlockBuyingAnotherAndWallpaperReplacesItsSlot()
+    {
+        var ids = new[] { Id(80), Id(81), Id(82), Id(83) };
+        int next = 0;
+        var session = new EnvironmentEditSession(new EnvironmentLayout(), 250_000, Catalogue(), () => ids[next++]);
+        Assert.True(session.Place(Lamp.Id, Position(.2f, .8f)).Succeeded);
+        Assert.True(session.Place(Lamp.Id, Position(.4f, .8f)).Succeeded);
+
+        Assert.True(session.Reserve(Wallpaper.Id, 250_000).Succeeded);
+        EnvironmentEditResult first = session.PlaceReserved(Position(.5f, .5f));
+        Assert.True(session.Reserve(Wallpaper.Id, 250_000).Succeeded);
+        EnvironmentEditResult second = session.PlaceReserved(Position(.5f, .5f));
+
+        Assert.True(first.Succeeded);
+        Assert.True(second.Succeeded);
+        Assert.Equal(3, session.WorkingLayout.Decorations.Count);
+        Assert.Equal(second.InstanceId, session.WorkingLayout.Decorations[2].InstanceId);
+        Assert.Equal(250_000 - (2 * 75_000) - 45_000, session.ProjectedBalanceMilliCredits);
+    }
+
+    private static DecorationCatalogue Catalogue() => new([Lamp, Plant, Wallpaper]);
     private static CanonicalRoomPosition Position(float x, float y) => new(x, y);
     private static PlacedDecorationId Id(int value) => new(new Guid(value, 0, 0, new byte[8]));
 }

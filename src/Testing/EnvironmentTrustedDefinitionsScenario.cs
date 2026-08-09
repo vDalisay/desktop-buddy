@@ -323,10 +323,15 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             Press(decorator, "EnvironmentMove ItemsButton");
             Vector2 movedPoint = new(viewport.X * .85f, viewport.Y * .82f);
             checks.Add(new StartupCheck("environment_decorator_move_mode_starts_without_selection",
-                decorator.MoveMode && !panel.Visible && !otherUi.Visible && !IsVisible(decorator, "EnvironmentMoveRotateChrome"),
-                $"mode={decorator.MoveMode} panel={panel.Visible} rotate={IsVisible(decorator, "EnvironmentMoveRotateChrome")}"));
+                decorator.MoveMode && !panel.Visible && !otherUi.Visible && !IsVisible(decorator, "EnvironmentMoveRotateChrome") &&
+                !buddy2D.Visible && !buddy3D.Visible,
+                $"mode={decorator.MoveMode} panel={panel.Visible} rotate={IsVisible(decorator, "EnvironmentMoveRotateChrome")} " +
+                $"buddy2D={buddy2D.Visible} buddy3D={buddy3D.Visible}"));
             RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             RoomInput(blocker, new InputEventMouseMotion { Position = movedPoint });
+            checks.Add(new StartupCheck("environment_decorator_move_mode_ghosts_the_selected_item",
+                IsVisible(decorator, "EnvironmentPlacementGhost"),
+                $"ghost={IsVisible(decorator, "EnvironmentPlacementGhost")}"));
             RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = false });
             Press(decorator, "EnvironmentRotateRightButton");
             PlacedDecoration changed = decorator.VisibleWorkingLayout.Decorations.Single();
@@ -342,8 +347,10 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             Press(decorator, "EnvironmentMoveCancelButton");
             PlacedDecoration restored = decorator.VisibleWorkingLayout.Decorations.Single();
             checks.Add(new StartupCheck("environment_decorator_move_cancel_restores_baseline",
-                restored == changed && panel.Visible && otherUi.Visible,
-                $"restored={restored == changed} panel={panel.Visible}"));
+                restored == changed && panel.Visible && otherUi.Visible && buddy2D.Visible && buddy3D.Visible &&
+                !IsVisible(decorator, "EnvironmentPlacementGhost"),
+                $"restored={restored == changed} panel={panel.Visible} buddy2D={buddy2D.Visible} " +
+                $"ghost={IsVisible(decorator, "EnvironmentPlacementGhost")}"));
             RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             Press(decorator, "EnvironmentSellButton");
             checks.Add(new StartupCheck("environment_decorator_sell_reverses_staged_cost",
