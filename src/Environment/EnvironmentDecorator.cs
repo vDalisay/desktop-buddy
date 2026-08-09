@@ -47,6 +47,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     private PlacedDecorationId _selectedInstance;
     private bool _moveMode;
     private bool _moveDragging;
+    private Vector2 _moveGrabOffset;
     private EnvironmentLayout? _moveBaseline;
     private bool _saving;
     private bool _pointerInputBefore;
@@ -255,9 +256,12 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementDone.Name = "EnvironmentPlacementDoneButton";
         Win98Dialog.Action(placementActions, "Cancel", CancelPlacement).Name = "EnvironmentPlacementCancelButton";
 
-        _moveChrome = FocusChrome("EnvironmentMoveChrome", "Move items: hold and drag any decoration.", true);
-        _moveRotateChrome = FocusChrome("EnvironmentMoveRotateChrome", "Selected item", false);
-        var rotateActions = _moveRotateChrome.GetChild<VBoxContainer>(0).GetChild<HBoxContainer>(1);
+        _moveChrome = FocusChrome("EnvironmentMoveChrome", "Move items",
+            "Click an item to pick it up, then click again to drop it.", true, out HBoxContainer moveActions);
+        Win98Dialog.Action(moveActions, "Done", ConfirmMoveMode).Name = "EnvironmentMoveDoneButton";
+        Win98Dialog.Action(moveActions, "Cancel", CancelMoveMode).Name = "EnvironmentMoveCancelButton";
+        _moveRotateChrome = FocusChrome("EnvironmentMoveRotateChrome", "Selected item",
+            "Rotate the item you are carrying.", false, out HBoxContainer rotateActions);
         Win98Dialog.Action(rotateActions, "Rotate left", () => RotateSelected(-1)).Name = "EnvironmentRotateLeftButton";
         Win98Dialog.Action(rotateActions, "Rotate right", () => RotateSelected(1)).Name = "EnvironmentRotateRightButton";
     }
@@ -340,7 +344,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         if (_session is null || _selectedInstance == default) return;
         EnvironmentEditResult result = _session.Rotate(_selectedInstance, direction);
-        _visuals.Preview(_session.WorkingLayout);
+        PreviewRoom();
         if (!result.Succeeded) _status.Text = result.Status.ToString();
     }
 
@@ -348,7 +352,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         if (_session is null || _selectedInstance == default) return;
         EnvironmentEditResult result = _session.Sell(_selectedInstance);
-        if (result.Succeeded) { _selectedInstance = default; _visuals.Preview(_session.WorkingLayout); }
+        if (result.Succeeded) { _selectedInstance = default; PreviewRoom(); }
         _status.Text = result.Succeeded ? "Removed; refund is staged until Done." : result.Status.ToString();
         Refresh();
     }
@@ -360,13 +364,10 @@ public partial class EnvironmentDecorator : CanvasLayer
         switch (input)
         {
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _moveMode:
-                SelectPlaced(click.Position);
-                _moveDragging = _selectedInstance != default;
-                _moveRotateChrome.Visible = _moveDragging;
-                BeginMoveGhost(click.Position);
+                if (_moveDragging) DropCarried(click.Position); else PickUpCarried(click.Position);
                 break;
-            case InputEventMouseMotion motion when _moveMode:
-                MoveSelected(motion.Position);
+            case InputEventMouseMotion motion when _moveMode && _moveDragging:
+                _placement.UpdatePointer(motion.Position + _moveGrabOffset);
                 break;
             case InputEventMouseMotion motion when _placement.Active:
                 _placement.UpdatePointer(motion.Position);
@@ -374,9 +375,6 @@ public partial class EnvironmentDecorator : CanvasLayer
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _placement.Active:
                 _placement.UpdatePointer(click.Position);
                 _placement.CommitGhost();
-                break;
-            case InputEventMouseButton { Pressed: false, ButtonIndex: MouseButton.Left } when _moveMode:
-                _moveDragging = false;
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click:
                 SelectPlaced(click.Position);
@@ -391,22 +389,47 @@ public partial class EnvironmentDecorator : CanvasLayer
         _blocker.AcceptEvent();
     }
 
-    /// <summary>Drives the shared placement ghost for the item picked up in Move Items.</summary>
-    private void BeginMoveGhost(Vector2 screen)
+    /// <summary>
+    /// Picks the clicked decoration up: it stops rendering in the room and rides the cursor as the
+    /// shared placement ghost, keeping the offset it was grabbed by.
+    /// </summary>
+    private void PickUpCarried(Vector2 screen)
     {
-        _placement.Cancel();
-        if (!TryFindPlaced(_selectedInstance, out PlacedDecoration selected)) return;
-        if (EnvironmentDecorationRegistry.Find(selected.DefinitionId) is not EnvironmentDecorationResource resource) return;
+        SelectPlaced(screen);
+        if (_session is null || !TryFindPlaced(_selectedInstance, out PlacedDecoration carried)) return;
+        if (EnvironmentDecorationRegistry.Find(carried.DefinitionId) is not EnvironmentDecorationResource resource) return;
+        (float x, float y) = EnvironmentPlacement.ToScreen(carried.Position, ToBounds(RoomRect()));
+        _moveGrabOffset = new Vector2(x, y) - screen;
+        _moveDragging = true;
+        _moveRotateChrome.Visible = true;
         _placement.Begin(resource);
-        _placement.UpdatePointer(screen);
+        _placement.UpdatePointer(screen + _moveGrabOffset);
+        PreviewRoom();
+        _status.Text = "Carrying an item; click again to drop it.";
     }
 
-    private void MoveSelected(Vector2 screen)
+    /// <summary>Drops the carried item; an invalid spot keeps it on the cursor with its red ghost.</summary>
+    private void DropCarried(Vector2 screen)
     {
         if (_session is null || _selectedInstance == default) return;
-        if (!_placement.UpdatePointer(screen) || !_moveDragging) return;
+        if (!_placement.UpdatePointer(screen + _moveGrabOffset)) return;
         _session.Move(_selectedInstance, _placement.GhostPosition);
-        _visuals.Preview(_session.WorkingLayout);
+        _moveDragging = false;
+        _placement.Cancel();
+        PreviewRoom();
+        _status.Text = "Item dropped.";
+        Refresh();
+    }
+
+    /// <summary>Room preview; the carried item is left out because the ghost is standing in for it.</summary>
+    private void PreviewRoom()
+    {
+        if (_session is null) return;
+        EnvironmentLayout layout = _session.WorkingLayout;
+        if (_moveDragging && _selectedInstance != default)
+            layout = new EnvironmentLayout(
+                layout.Decorations.Where(item => item.InstanceId != _selectedInstance), background: layout.Background);
+        _visuals.Preview(layout);
     }
 
     private void SelectPlaced(Vector2 screen)
@@ -427,7 +450,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         _placement.Cancel();
         _selectedInstance = default;
-        if (_session is not null) _visuals.Preview(_session.WorkingLayout);
+        PreviewRoom();
         Refresh();
     }
 
@@ -449,7 +472,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         else if (_session.HasReservation) _session.CancelReservation();
         EndPlacementMode();
         _status.Text = "Placement cancelled; the reserved cost was restored.";
-        _visuals.Preview(_session.WorkingLayout);
+        PreviewRoom();
         Refresh();
     }
 
@@ -467,6 +490,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     private void ConfirmMoveMode()
     {
         EndMoveMode();
+        PreviewRoom();
         _status.Text = "Item positions staged. Choose Done to save the room.";
         Refresh();
     }
@@ -474,8 +498,8 @@ public partial class EnvironmentDecorator : CanvasLayer
     private void CancelMoveMode()
     {
         if (_session is not null && _moveBaseline is not null) _session.RestoreTransforms(_moveBaseline);
-        if (_session is not null) _visuals.Preview(_session.WorkingLayout);
         EndMoveMode();
+        PreviewRoom();
         _status.Text = "Move Items cancelled; positions restored.";
         Refresh();
     }
@@ -619,23 +643,23 @@ public partial class EnvironmentDecorator : CanvasLayer
         _buddyHidden = false;
     }
 
-    private PanelContainer FocusChrome(string name, string text, bool top)
+    /// <summary>Corner submenu built from the shared Win98 dialog frame: blue title bar on top,
+    /// message filling the body, and its actions anchored to the bottom.</summary>
+    private PanelContainer FocusChrome(string name, string title, string text, bool top, out HBoxContainer actions)
     {
-        var chrome = new PanelContainer { Name = name, Visible = false, Theme = Win98ThemeFactory.Create() };
-        chrome.SetAnchorsPreset(top ? Control.LayoutPreset.TopRight : Control.LayoutPreset.BottomWide);
-        if (top) { chrome.OffsetLeft = -360; chrome.OffsetTop = 12; chrome.OffsetRight = -12; chrome.OffsetBottom = 112; }
-        else { chrome.OffsetLeft = 12; chrome.OffsetTop = -82; chrome.OffsetRight = -12; chrome.OffsetBottom = -12; }
+        PanelContainer chrome = Win98Dialog.Create(name, title, new Vector2(280, 96), out VBoxContainer body);
         _blocker.AddChild(chrome);
-        var body = new VBoxContainer();
-        chrome.AddChild(body);
-        body.AddChild(new Label { Text = text });
-        var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
-        body.AddChild(actions);
-        if (top)
+        chrome.SetAnchorsPreset(top ? Control.LayoutPreset.TopRight : Control.LayoutPreset.BottomWide);
+        if (top) { chrome.OffsetLeft = -360; chrome.OffsetTop = 12; chrome.OffsetRight = -12; chrome.OffsetBottom = 132; }
+        else { chrome.OffsetLeft = 12; chrome.OffsetTop = -110; chrome.OffsetRight = -12; chrome.OffsetBottom = -12; }
+        body.AddChild(new Label
         {
-            Win98Dialog.Action(actions, "Done", ConfirmMoveMode).Name = "EnvironmentMoveDoneButton";
-            Win98Dialog.Action(actions, "Cancel", CancelMoveMode).Name = "EnvironmentMoveCancelButton";
-        }
+            Text = text,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        });
+        actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        body.AddChild(actions);
         return chrome;
     }
 

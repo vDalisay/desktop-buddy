@@ -77,11 +77,11 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _registration = commandBar.RegisterCustomizeCommand(
             new CustomizeCommandDefinition(
                 CustomizeCommandIds.PaintBackground,
-                "Paint Background",
-                "Change the room wall and floor colors.",
+                "Background",
+                "Paint the room background.",
                 CustomizeCommandIds.PaintBackgroundOrder),
             _backgroundEditor.Open);
-        Log.Info(LogCategory, "Paint Background registered in Customize.");
+        Log.Info(LogCategory, "Paint Background registered in the Paint menu.");
     }
 
     internal void RegisterDecoratorForStartupTest(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator) =>

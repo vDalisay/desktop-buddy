@@ -51,6 +51,9 @@ public partial class EnvironmentDecorationLayer : Node3D
         return best.HasValue;
     }
 
+    /// <summary>The layout currently on screen, which is the working preview while editing.</summary>
+    internal EnvironmentLayout VisibleLayout => _visibleLayout;
+
     public void Preview(EnvironmentLayout layout) => Rebuild(layout);
 
     private void Rebuild() => Rebuild(_state.Layout);

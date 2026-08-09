@@ -188,7 +188,7 @@ public partial class Win98CommandBarBootstrap : Node
         _shopButton = AddMenuCommand(_commandRow, "Shop", "Open the shop.", () => OpenSection(_shopButton, _shop, "Shop"));
         _toolsButton = AddMenuCommand(_commandRow, "Tools", "Choose the active tool.", () => OpenSection(_toolsButton, _tools, "Tools"));
         _settingsButton = AddMenuCommand(_commandRow, "Settings", "Open game and window settings.", () => OpenSection(_settingsButton, _settings, "Settings"));
-        _customizeButton = AddMenuPopup(_commandRow, "Customize", "Open character and environment customization.");
+        _customizeButton = AddMenuPopup(_commandRow, "Paint ▸", "Paint the buddy or the room background.");
         PopupMenu customizePopup = _customizeButton.GetPopup();
         Win98MenuStyle.Apply(customizePopup);
         customizePopup.AboutToPopup += () =>
@@ -201,7 +201,7 @@ public partial class Win98CommandBarBootstrap : Node
         _paintBuddyRegistration ??= RegisterCustomizeCommand(
             new CustomizeCommandDefinition(
                 CustomizeCommandIds.PaintBuddy,
-                "Paint Buddy",
+                "Buddy",
                 "Open the direct-paint character workspace.",
                 CustomizeCommandIds.PaintBuddyOrder),
             OpenEditor);

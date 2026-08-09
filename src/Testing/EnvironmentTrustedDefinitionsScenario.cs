@@ -327,12 +327,18 @@ public sealed class EnvironmentDecoratorScenario : IScenario
                 !buddy2D.Visible && !buddy3D.Visible,
                 $"mode={decorator.MoveMode} panel={panel.Visible} rotate={IsVisible(decorator, "EnvironmentMoveRotateChrome")} " +
                 $"buddy2D={buddy2D.Visible} buddy3D={buddy3D.Visible}"));
+            PlacedDecorationId carriedId = decorator.VisibleWorkingLayout.Decorations.Single().InstanceId;
             RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             RoomInput(blocker, new InputEventMouseMotion { Position = movedPoint });
-            checks.Add(new StartupCheck("environment_decorator_move_mode_ghosts_the_selected_item",
-                IsVisible(decorator, "EnvironmentPlacementGhost"),
+            bool carriedHidden = !visuals.VisibleLayout.Decorations.Any(item => item.InstanceId == carriedId);
+            checks.Add(new StartupCheck("environment_decorator_move_mode_ghosts_the_carried_item",
+                IsVisible(decorator, "EnvironmentPlacementGhost") && carriedHidden,
+                $"ghost={IsVisible(decorator, "EnvironmentPlacementGhost")} hidden={carriedHidden}"));
+            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            checks.Add(new StartupCheck("environment_decorator_drop_returns_the_item_to_the_room",
+                !IsVisible(decorator, "EnvironmentPlacementGhost") &&
+                visuals.VisibleLayout.Decorations.Any(item => item.InstanceId == carriedId),
                 $"ghost={IsVisible(decorator, "EnvironmentPlacementGhost")}"));
-            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = false });
             Press(decorator, "EnvironmentRotateRightButton");
             PlacedDecoration changed = decorator.VisibleWorkingLayout.Decorations.Single();
             checks.Add(new StartupCheck("environment_decorator_moves_and_rotates_selected_instance",
@@ -342,7 +348,7 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             Press(decorator, "EnvironmentMove ItemsButton");
             RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             RoomInput(blocker, new InputEventMouseMotion { Position = firstPoint });
-            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = false });
+            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             Press(decorator, "EnvironmentRotateLeftButton");
             Press(decorator, "EnvironmentMoveCancelButton");
             PlacedDecoration restored = decorator.VisibleWorkingLayout.Decorations.Single();
