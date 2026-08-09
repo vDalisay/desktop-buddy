@@ -151,7 +151,8 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 workspace.FindChild("BuddyStudioInspectorPane", true, false) is Control &&
                 root.FindChild("BuddyStudioDirtyDialog", true, false) is PanelContainer &&
                 workspace.FindChild("BuddyStudioStatus", true, false) is null &&
-                status.GetParent() == workspace &&
+                workspace.FindChild("CharacterEditorStatus", true, false) is null &&
+                status.GetParent() == root &&
                 !paintCanvas.Visible;
             checks.Add(new StartupCheck(
                 "bs6_shared_controls_compose_twelve_accessible_categories",
@@ -317,28 +318,39 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             });
             bool escapeExited = !workspace.MoveMode;
             move.EmitSignal(BaseButton.SignalName.Pressed);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            // The blocker is hit first by real GUI picking, so drive move mode through it.
             Control moveBlocker = (Control)root.FindChild("BuddyStudioMoveBlocker", true, false);
-            preview.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
+            Rect2 previewRect = preview.GetGlobalRect();
+            Vector2 inside = previewRect.GetCenter();
+            Vector2 outside = previewRect.End + new Vector2(20, 20);
+            moveBlocker.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
             {
                 ButtonIndex = MouseButton.Left,
                 Pressed = true,
-                Position = new Vector2(100, 100),
+                Position = inside,
+                GlobalPosition = inside,
             });
-            preview.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseMotion
+            bool insidePressKeptMoveMode = workspace.MoveMode && moveBlocker.Visible;
+            moveBlocker.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseMotion
             {
                 ButtonMask = MouseButtonMask.Left,
                 Relative = new Vector2(12, -8),
-                Position = new Vector2(112, 92),
+                Position = inside + new Vector2(12, -8),
+                GlobalPosition = inside + new Vector2(12, -8),
             });
-            preview.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
+            bool moveCursor = moveBlocker.MouseDefaultCursorShape == Control.CursorShape.Move;
+            moveBlocker.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
             {
                 ButtonIndex = MouseButton.Left,
                 Pressed = false,
-                Position = new Vector2(112, 92),
+                Position = inside + new Vector2(12, -8),
+                GlobalPosition = inside + new Vector2(12, -8),
             });
             NormalizedFeatureTransform afterMove = CharacterDocumentEditor.ReadFeatureTransform(
                 session.PreviewDocument!, CharacterFeatureSlot.Eyes);
-            bool focusedMove = escapeExited && workspace.MoveMode && moveBlocker.Visible &&
+            bool focusedMove = escapeExited && insidePressKeptMoveMode && moveCursor &&
+                workspace.MoveMode && moveBlocker.Visible &&
                 moveBlocker.MouseFilter == Control.MouseFilterEnum.Stop &&
                 preview.MouseDefaultCursorShape == Control.CursorShape.Move &&
                 workspace.CatalogGrid.Visible && afterMove != beforeMove;
@@ -346,13 +358,16 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             {
                 ButtonIndex = MouseButton.Left,
                 Pressed = true,
+                Position = outside,
+                GlobalPosition = outside,
             });
             bool moveRestored = !workspace.MoveMode && !moveBlocker.Visible &&
                 preview.MouseDefaultCursorShape == previewCursor && preview.ZIndex == previewZ;
             checks.Add(new StartupCheck(
-                "bs7_move_mode_focuses_direct_drag_and_restores_on_outside_click",
+                "bs7_move_mode_drags_inside_the_preview_and_restores_on_outside_click",
                 focusedMove && moveRestored,
-                $"focused={focusedMove} restored={moveRestored} transform={beforeMove}->{afterMove}"));
+                $"focused={focusedMove} insideKept={insidePressKeptMoveMode} cursor={moveCursor} " +
+                $"restored={moveRestored} rect={previewRect} transform={beforeMove}->{afterMove}"));
 
             Control transformActions = (Control)workspace.FindChild("BuddyStudioTransformActions", true, false);
             bool fillsWidth = transformActions.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&

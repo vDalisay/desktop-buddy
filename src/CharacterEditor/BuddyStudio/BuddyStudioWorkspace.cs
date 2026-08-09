@@ -54,8 +54,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private VBoxContainer _previewColumn = null!;
     private Node? _previewHome;
     private int _previewHomeIndex;
-    private Node? _statusHome;
-    private int _statusHomeIndex;
+    private Win98WindowFrame? _frame;
     private Control? _paintCanvas;
     private bool _paintCanvasWasVisible;
     private bool _previewAttached;
@@ -101,9 +100,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             _paintCanvas.Visible = false;
         }
         _previewInput.Reparent(_previewColumn);
-        _statusHome = _status.GetParent();
-        _statusHomeIndex = _status.GetIndex();
-        _status.Reparent(this);
         _previewAttached = true;
         ResetView();
     }
@@ -116,20 +112,16 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _previewHome!.MoveChild(_previewInput, Math.Min(_previewHomeIndex, _previewHome.GetChildCount() - 1));
         if (GodotObject.IsInstanceValid(_paintCanvas))
             _paintCanvas!.Visible = _paintCanvasWasVisible;
-        if (GodotObject.IsInstanceValid(_statusHome))
-        {
-            _status.Reparent(_statusHome!);
-            _statusHome!.MoveChild(_status, Math.Min(_statusHomeIndex, _statusHome.GetChildCount() - 1));
-        }
         if (_cameraStateCaptured && GodotObject.IsInstanceValid(_previewCamera))
         {
             _previewCamera.Position = _cameraHomePosition;
             _previewCamera.Size = _cameraHomeSize;
         }
         _cameraStateCaptured = false;
-        _statusHome = null;
         SetMoveMode(false);
         _previewAttached = false;
+        if (GodotObject.IsInstanceValid(_frame))
+            _frame!.StatusText = "Ready";
     }
 
     public void Configure(
@@ -279,7 +271,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _previewInput.CustomMinimumSize = new Vector2(270, 300);
         _previewInput.SizeFlagsVertical = SizeFlags.ExpandFill;
         _previewInput.MouseFilter = MouseFilterEnum.Stop;
-        _previewInput.GuiInput += OnPreviewInput;
 
         var view = new HBoxContainer
         {
@@ -410,15 +401,42 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _moveBlocker = Win98Dialog.Blocker((Control)GetParent(), "BuddyStudioMoveBlocker");
         _moveBlocker.ZIndex = 100;
         _moveBlocker.FocusMode = FocusModeEnum.All;
-        _moveBlocker.TooltipText = "Click outside the portrait or press Escape to finish moving.";
-        _moveBlocker.GuiInput += input =>
+        _moveBlocker.TooltipText = "Drag the portrait to move it; click outside it or press Escape to finish.";
+        _moveBlocker.GuiInput += OnMoveBlockerInput;
+    }
+
+    /// <summary>
+    /// Godot picks GUI input by tree order, never by z_index, so the full-rect blocker is always hit
+    /// first even though the raised preview draws above its dim. The blocker therefore owns move-mode
+    /// input and routes by pointer position: inside the portrait drags, outside ends the mode.
+    /// </summary>
+    private void OnMoveBlockerInput(InputEvent input)
+    {
+        if (input is not InputEventMouse mouse || !GodotObject.IsInstanceValid(_previewInput))
+            return;
+        bool overPreview = _previewInput.GetGlobalRect().HasPoint(mouse.GlobalPosition);
+        _moveBlocker.MouseDefaultCursorShape = overPreview ? CursorShape.Move : CursorShape.Arrow;
+        if (mouse is InputEventMouseButton button)
         {
-            if (input is InputEventMouseButton { Pressed: true })
+            if (!overPreview)
             {
-                SetMoveMode(false);
-                _moveBlocker.AcceptEvent();
+                if (button.Pressed)
+                    SetMoveMode(false);
             }
-        };
+            else if (button.ButtonIndex == MouseButton.Left)
+            {
+                _dragging = button.Pressed;
+            }
+            _moveBlocker.AcceptEvent();
+            return;
+        }
+        if (!_dragging || mouse is not InputEventMouseMotion { ButtonMask: MouseButtonMask.Left } motion)
+            return;
+        Vector2 size = _previewInput.Size;
+        if (size.X <= 0 || size.Y <= 0)
+            return;
+        Nudge(new Vector2(motion.Relative.X / size.X * 2f, motion.Relative.Y / size.Y * 2f));
+        _moveBlocker.AcceptEvent();
     }
 
     private void Refresh()
@@ -436,7 +454,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
                 : "Save this character (Ctrl+S).";
             RefreshCatalog();
             RefreshSelectionPane();
-            _status.Text = _session.LastError ?? StatusText(document);
+            SetStatus(_session.LastError ?? StatusText(document));
             if (_session.PendingAction == CharacterEditorPendingAction.Close && _dirtyBlocker.Visible &&
                 GetTree().Root.FindChild("UnsavedChangesPrompt", true, false) is Control legacyPrompt)
                 legacyPrompt.Visible = false;
@@ -557,7 +575,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         }
         Refresh();
         if (saveFailure is not null)
-            _status.Text = saveFailure;
+            SetStatus(saveFailure);
     }
 
     private void Randomize()
@@ -694,7 +712,20 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _move.ButtonPressed = _moveMode;
         _move.Text = _moveMode ? "Moving…" : "Move";
         if (IsInsideTree())
-            _status.Text = StatusText(_session.PreviewDocument);
+            SetStatus(StatusText(_session.PreviewDocument));
+    }
+
+    /// <summary>
+    /// There is exactly one status bar on screen: the Win98 frame's. The editor's own label stays
+    /// with the hidden legacy panel, so the studio mirrors into it without rendering a second bar.
+    /// </summary>
+    private void SetStatus(string text)
+    {
+        _status.Text = text;
+        if (!GodotObject.IsInstanceValid(_frame) && IsInsideTree())
+            _frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
+        if (GodotObject.IsInstanceValid(_frame))
+            _frame!.StatusText = text;
     }
 
     private void SetViewZoom(float zoom)
@@ -726,29 +757,10 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _ => new ViewFrame(new Vector2(0, 50), 105),
     };
 
-    private void OnPreviewInput(InputEvent input)
-    {
-        if (!_moveMode)
-            return;
-        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } click)
-        {
-            _dragging = click.Pressed;
-            _previewInput.AcceptEvent();
-            return;
-        }
-        if (!_dragging || input is not InputEventMouseMotion { ButtonMask: MouseButtonMask.Left } motion)
-            return;
-        Vector2 size = _previewInput.Size;
-        if (size.X <= 0 || size.Y <= 0)
-            return;
-        Nudge(new Vector2(motion.Relative.X / size.X * 2f, motion.Relative.Y / size.Y * 2f));
-        _previewInput.AcceptEvent();
-    }
-
     private void Handle(CharacterEditorActionResult result)
     {
         if (!string.IsNullOrWhiteSpace(result.Detail) && IsInsideTree())
-            _status.Text = result.Detail;
+            SetStatus(result.Detail);
         Refresh();
     }
 
