@@ -463,6 +463,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     /// The surface a feature rides, and the sign that turns screen-down into document-down on it.
     /// Composited decals live in the Y-up normalized space the feature painters share, so their
     /// documented offset grows upward; anchored 3D cosmetics negate the same value instead.
+    /// ponytail: this table mirrors renderer knowledge because the two surfaces disagree on the
+    /// vertical sign. Collapse it once one offsetY convention wins — that needs a save migration
+    /// for characters that already carry nose, ear, or glasses offsets, so it is its own change.
     /// </summary>
     private (float HalfExtent, float YSign) FeatureSurface(CharacterFeatureSlot slot) => slot switch
     {
