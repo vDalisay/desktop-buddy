@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Economy;
@@ -55,6 +58,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private Node? _previewHome;
     private int _previewHomeIndex;
     private Win98WindowFrame? _frame;
+    private BuddyVisualRigView? _previewRig;
     private Control? _paintCanvas;
     private bool _paintCanvasWasVisible;
     private bool _previewAttached;
@@ -199,7 +203,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         };
         if (direction != Vector2.Zero)
         {
-            Nudge(direction * (key.ShiftPressed ? 0.05f : 0.01f));
+            // Screen-space direction, exactly like the drag: the surface decides the document sign.
+            Nudge(new Vector2(direction.X, direction.Y * FeatureSurface(_slot).YSign) *
+                (key.ShiftPressed ? 0.05f : 0.01f));
             GetViewport().SetInputAsHandled();
         }
     }
@@ -432,11 +438,50 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         }
         if (!_dragging || mouse is not InputEventMouseMotion { ButtonMask: MouseButtonMask.Left } motion)
             return;
-        Vector2 size = _previewInput.Size;
-        if (size.X <= 0 || size.Y <= 0)
-            return;
-        Nudge(new Vector2(motion.Relative.X / size.X * 2f, motion.Relative.Y / size.Y * 2f));
+        Nudge(ToDocumentOffset(motion.Relative));
         _moveBlocker.AcceptEvent();
+    }
+
+    /// <summary>
+    /// Screen pixels to document offset units, so a dragged feature stays pinned under the cursor.
+    /// The orthographic preview camera spreads its <see cref="Camera3D.Size"/> across the viewport
+    /// height, and one document offset unit travels <see cref="CharacterFeatureTransform.OffsetExtent"/>
+    /// of the half-extent of the surface the feature rides.
+    /// </summary>
+    private Vector2 ToDocumentOffset(Vector2 pixels)
+    {
+        (float halfExtent, float ySign) = FeatureSurface(_slot);
+        float pixelsPerWorldUnit = _previewInput.Size.Y / _previewCamera.Size;
+        float pixelsPerOffsetUnit =
+            pixelsPerWorldUnit * CharacterFeatureTransform.OffsetExtent * halfExtent;
+        if (!float.IsFinite(pixelsPerOffsetUnit) || pixelsPerOffsetUnit <= 0f)
+            return Vector2.Zero;
+        return new Vector2(pixels.X, pixels.Y * ySign) / pixelsPerOffsetUnit;
+    }
+
+    /// <summary>
+    /// The surface a feature rides, and the sign that turns screen-down into document-down on it.
+    /// Composited decals live in the Y-up normalized space the feature painters share, so their
+    /// documented offset grows upward; anchored 3D cosmetics negate the same value instead.
+    /// </summary>
+    private (float HalfExtent, float YSign) FeatureSurface(CharacterFeatureSlot slot) => slot switch
+    {
+        CharacterFeatureSlot.Eyes or CharacterFeatureSlot.Brows or CharacterFeatureSlot.Mouth =>
+            (ParametricFaceCompositor.PlateWorldSize * 0.5f, -1f),
+        CharacterFeatureSlot.Accessories =>
+            (BuddyVisualRigView.AccentPlateWorldSize * 0.5f, -1f),
+        _ => (HeadRadius(), 1f),
+    };
+
+    private float HeadRadius()
+    {
+        if (!GodotObject.IsInstanceValid(_previewRig))
+            _previewRig = _previewInput.FindChildren("*", nameof(BuddyVisualRigView), true, false)
+                .OfType<BuddyVisualRigView>()
+                .FirstOrDefault();
+        return GodotObject.IsInstanceValid(_previewRig)
+            ? _previewRig!.PartMeshRadius(BuddyPartId.Head)
+            : ParametricFaceCompositor.PlateWorldSize * 0.5f;
     }
 
     private void Refresh()

@@ -14,7 +14,7 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 [GlobalClass]
 public partial class BuddyVisualRigView : Node3D
 {
-    private const float AccentPlateWorldSize = 32.0f;
+    public const float AccentPlateWorldSize = 32.0f;
 
     private readonly Node3D[] _sockets = new Node3D[PuppetRigProfile.RequiredPartCount];
     private readonly MeshInstance3D[] _partMeshes =

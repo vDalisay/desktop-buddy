@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Content;
@@ -332,23 +333,41 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 GlobalPosition = inside,
             });
             bool insidePressKeptMoveMode = workspace.MoveMode && moveBlocker.Visible;
+            // Independent oracle for 1:1 direct manipulation: the orthographic camera spreads its
+            // Size across the preview height, and one document offset unit travels 35% of the face
+            // plate's half extent. Eyes are a composited decal, whose normalized space is Y-up.
+            var drag = new Vector2(8, -4);
+            float pixelsPerOffsetUnit = preview.Size.Y / camera.Size *
+                CharacterFeatureTransform.OffsetExtent * (ParametricFaceCompositor.PlateWorldSize * 0.5f);
+            Vector2 expected = new Vector2(drag.X, -drag.Y) / pixelsPerOffsetUnit;
             moveBlocker.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseMotion
             {
                 ButtonMask = MouseButtonMask.Left,
-                Relative = new Vector2(12, -8),
-                Position = inside + new Vector2(12, -8),
-                GlobalPosition = inside + new Vector2(12, -8),
+                Relative = drag,
+                Position = inside + drag,
+                GlobalPosition = inside + drag,
             });
             bool moveCursor = moveBlocker.MouseDefaultCursorShape == Control.CursorShape.Move;
             moveBlocker.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseButton
             {
                 ButtonIndex = MouseButton.Left,
                 Pressed = false,
-                Position = inside + new Vector2(12, -8),
-                GlobalPosition = inside + new Vector2(12, -8),
+                Position = inside + drag,
+                GlobalPosition = inside + drag,
             });
             NormalizedFeatureTransform afterMove = CharacterDocumentEditor.ReadFeatureTransform(
                 session.PreviewDocument!, CharacterFeatureSlot.Eyes);
+            // Direction: dragging right and up must raise both offsets on a Y-up decal surface.
+            bool dragDirection = afterMove.OffsetX > beforeMove.OffsetX && afterMove.OffsetY > beforeMove.OffsetY;
+            bool dragProportional = pixelsPerOffsetUnit > 0f &&
+                Math.Abs(afterMove.OffsetX - beforeMove.OffsetX - expected.X) < 1e-3 &&
+                Math.Abs(afterMove.OffsetY - beforeMove.OffsetY - expected.Y) < 1e-3;
+            checks.Add(new StartupCheck(
+                "bs7_move_drag_is_one_to_one_with_the_cursor_on_both_axes",
+                dragDirection && dragProportional,
+                $"direction={dragDirection} proportional={dragProportional} drag={drag} " +
+                $"expected={expected} actual=({afterMove.OffsetX - beforeMove.OffsetX}, " +
+                $"{afterMove.OffsetY - beforeMove.OffsetY}) pxPerUnit={pixelsPerOffsetUnit}"));
             bool focusedMove = escapeExited && insidePressKeptMoveMode && moveCursor &&
                 workspace.MoveMode && moveBlocker.Visible &&
                 moveBlocker.MouseFilter == Control.MouseFilterEnum.Stop &&
