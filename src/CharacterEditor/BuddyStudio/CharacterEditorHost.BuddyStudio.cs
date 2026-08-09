@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
 using Godot;
@@ -24,12 +25,18 @@ public partial class CharacterEditorHost
         var preview = _editorRoot.FindChild("CharacterPreview", true, false) as Control;
         if (!GodotObject.IsInstanceValid(preview))
             return false;
+        Camera3D? camera = preview!.FindChildren("*", nameof(Camera3D), true, false)
+            .OfType<Camera3D>()
+            .FirstOrDefault();
+        if (!GodotObject.IsInstanceValid(camera))
+            return false;
 
         _buddyStudio = new BuddyStudioWorkspace { Visible = false };
         _buddyStudio.Configure(
             _session,
             _context.Economy,
             preview!,
+            camera!,
             CloseBuddyStudioImmediately,
             () => _context.Saves.FlushProgressAsync(force: true));
         _editorRoot.AddChild(_buddyStudio);
@@ -40,6 +47,13 @@ public partial class CharacterEditorHost
     {
         if (!EnsureBuddyStudioReady())
             return;
+        CharacterEditorActionResult opened = await _session.OpenActiveAsync(
+            _context.CharacterSelection?.ActiveCharacterId);
+        if (!opened.Completed)
+        {
+            Handle(opened);
+            return;
+        }
         await OpenEditorAsync();
         if (!IsEditorOpen)
             return;

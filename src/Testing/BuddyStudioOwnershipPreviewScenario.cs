@@ -73,7 +73,11 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                 context.Coordinator,
                 context.Preview,
                 economy: economy);
-            await session.SelectAsync(baselineId);
+            CharacterEditorActionResult openedActive = await session.OpenActiveAsync(baselineId);
+            checks.Add(new StartupCheck(
+                "bs7_active_local_character_is_the_initial_working_copy",
+                openedActive.Completed && session.WorkingDocument?.Id == baselineId,
+                $"opened={openedActive.Completed} working={session.WorkingDocument?.Id}"));
 
             CharacterEditorActionResult previewed = session.PreviewCosmetic(
                 CharacterFeatureSlot.Glasses,
@@ -241,6 +245,24 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                 "bs7_purchase_equip_save_and_restart_preserve_ownership_and_appearance",
                 purchaseEquipSaveRestart,
                 $"bought={boughtHair.Completed} equipped={equippedHair.Completed} saved={savedHair.Completed} owned={restartedEconomy.IsUnlocked(ContentIds.CosmeticHairShortSweep)}"));
+
+            var builtInSession = new CharacterEditorSession(
+                context.Store,
+                library,
+                context.Coordinator,
+                context.Preview,
+                newGuid: () => Guid.Parse("8b400000-0000-4000-8000-000000000003"),
+                economy: restartedEconomy);
+            CharacterEditorActionResult openedBuiltIn = await builtInSession.OpenActiveAsync(null);
+            bool builtInWorkingCopy = openedBuiltIn.Completed && builtInSession.CanSave && builtInSession.IsDirty &&
+                builtInSession.WorkingDocument?.DisplayName == "Built-in Buddy" &&
+                builtInSession.WorkingDocument.PartColors == CharacterPartColors.BuiltIn &&
+                CharacterDocumentEditor.ReadFeatureId(
+                    builtInSession.WorkingDocument, CharacterFeatureSlot.Eyes) == CharacterFeatureSet.BuiltIn.Eyes.FeatureId;
+            checks.Add(new StartupCheck(
+                "bs7_built_in_active_buddy_opens_as_existing_default_working_copy",
+                builtInWorkingCopy,
+                $"opened={openedBuiltIn.Completed} canSave={builtInSession.CanSave} dirty={builtInSession.IsDirty}"));
         }
         finally
         {

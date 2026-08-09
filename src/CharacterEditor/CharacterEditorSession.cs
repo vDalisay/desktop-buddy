@@ -116,6 +116,35 @@ public sealed class CharacterEditorSession
         return await SelectCoreAsync(characterId, token);
     }
 
+    /// <summary>
+    /// Opens the appearance currently used by the runtime. Built-in selection has no local
+    /// document, so it starts from the existing built-in defaults as a normal unsaved character.
+    /// </summary>
+    public async Task<CharacterEditorActionResult> OpenActiveAsync(
+        Guid? activeCharacterId,
+        CancellationToken token = default)
+    {
+        if (activeCharacterId == Guid.Empty)
+            throw new ArgumentOutOfRangeException(nameof(activeCharacterId));
+        if (activeCharacterId.HasValue)
+        {
+            if (WorkingDocument?.Id == activeCharacterId.Value)
+                return new CharacterEditorActionResult(true);
+            if (IsDirty)
+                return RequireDecision(CharacterEditorPendingAction.Select, activeCharacterId);
+            return await SelectCoreAsync(activeCharacterId.Value, token);
+        }
+
+        if (IsDirty)
+            return RequireDecision(CharacterEditorPendingAction.New, null);
+        ClearPaint(saved: false);
+        SetWorking(
+            CharacterDocument.CreateDefault(_newGuid(), "Built-in Buddy"),
+            saved: null,
+            clearPreviews: true);
+        return new CharacterEditorActionResult(true);
+    }
+
     public CharacterEditorActionResult NewCharacter(string displayName = "New Character")
     {
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.New, null);

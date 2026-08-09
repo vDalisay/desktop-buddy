@@ -14,6 +14,9 @@ namespace DesktopBuddy.CharacterEditor.BuddyStudio;
 /// <summary>Buddy-specific controller for the shared Win98 customization controls.</summary>
 public partial class BuddyStudioWorkspace : VBoxContainer
 {
+    private const float MinimumViewZoom = 0.75f;
+    private const float MaximumViewZoom = 2.0f;
+    private const float ViewZoomStep = 0.2f;
     private static readonly CharacterFeatureSlot[] CategoryOrder =
     [
         CharacterFeatureSlot.Face, CharacterFeatureSlot.Hair, CharacterFeatureSlot.Brows,
@@ -44,17 +47,22 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private Label _name = null!;
     private Label _status = null!;
     private Control _previewInput = null!;
+    private Camera3D _previewCamera = null!;
     private VBoxContainer _previewColumn = null!;
     private Node? _previewHome;
     private int _previewHomeIndex;
     private Control? _paintCanvas;
     private bool _paintCanvasWasVisible;
     private bool _previewAttached;
+    private bool _cameraStateCaptured;
+    private Vector3 _cameraHomePosition;
+    private float _cameraHomeSize;
     private Control _dirtyBlocker = null!;
     private PanelContainer _dirtyDialog = null!;
     private CharacterFeatureSlot _slot = CharacterFeatureSlot.Face;
     private bool _refreshing;
     private bool _moveMode;
+    private float _viewZoom = 1.0f;
 
     public bool IsConfigured { get; private set; }
     public bool MoveMode => _moveMode;
@@ -63,11 +71,17 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     public Button BuyAction => _buy;
     public Win98CategoryStrip CategoryStrip => _categories;
     public Win98CatalogGrid CatalogGrid => _catalog;
+    public float ViewZoom => _viewZoom;
+    public float PreviewCameraSize => _previewCamera.Size;
+    public Vector2 PreviewFocus => new(_previewCamera.Position.X, _previewCamera.Position.Y);
 
     public void AttachPreview()
     {
         if (_previewAttached || !GodotObject.IsInstanceValid(_previewColumn))
             return;
+        _cameraHomePosition = _previewCamera.Position;
+        _cameraHomeSize = _previewCamera.Size;
+        _cameraStateCaptured = true;
         _previewHome = _previewInput.GetParent();
         _previewHomeIndex = _previewInput.GetIndex();
         _paintCanvas = _previewInput.FindChild("CharacterPaintCanvas", true, false) as Control;
@@ -78,6 +92,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         }
         _previewInput.Reparent(_previewColumn);
         _previewAttached = true;
+        ResetView();
     }
 
     public void DetachPreview()
@@ -88,6 +103,12 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _previewHome!.MoveChild(_previewInput, Math.Min(_previewHomeIndex, _previewHome.GetChildCount() - 1));
         if (GodotObject.IsInstanceValid(_paintCanvas))
             _paintCanvas!.Visible = _paintCanvasWasVisible;
+        if (_cameraStateCaptured && GodotObject.IsInstanceValid(_previewCamera))
+        {
+            _previewCamera.Position = _cameraHomePosition;
+            _previewCamera.Size = _cameraHomeSize;
+        }
+        _cameraStateCaptured = false;
         _previewAttached = false;
     }
 
@@ -95,6 +116,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         CharacterEditorSession session,
         EconomyService economy,
         Control preview,
+        Camera3D previewCamera,
         Action closeImmediately,
         Func<Task>? flushProgress = null)
     {
@@ -103,6 +125,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _session = session ?? throw new ArgumentNullException(nameof(session));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _previewInput = preview ?? throw new ArgumentNullException(nameof(preview));
+        _previewCamera = previewCamera ?? throw new ArgumentNullException(nameof(previewCamera));
         _closeImmediately = closeImmediately ?? throw new ArgumentNullException(nameof(closeImmediately));
         _flushProgress = flushProgress ?? (static () => Task.CompletedTask);
         IsConfigured = true;
@@ -174,6 +197,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _slot = slot;
         _categories.Select(SlotId(slot), notify: false);
         SetMoveMode(false);
+        ResetView();
         RefreshCatalog();
         RefreshSelectionPane();
     }
@@ -239,6 +263,23 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _previewInput.SizeFlagsVertical = SizeFlags.ExpandFill;
         _previewInput.MouseFilter = MouseFilterEnum.Stop;
         _previewInput.GuiInput += OnPreviewInput;
+
+        var view = new HBoxContainer
+        {
+            Name = "BuddyStudioViewActions",
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        view.AddThemeConstantOverride("separation", 4);
+        _previewColumn.AddChild(view);
+        Button zoomOut = ViewAction(view, "Zoom −", () => SetViewZoom(_viewZoom - ViewZoomStep));
+        zoomOut.Name = "BuddyStudioZoomOut";
+        zoomOut.TooltipText = "Show more of the buddy portrait.";
+        Button zoomIn = ViewAction(view, "Zoom +", () => SetViewZoom(_viewZoom + ViewZoomStep));
+        zoomIn.Name = "BuddyStudioZoomIn";
+        zoomIn.TooltipText = "Move closer to the selected area.";
+        Button resetView = ViewAction(view, "Reset View", ResetView);
+        resetView.Name = "BuddyStudioResetView";
+        resetView.TooltipText = "Restore the selected category's default portrait framing.";
 
         var transform = new GridContainer
         {
@@ -483,7 +524,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             Refresh();
             return;
         }
-        Handle(await _session.SaveAsync());
+        Handle(await _session.UseCharacterAsync());
     }
 
     private async System.Threading.Tasks.Task CancelAsync()
@@ -575,6 +616,35 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             _status.Text = StatusText(_session.PreviewDocument);
     }
 
+    private void SetViewZoom(float zoom)
+    {
+        _viewZoom = Math.Clamp(zoom, MinimumViewZoom, MaximumViewZoom);
+        ApplyView();
+    }
+
+    private void ResetView()
+    {
+        _viewZoom = 1.0f;
+        ApplyView();
+    }
+
+    private void ApplyView()
+    {
+        if (!_previewAttached || !GodotObject.IsInstanceValid(_previewCamera))
+            return;
+        ViewFrame frame = FrameFor(_slot);
+        _previewCamera.Position = new Vector3(frame.Focus.X, frame.Focus.Y, _cameraHomePosition.Z);
+        _previewCamera.Size = frame.Size / _viewZoom;
+    }
+
+    private static ViewFrame FrameFor(CharacterFeatureSlot slot) => slot switch
+    {
+        CharacterFeatureSlot.Accessories or CharacterFeatureSlot.Tops =>
+            new ViewFrame(new Vector2(0, 0), 135),
+        CharacterFeatureSlot.Shoes => new ViewFrame(new Vector2(0, -55), 105),
+        _ => new ViewFrame(new Vector2(0, 50), 105),
+    };
+
     private void OnPreviewInput(InputEvent input)
     {
         if (!_moveMode || input is not InputEventMouseMotion { ButtonMask: MouseButtonMask.Left } motion)
@@ -628,6 +698,16 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         parent.AddChild(button);
         return button;
     }
+
+    private static Button ViewAction(Control parent, string text, Action pressed)
+    {
+        Button button = Action(parent, text, pressed);
+        button.CustomMinimumSize = new Vector2(0, 30);
+        button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        return button;
+    }
+
+    private readonly record struct ViewFrame(Vector2 Focus, float Size);
 
     private static string SlotId(CharacterFeatureSlot slot) => slot.ToString().ToLowerInvariant();
     private static CharacterFeatureSlot ParseSlot(string id) => CategoryOrder.First(slot => SlotId(slot) == id);

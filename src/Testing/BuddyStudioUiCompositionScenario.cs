@@ -85,12 +85,19 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
             tree.Root.AddChild(root);
             var preview = new Control { Name = "ScenarioPreview" };
+            var camera = new Camera3D
+            {
+                Name = "ScenarioPreviewCamera",
+                Position = new Vector3(0, 0, 600),
+                Size = 400,
+            };
             var paintCanvas = new Control { Name = "CharacterPaintCanvas", Visible = true };
             preview.AddChild(paintCanvas);
+            preview.AddChild(camera);
             root.AddChild(preview);
             int durableSaves = 0;
             var workspace = new BuddyStudioWorkspace();
-            workspace.Configure(session, economy, preview, () => { }, () =>
+            workspace.Configure(session, economy, preview, camera, () => { }, () =>
             {
                 durableSaves++;
                 return Task.CompletedTask;
@@ -98,6 +105,33 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             root.AddChild(workspace);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             workspace.AttachPreview();
+
+            bool headFrame = workspace.ViewZoom == 1.0f &&
+                workspace.PreviewFocus.IsEqualApprox(new Vector2(0, 50)) &&
+                Mathf.IsEqualApprox(workspace.PreviewCameraSize, 105) &&
+                workspace.FindChild("BuddyStudioZoomOut", true, false) is Button &&
+                workspace.FindChild("BuddyStudioZoomIn", true, false) is Button &&
+                workspace.FindChild("BuddyStudioResetView", true, false) is Button;
+            checks.Add(new StartupCheck(
+                "bs7_studio_opens_with_zoomed_head_frame_and_visible_view_controls",
+                headFrame,
+                $"focus={workspace.PreviewFocus} size={workspace.PreviewCameraSize} zoom={workspace.ViewZoom}"));
+
+            ((Button)workspace.FindChild("BuddyStudioZoomIn", true, false)).EmitSignal(BaseButton.SignalName.Pressed);
+            bool zoomed = workspace.ViewZoom > 1.0f && workspace.PreviewCameraSize < 105;
+            workspace.SelectCategory(CharacterFeatureSlot.Tops);
+            bool torsoFrame = workspace.PreviewFocus.IsEqualApprox(Vector2.Zero) &&
+                Mathf.IsEqualApprox(workspace.PreviewCameraSize, 135);
+            workspace.SelectCategory(CharacterFeatureSlot.Shoes);
+            bool feetFrame = workspace.PreviewFocus.IsEqualApprox(new Vector2(0, -55)) &&
+                Mathf.IsEqualApprox(workspace.PreviewCameraSize, 105);
+            ((Button)workspace.FindChild("BuddyStudioZoomIn", true, false)).EmitSignal(BaseButton.SignalName.Pressed);
+            ((Button)workspace.FindChild("BuddyStudioResetView", true, false)).EmitSignal(BaseButton.SignalName.Pressed);
+            bool resetFeet = workspace.ViewZoom == 1.0f && Mathf.IsEqualApprox(workspace.PreviewCameraSize, 105);
+            checks.Add(new StartupCheck(
+                "bs7_view_zoom_reset_and_category_focus_cover_head_torso_feet",
+                zoomed && torsoFrame && feetFrame && resetFeet,
+                $"zoomed={zoomed} torso={torsoFrame} feet={feetFrame} reset={resetFeet}"));
 
             int categories = workspace.CategoryStrip.FindChildren("Category_*", "Button", true, false).Count;
             bool composed = categories == 12 &&
@@ -152,6 +186,21 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 equipped,
                 $"action={workspace.BuyAction.Text} saveDisabled={workspace.SaveAction.Disabled}"));
 
+            workspace.SaveAction.EmitSignal(BaseButton.SignalName.Pressed);
+            for (int frame = 0; frame < 120; frame++)
+            {
+                context.Coordinator.PhysicsTick();
+                if (!session.IsDirty && context.Selection.ActiveCharacterId == id)
+                    break;
+
+                await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            }
+            context.Coordinator.PhysicsTick();
+            checks.Add(new StartupCheck(
+                "bs7_save_immediately_persists_and_applies_the_opened_buddy",
+                !session.IsDirty && context.Store.SaveCount > 0 && context.Selection.ActiveCharacterId == id,
+                $"dirty={session.IsDirty} saves={context.Store.SaveCount} active={context.Selection.ActiveCharacterId}"));
+
             workspace.SelectCategory(CharacterFeatureSlot.Eyes);
             Button move = (Button)workspace.FindChild("BuddyStudioMove", true, false);
             Button larger = (Button)workspace.FindChild("BuddyStudioLarger", true, false);
@@ -183,8 +232,10 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             workspace.DetachPreview();
             checks.Add(new StartupCheck(
                 "bs6_studio_hides_paint_but_restores_preview_paint_state",
-                paintCanvas.Visible && preview.GetParent() == root,
-                $"paint={paintCanvas.Visible} previewParent={preview.GetParent()?.Name}"));
+                paintCanvas.Visible && preview.GetParent() == root &&
+                    camera.Position.IsEqualApprox(new Vector3(0, 0, 600)) &&
+                    Mathf.IsEqualApprox(camera.Size, 400),
+                $"paint={paintCanvas.Visible} previewParent={preview.GetParent()?.Name} camera={camera.Position}/{camera.Size}"));
         }
         finally
         {
