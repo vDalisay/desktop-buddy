@@ -17,6 +17,8 @@ public partial class Win98CommandBarBootstrap : Node
 {
     private readonly CustomizeCommandRegistry _customizeCommands = new();
     private readonly Dictionary<long, string> _customizePopupIds = [];
+    private readonly CustomizeCommandRegistry _topLevelCommands = new();
+    private readonly Dictionary<string, Button> _topLevelButtons = new(StringComparer.Ordinal);
 
     private Control _uiRoot = null!;
     private Control _legacyDock = null!;
@@ -43,6 +45,7 @@ public partial class Win98CommandBarBootstrap : Node
     private Button _legacyEditorButton = null!;
     private Button _legacyModeButton = null!;
     private IDisposable? _paintBuddyRegistration;
+    private HBoxContainer _commandRow = null!;
 
     private readonly Dictionary<Button, Control> _sections = [];
     private Control? _activeSection;
@@ -56,6 +59,7 @@ public partial class Win98CommandBarBootstrap : Node
     {
         ProcessMode = ProcessModeEnum.Always;
         _customizeCommands.Changed += OnCustomizeCommandsChanged;
+        _topLevelCommands.Changed += OnTopLevelCommandsChanged;
     }
 
     public override void _Process(double delta)
@@ -82,11 +86,13 @@ public partial class Win98CommandBarBootstrap : Node
         LayoutMenuBar();
         LayoutFlyout();
         MirrorModeLabel();
+        RefreshTopLevelCommands();
     }
 
     public override void _ExitTree()
     {
         _customizeCommands.Changed -= OnCustomizeCommandsChanged;
+        _topLevelCommands.Changed -= OnTopLevelCommandsChanged;
         _paintBuddyRegistration?.Dispose();
         _paintBuddyRegistration = null;
         ReturnPanelsToNativeWindows();
@@ -103,6 +109,23 @@ public partial class Win98CommandBarBootstrap : Node
         Func<bool>? isVisible = null,
         Func<bool>? isEnabled = null) =>
         _customizeCommands.Register(definition, invoke, isVisible, isEnabled);
+
+    public IDisposable RegisterTopLevelCommand(
+        TopLevelCommandDefinition definition,
+        Action invoke,
+        Func<bool>? isVisible = null,
+        Func<bool>? isEnabled = null)
+    {
+        return _topLevelCommands.Register(
+            new CustomizeCommandDefinition(
+                definition.Id,
+                definition.Label,
+                definition.Tooltip,
+                definition.Order),
+            invoke,
+            isVisible,
+            isEnabled);
+    }
 
     private void TryCompose()
     {
@@ -153,19 +176,19 @@ public partial class Win98CommandBarBootstrap : Node
         Node overlay = _frame.GetParent();
         overlay.AddChild(_bar);
 
-        var row = new HBoxContainer
+        _commandRow = new HBoxContainer
         {
             Name = "CommandRow",
             Alignment = BoxContainer.AlignmentMode.Begin,
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
-        row.AddThemeConstantOverride("separation", 0);
-        _bar.AddChild(row);
+        _commandRow.AddThemeConstantOverride("separation", 0);
+        _bar.AddChild(_commandRow);
 
-        _shopButton = AddMenuCommand(row, "Shop", "Open the shop.", () => OpenSection(_shopButton, _shop, "Shop"));
-        _toolsButton = AddMenuCommand(row, "Tools", "Choose the active tool.", () => OpenSection(_toolsButton, _tools, "Tools"));
-        _settingsButton = AddMenuCommand(row, "Settings", "Open game and window settings.", () => OpenSection(_settingsButton, _settings, "Settings"));
-        _customizeButton = AddMenuPopup(row, "Customize", "Open character and environment customization.");
+        _shopButton = AddMenuCommand(_commandRow, "Shop", "Open the shop.", () => OpenSection(_shopButton, _shop, "Shop"));
+        _toolsButton = AddMenuCommand(_commandRow, "Tools", "Choose the active tool.", () => OpenSection(_toolsButton, _tools, "Tools"));
+        _settingsButton = AddMenuCommand(_commandRow, "Settings", "Open game and window settings.", () => OpenSection(_settingsButton, _settings, "Settings"));
+        _customizeButton = AddMenuPopup(_commandRow, "Customize", "Open character and environment customization.");
         PopupMenu customizePopup = _customizeButton.GetPopup();
         Win98MenuStyle.Apply(customizePopup);
         customizePopup.AboutToPopup += () =>
@@ -183,7 +206,8 @@ public partial class Win98CommandBarBootstrap : Node
                 CustomizeCommandIds.PaintBuddyOrder),
             OpenEditor);
 
-        _modeButton = AddMenuCommand(row, "Work", "Switch between Play and Work input modes.", ToggleMode);
+        _modeButton = AddMenuCommand(_commandRow, "Work", "Switch between Play and Work input modes.", ToggleMode);
+        RebuildTopLevelCommands();
 
         _sections[_shopButton] = _shop;
         _sections[_toolsButton] = _tools;
@@ -276,6 +300,51 @@ public partial class Win98CommandBarBootstrap : Node
         button.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Flat(Colors.Transparent));
         button.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 1));
         button.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
+    }
+
+    private void RebuildTopLevelCommands()
+    {
+        foreach (Button button in _topLevelButtons.Values)
+            button.QueueFree();
+        _topLevelButtons.Clear();
+        if (!GodotObject.IsInstanceValid(_commandRow) || !GodotObject.IsInstanceValid(_modeButton))
+            return;
+
+        foreach (CustomizeCommandSnapshot snapshot in _topLevelCommands.Snapshot())
+        {
+            string id = snapshot.Definition.Id;
+            Button button = AddMenuCommand(
+                _commandRow,
+                snapshot.Definition.Label,
+                snapshot.Definition.Tooltip,
+                () =>
+                {
+                    CloseFlyout();
+                    _topLevelCommands.TryInvoke(id);
+                });
+            button.Name = $"TopLevelCommand_{id.Replace('.', '_')}";
+            _commandRow.MoveChild(button, _modeButton.GetIndex());
+            _topLevelButtons.Add(id, button);
+        }
+        RefreshTopLevelCommands();
+    }
+
+    private void RefreshTopLevelCommands()
+    {
+        foreach (CustomizeCommandSnapshot snapshot in _topLevelCommands.Snapshot())
+        {
+            if (!_topLevelButtons.TryGetValue(snapshot.Definition.Id, out Button? button) ||
+                !GodotObject.IsInstanceValid(button))
+                continue;
+            button.Visible = snapshot.Visible;
+            button.Disabled = !snapshot.Enabled;
+        }
+    }
+
+    private void OnTopLevelCommandsChanged()
+    {
+        if (_composed)
+            RebuildTopLevelCommands();
     }
 
     private void RebuildCustomizePopup()
@@ -466,4 +535,5 @@ public partial class Win98CommandBarBootstrap : Node
 
     private Button FindButton(string name) =>
         GetTree().Root.FindChild(name, true, false) as Button ?? null!;
+
 }
