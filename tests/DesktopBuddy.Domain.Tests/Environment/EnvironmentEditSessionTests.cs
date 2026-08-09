@@ -58,6 +58,52 @@ public sealed class EnvironmentEditSessionTests
     }
 
     [Fact]
+    public void ReservationChargesOneCopyAndCancelRestoresItsCost()
+    {
+        var session = new EnvironmentEditSession(new EnvironmentLayout(), 75_000, Catalogue(), () => Id(21));
+
+        EnvironmentEditResult reserved = session.Reserve(Lamp.Id, 75_000);
+        Assert.True(reserved.Succeeded);
+        Assert.True(session.HasReservation);
+        Assert.Empty(session.WorkingLayout.Decorations);
+        Assert.Equal(0, session.ProjectedBalanceMilliCredits);
+        Assert.Equal(EnvironmentEditStatus.AlreadyReserved, session.Reserve(Lamp.Id, 75_000).Status);
+
+        Assert.True(session.CancelReservation().Succeeded);
+        Assert.False(session.HasReservation);
+        Assert.False(session.IsDirty);
+        Assert.Equal(75_000, session.ProjectedBalanceMilliCredits);
+    }
+
+    [Fact]
+    public void ReservedCopyPlacesWithoutDoubleCharge()
+    {
+        var session = new EnvironmentEditSession(new EnvironmentLayout(), 150_000, Catalogue(), () => Id(22));
+        Assert.True(session.Reserve(Lamp.Id, 150_000).Succeeded);
+
+        EnvironmentEditResult placed = session.PlaceReserved(Position(.3f, .8f));
+
+        Assert.True(placed.Succeeded);
+        Assert.False(session.HasReservation);
+        Assert.Single(session.WorkingLayout.Decorations);
+        Assert.Equal(75_000, session.ProjectedBalanceMilliCredits);
+    }
+
+    [Fact]
+    public void ReservationUsesCurrentWalletAffordability()
+    {
+        var session = new EnvironmentEditSession(new EnvironmentLayout(), 75_000, Catalogue(), () => Id(23));
+
+        Assert.Equal(EnvironmentEditStatus.InsufficientFunds, session.Reserve(Lamp.Id, 74_000).Status);
+        Assert.False(session.HasReservation);
+        Assert.False(session.IsDirty);
+
+        Assert.True(session.Reserve(Lamp.Id, 80_000).Succeeded);
+        Assert.True(session.TryProjectBalance(80_000, out long projected));
+        Assert.Equal(5_000, projected);
+    }
+
+    [Fact]
     public void UnaffordablePlacementLeavesSessionUntouched()
     {
         var session = new EnvironmentEditSession(new EnvironmentLayout(), 74_000, Catalogue());

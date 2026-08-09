@@ -44,6 +44,7 @@ public sealed class EnvironmentPersistenceTests
         var saves = new SaveCoordinator(progress, store, environment: environment);
         var session = new EnvironmentEditSession(baseline, progress.BalanceMilliCredits, new DecorationCatalogue([Lamp]), () => Id(11));
         Assert.True(session.Place(Lamp.Id, new CanonicalRoomPosition(.6f, .8f)).Succeeded);
+        progress.Deposit(1_000);
         ProgressSnapshot progressBefore = progress.Snapshot();
         EnvironmentProgressSnapshot environmentBefore = environment.Snapshot();
 
@@ -56,11 +57,11 @@ public sealed class EnvironmentPersistenceTests
         Assert.Equal(progressBefore.UnlockedToolIds, progressAfter.UnlockedToolIds);
         Assert.Equal(environmentBefore.Revision, environment.Revision);
         Assert.Equal(environmentBefore.Layout.Decorations, environment.Layout.Decorations);
-        Assert.False(saves.IsDirty);
+        Assert.True(saves.IsDirty);
     }
 
     [Fact]
-    public async Task StaleWalletRejectsCommitWithoutMutation()
+    public async Task WalletIncreaseDuringEditCommitsAgainstCurrentBalance()
     {
         var progress = FundedProgress(250_000);
         var environment = new EnvironmentProgressState();
@@ -70,10 +71,28 @@ public sealed class EnvironmentPersistenceTests
         Assert.True(session.Place(Lamp.Id, new CanonicalRoomPosition(.5f, .8f)).Succeeded);
         progress.Deposit(1_000);
 
+        await saves.CommitEnvironmentAsync(session);
+
+        Assert.Single(environment.Layout.Decorations);
+        Assert.Equal(176_000, progress.BalanceMilliCredits);
+        Assert.Equal(176_000, store.Progress!.BalanceMilliCredits);
+    }
+
+    [Fact]
+    public async Task WalletDecreaseBelowStagedCostRejectsWithoutMutation()
+    {
+        var progress = FundedProgress(75_000);
+        var environment = new EnvironmentProgressState();
+        var store = new InMemoryProgressStore();
+        var saves = new SaveCoordinator(progress, store, environment: environment);
+        var session = new EnvironmentEditSession(environment.Layout, progress.BalanceMilliCredits, new DecorationCatalogue([Lamp]), () => Id(13));
+        Assert.True(session.Place(Lamp.Id, new CanonicalRoomPosition(.5f, .8f)).Succeeded);
+        progress.Adopt(progress.Snapshot() with { Revision = progress.Revision + 1, BalanceMilliCredits = 74_000 });
+
         await Assert.ThrowsAsync<InvalidOperationException>(() => saves.CommitEnvironmentAsync(session));
 
         Assert.Empty(environment.Layout.Decorations);
-        Assert.Equal(251_000, progress.BalanceMilliCredits);
+        Assert.Equal(74_000, progress.BalanceMilliCredits);
         Assert.Null(store.Progress);
     }
 

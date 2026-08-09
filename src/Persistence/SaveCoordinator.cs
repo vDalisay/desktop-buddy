@@ -87,14 +87,13 @@ public sealed class SaveCoordinator
 
         ProgressSnapshot progressBefore = _progress.Snapshot();
         EnvironmentProgressSnapshot environmentBefore = _environment.Snapshot();
-        if (session.StartingBalanceMilliCredits != progressBefore.BalanceMilliCredits)
-            throw new InvalidOperationException("The wallet changed while the room edit session was open.");
         if (!session.MatchesBaseline(environmentBefore.Layout))
             throw new InvalidOperationException("The environment changed while the room edit session was open.");
         if (progressBefore.Revision == long.MaxValue || environmentBefore.Revision == long.MaxValue)
             throw new InvalidOperationException("The progress revision is exhausted.");
 
-        EnvironmentCommit commit = session.PrepareCommit();
+        if (!session.TryPrepareCommit(progressBefore.BalanceMilliCredits, out EnvironmentCommit commit))
+            throw new InvalidOperationException("Current funds are insufficient for the staged room changes.");
         _progress.Adopt(progressBefore with
         {
             Revision = progressBefore.Revision + 1,

@@ -44,7 +44,7 @@ public partial class EnvironmentPlacementController : Node
         if (_session is null || _ghostParent is null)
             throw new InvalidOperationException("Placement controller is not configured.");
         _definition = definition ?? throw new ArgumentNullException(nameof(definition));
-        _ghost?.QueueFree();
+        if (GodotObject.IsInstanceValid(_ghost)) _ghost!.Free();
         _ghost = new ColorRect
         {
             Name = "EnvironmentPlacementGhost",
@@ -84,7 +84,7 @@ public partial class EnvironmentPlacementController : Node
     {
         if (!Active || !GhostValid || _definition is null || _session is null)
             return new EnvironmentEditResult(EnvironmentEditStatus.InvalidPlacement);
-        EnvironmentEditResult result = _session.Place(_definition.ToDefinition().Id, GhostPosition);
+        EnvironmentEditResult result = _session.PlaceReserved(GhostPosition);
         PlacementCommitted?.Invoke(result);
         Changed?.Invoke();
         return result;
@@ -95,7 +95,7 @@ public partial class EnvironmentPlacementController : Node
         Active = false;
         GhostValid = false;
         _definition = null;
-        if (GodotObject.IsInstanceValid(_ghost)) _ghost!.QueueFree();
+        if (GodotObject.IsInstanceValid(_ghost)) _ghost!.Free();
         _ghost = null;
         Changed?.Invoke();
     }

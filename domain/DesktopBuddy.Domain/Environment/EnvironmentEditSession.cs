@@ -7,7 +7,7 @@ namespace DesktopBuddy.Domain.Environment;
 public enum EnvironmentEditStatus
 {
     Succeeded, UnknownDefinition, HiddenDefinition, UnknownInstance, InvalidPlacement,
-    RotationNotAllowed, InsufficientFunds, LayoutFull, ArithmeticOverflow,
+    RotationNotAllowed, InsufficientFunds, LayoutFull, ArithmeticOverflow, AlreadyReserved, NoReservation,
 }
 
 public readonly record struct EnvironmentEditResult(EnvironmentEditStatus Status, PlacedDecorationId InstanceId = default)
@@ -39,6 +39,8 @@ public sealed class EnvironmentEditSession
     private readonly Func<PlacedDecorationId> _createInstanceId;
     private List<PlacedDecoration> _working;
     private long _pendingDelta;
+    private DecorationDefinitionId _reservedDefinitionId;
+    private PlacedDecorationId _reservedInstanceId;
 
     public EnvironmentEditSession(EnvironmentLayout baseline, long startingBalanceMilliCredits,
         DecorationCatalogue catalogue, Func<PlacedDecorationId>? createInstanceId = null)
@@ -57,27 +59,69 @@ public sealed class EnvironmentEditSession
     public long StartingBalanceMilliCredits { get; }
     public long PendingBalanceDeltaMilliCredits => _pendingDelta;
     public long ProjectedBalanceMilliCredits => StartingBalanceMilliCredits + _pendingDelta;
-    public bool IsDirty => _pendingDelta != 0 || !_working.SequenceEqual(_baseline.Decorations);
+    public bool TryProjectBalance(long currentBalanceMilliCredits, out long projectedBalanceMilliCredits)
+    {
+        projectedBalanceMilliCredits = 0;
+        if (currentBalanceMilliCredits < 0) return false;
+        try
+        {
+            projectedBalanceMilliCredits = checked(currentBalanceMilliCredits + _pendingDelta);
+            return projectedBalanceMilliCredits >= 0;
+        }
+        catch (OverflowException) { return false; }
+    }
+    public bool HasReservation => _reservedInstanceId != default;
+    public DecorationDefinitionId ReservedDefinitionId => _reservedDefinitionId;
+    public bool IsDirty => HasReservation || _pendingDelta != 0 || !_working.SequenceEqual(_baseline.Decorations);
     public bool MatchesBaseline(EnvironmentLayout layout) =>
         layout.SchemaVersion == _baseline.SchemaVersion && layout.Decorations.SequenceEqual(_baseline.Decorations);
     public EnvironmentLayout WorkingLayout => new(_working, background: _baseline.Background);
 
     public EnvironmentEditResult Place(DecorationDefinitionId definitionId, CanonicalRoomPosition position)
     {
+        EnvironmentEditResult reserved = Reserve(definitionId, StartingBalanceMilliCredits);
+        if (!reserved.Succeeded) return reserved;
+        EnvironmentEditResult placed = PlaceReserved(position);
+        if (!placed.Succeeded) CancelReservation();
+        return placed;
+    }
+
+    public EnvironmentEditResult Reserve(DecorationDefinitionId definitionId, long currentBalanceMilliCredits)
+    {
+        if (HasReservation) return new(EnvironmentEditStatus.AlreadyReserved);
         if (!_catalogue.TryGet(definitionId, out DecorationDefinition definition)) return new(EnvironmentEditStatus.UnknownDefinition);
         if (!definition.Visible) return new(EnvironmentEditStatus.HiddenDefinition);
         if (_working.Count >= EnvironmentLayout.MaximumPlacedDecorations) return new(EnvironmentEditStatus.LayoutFull);
         if (definition.Category == DecorationCategory.Wallpaper && _working.Any(item => item.RenderBand == DecorationRenderBand.Wallpaper))
             return new(EnvironmentEditStatus.InvalidPlacement);
-        if (!TryChangeDelta(-definition.PriceMilliCredits)) return new(EnvironmentEditStatus.InsufficientFunds);
-
         PlacedDecorationId instanceId = _createInstanceId();
-        if (instanceId == default || _working.Any(item => item.InstanceId == instanceId))
-        {
-            _pendingDelta += definition.PriceMilliCredits;
+        if (instanceId == default || _working.Any(item => item.InstanceId == instanceId)) return new(EnvironmentEditStatus.InvalidPlacement);
+        if (!TryChangeDelta(-definition.PriceMilliCredits, currentBalanceMilliCredits)) return new(EnvironmentEditStatus.InsufficientFunds);
+        _reservedDefinitionId = definition.Id;
+        _reservedInstanceId = instanceId;
+        return new(EnvironmentEditStatus.Succeeded, instanceId);
+    }
+
+    public EnvironmentEditResult PlaceReserved(CanonicalRoomPosition position)
+    {
+        if (!HasReservation) return new(EnvironmentEditStatus.NoReservation);
+        if (!_catalogue.TryGet(_reservedDefinitionId, out DecorationDefinition definition)) return new(EnvironmentEditStatus.UnknownDefinition);
+        if (_working.Count >= EnvironmentLayout.MaximumPlacedDecorations) return new(EnvironmentEditStatus.LayoutFull);
+        if (definition.Category == DecorationCategory.Wallpaper && _working.Any(item => item.RenderBand == DecorationRenderBand.Wallpaper))
             return new(EnvironmentEditStatus.InvalidPlacement);
-        }
+        PlacedDecorationId instanceId = _reservedInstanceId;
         _working.Add(new PlacedDecoration(instanceId, definition.Id, position, 0, definition.RenderBand, definition.PriceMilliCredits));
+        ClearReservation();
+        return new(EnvironmentEditStatus.Succeeded, instanceId);
+    }
+
+    public EnvironmentEditResult CancelReservation()
+    {
+        if (!HasReservation) return new(EnvironmentEditStatus.NoReservation);
+        if (!_catalogue.TryGet(_reservedDefinitionId, out DecorationDefinition definition)) return new(EnvironmentEditStatus.UnknownDefinition);
+        if (!TryChangeDelta(definition.PriceMilliCredits, StartingBalanceMilliCredits)) return new(EnvironmentEditStatus.ArithmeticOverflow);
+        PlacedDecorationId instanceId = _reservedInstanceId;
+        ClearReservation();
         return new(EnvironmentEditStatus.Succeeded, instanceId);
     }
 
@@ -117,20 +161,33 @@ public sealed class EnvironmentEditSession
         return new(EnvironmentEditStatus.Succeeded, instanceId);
     }
 
-    public void Cancel() { _working = _baseline.Decorations.ToList(); _pendingDelta = 0; }
-    public EnvironmentCommit PrepareCommit() => new(new EnvironmentLayout(_working, background: _baseline.Background), ProjectedBalanceMilliCredits);
+    public void Cancel() { _working = _baseline.Decorations.ToList(); _pendingDelta = 0; ClearReservation(); }
+    public EnvironmentCommit PrepareCommit() =>
+        TryPrepareCommit(StartingBalanceMilliCredits, out EnvironmentCommit commit)
+            ? commit
+            : throw new InvalidOperationException("The staged environment transaction cannot be committed.");
+    public bool TryPrepareCommit(long currentBalanceMilliCredits, out EnvironmentCommit commit)
+    {
+        commit = default;
+        if (HasReservation || !TryProjectBalance(currentBalanceMilliCredits, out long balance)) return false;
+        commit = new EnvironmentCommit(new EnvironmentLayout(_working, background: _baseline.Background), balance);
+        return true;
+    }
     private int Find(PlacedDecorationId id) => _working.FindIndex(item => item.InstanceId == id);
 
-    private bool TryChangeDelta(long change)
+    private bool TryChangeDelta(long change, long balanceBasis)
     {
         try
         {
             long candidateDelta = checked(_pendingDelta + change);
-            long candidateBalance = checked(StartingBalanceMilliCredits + candidateDelta);
+            long candidateBalance = checked(balanceBasis + candidateDelta);
             if (candidateBalance < 0) return false;
             _pendingDelta = candidateDelta;
             return true;
         }
         catch (OverflowException) { return false; }
     }
+
+    private bool TryChangeDelta(long change) => TryChangeDelta(change, StartingBalanceMilliCredits);
+    private void ClearReservation() { _reservedDefinitionId = default; _reservedInstanceId = default; }
 }
