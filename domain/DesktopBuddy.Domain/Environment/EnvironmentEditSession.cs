@@ -133,15 +133,33 @@ public sealed class EnvironmentEditSession
         return new(EnvironmentEditStatus.Succeeded, instanceId);
     }
 
-    public EnvironmentEditResult Rotate(PlacedDecorationId instanceId)
+    public EnvironmentEditResult Rotate(PlacedDecorationId instanceId, int direction = 1)
     {
         int index = Find(instanceId);
         if (index < 0) return new(EnvironmentEditStatus.UnknownInstance);
         PlacedDecoration placed = _working[index];
         if (!_catalogue.TryGet(placed.DefinitionId, out DecorationDefinition definition)) return new(EnvironmentEditStatus.UnknownDefinition);
         if (!definition.Rotation.AllowsRotation) return new(EnvironmentEditStatus.RotationNotAllowed);
-        _working[index] = placed with { RotationDegrees = (placed.RotationDegrees + definition.Rotation.StepDegrees) % 360 };
+        int rotation = (placed.RotationDegrees + (definition.Rotation.StepDegrees * Math.Sign(direction))) % 360;
+        if (rotation < 0) rotation += 360;
+        _working[index] = placed with { RotationDegrees = rotation };
         return new(EnvironmentEditStatus.Succeeded, instanceId);
+    }
+
+    public bool RestoreTransforms(EnvironmentLayout baseline)
+    {
+        ArgumentNullException.ThrowIfNull(baseline);
+        if (baseline.Decorations.Count != _working.Count) return false;
+        var transforms = baseline.Decorations.ToDictionary(item => item.InstanceId);
+        if (_working.Any(item => !transforms.TryGetValue(item.InstanceId, out PlacedDecoration original) ||
+            item.DefinitionId != original.DefinitionId || item.RenderBand != original.RenderBand ||
+            item.PurchasePriceMilliCredits != original.PurchasePriceMilliCredits)) return false;
+        _working = _working.Select(item => item with
+        {
+            Position = transforms[item.InstanceId].Position,
+            RotationDegrees = transforms[item.InstanceId].RotationDegrees,
+        }).ToList();
+        return true;
     }
 
     public EnvironmentEditResult Sell(PlacedDecorationId instanceId)

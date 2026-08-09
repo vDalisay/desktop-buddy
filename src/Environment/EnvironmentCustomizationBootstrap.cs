@@ -16,13 +16,14 @@ public partial class EnvironmentCustomizationBootstrap : Node
 {
     private const string LogCategory = "EnvironmentCustomization";
     private IDisposable? _registration;
+    private IDisposable? _decoratorRegistration;
     private EnvironmentBackgroundEditor? _backgroundEditor;
     private EnvironmentBackgroundPresenter? _backgroundPresenter;
     private EnvironmentDecorationLayer? _decorationLayer;
     private EnvironmentDecorator? _decorator;
-    private Button? _decorLauncher;
-    private HSeparator? _decorSeparator;
+    private readonly EnvironmentPresentationVisibility _presentationVisibility = new();
     internal bool HasPaintBackgroundRegistration => _registration is not null;
+    internal bool HasDecorateRoomRegistration => _decoratorRegistration is not null;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
 
@@ -31,7 +32,8 @@ public partial class EnvironmentCustomizationBootstrap : Node
         if (DisplayServer.GetName() == "headless") return;
         if (_registration is not null)
         {
-            TryAttachDecorLauncher();
+            if (FindFirst<SandboxRoot>(GetTree().Root) is SandboxRoot activeSandbox)
+                _presentationVisibility.SetWorkCompanionActive(activeSandbox.Window.WorkCompanionActive);
             return;
         }
         var sandbox = FindFirst<SandboxRoot>(GetTree().Root);
@@ -65,9 +67,12 @@ public partial class EnvironmentCustomizationBootstrap : Node
             _decorationLayer = new EnvironmentDecorationLayer { Name = nameof(EnvironmentDecorationLayer) };
             _decorationLayer.Configure(state, sandbox.Boundaries);
             GetTree().Root.AddChild(_decorationLayer);
+            _presentationVisibility.Configure(_backgroundPresenter, _decorationLayer);
             _decorator = new EnvironmentDecorator { Name = nameof(EnvironmentDecorator) };
-            _decorator.Configure(sandbox.Progress, sandbox.Economy, sandbox.Pointer, state, saves, _decorationLayer);
+            _decorator.Configure(sandbox.Progress, sandbox.Economy, sandbox.Pointer, sandbox.Buddy,
+                sandbox.VisualPresenter, state, saves, _decorationLayer);
             GetTree().Root.AddChild(_decorator);
+            RegisterDecorator(commandBar, _decorator);
         }
         _registration = commandBar.RegisterCustomizeCommand(
             new CustomizeCommandDefinition(
@@ -77,53 +82,42 @@ public partial class EnvironmentCustomizationBootstrap : Node
                 CustomizeCommandIds.PaintBackgroundOrder),
             _backgroundEditor.Open);
         Log.Info(LogCategory, "Paint Background registered in Customize.");
-        TryAttachDecorLauncher();
+    }
+
+    internal void RegisterDecoratorForStartupTest(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator) =>
+        RegisterDecorator(commandBar, decorator);
+
+    private void RegisterDecorator(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator)
+    {
+        _decoratorRegistration = commandBar.RegisterTopLevelCommand(
+            new TopLevelCommandDefinition(
+                TopLevelCommandIds.DecorateRoom,
+                "Decorate Room",
+                "Open the room decoration workspace.",
+                TopLevelCommandIds.DecorateRoomOrder),
+            decorator.Open,
+            isEnabled: () => !decorator.IsOpen);
     }
 
     public override void _ExitTree()
     {
         _registration?.Dispose();
         _registration = null;
+        _decoratorRegistration?.Dispose();
+        _decoratorRegistration = null;
         if (GodotObject.IsInstanceValid(_backgroundEditor)) _backgroundEditor!.QueueFree();
         if (GodotObject.IsInstanceValid(_backgroundPresenter)) _backgroundPresenter!.QueueFree();
         if (GodotObject.IsInstanceValid(_decorationLayer)) _decorationLayer!.QueueFree();
         if (GodotObject.IsInstanceValid(_decorator)) _decorator!.QueueFree();
-        if (GodotObject.IsInstanceValid(_decorLauncher)) _decorLauncher!.QueueFree();
-        if (GodotObject.IsInstanceValid(_decorSeparator)) _decorSeparator!.QueueFree();
+        _presentationVisibility.SetWorkCompanionActive(false);
         _backgroundEditor = null;
         _backgroundPresenter = null;
         _decorationLayer = null;
         _decorator = null;
-        _decorLauncher = null;
-        _decorSeparator = null;
     }
 
-    private void TryAttachDecorLauncher()
-    {
-        if (GodotObject.IsInstanceValid(_decorLauncher) || !GodotObject.IsInstanceValid(_decorator)) return;
-        var list = GetTree().Root.FindChild("ShopItemList", true, false) as VBoxContainer;
-        if (!GodotObject.IsInstanceValid(list)) return;
-        _decorLauncher = new Button
-        {
-            Name = "EnvironmentDecorateRoomButton",
-            Text = "Decorate Room…",
-            TooltipText = "Buy and arrange room decorations.",
-            CustomMinimumSize = new Vector2(0, 34),
-        };
-        _decorLauncher.Pressed += _decorator!.Open;
-        _decorSeparator = new HSeparator { Name = "EnvironmentDecorSeparator" };
-        list!.AddChild(_decorSeparator);
-        list.AddChild(_decorLauncher);
-        Log.Info(LogCategory, "Environment Decorator registered in Shop.");
-        SetProcess(false);
-    }
-
-    internal bool AttachDecorLauncherForStartupTest(EnvironmentDecorator decorator)
-    {
-        _decorator = decorator ?? throw new ArgumentNullException(nameof(decorator));
-        TryAttachDecorLauncher();
-        return GodotObject.IsInstanceValid(_decorLauncher);
-    }
+    internal void ApplyWorkCompanionVisibilityForTest(bool active) =>
+        _presentationVisibility.SetWorkCompanionActive(active);
 
     internal static SandboxRoot? FindSandboxForStartup(Node root) => FindFirst<SandboxRoot>(root);
 

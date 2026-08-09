@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Environment;
@@ -11,6 +12,7 @@ using DesktopBuddy.Environment;
 using DesktopBuddy.Laboratory;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Sandbox;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -237,15 +239,33 @@ public sealed class EnvironmentDecoratorScenario : IScenario
         var boundaries = new BoundaryController { Name = "EnvironmentDecoratorBoundaries" };
         var visuals = new EnvironmentDecorationLayer { Name = "EnvironmentDecoratorVisuals" };
         visuals.Configure(environment, boundaries);
+        var buddy2D = new Node2D { Name = "EnvironmentDecoratorBuddy2D" };
+        var buddy3D = new Node3D { Name = "EnvironmentDecoratorBuddy3D" };
+        var face = new Node2D { Name = "Face", Visible = true };
+        var accents = new Node3D { Name = "Accents", Visible = true };
+        buddy2D.AddChild(face);
+        buddy3D.AddChild(accents);
         var decorator = new EnvironmentDecorator { Name = "EnvironmentDecoratorScenario" };
-        decorator.Configure(progress, economy, pointer, environment, saves, visuals);
+        decorator.Configure(progress, economy, pointer, buddy2D, buddy3D, environment, saves, visuals);
         tree.Root.AddChild(pointer);
         tree.Root.AddChild(boundaries);
         tree.Root.AddChild(visuals);
+        tree.Root.AddChild(buddy2D);
+        tree.Root.AddChild(buddy3D);
         tree.Root.AddChild(decorator);
         try
         {
-            decorator.Open();
+            var commandBar = new Win98CommandBarBootstrap { Name = "EnvironmentCommandBar" };
+            var bootstrap = new EnvironmentCustomizationBootstrap { Name = "DecoratorLauncherBootstrap" };
+            tree.Root.AddChild(commandBar);
+            tree.Root.AddChild(bootstrap);
+            bootstrap.RegisterDecoratorForStartupTest(commandBar, decorator);
+            CustomizeCommandRegistry topLevel = TopLevelRegistry(commandBar);
+            CustomizeCommandSnapshot route = topLevel.Snapshot().Single(item => item.Definition.Id == TopLevelCommandIds.DecorateRoom);
+            bool routeInvoked = topLevel.TryInvoke(TopLevelCommandIds.DecorateRoom);
+            checks.Add(new StartupCheck("environment_decorator_top_level_command_invokes_workspace",
+                bootstrap.HasDecorateRoomRegistration && route.Definition.Label == "Decorate Room" && routeInvoked && decorator.IsOpen,
+                $"registered={bootstrap.HasDecorateRoomRegistration} label={route.Definition.Label} invoked={routeInvoked} open={decorator.IsOpen}"));
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             var blocker = decorator.FindChild("EnvironmentDecoratorInputSurface", true, false) as Control
                 ?? throw new InvalidOperationException("Decorator input surface was not composed.");
@@ -277,36 +297,54 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             EnvironmentDecorationResource lamp = EnvironmentDecorationRegistry.Authored.Entries[0];
             Vector2 viewport = tree.Root.GetViewport().GetVisibleRect().Size;
             Vector2 firstPoint = new(viewport.X * .7f, viewport.Y * .85f);
-            var shop = new VBoxContainer { Name = "ShopItemList" };
-            tree.Root.AddChild(shop);
+            var otherUi = new VBoxContainer { Name = "OtherUi" };
+            tree.Root.AddChild(otherUi);
             catalogue.Select(lamp.DefinitionId);
             Press(decorator, "EnvironmentBuyButton");
             checks.Add(new StartupCheck("environment_decorator_buy_reserves_one_copy",
-                decorator.VisibleWorkingLayout.Decorations.Count == 0 && decorator.VisibleProjectedBalance == 175_000,
+                decorator.VisibleWorkingLayout.Decorations.Count == 0 && decorator.VisibleProjectedBalance == 175_000 &&
+                decorator.VisibleAvailableBalance == 175_000 && decorator.VisibleOwnedCount(lamp.ToDefinition().Id) == 0,
                 $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance}"));
             Press(decorator, "EnvironmentPlaceButton");
             var placementChrome = decorator.FindChild("EnvironmentPlacementChrome", true, false) as Control;
             checks.Add(new StartupCheck("environment_decorator_placement_chrome_is_focused",
-                decorator.PlacementMode && !panel.Visible && GodotObject.IsInstanceValid(placementChrome) && placementChrome!.Visible && !shop.Visible,
-                $"mode={decorator.PlacementMode} panel={panel.Visible} chrome={placementChrome?.Visible} shop={shop.Visible}"));
+                decorator.PlacementMode && !panel.Visible && GodotObject.IsInstanceValid(placementChrome) && placementChrome!.Visible && !otherUi.Visible &&
+                !buddy2D.Visible && !buddy3D.Visible && face.Visible && accents.Visible,
+                $"mode={decorator.PlacementMode} panel={panel.Visible} chrome={placementChrome?.Visible} buddy2D={buddy2D.Visible} buddy3D={buddy3D.Visible}"));
             RoomInput(blocker, new InputEventMouseMotion { Position = firstPoint });
             RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             Press(decorator, "EnvironmentPlacementDoneButton");
             checks.Add(new StartupCheck("environment_decorator_stages_placement_funds",
                 decorator.VisibleWorkingLayout.Decorations.Count == 1 && decorator.VisibleProjectedBalance == 175_000 &&
-                panel.Visible && shop.Visible &&
-                IsVisible(decorator, "EnvironmentMoveButton") && IsVisible(decorator, "EnvironmentRotateButton") && IsVisible(decorator, "EnvironmentSellButton"),
+                decorator.VisibleOwnedCount(lamp.ToDefinition().Id) == 1 && panel.Visible && otherUi.Visible && buddy2D.Visible && buddy3D.Visible &&
+                IsVisible(decorator, "EnvironmentMove ItemsButton") && IsVisible(decorator, "EnvironmentSellButton"),
                 $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance} controls={IsVisible(decorator, "EnvironmentMoveButton")}"));
 
-            Press(decorator, "EnvironmentMoveButton");
+            Press(decorator, "EnvironmentMove ItemsButton");
             Vector2 movedPoint = new(viewport.X * .85f, viewport.Y * .82f);
+            checks.Add(new StartupCheck("environment_decorator_move_mode_starts_without_selection",
+                decorator.MoveMode && !panel.Visible && !otherUi.Visible && !IsVisible(decorator, "EnvironmentMoveRotateChrome"),
+                $"mode={decorator.MoveMode} panel={panel.Visible} rotate={IsVisible(decorator, "EnvironmentMoveRotateChrome")}"));
+            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             RoomInput(blocker, new InputEventMouseMotion { Position = movedPoint });
-            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
-            Press(decorator, "EnvironmentRotateButton");
+            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = false });
+            Press(decorator, "EnvironmentRotateRightButton");
             PlacedDecoration changed = decorator.VisibleWorkingLayout.Decorations.Single();
             checks.Add(new StartupCheck("environment_decorator_moves_and_rotates_selected_instance",
-                changed.Position.X > .75f && changed.RotationDegrees == 90,
+                changed.Position.X > .75f && changed.RotationDegrees == 90 && IsVisible(decorator, "EnvironmentMoveRotateChrome"),
                 $"position={changed.Position} rotation={changed.RotationDegrees}"));
+            Press(decorator, "EnvironmentMoveDoneButton");
+            Press(decorator, "EnvironmentMove ItemsButton");
+            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            RoomInput(blocker, new InputEventMouseMotion { Position = firstPoint });
+            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = false });
+            Press(decorator, "EnvironmentRotateLeftButton");
+            Press(decorator, "EnvironmentMoveCancelButton");
+            PlacedDecoration restored = decorator.VisibleWorkingLayout.Decorations.Single();
+            checks.Add(new StartupCheck("environment_decorator_move_cancel_restores_baseline",
+                restored == changed && panel.Visible && otherUi.Visible,
+                $"restored={restored == changed} panel={panel.Visible}"));
+            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             Press(decorator, "EnvironmentSellButton");
             checks.Add(new StartupCheck("environment_decorator_sell_reverses_staged_cost",
                 decorator.VisibleWorkingLayout.Decorations.Count == 0 && decorator.VisibleProjectedBalance == 250_000,
@@ -319,8 +357,22 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
             Press(decorator, "EnvironmentPlacementCancelButton");
             checks.Add(new StartupCheck("environment_decorator_placement_cancel_restores_reservation",
-                decorator.VisibleWorkingLayout.Decorations.Count == 0 && decorator.VisibleProjectedBalance == 250_000 && panel.Visible,
+                decorator.VisibleWorkingLayout.Decorations.Count == 0 && decorator.VisibleProjectedBalance == 250_000 && panel.Visible &&
+                buddy2D.Visible && buddy3D.Visible && face.Visible && accents.Visible,
                 $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance}"));
+
+            var workBackground = new Node3D { Visible = true };
+            var workDecorations = new Node3D { Visible = false };
+            var workVisibility = new EnvironmentPresentationVisibility();
+            workVisibility.Configure(workBackground, workDecorations);
+            workVisibility.SetWorkCompanionActive(true);
+            bool hiddenForWork = !workBackground.Visible && !workDecorations.Visible;
+            workVisibility.SetWorkCompanionActive(false);
+            checks.Add(new StartupCheck("environment_presentation_hides_for_work_and_restores_exactly",
+                hiddenForWork && workBackground.Visible && !workDecorations.Visible,
+                $"hidden={hiddenForWork} background={workBackground.Visible} decorations={workDecorations.Visible}"));
+            workBackground.Free();
+            workDecorations.Free();
 
             catalogue.Select(lamp.DefinitionId);
             Press(decorator, "EnvironmentBuyButton");
@@ -335,13 +387,7 @@ public sealed class EnvironmentDecoratorScenario : IScenario
                 pointer.IsProcessingInput() && pointer.IsProcessingUnhandledInput(),
                 $"open={decorator.IsOpen} saved={environment.Layout.Decorations.Count} balance={progress.BalanceMilliCredits}"));
 
-            var bootstrap = new EnvironmentCustomizationBootstrap { Name = "DecoratorLauncherBootstrap" };
-            tree.Root.AddChild(bootstrap);
-            bool launcherAttached = bootstrap.AttachDecorLauncherForStartupTest(decorator);
-            var launcher = shop.FindChild("EnvironmentDecorateRoomButton", true, false) as Button;
-            launcher!.EmitSignal(Button.SignalName.Pressed);
-            checks.Add(new StartupCheck("environment_decorator_shop_launcher_opens_workspace",
-                launcherAttached && decorator.IsOpen, $"attached={launcherAttached} open={decorator.IsOpen}"));
+            topLevel.TryInvoke(TopLevelCommandIds.DecorateRoom);
             catalogue.Select(lamp.DefinitionId);
             Press(decorator, "EnvironmentBuyButton");
             Press(decorator, "EnvironmentPlaceButton");
@@ -357,7 +403,7 @@ public sealed class EnvironmentDecoratorScenario : IScenario
                 pointer.IsProcessingInput() && pointer.IsProcessingUnhandledInput(),
                 $"open={decorator.IsOpen} saved={environment.Layout.Decorations.Count} balance={progress.BalanceMilliCredits}"));
 
-            launcher.EmitSignal(Button.SignalName.Pressed);
+            topLevel.TryInvoke(TopLevelCommandIds.DecorateRoom);
             catalogue.Select(lamp.DefinitionId);
             Press(decorator, "EnvironmentBuyButton");
             Press(decorator, "EnvironmentPlaceButton");
@@ -374,8 +420,12 @@ public sealed class EnvironmentDecoratorScenario : IScenario
                 $"open={decorator.IsOpen} saved={environment.Layout.Decorations.Count} balance={progress.BalanceMilliCredits} status={status?.Text}"));
             Press(decorator, "EnvironmentCancelButton");
             Press(decorator, "EnvironmentDiscardButton");
-            bootstrap.QueueFree();
-            shop.QueueFree();
+            bootstrap.Free();
+            checks.Add(new StartupCheck("environment_decorator_top_level_command_disposes",
+                topLevel.Snapshot().All(item => item.Definition.Id != TopLevelCommandIds.DecorateRoom),
+                $"routes={topLevel.Snapshot().Count}"));
+            commandBar.QueueFree();
+            otherUi.QueueFree();
         }
         finally
         {
@@ -383,6 +433,8 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             visuals.QueueFree();
             boundaries.QueueFree();
             pointer.QueueFree();
+            buddy2D.QueueFree();
+            buddy3D.QueueFree();
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
         return new ScenarioResult(checks.All(check => check.Passed), checks, [$"seed={seed}"]);
@@ -396,4 +448,9 @@ public sealed class EnvironmentDecoratorScenario : IScenario
         blocker.EmitSignal(Control.SignalName.GuiInput, input);
 
     private static bool IsVisible(Node root, string name) => root.FindChild(name, true, false) is Control control && control.Visible;
+
+    private static CustomizeCommandRegistry TopLevelRegistry(Win98CommandBarBootstrap commandBar) =>
+        (CustomizeCommandRegistry)(typeof(Win98CommandBarBootstrap)
+            .GetField("_topLevelCommands", BindingFlags.Instance | BindingFlags.NonPublic)?
+            .GetValue(commandBar) ?? throw new InvalidOperationException("Top-level command registry was not found."));
 }

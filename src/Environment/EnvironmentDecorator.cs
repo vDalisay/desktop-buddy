@@ -17,6 +17,8 @@ public partial class EnvironmentDecorator : CanvasLayer
     private BuddyProgressState _progress = null!;
     private EconomyService _economy = null!;
     private LabPointerGrabComponent _pointer = null!;
+    private CanvasItem _buddy2D = null!;
+    private Node3D _buddy3D = null!;
     private EnvironmentProgressState _state = null!;
     private SaveCoordinator _saves = null!;
     private EnvironmentDecorationLayer _visuals = null!;
@@ -30,7 +32,6 @@ public partial class EnvironmentDecorator : CanvasLayer
     private Button _buy = null!;
     private Button _place = null!;
     private Button _move = null!;
-    private Button _rotate = null!;
     private Button _sell = null!;
     private CheckBox _snap = null!;
     private OptionButton _grid = null!;
@@ -39,11 +40,14 @@ public partial class EnvironmentDecorator : CanvasLayer
     private PanelContainer _placementChrome = null!;
     private Label _placementStatus = null!;
     private Button _placementDone = null!;
+    private PanelContainer _moveChrome = null!;
+    private PanelContainer _moveRotateChrome = null!;
     private readonly List<Control> _placementHiddenUi = [];
     private EnvironmentDecorationResource? _selectedDefinition;
     private PlacedDecorationId _selectedInstance;
-    private bool _moving;
-    private CanonicalRoomPosition _moveOriginal;
+    private bool _moveMode;
+    private bool _moveDragging;
+    private EnvironmentLayout? _moveBaseline;
     private bool _saving;
     private bool _pointerInputBefore;
     private bool _pointerUnhandledBefore;
@@ -52,6 +56,10 @@ public partial class EnvironmentDecorator : CanvasLayer
     private bool _panelPositioned;
     private Vector2 _lastViewportSize;
     private RoomScreenBounds _placementBounds;
+    private DecorationCategory _selectedCategory;
+    private bool _buddy2DWasVisible;
+    private bool _buddy3DWasVisible;
+    private bool _buddyHidden;
 
     public bool IsOpen => GodotObject.IsInstanceValid(_blocker) && _blocker.Visible;
     internal EnvironmentLayout VisibleWorkingLayout => _session?.WorkingLayout ?? _state.Layout;
@@ -64,11 +72,16 @@ public partial class EnvironmentDecorator : CanvasLayer
         }
     }
     internal bool PlacementMode => _placementMode;
+    internal bool MoveMode => _moveMode;
+    internal long VisibleAvailableBalance => VisibleProjectedBalance;
+    internal int VisibleOwnedCount(DecorationDefinitionId id) => CountOwned(id);
 
     public void Configure(
         BuddyProgressState progress,
         EconomyService economy,
         LabPointerGrabComponent pointer,
+        CanvasItem buddy2D,
+        Node3D buddy3D,
         EnvironmentProgressState state,
         SaveCoordinator saves,
         EnvironmentDecorationLayer visuals)
@@ -76,6 +89,8 @@ public partial class EnvironmentDecorator : CanvasLayer
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _pointer = pointer ?? throw new ArgumentNullException(nameof(pointer));
+        _buddy2D = buddy2D ?? throw new ArgumentNullException(nameof(buddy2D));
+        _buddy3D = buddy3D ?? throw new ArgumentNullException(nameof(buddy3D));
         _state = state ?? throw new ArgumentNullException(nameof(state));
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
         _visuals = visuals ?? throw new ArgumentNullException(nameof(visuals));
@@ -115,7 +130,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         if (!IsOpen || input is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }) return;
         if (_placementMode) { CancelPlacement(); GetViewport().SetInputAsHandled(); return; }
-        if (_placement.Active || _moving || _selectedInstance != default) CancelTransient(); else RequestClose();
+        if (_moveMode) CancelMoveMode(); else if (_placement.Active || _selectedInstance != default) CancelTransient(); else RequestClose();
         GetViewport().SetInputAsHandled();
     }
 
@@ -133,7 +148,8 @@ public partial class EnvironmentDecorator : CanvasLayer
         _confirm.Visible = false;
         _selectedDefinition = null;
         _selectedInstance = default;
-        _moving = false;
+        _moveMode = false;
+        _moveDragging = false;
         _placementMode = false;
         _placementStagedInstance = default;
         SelectCategory(DecorationCategory.Lamp.ToString());
@@ -193,8 +209,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         controls.AddChild(_grid);
         _buy = Action(controls, "Buy", BuySelected);
         _place = Action(controls, "Place", BeginPlacement);
-        _move = Action(controls, "Move", BeginMove);
-        _rotate = Action(controls, "Rotate", RotateSelected);
+        _move = Action(controls, "Move Items", BeginMoveMode);
         _sell = Action(controls, "Sell", SellSelected);
 
         _values = new Win98ValuePanel { Name = "EnvironmentBudget" };
@@ -236,11 +251,18 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementDone = Win98Dialog.Action(placementActions, "Done", ConfirmPlacement);
         _placementDone.Name = "EnvironmentPlacementDoneButton";
         Win98Dialog.Action(placementActions, "Cancel", CancelPlacement).Name = "EnvironmentPlacementCancelButton";
+
+        _moveChrome = FocusChrome("EnvironmentMoveChrome", "Move items: hold and drag any decoration.", true);
+        _moveRotateChrome = FocusChrome("EnvironmentMoveRotateChrome", "Selected item", false);
+        var rotateActions = _moveRotateChrome.GetChild<VBoxContainer>(0).GetChild<HBoxContainer>(1);
+        Win98Dialog.Action(rotateActions, "Rotate left", () => RotateSelected(-1)).Name = "EnvironmentRotateLeftButton";
+        Win98Dialog.Action(rotateActions, "Rotate right", () => RotateSelected(1)).Name = "EnvironmentRotateRightButton";
     }
 
     private void SelectCategory(string id)
     {
         if (!Enum.TryParse(id, out DecorationCategory category)) return;
+        _selectedCategory = category;
         CancelUnusedReservation();
         _placement.Cancel();
         _selectedDefinition = null;
@@ -250,9 +272,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         {
             DecorationDefinition definition = resource.ToDefinition();
             if (!definition.Visible || definition.Category != category) continue;
-            items.Add(new Win98CatalogItemPresentation(definition.Id.Value, DisplayName(definition.Id),
-                ContentDisplayName.Credits(definition.PriceMilliCredits), Preview(resource), true,
-                $"{definition.AnchorKind} decoration"));
+            items.Add(CatalogPresentation(resource));
         }
         _catalogue.SetItems(items);
         _status.Text = "Select an item, then choose Buy.";
@@ -288,7 +308,8 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementStagedInstance = default;
         _panel.Visible = false;
         _placementBounds = ToBounds(RoomRect());
-        HideOtherUiForPlacement();
+        HideOtherUiForFocus();
+        HideBuddyForPlacement();
         _placementChrome.Visible = true;
         _placementDone.Disabled = true;
         _placementStatus.Text = "Click a valid room position.";
@@ -297,22 +318,26 @@ public partial class EnvironmentDecorator : CanvasLayer
         Refresh();
     }
 
-    private void BeginMove()
+    private void BeginMoveMode()
     {
-        if (_session is null || _selectedInstance == default) return;
-        if (!TryFindPlaced(_selectedInstance, out PlacedDecoration selected)) return;
-        _moveOriginal = selected.Position;
-        _moving = true;
-        _status.Text = "Move the pointer; left-click confirms, Escape restores.";
+        if (_session is null || _session.WorkingLayout.Decorations.Count == 0) return;
+        CancelUnusedReservation();
+        _moveBaseline = _session.WorkingLayout;
+        _moveMode = true;
+        _moveDragging = false;
+        _selectedInstance = default;
+        _panel.Visible = false;
+        HideOtherUiForFocus();
+        _moveChrome.Visible = true;
+        _moveRotateChrome.Visible = false;
     }
 
-    private void RotateSelected()
+    private void RotateSelected(int direction)
     {
         if (_session is null || _selectedInstance == default) return;
-        EnvironmentEditResult result = _session.Rotate(_selectedInstance);
-        _status.Text = result.Succeeded ? "Rotated." : result.Status.ToString();
+        EnvironmentEditResult result = _session.Rotate(_selectedInstance, direction);
         _visuals.Preview(_session.WorkingLayout);
-        Refresh();
+        if (!result.Succeeded) _status.Text = result.Status.ToString();
     }
 
     private void SellSelected()
@@ -337,21 +362,25 @@ public partial class EnvironmentDecorator : CanvasLayer
                 _placement.UpdatePointer(click.Position);
                 _placement.CommitGhost();
                 break;
-            case InputEventMouseMotion motion when _moving:
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _moveMode:
+                SelectPlaced(click.Position);
+                _moveDragging = _selectedInstance != default;
+                _moveRotateChrome.Visible = _moveDragging;
+                break;
+            case InputEventMouseMotion motion when _moveMode && _moveDragging:
                 MoveSelected(motion.Position);
                 break;
-            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } when _moving:
-                _moving = false;
-                _status.Text = "Move confirmed.";
+            case InputEventMouseButton { Pressed: false, ButtonIndex: MouseButton.Left } when _moveMode:
+                _moveDragging = false;
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click:
                 SelectPlaced(click.Position);
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right }:
-                CancelTransient();
+                if (_moveMode) CancelMoveMode(); else CancelTransient();
                 break;
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }:
-                if (_placement.Active || _moving || _selectedInstance != default) CancelTransient(); else RequestClose();
+                if (_moveMode) CancelMoveMode(); else if (_placement.Active || _selectedInstance != default) CancelTransient(); else RequestClose();
                 break;
         }
         _blocker.AcceptEvent();
@@ -387,8 +416,6 @@ public partial class EnvironmentDecorator : CanvasLayer
 
     private void CancelTransient()
     {
-        if (_moving && _session is not null) _session.Move(_selectedInstance, _moveOriginal);
-        _moving = false;
         _placement.Cancel();
         _selectedInstance = default;
         if (_session is not null) _visuals.Preview(_session.WorkingLayout);
@@ -423,6 +450,34 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementMode = false;
         _placementStagedInstance = default;
         _placementChrome.Visible = false;
+        RestoreBuddyAfterPlacement();
+        RestorePlacementUi();
+        _panel.Visible = true;
+    }
+
+    private void ConfirmMoveMode()
+    {
+        EndMoveMode();
+        _status.Text = "Item positions staged. Choose Done to save the room.";
+        Refresh();
+    }
+
+    private void CancelMoveMode()
+    {
+        if (_session is not null && _moveBaseline is not null) _session.RestoreTransforms(_moveBaseline);
+        if (_session is not null) _visuals.Preview(_session.WorkingLayout);
+        EndMoveMode();
+        _status.Text = "Move Items cancelled; positions restored.";
+        Refresh();
+    }
+
+    private void EndMoveMode()
+    {
+        _moveMode = false;
+        _moveDragging = false;
+        _moveBaseline = null;
+        _moveChrome.Visible = false;
+        _moveRotateChrome.Visible = false;
         RestorePlacementUi();
         _panel.Visible = true;
     }
@@ -455,13 +510,15 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         _placement.Cancel();
         if (_placementMode) EndPlacementMode();
+        if (_moveMode) CancelMoveMode();
+        RestoreBuddyAfterPlacement();
         _visuals.Preview(_state.Layout);
         _blocker.Visible = false;
         _confirm.Visible = false;
         _pointer.SetProcessInput(_pointerInputBefore);
         _pointer.SetProcessUnhandledInput(_pointerUnhandledBefore);
         _session = null;
-        _moving = false;
+        _moveMode = false;
     }
 
     private void Refresh()
@@ -471,17 +528,18 @@ public partial class EnvironmentDecorator : CanvasLayer
         long projected = current;
         if (_session is not null) _session.TryProjectBalance(current, out projected);
         _values.SetRows([
-            new("available", "Available Funds", ContentDisplayName.Credits(current)),
+            new("available", "Available Funds", ContentDisplayName.Credits(projected)),
             new("cost", "Item Cost", ContentDisplayName.Credits(cost)),
             new("projected", "Projected Funds", ContentDisplayName.Credits(projected), true),
+            new("owned", "Owned", CountOwned(SelectedDefinitionId()).ToString()),
         ]);
         bool matchingReservation = _session?.HasReservation == true && _selectedDefinition is not null &&
             _session.ReservedDefinitionId == _selectedDefinition.ToDefinition().Id;
         _buy.Disabled = _selectedDefinition is null || _session?.HasReservation == true || projected < cost;
         _place.Disabled = !matchingReservation;
-        _move.Visible = _selectedInstance != default;
-        _rotate.Visible = _selectedInstance != default;
+        _move.Visible = _session?.WorkingLayout.Decorations.Count > 0;
         _sell.Visible = _selectedInstance != default;
+        RefreshCatalogueBadges();
     }
 
     private Rect2 RoomRect()
@@ -502,7 +560,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_session?.HasReservation == true) _session.CancelReservation();
     }
 
-    private void HideOtherUiForPlacement()
+    private void HideOtherUiForFocus()
     {
         _placementHiddenUi.Clear();
         HideTopControls(GetTree().Root);
@@ -528,6 +586,67 @@ public partial class EnvironmentDecorator : CanvasLayer
         foreach (Control control in _placementHiddenUi)
             if (GodotObject.IsInstanceValid(control)) control.Visible = true;
         _placementHiddenUi.Clear();
+    }
+
+    private void HideBuddyForPlacement()
+    {
+        if (_buddyHidden) return;
+        _buddy2DWasVisible = _buddy2D.Visible;
+        _buddy3DWasVisible = _buddy3D.Visible;
+        _buddy2D.Visible = false;
+        _buddy3D.Visible = false;
+        _buddyHidden = true;
+    }
+
+    private void RestoreBuddyAfterPlacement()
+    {
+        if (!_buddyHidden) return;
+        if (GodotObject.IsInstanceValid(_buddy2D)) _buddy2D.Visible = _buddy2DWasVisible;
+        if (GodotObject.IsInstanceValid(_buddy3D)) _buddy3D.Visible = _buddy3DWasVisible;
+        _buddyHidden = false;
+    }
+
+    private PanelContainer FocusChrome(string name, string text, bool top)
+    {
+        var chrome = new PanelContainer { Name = name, Visible = false, Theme = Win98ThemeFactory.Create() };
+        chrome.SetAnchorsPreset(top ? Control.LayoutPreset.TopRight : Control.LayoutPreset.BottomWide);
+        if (top) { chrome.OffsetLeft = -360; chrome.OffsetTop = 12; chrome.OffsetRight = -12; chrome.OffsetBottom = 112; }
+        else { chrome.OffsetLeft = 12; chrome.OffsetTop = -82; chrome.OffsetRight = -12; chrome.OffsetBottom = -12; }
+        _blocker.AddChild(chrome);
+        var body = new VBoxContainer();
+        chrome.AddChild(body);
+        body.AddChild(new Label { Text = text });
+        var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        body.AddChild(actions);
+        if (top)
+        {
+            Win98Dialog.Action(actions, "Done", ConfirmMoveMode).Name = "EnvironmentMoveDoneButton";
+            Win98Dialog.Action(actions, "Cancel", CancelMoveMode).Name = "EnvironmentMoveCancelButton";
+        }
+        return chrome;
+    }
+
+    private DecorationDefinitionId SelectedDefinitionId()
+    {
+        if (_selectedDefinition is not null) return _selectedDefinition.ToDefinition().Id;
+        return TryFindPlaced(_selectedInstance, out PlacedDecoration placed) ? placed.DefinitionId : default;
+    }
+
+    private int CountOwned(DecorationDefinitionId id) => id == default || _session is null
+        ? 0 : _session.WorkingLayout.Decorations.Count(item => item.DefinitionId == id);
+
+    private Win98CatalogItemPresentation CatalogPresentation(EnvironmentDecorationResource resource)
+    {
+        DecorationDefinition definition = resource.ToDefinition();
+        return new Win98CatalogItemPresentation(definition.Id.Value, DisplayName(definition.Id),
+            ContentDisplayName.Credits(definition.PriceMilliCredits), Preview(resource), true,
+            $"{definition.AnchorKind} decoration", $"Owned: {CountOwned(definition.Id)}");
+    }
+
+    private void RefreshCatalogueBadges()
+    {
+        foreach (EnvironmentDecorationResource resource in EnvironmentDecorationRegistry.Authored.Entries)
+            if (resource.ToDefinition().Category == _selectedCategory) _catalogue.UpdateItem(CatalogPresentation(resource));
     }
     private bool TryFindPlaced(PlacedDecorationId id, out PlacedDecoration placed)
     {

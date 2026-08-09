@@ -90,6 +90,23 @@ public sealed class EnvironmentEditSessionTests
     }
 
     [Fact]
+    public void FocusedMoveCanRotateEitherWayAndRestoreItsBaseline()
+    {
+        var original = new PlacedDecoration(Id(24), Lamp.Id, Position(.2f, .8f), 0, Lamp.RenderBand, Lamp.PriceMilliCredits);
+        var session = new EnvironmentEditSession(new EnvironmentLayout([original]), 150_000, Catalogue());
+        EnvironmentLayout moveBaseline = session.WorkingLayout;
+
+        Assert.True(session.Move(original.InstanceId, Position(.7f, .6f)).Succeeded);
+        Assert.True(session.Rotate(original.InstanceId, -1).Succeeded);
+        Assert.Equal(270, session.WorkingLayout.Decorations[0].RotationDegrees);
+        Assert.True(session.Rotate(original.InstanceId, 1).Succeeded);
+        Assert.Equal(0, session.WorkingLayout.Decorations[0].RotationDegrees);
+        Assert.True(session.RestoreTransforms(moveBaseline));
+        Assert.Equal(original, session.WorkingLayout.Decorations[0]);
+        Assert.Equal(0, session.PendingBalanceDeltaMilliCredits);
+    }
+
+    [Fact]
     public void ReservationUsesCurrentWalletAffordability()
     {
         var session = new EnvironmentEditSession(new EnvironmentLayout(), 75_000, Catalogue(), () => Id(23));
