@@ -416,11 +416,23 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         };
     }
 
+    /// <summary>
+    /// Samples the rendered frame rather than the paint canvas: the player expects Pick Color to
+    /// take whatever is under the cursor — decorations, the buddy, the bare room grey — and the
+    /// canvas only knows about pixels it painted (everything else read back as black).
+    /// </summary>
     private void PickColor(Vector2 position)
     {
-        if (!TryCanonical(position, out double x, out double y) || !Canvas.TryPick(x, y, out EnvironmentColor color)) return;
-        Canvas.Color = color;
-        Color picked = Color.Color8(Canvas.Color.Red, Canvas.Color.Green, Canvas.Color.Blue);
+        // ponytail: full framebuffer readback per sample; only runs while dragging the Pick tool.
+        Image frame = GetViewport().GetTexture().GetImage();
+        Vector2I size = frame.GetSize();
+        if (size.X <= 0 || size.Y <= 0) return;
+        var point = new Vector2I(
+            Mathf.Clamp((int)position.X, 0, size.X - 1),
+            Mathf.Clamp((int)position.Y, 0, size.Y - 1));
+        Color picked = frame.GetPixelv(point);
+        picked.A = 1;
+        Canvas.Color = new EnvironmentColor((byte)picked.R8, (byte)picked.G8, (byte)picked.B8);
         _current.Color = picked;
         _picker.Color = picked;
         _cursor.SampleColor = picked;
@@ -438,7 +450,9 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     {
         _cursor.Position = position;
         _cursor.Diameter = Canvas.BrushDiameter * BackgroundRect().Size.X / EnvironmentCanvasPolicy.Size;
-        _cursor.ShowBrush = IsOpen;
+        // The ring is the only thing Pick Color must never sample: at the smallest brush it sits on
+        // the pixel under the cursor, so every pick came back white. Pick has no brush size anyway.
+        _cursor.ShowBrush = IsOpen && Canvas.Tool != EnvironmentPaintTool.PickColor;
         _cursor.ShowSample = _painting && Canvas.Tool == EnvironmentPaintTool.PickColor;
         _cursor.QueueRedraw();
     }

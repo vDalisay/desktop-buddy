@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using DesktopBuddy.Domain.Painting;
 using Xunit;
 
@@ -15,6 +16,21 @@ public sealed class PaintAlgorithmTests
         Assert.Equal(first, second);
         foreach (PaintPoint point in first)
             Assert.True((point.X * point.X) + (point.Y * point.Y) <= 1.000000000001);
+    }
+
+    /// <summary>
+    /// Callers step the pulse seed by the golden-ratio constant; consecutive pulses must not be the
+    /// same dots shifted by one, or a held spray keeps repainting the pixels it already covered.
+    /// </summary>
+    [Fact]
+    public void SprayPattern_ConsecutivePulseSeeds_DoNotRepeatPoints()
+    {
+        const ulong step = 0x9E3779B97F4A7C15UL;
+        PaintPoint[] first = SprayPattern.SampleUnitDisk(1000UL, 64);
+        PaintPoint[] second = SprayPattern.SampleUnitDisk(1000UL + step, 64);
+
+        int shared = first.Intersect(second).Count();
+        Assert.True(shared <= 1, $"{shared} of 64 sprayed points repeated between pulses.");
     }
 
     [Fact]

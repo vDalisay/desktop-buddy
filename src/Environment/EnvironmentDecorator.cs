@@ -14,6 +14,9 @@ namespace DesktopBuddy.Environment;
 
 public partial class EnvironmentDecorator : CanvasLayer
 {
+    /// <summary>Synthetic catalogue tile: not a purchasable decoration, it just clears the wallpaper.</summary>
+    private const string NoWallpaperId = "wallpaper.none";
+
     private BuddyProgressState _progress = null!;
     private EconomyService _economy = null!;
     private LabPointerGrabComponent _pointer = null!;
@@ -255,8 +258,10 @@ public partial class EnvironmentDecorator : CanvasLayer
         body.AddChild(_values);
         _status = new Label { Name = "EnvironmentDecoratorStatus", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         body.AddChild(_status);
-        var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        var actions = new HBoxContainer();
         body.AddChild(actions);
+        Win98Dialog.Action(actions, "Reset All", ResetAll).Name = "EnvironmentResetAllButton";
+        actions.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
         Win98Dialog.Action(actions, "Done", Save).Name = "EnvironmentDoneButton";
         Win98Dialog.Action(actions, "Cancel", RequestClose).Name = "EnvironmentCancelButton";
 
@@ -319,6 +324,9 @@ public partial class EnvironmentDecorator : CanvasLayer
         _selectedDefinition = null;
         _selectedInstance = default;
         var items = new List<Win98CatalogItemPresentation>();
+        if (category == DecorationCategory.Wallpaper)
+            items.Add(new Win98CatalogItemPresentation(NoWallpaperId, "None", "Free",
+                Tooltip: "Remove the room wallpaper."));
         foreach (EnvironmentDecorationResource resource in EnvironmentDecorationRegistry.Authored.Entries)
         {
             DecorationDefinition definition = resource.ToDefinition();
@@ -332,6 +340,7 @@ public partial class EnvironmentDecorator : CanvasLayer
 
     private void SelectDefinition(string id)
     {
+        if (id == NoWallpaperId) { RemoveWallpaper(); return; }
         if (!DecorationDefinitionId.TryCreate(id, out DecorationDefinitionId definitionId)) return;
         if (_session?.HasReservation == true && _session.ReservedDefinitionId != definitionId) _session.CancelReservation();
         _selectedDefinition = EnvironmentDecorationRegistry.Find(definitionId);
@@ -341,6 +350,36 @@ public partial class EnvironmentDecorator : CanvasLayer
             : _session?.OwnedUnplacedCount(definitionId) > 0
                 ? "You own a copy in storage. Choose Place to position it again at no charge."
                 : "Choose Place to purchase and position one copy.";
+        Refresh();
+    }
+
+    private void RemoveWallpaper()
+    {
+        CancelUnusedReservation();
+        _placement.Cancel();
+        _selectedDefinition = null;
+        _selectedInstance = default;
+        PlacedDecoration wallpaper = _session?.WorkingLayout.Decorations
+            .FirstOrDefault(item => item.RenderBand == DecorationRenderBand.Wallpaper) ?? default;
+        _status.Text = wallpaper.InstanceId != default && _session!.Remove(wallpaper.InstanceId).Succeeded
+            ? "Wallpaper removed. You still own it, so you can place it again for free."
+            : "The room has no wallpaper.";
+        PreviewRoom();
+        Refresh();
+    }
+
+    /// <summary>Clears the whole room in one action; every copy stays owned, so nothing is lost.</summary>
+    private void ResetAll()
+    {
+        if (_session is null) return;
+        CancelUnusedReservation();
+        _placement.Cancel();
+        _selectedDefinition = null;
+        _selectedInstance = default;
+        foreach (PlacedDecoration item in _session.WorkingLayout.Decorations.ToArray())
+            _session.Remove(item.InstanceId);
+        PreviewRoom();
+        _status.Text = "Room cleared. Every item stays owned; choose Done to save.";
         Refresh();
     }
 

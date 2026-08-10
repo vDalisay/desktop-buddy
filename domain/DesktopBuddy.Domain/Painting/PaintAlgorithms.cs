@@ -9,11 +9,12 @@ namespace DesktopBuddy.Domain.Painting;
 /// </summary>
 public static class SprayPattern
 {
-    // Tuning data, deliberately not player-facing. This produces about 14 points at diameter 24
-    // and scales by envelope area so large sprays do not become visibly empty.
-    private const double DotsPerPixelSquared = 0.03;
+    // Tuning data, deliberately not player-facing. At the 20Hz pulse rate this lays down roughly
+    // 2.5x the envelope area over three seconds, so a held spray fills its circle like the classic
+    // airbrush instead of dusting it. Scales by envelope area so large sprays stay as dense.
+    private const double DotsPerPixelSquared = 0.12;
     private const int MinimumDotsPerPulse = 3;
-    private const int MaximumDotsPerPulse = 512;
+    private const int MaximumDotsPerPulse = 2048;
 
     public static int PointCountForDiameter(int diameter)
     {
@@ -27,7 +28,10 @@ public static class SprayPattern
     {
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         var points = new PaintPoint[count];
-        var rng = new SplitMix64(seed);
+        // Avalanche the seed first. Callers step their pulse seed by the same golden-ratio constant
+        // SplitMix64 adds internally, so a raw seed made pulse n+1 replay pulse n shifted by one
+        // point: every pulse redrew the previous dots and the spray looked stuck in place.
+        var rng = new SplitMix64(SplitMix64.Mix(seed));
         for (int index = 0; index < count; index++)
         {
             double angle = Math.Tau * rng.NextUnit();
@@ -49,9 +53,10 @@ public static class SprayPattern
             return (value >> 11) * (1.0 / 9007199254740992.0);
         }
 
-        private ulong NextUInt64()
+        private ulong NextUInt64() => Mix(_state += 0x9E3779B97F4A7C15UL);
+
+        public static ulong Mix(ulong z)
         {
-            ulong z = (_state += 0x9E3779B97F4A7C15UL);
             z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
             z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
             return z ^ (z >> 31);
