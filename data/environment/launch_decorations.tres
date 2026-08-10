@@ -1,13 +1,19 @@
-[gd_resource type="Resource" script_class="EnvironmentDecorationCatalogueResource" load_steps=8 format=3]
+[gd_resource type="Resource" script_class="EnvironmentDecorationCatalogueResource" load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://src/Environment/EnvironmentDecorationCatalogueResource.cs" id="1"]
 [ext_resource type="Resource" path="res://data/environment/lamp_classic.tres" id="2"]
-[ext_resource type="Resource" path="res://data/environment/sofa_compact.tres" id="3"]
-[ext_resource type="Resource" path="res://data/environment/painting_hills.tres" id="4"]
-[ext_resource type="Resource" path="res://data/environment/wallpaper_diagonal.tres" id="5"]
-[ext_resource type="Resource" path="res://data/environment/plant_sprout.tres" id="6"]
-[ext_resource type="Resource" path="res://data/environment/table_side.tres" id="7"]
+[ext_resource type="Resource" path="res://data/environment/lamp_arc.tres" id="3"]
+[ext_resource type="Resource" path="res://data/environment/sofa_compact.tres" id="4"]
+[ext_resource type="Resource" path="res://data/environment/sofa_lounge.tres" id="5"]
+[ext_resource type="Resource" path="res://data/environment/painting_hills.tres" id="6"]
+[ext_resource type="Resource" path="res://data/environment/painting_geometric.tres" id="7"]
+[ext_resource type="Resource" path="res://data/environment/wallpaper_diagonal.tres" id="8"]
+[ext_resource type="Resource" path="res://data/environment/wallpaper_grid.tres" id="9"]
+[ext_resource type="Resource" path="res://data/environment/plant_sprout.tres" id="10"]
+[ext_resource type="Resource" path="res://data/environment/plant_leafy.tres" id="11"]
+[ext_resource type="Resource" path="res://data/environment/table_side.tres" id="12"]
+[ext_resource type="Resource" path="res://data/environment/table_dining.tres" id="13"]
 
 [resource]
 script = ExtResource("1")
-Entries = Array[Resource]([ExtResource("2"), ExtResource("3"), ExtResource("4"), ExtResource("5"), ExtResource("6"), ExtResource("7")])
+Entries = Array[Resource]([ExtResource("2"), ExtResource("3"), ExtResource("4"), ExtResource("5"), ExtResource("6"), ExtResource("7"), ExtResource("8"), ExtResource("9"), ExtResource("10"), ExtResource("11"), ExtResource("12"), ExtResource("13")])
