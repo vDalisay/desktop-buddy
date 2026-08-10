@@ -57,8 +57,14 @@ public static class PaintToolIconProvider
 
     private static Texture2D Generate(string id)
     {
-        Image image = Image.CreateEmpty(Size, Size, false, Image.Format.Rgba8);
-        image.Fill(Colors.Transparent);
+        // PaintTextureBridge already relies on CreateFromData in this project. Use the same known
+        // Godot C# API here instead of a separate image-construction path for tiny placeholders.
+        Image image = Image.CreateFromData(
+            Size,
+            Size,
+            false,
+            Image.Format.Rgba8,
+            new byte[Size * Size * 4]);
         Color ink = Colors.Black;
         Color shade = Color.Color8(96, 96, 96);
         Color face = Color.Color8(192, 192, 192);
