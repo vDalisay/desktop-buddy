@@ -1,14 +1,18 @@
-# Environment Customization — Local Parallel Worktree
+# Buddy Studio — Local Parallel Worktree
 
-This branch is intended to run concurrently with `buddy-studio` from a separate Git worktree.
-
-Expected default local directory after running the setup script from the normal `main` checkout:
+Buddy Studio development uses the shared parallel-worktree setup documented in:
 
 ```text
-..\desktop-buddy-environment
+docs/PARALLEL_CUSTOMIZATION_WORKTREES.md
 ```
 
-The setup script is on `main`:
+Expected default local directory:
+
+```text
+..\desktop-buddy-studio
+```
+
+The setup script is run from the normal `main` checkout:
 
 ```bat
 tools\setup_parallel_customization_worktrees.bat
@@ -17,11 +21,9 @@ tools\setup_parallel_customization_worktrees.bat
 It creates an untracked `override.cfg` in this worktree so Godot resolves:
 
 ```text
-user:// -> %APPDATA%\DesktopBuddy\Dev\EnvironmentCustomization
+user:// -> %APPDATA%\DesktopBuddy\Dev\BuddyStudio
 ```
 
-Use this worktree for all Environment builds, tests, commits, and `tools\play_game.bat` launches. Do not switch this worktree to `buddy-studio` while both agents are active.
+Use this worktree for Buddy Studio builds, tests, commits and `tools\play_game.bat`. `override.cfg` is local development state and must never be committed.
 
-`override.cfg` is local development state and must never be committed. The setup script adds it to the repository's local Git exclude file.
-
-The authoritative feature/file ownership rules remain in `docs/ENVIRONMENT_CUSTOMIZATION_AGENT_HANDOFF.md` and `docs/CUSTOMIZATION_PARALLEL_IMPLEMENTATION_FOUNDATION.md`.
+The current Buddy Studio implementation requirements remain in `docs/BUDDY_STUDIO_CUSTOMIZATION_PLAN.md` and `docs/BUDDY_STUDIO_AGENT_HANDOFF.md`. Full-release-only custom cosmetic creation, Steam sharing, bounded deformation and the larger Studio UI revamp remain in `docs/BUDDY_STUDIO_FULL_RELEASE_PLAN.md`.
