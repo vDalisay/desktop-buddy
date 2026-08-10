@@ -18,9 +18,13 @@ public partial class PaintCanvasControl : Control
     private Vector2 _strokePointer;
     private bool _sampling;
     private PaintColor _sampledColor;
+    private double _sprayPulseAccumulator;
 
-    /// <summary>Vertical world extent the preview's orthographic camera frames at zoom 1.</summary>
     public const double BaseCameraSize = 400.0;
+    private const double SprayPulseSeconds = 0.05;
+    private const int MaximumSprayCatchUpPulses = 4;
+    private const float ScreenStepPixels = 1.5f;
+    private const int MaxScreenSteps = 512;
 
     public PaintWorkspace Workspace { get; } = new();
     public PaintViewState View { get; } = new();
@@ -28,15 +32,8 @@ public partial class PaintCanvasControl : Control
     public PaintPart? ActivePartFilter { get; set; }
     public bool PanToolActive { get; set; }
     public bool EyedropperToolActive { get; set; }
-
-    /// <summary>
-    /// Retained for source compatibility with existing painting scenarios. Runtime pointer
-    /// mapping deliberately uses this control's live Size because the stretched preview adopts
-    /// the same post-layout rectangle.
-    /// </summary>
     public Vector2 ViewportSize { get; set; } = new(420, 360);
 
-    /// <summary>World-space point the camera is centred on, in 2D world units (Y-down).</summary>
     public PaintPoint CameraCenter => new(
         View.Pan.X * (BaseCameraSize / 2.0),
         View.Pan.Y * (BaseCameraSize / 2.0));
@@ -101,8 +98,7 @@ public partial class PaintCanvasControl : Control
             if (button.ButtonIndex == MouseButton.Middle || leftPan)
             {
                 _panning = button.Pressed;
-                if (_panning)
-                    GrabFocus();
+                if (_panning) GrabFocus();
                 AcceptEvent();
                 return;
             }
@@ -130,9 +126,8 @@ public partial class PaintCanvasControl : Control
 
                     Workspace.BeginGesture(hit);
                     _painting = true;
+                    _sprayPulseAccumulator = 0;
                     _strokePointer = button.Position;
-                    // Godot coalesces motion to one event per frame, which is far too few paint
-                    // samples for a fast drag. Raw motion only costs while a stroke is live.
                     Input.UseAccumulatedInput = false;
                     WorkspaceChanged?.Invoke();
                     GrabFocus();
@@ -141,10 +136,11 @@ public partial class PaintCanvasControl : Control
                 {
                     Workspace.EndGesture();
                     _painting = false;
+                    _sprayPulseAccumulator = 0;
                     Input.UseAccumulatedInput = true;
                     WorkspaceChanged?.Invoke();
                 }
-                else if (!button.Pressed && EyedropperToolActive)
+                else if (EyedropperToolActive)
                 {
                     _sampling = false;
                     QueueRedraw();
@@ -173,39 +169,40 @@ public partial class PaintCanvasControl : Control
         }
     }
 
-    /// <summary>
-    /// Resamples the pointer every frame while the button is held, so paint keeps flowing even
-    /// when no motion event arrives (mouse held still, or events dropped under load).
-    /// </summary>
     public override void _Process(double delta)
     {
-        if (!_painting)
+        if (!_painting) return;
+        if (Workspace.SelectedTool != PaintTool.Spray)
+        {
+            PaintAlongTo(GetLocalMousePosition());
             return;
-        PaintAlongTo(GetLocalMousePosition());
+        }
+
+        _sprayPulseAccumulator += Math.Max(0, delta);
+        int pulses = 0;
+        while (_sprayPulseAccumulator >= SprayPulseSeconds && pulses++ < MaximumSprayCatchUpPulses)
+        {
+            _sprayPulseAccumulator -= SprayPulseSeconds;
+            Workspace.ContinueGesture(Map(GetLocalMousePosition()));
+            WorkspaceChanged?.Invoke();
+        }
+        if (pulses >= MaximumSprayCatchUpPulses)
+            _sprayPulseAccumulator = 0;
     }
 
-    /// <summary>
-    /// Paints from the last stroke position to <paramref name="canvas"/>, sampling the segment
-    /// in small screen-space steps. The buddy covers only a few dozen pixels, so one fast drag
-    /// swings the mapped UV a third of the way around a limb; interpolating on screen instead
-    /// keeps every step a short, mappable hop and lets part changes and silhouette misses fall
-    /// where they actually happened.
-    /// </summary>
     private void PaintAlongTo(Vector2 canvas)
     {
         Vector2 from = _strokePointer;
-        int steps = Math.Clamp(
-            (int)Math.Ceiling(from.DistanceTo(canvas) / ScreenStepPixels), 1, MaxScreenSteps);
+        float spacing = Workspace.SelectedTool == PaintTool.Spray
+            ? Math.Max(3f, VisibleBrushDiameter() * 0.4f)
+            : ScreenStepPixels;
+        int steps = Math.Clamp((int)Math.Ceiling(from.DistanceTo(canvas) / spacing), 1, MaxScreenSteps);
         for (int step = 1; step <= steps; step++)
             Workspace.ContinueGesture(Map(from.Lerp(canvas, step / (float)steps)));
 
         _strokePointer = canvas;
         WorkspaceChanged?.Invoke();
     }
-
-    /// <summary>Screen-space gap between pointer resamples inside one stroke segment.</summary>
-    private const float ScreenStepPixels = 1.5f;
-    private const int MaxScreenSteps = 512;
 
     public override void _ExitTree()
     {
@@ -215,13 +212,13 @@ public partial class PaintCanvasControl : Control
             _painting = false;
             Input.UseAccumulatedInput = true;
         }
+        _sprayPulseAccumulator = 0;
         _hiddenParts.Clear();
     }
 
     public override void _UnhandledKeyInput(InputEvent input)
     {
-        if (input is not InputEventKey { Pressed: true, CtrlPressed: true } key)
-            return;
+        if (input is not InputEventKey { Pressed: true, CtrlPressed: true } key) return;
 
         bool handled = false;
         if (key.Keycode == Key.Z && !key.ShiftPressed)
@@ -229,9 +226,7 @@ public partial class PaintCanvasControl : Control
         else if (key.Keycode == Key.Y || (key.Keycode == Key.Z && key.ShiftPressed))
             handled = Workspace.Redo();
 
-        if (!handled)
-            return;
-
+        if (!handled) return;
         WorkspaceChanged?.Invoke();
         AcceptEvent();
     }
@@ -247,13 +242,12 @@ public partial class PaintCanvasControl : Control
             }
             return;
         }
-        if (PanToolActive)
-            return;
-
-        float diameter = (float)(Workspace.BrushDiameter * View.Zoom * Math.Min(Size.X, Size.Y) /
-            (PaintPolicy.SurfaceSize * 2.0));
-        PaintCursorGizmos.DrawBrushRing(this, _lastPointer, diameter);
+        if (PanToolActive) return;
+        PaintCursorGizmos.DrawBrushRing(this, _lastPointer, VisibleBrushDiameter());
     }
+
+    private float VisibleBrushDiameter() => (float)(Workspace.BrushDiameter * View.Zoom * Math.Min(Size.X, Size.Y) /
+        (PaintPolicy.SurfaceSize * 2.0));
 
     public void ResetView()
     {
@@ -262,7 +256,6 @@ public partial class PaintCanvasControl : Control
         QueueRedraw();
     }
 
-    /// <summary>Sets the viewport pan from the editor's classic horizontal/vertical scrollbars.</summary>
     public void SetPanNormalized(double x, double y)
     {
         PaintPoint current = View.Pan;
@@ -271,16 +264,11 @@ public partial class PaintCanvasControl : Control
         QueueRedraw();
     }
 
-    /// <summary>Controls whether a semantic body-part layer participates in preview hit-testing.</summary>
     public void SetPartVisible(PaintPart part, bool visible)
     {
-        if (visible)
-            _hiddenParts.Remove(part);
-        else
-            _hiddenParts.Add(part);
-
-        if (!visible && HoveredPart == part)
-            SetHover(null);
+        if (visible) _hiddenParts.Remove(part);
+        else _hiddenParts.Add(part);
+        if (!visible && HoveredPart == part) SetHover(null);
         QueueRedraw();
     }
 
@@ -288,13 +276,11 @@ public partial class PaintCanvasControl : Control
 
     public void ShowAllParts()
     {
-        if (_hiddenParts.Count == 0)
-            return;
+        if (_hiddenParts.Count == 0) return;
         _hiddenParts.Clear();
         QueueRedraw();
     }
 
-    /// <summary>Part under a canvas-space pointer position, or null on a miss.</summary>
     public PaintPart? PartAt(Vector2 canvasPosition) => Map(canvasPosition)?.Part;
 
     private bool TrySample(PaintHit hit, out PaintColor color)
@@ -308,10 +294,9 @@ public partial class PaintCanvasControl : Control
     private PaintHit? Map(Vector2 canvas)
     {
         PaintPoint point = CanvasToWorld(canvas);
-        double yaw = GodotObject.IsInstanceValid(_host) &&
-            GodotObject.IsInstanceValid(_host!.PreviewRig)
-                ? Mathf.DegToRad(_host.PreviewRig.RotationDegrees.Y)
-                : 0.0;
+        double yaw = GodotObject.IsInstanceValid(_host) && GodotObject.IsInstanceValid(_host!.PreviewRig)
+            ? Mathf.DegToRad(_host.PreviewRig.RotationDegrees.Y)
+            : 0.0;
 
         PaintHit? hit;
         if (Math.Abs(yaw) <= 0.000001)
@@ -319,19 +304,10 @@ public partial class PaintCanvasControl : Control
         else
             hit = TryMapRotated(point, yaw, out PaintHit rotated) ? rotated : null;
 
-        return hit is PaintHit valid &&
-            IsPartVisible(valid.Part) &&
-            (ActivePartFilter is null || valid.Part == ActivePartFilter.Value)
-                ? valid
-                : null;
+        return hit is PaintHit valid && IsPartVisible(valid.Part) &&
+            (ActivePartFilter is null || valid.Part == ActivePartFilter.Value) ? valid : null;
     }
 
-    /// <summary>
-    /// Maps the visible surface after the preview rig has been rotated around its Y axis.
-    /// The previous frontal mapper always wrote to the front-facing U range, so painting the
-    /// back or sides appeared on the front. This reconstructs the camera-facing surface point,
-    /// transforms it back into each primitive's local coordinates, and derives the matching UV.
-    /// </summary>
     private bool TryMapRotated(PaintPoint point, double yaw, out PaintHit hit)
     {
         double cos = Math.Cos(yaw);
@@ -342,30 +318,18 @@ public partial class PaintCanvasControl : Control
 
         foreach (PaintPartShape shape in _mapper.Shapes)
         {
-            if (!IsPartVisible(shape.Part))
-                continue;
+            if (!IsPartVisible(shape.Part)) continue;
 
             double centerScreenX = shape.Center.X * cos;
             double centerDepth = (-shape.Center.X * sin) + (shape.Depth * cos);
             double screenX = point.X - centerScreenX;
             double yUp = -(point.Y - shape.Center.Y);
 
-            if (!TryMapRotatedShape(
-                    shape,
-                    screenX,
-                    yUp,
-                    cos,
-                    sin,
-                    out PaintPoint uv,
-                    out double surfaceDepth))
-            {
+            if (!TryMapRotatedShape(shape, screenX, yUp, cos, sin, out PaintPoint uv, out double surfaceDepth))
                 continue;
-            }
 
             double depth = centerDepth + surfaceDepth;
-            if (found && depth <= nearestDepth)
-                continue;
-
+            if (found && depth <= nearestDepth) continue;
             nearest = new PaintHit(shape.Part, uv, depth);
             nearestDepth = depth;
             found = true;
@@ -387,24 +351,20 @@ public partial class PaintCanvasControl : Control
         uv = default;
         surfaceDepth = 0.0;
         double radius = shape.Radius;
-        if (radius <= 0.0)
-            return false;
+        if (radius <= 0.0) return false;
 
         double v;
         if (shape.Kind == PaintShapeKind.Sphere)
         {
             double planar = (screenX * screenX) + (yUp * yUp);
-            if (planar > radius * radius)
-                return false;
-
+            if (planar > radius * radius) return false;
             surfaceDepth = Math.Sqrt(Math.Max(0.0, (radius * radius) - planar));
             v = Math.Acos(Math.Clamp(yUp / radius, -1.0, 1.0)) / Math.PI;
         }
         else
         {
             double mid = shape.HalfHeight - radius;
-            if (mid < 0.0 || Math.Abs(screenX) > radius || Math.Abs(yUp) > shape.HalfHeight)
-                return false;
+            if (mid < 0.0 || Math.Abs(screenX) > radius || Math.Abs(yUp) > shape.HalfHeight) return false;
 
             if (Math.Abs(yUp) <= mid)
             {
@@ -416,16 +376,12 @@ public partial class PaintCanvasControl : Control
             {
                 double capOffset = Math.Abs(yUp) - mid;
                 double planar = (screenX * screenX) + (capOffset * capOffset);
-                if (planar > radius * radius)
-                    return false;
-
+                if (planar > radius * radius) return false;
                 surfaceDepth = Math.Sqrt(Math.Max(0.0, (radius * radius) - planar));
                 double capFraction = 2.0 / Math.PI * (yUp > 0.0
                     ? Math.Acos(Math.Clamp(capOffset / radius, -1.0, 1.0))
                     : Math.Asin(Math.Clamp(capOffset / radius, -1.0, 1.0)));
-                v = yUp > 0.0
-                    ? capFraction * OneThird
-                    : (2.0 * OneThird) + (capFraction * OneThird);
+                v = yUp > 0.0 ? capFraction * OneThird : (2.0 * OneThird) + (capFraction * OneThird);
             }
         }
 
@@ -451,8 +407,7 @@ public partial class PaintCanvasControl : Control
 
     private void SetHover(PaintPart? part)
     {
-        if (HoveredPart == part)
-            return;
+        if (HoveredPart == part) return;
         HoveredPart = part;
         HoverChanged?.Invoke(part);
     }
