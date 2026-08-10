@@ -1021,3 +1021,438 @@ The Environment Decorator v1 is complete when:
 - resize/DPI behavior passes the Windows matrix;
 - automated domain, headless, and journey tests pass;
 - the owner accepts catalogue density, placement feel, budget feedback, and final Win98 presentation.
+
+---
+
+## 19. Owner refinement — current demo paint parity and toolbar polish (2026-08-10)
+
+This section is **authoritative for the current `environment-customization` pass**. Where it conflicts with an older deferred-scope statement in this document or the broader post-Win98 plan, this section wins. It records work promoted into the demo pass after the first Paint Background vertical slice was implemented.
+
+The current branch already has two deliberately different 512×512 paint surfaces:
+
+- Paint Buddy: `PaintSurface` / `PaintWorkspace`, whose U coordinate wraps around the buddy's UV seam and whose undo history stores bounded dirty patches;
+- Paint Background: `EnvironmentCanvas`, which clamps at room edges and owns fill plus shape rasterisation with live preview.
+
+Keep those surface models separate. Their edge semantics and gesture history are meaningfully different. Reuse only small **engine-free paint algorithms** whose contract is genuinely identical between the two editors.
+
+### 19.1 Scope promoted into the current demo pass
+
+The following are no longer deferred:
+
+1. **Spray / Airbrush** in Paint Buddy and Paint Background.
+2. **Curved Line** in Paint Buddy and Paint Background.
+3. **Paint-toolbar icon refinement** near the end of the pass, using generated original placeholder icons until owner-provided final icons replace them.
+4. A visible Paint Background brush-size control, because Spray and Curved Line must use the same authored brush diameter as the normal brush.
+
+The current demo remains a **single local environment**. These items stay outside the demo and are reserved for the full release:
+
+- multiple local room/environment profiles;
+- sharing complete room configurations through Steam;
+- authored furniture interactions with the buddy.
+
+Do not expose dead profile/share/interaction UI in the demo. Keep persistence evolvable so the singleton environment can later migrate into the default room profile without changing the meaning of existing placements or the saved `environment/background.png` paint.
+
+### 19.2 Clean-room reference rule
+
+The behavior target is the familiar classic desktop Paint workflow, but implementation must be clean-room:
+
+- do not copy Microsoft source code, binary resources, icons, exact pixel art, or other proprietary assets;
+- reproduce only generic tool behavior and interaction conventions;
+- all code and placeholder icons are original project work.
+
+### 19.3 Spray / Airbrush behavior contract
+
+Spray is a first-class paint mutation tool in both editors.
+
+Required behavior:
+
+- the tool distributes sparse selected-color pixels/dots throughout a circular spray envelope rather than painting a solid disk;
+- the envelope diameter is **exactly the current Brush Size**. There is no separate Spray size, radius, pressure, flow, density, hardness, or opacity control in the demo;
+- holding the pointer still continues spraying at a bounded time cadence;
+- moving slowly naturally produces denser coverage because more spray pulses land along the path;
+- moving quickly produces lighter coverage while still avoiding obvious large temporal gaps;
+- each accepted spray dot uses the currently selected opaque paint color;
+- one press/hold/release gesture is one Undo action;
+- switching away from Spray or closing the editor must finish/cancel the active gesture through the same safe gesture boundary used by Brush;
+- Spray never changes persistence schema: it only changes existing paint pixels.
+
+#### Deterministic spray sampler
+
+For testability, separate random point generation from canvas mutation. A small engine-free helper such as `SprayPattern` / `SpraySampler` may be shared by both paint domains.
+
+Recommended deterministic sampling for one pulse:
+
+```text
+angle = 2π * random01()
+radius = envelopeRadius * sqrt(random01())
+point = center + (cos(angle), sin(angle)) * radius
+```
+
+The square-root radius produces an approximately uniform point density across the disk instead of clustering at the center.
+
+Production may seed a gesture from a monotonic/random gesture seed; tests must be able to inject/fix the seed. Do not couple spray randomness to gameplay RNG or buddy autonomy.
+
+Pulse count should scale with brush-envelope area so increasing Brush Size feels like a larger spray can rather than the same few dots spread over a huge disk. Pulse cadence and density constants are tuning data to be reviewed at the owner feel gate; they are not new player-facing sliders.
+
+#### Paint Buddy spray integration
+
+Primary files/seams:
+
+```text
+domain/DesktopBuddy.Domain/Painting/PaintTypes.cs
+domain/DesktopBuddy.Domain/Painting/PaintSurface.cs
+domain/DesktopBuddy.Domain/Painting/PaintWorkspace.cs
+src/CharacterEditor/PaintCanvasControl.cs
+src/CharacterEditor/CharacterEditorHost.Painting.cs
+src/CharacterEditor/CharacterEditorHost.Win98PaintLayout.cs
+src/UI/Win98/Win98PaintToolBootstrap.cs
+```
+
+Rules:
+
+- add a real Spray paint-tool value; do not model Spray as a UI-only mode;
+- sparse writes on `PaintSurface` preserve the existing buddy edge contract: U wraps, V clamps;
+- dirty bounds must include every possible dot in the spray envelope so patch Undo can restore all modified pixels exactly;
+- `PaintCanvasControl` already performs held-stroke `_Process` resampling. Spray should use a bounded time/pulse accumulator so a stationary pointer continues to spray without depending on mouse-motion events;
+- surface misses and part changes must continue to use the existing anti-smear/bridge rules;
+- the brush cursor may show the same size envelope as Brush, with a visibly different center/texture indicator only if useful.
+
+Final placeholder tool-grid order:
+
+```text
+Brush  | Eraser
+Spray  | Pick Color
+Curve  | Hand/Pan
+```
+
+This makes **Spray directly below Brush** as required. The existing Brush Size row remains below the picker and controls Brush, Spray, and Curved Line width from one source of truth.
+
+#### Paint Background spray integration
+
+Primary files/seams:
+
+```text
+domain/DesktopBuddy.Domain/Environment/EnvironmentCanvas.cs
+src/Environment/EnvironmentBackgroundEditor.cs
+```
+
+Rules:
+
+- add `Spray` to `EnvironmentPaintTool`;
+- use the environment canvas's existing `BrushDiameter`; X/Y continue to clamp rather than wrap;
+- repeated pulses while held must work even if the pointer is stationary;
+- add a visible `−  [size]  +` brush-size control to Paint Background and keep its value synchronized with `EnvironmentCanvas.BrushDiameter`;
+- the same size value controls Brush, Spray, Straight Line and Curved Line thickness. Eraser may continue using that same diameter unless a later owner decision separates it;
+- place the **Spray button directly below Brush** in the Paint Background tool column.
+
+Recommended Paint Background tool grouping before icon conversion:
+
+```text
+Tools                    Brush/utility
+Brush                    Eraser
+Spray                    Pick Color
+Fill Color               Size:  -  N  +
+Shapes                   Undo
+```
+
+Exact column packing may adjust for DPI, but Brush → Spray vertical adjacency is locked.
+
+### 19.4 Curved Line behavior contract
+
+Curved Line is a separate shape/tool, not a mode of Straight Line.
+
+The interaction follows the classic multi-stage curve convention:
+
+1. first drag creates the straight baseline from endpoint A to endpoint B;
+2. first subsequent drag bends the line at the first chosen location;
+3. second subsequent drag applies the second bend and commits the final curve.
+
+A second bend gesture with no meaningful displacement may finalize a one-bend result. Tool switch, Escape, right-click cancel, editor close, or invalid state must restore the pre-curve pixels if the curve has not committed.
+
+The complete baseline + first bend + second bend is **one Undo action**.
+
+Curved Line uses:
+
+- selected paint color;
+- the current shared Brush Size as stroke width;
+- live preview at every stage;
+- no new persistence fields.
+
+#### Curve geometry helper
+
+A small engine-free clean-room helper such as `ClassicCurveGeometry` may be shared by both editors. It should produce a sampled cubic Bézier/polyline; surface-specific rasterisation remains separate.
+
+Recommended representation:
+
+```text
+P0 = baseline start
+P3 = baseline end
+C1 = initial point one-third along baseline
+C2 = initial point two-thirds along baseline
+```
+
+For each bend gesture:
+
+- resolve the closest safe parameter `t` on the currently previewed curve to the drag-start point;
+- use the drag-release point as the requested bend target;
+- after bend one, solve/adjust one control point while preserving the other baseline control;
+- after bend two, solve the two control points from the two bend constraints when the system is well-conditioned;
+- clamp `t` away from degenerate 0/1 endpoints and use a deterministic safe fallback for near-singular/zero-length baselines;
+- sample the resulting curve densely enough relative to Brush Size that rasterisation cannot leave visible holes.
+
+The helper returns geometry only. It must know nothing about Godot, buddy parts, UV wrapping, environment edges, history, or UI.
+
+#### Paint Background curve transaction
+
+`EnvironmentCanvas` already restores `_strokeBase` before redrawing drag-shape previews. Extend that concept into an explicit compound curve state rather than committing each bend as a separate edit.
+
+Required state conceptually:
+
+```text
+Idle
+BaselineDragging
+AwaitFirstBend
+FirstBendDragging
+AwaitSecondBend
+SecondBendDragging
+```
+
+Rules:
+
+- capture the canvas baseline once at curve start;
+- every preview restores that baseline, rerasterizes the current curve, then presents it;
+- do not push multiple whole-image Undo snapshots for the baseline/bends;
+- commit one history entry only when the curve finalizes;
+- cancel restores the captured baseline exactly and produces no Undo entry;
+- add `Curved Line` as a distinct entry in the existing Paint Background **Shapes** popup after Straight Line.
+
+#### Paint Buddy curve transaction
+
+Paint Buddy does not currently expose the environment shape menu, so Curved Line should be a dedicated **Curve** button in the Buddy paint tool grid rather than widening this scope to Square/Circle/Line parity.
+
+The curve is authored in preview/canvas space, then sampled through the existing `PaintCanvasControl` mapping pipeline:
+
+- each sampled screen point maps to a trusted `PaintHit?`;
+- contiguous hits on the same part may stroke between samples;
+- misses break continuity;
+- a transition to another body part starts a new contiguous segment rather than drawing through empty space;
+- existing UV seam wrapping and bridge-distance protection stay authoritative.
+
+Because Buddy paint uses patch history, add a preview transaction seam to `PaintWorkspace` rather than repeatedly pushing normal gestures. It must be able to:
+
+1. capture the clean pre-curve pixels for every affected part/dirty rectangle;
+2. restore the previous preview before rerasterizing a changed curve;
+3. expand captured clean bounds safely as a new preview touches additional areas/parts;
+4. finalize all changed part patches into exactly one `PaintCommand`;
+5. cancel back to the exact clean baseline with no command.
+
+Do not snapshot all six 512×512 surfaces per mouse move; preserve the existing bounded paint-memory discipline.
+
+### 19.5 Toolbar icon refinement — current pass, late slice
+
+The existing textual labels (`Brush`, `Pick`, `Hand`, etc.) are temporary representation. Near the end of this pass, after tool behavior and ordering are stable, replace paint-tool toolbar words with **original generated placeholder icons**.
+
+The owner will provide replacement artwork later, so the code must make icon replacement asset-only.
+
+#### Icon architecture
+
+Use a presentation-only mapping such as:
+
+```text
+semantic tool/action ID -> trusted placeholder Texture2D
+```
+
+Suggested asset root:
+
+```text
+assets/ui/paint_tools/placeholder/
+```
+
+Generate original small late-1990s/pixel-style placeholders for the controls actually shipped, including as applicable:
+
+- Brush
+- Spray/Airbrush
+- Eraser
+- Pick Color
+- Hand/Pan
+- Fill
+- Shapes
+- Straight Line
+- Curved Line
+- Square
+- Circle
+- Undo / Redo
+- zoom / rotate actions where they are part of the compact tool rail
+
+Do not recreate Microsoft's Paint icons. The placeholders need only communicate the tool clearly in the project's Win98 visual language.
+
+Rules:
+
+- behavior and automated tests identify controls by stable node/tool IDs, never visible button text or icon pixels;
+- tooltips, status-bar help, accessible names and keyboard shortcuts remain textual;
+- pressed/selected state comes from the Win98 button chrome, not from requiring alternate selected-icon art;
+- keep a text fallback for missing icon resources in development builds;
+- icon-only conversion applies to compact **tool/action controls**. Keep semantic actions such as Save, Cancel, Reset, confirmation buttons and descriptive popup entries textual unless separately approved;
+- the Paint Background Shapes popup may remain text-based while its toolbar launcher becomes an icon, which preserves discoverability and avoids ambiguous tiny shape glyphs.
+
+### 19.6 Implementation order added before ED6 closure
+
+Execute these slices after the existing Paint Background/decorator functionality is stable and **before ED6 owner closure**:
+
+#### PAINT-R0 — shared clean-room algorithm primitives
+
+Deliver:
+
+- deterministic uniform-disk spray sampler;
+- cubic curve geometry/sampling helper;
+- no Godot dependency;
+- no shared surface/history abstraction.
+
+Tests:
+
+- deterministic result for fixed seed;
+- every spray point stays within radius;
+- area-scaled density behaves monotonically;
+- curve baseline is exactly straight before bends;
+- one/two bend constraints are stable;
+- zero-length/near-end/near-singular inputs fail safely and deterministically.
+
+#### PAINT-R1 — Spray in Paint Buddy
+
+Deliver:
+
+- `PaintTool.Spray`;
+- sparse `PaintSurface` mutation with U wrap/V clamp;
+- held/stationary pulse handling;
+- one-gesture patch Undo;
+- Spray button directly below Brush.
+
+Tests:
+
+- min/default/max Brush Size changes spray envelope;
+- stationary hold accumulates density;
+- slow traversal produces denser coverage than fast traversal for equal path length/time model;
+- seam-crossing dots wrap correctly;
+- no vertical wrap;
+- miss/part transitions never smear;
+- one Undo restores the exact pre-spray pixels.
+
+#### PAINT-R2 — Spray + brush-size controls in Paint Background
+
+Deliver:
+
+- `EnvironmentPaintTool.Spray`;
+- clamped spray rasterisation;
+- held/stationary pulse handling;
+- visible shared Brush Size controls;
+- Spray directly below Brush.
+
+Tests:
+
+- environment edges clamp with no opposite-edge dots;
+- Brush/Spray report and consume the same diameter;
+- larger diameter expands the envelope;
+- one Undo restores exact pixels.
+
+#### PAINT-R3 — Curved Line in Paint Background
+
+Deliver:
+
+- Curved Line Shapes entry;
+- baseline/first-bend/second-bend state machine;
+- live preview from one captured baseline;
+- selected color + shared Brush Size stroke;
+- one final Undo action;
+- Escape/right-click/tool-switch cancellation.
+
+Tests:
+
+- first-stage preview matches Straight Line rasterisation;
+- first and second bends update preview deterministically;
+- cancel restores byte-identical baseline;
+- final curve is one Undo step;
+- edge clipping never wraps.
+
+#### PAINT-R4 — Curved Line in Paint Buddy
+
+Deliver:
+
+- Curve tool button;
+- canvas-space curve authoring mapped through existing buddy surface hit testing;
+- patch-based multi-stage preview transaction;
+- one final Undo command;
+- cancel with exact restore.
+
+Tests:
+
+- curve on one part remains continuous;
+- crossing a silhouette miss breaks the stroke;
+- crossing to another body part cannot bridge through space;
+- wrapped U seam remains correct;
+- one Undo restores every affected part exactly;
+- memory remains inside the existing paint editing/undo budget.
+
+#### PAINT-R5 — cross-editor UI parity and shortcuts/status
+
+Deliver:
+
+- locked tool ordering;
+- coherent tooltips/status help;
+- one explicit Spray shortcut and one Curve shortcut per editor that do not collide with existing shortcuts;
+- brush-size status reflects the actual shared value;
+- pending Curve state is visibly understandable and safely cancelled on mode changes.
+
+Do not bind tests to the visible English labels, because PAINT-R6 replaces them with icons.
+
+#### PAINT-R6 — generated placeholder icon toolbar
+
+Deliver:
+
+- original placeholder icon set;
+- presentation mapping used by both paint editors where semantics overlap;
+- icon-only compact tool buttons with text tooltips/accessibility/fallbacks;
+- no behavioral changes in this slice.
+
+Tests/headless checks:
+
+- every visible tool resolves an icon or development fallback;
+- icon conversion does not change tool IDs, ordering, focus traversal or shortcuts;
+- no missing icon creates a nonfunctional button.
+
+#### PAINT-R7 — owner/manual paint closure
+
+Manual verification matrix:
+
+- Spray on Paint Buddy and Paint Background at minimum/default/maximum Brush Size;
+- stationary spray hold;
+- slow versus fast spray traversal;
+- Paint Buddy UV seam and top/bottom boundaries;
+- Paint Background room edges;
+- Curved Line with zero, one and two meaningful bends;
+- curve cancellation at each intermediate stage;
+- Undo immediately after Spray and Curved Line;
+- Buddy curve crossing multiple visible body parts;
+- toolbar icon readability and focus at 100%, 125%, 150% and 200% Windows DPI;
+- minimum/default/maximized editor sizes;
+- final generated placeholder icons are acceptable as temporary art until owner replacements arrive.
+
+### 19.7 Demo/full-release gate after this refinement
+
+After PAINT-R7 and the remaining ED6 demo closure work, **do not continue directly into room profiles/platform sharing/furniture behavior** on the assumption that they are part of this pass.
+
+Full-release follow-up gates are explicitly:
+
+```text
+RELEASE-ENV1  Multiple local room/environment profiles
+RELEASE-ENV2  Safe complete-room sharing format + Steam publishing/downloading integration
+RELEASE-ENV3  Authored buddy/furniture interactions
+```
+
+Recommended dependency order:
+
+1. stabilize the singleton environment save and demo UI first;
+2. generalize that known-good singleton into multiple named local profiles without changing placed-instance semantics;
+3. define/version/validate a complete-room package around the stable profile representation, then wrap it with Steam integration;
+4. add narrow trusted furniture interaction capabilities (`IBuddySitTarget`, `IBuddyRestTarget`, `IBuddyWatchTarget`, `IDecorationToggleTarget`) only after the visual/persistence representation is stable.
+
+The demo may leave narrow migration seams for these later steps, but no speculative profile manager, Steam adapter, or universal furniture behavior framework should be built during the current environment pass.
