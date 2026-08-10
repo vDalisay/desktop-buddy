@@ -29,6 +29,7 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
             await CharacterEditorScenarioSupport.Create(tree, Id);
         RuntimePaintTextureBridge? runtimeBridge = null;
         PaintCanvasControl? canvas = null;
+        CanvasLayer? canvasLayer = null;
         try
         {
             var paintStore = new CharacterPaintStore(new CharacterFileSystem(), context.Root);
@@ -42,7 +43,11 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
                 FocusMode = Control.FocusModeEnum.All,
                 ZIndex = 4096,
             };
-            tree.Root.AddChild(canvas);
+            // The lab's telemetry UI covers the viewport, and GUI picking honours canvas layers
+            // before ZIndex, so the journey canvas needs its own layer above it to receive input.
+            canvasLayer = new CanvasLayer { Name = "JourneyPaintLayer", Layer = 128 };
+            tree.Root.AddChild(canvasLayer);
+            canvasLayer.AddChild(canvas);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             canvas.GrabFocus();
 
@@ -164,6 +169,7 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
         {
             runtimeBridge?.Dispose();
             canvas?.QueueFree();
+            canvasLayer?.QueueFree();
             await CharacterEditorScenarioSupport.Cleanup(tree, context);
         }
 
@@ -173,15 +179,26 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
             [$"seed={seed}"]);
     }
 
+    /// <summary>
+    /// Headless has no mouse device, so <see cref="Input.ParseInputEvent"/> never dispatches
+    /// pointer events (keys still do). Pushing them at the root viewport enters the same GUI
+    /// pipeline the platform layer feeds, so production _GuiInput handling is still what runs.
+    /// </summary>
+    private static void SendMouse(SceneTree tree, InputEvent input) => tree.Root.PushInput(input);
+
+    /// <summary>
+    /// One press/drag/release, delivered inside a single frame. Headless reports no real
+    /// cursor, so letting _Process run mid-stroke would paint towards (0, 0) and make the
+    /// stroke unreproducible; a real drag can legitimately arrive within one frame.
+    /// </summary>
     private static async Task Stroke(SceneTree tree, Vector2 from, Vector2 to)
     {
-        Input.ParseInputEvent(new InputEventMouseMotion
+        SendMouse(tree, new InputEventMouseMotion
         {
             Position = from,
             GlobalPosition = from,
         });
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-        Input.ParseInputEvent(new InputEventMouseButton
+        SendMouse(tree, new InputEventMouseButton
         {
             ButtonIndex = MouseButton.Left,
             ButtonMask = MouseButtonMask.Left,
@@ -189,16 +206,14 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
             Position = from,
             GlobalPosition = from,
         });
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-        Input.ParseInputEvent(new InputEventMouseMotion
+        SendMouse(tree, new InputEventMouseMotion
         {
             ButtonMask = MouseButtonMask.Left,
             Position = to,
             GlobalPosition = to,
             Relative = to - from,
         });
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-        Input.ParseInputEvent(new InputEventMouseButton
+        SendMouse(tree, new InputEventMouseButton
         {
             ButtonIndex = MouseButton.Left,
             Pressed = false,
@@ -211,7 +226,7 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
     private static async Task SendWheel(SceneTree tree, Vector2 position, bool up)
     {
         MouseButton button = up ? MouseButton.WheelUp : MouseButton.WheelDown;
-        Input.ParseInputEvent(new InputEventMouseButton
+        SendMouse(tree, new InputEventMouseButton
         {
             ButtonIndex = button,
             Pressed = true,
@@ -219,8 +234,7 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
             Position = position,
             GlobalPosition = position,
         });
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-        Input.ParseInputEvent(new InputEventMouseButton
+        SendMouse(tree, new InputEventMouseButton
         {
             ButtonIndex = button,
             Pressed = false,

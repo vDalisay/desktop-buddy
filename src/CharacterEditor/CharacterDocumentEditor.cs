@@ -35,13 +35,21 @@ public static class CharacterDocumentEditor
             [CharacterPartSlot.RightFoot] = "rightFoot",
         };
 
-    private static readonly IReadOnlyDictionary<CharacterFeatureSlot, string> FeatureNames =
-        new Dictionary<CharacterFeatureSlot, string>
+    private static readonly IReadOnlyDictionary<CharacterFeatureSlot, string[]> FeatureNames =
+        new Dictionary<CharacterFeatureSlot, string[]>
         {
-            [CharacterFeatureSlot.Eyes] = "eyes",
-            [CharacterFeatureSlot.Brows] = "brows",
-            [CharacterFeatureSlot.Mouth] = "mouth",
-            [CharacterFeatureSlot.TorsoAccent] = "torsoAccent",
+            [CharacterFeatureSlot.Face] = ["face"],
+            [CharacterFeatureSlot.Hair] = ["hair"],
+            [CharacterFeatureSlot.Brows] = ["eyebrows", "brows"],
+            [CharacterFeatureSlot.Eyes] = ["eyes"],
+            [CharacterFeatureSlot.Nose] = ["nose"],
+            [CharacterFeatureSlot.Mouth] = ["mouth"],
+            [CharacterFeatureSlot.Ears] = ["ears"],
+            [CharacterFeatureSlot.Accessories] = ["accessories", "torsoAccent"],
+            [CharacterFeatureSlot.Glasses] = ["glasses"],
+            [CharacterFeatureSlot.Headwear] = ["headwear"],
+            [CharacterFeatureSlot.Tops] = ["tops"],
+            [CharacterFeatureSlot.Shoes] = ["shoes"],
         };
 
     public static CharacterDocument Rename(CharacterDocument document, string displayName)
@@ -116,6 +124,37 @@ public static class CharacterDocumentEditor
     public static Rgba32 ReadFeatureColor(CharacterDocument document, CharacterFeatureSlot slot) =>
         ReadFeature(document, slot).Color;
 
+    public static CharacterFeatureDocument ReadFeatureDocument(
+        CharacterDocument document,
+        CharacterFeatureSlot slot) => ReadFeature(document, slot);
+
+    public static CharacterDocument SetFeatureDocument(
+        CharacterDocument document,
+        CharacterFeatureSlot slot,
+        CharacterFeatureDocument feature)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(feature);
+        CharacterFeatureSet features = document.Features;
+        CharacterFeatureSet updated = slot switch
+        {
+            CharacterFeatureSlot.Face => features with { Face = feature },
+            CharacterFeatureSlot.Hair => features with { Hair = feature },
+            CharacterFeatureSlot.Brows => features with { Eyebrows = feature },
+            CharacterFeatureSlot.Eyes => features with { Eyes = feature },
+            CharacterFeatureSlot.Nose => features with { Nose = feature },
+            CharacterFeatureSlot.Mouth => features with { Mouth = feature },
+            CharacterFeatureSlot.Ears => features with { Ears = feature },
+            CharacterFeatureSlot.Accessories => features with { Accessories = feature },
+            CharacterFeatureSlot.Glasses => features with { Glasses = feature },
+            CharacterFeatureSlot.Headwear => features with { Headwear = feature },
+            CharacterFeatureSlot.Tops => features with { Tops = feature },
+            CharacterFeatureSlot.Shoes => features with { Shoes = feature },
+            _ => throw new ArgumentOutOfRangeException(nameof(slot), slot, null),
+        };
+        return document with { Features = updated };
+    }
+
     private static CharacterFeatureDocument ReadFeature(
         CharacterDocument document,
         CharacterFeatureSlot slot)
@@ -124,10 +163,19 @@ public static class CharacterDocumentEditor
         CharacterFeatureSet features = document.Features;
         return slot switch
         {
+            CharacterFeatureSlot.Face => features.Face,
+            CharacterFeatureSlot.Hair => features.Hair,
+            CharacterFeatureSlot.Brows => features.Eyebrows,
             CharacterFeatureSlot.Eyes => features.Eyes,
-            CharacterFeatureSlot.Brows => features.Brows,
+            CharacterFeatureSlot.Nose => features.Nose,
             CharacterFeatureSlot.Mouth => features.Mouth,
-            _ => features.TorsoAccent,
+            CharacterFeatureSlot.Ears => features.Ears,
+            CharacterFeatureSlot.Accessories => features.Accessories,
+            CharacterFeatureSlot.Glasses => features.Glasses,
+            CharacterFeatureSlot.Headwear => features.Headwear,
+            CharacterFeatureSlot.Tops => features.Tops,
+            CharacterFeatureSlot.Shoes => features.Shoes,
+            _ => throw new ArgumentOutOfRangeException(nameof(slot), slot, null),
         };
     }
 
@@ -138,6 +186,8 @@ public static class CharacterDocumentEditor
     {
         JsonObject feature = Feature(Root(document), slot);
         SetProperty(feature, "color", JsonValue.Create(color.ToHex()));
+        if (feature["colors"] is JsonObject colors)
+            colors[CosmeticDefinition.PrimaryColorChannel] = color.ToHex();
         return Decode(feature.GetRoot().AsObject());
     }
 
@@ -191,11 +241,12 @@ public static class CharacterDocumentEditor
         return normalized.Document;
     }
 
-    private static JsonObject RequiredObject(JsonObject owner, string expectedName)
+    private static JsonObject RequiredObject(JsonObject owner, params string[] expectedNames)
     {
-        string property = FindProperty(owner, expectedName);
+        string property = FindProperty(owner, expectedNames);
         return owner[property] as JsonObject
-            ?? throw new InvalidOperationException($"Character JSON property '{expectedName}' is not an object.");
+            ?? throw new InvalidOperationException(
+                $"Character JSON property '{string.Join("/", expectedNames)}' is not an object.");
     }
 
     private static void SetProperty(JsonObject owner, string expectedName, JsonNode? value)

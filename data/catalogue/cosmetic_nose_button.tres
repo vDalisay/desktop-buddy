@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticNoseButton"
+script = ExtResource("1")
+ContentId = "cosmetic.nose.button"
+Kind = 4
+PriceCredits = 3
+ProgressionOrder = 17
+Visible = true
+NameKey = "buddy_studio.cosmetic.nose.button.name"
+DescriptionKey = "buddy_studio.cosmetic.nose.button.description"
+RequiresLaunchScene = false
+RequiresIcon = false

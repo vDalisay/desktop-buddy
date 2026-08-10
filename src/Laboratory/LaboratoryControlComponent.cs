@@ -184,6 +184,13 @@ public partial class LaboratoryControlComponent : Node
             return;
         }
 
+        // Single-letter dev keys must never shadow editor accelerators such as Ctrl+Z;
+        // these run in _Input, so anything claimed here never reaches the UI at all.
+        if (key.CtrlPressed || key.AltPressed || key.MetaPressed)
+        {
+            return;
+        }
+
         LastControlKey = key.PhysicalKeycode;
 
         switch (key.PhysicalKeycode)

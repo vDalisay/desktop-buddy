@@ -11,6 +11,11 @@ public static class CharacterDocumentValidator
     private const string ForbiddenNameCharacters = "\\/:*?\"<>|";
 
     public static CharacterValidationResult Validate(CharacterDocument document)
+        => Validate(document, null);
+
+    public static CharacterValidationResult Validate(
+        CharacterDocument document,
+        CharacterFeatureCatalog? catalog)
     {
         ArgumentNullException.ThrowIfNull(document);
         var errors = new List<CharacterValidationIssue>();
@@ -31,18 +36,18 @@ public static class CharacterDocumentValidator
 
         if (document.Features is not null)
         {
-            ValidateFeature(document.Features.Face, "features.face", errors);
-            ValidateFeature(document.Features.Hair, "features.hair", errors);
-            ValidateFeature(document.Features.Eyebrows, "features.eyebrows", errors);
-            ValidateFeature(document.Features.Eyes, "features.eyes", errors);
-            ValidateFeature(document.Features.Nose, "features.nose", errors);
-            ValidateFeature(document.Features.Mouth, "features.mouth", errors);
-            ValidateFeature(document.Features.Ears, "features.ears", errors);
-            ValidateFeature(document.Features.Accessories, "features.accessories", errors);
-            ValidateFeature(document.Features.Glasses, "features.glasses", errors);
-            ValidateFeature(document.Features.Headwear, "features.headwear", errors);
-            ValidateFeature(document.Features.Tops, "features.tops", errors);
-            ValidateFeature(document.Features.Shoes, "features.shoes", errors);
+            ValidateFeature(document.Features.Face, CharacterFeatureSlot.Face, "features.face", catalog, errors);
+            ValidateFeature(document.Features.Hair, CharacterFeatureSlot.Hair, "features.hair", catalog, errors);
+            ValidateFeature(document.Features.Eyebrows, CharacterFeatureSlot.Brows, "features.eyebrows", catalog, errors);
+            ValidateFeature(document.Features.Eyes, CharacterFeatureSlot.Eyes, "features.eyes", catalog, errors);
+            ValidateFeature(document.Features.Nose, CharacterFeatureSlot.Nose, "features.nose", catalog, errors);
+            ValidateFeature(document.Features.Mouth, CharacterFeatureSlot.Mouth, "features.mouth", catalog, errors);
+            ValidateFeature(document.Features.Ears, CharacterFeatureSlot.Ears, "features.ears", catalog, errors);
+            ValidateFeature(document.Features.Accessories, CharacterFeatureSlot.Accessories, "features.accessories", catalog, errors);
+            ValidateFeature(document.Features.Glasses, CharacterFeatureSlot.Glasses, "features.glasses", catalog, errors);
+            ValidateFeature(document.Features.Headwear, CharacterFeatureSlot.Headwear, "features.headwear", catalog, errors);
+            ValidateFeature(document.Features.Tops, CharacterFeatureSlot.Tops, "features.tops", catalog, errors);
+            ValidateFeature(document.Features.Shoes, CharacterFeatureSlot.Shoes, "features.shoes", catalog, errors);
         }
 
         return new CharacterValidationResult(errors.ToArray());
@@ -91,7 +96,9 @@ public static class CharacterDocumentValidator
 
     private static void ValidateFeature(
         CharacterFeatureDocument? feature,
+        CharacterFeatureSlot slot,
         string path,
+        CharacterFeatureCatalog? catalog,
         ICollection<CharacterValidationIssue> errors)
     {
         if (feature is null)
@@ -106,6 +113,22 @@ public static class CharacterDocumentValidator
         ValidateFiniteBounded(feature.OffsetX, NormalizedFeatureTransform.MinimumOffset, NormalizedFeatureTransform.MaximumOffset, $"{path}.offsetX", errors);
         ValidateFiniteBounded(feature.OffsetY, NormalizedFeatureTransform.MinimumOffset, NormalizedFeatureTransform.MaximumOffset, $"{path}.offsetY", errors);
         ValidateFiniteBounded(feature.Scale, NormalizedFeatureTransform.MinimumScale, NormalizedFeatureTransform.MaximumScale, $"{path}.scale", errors);
+
+        if (catalog is not null && catalog.TryGetDefinition(feature.FeatureId, out CosmeticDefinition definition))
+        {
+            if (definition.Slot != slot)
+            {
+                Add(errors, $"{path}.featureId", $"Cosmetic '{feature.FeatureId}' belongs to {definition.Slot}, not {slot}.");
+            }
+            else
+            {
+                var transform = new NormalizedFeatureTransform(feature.OffsetX, feature.OffsetY, feature.Scale);
+                if (!definition.TransformBounds.Contains(transform))
+                    Add(errors, $"{path}.transform", "Transform is outside the cosmetic's authored bounds.");
+                if (definition.TransformPolicy == CosmeticTransformPolicy.None && transform != definition.DefaultTransform)
+                    Add(errors, $"{path}.transform", "This cosmetic does not support transforms.");
+            }
+        }
 
         if (feature.Colors is null)
         {

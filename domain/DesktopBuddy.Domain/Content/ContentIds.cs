@@ -36,6 +36,12 @@ public static class ContentIds
     /// deliberately separate from the character feature ID used to equip/render it.
     /// </summary>
     public const string CosmeticWorkGlasses = "cosmetic.glasses.work_classic";
+    public const string CosmeticHairShortSweep = "cosmetic.hair.short_sweep";
+    public const string CosmeticNoseButton = "cosmetic.nose.button";
+    public const string CosmeticEarsRoundTabs = "cosmetic.ears.round_tabs";
+    public const string CosmeticHeadwearSoftCap = "cosmetic.headwear.soft_cap";
+    public const string CosmeticTopUtilityBib = "cosmetic.tops.utility_bib";
+    public const string CosmeticShoesSoftSteps = "cosmetic.shoes.soft_steps";
 
     public const string LooseObject = "object.loose";
     public const string RoomBoundary = "boundary.room";

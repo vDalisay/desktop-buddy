@@ -14,7 +14,7 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 [GlobalClass]
 public partial class BuddyVisualRigView : Node3D
 {
-    private const float AccentPlateWorldSize = 32.0f;
+    public const float AccentPlateWorldSize = 32.0f;
 
     private readonly Node3D[] _sockets = new Node3D[PuppetRigProfile.RequiredPartCount];
     private readonly MeshInstance3D[] _partMeshes =
@@ -145,6 +145,7 @@ public partial class BuddyVisualRigView : Node3D
 
         BuddyVisualRigTrustSnapshot trust = CaptureTrustSnapshot();
         ApplyPartColorSet(appearance.PartColors);
+        ApplyCosmeticAppearance(appearance);
         _activeAppearance = appearance;
         _appearanceMutationCount++;
 
@@ -165,6 +166,7 @@ public partial class BuddyVisualRigView : Node3D
             changed |= SetActiveBaseColor(index, _partDefinitions[index].Color);
 
         _activeAppearance = null;
+        ClearCosmeticAppearance();
         if (changed)
             _appearanceMutationCount++;
 

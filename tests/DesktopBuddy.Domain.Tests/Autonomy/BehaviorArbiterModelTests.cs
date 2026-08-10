@@ -599,6 +599,17 @@ public sealed class BehaviorArbiterModelTests
     public void Resolve_AllocatesNothingOnTheFixedTickPath()
     {
         var arbiter = new BehaviorArbiterModel();
+
+        // The first pass is discarded: tiered JIT can re-compile the loop while it runs, and
+        // that promotion allocates on this thread, which the counter would blame on Resolve.
+        _ = MeasureTicks(arbiter);
+        long allocated = MeasureTicks(arbiter);
+
+        Assert.Equal(0, allocated);
+    }
+
+    private static long MeasureTicks(BehaviorArbiterModel arbiter)
+    {
         BehaviorSnapshot snapshot = Ambient();
         _ = arbiter.Resolve(snapshot, EagerHopper);
 
@@ -608,9 +619,7 @@ public sealed class BehaviorArbiterModelTests
             snapshot = snapshot with { Tick = tick };
             _ = arbiter.Resolve(snapshot, EagerHopper);
         }
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-
-        Assert.Equal(0, allocated);
+        return GC.GetAllocatedBytesForCurrentThread() - before;
     }
 
     /// <summary>Turns on every layer that is active in either snapshot.</summary>

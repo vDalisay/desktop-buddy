@@ -10,7 +10,7 @@ namespace DesktopBuddy.Domain.Characters;
 
 public static class CharacterDocumentPolicy
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
@@ -23,7 +23,23 @@ public static class CharacterDocumentPolicy
         {
             [1] = MigrateSchema1To2,
             [2] = MigrateSchema2To3,
+            [3] = MigrateSchema3To4,
         };
+
+    /// <summary>
+    /// The empty variants stopped being transformable in schema 4: there is nothing on screen to
+    /// move, so their stored transform is reset to the identity every definition of theirs allows.
+    /// </summary>
+    private static readonly (string Property, string EmptyId)[] EmptyVariants =
+    [
+        ("nose", CharacterFeatureIds.NoseNone),
+        ("ears", CharacterFeatureIds.EarsNone),
+        ("accessories", CharacterFeatureIds.AccentNone),
+        ("glasses", CharacterFeatureIds.GlassesNone),
+    ];
+
+    /// <summary>The slots the 3D rig places, which is the half of the product that used to negate offsetY.</summary>
+    private static readonly string[] RigPlacedFeatures = ["nose", "ears", "glasses"];
 
     public static CharacterDecodeResult DecodeAndMigrate(string json)
     {
@@ -65,7 +81,9 @@ public static class CharacterDocumentPolicy
     public static string Serialize(CharacterDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        CharacterValidationResult validation = CharacterDocumentValidator.Validate(document);
+        CharacterValidationResult validation = CharacterDocumentValidator.Validate(
+            document,
+            CharacterFeatureCatalog.Shipped);
         if (!validation.IsValid)
         {
             string detail = string.Join("; ", validation.Errors.Select(error => $"{error.Path}: {error.Message}"));
@@ -135,6 +153,46 @@ public static class CharacterDocumentPolicy
 
         using JsonDocument migrated = JsonDocument.Parse(root.ToJsonString());
         return migrated.RootElement.Clone();
+    }
+
+    /// <summary>
+    /// Schema 4 settles one offsetY convention for the whole product: positive moves a feature up.
+    /// Nose, ears and glasses are placed by the 3D rig, which used to negate the value, so their
+    /// stored offsets flip here and those characters keep the face their owner saved.
+    /// </summary>
+    private static JsonElement MigrateSchema3To4(JsonElement source)
+    {
+        JsonObject root = JsonNode.Parse(source.GetRawText())?.AsObject()
+            ?? throw new JsonException("Schema 3 payload was not an object.");
+        root["schemaVersion"] = 4;
+        // Same rule as the 2->3 step: a present-but-malformed features block is left exactly as it
+        // is so ValidateKnownJsonShapes still gets to reject it.
+        if (root["features"] is JsonObject features)
+        {
+            foreach (string property in RigPlacedFeatures)
+                NegateOffsetY(features[property] as JsonObject);
+            foreach ((string property, string emptyId) in EmptyVariants)
+                ResetEmptyVariantTransform(features[property] as JsonObject, emptyId);
+        }
+        using JsonDocument migrated = JsonDocument.Parse(root.ToJsonString());
+        return migrated.RootElement.Clone();
+    }
+
+    private static void NegateOffsetY(JsonObject? feature)
+    {
+        if (feature?["offsetY"] is JsonValue offset && offset.TryGetValue(out double offsetY))
+            feature["offsetY"] = offsetY == 0 ? 0.0 : -offsetY;
+    }
+
+    private static void ResetEmptyVariantTransform(JsonObject? feature, string emptyId)
+    {
+        if (feature?["featureId"] is not JsonValue id ||
+            !id.TryGetValue(out string? featureId) ||
+            !string.Equals(featureId, emptyId, StringComparison.Ordinal))
+            return;
+        feature["offsetX"] = 0.0;
+        feature["offsetY"] = 0.0;
+        feature["scale"] = 1.0;
     }
 
     private static void AddDefaultFeature(JsonObject features, string propertyName, string featureId)

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
@@ -49,38 +48,36 @@ public sealed class CharacterEditorPhaseAExitScenario : IScenario
                 colorIndex++;
             }
 
-            foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>())
+            foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>().Distinct())
             {
-                string prefix = slot switch
-                {
-                    CharacterFeatureSlot.Eyes => "eyes.",
-                    CharacterFeatureSlot.Brows => "brows.",
-                    CharacterFeatureSlot.Mouth => "mouth.",
-                    _ => "accent.",
-                };
-                string id = FeatureIds(prefix)
-                    .First(value => slot != CharacterFeatureSlot.TorsoAccent ||
-                        !string.Equals(value, CharacterFeatureIds.AccentNone, StringComparison.Ordinal));
-                touchedAll &= context.Session.SetFeatureId(slot, id).Completed;
+                IReadOnlyList<CosmeticDefinition> definitions =
+                    CharacterFeatureCatalog.Shipped.GetDefinitions(slot);
+                string defaultId = CharacterFeatureCatalog.Shipped.GetDefaultId(slot);
+                CosmeticDefinition selected = definitions.FirstOrDefault(definition =>
+                    !string.Equals(definition.Id, defaultId, StringComparison.Ordinal)) ?? definitions[0];
+                touchedAll &= context.Session.SetFeatureId(slot, selected.Id).Completed;
                 touchedAll &= context.Session.SetFeatureTransform(
                     slot,
-                    new NormalizedFeatureTransform(0.15, -0.2, 1.1)).Completed;
-                touchedAll &= context.Session.SetFeatureColor(
-                    slot,
-                    new Rgba32(28, 44, 72)).Completed;
+                    selected.TransformPolicy == CosmeticTransformPolicy.None
+                        ? NormalizedFeatureTransform.Identity
+                        : new NormalizedFeatureTransform(0.15, -0.2, 1.1)).Completed;
+                if (selected.IsTintable)
+                    touchedAll &= context.Session.SetFeatureColor(
+                        slot,
+                        new Rgba32(28, 44, 72)).Completed;
             }
             checks.Add(new StartupCheck("a9_all_editor_categories_editable", touchedAll,
-                "six part colors and four feature id/transform/color groups"));
+                "six part colors and twelve valid cosmetic feature groups"));
 
+            CharacterDocument randomBaseline = context.Session.WorkingDocument
+                ?? throw new InvalidOperationException("Editor lost the randomization baseline.");
             context.Session.Randomize(7);
             string randomized = CharacterDocumentEditor.Canonical(
                 context.Session.WorkingDocument
                 ?? throw new InvalidOperationException("Randomization lost the working document."));
             string replay = CharacterDocumentEditor.Canonical(
                 CharacterRandomizer.Randomize(
-                    CharacterDocument.CreateDefault(
-                        context.Session.WorkingDocument.Id,
-                        context.Session.WorkingDocument.DisplayName),
+                    randomBaseline,
                     7));
             bool deterministic = string.Equals(randomized, replay, StringComparison.Ordinal);
             checks.Add(new StartupCheck("a9_fixed_seed_randomize", deterministic,
@@ -154,14 +151,4 @@ public sealed class CharacterEditorPhaseAExitScenario : IScenario
             checks,
             [$"seed={seed}"]);
     }
-
-    private static string[] FeatureIds(string prefix) =>
-        typeof(CharacterFeatureIds)
-            .GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Select(field => field.IsLiteral ? field.GetRawConstantValue() as string : field.GetValue(null) as string)
-            .Where(value => value is not null && value.StartsWith(prefix, StringComparison.Ordinal))
-            .Cast<string>()
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(value => value, StringComparer.Ordinal)
-            .ToArray();
 }

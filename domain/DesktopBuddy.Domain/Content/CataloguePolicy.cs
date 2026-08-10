@@ -61,18 +61,32 @@ public static class CataloguePolicy
         ContentIds.ToolDrink,
     };
 
-    /// <summary>Entries the shop may offer: visible, not a starting tool, in order.</summary>
+    /// <summary>Tool entries the general shop may offer: visible, not starting, in order.</summary>
     public static IReadOnlyList<CatalogueEntry> ShopEntries(ToolCatalogue catalogue)
     {
         ArgumentNullException.ThrowIfNull(catalogue);
         var shop = new List<CatalogueEntry>(catalogue.Count);
         foreach (CatalogueEntry entry in catalogue.Entries)
         {
-            if (entry.Visible && !entry.IsStarting)
+            if (entry.Visible && !entry.IsStarting && entry.Kind != CatalogueEntryKind.Cosmetic)
                 shop.Add(entry);
         }
 
         return shop;
+    }
+
+    /// <summary>Released cosmetic entries Buddy Studio may offer, in authored order.</summary>
+    public static IReadOnlyList<CatalogueEntry> CosmeticEntries(ToolCatalogue catalogue)
+    {
+        ArgumentNullException.ThrowIfNull(catalogue);
+        var cosmetics = new List<CatalogueEntry>(catalogue.Count);
+        foreach (CatalogueEntry entry in catalogue.Entries)
+        {
+            if (entry.Visible && entry.Kind == CatalogueEntryKind.Cosmetic)
+                cosmetics.Add(entry);
+        }
+
+        return cosmetics;
     }
 
     /// <summary>
@@ -147,11 +161,14 @@ public static class CataloguePolicy
                 errors.Add($"launch catalogue entry '{id}' is missing");
         }
 
-        if (catalogue.Count != LaunchContentIds.Count)
+        int toolEntryCount = 0;
+        foreach (CatalogueEntry entry in catalogue.Entries)
+            toolEntryCount += ContentIds.IsTool(entry.ContentId) ? 1 : 0;
+        if (toolEntryCount != LaunchContentIds.Count)
         {
             errors.Add(
-                $"launch catalogue must hold exactly {LaunchContentIds.Count} entries " +
-                $"(FR-013.2); found {catalogue.Count}");
+                $"launch catalogue must hold exactly {LaunchContentIds.Count} tool entries " +
+                $"(FR-013.2); found {toolEntryCount}");
         }
 
         // The composition audit (M5 Task 13B): the shipped catalogue may only hold entries
@@ -177,6 +194,9 @@ public static class CataloguePolicy
                 errors.Add($"'{entry.ContentId}' is not an ownable catalogue entry");
                 continue;
             }
+
+            if (entry.Kind == CatalogueEntryKind.Cosmetic)
+                continue;
 
             if (!entry.IsSelectable)
             {

@@ -321,8 +321,9 @@ public sealed class PaintWorkspace
             surface.Clear();
             patches.Add(new PaintPatch(part, whole, before, surface.ClonePixels()));
         }
+        if (patches.Count == 0) return;
         _history.Push(new PaintCommand(patches));
-        if (patches.Count > 0) IsDirty = true;
+        IsDirty = true;
     }
 
     public bool Undo()
@@ -374,8 +375,13 @@ public sealed class PaintWorkspace
             if (!builder.Before.AsSpan().SequenceEqual(after))
                 patches.Add(new PaintPatch(part, builder.Rectangle, builder.Before, after));
         }
-        _history.Push(new PaintCommand(patches));
-        if (patches.Count > 0) IsDirty = true;
+        // A gesture that changed nothing must not push an undo entry, or Ctrl+Z spends
+        // itself popping an empty command instead of reverting the last real stroke.
+        if (patches.Count > 0)
+        {
+            _history.Push(new PaintCommand(patches));
+            IsDirty = true;
+        }
         builders.Clear();
         return patches.Count > 0;
     }

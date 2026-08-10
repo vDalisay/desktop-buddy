@@ -1,71 +1,100 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using DesktopBuddy.Domain.Characters;
 
 namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
-/// Fully deterministic Phase A randomization. Stable IDs are discovered from the shipped
-/// constants, sorted ordinally, and sampled with an owned xorshift stream. Torso accent
-/// deliberately excludes accent.none.
+/// Deterministic twelve-category Studio randomization. Eligibility comes only from trusted
+/// free definitions and the caller's existing permanent cosmetic ownership set.
 /// </summary>
 public static class CharacterRandomizer
 {
-    private static readonly string[] Eyes = Ids("eyes.");
-    private static readonly string[] Brows = Ids("brows.");
-    private static readonly string[] Mouth = Ids("mouth.");
-    private static readonly string[] Accents = Ids("accent.")
-        .Where(id => !string.Equals(id, CharacterFeatureIds.AccentNone, StringComparison.Ordinal))
-        .ToArray();
+    private static readonly Rgba32[] SafeColors =
+    [
+        Rgba32.Parse("#183042"),
+        Rgba32.Parse("#386A8C"),
+        Rgba32.Parse("#6A4937"),
+        Rgba32.Parse("#C95B63"),
+        Rgba32.Parse("#E3A33A"),
+        Rgba32.Parse("#74B9E8"),
+        Rgba32.Parse("#8A6BC4"),
+        Rgba32.Parse("#5A6575"),
+    ];
 
-    public static CharacterDocument Randomize(CharacterDocument document, ulong seed)
+    public static CharacterDocument Randomize(CharacterDocument document, ulong seed) =>
+        Randomize(
+            document,
+            CharacterFeatureCatalog.Shipped,
+            new HashSet<string>(StringComparer.Ordinal),
+            seed);
+
+    public static CharacterDocument Randomize(
+        CharacterDocument document,
+        CharacterFeatureCatalog catalogue,
+        IReadOnlySet<string> ownedCosmeticIds,
+        ulong seed)
     {
         ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(catalogue);
+        ArgumentNullException.ThrowIfNull(ownedCosmeticIds);
         var random = new XorShift64(seed == 0 ? 0x9E3779B97F4A7C15UL : seed);
         CharacterDocument result = document;
 
         foreach (CharacterPartSlot part in Enum.GetValues<CharacterPartSlot>())
             result = CharacterDocumentEditor.SetPartColor(result, part, NextColor(ref random));
 
-        result = RandomizeFeature(result, CharacterFeatureSlot.Eyes, Eyes, ref random);
-        result = RandomizeFeature(result, CharacterFeatureSlot.Brows, Brows, ref random);
-        result = RandomizeFeature(result, CharacterFeatureSlot.Mouth, Mouth, ref random);
-        result = RandomizeFeature(result, CharacterFeatureSlot.TorsoAccent, Accents, ref random);
-        return result;
+        foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>().Distinct())
+        {
+            CosmeticDefinition[] eligible = catalogue.GetDefinitions(slot)
+                .Where(definition => definition.IsFreeDefault ||
+                    (definition.OwnershipContentId is string contentId &&
+                     ownedCosmeticIds.Contains(contentId)))
+                .ToArray();
+            if (eligible.Length == 0)
+                throw new InvalidOperationException($"No owned or free cosmetic definition exists for {slot}.");
+
+            CosmeticDefinition selected = eligible[random.NextInt(eligible.Length)];
+            NormalizedFeatureTransform transform = selected.TransformPolicy == CosmeticTransformPolicy.None
+                ? selected.DefaultTransform
+                : new NormalizedFeatureTransform(
+                    NextRange(ref random, selected.TransformBounds.MinimumOffsetX, selected.TransformBounds.MaximumOffsetX),
+                    NextRange(ref random, selected.TransformBounds.MinimumOffsetY, selected.TransformBounds.MaximumOffsetY),
+                    NextRange(ref random, selected.TransformBounds.MinimumScale, selected.TransformBounds.MaximumScale));
+            var colors = selected.ColorChannels.ToDictionary(
+                channel => channel.Id,
+                _ => NextColor(ref random),
+                StringComparer.Ordinal);
+            Rgba32 legacyColor = colors.TryGetValue(CosmeticDefinition.PrimaryColorChannel, out Rgba32 primary)
+                ? primary
+                : CharacterDocumentEditor.ReadFeatureColor(result, slot);
+            result = CharacterDocumentEditor.SetFeatureDocument(
+                result,
+                slot,
+                new CharacterFeatureDocument
+                {
+                    FeatureId = selected.Id,
+                    OffsetX = transform.OffsetX,
+                    OffsetY = transform.OffsetY,
+                    Scale = transform.Scale,
+                    Color = legacyColor,
+                    Colors = colors,
+                });
+        }
+
+        CharacterNormalizationResult normalized = CharacterDocumentNormalizer.Normalize(result);
+        CharacterValidationResult validation = CharacterDocumentValidator.Validate(
+            normalized.Document,
+            catalogue);
+        if (!validation.IsValid)
+            throw new InvalidOperationException(
+                $"Randomized character was invalid: {string.Join("; ", validation.Errors)}");
+        return normalized.Document;
     }
 
-    private static CharacterDocument RandomizeFeature(
-        CharacterDocument document,
-        CharacterFeatureSlot slot,
-        IReadOnlyList<string> ids,
-        ref XorShift64 random)
-    {
-        if (ids.Count == 0)
-            throw new InvalidOperationException($"No shipped feature IDs exist for {slot}.");
-
-        CharacterDocument result = CharacterDocumentEditor.SetFeatureId(
-            document,
-            slot,
-            ids[random.NextInt(ids.Count)]);
-        result = CharacterDocumentEditor.SetFeatureTransform(
-            result,
-            slot,
-            new NormalizedFeatureTransform(
-                NextRange(ref random, NormalizedFeatureTransform.MinimumOffset,
-                    NormalizedFeatureTransform.MaximumOffset),
-                NextRange(ref random, NormalizedFeatureTransform.MinimumOffset,
-                    NormalizedFeatureTransform.MaximumOffset),
-                NextRange(ref random, NormalizedFeatureTransform.MinimumScale,
-                    NormalizedFeatureTransform.MaximumScale)));
-        return CharacterDocumentEditor.SetFeatureColor(result, slot, NextColor(ref random));
-    }
-
-    private static Rgba32 NextColor(ref XorShift64 random) => new(
-        (byte)(32 + random.NextInt(224)),
-        (byte)(32 + random.NextInt(224)),
-        (byte)(32 + random.NextInt(224)));
+    private static Rgba32 NextColor(ref XorShift64 random) =>
+        SafeColors[random.NextInt(SafeColors.Length)];
 
     private static double NextRange(ref XorShift64 random, double minimum, double maximum)
     {
@@ -73,16 +102,6 @@ public static class CharacterRandomizer
         double value = minimum + ((maximum - minimum) * unit);
         return Math.Round(value, 4, MidpointRounding.AwayFromZero);
     }
-
-    private static string[] Ids(string prefix) =>
-        typeof(CharacterFeatureIds)
-            .GetFields(BindingFlags.Public | BindingFlags.Static)
-            .Select(field => field.IsLiteral ? field.GetRawConstantValue() as string : field.GetValue(null) as string)
-            .Where(value => value is not null && value.StartsWith(prefix, StringComparison.Ordinal))
-            .Cast<string>()
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(value => value, StringComparer.Ordinal)
-            .ToArray();
 
     private struct XorShift64
     {
