@@ -25,7 +25,10 @@ public partial class EnvironmentDecorator : CanvasLayer
     private Control _blocker = null!;
     private PanelContainer _panel = null!;
     private Win98CategoryStrip _categories = null!;
+    private Label _catalogTitle = null!;
     private Win98CatalogGrid _catalogue = null!;
+    private TextureRect _selectionPreview = null!;
+    private Label _selectionLabel = null!;
     private Win98ValuePanel _values = null!;
     private Button _place = null!;
     private Button _move = null!;
@@ -195,10 +198,34 @@ public partial class EnvironmentDecorator : CanvasLayer
         _categories.SelectionChanged += SelectCategory;
         body.AddChild(_categories);
 
+        _catalogTitle = new Label { Name = "EnvironmentCatalogTitle", Text = "Catalog" };
+        body.AddChild(_catalogTitle);
         _catalogue = new Win98CatalogGrid { Name = "EnvironmentCatalog", CustomMinimumSize = new Vector2(0, 150) };
         _catalogue.ConfigureTileSize(116, 132);
         _catalogue.SelectionChanged += SelectDefinition;
         body.AddChild(_catalogue);
+
+        var selected = new HBoxContainer { Name = "EnvironmentSelectedItem" };
+        selected.AddThemeConstantOverride("separation", 8);
+        body.AddChild(selected);
+        _selectionPreview = new TextureRect
+        {
+            Name = "EnvironmentSelectedPreview",
+            CustomMinimumSize = new Vector2(52, 52),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        selected.AddChild(_selectionPreview);
+        _selectionLabel = new Label
+        {
+            Name = "EnvironmentSelectedLabel",
+            Text = "Select a catalogue item or a placed decoration.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        selected.AddChild(_selectionLabel);
 
         // Keep placement preferences and item actions on separate rows so the supported compact
         // window width never turns the editor into one overflowing strip of controls.
@@ -275,6 +302,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         if (!Enum.TryParse(id, out DecorationCategory category)) return;
         _selectedCategory = category;
+        _catalogTitle.Text = $"Catalog - {CategoryLabel(category)}";
         CancelUnusedReservation();
         _placement.Cancel();
         _selectedDefinition = null;
@@ -339,7 +367,7 @@ public partial class EnvironmentDecorator : CanvasLayer
 
     private void BeginMoveMode()
     {
-        if (_session is null || _session.WorkingLayout.Decorations.Count == 0) return;
+        if (_session is null || !_session.WorkingLayout.Decorations.Any(item => item.RenderBand != DecorationRenderBand.Wallpaper)) return;
         CancelUnusedReservation();
         _moveBaseline = _session.WorkingLayout;
         _moveMode = true;
@@ -586,17 +614,50 @@ public partial class EnvironmentDecorator : CanvasLayer
             _session.ReservedDefinitionId == _selectedDefinition.ToDefinition().Id;
         long additionalCost = _selectedDefinition is null || matchingReservation ? 0 : cost;
         long afterPurchase = available >= additionalCost ? available - additionalCost : 0;
-        _values.SetRows([
-            new("available", "Available Funds", ContentDisplayName.Credits(available)),
-            new("cost", "Item Cost", ContentDisplayName.Credits(cost)),
-            new("projected", "After Purchase", ContentDisplayName.Credits(afterPurchase), true),
-            new("in-room", "In Room", CountInRoom(SelectedDefinitionId()).ToString()),
-        ]);
+        DecorationDefinitionId selectionId = SelectedDefinitionId();
+
+        if (_selectedDefinition is null && _selectedInstance != default)
+        {
+            _values.SetRows([
+                new("available", "Available Funds", ContentDisplayName.Credits(available)),
+                new("selected", "Selected Item", selectionId == default ? "Unknown" : DisplayName(selectionId)),
+                new("in-room", "In Room", CountInRoom(selectionId).ToString(), true),
+            ]);
+        }
+        else
+        {
+            _values.SetRows([
+                new("available", "Available Funds", ContentDisplayName.Credits(available)),
+                new("cost", "Item Cost", ContentDisplayName.Credits(cost)),
+                new("projected", "After Purchase", ContentDisplayName.Credits(afterPurchase), true),
+                new("in-room", "In Room", CountInRoom(selectionId).ToString()),
+            ]);
+        }
+
         _place.Disabled = _selectedDefinition is null || (!matchingReservation && available < cost);
-        _move.Visible = _session?.WorkingLayout.Decorations.Count > 0;
+        _move.Visible = _session?.WorkingLayout.Decorations.Any(item => item.RenderBand != DecorationRenderBand.Wallpaper) == true;
         _rotate.Disabled = !CanRotateSelected();
         _delete.Disabled = _selectedInstance == default;
+        RefreshSelectionSummary();
         RefreshCatalogueBadges();
+    }
+
+    private void RefreshSelectionSummary()
+    {
+        EnvironmentDecorationResource? resource = _selectedDefinition;
+        if (resource is null && TryFindPlaced(_selectedInstance, out PlacedDecoration placed))
+            resource = EnvironmentDecorationRegistry.Find(placed.DefinitionId);
+        if (resource is null)
+        {
+            _selectionPreview.Texture = null;
+            _selectionLabel.Text = "Select a catalogue item or a placed decoration.";
+            return;
+        }
+
+        DecorationDefinition definition = resource.ToDefinition();
+        _selectionPreview.Texture = Preview(resource);
+        _selectionLabel.Text = $"{DisplayName(definition.Id)}  |  {ContentDisplayName.Credits(definition.PriceMilliCredits)}  |  " +
+            $"{definition.AnchorKind}";
     }
 
     private bool CanRotateSelected()
