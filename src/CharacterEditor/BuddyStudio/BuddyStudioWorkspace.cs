@@ -203,8 +203,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         };
         if (direction != Vector2.Zero)
         {
-            // Screen-space direction, exactly like the drag: the surface decides the document sign.
-            Nudge(new Vector2(direction.X, direction.Y * FeatureSurface(_slot).YSign) *
+            // Screen-space direction, flipped to the document's Y-up convention like the drag.
+            Nudge(new Vector2(direction.X, -direction.Y) *
                 (key.ShiftPressed ? 0.05f : 0.01f));
             GetViewport().SetInputAsHandled();
         }
@@ -450,30 +450,26 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     /// </summary>
     private Vector2 ToDocumentOffset(Vector2 pixels)
     {
-        (float halfExtent, float ySign) = FeatureSurface(_slot);
         float pixelsPerWorldUnit = _previewInput.Size.Y / _previewCamera.Size;
         float pixelsPerOffsetUnit =
-            pixelsPerWorldUnit * CharacterFeatureTransform.OffsetExtent * halfExtent;
+            pixelsPerWorldUnit * CharacterFeatureTransform.OffsetExtent * FeatureHalfExtent(_slot);
         if (!float.IsFinite(pixelsPerOffsetUnit) || pixelsPerOffsetUnit <= 0f)
             return Vector2.Zero;
-        return new Vector2(pixels.X, pixels.Y * ySign) / pixelsPerOffsetUnit;
+        // Screen Y grows downward and documented offsetY grows upward, on every surface alike.
+        return new Vector2(pixels.X, -pixels.Y) / pixelsPerOffsetUnit;
     }
 
     /// <summary>
-    /// The surface a feature rides, and the sign that turns screen-down into document-down on it.
-    /// Composited decals live in the Y-up normalized space the feature painters share, so their
-    /// documented offset grows upward; anchored 3D cosmetics negate the same value instead.
-    /// ponytail: this table mirrors renderer knowledge because the two surfaces disagree on the
-    /// vertical sign. Collapse it once one offsetY convention wins — that needs a save migration
-    /// for characters that already carry nose, ear, or glasses offsets, so it is its own change.
+    /// The half-extent of the surface a feature rides: composited decals span their plate, while
+    /// anchored 3D cosmetics are placed against the head radius.
     /// </summary>
-    private (float HalfExtent, float YSign) FeatureSurface(CharacterFeatureSlot slot) => slot switch
+    private float FeatureHalfExtent(CharacterFeatureSlot slot) => slot switch
     {
         CharacterFeatureSlot.Eyes or CharacterFeatureSlot.Brows or CharacterFeatureSlot.Mouth =>
-            (ParametricFaceCompositor.PlateWorldSize * 0.5f, -1f),
+            ParametricFaceCompositor.PlateWorldSize * 0.5f,
         CharacterFeatureSlot.Accessories =>
-            (BuddyVisualRigView.AccentPlateWorldSize * 0.5f, -1f),
-        _ => (HeadRadius(), 1f),
+            BuddyVisualRigView.AccentPlateWorldSize * 0.5f,
+        _ => HeadRadius(),
     };
 
     private float HeadRadius()

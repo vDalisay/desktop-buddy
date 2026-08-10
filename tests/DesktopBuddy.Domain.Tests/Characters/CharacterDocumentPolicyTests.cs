@@ -207,6 +207,83 @@ public sealed class CharacterDocumentPolicyTests
         Assert.Null(result.Document);
     }
 
+    [Fact]
+    public void Schema3_FlipsRigPlacedOffsetsOntoTheSharedYUpConventionAndLeavesDecalsAlone()
+    {
+        string json = $$"""
+            {
+              "schemaVersion": 3,
+              "id": "{{CharacterId:D}}",
+              "displayName": "Legacy",
+              "features": {
+                "nose": { "featureId": "nose.button", "offsetX": 0.25, "offsetY": 0.4, "scale": 1.0 },
+                "ears": { "featureId": "ears.round_tabs", "offsetX": 0.0, "offsetY": -0.3, "scale": 1.0 },
+                "glasses": { "featureId": "glasses.work_classic", "offsetX": 0.1, "offsetY": 0.2, "scale": 1.0 },
+                "eyes": { "featureId": "eyes.round_dot", "offsetX": 0.1, "offsetY": 0.5, "scale": 1.0 }
+              }
+            }
+            """;
+
+        CharacterDecodeResult result = CharacterDocumentPolicy.DecodeAndMigrate(json);
+
+        Assert.True(result.IsSuccess);
+        CharacterDocument document = result.Document!;
+        // The rig used to negate offsetY, so these flip and the saved face survives unchanged.
+        Assert.Equal(-0.4, document.Features.Nose.OffsetY);
+        Assert.Equal(0.3, document.Features.Ears.OffsetY);
+        Assert.Equal(-0.2, document.Features.Glasses.OffsetY);
+        // Horizontal never disagreed, and decals already meant "up".
+        Assert.Equal(0.25, document.Features.Nose.OffsetX);
+        Assert.Equal(0.1, document.Features.Glasses.OffsetX);
+        Assert.Equal(0.5, document.Features.Eyes.OffsetY);
+    }
+
+    [Fact]
+    public void Schema3_ResetsOffsetsParkedOnEmptyVariantsSoTheyStillSerialize()
+    {
+        string json = $$"""
+            {
+              "schemaVersion": 3,
+              "id": "{{CharacterId:D}}",
+              "displayName": "Legacy",
+              "features": {
+                "nose": { "featureId": "nose.none", "offsetX": 0.25, "offsetY": 0.4, "scale": 1.2 },
+                "accessories": { "featureId": "accent.none", "offsetX": -0.5, "offsetY": 0.1, "scale": 0.8 }
+              }
+            }
+            """;
+
+        CharacterDecodeResult result = CharacterDocumentPolicy.DecodeAndMigrate(json);
+
+        Assert.True(result.IsSuccess);
+        CharacterDocument document = result.Document!;
+        Assert.Equal(NormalizedFeatureTransform.Identity, Transform(document.Features.Nose));
+        Assert.Equal(NormalizedFeatureTransform.Identity, Transform(document.Features.Accessories));
+        // An offset parked on an invisible slot would now fail validation, so the migration clears it.
+        Assert.NotNull(CharacterDocumentPolicy.Serialize(document));
+    }
+
+    [Fact]
+    public void EveryEmptyVariantIsNonTransformable()
+    {
+        string[] emptyIds =
+        [
+            CharacterFeatureIds.NoseNone, CharacterFeatureIds.EarsNone,
+            CharacterFeatureIds.AccentNone, CharacterFeatureIds.GlassesNone,
+            CharacterFeatureIds.HairNone, CharacterFeatureIds.HeadwearNone,
+            CharacterFeatureIds.TopNone, CharacterFeatureIds.ShoesNone,
+        ];
+
+        foreach (string id in emptyIds)
+        {
+            Assert.True(CharacterFeatureCatalog.Shipped.TryGetDefinition(id, out CosmeticDefinition definition));
+            Assert.Equal(CosmeticTransformPolicy.None, definition.TransformPolicy);
+        }
+    }
+
+    private static NormalizedFeatureTransform Transform(CharacterFeatureDocument feature) =>
+        new(feature.OffsetX, feature.OffsetY, feature.Scale);
+
     private static CharacterFeatureDocument Feature(
         string id,
         double x,

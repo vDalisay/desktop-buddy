@@ -20,8 +20,8 @@ The Work Mode project already landed more Buddy Studio foundation than the older
 
 Already present:
 
-- character schema version **3**;
-- sequential schema `2 -> 3` migration;
+- character schema version **4**;
+- sequential schema `2 -> 3` and `3 -> 4` migrations;
 - all twelve feature slots in `CharacterFeatureSet`;
 - named `CharacterFeatureDocument.Colors` map seam;
 - legacy Brows/TorsoAccent source aliases;
@@ -123,7 +123,12 @@ Loaded/worn cosmetics after ownership loss follow the existing plan rule: owners
 
 Do not perform another schema bump just to implement the planned categories.
 
-Current schema 3 already serializes:
+Schema 4 settles the vertical convention rather than adding shape: a positive `offsetY` moves a
+feature **up** everywhere, and the empty `*.none` variants are non-transformable. The migration
+flips the stored `offsetY` of the rig-placed slots (nose, ears, glasses), which used to mean the
+opposite, and clears any transform parked on an empty variant.
+
+The schema already serializes:
 
 ```text
 Face

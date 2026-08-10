@@ -247,6 +247,11 @@ public partial class BuddyVisualRigView
         _cosmeticAnchors.Add(id, anchor);
     }
 
+    /// <summary>
+    /// One offsetY convention across the product: a positive documented offset moves the feature
+    /// up, matching the Y-up normalized space the feature painters draw in and Godot's own +Y.
+    /// Characters saved before schema 4 carried the opposite sign here and are migrated on load.
+    /// </summary>
     private static void ApplyFeatureTransform(
         Node3D root,
         in NormalizedFeatureTransform transform,
@@ -254,7 +259,7 @@ public partial class BuddyVisualRigView
     {
         root.Position = new Vector3(
             (float)transform.OffsetX * radius * 0.35f,
-            (float)-transform.OffsetY * radius * 0.35f,
+            (float)transform.OffsetY * radius * 0.35f,
             0);
         root.Scale = Vector3.One * (float)transform.Scale;
     }
