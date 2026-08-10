@@ -94,12 +94,14 @@ public sealed class CharacterEditorSession
 
     public async Task<CharacterEditorActionResult> SelectAsync(Guid characterId, CancellationToken token = default)
     {
+        CancelTransientPaintPreview();
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Select, characterId);
         return await SelectCoreAsync(characterId, token);
     }
 
     public CharacterEditorActionResult NewCharacter(string displayName = "New Character")
     {
+        CancelTransientPaintPreview();
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.New, null);
         ClearPaint(saved: false);
         SetWorking(CharacterDocument.CreateDefault(_newGuid(), displayName), saved: null);
@@ -108,6 +110,7 @@ public sealed class CharacterEditorSession
 
     public CharacterEditorActionResult Duplicate(string? displayName = null)
     {
+        CancelTransientPaintPreview();
         if (WorkingDocument is null) return Failure("Select a character before duplicating it.");
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Duplicate, null);
         string name = string.IsNullOrWhiteSpace(displayName)
@@ -151,6 +154,7 @@ public sealed class CharacterEditorSession
 
     public CharacterEditorActionResult ResetWorkingCopy()
     {
+        CancelTransientPaintPreview();
         if (_savedDocument is null) return Failure("This character has not been saved yet.");
         RestoreSavedPaint();
         SetWorking(_savedDocument, _savedDocument);
@@ -174,6 +178,7 @@ public sealed class CharacterEditorSession
 
     public async Task<CharacterEditorActionResult> SaveAsync(CancellationToken token = default)
     {
+        CancelTransientPaintPreview();
         if (WorkingDocument is null) return Failure("There is no working character to save.");
 
         CharacterSaveResult saved;
@@ -202,6 +207,7 @@ public sealed class CharacterEditorSession
 
     public async Task<CharacterEditorActionResult> UseCharacterAsync(CancellationToken token = default)
     {
+        CancelTransientPaintPreview();
         CharacterEditorActionResult saved = IsDirty ? await SaveAsync(token) : new CharacterEditorActionResult(true);
         if (!saved.Completed || WorkingDocument is null) return saved;
         CharacterActivationResult activation = await _selection.QueueUseCharacterAsync(WorkingDocument.Id, token);
@@ -212,6 +218,7 @@ public sealed class CharacterEditorSession
 
     public async Task<CharacterEditorActionResult> DeleteAsync(CancellationToken token = default)
     {
+        CancelTransientPaintPreview();
         if (WorkingDocument is null) return Failure("Select a character before deleting it.");
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Delete, WorkingDocument.Id);
         Guid id = WorkingDocument.Id;
@@ -228,6 +235,7 @@ public sealed class CharacterEditorSession
 
     public CharacterEditorActionResult RequestClose()
     {
+        CancelTransientPaintPreview();
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Close, null);
         CloseResolved?.Invoke(true);
         return new CharacterEditorActionResult(true);
@@ -237,6 +245,7 @@ public sealed class CharacterEditorSession
         UnsavedDecision decision,
         CancellationToken token = default)
     {
+        CancelTransientPaintPreview();
         CharacterEditorPendingAction action = _pendingAction;
         Guid? characterId = _pendingCharacterId;
         _pendingAction = CharacterEditorPendingAction.None;
@@ -349,6 +358,8 @@ public sealed class CharacterEditorSession
             _paintWorkspace.MarkDirty();
         }
     }
+
+    private void CancelTransientPaintPreview() => _paintWorkspace?.CancelPreviewTransaction();
 
     private CharacterEditorActionResult Mutate(Func<CharacterDocument, CharacterDocument> mutation)
     {
