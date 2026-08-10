@@ -5,7 +5,7 @@ using System.Linq;
 namespace DesktopBuddy.Domain.Painting;
 
 public enum PaintPart { Head, Torso, LeftHand, RightHand, LeftFoot, RightFoot }
-public enum PaintTool { Brush, Spray, Eraser }
+public enum PaintTool { Brush, Spray, Curve, Eraser }
 
 public readonly record struct PaintColor(byte R, byte G, byte B)
 {
