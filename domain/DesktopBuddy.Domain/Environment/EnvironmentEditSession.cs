@@ -156,16 +156,30 @@ public sealed class EnvironmentEditSession
         return true;
     }
 
-    public EnvironmentEditResult RemoveStaged(PlacedDecorationId instanceId)
+    /// <summary>
+    /// Removes any placed decoration. Saved purchases are intentionally not refunded; a decoration
+    /// created during this still-open session is only a staged purchase, so deleting it restores
+    /// that staged cost before the room transaction is committed.
+    /// </summary>
+    public EnvironmentEditResult Remove(PlacedDecorationId instanceId)
     {
         int index = Find(instanceId);
         if (index < 0) return new(EnvironmentEditStatus.UnknownInstance);
         PlacedDecoration placed = _working[index];
-        if (_baseline.Decorations.Any(item => item.InstanceId == instanceId))
-            return new(EnvironmentEditStatus.UnknownInstance);
-        if (!TryChangeDelta(placed.PurchasePriceMilliCredits)) return new(EnvironmentEditStatus.ArithmeticOverflow);
+        bool existedAtOpen = _baseline.Decorations.Any(item => item.InstanceId == instanceId);
+        if (!existedAtOpen && !TryChangeDelta(placed.PurchasePriceMilliCredits))
+            return new(EnvironmentEditStatus.ArithmeticOverflow);
         _working.RemoveAt(index);
         return new(EnvironmentEditStatus.Succeeded, instanceId);
+    }
+
+    public EnvironmentEditResult RemoveStaged(PlacedDecorationId instanceId)
+    {
+        int index = Find(instanceId);
+        if (index < 0) return new(EnvironmentEditStatus.UnknownInstance);
+        if (_baseline.Decorations.Any(item => item.InstanceId == instanceId))
+            return new(EnvironmentEditStatus.UnknownInstance);
+        return Remove(instanceId);
     }
 
     public void Cancel() { _working = _baseline.Decorations.ToList(); _pendingDelta = 0; ClearReservation(); }
