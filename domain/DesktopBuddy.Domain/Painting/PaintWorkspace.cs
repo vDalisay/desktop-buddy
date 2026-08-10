@@ -98,6 +98,10 @@ public sealed class PaintWorkspace
         public PaintRect Rectangle { get; private set; }
         public byte[] Before { get; private set; } = Array.Empty<byte>();
 
+        /// <summary>
+        /// Expands the clean baseline capture before a mutation occurs. Existing baseline bytes are
+        /// copied back over the newly captured union so an earlier preview can never become baseline.
+        /// </summary>
         public void Expand(PaintSurface surface, PaintRect candidate)
         {
             if (candidate.IsEmpty) return;
@@ -111,7 +115,11 @@ public sealed class PaintWorkspace
             Before = expanded;
         }
 
-        private static void CopyPatch(ReadOnlySpan<byte> source, PaintRect sourceRect, Span<byte> destination, PaintRect destinationRect)
+        private static void CopyPatch(
+            ReadOnlySpan<byte> source,
+            PaintRect sourceRect,
+            Span<byte> destination,
+            PaintRect destinationRect)
         {
             int sourceStride = sourceRect.Width * PaintPolicy.BytesPerPixel;
             int destinationStride = destinationRect.Width * PaintPolicy.BytesPerPixel;
@@ -129,8 +137,10 @@ public sealed class PaintWorkspace
         Enum.GetValues<PaintPart>().ToDictionary(part => part, _ => new PaintSurface());
     private readonly PaintUndoHistory _history = new();
     private readonly Dictionary<PaintPart, GesturePatchBuilder> _gestureBefore = new();
+    private readonly Dictionary<PaintPart, GesturePatchBuilder> _previewBefore = new();
     private PaintHit? _lastHit;
     private bool _gestureActive;
+    private bool _previewActive;
     private PaintTool _selectedTool = PaintTool.Brush;
     private ulong _sprayGestureSeed = 0xD1B54A32D192ED03UL;
     private ulong _sprayPulseOrdinal;
@@ -142,6 +152,7 @@ public sealed class PaintWorkspace
         {
             if (_selectedTool == value) return;
             EndGesture();
+            CancelPreviewTransaction();
             _selectedTool = value;
         }
     }
@@ -153,6 +164,7 @@ public sealed class PaintWorkspace
     public long UndoMemoryBytes => _history.MemoryBytes;
     public bool IsDirty { get; private set; }
     public bool GestureActive => _gestureActive;
+    public bool PreviewActive => _previewActive;
     public IReadOnlyDictionary<PaintPart, PaintSurface> Surfaces => _surfaces;
 
     public void AdjustBrush(int steps) => BrushDiameter = (int)Math.Clamp(
@@ -165,6 +177,7 @@ public sealed class PaintWorkspace
 
     public void BeginGesture(PaintHit? hit)
     {
+        CancelPreviewTransaction();
         EndGesture();
         _gestureActive = true;
         _lastHit = null;
@@ -182,8 +195,9 @@ public sealed class PaintWorkspace
             return;
         }
 
-        CaptureBefore(valid.Part, PaintSurface.StampBounds(valid.Uv, BrushDiameter));
-        _surfaces[valid.Part].Stamp(valid.Uv, BrushDiameter, _selectedTool, SelectedColor);
+        PaintTool mutation = _selectedTool == PaintTool.Eraser ? PaintTool.Eraser : PaintTool.Brush;
+        CaptureBefore(_gestureBefore, valid.Part, PaintSurface.StampBounds(valid.Uv, BrushDiameter));
+        _surfaces[valid.Part].Stamp(valid.Uv, BrushDiameter, mutation, SelectedColor);
     }
 
     public void ContinueGesture(PaintHit? hit)
@@ -199,15 +213,16 @@ public sealed class PaintWorkspace
             return;
         }
 
+        PaintTool mutation = _selectedTool == PaintTool.Eraser ? PaintTool.Eraser : PaintTool.Brush;
         if (_lastHit is PaintHit previous && previous.Part == current.Part && IsBridgeable(previous.Uv, current.Uv))
         {
-            CaptureBefore(current.Part, PaintSurface.StrokeBounds(previous.Uv, current.Uv, BrushDiameter));
-            _surfaces[current.Part].Stroke(previous.Uv, current.Uv, BrushDiameter, _selectedTool, SelectedColor);
+            CaptureBefore(_gestureBefore, current.Part, PaintSurface.StrokeBounds(previous.Uv, current.Uv, BrushDiameter));
+            _surfaces[current.Part].Stroke(previous.Uv, current.Uv, BrushDiameter, mutation, SelectedColor);
         }
         else
         {
-            CaptureBefore(current.Part, PaintSurface.StampBounds(current.Uv, BrushDiameter));
-            _surfaces[current.Part].Stamp(current.Uv, BrushDiameter, _selectedTool, SelectedColor);
+            CaptureBefore(_gestureBefore, current.Part, PaintSurface.StampBounds(current.Uv, BrushDiameter));
+            _surfaces[current.Part].Stamp(current.Uv, BrushDiameter, mutation, SelectedColor);
         }
         _lastHit = current;
     }
@@ -215,26 +230,77 @@ public sealed class PaintWorkspace
     public void EndGesture()
     {
         if (!_gestureActive) return;
-
-        List<PaintPatch> patches = new();
-        foreach ((PaintPart part, GesturePatchBuilder builder) in _gestureBefore)
-        {
-            if (builder.Rectangle.IsEmpty) continue;
-            byte[] after = _surfaces[part].Capture(builder.Rectangle);
-            if (!builder.Before.AsSpan().SequenceEqual(after))
-                patches.Add(new PaintPatch(part, builder.Rectangle, builder.Before, after));
-        }
-        _history.Push(new PaintCommand(patches));
-        if (patches.Count > 0) IsDirty = true;
-        _gestureBefore.Clear();
+        CommitBuilders(_gestureBefore);
         _gestureActive = false;
         _lastHit = null;
+    }
+
+    /// <summary>
+    /// Starts a compound preview edit such as Curved Line. Preview pixels are visible on the real
+    /// surfaces, but do not become dirty/history state until <see cref="FinalizePreviewTransaction"/>.
+    /// </summary>
+    public void BeginPreviewTransaction()
+    {
+        EndGesture();
+        CancelPreviewTransaction();
+        _previewActive = true;
+    }
+
+    /// <summary>
+    /// Restores the clean preview baseline and rasterises one sampled path. A null hit is a hard
+    /// continuity break; a new part also starts a new segment, so curves never bridge empty space.
+    /// </summary>
+    public void RenderPreviewPath(IReadOnlyList<PaintHit?> samples)
+    {
+        ArgumentNullException.ThrowIfNull(samples);
+        if (!_previewActive)
+            throw new InvalidOperationException("BeginPreviewTransaction must be called before rendering a preview path.");
+
+        RestoreBuilders(_previewBefore);
+        PaintHit? previous = null;
+        foreach (PaintHit? sample in samples)
+        {
+            if (sample is not PaintHit current || !current.IsValid)
+            {
+                previous = null;
+                continue;
+            }
+
+            if (previous is PaintHit prior && prior.Part == current.Part && IsBridgeable(prior.Uv, current.Uv))
+            {
+                CaptureBefore(_previewBefore, current.Part, PaintSurface.StrokeBounds(prior.Uv, current.Uv, BrushDiameter));
+                _surfaces[current.Part].Stroke(prior.Uv, current.Uv, BrushDiameter, PaintTool.Brush, SelectedColor);
+            }
+            else
+            {
+                CaptureBefore(_previewBefore, current.Part, PaintSurface.StampBounds(current.Uv, BrushDiameter));
+                _surfaces[current.Part].Stamp(current.Uv, BrushDiameter, PaintTool.Brush, SelectedColor);
+            }
+            previous = current;
+        }
+    }
+
+    public bool FinalizePreviewTransaction()
+    {
+        if (!_previewActive) return false;
+        bool changed = CommitBuilders(_previewBefore);
+        _previewActive = false;
+        return changed;
+    }
+
+    public bool CancelPreviewTransaction()
+    {
+        if (!_previewActive) return false;
+        RestoreBuilders(_previewBefore);
+        _previewBefore.Clear();
+        _previewActive = false;
+        return true;
     }
 
     private void SprayPulse(PaintHit hit)
     {
         PaintRect bounds = PaintSurface.StampBounds(hit.Uv, BrushDiameter);
-        CaptureBefore(hit.Part, bounds);
+        CaptureBefore(_gestureBefore, hit.Part, bounds);
         ulong seed = _sprayGestureSeed + (_sprayPulseOrdinal++ * 0x9E3779B97F4A7C15UL);
         _surfaces[hit.Part].Spray(hit.Uv, BrushDiameter, SelectedColor, seed);
     }
@@ -251,6 +317,7 @@ public sealed class PaintWorkspace
 
     public void EraseAll()
     {
+        CancelPreviewTransaction();
         EndGesture();
         PaintRect whole = new(0, 0, PaintPolicy.SurfaceSize, PaintPolicy.SurfaceSize);
         List<PaintPatch> patches = new();
@@ -267,6 +334,7 @@ public sealed class PaintWorkspace
 
     public bool Undo()
     {
+        if (CancelPreviewTransaction()) return true;
         EndGesture();
         if (!_history.TryUndo(out PaintCommand command)) return false;
         Restore(command, useAfter: false);
@@ -276,6 +344,7 @@ public sealed class PaintWorkspace
 
     public bool Redo()
     {
+        if (CancelPreviewTransaction()) return true;
         EndGesture();
         if (!_history.TryRedo(out PaintCommand command)) return false;
         Restore(command, useAfter: true);
@@ -287,6 +356,7 @@ public sealed class PaintWorkspace
 
     public void MarkSaved()
     {
+        CancelPreviewTransaction();
         EndGesture();
         _history.Clear();
         IsDirty = false;
@@ -294,9 +364,36 @@ public sealed class PaintWorkspace
 
     public void Load(PaintPart part, ReadOnlySpan<byte> pixels)
     {
+        CancelPreviewTransaction();
+        EndGesture();
         _surfaces[part].Replace(pixels);
         _history.Clear();
         IsDirty = false;
+    }
+
+    private bool CommitBuilders(Dictionary<PaintPart, GesturePatchBuilder> builders)
+    {
+        List<PaintPatch> patches = new();
+        foreach ((PaintPart part, GesturePatchBuilder builder) in builders)
+        {
+            if (builder.Rectangle.IsEmpty) continue;
+            byte[] after = _surfaces[part].Capture(builder.Rectangle);
+            if (!builder.Before.AsSpan().SequenceEqual(after))
+                patches.Add(new PaintPatch(part, builder.Rectangle, builder.Before, after));
+        }
+        _history.Push(new PaintCommand(patches));
+        if (patches.Count > 0) IsDirty = true;
+        builders.Clear();
+        return patches.Count > 0;
+    }
+
+    private void RestoreBuilders(Dictionary<PaintPart, GesturePatchBuilder> builders)
+    {
+        foreach ((PaintPart part, GesturePatchBuilder builder) in builders)
+        {
+            if (!builder.Rectangle.IsEmpty)
+                _surfaces[part].Restore(builder.Rectangle, builder.Before);
+        }
     }
 
     private void Restore(PaintCommand command, bool useAfter)
@@ -305,12 +402,15 @@ public sealed class PaintWorkspace
             _surfaces[patch.Part].Restore(patch.Rectangle, useAfter ? patch.After : patch.Before);
     }
 
-    private void CaptureBefore(PaintPart part, PaintRect rectangle)
+    private void CaptureBefore(
+        Dictionary<PaintPart, GesturePatchBuilder> builders,
+        PaintPart part,
+        PaintRect rectangle)
     {
-        if (!_gestureBefore.TryGetValue(part, out GesturePatchBuilder? builder))
+        if (!builders.TryGetValue(part, out GesturePatchBuilder? builder))
         {
             builder = new GesturePatchBuilder();
-            _gestureBefore.Add(part, builder);
+            builders.Add(part, builder);
         }
         builder.Expand(_surfaces[part], rectangle);
     }
