@@ -86,6 +86,13 @@ public partial class Win98PaintToolBootstrap : Node
         picker.AddChild(_curve);
         picker.AddChild(_pan);
 
+        IconizeOptional("PaintUndoButton", PaintToolIconProvider.Undo, "Undo", "Undo the last paint action (Ctrl+Z).");
+        IconizeOptional("PaintRedoButton", PaintToolIconProvider.Redo, "Redo", "Redo the last undone paint action (Ctrl+Y or Ctrl+Shift+Z).");
+        IconizeOptional("PaintEraseAllButton", PaintToolIconProvider.EraseAll, "Erase All", "Erase all buddy paint after confirmation.");
+        IconizeOptional("PaintZoomOutButton", PaintToolIconProvider.ZoomOut, "Zoom Out", "Zoom the paint preview out.");
+        IconizeOptional("PaintZoomInButton", PaintToolIconProvider.ZoomIn, "Zoom In", "Zoom the paint preview in.");
+        IconizeOptional("PaintResetViewButton", PaintToolIconProvider.ResetView, "Reset View", "Reset paint preview zoom and pan.");
+
         _brush!.Pressed += SelectBrush;
         _eraser!.Pressed += SelectEraser;
         _spray.Pressed += SelectSpray;
@@ -130,6 +137,12 @@ public partial class Win98PaintToolBootstrap : Node
         };
         PaintToolIconProvider.Apply(button, iconId, fallbackText, tooltip);
         return button;
+    }
+
+    private void IconizeOptional(string nodeName, string iconId, string fallbackText, string tooltip)
+    {
+        if (GetTree().Root.FindChild(nodeName, recursive: true, owned: false) is Button button)
+            PaintToolIconProvider.Apply(button, iconId, fallbackText, tooltip);
     }
 
     private void SelectBrush() => SelectPaintMutation(PaintTool.Brush, _brush);
