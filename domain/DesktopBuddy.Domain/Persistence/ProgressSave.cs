@@ -354,6 +354,11 @@ public sealed record LocalSettingsSave
     public bool WorkAnimationsEnabled { get; init; } = true;
     public bool WorkShowLifetimeCounter { get; init; }
 
+    // Environment editor preferences are local UX state, not room progression. Reset Progress must
+    // preserve them exactly like window placement and Work presentation preferences.
+    public bool EnvironmentSnapToGrid { get; init; }
+    public EnvironmentGridSize EnvironmentGridSize { get; init; } = EnvironmentGridSize.Medium;
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? UnknownFields { get; init; }
 }
