@@ -49,7 +49,7 @@ Implemented visual families include:
 - existing Accessories/accent rendering;
 - explicit bounded cosmetic render layers and visual-only anchors.
 
-Cosmetics remain presentation-only. The established rig scenario asserts that cosmetic swaps do not add physics authority and do not mutate trusted buddy geometry.
+Cosmetics remain presentation-only. The established rig and live-swap scenarios assert that cosmetic/appearance swaps do not add physics authority, do not mutate trusted buddy geometry, and do not change the simulation physics contract.
 
 ### Ownership and purchase
 
@@ -127,14 +127,16 @@ tools\validate_buddy_studio.bat
 The focused validator performs:
 
 1. solution build;
-2. complete domain test project;
+2. complete domain test project, including schema-2 migration, schema-3 compatibility migration, transform policy/bounds and compiler coverage;
 3. Godot import;
 4. `character_rig_view` — trusted anchors, render layers, cosmetic physics isolation, hair/headwear compatibility and Paint Buddy underlay preservation;
-5. `buddy_studio_ownership_preview` — unowned preview, Save block, permanent Buy, explicit Equip, Cancel semantics, ownership-loss behavior and purchase/equip/restart;
-6. `buddy_studio_randomize` — deterministic twelve-category owned/free-only Randomize and paint preservation;
-7. `buddy_studio_ui_composition` — twelve-category UI, authored commerce/thumbnails, purchase/equip UX, transforms, focus/dirty-close and Studio interaction behavior;
-8. `character_editor_create_use_and_react` — all-category character edit/save/use/restart plus the established Paint Buddy save/use/restart journey;
-9. the normal-boot `--buddy-studio-startup-check` — verifies the production `Customize > Buddy Studio` route opens the real workspace through the actual bootstrap path.
+5. `expression_renderer_coverage` — alternative semantic Eyes, Eyebrows and Mouth families remain valid across required expression poses;
+6. `character_swap_physics_invariant` — live appearance swaps preserve the gameplay physics invariant;
+7. `buddy_studio_ownership_preview` — unowned preview, Save block, permanent Buy, explicit Equip, Cancel semantics, ownership-loss behavior and purchase/equip/restart;
+8. `buddy_studio_randomize` — deterministic twelve-category owned/free-only Randomize and paint preservation;
+9. `buddy_studio_ui_composition` — twelve-category UI, authored commerce/thumbnails, purchase/equip UX, transforms, focus/dirty-close and Studio interaction behavior;
+10. `character_editor_create_use_and_react` — all-category character edit/save/use/restart plus the established Paint Buddy save/use/restart journey;
+11. the normal-boot `--buddy-studio-startup-check` — verifies the production `Customize > Buddy Studio` route opens the real workspace through the actual bootstrap path.
 
 These tests are committed but have **not** been executed by the GitHub connector. Local execution is the source of truth.
 
