@@ -13,6 +13,12 @@ public enum EnvironmentDecorationVisualKind
     Wallpaper,
     Plant,
     Table,
+    ArcLamp,
+    LoungeSofa,
+    GeometricPainting,
+    GridWallpaper,
+    LeafyPlant,
+    DiningTable,
 }
 
 [GlobalClass]
