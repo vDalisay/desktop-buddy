@@ -53,10 +53,10 @@ public static class EnvironmentDecorationVisualFactory
         float usable = 1f - (margin * 2f);
         foreach (Part part in Parts(definition.VisualKind))
         {
-            int x0 = Mathf.FloorToInt((margin + ((part.X - (part.Width * .5f)) + .5f) * usable) * pixels);
-            int y0 = Mathf.FloorToInt((margin + ((part.Y - (part.Height * .5f)) + .5f) * usable) * pixels);
-            int x1 = Mathf.CeilToInt((margin + ((part.X + (part.Width * .5f)) + .5f) * usable) * pixels) - 1;
-            int y1 = Mathf.CeilToInt((margin + ((part.Y + (part.Height * .5f)) + .5f) * usable) * pixels) - 1;
+            int x0 = (int)Math.Floor((margin + ((part.X - (part.Width * .5f)) + .5f) * usable) * pixels);
+            int y0 = (int)Math.Floor((margin + ((part.Y - (part.Height * .5f)) + .5f) * usable) * pixels);
+            int x1 = (int)Math.Ceiling((margin + ((part.X + (part.Width * .5f)) + .5f) * usable) * pixels) - 1;
+            int y1 = (int)Math.Ceiling((margin + ((part.Y + (part.Height * .5f)) + .5f) * usable) * pixels) - 1;
             FillRect(image, x0, y0, x1, y1, ResolveColor(definition, part.Color));
         }
         return ImageTexture.CreateFromImage(image);
@@ -71,7 +71,7 @@ public static class EnvironmentDecorationVisualFactory
         _ => definition.PrimaryColor,
     };
 
-    private static ReadOnlySpan<Part> Parts(EnvironmentDecorationVisualKind kind) => kind switch
+    private static Part[] Parts(EnvironmentDecorationVisualKind kind) => kind switch
     {
         EnvironmentDecorationVisualKind.FloorLamp =>
         [
