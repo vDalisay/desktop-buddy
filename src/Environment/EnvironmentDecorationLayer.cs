@@ -41,9 +41,12 @@ public partial class EnvironmentDecorationLayer : Node3D
         {
             EnvironmentDecorationResource? resource = EnvironmentDecorationRegistry.Find(placed.DefinitionId);
             if (resource is null) continue;
-            float halfX = resource.VisualSize.X / roomWidth * .5f;
-            float halfY = resource.VisualSize.Y / roomHeight * .5f;
-            if (Math.Abs(point.X - placed.Position.X) > halfX || Math.Abs(point.Y - placed.Position.Y) > halfY) continue;
+            bool wallpaper = placed.RenderBand == DecorationRenderBand.Wallpaper;
+            float halfX = wallpaper ? .5f : resource.VisualSize.X / roomWidth * .5f;
+            float halfY = wallpaper ? .5f : resource.VisualSize.Y / roomHeight * .5f;
+            float centerX = wallpaper ? .5f : placed.Position.X;
+            float centerY = wallpaper ? .5f : placed.Position.Y;
+            if (Math.Abs(point.X - centerX) > halfX || Math.Abs(point.Y - centerY) > halfY) continue;
             if (!best.HasValue || EnvironmentDecorationPresenter.ZFor(placed.RenderBand) >
                 EnvironmentDecorationPresenter.ZFor(best.Value.RenderBand)) best = placed;
         }
@@ -65,6 +68,7 @@ public partial class EnvironmentDecorationLayer : Node3D
         _presenters.Clear();
         float width = Math.Max(1f, (float)_boundaries.CurrentLayout.RoomWidth);
         float height = Math.Max(1f, (float)_boundaries.CurrentLayout.RoomHeight);
+        Vector2 roomSize = new(width, height);
         foreach (PlacedDecoration placed in layout.Decorations)
         {
             EnvironmentDecorationResource? resource = EnvironmentDecorationRegistry.Find(placed.DefinitionId);
@@ -72,7 +76,7 @@ public partial class EnvironmentDecorationLayer : Node3D
             var presenter = new EnvironmentDecorationPresenter { Name = $"Decoration_{placed.InstanceId}" };
             AddChild(presenter);
             presenter.Position = new Vector3(placed.Position.X * width, -placed.Position.Y * height, 0);
-            presenter.Configure(placed, resource);
+            presenter.Configure(placed, resource, roomSize);
             _presenters[placed.InstanceId] = presenter;
         }
     }
