@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using DesktopBuddy.Domain.Painting;
 
 namespace DesktopBuddy.Domain.Environment;
 
-public enum EnvironmentPaintTool { Brush, Eraser, Fill, PickColor, Square, Circle, Line }
+public enum EnvironmentPaintTool { Brush, Spray, Eraser, Fill, PickColor, Square, Circle, Line, CurvedLine }
+public enum EnvironmentCurvePhase { Idle, BaselineDragging, AwaitFirstBend, FirstBendDragging, AwaitSecondBend, SecondBendDragging }
 
 public static class EnvironmentCanvasPolicy
 {
@@ -13,29 +15,35 @@ public static class EnvironmentCanvasPolicy
     public const int MinBrushDiameter = 2;
     public const int MaxBrushDiameter = 96;
     public const int DefaultBrushDiameter = 16;
-
-    /// <summary>Whole-surface undo snapshots at 1 MiB each; twelve keeps the editor near 12 MiB.</summary>
-    // ponytail: whole-surface snapshots, move to dirty-rectangle patches if the depth has to grow.
+    public const int BrushStep = 2;
     public const int UndoDepth = 12;
     public const string RelativePath = "environment/background.png";
     public static EnvironmentColor DefaultColor => new(192, 192, 192);
 }
 
 /// <summary>
-/// The room background as a painted 512x512 RGBA8 image in canonical 0..1 room space. Unlike the
-/// character paint surface this canvas clamps at its edges instead of wrapping U, and it owns the
-/// fill/shape rasterisation the character painter has no use for, so the two stay separate.
+/// Room background paint surface. It deliberately clamps both axes, unlike buddy paint's cyclic U.
+/// Shape/curve previews restore one captured baseline before rerasterising.
 /// </summary>
 public sealed class EnvironmentCanvas
 {
     private readonly byte[] _pixels = new byte[EnvironmentCanvasPolicy.Bytes];
     private readonly LinkedList<byte[]> _undo = new();
     private byte[]? _strokeBase;
+    private byte[]? _curveBase;
     private int _originX;
     private int _originY;
     private int _lastX = -1;
     private int _lastY = -1;
     private bool _stroking;
+    private EnvironmentPaintTool _tool = EnvironmentPaintTool.Brush;
+    private EnvironmentCurvePhase _curvePhase;
+    private CubicPaintCurve _curve;
+    private PaintCurveBend _firstBend;
+    private PaintCurveBend _previewBend;
+    private double _activeBendT;
+    private ulong _sprayGestureSeed = 0xA0761D6478BD642FUL;
+    private ulong _sprayPulseOrdinal;
 
     public EnvironmentCanvas() => FillAll(EnvironmentCanvasPolicy.DefaultColor);
 
@@ -43,48 +51,95 @@ public sealed class EnvironmentCanvas
     public bool IsDirty { get; private set; }
     public bool CanUndo => _undo.Count > 0;
     public ReadOnlyMemory<byte> Pixels => _pixels;
-    public EnvironmentPaintTool Tool { get; set; } = EnvironmentPaintTool.Brush;
+    public EnvironmentCurvePhase CurvePhase => _curvePhase;
+    public bool CurvePending => _curvePhase != EnvironmentCurvePhase.Idle;
+
+    public EnvironmentPaintTool Tool
+    {
+        get => _tool;
+        set
+        {
+            if (_tool == value) return;
+            if (CurvePending) CancelPendingCurve();
+            else if (_stroking) End(double.NaN, double.NaN);
+            _tool = value;
+        }
+    }
+
     public EnvironmentColor Color { get; set; } = new(0, 0, 0);
 
     private int _brushDiameter = EnvironmentCanvasPolicy.DefaultBrushDiameter;
     public int BrushDiameter
     {
         get => _brushDiameter;
-        set => _brushDiameter = Math.Clamp(
-            value, EnvironmentCanvasPolicy.MinBrushDiameter, EnvironmentCanvasPolicy.MaxBrushDiameter);
+        set => _brushDiameter = Math.Clamp(value, EnvironmentCanvasPolicy.MinBrushDiameter, EnvironmentCanvasPolicy.MaxBrushDiameter);
     }
 
-    /// <summary>Pointer press. Canonical coordinates outside 0..1 are ignored.</summary>
+    public void AdjustBrush(int steps) => BrushDiameter = (int)Math.Clamp(
+        BrushDiameter + ((long)steps * EnvironmentCanvasPolicy.BrushStep),
+        EnvironmentCanvasPolicy.MinBrushDiameter,
+        EnvironmentCanvasPolicy.MaxBrushDiameter);
+
     public void Begin(double x, double y)
     {
+        if (_tool == EnvironmentPaintTool.CurvedLine)
+        {
+            BeginCurve(x, y);
+            return;
+        }
         if (!TryPixel(x, y, out int px, out int py)) return;
+
         byte[] snapshot = (byte[])_pixels.Clone();
         _stroking = true;
         _originX = px;
         _originY = py;
         _lastX = px;
         _lastY = py;
-        switch (Tool)
+        switch (_tool)
         {
-            case EnvironmentPaintTool.Brush: Stamp(px, py, Color); break;
-            case EnvironmentPaintTool.Eraser: Stamp(px, py, EnvironmentCanvasPolicy.DefaultColor); break;
-            case EnvironmentPaintTool.Fill: Fill(px, py, Color); break;
+            case EnvironmentPaintTool.Brush:
+                Stamp(px, py, Color);
+                break;
+            case EnvironmentPaintTool.Spray:
+                _sprayGestureSeed += 0x9E3779B97F4A7C15UL;
+                _sprayPulseOrdinal = 0;
+                Spray(px, py, Color, NextSpraySeed());
+                break;
+            case EnvironmentPaintTool.Eraser:
+                Stamp(px, py, EnvironmentCanvasPolicy.DefaultColor);
+                break;
+            case EnvironmentPaintTool.Fill:
+                Fill(px, py, Color);
+                break;
             case EnvironmentPaintTool.PickColor:
                 if (TrySample(px, py, out EnvironmentColor picked)) Color = picked;
                 break;
-            default: _strokeBase = (byte[])_pixels.Clone(); break;
+            default:
+                _strokeBase = (byte[])_pixels.Clone();
+                break;
         }
         PushUndo(snapshot);
     }
 
-    /// <summary>Pointer drag. Shapes redraw from the pre-drag image so the preview follows live.</summary>
     public void Continue(double x, double y)
     {
-        if (!_stroking || !TryPixel(x, y, out int px, out int py)) return;
-        switch (Tool)
+        if (_tool == EnvironmentPaintTool.CurvedLine)
         {
-            case EnvironmentPaintTool.Brush: Line(_lastX, _lastY, px, py, Color); break;
-            case EnvironmentPaintTool.Eraser: Line(_lastX, _lastY, px, py, EnvironmentCanvasPolicy.DefaultColor); break;
+            ContinueCurve(x, y);
+            return;
+        }
+        if (!_stroking || !TryPixel(x, y, out int px, out int py)) return;
+        switch (_tool)
+        {
+            case EnvironmentPaintTool.Brush:
+                Line(_lastX, _lastY, px, py, Color);
+                break;
+            case EnvironmentPaintTool.Spray:
+                Spray(px, py, Color, NextSpraySeed());
+                break;
+            case EnvironmentPaintTool.Eraser:
+                Line(_lastX, _lastY, px, py, EnvironmentCanvasPolicy.DefaultColor);
+                break;
             case EnvironmentPaintTool.Square:
             case EnvironmentPaintTool.Circle:
             case EnvironmentPaintTool.Line:
@@ -98,11 +153,28 @@ public sealed class EnvironmentCanvas
 
     public void End(double x, double y)
     {
+        if (_tool == EnvironmentPaintTool.CurvedLine)
+        {
+            EndCurve(x, y);
+            return;
+        }
         if (!_stroking) return;
         Continue(x, y);
         _stroking = false;
         _strokeBase = null;
         SettleGesture();
+    }
+
+    public bool CancelPendingCurve()
+    {
+        if (!CurvePending) return false;
+        if (_curveBase is not null)
+        {
+            _curveBase.CopyTo(_pixels.AsSpan());
+            Revision++;
+        }
+        ClearCurveState();
+        return true;
     }
 
     public bool TryPick(double x, double y, out EnvironmentColor color)
@@ -113,6 +185,8 @@ public sealed class EnvironmentCanvas
 
     public bool Undo()
     {
+        if (CancelPendingCurve()) return true;
+        if (_stroking) End(double.NaN, double.NaN);
         if (_undo.Last is null) return false;
         byte[] restored = _undo.Last.Value;
         _undo.RemoveLast();
@@ -122,18 +196,19 @@ public sealed class EnvironmentCanvas
         return true;
     }
 
-    /// <summary>Reset paints the whole room back to the blank default; it stays undoable.</summary>
     public void Reset()
     {
+        CancelPendingCurve();
+        if (_stroking) End(double.NaN, double.NaN);
         byte[] snapshot = (byte[])_pixels.Clone();
         FillAll(EnvironmentCanvasPolicy.DefaultColor);
         PushUndo(snapshot);
         SettleGesture();
     }
 
-    /// <summary>Adopts stored pixels; the loaded image is the new clean baseline.</summary>
     public void Replace(ReadOnlySpan<byte> pixels)
     {
+        CancelPendingCurve();
         if (pixels.Length != EnvironmentCanvasPolicy.Bytes)
             throw new ArgumentException("The room canvas must be exactly 512x512 RGBA8.", nameof(pixels));
         pixels.CopyTo(_pixels);
@@ -146,8 +221,118 @@ public sealed class EnvironmentCanvas
 
     public void MarkSaved()
     {
+        CancelPendingCurve();
+        if (_stroking) End(double.NaN, double.NaN);
         _undo.Clear();
         IsDirty = false;
+    }
+
+    private void BeginCurve(double x, double y)
+    {
+        if (!TryPixel(x, y, out int px, out int py)) return;
+        PaintPoint pointer = new(px, py);
+        switch (_curvePhase)
+        {
+            case EnvironmentCurvePhase.Idle:
+                _curveBase = (byte[])_pixels.Clone();
+                _originX = px;
+                _originY = py;
+                _curve = ClassicCurveGeometry.Straight(pointer, pointer);
+                _curvePhase = EnvironmentCurvePhase.BaselineDragging;
+                _stroking = true;
+                PreviewCurve();
+                break;
+            case EnvironmentCurvePhase.AwaitFirstBend:
+                _activeBendT = ClassicCurveGeometry.ClosestParameter(_curve, pointer);
+                _previewBend = new PaintCurveBend(_activeBendT, pointer);
+                _curvePhase = EnvironmentCurvePhase.FirstBendDragging;
+                _stroking = true;
+                break;
+            case EnvironmentCurvePhase.AwaitSecondBend:
+                _activeBendT = ClassicCurveGeometry.ClosestParameter(_curve, pointer);
+                _previewBend = new PaintCurveBend(_activeBendT, pointer);
+                _curvePhase = EnvironmentCurvePhase.SecondBendDragging;
+                _stroking = true;
+                break;
+        }
+    }
+
+    private void ContinueCurve(double x, double y)
+    {
+        if (!_stroking || !TryPixel(x, y, out int px, out int py)) return;
+        PaintPoint pointer = new(px, py);
+        PaintPoint start = new(_originX, _originY);
+        switch (_curvePhase)
+        {
+            case EnvironmentCurvePhase.BaselineDragging:
+                _curve = ClassicCurveGeometry.Straight(start, pointer);
+                PreviewCurve();
+                break;
+            case EnvironmentCurvePhase.FirstBendDragging:
+                _previewBend = new PaintCurveBend(_activeBendT, pointer);
+                _curve = ClassicCurveGeometry.BendOnce(_curve.Start, _curve.End, _previewBend);
+                PreviewCurve();
+                break;
+            case EnvironmentCurvePhase.SecondBendDragging:
+                _previewBend = new PaintCurveBend(_activeBendT, pointer);
+                _curve = ClassicCurveGeometry.BendTwice(_curve.Start, _curve.End, _firstBend, _previewBend);
+                PreviewCurve();
+                break;
+        }
+    }
+
+    private void EndCurve(double x, double y)
+    {
+        if (!_stroking) return;
+        ContinueCurve(x, y);
+        _stroking = false;
+        switch (_curvePhase)
+        {
+            case EnvironmentCurvePhase.BaselineDragging:
+                _curvePhase = EnvironmentCurvePhase.AwaitFirstBend;
+                break;
+            case EnvironmentCurvePhase.FirstBendDragging:
+                _firstBend = _previewBend;
+                _curvePhase = EnvironmentCurvePhase.AwaitSecondBend;
+                break;
+            case EnvironmentCurvePhase.SecondBendDragging:
+                FinalizeCurve();
+                break;
+        }
+    }
+
+    private void PreviewCurve()
+    {
+        if (_curveBase is null) return;
+        _curveBase.CopyTo(_pixels.AsSpan());
+        Revision++;
+        DrawCurve(_curve);
+    }
+
+    private void FinalizeCurve()
+    {
+        if (_curveBase is null)
+        {
+            ClearCurveState();
+            return;
+        }
+        byte[] baseline = _curveBase;
+        if (!baseline.AsSpan().SequenceEqual(_pixels))
+        {
+            PushUndo(baseline);
+            IsDirty = true;
+        }
+        ClearCurveState();
+    }
+
+    private void ClearCurveState()
+    {
+        _curveBase = null;
+        _curvePhase = EnvironmentCurvePhase.Idle;
+        _stroking = false;
+        _firstBend = default;
+        _previewBend = default;
+        _activeBendT = 0;
     }
 
     private void PushUndo(byte[] snapshot)
@@ -156,7 +341,6 @@ public sealed class EnvironmentCanvas
         while (_undo.Count > EnvironmentCanvasPolicy.UndoDepth) _undo.RemoveFirst();
     }
 
-    /// <summary>A gesture that changed nothing leaves neither an undo step nor unsaved changes.</summary>
     private void SettleGesture()
     {
         if (_undo.Last is null) return;
@@ -173,12 +357,25 @@ public sealed class EnvironmentCanvas
 
     private void DrawShape(int px, int py)
     {
-        switch (Tool)
+        switch (_tool)
         {
             case EnvironmentPaintTool.Line: Line(_originX, _originY, px, py, Color); break;
             case EnvironmentPaintTool.Square: Rectangle(_originX, _originY, px, py); break;
             case EnvironmentPaintTool.Circle: Ellipse(_originX, _originY, px, py); break;
         }
+    }
+
+    private void DrawCurve(CubicPaintCurve curve)
+    {
+        IReadOnlyList<PaintPoint> points = ClassicCurveGeometry.Sample(curve, Math.Max(1.0, BrushDiameter * 0.12));
+        for (int index = 1; index < points.Count; index++)
+        {
+            PaintPoint from = points[index - 1];
+            PaintPoint to = points[index];
+            Line((int)Math.Round(from.X), (int)Math.Round(from.Y), (int)Math.Round(to.X), (int)Math.Round(to.Y), Color);
+        }
+        if (points.Count == 1)
+            Stamp((int)Math.Round(points[0].X), (int)Math.Round(points[0].Y), Color);
     }
 
     private void Rectangle(int x0, int y0, int x1, int y1)
@@ -230,23 +427,36 @@ public sealed class EnvironmentCanvas
         int maxY = Math.Min(EnvironmentCanvasPolicy.Size - 1, (int)Math.Ceiling(centerY + radius));
         bool changed = false;
         for (int y = minY; y <= maxY; y++)
+        for (int x = minX; x <= maxX; x++)
         {
-            for (int x = minX; x <= maxX; x++)
-            {
-                double offsetX = x - centerX;
-                double offsetY = y - centerY;
-                if ((offsetX * offsetX) + (offsetY * offsetY) > radiusSquared) continue;
-                changed |= Write(x, y, color);
-            }
+            double offsetX = x - centerX;
+            double offsetY = y - centerY;
+            if ((offsetX * offsetX) + (offsetY * offsetY) > radiusSquared) continue;
+            changed |= Write(x, y, color);
         }
         if (changed) Revision++;
     }
 
-    /// <summary>Four-way flood fill over the contiguous run of the colour under the pointer.</summary>
+    private void Spray(int centerX, int centerY, EnvironmentColor color, ulong seed)
+    {
+        double radius = BrushDiameter / 2.0;
+        PaintPoint[] offsets = SprayPattern.SampleUnitDisk(seed, SprayPattern.PointCountForDiameter(BrushDiameter));
+        bool changed = false;
+        foreach (PaintPoint offset in offsets)
+        {
+            int x = (int)Math.Round(centerX + (offset.X * radius));
+            int y = (int)Math.Round(centerY + (offset.Y * radius));
+            if (x < 0 || y < 0 || x >= EnvironmentCanvasPolicy.Size || y >= EnvironmentCanvasPolicy.Size) continue;
+            changed |= Write(x, y, color);
+        }
+        if (changed) Revision++;
+    }
+
+    private ulong NextSpraySeed() => _sprayGestureSeed + (_sprayPulseOrdinal++ * 0x9E3779B97F4A7C15UL);
+
     private void Fill(int startX, int startY, EnvironmentColor color)
     {
-        if (!TrySample(startX, startY, out EnvironmentColor target)) return;
-        if (target == color) return;
+        if (!TrySample(startX, startY, out EnvironmentColor target) || target == color) return;
         var pending = new Stack<(int X, int Y)>();
         pending.Push((startX, startY));
         while (pending.Count > 0)
@@ -267,10 +477,7 @@ public sealed class EnvironmentCanvas
     {
         int index = ((y * EnvironmentCanvasPolicy.Size) + x) * EnvironmentCanvasPolicy.BytesPerPixel;
         if (_pixels[index] == color.Red && _pixels[index + 1] == color.Green &&
-            _pixels[index + 2] == color.Blue && _pixels[index + 3] == byte.MaxValue)
-        {
-            return false;
-        }
+            _pixels[index + 2] == color.Blue && _pixels[index + 3] == byte.MaxValue) return false;
         _pixels[index] = color.Red;
         _pixels[index + 1] = color.Green;
         _pixels[index + 2] = color.Blue;
