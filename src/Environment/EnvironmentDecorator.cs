@@ -17,8 +17,6 @@ public partial class EnvironmentDecorator : CanvasLayer
     private BuddyProgressState _progress = null!;
     private EconomyService _economy = null!;
     private LabPointerGrabComponent _pointer = null!;
-    private CanvasItem _buddy2D = null!;
-    private Node3D _buddy3D = null!;
     private EnvironmentProgressState _state = null!;
     private SaveCoordinator _saves = null!;
     private EnvironmentDecorationLayer _visuals = null!;
@@ -29,9 +27,10 @@ public partial class EnvironmentDecorator : CanvasLayer
     private Win98CategoryStrip _categories = null!;
     private Win98CatalogGrid _catalogue = null!;
     private Win98ValuePanel _values = null!;
-    private Button _buy = null!;
     private Button _place = null!;
     private Button _move = null!;
+    private Button _rotate = null!;
+    private Button _delete = null!;
     private CheckBox _snap = null!;
     private OptionButton _grid = null!;
     private Label _status = null!;
@@ -57,9 +56,6 @@ public partial class EnvironmentDecorator : CanvasLayer
     private Vector2 _lastViewportSize;
     private RoomScreenBounds _placementBounds;
     private DecorationCategory _selectedCategory;
-    private bool _buddy2DWasVisible;
-    private bool _buddy3DWasVisible;
-    private bool _buddyHidden;
 
     public bool IsOpen => GodotObject.IsInstanceValid(_blocker) && _blocker.Visible;
     internal EnvironmentLayout VisibleWorkingLayout => _session?.WorkingLayout ?? _state.Layout;
@@ -74,7 +70,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     internal bool PlacementMode => _placementMode;
     internal bool MoveMode => _moveMode;
     internal long VisibleAvailableBalance => VisibleProjectedBalance;
-    internal int VisibleOwnedCount(DecorationDefinitionId id) => CountOwned(id);
+    internal int VisibleOwnedCount(DecorationDefinitionId id) => CountInRoom(id);
 
     public void Configure(
         BuddyProgressState progress,
@@ -89,8 +85,8 @@ public partial class EnvironmentDecorator : CanvasLayer
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _pointer = pointer ?? throw new ArgumentNullException(nameof(pointer));
-        _buddy2D = buddy2D ?? throw new ArgumentNullException(nameof(buddy2D));
-        _buddy3D = buddy3D ?? throw new ArgumentNullException(nameof(buddy3D));
+        _ = buddy2D ?? throw new ArgumentNullException(nameof(buddy2D));
+        _ = buddy3D ?? throw new ArgumentNullException(nameof(buddy3D));
         _state = state ?? throw new ArgumentNullException(nameof(state));
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
         _visuals = visuals ?? throw new ArgumentNullException(nameof(visuals));
@@ -155,9 +151,12 @@ public partial class EnvironmentDecorator : CanvasLayer
         _moveDragging = false;
         _placementMode = false;
         _placementStagedInstance = default;
-        SelectCategory(DecorationCategory.Lamp.ToString());
+        DecorationCategory[] categories = VisibleCategories();
+        if (categories.Length > 0) SelectCategory(categories[0].ToString());
         _visuals.Preview(_session.WorkingLayout);
-        _status.Text = "Select an item, then choose Buy.";
+        _status.Text = categories.Length > 0
+            ? "Select an item, then choose Place. Each placed copy is purchased separately."
+            : "No released room decorations are available.";
         Refresh();
     }
 
@@ -190,7 +189,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         _panel.Visible = true;
 
         _categories = new Win98CategoryStrip { Name = "EnvironmentCategories" };
-        _categories.SetItems(Enum.GetValues<DecorationCategory>().Select(category =>
+        _categories.SetItems(VisibleCategories().Select(category =>
             new Win98CategoryPresentation(category.ToString(), CategoryLabel(category), Tooltip: $"Browse {CategoryLabel(category).ToLowerInvariant()}.")));
         _categories.SelectionChanged += SelectCategory;
         body.AddChild(_categories);
@@ -210,9 +209,10 @@ public partial class EnvironmentDecorator : CanvasLayer
         foreach (EnvironmentGridSize size in Enum.GetValues<EnvironmentGridSize>()) _grid.AddItem(size.ToString(), (int)size);
         _grid.ItemSelected += index => _placement.GridSize = (EnvironmentGridSize)_grid.GetItemId((int)index);
         controls.AddChild(_grid);
-        _buy = Action(controls, "Buy", BuySelected);
         _place = Action(controls, "Place", BeginPlacement);
         _move = Action(controls, "Move Items", BeginMoveMode);
+        _rotate = Action(controls, "Rotate", () => RotateSelected(1));
+        _delete = Action(controls, "Delete", DeleteSelected);
 
         _values = new Win98ValuePanel { Name = "EnvironmentBudget" };
         body.AddChild(_values);
@@ -280,7 +280,7 @@ public partial class EnvironmentDecorator : CanvasLayer
             items.Add(CatalogPresentation(resource));
         }
         _catalogue.SetItems(items);
-        _status.Text = "Select an item, then choose Buy.";
+        _status.Text = "Select an item, then choose Place. Nothing is charged until a copy is staged.";
         Refresh();
     }
 
@@ -291,30 +291,35 @@ public partial class EnvironmentDecorator : CanvasLayer
         _selectedDefinition = EnvironmentDecorationRegistry.Find(definitionId);
         _selectedInstance = default;
         _placement.Cancel();
-        _status.Text = _selectedDefinition is null ? "Item unavailable." : "Choose Buy to reserve one copy, then Place.";
-        Refresh();
-    }
-
-    private void BuySelected()
-    {
-        if (_selectedDefinition is null || _session is null) return;
-        EnvironmentEditResult result = _session.Reserve(_selectedDefinition.ToDefinition().Id, _progress.BalanceMilliCredits);
-        _status.Text = result.Succeeded ? "One copy reserved. Choose Place to position it." :
-            result.Status == EnvironmentEditStatus.InsufficientFunds ? "Not enough current funds to buy this copy." : result.Status.ToString();
+        _status.Text = _selectedDefinition is null ? "Item unavailable." : "Choose Place to purchase and position one copy.";
         Refresh();
     }
 
     private void BeginPlacement()
     {
-        if (_selectedDefinition is null || _session is null || !_session.HasReservation ||
-            _session.ReservedDefinitionId != _selectedDefinition.ToDefinition().Id) return;
+        if (_selectedDefinition is null || _session is null) return;
+        DecorationDefinition definition = _selectedDefinition.ToDefinition();
+        if (_session.HasReservation && _session.ReservedDefinitionId != definition.Id)
+            _session.CancelReservation();
+        if (!_session.HasReservation)
+        {
+            EnvironmentEditResult reserved = _session.Reserve(definition.Id, _progress.BalanceMilliCredits);
+            if (!reserved.Succeeded)
+            {
+                _status.Text = reserved.Status == EnvironmentEditStatus.InsufficientFunds
+                    ? "Not enough current funds to place this copy."
+                    : reserved.Status.ToString();
+                Refresh();
+                return;
+            }
+        }
+
         _selectedInstance = default;
         _placementMode = true;
         _placementStagedInstance = default;
         _panel.Visible = false;
         _placementBounds = ToBounds(RoomRect());
         HideOtherUiForFocus();
-        HideBuddyForPlacement();
         _placementChrome.Visible = true;
         _placementDone.Disabled = true;
         _placementStatus.Text = "Click a valid room position.";
@@ -333,7 +338,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _selectedInstance = default;
         _panel.Visible = false;
         HideOtherUiForFocus();
-        HideBuddyForPlacement();
         _moveChrome.Visible = true;
         _moveRotateChrome.Visible = false;
     }
@@ -343,7 +347,23 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_session is null || _selectedInstance == default) return;
         EnvironmentEditResult result = _session.Rotate(_selectedInstance, direction);
         PreviewRoom();
-        if (!result.Succeeded) _status.Text = result.Status.ToString();
+        _status.Text = result.Succeeded ? "Item rotated." :
+            result.Status == EnvironmentEditStatus.RotationNotAllowed ? "This decoration has a fixed orientation." : result.Status.ToString();
+        Refresh();
+    }
+
+    private void DeleteSelected()
+    {
+        if (_session is null || _selectedInstance == default) return;
+        EnvironmentEditResult result = _session.Remove(_selectedInstance);
+        if (result.Succeeded)
+        {
+            _selectedInstance = default;
+            PreviewRoom();
+            _status.Text = "Item removed. Staged purchases are restored; previously saved purchases are not refunded.";
+        }
+        else _status.Text = result.Status.ToString();
+        Refresh();
     }
 
     private void OnRoomInput(InputEvent input)
@@ -428,7 +448,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         {
             _selectedInstance = id;
             _selectedDefinition = null;
-            _status.Text = "Placed item selected.";
+            _status.Text = "Placed item selected. Rotate, Delete, or Move Items are available.";
         }
         else _selectedInstance = default;
         Refresh();
@@ -446,10 +466,11 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         if (!_placementMode || _placementStagedInstance == default) return;
         PlacedDecorationId placed = _placementStagedInstance;
+        EnvironmentDecorationResource? justPlaced = _selectedDefinition;
         EndPlacementMode();
-        _selectedDefinition = null;
+        _selectedDefinition = justPlaced;
         _selectedInstance = placed;
-        _status.Text = "Placed item selected. Move Items and Rotate are available below.";
+        _status.Text = "Copy staged. Choose Place again for another copy, or Done to save the room.";
         Refresh();
     }
 
@@ -459,7 +480,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_placementStagedInstance != default) _session.RemoveStaged(_placementStagedInstance);
         else if (_session.HasReservation) _session.CancelReservation();
         EndPlacementMode();
-        _status.Text = "Placement cancelled; the reserved cost was restored.";
+        _status.Text = "Placement cancelled; the staged cost was restored.";
         PreviewRoom();
         Refresh();
     }
@@ -470,7 +491,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementMode = false;
         _placementStagedInstance = default;
         _placementChrome.Visible = false;
-        RestoreBuddyAfterPlacement();
         RestorePlacementUi();
         _panel.Visible = true;
     }
@@ -500,7 +520,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _moveBaseline = null;
         _moveChrome.Visible = false;
         _moveRotateChrome.Visible = false;
-        RestoreBuddyAfterPlacement();
         RestorePlacementUi();
         _panel.Visible = true;
     }
@@ -534,7 +553,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placement.Cancel();
         if (_placementMode) EndPlacementMode();
         if (_moveMode) CancelMoveMode();
-        RestoreBuddyAfterPlacement();
         _visuals.Preview(_state.Layout);
         _blocker.Visible = false;
         _confirm.Visible = false;
@@ -548,20 +566,29 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         long cost = _selectedDefinition?.ToDefinition().PriceMilliCredits ?? 0;
         long current = _progress.BalanceMilliCredits;
-        long projected = current;
-        if (_session is not null) _session.TryProjectBalance(current, out projected);
-        _values.SetRows([
-            new("available", "Available Funds", ContentDisplayName.Credits(projected)),
-            new("cost", "Item Cost", ContentDisplayName.Credits(cost)),
-            new("projected", "Projected Funds", ContentDisplayName.Credits(projected), true),
-            new("owned", "Owned", CountOwned(SelectedDefinitionId()).ToString()),
-        ]);
+        long available = current;
+        if (_session is not null) _session.TryProjectBalance(current, out available);
         bool matchingReservation = _session?.HasReservation == true && _selectedDefinition is not null &&
             _session.ReservedDefinitionId == _selectedDefinition.ToDefinition().Id;
-        _buy.Disabled = _selectedDefinition is null || _session?.HasReservation == true || projected < cost;
-        _place.Disabled = !matchingReservation;
+        long additionalCost = _selectedDefinition is null || matchingReservation ? 0 : cost;
+        long afterPurchase = available >= additionalCost ? available - additionalCost : 0;
+        _values.SetRows([
+            new("available", "Available Funds", ContentDisplayName.Credits(available)),
+            new("cost", "Item Cost", ContentDisplayName.Credits(cost)),
+            new("projected", "After Purchase", ContentDisplayName.Credits(afterPurchase), true),
+            new("in-room", "In Room", CountInRoom(SelectedDefinitionId()).ToString()),
+        ]);
+        _place.Disabled = _selectedDefinition is null || (!matchingReservation && available < cost);
         _move.Visible = _session?.WorkingLayout.Decorations.Count > 0;
+        _rotate.Disabled = !CanRotateSelected();
+        _delete.Disabled = _selectedInstance == default;
         RefreshCatalogueBadges();
+    }
+
+    private bool CanRotateSelected()
+    {
+        if (_selectedInstance == default || !TryFindPlaced(_selectedInstance, out PlacedDecoration placed)) return false;
+        return EnvironmentDecorationRegistry.Find(placed.DefinitionId)?.ToDefinition().Rotation.AllowsRotation == true;
     }
 
     private Rect2 RoomRect() => EnvironmentRoomRect.Resolve(this);
@@ -602,24 +629,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementHiddenUi.Clear();
     }
 
-    private void HideBuddyForPlacement()
-    {
-        if (_buddyHidden) return;
-        _buddy2DWasVisible = _buddy2D.Visible;
-        _buddy3DWasVisible = _buddy3D.Visible;
-        _buddy2D.Visible = false;
-        _buddy3D.Visible = false;
-        _buddyHidden = true;
-    }
-
-    private void RestoreBuddyAfterPlacement()
-    {
-        if (!_buddyHidden) return;
-        if (GodotObject.IsInstanceValid(_buddy2D)) _buddy2D.Visible = _buddy2DWasVisible;
-        if (GodotObject.IsInstanceValid(_buddy3D)) _buddy3D.Visible = _buddy3DWasVisible;
-        _buddyHidden = false;
-    }
-
     /// <summary>Corner submenu built from the shared Win98 dialog frame: blue title bar on top,
     /// message filling the body, and its actions anchored to the bottom.</summary>
     private PanelContainer FocusChrome(string name, string title, string text, bool top, out HBoxContainer actions)
@@ -646,7 +655,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         return TryFindPlaced(_selectedInstance, out PlacedDecoration placed) ? placed.DefinitionId : default;
     }
 
-    private int CountOwned(DecorationDefinitionId id) => id == default || _session is null
+    private int CountInRoom(DecorationDefinitionId id) => id == default || _session is null
         ? 0 : _session.WorkingLayout.Decorations.Count(item => item.DefinitionId == id);
 
     private Win98CatalogItemPresentation CatalogPresentation(EnvironmentDecorationResource resource)
@@ -654,7 +663,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         DecorationDefinition definition = resource.ToDefinition();
         return new Win98CatalogItemPresentation(definition.Id.Value, DisplayName(definition.Id),
             ContentDisplayName.Credits(definition.PriceMilliCredits), Preview(resource), true,
-            $"{definition.AnchorKind} decoration", $"Owned: {CountOwned(definition.Id)}");
+            $"{definition.AnchorKind} decoration", $"In room: {CountInRoom(definition.Id)}");
     }
 
     private void RefreshCatalogueBadges()
@@ -662,6 +671,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         foreach (EnvironmentDecorationResource resource in EnvironmentDecorationRegistry.Authored.Entries)
             if (resource.ToDefinition().Category == _selectedCategory) _catalogue.UpdateItem(CatalogPresentation(resource));
     }
+
     private bool TryFindPlaced(PlacedDecorationId id, out PlacedDecoration placed)
     {
         if (_session is not null)
@@ -676,7 +686,22 @@ public partial class EnvironmentDecorator : CanvasLayer
         placed = default;
         return false;
     }
-    private static Button Action(Control parent, string text, Action action) { var button = new Button { Name = $"Environment{text}Button", Text = text }; button.Pressed += action; parent.AddChild(button); return button; }
+
+    private static DecorationCategory[] VisibleCategories() => EnvironmentDecorationRegistry.Authored.Entries
+        .Where(resource => resource.ToDefinition().Visible)
+        .Select(resource => resource.ToDefinition().Category)
+        .Distinct()
+        .OrderBy(category => (int)category)
+        .ToArray();
+
+    private static Button Action(Control parent, string text, Action action)
+    {
+        var button = new Button { Name = $"Environment{text.Replace(" ", string.Empty)}Button", Text = text };
+        button.Pressed += action;
+        parent.AddChild(button);
+        return button;
+    }
+
     private static string CategoryLabel(DecorationCategory category) => category == DecorationCategory.Sofa ? "Sofas" : category + "s";
     private static string DisplayName(DecorationDefinitionId id) => id.Value.Split('.').Last().Replace('_', ' ').ToTitleCase();
 
