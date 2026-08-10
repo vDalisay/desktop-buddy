@@ -234,8 +234,7 @@ public partial class CharacterEditorHost
 
         void Step()
         {
-            _paintCanvas.Workspace.AdjustBrush(step);
-            _paintCanvas.QueueRedraw();
+            _paintCanvas.AdjustBrushAndRefreshPreview(step);
             RefreshPaintStatus();
         }
 
@@ -281,6 +280,7 @@ public partial class CharacterEditorHost
             (byte)Math.Clamp(Math.Round(value.B * 255), 0, 255));
         if (GodotObject.IsInstanceValid(_currentColorSwatch))
             _currentColorSwatch.Color = value;
+        _paintCanvas.RefreshPendingCurvePreview();
         RefreshPaintStatus();
     }
 
