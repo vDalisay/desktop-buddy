@@ -109,6 +109,14 @@ paint_toolbar_icons
 
 The new gates cover catalogue/category integrity, semantic previews, non-physical rendering, trusted bands, canonical resize mapping, anchor/snap behavior, per-instance purchases, permanent ownership/storage, cancellation, wallpaper single-slot behavior, save/restart round-trip, editor input isolation, and the paint icon contract.
 
+A focused runner now performs the automated pre-owner gate:
+
+```bat
+tools\validate_environment.bat
+```
+
+It builds the solution, runs the domain test project, imports the Godot project, then executes the non-duplicated closure matrices for catalogue/rendering, transactions/ownership/wallpaper, placement/snap/resize, restart restoration, the in-scene room-build flow, and paint toolbar icons. Logs/artifacts go under `.artifacts\environment`.
+
 These scenarios are committed but have **not** been executed by the GitHub connector. Local build/scenario execution remains the verification source of truth.
 
 ## Remaining owner gate — ED6 + PAINT-R7
@@ -117,7 +125,13 @@ No additional feature implementation should be started before this gate. What re
 
 ### Build and automated regression
 
-Verify the branch builds and the domain/scenario suite runs without failures. Any compiler/runtime failure is implementation work and should be fixed before subjective review.
+Run:
+
+```bat
+tools\validate_environment.bat
+```
+
+Any compiler, domain-test, import, or scenario failure is implementation work and should be fixed before subjective review.
 
 ### Environment Decorator manual closure
 
