@@ -98,10 +98,6 @@ public sealed class PaintWorkspace
         public PaintRect Rectangle { get; private set; }
         public byte[] Before { get; private set; } = Array.Empty<byte>();
 
-        /// <summary>
-        /// Expands the clean baseline capture before a mutation occurs. Existing baseline bytes are
-        /// copied back over the newly captured union so an earlier preview can never become baseline.
-        /// </summary>
         public void Expand(PaintSurface surface, PaintRect candidate)
         {
             if (candidate.IsEmpty) return;
@@ -144,6 +140,9 @@ public sealed class PaintWorkspace
     private PaintTool _selectedTool = PaintTool.Brush;
     private ulong _sprayGestureSeed = 0xD1B54A32D192ED03UL;
     private ulong _sprayPulseOrdinal;
+
+    /// <summary>Raised after a compound preview is committed or cancelled, including external session boundaries.</summary>
+    public event Action? PreviewTransactionEnded;
 
     public PaintTool SelectedTool
     {
@@ -235,10 +234,6 @@ public sealed class PaintWorkspace
         _lastHit = null;
     }
 
-    /// <summary>
-    /// Starts a compound preview edit such as Curved Line. Preview pixels are visible on the real
-    /// surfaces, but do not become dirty/history state until <see cref="FinalizePreviewTransaction"/>.
-    /// </summary>
     public void BeginPreviewTransaction()
     {
         EndGesture();
@@ -246,10 +241,6 @@ public sealed class PaintWorkspace
         _previewActive = true;
     }
 
-    /// <summary>
-    /// Restores the clean preview baseline and rasterises one sampled path. A null hit is a hard
-    /// continuity break; a new part also starts a new segment, so curves never bridge empty space.
-    /// </summary>
     public void RenderPreviewPath(IReadOnlyList<PaintHit?> samples)
     {
         ArgumentNullException.ThrowIfNull(samples);
@@ -285,6 +276,7 @@ public sealed class PaintWorkspace
         if (!_previewActive) return false;
         bool changed = CommitBuilders(_previewBefore);
         _previewActive = false;
+        PreviewTransactionEnded?.Invoke();
         return changed;
     }
 
@@ -294,6 +286,7 @@ public sealed class PaintWorkspace
         RestoreBuilders(_previewBefore);
         _previewBefore.Clear();
         _previewActive = false;
+        PreviewTransactionEnded?.Invoke();
         return true;
     }
 
