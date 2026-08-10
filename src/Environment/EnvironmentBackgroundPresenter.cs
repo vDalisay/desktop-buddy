@@ -56,6 +56,25 @@ public partial class EnvironmentBackgroundPresenter : Node3D
         if (GodotObject.IsInstanceValid(_boundaries)) _boundaries!.LayoutApplied -= OnLayoutApplied;
     }
 
+    /// <summary>
+    /// The backdrop quad's on-screen rect. Paint input must map against this, not the whole
+    /// viewport: the room sits between the menu bar and the status bar, so using the viewport
+    /// stretches the canonical Y axis and offsets every stamp away from the cursor.
+    /// </summary>
+    public bool TryGetScreenRect(out Rect2 rect)
+    {
+        rect = default;
+        if (!GodotObject.IsInstanceValid(_quad) || GetViewport()?.GetCamera3D() is not Camera3D camera) return false;
+        Vector2 size = ((QuadMesh)_quad.Mesh).Size;
+        if (size.X <= 0 || size.Y <= 0) return false;
+
+        Vector3 center = _quad.GlobalPosition;
+        Vector2 topLeft = camera.UnprojectPosition(center + new Vector3(-size.X * .5f, size.Y * .5f, 0));
+        Vector2 bottomRight = camera.UnprojectPosition(center + new Vector3(size.X * .5f, -size.Y * .5f, 0));
+        rect = new Rect2(topLeft, bottomRight - topLeft);
+        return rect.Size.X > 0 && rect.Size.Y > 0;
+    }
+
     private void Upload()
     {
         _uploadedRevision = Canvas.Revision;

@@ -107,6 +107,43 @@ public sealed class EnvironmentPaintRefinementTests
         Assert.Equal(EnvironmentCurvePhase.Idle, canvas.CurvePhase);
     }
 
+    [Fact]
+    public void PenAndSprayStretchTheirFootprintByPixelAspect()
+    {
+        var pen = new EnvironmentCanvas { Tool = EnvironmentPaintTool.Pen, Color = Ink, BrushDiameter = 40, PixelAspect = 2.0 };
+        pen.Begin(.5, .5); pen.End(.5, .5);
+
+        // A round tool under a 2:1 stretch must reach twice as far down the canvas as across it.
+        Assert.True(pen.TryPick(.5 + (19.0 / 511), .5, out EnvironmentColor right));
+        Assert.Equal(Ink, right);
+        Assert.True(pen.TryPick(.5, .5 + (38.0 / 511), out EnvironmentColor down));
+        Assert.Equal(Ink, down);
+        Assert.True(pen.TryPick(.5 + (24.0 / 511), .5, out EnvironmentColor outside));
+        Assert.Equal(EnvironmentCanvasPolicy.DefaultColor, outside);
+
+        var round = new EnvironmentCanvas { Tool = EnvironmentPaintTool.Spray, Color = Ink, BrushDiameter = 40, PixelAspect = 2.0 };
+        var flat = new EnvironmentCanvas { Tool = EnvironmentPaintTool.Spray, Color = Ink, BrushDiameter = 40 };
+        round.Begin(.5, .5); round.End(.5, .5);
+        flat.Begin(.5, .5); flat.End(.5, .5);
+        Assert.True(ChangedPixels(round) > ChangedPixels(flat));
+    }
+
+    [Fact]
+    public void ColorAndSizeChangesRepaintAPendingCurve()
+    {
+        var canvas = new EnvironmentCanvas { Tool = EnvironmentPaintTool.CurvedLine, Color = Ink, BrushDiameter = 6 };
+        canvas.Begin(.2, .5); canvas.End(.8, .5);
+        byte[] baseline = canvas.ClonePixels();
+
+        canvas.Color = new EnvironmentColor(255, 0, 255);
+        Assert.NotEqual(baseline, canvas.ClonePixels());
+
+        byte[] recolored = canvas.ClonePixels();
+        canvas.BrushDiameter = 24;
+        Assert.NotEqual(recolored, canvas.ClonePixels());
+        Assert.True(canvas.CancelPendingCurve());
+    }
+
     private static int ChangedPixels(EnvironmentCanvas canvas)
     {
         byte[] pixels = canvas.ClonePixels();

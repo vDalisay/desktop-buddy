@@ -105,6 +105,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 else RequestClose();
                 break;
             case Key.B: SelectTool(EnvironmentPaintTool.Brush); break;
+            case Key.P: SelectTool(EnvironmentPaintTool.Pen); break;
             case Key.S: SelectTool(EnvironmentPaintTool.Spray); break;
             case Key.C: SelectTool(EnvironmentPaintTool.CurvedLine); break;
             case Key.E: SelectTool(EnvironmentPaintTool.Eraser); break;
@@ -140,19 +141,25 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _blocker.AddChild(_panel);
         _panel.Visible = true;
 
-        var columns = new HBoxContainer();
-        columns.AddThemeConstantOverride("separation", 12);
-        body.AddChild(columns);
-        columns.AddChild(ToolColumn("Tools",
-            ("Brush  [B]", () => SelectTool(EnvironmentPaintTool.Brush)),
-            ("Spray  [S]", () => SelectTool(EnvironmentPaintTool.Spray)),
-            ("Fill color  [F]", () => SelectTool(EnvironmentPaintTool.Fill))));
+        // "Tools" owns its whole row; every tool button sits in the grid below it.
+        body.AddChild(new Label { Text = "Tools" });
+        var grid = new GridContainer { Name = "PaintToolGrid", Columns = 4 };
+        grid.AddThemeConstantOverride("h_separation", 4);
+        grid.AddThemeConstantOverride("v_separation", 4);
+        body.AddChild(grid);
+        grid.AddChild(ToolButton("PaintBrushButton", "Brush  [B]", EnvironmentPaintTool.Brush));
+        grid.AddChild(ToolButton("PaintPenButton", "Pen  [P]", EnvironmentPaintTool.Pen));
+        grid.AddChild(ToolButton("PaintSprayButton", "Spray  [S]", EnvironmentPaintTool.Spray));
+        grid.AddChild(ToolButton("PaintFillButton", "Fill  [F]", EnvironmentPaintTool.Fill));
+        grid.AddChild(ToolButton("PaintEraserButton", "Eraser  [E]", EnvironmentPaintTool.Eraser));
+        grid.AddChild(ToolButton("PaintPickButton", "Pick  [I]", EnvironmentPaintTool.PickColor));
+
         var shapes = new MenuButton
         {
             Name = "PaintShapesButton",
             Text = "Shapes  ▸",
             Flat = false,
-            CustomMinimumSize = new Vector2(150, 28),
+            CustomMinimumSize = new Vector2(104, 28),
             TooltipText = "Draw Square, Circle, Straight Line, or Curved Line.",
         };
         PopupMenu shapeMenu = shapes.GetPopup();
@@ -162,20 +169,19 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         shapeMenu.AddItem("Straight Line", (int)EnvironmentPaintTool.Line);
         shapeMenu.AddItem("Curved Line  [C]", (int)EnvironmentPaintTool.CurvedLine);
         shapeMenu.IdPressed += id => SelectTool((EnvironmentPaintTool)id);
-        ((VBoxContainer)columns.GetChild(0)).AddChild(shapes);
+        grid.AddChild(shapes);
 
-        columns.AddChild(ToolColumn(null,
-            ("Eraser  [E]", () => SelectTool(EnvironmentPaintTool.Eraser)),
-            ("Pick Color  [I]", () => SelectTool(EnvironmentPaintTool.PickColor))));
+        _undo = new Button { Name = "PaintUndoButton", Text = "Undo  [Ctrl+Z]", CustomMinimumSize = new Vector2(104, 28) };
+        _undo.Pressed += UndoStroke;
+        grid.AddChild(_undo);
+
         var size = new HBoxContainer { Name = "PaintBrushSizeRow" };
+        size.AddChild(new Label { Text = "Brush Size", CustomMinimumSize = new Vector2(84, 28), VerticalAlignment = VerticalAlignment.Center });
         size.AddChild(SizeButton("−", -1));
-        _brushSize = new Label { HorizontalAlignment = HorizontalAlignment.Center, CustomMinimumSize = new Vector2(54, 28) };
+        _brushSize = new Label { HorizontalAlignment = HorizontalAlignment.Center, CustomMinimumSize = new Vector2(54, 28), VerticalAlignment = VerticalAlignment.Center };
         size.AddChild(_brushSize);
         size.AddChild(SizeButton("+", 1));
-        ((VBoxContainer)columns.GetChild(1)).AddChild(size);
-        _undo = new Button { Name = "PaintUndoButton", Text = "Undo  [Ctrl+Z]", CustomMinimumSize = new Vector2(150, 28) };
-        _undo.Pressed += UndoStroke;
-        ((VBoxContainer)columns.GetChild(1)).AddChild(_undo);
+        body.AddChild(size);
 
         var inset = new PanelContainer { Name = "PaintPalette" };
         inset.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 2));
@@ -223,18 +229,11 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         Win98Dialog.Action(confirmActions, "Keep Editing", () => _confirm.Visible = false).Name = "PaintKeepEditingButton";
     }
 
-    private static VBoxContainer ToolColumn(string? title, params (string Text, Action Pressed)[] buttons)
+    private Button ToolButton(string name, string text, EnvironmentPaintTool tool)
     {
-        var column = new VBoxContainer();
-        column.AddThemeConstantOverride("separation", 4);
-        if (title is not null) column.AddChild(new Label { Text = title });
-        foreach ((string text, Action pressed) in buttons)
-        {
-            var button = new Button { Name = $"Paint{text.Split(' ')[0]}Button", Text = text, CustomMinimumSize = new Vector2(150, 28) };
-            button.Pressed += pressed;
-            column.AddChild(button);
-        }
-        return column;
+        var button = new Button { Name = name, Text = text, CustomMinimumSize = new Vector2(104, 28) };
+        button.Pressed += () => SelectTool(tool);
+        return button;
     }
 
     private Button SizeButton(string text, int direction)
@@ -343,6 +342,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _status.Text = tool switch
         {
             EnvironmentPaintTool.Brush => "Brush: drag anywhere on the background to paint.",
+            EnvironmentPaintTool.Pen => "Pen: drag to paint a solid round nib that matches the cursor ring.",
             EnvironmentPaintTool.Spray => "Spray: hold or drag to airbrush with the current Brush Size.",
             EnvironmentPaintTool.Eraser => "Eraser: drag to restore the blank background.",
             EnvironmentPaintTool.Fill => "Fill color: click an area to flood it.",
@@ -449,12 +449,14 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         x = 0;
         y = 0;
         if (room.Size.X <= 0 || room.Size.Y <= 0) return false;
-        x = Math.Clamp((screen.X - room.Position.X) / room.Size.X, 0, 1);
+        Canvas.PixelAspect = room.Size.X / room.Size.Y;
+        x =Math.Clamp((screen.X - room.Position.X) / room.Size.X, 0, 1);
         y = Math.Clamp((screen.Y - room.Position.Y) / room.Size.Y, 0, 1);
         return true;
     }
 
-    private Rect2 BackgroundRect() => GetViewport().GetVisibleRect();
+    private Rect2 BackgroundRect() =>
+        _presenter.TryGetScreenRect(out Rect2 rect) ? rect : GetViewport().GetVisibleRect();
 
     private void UndoStroke()
     {

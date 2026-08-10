@@ -4,7 +4,7 @@ using DesktopBuddy.Domain.Painting;
 
 namespace DesktopBuddy.Domain.Environment;
 
-public enum EnvironmentPaintTool { Brush, Spray, Eraser, Fill, PickColor, Square, Circle, Line, CurvedLine }
+public enum EnvironmentPaintTool { Brush, Spray, Eraser, Fill, PickColor, Square, Circle, Line, CurvedLine, Pen }
 public enum EnvironmentCurvePhase { Idle, BaselineDragging, AwaitFirstBend, FirstBendDragging, AwaitSecondBend, SecondBendDragging }
 
 public static class EnvironmentCanvasPolicy
@@ -66,13 +66,47 @@ public sealed class EnvironmentCanvas
         }
     }
 
-    public EnvironmentColor Color { get; set; } = new(0, 0, 0);
+    private EnvironmentColor _color = new(0, 0, 0);
+    public EnvironmentColor Color
+    {
+        get => _color;
+        set
+        {
+            if (_color == value) return;
+            _color = value;
+            RefreshPendingCurve();
+        }
+    }
 
     private int _brushDiameter = EnvironmentCanvasPolicy.DefaultBrushDiameter;
     public int BrushDiameter
     {
         get => _brushDiameter;
-        set => _brushDiameter = Math.Clamp(value, EnvironmentCanvasPolicy.MinBrushDiameter, EnvironmentCanvasPolicy.MaxBrushDiameter);
+        set
+        {
+            int clamped = Math.Clamp(value, EnvironmentCanvasPolicy.MinBrushDiameter, EnvironmentCanvasPolicy.MaxBrushDiameter);
+            if (_brushDiameter == clamped) return;
+            _brushDiameter = clamped;
+            RefreshPendingCurve();
+        }
+    }
+
+    private double _pixelAspect = 1.0;
+
+    /// <summary>
+    /// Canvas pixels per screen pixel ratio (room width / room height). Round tools (Pen, Spray)
+    /// stretch their canvas-space footprint by it so they land as circles on the stretched room.
+    /// </summary>
+    public double PixelAspect
+    {
+        get => _pixelAspect;
+        set => _pixelAspect = double.IsFinite(value) && value > 0.0 ? Math.Clamp(value, 0.1, 10.0) : 1.0;
+    }
+
+    /// <summary>Re-rasterises a half-finished curve so colour/size edits show up before the next drag.</summary>
+    private void RefreshPendingCurve()
+    {
+        if (CurvePending) PreviewCurve();
     }
 
     public void AdjustBrush(int steps) => BrushDiameter = (int)Math.Clamp(
@@ -99,6 +133,9 @@ public sealed class EnvironmentCanvas
         {
             case EnvironmentPaintTool.Brush:
                 Stamp(px, py, Color);
+                break;
+            case EnvironmentPaintTool.Pen:
+                Stamp(px, py, Color, round: true);
                 break;
             case EnvironmentPaintTool.Spray:
                 _sprayGestureSeed += 0x9E3779B97F4A7C15UL;
@@ -133,6 +170,9 @@ public sealed class EnvironmentCanvas
         {
             case EnvironmentPaintTool.Brush:
                 Line(_lastX, _lastY, px, py, Color);
+                break;
+            case EnvironmentPaintTool.Pen:
+                Line(_lastX, _lastY, px, py, Color, round: true);
                 break;
             case EnvironmentPaintTool.Spray:
                 Spray(px, py, Color, NextSpraySeed());
@@ -405,7 +445,7 @@ public sealed class EnvironmentCanvas
         }
     }
 
-    private void Line(int x0, int y0, int x1, int y1, EnvironmentColor color)
+    private void Line(int x0, int y0, int x1, int y1, EnvironmentColor color, bool round = false)
     {
         int dx = Math.Abs(x1 - x0);
         int dy = Math.Abs(y1 - y0);
@@ -413,25 +453,25 @@ public sealed class EnvironmentCanvas
         for (int step = 0; step <= steps; step++)
         {
             double t = step / (double)steps;
-            Stamp((int)Math.Round(x0 + ((x1 - x0) * t)), (int)Math.Round(y0 + ((y1 - y0) * t)), color);
+            Stamp((int)Math.Round(x0 + ((x1 - x0) * t)), (int)Math.Round(y0 + ((y1 - y0) * t)), color, round);
         }
     }
 
-    private void Stamp(int centerX, int centerY, EnvironmentColor color)
+    private void Stamp(int centerX, int centerY, EnvironmentColor color, bool round = false)
     {
-        double radius = BrushDiameter / 2.0;
-        double radiusSquared = radius * radius;
-        int minX = Math.Max(0, (int)Math.Floor(centerX - radius));
-        int maxX = Math.Min(EnvironmentCanvasPolicy.Size - 1, (int)Math.Ceiling(centerX + radius));
-        int minY = Math.Max(0, (int)Math.Floor(centerY - radius));
-        int maxY = Math.Min(EnvironmentCanvasPolicy.Size - 1, (int)Math.Ceiling(centerY + radius));
+        double radiusX = BrushDiameter / 2.0;
+        double radiusY = round ? radiusX * PixelAspect : radiusX;
+        int minX = Math.Max(0, (int)Math.Floor(centerX - radiusX));
+        int maxX = Math.Min(EnvironmentCanvasPolicy.Size - 1, (int)Math.Ceiling(centerX + radiusX));
+        int minY = Math.Max(0, (int)Math.Floor(centerY - radiusY));
+        int maxY = Math.Min(EnvironmentCanvasPolicy.Size - 1, (int)Math.Ceiling(centerY + radiusY));
         bool changed = false;
         for (int y = minY; y <= maxY; y++)
         for (int x = minX; x <= maxX; x++)
         {
-            double offsetX = x - centerX;
-            double offsetY = y - centerY;
-            if ((offsetX * offsetX) + (offsetY * offsetY) > radiusSquared) continue;
+            double offsetX = (x - centerX) / radiusX;
+            double offsetY = (y - centerY) / radiusY;
+            if ((offsetX * offsetX) + (offsetY * offsetY) > 1.0) continue;
             changed |= Write(x, y, color);
         }
         if (changed) Revision++;
@@ -439,13 +479,16 @@ public sealed class EnvironmentCanvas
 
     private void Spray(int centerX, int centerY, EnvironmentColor color, ulong seed)
     {
-        double radius = BrushDiameter / 2.0;
-        PaintPoint[] offsets = SprayPattern.SampleUnitDisk(seed, SprayPattern.PointCountForDiameter(BrushDiameter));
+        double radiusX = BrushDiameter / 2.0;
+        double radiusY = radiusX * PixelAspect;
+        // Keep dot density constant as the aspect stretch grows the sprayed area.
+        int count = (int)Math.Round(SprayPattern.PointCountForDiameter(BrushDiameter) * Math.Max(1.0, PixelAspect));
+        PaintPoint[] offsets = SprayPattern.SampleUnitDisk(seed, count);
         bool changed = false;
         foreach (PaintPoint offset in offsets)
         {
-            int x = (int)Math.Round(centerX + (offset.X * radius));
-            int y = (int)Math.Round(centerY + (offset.Y * radius));
+            int x = (int)Math.Round(centerX + (offset.X * radiusX));
+            int y = (int)Math.Round(centerY + (offset.Y * radiusY));
             if (x < 0 || y < 0 || x >= EnvironmentCanvasPolicy.Size || y >= EnvironmentCanvasPolicy.Size) continue;
             changed |= Write(x, y, color);
         }

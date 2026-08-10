@@ -1,3 +1,4 @@
+using System;
 using DesktopBuddy.Domain.Painting;
 using Xunit;
 

@@ -12,6 +12,7 @@ namespace DesktopBuddy.UI.Win98;
 public static class PaintToolIconProvider
 {
     public const string Brush = "brush";
+    public const string Pen = "pen";
     public const string Eraser = "eraser";
     public const string Spray = "spray";
     public const string PickColor = "pick_color";
@@ -45,11 +46,11 @@ public static class PaintToolIconProvider
     }
 
     /// <summary>Applies an icon while retaining all semantics in node name, tooltip and shortcut.</summary>
-    public static void Apply(Button button, string semanticId, string fallbackText, string tooltip)
+    public static void Apply(Button button, string semanticId, string fallbackText, string tooltip, bool keepText = false)
     {
         ArgumentNullException.ThrowIfNull(button);
         button.Icon = Resolve(semanticId);
-        button.Text = string.Empty;
+        button.Text = keepText ? fallbackText : string.Empty;
         button.TooltipText = tooltip;
         button.SetMeta("paint_tool_id", semanticId);
         button.SetMeta("paint_tool_fallback_text", fallbackText);
@@ -76,6 +77,12 @@ public static class PaintToolIconProvider
                 Diagonal(image, 3, 12, 11, 4, ink, 2);
                 Rect(image, 2, 11, 5, 14, shade);
                 Pixel(image, 1, 14, accent); Pixel(image, 2, 14, accent); Pixel(image, 3, 13, accent);
+                break;
+            case Pen:
+                // Slim barrel with a filled round nib: the tool paints a solid disc, not a smear.
+                Diagonal(image, 6, 9, 12, 3, ink, 1);
+                Rect(image, 10, 2, 13, 5, shade);
+                FilledCircle(image, 4, 11, 3, ink);
                 break;
             case Eraser:
                 Rect(image, 3, 6, 12, 12, ink);
@@ -168,6 +175,15 @@ public static class PaintToolIconProvider
         {
             double d = Math.Sqrt(((x - cx) * (x - cx)) + ((y - cy) * (y - cy)));
             if (Math.Abs(d - radius) <= 0.75) Pixel(image, x, y, color);
+        }
+    }
+
+    private static void FilledCircle(Image image, int cx, int cy, int radius, Color color)
+    {
+        for (int y = cy - radius; y <= cy + radius; y++)
+        for (int x = cx - radius; x <= cx + radius; x++)
+        {
+            if (((x - cx) * (x - cx)) + ((y - cy) * (y - cy)) <= radius * radius) Pixel(image, x, y, color);
         }
     }
 
