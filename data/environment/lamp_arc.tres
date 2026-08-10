@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnvironmentDecorationResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Environment/EnvironmentDecorationResource.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+DefinitionId = "decoration.lamp.arc"
+DisplayNameKey = "environment.lamp.arc"
+Category = 0
+PriceCredits = 95
+AnchorKind = 0
+AllowsRotation = true
+RotationStepDegrees = 90
+RenderBand = 3
+Visible = true
+VisualKind = 6
+VisualSize = Vector2(68, 84)
+PrimaryColor = Color(0.93, 0.54, 0.24, 1)
+SecondaryColor = Color(0.22, 0.18, 0.16, 1)
