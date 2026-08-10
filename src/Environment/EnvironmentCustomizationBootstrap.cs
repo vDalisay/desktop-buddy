@@ -10,9 +10,8 @@ using Godot;
 namespace DesktopBuddy.Environment;
 
 /// <summary>
-/// Reserved composition root for the environment-customization branch. It is intentionally
-/// inert on the shared baseline: the branch may add Paint Background and Environment Decorator
-/// composition here without touching project.godot or the shared command-bar bootstrap.
+/// Reserved composition root for the environment-customization branch. It owns Paint Background
+/// and Environment Decorator composition without widening the shared command-bar bootstrap.
 /// </summary>
 public partial class EnvironmentCustomizationBootstrap : Node
 {
@@ -22,6 +21,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
     private EnvironmentBackgroundEditor? _backgroundEditor;
     private EnvironmentBackgroundPresenter? _backgroundPresenter;
     private EnvironmentPaintStore? _paintStore;
+    private EnvironmentPaintToolIconBootstrap? _paintIconBootstrap;
     private EnvironmentDecorationLayer? _decorationLayer;
     private EnvironmentDecorator? _decorator;
     private readonly EnvironmentPresentationVisibility _presentationVisibility = new();
@@ -72,6 +72,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
         SandboxRoot? sandbox = FindFirst<SandboxRoot>(GetTree().Root);
         if (sandbox is not null) _backgroundPresenter.Configure(sandbox.Boundaries);
         GetTree().Root.AddChild(_backgroundPresenter);
+
         // The stored room painting is a local PNG asset; a missing or unreadable one simply leaves
         // the room blank, so composition never depends on it.
         _paintStore = new EnvironmentPaintStore(new CharacterFileSystem(), ProjectSettings.GlobalizePath("user://"));
@@ -79,6 +80,9 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _backgroundEditor = new EnvironmentBackgroundEditor { Name = nameof(EnvironmentBackgroundEditor) };
         _backgroundEditor.Configure(_backgroundPresenter, _paintStore);
         GetTree().Root.AddChild(_backgroundEditor);
+        _paintIconBootstrap = new EnvironmentPaintToolIconBootstrap { Name = nameof(EnvironmentPaintToolIconBootstrap) };
+        GetTree().Root.AddChild(_paintIconBootstrap);
+
         if (sandbox is not null)
         {
             _decorationLayer = new EnvironmentDecorationLayer { Name = nameof(EnvironmentDecorationLayer) };
@@ -122,11 +126,13 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _registration = null;
         _decoratorRegistration?.Dispose();
         _decoratorRegistration = null;
+        if (GodotObject.IsInstanceValid(_paintIconBootstrap)) _paintIconBootstrap!.QueueFree();
         if (GodotObject.IsInstanceValid(_backgroundEditor)) _backgroundEditor!.QueueFree();
         if (GodotObject.IsInstanceValid(_backgroundPresenter)) _backgroundPresenter!.QueueFree();
         if (GodotObject.IsInstanceValid(_decorationLayer)) _decorationLayer!.QueueFree();
         if (GodotObject.IsInstanceValid(_decorator)) _decorator!.QueueFree();
         _presentationVisibility.SetWorkCompanionActive(false);
+        _paintIconBootstrap = null;
         _backgroundEditor = null;
         _backgroundPresenter = null;
         _decorationLayer = null;
