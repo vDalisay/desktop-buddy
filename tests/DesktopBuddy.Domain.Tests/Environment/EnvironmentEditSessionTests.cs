@@ -38,7 +38,6 @@ public sealed class EnvironmentEditSessionTests
     {
         var baselineItem = new PlacedDecoration(Id(10), Lamp.Id, Position(.1f, .8f), 0, Lamp.RenderBand, Lamp.PriceMilliCredits);
         var session = new EnvironmentEditSession(new EnvironmentLayout([baselineItem]), 250_000, Catalogue(), () => Id(11));
-        Assert.True(session.Sell(baselineItem.InstanceId).Succeeded);
         Assert.True(session.Place(Plant.Id, Position(.4f, .8f)).Succeeded);
 
         session.Cancel();
@@ -49,12 +48,12 @@ public sealed class EnvironmentEditSessionTests
     }
 
     [Fact]
-    public void SellingStagedItemReversesItsCostWithoutCreatingMoney()
+    public void CancellingStagedItemReversesItsCostWithoutCreatingMoney()
     {
         var session = new EnvironmentEditSession(new EnvironmentLayout(), 75_000, Catalogue(), () => Id(20));
         EnvironmentEditResult placed = session.Place(Lamp.Id, Position(.2f, .8f));
         Assert.Equal(0, session.ProjectedBalanceMilliCredits);
-        Assert.True(session.Sell(placed.InstanceId).Succeeded);
+        Assert.True(session.RemoveStaged(placed.InstanceId).Succeeded);
         Assert.Equal(75_000, session.ProjectedBalanceMilliCredits);
         Assert.Equal(0, session.PendingBalanceDeltaMilliCredits);
         Assert.Empty(session.WorkingLayout.Decorations);
@@ -133,7 +132,7 @@ public sealed class EnvironmentEditSessionTests
     }
 
     [Fact]
-    public void UnknownSavedDefinitionIsPreservedAndCanBeRefunded()
+    public void UnknownSavedDefinitionIsPreservedAndCannotBeRemovedForCredit()
     {
         var missingId = new DecorationDefinitionId("decoration.retired.mystery");
         var unresolved = new PlacedDecoration(Id(40), missingId, Position(.4f, .4f), 0, DecorationRenderBand.WallDecoration, 25_000);
@@ -141,8 +140,22 @@ public sealed class EnvironmentEditSessionTests
 
         Assert.Equal(EnvironmentEditStatus.UnknownDefinition, session.Rotate(unresolved.InstanceId).Status);
         Assert.Single(session.WorkingLayout.Decorations);
-        Assert.True(session.Sell(unresolved.InstanceId).Succeeded);
-        Assert.Equal(125_000, session.ProjectedBalanceMilliCredits);
+        Assert.Equal(EnvironmentEditStatus.UnknownInstance, session.RemoveStaged(unresolved.InstanceId).Status);
+        Assert.Equal(100_000, session.ProjectedBalanceMilliCredits);
+    }
+
+    [Fact]
+    public void ReplacingSavedWallpaperChargesAgainWithoutRefund()
+    {
+        var saved = new PlacedDecoration(Id(41), Wallpaper.Id, Position(.5f, .5f), 0,
+            Wallpaper.RenderBand, Wallpaper.PriceMilliCredits);
+        var session = new EnvironmentEditSession(new EnvironmentLayout([saved]), 100_000, Catalogue(), () => Id(42));
+
+        Assert.True(session.Place(Wallpaper.Id, Position(.5f, .5f)).Succeeded);
+
+        Assert.Single(session.WorkingLayout.Decorations);
+        Assert.Equal(Id(42), session.WorkingLayout.Decorations[0].InstanceId);
+        Assert.Equal(55_000, session.ProjectedBalanceMilliCredits);
     }
 
     [Fact]

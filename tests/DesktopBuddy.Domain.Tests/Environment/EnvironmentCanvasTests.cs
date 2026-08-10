@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Persistence;
@@ -81,6 +82,21 @@ public sealed class EnvironmentCanvasTests
             Assert.True(shaped.IsDirty);
             Assert.Equal(EnvironmentCanvasPolicy.DefaultColor, Sample(shaped, .5, .5));
         }
+    }
+
+    [Fact]
+    public void BrushDiameterChangesBrushAndShapeThickness()
+    {
+        static int Changed(EnvironmentCanvas canvas) => canvas.ClonePixels()
+            .Where((value, index) => index % EnvironmentCanvasPolicy.BytesPerPixel < 3 && value != 192)
+            .Count();
+
+        var small = new EnvironmentCanvas { Color = Ink, BrushDiameter = 2, Tool = EnvironmentPaintTool.Square };
+        var large = new EnvironmentCanvas { Color = Ink, BrushDiameter = 32, Tool = EnvironmentPaintTool.Square };
+        small.Begin(.25, .25); small.End(.75, .75);
+        large.Begin(.25, .25); large.End(.75, .75);
+
+        Assert.True(Changed(large) > Changed(small));
     }
 
     [Fact]

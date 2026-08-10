@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Painting;
 using DesktopBuddy.UI.Win98;
 using Godot;
 
@@ -33,10 +34,13 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private Button _undo = null!;
     private Label _dirty = null!;
     private Label _status = null!;
+    private Label _brushSize = null!;
+    private EnvironmentPaintCursor _cursor = null!;
     private PanelContainer _confirm = null!;
     private byte[]? _baseline;
     private bool _painting;
     private bool _saving;
+    private int _selectedSwatch = -1;
 
     public bool IsOpen => GodotObject.IsInstanceValid(_blocker) && _blocker.Visible;
     private EnvironmentCanvas Canvas => _presenter.Canvas;
@@ -58,6 +62,12 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     public override void _UnhandledInput(InputEvent input)
     {
         if (!IsOpen || input is not InputEventKey { Pressed: true, Echo: false } key) return;
+        if (key.Keycode == Key.Delete && _selectedSwatch >= 0)
+        {
+            RemoveSwatch(_selectedSwatch);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         switch (key.Keycode)
         {
             case Key.Escape: RequestClose(); break;
@@ -88,6 +98,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         AddChild(_blocker);
         _blocker.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         _blocker.GuiInput += OnCanvasInput;
+        _cursor = new EnvironmentPaintCursor { Name = "EnvironmentPaintCursor", MouseFilter = Control.MouseFilterEnum.Ignore };
+        _blocker.AddChild(_cursor);
 
         _panel = Win98Dialog.Create("PaintBackgroundPanel", "Paint Background", new Vector2(430, 330), out VBoxContainer body, RequestClose);
         _blocker.AddChild(_panel);
@@ -115,9 +127,15 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         shapeMenu.IdPressed += id => SelectTool((EnvironmentPaintTool)id);
         ((VBoxContainer)columns.GetChild(0)).AddChild(shapes);
 
-        columns.AddChild(ToolColumn("Brush",
+        columns.AddChild(ToolColumn(null,
             ("Eraser  [E]", () => SelectTool(EnvironmentPaintTool.Eraser)),
             ("Pick Color  [I]", () => SelectTool(EnvironmentPaintTool.PickColor))));
+        var size = new HBoxContainer { Name = "PaintBrushSizeRow" };
+        size.AddChild(SizeButton("−", -1));
+        _brushSize = new Label { HorizontalAlignment = HorizontalAlignment.Center, CustomMinimumSize = new Vector2(54, 28) };
+        size.AddChild(_brushSize);
+        size.AddChild(SizeButton("+", 1));
+        ((VBoxContainer)columns.GetChild(1)).AddChild(size);
         _undo = new Button { Name = "PaintUndoButton", Text = "Undo  [Ctrl+Z]", CustomMinimumSize = new Vector2(150, 28) };
         _undo.Pressed += UndoStroke;
         ((VBoxContainer)columns.GetChild(1)).AddChild(_undo);
@@ -139,12 +157,13 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _picker = new ColorPickerButton
         {
             Name = "PaintCustomColorButton",
-            CustomMinimumSize = new Vector2(38, 28),
+            CustomMinimumSize = new Vector2(48, 40),
             EditAlpha = false,
             TooltipText = "Choose a custom color.",
         };
         _picker.ColorChanged += SelectColor;
         paletteRow.AddChild(_picker);
+        AddColorPickerIcon(_picker);
 
         _dirty = new Label { Name = "PaintDirtyStatus", Text = "No unsaved changes" };
         body.AddChild(_dirty);
@@ -167,11 +186,11 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         Win98Dialog.Action(confirmActions, "Keep Editing", () => _confirm.Visible = false).Name = "PaintKeepEditingButton";
     }
 
-    private static VBoxContainer ToolColumn(string title, params (string Text, Action Pressed)[] buttons)
+    private static VBoxContainer ToolColumn(string? title, params (string Text, Action Pressed)[] buttons)
     {
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", 4);
-        column.AddChild(new Label { Text = title });
+        if (title is not null) column.AddChild(new Label { Text = title });
         foreach ((string text, Action pressed) in buttons)
         {
             var button = new Button { Name = $"Paint{text.Split(' ')[0]}Button", Text = text, CustomMinimumSize = new Vector2(150, 28) };
@@ -181,26 +200,102 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         return column;
     }
 
+    private Button SizeButton(string text, int direction)
+    {
+        var button = new Button { Text = text, CustomMinimumSize = new Vector2(42, 28) };
+        button.Pressed += () => AdjustBrush(direction);
+        return button;
+    }
+
+    private static void AddColorPickerIcon(ColorPickerButton picker)
+    {
+        var background = new ColorRect
+        {
+            Color = Win98ThemeFactory.Face,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        picker.AddChild(background);
+        background.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        var icon = new TextureRect
+        {
+            Name = "PaintColorWheelIcon",
+            Texture = GD.Load<Texture2D>("res://assets/ui/win98/paint_bucket_brushes.svg"),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+        };
+        picker.AddChild(icon);
+        icon.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        icon.OffsetLeft = icon.OffsetTop = 1;
+        icon.OffsetRight = icon.OffsetBottom = -1;
+    }
+
     private void RebuildSwatches()
     {
-        foreach (Node child in _swatchGrid.GetChildren()) child.QueueFree();
-        foreach (Color swatch in _swatches)
+        foreach (Node child in _swatchGrid.GetChildren())
         {
-            var cell = new ColorRect { Color = swatch, CustomMinimumSize = new Vector2(20, 18), MouseFilter = Control.MouseFilterEnum.Stop };
+            _swatchGrid.RemoveChild(child);
+            child.QueueFree();
+        }
+        for (int index = 0; index < _swatches.Count; index++)
+        {
+            Color swatch = _swatches[index];
+            var cell = new Button
+            {
+                Name = $"PaintSwatch{index}",
+                ToggleMode = true,
+                ButtonPressed = index == _selectedSwatch,
+                CustomMinimumSize = new Vector2(20, 18),
+                TooltipText = "Click to select. Right-click or press Delete to remove.",
+            };
+            ApplySwatchStyle(cell, swatch);
+            int captured = index;
+            cell.Pressed += () => SelectSwatch(captured);
             cell.GuiInput += input =>
             {
-                if (input is not InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true }) return;
-                SelectColor(swatch);
-                cell.AcceptEvent();
+                if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true })
+                    RemoveSwatch(captured);
             };
             _swatchGrid.AddChild(cell);
         }
+    }
+
+    private static void ApplySwatchStyle(Button button, Color color)
+    {
+        var normal = new StyleBoxFlat { BgColor = color, BorderColor = Colors.Black };
+        normal.SetBorderWidthAll(1);
+        var selected = new StyleBoxFlat { BgColor = color, BorderColor = Win98ThemeFactory.Selection };
+        selected.SetBorderWidthAll(3);
+        button.AddThemeStyleboxOverride("normal", normal);
+        button.AddThemeStyleboxOverride("hover", normal);
+        button.AddThemeStyleboxOverride("pressed", selected);
+        button.AddThemeStyleboxOverride("hover_pressed", selected);
+        button.AddThemeStyleboxOverride("focus", selected);
+    }
+
+    private void SelectSwatch(int index)
+    {
+        if (index < 0 || index >= _swatches.Count) return;
+        _selectedSwatch = index;
+        SelectColor(_swatches[index]);
+        RebuildSwatches();
+        if (_swatchGrid.GetChild(index) is Button selected) selected.GrabFocus();
+    }
+
+    private void RemoveSwatch(int index)
+    {
+        if (index < 0 || index >= _swatches.Count) return;
+        _swatches.RemoveAt(index);
+        _selectedSwatch = Math.Min(index, _swatches.Count - 1);
+        if (_selectedSwatch >= 0) SelectColor(_swatches[_selectedSwatch]);
+        RebuildSwatches();
     }
 
     private void AddCustomSwatch()
     {
         if (_swatches.Count >= MaximumSwatches) { _status.Text = "The palette is full; replace a color instead."; return; }
         _swatches.Add(_picker.Color);
+        _selectedSwatch = _swatches.Count - 1;
         RebuildSwatches();
         SelectColor(_picker.Color);
     }
@@ -237,38 +332,68 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         if (_confirm.Visible) { _blocker.AcceptEvent(); return; }
         switch (input)
         {
+            case InputEventMouseMotion motion:
+                UpdateCursor(motion.Position);
+                if (_painting && Canvas.Tool == EnvironmentPaintTool.PickColor)
+                    PickColor(motion.Position);
+                else if (_painting && TryCanonical(motion.Position, out double moveX, out double moveY))
+                    Canvas.Continue(moveX, moveY);
+                break;
+            case InputEventMouseButton wheel when wheel.Pressed && wheel.ButtonIndex is MouseButton.WheelUp or MouseButton.WheelDown:
+                AdjustBrush(wheel.ButtonIndex == MouseButton.WheelUp ? 1 : -1);
+                break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } click when TryCanonical(click.Position, out double x, out double y):
                 _painting = true;
                 _panel.Visible = false;
-                Canvas.Begin(x, y);
-                SyncPickedColor();
-                break;
-            case InputEventMouseMotion motion when _painting && TryCanonical(motion.Position, out double x, out double y):
-                Canvas.Continue(x, y);
+                if (Canvas.Tool == EnvironmentPaintTool.PickColor) PickColor(click.Position);
+                else Canvas.Begin(x, y);
+                UpdateCursor(click.Position);
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false } release when _painting:
-                if (TryCanonical(release.Position, out double endX, out double endY)) Canvas.End(endX, endY);
-                else Canvas.End(double.NaN, double.NaN);
+                if (Canvas.Tool != EnvironmentPaintTool.PickColor)
+                {
+                    if (TryCanonical(release.Position, out double endX, out double endY)) Canvas.End(endX, endY);
+                    else Canvas.End(double.NaN, double.NaN);
+                }
                 _painting = false;
                 _panel.Visible = true;
-                SyncPickedColor();
+                UpdateCursor(release.Position);
                 Refresh();
                 break;
         }
         _blocker.AcceptEvent();
     }
 
-    private void SyncPickedColor()
+    private void PickColor(Vector2 position)
     {
-        if (Canvas.Tool != EnvironmentPaintTool.PickColor) return;
+        if (!TryCanonical(position, out double x, out double y) || !Canvas.TryPick(x, y, out EnvironmentColor color)) return;
+        Canvas.Color = color;
         Color picked = Color.Color8(Canvas.Color.Red, Canvas.Color.Green, Canvas.Color.Blue);
         _current.Color = picked;
         _picker.Color = picked;
+        _cursor.SampleColor = picked;
+        _cursor.QueueRedraw();
+    }
+
+    private void AdjustBrush(int direction)
+    {
+        Canvas.BrushDiameter += direction * 2;
+        Refresh();
+        UpdateCursor(_blocker.GetLocalMousePosition());
+    }
+
+    private void UpdateCursor(Vector2 position)
+    {
+        _cursor.Position = position;
+        _cursor.Diameter = Canvas.BrushDiameter * BackgroundRect().Size.X / EnvironmentCanvasPolicy.Size;
+        _cursor.ShowBrush = IsOpen;
+        _cursor.ShowSample = _painting && Canvas.Tool == EnvironmentPaintTool.PickColor;
+        _cursor.QueueRedraw();
     }
 
     private bool TryCanonical(Vector2 screen, out double x, out double y)
     {
-        Rect2 room = EnvironmentRoomRect.Resolve(this);
+        Rect2 room = BackgroundRect();
         x = 0;
         y = 0;
         if (room.Size.X <= 0 || room.Size.Y <= 0) return false;
@@ -276,6 +401,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         y = Math.Clamp((screen.Y - room.Position.Y) / room.Size.Y, 0, 1);
         return true;
     }
+
+    private Rect2 BackgroundRect() => GetViewport().GetVisibleRect();
 
     private void UndoStroke()
     {
@@ -335,5 +462,20 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     {
         _dirty.Text = Canvas.IsDirty ? "Unsaved changes" : "No unsaved changes";
         _undo.Disabled = !Canvas.CanUndo;
+        _brushSize.Text = $"{Canvas.BrushDiameter}px";
+    }
+
+    private sealed partial class EnvironmentPaintCursor : Control
+    {
+        public float Diameter { get; set; }
+        public bool ShowBrush { get; set; }
+        public bool ShowSample { get; set; }
+        public Color SampleColor { get; set; } = Colors.White;
+
+        public override void _Draw()
+        {
+            if (ShowBrush) PaintCursorGizmos.DrawBrushRing(this, Vector2.Zero, Diameter);
+            if (ShowSample) PaintCursorGizmos.DrawPickPreview(this, Vector2.Zero, SampleColor);
+        }
     }
 }

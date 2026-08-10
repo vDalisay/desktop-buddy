@@ -163,7 +163,34 @@ The editor should provide:
 
 Only real background zones should be shown. Do not display disabled placeholder layers.
 
-### 5.3 Persistence
+### 5.3 Unrefined Paint Background tool backlog — not authorized for implementation
+
+The owner has requested that the following ideas be refined before any implementation begins:
+
+- a spray-paint brush inspired only by the broad behavior of classic paint applications;
+- a line tool with curve support inspired only by broad classic paint interaction principles;
+- an icon-based tool UI covering spray paint, curved lines, and the existing shape tools.
+
+These entries record product intent only. They are not acceptance criteria, do not authorize code
+or assets, and must not be treated as confirmed launch scope. Any refinement must remain original
+and clean-room rather than copying icons, layouts, artwork, names, or distinctive presentation from
+a reference application.
+
+Open decisions before requirements can be approved:
+
+- spray distribution, density, edge falloff, diameter limits, continuous-drag behavior, and whether
+  spray uses the existing color and undo model;
+- curved-line interaction model, including control-point count, editing/commit/cancel behavior,
+  thickness, and whether curves remain editable before commit only;
+- exact tool set shown as icons, grouping/order, selected/disabled/focus states, tooltips, shortcut
+  behavior, accessibility labels, and the original icon art direction;
+- how the icon toolbar adapts at minimum window size and supported DPI scales;
+- performance budgets and deterministic automated checks for spray and curve rasterization.
+
+Refinement must produce testable EARS requirements and explicit owner approval before design or
+implementation work starts.
+
+### 5.4 Persistence
 
 Background colors must persist independently from the character paint system. Character paint belongs to a character; background presets and environment profiles belong to the room/environment system.
 
@@ -174,7 +201,7 @@ Saving should be atomic:
 3. replace the prior file only after success;
 4. retain or recover the last known-good state after failure.
 
-### 5.4 Background preset management
+### 5.5 Background preset management
 
 Players can:
 

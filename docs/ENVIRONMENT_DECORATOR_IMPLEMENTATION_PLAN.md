@@ -10,7 +10,7 @@ Depends on:
 - existing economy ledger and progress persistence
 - existing window/input ownership bridge
 
-This plan refines the room-decoration portion of the broader environment roadmap. It does **not** replace the separate `Paint Background` editor. The Environment Decorator is specifically for buying, placing, rotating, selling, and persisting room decorations and wallpaper presets.
+This plan refines the room-decoration portion of the broader environment roadmap. It does **not** replace the separate `Paint Background` editor. The Environment Decorator is specifically for buying, placing, rotating, and persisting room decorations and wallpaper presets.
 
 > Owner wording included `pants` as a category. This plan interprets that as **Plants**, because it is an environment-decoration category alongside lamps, sofas, paintings, wallpapers, and tables. If literal Pants was intended, correct the category before implementation.
 
@@ -217,7 +217,6 @@ Placed-instance mode shows:
 - definition preview/name;
 - original/current value where useful;
 - Rotate;
-- Sell;
 - Cancel selection.
 
 The Place action is hidden or replaced appropriately because an existing object is already in the room.
@@ -238,7 +237,6 @@ CatalogueItemSelected
 PlacingGhost
 PlacedInstanceSelected
 RotatingInstance
-PendingSell
 ```
 
 Transitions are deterministic and testable.
@@ -282,7 +280,6 @@ For a candidate placement:
 ```text
 projectedFunds = startingFunds
                  - totalPendingPlacementCosts
-                 + totalPendingSellRefunds
 ```
 
 A new placement is allowed only when `projectedFunds >= item.Price` after all currently staged changes.
@@ -295,21 +292,11 @@ The budget panel shows:
 
 Negative balances are never permitted.
 
-## 4.4 Selling
+## 4.4 Purchase finality
 
-Selling removes a purchased placed instance from the layout and credits a data-driven refund into the same edit transaction.
-
-The refund rule must not be hard-coded into the UI.
-
-Recommended policy seam:
-
-```csharp
-DecorationEconomyPolicy.SellRefundPermille
-```
-
-Recommended first tuning value: **100% refund** during the initial release so decorating encourages experimentation rather than punishing layout iteration. This is a tuning recommendation, not a locked owner economy decision, and can be changed before implementation begins.
-
-A newly staged object that is sold before Save simply removes its pending purchase instead of generating extra money.
+Environment decorations have no Sell or refund flow. Placement remains staged until the player
+confirms Save, so cancelling the uncommitted edit restores its reserved cost. After Save, the
+purchase is final: players earn credits again for later items rather than reversing purchases.
 
 ---
 
@@ -509,7 +496,7 @@ Rules:
 - applying a new wallpaper is treated as one purchased room-surface instance;
 - the item price is reserved once when the new wallpaper is staged;
 - replacing a staged wallpaper removes its pending cost before applying the new one;
-- replacing an already saved wallpaper follows the same sell/refund policy as other placed decor unless a later economy decision defines wallpaper-specific behavior;
+- replacing an already saved wallpaper is a new final purchase and does not refund the previous wallpaper;
 - wallpaper does not modify the separate free-painted background data;
 - if Paint Background data and wallpaper coexist, render ordering is explicit: base background -> painted background -> wallpaper overlay according to the environment profile's documented rule.
 
@@ -654,7 +641,6 @@ The lower control group contains:
 - grid-size selector visible only when snapping is enabled or kept disabled in-place if that avoids layout jump;
 - Place;
 - Rotate when valid for current selection;
-- Sell only for an existing placed instance;
 - Cancel.
 
 ### Budget panel
@@ -667,7 +653,7 @@ Item Cost
 After Purchase
 ```
 
-When selecting an existing object, replace `After Purchase` with a meaningful sell/refund projection instead of showing irrelevant purchase copy.
+When selecting an existing object, hide purchase projections that are no longer relevant.
 
 Affordability must be communicated through text/state, not color alone.
 
@@ -726,7 +712,7 @@ Deliver:
 - placed-instance model;
 - anchor and rotation policies;
 - per-instance cost calculations;
-- staged placement/sell economy delta;
+- staged placement economy delta;
 - validation and migration rules.
 
 Tests:
@@ -735,7 +721,7 @@ Tests:
 - selecting/previewing charges zero;
 - second identical instance charges again;
 - moving/rotating charges zero;
-- staged sell reverses the correct amount;
+- cancelling an uncommitted placement restores its reserved cost;
 - unaffordable placement rejected;
 - negative projected balance impossible.
 
@@ -764,7 +750,7 @@ Deliver:
 
 - working-copy room session;
 - dirty tracking;
-- staged purchase/refund delta;
+- staged purchase delta;
 - save/discard handling;
 - atomic/recoverable environment + economy commit;
 - restart restoration.
@@ -787,7 +773,6 @@ Deliver:
 - optional grid snap;
 - rotation policy;
 - selected placed-instance editing;
-- sell flow.
 
 Tests:
 
@@ -863,7 +848,6 @@ environment_decor_cancel_transaction
 environment_decor_free_placement
 environment_decor_grid_snap
 environment_decor_rotation
-environment_decor_sell
 environment_decor_resize_mapping
 environment_decor_wallpaper_slot
 environment_decor_input_ownership
@@ -886,11 +870,10 @@ Journey outline:
 6. apply wallpaper;
 7. rotate a rotatable item;
 8. enable snap and place another item;
-9. sell one placed object;
-10. save;
-11. restart;
-12. verify layout, rotation, wallpaper, and final funds;
-13. reopen editor, stage changes, discard them, and verify saved state remains unchanged.
+9. save;
+10. restart;
+11. verify layout, rotation, wallpaper, and final funds;
+12. reopen editor, stage changes, discard them, and verify saved state remains unchanged.
 
 ---
 
@@ -914,12 +897,12 @@ Journey outline:
 - snap preference survives according to editor-preference policy;
 - room coordinates remain correct after resize.
 
-### Sell
+### Purchase finality
 
-- selected existing object clearly indicates Sell mode;
-- refund projection is shown before commit;
-- newly staged object cannot be sold for profit;
-- cancel/discard restores original room and wallet.
+- no Sell or refund action is exposed;
+- cancelling before Save restores uncommitted placement costs;
+- saved purchases remain final;
+- cancel/discard restores the original room and wallet.
 
 ### Wallpapers
 
@@ -1013,7 +996,7 @@ The Environment Decorator v1 is complete when:
 - free mouse placement works across supported window sizes;
 - optional grid snap works and is disabled by default;
 - position and definition-approved rotation persist after restart;
-- Sell is safe and cannot create money exploits;
+- no Sell/refund route exists and cancelling before Save restores only uncommitted costs;
 - wallpaper presets remain separate from Paint Background data;
 - staged room/economy changes save or discard coherently;
 - the editor uses the shared Win98 application UI and remains in-scene;

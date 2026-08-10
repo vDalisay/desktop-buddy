@@ -278,8 +278,6 @@ place staged instance
     -> reserve cost in EnvironmentEditSession
 move/rotate staged or saved instance
     -> no additional cost
-sell staged/saved instance
-    -> staged cancellation/refund delta
 Save/Done
     -> commit environment state + resulting wallet delta atomically
 Cancel editor

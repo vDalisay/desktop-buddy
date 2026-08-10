@@ -17,24 +17,9 @@ public readonly record struct EnvironmentEditResult(EnvironmentEditStatus Status
 
 public readonly record struct EnvironmentCommit(EnvironmentLayout Layout, long BalanceMilliCredits);
 
-public static class DecorationEconomyPolicy
-{
-    public const int SellRefundPermille = 1000;
-    public static bool TryRefund(long purchasePriceMilliCredits, out long refund)
-    {
-        try
-        {
-            refund = checked(purchasePriceMilliCredits * SellRefundPermille / 1000);
-            return purchasePriceMilliCredits >= 0;
-        }
-        catch (OverflowException) { refund = 0; return false; }
-    }
-}
-
 public sealed class EnvironmentEditSession
 {
     private readonly EnvironmentLayout _baseline;
-    private readonly HashSet<PlacedDecorationId> _baselineIds;
     private readonly DecorationCatalogue _catalogue;
     private readonly Func<PlacedDecorationId> _createInstanceId;
     private List<PlacedDecoration> _working;
@@ -50,7 +35,6 @@ public sealed class EnvironmentEditSession
         if (startingBalanceMilliCredits < 0) throw new ArgumentOutOfRangeException(nameof(startingBalanceMilliCredits));
         _baseline = baseline;
         _working = baseline.Decorations.ToList();
-        _baselineIds = baseline.Decorations.Select(item => item.InstanceId).ToHashSet();
         _catalogue = catalogue;
         _createInstanceId = createInstanceId ?? PlacedDecorationId.New;
         StartingBalanceMilliCredits = startingBalanceMilliCredits;
@@ -105,17 +89,18 @@ public sealed class EnvironmentEditSession
         if (!HasReservation) return new(EnvironmentEditStatus.NoReservation);
         if (!_catalogue.TryGet(_reservedDefinitionId, out DecorationDefinition definition)) return new(EnvironmentEditStatus.UnknownDefinition);
         if (_working.Count >= EnvironmentLayout.MaximumPlacedDecorations) return new(EnvironmentEditStatus.LayoutFull);
-        // The room has one wallpaper slot, so a newly bought wallpaper replaces (and refunds) the
-        // occupant instead of failing the purchase.
-        // ponytail: cancelling that placement does not bring the replaced wallpaper back, only its
-        // credits; stage the removal if owners ask for undo.
+        // The room has one wallpaper slot. Replacing a saved wallpaper is a final new purchase;
+        // replacing one staged in this session only cancels that uncommitted placement.
         if (definition.RenderBand == DecorationRenderBand.Wallpaper)
         {
             int occupied = _working.FindIndex(item => item.RenderBand == DecorationRenderBand.Wallpaper);
             if (occupied >= 0)
             {
-                EnvironmentEditResult removed = Sell(_working[occupied].InstanceId);
-                if (!removed.Succeeded) return removed;
+                PlacedDecoration previous = _working[occupied];
+                if (!_baseline.Decorations.Any(item => item.InstanceId == previous.InstanceId) &&
+                    !TryChangeDelta(previous.PurchasePriceMilliCredits))
+                    return new(EnvironmentEditStatus.ArithmeticOverflow);
+                _working.RemoveAt(occupied);
             }
         }
         PlacedDecorationId instanceId = _reservedInstanceId;
@@ -171,19 +156,14 @@ public sealed class EnvironmentEditSession
         return true;
     }
 
-    public EnvironmentEditResult Sell(PlacedDecorationId instanceId)
+    public EnvironmentEditResult RemoveStaged(PlacedDecorationId instanceId)
     {
         int index = Find(instanceId);
         if (index < 0) return new(EnvironmentEditStatus.UnknownInstance);
         PlacedDecoration placed = _working[index];
-        long credit;
-        if (_baselineIds.Contains(instanceId))
-        {
-            if (!DecorationEconomyPolicy.TryRefund(placed.PurchasePriceMilliCredits, out credit))
-                return new(EnvironmentEditStatus.ArithmeticOverflow);
-        }
-        else credit = placed.PurchasePriceMilliCredits;
-        if (!TryChangeDelta(credit)) return new(EnvironmentEditStatus.ArithmeticOverflow);
+        if (_baseline.Decorations.Any(item => item.InstanceId == instanceId))
+            return new(EnvironmentEditStatus.UnknownInstance);
+        if (!TryChangeDelta(placed.PurchasePriceMilliCredits)) return new(EnvironmentEditStatus.ArithmeticOverflow);
         _working.RemoveAt(index);
         return new(EnvironmentEditStatus.Succeeded, instanceId);
     }

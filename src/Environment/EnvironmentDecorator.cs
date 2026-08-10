@@ -456,7 +456,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     private void CancelPlacement()
     {
         if (!_placementMode || _session is null) return;
-        if (_placementStagedInstance != default) _session.Sell(_placementStagedInstance);
+        if (_placementStagedInstance != default) _session.RemoveStaged(_placementStagedInstance);
         else if (_session.HasReservation) _session.CancelReservation();
         EndPlacementMode();
         _status.Text = "Placement cancelled; the reserved cost was restored.";

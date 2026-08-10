@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Painting;
+using DesktopBuddy.Painting;
 using Godot;
 
 namespace DesktopBuddy.CharacterEditor;
@@ -15,6 +16,8 @@ public partial class PaintCanvasControl : Control
     private bool _panning;
     private Vector2 _lastPointer;
     private Vector2 _strokePointer;
+    private bool _sampling;
+    private PaintColor _sampledColor;
 
     /// <summary>Vertical world extent the preview's orthographic camera frames at zoom 1.</summary>
     public const double BaseCameraSize = 400.0;
@@ -73,7 +76,15 @@ public partial class PaintCanvasControl : Control
             }
             else
             {
-                SetHover(Map(motion.Position)?.Part);
+                PaintHit? hit = Map(motion.Position);
+                SetHover(hit?.Part);
+                if (_sampling && hit is PaintHit sampleHit && TrySample(sampleHit, out PaintColor sampled))
+                {
+                    _sampledColor = sampled;
+                    Workspace.SelectedColor = sampled;
+                    ColorSampled?.Invoke(sampled);
+                    WorkspaceChanged?.Invoke();
+                }
                 if (_painting)
                     PaintAlongTo(motion.Position);
             }
@@ -105,9 +116,12 @@ public partial class PaintCanvasControl : Control
                     {
                         if (hit is PaintHit sampleHit && TrySample(sampleHit, out PaintColor sampled))
                         {
+                            _sampling = true;
+                            _sampledColor = sampled;
                             Workspace.SelectedColor = sampled;
                             ColorSampled?.Invoke(sampled);
                             WorkspaceChanged?.Invoke();
+                            QueueRedraw();
                         }
                         GrabFocus();
                         AcceptEvent();
@@ -129,6 +143,11 @@ public partial class PaintCanvasControl : Control
                     _painting = false;
                     Input.UseAccumulatedInput = true;
                     WorkspaceChanged?.Invoke();
+                }
+                else if (!button.Pressed && EyedropperToolActive)
+                {
+                    _sampling = false;
+                    QueueRedraw();
                 }
                 AcceptEvent();
                 return;
@@ -219,12 +238,21 @@ public partial class PaintCanvasControl : Control
 
     public override void _Draw()
     {
-        if (PanToolActive || EyedropperToolActive)
+        if (EyedropperToolActive)
+        {
+            if (_sampling)
+            {
+                Color color = Color.Color8(_sampledColor.R, _sampledColor.G, _sampledColor.B);
+                PaintCursorGizmos.DrawPickPreview(this, _lastPointer, color);
+            }
+            return;
+        }
+        if (PanToolActive)
             return;
 
         float diameter = (float)(Workspace.BrushDiameter * View.Zoom * Math.Min(Size.X, Size.Y) /
             (PaintPolicy.SurfaceSize * 2.0));
-        DrawArc(_lastPointer, Math.Max(2, diameter / 2), 0, Mathf.Tau, 32, Colors.White, 1.5f);
+        PaintCursorGizmos.DrawBrushRing(this, _lastPointer, diameter);
     }
 
     public void ResetView()

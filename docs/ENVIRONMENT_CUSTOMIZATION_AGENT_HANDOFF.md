@@ -102,7 +102,6 @@ select/preview definition -> $0
 place staged instance     -> reserve that instance's price
 place second same item    -> reserve the price again
 move/rotate instance      -> $0 additional
-sell                       -> staged cancellation/refund delta
 Save/Done                  -> commit layout + wallet delta
 Cancel                     -> restore baseline layout / discard staged delta
 ```
@@ -148,7 +147,7 @@ Create engine-free:
 - anchor/rotation/render-band policies;
 - `EnvironmentLayout`;
 - `EnvironmentProgressState/Snapshot`;
-- `EnvironmentEditSession` with baseline + working copy + staged cost/refund calculation;
+- `EnvironmentEditSession` with baseline + working copy + staged cost calculation;
 - validation and saturation/negative-balance protections.
 
 First gate: pure C# tests prove two identical placed objects each cost money, moving/rotating costs nothing, cancel restores baseline, and unaffordable placement is rejected.
@@ -180,7 +179,7 @@ Use shared:
 - `Win98ValuePanel` for Available Funds / Item Cost / Projected Funds;
 - `Win98Dialog` for dirty-close/save-discard flows.
 
-Feature code computes price, affordability, refund and placement state. Do not put those rules into the shared UI components.
+Feature code computes price, affordability, and placement state. Do not put those rules into the shared UI components.
 
 ### ENV-6 — Wallpaper + content + closure
 
