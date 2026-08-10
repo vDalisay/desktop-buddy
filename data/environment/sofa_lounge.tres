@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnvironmentDecorationResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Environment/EnvironmentDecorationResource.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+DefinitionId = "decoration.sofa.lounge"
+DisplayNameKey = "environment.sofa.lounge"
+Category = 1
+PriceCredits = 220
+AnchorKind = 0
+AllowsRotation = true
+RotationStepDegrees = 90
+RenderBand = 3
+Visible = true
+VisualKind = 7
+VisualSize = Vector2(136, 66)
+PrimaryColor = Color(0.58, 0.34, 0.68, 1)
+SecondaryColor = Color(0.21, 0.12, 0.25, 1)
