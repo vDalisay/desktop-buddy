@@ -1,4 +1,5 @@
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
@@ -20,4 +21,5 @@ public sealed record RunContext(
     IMonotonicTimeSource? TimeSource = null,
     CharacterSelectionState? CharacterSelection = null,
     CharacterStore? Characters = null,
-    WorkProgressState? WorkProgress = null);
+    WorkProgressState? WorkProgress = null,
+    EnvironmentProgressState? EnvironmentProgress = null);

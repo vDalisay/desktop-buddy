@@ -25,36 +25,21 @@ public partial class CharacterEditorHost
     public bool IsPaintMode => _paintControls is not null && _paintControls.Visible;
     public PaintWorkspace PaintWorkspace => _paintCanvas.Workspace;
 
-    /// <summary>
-    /// Opens the editor directly in its paint workspace. This is the product entry point used
-    /// by the Win98 Paint / Character menu; the appearance form remains reachable through the
-    /// in-editor mode button rather than being shown first.
-    /// </summary>
     public async Task OpenPaintEditorAsync()
     {
         await OpenEditorAsync();
-        if (!IsEditorOpen)
-            return;
+        if (!IsEditorOpen) return;
 
-        // Painting is attached after the base editor UI and preview camera have entered the
-        // tree. Give that deferred composition a bounded opportunity to complete.
         for (int frame = 0; frame < 120 && !GodotObject.IsInstanceValid(_paintCanvas); frame++)
         {
-            if (!_paintAttachStarted)
-                TryAttachPaintingWorkspace();
+            if (!_paintAttachStarted) TryAttachPaintingWorkspace();
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
 
-        if (!GodotObject.IsInstanceValid(_paintCanvas) ||
-            !GodotObject.IsInstanceValid(_paintControls))
-        {
+        if (!GodotObject.IsInstanceValid(_paintCanvas) || !GodotObject.IsInstanceValid(_paintControls))
             return;
-        }
 
         SetPaintMode(true);
-
-        // The legacy appearance form and preview share one ScrollContainer. Move directly to
-        // the paint toolbar/canvas so opening Paint never lands at the top of the long form.
         if (FindChild("CharacterControlsScroll", true, false) is ScrollContainer scroll)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -64,12 +49,10 @@ public partial class CharacterEditorHost
 
     private void ProcessPainting()
     {
-        if (!IsInitialized)
-            return;
+        if (!IsInitialized) return;
         if (_paintCanvas is null)
         {
-            if (!_paintAttachStarted)
-                TryAttachPaintingWorkspace();
+            if (!_paintAttachStarted) TryAttachPaintingWorkspace();
             return;
         }
         _paintTextures.FlushFrame(_paintCanvas.Workspace.Surfaces);
@@ -79,14 +62,11 @@ public partial class CharacterEditorHost
     {
         if (FindChild("CharacterPreview", recursive: true, owned: false) is not SubViewportContainer preview ||
             preview.GetParent() is not VBoxContainer controls)
-        {
             return;
-        }
         if (preview.FindChildren("*", nameof(Camera3D), recursive: true, owned: false)
                 .FirstOrDefault() is not Camera3D camera)
-        {
             return;
-        }
+
         _paintAttachStarted = true;
         BuildPaintingArea(controls, preview, camera);
     }
@@ -126,14 +106,14 @@ public partial class CharacterEditorHost
         brush.ButtonPressed = true;
         brush.Pressed += () =>
         {
-            _paintCanvas.Workspace.SelectedTool = PaintTool.Brush;
+            _paintCanvas.SelectPaintTool(PaintTool.Brush);
             brush.ButtonPressed = true;
             eraser.ButtonPressed = false;
             RefreshPaintStatus();
         };
         eraser.Pressed += () =>
         {
-            _paintCanvas.Workspace.SelectedTool = PaintTool.Eraser;
+            _paintCanvas.SelectPaintTool(PaintTool.Eraser);
             brush.ButtonPressed = false;
             eraser.ButtonPressed = true;
             RefreshPaintStatus();
@@ -196,7 +176,11 @@ public partial class CharacterEditorHost
         commandRow.AddChild(_redoPaintButton);
 
         Button eraseAll = Button(PaintUiText.Get(PaintUiText.EraseAll), "PaintEraseAllButton");
-        eraseAll.Pressed += () => _eraseAllConfirmation.PopupCentered();
+        eraseAll.Pressed += () =>
+        {
+            _paintCanvas.CancelCurve();
+            _eraseAllConfirmation.PopupCentered();
+        };
         commandRow.AddChild(eraseAll);
 
         var viewRow = new HBoxContainer { Name = "PaintViewRow" };
@@ -212,8 +196,6 @@ public partial class CharacterEditorHost
         viewRow.AddChild(zoomIn);
         viewRow.AddChild(resetView);
 
-        // Both labels moved to the Win98 status bar (Win98PaintStatusBootstrap); kept hidden so
-        // the localization scenario and RefreshPaintStatus keep working unchanged.
         _paintStatus = new Label
         {
             Name = "PaintHoverStatus",
@@ -245,7 +227,6 @@ public partial class CharacterEditorHost
         RefreshPaintStatus();
     }
 
-    /// <summary>Brush size step on press, then auto-repeat while the button stays held.</summary>
     private void HoldRepeat(Button button, int step)
     {
         var timer = new Timer { Name = "Repeat", OneShot = false, ProcessMode = Node.ProcessModeEnum.Always };
@@ -253,8 +234,7 @@ public partial class CharacterEditorHost
 
         void Step()
         {
-            _paintCanvas.Workspace.AdjustBrush(step);
-            _paintCanvas.QueueRedraw();
+            _paintCanvas.AdjustBrushAndRefreshPreview(step);
             RefreshPaintStatus();
         }
 
@@ -290,7 +270,6 @@ public partial class CharacterEditorHost
         palette.AddThemeConstantOverride("h_separation", 1);
         palette.AddThemeConstantOverride("v_separation", 1);
         paletteScroll.AddChild(palette);
-
     }
 
     private void SetPaintColor(Color value)
@@ -301,20 +280,25 @@ public partial class CharacterEditorHost
             (byte)Math.Clamp(Math.Round(value.B * 255), 0, 255));
         if (GodotObject.IsInstanceValid(_currentColorSwatch))
             _currentColorSwatch.Color = value;
+        _paintCanvas.RefreshPendingCurvePreview();
         RefreshPaintStatus();
     }
 
     private void UndoPaint()
     {
-        if (_paintCanvas.Workspace.Undo())
-            QueueAllPaintTextures();
+        bool changed = _paintCanvas.CurvePending
+            ? _paintCanvas.CancelCurve()
+            : _paintCanvas.Workspace.Undo();
+        if (changed) QueueAllPaintTextures();
         RefreshPaintStatus();
     }
 
     private void RedoPaint()
     {
-        if (_paintCanvas.Workspace.Redo())
-            QueueAllPaintTextures();
+        bool changed = _paintCanvas.CurvePending
+            ? _paintCanvas.CancelCurve()
+            : _paintCanvas.Workspace.Redo();
+        if (changed) QueueAllPaintTextures();
         RefreshPaintStatus();
     }
 
@@ -322,19 +306,14 @@ public partial class CharacterEditorHost
 
     private void SetPaintMode(bool enabled)
     {
-        if (!GodotObject.IsInstanceValid(_paintControls) ||
-            !GodotObject.IsInstanceValid(_paintCanvas))
-        {
+        if (!GodotObject.IsInstanceValid(_paintControls) || !GodotObject.IsInstanceValid(_paintCanvas))
             return;
-        }
 
+        if (!enabled) _paintCanvas.CancelCurve();
         _paintControls.Visible = enabled;
         _paintCanvas.Visible = enabled;
-        _paintCanvas.MouseFilter = enabled
-            ? Control.MouseFilterEnum.Stop
-            : Control.MouseFilterEnum.Ignore;
-        _paintModeButton.Text = PaintUiText.Get(
-            enabled ? PaintUiText.AppearanceControls : PaintUiText.Open);
+        _paintCanvas.MouseFilter = enabled ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore;
+        _paintModeButton.Text = PaintUiText.Get(enabled ? PaintUiText.AppearanceControls : PaintUiText.Open);
         _paintCanvas.ResetView();
         if (enabled)
         {
@@ -352,14 +331,14 @@ public partial class CharacterEditorHost
 
     private void SetPaintZoom(double zoom)
     {
+        _paintCanvas.CancelCurve();
         _paintCanvas.View.SetZoom(zoom, default);
         ApplyPaintView();
     }
 
     private void ApplyPaintView()
     {
-        if (_paintCamera is null)
-            return;
+        if (_paintCamera is null) return;
         _paintCamera.Size = (float)(PaintCanvasControl.BaseCameraSize / _paintCanvas.View.Zoom);
         PaintPoint center = _paintCanvas.CameraCenter;
         _paintCamera.Position = new Vector3((float)center.X, (float)-center.Y, 600);
@@ -368,20 +347,34 @@ public partial class CharacterEditorHost
 
     private void RefreshPaintStatus()
     {
-        if (_paintCanvas is null || _paintStatus is null)
-            return;
+        if (_paintCanvas is null || _paintStatus is null) return;
         _brushSize.Text = _paintCanvas.Workspace.BrushDiameter.ToString();
-        _undoPaintButton.Disabled = !_paintCanvas.Workspace.CanUndo;
-        _redoPaintButton.Disabled = !_paintCanvas.Workspace.CanRedo;
+        _undoPaintButton.Disabled = !_paintCanvas.Workspace.CanUndo && !_paintCanvas.CurvePending;
+        _redoPaintButton.Disabled = !_paintCanvas.Workspace.CanRedo || _paintCanvas.CurvePending;
+
+        if (_paintCanvas.CurvePending)
+        {
+            _paintStatus.Text = _paintCanvas.CurvePhase switch
+            {
+                BuddyPaintCurvePhase.BaselineDragging => "Curve: drag the straight baseline.",
+                BuddyPaintCurvePhase.AwaitFirstBend => "Curve: drag a point on the baseline for the first bend.",
+                BuddyPaintCurvePhase.FirstBendDragging => "Curve: release to set the first bend.",
+                BuddyPaintCurvePhase.AwaitSecondBend => "Curve: drag a second point to make the final bend.",
+                BuddyPaintCurvePhase.SecondBendDragging => "Curve: release to commit the curved line.",
+                _ => "Curve",
+            };
+            return;
+        }
+
         string hovered = _paintCanvas.HoveredPart?.ToString() ?? PaintUiText.Get(PaintUiText.Canvas);
-        string tool = PaintUiText.Get(
-            _paintCanvas.Workspace.SelectedTool == PaintTool.Brush
-                ? PaintUiText.Brush
-                : PaintUiText.Eraser);
-        _paintStatus.Text = PaintUiText.Format(
-            PaintUiText.Status,
-            tool,
-            hovered,
-            _paintCanvas.View.Zoom);
+        string tool = _paintCanvas.Workspace.SelectedTool switch
+        {
+            PaintTool.Brush => PaintUiText.Get(PaintUiText.Brush),
+            PaintTool.Eraser => PaintUiText.Get(PaintUiText.Eraser),
+            PaintTool.Spray => "Spray",
+            PaintTool.Curve => "Curve",
+            _ => "Paint",
+        };
+        _paintStatus.Text = PaintUiText.Format(PaintUiText.Status, tool, hovered, _paintCanvas.View.Zoom);
     }
 }

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnvironmentDecorationResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Environment/EnvironmentDecorationResource.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+DefinitionId = "decoration.plant.leafy"
+DisplayNameKey = "environment.plant.leafy"
+Category = 4
+PriceCredits = 65
+AnchorKind = 0
+AllowsRotation = true
+RotationStepDegrees = 90
+RenderBand = 3
+Visible = true
+VisualKind = 10
+VisualSize = Vector2(62, 90)
+PrimaryColor = Color(0.28, 0.66, 0.36, 1)
+SecondaryColor = Color(0.42, 0.24, 0.16, 1)

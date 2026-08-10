@@ -73,11 +73,15 @@ public static class ProgressSavePolicy
                 6 => MigrateV6(
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null.")),
+                7 => JsonSerializer.Deserialize<ProgressSave>(json, Options)
+                    ?? throw new JsonException("Progress payload was null."),
                 ProgressSave.CurrentSchemaVersion =>
                     JsonSerializer.Deserialize<ProgressSave>(json, Options)
                     ?? throw new JsonException("Progress payload was null."),
                 _ => throw new JsonException($"Unsupported legacy schema {schema}."),
             };
+            if (save.SchemaVersion == 7)
+                save = MigrateV7(save);
             Validate(save);
             return new SaveDecodeResult(SaveDecodeStatus.Valid, save);
         }
@@ -109,6 +113,7 @@ public static class ProgressSavePolicy
             save.Statistics is null ||
             save.Times is null ||
             save.Work is null ||
+            save.Environment is null ||
             save.Extensions is null ||
             save.Extensions.UnknownContentIds is null ||
             save.Extensions.Values is null ||
@@ -133,6 +138,7 @@ public static class ProgressSavePolicy
         ValidateIds(save.HarmfulContentIds, nameof(save.HarmfulContentIds));
         ValidateCounters(save.Statistics);
         ValidateWork(save.Work);
+        ValidateEnvironment(save.Environment);
         if (string.IsNullOrWhiteSpace(save.SelectedToolId))
             throw new ArgumentException("Selected tool ID is required.", nameof(save));
     }
@@ -242,8 +248,14 @@ public static class ProgressSavePolicy
 
     private static ProgressSave MigrateV6(ProgressSave save) => save with
     {
-        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        SchemaVersion = 7,
         ActiveCharacterId = null,
+    };
+
+    private static ProgressSave MigrateV7(ProgressSave save) => save with
+    {
+        SchemaVersion = ProgressSave.CurrentSchemaVersion,
+        Environment = new EnvironmentProgressSave(),
     };
 
     private static List<FunActivitySave> DefaultFunActivities()
@@ -452,5 +464,19 @@ public static class ProgressSavePolicy
         ValidateIds(
             session.EarnedRepeatPerSessionMilestoneIds,
             nameof(session.EarnedRepeatPerSessionMilestoneIds));
+    }
+
+    private static void ValidateEnvironment(EnvironmentProgressSave environment)
+    {
+        if (environment.Revision < 0 || environment.PlacedDecorations is null)
+            throw new ArgumentException("Environment progress payload is invalid.");
+        try
+        {
+            _ = environment.CreateState();
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException)
+        {
+            throw new ArgumentException("Environment progress payload is invalid.", exception);
+        }
     }
 }

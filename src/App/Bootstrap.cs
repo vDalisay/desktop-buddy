@@ -5,6 +5,7 @@ using DesktopBuddy.Automation;
 using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
@@ -159,6 +160,9 @@ public partial class Bootstrap : Node
         WorkProgressState workProgress = newSemanticState
             ? new WorkProgressState()
             : loadedProgress?.Work?.CreateState() ?? new WorkProgressState();
+        EnvironmentProgressState environmentProgress = newSemanticState
+            ? new EnvironmentProgressState()
+            : loadedProgress?.Environment?.CreateState() ?? new EnvironmentProgressState();
         var characterSelection = new CharacterSelectionState(
             newSemanticState ? null : loadedProgress?.ActiveCharacterId);
         var characters = new CharacterStore(
@@ -172,7 +176,9 @@ public partial class Bootstrap : Node
             characterSelection,
             newSemanticState ? -1 : characterSelection.Revision,
             workProgress,
-            newSemanticState ? -1 : workProgress.Revision);
+            newSemanticState ? -1 : workProgress.Revision,
+            environmentProgress,
+            newSemanticState ? -1 : environmentProgress.Revision);
         var settings = settingsLoad.Value ?? new LocalSettingsSave();
 
         if (progressLoad.QuarantinedPath is not null)
@@ -202,7 +208,8 @@ public partial class Bootstrap : Node
             TimeSource: null,
             CharacterSelection: characterSelection,
             Characters: characters,
-            WorkProgress: workProgress);
+            WorkProgress: workProgress,
+            EnvironmentProgress: environmentProgress);
         sandbox.Shell.ConfigureRuntime(settings, saves);
         sandbox.Configure(context);
 
