@@ -38,5 +38,6 @@ internal static class PaintingPhaseBScenarioRegistration
         factories["paint_eyedropper_sampling"] = () => new PaintEyedropperSamplingScenario();
         factories["paint_document_state"] = () => new PaintDocumentStateScenario();
         factories["character_paint_save_use_restart"] = () => new CharacterPaintSaveUseRestartScenario();
+        factories["paint_toolbar_icons"] = () => new PaintToolbarIconScenario();
     }
 }
