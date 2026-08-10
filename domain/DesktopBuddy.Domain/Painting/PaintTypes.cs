@@ -5,7 +5,7 @@ using System.Linq;
 namespace DesktopBuddy.Domain.Painting;
 
 public enum PaintPart { Head, Torso, LeftHand, RightHand, LeftFoot, RightFoot }
-public enum PaintTool { Brush, Eraser }
+public enum PaintTool { Brush, Spray, Eraser }
 
 public readonly record struct PaintColor(byte R, byte G, byte B)
 {
@@ -165,7 +165,6 @@ public sealed class FrontalPaintMapper
         if (!point.IsFinite) { hit = default; return false; }
         foreach (PaintPartShape shape in _shapes)
         {
-            // Screen offset from the part centre. Y is world Y-down; the meshes are Y-up.
             double x = point.X - shape.Center.X;
             double yUp = -(point.Y - shape.Center.Y);
             if (shape.Kind == PaintShapeKind.Capsule
@@ -180,11 +179,6 @@ public sealed class FrontalPaintMapper
         return false;
     }
 
-    /// <summary>
-    /// Godot's SphereMesh runs u from the camera-facing pole: front 0, +x 0.25, back 0.5,
-    /// -x 0.75 — so the texture seam falls down the middle of the visible face — and v from
-    /// the top pole to the bottom. Verified against the generated mesh arrays.
-    /// </summary>
     private static bool TryMapSphere(PaintPartShape shape, double x, double yUp, out PaintPoint uv, out double z)
     {
         uv = default;
@@ -201,11 +195,6 @@ public sealed class FrontalPaintMapper
         return true;
     }
 
-    /// <summary>
-    /// Godot's CapsuleMesh offsets u by half a turn — front 0.5, so the seam sits at the back —
-    /// and splits v into three equal bands: top cap, cylinder, bottom cap, whatever their real
-    /// proportions. Verified against the generated mesh arrays.
-    /// </summary>
     private static bool TryMapCapsule(PaintPartShape shape, double x, double yUp, out PaintPoint uv, out double z)
     {
         uv = default;
