@@ -14,10 +14,6 @@ public sealed record PaintCommand(IReadOnlyList<PaintPatch> Patches)
     public long MemoryBytes => Patches.Sum(patch => patch.MemoryBytes);
 }
 
-/// <summary>
-/// Bounded reversible paint history. New edits invalidate redo. Undo and redo share the same
-/// memory cap so adding redo cannot silently double the editor's documented memory budget.
-/// </summary>
 public sealed class PaintUndoHistory
 {
     private readonly LinkedList<PaintCommand> _undo = new();
@@ -30,8 +26,7 @@ public sealed class PaintUndoHistory
     public void Push(PaintCommand command)
     {
         ArgumentNullException.ThrowIfNull(command);
-        if (command.Patches.Count == 0)
-            return;
+        if (command.Patches.Count == 0) return;
         if (command.MemoryBytes > PaintPolicy.UndoBudgetBytes)
             throw new InvalidOperationException("A paint command exceeds the complete undo budget.");
 
@@ -48,7 +43,6 @@ public sealed class PaintUndoHistory
             command = EmptyCommand();
             return false;
         }
-
         command = _undo.Last.Value;
         _undo.RemoveLast();
         _redo.AddLast(command);
@@ -62,14 +56,12 @@ public sealed class PaintUndoHistory
             command = EmptyCommand();
             return false;
         }
-
         command = _redo.Last.Value;
         _redo.RemoveLast();
         _undo.AddLast(command);
         return true;
     }
 
-    // Kept for source compatibility with the original history API.
     public bool TryPop(out PaintCommand command) => TryUndo(out command);
 
     public void Clear()
@@ -108,12 +100,9 @@ public sealed class PaintWorkspace
 
         public void Expand(PaintSurface surface, PaintRect candidate)
         {
-            if (candidate.IsEmpty)
-                return;
-
+            if (candidate.IsEmpty) return;
             PaintRect union = PaintRect.Union(Rectangle, candidate);
-            if (union == Rectangle)
-                return;
+            if (union == Rectangle) return;
 
             byte[] expanded = surface.Capture(union);
             if (!Rectangle.IsEmpty)
@@ -122,11 +111,7 @@ public sealed class PaintWorkspace
             Before = expanded;
         }
 
-        private static void CopyPatch(
-            ReadOnlySpan<byte> source,
-            PaintRect sourceRect,
-            Span<byte> destination,
-            PaintRect destinationRect)
+        private static void CopyPatch(ReadOnlySpan<byte> source, PaintRect sourceRect, Span<byte> destination, PaintRect destinationRect)
         {
             int sourceStride = sourceRect.Width * PaintPolicy.BytesPerPixel;
             int destinationStride = destinationRect.Width * PaintPolicy.BytesPerPixel;
@@ -146,14 +131,28 @@ public sealed class PaintWorkspace
     private readonly Dictionary<PaintPart, GesturePatchBuilder> _gestureBefore = new();
     private PaintHit? _lastHit;
     private bool _gestureActive;
+    private PaintTool _selectedTool = PaintTool.Brush;
+    private ulong _sprayGestureSeed = 0xD1B54A32D192ED03UL;
+    private ulong _sprayPulseOrdinal;
 
-    public PaintTool SelectedTool { get; set; } = PaintTool.Brush;
+    public PaintTool SelectedTool
+    {
+        get => _selectedTool;
+        set
+        {
+            if (_selectedTool == value) return;
+            EndGesture();
+            _selectedTool = value;
+        }
+    }
+
     public PaintColor SelectedColor { get; set; } = PaintColor.White;
     public int BrushDiameter { get; private set; } = PaintPolicy.DefaultBrushDiameter;
     public bool CanUndo => _history.CanUndo;
     public bool CanRedo => _history.CanRedo;
     public long UndoMemoryBytes => _history.MemoryBytes;
     public bool IsDirty { get; private set; }
+    public bool GestureActive => _gestureActive;
     public IReadOnlyDictionary<PaintPart, PaintSurface> Surfaces => _surfaces;
 
     public void AdjustBrush(int steps) => BrushDiameter = (int)Math.Clamp(
@@ -164,89 +163,86 @@ public sealed class PaintWorkspace
     public void SetBrushDiameter(int diameter) =>
         BrushDiameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
 
-    /// <summary>
-    /// Starts a gesture. A miss (null or invalid hit) still opens the gesture so a press that
-    /// begins off the character can paint once the drag crosses onto it; nothing is stamped
-    /// while the pointer is off-surface.
-    /// </summary>
     public void BeginGesture(PaintHit? hit)
     {
         EndGesture();
         _gestureActive = true;
         _lastHit = null;
-        if (hit is not PaintHit valid || !valid.IsValid)
-            return;
+        if (_selectedTool == PaintTool.Spray)
+        {
+            _sprayGestureSeed += 0x9E3779B97F4A7C15UL;
+            _sprayPulseOrdinal = 0;
+        }
+        if (hit is not PaintHit valid || !valid.IsValid) return;
 
         _lastHit = valid;
+        if (_selectedTool == PaintTool.Spray)
+        {
+            SprayPulse(valid);
+            return;
+        }
+
         CaptureBefore(valid.Part, PaintSurface.StampBounds(valid.Uv, BrushDiameter));
-        _surfaces[valid.Part].Stamp(valid.Uv, BrushDiameter, SelectedTool, SelectedColor);
+        _surfaces[valid.Part].Stamp(valid.Uv, BrushDiameter, _selectedTool, SelectedColor);
     }
 
     public void ContinueGesture(PaintHit? hit)
     {
-        if (!_gestureActive)
-            return;
-        // A miss keeps the previous hit: pointer samples arrive once per frame, so a quick drag
-        // skips clean over the buddy's small silhouette. Dropping continuity here turned every
-        // landing into an isolated dot.
-        if (hit is null || !hit.Value.IsValid)
-            return;
+        if (!_gestureActive) return;
+        if (hit is null || !hit.Value.IsValid) return;
 
         PaintHit current = hit.Value;
-        if (_lastHit is PaintHit previous && previous.Part == current.Part &&
-            IsBridgeable(previous.Uv, current.Uv))
+        if (_selectedTool == PaintTool.Spray)
+        {
+            SprayPulse(current);
+            _lastHit = current;
+            return;
+        }
+
+        if (_lastHit is PaintHit previous && previous.Part == current.Part && IsBridgeable(previous.Uv, current.Uv))
         {
             CaptureBefore(current.Part, PaintSurface.StrokeBounds(previous.Uv, current.Uv, BrushDiameter));
-            _surfaces[current.Part].Stroke(
-                previous.Uv,
-                current.Uv,
-                BrushDiameter,
-                SelectedTool,
-                SelectedColor);
+            _surfaces[current.Part].Stroke(previous.Uv, current.Uv, BrushDiameter, _selectedTool, SelectedColor);
         }
         else
         {
             CaptureBefore(current.Part, PaintSurface.StampBounds(current.Uv, BrushDiameter));
-            _surfaces[current.Part].Stamp(
-                current.Uv,
-                BrushDiameter,
-                SelectedTool,
-                SelectedColor);
+            _surfaces[current.Part].Stamp(current.Uv, BrushDiameter, _selectedTool, SelectedColor);
         }
         _lastHit = current;
     }
 
     public void EndGesture()
     {
-        if (!_gestureActive)
-            return;
+        if (!_gestureActive) return;
 
         List<PaintPatch> patches = new();
         foreach ((PaintPart part, GesturePatchBuilder builder) in _gestureBefore)
         {
-            if (builder.Rectangle.IsEmpty)
-                continue;
+            if (builder.Rectangle.IsEmpty) continue;
             byte[] after = _surfaces[part].Capture(builder.Rectangle);
             if (!builder.Before.AsSpan().SequenceEqual(after))
                 patches.Add(new PaintPatch(part, builder.Rectangle, builder.Before, after));
         }
         _history.Push(new PaintCommand(patches));
-        if (patches.Count > 0)
-            IsDirty = true;
+        if (patches.Count > 0) IsDirty = true;
         _gestureBefore.Clear();
         _gestureActive = false;
         _lastHit = null;
     }
 
-    /// <summary>
-    /// Whether two samples on one part are close enough to join. Beyond this the pointer left
-    /// the part and came back somewhere else, and a joining stroke would smear across the UV.
-    /// </summary>
+    private void SprayPulse(PaintHit hit)
+    {
+        PaintRect bounds = PaintSurface.StampBounds(hit.Uv, BrushDiameter);
+        CaptureBefore(hit.Part, bounds);
+        ulong seed = _sprayGestureSeed + (_sprayPulseOrdinal++ * 0x9E3779B97F4A7C15UL);
+        _surfaces[hit.Part].Spray(hit.Uv, BrushDiameter, SelectedColor, seed);
+    }
+
     private static bool IsBridgeable(PaintPoint from, PaintPoint to)
     {
         double dx = Math.Abs(to.X - from.X);
-        if (dx > 0.5)
-            dx = 1.0 - dx; // U is cyclic.
+        if (dx > 0.5) dx = 1.0 - dx;
         double dy = to.Y - from.Y;
         return Math.Sqrt((dx * dx) + (dy * dy)) <= MaxBridgeUvDistance;
     }
@@ -261,21 +257,18 @@ public sealed class PaintWorkspace
         foreach ((PaintPart part, PaintSurface surface) in _surfaces)
         {
             byte[] before = surface.ClonePixels();
-            if (Array.TrueForAll(before, value => value == 0))
-                continue;
+            if (Array.TrueForAll(before, value => value == 0)) continue;
             surface.Clear();
             patches.Add(new PaintPatch(part, whole, before, surface.ClonePixels()));
         }
         _history.Push(new PaintCommand(patches));
-        if (patches.Count > 0)
-            IsDirty = true;
+        if (patches.Count > 0) IsDirty = true;
     }
 
     public bool Undo()
     {
         EndGesture();
-        if (!_history.TryUndo(out PaintCommand command))
-            return false;
+        if (!_history.TryUndo(out PaintCommand command)) return false;
         Restore(command, useAfter: false);
         IsDirty = true;
         return true;
@@ -284,8 +277,7 @@ public sealed class PaintWorkspace
     public bool Redo()
     {
         EndGesture();
-        if (!_history.TryRedo(out PaintCommand command))
-            return false;
+        if (!_history.TryRedo(out PaintCommand command)) return false;
         Restore(command, useAfter: true);
         IsDirty = true;
         return true;
