@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Persistence.Characters;
@@ -22,11 +23,13 @@ public sealed class SaveCoordinator
     private readonly BuddyProgressState _progress;
     private readonly CharacterSelectionState? _selection;
     private readonly WorkProgressState? _work;
+    private readonly EnvironmentProgressState? _environment;
     private readonly IProgressStore _store;
     private Task _activeFlush = Task.CompletedTask;
     private long _savedRevision;
     private long _savedSelectionRevision;
     private long _savedWorkRevision;
+    private long _savedEnvironmentRevision;
     private double _dirtyRunningSeconds;
     private LocalSettingsSave? _registeredSettings;
 
@@ -37,15 +40,19 @@ public sealed class SaveCoordinator
         CharacterSelectionState? selection = null,
         long? savedSelectionRevision = null,
         WorkProgressState? work = null,
-        long? savedWorkRevision = null)
+        long? savedWorkRevision = null,
+        EnvironmentProgressState? environment = null,
+        long? savedEnvironmentRevision = null)
     {
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _selection = selection;
         _work = work;
+        _environment = environment;
         _savedRevision = savedRevision ?? progress.Revision;
         _savedSelectionRevision = savedSelectionRevision ?? selection?.Revision ?? 0;
         _savedWorkRevision = savedWorkRevision ?? work?.Revision ?? 0;
+        _savedEnvironmentRevision = savedEnvironmentRevision ?? environment?.Revision ?? 0;
         _progress.Changed += OnProgressChanged;
         if (_selection is not null)
             _selection.Changed += OnSelectionChanged;
@@ -53,13 +60,58 @@ public sealed class SaveCoordinator
 
     public CharacterSelectionState? CharacterSelection => _selection;
     public WorkProgressState? WorkProgress => _work;
+    public EnvironmentProgressState? EnvironmentProgress => _environment;
 
     public bool IsDirty =>
         _progress.Revision != Interlocked.Read(ref _savedRevision) ||
         (_selection is not null &&
             _selection.Revision != Interlocked.Read(ref _savedSelectionRevision)) ||
         (_work is not null &&
-            _work.Revision != Interlocked.Read(ref _savedWorkRevision));
+            _work.Revision != Interlocked.Read(ref _savedWorkRevision)) ||
+        (_environment is not null &&
+            _environment.Revision != Interlocked.Read(ref _savedEnvironmentRevision));
+
+    /// <summary>
+    /// Applies one validated room working copy and its wallet result, then persists both in
+    /// the same progress write. A failed write restores both exact runtime snapshots.
+    /// </summary>
+    public async Task CommitEnvironmentAsync(
+        EnvironmentEditSession session,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (_environment is null)
+            throw new InvalidOperationException("Environment progress was not composed.");
+        if (!session.IsDirty)
+            return;
+
+        ProgressSnapshot progressBefore = _progress.Snapshot();
+        EnvironmentProgressSnapshot environmentBefore = _environment.Snapshot();
+        if (!session.MatchesBaseline(environmentBefore.Layout))
+            throw new InvalidOperationException("The environment changed while the room edit session was open.");
+        if (progressBefore.Revision == long.MaxValue || environmentBefore.Revision == long.MaxValue)
+            throw new InvalidOperationException("The progress revision is exhausted.");
+
+        if (!session.TryPrepareCommit(progressBefore.BalanceMilliCredits, out EnvironmentCommit commit))
+            throw new InvalidOperationException("Current funds are insufficient for the staged room changes.");
+        _progress.Adopt(progressBefore with
+        {
+            Revision = progressBefore.Revision + 1,
+            BalanceMilliCredits = commit.BalanceMilliCredits,
+        });
+        _environment.Commit(commit.Layout, commit.OwnedUnplaced);
+
+        try
+        {
+            await FlushProgressAsync(token).ConfigureAwait(false);
+        }
+        catch
+        {
+            _progress.Adopt(progressBefore);
+            _environment.Adopt(environmentBefore);
+            throw;
+        }
+    }
 
     public Exception? LastFailure { get; private set; }
 
@@ -155,11 +207,14 @@ public sealed class SaveCoordinator
             Guid? activeCharacterId = _selection?.ActiveCharacterId;
             WorkProgressSnapshot? workSnapshot = _work?.Snapshot();
             long workRevision = workSnapshot?.Revision ?? 0;
-            ProgressSave save = ProgressSave.FromSnapshot(snapshot, activeCharacterId, workSnapshot);
+            EnvironmentProgressSnapshot? environmentSnapshot = _environment?.Snapshot();
+            long environmentRevision = environmentSnapshot?.Revision ?? 0;
+            ProgressSave save = ProgressSave.FromSnapshot(snapshot, activeCharacterId, workSnapshot, environmentSnapshot);
             await _store.SaveProgressAsync(save, token).ConfigureAwait(false);
             Interlocked.Exchange(ref _savedRevision, snapshot.Revision);
             Interlocked.Exchange(ref _savedSelectionRevision, selectionRevision);
             Interlocked.Exchange(ref _savedWorkRevision, workRevision);
+            Interlocked.Exchange(ref _savedEnvironmentRevision, environmentRevision);
             _dirtyRunningSeconds = 0.0;
             LastFailure = null;
         }

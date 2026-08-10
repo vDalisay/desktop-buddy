@@ -16,6 +16,7 @@ public partial class Win98BuddyShellController : CanvasLayer
     private Vector2I _dragStartWindowPosition;
     private Vector2I _dragStartPointer;
     private bool _dragging;
+    private bool _wasMaximized;
 
     private bool _resizing;
     private int _resizeCorner = -1;
@@ -47,16 +48,23 @@ public partial class Win98BuddyShellController : CanvasLayer
         ApplyLayoutMode(Window.LayoutMode);
     }
 
+    /// <summary>A maximized window has no free rect to move or resize; only restored windows do.</summary>
+    private bool CanReshapeWindow =>
+        Window.LayoutMode == WindowLayoutMode.Compact &&
+        !Window.WorkCompanionActive &&
+        DisplayServer.GetName() != "headless" &&
+        GetWindow().Mode == Godot.Window.ModeEnum.Windowed;
+
     public override void _Process(double delta)
     {
-        if (_dragging && Window.LayoutMode == WindowLayoutMode.Compact && !Window.WorkCompanionActive && DisplayServer.GetName() != "headless")
+        if (_dragging && CanReshapeWindow)
         {
             Vector2I pointer = DisplayServer.MouseGetPosition();
             Vector2I target = _dragStartWindowPosition + (pointer - _dragStartPointer);
             DisplayServer.WindowSetPosition(target, GetWindow().GetWindowId());
         }
 
-        if (_resizing && Window.LayoutMode == WindowLayoutMode.Compact && !Window.WorkCompanionActive && DisplayServer.GetName() != "headless")
+        if (_resizing && CanReshapeWindow)
             ApplyResizeFromPointer(DisplayServer.MouseGetPosition());
 
         ApplyWindowTransparency(Window.LayoutMode, Frame.ViewportOpacity);
@@ -134,14 +142,51 @@ public partial class Win98BuddyShellController : CanvasLayer
             GetWindow().Mode = Godot.Window.ModeEnum.Minimized;
     }
 
+    // Maximize is an ordinary maximized window — same Win98 chrome, just monitor-sized.
+    // The transparent full-screen overlay is F11 only.
     private void OnMaximizeRestoreRequested()
     {
-        WindowLayoutMode target = Window.LayoutMode == WindowLayoutMode.Compact
-            ? WindowLayoutMode.FullscreenOverlay
-            : WindowLayoutMode.Compact;
+        if (DisplayServer.GetName() == "headless")
+            return;
 
+        if (Window.LayoutMode == WindowLayoutMode.FullscreenOverlay)
+        {
+            ToggleFullscreenOverlay();
+            return;
+        }
+
+        Godot.Window native = GetWindow();
+        native.Mode = native.Mode == Godot.Window.ModeEnum.Maximized
+            ? Godot.Window.ModeEnum.Windowed
+            : Godot.Window.ModeEnum.Maximized;
+        Frame.StatusText = native.Mode == Godot.Window.ModeEnum.Maximized ? "Maximized" : "Ready";
+    }
+
+    public override void _UnhandledKeyInput(InputEvent inputEvent)
+    {
+        if (inputEvent is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.F11 })
+            return;
+        ToggleFullscreenOverlay();
+        GetViewport().SetInputAsHandled();
+    }
+
+    private void ToggleFullscreenOverlay()
+    {
+        bool entering = Window.LayoutMode == WindowLayoutMode.Compact;
+        bool headless = DisplayServer.GetName() == "headless";
+        if (entering && !headless)
+            _wasMaximized = GetWindow().Mode == Godot.Window.ModeEnum.Maximized;
+
+        WindowLayoutMode target = entering ? WindowLayoutMode.FullscreenOverlay : WindowLayoutMode.Compact;
         if (!Window.TrySetLayoutMode(target, GetWindow().CurrentScreen))
-            Frame.StatusText = "Full interaction mode is unavailable on this system.";
+        {
+            Frame.StatusText = "Full-screen mode is unavailable on this system.";
+            return;
+        }
+
+        // Leaving full-screen returns to whichever compact shape F11 was pressed from.
+        if (!entering && !headless && _wasMaximized)
+            Callable.From(() => GetWindow().Mode = Godot.Window.ModeEnum.Maximized).CallDeferred();
     }
 
     private void OnCloseRequested()
@@ -152,7 +197,7 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void OnTitleDragStarted(Vector2 globalPointer)
     {
-        if (Window.LayoutMode != WindowLayoutMode.Compact || Window.WorkCompanionActive || DisplayServer.GetName() == "headless" || _resizing)
+        if (!CanReshapeWindow || _resizing)
             return;
 
         _dragging = true;
@@ -175,7 +220,7 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void OnResizeStarted(int corner, Vector2 globalPointer)
     {
-        if (Window.LayoutMode != WindowLayoutMode.Compact || Window.WorkCompanionActive || DisplayServer.GetName() == "headless" || _dragging)
+        if (!CanReshapeWindow || _dragging)
             return;
         _resizing = true;
         _resizeCorner = corner;

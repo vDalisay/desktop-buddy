@@ -4,6 +4,16 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Environment Decorations Have No Sell Flow — Owner Approved (2026-08-10)
+
+Purchased environment decorations cannot be sold or refunded. The owner does not see product
+merit in reversing decoration purchases: players should earn credits again for future items rather
+than use selling as protection against regret. Accidental spending is instead prevented by the
+existing staged placement and explicit Save confirmation; cancelling before Save restores the
+uncommitted cost. Once saved, a purchase is final. The Environment Decorator must not show Sell,
+refund projections, or resale controls. Replacing an already-saved wallpaper is a new final
+purchase and does not refund the previous wallpaper.
+
 ## Work Mode Typing Companion — Owner Accepted (2026-08-08)
 
 The owner accepted the implemented Work Mode typing companion plan, including WM0–WM5 and

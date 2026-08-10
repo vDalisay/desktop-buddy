@@ -317,7 +317,7 @@ Exit criteria:
 
 ## Deferred Roadmap
 
-Do not implement these during the milestones above:
+Do not implement these during the milestones above unless a later owner decision explicitly promotes them:
 
 - Optional blood/bleeding.
 - Catalogue, economy, and Work/Play UX research described in
@@ -327,11 +327,19 @@ Do not implement these during the milestones above:
   transitions, including the corner cage/room drag concept and clean-room research into
   other desktop-companion interaction patterns. This design backlog is non-blocking for
   Phase B and does not authorize production UX changes yet.
-- Painting extensions outside the locked Phase B scope: eyedropper, material sliders,
-  pattern/gradient/spray/smudge tools, layers/blend modes, custom brushes, tablet pressure,
-  3D orbit/back-side painting, and cosmetic paint progression.
+- Remaining painting extensions outside the current approved paint surface: material sliders,
+  pattern/gradient/smudge tools, layers/blend modes, custom brushes, tablet pressure,
+  unrestricted 3D orbit painting, and cosmetic paint progression. **Eyedropper is already
+  implemented; Spray/Airbrush, Curved Line and paint-toolbar icon refinement were explicitly
+  promoted into the active `environment-customization` demo pass on 2026-08-10.** Their
+  detailed implementation slices are in `docs/ENVIRONMENT_DECORATOR_IMPLEMENTATION_PLAN.md`
+  Section 19.
+- Full-release Environment expansion, explicitly **not part of the demo**:
+  - multiple named local room/environment profiles;
+  - sharing complete room configurations through Steam after a safe versioned room format is stable;
+  - authored buddy/furniture interactions such as sit/rest/watch/toggle capabilities.
 - Cosmetic progression.
 - Steam Workshop and custom buddy packages (Phase C, requires M6 and C0).
-- Multiple buddies, profiles, multiplayer, Linux, or macOS.
+- Multiple buddies, multiplayer, Linux, or macOS.
 
-Architecture may leave explicit seams for future custom buddy definitions, but must not add a speculative mod loader or generalized scripting framework now.
+The demo environment remains one local room/profile with painted background and visual/non-physical decorations. Architecture may leave migration seams for the full-release Environment items and future custom buddy definitions, but must not add speculative profile managers, Steam room-sharing services, universal furniture behavior frameworks, mod loaders, or generalized scripting frameworks before their release gates.

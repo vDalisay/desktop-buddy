@@ -29,11 +29,6 @@ public sealed class PaintSurface
     public long Revision { get; private set; }
     public ReadOnlyMemory<byte> Pixels => _pixels;
 
-    /// <summary>
-    /// Gap between stamps along an interpolated stroke, as a fraction of the brush diameter.
-    /// Lower lays more dots per unit of travel, so fast drags stay smooth. StrokeBounds must
-    /// use the same value as Stroke or the undo rectangle will not cover what was painted.
-    /// </summary>
     private const double StampSpacingFactor = 0.08;
 
     public static PaintRect StampBounds(PaintPoint uv, int diameter)
@@ -67,18 +62,12 @@ public sealed class PaintSurface
         return dirty;
     }
 
-    public PaintRect Stamp(
-        PaintPoint uv,
-        int diameter,
-        PaintTool tool,
-        PaintColor color)
+    public PaintRect Stamp(PaintPoint uv, int diameter, PaintTool tool, PaintColor color)
     {
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
         double centerX = uv.X * (PaintPolicy.SurfaceSize - 1);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
         double radius = diameter / 2.0;
-        // Horizontal bounds stay unclamped so a brush on the seam wraps to the far edge;
-        // vertical bounds clamp, because the poles are not cyclic.
         int minX = (int)Math.Floor(centerX - radius);
         int maxX = (int)Math.Ceiling(centerX + radius);
         int minY = Math.Clamp((int)Math.Floor(centerY - radius), 0, PaintPolicy.SurfaceSize - 1);
@@ -95,44 +84,50 @@ public sealed class PaintSurface
                 if ((dx * dx) + (dy * dy) > radiusSquared)
                     continue;
 
-                // U wraps around the mesh, so a brush over the seam continues on the far edge
-                // instead of being clipped.
-                int wrappedX = ((x % PaintPolicy.SurfaceSize) + PaintPolicy.SurfaceSize) % PaintPolicy.SurfaceSize;
+                int wrappedX = WrapPixelX(x);
                 int index = ((y * PaintPolicy.SurfaceSize) + wrappedX) * PaintPolicy.BytesPerPixel;
                 byte r = tool == PaintTool.Eraser ? (byte)0 : color.R;
                 byte g = tool == PaintTool.Eraser ? (byte)0 : color.G;
                 byte b = tool == PaintTool.Eraser ? (byte)0 : color.B;
                 byte a = tool == PaintTool.Eraser ? (byte)0 : byte.MaxValue;
-                if (_pixels[index] == r && _pixels[index + 1] == g &&
-                    _pixels[index + 2] == b && _pixels[index + 3] == a)
-                {
-                    continue;
-                }
-                _pixels[index] = r;
-                _pixels[index + 1] = g;
-                _pixels[index + 2] = b;
-                _pixels[index + 3] = a;
-                changed = true;
+                changed |= Write(index, r, g, b, a);
             }
         }
 
-        if (!changed)
-            return default;
+        if (!changed) return default;
         Revision++;
         return StampBounds(uv, diameter);
     }
 
-    public PaintRect Stroke(
-        PaintPoint from,
-        PaintPoint to,
-        int diameter,
-        PaintTool tool,
-        PaintColor color)
+    /// <summary>Sparse selected-colour dots in a circular envelope. U wraps; V clips.</summary>
+    public PaintRect Spray(PaintPoint uv, int diameter, PaintColor color, ulong seed)
     {
-        // U is cyclic: a stroke across the seam takes the short way round rather than dragging
-        // paint the long way across the whole texture.
-        to = NormalizeStrokeTarget(from, to);
+        diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
+        double centerX = uv.X * (PaintPolicy.SurfaceSize - 1);
+        double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
+        double radius = diameter / 2.0;
+        PaintPoint[] offsets = SprayPattern.SampleUnitDisk(seed, SprayPattern.PointCountForDiameter(diameter));
+        bool changed = false;
 
+        foreach (PaintPoint offset in offsets)
+        {
+            int x = (int)Math.Round(centerX + (offset.X * radius));
+            int y = (int)Math.Round(centerY + (offset.Y * radius));
+            if (y < 0 || y >= PaintPolicy.SurfaceSize)
+                continue;
+            int wrappedX = WrapPixelX(x);
+            int index = ((y * PaintPolicy.SurfaceSize) + wrappedX) * PaintPolicy.BytesPerPixel;
+            changed |= Write(index, color.R, color.G, color.B, byte.MaxValue);
+        }
+
+        if (!changed) return default;
+        Revision++;
+        return StampBounds(uv, diameter);
+    }
+
+    public PaintRect Stroke(PaintPoint from, PaintPoint to, int diameter, PaintTool tool, PaintColor color)
+    {
+        to = NormalizeStrokeTarget(from, to);
         double distancePixels = (to - from).Length * PaintPolicy.SurfaceSize;
         double spacing = Math.Max(0.5, diameter * StampSpacingFactor);
         int steps = Math.Max(1, (int)Math.Ceiling(distancePixels / spacing));
@@ -146,10 +141,6 @@ public sealed class PaintSurface
         return dirty;
     }
 
-    /// <summary>
-    /// Samples one paint pixel. Transparent pixels return false so the editor can keep its
-    /// current foreground color when the user clicks an unpainted part of the buddy.
-    /// </summary>
     public bool TrySample(PaintPoint uv, out PaintColor color)
     {
         if (!uv.IsFinite || uv.X < 0.0 || uv.X > 1.0 || uv.Y < 0.0 || uv.Y > 1.0)
@@ -173,8 +164,7 @@ public sealed class PaintSurface
 
     public byte[] Capture(PaintRect rectangle)
     {
-        if (rectangle.IsEmpty)
-            return Array.Empty<byte>();
+        if (rectangle.IsEmpty) return Array.Empty<byte>();
         byte[] result = new byte[rectangle.ByteCount];
         int target = 0;
         for (int row = 0; row < rectangle.Height; row++)
@@ -213,13 +203,25 @@ public sealed class PaintSurface
 
     public void Clear()
     {
-        if (Array.TrueForAll(_pixels, value => value == 0))
-            return;
+        if (Array.TrueForAll(_pixels, value => value == 0)) return;
         Array.Clear(_pixels);
         Revision++;
     }
 
     public string ComputeHash() => Convert.ToHexString(SHA256.HashData(_pixels));
+
+    private bool Write(int index, byte r, byte g, byte b, byte a)
+    {
+        if (_pixels[index] == r && _pixels[index + 1] == g && _pixels[index + 2] == b && _pixels[index + 3] == a)
+            return false;
+        _pixels[index] = r;
+        _pixels[index + 1] = g;
+        _pixels[index + 2] = b;
+        _pixels[index + 3] = a;
+        return true;
+    }
+
+    private static int WrapPixelX(int x) => ((x % PaintPolicy.SurfaceSize) + PaintPolicy.SurfaceSize) % PaintPolicy.SurfaceSize;
 
     private static PaintPoint NormalizeStrokeTarget(PaintPoint from, PaintPoint to)
     {

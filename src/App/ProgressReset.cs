@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
@@ -41,10 +42,12 @@ public static class ProgressReset
         ArgumentNullException.ThrowIfNull(saves);
         characterSelection ??= saves.CharacterSelection;
         WorkProgressState? workProgress = saves.WorkProgress;
+        EnvironmentProgressState? environmentProgress = saves.EnvironmentProgress;
 
         ProgressSnapshot before = progress.Snapshot();
         CharacterSelectionSnapshot? selectionBefore = characterSelection?.Snapshot();
         WorkProgressSnapshot? workBefore = workProgress?.Snapshot();
+        EnvironmentProgressSnapshot? environmentBefore = environmentProgress?.Snapshot();
         ProgressSnapshot fresh = CreateNewProgress(progress.CashPerPain).Snapshot();
         progress.Adopt(fresh with { Revision = before.Revision + 1 });
         characterSelection?.SetActiveForExplicitTransaction(null);
@@ -58,6 +61,14 @@ public static class ProgressReset
                 Array.Empty<string>(),
                 false));
         }
+        if (environmentProgress is not null && environmentBefore.HasValue)
+        {
+            environmentProgress.Adopt(new EnvironmentProgressSnapshot(
+                environmentBefore.Value.Revision == long.MaxValue
+                    ? long.MaxValue
+                    : environmentBefore.Value.Revision + 1,
+                new EnvironmentLayout()));
+        }
 
         try
         {
@@ -70,6 +81,8 @@ public static class ProgressReset
                 characterSelection.Restore(selectionBefore.Value);
             if (workProgress is not null && workBefore.HasValue)
                 workProgress.Adopt(workBefore.Value);
+            if (environmentProgress is not null && environmentBefore.HasValue)
+                environmentProgress.Adopt(environmentBefore.Value);
             return false;
         }
 

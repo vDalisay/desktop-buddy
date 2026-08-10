@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Work;
 
 namespace DesktopBuddy.Domain.Persistence;
@@ -124,6 +126,69 @@ public sealed record WorkSessionSave
         EarnedRepeatPerSessionMilestoneIds);
 }
 
+public sealed record PlacedDecorationSave
+{
+    public Guid InstanceId { get; init; }
+    public string DefinitionId { get; init; } = string.Empty;
+    public float CanonicalX { get; init; }
+    public float CanonicalY { get; init; }
+    public int RotationDegrees { get; init; }
+    public DecorationRenderBand RenderBand { get; init; }
+    public long PurchasePriceMilliCredits { get; init; }
+
+    public static PlacedDecorationSave FromPlaced(in PlacedDecoration placed) => new()
+    {
+        InstanceId = placed.InstanceId.Value,
+        DefinitionId = placed.DefinitionId.Value,
+        CanonicalX = placed.Position.X,
+        CanonicalY = placed.Position.Y,
+        RotationDegrees = placed.RotationDegrees,
+        RenderBand = placed.RenderBand,
+        PurchasePriceMilliCredits = placed.PurchasePriceMilliCredits,
+    };
+
+    public PlacedDecoration CreatePlaced() => new(
+        new PlacedDecorationId(InstanceId),
+        new DecorationDefinitionId(DefinitionId),
+        new CanonicalRoomPosition(CanonicalX, CanonicalY),
+        RotationDegrees,
+        RenderBand,
+        PurchasePriceMilliCredits);
+}
+
+public sealed record EnvironmentProgressSave
+{
+    public long Revision { get; init; }
+    public int LayoutSchemaVersion { get; init; } = EnvironmentLayout.CurrentSchemaVersion;
+    public List<PlacedDecorationSave> PlacedDecorations { get; init; } = [];
+
+    /// <summary>Definition IDs the player owns but has not placed; one entry per owned copy. Older
+    /// saves have none, which is correct: nothing had been banked before storage existed.</summary>
+    public List<string> OwnedUnplaced { get; init; } = [];
+
+    public static EnvironmentProgressSave FromSnapshot(in EnvironmentProgressSnapshot snapshot) => new()
+    {
+        Revision = snapshot.Revision,
+        LayoutSchemaVersion = snapshot.Layout.SchemaVersion,
+        PlacedDecorations = snapshot.Layout.Decorations.Select(item => PlacedDecorationSave.FromPlaced(item)).ToList(),
+        OwnedUnplaced = (snapshot.OwnedUnplaced ?? []).Select(id => id.Value).ToList(),
+    };
+
+    public EnvironmentProgressState CreateState() => new(
+        LayoutSchemaVersion switch
+        {
+            // Schemas 1 and 2 carried flat wall/floor colours. Those are gone: the room background
+            // is a painted image now, so older saves migrate by keeping only their decorations.
+            1 or 2 or EnvironmentLayout.CurrentSchemaVersion =>
+                new EnvironmentLayout(PlacedDecorations.Select(item => item.CreatePlaced())),
+            _ => throw new ArgumentOutOfRangeException(nameof(LayoutSchemaVersion), "Unsupported Environment layout schema."),
+        },
+        Revision,
+        OwnedUnplaced
+            .Select(value => DecorationDefinitionId.TryCreate(value, out DecorationDefinitionId id) ? id : default)
+            .Where(id => id != default));
+}
+
 public sealed record FunActivitySave
 {
     public string ActivityId { get; init; } = ContentIds.FunCatch;
@@ -136,10 +201,9 @@ public sealed record FunActivitySave
 public sealed record ProgressSave
 {
     /// <summary>
-    /// Schema 7 adds the nullable active character ID. Work progress is an additive
-    /// schema-7 field so existing schema-7 saves deserialize to an empty Work state.
+    /// Schema 8 adds the atomic Environment progress state alongside the wallet.
     /// </summary>
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public long Revision { get; init; }
@@ -155,6 +219,7 @@ public sealed record ProgressSave
     public ProgressStatisticsSave Statistics { get; init; } = new();
     public CumulativeTimesSave Times { get; init; } = new();
     public WorkProgressSave Work { get; init; } = new();
+    public EnvironmentProgressSave Environment { get; init; } = new();
     public ProgressExtensionsSave Extensions { get; init; } = new();
 
     [JsonExtensionData]
@@ -163,7 +228,8 @@ public sealed record ProgressSave
     public static ProgressSave FromSnapshot(
         in ProgressSnapshot snapshot,
         Guid? activeCharacterId = null,
-        WorkProgressSnapshot? work = null)
+        WorkProgressSnapshot? work = null,
+        EnvironmentProgressSnapshot? environment = null)
     {
         var extensions = new ProgressExtensionsSave
         {
@@ -219,6 +285,9 @@ public sealed record ProgressSave
                 HiddenSeconds = snapshot.Times.HiddenSeconds,
             },
             Work = work.HasValue ? WorkProgressSave.FromSnapshot(work.Value) : new WorkProgressSave(),
+            Environment = environment.HasValue
+                ? EnvironmentProgressSave.FromSnapshot(environment.Value)
+                : new EnvironmentProgressSave(),
             Extensions = extensions,
         };
     }
@@ -292,6 +361,11 @@ public sealed record LocalSettingsSave
     public bool WorkPositionSet { get; init; }
     public bool WorkAnimationsEnabled { get; init; } = true;
     public bool WorkShowLifetimeCounter { get; init; }
+
+    // Environment editor preferences are local UX state, not room progression. Reset Progress must
+    // preserve them exactly like window placement and Work presentation preferences.
+    public bool EnvironmentSnapToGrid { get; init; }
+    public EnvironmentGridSize EnvironmentGridSize { get; init; } = EnvironmentGridSize.Medium;
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? UnknownFields { get; init; }

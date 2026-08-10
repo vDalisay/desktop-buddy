@@ -6,8 +6,7 @@ using Godot;
 namespace DesktopBuddy.UI.Win98;
 
 /// <summary>
-/// Keeps the shared Win98 status bar useful while the paint workspace is active. This is kept
-/// outside CharacterEditorHost so the editor's persistence and rendering code remain unchanged.
+/// Keeps the shared Win98 status bar useful while the paint workspace is active.
 /// </summary>
 public partial class Win98PaintStatusBootstrap : Node
 {
@@ -26,8 +25,7 @@ public partial class Win98PaintStatusBootstrap : Node
     public override void _Process(double delta)
     {
         _refreshRemaining -= delta;
-        if (_refreshRemaining > 0.0)
-            return;
+        if (_refreshRemaining > 0.0) return;
         _refreshRemaining = RefreshIntervalSeconds;
 
         ResolveNodes();
@@ -68,10 +66,8 @@ public partial class Win98PaintStatusBootstrap : Node
     {
         if (!GodotObject.IsInstanceValid(_host))
             _host = GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
-
         if (!GodotObject.IsInstanceValid(_canvas))
             _canvas = GetTree().Root.FindChild("CharacterPaintCanvas", true, false) as PaintCanvasControl;
-
         if (!GodotObject.IsInstanceValid(_frame))
             _frame = GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
     }
@@ -93,8 +89,15 @@ public partial class Win98PaintStatusBootstrap : Node
         string tool = _canvas.PanToolActive
             ? "Hand"
             : _canvas.EyedropperToolActive
-                ? "Eyedropper"
-                : workspace.SelectedTool == PaintTool.Eraser ? "Eraser" : "Brush";
+                ? "Pick Color"
+                : workspace.SelectedTool switch
+                {
+                    PaintTool.Brush => "Brush",
+                    PaintTool.Spray => "Spray",
+                    PaintTool.Curve => "Curve",
+                    PaintTool.Eraser => "Eraser",
+                    _ => "Paint",
+                };
         string target = FormatPart(_canvas.ActivePartFilter);
         string hover = _canvas.HoveredPart is PaintPart hovered
             ? FormatPart(hovered)
@@ -102,16 +105,12 @@ public partial class Win98PaintStatusBootstrap : Node
         int zoomPercent = Mathf.RoundToInt((float)(_canvas.View.Zoom * 100.0));
         int rotation = ResolveQuarterTurnRotation();
         string dirty = workspace.IsDirty ? "Modified" : "Saved";
+        string curve = _canvas.CurvePending ? $"  |  {FormatCurvePhase(_canvas.CurvePhase)}" : string.Empty;
 
         return $"{tool}  |  Target: {target}  |  Hover: {hover}  |  Size: {workspace.BrushDiameter}px  |  " +
-               $"Zoom: {zoomPercent}%  |  Rotation: {rotation}°  |  {dirty}";
+               $"Zoom: {zoomPercent}%  |  Rotation: {rotation}°  |  {dirty}{curve}";
     }
 
-    /// <summary>
-    /// Classic desktop applications use the status bar for contextual command help. While a
-    /// keyboard-focusable editor control is active, show its tooltip or accessibility description;
-    /// returning focus to the canvas restores the live paint state summary.
-    /// </summary>
     private string? FocusedControlHelp()
     {
         Control? focus = GetViewport().GuiGetFocusOwner();
@@ -131,15 +130,23 @@ public partial class Win98PaintStatusBootstrap : Node
 
     private int ResolveQuarterTurnRotation()
     {
-        if (!GodotObject.IsInstanceValid(_host?.PreviewRig))
-            return 0;
+        if (!GodotObject.IsInstanceValid(_host?.PreviewRig)) return 0;
 
         int degrees = Mathf.RoundToInt(_host!.PreviewRig.RotationDegrees.Y);
         degrees %= 360;
-        if (degrees < 0)
-            degrees += 360;
+        if (degrees < 0) degrees += 360;
         return ((degrees + 45) / 90 * 90) % 360;
     }
+
+    private static string FormatCurvePhase(BuddyPaintCurvePhase phase) => phase switch
+    {
+        BuddyPaintCurvePhase.BaselineDragging => "Curve baseline",
+        BuddyPaintCurvePhase.AwaitFirstBend => "Curve: set first bend",
+        BuddyPaintCurvePhase.FirstBendDragging => "Curve first bend",
+        BuddyPaintCurvePhase.AwaitSecondBend => "Curve: set second bend",
+        BuddyPaintCurvePhase.SecondBendDragging => "Curve second bend",
+        _ => "Curve",
+    };
 
     private static string FormatPart(PaintPart? part) => part switch
     {

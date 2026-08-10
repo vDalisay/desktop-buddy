@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnvironmentDecorationResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Environment/EnvironmentDecorationResource.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+DefinitionId = "decoration.plant.sprout"
+DisplayNameKey = "environment.plant.sprout"
+Category = 4
+PriceCredits = 50
+AnchorKind = 0
+AllowsRotation = true
+RotationStepDegrees = 90
+RenderBand = 3
+Visible = true
+VisualKind = 4
+VisualSize = Vector2(48, 66)
+PrimaryColor = Color(0.22, 0.68, 0.28, 1)
+SecondaryColor = Color(0.46, 0.24, 0.12, 1)

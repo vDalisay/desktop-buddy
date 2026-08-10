@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Persistence;
 using Xunit;
@@ -112,6 +113,28 @@ public sealed class ProgressStoreTests
         await store.SaveSettingsAsync(new LocalSettingsSave(), default);
 
         Assert.True(files.Exists(SettingsPath));
+        Assert.False(files.Exists(ProgressPath));
+    }
+
+    [Fact]
+    public async Task EnvironmentDecoratorPreferences_RoundTripOnlyThroughLocalSettings()
+    {
+        var files = new MemoryFiles();
+        var store = Store(files);
+        var wanted = new LocalSettingsSave
+        {
+            Revision = 9,
+            EnvironmentSnapToGrid = true,
+            EnvironmentGridSize = EnvironmentGridSize.Fine,
+        };
+
+        await store.SaveSettingsAsync(wanted, default);
+        LoadResult<LocalSettingsSave> loaded = await store.LoadSettingsAsync(default);
+
+        Assert.Equal(SaveLoadStatus.Loaded, loaded.Status);
+        Assert.NotNull(loaded.Value);
+        Assert.True(loaded.Value!.EnvironmentSnapToGrid);
+        Assert.Equal(EnvironmentGridSize.Fine, loaded.Value.EnvironmentGridSize);
         Assert.False(files.Exists(ProgressPath));
     }
 

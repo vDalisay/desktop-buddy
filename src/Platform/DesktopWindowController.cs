@@ -364,9 +364,12 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
         // overwrote the saved compact rect with the whole screen, and because the placement
         // policy caps size at the monitor rather than a fixed ceiling, nothing rejected it —
         // compact then restored full-screen-sized forever after.
+        // A maximized window is still Compact layout, but its rect must never become the saved
+        // compact rect or restore/relaunch would come back monitor-sized.
         if (LayoutMode == WindowLayoutMode.Compact &&
             !WorkCompanionActive &&
-            !_suppressClientBoundsChanged)
+            !_suppressClientBoundsChanged &&
+            (_headless || GetWindow().Mode == Window.ModeEnum.Windowed))
             _compactSettings = _lastAppliedSettings;
         if (!_suppressClientBoundsChanged)
             ClientBoundsChanged?.Invoke(rect);

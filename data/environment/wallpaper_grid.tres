@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="EnvironmentDecorationResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Environment/EnvironmentDecorationResource.cs" id="1"]
+
+[resource]
+script = ExtResource("1")
+DefinitionId = "decoration.wallpaper.grid"
+DisplayNameKey = "environment.wallpaper.grid"
+Category = 3
+PriceCredits = 55
+AnchorKind = 2
+AllowsRotation = false
+RotationStepDegrees = 0
+RenderBand = 1
+Visible = true
+VisualKind = 9
+VisualSize = Vector2(128, 96)
+PrimaryColor = Color(0.93, 0.88, 0.74, 1)
+SecondaryColor = Color(0.55, 0.65, 0.72, 1)
