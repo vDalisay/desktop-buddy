@@ -200,20 +200,26 @@ public partial class EnvironmentDecorator : CanvasLayer
         _catalogue.SelectionChanged += SelectDefinition;
         body.AddChild(_catalogue);
 
-        var controls = new HBoxContainer();
-        controls.AddThemeConstantOverride("separation", 6);
-        body.AddChild(controls);
+        // Keep placement preferences and item actions on separate rows so the supported compact
+        // window width never turns the editor into one overflowing strip of controls.
+        var placementPreferences = new HBoxContainer { Name = "EnvironmentPlacementPreferences" };
+        placementPreferences.AddThemeConstantOverride("separation", 6);
+        body.AddChild(placementPreferences);
         _snap = new CheckBox { Text = "Snap to grid" };
         _snap.Toggled += OnSnapPreferenceChanged;
-        controls.AddChild(_snap);
+        placementPreferences.AddChild(_snap);
         _grid = new OptionButton { Disabled = true, CustomMinimumSize = new Vector2(90, 28) };
         foreach (EnvironmentGridSize size in Enum.GetValues<EnvironmentGridSize>()) _grid.AddItem(size.ToString(), (int)size);
         _grid.ItemSelected += OnGridPreferenceChanged;
-        controls.AddChild(_grid);
-        _place = Action(controls, "Place", BeginPlacement);
-        _move = Action(controls, "Move Items", BeginMoveMode);
-        _rotate = Action(controls, "Rotate", () => RotateSelected(1));
-        _delete = Action(controls, "Delete", DeleteSelected);
+        placementPreferences.AddChild(_grid);
+
+        var itemActions = new HBoxContainer { Name = "EnvironmentItemActions" };
+        itemActions.AddThemeConstantOverride("separation", 6);
+        body.AddChild(itemActions);
+        _place = Action(itemActions, "Place", BeginPlacement);
+        _move = Action(itemActions, "Move Items", BeginMoveMode);
+        _rotate = Action(itemActions, "Rotate", () => RotateSelected(1));
+        _delete = Action(itemActions, "Delete", DeleteSelected);
 
         _values = new Win98ValuePanel { Name = "EnvironmentBudget" };
         body.AddChild(_values);
@@ -323,7 +329,9 @@ public partial class EnvironmentDecorator : CanvasLayer
         HideOtherUiForFocus();
         _placementChrome.Visible = true;
         _placementDone.Disabled = true;
-        _placementStatus.Text = "Click a valid room position.";
+        _placementStatus.Text = definition.RenderBand == DecorationRenderBand.Wallpaper
+            ? "Click to preview this wallpaper across the room."
+            : "Click a valid room position.";
         _placement.Begin(_selectedDefinition);
         _placement.UpdateRoom(_placementBounds);
         Refresh();
@@ -407,6 +415,11 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         SelectPlaced(screen);
         if (_session is null || !TryFindPlaced(_selectedInstance, out PlacedDecoration carried)) return;
+        if (carried.RenderBand == DecorationRenderBand.Wallpaper)
+        {
+            _status.Text = "Wallpaper fills the room and cannot be moved. Replace it from Wallpapers or delete it.";
+            return;
+        }
         if (EnvironmentDecorationRegistry.Find(carried.DefinitionId) is not EnvironmentDecorationResource resource) return;
         (float x, float y) = EnvironmentPlacement.ToScreen(carried.Position, ToBounds(RoomRect()));
         _moveGrabOffset = new Vector2(x, y) - screen;
@@ -705,14 +718,8 @@ public partial class EnvironmentDecorator : CanvasLayer
 
     private static string CategoryLabel(DecorationCategory category) => category == DecorationCategory.Sofa ? "Sofas" : category + "s";
     private static string DisplayName(DecorationDefinitionId id) => id.Value.Split('.').Last().Replace('_', ' ').ToTitleCase();
-
-    private static Texture2D Preview(EnvironmentDecorationResource resource)
-    {
-        Image image = Image.CreateEmpty(48, 48, false, Image.Format.Rgba8);
-        image.Fill(resource.SecondaryColor);
-        for (int y = 5; y < 43; y++) for (int x = 5; x < 43; x++) image.SetPixel(x, y, resource.PrimaryColor);
-        return ImageTexture.CreateFromImage(image);
-    }
+    private static Texture2D Preview(EnvironmentDecorationResource resource) =>
+        EnvironmentDecorationVisualFactory.CreatePreview(resource);
 }
 
 internal static class EnvironmentTextExtensions
