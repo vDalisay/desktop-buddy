@@ -227,3 +227,69 @@ Stop and raise a shared-foundation question instead of editing frozen files if y
 - represent decorations through the permanent cosmetic catalogue.
 
 A feature-specific solution inside `src/Environment/**` is preferred unless the need is demonstrably generic.
+
+---
+
+## 9. Owner refinement added 2026-08-10 — execute before ENV-6 closure
+
+The detailed implementation contract is now `docs/ENVIRONMENT_DECORATOR_IMPLEMENTATION_PLAN.md` **Section 19**. It promotes the following work into this active pass:
+
+```text
+PAINT-R0  shared engine-free spray + curve geometry helpers
+PAINT-R1  Spray/Airbrush in Paint Buddy
+PAINT-R2  Spray + shared brush-size controls in Paint Background
+PAINT-R3  Curved Line in Paint Background
+PAINT-R4  Curved Line in Paint Buddy
+PAINT-R5  cross-editor tool ordering, status and shortcut parity
+PAINT-R6  original generated placeholder toolbar icons
+PAINT-R7  owner/manual paint closure
+```
+
+Treat these as current requirements, not future nice-to-haves. They run before the final ENV-6 closure gate.
+
+### 9.1 Cross-domain edit exception for this pass
+
+The owner explicitly requires Spray and Curved Line in **both** Paint Background and Paint Buddy. That necessarily touches the established Buddy painting subsystem even though normal Environment work avoids unrelated character code.
+
+This exception is narrowly scoped to:
+
+```text
+domain/DesktopBuddy.Domain/Painting/**
+src/CharacterEditor/PaintCanvasControl.cs
+src/CharacterEditor/CharacterEditorHost.Painting.cs
+src/CharacterEditor/CharacterEditorHost.Win98PaintLayout.cs
+src/UI/Win98/Win98PaintToolBootstrap.cs
+paint-specific tests/scenarios
+```
+
+Do not use this exception to modify Buddy Studio cosmetic/character rendering work. If the parallel `buddy-studio` branch has changed one of these exact paint files, coordinate/rebase before editing rather than overwriting sibling changes.
+
+### 9.2 Architecture constraint
+
+Do **not** merge `EnvironmentCanvas` and `PaintSurface` into a generalized canvas abstraction. The former clamps room edges and owns environment shapes; the latter wraps the buddy U seam and uses bounded patch history.
+
+Only small pure helpers with identical semantics may be shared, specifically the deterministic spray point sampler and curve geometry sampler. Each surface remains responsible for rasterisation, edge behavior and Undo.
+
+### 9.3 Locked UI placement
+
+Paint Buddy placeholder ordering before icon conversion:
+
+```text
+Brush  | Eraser
+Spray  | Pick Color
+Curve  | Hand/Pan
+```
+
+Paint Background must place Spray directly below Brush and add a visible shared Brush Size control. The existing Shapes popup gains a distinct `Curved Line` entry. Brush Size is one source of truth for Brush, Spray and line/curve width; do not add a separate Spray-size control.
+
+PAINT-R6 then replaces compact tool words with generated original placeholder icons while keeping text in tooltips/status/accessibility. The owner will provide final replacement icons later, so no behavior may depend on the placeholder artwork.
+
+### 9.4 Explicit demo stop line
+
+Do **not** continue into these after the current pass:
+
+- multiple local room/environment profiles;
+- Steam sharing/publishing/downloading of complete room configurations;
+- buddy interactions with furniture.
+
+Those three are full-release work. The demo ships the known-good singleton local environment and visual/non-physical decorations. Leave migration seams only; do not expose inactive UI or build speculative services for the release-only features.
