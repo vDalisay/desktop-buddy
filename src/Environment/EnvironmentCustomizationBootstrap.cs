@@ -92,6 +92,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
             _decorator = new EnvironmentDecorator { Name = nameof(EnvironmentDecorator) };
             _decorator.Configure(sandbox.Progress, sandbox.Economy, sandbox.Pointer, sandbox.Buddy,
                 sandbox.VisualPresenter, state, saves, _decorationLayer);
+            _decorator.ConfigurePreferences(sandbox.Shell);
             GetTree().Root.AddChild(_decorator);
             RegisterDecorator(commandBar, _decorator);
         }
