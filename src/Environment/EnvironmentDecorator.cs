@@ -687,6 +687,10 @@ public partial class EnvironmentDecorator : CanvasLayer
             // The Win98 shell chrome (title bar and command bar) stays put in every focus mode:
             // hiding it took the blue bar away and moved RoomRect out from under the pointer.
             if (child == _blocker || _blocker.IsAncestorOf(child) || child is Win98BuddyShellController) continue;
+            // A SubViewport is an offscreen render target, not room UI. Descending into one hid the
+            // buddy's face/accent painter Controls, and those viewports render on-change, so the
+            // next blink baked a blank face texture that stayed blank for all of placement mode.
+            if (child is SubViewport) continue;
             if (child is Control control && control.Visible)
             {
                 control.Visible = false;

@@ -35,7 +35,7 @@ public partial class EnvironmentPlacementController : Node
         if (!Active || _ghost is null) return;
         if (IsWallpaper)
         {
-            _ghost.Position = new Vector2(room.Left, room.Top);
+            _ghost.Position = new Vector2(room.X, room.Y);
             _ghost.Size = new Vector2(room.Width, room.Height);
             return;
         }
@@ -76,7 +76,7 @@ public partial class EnvironmentPlacementController : Node
         {
             GhostValid = true;
             GhostPosition = new CanonicalRoomPosition(.5f, .5f);
-            _ghost.Position = new Vector2(_room.Left, _room.Top);
+            _ghost.Position = new Vector2(_room.X, _room.Y);
             _ghost.Size = new Vector2(_room.Width, _room.Height);
         }
         else
