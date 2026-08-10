@@ -8,7 +8,7 @@ public partial class EnvironmentPlacementController : Node
 {
     private EnvironmentEditSession? _session;
     private EnvironmentDecorationResource? _definition;
-    private ColorRect? _ghost;
+    private TextureRect? _ghost;
     private Node? _ghostParent;
     private RoomScreenBounds _room;
 
@@ -32,11 +32,15 @@ public partial class EnvironmentPlacementController : Node
     {
         if (!room.IsValid) throw new ArgumentException("Room bounds are invalid.", nameof(room));
         _room = room;
-        if (Active && _ghost is not null)
+        if (!Active || _ghost is null) return;
+        if (IsWallpaper)
         {
-            (float x, float y) = EnvironmentPlacement.ToScreen(GhostPosition, room);
-            _ghost.Position = new Vector2(x, y) - _ghost.Size * .5f;
+            _ghost.Position = new Vector2(room.Left, room.Top);
+            _ghost.Size = new Vector2(room.Width, room.Height);
+            return;
         }
+        (float x, float y) = EnvironmentPlacement.ToScreen(GhostPosition, room);
+        _ghost.Position = new Vector2(x, y) - _ghost.Size * .5f;
     }
 
     public void Begin(EnvironmentDecorationResource definition)
@@ -45,14 +49,17 @@ public partial class EnvironmentPlacementController : Node
             throw new InvalidOperationException("Placement controller is not configured.");
         _definition = definition ?? throw new ArgumentNullException(nameof(definition));
         if (GodotObject.IsInstanceValid(_ghost)) _ghost!.Free();
-        _ghost = new ColorRect
+        _ghost = new TextureRect
         {
             Name = "EnvironmentPlacementGhost",
-            Color = new Color(definition.PrimaryColor, .55f),
-            Size = definition.VisualSize,
+            Texture = EnvironmentDecorationVisualFactory.CreatePreview(definition, 96),
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.Scale,
+            Size = IsWallpaper ? new Vector2(_room.Width, _room.Height) : definition.VisualSize,
             MouseFilter = Control.MouseFilterEnum.Ignore,
+            Modulate = new Color(1, 1, 1, .62f),
         };
-        _ghost.PivotOffset = definition.VisualSize * .5f;
+        _ghost.PivotOffset = _ghost.Size * .5f;
         _ghostParent.AddChild(_ghost);
         _ghost.ZIndex = 100;
         Active = true;
@@ -65,17 +72,27 @@ public partial class EnvironmentPlacementController : Node
     {
         if (!Active || _definition is null || _ghost is null) return false;
         DecorationDefinition definition = _definition.ToDefinition();
-        GhostValid = EnvironmentPlacement.TryMap(screenPosition.X, screenPosition.Y, _room,
-            definition.AnchorKind, SnapEnabled, GridSize, out CanonicalRoomPosition canonical);
-        if (GhostValid)
+        if (IsWallpaper)
         {
-            GhostPosition = canonical;
-            (float x, float y) = EnvironmentPlacement.ToScreen(canonical, _room);
-            _ghost.Position = new Vector2(x, y) - _ghost.Size * .5f;
+            GhostValid = true;
+            GhostPosition = new CanonicalRoomPosition(.5f, .5f);
+            _ghost.Position = new Vector2(_room.Left, _room.Top);
+            _ghost.Size = new Vector2(_room.Width, _room.Height);
         }
-        else _ghost.Position = screenPosition - _ghost.Size * .5f;
+        else
+        {
+            GhostValid = EnvironmentPlacement.TryMap(screenPosition.X, screenPosition.Y, _room,
+                definition.AnchorKind, SnapEnabled, GridSize, out CanonicalRoomPosition canonical);
+            if (GhostValid)
+            {
+                GhostPosition = canonical;
+                (float x, float y) = EnvironmentPlacement.ToScreen(canonical, _room);
+                _ghost.Position = new Vector2(x, y) - _ghost.Size * .5f;
+            }
+            else _ghost.Position = screenPosition - _ghost.Size * .5f;
+        }
         _ghost.Visible = true;
-        _ghost.Modulate = GhostValid ? Colors.White : new Color(1, .35f, .35f, 1);
+        _ghost.Modulate = GhostValid ? new Color(1, 1, 1, .62f) : new Color(1, .35f, .35f, .72f);
         Changed?.Invoke();
         return GhostValid;
     }
@@ -124,4 +141,6 @@ public partial class EnvironmentPlacementController : Node
                 break;
         }
     }
+
+    private bool IsWallpaper => _definition?.ToDefinition().RenderBand == DecorationRenderBand.Wallpaper;
 }
