@@ -6,6 +6,16 @@ using Godot;
 
 namespace DesktopBuddy.CharacterEditor;
 
+public enum BuddyPaintCurvePhase
+{
+    Idle,
+    BaselineDragging,
+    AwaitFirstBend,
+    FirstBendDragging,
+    AwaitSecondBend,
+    SecondBendDragging,
+}
+
 /// <summary>Transparent input layer over the physics-free character preview.</summary>
 public partial class PaintCanvasControl : Control
 {
@@ -20,11 +30,20 @@ public partial class PaintCanvasControl : Control
     private PaintColor _sampledColor;
     private double _sprayPulseAccumulator;
 
+    private BuddyPaintCurvePhase _curvePhase;
+    private PaintPoint _curveStart;
+    private PaintPoint _curveEnd;
+    private CubicPaintCurve _curve;
+    private PaintCurveBend _firstCurveBend;
+    private PaintCurveBend _previewCurveBend;
+    private double _activeCurveBendT;
+
     public const double BaseCameraSize = 400.0;
     private const double SprayPulseSeconds = 0.05;
     private const int MaximumSprayCatchUpPulses = 4;
     private const float ScreenStepPixels = 1.5f;
     private const int MaxScreenSteps = 512;
+    private const double MinimumCurveBaselinePixels = 2.0;
 
     public PaintWorkspace Workspace { get; } = new();
     public PaintViewState View { get; } = new();
@@ -33,6 +52,8 @@ public partial class PaintCanvasControl : Control
     public bool PanToolActive { get; set; }
     public bool EyedropperToolActive { get; set; }
     public Vector2 ViewportSize { get; set; } = new(420, 360);
+    public BuddyPaintCurvePhase CurvePhase => _curvePhase;
+    public bool CurvePending => _curvePhase != BuddyPaintCurvePhase.Idle;
 
     public PaintPoint CameraCenter => new(
         View.Pan.X * (BaseCameraSize / 2.0),
@@ -59,6 +80,34 @@ public partial class PaintCanvasControl : Control
         }
     }
 
+    /// <summary>Single tool-selection seam so changing away from Curve always cancels its preview.</summary>
+    public void SelectPaintTool(PaintTool tool)
+    {
+        if (Workspace.SelectedTool == tool) return;
+        CancelCurve();
+        PanToolActive = false;
+        EyedropperToolActive = false;
+        Workspace.SelectedTool = tool;
+        WorkspaceChanged?.Invoke();
+        QueueRedraw();
+    }
+
+    public bool CancelCurve()
+    {
+        bool hadCurve = CurvePending || Workspace.PreviewActive;
+        if (!hadCurve) return false;
+        Workspace.CancelPreviewTransaction();
+        ClearCurveState();
+        if (_painting)
+        {
+            _painting = false;
+            Input.UseAccumulatedInput = true;
+        }
+        WorkspaceChanged?.Invoke();
+        QueueRedraw();
+        return true;
+    }
+
     public override void _GuiInput(InputEvent input)
     {
         if (input is InputEventMouseMotion motion)
@@ -83,7 +132,12 @@ public partial class PaintCanvasControl : Control
                     WorkspaceChanged?.Invoke();
                 }
                 if (_painting)
-                    PaintAlongTo(motion.Position);
+                {
+                    if (Workspace.SelectedTool == PaintTool.Curve)
+                        ContinueCurve(motion.Position);
+                    else
+                        PaintAlongTo(motion.Position);
+                }
             }
             QueueRedraw();
             AcceptEvent();
@@ -93,10 +147,19 @@ public partial class PaintCanvasControl : Control
         if (input is InputEventMouseButton button)
         {
             _lastPointer = button.Position;
+
+            if (button.ButtonIndex == MouseButton.Right && button.Pressed && CurvePending)
+            {
+                CancelCurve();
+                AcceptEvent();
+                return;
+            }
+
             bool leftPan = button.ButtonIndex == MouseButton.Left &&
                 (PanToolActive || Input.IsKeyPressed(Key.Space));
             if (button.ButtonIndex == MouseButton.Middle || leftPan)
             {
+                if (button.Pressed && CurvePending) CancelCurve();
                 _panning = button.Pressed;
                 if (_panning) GrabFocus();
                 AcceptEvent();
@@ -124,6 +187,14 @@ public partial class PaintCanvasControl : Control
                         return;
                     }
 
+                    if (Workspace.SelectedTool == PaintTool.Curve)
+                    {
+                        BeginCurve(button.Position);
+                        GrabFocus();
+                        AcceptEvent();
+                        return;
+                    }
+
                     Workspace.BeginGesture(hit);
                     _painting = true;
                     _sprayPulseAccumulator = 0;
@@ -131,6 +202,10 @@ public partial class PaintCanvasControl : Control
                     Input.UseAccumulatedInput = false;
                     WorkspaceChanged?.Invoke();
                     GrabFocus();
+                }
+                else if (_painting && Workspace.SelectedTool == PaintTool.Curve)
+                {
+                    EndCurve(button.Position);
                 }
                 else if (_painting)
                 {
@@ -154,6 +229,7 @@ public partial class PaintCanvasControl : Control
                 int direction = button.ButtonIndex == MouseButton.WheelUp ? 1 : -1;
                 if (Input.IsKeyPressed(Key.Ctrl))
                 {
+                    if (CurvePending) CancelCurve();
                     PaintPoint focus = CanvasToWorld(button.Position) * (2.0 / BaseCameraSize);
                     View.SetZoom(View.Zoom + (direction * 0.2), focus);
                     ViewChanged?.Invoke();
@@ -161,6 +237,7 @@ public partial class PaintCanvasControl : Control
                 else if (!EyedropperToolActive)
                 {
                     Workspace.AdjustBrush(direction);
+                    if (CurvePending) RenderCurvePreview();
                     WorkspaceChanged?.Invoke();
                 }
                 QueueRedraw();
@@ -171,7 +248,7 @@ public partial class PaintCanvasControl : Control
 
     public override void _Process(double delta)
     {
-        if (!_painting) return;
+        if (!_painting || Workspace.SelectedTool == PaintTool.Curve) return;
         if (Workspace.SelectedTool != PaintTool.Spray)
         {
             PaintAlongTo(GetLocalMousePosition());
@@ -204,8 +281,118 @@ public partial class PaintCanvasControl : Control
         WorkspaceChanged?.Invoke();
     }
 
+    private void BeginCurve(Vector2 canvas)
+    {
+        PaintPoint pointer = CanvasPoint(canvas);
+        switch (_curvePhase)
+        {
+            case BuddyPaintCurvePhase.Idle:
+                Workspace.BeginPreviewTransaction();
+                _curveStart = pointer;
+                _curveEnd = pointer;
+                _curve = ClassicCurveGeometry.Straight(pointer, pointer);
+                _curvePhase = BuddyPaintCurvePhase.BaselineDragging;
+                break;
+            case BuddyPaintCurvePhase.AwaitFirstBend:
+                _activeCurveBendT = ClassicCurveGeometry.ClosestParameter(_curve, pointer);
+                _previewCurveBend = new PaintCurveBend(_activeCurveBendT, pointer);
+                _curvePhase = BuddyPaintCurvePhase.FirstBendDragging;
+                break;
+            case BuddyPaintCurvePhase.AwaitSecondBend:
+                _activeCurveBendT = ClassicCurveGeometry.ClosestParameter(_curve, pointer);
+                _previewCurveBend = new PaintCurveBend(_activeCurveBendT, pointer);
+                _curvePhase = BuddyPaintCurvePhase.SecondBendDragging;
+                break;
+            default:
+                return;
+        }
+
+        _painting = true;
+        Input.UseAccumulatedInput = false;
+        ContinueCurve(canvas);
+        WorkspaceChanged?.Invoke();
+    }
+
+    private void ContinueCurve(Vector2 canvas)
+    {
+        if (!_painting || !Workspace.PreviewActive) return;
+        PaintPoint pointer = CanvasPoint(canvas);
+        switch (_curvePhase)
+        {
+            case BuddyPaintCurvePhase.BaselineDragging:
+                _curveEnd = pointer;
+                _curve = ClassicCurveGeometry.Straight(_curveStart, _curveEnd);
+                break;
+            case BuddyPaintCurvePhase.FirstBendDragging:
+                _previewCurveBend = new PaintCurveBend(_activeCurveBendT, pointer);
+                _curve = ClassicCurveGeometry.BendOnce(_curveStart, _curveEnd, _previewCurveBend);
+                break;
+            case BuddyPaintCurvePhase.SecondBendDragging:
+                _previewCurveBend = new PaintCurveBend(_activeCurveBendT, pointer);
+                _curve = ClassicCurveGeometry.BendTwice(_curveStart, _curveEnd, _firstCurveBend, _previewCurveBend);
+                break;
+        }
+        RenderCurvePreview();
+    }
+
+    private void EndCurve(Vector2 canvas)
+    {
+        if (!_painting) return;
+        ContinueCurve(canvas);
+        _painting = false;
+        Input.UseAccumulatedInput = true;
+
+        switch (_curvePhase)
+        {
+            case BuddyPaintCurvePhase.BaselineDragging:
+                if ((_curveEnd - _curveStart).Length < MinimumCurveBaselinePixels)
+                {
+                    CancelCurve();
+                    return;
+                }
+                _curvePhase = BuddyPaintCurvePhase.AwaitFirstBend;
+                break;
+            case BuddyPaintCurvePhase.FirstBendDragging:
+                _firstCurveBend = _previewCurveBend;
+                _curvePhase = BuddyPaintCurvePhase.AwaitSecondBend;
+                break;
+            case BuddyPaintCurvePhase.SecondBendDragging:
+                Workspace.FinalizePreviewTransaction();
+                ClearCurveState();
+                break;
+        }
+        WorkspaceChanged?.Invoke();
+        QueueRedraw();
+    }
+
+    private void RenderCurvePreview()
+    {
+        if (!Workspace.PreviewActive) return;
+        double spacing = Math.Max(0.75, Math.Min(2.0, VisibleBrushDiameter() * 0.2));
+        IReadOnlyList<PaintPoint> points = ClassicCurveGeometry.Sample(_curve, spacing);
+        var hits = new PaintHit?[points.Count];
+        for (int index = 0; index < points.Count; index++)
+            hits[index] = Map(new Vector2((float)points[index].X, (float)points[index].Y));
+        Workspace.RenderPreviewPath(hits);
+        WorkspaceChanged?.Invoke();
+    }
+
+    private void ClearCurveState()
+    {
+        _curvePhase = BuddyPaintCurvePhase.Idle;
+        _curveStart = default;
+        _curveEnd = default;
+        _curve = default;
+        _firstCurveBend = default;
+        _previewCurveBend = default;
+        _activeCurveBendT = 0;
+    }
+
+    private static PaintPoint CanvasPoint(Vector2 point) => new(point.X, point.Y);
+
     public override void _ExitTree()
     {
+        if (CurvePending) CancelCurve();
         if (_painting)
         {
             Workspace.EndGesture();
@@ -218,13 +405,34 @@ public partial class PaintCanvasControl : Control
 
     public override void _UnhandledKeyInput(InputEvent input)
     {
+        if (input is InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape } && CurvePending)
+        {
+            CancelCurve();
+            AcceptEvent();
+            return;
+        }
+
         if (input is not InputEventKey { Pressed: true, CtrlPressed: true } key) return;
 
         bool handled = false;
         if (key.Keycode == Key.Z && !key.ShiftPressed)
-            handled = Workspace.Undo();
+        {
+            if (CurvePending)
+            {
+                CancelCurve();
+                handled = true;
+            }
+            else handled = Workspace.Undo();
+        }
         else if (key.Keycode == Key.Y || (key.Keycode == Key.Z && key.ShiftPressed))
-            handled = Workspace.Redo();
+        {
+            if (CurvePending)
+            {
+                CancelCurve();
+                handled = true;
+            }
+            else handled = Workspace.Redo();
+        }
 
         if (!handled) return;
         WorkspaceChanged?.Invoke();
@@ -251,6 +459,7 @@ public partial class PaintCanvasControl : Control
 
     public void ResetView()
     {
+        if (CurvePending) CancelCurve();
         View.Reset();
         ViewChanged?.Invoke();
         QueueRedraw();
@@ -258,6 +467,7 @@ public partial class PaintCanvasControl : Control
 
     public void SetPanNormalized(double x, double y)
     {
+        if (CurvePending) CancelCurve();
         PaintPoint current = View.Pan;
         View.PanBy(new PaintPoint(x - current.X, y - current.Y));
         ViewChanged?.Invoke();
@@ -266,6 +476,7 @@ public partial class PaintCanvasControl : Control
 
     public void SetPartVisible(PaintPart part, bool visible)
     {
+        if (CurvePending) CancelCurve();
         if (visible) _hiddenParts.Remove(part);
         else _hiddenParts.Add(part);
         if (!visible && HoveredPart == part) SetHover(null);
@@ -277,6 +488,7 @@ public partial class PaintCanvasControl : Control
     public void ShowAllParts()
     {
         if (_hiddenParts.Count == 0) return;
+        if (CurvePending) CancelCurve();
         _hiddenParts.Clear();
         QueueRedraw();
     }
