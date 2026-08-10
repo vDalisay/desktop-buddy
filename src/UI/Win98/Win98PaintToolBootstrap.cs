@@ -6,7 +6,7 @@ namespace DesktopBuddy.UI.Win98;
 
 /// <summary>
 /// Completes the Win98 paint picker with paint mutations plus pan/eyedropper interaction modes.
-/// The compact text is temporary; stable node names/tool semantics survive the later icon pass.
+/// Stable node names/tool semantics are independent from the replaceable toolbar artwork.
 /// </summary>
 public partial class Win98PaintToolBootstrap : Node
 {
@@ -54,25 +54,33 @@ public partial class Win98PaintToolBootstrap : Node
             return;
         }
 
+        PaintToolIconProvider.Apply(
+            _brush!, PaintToolIconProvider.Brush, "Brush", "Paint with the current color and Brush Size.");
+        PaintToolIconProvider.Apply(
+            _eraser!, PaintToolIconProvider.Eraser, "Eraser", "Erase buddy paint with the current Brush Size.");
+
         _spray = ToolButton(
             "PaintSprayButton",
+            PaintToolIconProvider.Spray,
             "Spray",
             "Airbrush sparse paint inside the current Brush Size envelope (S).");
         _eyedropper = ToolButton(
             "PaintEyedropperButton",
+            PaintToolIconProvider.PickColor,
             "Pick",
             "Sample an existing painted color from the buddy.");
         _curve = ToolButton(
             "PaintCurveButton",
+            PaintToolIconProvider.Curve,
             "Curve",
             "Draw a baseline, then drag it twice to make a curved line (C).");
         _pan = ToolButton(
             "PaintPanButton",
+            PaintToolIconProvider.Pan,
             "Hand",
             "Pan the buddy viewport with the left mouse button.");
 
-        // Locked temporary ordering before the icon pass:
-        // Brush | Eraser / Spray | Pick / Curve | Hand.
+        // Locked ordering: Brush | Eraser / Spray | Pick / Curve | Hand.
         picker!.AddChild(_spray);
         picker.AddChild(_eyedropper);
         picker.AddChild(_curve);
@@ -110,16 +118,19 @@ public partial class Win98PaintToolBootstrap : Node
         GetViewport().SetInputAsHandled();
     }
 
-    private static Button ToolButton(string name, string text, string tooltip) => new()
+    private static Button ToolButton(string name, string iconId, string fallbackText, string tooltip)
     {
-        Name = name,
-        Text = text,
-        TooltipText = tooltip,
-        ToggleMode = true,
-        CustomMinimumSize = new Vector2(52, 32),
-        FocusMode = Control.FocusModeEnum.All,
-        MouseFilter = Control.MouseFilterEnum.Stop,
-    };
+        var button = new Button
+        {
+            Name = name,
+            ToggleMode = true,
+            CustomMinimumSize = new Vector2(52, 32),
+            FocusMode = Control.FocusModeEnum.All,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+        };
+        PaintToolIconProvider.Apply(button, iconId, fallbackText, tooltip);
+        return button;
+    }
 
     private void SelectBrush() => SelectPaintMutation(PaintTool.Brush, _brush);
     private void SelectEraser() => SelectPaintMutation(PaintTool.Eraser, _eraser);
