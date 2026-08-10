@@ -15,6 +15,7 @@ public partial class Win98PaintToolBootstrap : Node
     private Button? _eraser;
     private Button? _spray;
     private Button? _eyedropper;
+    private Button? _curve;
     private Button? _pan;
     private ColorPickerButton? _colorPicker;
     private ColorRect? _currentColor;
@@ -26,6 +27,7 @@ public partial class Win98PaintToolBootstrap : Node
         if (GodotObject.IsInstanceValid(_canvas) &&
             GodotObject.IsInstanceValid(_spray) &&
             GodotObject.IsInstanceValid(_eyedropper) &&
+            GodotObject.IsInstanceValid(_curve) &&
             GodotObject.IsInstanceValid(_pan))
         {
             return;
@@ -60,21 +62,27 @@ public partial class Win98PaintToolBootstrap : Node
             "PaintEyedropperButton",
             "Pick",
             "Sample an existing painted color from the buddy.");
+        _curve = ToolButton(
+            "PaintCurveButton",
+            "Curve",
+            "Draw a baseline, then drag it twice to make a curved line (C).");
         _pan = ToolButton(
             "PaintPanButton",
             "Hand",
             "Pan the buddy viewport with the left mouse button.");
 
-        // Brush/Eraser already occupy row one. Spray is added first so it is directly below
-        // Brush; Pick lands below Eraser. Curve is inserted before Hand in PAINT-R4.
+        // Locked temporary ordering before the icon pass:
+        // Brush | Eraser / Spray | Pick / Curve | Hand.
         picker!.AddChild(_spray);
         picker.AddChild(_eyedropper);
+        picker.AddChild(_curve);
         picker.AddChild(_pan);
 
         _brush!.Pressed += SelectBrush;
         _eraser!.Pressed += SelectEraser;
         _spray.Pressed += SelectSpray;
         _eyedropper.Pressed += SelectEyedropper;
+        _curve.Pressed += SelectCurve;
         _pan.Pressed += SelectPan;
         _canvas!.ColorSampled += ApplySampledColor;
         SelectBrush();
@@ -88,11 +96,18 @@ public partial class Win98PaintToolBootstrap : Node
             return;
         }
 
-        if (key.Keycode == Key.S)
+        switch (key.Keycode)
         {
-            SelectSpray();
-            GetViewport().SetInputAsHandled();
+            case Key.S:
+                SelectSpray();
+                break;
+            case Key.C:
+                SelectCurve();
+                break;
+            default:
+                return;
         }
+        GetViewport().SetInputAsHandled();
     }
 
     private static Button ToolButton(string name, string text, string tooltip) => new()
@@ -109,13 +124,14 @@ public partial class Win98PaintToolBootstrap : Node
     private void SelectBrush() => SelectPaintMutation(PaintTool.Brush, _brush);
     private void SelectEraser() => SelectPaintMutation(PaintTool.Eraser, _eraser);
     private void SelectSpray() => SelectPaintMutation(PaintTool.Spray, _spray);
+    private void SelectCurve() => SelectPaintMutation(PaintTool.Curve, _curve);
 
     private void SelectPaintMutation(PaintTool tool, Button? button)
     {
         if (!ReadyForSelection()) return;
         _canvas!.PanToolActive = false;
         _canvas.EyedropperToolActive = false;
-        _canvas.Workspace.SelectedTool = tool;
+        _canvas.SelectPaintTool(tool);
         SetPressed(button);
         _canvas.MouseDefaultCursorShape = Control.CursorShape.Cross;
         _canvas.QueueRedraw();
@@ -124,7 +140,8 @@ public partial class Win98PaintToolBootstrap : Node
     private void SelectEyedropper()
     {
         if (!ReadyForSelection()) return;
-        _canvas!.PanToolActive = false;
+        _canvas!.CancelCurve();
+        _canvas.PanToolActive = false;
         _canvas.EyedropperToolActive = true;
         SetPressed(_eyedropper);
         _canvas.MouseDefaultCursorShape = Control.CursorShape.PointingHand;
@@ -134,7 +151,8 @@ public partial class Win98PaintToolBootstrap : Node
     private void SelectPan()
     {
         if (!ReadyForSelection()) return;
-        _canvas!.PanToolActive = true;
+        _canvas!.CancelCurve();
+        _canvas.PanToolActive = true;
         _canvas.EyedropperToolActive = false;
         SetPressed(_pan);
         _canvas.MouseDefaultCursorShape = Control.CursorShape.Drag;
@@ -147,6 +165,7 @@ public partial class Win98PaintToolBootstrap : Node
         _eraser!.ButtonPressed = ReferenceEquals(selected, _eraser);
         _spray!.ButtonPressed = ReferenceEquals(selected, _spray);
         _eyedropper!.ButtonPressed = ReferenceEquals(selected, _eyedropper);
+        _curve!.ButtonPressed = ReferenceEquals(selected, _curve);
         _pan!.ButtonPressed = ReferenceEquals(selected, _pan);
     }
 
@@ -163,5 +182,6 @@ public partial class Win98PaintToolBootstrap : Node
         GodotObject.IsInstanceValid(_eraser) &&
         GodotObject.IsInstanceValid(_spray) &&
         GodotObject.IsInstanceValid(_eyedropper) &&
+        GodotObject.IsInstanceValid(_curve) &&
         GodotObject.IsInstanceValid(_pan);
 }
