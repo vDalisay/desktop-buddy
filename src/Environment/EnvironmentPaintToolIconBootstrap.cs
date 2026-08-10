@@ -17,25 +17,21 @@ public partial class EnvironmentPaintToolIconBootstrap : Node
     public override void _Process(double delta)
     {
         if (_applied) return;
-        Node root = GetTree().Root;
-        if (root.FindChild("PaintBrushButton", true, false) is not Button brush ||
-            root.FindChild("PaintSprayButton", true, false) is not Button spray ||
-            root.FindChild("PaintEraserButton", true, false) is not Button eraser ||
-            root.FindChild("PaintPickButton", true, false) is not Button pick ||
-            root.FindChild("PaintFillButton", true, false) is not Button fill ||
-            root.FindChild("PaintShapesButton", true, false) is not MenuButton shapes ||
-            root.FindChild("PaintUndoButton", true, false) is not Button undo)
+        if (GetTree().Root.FindChild(
+                nameof(EnvironmentBackgroundEditor), recursive: true, owned: false) is not EnvironmentBackgroundEditor editor)
         {
             return;
         }
 
-        // Scope to the Environment editor: the similarly named Buddy buttons are under a different
-        // parent, but Paint Background exists as its own root CanvasLayer and supplies Fill/Shapes.
-        if (fill.GetParent()?.GetParent()?.GetParent() is not Node environmentPanelAncestor ||
-            environmentPanelAncestor.GetParent() is not EnvironmentBackgroundEditor)
+        if (editor.FindChild("PaintBrushButton", true, false) is not Button brush ||
+            editor.FindChild("PaintSprayButton", true, false) is not Button spray ||
+            editor.FindChild("PaintEraserButton", true, false) is not Button eraser ||
+            editor.FindChild("PaintPickButton", true, false) is not Button pick ||
+            editor.FindChild("PaintFillButton", true, false) is not Button fill ||
+            editor.FindChild("PaintShapesButton", true, false) is not MenuButton shapes ||
+            editor.FindChild("PaintUndoButton", true, false) is not Button undo)
         {
-            // Runtime hierarchy can gain an extra Margin/Panel wrapper; fall back to ancestry walk.
-            if (!HasEnvironmentEditorAncestor(fill)) return;
+            return;
         }
 
         Apply(brush, PaintToolIconProvider.Brush, "Brush", "Brush: paint with the current color and Brush Size (B).");
@@ -50,15 +46,4 @@ public partial class EnvironmentPaintToolIconBootstrap : Node
 
     private static void Apply(Button button, string icon, string fallback, string tooltip) =>
         PaintToolIconProvider.Apply(button, icon, fallback, tooltip);
-
-    private static bool HasEnvironmentEditorAncestor(Node node)
-    {
-        Node? current = node;
-        while (current is not null)
-        {
-            if (current is EnvironmentBackgroundEditor) return true;
-            current = current.GetParent();
-        }
-        return false;
-    }
 }
