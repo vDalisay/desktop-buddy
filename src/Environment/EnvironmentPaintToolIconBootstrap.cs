@@ -4,12 +4,13 @@ using Godot;
 namespace DesktopBuddy.Environment;
 
 /// <summary>
-/// Presentation-only late pass for Paint Background. It waits for the editor's runtime controls,
-/// then adds the same semantic icon mapping used by Paint Buddy next to the existing tool words.
-/// Popup entries and Save/Reset/Cancel remain textual for discoverability.
+/// Presentation-only PAINT-R6 pass for Paint Background. It waits for the editor's runtime
+/// controls, then converts compact tool/action buttons to the same stable semantic icon mapping
+/// used by Paint Buddy. Popup entries and Save/Reset/Cancel remain textual for discoverability.
 /// </summary>
 public partial class EnvironmentPaintToolIconBootstrap : Node
 {
+    private static readonly Vector2 CompactToolSize = new(52, 32);
     private bool _applied;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
@@ -39,13 +40,17 @@ public partial class EnvironmentPaintToolIconBootstrap : Node
         Apply(pen, PaintToolIconProvider.Pen, "Pen", "Pen: solid round nib matching the cursor ring (P).");
         Apply(spray, PaintToolIconProvider.Spray, "Spray", "Spray: airbrush with the current Brush Size (S).");
         Apply(eraser, PaintToolIconProvider.Eraser, "Eraser", "Eraser: restore the blank background with the current Brush Size (E).");
-        Apply(pick, PaintToolIconProvider.PickColor, "Pick", "Pick Color: sample the room background (I).");
-        Apply(fill, PaintToolIconProvider.Fill, "Fill", "Fill Color: flood the clicked region (F).");
+        Apply(pick, PaintToolIconProvider.PickColor, "Pick", "Pick Color: sample what is rendered under the pointer (I).");
+        Apply(fill, PaintToolIconProvider.Fill, "Fill", "Fill Color: flood the clicked paint region (F).");
         Apply(shapes, PaintToolIconProvider.Shapes, "Shapes", "Shapes: Square, Circle, Straight Line, or Curved Line.");
         Apply(undo, PaintToolIconProvider.Undo, "Undo", "Undo the last background paint action (Ctrl+Z).");
         _applied = true;
     }
 
-    private static void Apply(Button button, string icon, string fallback, string tooltip) =>
-        PaintToolIconProvider.Apply(button, icon, fallback, tooltip, keepText: true);
+    private static void Apply(Button button, string icon, string fallback, string tooltip)
+    {
+        PaintToolIconProvider.Apply(button, icon, fallback, tooltip);
+        button.CustomMinimumSize = CompactToolSize;
+        button.FocusMode = Control.FocusModeEnum.All;
+    }
 }
