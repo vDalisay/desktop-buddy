@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Ui;
@@ -37,20 +38,10 @@ public partial class DesktopToolbarWindow : Window
         var panel = new PanelContainer
         {
             MouseFilter = Control.MouseFilterEnum.Stop,
+            Theme = Win98ThemeFactory.Create(),
         };
         panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        panel.AddThemeStyleboxOverride("panel", new StyleBoxFlat
-        {
-            BgColor = new Color(0.075f, 0.08f, 0.1f, 0.98f),
-            CornerRadiusTopLeft = 6,
-            CornerRadiusTopRight = 6,
-            CornerRadiusBottomLeft = 6,
-            CornerRadiusBottomRight = 6,
-            ContentMarginLeft = 8,
-            ContentMarginRight = 8,
-            ContentMarginTop = 5,
-            ContentMarginBottom = 5,
-        });
+        panel.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
         AddChild(panel);
 
         Bar = new HBoxContainer

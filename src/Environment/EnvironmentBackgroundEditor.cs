@@ -137,7 +137,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _cursor = new EnvironmentPaintCursor { Name = "EnvironmentPaintCursor", MouseFilter = Control.MouseFilterEnum.Ignore };
         _blocker.AddChild(_cursor);
 
-        _panel = Win98Dialog.Create("PaintBackgroundPanel", "Paint Background", new Vector2(430, 360), out VBoxContainer body, RequestClose);
+        _panel = Win98Dialog.Create("PaintBackgroundPanel", "Paint Background", new Vector2(520, 380), out VBoxContainer body, RequestClose);
         _blocker.AddChild(_panel);
         _panel.Visible = true;
 
@@ -186,9 +186,13 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         var inset = new PanelContainer { Name = "PaintPalette" };
         inset.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 2));
         body.AddChild(inset);
+        var paletteMargin = new MarginContainer();
+        foreach (string side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
+            paletteMargin.AddThemeConstantOverride(side, 8);
+        inset.AddChild(paletteMargin);
         var paletteRow = new HBoxContainer();
         paletteRow.AddThemeConstantOverride("separation", 8);
-        inset.AddChild(paletteRow);
+        paletteMargin.AddChild(paletteRow);
         _current = new ColorRect { Name = "PaintCurrentColor", CustomMinimumSize = new Vector2(48, 40) };
         paletteRow.AddChild(_current);
         _swatchGrid = new GridContainer { Name = "PaintSwatches", Columns = 8 };
@@ -540,6 +544,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private void Refresh()
     {
         _dirty.Text = Canvas.IsDirty ? "Unsaved changes" : "No unsaved changes";
+        _dirty.AddThemeColorOverride("font_color", Canvas.IsDirty ? Color.Color8(160, 0, 0) : Colors.Black);
         _undo.Disabled = !Canvas.CanUndo && !Canvas.CurvePending;
         _brushSize.Text = $"{Canvas.BrushDiameter}px";
     }

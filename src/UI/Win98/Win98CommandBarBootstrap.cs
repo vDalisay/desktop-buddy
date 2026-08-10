@@ -46,6 +46,11 @@ public partial class Win98CommandBarBootstrap : Node
     private Button _legacyModeButton = null!;
     private IDisposable? _paintBuddyRegistration;
     private HBoxContainer _commandRow = null!;
+    private Label _balance = null!;
+    private Label _reward = null!;
+    private Control? _legacyMoneyHud;
+    private Label? _legacyBalanceLabel;
+    private Label? _legacyRewardLabel;
 
     private readonly Dictionary<Button, Control> _sections = [];
     private Control? _activeSection;
@@ -70,19 +75,24 @@ public partial class Win98CommandBarBootstrap : Node
             return;
         }
 
-        bool compact = _window.LayoutMode == WindowLayoutMode.Compact;
         bool editorOpen = IsEditorOpen();
         _bar.Visible = !editorOpen;
-        _flyout.Visible = compact && !editorOpen && _activeSection is not null;
+        _flyout.Visible = !editorOpen && _activeSection is not null;
 
         if (GodotObject.IsInstanceValid(_legacyDock))
             _legacyDock.Visible = false;
 
-        if (!compact)
+        // The strip owns the panels in every layout: full-screen has no other menu surface,
+        // so handing them back to the hidden native windows just made the buttons do nothing.
+        // Full-screen Work is the one exception — the main window is click-through there, and
+        // the native toolbar's own windows are the only reachable panels.
+        if (_window.LayoutMode == WindowLayoutMode.FullscreenOverlay &&
+            _window.InputMode == DesktopBuddy.Domain.Platform.InputMode.Work)
             ReturnPanelsToNativeWindows();
         else
             EnsureCompactPanelOwnership();
 
+        MirrorBalance();
         LayoutMenuBar();
         LayoutFlyout();
         MirrorModeLabel();
@@ -154,6 +164,10 @@ public partial class Win98CommandBarBootstrap : Node
             return;
         }
 
+        _legacyMoneyHud = GetTree().Root.FindChild("MoneyHud", true, false) as Control;
+        _legacyBalanceLabel = _legacyMoneyHud?.FindChild("Balance", true, false) as Label;
+        _legacyRewardLabel = _legacyMoneyHud?.FindChild("Reward", true, false) as Label;
+
         _shopHome = _shop.GetParent();
         _toolsHome = _tools.GetParent();
         _settingsHome = _settings.GetParent();
@@ -208,6 +222,32 @@ public partial class Win98CommandBarBootstrap : Node
 
         _modeButton = AddMenuCommand(_commandRow, "Work", "Switch between Play and Work input modes.", ToggleMode);
         RebuildTopLevelCommands();
+
+        // The balance lives at the far right of the strip; the old floating HUD panel is retired.
+        _commandRow.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
+        _balance = new Label
+        {
+            Name = "Win98BalanceLabel",
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            TooltipText = "Current credit balance.",
+        };
+        _balance.AddThemeColorOverride("font_color", Color.Color8(0, 112, 0));
+        _commandRow.AddChild(_balance);
+        var balanceGutter = new Control { CustomMinimumSize = new Vector2(8, 0), MouseFilter = Control.MouseFilterEnum.Ignore };
+        _commandRow.AddChild(balanceGutter);
+
+        // The reward pop floats just under the balance, outside the strip's own layout.
+        _reward = new Label
+        {
+            Name = "Win98RewardLabel",
+            Visible = false,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ZIndex = 80,
+        };
+        _reward.AddThemeColorOverride("font_color", Color.Color8(0, 112, 0));
+        overlay.AddChild(_reward);
 
         _sections[_shopButton] = _shop;
         _sections[_toolsButton] = _tools;
@@ -389,9 +429,6 @@ public partial class Win98CommandBarBootstrap : Node
 
     private void OpenSection(Button button, Control section, string title)
     {
-        if (_window.LayoutMode != WindowLayoutMode.Compact)
-            return;
-
         EnsureCompactPanelOwnership();
         if (_activeSection == section && _flyout.Visible)
         {
@@ -430,6 +467,24 @@ public partial class Win98CommandBarBootstrap : Node
 
     private void ToggleMode() => _legacyModeButton.EmitSignal(Button.SignalName.Pressed);
 
+    /// <summary>The economy presenter still owns the value; only its floating panel is retired.</summary>
+    private void MirrorBalance()
+    {
+        if (GodotObject.IsInstanceValid(_legacyMoneyHud))
+            _legacyMoneyHud!.Visible = false;
+        if (GodotObject.IsInstanceValid(_legacyBalanceLabel))
+            _balance.Text = _legacyBalanceLabel!.Text;
+
+        if (!GodotObject.IsInstanceValid(_legacyRewardLabel))
+            return;
+        _reward.Text = _legacyRewardLabel!.Text;
+        _reward.Visible = _legacyRewardLabel.Visible;
+        Rect2 balanceRect = _balance.GetGlobalRect();
+        _reward.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        _reward.Size = new Vector2(balanceRect.Size.X, 0);
+        _reward.GlobalPosition = new Vector2(balanceRect.Position.X, balanceRect.End.Y + 2);
+    }
+
     private void MirrorModeLabel()
     {
         if (GodotObject.IsInstanceValid(_legacyModeButton))
@@ -444,9 +499,6 @@ public partial class Win98CommandBarBootstrap : Node
 
     private void EnsureCompactPanelOwnership()
     {
-        if (_window.LayoutMode != WindowLayoutMode.Compact)
-            return;
-
         HideNativePanelWindows();
         ParkPanel(_shop);
         ParkPanel(_tools);
@@ -500,7 +552,8 @@ public partial class Win98CommandBarBootstrap : Node
         if (!GodotObject.IsInstanceValid(_bar))
             return;
 
-        Rect2 content = _frame.ContentViewportRect;
+        // Full-screen hides the window chrome, so the strip owns the top of the viewport itself.
+        Rect2 content = _frame.Visible ? _frame.ContentViewportRect : GetViewport().GetVisibleRect();
         if (content.Size.X <= 0f)
             return;
 
@@ -515,7 +568,7 @@ public partial class Win98CommandBarBootstrap : Node
         if (!GodotObject.IsInstanceValid(_flyout) || !GodotObject.IsInstanceValid(_bar))
             return;
 
-        Rect2 content = _frame.ContentViewportRect;
+        Rect2 content = _frame.Visible ? _frame.ContentViewportRect : GetViewport().GetVisibleRect();
         Rect2 menuRect = _bar.GetGlobalRect();
         if (content.Size.X <= 0f)
             return;

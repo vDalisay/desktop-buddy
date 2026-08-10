@@ -322,10 +322,11 @@ public sealed class EnvironmentPlacementClosureScenario(string id = "environment
         (float x1, float y1) = EnvironmentPlacement.ToScreen(canonical, room);
         var resized = new RoomScreenBounds(240, 120, 1600, 1200);
         (float x2, float y2) = EnvironmentPlacement.ToScreen(canonical, resized);
-        bool resizeStable = EnvironmentPlacement.TryMap(
-            x1, y1, room, DecorationAnchorKind.RoomSurface, false, EnvironmentGridSize.Medium, out CanonicalRoomPosition mapped1) &&
-            EnvironmentPlacement.TryMap(
-                x2, y2, resized, DecorationAnchorKind.RoomSurface, false, EnvironmentGridSize.Medium, out CanonicalRoomPosition mapped2) &&
+        bool firstMapped = EnvironmentPlacement.TryMap(
+            x1, y1, room, DecorationAnchorKind.RoomSurface, false, EnvironmentGridSize.Medium, out CanonicalRoomPosition mapped1);
+        bool secondMapped = EnvironmentPlacement.TryMap(
+            x2, y2, resized, DecorationAnchorKind.RoomSurface, false, EnvironmentGridSize.Medium, out CanonicalRoomPosition mapped2);
+        bool resizeStable = firstMapped && secondMapped &&
             NearlyEqual(mapped1, canonical) && NearlyEqual(mapped2, canonical);
         checks.Add(new StartupCheck(
             "environment_placement_resize_mapping_stable",

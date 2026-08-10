@@ -6,11 +6,12 @@ namespace DesktopBuddy.Environment;
 /// <summary>
 /// Presentation-only PAINT-R6 pass for Paint Background. It waits for the editor's runtime
 /// controls, then converts compact tool/action buttons to the same stable semantic icon mapping
-/// used by Paint Buddy. Popup entries and Save/Reset/Cancel remain textual for discoverability.
+/// used by Paint Buddy. Icons sit next to the tool name; popup entries and Save/Reset/Cancel
+/// remain textual for discoverability.
 /// </summary>
 public partial class EnvironmentPaintToolIconBootstrap : Node
 {
-    private static readonly Vector2 CompactToolSize = new(52, 32);
+    private static readonly Vector2 CompactToolSize = new(112, 32);
     private bool _applied;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
@@ -49,7 +50,7 @@ public partial class EnvironmentPaintToolIconBootstrap : Node
 
     private static void Apply(Button button, string icon, string fallback, string tooltip)
     {
-        PaintToolIconProvider.Apply(button, icon, fallback, tooltip);
+        PaintToolIconProvider.Apply(button, icon, fallback, tooltip, keepText: true);
         button.CustomMinimumSize = CompactToolSize;
         button.FocusMode = Control.FocusModeEnum.All;
     }

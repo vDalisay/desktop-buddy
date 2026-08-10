@@ -157,7 +157,11 @@ public partial class CharacterEditorHost
             TraceDockState("visibility-change", force: true);
         }
 
+        // Full-screen Play keeps the in-window Win98 strip, so the native toolbar would just be a
+        // second menu floating over it. It stays only for full-screen Work, where the main window
+        // is click-through and the strip cannot be reached at all.
         bool toolbarVisible = !IsEditorOpen && fullscreen &&
+            _sandbox.Shell.Mode == InputMode.Work &&
             _sandbox.Window.Adapter.IsWindowVisible;
         if (!force && toolbarVisible == _lastToolbarVisible)
             return;
@@ -196,6 +200,7 @@ public partial class CharacterEditorHost
     private void OnInteractionModeChanged(InputMode mode)
     {
         UpdateWorkPlayLabels();
+        UpdateDockVisibility(force: true);
         TraceDockState("input-mode-change", force: true);
     }
 
