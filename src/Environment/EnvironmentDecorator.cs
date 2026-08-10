@@ -74,7 +74,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     internal bool PlacementMode => _placementMode;
     internal bool MoveMode => _moveMode;
     internal long VisibleAvailableBalance => VisibleProjectedBalance;
-    internal int VisibleOwnedCount(DecorationDefinitionId id) => CountInRoom(id);
+    internal int VisibleOwnedCount(DecorationDefinitionId id) => Owned(id);
 
     public void Configure(
         BuddyProgressState progress,
@@ -442,7 +442,8 @@ public partial class EnvironmentDecorator : CanvasLayer
                 _moveHeld = false;
                 if (_moveDragging) DropCarried(release.Position);
                 break;
-            case InputEventMouseMotion motion when _placement.Active:
+            // Placement mode only: in Edit Items a released ghost must stay put, not trail the cursor.
+            case InputEventMouseMotion motion when _placement.Active && !_moveMode:
                 _placement.UpdatePointer(motion.Position);
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _placement.Active:
@@ -665,17 +666,16 @@ public partial class EnvironmentDecorator : CanvasLayer
             _values.SetRows([
                 new("available", "Available Funds", ContentDisplayName.Credits(available)),
                 new("selected", "Selected Item", selectionId == default ? "Unknown" : DisplayName(selectionId)),
-                new("in-room", "In Room", CountInRoom(selectionId).ToString(), true),
+                new("owned", "Owned", Owned(selectionId).ToString(), true),
             ]);
         }
         else
         {
             _values.SetRows([
                 new("available", "Available Funds", ContentDisplayName.Credits(available)),
-                new("cost", "Item Cost", ownedCopyReady ? "Owned" : ContentDisplayName.Credits(cost)),
+                new("cost", "Item Cost", ContentDisplayName.Credits(cost)),
                 new("projected", "After Purchase", ContentDisplayName.Credits(afterPurchase), true),
-                new("in-room", "In Room", CountInRoom(selectionId).ToString()),
-                new("in-storage", "In Storage", OwnedInStorage(selectionId).ToString()),
+                new("owned", "Owned", Owned(selectionId).ToString()),
             ]);
         }
 
@@ -782,20 +782,17 @@ public partial class EnvironmentDecorator : CanvasLayer
         return TryFindPlaced(_selectedInstance, out PlacedDecoration placed) ? placed.DefinitionId : default;
     }
 
-    private int CountInRoom(DecorationDefinitionId id) => id == default || _session is null
-        ? 0 : _session.WorkingLayout.Decorations.Count(item => item.DefinitionId == id);
-
-    private int OwnedInStorage(DecorationDefinitionId id) =>
-        id == default || _session is null ? 0 : _session.OwnedUnplacedCount(id);
+    /// <summary>Every copy the player owns, placed or in storage — the one ownership number shown.</summary>
+    private int Owned(DecorationDefinitionId id) => id == default || _session is null
+        ? 0
+        : _session.WorkingLayout.Decorations.Count(item => item.DefinitionId == id) + _session.OwnedUnplacedCount(id);
 
     private Win98CatalogItemPresentation CatalogPresentation(EnvironmentDecorationResource resource)
     {
         DecorationDefinition definition = resource.ToDefinition();
-        int stored = OwnedInStorage(definition.Id);
         return new Win98CatalogItemPresentation(definition.Id.Value, DisplayName(definition.Id),
-            stored > 0 ? "Owned" : ContentDisplayName.Credits(definition.PriceMilliCredits), Preview(resource), true,
-            $"{definition.AnchorKind} decoration",
-            stored > 0 ? $"In room: {CountInRoom(definition.Id)}  Stored: {stored}" : $"In room: {CountInRoom(definition.Id)}");
+            ContentDisplayName.Credits(definition.PriceMilliCredits), Preview(resource), true,
+            $"{definition.AnchorKind} decoration", $"Owned: {Owned(definition.Id)}");
     }
 
     private void RefreshCatalogueBadges()
