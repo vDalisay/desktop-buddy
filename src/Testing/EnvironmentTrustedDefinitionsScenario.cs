@@ -199,11 +199,11 @@ public sealed class EnvironmentBackgroundEditorScenario : IScenario
     private static int Painted(EnvironmentCanvas canvas)
     {
         byte[] pixels = canvas.ClonePixels();
-        EnvironmentColor blank = EnvironmentCanvasPolicy.DefaultColor;
         int count = 0;
         for (int index = 0; index < pixels.Length; index += EnvironmentCanvasPolicy.BytesPerPixel)
         {
-            if (pixels[index] != blank.Red || pixels[index + 1] != blank.Green || pixels[index + 2] != blank.Blue) count++;
+            // Painted pixels are the opaque ones; unpainted canvas is transparent so the wallpaper shows.
+            if (pixels[index + EnvironmentCanvasPolicy.BytesPerPixel - 1] != 0) count++;
         }
         return count;
     }

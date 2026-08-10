@@ -40,7 +40,7 @@ public sealed class EnvironmentCanvasTests
         canvas.Tool = EnvironmentPaintTool.Eraser;
         canvas.Begin(.5, .5);
         canvas.End(.5, .5);
-        Assert.Equal(EnvironmentCanvasPolicy.DefaultColor, Sample(canvas, .5, .5));
+        Assert.Equal(EnvironmentCanvasPolicy.Blank, Sample(canvas, .5, .5));
 
         byte[] before = canvas.ClonePixels();
         canvas.Begin(-1, .5);
@@ -72,7 +72,7 @@ public sealed class EnvironmentCanvasTests
 
         // The preview is redrawn from the pre-drag image, so the discarded diagonal is gone.
         Assert.Equal(Ink, Sample(canvas, .5, .2));
-        Assert.Equal(EnvironmentCanvasPolicy.DefaultColor, Sample(canvas, .5, .5));
+        Assert.Equal(EnvironmentCanvasPolicy.Blank, Sample(canvas, .5, .5));
 
         foreach (EnvironmentPaintTool shape in new[] { EnvironmentPaintTool.Square, EnvironmentPaintTool.Circle })
         {
@@ -80,15 +80,16 @@ public sealed class EnvironmentCanvasTests
             shaped.Begin(.2, .2);
             shaped.End(.8, .8);
             Assert.True(shaped.IsDirty);
-            Assert.Equal(EnvironmentCanvasPolicy.DefaultColor, Sample(shaped, .5, .5));
+            Assert.Equal(EnvironmentCanvasPolicy.Blank, Sample(shaped, .5, .5));
         }
     }
 
     [Fact]
     public void BrushDiameterChangesBrushAndShapeThickness()
     {
+        // Painted pixels are the opaque ones; unpainted canvas is transparent.
         static int Changed(EnvironmentCanvas canvas) => canvas.ClonePixels()
-            .Where((value, index) => index % EnvironmentCanvasPolicy.BytesPerPixel < 3 && value != 192)
+            .Where((value, index) => index % EnvironmentCanvasPolicy.BytesPerPixel == 3 && value != 0)
             .Count();
 
         var small = new EnvironmentCanvas { Color = Ink, BrushDiameter = 2, Tool = EnvironmentPaintTool.Square };
@@ -107,7 +108,7 @@ public sealed class EnvironmentCanvasTests
         canvas.End(.5, .5);
         canvas.Reset();
 
-        Assert.Equal(EnvironmentCanvasPolicy.DefaultColor, Sample(canvas, .5, .5));
+        Assert.Equal(EnvironmentCanvasPolicy.Blank, Sample(canvas, .5, .5));
         canvas.MarkSaved();
         canvas.Tool = EnvironmentPaintTool.Eraser;
         canvas.Begin(.5, .5);

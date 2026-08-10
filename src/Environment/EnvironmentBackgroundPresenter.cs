@@ -11,7 +11,15 @@ namespace DesktopBuddy.Environment;
 public partial class EnvironmentBackgroundPresenter : Node3D
 {
     public const float BackdropZ = -100f;
+
+    /// <summary>
+    /// The paint layer sits between the wallpaper band (-90) and wall decorations (-50): paint goes
+    /// ON a wallpaper, furniture goes on the paint. Unpainted canvas is transparent, so the
+    /// wallpaper — or the opaque base quad when there is none — shows through.
+    /// </summary>
+    public const float PaintZ = -70f;
     private MeshInstance3D _quad = null!;
+    private MeshInstance3D _base = null!;
     private StandardMaterial3D _material = null!;
     private ImageTexture _texture = null!;
     private BoundaryController? _boundaries;
@@ -28,12 +36,31 @@ public partial class EnvironmentBackgroundPresenter : Node3D
 
     public override void _Ready()
     {
+        EnvironmentColor baseColor = EnvironmentCanvasPolicy.DefaultColor;
+        _base = new MeshInstance3D
+        {
+            Name = "EnvironmentBackgroundBaseQuad",
+            Mesh = new QuadMesh
+            {
+                Material = new StandardMaterial3D
+                {
+                    ResourceName = "EnvironmentBackgroundBaseMaterial",
+                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                    CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+                    AlbedoColor = Color.Color8(baseColor.Red, baseColor.Green, baseColor.Blue),
+                },
+            },
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        };
+        AddChild(_base);
+
         _material = new StandardMaterial3D
         {
             ResourceName = "EnvironmentBackgroundMaterial",
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             CullMode = BaseMaterial3D.CullModeEnum.Disabled,
             TextureFilter = BaseMaterial3D.TextureFilterEnum.Nearest,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
         };
         _quad = new MeshInstance3D
         {
@@ -105,6 +132,8 @@ public partial class EnvironmentBackgroundPresenter : Node3D
     {
         if (!GodotObject.IsInstanceValid(_quad) || width <= 0 || height <= 0) return;
         ((QuadMesh)_quad.Mesh).Size = new Vector2(width, height);
-        _quad.Position = new Vector3(width * .5f, -height * .5f, BackdropZ);
+        _quad.Position = new Vector3(width * .5f, -height * .5f, PaintZ);
+        ((QuadMesh)_base.Mesh).Size = new Vector2(width, height);
+        _base.Position = new Vector3(width * .5f, -height * .5f, BackdropZ);
     }
 }

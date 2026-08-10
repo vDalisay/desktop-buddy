@@ -18,7 +18,15 @@ public static class EnvironmentCanvasPolicy
     public const int BrushStep = 2;
     public const int UndoDepth = 12;
     public const string RelativePath = "environment/background.png";
+    /// <summary>
+    /// The room's base colour, painted by the opaque backdrop the canvas floats above. The canvas
+    /// itself starts <see cref="Blank"/> so an applied wallpaper shows through wherever the player
+    /// has not painted.
+    /// </summary>
     public static EnvironmentColor DefaultColor => new(192, 192, 192);
+
+    /// <summary>Unpainted canvas: fully transparent, so whatever is behind the paint shows.</summary>
+    public static EnvironmentColor Blank => new(0, 0, 0, 0);
 }
 
 /// <summary>
@@ -45,7 +53,7 @@ public sealed class EnvironmentCanvas
     private ulong _sprayGestureSeed = 0xA0761D6478BD642FUL;
     private ulong _sprayPulseOrdinal;
 
-    public EnvironmentCanvas() => FillAll(EnvironmentCanvasPolicy.DefaultColor);
+    public EnvironmentCanvas() => FillAll(EnvironmentCanvasPolicy.Blank);
 
     public long Revision { get; private set; }
     public bool IsDirty { get; private set; }
@@ -143,7 +151,7 @@ public sealed class EnvironmentCanvas
                 Spray(px, py, Color, NextSpraySeed());
                 break;
             case EnvironmentPaintTool.Eraser:
-                Stamp(px, py, EnvironmentCanvasPolicy.DefaultColor);
+                Stamp(px, py, EnvironmentCanvasPolicy.Blank);
                 break;
             case EnvironmentPaintTool.Fill:
                 Fill(px, py, Color);
@@ -178,7 +186,7 @@ public sealed class EnvironmentCanvas
                 Spray(px, py, Color, NextSpraySeed());
                 break;
             case EnvironmentPaintTool.Eraser:
-                Line(_lastX, _lastY, px, py, EnvironmentCanvasPolicy.DefaultColor);
+                Line(_lastX, _lastY, px, py, EnvironmentCanvasPolicy.Blank);
                 break;
             case EnvironmentPaintTool.Square:
             case EnvironmentPaintTool.Circle:
@@ -241,7 +249,7 @@ public sealed class EnvironmentCanvas
         CancelPendingCurve();
         if (_stroking) End(double.NaN, double.NaN);
         byte[] snapshot = (byte[])_pixels.Clone();
-        FillAll(EnvironmentCanvasPolicy.DefaultColor);
+        FillAll(EnvironmentCanvasPolicy.Blank);
         PushUndo(snapshot);
         SettleGesture();
     }
@@ -520,11 +528,11 @@ public sealed class EnvironmentCanvas
     {
         int index = ((y * EnvironmentCanvasPolicy.Size) + x) * EnvironmentCanvasPolicy.BytesPerPixel;
         if (_pixels[index] == color.Red && _pixels[index + 1] == color.Green &&
-            _pixels[index + 2] == color.Blue && _pixels[index + 3] == byte.MaxValue) return false;
+            _pixels[index + 2] == color.Blue && _pixels[index + 3] == color.Alpha) return false;
         _pixels[index] = color.Red;
         _pixels[index + 1] = color.Green;
         _pixels[index + 2] = color.Blue;
-        _pixels[index + 3] = byte.MaxValue;
+        _pixels[index + 3] = color.Alpha;
         return true;
     }
 
@@ -533,7 +541,7 @@ public sealed class EnvironmentCanvas
         color = default;
         if (x < 0 || y < 0 || x >= EnvironmentCanvasPolicy.Size || y >= EnvironmentCanvasPolicy.Size) return false;
         int index = ((y * EnvironmentCanvasPolicy.Size) + x) * EnvironmentCanvasPolicy.BytesPerPixel;
-        color = new EnvironmentColor(_pixels[index], _pixels[index + 1], _pixels[index + 2]);
+        color = new EnvironmentColor(_pixels[index], _pixels[index + 1], _pixels[index + 2], _pixels[index + 3]);
         return true;
     }
 
@@ -544,7 +552,7 @@ public sealed class EnvironmentCanvas
             _pixels[index] = color.Red;
             _pixels[index + 1] = color.Green;
             _pixels[index + 2] = color.Blue;
-            _pixels[index + 3] = byte.MaxValue;
+            _pixels[index + 3] = color.Alpha;
         }
         Revision++;
     }

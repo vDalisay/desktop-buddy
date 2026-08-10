@@ -45,7 +45,9 @@ public sealed class EnvironmentPaintStore
             if (!_fileSystem.FileExists(path) || _fileSystem.IsReparsePoint(path)) return null;
             byte[] encoded = _fileSystem.ReadAllBytes(path, PaintPolicy.MaximumEncodedPngBytes);
             byte[] pixels = PaintPngCodec.Decode(encoded);
-            return pixels.Length == EnvironmentCanvasPolicy.Bytes ? pixels : null;
+            if (pixels.Length != EnvironmentCanvasPolicy.Bytes) return null;
+            MigrateOpaqueBaseToBlank(pixels);
+            return pixels;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or
             UnauthorizedAccessException or ArgumentException)
@@ -58,6 +60,25 @@ public sealed class EnvironmentPaintStore
     {
         try { _fileSystem.DeleteFile(PaintPath); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
+
+    /// <summary>
+    /// Rooms painted before the canvas floated above the wallpaper stored their unpainted area as
+    /// opaque base grey, which would now hide any wallpaper. Those pixels become blank again; the
+    /// player's strokes are untouched.
+    /// </summary>
+    private static void MigrateOpaqueBaseToBlank(byte[] pixels)
+    {
+        EnvironmentColor baseColor = EnvironmentCanvasPolicy.DefaultColor;
+        for (int index = 0; index < pixels.Length; index += EnvironmentCanvasPolicy.BytesPerPixel)
+        {
+            if (pixels[index] != baseColor.Red || pixels[index + 1] != baseColor.Green ||
+                pixels[index + 2] != baseColor.Blue || pixels[index + 3] != byte.MaxValue) continue;
+            pixels[index] = 0;
+            pixels[index + 1] = 0;
+            pixels[index + 2] = 0;
+            pixels[index + 3] = 0;
+        }
     }
 
     private void SaveCore(ReadOnlySpan<byte> pixels)

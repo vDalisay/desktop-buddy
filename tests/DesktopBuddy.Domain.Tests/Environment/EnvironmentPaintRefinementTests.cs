@@ -25,7 +25,7 @@ public sealed class EnvironmentPaintRefinementTests
         edge.End(.001, .5);
 
         Assert.True(edge.TryPick(.999, .5, out EnvironmentColor opposite));
-        Assert.Equal(EnvironmentCanvasPolicy.DefaultColor, opposite);
+        Assert.Equal(EnvironmentCanvasPolicy.Blank, opposite);
     }
 
     [Fact]
@@ -119,7 +119,7 @@ public sealed class EnvironmentPaintRefinementTests
         Assert.True(pen.TryPick(.5, .5 + (38.0 / 511), out EnvironmentColor down));
         Assert.Equal(Ink, down);
         Assert.True(pen.TryPick(.5 + (24.0 / 511), .5, out EnvironmentColor outside));
-        Assert.Equal(EnvironmentCanvasPolicy.DefaultColor, outside);
+        Assert.Equal(EnvironmentCanvasPolicy.Blank, outside);
 
         var round = new EnvironmentCanvas { Tool = EnvironmentPaintTool.Spray, Color = Ink, BrushDiameter = 40, PixelAspect = 2.0 };
         var flat = new EnvironmentCanvas { Tool = EnvironmentPaintTool.Spray, Color = Ink, BrushDiameter = 40 };
@@ -150,8 +150,8 @@ public sealed class EnvironmentPaintRefinementTests
         int changed = 0;
         for (int index = 0; index < pixels.Length; index += EnvironmentCanvasPolicy.BytesPerPixel)
         {
-            if (pixels[index] != 192 || pixels[index + 1] != 192 || pixels[index + 2] != 192)
-                changed++;
+            // Painted pixels are the opaque ones; unpainted canvas is transparent.
+            if (pixels[index + 3] != 0) changed++;
         }
         return changed;
     }
