@@ -99,7 +99,7 @@ public sealed class SaveCoordinator
             Revision = progressBefore.Revision + 1,
             BalanceMilliCredits = commit.BalanceMilliCredits,
         });
-        _environment.Commit(commit.Layout);
+        _environment.Commit(commit.Layout, commit.OwnedUnplaced);
 
         try
         {

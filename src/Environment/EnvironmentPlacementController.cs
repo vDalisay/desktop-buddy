@@ -68,6 +68,14 @@ public partial class EnvironmentPlacementController : Node
         Changed?.Invoke();
     }
 
+    /// <summary>Turns the ghost so a rotated item reads correctly while it is selected or dragged.</summary>
+    public void SetGhostRotationDegrees(float degrees)
+    {
+        if (_ghost is null) return;
+        _ghost.PivotOffset = _ghost.Size * .5f;
+        _ghost.RotationDegrees = degrees;
+    }
+
     public bool UpdatePointer(Vector2 screenPosition)
     {
         if (!Active || _definition is null || _ghost is null) return false;

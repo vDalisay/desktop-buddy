@@ -162,11 +162,16 @@ public sealed record EnvironmentProgressSave
     public int LayoutSchemaVersion { get; init; } = EnvironmentLayout.CurrentSchemaVersion;
     public List<PlacedDecorationSave> PlacedDecorations { get; init; } = [];
 
+    /// <summary>Definition IDs the player owns but has not placed; one entry per owned copy. Older
+    /// saves have none, which is correct: nothing had been banked before storage existed.</summary>
+    public List<string> OwnedUnplaced { get; init; } = [];
+
     public static EnvironmentProgressSave FromSnapshot(in EnvironmentProgressSnapshot snapshot) => new()
     {
         Revision = snapshot.Revision,
         LayoutSchemaVersion = snapshot.Layout.SchemaVersion,
         PlacedDecorations = snapshot.Layout.Decorations.Select(item => PlacedDecorationSave.FromPlaced(item)).ToList(),
+        OwnedUnplaced = (snapshot.OwnedUnplaced ?? []).Select(id => id.Value).ToList(),
     };
 
     public EnvironmentProgressState CreateState() => new(
@@ -178,7 +183,10 @@ public sealed record EnvironmentProgressSave
                 new EnvironmentLayout(PlacedDecorations.Select(item => item.CreatePlaced())),
             _ => throw new ArgumentOutOfRangeException(nameof(LayoutSchemaVersion), "Unsupported Environment layout schema."),
         },
-        Revision);
+        Revision,
+        OwnedUnplaced
+            .Select(value => DecorationDefinitionId.TryCreate(value, out DecorationDefinitionId id) ? id : default)
+            .Where(id => id != default));
 }
 
 public sealed record FunActivitySave

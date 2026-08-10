@@ -12,6 +12,7 @@ public partial class EnvironmentDecorationLayer : Node3D
     private EnvironmentProgressState _state = null!;
     private BoundaryController _boundaries = null!;
     private EnvironmentLayout _visibleLayout = new();
+    private EnvironmentLayout? _hitLayout;
 
     public void Configure(EnvironmentProgressState state, BoundaryController boundaries)
     {
@@ -37,7 +38,7 @@ public partial class EnvironmentDecorationLayer : Node3D
         float roomWidth = Math.Max(1f, (float)_boundaries.CurrentLayout.RoomWidth);
         float roomHeight = Math.Max(1f, (float)_boundaries.CurrentLayout.RoomHeight);
         PlacedDecoration? best = null;
-        foreach (PlacedDecoration placed in _visibleLayout.Decorations)
+        foreach (PlacedDecoration placed in (_hitLayout ?? _visibleLayout).Decorations)
         {
             EnvironmentDecorationResource? resource = EnvironmentDecorationRegistry.Find(placed.DefinitionId);
             if (resource is null) continue;
@@ -57,9 +58,18 @@ public partial class EnvironmentDecorationLayer : Node3D
     /// <summary>The layout currently on screen, which is the working preview while editing.</summary>
     internal EnvironmentLayout VisibleLayout => _visibleLayout;
 
-    public void Preview(EnvironmentLayout layout) => Rebuild(layout);
+    /// <summary>
+    /// Previews <paramref name="layout"/>. An item standing in as an editor ghost is left out of it,
+    /// so <paramref name="hitLayout"/> carries the real room for hit testing — otherwise clicking a
+    /// ghosted item would fall through to whatever is behind it.
+    /// </summary>
+    public void Preview(EnvironmentLayout layout, EnvironmentLayout? hitLayout = null)
+    {
+        _hitLayout = hitLayout;
+        Rebuild(layout);
+    }
 
-    private void Rebuild() => Rebuild(_state.Layout);
+    private void Rebuild() { _hitLayout = null; Rebuild(_state.Layout); }
 
     private void Rebuild(EnvironmentLayout layout)
     {

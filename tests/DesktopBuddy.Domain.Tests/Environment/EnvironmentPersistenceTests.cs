@@ -113,6 +113,20 @@ public sealed class EnvironmentPersistenceTests
     }
 
     [Fact]
+    public void ProgressRoundTripPreservesOwnedStorage()
+    {
+        DecorationDefinitionId lamp = new("decoration.lamp.classic");
+        var environment = new EnvironmentProgressState(new EnvironmentLayout(), 3, [lamp, lamp]);
+        ProgressSave save = ProgressSave.FromSnapshot(FundedProgress(50_000).Snapshot(), environment: environment.Snapshot());
+
+        SaveDecodeResult decoded = ProgressSavePolicy.Decode(ProgressSavePolicy.Serialize(save));
+        EnvironmentProgressState restored = decoded.Save!.Environment.CreateState();
+
+        Assert.Equal(SaveDecodeStatus.Valid, decoded.Status);
+        Assert.Equal([lamp, lamp], restored.OwnedUnplaced);
+    }
+
+    [Fact]
     public void SchemaSevenMigratesToDefaultEmptyEnvironment()
     {
         string current = ProgressSavePolicy.Serialize(ProgressSave.FromSnapshot(FundedProgress(0).Snapshot()));

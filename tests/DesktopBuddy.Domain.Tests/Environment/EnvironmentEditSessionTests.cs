@@ -112,16 +112,50 @@ public sealed class EnvironmentEditSessionTests
     {
         var original = new PlacedDecoration(Id(24), Lamp.Id, Position(.2f, .8f), 0, Lamp.RenderBand, Lamp.PriceMilliCredits);
         var session = new EnvironmentEditSession(new EnvironmentLayout([original]), 150_000, Catalogue());
-        EnvironmentLayout moveBaseline = session.WorkingLayout;
+        EnvironmentEditCheckpoint moveBaseline = session.Checkpoint();
 
         Assert.True(session.Move(original.InstanceId, Position(.7f, .6f)).Succeeded);
         Assert.True(session.Rotate(original.InstanceId, -1).Succeeded);
         Assert.Equal(270, session.WorkingLayout.Decorations[0].RotationDegrees);
         Assert.True(session.Rotate(original.InstanceId, 1).Succeeded);
         Assert.Equal(0, session.WorkingLayout.Decorations[0].RotationDegrees);
-        Assert.True(session.RestoreTransforms(moveBaseline));
+        // Deleting inside the pass must be undone by the same Cancel that undoes the move.
+        Assert.True(session.Remove(original.InstanceId).Succeeded);
+        session.Restore(moveBaseline);
         Assert.Equal(original, session.WorkingLayout.Decorations[0]);
+        Assert.Empty(session.OwnedUnplaced);
         Assert.Equal(0, session.PendingBalanceDeltaMilliCredits);
+    }
+
+    [Fact]
+    public void DeletingAnOwnedCopyBanksItAndPlacingItAgainIsFree()
+    {
+        var saved = new PlacedDecoration(Id(60), Lamp.Id, Position(.3f, .7f), 0, Lamp.RenderBand, Lamp.PriceMilliCredits);
+        var session = new EnvironmentEditSession(new EnvironmentLayout([saved]), 10_000, Catalogue(), () => Id(61));
+
+        Assert.True(session.Remove(saved.InstanceId).Succeeded);
+        Assert.Equal([Lamp.Id], session.OwnedUnplaced);
+        // No refund for a copy that was already paid for in an earlier session.
+        Assert.Equal(0, session.PendingBalanceDeltaMilliCredits);
+
+        // 10 000 milli-credits cannot buy a 75 000 lamp, so this only succeeds from storage.
+        Assert.True(session.Place(Lamp.Id, Position(.6f, .6f)).Succeeded);
+        Assert.Equal(0, session.PendingBalanceDeltaMilliCredits);
+        Assert.Empty(session.OwnedUnplaced);
+        Assert.Single(session.WorkingLayout.Decorations);
+    }
+
+    [Fact]
+    public void DeletingACopyBoughtInThisSessionRefundsInsteadOfBanking()
+    {
+        var session = new EnvironmentEditSession(new EnvironmentLayout(), 150_000, Catalogue(), () => Id(62));
+
+        EnvironmentEditResult placed = session.Place(Lamp.Id, Position(.4f, .4f));
+        Assert.True(placed.Succeeded);
+        Assert.Equal(-Lamp.PriceMilliCredits, session.PendingBalanceDeltaMilliCredits);
+        Assert.True(session.Remove(placed.InstanceId).Succeeded);
+        Assert.Equal(0, session.PendingBalanceDeltaMilliCredits);
+        Assert.Empty(session.OwnedUnplaced);
     }
 
     [Fact]

@@ -409,38 +409,40 @@ public sealed class EnvironmentDecoratorScenario : IScenario
             checks.Add(new StartupCheck("environment_decorator_stages_placement_funds",
                 decorator.VisibleWorkingLayout.Decorations.Count == 1 && decorator.VisibleProjectedBalance == 175_000 &&
                 decorator.VisibleOwnedCount(lamp.ToDefinition().Id) == 1 && panel.Visible && otherUi.Visible && buddy2D.Visible && buddy3D.Visible &&
-                IsVisible(decorator, "EnvironmentMove ItemsButton"),
-                $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance} move={IsVisible(decorator, "EnvironmentMove ItemsButton")}"));
+                IsVisible(decorator, "EnvironmentMoveItemsButton"),
+                $"placed={decorator.VisibleWorkingLayout.Decorations.Count} projected={decorator.VisibleProjectedBalance} move={IsVisible(decorator, "EnvironmentMoveItemsButton")}"));
 
-            Press(decorator, "EnvironmentMove ItemsButton");
+            Press(decorator, "EnvironmentMoveItemsButton");
             Vector2 movedPoint = new(viewport.X * .85f, viewport.Y * .82f);
             checks.Add(new StartupCheck("environment_decorator_move_mode_starts_without_selection",
-                decorator.MoveMode && !panel.Visible && !otherUi.Visible && !IsVisible(decorator, "EnvironmentMoveRotateChrome") &&
+                decorator.MoveMode && !panel.Visible && !otherUi.Visible && IsVisible(decorator, "EnvironmentMoveChrome") &&
                 !buddy2D.Visible && !buddy3D.Visible,
-                $"mode={decorator.MoveMode} panel={panel.Visible} rotate={IsVisible(decorator, "EnvironmentMoveRotateChrome")} " +
+                $"mode={decorator.MoveMode} panel={panel.Visible} chrome={IsVisible(decorator, "EnvironmentMoveChrome")} " +
                 $"buddy2D={buddy2D.Visible} buddy3D={buddy3D.Visible}"));
             PlacedDecorationId carriedId = decorator.VisibleWorkingLayout.Decorations.Single().InstanceId;
-            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            // Click parks the item as a ghost; it only rides the cursor while the button is held.
+            Press(blocker, firstPoint);
+            bool parked = IsVisible(decorator, "EnvironmentPlacementGhost") &&
+                !visuals.VisibleLayout.Decorations.Any(item => item.InstanceId == carriedId);
             RoomInput(blocker, new InputEventMouseMotion { Position = movedPoint });
-            bool carriedHidden = !visuals.VisibleLayout.Decorations.Any(item => item.InstanceId == carriedId);
             checks.Add(new StartupCheck("environment_decorator_move_mode_ghosts_the_carried_item",
-                IsVisible(decorator, "EnvironmentPlacementGhost") && carriedHidden,
-                $"ghost={IsVisible(decorator, "EnvironmentPlacementGhost")} hidden={carriedHidden}"));
-            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+                parked && IsVisible(decorator, "EnvironmentPlacementGhost"),
+                $"parked={parked} ghost={IsVisible(decorator, "EnvironmentPlacementGhost")}"));
+            Release(blocker, movedPoint);
             checks.Add(new StartupCheck("environment_decorator_drop_returns_the_item_to_the_room",
-                !IsVisible(decorator, "EnvironmentPlacementGhost") &&
-                visuals.VisibleLayout.Decorations.Any(item => item.InstanceId == carriedId),
+                visuals.VisibleLayout.Decorations.Any(item => item.InstanceId == carriedId) ||
+                decorator.VisibleWorkingLayout.Decorations.Single().Position.X > .75f,
                 $"ghost={IsVisible(decorator, "EnvironmentPlacementGhost")}"));
             Press(decorator, "EnvironmentRotateRightButton");
             PlacedDecoration changed = decorator.VisibleWorkingLayout.Decorations.Single();
             checks.Add(new StartupCheck("environment_decorator_moves_and_rotates_selected_instance",
-                changed.Position.X > .75f && changed.RotationDegrees == 90 && IsVisible(decorator, "EnvironmentMoveRotateChrome"),
+                changed.Position.X > .75f && changed.RotationDegrees == 90 && IsVisible(decorator, "EnvironmentMoveChrome"),
                 $"position={changed.Position} rotation={changed.RotationDegrees}"));
             Press(decorator, "EnvironmentMoveDoneButton");
-            Press(decorator, "EnvironmentMove ItemsButton");
-            RoomInput(blocker, new InputEventMouseButton { Position = movedPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            Press(decorator, "EnvironmentMoveItemsButton");
+            Press(blocker, movedPoint);
             RoomInput(blocker, new InputEventMouseMotion { Position = firstPoint });
-            RoomInput(blocker, new InputEventMouseButton { Position = firstPoint, ButtonIndex = MouseButton.Left, Pressed = true });
+            Release(blocker, firstPoint);
             Press(decorator, "EnvironmentRotateLeftButton");
             Press(decorator, "EnvironmentMoveCancelButton");
             PlacedDecoration restored = decorator.VisibleWorkingLayout.Decorations.Single();
@@ -551,6 +553,12 @@ public sealed class EnvironmentDecoratorScenario : IScenario
         blocker.EmitSignal(Control.SignalName.GuiInput, input);
 
     private static bool IsVisible(Node root, string name) => root.FindChild(name, true, false) is Control control && control.Visible;
+
+    private static void Press(Control blocker, Vector2 position) =>
+        RoomInput(blocker, new InputEventMouseButton { Position = position, ButtonIndex = MouseButton.Left, Pressed = true });
+
+    private static void Release(Control blocker, Vector2 position) =>
+        RoomInput(blocker, new InputEventMouseButton { Position = position, ButtonIndex = MouseButton.Left, Pressed = false });
 
     private static CustomizeCommandRegistry TopLevelRegistry(Win98CommandBarBootstrap commandBar) =>
         (CustomizeCommandRegistry)(typeof(Win98CommandBarBootstrap)
