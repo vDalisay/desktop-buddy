@@ -60,6 +60,22 @@ public sealed class EnvironmentEditSessionTests
     }
 
     [Fact]
+    public void GeneralDeleteRefundsOnlyItemsStagedInTheOpenSession()
+    {
+        var saved = new PlacedDecoration(Id(25), Lamp.Id, Position(.2f, .8f), 0, Lamp.RenderBand, Lamp.PriceMilliCredits);
+        var session = new EnvironmentEditSession(new EnvironmentLayout([saved]), 150_000, Catalogue(), () => Id(26));
+        EnvironmentEditResult staged = session.Place(Plant.Id, Position(.6f, .8f));
+        Assert.Equal(110_000, session.ProjectedBalanceMilliCredits);
+
+        Assert.True(session.Remove(staged.InstanceId).Succeeded);
+        Assert.Equal(150_000, session.ProjectedBalanceMilliCredits);
+        Assert.True(session.Remove(saved.InstanceId).Succeeded);
+        Assert.Equal(150_000, session.ProjectedBalanceMilliCredits);
+        Assert.Empty(session.WorkingLayout.Decorations);
+        Assert.True(session.IsDirty);
+    }
+
+    [Fact]
     public void ReservationChargesOneCopyAndCancelRestoresItsCost()
     {
         var session = new EnvironmentEditSession(new EnvironmentLayout(), 75_000, Catalogue(), () => Id(21));
