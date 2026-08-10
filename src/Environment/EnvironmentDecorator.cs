@@ -426,7 +426,15 @@ public partial class EnvironmentDecorator : CanvasLayer
     private void OnRoomInput(InputEvent input)
     {
         if (_session is null || _confirm.Visible) { _blocker.AcceptEvent(); return; }
-        if (_placementMode && !_placement.Active) { _blocker.AcceptEvent(); return; }
+        if (_placementMode && !_placement.Active)
+        {
+            // A staged copy is not frozen: clicking it picks it back up so it can be repositioned
+            // before Done, without buying a second copy.
+            if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } resume)
+                ResumeStagedPositioning(resume.Position);
+            _blocker.AcceptEvent();
+            return;
+        }
         switch (input)
         {
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _moveMode:
@@ -446,6 +454,11 @@ public partial class EnvironmentDecorator : CanvasLayer
             case InputEventMouseMotion motion when _placement.Active && !_moveMode:
                 _placement.UpdatePointer(motion.Position);
                 break;
+            // Repositioning a staged copy moves that instance; only a fresh copy commits a ghost.
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click
+                when _placement.Active && _placementMode && _placementStagedInstance != default:
+                DropStaged(click.Position);
+                break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _placement.Active:
                 _placement.UpdatePointer(click.Position);
                 _placement.CommitGhost();
@@ -461,6 +474,39 @@ public partial class EnvironmentDecorator : CanvasLayer
                 break;
         }
         _blocker.AcceptEvent();
+    }
+
+    /// <summary>Picks a staged copy back up so the next click drops it somewhere else.</summary>
+    private void ResumeStagedPositioning(Vector2 screen)
+    {
+        if (_session is null || _placementStagedInstance == default) return;
+        if (!TryFindPlaced(_placementStagedInstance, out PlacedDecoration staged)) return;
+        if (EnvironmentDecorationRegistry.Find(staged.DefinitionId) is not EnvironmentDecorationResource resource) return;
+        // Wallpaper covers the whole room, so any click counts as clicking it — but it has nowhere
+        // else to go, so leave it staged.
+        if (staged.RenderBand == DecorationRenderBand.Wallpaper) return;
+        if (!EnvironmentPlacement.TryMap(screen.X, screen.Y, ToBounds(RoomRect()), DecorationAnchorKind.RoomSurface,
+            false, EnvironmentGridSize.Medium, out CanonicalRoomPosition point)) return;
+        if (!_visuals.TryHit(point, out PlacedDecorationId hit) || hit != _placementStagedInstance) return;
+
+        _selectedInstance = _placementStagedInstance;
+        _placement.Begin(resource);
+        _placement.UpdatePointer(screen);
+        _placement.SetGhostRotationDegrees(-staged.RotationDegrees);
+        PreviewRoom();
+        _placementStatus.Text = "Click a new spot for this copy.";
+    }
+
+    /// <summary>Drops the staged copy being repositioned; an invalid spot keeps it on the cursor.</summary>
+    private void DropStaged(Vector2 screen)
+    {
+        if (_session is null || !_placement.UpdatePointer(screen)) return;
+        _session.Move(_placementStagedInstance, _placement.GhostPosition);
+        _selectedInstance = default;
+        _placement.Cancel();
+        PreviewRoom();
+        _placementStatus.Text = "Position staged. Choose Done to keep it or Cancel to remove it.";
+        Refresh();
     }
 
     /// <summary>
@@ -573,6 +619,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placement.Cancel();
         _placementMode = false;
         _placementStagedInstance = default;
+        _selectedInstance = default;
         _placementChrome.Visible = false;
         RestorePlacementUi();
         _panel.Visible = true;
