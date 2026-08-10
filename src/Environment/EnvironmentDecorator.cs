@@ -151,6 +151,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         _moveDragging = false;
         _placementMode = false;
         _placementStagedInstance = default;
+        ApplySavedEnvironmentPreferences();
         DecorationCategory[] categories = VisibleCategories();
         if (categories.Length > 0) SelectCategory(categories[0].ToString());
         _visuals.Preview(_session.WorkingLayout);
@@ -203,11 +204,11 @@ public partial class EnvironmentDecorator : CanvasLayer
         controls.AddThemeConstantOverride("separation", 6);
         body.AddChild(controls);
         _snap = new CheckBox { Text = "Snap to grid" };
-        _snap.Toggled += enabled => { _placement.SnapEnabled = enabled; _grid.Disabled = !enabled; };
+        _snap.Toggled += OnSnapPreferenceChanged;
         controls.AddChild(_snap);
         _grid = new OptionButton { Disabled = true, CustomMinimumSize = new Vector2(90, 28) };
         foreach (EnvironmentGridSize size in Enum.GetValues<EnvironmentGridSize>()) _grid.AddItem(size.ToString(), (int)size);
-        _grid.ItemSelected += index => _placement.GridSize = (EnvironmentGridSize)_grid.GetItemId((int)index);
+        _grid.ItemSelected += OnGridPreferenceChanged;
         controls.AddChild(_grid);
         _place = Action(controls, "Place", BeginPlacement);
         _move = Action(controls, "Move Items", BeginMoveMode);
