@@ -5,7 +5,13 @@ if /I "%~1"=="--help" goto :help
 
 set "PROJECT_ROOT=%~dp0.."
 call "%~dp0resolve_godot.bat"
-if errorlevel 1 exit /b %ERRORLEVEL%
+if errorlevel 1 (
+  echo.
+  echo Godot could not be resolved.
+  echo.
+  pause
+  exit /b %ERRORLEVEL%
+)
 
 set "GODOT_HEADLESS=%GODOT_EXE%"
 echo %GODOT_EXE% | findstr /I /R "_console\.exe$" >nul
@@ -55,11 +61,17 @@ echo [10/11] Running character save/use/restart plus Paint Buddy preservation jo
 call :scenario character_editor_create_use_and_react
 if errorlevel 1 goto :failed
 
-echo [11/11] Checking normal-boot Customize ^> Buddy Studio registration and opening...
-"%GODOT_HEADLESS%" --headless --path . --rendering-driver opengl3 --log-file "%PROJECT_ROOT%\.artifacts\buddy-studio\startup.log" -- --buddy-studio-startup-check
+rem Windowed on purpose: Win98ShellBootstrap skips composition under --headless, so the
+rem command bar this probe drives does not exist there. A window flashes for a few seconds.
+echo [11/11] Checking normal-boot Paint ^> Buddy Studio registration and opening...
+"%GODOT_HEADLESS%" --path . --rendering-driver opengl3 --log-file "%PROJECT_ROOT%\.artifacts\buddy-studio\startup.log" -- --buddy-studio-startup-check
 if errorlevel 1 goto :failed
 
+echo.
 echo Buddy Studio closure validation passed.
+echo Godot logs and artifacts: .artifacts\buddy-studio
+echo.
+pause
 popd
 exit /b 0
 
@@ -69,7 +81,12 @@ set "SCENARIO=%~1"
 exit /b %ERRORLEVEL%
 
 :failed
-echo Buddy Studio closure validation failed with exit code %ERRORLEVEL%.
+set "FAIL_CODE=%ERRORLEVEL%"
+echo.
+echo Buddy Studio closure validation failed with exit code %FAIL_CODE%.
+echo Godot logs and artifacts: .artifacts\buddy-studio
+echo.
+pause
 popd
 exit /b 1
 

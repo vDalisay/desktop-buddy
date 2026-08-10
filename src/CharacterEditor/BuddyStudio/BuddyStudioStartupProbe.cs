@@ -15,29 +15,18 @@ internal static class BuddyStudioStartupProbe
 
     public static async Task<bool> RunAsync(SceneTree tree)
     {
-        MenuButton? customize = null;
-        for (int frame = 0; frame < 300 && !GodotObject.IsInstanceValid(customize); frame++)
+        PopupMenu? popup = null;
+        int studioIndex = -1;
+        for (int frame = 0; frame < 300 && studioIndex < 0; frame++)
         {
-            customize = FindCustomizeButton(tree.Root);
-            if (!GodotObject.IsInstanceValid(customize))
+            studioIndex = FindStudioCommand(tree.Root, out popup);
+            if (studioIndex < 0)
                 await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
-        if (!GodotObject.IsInstanceValid(customize))
-            return Verdict(false, "Customize menu button was not composed.");
-
-        PopupMenu popup = customize!.GetPopup();
-        popup.EmitSignal(PopupMenu.SignalName.AboutToPopup);
-        int studioIndex = -1;
-        for (int index = 0; index < popup.ItemCount; index++)
-        {
-            if (string.Equals(popup.GetItemText(index), "Buddy Studio", StringComparison.Ordinal))
-            {
-                studioIndex = index;
-                break;
-            }
-        }
-        if (studioIndex < 0)
-            return Verdict(false, $"Customize items were [{PopupItems(popup)}].");
+        if (studioIndex < 0 || popup is null)
+            return Verdict(false, popup is null
+                ? "No command-bar menu button was composed."
+                : $"Menu items were [{PopupItems(popup)}].");
         if (popup.IsItemDisabled(studioIndex))
             return Verdict(false, "Buddy Studio was present but disabled.");
 
@@ -83,17 +72,36 @@ internal static class BuddyStudioStartupProbe
             $"workspaceValid={GodotObject.IsInstanceValid(workspace)} visible={workspace?.IsVisibleInTree()}.");
     }
 
-    private static MenuButton? FindCustomizeButton(Node node)
+    /// <summary>
+    /// Locates the Buddy Studio command by the item it registers rather than by the menu's
+    /// label, which is presentation and has already been renamed once ("Customize" to "Paint").
+    /// </summary>
+    private static int FindStudioCommand(Node node, out PopupMenu? popup)
     {
-        if (node is MenuButton { Text: "Customize" } button)
-            return button;
+        popup = null;
+        if (node is MenuButton button)
+        {
+            PopupMenu candidate = button.GetPopup();
+            candidate.EmitSignal(PopupMenu.SignalName.AboutToPopup);
+            popup = candidate;
+            for (int index = 0; index < candidate.ItemCount; index++)
+            {
+                if (string.Equals(candidate.GetItemText(index), "Buddy Studio", StringComparison.Ordinal))
+                    return index;
+            }
+        }
+
         foreach (Node child in node.GetChildren())
         {
-            MenuButton? found = FindCustomizeButton(child);
-            if (GodotObject.IsInstanceValid(found))
+            int found = FindStudioCommand(child, out PopupMenu? childPopup);
+            if (found >= 0)
+            {
+                popup = childPopup;
                 return found;
+            }
+            popup ??= childPopup;
         }
-        return null;
+        return -1;
     }
 
     private static string PopupItems(PopupMenu popup)
