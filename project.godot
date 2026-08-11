@@ -88,6 +88,7 @@ renderer/rendering_method.mobile="gl_compatibility"
 
 [autoload]
 
+UiFeedbackAudioBootstrap="*res://src/UI/UiFeedbackAudioBootstrap.cs"
 Win98ShellBootstrap="*res://src/UI/Win98/Win98ShellBootstrap.cs"
 Win98CommandBarBootstrap="*res://src/UI/Win98/Win98CommandBarBootstrap.cs"
 ; Reserved now so the environment and Buddy Studio branches can compose independently
