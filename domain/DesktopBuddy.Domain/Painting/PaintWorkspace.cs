@@ -174,10 +174,41 @@ public sealed class PaintWorkspace
     public void SetBrushDiameter(int diameter) =>
         BrushDiameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
 
+    /// <summary>
+    /// Flood-fills one connected region on a single buddy surface. Horizontal neighbours wrap
+    /// across the texture U seam while vertical neighbours clip at the poles. The fill is one
+    /// exact undo command regardless of region size.
+    /// </summary>
+    public bool BucketFill(PaintHit? hit)
+    {
+        CancelPreviewTransaction();
+        EndGesture();
+        if (hit is not PaintHit valid || !valid.IsValid)
+            return false;
+
+        PaintSurface surface = _surfaces[valid.Part];
+        byte[] before = surface.ClonePixels();
+        byte[] after = (byte[])before.Clone();
+        if (!FloodFillPixels(after, valid.Uv, SelectedColor))
+            return false;
+
+        surface.Replace(after);
+        PaintRect whole = new(0, 0, PaintPolicy.SurfaceSize, PaintPolicy.SurfaceSize);
+        _history.Push(new PaintCommand(new[] { new PaintPatch(valid.Part, whole, before, after) }));
+        IsDirty = true;
+        return true;
+    }
+
     public void BeginGesture(PaintHit? hit)
     {
         CancelPreviewTransaction();
         EndGesture();
+        if (_selectedTool == PaintTool.Fill)
+        {
+            BucketFill(hit);
+            return;
+        }
+
         _gestureActive = true;
         _lastHit = null;
         if (_selectedTool == PaintTool.Spray)
@@ -412,5 +443,66 @@ public sealed class PaintWorkspace
             builders.Add(part, builder);
         }
         builder.Expand(_surfaces[part], rectangle);
+    }
+
+    private static bool FloodFillPixels(byte[] pixels, PaintPoint uv, PaintColor replacement)
+    {
+        if (!uv.IsFinite || uv.X < 0.0 || uv.X > 1.0 || uv.Y < 0.0 || uv.Y > 1.0)
+            return false;
+
+        int size = PaintPolicy.SurfaceSize;
+        int startX = Math.Clamp((int)Math.Round(uv.X * (size - 1)), 0, size - 1);
+        int startY = Math.Clamp((int)Math.Round(uv.Y * (size - 1)), 0, size - 1);
+        int startIndex = ((startY * size) + startX) * PaintPolicy.BytesPerPixel;
+        byte targetR = pixels[startIndex];
+        byte targetG = pixels[startIndex + 1];
+        byte targetB = pixels[startIndex + 2];
+        byte targetA = pixels[startIndex + 3];
+        const byte replacementA = byte.MaxValue;
+
+        if (targetA != 0 && targetR == replacement.R && targetG == replacement.G &&
+            targetB == replacement.B && targetA == replacementA)
+        {
+            return false;
+        }
+
+        int[] queue = new int[size * size];
+        int head = 0;
+        int tail = 0;
+
+        bool MatchesTarget(int index) => targetA == 0
+            ? pixels[index + 3] == 0
+            : pixels[index] == targetR && pixels[index + 1] == targetG &&
+              pixels[index + 2] == targetB && pixels[index + 3] == targetA;
+
+        void EnqueueIfTarget(int x, int y)
+        {
+            if (y < 0 || y >= size)
+                return;
+            int wrappedX = ((x % size) + size) % size;
+            int index = ((y * size) + wrappedX) * PaintPolicy.BytesPerPixel;
+            if (!MatchesTarget(index))
+                return;
+
+            pixels[index] = replacement.R;
+            pixels[index + 1] = replacement.G;
+            pixels[index + 2] = replacement.B;
+            pixels[index + 3] = replacementA;
+            queue[tail++] = (y * size) + wrappedX;
+        }
+
+        EnqueueIfTarget(startX, startY);
+        while (head < tail)
+        {
+            int encoded = queue[head++];
+            int x = encoded % size;
+            int y = encoded / size;
+            EnqueueIfTarget(x - 1, y);
+            EnqueueIfTarget(x + 1, y);
+            EnqueueIfTarget(x, y - 1);
+            EnqueueIfTarget(x, y + 1);
+        }
+
+        return tail > 0;
     }
 }
