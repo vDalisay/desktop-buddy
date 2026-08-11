@@ -7,7 +7,7 @@ public partial class WorkCompanionCoordinator
 {
     private bool _exitToolHooked;
 
-    public override void _EnterTree()
+    private void EnsureExitToolHook()
     {
         if (_exitToolHooked)
             return;
