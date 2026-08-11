@@ -96,6 +96,7 @@ public partial class Win98PaintStatusBootstrap : Node
                     PaintTool.Spray => "Spray",
                     PaintTool.Curve => "Curve",
                     PaintTool.Eraser => "Eraser",
+                    PaintTool.Fill => "Bucket Fill",
                     _ => "Paint",
                 };
         string target = FormatPart(_canvas.ActivePartFilter);
