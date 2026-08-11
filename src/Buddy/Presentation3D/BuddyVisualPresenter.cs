@@ -435,10 +435,11 @@ public partial class BuddyVisualPresenter : Node3D
                 Mathf.Clamp(smoothingWeight, 0.0f, 1.0f));
         }
 
-        float responseRange = Math.Max(1.0f, FullVelocityRotationResponseSpeed - deadband);
-        float response = Mathf.Clamp((speed - deadband) / responseRange, 0.0f, 1.0f);
-        response *= response;
-        float visualScale = Mathf.Lerp(OrdinaryVelocityRotationScale, 1.0f, response);
+        float visualScale = VelocityRotationResponse.Scale(
+            speed,
+            deadband,
+            OrdinaryVelocityRotationScale,
+            FullVelocityRotationResponseSpeed);
         return Mathf.LerpAngle(0.0f, _velocityAngles[index], visualScale);
     }
 
