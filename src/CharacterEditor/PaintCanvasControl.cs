@@ -43,6 +43,7 @@ public partial class PaintCanvasControl : Control
     private const int MaximumSprayCatchUpPulses = 4;
     private const float ScreenStepPixels = 1.5f;
     private const int MaxScreenSteps = 512;
+    private const int MaxPenSampleSteps = 32;
     private const double MinimumCurveBaselinePixels = 2.0;
     private const double SecondCurveBendSensitivity = 0.35;
 
@@ -134,9 +135,13 @@ public partial class PaintCanvasControl : Control
                 }
                 if (_painting)
                 {
-                    if (Workspace.SelectedTool == PaintTool.Curve)
+                    if (TryBucketFillConnector(hit))
+                    {
+                        // Connector painting intentionally collapses to a bucket-fill action.
+                    }
+                    else if (Workspace.SelectedTool == PaintTool.Curve)
                         ContinueCurve(motion.Position);
-                    else
+                    else if (Workspace.SelectedTool != PaintTool.Pen)
                         PaintAlongTo(motion.Position);
                 }
             }
@@ -188,6 +193,13 @@ public partial class PaintCanvasControl : Control
                         return;
                     }
 
+                    if (TryBucketFillConnector(hit))
+                    {
+                        GrabFocus();
+                        AcceptEvent();
+                        return;
+                    }
+
                     if (Workspace.SelectedTool == PaintTool.Curve)
                     {
                         BeginCurve(button.Position);
@@ -202,7 +214,7 @@ public partial class PaintCanvasControl : Control
                     _painting = true;
                     _sprayPulseAccumulator = 0;
                     _strokePointer = button.Position;
-                    Input.UseAccumulatedInput = false;
+                    Input.UseAccumulatedInput = true;
                     WorkspaceChanged?.Invoke();
                     GrabFocus();
                 }
@@ -212,6 +224,8 @@ public partial class PaintCanvasControl : Control
                 }
                 else if (_painting)
                 {
+                    if (Workspace.SelectedTool == PaintTool.Pen)
+                        PaintAlongTo(button.Position);
                     Workspace.EndGesture();
                     _painting = false;
                     _sprayPulseAccumulator = 0;
@@ -263,7 +277,10 @@ public partial class PaintCanvasControl : Control
         while (_sprayPulseAccumulator >= SprayPulseSeconds && pulses++ < MaximumSprayCatchUpPulses)
         {
             _sprayPulseAccumulator -= SprayPulseSeconds;
-            Workspace.ContinueGesture(Map(GetLocalMousePosition()));
+            PaintHit? hit = Map(GetLocalMousePosition());
+            if (TryBucketFillConnector(hit))
+                return;
+            Workspace.ContinueGesture(hit);
             WorkspaceChanged?.Invoke();
         }
         if (pulses >= MaximumSprayCatchUpPulses)
@@ -278,11 +295,17 @@ public partial class PaintCanvasControl : Control
         if (Workspace.SelectedTool == PaintTool.Pen)
         {
             float distance = from.DistanceTo(canvas);
-            float penSpacing = Math.Max(1f, VisibleBrushDiameter() * 0.2f);
+            float penSpacing = Math.Max(2f, VisibleBrushDiameter() * 0.35f);
             int penSteps = Math.Clamp((int)Math.Floor(distance / penSpacing), 0, MaxScreenSteps);
             if (penSteps == 0) return;
             for (int step = 1; step <= penSteps; step++)
-                PaintPenDab(from.Lerp(canvas, Math.Min(1f, step * penSpacing / distance)));
+            {
+                Vector2 point = from.Lerp(canvas, Math.Min(1f, step * penSpacing / distance));
+                PaintHit? hit = Map(point);
+                if (TryBucketFillConnector(hit))
+                    return;
+                PaintPenDab(point);
+            }
             _strokePointer = from.Lerp(canvas, Math.Min(1f, penSteps * penSpacing / distance));
             WorkspaceChanged?.Invoke();
             return;
@@ -290,7 +313,12 @@ public partial class PaintCanvasControl : Control
         float spacing = StrokeSampleSpacing(Workspace.SelectedTool, VisibleBrushDiameter());
         int steps = Math.Clamp((int)Math.Ceiling(from.DistanceTo(canvas) / spacing), 1, MaxScreenSteps);
         for (int step = 1; step <= steps; step++)
-            Workspace.ContinueGesture(Map(from.Lerp(canvas, step / (float)steps)));
+        {
+            PaintHit? hit = Map(from.Lerp(canvas, step / (float)steps));
+            if (TryBucketFillConnector(hit))
+                return;
+            Workspace.ContinueGesture(hit);
+        }
 
         _strokePointer = canvas;
         WorkspaceChanged?.Invoke();
@@ -302,7 +330,7 @@ public partial class PaintCanvasControl : Control
         float texturePixelSize = VisibleBrushDiameter() / Math.Max(1, Workspace.BrushDiameter);
         float sampleRadius = Math.Max(0f, radius - (texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f));
         int steps = PenSampleSteps(VisibleBrushDiameter(), Workspace.BrushDiameter);
-        float spacing = sampleRadius / steps;
+        float spacing = steps <= 0 ? 0f : sampleRadius / steps;
         var hits = new List<PaintHit>((steps * 2 + 1) * (steps * 2 + 1));
         for (int y = -steps; y <= steps; y++)
         {
@@ -318,6 +346,24 @@ public partial class PaintCanvasControl : Control
         Workspace.StampPenDab(hits);
     }
 
+    private bool TryBucketFillConnector(PaintHit? hit)
+    {
+        if (!UsesConnectorBucketFill(Workspace.SelectedTool, hit) || hit is not PaintHit connector)
+            return false;
+
+        Workspace.BucketFill(connector);
+        _painting = false;
+        _sprayPulseAccumulator = 0;
+        Input.UseAccumulatedInput = true;
+        WorkspaceChanged?.Invoke();
+        QueueRedraw();
+        return true;
+    }
+
+    internal static bool UsesConnectorBucketFill(PaintTool tool, PaintHit? hit) =>
+        hit is PaintHit { IsConnector: true } && tool is
+            PaintTool.Brush or PaintTool.Pen or PaintTool.Spray or PaintTool.Fill or PaintTool.Curve;
+
     internal static float StrokeSampleSpacing(PaintTool tool, float visibleBrushDiameter) =>
         tool == PaintTool.Spray
             ? Math.Max(3f, visibleBrushDiameter * 0.4f)
@@ -329,8 +375,8 @@ public partial class PaintCanvasControl : Control
         float sampleRadius = Math.Max(
             0f,
             visibleBrushDiameter * 0.5f - texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f);
-        float spacing = Math.Max(0.25f, texturePixelSize * PaintPolicy.MinBrushDiameter * 0.25f);
-        return Math.Max(1, (int)Math.Ceiling(sampleRadius / spacing));
+        float spacing = Math.Max(1.25f, texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f);
+        return Math.Clamp((int)Math.Ceiling(sampleRadius / spacing), 1, MaxPenSampleSteps);
     }
 
     private void BeginCurve(Vector2 canvas)
@@ -360,7 +406,7 @@ public partial class PaintCanvasControl : Control
         }
 
         _painting = true;
-        Input.UseAccumulatedInput = false;
+        Input.UseAccumulatedInput = true;
         ContinueCurve(canvas);
         WorkspaceChanged?.Invoke();
     }
