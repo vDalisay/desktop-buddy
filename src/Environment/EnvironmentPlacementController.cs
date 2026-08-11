@@ -68,7 +68,6 @@ public partial class EnvironmentPlacementController : Node
         Changed?.Invoke();
     }
 
-    /// <summary>Turns the ghost so a rotated item reads correctly while it is selected or dragged.</summary>
     public void SetGhostRotationDegrees(float degrees)
     {
         if (_ghost is null) return;
@@ -79,7 +78,6 @@ public partial class EnvironmentPlacementController : Node
     public bool UpdatePointer(Vector2 screenPosition)
     {
         if (!Active || _definition is null || _ghost is null) return false;
-        DecorationDefinition definition = _definition.ToDefinition();
         if (IsWallpaper)
         {
             GhostValid = true;
@@ -89,8 +87,12 @@ public partial class EnvironmentPlacementController : Node
         }
         else
         {
+            // Demo user testing rejected the authored Floor/Wall zones. The definition still keeps
+            // its semantic anchor metadata for future authored interactions, but ordinary decorator
+            // placement is free anywhere inside the safe room rectangle.
             GhostValid = EnvironmentPlacement.TryMap(screenPosition.X, screenPosition.Y, _room,
-                definition.AnchorKind, SnapEnabled, GridSize, out CanonicalRoomPosition canonical);
+                DecorationAnchorKind.RoomSurface, false, EnvironmentGridSize.Medium,
+                out CanonicalRoomPosition canonical);
             if (GhostValid)
             {
                 GhostPosition = canonical;
