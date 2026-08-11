@@ -1,272 +1,240 @@
 # Desktop Buddy — Steam Demo Polish and Marketing Plan
 
-Status: **Approved roadmap phase; implementation not started**  
-Recorded: 2026-08-11  
-Target: Steam demo content-complete -> marketing capture -> release candidate
+Status: **Approved roadmap program; implementation sequencing corrected by owner**  
+Recorded: 2026-08-11
 
-This plan is the post-feature polish pass for the Steam demo. It begins after the Potion Shop/demo-effect slice and the minimum Steam platform foundation needed to build and distribute the demo.
+This plan supports the Steam-demo sequence in `docs/ROADMAP.md`.
 
-The goal is not to add another large system. The goal is to make every already-shipped demo system understandable, attractive, consistent, rewarding, and reliable enough to show publicly.
+## Source precedence
+
+The owner-provided user-testing notes are the authoritative source for the immediate bug-fix/polish gate. They take precedence over earlier speculative polish wording when the two conflict.
+
+Authoritative extracted backlog:
+
+`docs/USER_TESTING_POLISH_BACKLOG_2026-08-11.md`
+
+The important distinction is:
+
+- **Immediate user-testing pass:** fix observed bugs/usability problems before Potion Shop.
+- **Later content-complete polish:** after Potion Shop, Steam foundation and marketing assets, perform the broader release-quality pass for progression, rewards, assets, SFX, onboarding and cross-system consistency.
+
+Do not postpone an observed user-testing issue into the later generic polish phase unless the owner explicitly approves that deferral.
 
 ---
 
-## 1. Phase order
+# Phase order
 
-### DEMO-P0 — bug triage and regression baseline
+## DEMO-U0 — User-testing bug fixing + UX polish — FIRST
 
-Before UX changes, establish a reproducible demo validation baseline:
+Work through `USER_TESTING_POLISH_BACKLOG_2026-08-11.md` Sections 1–7 before new Potion Shop feature implementation.
 
-- build + domain tests + Godot import;
-- focused validators for Paint, Environment, Buddy Studio, Work Mode, tools/economy and the future Potion Shop;
-- known-crash and save/restart scenarios;
-- Windows DPI/window-size matrix;
-- clean new-save and migrated-development-save runs.
+Required process:
 
-Every owner-reported bug/polish item gets one of:
+1. reproduce/inspect each observation against the current build;
+2. implement the requested behavior or record a new owner decision;
+3. add focused automated regression coverage where practical;
+4. run affected Paint/Environment/Buddy Studio/Work/tool validators;
+5. perform a manual owner-facing verification pass over the changed interactions.
 
-- fixed in the demo pass;
-- intentionally changed by a documented owner decision;
-- explicitly deferred with a reason.
+This pass owns the specific observed issues around Curved Line clarity, Buddy Studio buying/equipping/thumbnails/mouths, Paint Buddy controls, Tools+Shop consolidation, menu dismissal/floating behavior, active-tool feedback, Work Mode resize/Grab restore, Decorate Room interaction/save consistency, and the first high-priority SFX cleanup.
 
-### DEMO-P1 — progression and reward pass
+Exit gate:
 
-Re-evaluate the complete demo progression as one experience rather than isolated systems:
+- every testing item is fixed, explicitly changed, or explicitly deferred by the owner;
+- no new save/input/purchase regressions;
+- changed flows are owner-verified;
+- Potion Shop may start only after this gate.
 
-- tool unlock order and prices;
-- item/cosmetic/environment unlock visibility;
+---
+
+## DEMO-F1 — Potion Shop / temporary-effect feature slice
+
+Detailed concept work lives in `docs/POTION_SHOP_CONCEPT.md`.
+
+Keep the demo slice small and polished, targeting roughly three showcase effects/items. Candidate ideas from the same testing notes include temporary tail, shiny/RGB/glow/metal/poison treatments and a flashlight interaction.
+
+Work Mode may feed the Potion Shop loop, but the currency/reward model must be explicitly decided before implementation. Do not create a second economy ledger by assumption.
+
+Exit gate:
+
+- effect set/lifecycle/economy approved;
+- VFX/SFX/purchase/use feedback finished;
+- no stuck effect through restart/reset/mode transitions;
+- cross-feature safety with paint/cosmetics/room/tools/save.
+
+---
+
+## DEMO-S2 — Steam Demo platform/release foundation
+
+Implement the local/Steam platform abstraction, Steamworks.NET lifecycle, cloud-safe save boundary, offline-safe stats/achievements, release/export/depot tooling and installed-build checks described in `ROADMAP.md` Milestone 6.
+
+Exit gate:
+
+- installed demo behaves correctly online/offline;
+- non-Steam/local path remains usable;
+- Steam/save/stat/achievement lifecycle is restart-safe.
+
+---
+
+## DEMO-M3 — Steam marketing assets
+
+This phase intentionally occurs before the final content-complete polish per the owner-approved sequence.
+
+Prepare:
+
+- Steam capsule/store/library art in every then-current required format;
+- main gameplay trailer;
+- curated gameplay screenshots;
+- short gameplay GIFs/loops;
+- logo/wordmark assets;
+- store feature/demo copy where needed.
+
+Exact Steam dimensions and submission requirements must be checked against current official Steamworks guidance at production time.
+
+### Capture targets
+
+Deliberately represent:
+
+- desktop buddy/ragdoll interaction;
+- memorable tools/reactions;
+- Paint Buddy;
+- Buddy Studio;
+- Environment decorating/background painting;
+- Work Mode;
+- Potion Shop effects.
+
+### Trailer target
+
+Create a storyboard before capture. Candidate order:
+
+1. immediate desktop-buddy/ragdoll hook;
+2. memorable tool interaction;
+3. Paint Buddy;
+4. Buddy Studio;
+5. environment decoration;
+6. Work Mode earning;
+7. Potion Shop effect showcase;
+8. fast closing montage/demo CTA.
+
+### Screenshot/GIF target
+
+Capture intentional compositions with production UI and no debug overlays. Use GIFs/short loops where motion communicates a feature better than a still, especially ragdoll reactions, painting, room placement, Work Mode and potion effects.
+
+This milestone may expose weak presentation. Record those findings as inputs to the following content-complete polish pass rather than silently changing the user-testing backlog.
+
+Exit gate:
+
+- store/capture inventory exists at production-usable quality;
+- no debug/programmer presentation in intended final captures;
+- asset review produces a concrete list of remaining visual/content blockers.
+
+---
+
+## DEMO-P4 — Steam Demo polish / content-complete pass
+
+This is the broad final public-demo polish phase **after** marketing asset preparation. It is separate from and later than the user-testing bug-fix gate.
+
+Primary goals:
+
+- remaining bug/regression closure;
+- progression/unlock clarity and pacing;
+- Work Mode reward presentation and economy integration;
+- Potion Shop affordability/reward balance;
+- final item/cosmetic/environment/potion assets;
+- complete demo SFX consistency;
+- UI/UX consistency across all systems;
+- accessibility/readability/DPI polish;
+- clean first-session onboarding/tutorial copy;
+- replace every public-facing placeholder;
+- address visual weaknesses revealed by marketing capture.
+
+### Progression and reward review
+
+Evaluate the demo as one economy:
+
+- tool unlock order/prices;
+- cosmetic/environment/Potion Shop visibility and acquisition clarity;
 - first-session pacing;
-- Work Mode session/lifetime rewards;
-- first-entry Work reward clarity;
-- Potion Shop affordability and Work Mode contribution;
-- passive vs active earning balance;
-- duplicate/permanent ownership language;
-- reset behavior and player-facing reset route;
-- no dead/locked content that has no understandable path to obtain it.
+- Work Mode session/lifetime milestones;
+- Work first-entry reward clarity;
+- active vs passive income balance;
+- ownership wording;
+- reset route/behavior;
+- no dead/locked item with no understandable acquisition path.
 
-Do not silently recalibrate the economy. Record target times and owner approval before changing established progression numbers.
+Do not silently change established economy numbers. Record target pacing and get owner approval for material progression changes.
 
-### DEMO-P2 — system UX/UI polish
+### Work Mode release polish
 
-Apply the concrete polish backlog below, then perform a cross-system consistency pass for wording, control placement, button states, tooltips, status-bar feedback, keyboard focus and window behavior.
+Beyond the earlier observed resize/Grab fixes, finish:
 
-### DEMO-P3 — final item/VFX/SFX asset pass
+- session/lifetime reward clarity;
+- payout summaries;
+- correct active Buddy Studio appearance/cosmetic rendering in Work Mode;
+- first-entry privacy sentence;
+- `double-click your buddy to return` teach;
+- release DPI/monitor/soak verification.
 
-Replace temporary or programmer-facing presentation with approved demo-quality assets:
+### Final asset/VFX/SFX pass
+
+Replace temporary/programmer-facing presentation with approved demo assets:
 
 - tool/item art;
 - Buddy Studio thumbnails;
-- Environment item thumbnails;
-- Potion Shop VFX/icons;
-- semantic toolbar icons where placeholders remain;
-- cursor/tool-state visuals;
-- final sound effects.
+- Environment thumbnails/art;
+- Potion Shop icons/VFX;
+- remaining toolbar/cursor icons;
+- final SFX.
 
-**SFX for everything** is a high-priority cross-cutting requirement. Every major player action should have appropriate, non-fatiguing feedback, including purchasing/equipping, tool use, paint actions, room editing, Studio actions, Work Mode rewards, potion activation/expiry, errors and confirmations where sound helps.
+**SFX for everything** remains a high-priority quality target. Audit purchasing/equipping, tool use, paint actions, room editing, Studio actions, Work rewards, potion lifecycle and useful error/confirmation states. Keep feedback non-fatiguing.
 
-### DEMO-P4 — public demo content lock
+### Cross-system consistency
 
-After this point only bug fixes, accessibility/readability fixes, capture-blocking polish and release-system fixes should land. Do not add new mechanics while marketing capture is in progress.
+Normalize:
 
----
+- `Buy`, `Equip`, `Save`, `Save and Exit`, `Done`, `Cancel`, `Discard`, `Reset` terminology;
+- button state hierarchy;
+- tooltips/status-bar help;
+- keyboard focus;
+- menu/window behavior;
+- active-tool/status feedback;
+- DPI/readability.
 
-## 2. Paint Background / Environment paint polish
+Exit gate:
 
-Required demo polish:
-
-- Curved Line currently feels ambiguous with its two bend points. Show visible circular control points while a curve is actively being edited.
-- Remove curve control points when the curve is completed, cancelled, deselected, or the player clicks away.
-- Make active Curved Line/shape state visually obvious.
-- Change the primary completion action from `Save` to **Save and Exit** where that is the actual behavior.
-- Rename `Fill` to **Bucket Fill** if that better matches the final icon/interaction vocabulary.
-- Correct Eraser feedback so its footprint/cursor reads like the authored brush footprint rather than an unintended ellipse.
-- Show the currently active paint tool by using a pressed/indented Win98 button state.
-- When a shape tool is active, surface the active shape name in the toolbar/status area.
-
-The polish pass must preserve the accepted Spray, Curve, Undo and wallpaper/paint layering behavior.
+- no known data-loss, purchase duplication, input-lock, off-screen-window, invisible-buddy, stuck-effect or unrecoverable-shell defect;
+- progression/unlocks can be understood without debug knowledge;
+- Work/Potion economy feels coherent;
+- no visible placeholder item/control remains;
+- owner accepts final cross-system UX.
 
 ---
 
-## 3. Buddy Studio polish
+## DEMO-R5 — Steam Demo release candidate
 
-Required demo polish:
-
-- Increase visible differentiation between Mouth variants. Current alternatives are too similar; author clearly different shapes such as a flat line, upward/angled shape and rounded/`3`-like shape while preserving expression behavior.
-- **Hide Accessories from the demo Studio for now** if the category cannot offer a meaningful finished demo selection. Do not ship a visibly empty/weak category merely to keep twelve tabs visible.
-- Restore/expand Accessories in the full release as a more special authored-interaction category; see `FULL_RELEASE_EXPANSION_ROADMAP.md`.
-- Single-clicking an owned item should immediately equip/select it rather than requiring an unnecessarily separate Equip confirmation.
-- Single-clicking an unowned item may preview it, but the UI must make the unowned state, price and purchase action unmistakable.
-- Rework the current Buy button/state language so `Buy`, `Owned`, `Equipped`, `Preview` and insufficient-funds states cannot be confused.
-- Replace abstract/procedural representative thumbnails with **actual trusted renders of the item/appearance** where feasible so the tile matches what the player will see on the buddy.
-
-The demo polish must preserve permanent ownership and the existing safe preview/save boundaries.
-
----
-
-## 4. Paint Buddy polish
-
-Required demo additions/polish:
-
-- allow the color-palette panel to be detached/floated from the main editor workspace;
-- add a Mirror checkbox for symmetric painting where the mapping supports it;
-- add an option to paint the corresponding backside at the same time as the front side;
-- add Bucket Fill;
-- consolidate color-picker UX: reuse one consistent picker component/interaction across paint surfaces rather than multiple visually different pickers;
-- the picker should always make the active color block obvious and use an icon/tool state rather than relying only on the cursor;
-- move Turn and Zoom controls into the buddy preview frame, preferably a compact lower-left control cluster, so view controls are spatially associated with the preview;
-- when the eyedropper samples a color that is not the currently selected palette swatch, clear the stale selected-swatch state;
-- add a `Show limbs` checkbox. When enabled, pose/stretch the buddy enough to expose the limb surfaces so the player can intentionally paint them.
-
-These are demo polish features, so they require the same Undo/save/restart/physics-isolation discipline as the existing Paint Buddy tools.
-
----
-
-## 5. General shell / catalogue polish
-
-Required demo polish:
-
-- reduce excessive buddy ball/limb rotation during ordinary animation/walking without weakening intentional ragdoll reactions;
-- merge the separate **Tools** and **Shop** concepts into one player-facing catalogue flow;
-- in that unified catalogue, unowned entries use **Buy**, owned usable entries use **Equip/Select**, and the top horizontal `Tools` command can be removed once its behavior is fully covered;
-- clicking the room/background outside an open horizontal-bar popup/dropdown should dismiss that popup consistently;
-- menus/editor panels that are intended to float should be draggable beyond the bounds of the play area/window where the shell architecture safely supports it;
-- show the currently active gameplay tool in the Win98 status bar or another persistent bottom-status location;
-- normalize `Buy`, `Equip`, `Save`, `Save and Exit`, `Done`, `Cancel`, `Discard`, `Reset` and confirmation language across all systems.
-
-The unified Shop/Tools pass must preserve the existing tool progression order, ownership and selection rules unless the separate progression review explicitly changes them.
-
----
-
-## 6. Work Mode polish and rewards
-
-Required demo polish:
-
-- add a resize interaction based on holding LMB while using the mouse wheel, with sensible bounds and clear affordance;
-- automatically re-select/equip normal Grab when exiting Work Mode so returning to Play has a predictable default interaction;
-- finish the Work Mode reward presentation so session/lifetime milestones, first-entry reward and payout summaries are understandable;
-- verify the active character/cosmetic renderer in Work Mode, including earned/equipped glasses and the current Buddy Studio appearance;
-- add the missing first-entry onboarding/privacy sentence and the `double-click your buddy to return` teach;
-- perform the Work reward/economy review together with the Potion Shop decision rather than adding isolated rewards that distort the main economy.
-
-The four-hour Work soak and Windows monitor/DPI matrix become Steam-demo release gates rather than optional future checks.
-
----
-
-## 7. Decorate Room polish
-
-Required demo polish:
-
-- improve the catalogue/action button hierarchy and make placement/edit/delete modes visually obvious;
-- show money/balance values with deliberate color treatment that remains readable/accessibility-safe;
-- remove Snap to grid from the player-facing demo UX unless a later owner review restores it;
-- remove authored floor/wall placement restrictions so room objects can be freely positioned, while still keeping objects inside safe room/window bounds;
-- change Delete into a deliberate **Delete mode** rather than only a selected-item action;
-- simplify the nested save flow. Item placement confirmation and final room commit should not feel like two identical Save dialogs;
-- the final room-level confirmation should read more like `Satisfied with your room?` with explicit Save Room / Cancel-or-Revert semantics;
-- make wallpaper application follow the same dirty/commit semantics as furniture so the save prompt does not appear inconsistently by item type;
-- preserve permanent ownership/storage behavior while making the distinction between `owned`, `placed`, `stored` and `new staged purchase` understandable through interaction rather than technical terminology.
-
----
-
-## 8. Cross-system demo bug-fix gate
-
-The final bug bash should explicitly exercise combinations rather than only individual screens:
-
-- Paint Buddy -> Buddy Studio -> save -> Work Mode -> return to Play;
-- Paint Background -> wallpaper -> Decorate Room -> restart;
-- purchase/equip -> reset progress -> reload;
-- Work Mode earnings -> Shop/Potion Shop purchase;
-- potion/effect -> tool damage/reactions -> mode switch -> expiry/cleanup;
-- window resize/maximize/fullscreen -> open every editor -> return;
-- rapid opening/closing of horizontal-bar menus and outside-click dismissal;
-- DPI changes and minimum/default/maximized layouts;
-- clean install and migrated save.
-
-No known data-loss, purchase duplication, input-lock, off-screen-window, invisible-buddy, stuck-effect or unrecoverable-shell bug may remain in the demo candidate.
-
----
-
-## 9. Steam demo marketing asset phase
-
-Marketing capture starts only from a content-locked build. Do not create final store images from a branch with programmer art, debug overlays or UI scheduled for replacement.
-
-### 9.1 Asset inventory
-
-Prepare the Steam-demo store/campaign package:
-
-- Steam capsule art in all currently required store/library formats;
-- main gameplay trailer;
-- curated gameplay screenshots;
-- short gameplay GIFs/loops for store/community/social use;
-- game logo/wordmark and transparent variants as needed by the store art set;
-- short/long store copy and feature bullets where required by the Steam page;
-- demo-specific callouts/badges only if they match Steam's current store guidance.
-
-Exact dimensions and Steam submission requirements must be re-checked against the current official Steamworks documentation during the asset-production phase rather than copied from an old roadmap.
-
-### 9.2 Trailer content targets
-
-Create a short storyboard before capture. The trailer should communicate the core toy loop quickly and show a range of systems rather than becoming a menu tour.
-
-Candidate beats:
-
-1. buddy living on the desktop / immediate ragdoll interaction;
-2. memorable tools and reactions;
-3. Paint Buddy customization;
-4. Buddy Studio cosmetic customization;
-5. room/background decorating;
-6. Work Mode earning while the player types;
-7. Potion Shop/effect showcase;
-8. fast final montage + demo call-to-action.
-
-Capture final game audio/SFX and use only approved music/audio assets.
-
-### 9.3 Screenshot set
-
-Capture intentional compositions rather than arbitrary gameplay frames. Cover at minimum:
-
-- normal desktop companion view;
-- one high-impact tool/reaction moment;
-- Paint Buddy;
-- Buddy Studio;
-- decorated room/environment;
-- Work Mode;
-- one Potion Shop/effect moment.
-
-Screenshots must use final HUD/UI, final item art and representative player-created/customized content.
-
-### 9.4 GIF/loop set
-
-Create short readable loops for features that communicate better in motion:
-
-- ragdoll/tool reaction;
-- paint stroke or customization transformation;
-- room decoration placement;
-- Work Mode typing/counter reaction;
-- potion shader/VFX change.
-
-Keep loops short enough that the feature reads immediately without narration.
-
----
-
-## 10. Steam demo release-candidate gate
-
-After marketing capture, cut a demo RC and run:
+Freeze features and run:
 
 - full automated regression;
 - installed-depot test;
-- direct non-Steam launch test if supported by the demo build;
+- direct non-Steam launch test where supported;
 - clean install/uninstall/reinstall;
-- fresh-save full progression sample;
-- migration rehearsal from supported development saves;
-- save corruption/recovery paths;
-- offline/online Steam transitions relevant to the demo;
+- fresh-save progression sample;
+- supported save-migration rehearsal;
+- save corruption/recovery;
+- Steam online/offline transitions;
 - 100/125/150/200% DPI and multi-monitor checks;
-- minimum/default/maximized/fullscreen modes;
+- minimum/default/maximized/fullscreen layouts;
 - four-hour active soak;
 - four-hour Work Mode soak;
 - hidden/tray soak;
-- performance and memory review;
-- final accessibility/readability/audio-volume review;
-- final clean-room/IP asset audit.
+- performance/memory review;
+- final accessibility/readability/audio review;
+- final clean-room/IP audit.
 
-The demo is ready to ship only when no selectable item/system is represented by placeholder content or a nonfunctional control.
+The Steam demo is ready to ship only when no selectable system/item is represented by placeholder content or a nonfunctional control.
+
+---
+
+# User-testing detail reference
+
+For the exact observed items, use `docs/USER_TESTING_POLISH_BACKLOG_2026-08-11.md` rather than treating this file as a substitute summary. The testing backlog preserves the requested system-by-system findings and the distinction between immediate fixes, Potion Shop ideas and full-release ideas.
