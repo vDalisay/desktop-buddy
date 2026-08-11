@@ -28,22 +28,29 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private EnvironmentBackgroundPresenter _presenter = null!;
     private EnvironmentPaintStore _store = null!;
     private readonly List<Color> _swatches = [.. DefaultSwatches];
+    private readonly Dictionary<EnvironmentPaintTool, Button> _toolButtons = [];
     private Control _blocker = null!;
     private PanelContainer _panel = null!;
     private GridContainer _swatchGrid = null!;
     private ColorRect _current = null!;
     private ColorPickerButton _picker = null!;
     private Button _undo = null!;
+    private MenuButton _shapes = null!;
     private Label _dirty = null!;
     private Label _status = null!;
     private Label _brushSize = null!;
     private EnvironmentPaintCursor _cursor = null!;
+    private EnvironmentCurveGuideOverlay _curveGuide = null!;
     private PanelContainer _confirm = null!;
     private byte[]? _baseline;
     private bool _painting;
     private bool _saving;
     private int _selectedSwatch = -1;
     private double _sprayPulseAccumulator;
+    private Vector2? _curveStart;
+    private Vector2? _curveEnd;
+    private Vector2? _curveFirstBend;
+    private Vector2? _curveSecondBend;
 
     public bool IsOpen => GodotObject.IsInstanceValid(_blocker) && _blocker.Visible;
     private EnvironmentCanvas Canvas => _presenter.Canvas;
@@ -97,6 +104,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             case Key.Escape:
                 if (Canvas.CancelPendingCurve())
                 {
+                    ClearCurveGuide();
                     _painting = false;
                     _panel.Visible = true;
                     _status.Text = "Curved Line cancelled.";
@@ -124,6 +132,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _blocker.Visible = true;
         _panel.Visible = true;
         _confirm.Visible = false;
+        ClearCurveGuide();
         SelectTool(EnvironmentPaintTool.Brush);
         Refresh();
     }
@@ -134,6 +143,16 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         AddChild(_blocker);
         _blocker.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         _blocker.GuiInput += OnCanvasInput;
+
+        _curveGuide = new EnvironmentCurveGuideOverlay
+        {
+            Name = "EnvironmentCurveGuideOverlay",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Visible = false,
+        };
+        _blocker.AddChild(_curveGuide);
+        _curveGuide.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
         _cursor = new EnvironmentPaintCursor { Name = "EnvironmentPaintCursor", MouseFilter = Control.MouseFilterEnum.Ignore };
         _blocker.AddChild(_cursor);
 
@@ -141,7 +160,6 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _blocker.AddChild(_panel);
         _panel.Visible = true;
 
-        // "Tools" owns its whole row; every tool button sits in the grid below it.
         body.AddChild(new Label { Text = "Tools" });
         var grid = new GridContainer { Name = "PaintToolGrid", Columns = 4 };
         grid.AddThemeConstantOverride("h_separation", 4);
@@ -150,26 +168,27 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         grid.AddChild(ToolButton("PaintBrushButton", "Brush  [B]", EnvironmentPaintTool.Brush));
         grid.AddChild(ToolButton("PaintPenButton", "Pen  [P]", EnvironmentPaintTool.Pen));
         grid.AddChild(ToolButton("PaintSprayButton", "Spray  [S]", EnvironmentPaintTool.Spray));
-        grid.AddChild(ToolButton("PaintFillButton", "Fill  [F]", EnvironmentPaintTool.Fill));
+        grid.AddChild(ToolButton("PaintFillButton", "Bucket Fill  [F]", EnvironmentPaintTool.Fill));
         grid.AddChild(ToolButton("PaintEraserButton", "Eraser  [E]", EnvironmentPaintTool.Eraser));
         grid.AddChild(ToolButton("PaintPickButton", "Pick  [I]", EnvironmentPaintTool.PickColor));
 
-        var shapes = new MenuButton
+        _shapes = new MenuButton
         {
             Name = "PaintShapesButton",
             Text = "Shapes  ▸",
             Flat = false,
+            ToggleMode = true,
             CustomMinimumSize = new Vector2(104, 28),
             TooltipText = "Draw Square, Circle, Straight Line, or Curved Line.",
         };
-        PopupMenu shapeMenu = shapes.GetPopup();
+        PopupMenu shapeMenu = _shapes.GetPopup();
         Win98MenuStyle.Apply(shapeMenu);
         shapeMenu.AddItem("Square", (int)EnvironmentPaintTool.Square);
         shapeMenu.AddItem("Circle", (int)EnvironmentPaintTool.Circle);
         shapeMenu.AddItem("Straight Line", (int)EnvironmentPaintTool.Line);
         shapeMenu.AddItem("Curved Line  [C]", (int)EnvironmentPaintTool.CurvedLine);
         shapeMenu.IdPressed += id => SelectTool((EnvironmentPaintTool)id);
-        grid.AddChild(shapes);
+        grid.AddChild(_shapes);
 
         _undo = new Button { Name = "PaintUndoButton", Text = "Undo  [Ctrl+Z]", CustomMinimumSize = new Vector2(104, 28) };
         _undo.Pressed += UndoStroke;
@@ -220,7 +239,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         body.AddChild(actions);
         Win98Dialog.Action(actions, "Reset", Reset).Name = "PaintResetButton";
-        Win98Dialog.Action(actions, "Save", Save).Name = "PaintSaveButton";
+        Win98Dialog.Action(actions, "Save and Exit", Save).Name = "PaintSaveButton";
         Win98Dialog.Action(actions, "Cancel", RequestClose).Name = "PaintCancelButton";
 
         _confirm = Win98Dialog.Create("BackgroundUnsavedDialog", "Unsaved Background", new Vector2(360, 170), out VBoxContainer confirmBody);
@@ -228,15 +247,22 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         confirmBody.AddChild(new Label { Text = "Save the painted background before closing?", AutowrapMode = TextServer.AutowrapMode.WordSmart });
         var confirmActions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         confirmBody.AddChild(confirmActions);
-        Win98Dialog.Action(confirmActions, "Save", Save).Name = "PaintConfirmSaveButton";
+        Win98Dialog.Action(confirmActions, "Save and Exit", Save).Name = "PaintConfirmSaveButton";
         Win98Dialog.Action(confirmActions, "Discard", Discard).Name = "PaintDiscardButton";
         Win98Dialog.Action(confirmActions, "Keep Editing", () => _confirm.Visible = false).Name = "PaintKeepEditingButton";
     }
 
     private Button ToolButton(string name, string text, EnvironmentPaintTool tool)
     {
-        var button = new Button { Name = name, Text = text, CustomMinimumSize = new Vector2(104, 28) };
+        var button = new Button
+        {
+            Name = name,
+            Text = text,
+            ToggleMode = true,
+            CustomMinimumSize = new Vector2(104, 28),
+        };
         button.Pressed += () => SelectTool(tool);
+        _toolButtons[tool] = button;
         return button;
     }
 
@@ -325,7 +351,11 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     private void AddCustomSwatch()
     {
-        if (_swatches.Count >= MaximumSwatches) { _status.Text = "The palette is full; replace a color instead."; return; }
+        if (_swatches.Count >= MaximumSwatches)
+        {
+            _status.Text = "The palette is full; replace a color instead.";
+            return;
+        }
         _swatches.Add(_picker.Color);
         _selectedSwatch = _swatches.Count - 1;
         RebuildSwatches();
@@ -341,6 +371,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     private void SelectTool(EnvironmentPaintTool tool)
     {
+        if (tool != EnvironmentPaintTool.CurvedLine)
+            ClearCurveGuide();
         Canvas.Tool = tool;
         _sprayPulseAccumulator = 0;
         _status.Text = tool switch
@@ -348,20 +380,24 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             EnvironmentPaintTool.Brush => "Brush: drag anywhere on the background to paint.",
             EnvironmentPaintTool.Pen => "Pen: drag to paint a solid round nib that matches the cursor ring.",
             EnvironmentPaintTool.Spray => "Spray: hold or drag to airbrush with the current Brush Size.",
-            EnvironmentPaintTool.Eraser => "Eraser: drag to restore the blank background.",
-            EnvironmentPaintTool.Fill => "Fill color: click an area to flood it.",
+            EnvironmentPaintTool.Eraser => "Eraser: drag the brush-sized eraser over painted areas.",
+            EnvironmentPaintTool.Fill => "Bucket Fill: click an area to flood it with the current color.",
             EnvironmentPaintTool.PickColor => "Pick Color: click the background to take its color.",
-            EnvironmentPaintTool.Square => "Square: drag to define the shape.",
-            EnvironmentPaintTool.Circle => "Circle: drag to define the shape.",
-            EnvironmentPaintTool.CurvedLine => "Curved Line: drag the baseline, then drag two points on the line to bend it.",
-            _ => "Straight Line: drag from one end to the other.",
+            EnvironmentPaintTool.Square => "Square selected: drag to define the shape.",
+            EnvironmentPaintTool.Circle => "Circle selected: drag to define the shape.",
+            EnvironmentPaintTool.CurvedLine => "Curved Line selected: drag the baseline, then drag two marked bend points.",
+            _ => "Straight Line selected: drag from one end to the other.",
         };
         Refresh();
     }
 
     private void OnCanvasInput(InputEvent input)
     {
-        if (_confirm.Visible) { _blocker.AcceptEvent(); return; }
+        if (_confirm.Visible)
+        {
+            _blocker.AcceptEvent();
+            return;
+        }
         switch (input)
         {
             case InputEventMouseMotion motion:
@@ -369,11 +405,15 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 if (_painting && Canvas.Tool == EnvironmentPaintTool.PickColor)
                     PickColor(motion.Position);
                 else if (_painting && TryCanonical(motion.Position, out double moveX, out double moveY))
+                {
                     Canvas.Continue(moveX, moveY);
+                    TrackCurveMotion(Canvas.CurvePhase, moveX, moveY);
+                }
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true }:
                 if (Canvas.CancelPendingCurve())
                 {
+                    ClearCurveGuide();
                     _painting = false;
                     _panel.Visible = true;
                     _status.Text = "Curved Line cancelled.";
@@ -387,19 +427,29 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 _painting = true;
                 _sprayPulseAccumulator = 0;
                 _panel.Visible = false;
+                TrackCurvePress(Canvas.CurvePhase, x, y);
                 if (Canvas.Tool == EnvironmentPaintTool.PickColor) PickColor(click.Position);
                 else Canvas.Begin(x, y);
+                UpdateCurveGuide();
                 UpdateCursor(click.Position);
                 break;
             case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false } release when _painting:
                 if (Canvas.Tool != EnvironmentPaintTool.PickColor)
                 {
-                    if (TryCanonical(release.Position, out double endX, out double endY)) Canvas.End(endX, endY);
+                    if (TryCanonical(release.Position, out double endX, out double endY))
+                    {
+                        TrackCurveMotion(Canvas.CurvePhase, endX, endY);
+                        Canvas.End(endX, endY);
+                    }
                     else Canvas.End(double.NaN, double.NaN);
                 }
                 _painting = false;
                 _sprayPulseAccumulator = 0;
                 _panel.Visible = true;
+                if (!Canvas.CurvePending)
+                    ClearCurveGuide();
+                else
+                    UpdateCurveGuide();
                 UpdateCursor(release.Position);
                 UpdateCurveStatusAfterRelease();
                 Refresh();
@@ -408,26 +458,87 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _blocker.AcceptEvent();
     }
 
+    private void TrackCurvePress(EnvironmentCurvePhase phase, double x, double y)
+    {
+        if (Canvas.Tool != EnvironmentPaintTool.CurvedLine) return;
+        Vector2 point = new((float)x, (float)y);
+        switch (phase)
+        {
+            case EnvironmentCurvePhase.Idle:
+                _curveStart = point;
+                _curveEnd = point;
+                _curveFirstBend = null;
+                _curveSecondBend = null;
+                break;
+            case EnvironmentCurvePhase.AwaitFirstBend:
+                _curveFirstBend = point;
+                break;
+            case EnvironmentCurvePhase.AwaitSecondBend:
+                _curveSecondBend = point;
+                break;
+        }
+    }
+
+    private void TrackCurveMotion(EnvironmentCurvePhase phase, double x, double y)
+    {
+        if (Canvas.Tool != EnvironmentPaintTool.CurvedLine) return;
+        Vector2 point = new((float)x, (float)y);
+        switch (phase)
+        {
+            case EnvironmentCurvePhase.BaselineDragging:
+                _curveEnd = point;
+                break;
+            case EnvironmentCurvePhase.FirstBendDragging:
+                _curveFirstBend = point;
+                break;
+            case EnvironmentCurvePhase.SecondBendDragging:
+                _curveSecondBend = point;
+                break;
+        }
+        UpdateCurveGuide();
+    }
+
+    private void UpdateCurveGuide()
+    {
+        if (!Canvas.CurvePending || !_curveStart.HasValue || !_curveEnd.HasValue)
+        {
+            _curveGuide.Visible = false;
+            return;
+        }
+        var points = new List<Vector2>(4) { _curveStart.Value, _curveEnd.Value };
+        if (_curveFirstBend.HasValue) points.Add(_curveFirstBend.Value);
+        if (_curveSecondBend.HasValue) points.Add(_curveSecondBend.Value);
+        _curveGuide.SetGuide(BackgroundRect(), points);
+        _curveGuide.Visible = true;
+    }
+
+    private void ClearCurveGuide()
+    {
+        _curveStart = null;
+        _curveEnd = null;
+        _curveFirstBend = null;
+        _curveSecondBend = null;
+        if (GodotObject.IsInstanceValid(_curveGuide))
+        {
+            _curveGuide.Visible = false;
+            _curveGuide.QueueRedraw();
+        }
+    }
+
     private void UpdateCurveStatusAfterRelease()
     {
         if (Canvas.Tool != EnvironmentPaintTool.CurvedLine) return;
         _status.Text = Canvas.CurvePhase switch
         {
-            EnvironmentCurvePhase.AwaitFirstBend => "Curved Line: drag a point on the baseline to make the first bend.",
-            EnvironmentCurvePhase.AwaitSecondBend => "Curved Line: drag a second point to make the final bend.",
-            EnvironmentCurvePhase.Idle => "Curved Line committed. Drag to start another curve.",
+            EnvironmentCurvePhase.AwaitFirstBend => "Curved Line active — endpoint circles mark the baseline. Drag a point on the line for bend 1.",
+            EnvironmentCurvePhase.AwaitSecondBend => "Curved Line active — bend 1 is marked. Drag a second point to finish the curve.",
+            EnvironmentCurvePhase.Idle => "Curved Line committed. The control points are cleared; drag to start another curve.",
             _ => _status.Text,
         };
     }
 
-    /// <summary>
-    /// Samples the rendered frame rather than the paint canvas: the player expects Pick Color to
-    /// take whatever is under the cursor — decorations, the buddy, the bare room grey — and the
-    /// canvas only knows about pixels it painted (everything else read back as black).
-    /// </summary>
     private void PickColor(Vector2 position)
     {
-        // ponytail: full framebuffer readback per sample; only runs while dragging the Pick tool.
         Image frame = GetViewport().GetTexture().GetImage();
         Vector2I size = frame.GetSize();
         if (size.X <= 0 || size.Y <= 0) return;
@@ -454,8 +565,6 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     {
         _cursor.Position = position;
         _cursor.Diameter = Canvas.BrushDiameter * BackgroundRect().Size.X / EnvironmentCanvasPolicy.Size;
-        // The ring is the only thing Pick Color must never sample: at the smallest brush it sits on
-        // the pixel under the cursor, so every pick came back white. Pick has no brush size anyway.
         _cursor.ShowBrush = IsOpen && Canvas.Tool != EnvironmentPaintTool.PickColor;
         _cursor.ShowSample = _painting && Canvas.Tool == EnvironmentPaintTool.PickColor;
         _cursor.QueueRedraw();
@@ -468,7 +577,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         y = 0;
         if (room.Size.X <= 0 || room.Size.Y <= 0) return false;
         Canvas.PixelAspect = room.Size.X / room.Size.Y;
-        x =Math.Clamp((screen.X - room.Position.X) / room.Size.X, 0, 1);
+        x = Math.Clamp((screen.X - room.Position.X) / room.Size.X, 0, 1);
         y = Math.Clamp((screen.Y - room.Position.Y) / room.Size.Y, 0, 1);
         return true;
     }
@@ -480,6 +589,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     {
         bool pendingCurve = Canvas.CurvePending;
         bool changed = Canvas.Undo();
+        if (pendingCurve) ClearCurveGuide();
         _status.Text = pendingCurve && changed ? "Curved Line cancelled." : changed ? "Undid the last change." : "Nothing left to undo.";
         Refresh();
     }
@@ -487,6 +597,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private void Reset()
     {
         Canvas.Reset();
+        ClearCurveGuide();
         _status.Text = "Background reset to blank.";
         Refresh();
     }
@@ -496,7 +607,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         if (_saving) return;
         if (Canvas.CurvePending)
         {
-            _status.Text = "Finish or cancel the Curved Line before saving.";
+            _status.Text = "Finish or cancel the Curved Line before saving and exiting.";
             return;
         }
         _saving = true;
@@ -519,14 +630,19 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private void RequestClose()
     {
         if (_saving) return;
-        Canvas.CancelPendingCurve();
-        if (Canvas.IsDirty) { _confirm.Visible = true; return; }
+        if (Canvas.CancelPendingCurve()) ClearCurveGuide();
+        if (Canvas.IsDirty)
+        {
+            _confirm.Visible = true;
+            return;
+        }
         Close();
     }
 
     private void Discard()
     {
         Canvas.CancelPendingCurve();
+        ClearCurveGuide();
         if (_baseline is not null) Canvas.Replace(_baseline);
         Close();
     }
@@ -534,6 +650,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private void Close()
     {
         Canvas.CancelPendingCurve();
+        ClearCurveGuide();
         _confirm.Visible = false;
         _blocker.Visible = false;
         _panel.Visible = true;
@@ -547,7 +664,26 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _dirty.AddThemeColorOverride("font_color", Canvas.IsDirty ? Color.Color8(160, 0, 0) : Colors.Black);
         _undo.Disabled = !Canvas.CanUndo && !Canvas.CurvePending;
         _brushSize.Text = $"{Canvas.BrushDiameter}px";
+        foreach ((EnvironmentPaintTool tool, Button button) in _toolButtons)
+            button.ButtonPressed = Canvas.Tool == tool;
+        bool shapeActive = IsShape(Canvas.Tool);
+        _shapes.ButtonPressed = shapeActive;
+        _shapes.Text = shapeActive ? $"{ShapeName(Canvas.Tool)}  ▸" : "Shapes  ▸";
+        if (Canvas.CurvePending) UpdateCurveGuide();
     }
+
+    private static bool IsShape(EnvironmentPaintTool tool) => tool is
+        EnvironmentPaintTool.Square or EnvironmentPaintTool.Circle or
+        EnvironmentPaintTool.Line or EnvironmentPaintTool.CurvedLine;
+
+    private static string ShapeName(EnvironmentPaintTool tool) => tool switch
+    {
+        EnvironmentPaintTool.Square => "Square",
+        EnvironmentPaintTool.Circle => "Circle",
+        EnvironmentPaintTool.Line => "Straight Line",
+        EnvironmentPaintTool.CurvedLine => "Curved Line",
+        _ => "Shapes",
+    };
 
     private sealed partial class EnvironmentPaintCursor : Control
     {
@@ -560,6 +696,35 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         {
             if (ShowBrush) PaintCursorGizmos.DrawBrushRing(this, Vector2.Zero, Diameter);
             if (ShowSample) PaintCursorGizmos.DrawPickPreview(this, Vector2.Zero, SampleColor);
+        }
+    }
+
+    private sealed partial class EnvironmentCurveGuideOverlay : Control
+    {
+        private Rect2 _room;
+        private readonly List<Vector2> _points = [];
+
+        public void SetGuide(Rect2 room, IReadOnlyList<Vector2> normalizedPoints)
+        {
+            _room = room;
+            _points.Clear();
+            for (int index = 0; index < normalizedPoints.Count; index++)
+                _points.Add(normalizedPoints[index]);
+            QueueRedraw();
+        }
+
+        public override void _Draw()
+        {
+            Color selection = Win98ThemeFactory.Selection;
+            foreach (Vector2 normalized in _points)
+            {
+                Vector2 point = _room.Position + new Vector2(
+                    normalized.X * _room.Size.X,
+                    normalized.Y * _room.Size.Y);
+                DrawCircle(point, 6f, Colors.White);
+                DrawArc(point, 6f, 0, Mathf.Tau, 24, selection, 2f, antialiased: true);
+                DrawCircle(point, 2f, selection);
+            }
         }
     }
 }
