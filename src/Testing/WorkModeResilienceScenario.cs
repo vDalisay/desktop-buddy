@@ -6,6 +6,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
@@ -84,6 +85,37 @@ public sealed class WorkModeResilienceScenario : IScenario
                 entered && !sandbox.IsPhysicsProcessing() && source.IsRunning,
                 $"physics={sandbox.IsPhysicsProcessing()} source={source.IsRunning}"));
 
+            var workView = tree.Root.FindChild(
+                nameof(WorkCompanionView), recursive: true, owned: false) as WorkCompanionView;
+            Vector2I beforeWheel = sandbox.Window.WorkCompanionRect.Size;
+            if (GodotObject.IsInstanceValid(workView))
+            {
+                workView!._Input(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = true,
+                    Position = new Vector2(300, 200),
+                });
+                workView._Input(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.WheelUp,
+                    Pressed = true,
+                    Position = new Vector2(300, 200),
+                });
+                workView._Input(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = false,
+                    Position = new Vector2(300, 200),
+                });
+            }
+            Vector2I afterWheel = sandbox.Window.WorkCompanionRect.Size;
+            checks.Add(new StartupCheck(
+                "work_lmb_wheel_resizes_companion",
+                GodotObject.IsInstanceValid(workView) &&
+                    afterWheel.X > beforeWheel.X && afterWheel.Y > beforeWheel.Y,
+                $"view={GodotObject.IsInstanceValid(workView)} size={beforeWheel}->{afterWheel}"));
+
             var requestedWorkSize = new Vector2I(600, 358);
             sandbox.Window.ResizeWorkCompanion(requestedWorkSize);
             sandbox.Shell.CaptureWindowStateForSave();
@@ -124,6 +156,10 @@ public sealed class WorkModeResilienceScenario : IScenario
                 $"stopped={stoppedForSuspend} restarted={restartedAfterResume} " +
                 $"starts={source.StartCount} stops={source.StopCount}"));
 
+            progress.Unlock(ContentIds.ToolBaseballBat);
+            sandbox.Pipeline.SelectTool(ToolId.BaseballBat);
+            bool nonGrabWasSelectedDuringWork = sandbox.Pipeline.SelectedTool == ToolId.BaseballBat;
+
             await coordinator.ExitAsync();
             LocalSettingsSave savedSettings = sandbox.Shell.CurrentLocalSettings;
             checks.Add(new StartupCheck(
@@ -137,6 +173,10 @@ public sealed class WorkModeResilienceScenario : IScenario
                 $"active={coordinator.IsActive} running={source.IsRunning} disposed={source.Disposed} " +
                 $"physics={sandbox.IsPhysicsProcessing()} window={sandbox.Window.WorkCompanionActive} " +
                 $"journal={work.ActiveSession.HasValue}/{store.Progress?.Work.ActiveSession is not null}"));
+            checks.Add(new StartupCheck(
+                "work_exit_selects_normal_grab",
+                nonGrabWasSelectedDuringWork && sandbox.Pipeline.SelectedTool == ToolId.Grab,
+                $"preExitBat={nonGrabWasSelectedDuringWork} selected={sandbox.Pipeline.SelectedTool}"));
             checks.Add(new StartupCheck(
                 "work_size_persists_separately_for_next_entry",
                 sandbox.Window.CompactRect == normalRect &&
