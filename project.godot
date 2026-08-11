@@ -107,3 +107,4 @@ Win98PaintCustomPaletteBootstrap="*res://src/UI/Win98/Win98PaintCustomPaletteBoo
 Win98PaintTransientCharacterBootstrap="*res://src/UI/Win98/Win98PaintTransientCharacterBootstrap.cs"
 Win98PaintUxPolishBootstrap="*res://src/UI/Win98/Win98PaintUxPolishBootstrap.cs"
 Win98PaintModalThemeBootstrap="*res://src/UI/Win98/Win98PaintModalThemeBootstrap.cs"
+Win98PaintUserTestingBootstrap="*res://src/UI/Win98/Win98PaintUserTestingBootstrap.cs"
