@@ -50,6 +50,32 @@ public sealed class EnvironmentCanvasTests
     }
 
     [Fact]
+    public void EraserStaysCircularInScreenSpaceWhenTheRoomIsStretched()
+    {
+        var canvas = new EnvironmentCanvas
+        {
+            Color = Ink,
+            BrushDiameter = 40,
+            Tool = EnvironmentPaintTool.Fill,
+        };
+        canvas.Begin(.5, .5);
+        canvas.End(.5, .5);
+        canvas.MarkSaved();
+
+        // A room twice as wide as tall uses twice the canvas-space Y radius so the erased
+        // footprint reads as a circle after the 512x512 paint texture is stretched to screen.
+        canvas.PixelAspect = 2.0;
+        canvas.Tool = EnvironmentPaintTool.Eraser;
+        canvas.Begin(.5, .5);
+        canvas.End(.5, .5);
+
+        Assert.Equal(EnvironmentCanvasPolicy.Blank, Sample(canvas, .5 + 18.0 / 511.0, .5));
+        Assert.Equal(EnvironmentCanvasPolicy.Blank, Sample(canvas, .5, .5 + 36.0 / 511.0));
+        Assert.Equal(Ink, Sample(canvas, .5 + 24.0 / 511.0, .5));
+        Assert.Equal(Ink, Sample(canvas, .5, .5 + 44.0 / 511.0));
+    }
+
+    [Fact]
     public void FillFloodsTheBlankRoomAndPickReadsBackTheColorUnderThePointer()
     {
         var canvas = new EnvironmentCanvas { Color = Ink, Tool = EnvironmentPaintTool.Fill };
@@ -70,7 +96,6 @@ public sealed class EnvironmentCanvasTests
         canvas.Continue(.8, .8);
         canvas.End(.8, .2);
 
-        // The preview is redrawn from the pre-drag image, so the discarded diagonal is gone.
         Assert.Equal(Ink, Sample(canvas, .5, .2));
         Assert.Equal(EnvironmentCanvasPolicy.Blank, Sample(canvas, .5, .5));
 
@@ -87,7 +112,6 @@ public sealed class EnvironmentCanvasTests
     [Fact]
     public void BrushDiameterChangesBrushAndShapeThickness()
     {
-        // Painted pixels are the opaque ones; unpainted canvas is transparent.
         static int Changed(EnvironmentCanvas canvas) => canvas.ClonePixels()
             .Where((value, index) => index % EnvironmentCanvasPolicy.BytesPerPixel == 3 && value != 0)
             .Count();
