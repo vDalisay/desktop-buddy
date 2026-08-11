@@ -8,7 +8,7 @@ public partial class PaintCanvasControl
     public PaintCanvasControl()
     {
         Workspace.PreviewTransactionEnded += OnPreviewTransactionEnded;
-        WorkspaceChanged += KeepPaintInputAccumulated;
+        WorkspaceChanged += EnsurePaintInputAccumulated;
     }
 
     /// <summary>
@@ -20,7 +20,7 @@ public partial class PaintCanvasControl
     /// Buddy paint uses the same frame-coalesced policy while PaintWorkspace still interpolates
     /// between the coalesced samples for continuous strokes.
     /// </summary>
-    private static void KeepPaintInputAccumulated()
+    internal static void EnsurePaintInputAccumulated()
     {
         if (!Input.UseAccumulatedInput)
             Input.UseAccumulatedInput = true;
