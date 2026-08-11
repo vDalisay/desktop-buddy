@@ -12,6 +12,10 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 [GlobalClass]
 public partial class BuddyVisualPresenter : Node3D
 {
+    private const float OrdinaryVelocityRotationScale = 0.28f;
+    private const float FullVelocityRotationResponseSpeed = 180.0f;
+    private const float LowVelocityReturnSmoothing = 8.0f;
+
     private readonly BuddyVisualTransform[] _previous =
         new BuddyVisualTransform[PuppetRigProfile.RequiredPartCount];
     private readonly BuddyVisualTransform[] _current =
@@ -405,20 +409,37 @@ public partial class BuddyVisualPresenter : Node3D
         if (definition.RotationPolicy == VisualRotationPolicy.Physics)
             return WorldPlaneMapping.To3DRotationZ(rendered.Rotation);
 
-        if (rendered.LinearVelocity.LengthSquared() >=
-            definition.VelocitySpeedDeadband * definition.VelocitySpeedDeadband)
+        float speed = rendered.LinearVelocity.Length();
+        float deadband = definition.VelocitySpeedDeadband;
+        float smoothingWeight;
+        if (speed >= deadband)
         {
             float target = WorldPlaneMapping.To3DRotationZ(
                 rendered.LinearVelocity.Angle());
-            float weight = 1.0f -
+            smoothingWeight = 1.0f -
                 Mathf.Exp(-definition.VelocitySmoothing * (float)delta);
             _velocityAngles[index] = Mathf.LerpAngle(
                 _velocityAngles[index],
                 target,
-                Mathf.Clamp(weight, 0.0f, 1.0f));
+                Mathf.Clamp(smoothingWeight, 0.0f, 1.0f));
+        }
+        else
+        {
+            // Ordinary idle/walk motion should settle toward an upright readable silhouette.
+            // High-speed throws and impacts still receive the complete velocity-aligned angle.
+            smoothingWeight = 1.0f -
+                Mathf.Exp(-LowVelocityReturnSmoothing * (float)delta);
+            _velocityAngles[index] = Mathf.LerpAngle(
+                _velocityAngles[index],
+                0.0f,
+                Mathf.Clamp(smoothingWeight, 0.0f, 1.0f));
         }
 
-        return _velocityAngles[index];
+        float responseRange = Math.Max(1.0f, FullVelocityRotationResponseSpeed - deadband);
+        float response = Mathf.Clamp((speed - deadband) / responseRange, 0.0f, 1.0f);
+        response *= response;
+        float visualScale = Mathf.Lerp(OrdinaryVelocityRotationScale, 1.0f, response);
+        return Mathf.LerpAngle(0.0f, _velocityAngles[index], visualScale);
     }
 
     private float ResolveFallbackFaceRotation()
