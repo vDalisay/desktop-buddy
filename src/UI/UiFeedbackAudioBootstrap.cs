@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Work;
 using Godot;
 
 namespace DesktopBuddy.UI;
@@ -8,6 +9,7 @@ public enum UiFeedbackCue
     Click,
     Confirm,
     Purchase,
+    Reward,
     Caution,
     Resize,
     Error,
@@ -22,11 +24,13 @@ public partial class UiFeedbackAudioBootstrap : Node
 {
     private const int MixRate = 22_050;
     private const string HookMeta = "desktop_buddy_ui_feedback_hooked";
+    private const string WorkHookMeta = "desktop_buddy_work_feedback_hooked";
 
     private AudioStreamPlayer _player = null!;
     private AudioStreamWav _click = null!;
     private AudioStreamWav _confirm = null!;
     private AudioStreamWav _purchase = null!;
+    private AudioStreamWav _reward = null!;
     private AudioStreamWav _caution = null!;
     private AudioStreamWav _resize = null!;
     private AudioStreamWav _error = null!;
@@ -45,6 +49,7 @@ public partial class UiFeedbackAudioBootstrap : Node
         _click = Tone(0.035, 720.0, 540.0, 0.12);
         _confirm = TwoTone(0.085, 620.0, 930.0, 0.13);
         _purchase = PurchaseTone();
+        _reward = RewardTone();
         _caution = Tone(0.060, 260.0, 190.0, 0.11);
         _resize = Tone(0.028, 520.0, 610.0, 0.08);
         _error = TwoTone(0.095, 260.0, 180.0, 0.12);
@@ -80,6 +85,7 @@ public partial class UiFeedbackAudioBootstrap : Node
         {
             UiFeedbackCue.Confirm => _confirm,
             UiFeedbackCue.Purchase => _purchase,
+            UiFeedbackCue.Reward => _reward,
             UiFeedbackCue.Caution => _caution,
             UiFeedbackCue.Resize => _resize,
             UiFeedbackCue.Error => _error,
@@ -103,6 +109,8 @@ public partial class UiFeedbackAudioBootstrap : Node
             HookButton(button);
         else if (node is PopupMenu popup)
             HookPopup(popup);
+        else if (node is WorkCompanionCoordinator work)
+            HookWork(work);
     }
 
     private void HookButton(BaseButton button)
@@ -123,6 +131,29 @@ public partial class UiFeedbackAudioBootstrap : Node
             return;
         popup.SetMeta(HookMeta, true);
         popup.IdPressed += _ => Play(UiFeedbackCue.Click);
+    }
+
+    private void HookWork(WorkCompanionCoordinator work)
+    {
+        if (work.HasMeta(WorkHookMeta))
+            return;
+        work.SetMeta(WorkHookMeta, true);
+        bool hadFirstEntryReward = work.Progress.FirstEntryGlassesGranted;
+        work.ActiveChanged += active =>
+        {
+            if (active)
+            {
+                bool hasFirstEntryReward = work.Progress.FirstEntryGlassesGranted;
+                if (!hadFirstEntryReward && hasFirstEntryReward)
+                    Play(UiFeedbackCue.Reward);
+                hadFirstEntryReward = hasFirstEntryReward;
+                return;
+            }
+
+            // Work exit is normally a double-click directly on the companion rather than a
+            // standard UI button, so it needs its own short completion cue.
+            Play(UiFeedbackCue.Confirm);
+        };
     }
 
     private static UiFeedbackCue CueFor(BaseButton button)
@@ -175,6 +206,18 @@ public partial class UiFeedbackAudioBootstrap : Node
             double frequency = progress < 0.34 ? 520.0 : progress < 0.68 ? 660.0 : 820.0;
             double envelope = Math.Sin(Math.PI * progress);
             return Math.Sin(Math.Tau * frequency * sample / MixRate) * envelope * 0.12;
+        });
+    }
+
+    private static AudioStreamWav RewardTone()
+    {
+        return Synthesize(0.17, (sample, progress) =>
+        {
+            double frequency = progress < 0.25 ? 660.0 :
+                progress < 0.50 ? 830.0 :
+                progress < 0.75 ? 990.0 : 1240.0;
+            double envelope = Math.Sin(Math.PI * progress);
+            return Math.Sin(Math.Tau * frequency * sample / MixRate) * envelope * 0.11;
         });
     }
 
