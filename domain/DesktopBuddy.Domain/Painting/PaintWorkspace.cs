@@ -137,6 +137,8 @@ public sealed class PaintWorkspace
     private PaintHit? _lastHit;
     private bool _gestureActive;
     private bool _previewActive;
+    private bool _mirrorEnabled;
+    private bool _paintBacksideEnabled;
     private PaintTool _selectedTool = PaintTool.Brush;
     private ulong _sprayGestureSeed = 0xD1B54A32D192ED03UL;
     private ulong _sprayPulseOrdinal;
@@ -153,6 +155,40 @@ public sealed class PaintWorkspace
             EndGesture();
             CancelPreviewTransaction();
             _selectedTool = value;
+        }
+    }
+
+    /// <summary>
+    /// Mirrors every mutation across the texture's front-facing vertical plane. The same U
+    /// reflection works for the sphere and capsule UV conventions because their front axes are
+    /// respectively U=0 and U=0.5, both fixed points of U -> 1-U modulo one.
+    /// </summary>
+    public bool MirrorEnabled
+    {
+        get => _mirrorEnabled;
+        set
+        {
+            if (_mirrorEnabled == value) return;
+            EndGesture();
+            CancelPreviewTransaction();
+            _mirrorEnabled = value;
+        }
+    }
+
+    /// <summary>
+    /// Repeats every mutation half a circumference away, so painting the visible side can also
+    /// paint the corresponding backside. This is visual paint data only and never rotates or
+    /// mutates the buddy physics rig.
+    /// </summary>
+    public bool PaintBacksideEnabled
+    {
+        get => _paintBacksideEnabled;
+        set
+        {
+            if (_paintBacksideEnabled == value) return;
+            EndGesture();
+            CancelPreviewTransaction();
+            _paintBacksideEnabled = value;
         }
     }
 
@@ -175,9 +211,9 @@ public sealed class PaintWorkspace
         BrushDiameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
 
     /// <summary>
-    /// Flood-fills one connected region on a single buddy surface. Horizontal neighbours wrap
-    /// across the texture U seam while vertical neighbours clip at the poles. The fill is one
-    /// exact undo command regardless of region size.
+    /// Flood-fills the selected region and every enabled mirror/backside counterpart on the same
+    /// buddy surface. Horizontal neighbours wrap across the texture U seam while vertical
+    /// neighbours clip at the poles. All counterpart fills form one exact undo command.
     /// </summary>
     public bool BucketFill(PaintHit? hit)
     {
@@ -189,7 +225,9 @@ public sealed class PaintWorkspace
         PaintSurface surface = _surfaces[valid.Part];
         byte[] before = surface.ClonePixels();
         byte[] after = (byte[])before.Clone();
-        if (!FloodFillPixels(after, valid.Uv, SelectedColor))
+        bool changed = false;
+        ApplyToVariants(valid, variant => changed |= FloodFillPixels(after, variant.Uv, SelectedColor));
+        if (!changed)
             return false;
 
         surface.Replace(after);
@@ -226,14 +264,17 @@ public sealed class PaintWorkspace
         }
 
         PaintTool mutation = _selectedTool == PaintTool.Eraser ? PaintTool.Eraser : PaintTool.Brush;
-        CaptureBefore(_gestureBefore, valid.Part, PaintSurface.StampBounds(valid.Uv, BrushDiameter));
-        _surfaces[valid.Part].Stamp(valid.Uv, BrushDiameter, mutation, SelectedColor);
+        ApplyToVariants(valid, variant => StampVariant(variant, mutation, _gestureBefore));
     }
 
     public void ContinueGesture(PaintHit? hit)
     {
         if (!_gestureActive) return;
-        if (hit is null || !hit.Value.IsValid) return;
+        if (hit is null || !hit.Value.IsValid)
+        {
+            _lastHit = null;
+            return;
+        }
 
         PaintHit current = hit.Value;
         if (_selectedTool == PaintTool.Spray)
@@ -244,15 +285,19 @@ public sealed class PaintWorkspace
         }
 
         PaintTool mutation = _selectedTool == PaintTool.Eraser ? PaintTool.Eraser : PaintTool.Brush;
-        if (_lastHit is PaintHit previous && previous.Part == current.Part && IsBridgeable(previous.Uv, current.Uv))
+        if (_lastHit is PaintHit previous)
         {
-            CaptureBefore(_gestureBefore, current.Part, PaintSurface.StrokeBounds(previous.Uv, current.Uv, BrushDiameter));
-            _surfaces[current.Part].Stroke(previous.Uv, current.Uv, BrushDiameter, mutation, SelectedColor);
+            ApplyToVariantPairs(previous, current, (prior, next) =>
+            {
+                if (prior.Part == next.Part && IsBridgeable(prior.Uv, next.Uv))
+                    StrokeVariant(prior, next, mutation, _gestureBefore);
+                else
+                    StampVariant(next, mutation, _gestureBefore);
+            });
         }
         else
         {
-            CaptureBefore(_gestureBefore, current.Part, PaintSurface.StampBounds(current.Uv, BrushDiameter));
-            _surfaces[current.Part].Stamp(current.Uv, BrushDiameter, mutation, SelectedColor);
+            ApplyToVariants(current, variant => StampVariant(variant, mutation, _gestureBefore));
         }
         _lastHit = current;
     }
@@ -279,25 +324,31 @@ public sealed class PaintWorkspace
             throw new InvalidOperationException("BeginPreviewTransaction must be called before rendering a preview path.");
 
         RestoreBuilders(_previewBefore);
+        RenderPreviewLane(samples, mirror: false, backside: false);
+        if (_mirrorEnabled)
+            RenderPreviewLane(samples, mirror: true, backside: false);
+        if (_paintBacksideEnabled)
+            RenderPreviewLane(samples, mirror: false, backside: true);
+        if (_mirrorEnabled && _paintBacksideEnabled)
+            RenderPreviewLane(samples, mirror: true, backside: true);
+    }
+
+    private void RenderPreviewLane(IReadOnlyList<PaintHit?> samples, bool mirror, bool backside)
+    {
         PaintHit? previous = null;
         foreach (PaintHit? sample in samples)
         {
-            if (sample is not PaintHit current || !current.IsValid)
+            if (sample is not PaintHit source || !source.IsValid)
             {
                 previous = null;
                 continue;
             }
 
+            PaintHit current = TransformHit(source, mirror, backside);
             if (previous is PaintHit prior && prior.Part == current.Part && IsBridgeable(prior.Uv, current.Uv))
-            {
-                CaptureBefore(_previewBefore, current.Part, PaintSurface.StrokeBounds(prior.Uv, current.Uv, BrushDiameter));
-                _surfaces[current.Part].Stroke(prior.Uv, current.Uv, BrushDiameter, PaintTool.Brush, SelectedColor);
-            }
+                StrokeVariant(prior, current, PaintTool.Brush, _previewBefore);
             else
-            {
-                CaptureBefore(_previewBefore, current.Part, PaintSurface.StampBounds(current.Uv, BrushDiameter));
-                _surfaces[current.Part].Stamp(current.Uv, BrushDiameter, PaintTool.Brush, SelectedColor);
-            }
+                StampVariant(current, PaintTool.Brush, _previewBefore);
             previous = current;
         }
     }
@@ -323,10 +374,68 @@ public sealed class PaintWorkspace
 
     private void SprayPulse(PaintHit hit)
     {
-        PaintRect bounds = PaintSurface.StampBounds(hit.Uv, BrushDiameter);
-        CaptureBefore(_gestureBefore, hit.Part, bounds);
         ulong seed = _sprayGestureSeed + (_sprayPulseOrdinal++ * 0x9E3779B97F4A7C15UL);
-        _surfaces[hit.Part].Spray(hit.Uv, BrushDiameter, SelectedColor, seed);
+        ApplyToVariants(hit, variant =>
+        {
+            PaintRect bounds = PaintSurface.StampBounds(variant.Uv, BrushDiameter);
+            CaptureBefore(_gestureBefore, variant.Part, bounds);
+            _surfaces[variant.Part].Spray(variant.Uv, BrushDiameter, SelectedColor, seed);
+        });
+    }
+
+    private void StampVariant(
+        PaintHit hit,
+        PaintTool mutation,
+        Dictionary<PaintPart, GesturePatchBuilder> builders)
+    {
+        CaptureBefore(builders, hit.Part, PaintSurface.StampBounds(hit.Uv, BrushDiameter));
+        _surfaces[hit.Part].Stamp(hit.Uv, BrushDiameter, mutation, SelectedColor);
+    }
+
+    private void StrokeVariant(
+        PaintHit from,
+        PaintHit to,
+        PaintTool mutation,
+        Dictionary<PaintPart, GesturePatchBuilder> builders)
+    {
+        CaptureBefore(builders, to.Part, PaintSurface.StrokeBounds(from.Uv, to.Uv, BrushDiameter));
+        _surfaces[to.Part].Stroke(from.Uv, to.Uv, BrushDiameter, mutation, SelectedColor);
+    }
+
+    private void ApplyToVariants(PaintHit hit, Action<PaintHit> action)
+    {
+        action(TransformHit(hit, mirror: false, backside: false));
+        if (_mirrorEnabled)
+            action(TransformHit(hit, mirror: true, backside: false));
+        if (_paintBacksideEnabled)
+            action(TransformHit(hit, mirror: false, backside: true));
+        if (_mirrorEnabled && _paintBacksideEnabled)
+            action(TransformHit(hit, mirror: true, backside: true));
+    }
+
+    private void ApplyToVariantPairs(PaintHit from, PaintHit to, Action<PaintHit, PaintHit> action)
+    {
+        action(TransformHit(from, mirror: false, backside: false), TransformHit(to, mirror: false, backside: false));
+        if (_mirrorEnabled)
+            action(TransformHit(from, mirror: true, backside: false), TransformHit(to, mirror: true, backside: false));
+        if (_paintBacksideEnabled)
+            action(TransformHit(from, mirror: false, backside: true), TransformHit(to, mirror: false, backside: true));
+        if (_mirrorEnabled && _paintBacksideEnabled)
+            action(TransformHit(from, mirror: true, backside: true), TransformHit(to, mirror: true, backside: true));
+    }
+
+    private static PaintHit TransformHit(PaintHit source, bool mirror, bool backside)
+    {
+        double u = source.Uv.X;
+        if (backside) u = WrapUnit(u + 0.5);
+        if (mirror) u = WrapUnit(1.0 - u);
+        return source with { Uv = new PaintPoint(u, source.Uv.Y) };
+    }
+
+    private static double WrapUnit(double value)
+    {
+        double wrapped = value - Math.Floor(value);
+        return wrapped >= 1.0 ? 0.0 : wrapped;
     }
 
     private static bool IsBridgeable(PaintPoint from, PaintPoint to)
@@ -406,8 +515,6 @@ public sealed class PaintWorkspace
             if (!builder.Before.AsSpan().SequenceEqual(after))
                 patches.Add(new PaintPatch(part, builder.Rectangle, builder.Before, after));
         }
-        // A gesture that changed nothing must not push an undo entry, or Ctrl+Z spends
-        // itself popping an empty command instead of reverting the last real stroke.
         if (patches.Count > 0)
         {
             _history.Push(new PaintCommand(patches));
