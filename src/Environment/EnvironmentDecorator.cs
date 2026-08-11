@@ -35,9 +35,9 @@ public partial class EnvironmentDecorator : CanvasLayer
     private Win98ValuePanel _values = null!;
     private Button _place = null!;
     private Button _move = null!;
+    private Button _delete = null!;
     private Button _rotateLeft = null!;
     private Button _rotateRight = null!;
-    private Button _delete = null!;
     private CheckBox _snap = null!;
     private OptionButton _grid = null!;
     private Label _status = null!;
@@ -46,6 +46,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     private Label _placementStatus = null!;
     private Button _placementDone = null!;
     private PanelContainer _moveChrome = null!;
+    private PanelContainer _deleteChrome = null!;
     private readonly List<Control> _placementHiddenUi = [];
     private EnvironmentDecorationResource? _selectedDefinition;
     private PlacedDecorationId _selectedInstance;
@@ -54,6 +55,8 @@ public partial class EnvironmentDecorator : CanvasLayer
     private bool _moveHeld;
     private Vector2 _moveGrabOffset;
     private EnvironmentEditCheckpoint? _moveBaseline;
+    private bool _deleteMode;
+    private EnvironmentEditCheckpoint? _deleteBaseline;
     private bool _saving;
     private bool _pointerInputBefore;
     private bool _pointerUnhandledBefore;
@@ -76,6 +79,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     }
     internal bool PlacementMode => _placementMode;
     internal bool MoveMode => _moveMode;
+    internal bool DeleteMode => _deleteMode;
     internal long VisibleAvailableBalance => VisibleProjectedBalance;
     internal int VisibleOwnedCount(DecorationDefinitionId id) => Owned(id);
 
@@ -132,8 +136,11 @@ public partial class EnvironmentDecorator : CanvasLayer
     public override void _UnhandledInput(InputEvent input)
     {
         if (!IsOpen || input is not InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }) return;
-        if (_placementMode) { CancelPlacement(); GetViewport().SetInputAsHandled(); return; }
-        if (_moveMode) CancelMoveMode(); else if (_placement.Active || _selectedInstance != default) CancelTransient(); else RequestClose();
+        if (_placementMode) CancelPlacement();
+        else if (_moveMode) CancelMoveMode();
+        else if (_deleteMode) CancelDeleteMode();
+        else if (_placement.Active || _selectedInstance != default) CancelTransient();
+        else RequestClose();
         GetViewport().SetInputAsHandled();
     }
 
@@ -143,8 +150,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _session = new EnvironmentEditSession(_state.Layout, _progress.BalanceMilliCredits,
             EnvironmentDecorationRegistry.Domain, null, _state.OwnedUnplaced);
         _placement.Configure(_session, _blocker, ToBounds(RoomRect()));
-        // The blocker owns every event while the workspace is open; leaving the controller's own
-        // unhandled-input alive let it eat Escape before the workspace could end the active mode.
         _placement.SetProcessUnhandledInput(false);
         _pointerInputBefore = _pointer.IsProcessingInput();
         _pointerUnhandledBefore = _pointer.IsProcessingUnhandledInput();
@@ -156,6 +161,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         _selectedDefinition = null;
         _selectedInstance = default;
         _moveMode = false;
+        _deleteMode = false;
         _moveDragging = false;
         _placementMode = false;
         _placementStagedInstance = default;
@@ -164,7 +170,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (categories.Length > 0) SelectCategory(categories[0].ToString());
         _visuals.Preview(_session.WorkingLayout);
         _status.Text = categories.Length > 0
-            ? "Select an item, then choose Place. Each placed copy is purchased separately."
+            ? "Select an item, then Place it anywhere in the room. Use Edit Items or Delete Items for existing copies."
             : "No released room decorations are available.";
         Refresh();
     }
@@ -185,7 +191,7 @@ public partial class EnvironmentDecorator : CanvasLayer
                 _placementStagedInstance = result.InstanceId;
                 _placement.Cancel();
                 _visuals.Preview(_session.WorkingLayout);
-                _placementStatus.Text = "Position staged. Choose Done to keep it or Cancel to remove it.";
+                _placementStatus.Text = "Position staged. Keep Placement returns to the catalogue; Cancel removes this staged copy.";
                 _placementDone.Disabled = false;
             }
             else _placementStatus.Text = result.Status.ToString();
@@ -232,15 +238,14 @@ public partial class EnvironmentDecorator : CanvasLayer
         };
         selected.AddChild(_selectionLabel);
 
-        // Keep placement preferences and item actions on separate rows so the supported compact
-        // window width never turns the editor into one overflowing strip of controls.
-        var placementPreferences = new HBoxContainer { Name = "EnvironmentPlacementPreferences" };
-        placementPreferences.AddThemeConstantOverride("separation", 6);
+        // Keep the old controls instantiated for preference migration, but user testing removed
+        // snap/grid from the public demo UX. ApplySavedEnvironmentPreferences forces free placement.
+        var placementPreferences = new HBoxContainer { Name = "EnvironmentPlacementPreferences", Visible = false };
         body.AddChild(placementPreferences);
-        _snap = new CheckBox { Text = "Snap to grid" };
+        _snap = new CheckBox { Text = "Snap to grid", Visible = false };
         _snap.Toggled += OnSnapPreferenceChanged;
         placementPreferences.AddChild(_snap);
-        _grid = new OptionButton { Disabled = true, CustomMinimumSize = new Vector2(90, 28) };
+        _grid = new OptionButton { Disabled = true, Visible = false, CustomMinimumSize = new Vector2(90, 28) };
         foreach (EnvironmentGridSize size in Enum.GetValues<EnvironmentGridSize>()) _grid.AddItem(size.ToString(), (int)size);
         _grid.ItemSelected += OnGridPreferenceChanged;
         placementPreferences.AddChild(_grid);
@@ -249,10 +254,13 @@ public partial class EnvironmentDecorator : CanvasLayer
         itemActions.AddThemeConstantOverride("separation", 6);
         body.AddChild(itemActions);
         _place = Action(itemActions, "Place", BeginPlacement);
-        // Rotate and Delete live in the Edit Items focus chrome now: they act on the item selected
-        // in the room, so they belong next to that selection, not in the catalogue panel.
+        _place.TooltipText = "Purchase or reuse one copy, then place it anywhere inside the room.";
         _move = Action(itemActions, "Edit Items", BeginMoveMode);
         _move.Name = "EnvironmentMoveItemsButton";
+        _move.TooltipText = "Select, drag and rotate items already in the room.";
+        _delete = Action(itemActions, "Delete Items", BeginDeleteMode);
+        _delete.Name = "EnvironmentDeleteItemsButton";
+        _delete.TooltipText = "Enter delete mode, then click room items to return them to storage.";
 
         _values = new Win98ValuePanel { Name = "EnvironmentBudget" };
         body.AddChild(_values);
@@ -262,16 +270,20 @@ public partial class EnvironmentDecorator : CanvasLayer
         body.AddChild(actions);
         Win98Dialog.Action(actions, "Reset All", ResetAll).Name = "EnvironmentResetAllButton";
         actions.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
-        Win98Dialog.Action(actions, "Done", Save).Name = "EnvironmentDoneButton";
+        Win98Dialog.Action(actions, "Review Room", ReviewRoom).Name = "EnvironmentDoneButton";
         Win98Dialog.Action(actions, "Cancel", RequestClose).Name = "EnvironmentCancelButton";
 
-        _confirm = Win98Dialog.Create("EnvironmentDecoratorUnsaved", "Unsaved Room", new Vector2(360, 170), out VBoxContainer confirmBody);
+        _confirm = Win98Dialog.Create("EnvironmentDecoratorUnsaved", "Satisfied with your room?", new Vector2(390, 180), out VBoxContainer confirmBody);
         _blocker.AddChild(_confirm);
-        confirmBody.AddChild(new Label { Text = "Save room changes before closing?" });
+        confirmBody.AddChild(new Label
+        {
+            Text = "Save the complete room as it looks now, or revert all changes from this editing session?",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        });
         var confirmActions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         confirmBody.AddChild(confirmActions);
-        Win98Dialog.Action(confirmActions, "Save", Save).Name = "EnvironmentConfirmSaveButton";
-        Win98Dialog.Action(confirmActions, "Discard", Discard).Name = "EnvironmentDiscardButton";
+        Win98Dialog.Action(confirmActions, "Save Room", Save).Name = "EnvironmentConfirmSaveButton";
+        Win98Dialog.Action(confirmActions, "Revert Room", Discard).Name = "EnvironmentDiscardButton";
         Win98Dialog.Action(confirmActions, "Keep Editing", () => _confirm.Visible = false).Name = "EnvironmentKeepEditingButton";
 
         _placementChrome = new PanelContainer
@@ -281,25 +293,23 @@ public partial class EnvironmentDecorator : CanvasLayer
             Theme = Win98ThemeFactory.Create(),
         };
         _placementChrome.SetAnchorsPreset(Control.LayoutPreset.TopRight);
-        _placementChrome.OffsetLeft = -300;
+        _placementChrome.OffsetLeft = -320;
         _placementChrome.OffsetTop = 12;
         _placementChrome.OffsetRight = -12;
-        _placementChrome.OffsetBottom = 112;
+        _placementChrome.OffsetBottom = 124;
         _blocker.AddChild(_placementChrome);
         var placementBody = new VBoxContainer();
         _placementChrome.AddChild(placementBody);
-        _placementStatus = new Label { Text = "Click a valid room position.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
+        _placementStatus = new Label { Text = "Click anywhere inside the room.", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         placementBody.AddChild(_placementStatus);
         var placementActions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         placementBody.AddChild(placementActions);
-        _placementDone = Win98Dialog.Action(placementActions, "Done", ConfirmPlacement);
+        _placementDone = Win98Dialog.Action(placementActions, "Keep Placement", ConfirmPlacement);
         _placementDone.Name = "EnvironmentPlacementDoneButton";
         Win98Dialog.Action(placementActions, "Cancel", CancelPlacement).Name = "EnvironmentPlacementCancelButton";
 
-        // One focus chrome owns the whole item-editing loop: click selects, drag moves, and the
-        // selection actions sit right here instead of in a second floating panel.
         _moveChrome = FocusChrome("EnvironmentMoveChrome", "Edit items",
-            "Click an item to select it. Hold the left button to drag it. Rotate or delete the selection below.",
+            "Click an item to select it. Hold the left button to drag it. Rotate the selected item below.",
             out VBoxContainer moveBody, out HBoxContainer moveActions);
         var selectionActions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
         moveBody.AddChild(selectionActions);
@@ -308,10 +318,14 @@ public partial class EnvironmentDecorator : CanvasLayer
         _rotateLeft.Name = "EnvironmentRotateLeftButton";
         _rotateRight = Win98Dialog.Action(selectionActions, "Rotate right", () => RotateSelected(1));
         _rotateRight.Name = "EnvironmentRotateRightButton";
-        _delete = Win98Dialog.Action(selectionActions, "Delete", DeleteSelected);
-        _delete.Name = "EnvironmentDeleteButton";
         Win98Dialog.Action(moveActions, "Done", ConfirmMoveMode).Name = "EnvironmentMoveDoneButton";
         Win98Dialog.Action(moveActions, "Cancel", CancelMoveMode).Name = "EnvironmentMoveCancelButton";
+
+        _deleteChrome = FocusChrome("EnvironmentDeleteChrome", "Delete items",
+            "Click any room item to remove it. Purchased copies return to storage and can be placed again for free.",
+            out _, out HBoxContainer deleteActions);
+        Win98Dialog.Action(deleteActions, "Done", ConfirmDeleteMode).Name = "EnvironmentDeleteDoneButton";
+        Win98Dialog.Action(deleteActions, "Cancel", CancelDeleteMode).Name = "EnvironmentDeleteCancelButton";
     }
 
     private void SelectCategory(string id)
@@ -326,7 +340,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         var items = new List<Win98CatalogItemPresentation>();
         if (category == DecorationCategory.Wallpaper)
             items.Add(new Win98CatalogItemPresentation(NoWallpaperId, "None", "Free",
-                Tooltip: "Remove the room wallpaper."));
+                Tooltip: "Remove the room wallpaper. The change is staged until Save Room."));
         foreach (EnvironmentDecorationResource resource in EnvironmentDecorationRegistry.Authored.Entries)
         {
             DecorationDefinition definition = resource.ToDefinition();
@@ -334,7 +348,7 @@ public partial class EnvironmentDecorator : CanvasLayer
             items.Add(CatalogPresentation(resource));
         }
         _catalogue.SetItems(items);
-        _status.Text = "Select an item, then choose Place. Nothing is charged until a copy is staged.";
+        _status.Text = "Select an item, then Place it anywhere inside the room. Nothing is charged until a copy is staged.";
         Refresh();
     }
 
@@ -348,8 +362,8 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placement.Cancel();
         _status.Text = _selectedDefinition is null ? "Item unavailable."
             : _session?.OwnedUnplacedCount(definitionId) > 0
-                ? "You own a copy in storage. Choose Place to position it again at no charge."
-                : "Choose Place to purchase and position one copy.";
+                ? "You own a copy in storage. Place it again at no charge."
+                : "Place purchases and stages one new copy.";
         Refresh();
     }
 
@@ -362,13 +376,12 @@ public partial class EnvironmentDecorator : CanvasLayer
         PlacedDecoration wallpaper = _session?.WorkingLayout.Decorations
             .FirstOrDefault(item => item.RenderBand == DecorationRenderBand.Wallpaper) ?? default;
         _status.Text = wallpaper.InstanceId != default && _session!.Remove(wallpaper.InstanceId).Succeeded
-            ? "Wallpaper removed. You still own it, so you can place it again for free."
+            ? "Wallpaper removal staged. You still own it; Review Room when satisfied."
             : "The room has no wallpaper.";
         PreviewRoom();
         Refresh();
     }
 
-    /// <summary>Clears the whole room in one action; every copy stays owned, so nothing is lost.</summary>
     private void ResetAll()
     {
         if (_session is null) return;
@@ -379,7 +392,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         foreach (PlacedDecoration item in _session.WorkingLayout.Decorations.ToArray())
             _session.Remove(item.InstanceId);
         PreviewRoom();
-        _status.Text = "Room cleared. Every item stays owned; choose Done to save.";
+        _status.Text = "Room cleared. Every purchased item stays owned; Review Room to save or Cancel to revert.";
         Refresh();
     }
 
@@ -411,8 +424,8 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementChrome.Visible = true;
         _placementDone.Disabled = true;
         _placementStatus.Text = definition.RenderBand == DecorationRenderBand.Wallpaper
-            ? "Click to preview this wallpaper across the room."
-            : "Click a valid room position.";
+            ? "Click the room to stage this wallpaper."
+            : "Click anywhere inside the room to stage this copy.";
         _placement.Begin(_selectedDefinition);
         _placement.UpdateRoom(_placementBounds);
         Refresh();
@@ -433,6 +446,21 @@ public partial class EnvironmentDecorator : CanvasLayer
         Refresh();
     }
 
+    private void BeginDeleteMode()
+    {
+        if (_session is null || _session.WorkingLayout.Decorations.Count == 0) return;
+        CancelUnusedReservation();
+        _placement.Cancel();
+        _deleteBaseline = _session.Checkpoint();
+        _deleteMode = true;
+        _selectedInstance = default;
+        _panel.Visible = false;
+        HideOtherUiForFocus();
+        _deleteChrome.Visible = true;
+        _status.Text = "Delete mode: click items to remove them; Done keeps the staged deletions, Cancel restores them.";
+        Refresh();
+    }
+
     private void RotateSelected(int direction)
     {
         if (_session is null || _selectedInstance == default) return;
@@ -445,18 +473,21 @@ public partial class EnvironmentDecorator : CanvasLayer
         Refresh();
     }
 
-    private void DeleteSelected()
+    private void DeleteAt(Vector2 screen)
     {
-        if (_session is null || _selectedInstance == default) return;
-        EnvironmentEditResult result = _session.Remove(_selectedInstance);
+        if (_session is null || !EnvironmentPlacement.TryMap(screen.X, screen.Y, ToBounds(RoomRect()),
+            DecorationAnchorKind.RoomSurface, false, EnvironmentGridSize.Medium, out CanonicalRoomPosition point))
+            return;
+        if (!_visuals.TryHit(point, out PlacedDecorationId id))
+        {
+            _status.Text = "Delete mode: click directly on an item.";
+            return;
+        }
+        EnvironmentEditResult result = _session.Remove(id);
         if (result.Succeeded)
         {
-            _selectedInstance = default;
-            _moveDragging = false;
-            _moveHeld = false;
-            _placement.Cancel();
+            _status.Text = "Item removed from the room. Purchased copies remain owned in storage.";
             PreviewRoom();
-            _status.Text = "Item removed. You still own it, so you can place it again for free.";
         }
         else _status.Text = result.Status.ToString();
         Refresh();
@@ -467,8 +498,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_session is null || _confirm.Visible) { _blocker.AcceptEvent(); return; }
         if (_placementMode && !_placement.Active)
         {
-            // A staged copy is not frozen: clicking it picks it back up so it can be repositioned
-            // before Done, without buying a second copy.
             if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } resume)
                 ResumeStagedPositioning(resume.Position);
             _blocker.AcceptEvent();
@@ -476,12 +505,13 @@ public partial class EnvironmentDecorator : CanvasLayer
         }
         switch (input)
         {
+            case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _deleteMode:
+                DeleteAt(click.Position);
+                break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click when _moveMode:
                 SelectForEditing(click.Position);
                 break;
             case InputEventMouseMotion motion when _moveMode && _moveHeld && _placement.Active:
-                // The item only rides the cursor while the button is held; a plain click leaves it
-                // parked as a ghost so Rotate and Delete have a stable target.
                 _moveDragging = true;
                 _placement.UpdatePointer(motion.Position + _moveGrabOffset);
                 break;
@@ -489,11 +519,9 @@ public partial class EnvironmentDecorator : CanvasLayer
                 _moveHeld = false;
                 if (_moveDragging) DropCarried(release.Position);
                 break;
-            // Placement mode only: in Edit Items a released ghost must stay put, not trail the cursor.
             case InputEventMouseMotion motion when _placement.Active && !_moveMode:
                 _placement.UpdatePointer(motion.Position);
                 break;
-            // Repositioning a staged copy moves that instance; only a fresh copy commits a ghost.
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } click
                 when _placement.Active && _placementMode && _placementStagedInstance != default:
                 DropStaged(click.Position);
@@ -506,23 +534,25 @@ public partial class EnvironmentDecorator : CanvasLayer
                 SelectPlaced(click.Position);
                 break;
             case InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Right }:
-                if (_moveMode) CancelMoveMode(); else CancelTransient();
+                if (_moveMode) CancelMoveMode();
+                else if (_deleteMode) CancelDeleteMode();
+                else CancelTransient();
                 break;
             case InputEventKey { Pressed: true, Echo: false, Keycode: Key.Escape }:
-                if (_moveMode) CancelMoveMode(); else if (_placement.Active || _selectedInstance != default) CancelTransient(); else RequestClose();
+                if (_moveMode) CancelMoveMode();
+                else if (_deleteMode) CancelDeleteMode();
+                else if (_placement.Active || _selectedInstance != default) CancelTransient();
+                else RequestClose();
                 break;
         }
         _blocker.AcceptEvent();
     }
 
-    /// <summary>Picks a staged copy back up so the next click drops it somewhere else.</summary>
     private void ResumeStagedPositioning(Vector2 screen)
     {
         if (_session is null || _placementStagedInstance == default) return;
         if (!TryFindPlaced(_placementStagedInstance, out PlacedDecoration staged)) return;
         if (EnvironmentDecorationRegistry.Find(staged.DefinitionId) is not EnvironmentDecorationResource resource) return;
-        // Wallpaper covers the whole room, so any click counts as clicking it — but it has nowhere
-        // else to go, so leave it staged.
         if (staged.RenderBand == DecorationRenderBand.Wallpaper) return;
         if (!EnvironmentPlacement.TryMap(screen.X, screen.Y, ToBounds(RoomRect()), DecorationAnchorKind.RoomSurface,
             false, EnvironmentGridSize.Medium, out CanonicalRoomPosition point)) return;
@@ -536,7 +566,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementStatus.Text = "Click a new spot for this copy.";
     }
 
-    /// <summary>Drops the staged copy being repositioned; an invalid spot keeps it on the cursor.</summary>
     private void DropStaged(Vector2 screen)
     {
         if (_session is null || !_placement.UpdatePointer(screen)) return;
@@ -544,15 +573,10 @@ public partial class EnvironmentDecorator : CanvasLayer
         _selectedInstance = default;
         _placement.Cancel();
         PreviewRoom();
-        _placementStatus.Text = "Position staged. Choose Done to keep it or Cancel to remove it.";
+        _placementStatus.Text = "Position staged. Keep Placement returns to the catalogue.";
         Refresh();
     }
 
-    /// <summary>
-    /// Selects the clicked decoration and parks it as the placement ghost where it already stands.
-    /// It only follows the cursor once the button is dragged; a plain click just marks the target
-    /// for the Rotate and Delete actions.
-    /// </summary>
     private void SelectForEditing(Vector2 screen)
     {
         _moveDragging = false;
@@ -567,8 +591,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         }
         if (carried.RenderBand == DecorationRenderBand.Wallpaper)
         {
-            // Wallpaper cannot move, but it is still a valid Delete target.
-            _status.Text = "Wallpaper fills the room and cannot be moved. Delete it or replace it from Wallpapers.";
+            _status.Text = "Wallpaper fills the room and cannot be moved. Replace or clear it from Wallpapers, or use Delete Items.";
             PreviewRoom();
             Refresh();
             return;
@@ -581,11 +604,10 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placement.UpdatePointer(screen + _moveGrabOffset);
         _placement.SetGhostRotationDegrees(-carried.RotationDegrees);
         PreviewRoom();
-        _status.Text = "Item selected. Hold the left button to drag it, or use Rotate and Delete.";
+        _status.Text = "Item selected. Hold the left button to drag it, or use Rotate.";
         Refresh();
     }
 
-    /// <summary>Drops the dragged item; an invalid spot leaves it on the ghost where it was.</summary>
     private void DropCarried(Vector2 screen)
     {
         if (_session is null || _selectedInstance == default) return;
@@ -593,16 +615,19 @@ public partial class EnvironmentDecorator : CanvasLayer
         _session.Move(_selectedInstance, _placement.GhostPosition);
         _moveDragging = false;
         PreviewRoom();
-        _status.Text = "Item dropped. It stays selected for Rotate and Delete.";
+        _status.Text = "Item dropped. It stays selected for rotation.";
         Refresh();
     }
 
-    /// <summary>Room preview; a ghosted item is left out because the ghost is standing in for it.</summary>
     private void PreviewRoom()
     {
         if (_session is null) return;
         EnvironmentLayout working = _session.WorkingLayout;
-        if (!_placement.Active || _selectedInstance == default) { _visuals.Preview(working); return; }
+        if (!_placement.Active || _selectedInstance == default)
+        {
+            _visuals.Preview(working);
+            return;
+        }
         _visuals.Preview(
             new EnvironmentLayout(working.Decorations.Where(item => item.InstanceId != _selectedInstance)),
             working);
@@ -616,7 +641,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         {
             _selectedInstance = id;
             _selectedDefinition = null;
-            _status.Text = "Placed item selected. Choose Edit Items to move, rotate or delete it.";
+            _status.Text = "Placed item selected. Use Edit Items to move/rotate it or Delete Items to remove it.";
         }
         else _selectedInstance = default;
         Refresh();
@@ -638,7 +663,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         EndPlacementMode();
         _selectedDefinition = justPlaced;
         _selectedInstance = placed;
-        _status.Text = "Copy staged. Choose Place again for another copy, or Done to save the room.";
+        _status.Text = "Placement kept in this room edit. Place another copy or Review Room when satisfied.";
         Refresh();
     }
 
@@ -668,7 +693,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         EndMoveMode();
         PreviewRoom();
-        _status.Text = "Item positions staged. Choose Done to save the room.";
+        _status.Text = "Item edits staged. Review Room when satisfied.";
         Refresh();
     }
 
@@ -677,7 +702,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_session is not null && _moveBaseline is not null) _session.Restore(_moveBaseline);
         EndMoveMode();
         PreviewRoom();
-        _status.Text = "Edit Items cancelled; the room is back as it was.";
+        _status.Text = "Edit Items cancelled; the room is back as it was before that mode.";
         Refresh();
     }
 
@@ -694,6 +719,46 @@ public partial class EnvironmentDecorator : CanvasLayer
         _panel.Visible = true;
     }
 
+    private void ConfirmDeleteMode()
+    {
+        EndDeleteMode();
+        PreviewRoom();
+        _status.Text = "Deletions staged. Review Room when satisfied.";
+        Refresh();
+    }
+
+    private void CancelDeleteMode()
+    {
+        if (_session is not null && _deleteBaseline is not null) _session.Restore(_deleteBaseline);
+        EndDeleteMode();
+        PreviewRoom();
+        _status.Text = "Delete Items cancelled; removed items were restored.";
+        Refresh();
+    }
+
+    private void EndDeleteMode()
+    {
+        _deleteMode = false;
+        _deleteBaseline = null;
+        _selectedInstance = default;
+        _deleteChrome.Visible = false;
+        RestorePlacementUi();
+        _panel.Visible = true;
+    }
+
+    private void ReviewRoom()
+    {
+        if (_session is null || _saving) return;
+        CancelUnusedReservation();
+        if (!_session.IsDirty)
+        {
+            Close();
+            return;
+        }
+        _confirm.Visible = true;
+        _confirm.MoveToFront();
+    }
+
     private async void Save()
     {
         if (_session is null || _saving) return;
@@ -705,24 +770,38 @@ public partial class EnvironmentDecorator : CanvasLayer
             _economy.NotifyBalanceChanged();
             Close();
         }
-        catch (Exception exception) { _status.Text = $"Save failed: {exception.Message}"; _confirm.Visible = false; }
+        catch (Exception exception)
+        {
+            _status.Text = $"Save failed: {exception.Message}";
+            _confirm.Visible = false;
+        }
         finally { _saving = false; }
     }
 
     private void RequestClose()
     {
         if (_saving || _session is null) return;
-        if (_session.IsDirty) { _confirm.Visible = true; return; }
+        if (_session.IsDirty)
+        {
+            _confirm.Visible = true;
+            _confirm.MoveToFront();
+            return;
+        }
         Close();
     }
 
-    private void Discard() { _session?.Cancel(); Close(); }
+    private void Discard()
+    {
+        _session?.Cancel();
+        Close();
+    }
 
     private void Close()
     {
         _placement.Cancel();
         if (_placementMode) EndPlacementMode();
         if (_moveMode) CancelMoveMode();
+        if (_deleteMode) CancelDeleteMode();
         _visuals.Preview(_state.Layout);
         _blocker.Visible = false;
         _confirm.Visible = false;
@@ -730,11 +809,11 @@ public partial class EnvironmentDecorator : CanvasLayer
         _pointer.SetProcessUnhandledInput(_pointerUnhandledBefore);
         _session = null;
         _moveMode = false;
+        _deleteMode = false;
     }
 
     private void Refresh()
     {
-        // A copy already in storage is placed for free, so the panel must quote zero for it.
         bool ownedCopyReady = _selectedDefinition is not null &&
             _session?.OwnedUnplacedCount(_selectedDefinition.ToDefinition().Id) > 0;
         long cost = ownedCopyReady ? 0 : _selectedDefinition?.ToDefinition().PriceMilliCredits ?? 0;
@@ -746,30 +825,36 @@ public partial class EnvironmentDecorator : CanvasLayer
         long additionalCost = _selectedDefinition is null || matchingReservation ? 0 : cost;
         long afterPurchase = available >= additionalCost ? available - additionalCost : 0;
         DecorationDefinitionId selectionId = SelectedDefinitionId();
+        Color moneyColor = available >= additionalCost ? Color.Color8(0, 112, 0) : Color.Color8(176, 0, 0);
 
         if (_selectedDefinition is null && _selectedInstance != default)
         {
             _values.SetRows([
-                new("available", "Available Funds", ContentDisplayName.Credits(available)),
-                new("selected", "Selected Item", selectionId == default ? "Unknown" : DisplayName(selectionId)),
-                new("owned", "Owned", Owned(selectionId).ToString(), true),
+                new Win98ValueRowPresentation("available", "Available Funds", ContentDisplayName.Credits(available), true, true, moneyColor),
+                new Win98ValueRowPresentation("selected", "Selected Item", selectionId == default ? "Unknown" : DisplayName(selectionId)),
+                new Win98ValueRowPresentation("owned", "Owned", Owned(selectionId).ToString(), true),
             ]);
         }
         else
         {
             _values.SetRows([
-                new("available", "Available Funds", ContentDisplayName.Credits(available)),
-                new("cost", "Item Cost", ContentDisplayName.Credits(cost)),
-                new("projected", "After Purchase", ContentDisplayName.Credits(afterPurchase), true),
-                new("owned", "Owned", Owned(selectionId).ToString()),
+                new Win98ValueRowPresentation("available", "Available Funds", ContentDisplayName.Credits(available), true, true, moneyColor),
+                new Win98ValueRowPresentation("cost", "Item Cost", ContentDisplayName.Credits(cost)),
+                new Win98ValueRowPresentation("projected", "After Purchase", ContentDisplayName.Credits(afterPurchase), true,
+                    true, available >= additionalCost ? Color.Color8(0, 112, 0) : Color.Color8(176, 0, 0)),
+                new Win98ValueRowPresentation("owned", "Owned", Owned(selectionId).ToString()),
             ]);
         }
 
         _place.Disabled = _selectedDefinition is null || (!matchingReservation && available < cost);
-        _move.Visible = _session?.WorkingLayout.Decorations.Count > 0;
+        bool hasFurniture = _session?.WorkingLayout.Decorations.Any(item => item.RenderBand != DecorationRenderBand.Wallpaper) == true;
+        bool hasAnything = _session?.WorkingLayout.Decorations.Count > 0;
+        _move.Visible = hasFurniture;
+        _move.Disabled = !hasFurniture;
+        _delete.Visible = hasAnything;
+        _delete.Disabled = !hasAnything;
         _rotateLeft.Disabled = !CanRotateSelected();
         _rotateRight.Disabled = !CanRotateSelected();
-        _delete.Disabled = _selectedInstance == default;
         RefreshSelectionSummary();
         RefreshCatalogueBadges();
     }
@@ -788,8 +873,7 @@ public partial class EnvironmentDecorator : CanvasLayer
 
         DecorationDefinition definition = resource.ToDefinition();
         _selectionPreview.Texture = Preview(resource);
-        _selectionLabel.Text = $"{DisplayName(definition.Id)}  |  {ContentDisplayName.Credits(definition.PriceMilliCredits)}  |  " +
-            $"{definition.AnchorKind}";
+        _selectionLabel.Text = $"{DisplayName(definition.Id)}  |  {ContentDisplayName.Credits(definition.PriceMilliCredits)}  |  Free placement";
     }
 
     private bool CanRotateSelected()
@@ -801,6 +885,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     private Rect2 RoomRect() => EnvironmentRoomRect.Resolve(this);
 
     private static RoomScreenBounds ToBounds(Rect2 room) => new(room.Position.X, room.Position.Y, room.Size.X, room.Size.Y);
+
     private void CancelUnusedReservation()
     {
         if (_session?.HasReservation == true) _session.CancelReservation();
@@ -816,12 +901,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         foreach (Node child in node.GetChildren())
         {
-            // The Win98 shell chrome (title bar and command bar) stays put in every focus mode:
-            // hiding it took the blue bar away and moved RoomRect out from under the pointer.
             if (child == _blocker || _blocker.IsAncestorOf(child) || child is Win98BuddyShellController) continue;
-            // A SubViewport is an offscreen render target, not room UI. Descending into one hid the
-            // buddy's face/accent painter Controls, and those viewports render on-change, so the
-            // next blink baked a blank face texture that stayed blank for all of placement mode.
             if (child is SubViewport) continue;
             if (child is Control control && control.Visible)
             {
@@ -840,8 +920,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         _placementHiddenUi.Clear();
     }
 
-    /// <summary>Corner submenu built from the shared Win98 dialog frame: blue title bar on top,
-    /// message filling the body, and its actions anchored to the bottom.</summary>
     private PanelContainer FocusChrome(string name, string title, string text, out VBoxContainer body, out HBoxContainer actions)
     {
         PanelContainer chrome = Win98Dialog.Create(name, title, new Vector2(280, 96), out body);
@@ -868,7 +946,6 @@ public partial class EnvironmentDecorator : CanvasLayer
         return TryFindPlaced(_selectedInstance, out PlacedDecoration placed) ? placed.DefinitionId : default;
     }
 
-    /// <summary>Every copy the player owns, placed or in storage — the one ownership number shown.</summary>
     private int Owned(DecorationDefinitionId id) => id == default || _session is null
         ? 0
         : _session.WorkingLayout.Decorations.Count(item => item.DefinitionId == id) + _session.OwnedUnplacedCount(id);
@@ -878,7 +955,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         DecorationDefinition definition = resource.ToDefinition();
         return new Win98CatalogItemPresentation(definition.Id.Value, DisplayName(definition.Id),
             ContentDisplayName.Credits(definition.PriceMilliCredits), Preview(resource), true,
-            $"{definition.AnchorKind} decoration", $"Owned: {Owned(definition.Id)}");
+            "Free placement inside the room", $"Owned: {Owned(definition.Id)}");
     }
 
     private void RefreshCatalogueBadges()
