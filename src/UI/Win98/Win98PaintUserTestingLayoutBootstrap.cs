@@ -1,4 +1,3 @@
-using System;
 using DesktopBuddy.CharacterEditor;
 using Godot;
 
@@ -13,13 +12,9 @@ public partial class Win98PaintUserTestingLayoutBootstrap : Node
 {
     private PaintCanvasControl? _canvas;
     private Control? _palette;
-    private Node? _paletteHome;
-    private int _paletteHomeIndex;
-    private Button? _paletteToggle;
-    private PanelContainer? _paletteWindow;
-    private VBoxContainer? _paletteWindowBody;
+    private PanelContainer? _palettePanel;
+    private Win98PinnablePanel? _palettePin;
     private PanelContainer? _viewportControls;
-    private bool _paletteFloating;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
 
@@ -32,8 +27,7 @@ public partial class Win98PaintUserTestingLayoutBootstrap : Node
         bool paintActive = _canvas!.IsVisibleInTree();
         if (!paintActive)
         {
-            if (_paletteFloating)
-                DockPalette();
+            _palettePin?.Dock();
             if (GodotObject.IsInstanceValid(_viewportControls))
                 _viewportControls!.Visible = false;
             return;
@@ -45,11 +39,7 @@ public partial class Win98PaintUserTestingLayoutBootstrap : Node
             _viewportControls!.Visible = true;
     }
 
-    public override void _ExitTree()
-    {
-        if (_paletteFloating)
-            DockPalette();
-    }
+    public override void _ExitTree() => _palettePin?.Dock();
 
     private void EnsureViewportControls()
     {
@@ -111,102 +101,38 @@ public partial class Win98PaintUserTestingLayoutBootstrap : Node
 
     private void EnsurePaletteFloatUi()
     {
-        if (!GodotObject.IsInstanceValid(_palette))
-        {
-            _palette = GetTree().Root.FindChild("PaintPresetPalette", true, false) as Control;
-            if (!GodotObject.IsInstanceValid(_palette) || _palette!.GetParent() is null)
-                return;
-            _paletteHome = _palette.GetParent();
-            _paletteHomeIndex = _palette.GetIndex();
-        }
-
-        if (!GodotObject.IsInstanceValid(_paletteWindow))
-        {
-            if (GetTree().Root.FindChild("CharacterEditorUiRoot", true, false) is not Control root)
-                return;
-
-            _paletteWindow = Win98Dialog.Create(
-                "PaintFloatingPaletteWindow",
-                "Color Palette",
-                new Vector2(360, 126),
-                out VBoxContainer body,
-                DockPalette);
-            _paletteWindowBody = body;
-            root.AddChild(_paletteWindow);
-            _paletteWindow.Visible = false;
-        }
-
-        if (GodotObject.IsInstanceValid(_paletteToggle))
+        if (GodotObject.IsInstanceValid(_palettePanel))
             return;
 
-        if (_paletteHome is not HBoxContainer homeRow)
+        _palette = GetTree().Root.FindChild("PaintPresetPalette", true, false) as Control;
+        Control? current = GetTree().Root.FindChild("PaintCurrentColor", true, false) as Control;
+        Control? picker = GetTree().Root.FindChild("PaintColorWheel", true, false) as Control;
+        if (!GodotObject.IsInstanceValid(_palette) || !GodotObject.IsInstanceValid(current) ||
+            !GodotObject.IsInstanceValid(picker) || _palette!.GetParent() is not HBoxContainer homeRow ||
+            current!.GetParent() != homeRow || picker!.GetParent() != homeRow)
             return;
 
-        _paletteToggle = new Button
-        {
-            Name = "PaintFloatPaletteButton",
-            Text = "Float\nPalette",
-            TooltipText = "Detach the color swatches into a draggable palette window.",
-            CustomMinimumSize = new Vector2(58, 48),
-            FocusMode = Control.FocusModeEnum.All,
-        };
-        _paletteToggle.Pressed += TogglePalette;
-        homeRow.AddChild(_paletteToggle);
-        int targetIndex = Math.Min(_paletteHomeIndex + 1, homeRow.GetChildCount() - 1);
-        homeRow.MoveChild(_paletteToggle, targetIndex);
-    }
-
-    private void TogglePalette()
-    {
-        if (_paletteFloating)
-            DockPalette();
-        else
-            FloatPalette();
-    }
-
-    private void FloatPalette()
-    {
-        if (_paletteFloating || !GodotObject.IsInstanceValid(_palette) ||
-            !GodotObject.IsInstanceValid(_paletteWindow) ||
-            !GodotObject.IsInstanceValid(_paletteWindowBody))
-        {
-            return;
-        }
-
-        _palette!.Reparent(_paletteWindowBody!, false);
+        int index = current.GetIndex();
+        _palettePanel = Win98Dialog.Create(
+            "PaintPalettePanel",
+            "Color Palette",
+            new Vector2(360, 86),
+            out VBoxContainer body,
+            () => _palettePin?.Dock(),
+            draggable: false);
+        homeRow.AddChild(_palettePanel);
+        homeRow.MoveChild(_palettePanel, index);
+        var paletteRow = new HBoxContainer { Name = "PaintFloatingPaletteContent" };
+        paletteRow.AddThemeConstantOverride("separation", 8);
+        body.AddChild(paletteRow);
+        current.Reparent(paletteRow, false);
+        _palette.Reparent(paletteRow, false);
+        picker.Reparent(paletteRow, false);
         _palette.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        _paletteWindow!.Visible = true;
-        _paletteWindow.MoveToFront();
-        _paletteFloating = true;
-        if (GodotObject.IsInstanceValid(_paletteToggle))
-        {
-            _paletteToggle!.Text = "Dock\nPalette";
-            _paletteToggle.TooltipText = "Return the color swatches to the Paint Buddy footer.";
-        }
-    }
+        _palettePanel.Visible = true;
 
-    private void DockPalette()
-    {
-        if (!_paletteFloating)
-        {
-            if (GodotObject.IsInstanceValid(_paletteWindow))
-                _paletteWindow!.Visible = false;
-            return;
-        }
-
-        if (GodotObject.IsInstanceValid(_palette) && GodotObject.IsInstanceValid(_paletteHome as GodotObject))
-        {
-            _palette!.Reparent(_paletteHome!, false);
-            int safeIndex = Math.Clamp(_paletteHomeIndex, 0, _paletteHome!.GetChildCount() - 1);
-            _paletteHome.MoveChild(_palette, safeIndex);
-        }
-        if (GodotObject.IsInstanceValid(_paletteWindow))
-            _paletteWindow!.Visible = false;
-        _paletteFloating = false;
-        if (GodotObject.IsInstanceValid(_paletteToggle))
-        {
-            _paletteToggle!.Text = "Float\nPalette";
-            _paletteToggle.TooltipText = "Detach the color swatches into a draggable palette window.";
-        }
+        _palettePin = new Win98PinnablePanel { Name = "PaintPalettePinController" };
+        AddChild(_palettePin);
+        _palettePin.Configure(_palettePanel, new Vector2I(760, 150), "PaintFloatingPaletteWindow");
     }
 }

@@ -14,7 +14,7 @@ using DesktopBuddy.Persistence.Characters;
 namespace DesktopBuddy.CharacterEditor;
 
 public enum UnsavedDecision { Save, Discard, Cancel }
-public enum CharacterEditorPendingAction { None, Close, Select, New, Duplicate, Delete }
+public enum CharacterEditorPendingAction { None, Close, Select, New, Duplicate, Delete, NewPrompt }
 
 public readonly record struct CharacterEditorActionResult(
     bool Completed,
@@ -72,10 +72,10 @@ public sealed class CharacterEditorSession
         ((_savedDocument is null || !string.Equals(
             CharacterDocumentEditor.Canonical(WorkingDocument),
             CharacterDocumentEditor.Canonical(_savedDocument),
-            StringComparison.Ordinal)) || (_paintWorkspace?.IsDirty ?? false) || HasUnownedPreviews);
+            StringComparison.Ordinal)) || (_paintWorkspace?.IsDirty ?? false));
     public bool HasUnownedPreviews => _unownedPreviews.Count > 0;
     public bool HasOwnedPreviews => _ownedPreviews.Count > 0;
-    public bool CanSave => WorkingDocument is not null && !HasUnownedPreviews;
+    public bool CanSave => WorkingDocument is not null;
     public IReadOnlyCollection<CharacterFeatureSlot> UnownedPreviewSlots =>
         _unownedPreviews.Keys.OrderBy(static slot => slot).ToArray();
     public bool HasOwnedPreview(CharacterFeatureSlot slot) =>
@@ -154,6 +154,14 @@ public sealed class CharacterEditorSession
         ClearPaint(saved: false);
         SetWorking(CharacterDocument.CreateDefault(_newGuid(), displayName), saved: null, clearPreviews: true);
         return new CharacterEditorActionResult(true);
+    }
+
+    public CharacterEditorActionResult RequestNewCharacterPrompt()
+    {
+        CancelTransientPaintPreview();
+        return IsDirty
+            ? RequireDecision(CharacterEditorPendingAction.NewPrompt, null)
+            : new CharacterEditorActionResult(true);
     }
 
     public CharacterEditorActionResult Duplicate(string? displayName = null)
@@ -373,12 +381,22 @@ public sealed class CharacterEditorSession
         return new CharacterEditorActionResult(true);
     }
 
+    /// <summary>Returns every catalogue-only preview to the equipped working appearance.</summary>
+    public void CancelCosmeticPreviews()
+    {
+        if (_unownedPreviews.Count == 0 && _ownedPreviews.Count == 0) return;
+        _unownedPreviews.Clear();
+        _ownedPreviews.Clear();
+        LastError = null;
+        RefreshPreview();
+        Changed?.Invoke();
+    }
+
     public async Task<CharacterEditorActionResult> SaveAsync(CancellationToken token = default)
     {
         CancelTransientPaintPreview();
         if (WorkingDocument is null) return Failure("There is no working character to save.");
-        if (HasUnownedPreviews)
-            return Failure("Buy or deselect previewed cosmetics before saving.");
+        CancelCosmeticPreviews();
 
         CharacterSaveResult saved;
         if (_paintStore is not null && _paintWorkspace is not null)
@@ -407,8 +425,7 @@ public sealed class CharacterEditorSession
     public async Task<CharacterEditorActionResult> UseCharacterAsync(CancellationToken token = default)
     {
         CancelTransientPaintPreview();
-        if (HasUnownedPreviews)
-            return Failure("Buy or deselect previewed cosmetics before using this character.");
+        CancelCosmeticPreviews();
         CharacterEditorActionResult saved = IsDirty ? await SaveAsync(token) : new CharacterEditorActionResult(true);
         if (!saved.Completed || WorkingDocument is null) return saved;
         CharacterActivationResult activation = await _selection.QueueUseCharacterAsync(WorkingDocument.Id, token);
@@ -439,13 +456,8 @@ public sealed class CharacterEditorSession
     public CharacterEditorActionResult RequestClose()
     {
         CancelTransientPaintPreview();
+        CancelCosmeticPreviews();
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Close, null);
-        if (_ownedPreviews.Count > 0)
-        {
-            _ownedPreviews.Clear();
-            RefreshPreview();
-            Changed?.Invoke();
-        }
         CloseResolved?.Invoke(true);
         return new CharacterEditorActionResult(true);
     }
@@ -489,6 +501,7 @@ public sealed class CharacterEditorSession
             CharacterEditorPendingAction.New => NewCharacter(),
             CharacterEditorPendingAction.Duplicate => Duplicate(),
             CharacterEditorPendingAction.Delete => await DeleteAsync(token),
+            CharacterEditorPendingAction.NewPrompt => new CharacterEditorActionResult(true),
             _ => new CharacterEditorActionResult(true),
         };
     }

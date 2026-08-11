@@ -44,6 +44,7 @@ public partial class PaintCanvasControl : Control
     private const float ScreenStepPixels = 1.5f;
     private const int MaxScreenSteps = 512;
     private const double MinimumCurveBaselinePixels = 2.0;
+    private const double SecondCurveBendSensitivity = 0.35;
 
     public PaintWorkspace Workspace { get; } = new();
     public PaintViewState View { get; } = new();
@@ -195,7 +196,9 @@ public partial class PaintCanvasControl : Control
                         return;
                     }
 
-                    Workspace.BeginGesture(hit);
+                    Workspace.BeginGesture(Workspace.SelectedTool == PaintTool.Pen ? null : hit);
+                    if (Workspace.SelectedTool == PaintTool.Pen)
+                        PaintPenDab(button.Position);
                     _painting = true;
                     _sprayPulseAccumulator = 0;
                     _strokePointer = button.Position;
@@ -270,15 +273,64 @@ public partial class PaintCanvasControl : Control
     private void PaintAlongTo(Vector2 canvas)
     {
         Vector2 from = _strokePointer;
-        float spacing = Workspace.SelectedTool == PaintTool.Spray
-            ? Math.Max(3f, VisibleBrushDiameter() * 0.4f)
-            : ScreenStepPixels;
+        if (from.IsEqualApprox(canvas))
+            return;
+        if (Workspace.SelectedTool == PaintTool.Pen)
+        {
+            float distance = from.DistanceTo(canvas);
+            float penSpacing = Math.Max(1f, VisibleBrushDiameter() * 0.2f);
+            int penSteps = Math.Clamp((int)Math.Floor(distance / penSpacing), 0, MaxScreenSteps);
+            if (penSteps == 0) return;
+            for (int step = 1; step <= penSteps; step++)
+                PaintPenDab(from.Lerp(canvas, Math.Min(1f, step * penSpacing / distance)));
+            _strokePointer = from.Lerp(canvas, Math.Min(1f, penSteps * penSpacing / distance));
+            WorkspaceChanged?.Invoke();
+            return;
+        }
+        float spacing = StrokeSampleSpacing(Workspace.SelectedTool, VisibleBrushDiameter());
         int steps = Math.Clamp((int)Math.Ceiling(from.DistanceTo(canvas) / spacing), 1, MaxScreenSteps);
         for (int step = 1; step <= steps; step++)
             Workspace.ContinueGesture(Map(from.Lerp(canvas, step / (float)steps)));
 
         _strokePointer = canvas;
         WorkspaceChanged?.Invoke();
+    }
+
+    private void PaintPenDab(Vector2 center)
+    {
+        float radius = VisibleBrushDiameter() * 0.5f;
+        float texturePixelSize = VisibleBrushDiameter() / Math.Max(1, Workspace.BrushDiameter);
+        float sampleRadius = Math.Max(0f, radius - (texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f));
+        int steps = PenSampleSteps(VisibleBrushDiameter(), Workspace.BrushDiameter);
+        float spacing = sampleRadius / steps;
+        var hits = new List<PaintHit>((steps * 2 + 1) * (steps * 2 + 1));
+        for (int y = -steps; y <= steps; y++)
+        {
+            for (int x = -steps; x <= steps; x++)
+            {
+                Vector2 offset = new(x * spacing, y * spacing);
+                if (offset.LengthSquared() > sampleRadius * sampleRadius)
+                    continue;
+                if (Map(center + offset) is PaintHit hit)
+                    hits.Add(hit);
+            }
+        }
+        Workspace.StampPenDab(hits);
+    }
+
+    internal static float StrokeSampleSpacing(PaintTool tool, float visibleBrushDiameter) =>
+        tool == PaintTool.Spray
+            ? Math.Max(3f, visibleBrushDiameter * 0.4f)
+            : Math.Max(ScreenStepPixels, visibleBrushDiameter * (float)PaintSurface.StampSpacingFactor);
+
+    internal static int PenSampleSteps(float visibleBrushDiameter, int brushDiameter)
+    {
+        float texturePixelSize = visibleBrushDiameter / Math.Max(1, brushDiameter);
+        float sampleRadius = Math.Max(
+            0f,
+            visibleBrushDiameter * 0.5f - texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f);
+        float spacing = Math.Max(0.25f, texturePixelSize * PaintPolicy.MinBrushDiameter * 0.25f);
+        return Math.Max(1, (int)Math.Ceiling(sampleRadius / spacing));
     }
 
     private void BeginCurve(Vector2 canvas)
@@ -329,7 +381,12 @@ public partial class PaintCanvasControl : Control
                 break;
             case BuddyPaintCurvePhase.SecondBendDragging:
                 _previewCurveBend = new PaintCurveBend(_activeCurveBendT, pointer);
-                _curve = ClassicCurveGeometry.BendTwice(_curveStart, _curveEnd, _firstCurveBend, _previewCurveBend);
+                CubicPaintCurve firstBendCurve = ClassicCurveGeometry.BendOnce(
+                    _curveStart, _curveEnd, _firstCurveBend);
+                PaintCurveBend softened = ClassicCurveGeometry.ScaleBendMovement(
+                    firstBendCurve, _previewCurveBend, SecondCurveBendSensitivity);
+                _curve = ClassicCurveGeometry.BendTwice(
+                    _curveStart, _curveEnd, _firstCurveBend, softened);
                 break;
         }
         RenderCurvePreview();
@@ -451,7 +508,11 @@ public partial class PaintCanvasControl : Control
             return;
         }
         if (PanToolActive) return;
-        PaintCursorGizmos.DrawBrushRing(this, _lastPointer, VisibleBrushDiameter());
+        float diameter = VisibleBrushDiameter();
+        Vector2 footprint = Workspace.SelectedTool == PaintTool.Pen
+            ? new Vector2(diameter, diameter)
+            : new Vector2(diameter, diameter * (float)PaintWorkspace.BrushVerticalScale);
+        PaintCursorGizmos.DrawBrushRing(this, _lastPointer, footprint, 0f);
     }
 
     private float VisibleBrushDiameter() => (float)(Workspace.BrushDiameter * View.Zoom * Math.Min(Size.X, Size.Y) /
@@ -494,6 +555,7 @@ public partial class PaintCanvasControl : Control
     }
 
     public PaintPart? PartAt(Vector2 canvasPosition) => Map(canvasPosition)?.Part;
+    public PaintHit? HitAt(Vector2 canvasPosition) => Map(canvasPosition);
 
     private bool TrySample(PaintHit hit, out PaintColor color)
     {
@@ -515,6 +577,12 @@ public partial class PaintCanvasControl : Control
             hit = _mapper.TryMap(point, out PaintHit frontal) ? frontal : null;
         else
             hit = TryMapRotated(point, yaw, out PaintHit rotated) ? rotated : null;
+
+        if (hit is null && ExpandedLimbPose && TryMapExpandedConnector(point, yaw, out PaintHit connector))
+            hit = connector;
+
+        if (hit is PaintHit limb && PaintUvRegion.IsLimb(limb.Part) && !limb.IsConnector)
+            hit = limb with { Uv = PaintUvRegion.LimbEnd.MapLocal(limb.Uv) };
 
         return hit is PaintHit valid && IsPartVisible(valid.Part) &&
             (ActivePartFilter is null || valid.Part == ActivePartFilter.Value) ? valid : null;

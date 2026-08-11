@@ -59,7 +59,7 @@ public partial class Win98PaintUserTestingBootstrap : Node
             {
                 Name = "PaintMirrorToggle",
                 Text = "Mirror",
-                TooltipText = "Paint the reflected point on the same body-part surface at the same time.",
+                TooltipText = "Reflect paint across the buddy's center line, including onto the opposite hand or foot.",
                 FocusMode = Control.FocusModeEnum.All,
             };
             _mirror.Toggled += enabled =>
@@ -110,18 +110,19 @@ public partial class Win98PaintUserTestingBootstrap : Node
             return;
 
         Button? brush = FindButton(picker, "PaintBrushButton");
+        Button? pen = FindButton(picker, "PaintPenButton");
         Button? spray = FindButton(picker, "PaintSprayButton");
         Button? fill = FindButton(picker, "PaintFillButton");
         Button? eraser = FindButton(picker, "PaintEraserButton");
         Button? curve = FindButton(picker, "PaintCurveButton");
         Button? pick = FindButton(picker, "PaintEyedropperButton");
         Button? pan = FindButton(picker, "PaintPanButton");
-        if (!Valid(brush) || !Valid(spray) || !Valid(fill) || !Valid(eraser) ||
+        if (!Valid(brush) || !Valid(pen) || !Valid(spray) || !Valid(fill) || !Valid(eraser) ||
             !Valid(curve) || !Valid(pick) || !Valid(pan))
             return;
 
         picker.Columns = 1;
-        picker.CustomMinimumSize = new Vector2(116, 0);
+        picker.CustomMinimumSize = new Vector2(136, 0);
         picker.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
 
         Label paintHeader = EnsureHeader(picker, "PaintToolGroupHeader", "Paint");
@@ -130,11 +131,12 @@ public partial class Win98PaintUserTestingBootstrap : Node
         if (separator.GetParent() is null) picker.AddChild(separator);
         Label inspectHeader = EnsureHeader(picker, "PaintInspectGroupHeader", "Inspect & move");
 
-        Node[] order = [paintHeader, brush!, spray!, fill!, eraser!, curve!, separator, inspectHeader, pick!, pan!];
+        Node[] order = [paintHeader, brush!, pen!, spray!, fill!, eraser!, curve!, separator, inspectHeader, pick!, pan!];
         for (int index = 0; index < order.Length; index++)
             Move(picker, order[index], index);
 
         Configure(brush!, PaintToolIconProvider.Brush, "Brush", "Paint with the selected color. (B)");
+        Configure(pen!, PaintToolIconProvider.Pen, "Pen", "Paint with a solid pen nib. (P)");
         Configure(spray!, PaintToolIconProvider.Spray, "Spray", "Airbrush with the selected color. (S)");
         Configure(fill!, PaintToolIconProvider.Fill, "Bucket Fill", "Fill one connected paint region. (F)");
         Configure(eraser!, PaintToolIconProvider.Eraser, "Eraser", "Remove paint with the current brush size. (E)");
@@ -163,11 +165,11 @@ public partial class Win98PaintUserTestingBootstrap : Node
 
     private static void Configure(Button button, string iconId, string fallback, string tooltip)
     {
-        PaintToolIconProvider.Apply(button, iconId, fallback, tooltip);
+        PaintToolIconProvider.Apply(button, iconId, fallback, tooltip, keepText: true);
         button.ToggleMode = true;
-        button.Alignment = HorizontalAlignment.Center;
+        button.Alignment = HorizontalAlignment.Left;
         button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-        button.CustomMinimumSize = new Vector2(116, 31);
+        button.CustomMinimumSize = new Vector2(136, 31);
     }
 
     private static void Move(Node parent, Node child, int index)

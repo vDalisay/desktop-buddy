@@ -35,6 +35,7 @@ public static class EnvironmentCanvasPolicy
 /// </summary>
 public sealed class EnvironmentCanvas
 {
+    private const double SecondBendSensitivity = 0.35;
     private readonly byte[] _pixels = new byte[EnvironmentCanvasPolicy.Bytes];
     private readonly LinkedList<byte[]> _undo = new();
     private byte[]? _strokeBase;
@@ -323,7 +324,12 @@ public sealed class EnvironmentCanvas
                 break;
             case EnvironmentCurvePhase.SecondBendDragging:
                 _previewBend = new PaintCurveBend(_activeBendT, pointer);
-                _curve = ClassicCurveGeometry.BendTwice(_curve.Start, _curve.End, _firstBend, _previewBend);
+                CubicPaintCurve firstBendCurve = ClassicCurveGeometry.BendOnce(
+                    _curve.Start, _curve.End, _firstBend);
+                PaintCurveBend softened = ClassicCurveGeometry.ScaleBendMovement(
+                    firstBendCurve, _previewBend, SecondBendSensitivity);
+                _curve = ClassicCurveGeometry.BendTwice(
+                    _curve.Start, _curve.End, _firstBend, softened);
                 PreviewCurve();
                 break;
         }

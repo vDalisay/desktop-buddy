@@ -87,6 +87,41 @@ public sealed class CharacterRigViewScenario : IScenario
         ImageTexture paintUnderlay = ImageTexture.CreateFromImage(
             Image.CreateEmpty(2, 2, false, Image.Format.Rgba8));
         preview.SetSurfaceUnderlay(BuddyPartId.Torso, paintUnderlay);
+        preview.SetSurfaceUnderlay(BuddyPartId.LeftHand, paintUnderlay);
+        preview.SetSurfaceUnderlay(BuddyPartId.RightHand, paintUnderlay);
+        preview.SetSurfaceUnderlay(BuddyPartId.LeftFoot, paintUnderlay);
+        preview.SetSurfaceUnderlay(BuddyPartId.RightFoot, paintUnderlay);
+        int paintedConnectors = 0;
+        for (int index = 0; index < preview.ConnectorVisualCount; index++)
+        {
+            if (preview.GetConnectorVisual(index).FindChild("Paint", false, false) is MeshInstance3D
+                {
+                    Visible: true,
+                    MaterialOverride: StandardMaterial3D { AlbedoTexture: not null },
+                })
+                paintedConnectors++;
+        }
+        checks.Add(new StartupCheck(
+            "painted_hand_and_foot_surfaces_bind_to_four_limb_connectors",
+            paintedConnectors == 4,
+            $"paintedConnectors={paintedConnectors}"));
+        MeshInstance3D leftHandPaint = (MeshInstance3D)preview.GetPartSocket(BuddyPartId.LeftHand)
+            .FindChild("Paint", false, false);
+        MeshInstance3D leftArmPaint = (MeshInstance3D)preview.GetConnectorVisual(1)
+            .FindChild("Paint", false, false);
+        bool limbAtlasSplit = leftHandPaint.MaterialOverride is StandardMaterial3D
+            {
+                Uv1Scale: { X: 0.5f },
+                Uv1Offset: { X: 0.0f },
+            } && leftArmPaint.MaterialOverride is StandardMaterial3D
+            {
+                Uv1Scale: { X: 0.5f },
+                Uv1Offset: { X: 0.5f },
+            };
+        checks.Add(new StartupCheck(
+            "limb_end_and_connector_sample_disjoint_halves_of_one_surface",
+            limbAtlasSplit,
+            $"end={leftHandPaint.MaterialOverride} connector={leftArmPaint.MaterialOverride}"));
         MeshInstance3D? trustedFacePlate = preview.FacePlate;
         MeshInstance3D trustedAccentPlate = preview.TorsoAccentPlate;
         var attachmentColor = new Rgba32(110, 72, 54);

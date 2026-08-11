@@ -6,8 +6,9 @@ namespace DesktopBuddy.Work;
 
 public partial class WorkCompanionView
 {
-    private const double WheelResizeFactor = 1.08;
-    private bool _wheelResizeLeftHeld;
+    private const double WheelResizeFactor = 1.025;
+    private bool _wheelResizeActive;
+    private Vector2 _wheelResizeAnchor;
 
     /// <summary>
     /// User-testing resize gesture: while LMB is held anywhere on the companion, wheel up
@@ -23,11 +24,22 @@ public partial class WorkCompanionView
 
         if (mouse.ButtonIndex == MouseButton.Left)
         {
-            _wheelResizeLeftHeld = mouse.Pressed;
+            if (!mouse.Pressed)
+            {
+                _wheelResizeActive = false;
+                return;
+            }
+
+            Rect2I rect = _sandbox.Window.WorkCompanionRect;
+            _wheelResizeActive = IsDragSurface(ToCompositionPosition(mouse.Position)) &&
+                !IsOverControlButton(mouse.Position);
+            _wheelResizeAnchor = new Vector2(
+                mouse.Position.X / Math.Max(1, rect.Size.X),
+                mouse.Position.Y / Math.Max(1, rect.Size.Y));
             return;
         }
 
-        if (!_wheelResizeLeftHeld || !mouse.Pressed ||
+        if (!_wheelResizeActive || !mouse.Pressed ||
             mouse.ButtonIndex is not (MouseButton.WheelUp or MouseButton.WheelDown))
         {
             return;
@@ -40,7 +52,7 @@ public partial class WorkCompanionView
         var requested = new Vector2I(
             Math.Max(1, Mathf.RoundToInt((float)(current.Size.X * factor))),
             Math.Max(1, Mathf.RoundToInt((float)(current.Size.Y * factor))));
-        _sandbox.Window.ResizeWorkCompanion(requested);
+        _sandbox.Window.ResizeWorkCompanion(requested, _wheelResizeAnchor);
         if (_sandbox.Window.WorkCompanionRect.Size != current.Size)
             UiFeedbackAudioBootstrap.TryPlay(this, UiFeedbackCue.Resize);
         GetViewport().SetInputAsHandled();

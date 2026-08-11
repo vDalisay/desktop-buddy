@@ -8,6 +8,98 @@ This document has precedence over earlier roadmap/polish wording when they confl
 
 The original notes also contained separate demo-content and full-release ideas. Those are preserved in Sections 8–9 but **do not belong to the immediate bug-fix gate**.
 
+## Owner follow-up — 2026-08-11
+
+The next hands-on review reopened the gate with these binding corrections:
+
+- reduce second-bend curve sensitivity;
+- retain paint-tool names beside their icons and keep checked-checkbox hover text readable;
+- render the Buddy brush footprint circular in the projected preview;
+- mirror across the whole buddy, pairing opposite hands/feet rather than mirroring within one limb;
+- keep Show limbs connectors attached and paintable;
+- replace Float Palette with a blue-title-bar pin/detach interaction for both paint palettes, and give Room Decorator the same behavior;
+- rename Catalogue to Inventory and Environment Decorator to Room Decorator;
+- preserve the current game-window size when opening Buddy Studio or Paint Buddy;
+- restore the neutral face in Studio and show Equipped only once; owned Studio tiles omit their former price/Free text;
+- further restrain ordinary limb rotation;
+- latch Work wheel-resize from the initial buddy press, use smaller increments, preserve the cursor anchor, and update composition continuously during native resizing;
+- prevent repeated room-item clicks from transiently unpressing/reflowing the selected tile.
+
+The owner explicitly retained SFX as owner-authored work; this follow-up makes no SFX changes.
+
+## Owner follow-up 2 — 2026-08-11
+
+The next hands-on review reopened the gate again with these binding corrections:
+
+- use the shared pin/detach behavior for Paint Background, Inventory, and Room Decorator, with resizable detached windows and scrollable Room Decorator content;
+- repair Paint Background **Save and Exit**;
+- simplify Room Decorator actions: remove **Review Room**, separate **Buy** from owned-only **Place**, move **Edit Room** and **Delete item** to the lower left, move **Buy**/**Place** to the lower right, and rename **Reset All** to **Reset Room**;
+- make Paint Buddy's detached palette use the same sizing/layout behavior as Paint Background's palette;
+- make the visible arm/leg connectors paintable while **Show limbs** is enabled, reusing the paired hand/foot paint surfaces rather than adding persistence surfaces;
+- make Buddy Studio single-click preview-only, clear that preview when changing tabs, show a faint blue equipped border, and use double-click to equip or buy-and-equip;
+- treat cosmetic previews as transient rather than unsaved document changes so clean Cancel exits immediately and dirty Save/save-and-exit remains available;
+- allow Work dragging to start on the CRT while preserving click-to-toggle, latch wheel resizing from any draggable Work surface, restyle the hover controls as Win98 buttons, and remove live-resize region churn that causes flicker/artifacts.
+
+The earlier single-click-to-auto-equip Studio wording in Section 2 is superseded by this follow-up.
+
+## Owner follow-up 3 — 2026-08-11
+
+The next hands-on review added these binding corrections:
+
+- paint footprint outlines must match the projected stamp shape: circles for circular stamps and ellipses for elliptical projected stamps;
+- detached Win98 title bars keep the Move cursor on hover;
+- Paint Background's whole tool window remains detachable, but its nested color palette no longer detaches separately;
+- Paint Buddy's detached palette must preserve its complete contents without clipping; Undo, Redo, and Erase All show text beside their icons; and Erase All uses shared Win98 confirmation chrome;
+- Room Decorator opens at its complete usable size whenever the display permits, using scrolling only as a small-window fallback; rename its modes to **Edit mode** and **Delete mode** and keep Buy/Place equally sized;
+- expanded-limb connector strokes render only on the connector and end-part strokes only on the hand/foot, using disjoint regions of the existing paired surface rather than adding a seventh persistence surface;
+- Paint Buddy opens the character currently active in the main game;
+- Buddy Studio becomes a top-level horizontal command beside Decorate Room rather than a Paint submenu command;
+- equipped Studio tiles always retain a title-blue border, including while selected/pressed;
+- main game, Paint Buddy, and Buddy Studio reuse one window position so mode changes swap content without independent remembered positions;
+- Work controls gain a title-blue hover backing, and native resize must not expose grey strips at the right or bottom edge.
+
+## Owner follow-up 4 — 2026-08-11
+
+The next hands-on review clarified these binding visual and interaction targets:
+
+- project Paint Buddy's white brush outline from the same anisotropic surface stamp as the paint, so the outline visibly matches the ellipse at the hovered body location;
+- keep Paint Background's palette inline without its own blue title bar or surrounding window frame;
+- put Paint Buddy's Save, Use Character, Reset, and Exit actions in one equal-width bottom-right row;
+- anchor Room Decorator's Edit mode, Delete mode, Reset Room, Buy, and Place actions to the bottom, remove Cancel, and close on an outside left-click only while the panel is pinned;
+- use one thicker active-title-blue border for the Buddy Studio item currently shown in preview, never label a tile Preview, color purchasable prices green/red according to affordability, and render color suggestions as swatches rather than words;
+- put Work mode's grey controls on a persistent Win98 active-title bar, and preserve the current native window region throughout live resize so no rectangular right/bottom strip is exposed.
+
+## Owner follow-up 5 — 2026-08-11
+
+- Paint Buddy must never fall back to a circular white brush outline; the visible fallback is an explicit horizontal ellipse.
+- Revert the follow-up-4 native-region resize change while extending Work mode's blue title bar across the full window width.
+- Keep the Room Decorator close box rightmost, with the pin immediately inside it.
+- Buddy Studio color swatches fill their row, category arrows select adjacent tabs, and Save/Exit sit at the bottom of the inspector panel.
+
+## Owner follow-up 6 — 2026-08-11
+
+- Buddy paint's Brush cursor is the unrotated vertical ellipse shown by its stamp; Background paint's Brush cursor independently uses the background projection's horizontal ellipse.
+- Add Pen directly below Brush in Paint Buddy.
+- Keep Paint Buddy's four bottom actions at normal Win98 button height, and anchor Unsaved Background actions to the modal bottom.
+- Add a thin grey Win98 outline around Work mode's full-width blue bar.
+
+## Owner follow-up 7 — 2026-08-11
+
+- Paint Buddy's Brush uses the same sideways ellipse for its cursor and painted pixels; this supersedes follow-up 6's vertical orientation.
+- Paint Buddy's Pen uses a circular cursor and paints circular pixels.
+- Anchor Paint Buddy's four normal-height actions to the lower-right.
+
+## Owner follow-up 8 — 2026-08-11
+
+- Compensate Paint Buddy Pen stamps per body-surface projection so their rendered output stays circular on torso bands, rounded caps, limbs, and visible connectors.
+- Bottom-align the Paint Buddy action row inside the lower-right footer instead of vertically centering it.
+
+## Owner follow-up 9 — 2026-08-11
+
+- Rasterize Paint Buddy Pen dabs from a screen-space circle through the trusted hit mapper so capsule UV boundaries and half-atlas limbs cannot deform the output.
+- New Character performs the current-character Save/Discard/Cancel flow before opening the naming prompt.
+- The large left palette block always shows the active color; the color-picker icon button retains a neutral grey face.
+
 ---
 
 ## 1. Environment paint / Paint Background

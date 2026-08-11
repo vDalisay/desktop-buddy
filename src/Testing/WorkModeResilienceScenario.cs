@@ -11,6 +11,7 @@ using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Platform;
+using DesktopBuddy.UI.Win98;
 using DesktopBuddy.Work;
 using Godot;
 
@@ -87,34 +88,100 @@ public sealed class WorkModeResilienceScenario : IScenario
 
             var workView = tree.Root.FindChild(
                 nameof(WorkCompanionView), recursive: true, owned: false) as WorkCompanionView;
-            Vector2I beforeWheel = sandbox.Window.WorkCompanionRect.Size;
+            Rect2I beforeWheel = sandbox.Window.WorkCompanionRect;
+            Vector2 viewportSize = workView?.GetWindow().Size ?? Vector2.Zero;
+            float compositionScale = Math.Max(0.01f, Math.Min(
+                viewportSize.X / WorkCompanionView.PreferredSize.X,
+                viewportSize.Y / WorkCompanionView.PreferredSize.Y));
+            Vector2 compositionOffset = (viewportSize - ((Vector2)WorkCompanionView.PreferredSize * compositionScale)) * .5f;
+            Vector2 resizePointer = compositionOffset + (new Vector2(478, 148) * compositionScale);
             if (GodotObject.IsInstanceValid(workView))
             {
                 workView!._Input(new InputEventMouseButton
                 {
                     ButtonIndex = MouseButton.Left,
                     Pressed = true,
-                    Position = new Vector2(300, 200),
+                    Position = resizePointer,
                 });
                 workView._Input(new InputEventMouseButton
                 {
                     ButtonIndex = MouseButton.WheelUp,
                     Pressed = true,
-                    Position = new Vector2(300, 200),
+                    Position = resizePointer,
                 });
                 workView._Input(new InputEventMouseButton
                 {
                     ButtonIndex = MouseButton.Left,
                     Pressed = false,
-                    Position = new Vector2(300, 200),
+                    Position = resizePointer,
                 });
             }
-            Vector2I afterWheel = sandbox.Window.WorkCompanionRect.Size;
+            Rect2I afterWheel = sandbox.Window.WorkCompanionRect;
+            Vector2 beforeAnchor = (Vector2)beforeWheel.Position + resizePointer;
+            Vector2 normalizedAnchor = new(
+                resizePointer.X / beforeWheel.Size.X,
+                resizePointer.Y / beforeWheel.Size.Y);
+            Vector2 afterAnchor = (Vector2)afterWheel.Position + ((Vector2)afterWheel.Size * normalizedAnchor);
             checks.Add(new StartupCheck(
-                "work_lmb_wheel_resizes_companion",
+                "work_lmb_wheel_resizes_from_pc_surface",
                 GodotObject.IsInstanceValid(workView) &&
-                    afterWheel.X > beforeWheel.X && afterWheel.Y > beforeWheel.Y,
+                    afterWheel.Size.X > beforeWheel.Size.X && afterWheel.Size.Y > beforeWheel.Size.Y &&
+                    afterWheel.Size.X < beforeWheel.Size.X * 1.04f &&
+                    afterAnchor.DistanceTo(beforeAnchor) <= 2.0f,
                 $"view={GodotObject.IsInstanceValid(workView)} size={beforeWheel}->{afterWheel}"));
+
+            if (GodotObject.IsInstanceValid(workView))
+            {
+                Rect2I beforeDrag = sandbox.Window.WorkCompanionRect;
+                bool counterBefore = workView!.ShowLifetime;
+                workView._UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = true,
+                    Position = resizePointer,
+                });
+                workView._UnhandledInput(new InputEventMouseMotion
+                {
+                    Position = resizePointer + new Vector2(12, 8),
+                    Relative = new Vector2(12, 8),
+                });
+                workView._UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = false,
+                    Position = resizePointer + new Vector2(12, 8),
+                });
+                Rect2I afterDrag = sandbox.Window.WorkCompanionRect;
+                workView._UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = true,
+                    Position = resizePointer,
+                });
+                workView._UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = false,
+                    Position = resizePointer,
+                });
+                Button resize = (Button)workView.FindChild("WorkResizeButton", true, false);
+                Button motion = (Button)workView.FindChild("WorkMotionToggle", true, false);
+                Button exit = (Button)workView.FindChild("WorkExitButton", true, false);
+                PanelContainer titleBar = (PanelContainer)workView.FindChild("WorkControlTitleBar", true, false);
+                bool win98TitleBar = titleBar.GetThemeStylebox("panel") is StyleBoxFlat bar &&
+                    bar.BgColor == Win98ThemeFactory.ActiveTitle &&
+                    bar.GetBorderWidth(Side.Left) == 2 &&
+                    Mathf.IsEqualApprox(titleBar.Size.X, WorkCompanionView.PreferredSize.X) &&
+                    resize.GetThemeStylebox("hover") is StyleBoxFlat hover &&
+                    hover.BgColor == Win98ThemeFactory.Highlight &&
+                    resize.GetThemeColor("font_hover_color") == Win98ThemeFactory.Dark;
+                checks.Add(new StartupCheck(
+                    "work_crt_drag_moves_click_toggles_and_controls_sit_on_win98_title_bar",
+                    afterDrag.Position != beforeDrag.Position && workView.ShowLifetime != counterBefore &&
+                        resize.HasThemeStyleboxOverride("normal") && motion.HasThemeStyleboxOverride("normal") &&
+                        exit.HasThemeStyleboxOverride("normal") && win98TitleBar,
+                    $"position={beforeDrag.Position}->{afterDrag.Position} counter={counterBefore}->{workView.ShowLifetime}"));
+            }
 
             var requestedWorkSize = new Vector2I(600, 358);
             sandbox.Window.ResizeWorkCompanion(requestedWorkSize);

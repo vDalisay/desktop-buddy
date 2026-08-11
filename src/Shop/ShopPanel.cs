@@ -46,7 +46,7 @@ public partial class ShopPanel : PanelContainer
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
 
         Name = "ShopPanel";
-        PanelChrome.Parts parts = PanelChrome.Build(this, "Catalogue", "ShopItemList");
+        PanelChrome.Parts parts = PanelChrome.Build(this, "Inventory", "ShopItemList");
         _balance = parts.HeaderValue;
         _status = parts.Status;
         foreach (CatalogueEntry entry in CataloguePolicy.SelectableEntries(_catalogue))

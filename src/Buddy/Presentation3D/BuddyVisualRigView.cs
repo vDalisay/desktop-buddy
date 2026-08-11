@@ -2,6 +2,7 @@ using System;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Presentation;
+using DesktopBuddy.Domain.Painting;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Presentation3D;
@@ -36,6 +37,7 @@ public partial class BuddyVisualRigView : Node3D
         new MeshInstance3D?[PuppetRigProfile.RequiredPartCount];
 
     private MeshInstance3D[] _connectorMeshes = Array.Empty<MeshInstance3D>();
+    private MeshInstance3D?[] _connectorPaintLayers = Array.Empty<MeshInstance3D?>();
     private ConnectorVisualDefinition[] _connectorDefinitions =
         Array.Empty<ConnectorVisualDefinition>();
     private float[] _connectorAngles = Array.Empty<float>();
@@ -225,6 +227,17 @@ public partial class BuddyVisualRigView : Node3D
         if (layer.MaterialOverride is StandardMaterial3D material)
             material.AlbedoTexture = texture;
         layer.Visible = texture is not null;
+
+        for (int connectorIndex = 0; connectorIndex < _connectorDefinitions.Length; connectorIndex++)
+        {
+            if (ConnectorPaintPart(_connectorDefinitions[connectorIndex]) != partId ||
+                _connectorPaintLayers[connectorIndex] is not MeshInstance3D connectorLayer ||
+                !GodotObject.IsInstanceValid(connectorLayer))
+                continue;
+            if (connectorLayer.MaterialOverride is StandardMaterial3D connectorMaterial)
+                connectorMaterial.AlbedoTexture = texture;
+            connectorLayer.Visible = texture is not null && _connectorMeshes[connectorIndex].Visible;
+        }
     }
 
     internal Texture2D? SurfaceUnderlay(BuddyPartId partId) =>
@@ -427,6 +440,8 @@ public partial class BuddyVisualRigView : Node3D
                 Visible = false,
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
             };
+            if (PaintUvRegion.IsLimb((PaintPart)id) && paintLayer.MaterialOverride is StandardMaterial3D limbPaint)
+                limbPaint.Uv1Scale = new Vector3(0.5f, 1.0f, 1.0f);
             socket.AddChild(paintLayer);
             _paintLayers[index] = paintLayer;
 
@@ -441,6 +456,7 @@ public partial class BuddyVisualRigView : Node3D
     {
         int count = _trustedProfile.Connectors.Count;
         _connectorMeshes = new MeshInstance3D[count];
+        _connectorPaintLayers = new MeshInstance3D?[count];
         _connectorDefinitions = new ConnectorVisualDefinition[count];
         _connectorAngles = new float[count];
         _connectorAuthoringLengths = new float[count];
@@ -468,7 +484,34 @@ public partial class BuddyVisualRigView : Node3D
             };
             BodyYaw.AddChild(instance);
             _connectorMeshes[index] = instance;
+
+            if (ConnectorPaintPart(definition) is not null)
+            {
+                var paintLayer = new MeshInstance3D
+                {
+                    Name = "Paint",
+                    Mesh = mesh,
+                    MaterialOverride = _materials.CreatePaintMaterial(),
+                    Visible = false,
+                    PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+                };
+                if (paintLayer.MaterialOverride is StandardMaterial3D connectorPaint)
+                {
+                    connectorPaint.Uv1Scale = new Vector3(0.5f, 1.0f, 1.0f);
+                    connectorPaint.Uv1Offset = new Vector3(0.5f, 0.0f, 0.0f);
+                }
+                instance.AddChild(paintLayer);
+                _connectorPaintLayers[index] = paintLayer;
+            }
         }
+    }
+
+    private static BuddyPartId? ConnectorPaintPart(ConnectorVisualDefinition definition)
+    {
+        BuddyPartId endpoint = definition.PartA == BuddyPartId.Torso ? definition.PartB : definition.PartA;
+        return endpoint is BuddyPartId.LeftHand or BuddyPartId.RightHand or BuddyPartId.LeftFoot or BuddyPartId.RightFoot
+            ? endpoint
+            : null;
     }
 
     private void BuildFace(Node3D socket, float radius)

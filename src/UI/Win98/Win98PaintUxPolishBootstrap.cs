@@ -36,8 +36,7 @@ public partial class Win98PaintUxPolishBootstrap : Node
     private PanelContainer? _deletePanel;
     private Control? _deleteBlocker;
     private Label? _deleteMessage;
-    private string? _pendingNewName;
-    private Guid? _pendingPreviousCharacter;
+    private bool _openNewPromptAfterUnsaved;
 
     public override void _Ready()
     {
@@ -63,7 +62,7 @@ public partial class Win98PaintUxPolishBootstrap : Node
         CorrectUnsavedPrompt();
         ApplyColorPickerIcon();
         CleanLibraryTooltips();
-        ResolvePendingNamedCharacter();
+        ResolvePendingNewPrompt();
     }
 
     public override void _UnhandledKeyInput(InputEvent input)
@@ -112,7 +111,7 @@ public partial class Win98PaintUxPolishBootstrap : Node
                     SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                     CustomMinimumSize = new Vector2(0, 38),
                 };
-                _newButton.Pressed += OpenNewCharacterPrompt;
+                _newButton.Pressed += RequestNewCharacterPrompt;
                 column.AddChild(_newButton);
             }
         }
@@ -174,10 +173,11 @@ public partial class Win98PaintUxPolishBootstrap : Node
             return;
 
         Button? brush = picker.FindChild("PaintBrushButton", true, false) as Button;
+        Button? pen = picker.FindChild("PaintPenButton", true, false) as Button;
         Button? eraser = picker.FindChild("PaintEraserButton", true, false) as Button;
         Button? pick = picker.FindChild("PaintEyedropperButton", true, false) as Button;
         Button? pan = picker.FindChild("PaintPanButton", true, false) as Button;
-        if (!GodotObject.IsInstanceValid(brush) || !GodotObject.IsInstanceValid(eraser) ||
+        if (!GodotObject.IsInstanceValid(brush) || !GodotObject.IsInstanceValid(pen) || !GodotObject.IsInstanceValid(eraser) ||
             !GodotObject.IsInstanceValid(pick) || !GodotObject.IsInstanceValid(pan))
             return;
 
@@ -193,13 +193,15 @@ public partial class Win98PaintUxPolishBootstrap : Node
 
         Move(picker, paintHeader, 0);
         Move(picker, brush!, 1);
-        Move(picker, eraser!, 2);
-        Move(picker, separator, 3);
-        Move(picker, inspectHeader, 4);
-        Move(picker, pick!, 5);
-        Move(picker, pan!, 6);
+        Move(picker, pen!, 2);
+        Move(picker, eraser!, 3);
+        Move(picker, separator, 4);
+        Move(picker, inspectHeader, 5);
+        Move(picker, pick!, 6);
+        Move(picker, pan!, 7);
 
         ConfigureToolButton(brush!, "Brush  [B]", "Paint with the selected color. (B)");
+        ConfigureToolButton(pen!, "Pen  [P]", "Paint with a solid pen nib. (P)");
         ConfigureToolButton(eraser!, "Eraser  [E]", "Remove paint from the buddy. (E)");
         ConfigureToolButton(pick!, "Pick Color  [I]", "Sample a painted color from the buddy. (I)");
         ConfigureToolButton(pan!, "Pan View  [H]", "Move the canvas without painting. (H)");
@@ -391,19 +393,7 @@ public partial class Win98PaintUxPolishBootstrap : Node
         if (GodotObject.IsInstanceValid(_newCharacterPanel))
             return;
 
-        _modalBlocker = root.FindChild("Win98NewCharacterModalBlocker", false, false) as Control;
-        if (!GodotObject.IsInstanceValid(_modalBlocker))
-        {
-            _modalBlocker = new ColorRect
-            {
-                Name = "Win98NewCharacterModalBlocker",
-                Color = new Color(0, 0, 0, 0.35f),
-                Visible = false,
-                MouseFilter = Control.MouseFilterEnum.Stop,
-            };
-            _modalBlocker.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-            root.AddChild(_modalBlocker);
-        }
+        _modalBlocker = Win98Dialog.Blocker(root, "Win98NewCharacterModalBlocker");
 
         _newCharacterPanel = root.FindChild("Win98NewCharacterPrompt", false, false) as PanelContainer;
         if (GodotObject.IsInstanceValid(_newCharacterPanel))
@@ -413,39 +403,13 @@ public partial class Win98PaintUxPolishBootstrap : Node
             return;
         }
 
-        _newCharacterPanel = new PanelContainer
-        {
-            Name = "Win98NewCharacterPrompt",
-            Visible = false,
-            ProcessMode = ProcessModeEnum.Always,
-            CustomMinimumSize = new Vector2(430, 230),
-            Theme = Win98ThemeFactory.Create(),
-        };
-        _newCharacterPanel.SetAnchorsPreset(Control.LayoutPreset.Center);
-        _newCharacterPanel.OffsetLeft = -215;
-        _newCharacterPanel.OffsetTop = -115;
-        _newCharacterPanel.OffsetRight = 215;
-        _newCharacterPanel.OffsetBottom = 115;
-        _newCharacterPanel.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 3));
+        _newCharacterPanel = Win98Dialog.Create(
+            "Win98NewCharacterPrompt",
+            "Create New Character",
+            new Vector2(430, 230),
+            out VBoxContainer column,
+            draggable: false);
         root.AddChild(_newCharacterPanel);
-
-        var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 14);
-        margin.AddThemeConstantOverride("margin_top", 10);
-        margin.AddThemeConstantOverride("margin_right", 14);
-        margin.AddThemeConstantOverride("margin_bottom", 14);
-        _newCharacterPanel.AddChild(margin);
-
-        var column = new VBoxContainer();
-        column.AddThemeConstantOverride("separation", 10);
-        margin.AddChild(column);
-
-        var titleBar = new PanelContainer();
-        titleBar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.ActiveTitle));
-        column.AddChild(titleBar);
-        var title = new Label { Text = "Create New Character" };
-        title.AddThemeColorOverride("font_color", Win98ThemeFactory.Light);
-        titleBar.AddChild(title);
 
         _motivation = new Label
         {
@@ -504,6 +468,20 @@ public partial class Win98PaintUxPolishBootstrap : Node
         _newCharacterName.CallDeferred(Control.MethodName.GrabFocus);
     }
 
+    private void RequestNewCharacterPrompt()
+    {
+        if (!GodotObject.IsInstanceValid(_host))
+            return;
+        CharacterEditorActionResult result = _host!.RequestNewCharacterPrompt();
+        if (result.NeedsUnsavedDecision)
+        {
+            _openNewPromptAfterUnsaved = true;
+            return;
+        }
+        if (result.Completed)
+            OpenNewCharacterPrompt();
+    }
+
     private void CloseNewCharacterPrompt()
     {
         if (GodotObject.IsInstanceValid(_newCharacterPanel)) _newCharacterPanel!.Visible = false;
@@ -523,28 +501,18 @@ public partial class Win98PaintUxPolishBootstrap : Node
             return;
         }
 
-        Guid? before = _host!.Session.SelectedCharacterId;
-        CharacterEditorActionResult result = _host.Session.NewCharacter(name);
+        _host.Session.NewCharacter(name);
         CloseNewCharacterPrompt();
-        if (result.NeedsUnsavedDecision)
-        {
-            _pendingNewName = name;
-            _pendingPreviousCharacter = before;
-        }
     }
 
-    private void ResolvePendingNamedCharacter()
+    private void ResolvePendingNewPrompt()
     {
-        if (string.IsNullOrWhiteSpace(_pendingNewName) ||
+        if (!_openNewPromptAfterUnsaved ||
             _host!.Session.PendingAction != CharacterEditorPendingAction.None)
             return;
-
-        CharacterDocument? document = _host.Session.WorkingDocument;
-        if (document is not null && document.Id != _pendingPreviousCharacter &&
-            string.Equals(document.DisplayName, "New Character", StringComparison.Ordinal))
-            _host.Session.Rename(_pendingNewName);
-        _pendingNewName = null;
-        _pendingPreviousCharacter = null;
+        _openNewPromptAfterUnsaved = false;
+        if (!_host.Session.IsDirty)
+            OpenNewCharacterPrompt();
     }
 
     private void CleanLibraryTooltips()
@@ -562,6 +530,18 @@ public partial class Win98PaintUxPolishBootstrap : Node
         // ColorPickerButton paints its color swatch over the whole button *after* the button
         // draws, so Icon/Text are invisible. Overlay the glyph as a child instead.
         picker.Icon = null;
+        if (picker.FindChild("PaintColorWheelGreyFace", false, false) is not PanelContainer face)
+        {
+            face = new PanelContainer
+            {
+                Name = "PaintColorWheelGreyFace",
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            };
+            face.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
+            picker.AddChild(face);
+            face.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        }
+        picker.MoveChild(face, 0);
         if (picker.FindChild("PaintColorWheelIcon", false, false) is null)
         {
             var overlay = new TextureRect
@@ -579,6 +559,8 @@ public partial class Win98PaintUxPolishBootstrap : Node
             overlay.OffsetRight = -5;
             overlay.OffsetBottom = -5;
         }
+        if (picker.FindChild("PaintColorWheelIcon", false, false) is Node icon)
+            picker.MoveChild(icon, picker.GetChildCount() - 1);
         picker.Text = string.Empty;
         picker.TooltipText = "Open the full color picker.";
         picker.ExpandIcon = false;

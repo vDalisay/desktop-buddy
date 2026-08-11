@@ -16,7 +16,7 @@ public partial class Win98CommandBarBootstrap
             return;
         }
 
-        _shopButton.Text = "Catalogue";
+        _shopButton.Text = "Inventory";
         _shopButton.TooltipText = "Buy and equip tools.";
         _shopButton.CustomMinimumSize = new Vector2(84, 22);
         _toolsButton.Visible = false;
@@ -27,6 +27,6 @@ public partial class Win98CommandBarBootstrap
         if (ReferenceEquals(_activeSection, _tools))
             CloseFlyout();
         else if (ReferenceEquals(_activeSection, _shop) && GodotObject.IsInstanceValid(_flyoutTitle))
-            _flyoutTitle.Text = "Catalogue";
+            _flyoutTitle.Text = "Inventory";
     }
 }

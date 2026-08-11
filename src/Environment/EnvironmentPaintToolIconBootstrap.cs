@@ -42,7 +42,7 @@ public partial class EnvironmentPaintToolIconBootstrap : Node
         Apply(spray, PaintToolIconProvider.Spray, "Spray", "Spray: airbrush with the current Brush Size (S).");
         Apply(eraser, PaintToolIconProvider.Eraser, "Eraser", "Eraser: restore the blank background with the current Brush Size (E).");
         Apply(pick, PaintToolIconProvider.PickColor, "Pick", "Pick Color: sample what is rendered under the pointer (I).");
-        Apply(fill, PaintToolIconProvider.Fill, "Fill", "Fill Color: flood the clicked paint region (F).");
+        Apply(fill, PaintToolIconProvider.Fill, "Bucket Fill", "Fill Color: flood the clicked paint region (F).");
         Apply(shapes, PaintToolIconProvider.Shapes, "Shapes", "Shapes: Square, Circle, Straight Line, or Curved Line.");
         Apply(undo, PaintToolIconProvider.Undo, "Undo", "Undo the last background paint action (Ctrl+Z).");
         _applied = true;

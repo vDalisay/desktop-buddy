@@ -1,8 +1,10 @@
 using System;
-using System.Collections.Generic;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Painting;
+using DesktopBuddy.Presentation3D;
 using Godot;
 
 namespace DesktopBuddy.UI.Win98;
@@ -14,7 +16,6 @@ namespace DesktopBuddy.UI.Win98;
 /// </summary>
 public partial class Win98PaintLimbPoseBootstrap : Node
 {
-    private readonly Dictionary<BuddyPartId, Vector3> _homePositions = [];
     private CharacterEditorHost? _host;
     private PaintCanvasControl? _canvas;
     private CheckBox? _toggle;
@@ -82,50 +83,50 @@ public partial class Win98PaintLimbPoseBootstrap : Node
 
         if (enabled)
         {
-            CaptureHomePositions();
             _host.PreviewRig.SetConnectorVisualsVisible(true);
             ApplyPreviewPose();
             return;
         }
 
-        RestoreHomePositions();
+        ApplyPreviewPose();
         _host.PreviewRig.SetConnectorVisualsVisible(leavingPaintEditor);
-        _homePositions.Clear();
-    }
-
-    private void CaptureHomePositions()
-    {
-        if (_homePositions.Count > 0)
-            return;
-        foreach (PaintPart part in Enum.GetValues<PaintPart>())
-        {
-            BuddyPartId buddyPart = ToBuddyPart(part);
-            _homePositions[buddyPart] = _host!.PreviewRig.GetPartSocket(buddyPart).Position;
-        }
     }
 
     private void ApplyPreviewPose()
     {
-        if (_homePositions.Count == 0 || !GodotObject.IsInstanceValid(_host?.PreviewRig))
-            return;
-
-        foreach (PaintPart part in Enum.GetValues<PaintPart>())
-        {
-            BuddyPartId buddyPart = ToBuddyPart(part);
-            if (!_homePositions.TryGetValue(buddyPart, out Vector3 home))
-                continue;
-            PaintPoint offset = PaintCanvasControl.LimbPoseOffsetFor(part);
-            _host!.PreviewRig.GetPartSocket(buddyPart).Position =
-                home + new Vector3((float)offset.X, (float)-offset.Y, 0.0f);
-        }
-    }
-
-    private void RestoreHomePositions()
-    {
         if (!GodotObject.IsInstanceValid(_host?.PreviewRig))
             return;
-        foreach ((BuddyPartId part, Vector3 position) in _homePositions)
-            _host!.PreviewRig.GetPartSocket(part).Position = position;
+
+        BuddyVisualRigView rig = _host!.PreviewRig;
+        BuddyVisualPartPose Pose(PaintPart part)
+        {
+            BuddyPartId buddyPart = ToBuddyPart(part);
+            BuddyVisualTransform home = rig.GeometrySource.ReadTransform(buddyPart);
+            PaintPoint offset = _canvas?.ExpandedLimbPose == true
+                ? PaintCanvasControl.LimbPoseOffsetFor(part)
+                : default;
+            var position = home.Position + new Vector2((float)offset.X, (float)offset.Y);
+            var rendered = home with { Position = position };
+            return new BuddyVisualPartPose(
+                rendered,
+                WorldPlaneMapping.To3D(position),
+                new Vector3(0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(home.Rotation)));
+        }
+
+        Vector3 rotation = rig.Rotation;
+        rig.Rotation = Vector3.Zero;
+        rig.ApplyPose(new BuddyVisualPoseFrame(
+            Pose(PaintPart.Head),
+            Pose(PaintPart.Torso),
+            Pose(PaintPart.LeftHand),
+            Pose(PaintPart.RightHand),
+            Pose(PaintPart.LeftFoot),
+            Pose(PaintPart.RightFoot),
+            0.0f,
+            BuiltInCharacterAppearance.NeutralFaceState,
+            string.Empty,
+            0.0f));
+        rig.Rotation = rotation;
     }
 
     private static BuddyPartId ToBuddyPart(PaintPart part) => part switch

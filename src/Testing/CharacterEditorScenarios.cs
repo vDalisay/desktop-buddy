@@ -140,6 +140,22 @@ public sealed class CharacterEditorStateMachineScenario : IScenario
             checks.Add(new StartupCheck("a8_save_clears_dirty", saveClears,
                 $"saved={saved.Completed} dirty={context.Session.IsDirty}"));
 
+            context.Session.Rename("Unsaved Before New");
+            CharacterEditorActionResult newPrompt = context.Session.RequestNewCharacterPrompt();
+            bool newPromptBlocked = newPrompt.NeedsUnsavedDecision &&
+                context.Session.PendingAction == CharacterEditorPendingAction.NewPrompt;
+            await context.Session.ResolveUnsavedAsync(UnsavedDecision.Cancel);
+            bool newPromptCancel = context.Session.SelectedCharacterId == second && context.Session.IsDirty;
+            context.Session.RequestNewCharacterPrompt();
+            CharacterEditorActionResult newPromptDiscard =
+                await context.Session.ResolveUnsavedAsync(UnsavedDecision.Discard);
+            bool newPromptContinuesWithoutCreating = newPromptDiscard.Completed &&
+                context.Session.SelectedCharacterId == second && !context.Session.IsDirty;
+            checks.Add(new StartupCheck(
+                "a8_new_name_prompt_runs_after_unsaved_resolution",
+                newPromptBlocked && newPromptCancel && newPromptContinuesWithoutCreating,
+                $"blocked={newPromptBlocked} cancel={newPromptCancel} continued={newPromptContinuesWithoutCreating}"));
+
             CharacterEditorActionResult duplicate = context.Session.Duplicate();
             bool freshDuplicate = duplicate.Completed && context.Session.IsDirty &&
                 context.Session.SelectedCharacterId != second;

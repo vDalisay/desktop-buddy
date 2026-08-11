@@ -113,6 +113,7 @@ public static class Win98ThemeFactory
         theme.SetColor("font_color", type, normal);
         theme.SetColor("font_hover_color", type, normal);
         theme.SetColor("font_pressed_color", type, normal);
+        theme.SetColor("font_hover_pressed_color", type, normal);
         theme.SetColor("font_focus_color", type, focus);
     }
 

@@ -14,7 +14,8 @@ public static class Win98Dialog
         string title,
         Vector2 size,
         out VBoxContainer body,
-        Action? onClose = null)
+        Action? onClose = null,
+        bool draggable = true)
     {
         var panel = new PanelContainer
         {
@@ -39,7 +40,8 @@ public static class Win98Dialog
         titleBar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.ActiveTitle));
         column.AddChild(titleBar);
 
-        MakeDraggable(panel, titleBar);
+        if (draggable)
+            MakeDraggable(panel, titleBar);
 
         var titleRow = new HBoxContainer();
         titleBar.AddChild(titleRow);

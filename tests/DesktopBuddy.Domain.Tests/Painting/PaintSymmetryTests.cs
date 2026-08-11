@@ -32,6 +32,43 @@ public sealed class PaintSymmetryTests
     }
 
     [Fact]
+    public void MirrorCrossesFromOneHandToTheOther()
+    {
+        PaintWorkspace workspace = new()
+        {
+            MirrorEnabled = true,
+            SelectedColor = Ink,
+            SelectedTool = PaintTool.Brush,
+        };
+        PaintHit hit = new(PaintPart.LeftHand, new PaintPoint(0.2, 0.5), 0);
+
+        workspace.BeginGesture(hit);
+        workspace.EndGesture();
+
+        Assert.True(workspace.Surfaces[PaintPart.LeftHand].TrySample(hit.Uv, out _));
+        Assert.True(workspace.Surfaces[PaintPart.RightHand].TrySample(
+            new PaintPoint(0.3, 0.5), out _));
+        Assert.True(workspace.Undo());
+        Assert.False(workspace.Surfaces[PaintPart.LeftHand].TrySample(hit.Uv, out _));
+        Assert.False(workspace.Surfaces[PaintPart.RightHand].TrySample(
+            new PaintPoint(0.3, 0.5), out _));
+    }
+
+    [Fact]
+    public void BuddyBrushPaintsSidewaysEllipse()
+    {
+        PaintWorkspace workspace = new() { SelectedColor = Ink };
+        workspace.SetBrushDiameter(24);
+
+        workspace.BeginGesture(new PaintHit(PaintPart.Head, new PaintPoint(0.5, 0.5), 0));
+        workspace.EndGesture();
+
+        PaintSurface head = workspace.Surfaces[PaintPart.Head];
+        Assert.True(head.TrySample(new PaintPoint(0.5 + (10.0 / 511.0), 0.5), out _));
+        Assert.False(head.TrySample(new PaintPoint(0.5, 0.5 + (10.0 / 511.0)), out _));
+    }
+
+    [Fact]
     public void BacksidePaintsHalfCircumferenceAway()
     {
         PaintWorkspace workspace = new()
@@ -75,6 +112,49 @@ public sealed class PaintSymmetryTests
         Assert.True(workspace.Undo());
         Assert.Equal(before, surface.ComputeHash());
         Assert.False(workspace.CanUndo);
+    }
+
+    [Fact]
+    public void MirroredBucketFillMutatesBothHandsAsOneCommand()
+    {
+        PaintWorkspace workspace = new()
+        {
+            MirrorEnabled = true,
+            SelectedColor = Ink,
+            SelectedTool = PaintTool.Fill,
+        };
+
+        Assert.True(workspace.BucketFill(
+            new PaintHit(PaintPart.LeftHand, new PaintPoint(0.2, 0.5), 0)));
+        Assert.True(workspace.Surfaces[PaintPart.LeftHand].TrySample(new PaintPoint(0.2, 0.5), out _));
+        Assert.True(workspace.Surfaces[PaintPart.RightHand].TrySample(new PaintPoint(0.3, 0.5), out _));
+        Assert.True(workspace.Undo());
+        Assert.False(workspace.Surfaces[PaintPart.LeftHand].TrySample(new PaintPoint(0.2, 0.5), out _));
+        Assert.False(workspace.Surfaces[PaintPart.RightHand].TrySample(new PaintPoint(0.3, 0.5), out _));
+    }
+
+    [Fact]
+    public void ConnectorPaintStaysOutOfTheEndPartAtlasLaneAndMirrorsToTheOppositeConnector()
+    {
+        PaintWorkspace workspace = new()
+        {
+            MirrorEnabled = true,
+            SelectedColor = Ink,
+            SelectedTool = PaintTool.Brush,
+        };
+        PaintHit connector = new(
+            PaintPart.RightHand,
+            new PaintPoint(0.6, 0.5),
+            0,
+            IsConnector: true);
+
+        workspace.BeginGesture(connector);
+        workspace.EndGesture();
+
+        Assert.True(workspace.Surfaces[PaintPart.RightHand].TrySample(connector.Uv, out _));
+        Assert.False(workspace.Surfaces[PaintPart.RightHand].TrySample(new PaintPoint(0.1, 0.5), out _));
+        Assert.True(workspace.Surfaces[PaintPart.LeftHand].TrySample(new PaintPoint(0.9, 0.5), out _));
+        Assert.False(workspace.Surfaces[PaintPart.LeftHand].TrySample(new PaintPoint(0.4, 0.5), out _));
     }
 
     [Fact]

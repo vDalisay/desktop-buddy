@@ -93,15 +93,25 @@ public sealed class PaintUndoHistory
 
 public sealed class PaintWorkspace
 {
+    public const double BrushVerticalScale = 0.5;
     private sealed class GesturePatchBuilder
     {
+        private const int GrowthBlock = 32;
         public PaintRect Rectangle { get; private set; }
         public byte[] Before { get; private set; } = Array.Empty<byte>();
 
         public void Expand(PaintSurface surface, PaintRect candidate)
         {
             if (candidate.IsEmpty) return;
-            PaintRect union = PaintRect.Union(Rectangle, candidate);
+            int x = Math.Max(0, candidate.X / GrowthBlock * GrowthBlock);
+            int y = Math.Max(0, candidate.Y / GrowthBlock * GrowthBlock);
+            int right = Math.Min(
+                PaintPolicy.SurfaceSize,
+                (candidate.X + candidate.Width + GrowthBlock - 1) / GrowthBlock * GrowthBlock);
+            int bottom = Math.Min(
+                PaintPolicy.SurfaceSize,
+                (candidate.Y + candidate.Height + GrowthBlock - 1) / GrowthBlock * GrowthBlock);
+            PaintRect union = PaintRect.Union(Rectangle, new PaintRect(x, y, right - x, bottom - y));
             if (union == Rectangle) return;
 
             byte[] expanded = surface.Capture(union);
@@ -222,17 +232,31 @@ public sealed class PaintWorkspace
         if (hit is not PaintHit valid || !valid.IsValid)
             return false;
 
-        PaintSurface surface = _surfaces[valid.Part];
-        byte[] before = surface.ClonePixels();
-        byte[] after = (byte[])before.Clone();
-        bool changed = false;
-        ApplyToVariants(valid, variant => changed |= FloodFillPixels(after, variant.Uv, SelectedColor));
-        if (!changed)
-            return false;
+        var beforeByPart = new Dictionary<PaintPart, byte[]>();
+        var afterByPart = new Dictionary<PaintPart, byte[]>();
+        ApplyToVariants(valid, variant =>
+        {
+            if (!afterByPart.TryGetValue(variant.Part, out byte[]? after))
+            {
+                byte[] before = _surfaces[variant.Part].ClonePixels();
+                beforeByPart.Add(variant.Part, before);
+                after = (byte[])before.Clone();
+                afterByPart.Add(variant.Part, after);
+            }
+            FloodFillPixels(after, variant.Uv, SelectedColor, PaintUvRegion.For(variant));
+        });
 
-        surface.Replace(after);
         PaintRect whole = new(0, 0, PaintPolicy.SurfaceSize, PaintPolicy.SurfaceSize);
-        _history.Push(new PaintCommand(new[] { new PaintPatch(valid.Part, whole, before, after) }));
+        var patches = new List<PaintPatch>();
+        foreach ((PaintPart part, byte[] after) in afterByPart)
+        {
+            byte[] before = beforeByPart[part];
+            if (before.AsSpan().SequenceEqual(after)) continue;
+            _surfaces[part].Replace(after);
+            patches.Add(new PaintPatch(part, whole, before, after));
+        }
+        if (patches.Count == 0) return false;
+        _history.Push(new PaintCommand(patches));
         IsDirty = true;
         return true;
     }
@@ -263,7 +287,7 @@ public sealed class PaintWorkspace
             return;
         }
 
-        PaintTool mutation = _selectedTool == PaintTool.Eraser ? PaintTool.Eraser : PaintTool.Brush;
+        PaintTool mutation = GestureMutation();
         ApplyToVariants(valid, variant => StampVariant(variant, mutation, _gestureBefore));
     }
 
@@ -280,12 +304,12 @@ public sealed class PaintWorkspace
             return;
         }
 
-        PaintTool mutation = _selectedTool == PaintTool.Eraser ? PaintTool.Eraser : PaintTool.Brush;
+        PaintTool mutation = GestureMutation();
         if (_lastHit is PaintHit previous)
         {
             ApplyToVariantPairs(previous, current, (prior, next) =>
             {
-                if (prior.Part == next.Part && IsBridgeable(prior.Uv, next.Uv))
+                if (SameLane(prior, next) && IsBridgeable(prior.Uv, next.Uv, PaintUvRegion.For(prior)))
                     StrokeVariant(prior, next, mutation, _gestureBefore);
                 else
                     StampVariant(next, mutation, _gestureBefore);
@@ -296,6 +320,41 @@ public sealed class PaintWorkspace
             ApplyToVariants(current, variant => StampVariant(variant, mutation, _gestureBefore));
         }
         _lastHit = current;
+    }
+
+    public void StampPenDab(IReadOnlyList<PaintHit> hits)
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+        if (!_gestureActive || _selectedTool != PaintTool.Pen || hits.Count == 0)
+            return;
+
+        var samples = new List<PaintHit>(hits.Count);
+        foreach (PaintHit hit in hits)
+        {
+            if (hit.IsValid)
+                ApplyToVariants(hit, samples.Add);
+        }
+
+        var boundsByPart = new Dictionary<PaintPart, PaintRect>();
+        foreach (PaintHit sample in samples)
+        {
+            PaintRect bounds = PaintSurface.StampBounds(
+                sample.Uv,
+                PaintPolicy.MinBrushDiameter,
+                region: PaintUvRegion.For(sample));
+            boundsByPart[sample.Part] = boundsByPart.TryGetValue(sample.Part, out PaintRect prior)
+                ? PaintRect.Union(prior, bounds)
+                : bounds;
+        }
+        foreach ((PaintPart part, PaintRect bounds) in boundsByPart)
+            CaptureBefore(_gestureBefore, part, bounds);
+        foreach (PaintHit sample in samples)
+            _surfaces[sample.Part].Stamp(
+                sample.Uv,
+                PaintPolicy.MinBrushDiameter,
+                PaintTool.Pen,
+                SelectedColor,
+                region: PaintUvRegion.For(sample));
     }
 
     public void EndGesture()
@@ -341,7 +400,8 @@ public sealed class PaintWorkspace
             }
 
             PaintHit current = TransformHit(source, mirror, backside);
-            if (previous is PaintHit prior && prior.Part == current.Part && IsBridgeable(prior.Uv, current.Uv))
+            if (previous is PaintHit prior && SameLane(prior, current) &&
+                IsBridgeable(prior.Uv, current.Uv, PaintUvRegion.For(prior)))
                 StrokeVariant(prior, current, PaintTool.Brush, _previewBefore);
             else
                 StampVariant(current, PaintTool.Brush, _previewBefore);
@@ -373,9 +433,11 @@ public sealed class PaintWorkspace
         ulong seed = _sprayGestureSeed + (_sprayPulseOrdinal++ * 0x9E3779B97F4A7C15UL);
         ApplyToVariants(hit, variant =>
         {
-            PaintRect bounds = PaintSurface.StampBounds(variant.Uv, BrushDiameter);
+            const double aspect = BrushVerticalScale;
+            PaintUvRegion region = PaintUvRegion.For(variant);
+            PaintRect bounds = PaintSurface.StampBounds(variant.Uv, BrushDiameter, aspect, region);
             CaptureBefore(_gestureBefore, variant.Part, bounds);
-            _surfaces[variant.Part].Spray(variant.Uv, BrushDiameter, SelectedColor, seed);
+            _surfaces[variant.Part].Spray(variant.Uv, BrushDiameter, SelectedColor, seed, aspect, region);
         });
     }
 
@@ -384,8 +446,10 @@ public sealed class PaintWorkspace
         PaintTool mutation,
         Dictionary<PaintPart, GesturePatchBuilder> builders)
     {
-        CaptureBefore(builders, hit.Part, PaintSurface.StampBounds(hit.Uv, BrushDiameter));
-        _surfaces[hit.Part].Stamp(hit.Uv, BrushDiameter, mutation, SelectedColor);
+        double aspect = mutation == PaintTool.Pen ? 1.0 : BrushVerticalScale;
+        PaintUvRegion region = PaintUvRegion.For(hit);
+        CaptureBefore(builders, hit.Part, PaintSurface.StampBounds(hit.Uv, BrushDiameter, aspect, region));
+        _surfaces[hit.Part].Stamp(hit.Uv, BrushDiameter, mutation, SelectedColor, aspect, region);
     }
 
     private void StrokeVariant(
@@ -394,8 +458,10 @@ public sealed class PaintWorkspace
         PaintTool mutation,
         Dictionary<PaintPart, GesturePatchBuilder> builders)
     {
-        CaptureBefore(builders, to.Part, PaintSurface.StrokeBounds(from.Uv, to.Uv, BrushDiameter));
-        _surfaces[to.Part].Stroke(from.Uv, to.Uv, BrushDiameter, mutation, SelectedColor);
+        double aspect = mutation == PaintTool.Pen ? 1.0 : BrushVerticalScale;
+        PaintUvRegion region = PaintUvRegion.For(to);
+        CaptureBefore(builders, to.Part, PaintSurface.StrokeBounds(from.Uv, to.Uv, BrushDiameter, aspect, region));
+        _surfaces[to.Part].Stroke(from.Uv, to.Uv, BrushDiameter, mutation, SelectedColor, aspect, region);
     }
 
     private void ApplyToVariants(PaintHit hit, Action<PaintHit> action)
@@ -408,6 +474,13 @@ public sealed class PaintWorkspace
         if (_mirrorEnabled && _paintBacksideEnabled)
             action(TransformHit(hit, mirror: true, backside: true));
     }
+
+    private PaintTool GestureMutation() => _selectedTool switch
+    {
+        PaintTool.Eraser => PaintTool.Eraser,
+        PaintTool.Pen => PaintTool.Pen,
+        _ => PaintTool.Brush,
+    };
 
     private void ApplyToVariantPairs(PaintHit from, PaintHit to, Action<PaintHit, PaintHit> action)
     {
@@ -422,11 +495,26 @@ public sealed class PaintWorkspace
 
     private static PaintHit TransformHit(PaintHit source, bool mirror, bool backside)
     {
-        double u = source.Uv.X;
+        PaintPart part = source.Part;
+        PaintUvRegion region = PaintUvRegion.For(source);
+        double u = region.LocalU(source.Uv.X);
         if (backside) u = WrapUnit(u + 0.5);
-        if (mirror) u = WrapUnit(1.0 - u);
-        return source with { Uv = new PaintPoint(u, source.Uv.Y) };
+        if (mirror)
+        {
+            part = MirroredPart(part);
+            u = WrapUnit(1.0 - u);
+        }
+        return source with { Part = part, Uv = new PaintPoint(region.AtlasU(u), source.Uv.Y) };
     }
+
+    private static PaintPart MirroredPart(PaintPart part) => part switch
+    {
+        PaintPart.LeftHand => PaintPart.RightHand,
+        PaintPart.RightHand => PaintPart.LeftHand,
+        PaintPart.LeftFoot => PaintPart.RightFoot,
+        PaintPart.RightFoot => PaintPart.LeftFoot,
+        _ => part,
+    };
 
     private static double WrapUnit(double value)
     {
@@ -434,10 +522,14 @@ public sealed class PaintWorkspace
         return wrapped >= 1.0 ? 0.0 : wrapped;
     }
 
-    private static bool IsBridgeable(PaintPoint from, PaintPoint to)
+    private static bool SameLane(PaintHit from, PaintHit to) =>
+        from.Part == to.Part && from.IsConnector == to.IsConnector;
+
+    private static bool IsBridgeable(PaintPoint from, PaintPoint to, PaintUvRegion region)
     {
         double dx = Math.Abs(to.X - from.X);
-        if (dx > 0.5) dx = 1.0 - dx;
+        if (dx > region.Width * 0.5) dx = region.Width - dx;
+        dx /= region.Width;
         double dy = to.Y - from.Y;
         return Math.Sqrt((dx * dx) + (dy * dy)) <= MaxBridgeUvDistance;
     }
@@ -548,13 +640,18 @@ public sealed class PaintWorkspace
         builder.Expand(_surfaces[part], rectangle);
     }
 
-    private static bool FloodFillPixels(byte[] pixels, PaintPoint uv, PaintColor replacement)
+    private static bool FloodFillPixels(
+        byte[] pixels,
+        PaintPoint uv,
+        PaintColor replacement,
+        PaintUvRegion region)
     {
         if (!uv.IsFinite || uv.X < 0.0 || uv.X > 1.0 || uv.Y < 0.0 || uv.Y > 1.0)
             return false;
 
         int size = PaintPolicy.SurfaceSize;
-        int startX = Math.Clamp((int)Math.Round(uv.X * (size - 1)), 0, size - 1);
+        int startX = Math.Clamp((int)Math.Round(region.PixelX(uv.X)),
+            region.StartPixel, region.StartPixel + region.PixelWidth - 1);
         int startY = Math.Clamp((int)Math.Round(uv.Y * (size - 1)), 0, size - 1);
         int startIndex = ((startY * size) + startX) * PaintPolicy.BytesPerPixel;
         byte targetR = pixels[startIndex];
@@ -582,7 +679,7 @@ public sealed class PaintWorkspace
         {
             if (y < 0 || y >= size)
                 return;
-            int wrappedX = ((x % size) + size) % size;
+            int wrappedX = region.WrapPixelX(x);
             int index = ((y * size) + wrappedX) * PaintPolicy.BytesPerPixel;
             if (!MatchesTarget(index))
                 return;

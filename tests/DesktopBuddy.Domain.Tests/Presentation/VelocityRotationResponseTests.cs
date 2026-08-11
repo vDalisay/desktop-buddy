@@ -11,20 +11,20 @@ public sealed class VelocityRotationResponseTests
         float scale = VelocityRotationResponse.Scale(
             speed: 20.0f,
             deadband: 4.0f,
-            ordinaryScale: 0.28f,
-            fullResponseSpeed: 180.0f);
+            ordinaryScale: 0.08f,
+            fullResponseSpeed: 720.0f);
 
-        Assert.InRange(scale, 0.28f, 0.30f);
+        Assert.InRange(scale, 0.08f, 0.09f);
     }
 
     [Fact]
     public void High_speed_restores_full_rotation()
     {
         float scale = VelocityRotationResponse.Scale(
-            speed: 180.0f,
+            speed: 720.0f,
             deadband: 4.0f,
-            ordinaryScale: 0.28f,
-            fullResponseSpeed: 180.0f);
+            ordinaryScale: 0.08f,
+            fullResponseSpeed: 720.0f);
 
         Assert.Equal(1.0f, scale, 5);
     }
@@ -33,9 +33,9 @@ public sealed class VelocityRotationResponseTests
     public void Response_is_monotonic_between_walk_and_impact_speeds()
     {
         float previous = 0.0f;
-        for (int speed = 0; speed <= 220; speed += 10)
+        for (int speed = 0; speed <= 800; speed += 20)
         {
-            float current = VelocityRotationResponse.Scale(speed, 4.0f, 0.28f, 180.0f);
+            float current = VelocityRotationResponse.Scale(speed, 4.0f, 0.08f, 720.0f);
             Assert.True(current >= previous);
             previous = current;
         }

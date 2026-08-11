@@ -17,7 +17,9 @@ public readonly record struct Win98CatalogItemPresentation(
     Texture2D? Preview = null,
     bool Selectable = true,
     string Tooltip = "",
-    string BadgeText = "");
+    string BadgeText = "",
+    bool Accented = false,
+    Color? SecondaryColor = null);
 
 /// <summary>
 /// Shared responsive visual catalogue for Buddy Studio and Environment customization. It owns
@@ -26,6 +28,7 @@ public readonly record struct Win98CatalogItemPresentation(
 /// </summary>
 public partial class Win98CatalogGrid : ScrollContainer
 {
+    private readonly ButtonGroup _selectionGroup = new() { AllowUnpress = false };
     public const float DefaultTileWidth = 132f;
     public const float DefaultTileHeight = 154f;
     private const float Gap = 6f;
@@ -39,8 +42,16 @@ public partial class Win98CatalogGrid : ScrollContainer
     private float _tileHeight = DefaultTileHeight;
 
     public event Action<string>? SelectionChanged;
+    public event Action<string>? ItemActivated;
 
     public string? SelectedId => _selectedId;
+
+    public bool IsAccented(string id) =>
+        _tiles.TryGetValue(id, out TileParts? parts) &&
+        new[] { "normal", "hover", "pressed", "hover_pressed", "focus" }.All(
+            state => parts.Button.HasThemeStyleboxOverride(state)) &&
+        parts.Button.GetThemeStylebox("normal") is StyleBoxFlat border &&
+        border.BorderColor == Win98ThemeFactory.ActiveTitle;
 
     public override void _Ready()
     {
@@ -98,6 +109,13 @@ public partial class Win98CatalogGrid : ScrollContainer
         parts.Button.GrabFocus();
         if (notify)
             SelectionChanged?.Invoke(id);
+        return true;
+    }
+
+    public bool Activate(string id)
+    {
+        if (!Select(id)) return false;
+        ItemActivated?.Invoke(id);
         return true;
     }
 
@@ -166,6 +184,7 @@ public partial class Win98CatalogGrid : ScrollContainer
         {
             Name = $"Catalog_{Sanitize(item.Id)}",
             ToggleMode = true,
+            ButtonGroup = _selectionGroup,
             FocusMode = FocusModeEnum.All,
             CustomMinimumSize = new Vector2(_tileWidth, _tileHeight),
             TooltipText = item.Tooltip,
@@ -174,6 +193,7 @@ public partial class Win98CatalogGrid : ScrollContainer
         };
         button.Pressed += () => Select(item.Id);
         button.GuiInput += input => OnTileInput(index, input);
+        ApplyAccent(button, item.Accented);
 
         var margin = new MarginContainer { MouseFilter = MouseFilterEnum.Ignore };
         margin.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
@@ -225,6 +245,7 @@ public partial class Win98CatalogGrid : ScrollContainer
             MouseFilter = MouseFilterEnum.Ignore,
         };
         secondary.AddThemeFontSizeOverride("font_size", 12);
+        ApplySecondaryColor(secondary, item.SecondaryColor);
         footer.AddChild(secondary);
         var badge = new Label
         {
@@ -245,8 +266,10 @@ public partial class Win98CatalogGrid : ScrollContainer
         parts.Preview.Texture = item.Preview;
         parts.Name.Text = item.DisplayName;
         parts.Secondary.Text = item.SecondaryText;
+        ApplySecondaryColor(parts.Secondary, item.SecondaryColor);
         parts.Badge.Text = item.BadgeText;
         parts.Badge.Visible = !string.IsNullOrWhiteSpace(item.BadgeText);
+        ApplyAccent(parts.Button, item.Accented);
     }
 
     private void UpdateColumns()
@@ -258,6 +281,18 @@ public partial class Win98CatalogGrid : ScrollContainer
 
     private void OnTileInput(int index, InputEvent input)
     {
+        if (input is InputEventMouseButton
+            {
+                ButtonIndex: MouseButton.Left,
+                Pressed: true,
+                DoubleClick: true,
+            })
+        {
+            Activate(_items[index].Id);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (input is not InputEventKey { Pressed: true, Echo: false } key)
             return;
 
@@ -298,6 +333,39 @@ public partial class Win98CatalogGrid : ScrollContainer
     {
         char[] chars = id.Select(character => char.IsLetterOrDigit(character) ? character : '_').ToArray();
         return new string(chars);
+    }
+
+    private static void ApplyAccent(Button button, bool accented)
+    {
+        if (!accented)
+        {
+            button.RemoveThemeStyleboxOverride("normal");
+            button.RemoveThemeStyleboxOverride("hover");
+            button.RemoveThemeStyleboxOverride("pressed");
+            button.RemoveThemeStyleboxOverride("hover_pressed");
+            button.RemoveThemeStyleboxOverride("focus");
+            return;
+        }
+
+        var border = new StyleBoxFlat
+        {
+            BgColor = Win98ThemeFactory.Face,
+            BorderColor = Win98ThemeFactory.ActiveTitle,
+        };
+        border.SetBorderWidthAll(4);
+        button.AddThemeStyleboxOverride("normal", border);
+        button.AddThemeStyleboxOverride("hover", (StyleBoxFlat)border.Duplicate());
+        button.AddThemeStyleboxOverride("pressed", (StyleBoxFlat)border.Duplicate());
+        button.AddThemeStyleboxOverride("hover_pressed", (StyleBoxFlat)border.Duplicate());
+        button.AddThemeStyleboxOverride("focus", (StyleBoxFlat)border.Duplicate());
+    }
+
+    private static void ApplySecondaryColor(Label label, Color? color)
+    {
+        if (color is Color value)
+            label.AddThemeColorOverride("font_color", value);
+        else
+            label.RemoveThemeColorOverride("font_color");
     }
 
     private sealed record TileParts(

@@ -93,6 +93,7 @@ public partial class Win98PaintStatusBootstrap : Node
                 : workspace.SelectedTool switch
                 {
                     PaintTool.Brush => "Brush",
+                    PaintTool.Pen => "Pen",
                     PaintTool.Spray => "Spray",
                     PaintTool.Curve => "Curve",
                     PaintTool.Eraser => "Eraser",

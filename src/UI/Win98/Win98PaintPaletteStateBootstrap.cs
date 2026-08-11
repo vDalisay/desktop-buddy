@@ -14,6 +14,7 @@ public partial class Win98PaintPaletteStateBootstrap : Node
     private readonly Dictionary<Button, PaintColor> _swatches = new();
     private PaintCanvasControl? _canvas;
     private GridContainer? _palette;
+    private ColorRect? _currentColor;
     private double _refreshRemaining;
     private int _lastChildCount = -1;
 
@@ -28,6 +29,7 @@ public partial class Win98PaintPaletteStateBootstrap : Node
 
         _canvas ??= GetTree().Root.FindChild("CharacterPaintCanvas", true, false) as PaintCanvasControl;
         _palette ??= GetTree().Root.FindChild("PaintPresetPaletteGrid", true, false) as GridContainer;
+        _currentColor ??= GetTree().Root.FindChild("PaintCurrentColor", true, false) as ColorRect;
         if (!GodotObject.IsInstanceValid(_canvas) || !GodotObject.IsInstanceValid(_palette))
             return;
 
@@ -35,6 +37,8 @@ public partial class Win98PaintPaletteStateBootstrap : Node
             RebuildSwatches();
 
         PaintColor selected = _canvas!.Workspace.SelectedColor;
+        if (GodotObject.IsInstanceValid(_currentColor))
+            _currentColor!.Color = new Color(selected.R / 255f, selected.G / 255f, selected.B / 255f, 1f);
         // Colors are re-read from the tooltip every pass so re-coloured swatches (palette
         // editing) keep the selection marker on the right block.
         foreach (Button button in _swatches.Keys)

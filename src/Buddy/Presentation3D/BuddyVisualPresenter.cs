@@ -12,9 +12,9 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 [GlobalClass]
 public partial class BuddyVisualPresenter : Node3D
 {
-    private const float OrdinaryVelocityRotationScale = 0.28f;
-    private const float FullVelocityRotationResponseSpeed = 180.0f;
-    private const float LowVelocityReturnSmoothing = 8.0f;
+    private const float OrdinaryVelocityRotationScale = 0.08f;
+    private const float FullVelocityRotationResponseSpeed = 720.0f;
+    private const float LowVelocityReturnSmoothing = 12.0f;
 
     private readonly BuddyVisualTransform[] _previous =
         new BuddyVisualTransform[PuppetRigProfile.RequiredPartCount];

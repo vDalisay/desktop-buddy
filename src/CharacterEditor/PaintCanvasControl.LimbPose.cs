@@ -6,6 +6,7 @@ namespace DesktopBuddy.CharacterEditor;
 
 public partial class PaintCanvasControl
 {
+    private const double LimbConnectorRadius = 7.0;
     private PaintPoint[]? _limbPoseOriginalCenters;
 
     /// <summary>
@@ -62,5 +63,93 @@ public partial class PaintCanvasControl
         for (int index = 0; index < shapes.Length; index++)
             centers[index] = shapes[index].Center;
         return centers;
+    }
+
+    private bool TryMapExpandedConnector(PaintPoint point, double yaw, out PaintHit hit)
+    {
+        PaintPartShape torso = default;
+        bool hasTorso = false;
+        foreach (PaintPartShape shape in _mapper.Shapes)
+        {
+            if (shape.Part != PaintPart.Torso) continue;
+            torso = shape;
+            hasTorso = true;
+            break;
+        }
+
+        double cos = Math.Cos(yaw);
+        PaintPoint projectedTorso = new(torso.Center.X * cos, torso.Center.Y);
+        if (hasTorso)
+        {
+            foreach (PaintPartShape limb in _mapper.Shapes)
+            {
+                if (limb.Part is not (PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot) ||
+                    !IsPartVisible(limb.Part))
+                    continue;
+
+                PaintPoint projectedLimb = new(limb.Center.X * cos, limb.Center.Y);
+                PaintPoint direction = projectedLimb - projectedTorso;
+                double separation = direction.Length;
+                if (separation <= torso.Radius + limb.Radius) continue;
+                direction *= 1.0 / separation;
+                PaintPoint start = projectedTorso + direction * torso.Radius;
+                PaintPoint end = projectedLimb - direction * limb.Radius;
+                PaintPoint segment = end - start;
+                double lengthSquared = (segment.X * segment.X) + (segment.Y * segment.Y);
+                if (lengthSquared <= 0.000001) continue;
+                PaintPoint relative = point - start;
+                double t = Math.Clamp(((relative.X * segment.X) + (relative.Y * segment.Y)) / lengthSquared, 0.0, 1.0);
+                PaintPoint closest = start + segment * t;
+                PaintPoint offset = point - closest;
+                double distance = offset.Length;
+                if (distance > LimbConnectorRadius) continue;
+
+                double signedDistance = ((segment.X * offset.Y) - (segment.Y * offset.X)) /
+                    Math.Sqrt(lengthSquared);
+                double u = Wrap(Math.Asin(Math.Clamp(signedDistance / LimbConnectorRadius, -1.0, 1.0)) / Tau);
+                hit = new PaintHit(
+                    limb.Part,
+                    PaintUvRegion.LimbConnector.MapLocal(new PaintPoint(u, 1.0 - t)),
+                    -100.0,
+                    IsConnector: true);
+                return true;
+            }
+        }
+
+        hit = default;
+        return false;
+    }
+
+    private bool TryGetExpandedConnectorAxis(PaintPart part, double yaw, out PaintPoint start, out PaintPoint end)
+    {
+        PaintPartShape torso = default;
+        PaintPartShape limb = default;
+        bool foundTorso = false;
+        bool foundLimb = false;
+        foreach (PaintPartShape shape in _mapper.Shapes)
+        {
+            if (shape.Part == PaintPart.Torso) { torso = shape; foundTorso = true; }
+            if (shape.Part == part) { limb = shape; foundLimb = true; }
+        }
+        if (!foundTorso || !foundLimb)
+        {
+            start = end = default;
+            return false;
+        }
+
+        double cos = Math.Cos(yaw);
+        PaintPoint projectedTorso = new(torso.Center.X * cos, torso.Center.Y);
+        PaintPoint projectedLimb = new(limb.Center.X * cos, limb.Center.Y);
+        PaintPoint direction = projectedLimb - projectedTorso;
+        double separation = direction.Length;
+        if (separation <= torso.Radius + limb.Radius)
+        {
+            start = end = default;
+            return false;
+        }
+        direction *= 1.0 / separation;
+        start = projectedTorso + direction * torso.Radius;
+        end = projectedLimb - direction * limb.Radius;
+        return true;
     }
 }

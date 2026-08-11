@@ -74,6 +74,13 @@ public partial class CharacterEditorHost : CanvasLayer
     public Button UseButton { get; private set; } = null!;
     public Button CloseButton { get; private set; } = null!;
 
+    public CharacterEditorActionResult RequestNewCharacterPrompt()
+    {
+        CharacterEditorActionResult result = _session.RequestNewCharacterPrompt();
+        Handle(result);
+        return result;
+    }
+
     public void Configure(
         SandboxRoot sandbox,
         RunContext context,

@@ -67,7 +67,9 @@ internal static class BuddyStudioThumbnailCache
         switch (id)
         {
             case CharacterFeatureIds.FaceClassicPlate:
-                // The plate itself is the trusted base preview.
+                Circle(image, 38, 34, 4, ink);
+                Circle(image, 58, 34, 4, ink);
+                Arc(image, 48, 44, 9, 5, 15, 165, ink, 2);
                 break;
 
             case CharacterFeatureIds.HairNone:

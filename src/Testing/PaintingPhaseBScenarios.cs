@@ -153,10 +153,8 @@ public sealed class PaintStrokeAndEraserScenario : IScenario
     {
         var checks = new List<StartupCheck>();
         var workspace = new PaintWorkspace();
-        // Kept inside half the texture width: u is cyclic, so a wider span would correctly
-        // wrap the short way round the seam instead of crossing the middle.
-        PaintHit a = new(PaintPart.Head, new PaintPoint(0.35, 0.5), 0);
-        PaintHit b = new(PaintPart.Head, new PaintPoint(0.65, 0.5), 0);
+        PaintHit a = new(PaintPart.Head, new PaintPoint(0.45, 0.5), 0);
+        PaintHit b = new(PaintPart.Head, new PaintPoint(0.55, 0.5), 0);
         string blank = workspace.Surfaces[PaintPart.Head].ComputeHash();
         workspace.BeginGesture(a); workspace.ContinueGesture(b); workspace.EndGesture();
         string painted = workspace.Surfaces[PaintPart.Head].ComputeHash();

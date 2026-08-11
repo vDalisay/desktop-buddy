@@ -31,6 +31,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private readonly Dictionary<EnvironmentPaintTool, Button> _toolButtons = [];
     private Control _blocker = null!;
     private PanelContainer _panel = null!;
+    private Win98PinnablePanel _panelPin = null!;
+    private PanelContainer _palettePanel = null!;
     private GridContainer _swatchGrid = null!;
     private ColorRect _current = null!;
     private ColorPickerButton _picker = null!;
@@ -156,9 +158,12 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _cursor = new EnvironmentPaintCursor { Name = "EnvironmentPaintCursor", MouseFilter = Control.MouseFilterEnum.Ignore };
         _blocker.AddChild(_cursor);
 
-        _panel = Win98Dialog.Create("PaintBackgroundPanel", "Paint Background", new Vector2(520, 380), out VBoxContainer body, RequestClose);
+        _panel = Win98Dialog.Create("PaintBackgroundPanel", "Paint Background", new Vector2(520, 500), out VBoxContainer body, RequestClose, draggable: false);
         _blocker.AddChild(_panel);
         _panel.Visible = true;
+        _panelPin = new Win98PinnablePanel { Name = "PaintBackgroundPinController" };
+        AddChild(_panelPin);
+        _panelPin.Configure(_panel, new Vector2I(560, 600), "PaintBackgroundWindow");
 
         body.AddChild(new Label { Text = "Tools" });
         var grid = new GridContainer { Name = "PaintToolGrid", Columns = 4 };
@@ -202,9 +207,11 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         size.AddChild(SizeButton("+", 1));
         body.AddChild(size);
 
+        _palettePanel = new PanelContainer { Name = "PaintBackgroundPalettePanel" };
+        body.AddChild(_palettePanel);
         var inset = new PanelContainer { Name = "PaintPalette" };
         inset.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 2));
-        body.AddChild(inset);
+        _palettePanel.AddChild(inset);
         var paletteMargin = new MarginContainer();
         foreach (string side in new[] { "margin_left", "margin_right", "margin_top", "margin_bottom" })
             paletteMargin.AddThemeConstantOverride(side, 8);
@@ -212,7 +219,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         var paletteRow = new HBoxContainer();
         paletteRow.AddThemeConstantOverride("separation", 8);
         paletteMargin.AddChild(paletteRow);
-        _current = new ColorRect { Name = "PaintCurrentColor", CustomMinimumSize = new Vector2(48, 40) };
+        _current = new ColorRect { Name = "PaintBackgroundCurrentColor", CustomMinimumSize = new Vector2(48, 40) };
         paletteRow.AddChild(_current);
         _swatchGrid = new GridContainer { Name = "PaintSwatches", Columns = 8 };
         paletteRow.AddChild(_swatchGrid);
@@ -245,7 +252,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _confirm = Win98Dialog.Create("BackgroundUnsavedDialog", "Unsaved Background", new Vector2(360, 170), out VBoxContainer confirmBody);
         _blocker.AddChild(_confirm);
         confirmBody.AddChild(new Label { Text = "Save the painted background before closing?", AutowrapMode = TextServer.AutowrapMode.WordSmart });
-        var confirmActions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        confirmBody.AddChild(new Control { Name = "BackgroundUnsavedSpacer", SizeFlagsVertical = Control.SizeFlags.ExpandFill });
+        var confirmActions = new HBoxContainer { Name = "BackgroundUnsavedActions", Alignment = BoxContainer.AlignmentMode.End };
         confirmBody.AddChild(confirmActions);
         Win98Dialog.Action(confirmActions, "Save and Exit", Save).Name = "PaintConfirmSaveButton";
         Win98Dialog.Action(confirmActions, "Discard", Discard).Name = "PaintDiscardButton";
@@ -393,6 +401,13 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     private void OnCanvasInput(InputEvent input)
     {
+        if (input is InputEventMouse mouse)
+        {
+            if (_confirm.Visible && _confirm.GetGlobalRect().HasPoint(mouse.GlobalPosition))
+                return;
+            if (_panel.Visible && _panel.GetGlobalRect().HasPoint(mouse.GlobalPosition))
+                return;
+        }
         if (_confirm.Visible)
         {
             _blocker.AcceptEvent();
@@ -564,7 +579,12 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private void UpdateCursor(Vector2 position)
     {
         _cursor.Position = position;
-        _cursor.Diameter = Canvas.BrushDiameter * BackgroundRect().Size.X / EnvironmentCanvasPolicy.Size;
+        Rect2 background = BackgroundRect();
+        float width = Canvas.BrushDiameter * background.Size.X / EnvironmentCanvasPolicy.Size;
+        float height = Canvas.BrushDiameter * background.Size.Y / EnvironmentCanvasPolicy.Size;
+        _cursor.Diameter = Canvas.Tool == EnvironmentPaintTool.Brush
+            ? new Vector2(width, height)
+            : new Vector2(width, width);
         _cursor.ShowBrush = IsOpen && Canvas.Tool != EnvironmentPaintTool.PickColor;
         _cursor.ShowSample = _painting && Canvas.Tool == EnvironmentPaintTool.PickColor;
         _cursor.QueueRedraw();
@@ -575,7 +595,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         Rect2 room = BackgroundRect();
         x = 0;
         y = 0;
-        if (room.Size.X <= 0 || room.Size.Y <= 0) return false;
+        if (room.Size.X <= 0 || room.Size.Y <= 0 || !room.HasPoint(screen)) return false;
         Canvas.PixelAspect = room.Size.X / room.Size.Y;
         x = Math.Clamp((screen.X - room.Position.X) / room.Size.X, 0, 1);
         y = Math.Clamp((screen.Y - room.Position.Y) / room.Size.Y, 0, 1);
@@ -649,6 +669,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     private void Close()
     {
+        _panelPin.Dock();
         Canvas.CancelPendingCurve();
         ClearCurveGuide();
         _confirm.Visible = false;
@@ -687,14 +708,14 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     private sealed partial class EnvironmentPaintCursor : Control
     {
-        public float Diameter { get; set; }
+        public Vector2 Diameter { get; set; }
         public bool ShowBrush { get; set; }
         public bool ShowSample { get; set; }
         public Color SampleColor { get; set; } = Colors.White;
 
         public override void _Draw()
         {
-            if (ShowBrush) PaintCursorGizmos.DrawBrushRing(this, Vector2.Zero, Diameter);
+            if (ShowBrush) PaintCursorGizmos.DrawBrushRing(this, Vector2.Zero, Diameter, 0f);
             if (ShowSample) PaintCursorGizmos.DrawPickPreview(this, Vector2.Zero, SampleColor);
         }
     }
