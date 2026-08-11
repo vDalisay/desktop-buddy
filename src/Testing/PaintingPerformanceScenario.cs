@@ -25,6 +25,23 @@ public sealed class PaintUploadCoalescingScenario : IScenario
             PaintCanvasControl.EnsurePaintInputAccumulated();
             bool inputAccumulationRestored = Input.UseAccumulatedInput;
 
+            int maxPenSteps = PaintCanvasControl.PenSampleSteps(360.0f, PaintPolicy.MaxBrushDiameter);
+            int maxPenCandidates = (maxPenSteps * 2 + 1) * (maxPenSteps * 2 + 1);
+            PaintHit connector = new(
+                PaintPart.LeftHand,
+                new PaintPoint(0.75, 0.5),
+                0.0,
+                IsConnector: true);
+            PaintHit endPart = connector with { Uv = new PaintPoint(0.25, 0.5), IsConnector = false };
+            bool connectorFillRoute =
+                PaintCanvasControl.UsesConnectorBucketFill(PaintTool.Brush, connector) &&
+                PaintCanvasControl.UsesConnectorBucketFill(PaintTool.Pen, connector) &&
+                PaintCanvasControl.UsesConnectorBucketFill(PaintTool.Spray, connector) &&
+                PaintCanvasControl.UsesConnectorBucketFill(PaintTool.Fill, connector) &&
+                PaintCanvasControl.UsesConnectorBucketFill(PaintTool.Curve, connector) &&
+                !PaintCanvasControl.UsesConnectorBucketFill(PaintTool.Eraser, connector) &&
+                !PaintCanvasControl.UsesConnectorBucketFill(PaintTool.Brush, endPart);
+
             var workspace = new PaintWorkspace();
             bridge = new PaintTextureBridge(context.Preview);
 
@@ -50,10 +67,25 @@ public sealed class PaintUploadCoalescingScenario : IScenario
             bridge.FlushFrame(workspace.Surfaces);
             int changed = bridge.UploadCount;
 
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            bool atlasGuardApplied = context.Preview.PaintAtlasSamplingGuardAppliedForTest;
+
             checks.Add(new StartupCheck(
                 "phase_b_buddy_paint_keeps_mouse_input_accumulated",
                 inputAccumulationRestored,
                 $"accumulated={inputAccumulationRestored}"));
+            checks.Add(new StartupCheck(
+                "phase_b_pen_screen_sampling_is_bounded",
+                maxPenSteps <= 32 && maxPenCandidates <= 4225,
+                $"steps={maxPenSteps} candidates={maxPenCandidates}"));
+            checks.Add(new StartupCheck(
+                "phase_b_connector_paint_routes_to_bucket_fill",
+                connectorFillRoute,
+                $"route={connectorFillRoute}"));
+            checks.Add(new StartupCheck(
+                "phase_b_limb_atlas_sampling_guard_applied",
+                atlasGuardApplied,
+                $"guard={atlasGuardApplied}"));
             checks.Add(new StartupCheck(
                 "phase_b_one_upload_per_queued_part_per_frame",
                 first == 1,
