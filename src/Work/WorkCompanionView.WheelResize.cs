@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.UI;
 using Godot;
 
 namespace DesktopBuddy.Work;
@@ -40,6 +41,8 @@ public partial class WorkCompanionView
             Math.Max(1, Mathf.RoundToInt((float)(current.Size.X * factor))),
             Math.Max(1, Mathf.RoundToInt((float)(current.Size.Y * factor))));
         _sandbox.Window.ResizeWorkCompanion(requested);
+        if (_sandbox.Window.WorkCompanionRect.Size != current.Size)
+            UiFeedbackAudioBootstrap.TryPlay(this, UiFeedbackCue.Resize);
         GetViewport().SetInputAsHandled();
     }
 }
