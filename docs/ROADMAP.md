@@ -1,345 +1,431 @@
 # Desktop Buddy — Implementation Roadmap
 
-Status: Agent handoff roadmap. Milestones are sequential gates, not parallel feature buckets. Each milestone also lands the end-to-end journeys mapped to it in `docs/AGENT_VERIFICATION_AND_E2E.md` Section 7.
+Status: **Current owner roadmap / agent handoff sequence**  
+Updated: 2026-08-11
 
-## Milestone 0 — Foundation
+This document is the current sequencing authority. Older milestone plans remain useful for architecture/history, but stale status text inside those older documents does not override this roadmap.
 
-Deliver:
+The project is now split into two product targets:
 
-- Generate the Godot 4.6.1 .NET solution/project and pin nullable C# configuration plus the .NET SDK via `global.json`; document exact editor/export-template versions in `README.md`.
-- Commit a `.gitignore` covering `.godot/`, `bin/`/`obj/`, export output, logs, and development `steam_appid.txt`; keep `.import` files versioned.
-- Apply the baseline engine configuration from `ARCHITECTURE.md` Section 20: 120 Hz tick, explicit max physics steps per frame, physics interpolation, transparency-allowed flag, window defaults, stretch disabled, custom user directory name, named collision layers, and removal of the Jolt-3D/D3D12 template leftovers.
-- Split assemblies per `ARCHITECTURE.md` Section 22: Godot game project, Godot-free domain library, xUnit domain tests, with nested-project excludes and export filters for test/laboratory content.
-- Add bootstrap, sandbox, buddy-lab, and test-runner scenes with thin composition roots.
-- Establish typed Resource definitions, collision layers, input actions, structured logging, and debug-build guards.
-- Add pure C# and headless Godot test entrypoints using the `--headless -- --scenario=<id> --seed=<n>` runner protocol, plus the `--journey=<id>` automation entrypoint and `AutomationDriver` skeleton per `docs/AGENT_VERIFICATION_AND_E2E.md`.
-- Commit the pinned `.mcp.json` Godot MCP configuration and the boot smoke journey.
-- Stand up CI: `dotnet build`, domain unit tests, headless editor import, and one smoke scenario on every push, with no proprietary Steam binaries.
-- Configure Windows export scaffolding without bundling proprietary Steam SDK files.
+1. **Steam Demo** — finish a compact, polished, marketable build from the systems already on `main`, plus the approved Potion Shop/demo-effect slice.
+2. **Full Release** — expand Environment, Buddy Studio and the buddy's personality/content systems after the demo ships.
 
-Exit criteria:
+Milestones are sequential release gates unless a task is explicitly marked safe to parallelize.
 
-- Editor import and C# build complete without errors.
-- Empty bootstrap and headless smoke test run successfully.
-- The boot smoke journey passes headless in CI.
-- CI is green from a clean clone with no locally installed Steam SDK.
-- No legacy branch is merged wholesale; reused code is reviewed and ported deliberately.
+---
 
-## Milestone 1 — Physics Laboratory
+# Completed foundation and feature milestones
 
-Deliver only the high-risk core:
+## Milestone 0 — Foundation ✅ COMPLETE
 
-- Six `RigidBody2D` circles and data-driven spring/damper/max-stretch controller.
-- Upright drive, autonomous walk/jump impulses, passive/unconscious drive profiles, self-righting, and safe recovery.
-- Box boundaries, resizing hooks, zoom hooks, debug telemetry, and direct rendering on each body.
-- Elastic grab tether for every part and loose-object prototype.
-- Seeded physics scenarios and side-by-side reference tuning workflow.
-- Injectable seeded RNG service, manual knockout/unconscious toggle, pause/single-tick/slow-motion laboratory controls, and telemetry export for tolerance-envelope extraction.
-- Milestone 1 journeys (spawn/settle, grab-throw, walk/jump, accelerated idle soak) and input-trace recording for the record-and-promote workflow.
-- A minimal throwaway standalone transparent-window spike sufficient for the `TEST_PLAN.md` Section 8 pointer-mapping bullet; the production shell remains Milestone 2 work.
+Current baseline includes the Godot/.NET project structure, domain/test split, typed resources, logging, scenario/journey infrastructure, Windows export scaffolding and the established build/test tooling.
 
-Exit criteria:
+## Milestone 1 — Physics Laboratory ✅ COMPLETE
 
-- Satisfy the complete physics-lab gate in `TEST_PLAN.md`.
-- Lock an initial accepted tuning Resource before building payouts or content.
+The six-part ragdoll, spring/stretch controller, autonomous movement, grab/tether behavior, tuning resources, seeded physics scenarios and recovery/safety infrastructure are established.
 
-## Milestone 2 — Windows Desktop Shell
+## Milestone 2 — Windows Desktop Shell ✅ COMPLETE
 
-Deliver:
+The Windows desktop-companion shell, transparency/window management, Work/Play input ownership, resize/fullscreen behavior, DPI/multi-monitor recovery seams and Win98 application chrome are established.
 
-- First task: validate per-pixel transparency, MSAA 2D, and V-sync together against the Compatibility renderer on Windows 10/11 hardware; record the renderer decision per `ARCHITECTURE.md` Section 20 before building HUD features.
-- Transparent borderless movable/resizable window with simple box borders.
-- Work/Play input modes, dynamic buddy/menu hit regions, outside-click focus transition, global hotkey, and tray recovery.
-- Multi-monitor/DPI placement, first-launch lower-right placement, off-screen recovery, always-on-top, anti-aliasing, V-sync, and zoom settings.
-- Opaque fallback when transparency is unavailable.
+## Milestone 3 — Core Interaction and Damage ✅ COMPLETE
 
-Exit criteria:
+Core grabbing, pet/tickle/damage behavior, reactions, knockout/pain attribution and the interaction/economy bridge are established.
 
-- Standalone Windows matrix passes at minimum/default/ultrawide sizes.
-- The user can always recover control without terminating the process.
+## Milestone 4 — Personality, Care and Persistence ✅ COMPLETE
 
-## Milestone 3 — Core Interaction and Damage Slice
+Mood/trust/care behavior, passive progression, save/recovery, safe resume and long-lived progression state are established.
 
-Deliver:
+## Milestone 5 — Shop and Full Tool Catalogue ✅ COMPLETE / OWNER ACCEPTED
 
-- Pet, Tickle, Boxing Glove, and Grab.
-- Collision attribution, rolling pain window, four-second knockout, region/unconscious payout multipliers, and contact deduplication.
-- Hidden mood, transient reaction state, face emoticons, nonverbal sounds, and fear-based grab resistance.
-- Minimal money HUD and debug-only tuning panels.
+The confirmed tool catalogue and progression slice is implemented, including the twelve purchasable progression items, Grab/Power Grab behavior, economy calibration, reset service and automated progression coverage.
 
-Exit criteria:
+The current selectable tool/content architecture remains the base for the Steam-demo progression polish pass.
 
-- Starting interactions are stable and satisfy all unit/physics requirements.
-- Payouts arise from physical pain, never from merely pressing a tool button.
+## Milestone 5.5 — Character Editor Phase A ✅ COMPLETE / MERGED
 
-## Milestone 4 — Personality, Care, and Persistence
+The trusted character schema/compiler, character library, parametric expression rendering, visual-only character swapping, editor working-copy flow and save/use/restart behavior are on `main`.
 
-Deliver:
+Reference: `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`.
 
-- Autonomous approach/flee/catch/hold/consume/toss decisions.
-- Persistent tool history and the mood-60 trust reset.
-- Per-save ambient jump propensity sampled only when starting anew, combined with obstacle/situation evidence so ordinary jumping is reduced and predictable across reloads.
-- Passive-income service, mood decay, care gains/cooldowns, and hidden-to-tray low-cost clock.
-- Versioned atomic saves, backup/quarantine recovery, one save slot, safe-pose resume, and no catch-up across close/sleep.
+## Milestone 5.6 — Paint Buddy / Character Painting Phase B ✅ COMPLETE / MERGED
 
-Exit criteria:
+The character-painting implementation is complete in the current product baseline, including trusted body-surface mapping, CPU paint surfaces, Undo/Erase behavior, persistence, runtime underlay rendering and save/use/restart coverage.
 
-- Mood/trust, suspend/hidden timing, and save-failure suites pass.
-- The buddy visibly differentiates fearful, wary, neutral, content, and delighted behavior without a mood meter.
+Later demo work also added Spray/Airbrush, Curved Line and semantic paint-toolbar icons through the Environment refinement pass.
 
-## Milestone 5 — Shop and Full Tool Catalogue
+Reference: `docs/M5_6_PHASE_B_COMPLETION.md`.
 
-Implementation status (2026-08-02): **complete and owner-accepted.** All twelve ordered
-slices plus Power Grab are implemented, the catalogue is the confirmed sixteen entries, the
-economy is calibrated (Task 12), and Task 13 landed Reset Progress, the composition audit,
-and the `m5_shop_progression` journey. The dock moved out of scope on the same day.
+## Milestone 5.7 — Work Mode Typing Companion ✅ COMPLETE FOR DEMO / OWNER ACCEPTED
 
-Historical status (2026-07-27): the first ordered slice, **Baseball**, was in progress.
-The atomic permanent-purchase boundary, locked selection rule, immediate purchase save,
-shared pullback launcher, typed provisional Baseball/launcher tuning, and real-input
-scenario are implemented. In the development laboratory, key `5` only spawns/replaces one
-Baseball at the cursor; Grab acquires it, and holding secondary while grabbed previews the
-launch. Full pull tuning now produces positive pain and visible pushback; real new saves
-keep Baseball locked. Its catalogue price and final physical preset remain deliberately
-uncalibrated until the documented M5 economy/feel pass, and no unfinished shop entry is
-shown.
+Implemented:
 
-Deliver tools in the confirmed progression order:
+- global privacy-safe activity counting;
+- session/lifetime counters;
+- compact Work companion presentation;
+- milestone rewards;
+- Work glasses first-entry reward;
+- crash-safe session progress;
+- double-click return flow;
+- low-cost gameplay suspension.
 
-1. Baseball
-2. Baseball Bat
-3. Meal
-4. Nerf Blaster
-5. Pistol
-6. Soccer Ball
-7. Grenade
-8. Fire Sprayer
-9. Power Grab
-10. Repair Kit
-11. Shotgun
-12. Drink
+Remaining Work Mode work is now **demo polish/release verification**, not unfinished foundation. It is tracked in `docs/STEAM_DEMO_POLISH_AND_MARKETING_PLAN.md`.
 
-Also deliver the pullback trajectory launcher, cursor-direction guns, object budget,
-permanent purchases, unrestricted save-for-preference shopping, and the confirmed
-full-gameplay reset service. The retractable tool/shop/settings panel was **moved out of
-this milestone** by owner decision 2026-08-02, and its draft plan was **withdrawn by the
-owner 2026-08-08**; FR-003.2 stays a requirement with no active plan, and it still carries
-the reset's player-facing button with it.
+## Milestone 5.8 — Win98 / shared customization foundation ✅ COMPLETE / MERGED
 
-Power Grab supersedes the unimplemented passive Strength Upgrade concept. Milestone 5 must
-deliver it as a separately selectable, one-time permanent tool while preserving Normal Grab:
+The current in-scene Win98 shell, Customize routing, shared catalogue/category/value controls and reusable customization UI foundation are established.
 
-- Append `ToolId.PowerGrab` and stable content ID `tool.power_grab`; never repurpose the
-  deprecated hidden `upgrade.strength` placeholder, and migrate any development save that
-  owns it.
-- Reuse the one Grab acquisition/tether pipeline. Select Normal versus Power settings at
-  acquisition, keep the same safe stretch limit, preserve visible fear resistance, and
-  suppress only Power Grab's forced snap/release.
-- Apply Resource-authored higher pull/force authority and a separately capped stronger
-  intentional release to buddy parts and eligible loose objects, with no direct economy or
-  damage multiplier.
-- Validate the exact 16-entry selectable catalogue, the FR-013.4 `3…209` completionist
-  schedule, and unrestricted skipping strategies.
+## Milestone 5.9 — Environment Customization ✅ COMPLETE / OWNER ACCEPTED / MERGED
 
-Exit criteria:
+The Steam-demo Environment baseline is complete:
 
-- [x] Every tool has automated behavior/error tests and clean-room presentation. Sixteen
-  interactions, twelve of them purchasable; each has its own scenario and `m5_*` journey, and
-  `m5_shop_progression` walks one save through the whole catalogue.
-- [x] Economy simulation meets the 3-to-209-minute completionist target schedule,
-  unrestricted skipping strategies, the casual 120-active/89-background benchmark, and the
-  active/passive ratio (Task 12, `economy_calibration`, five seeds × seven strategies).
-- [x] Owner gates: Repair Kit feel, Power Grab feel, the economy pacing report, and the
-  catalogue — all accepted 2026-08-02 (`DECISIONS.md`, "M5 owner gates accepted").
-- [x] External gate: the Windows 10/11 standalone matrix (`TEST_PLAN.md` §5), accepted by
-  owner attestation 2026-08-02, minus the reset row.
+- one local room/profile;
+- Paint Background;
+- wallpaper layer;
+- Environment Decorator;
+- permanent decoration ownership/storage;
+- six launch categories with authored entries;
+- free placement/editing;
+- room persistence;
+- Spray/Airbrush;
+- Curved Line;
+- placeholder semantic paint icons.
 
-**Milestone 5 is COMPLETE (owner-accepted 2026-08-02).** The FR-003.2 retractable
-tool/shop/settings dock was moved out of the exit criteria by owner decision the same day.
-Its draft plan (`docs/UI_FLOATING_DOCK_PLAN.md`) was **withdrawn and deleted by owner
-decision 2026-08-08**: the requirement stands, no design is approved, and no implementation
-is scheduled. Until some settings surface carries it, Reset Progress has no player-facing
-route, which remains an accepted known gap.
+Reference: `docs/ENVIRONMENT_DEMO_CLOSURE_STATUS.md`.
 
-## Milestone 5.5 — Character Editor (Phase A)
+Full-release room profiles, Steam room sharing and authored furniture interactions remain intentionally deferred.
 
-Implementation status (2026-08-03): **complete and merged.** Tasks A0–A9 are present on
-`main`, including the engine-free schema/compiler, trusted shared visual rig, parameterized
-feature renderers, face/accent compositors, failure-safe character store, fixed-tick active
-selection, editor window lifecycle, working-copy editor UI, and the Phase A exit
-scenario/journey. Real-application fixes and the merged Work/Play redesign preserve editor
-window restoration and input ownership.
+## Milestone 5.10 — Buddy Studio current-release implementation ✅ COMPLETE / OWNER ACCEPTED / MERGED
 
-Originally scheduled by the owner 2026-08-02, after the Milestone 5 exit gate and before
-Milestone 6. Full plan and owner decisions:
-`docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md` (Phase A, Tasks A1–A9).
+The current Buddy Studio is on `main` with:
+
+- trusted multi-category cosmetic definitions/rendering;
+- permanent cosmetic ownership;
+- Buy/preview/equip/save boundaries;
+- bounded fitting controls;
+- named color-channel seam;
+- deterministic Randomize;
+- Work glasses integration;
+- save/restart behavior;
+- clean-room authored launch content.
+
+Reference: `docs/BUDDY_STUDIO_DEMO_CLOSURE_STATUS.md`.
+
+Player-drawn cosmetics, cosmetic deformation/stretching, Steam sharing and the larger Studio redesign are full-release work.
+
+---
+
+# Steam Demo completion program
+
+## Milestone 5.11 — Potion Shop / temporary buddy effects 🟡 NEXT FEATURE SLICE
+
+Add a dedicated Potion Shop for short-lived, highly visible buddy effects before the final demo polish pass.
+
+Target roughly **three polished demo showcase effects/items** rather than a large catalogue.
+
+Current candidate pool includes:
+
+- temporary tail;
+- glossy/shiny treatment;
+- RGB/cycling-color treatment;
+- glow-in-the-dark treatment, potentially interacting with a flashlight;
+- metallic treatment with matching SFX and a possible authored gameplay modifier only if separately approved;
+- poison/sickness effect;
+- flashlight as a possible separate buyable toy/effect companion.
+
+Exact demo entries, prices, durations, stacking rules and inventory/consume behavior are **not locked yet**.
+
+Work Mode should contribute to the Potion Shop loop. Before implementation, decide whether this means:
+
+- normal credits earned through Work Mode;
+- a dedicated Work/AFK token;
+- or Work milestones/discounts/free samples without a second currency.
+
+Do not add a second economy ledger until that design choice is explicitly approved.
+
+Detailed concept boundary: `docs/POTION_SHOP_CONCEPT.md`.
+
+Exit gate:
+
+- final demo effect subset approved;
+- effect lifecycle/economy rules locked;
+- all selected entries have real VFX/SFX and clear purchase/use feedback;
+- mode changes/restart/reset cannot leave the buddy in a stuck effect state;
+- existing Paint Buddy, Buddy Studio, room, tool and save behavior remains intact.
+
+---
+
+## Milestone 6 — Steam Demo Platform and Release Systems
+
+Build the minimum robust Steam/release foundation required to distribute and verify the demo while preserving a fully functional local/non-Steam path.
 
 Deliver:
 
-- Versioned `CharacterDocument` schema with per-part colors and four parametric feature
-  slots (eyes, brows, mouth, one body accent), plus the document→visual-profile compiler.
-- Parametric feature atlas and part compositor extending the M3.6 face compositor, and the
-  `FaceExpressionMap` extended so every reaction state resolves per character.
-- Uncapped local character library with the Section 12 atomic write/backup/quarantine
-  discipline, lazy enumeration, and the active-character GUID in `progress.json`.
-- Editor UI, free from launch, opened by temporarily resizing the shell opaque and
-  restoring its geometry and transparency on exit.
+- local and Steam platform implementations behind the same interface;
+- Steamworks.NET lifecycle/bootstrap;
+- graceful behavior when Steam is unavailable;
+- cloud-safe progress payload boundaries;
+- machine-local settings kept out of cloud progression where appropriate;
+- queued/offline-safe stats and achievements;
+- the confirmed achievement set;
+- launch-with-Windows option and final tray/recovery integration;
+- release export preset and build automation;
+- SteamPipe/depot documentation/tooling;
+- installed-build and clean-install validation.
 
-Exit criteria:
+Do **not** start room/cosmetic Steam UGC here. M6 should provide the safe platform foundation those full-release systems will later build on.
 
-- [x] Phase A scenarios and journey pass, including the physics invariant across a
-  character swap and the window-restore path.
-- [x] Customization remains visual-only by construction: no schema field or editor control
-  reaches rig, drive, mass, collision, or tuning.
+Exit gate:
 
-## Milestone 5.6 — Character Painting (Phase B)
+- installed Steam demo build launches and saves correctly;
+- offline/Steam-unavailable paths are safe;
+- no proprietary Steam SDK files are committed improperly;
+- direct local/non-Steam development launch remains usable;
+- achievement/stat/save behavior survives restart and connectivity transitions.
 
-Scheduling status (2026-08-03): **active. Task B0 is complete; Task B1 is next.** The
-normative scope, requirements, architecture, budgets, task order, and verification are in
-`docs/M5_5_PHASE_B_PAINTING_SOURCE_ALIGNMENT.md`.
+---
 
-Design target:
+## Milestone 6.5 — Steam Demo Polish and Content-Complete Pass
 
-- A simplified, original, clean-room behavioral analogue of MECCHA CHAMELEON's direct
-  body-painting interaction, without copying code, assets, UI layout, branding, or
-  distinctive presentation.
-- A zoomed locked-frontal paint view of the current character working copy, with panning,
-  visible zoom controls, and Reset View.
-- A color wheel, one circular brush, mouse-wheel and visible-button brush-size controls,
-  eraser, Undo, and confirmed undoable Erase All.
-- Direct surface-under-brush targeting across the six trusted body parts.
-- Six optional 512×512 RGBA8 CPU-authoritative paint surfaces bound below face/accent decals.
-- Sequential character-schema migration and atomic whitelisted PNG persistence.
-- A 64 MiB CPU editing budget, 8 MiB active GPU paint budget, 2 MiB encoded cap per PNG,
-  and 12 MiB aggregate paint payload cap.
+This is the major pre-public polish phase.
 
-Ordered tasks:
+Primary goals:
 
-1. B1 — frontal ray-to-UV mapping and paint-view camera/pose/zoom/pan.
-2. B2 — CPU surfaces, circular brush, eraser, bounded Undo, and undoable Erase All.
-3. B3 — underlay preview/runtime binding and upload invalidation.
-4. B4 — production painting UI and working-copy integration.
-5. B5 — schema migration and atomic PNG persistence/recovery.
-6. B6 — full automated, real-input, performance, Windows, and owner feel/fidelity gate.
+- bug fixing and regression closure;
+- progression/unlock clarity and pacing;
+- Work Mode reward polish;
+- Potion Shop integration/economy balance;
+- final item/cosmetic/environment/potion assets;
+- **SFX coverage across the entire demo**;
+- consistent UI/UX across every editor/menu/system;
+- accessibility/readability/DPI polish;
+- clean first-session onboarding.
 
-Exit criteria:
+The owner polish backlog is now captured in:
 
-- All required domain tests, headless scenarios, and
-  `character_paint_save_use_restart` journey pass.
-- Painting remains visual-only and does not rebuild or mutate the physics rig.
-- Face and torso-accent decals remain above paint.
-- Pixel-identical undo, save/reload, and editor-to-runtime fidelity gates pass.
-- CPU/GPU/file budgets and at-most-one-upload-per-dirty-part-per-rendered-frame hold.
-- Owner accepts brush feel, frontal framing, pan/zoom, Undo/Erase All behavior, and runtime
-  fidelity on real Windows.
+`docs/STEAM_DEMO_POLISH_AND_MARKETING_PLAN.md`
 
-Phase C Steam Workshop remains deferred and still requires Milestone 6 and its own C0 policy
-gate.
+That plan currently includes the following approved demo-polish directions.
 
-## Milestone 5.7 — Work Mode Typing Companion
+### Paint Background / Environment paint
 
-Scheduling status (2026-08-08): **complete for now; owner accepted.** The remaining soak and
-Windows matrix are release verification gates, and additional animation polish is tracked as
-a future nice-to-have rather than a completion blocker. The normative scope, locked owner
-decisions, and slice gates are in `docs/WORK_MODE_TYPING_COMPANION_PLAN.md`.
+- clearer Curved Line control-point/state feedback;
+- `Save and Exit` wording;
+- Bucket Fill naming;
+- Eraser footprint/cursor correction;
+- pressed/indented active-tool state;
+- active shape name/status feedback.
 
-Design target: an opt-in, nonintrusive corner companion. The buddy works at a miniature
-retro PC while the player works, a CRT counts accepted key presses and mouse clicks
-(session or lifetime), milestones pay credits into the normal ledger, and the first ever
-entry grants the Work glasses cosmetic once.
+### Buddy Studio
 
-Slice status against plan Section 16:
+- stronger Mouth variations;
+- hide weak/unfinished Accessories in the demo;
+- single-click owned-item equip;
+- much clearer unowned preview/Buy/Owned/Equipped states;
+- actual item/appearance renders for thumbnails.
 
-**Owner accepted 2026-08-08.** The remaining soak and Windows matrix are release
-verification gates; the accepted known gaps below remain non-blocking.
+### Paint Buddy
 
-- [x] WM0 — counters, milestone catalogue, repeat policy, schema migration, idempotent
-  claim identities, and Reset Progress integration.
-- [x] WM1 — Windows global activity source with held-key suppression and privacy-safe
-  diagnostics: no raw key identity ever reaches the domain, logs, or saves.
-- [x] WM2 — transparent compact companion, supplied retro PC art, CRT counter, native
-  window shape, stored position, and semantic hit regions.
-- [x] WM3 — coalesced alternating typing/click reactions, hover-only motion toggle, CRT
-  Session/Lifetime toggle, drag, double-click exit, and a hover-only `X` exit control.
-- [x] WM4 — milestone settlement into the passive ledger, first-entry glasses ownership
-  grant without auto-equip, and the exit payout summary.
-- [x] WM5 — crash-safe aggregate session journaling, periodic checkpointing, suspend/resume,
-  low-cost gameplay suspension, capture teardown, recovery, and legacy-mode normalization
-  are implemented and automated. The four-hour Work soak and the full standalone Windows
-  monitor/DPI matrix remain owner-run release gates.
+- detachable/floating color palette;
+- Mirror option;
+- optional front+back simultaneous painting;
+- Bucket Fill;
+- one consistent color-picker component/interaction;
+- move Turn/Zoom controls into the buddy preview frame;
+- clear stale palette selection after eyedropper sampling;
+- `Show limbs` painting pose/option.
 
-Known gaps, both accepted for now by owner decision 2026-08-08:
+### General shell/catalogue
 
-- The Work companion renders the active character's compiled appearance but not its
-  parametric feature layers, so glasses equipped by the player are owned and equipped yet invisible in
-  Work Mode. The fix is to run the Phase A feature renderers on the Work rig; the earlier
-  hand-drawn glasses overlay was deleted rather than kept as a stand-in.
-- First-entry onboarding copy (plan Sections 13.1/13.3) is unwritten: the privacy sentence
-  and the "double-click your buddy to return" teach do not exist in the build.
+- reduce excessive limb/ball rotation during normal animation;
+- merge Tools + Shop into one Buy/Equip catalogue flow;
+- outside click closes top-bar menus/dropdowns;
+- appropriate panels can be dragged outside the play area/window;
+- persistent active-tool status feedback;
+- consistent action terminology across systems.
 
-Exit criteria:
+### Work Mode
 
-- Counters stay exact under rapid input even when animation cannot render every action, and
-  animation-off still counts and rewards.
-- No milestone pays twice across restart, crash, or re-entry, and the glasses grant happens
-  once.
-- Normal shell geometry, transparency, and input ownership restore exactly on exit, and
-  global capture always unregisters.
-- Work Mode is measurably cheaper than normal gameplay and survives the soak and the
-  monitor/DPI matrix.
+- resize via LMB + mouse wheel interaction;
+- auto-select normal Grab when returning to Play;
+- reward/onboarding polish;
+- correct active Buddy Studio appearance/cosmetic rendering;
+- release soak/DPI verification.
 
-## Milestone 6 — Steam and Release Systems
+### Decorate Room
 
-Deliver:
+- clearer button/mode hierarchy;
+- deliberate money-value color treatment;
+- remove Snap-to-grid from the demo UX unless later restored;
+- remove floor/wall placement restrictions while retaining safe room bounds;
+- dedicated Delete mode;
+- simplify the nested placement/save flow;
+- consistent wallpaper/furniture dirty/save behavior.
 
-- Local and Steam platform implementations behind the same interface; the Steam side is built on Steamworks.NET.
-- Cloud-safe progress payload, local-only machine settings, queued offline stats/achievements, and the ten confirmed achievements.
-- Windows launch-with-login option, final tray integration, release export preset, SteamPipe/depot instructions, and clean install checks.
+Exit gate:
 
-Exit criteria:
+- no known data-loss, stuck-input, duplicated-purchase, off-screen-window or stuck-effect defect;
+- progression can be understood without debug knowledge;
+- no visible placeholder item/control remains in public demo scope;
+- final demo systems pass cross-feature regression and owner UX review.
 
-- Steam acceptance matrix passes from an installed depot.
-- Direct non-Steam launch remains fully playable.
+---
 
-## Milestone 7 — Polish and Release Candidate
+## Milestone 6.6 — Steam Demo Marketing / Store Asset Production
 
-Deliver:
+Begin only after the demo is content-locked enough that final captures will not immediately become obsolete.
 
-- Final original vector visuals, VFX, status icons, robot SFX, responsive UI layouts, accessibility settings, and tutorial/help copy.
-- Performance optimization without reducing the 120 Hz tick.
-- Clean-room content audit, save migration rehearsal, crash/failure-path review, and full regression pass.
+Prepare:
 
-Exit criteria:
+- Steam capsule/store/library art in every format required by the then-current Steamworks specification;
+- main gameplay trailer;
+- curated gameplay screenshots;
+- short gameplay GIFs/loops;
+- final logo/wordmark assets needed by the Steam page;
+- store feature copy and demo messaging as required.
 
-- Four-hour active and eight-hour hidden soaks pass.
-- Performance, Windows, Steam, accessibility, and clean-room gates are green.
-- No current-scope feature is represented by a placeholder that can be selected but does not work.
+Marketing capture should deliberately show:
 
-## Deferred Roadmap
+- desktop buddy/ragdoll interaction;
+- memorable tools;
+- Paint Buddy;
+- Buddy Studio;
+- Environment decoration/background painting;
+- Work Mode;
+- Potion Shop/effect showcase.
 
-Do not implement these during the milestones above unless a later owner decision explicitly promotes them:
+Exact Steam image dimensions/submission rules must be re-verified against official Steamworks guidance at asset-production time rather than hard-coded into this roadmap.
 
-- Optional blood/bleeding.
-- Catalogue, economy, and Work/Play UX research described in
-  `docs/UX_CATALOGUE_AND_MODE_RESEARCH_BACKLOG.md`: investigate a unified Shop/Tools
-  catalogue where owned entries can be equipped from the same menu; rebalance prices
-  together with current active/passive earnings; and prototype smoother mode/layout
-  transitions, including the corner cage/room drag concept and clean-room research into
-  other desktop-companion interaction patterns. This design backlog is non-blocking for
-  Phase B and does not authorize production UX changes yet.
-- Remaining painting extensions outside the current approved paint surface: material sliders,
-  pattern/gradient/smudge tools, layers/blend modes, custom brushes, tablet pressure,
-  unrestricted 3D orbit painting, and cosmetic paint progression. **Eyedropper is already
-  implemented; Spray/Airbrush, Curved Line and paint-toolbar icon refinement were explicitly
-  promoted into the active `environment-customization` demo pass on 2026-08-10.** Their
-  detailed implementation slices are in `docs/ENVIRONMENT_DECORATOR_IMPLEMENTATION_PLAN.md`
-  Section 19.
-- Full-release Environment expansion, explicitly **not part of the demo**:
-  - multiple named local room/environment profiles;
-  - sharing complete room configurations through Steam after a safe versioned room format is stable;
-  - authored buddy/furniture interactions such as sit/rest/watch/toggle capabilities.
-- Cosmetic progression.
-- Steam Workshop and custom buddy packages (Phase C, requires M6 and C0).
-- Multiple buddies, multiplayer, Linux, or macOS.
+Reference: `docs/STEAM_DEMO_POLISH_AND_MARKETING_PLAN.md`.
 
-The demo environment remains one local room/profile with painted background and visual/non-physical decorations. Architecture may leave migration seams for the full-release Environment items and future custom buddy definitions, but must not add speculative profile managers, Steam room-sharing services, universal furniture behavior frameworks, mod loaders, or generalized scripting frameworks before their release gates.
+Exit gate:
+
+- all required Steam art exists at production quality;
+- trailer/storyboard/captures represent the actual demo build;
+- screenshots/GIFs contain final UI and no debug/programmer assets;
+- marketing package is internally reviewed before upload.
+
+---
+
+## Milestone 6.7 — Steam Demo Release Candidate
+
+Freeze demo features and run the release matrix:
+
+- full automated regression;
+- installed depot;
+- clean install/uninstall/reinstall;
+- fresh-save progression run;
+- supported save migration rehearsal;
+- corruption/recovery paths;
+- Steam online/offline transitions;
+- 100/125/150/200% DPI;
+- multi-monitor/window recovery;
+- minimum/default/maximized/fullscreen layouts;
+- four-hour active soak;
+- four-hour Work Mode soak;
+- hidden/tray soak;
+- performance/memory review;
+- accessibility/audio/readability review;
+- final clean-room/IP audit.
+
+**Steam Demo ships after this gate.**
+
+---
+
+# Full Release expansion program
+
+Full-release work begins after the Steam demo is shipped/stable unless the owner explicitly promotes an item earlier.
+
+Detailed cross-system roadmap:
+
+`docs/FULL_RELEASE_EXPANSION_ROADMAP.md`
+
+## Milestone 7.1 — Environment full-release expansion
+
+- multiple named local room profiles;
+- Steam sharing of complete room configurations;
+- authored buddy/furniture interactions such as sitting, resting, watching or toggling objects.
+
+## Milestone 7.2 — Buddy Studio full-release expansion
+
+Existing detailed plan: `docs/BUDDY_STUDIO_FULL_RELEASE_PLAN.md`.
+
+- trusted player-drawn cosmetic templates for Hair and other supported categories;
+- local custom-cosmetic library;
+- bounded anchored cosmetic stretching/deformation;
+- Steam sharing/import of safe custom cosmetics;
+- larger Browse / My Creations / Create-Edit / Shared Studio redesign.
+
+## Milestone 7.3 — Interactive Accessories / authored gadgets
+
+Bring Accessories back as a more distinctive full-release category.
+
+Direction:
+
+- authored handheld/interactive props rather than only static decoration;
+- e.g. a phone the buddy can hold/check;
+- possible calibrated passive-income behavior;
+- compatibility with mood/Work Mode/environment where explicitly authored;
+- trusted capability IDs only — no arbitrary scripts from character/shared content.
+
+## Milestone 7.4 — Player voice recordings
+
+Add optional player-recorded voice reactions:
+
+- multiple recordings;
+- assignment to authored triggers such as damage, happiness and occasional random noises;
+- optional original goofy voice filter with Light/Heavy intensity;
+- local/private by default;
+- bounded safe audio storage and playback normalization.
+
+Steam sharing of microphone recordings is **not currently approved**.
+
+## Milestone 7.5 — Original office-helper tutorial system
+
+Add an opt-in contextual tutorial helper with an original office-item identity, such as an animated pen.
+
+It may teach grabbing, Shop/Equip flow, Work Mode return, painting, decorating, Potion Shop use and other unusual interactions.
+
+This must be clean-room and must not copy Clippy's character/art/animation/copy.
+
+## Milestone 7.6 — Steam UGC consolidation
+
+After safe local formats are stable:
+
+- room sharing;
+- custom-cosmetic sharing;
+- install/uninstall/missing-content recovery;
+- moderation/policy UX;
+- large-library performance and deterministic browsing.
+
+This remains bounded declarative UGC, not a general-purpose mod loader.
+
+## Milestone 7.7 — Full Release polish and release candidate
+
+Re-run the demo-quality bar against the expanded game:
+
+- progression/economy recalibration across active and passive sources;
+- final art/VFX/SFX;
+- large-library Buddy Studio/room UX;
+- interactive furniture/accessory polish;
+- voice/tutorial UX;
+- Steam/cloud/UGC failure recovery;
+- migration rehearsal from the Steam demo;
+- Windows DPI/multi-monitor/accessibility/performance matrices;
+- active/hidden/Work soaks;
+- final clean-room and content audit.
+
+---
+
+# Deferred beyond the currently approved full-release program
+
+Do not implement without a later owner promotion:
+
+- unrestricted scripting/mod loader;
+- arbitrary user-authored Godot scenes/scripts/shaders/meshes;
+- optional blood/bleeding;
+- broad advanced painting suite such as unrestricted 3D orbit painting, tablet pressure, arbitrary brushes and generalized material/layer editing;
+- multiple simultaneous buddies;
+- multiplayer;
+- Linux/macOS ports;
+- Steam sharing of player microphone recordings.
