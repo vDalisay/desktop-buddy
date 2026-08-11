@@ -18,8 +18,13 @@ public sealed class PaintUploadCoalescingScenario : IScenario
         CharacterEditorScenarioSupport.Context context =
             await CharacterEditorScenarioSupport.Create(tree, Id);
         PaintTextureBridge? bridge = null;
+        bool originalInputAccumulation = Input.UseAccumulatedInput;
         try
         {
+            Input.UseAccumulatedInput = false;
+            PaintCanvasControl.EnsurePaintInputAccumulated();
+            bool inputAccumulationRestored = Input.UseAccumulatedInput;
+
             var workspace = new PaintWorkspace();
             bridge = new PaintTextureBridge(context.Preview);
 
@@ -46,6 +51,10 @@ public sealed class PaintUploadCoalescingScenario : IScenario
             int changed = bridge.UploadCount;
 
             checks.Add(new StartupCheck(
+                "phase_b_buddy_paint_keeps_mouse_input_accumulated",
+                inputAccumulationRestored,
+                $"accumulated={inputAccumulationRestored}"));
+            checks.Add(new StartupCheck(
                 "phase_b_one_upload_per_queued_part_per_frame",
                 first == 1,
                 $"first={first}"));
@@ -65,6 +74,7 @@ public sealed class PaintUploadCoalescingScenario : IScenario
         }
         finally
         {
+            Input.UseAccumulatedInput = originalInputAccumulation;
             bridge?.Dispose();
             await CharacterEditorScenarioSupport.Cleanup(tree, context);
         }
