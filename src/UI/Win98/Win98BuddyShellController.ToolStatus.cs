@@ -1,6 +1,6 @@
 using DesktopBuddy.App;
-using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Ui;
 using Godot;
 
 namespace DesktopBuddy.UI.Win98;

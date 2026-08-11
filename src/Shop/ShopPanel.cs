@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Economy;
 using DesktopBuddy.Domain.Persistence;
@@ -38,11 +37,13 @@ public partial class ShopPanel : PanelContainer
     public void Configure(
         BuddyProgressState progress,
         EconomyService economy,
-        ToolCatalogue catalogue)
+        ToolCatalogue catalogue,
+        InteractionDamageComponent pipeline)
     {
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _catalogue = catalogue ?? throw new ArgumentNullException(nameof(catalogue));
+        _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
 
         Name = "ShopPanel";
         PanelChrome.Parts parts = PanelChrome.Build(this, "Catalogue", "ShopItemList");
@@ -105,15 +106,14 @@ public partial class ShopPanel : PanelContainer
 
     private void Equip(string contentId, ToolId tool)
     {
-        InteractionDamageComponent? pipeline = ResolvePipeline();
         string name = ContentDisplayName.For(contentId);
-        if (!GodotObject.IsInstanceValid(pipeline))
+        if (!GodotObject.IsInstanceValid(_pipeline))
         {
             _status.Text = $"{name} could not be equipped right now.";
             return;
         }
 
-        pipeline!.SelectTool(tool);
+        _pipeline!.SelectTool(tool);
         bool applied = _progress.SelectedTool == tool;
         _status.Text = applied
             ? $"{name} equipped."
@@ -121,18 +121,6 @@ public partial class ShopPanel : PanelContainer
         if (applied)
             EquipCount++;
         Refresh();
-    }
-
-    private InteractionDamageComponent? ResolvePipeline()
-    {
-        if (GodotObject.IsInstanceValid(_pipeline))
-            return _pipeline;
-
-        SandboxRoot? sandbox = GetTree().Root.FindChild(
-            nameof(SandboxRoot), recursive: true, owned: false) as SandboxRoot;
-        if (GodotObject.IsInstanceValid(sandbox) && GodotObject.IsInstanceValid(sandbox!.Pipeline))
-            _pipeline = sandbox.Pipeline;
-        return _pipeline;
     }
 
     /// <summary>The catalogue content ids, in authored selectable order.</summary>

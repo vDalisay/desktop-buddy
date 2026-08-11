@@ -615,6 +615,7 @@ public sealed class EnvironmentDecoratorClosureScenario(string id = "environment
             Press(decorator, "EnvironmentPlaceButton");
             PlaceAt(blocker, decorator, firstPoint, confirm: true);
             Press(decorator, "EnvironmentDoneButton");
+            Press(decorator, "EnvironmentConfirmSaveButton");
             await SettleAsync(tree);
             bool saved = !decorator.IsOpen && environment.Layout.Decorations.Count == 1 &&
                 progress.BalanceMilliCredits == 300_000 - lampDefinition.PriceMilliCredits;
@@ -624,11 +625,11 @@ public sealed class EnvironmentDecoratorClosureScenario(string id = "environment
                 $"saved={environment.Layout.Decorations.Count} balance={progress.BalanceMilliCredits}"));
 
             decorator.Open();
-            Press(decorator, "EnvironmentMoveItemsButton");
+            Press(decorator, "EnvironmentDeleteItemsButton");
             Press(blocker, firstPoint);
-            Press(decorator, "EnvironmentDeleteButton");
-            Press(decorator, "EnvironmentMoveDoneButton");
+            Press(decorator, "EnvironmentDeleteDoneButton");
             Press(decorator, "EnvironmentDoneButton");
+            Press(decorator, "EnvironmentConfirmSaveButton");
             await SettleAsync(tree);
             bool banked = environment.Layout.Decorations.Count == 0 &&
                 environment.OwnedUnplaced.Count(idValue => idValue == lampDefinition.Id) == 1 &&
@@ -645,6 +646,7 @@ public sealed class EnvironmentDecoratorClosureScenario(string id = "environment
             long storedReserved = decorator.VisibleProjectedBalance;
             PlaceAt(blocker, decorator, secondPoint, confirm: true);
             Press(decorator, "EnvironmentDoneButton");
+            Press(decorator, "EnvironmentConfirmSaveButton");
             await SettleAsync(tree);
             bool reused = storedBefore == storedReserved && environment.Layout.Decorations.Count == 1 &&
                 environment.OwnedUnplaced.Count == 0 && progress.BalanceMilliCredits == storedBefore;

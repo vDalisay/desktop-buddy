@@ -41,7 +41,7 @@ public sealed class ShopPanelScenario : IScenario
 
         var shop = new ShopPanel();
         tree.Root.AddChild(shop);
-        shop.Configure(progress, economy, catalogue);
+        shop.Configure(progress, economy, catalogue, sandbox.Pipeline);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
         try

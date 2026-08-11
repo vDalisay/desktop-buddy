@@ -270,11 +270,7 @@ public sealed class PaintWorkspace
     public void ContinueGesture(PaintHit? hit)
     {
         if (!_gestureActive) return;
-        if (hit is null || !hit.Value.IsValid)
-        {
-            _lastHit = null;
-            return;
-        }
+        if (hit is null || !hit.Value.IsValid) return;
 
         PaintHit current = hit.Value;
         if (_selectedTool == PaintTool.Spray)

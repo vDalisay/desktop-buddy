@@ -88,7 +88,7 @@ public sealed class PaintSymmetryTests
         };
         PaintSurface surface = workspace.Surfaces[PaintPart.Head];
         string before = surface.ComputeHash();
-        PaintHit[] samples =
+        PaintHit?[] samples =
         [
             new(PaintPart.Head, new PaintPoint(0.18, 0.45), 0),
             new(PaintPart.Head, new PaintPoint(0.22, 0.55), 0),
