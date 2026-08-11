@@ -24,8 +24,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     [
         CharacterFeatureSlot.Face, CharacterFeatureSlot.Hair, CharacterFeatureSlot.Brows,
         CharacterFeatureSlot.Eyes, CharacterFeatureSlot.Nose, CharacterFeatureSlot.Mouth,
-        CharacterFeatureSlot.Ears, CharacterFeatureSlot.Accessories, CharacterFeatureSlot.Glasses,
-        CharacterFeatureSlot.Headwear, CharacterFeatureSlot.Tops, CharacterFeatureSlot.Shoes,
+        CharacterFeatureSlot.Ears, CharacterFeatureSlot.Glasses, CharacterFeatureSlot.Headwear,
+        CharacterFeatureSlot.Tops, CharacterFeatureSlot.Shoes,
     ];
 
     private static readonly (string Name, Rgba32 Color)[] Palette =
@@ -521,14 +521,15 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private Win98CatalogItemPresentation Presentation(CosmeticDefinition definition)
     {
         bool owned = _session.IsCosmeticOwned(definition.Id);
-        string secondary = owned ? (definition.IsFreeDefault ? "Free" : "Owned") : PriceText(definition);
+        bool equipped = IsEquipped(definition.Id);
+        string secondary = equipped ? "Equipped" : owned ? (definition.IsFreeDefault ? "Free" : "Owned") : PriceText(definition);
         return new Win98CatalogItemPresentation(
             definition.Id,
             CosmeticName(definition),
             secondary,
             BuddyStudioThumbnailCache.For(definition),
-            Tooltip: owned ? "Available to save." : "Preview only until acquired.",
-            BadgeText: owned ? "Owned" : "Preview");
+            Tooltip: equipped ? "Currently equipped." : owned ? "Click once to equip." : "Preview only until bought or earned.",
+            BadgeText: equipped ? "Equipped" : owned ? "Owned" : "Preview");
     }
 
     private void RefreshSelectionPane()
@@ -539,27 +540,26 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         string id = CharacterDocumentEditor.ReadFeatureId(preview, _slot);
         CosmeticDefinition definition = CharacterFeatureCatalog.Shipped.ResolveDefinition(_slot, id, out _);
         bool owned = _session.IsCosmeticOwned(definition.Id);
-        string equippedId = CharacterDocumentEditor.ReadFeatureId(_session.WorkingDocument!, _slot);
-        bool equipped = string.Equals(equippedId, definition.Id, StringComparison.Ordinal) &&
-            !_session.HasOwnedPreview(_slot) && !_session.HasUnownedPreview(_slot);
+        bool equipped = IsEquipped(definition.Id);
         CatalogueEntry entry = default;
         bool purchasable = !owned && definition.OwnershipContentId is string contentId &&
             _economy.Catalogue.TryGet(contentId, out entry) && entry.Visible &&
             entry.Kind == CatalogueEntryKind.Cosmetic && entry.HasValidPrice;
         bool affordable = !purchasable || entry.PriceMilliCredits <= _economy.BalanceMilliCredits;
+        string status = equipped ? "Equipped" : owned ? "Owned — click item to equip" : "UNOWNED PREVIEW";
         _values.SetRows(
         [
-            new Win98ValueRowPresentation("status", "Status", owned ? "Owned" : "Preview", true),
+            new Win98ValueRowPresentation("status", "Status", status, true),
             new Win98ValueRowPresentation("price", "Price", owned ? "—" : PriceText(definition)),
             new Win98ValueRowPresentation("balance", "Balance", ContentDisplayName.Credits(_economy.BalanceMilliCredits)),
         ]);
         _buy.Text = owned ? (equipped ? "Equipped" : "Equip") :
-            purchasable ? "Buy" : "Earn in Work Mode";
+            purchasable ? $"Buy • {PriceText(definition)}" : "Earn in Work Mode";
         _buy.Disabled = equipped || (!owned && (!purchasable || !affordable));
         _buy.TooltipText = equipped ? "This cosmetic is currently equipped."
-            : owned ? "Equip this cosmetic on the working character."
-            : purchasable && !affordable ? "Earn more credits before buying this cosmetic."
-            : purchasable ? "Buy this cosmetic permanently; equip it with the next action."
+            : owned ? "Equip this owned cosmetic now."
+            : purchasable && !affordable ? $"Costs {PriceText(definition)}. Earn more credits before buying."
+            : purchasable ? $"Buy permanently for {PriceText(definition)} and equip immediately."
             : "This cosmetic is earned elsewhere and cannot be bought here.";
         bool hasColor = definition.ColorChannels.Count > 0;
         _color.Disabled = !hasColor;
@@ -572,6 +572,14 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _resetTransform.Disabled = !transformable;
         if (!transformable)
             SetMoveMode(false);
+    }
+
+    private bool IsEquipped(string cosmeticId)
+    {
+        CharacterDocument? working = _session.WorkingDocument;
+        return working is not null &&
+            string.Equals(CharacterDocumentEditor.ReadFeatureId(working, _slot), cosmeticId, StringComparison.Ordinal) &&
+            !_session.HasOwnedPreview(_slot) && !_session.HasUnownedPreview(_slot);
     }
 
     private string PriceText(CosmeticDefinition definition)
@@ -587,37 +595,54 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         if (document is null)
             return "Select or create a character first.";
         if (_session.HasUnownedPreviews)
-            return "Previewing an unowned cosmetic — Save is unavailable.";
+            return "UNOWNED PREVIEW — buy this cosmetic or select another before saving.";
         if (_session.HasOwnedPreviews)
-            return "Previewing an owned cosmetic — choose Equip to apply it.";
+            return "Owned preview — click the item again or choose Equip to apply it.";
         if (_moveMode)
             return "Move: drag the preview or use arrows; Shift moves farther; Escape exits.";
         return _session.IsDirty ? "Unsaved changes." : "Ready.";
     }
 
-    private void SelectCosmetic(string cosmeticId) => Handle(_session.PreviewCosmetic(_slot, cosmeticId));
+    private void SelectCosmetic(string cosmeticId)
+    {
+        CharacterEditorActionResult preview = _session.PreviewCosmetic(_slot, cosmeticId);
+        Handle(preview);
+        if (!preview.Completed || !_session.IsCosmeticOwned(cosmeticId))
+            return;
+
+        // User-testing showed the extra owned-preview -> Equip click was unnecessary friction.
+        // An owned catalogue click therefore behaves like a direct selection/equip action.
+        Handle(_session.EquipPreviewedCosmetic(_slot));
+    }
 
     private async Task PurchaseOrEquipAsync()
     {
         string cosmeticId = CharacterDocumentEditor.ReadFeatureId(_session.PreviewDocument!, _slot);
         bool owned = _session.IsCosmeticOwned(cosmeticId);
-        CharacterEditorActionResult result = owned
-            ? _session.EquipPreviewedCosmetic(_slot)
-            : _session.BuyPreviewedCosmetic(_slot);
-        Handle(result);
-        string? saveFailure = null;
-        if (result.Completed && !owned)
+        if (owned)
         {
-            try
-            {
-                await _flushProgress();
-            }
-            catch (Exception error)
-            {
-                saveFailure = $"Purchase is owned; progress save will retry: {error.Message}";
-            }
+            Handle(_session.EquipPreviewedCosmetic(_slot));
+            return;
         }
-        Refresh();
+
+        CharacterEditorActionResult purchase = _session.BuyPreviewedCosmetic(_slot);
+        Handle(purchase);
+        if (!purchase.Completed)
+            return;
+
+        string? saveFailure = null;
+        try
+        {
+            await _flushProgress();
+        }
+        catch (Exception error)
+        {
+            saveFailure = $"Purchase is owned; progress save will retry: {error.Message}";
+        }
+
+        // Buying from Studio is one clear action: ownership becomes permanent and the item
+        // immediately becomes the working selection. Save still controls the character document.
+        Handle(_session.EquipPreviewedCosmetic(_slot));
         if (saveFailure is not null)
             SetStatus(saveFailure);
     }
