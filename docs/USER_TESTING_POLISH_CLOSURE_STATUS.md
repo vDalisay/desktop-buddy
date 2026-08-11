@@ -1,10 +1,10 @@
 # User-Testing Polish — Closure Status
 
-Status: **IMPLEMENTATION COMPLETE; AUTOMATED + OWNER MANUAL GATES NOT YET RUN**  
+Status: **IMPLEMENTATION COMPLETE; AUTOMATED GATE PASSED LOCALLY; OWNER MANUAL GATE REMAINS**  
 Authoritative input: `docs/USER_TESTING_POLISH_BACKLOG_2026-08-11.md`  
 Branch: `user-testing-polish`
 
-This document maps the observed Section 1–7 user-testing findings to the implementation that now exists on the branch. It does **not** declare the gate green: the connector environment cannot run the Windows/Godot build, so `tools\validate_user_testing_polish.bat` and the final owner feel pass remain required.
+This document maps the observed Section 1–7 user-testing findings to the implementation that now exists on the branch. The focused automated closure command has now been reported passing locally by the owner after a small validation-fix commit. The final owner feel/interaction pass remains required before the gate is fully closed.
 
 ## 1. Paint Background
 
@@ -138,11 +138,11 @@ The runner performs:
 10. Work Mode resilience/resize/exit;
 11. live 3D presentation regression.
 
-No automated result is recorded here until that command has actually been run locally.
+**Recorded result (owner local run, 2026-08-11): PASS.** The passing branch includes commit `a5835e1863a657cd115060283a585cd0299d6ad4` (`fix(polish): restore validation closure`), which adjusted the affected paint continuity, Catalogue dependency injection, Environment closure scenario flow, tool-status import, and nullable curve test shape before the validator passed.
 
 ## Final owner manual gate
 
-After the automated command passes, launch `tools\play_game.bat` and verify the interaction/feel items that automation cannot judge:
+Launch `tools\play_game.bat` and verify the interaction/feel items that automation cannot judge:
 
 - Paint Background: Curve guidance reads naturally; control points appear/disappear at the right moments; Eraser footprint and active tool/shape are visually obvious.
 - Paint Buddy: Mirror/backside/fill feel correct; palette detaches/drags/docks; lower-left turn/zoom cluster is unobtrusive; eyedropper clears stale swatch selection; Show limbs makes hands/feet intentionally paintable and restores the normal preview afterward.
