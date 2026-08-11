@@ -14,6 +14,7 @@ public partial class Win98PaintToolBootstrap : Node
     private Button? _brush;
     private Button? _eraser;
     private Button? _spray;
+    private Button? _fill;
     private Button? _eyedropper;
     private Button? _curve;
     private Button? _pan;
@@ -26,6 +27,7 @@ public partial class Win98PaintToolBootstrap : Node
     {
         if (GodotObject.IsInstanceValid(_canvas) &&
             GodotObject.IsInstanceValid(_spray) &&
+            GodotObject.IsInstanceValid(_fill) &&
             GodotObject.IsInstanceValid(_eyedropper) &&
             GodotObject.IsInstanceValid(_curve) &&
             GodotObject.IsInstanceValid(_pan))
@@ -64,6 +66,11 @@ public partial class Win98PaintToolBootstrap : Node
             PaintToolIconProvider.Spray,
             "Spray",
             "Airbrush sparse paint inside the current Brush Size envelope (S).");
+        _fill = ToolButton(
+            "PaintFillButton",
+            PaintToolIconProvider.Fill,
+            "Bucket Fill",
+            "Fill one connected paint region with the current color (F).");
         _eyedropper = ToolButton(
             "PaintEyedropperButton",
             PaintToolIconProvider.PickColor,
@@ -80,8 +87,10 @@ public partial class Win98PaintToolBootstrap : Node
             "Hand",
             "Pan the buddy viewport with the left mouse button.");
 
-        // Locked ordering: Brush | Eraser / Spray | Pick / Curve | Hand.
+        // Mutation tools first, then inspection/movement tools. Win98PaintUxPolishBootstrap
+        // may relayout the same stable node names without changing their behavior.
         picker!.AddChild(_spray);
+        picker.AddChild(_fill);
         picker.AddChild(_eyedropper);
         picker.AddChild(_curve);
         picker.AddChild(_pan);
@@ -96,6 +105,7 @@ public partial class Win98PaintToolBootstrap : Node
         _brush!.Pressed += SelectBrush;
         _eraser!.Pressed += SelectEraser;
         _spray.Pressed += SelectSpray;
+        _fill.Pressed += SelectFill;
         _eyedropper.Pressed += SelectEyedropper;
         _curve.Pressed += SelectCurve;
         _pan.Pressed += SelectPan;
@@ -115,6 +125,9 @@ public partial class Win98PaintToolBootstrap : Node
         {
             case Key.S:
                 SelectSpray();
+                break;
+            case Key.F:
+                SelectFill();
                 break;
             case Key.C:
                 SelectCurve();
@@ -148,6 +161,7 @@ public partial class Win98PaintToolBootstrap : Node
     private void SelectBrush() => SelectPaintMutation(PaintTool.Brush, _brush);
     private void SelectEraser() => SelectPaintMutation(PaintTool.Eraser, _eraser);
     private void SelectSpray() => SelectPaintMutation(PaintTool.Spray, _spray);
+    private void SelectFill() => SelectPaintMutation(PaintTool.Fill, _fill);
     private void SelectCurve() => SelectPaintMutation(PaintTool.Curve, _curve);
 
     private void SelectPaintMutation(PaintTool tool, Button? button)
@@ -188,6 +202,7 @@ public partial class Win98PaintToolBootstrap : Node
         _brush!.ButtonPressed = ReferenceEquals(selected, _brush);
         _eraser!.ButtonPressed = ReferenceEquals(selected, _eraser);
         _spray!.ButtonPressed = ReferenceEquals(selected, _spray);
+        _fill!.ButtonPressed = ReferenceEquals(selected, _fill);
         _eyedropper!.ButtonPressed = ReferenceEquals(selected, _eyedropper);
         _curve!.ButtonPressed = ReferenceEquals(selected, _curve);
         _pan!.ButtonPressed = ReferenceEquals(selected, _pan);
@@ -205,6 +220,7 @@ public partial class Win98PaintToolBootstrap : Node
         GodotObject.IsInstanceValid(_brush) &&
         GodotObject.IsInstanceValid(_eraser) &&
         GodotObject.IsInstanceValid(_spray) &&
+        GodotObject.IsInstanceValid(_fill) &&
         GodotObject.IsInstanceValid(_eyedropper) &&
         GodotObject.IsInstanceValid(_curve) &&
         GodotObject.IsInstanceValid(_pan);
