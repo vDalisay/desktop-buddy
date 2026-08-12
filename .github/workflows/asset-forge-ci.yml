@@ -25,8 +25,11 @@ jobs:
       - name: Build game solution
         run: dotnet build DesktopBuddy.sln -c Debug
 
-      - name: Domain unit tests
-        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
+      # The repository's normal CI is intentionally manual-only while six ProgressStoreTests
+      # that hard-code Windows paths are investigated on Linux. Asset Forge does not touch that
+      # store, so keep the remaining domain suite as this branch's regression gate.
+      - name: Domain unit tests (excluding known Linux-only ProgressStoreTests)
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
 
       - name: Asset Forge deterministic Core tests
         run: dotnet test devtools/AssetForge.Core.Tests/DesktopBuddy.AssetForge.Core.Tests.csproj -c Debug
