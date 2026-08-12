@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using DesktopBuddy.App;
+using DesktopBuddy.CharacterEditor.BuddyStudio;
 using Godot;
 
 namespace DesktopBuddy.Persistence.Characters;
@@ -73,7 +74,8 @@ public partial class CharacterSelectionRuntime : Node
             _context.Characters,
             _context.CharacterSelection,
             _sandbox.VisualPresenter.RigView,
-            _context.Saves);
+            _context.Saves,
+            BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
         StartupResult = await _coordinator.LoadStartupAsync(_lifetime.Token);
     }
 }
