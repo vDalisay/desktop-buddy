@@ -74,20 +74,8 @@ public static class GlassesTemplateGenerator
 
         int leftOuter = IndexOfMinimumX(leftWorld);
         int rightOuter = IndexOfMaximumX(rightWorld);
-        AddTemple(
-            mesh,
-            leftWorld[leftOuter],
-            -1f,
-            settings,
-            leftUv[leftOuter],
-            radialSegments);
-        AddTemple(
-            mesh,
-            rightWorld[rightOuter],
-            1f,
-            settings,
-            rightUv[rightOuter],
-            radialSegments);
+        AddTemple(mesh, leftWorld[leftOuter], -1f, settings, leftUv[leftOuter], radialSegments);
+        AddTemple(mesh, rightWorld[rightOuter], 1f, settings, rightUv[rightOuter], radialSegments);
 
         mesh.RecalculateNormals();
         return true;
@@ -212,7 +200,7 @@ public static class GlassesTemplateGenerator
                 {
                     keep[i] = false;
                     changed = true;
-                    i++; // never remove adjacent points in the same pass
+                    i++;
                 }
             }
             if (!changed) break;
@@ -247,7 +235,7 @@ public static class GlassesTemplateGenerator
 
     private static Fit BuildFit(MaskGrid grid, HoleContour left, HoleContour right)
     {
-        IEnumerable<Vector2> all = left.GridPoints.Concat(right.GridPoints);
+        Vector2[] all = left.GridPoints.Concat(right.GridPoints).ToArray();
         float cell = 2f / grid.Width;
         float minX = all.Min(static p => p.X);
         float maxX = all.Max(static p => p.X);
@@ -271,21 +259,11 @@ public static class GlassesTemplateGenerator
             Vector2 raw = new(-1f + p.X * cell, 1f - p.Y * cell);
             result.Add(fit.Map(raw));
         }
-        return EnsureCounterClockwise(result);
-    }
-
-    private static List<Vector2> ToUvLoop(MaskGrid grid, IReadOnlyList<Vector2> points)
-    {
-        var result = points.Select(p => new Vector2(p.X / grid.Width, p.Y / grid.Height)).ToList();
-        if (SignedArea(points) < 0) result.Reverse();
         return result;
     }
 
-    private static List<Vector2> EnsureCounterClockwise(List<Vector2> points)
-    {
-        if (SignedArea(points) < 0) points.Reverse();
-        return points;
-    }
+    private static List<Vector2> ToUvLoop(MaskGrid grid, IReadOnlyList<Vector2> points) =>
+        points.Select(p => new Vector2(p.X / grid.Width, p.Y / grid.Height)).ToList();
 
     private static int CrossSectionSegments(double roundness)
     {
@@ -327,8 +305,9 @@ public static class GlassesTemplateGenerator
             for (int r = 0; r < radialSegments; r++)
             {
                 int s = (r + 1) % radialSegments;
-                mesh.AddTriangle(rings[i, r], rings[j, r], rings[j, s]);
-                mesh.AddTriangle(rings[i, r], rings[j, s], rings[i, s]);
+                // theta x path gives the radial/outward tube normal.
+                mesh.AddTriangle(rings[i, r], rings[j, s], rings[j, r]);
+                mesh.AddTriangle(rings[i, r], rings[i, s], rings[j, s]);
             }
         }
     }
@@ -395,8 +374,8 @@ public static class GlassesTemplateGenerator
         for (int r = 0; r < radialSegments; r++)
         {
             int s = (r + 1) % radialSegments;
-            mesh.AddTriangle(first[r], second[r], second[s]);
-            mesh.AddTriangle(first[r], second[s], first[s]);
+            mesh.AddTriangle(first[r], second[s], second[r]);
+            mesh.AddTriangle(first[r], first[s], second[s]);
         }
     }
 
@@ -444,8 +423,8 @@ public static class GlassesTemplateGenerator
         for (int r = 0; r < radialSegments; r++)
         {
             int s = (r + 1) % radialSegments;
-            mesh.AddTriangle(first[r], second[r], second[s]);
-            mesh.AddTriangle(first[r], second[s], first[s]);
+            mesh.AddTriangle(first[r], second[s], second[r]);
+            mesh.AddTriangle(first[r], first[s], second[s]);
         }
     }
 }
