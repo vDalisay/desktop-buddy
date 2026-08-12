@@ -201,7 +201,7 @@ They must not automatically add:
 
 ### 2.16 Tops and Shoes are visual replacements
 
-This owner decision supersedes the current overlay-style interpretation for those slots.
+Owner decision, 2026-08-12. This supersedes the overlay interpretation everywhere it appears, including the current shipped renderer and the `trusted torso/foot overlay` wording in `docs/BUDDY_STUDIO_FULL_RELEASE_PLAN.md`.
 
 ```text
 Tops
@@ -213,9 +213,26 @@ Shoes
 = purchasable foot visual shape replacements
 ```
 
+A Top is a new torso shape — triangular, pear-shaped, whatever the source art draws — in exactly the sense the default torso is a shape today. It is a whole new mesh, not a decoration in front of one.
+
 Underlying 2D physics remains unchanged.
 
-### 2.17 First proof-of-concept category
+There are no existing players, so the two shipped items `cosmetic.top.utility_bib` and `cosmetic.shoes.soft_steps` are re-authored under the replacement model. No ownership or save migration is required.
+
+### 2.17 Part replacement and body paint
+
+Owner decision, 2026-08-12.
+
+```text
+equip a replacement  -> the default part visual is replaced by the new mesh
+the replacement      -> always starts empty, every time it is equipped
+```
+
+The default part visual and its painted surface are hidden, not deleted, and return unchanged when the replacement is removed. A replacement is never painted in v1 and paint input over a replaced part does nothing; the analytic frontal brush mapper owns the primitive parts only.
+
+Replacement painting is future work and is governed by the UV contract in Section 9.8.
+
+### 2.18 First proof-of-concept category
 
 The first complete vertical slice is **Glasses**.
 
@@ -331,6 +348,10 @@ desktop-buddy/
 |       +-- sofas/
 |       +-- ...
 |
++-- src/
+|   +-- Buddy/
+|       +-- Presentation3D/   (shared trusted rig — see 4.2.1)
+|
 +-- devtools/
     +-- .gdignore
     |
@@ -384,11 +405,46 @@ Where practical, deterministic geometry logic should also avoid depending on liv
 - invoking the deterministic core;
 - invoking validated export.
 
+### 4.2.1 Sharing the trusted Buddy rig across two Godot projects
+
+Asset Forge is its own Godot project, so its `res://` root is `devtools/AssetForge/`. Godot resources do not cross project roots, and the Section 14.5 preview gate requires the *real* Buddy head, not a lookalike.
+
+The rig is buildable without the game's scene tree: `BuddyVisualRigView` constructs every part mesh, outline, paint layer, connector, and material in code from `BuddyVisualProfile` and `BuddyLookMaterialLibrary`.
+
+Therefore:
+
+```text
+extract the trusted visual rig + look material library
+    into a shared Godot-SDK class library
+        referenced by DesktopBuddy and by AssetForge
+
+copy the trusted profile resources
+    data/buddy/*.tres
+        into the Asset Forge project as a build step
+```
+
+Rules:
+
+- the shared library is the single definition of the rig; Asset Forge never forks a second copy of the Buddy look;
+- the copy step is generated output and stays out of source control;
+- Asset Forge previews the reference Buddy but never constructs a `BuddyRoot`, physics authority, or live save state.
+
 ### 4.3 Game project build isolation
 
 `DesktopBuddy.csproj` currently uses the Godot SDK broad C# source glob and explicitly excludes only existing standalone projects.
 
 The implementation must add the Asset Forge standalone paths to `DefaultItemExcludes`, otherwise C# files under `devtools/` could accidentally enter the game assembly.
+
+Four boundaries have to move together:
+
+```text
+DesktopBuddy.csproj    DefaultItemExcludes gains devtools/**/* and authoring/**/*
+export_presets.cfg     exclude_filter gains devtools/*, authoring/*
+DesktopBuddy.sln       decide deliberately whether Asset Forge joins the solution
+.github/workflows      CI builds the whole solution, so joining it joins CI
+```
+
+`.gdignore` under `devtools/` and `authoring/` keeps both trees out of the game's import scan; the export filter is belt-and-braces for non-resource files.
 
 Required verification:
 
@@ -396,6 +452,7 @@ Required verification:
 Desktop Buddy builds without Asset Forge
 Asset Forge builds without Desktop Buddy
 Desktop Buddy Steam/game export contains no Asset Forge assemblies/scenes/content
+Adding Asset Forge does not slow or break the existing CI game/domain/journey jobs
 ```
 
 ---
@@ -792,15 +849,38 @@ Category-specific lighting metadata may add emission/local lights, but the base 
 
 ## 11. Generated geometry container
 
-Recommended baked mesh format: **GLB**.
+Baked mesh format: **GLB**.
 
 Benefits:
 
 - Godot-native import support;
-- mesh + UV + normals + material/texture references can remain together;
+- mesh + UV + normals stay together in one inspectable file;
 - suitable for inspection and source control;
-- no Blender dependency required in the authoritative pipeline;
-- preview mesh can be exported from the same canonical generated model tree.
+- no Blender dependency required in the authoritative pipeline.
+
+### 11.1 The Core writes the GLB bytes
+
+`AssetForge.Core` serializes the GLB itself. It does not call Godot's `GltfDocument`.
+
+Reason: Section 33 AF-15 requires `Verify All` to re-derive committed geometry from the command line without launching the UI. If baking needs the engine, determinism stops being testable in the pure test project and CI has to boot Godot to check a hash.
+
+```text
+canonical mesh -> Core GLB writer -> bytes -> SHA-256
+```
+
+The writer is deterministic output only: fixed accessor order, fixed buffer layout, no generator timestamp, no random node names.
+
+### 11.2 Geometry only
+
+The exported GLB carries positions, indices, UVs, and normals.
+
+It does not carry the authored look. Runtime materials come from the shared soft-toon library described in Section 10.3, applied over the separately exported `albedo.png`, so a generated asset can never smuggle a second shading style into the game through an embedded glTF material.
+
+### 11.3 Mesh, not scene
+
+Godot imports a `.glb` as a **scene**, not as a `Mesh`. The generated-asset loader must resolve the single canonical mesh deterministically — through import configuration or an explicit extraction step chosen once in AF-4 and applied to every generated asset thereafter.
+
+A generated package containing more than one mesh node is an export validation failure, not a thing the loader guesses about.
 
 The preview camera, reference Buddy, editor gizmos, and floor/wall guides must never be included in the exported GLB.
 
@@ -1056,7 +1136,7 @@ Examples:
 
 The current implementation builds `TopUtilityBib` as geometry attached in front of the torso and `ShoesSoftSteps` as geometry added at foot anchors.
 
-That current interpretation must be superseded for the product model described here.
+That current interpretation is superseded by Section 2.16. Both shipped items are re-authored as shape replacements; no ownership or save migration is required.
 
 ### 16.1 Runtime seam
 
@@ -1091,7 +1171,25 @@ LeftFoot physics -> generated left foot visual
 RightFoot physics -> generated mirrored/right foot visual
 ```
 
-### 16.4 Physics envelope preview
+### 16.4 Body paint under a replacement
+
+Painting shipped before Asset Forge, so the replacement seam lands on a live feature. Two facts decide the behavior:
+
+```text
+paint is a grown shell mesh cloned from the part mesh
+brush targeting is analytic ray -> UV against the sphere/capsule primitives
+```
+
+A replacement mesh has neither, so Section 2.17 applies:
+
+- replacing the part visual also hides that part's paint shell;
+- the default part visual and its painted pixels are hidden, never deleted or rewritten;
+- removing the replacement restores the default visual with its paint unchanged;
+- the replacement is always unpainted and paint input over it does nothing.
+
+The paint document, its PNG persistence, and the analytic mapper are untouched by this milestone. Painting a replacement needs a mesh-based hit/UV path and is future work under Section 17.
+
+### 16.5 Physics envelope preview
 
 Asset Forge should show the underlying physics envelope in translucent form for part-replacement categories.
 
@@ -1116,9 +1214,11 @@ However generated geometry must preserve future support by shipping with stable 
 Important v1 behavior:
 
 - generated replacement uses source albedo;
-- old body paint must not visibly bleed through an opaque replacement incorrectly;
-- the replacement system should not force a new physics or character schema solely for paint;
+- the replaced part's paint shell is hidden with its default visual, per Section 16.4;
+- the replacement system should not force a new physics, character, or paint schema solely for paint;
 - future painting can bind a paint texture/shell to the generated replacement mesh using the stable UV definition.
+
+The same UV contract serves the trusted drawing templates in `docs/BUDDY_STUDIO_FULL_RELEASE_PLAN.md`. There is one paint-layout version across generated meshes and player-drawn templates, not two.
 
 Do not build the full replacement-paint UI in this Asset Forge milestone.
 
@@ -1128,13 +1228,68 @@ Do not build the full replacement-paint UI in this Asset Forge milestone.
 
 ### 18.1 Problem
 
-Current cosmetic content is significantly hard-coded in C# and the current visual catalogue uses hard-coded visual kinds.
+Adding one cosmetic today means editing five hard-coded places, three of which are engine-free domain code that cannot load a `.tres` at all:
+
+```text
+domain  ContentIds                              stable content ID constant + IsCosmetic prefix rule
+domain  CharacterFeatureIds                     stable feature ID constant
+domain  CharacterFeatureCatalog.Shipped         static CreateShippedDefinitions() list
+domain  CataloguePolicy.LaunchContentIds        launch set, count-asserted by tests
+data    data/catalogue/cosmetic_*.tres          priced catalogue entry
+engine  BuddyCosmeticVisualCatalog              cosmetic ID -> anchor/layer/visual kind
+engine  BuddyVisualRigView.Cosmetics            a render method per visual kind
+```
 
 That conflicts with the target workflow:
 
 > Generate -> Export to Game -> item appears in the correct Buddy Studio category without writing a new renderer method for each asset.
 
-### 18.2 Generated cosmetics catalogue
+Merging catalogues alone is not enough. A generated cosmetic that reaches only the priced catalogue is a shop entry with no valid feature ID and no editor slot: `CharacterDocumentValidator` rejects the selection and the editor never lists it.
+
+### 18.2 Required seams
+
+The generated path needs all of:
+
+```text
+feature catalogue     CharacterFeatureCatalog gains a generated-definition source
+                      alongside Shipped, so generated feature IDs validate and
+                      appear in their slot. Shipped stays the launch set.
+
+content IDs           generated IDs keep the existing "cosmetic." prefix so
+                      IsCosmetic/IsKnown/IsCatalogueEntry stay true without
+                      widening the trust rules.
+
+launch policy         CataloguePolicy.LaunchContentIds and its count assertions
+                      describe the launch set only. Generated entries are
+                      validated as generated content, never folded into the
+                      launch count.
+
+visual catalogue      BuddyCosmeticVisualCatalog gains the generated visual
+                      source of Section 15.3 instead of a new enum member per
+                      exported item.
+```
+
+### 18.3 Display names
+
+Catalogue resources carry `NameKey`/`DescriptionKey`, but there is no string table yet and player-facing text is currently derived from the content ID slug.
+
+Asset Forge therefore authors both: the stable ID slug stays the fallback name and the recipe's display name is exported as the authored key value, so generated content needs no per-item change when localization lands.
+
+### 18.4 Feature colour channels
+
+Every character feature carries a colour and a named colour-channel map. A generated cosmetic's colour is authored in the source PNG.
+
+v1 rule:
+
+```text
+generated cosmetic -> no colour picker in Buddy Studio
+                   -> albedo texture is the authored appearance
+                   -> the feature colour channel is not applied
+```
+
+This matches the one-material-region decision in Section 2.7. Named channels return with Section 32.3.
+
+### 18.5 Generated cosmetics catalogue
 
 Add a generated content catalogue/resource separate from manually maintained launch content.
 
@@ -1153,13 +1308,13 @@ data/catalogue/
 +-- generated_cosmetics.tres
 ```
 
-### 18.3 Runtime merge
+### 18.6 Runtime merge
 
 `CatalogueLoader` should merge the manually authored launch catalogue and generated cosmetic-sale catalogue into one validated domain catalogue.
 
 Asset Forge must modify only the generated content boundary, not repeatedly rewrite the hand-authored launch catalogue.
 
-### 18.4 Permanent ownership semantics
+### 18.7 Permanent ownership semantics
 
 Generated Buddy Studio entries use the existing cosmetic purchase path:
 
@@ -1726,12 +1881,28 @@ Asset Forge remains trusted developer tooling. Player-drawn content may reuse sa
 
 ## AF-0 — Record architecture and source-of-truth decisions
 
-This document is the first source-of-truth plan for Asset Forge.
+This document is the source-of-truth plan for Asset Forge.
 
-Before implementation begins, reconcile it against any newer owner decisions in `docs/DECISIONS.md` and the current `AGENTS.md` source-of-truth ordering.
+### Position in the programme
+
+Asset Forge is a developer-facing side tool, not shipped game content. It is deliberately **outside** the locked Steam demo order in `docs/ROADMAP.md` and is not gated by Milestone 5.11 or any later milestone. It may start at any time and does not consume demo scope.
+
+The moment it exports content into the game, however, the receiving seams in Sections 15–19 are ordinary game work and follow the normal architecture, test, and review discipline.
+
+### Decisions already resolved
+
+Owner, 2026-08-12, recorded in `docs/DECISIONS.md`:
+
+```text
+Tops/Shoes are shape replacements     supersedes the overlay model everywhere
+no migration                          there are no existing players
+paint under a replacement             Sections 2.17 and 16.4
+Asset Forge is not roadmap-gated      developer-facing side tool
+```
 
 Gate:
 
+- the `docs/DECISIONS.md` entry exists before the first receiving-seam change lands;
 - no conflicting higher-priority owner decision;
 - no ambiguous category/economy/physics rule remains unresolved.
 
@@ -1747,7 +1918,9 @@ AssetForge.Core.Tests
 AssetForge
 ```
 
-Add `DesktopBuddy.csproj` exclusions for the standalone source tree.
+Extract the shared trusted rig library described in Section 4.2.1 and reference it from both projects.
+
+Apply the four build boundaries in Section 4.3: `DefaultItemExcludes`, `export_presets.cfg` exclusions, the deliberate solution decision, and its CI consequence.
 
 Add development scripts such as:
 
@@ -1775,6 +1948,7 @@ Desktop Buddy builds normally
 Asset Forge builds independently
 Asset Forge launches independently
 Steam/game export excludes Asset Forge
+existing domain/journey/quick suites stay green after the rig extraction
 ```
 
 ---
@@ -1845,11 +2019,14 @@ source texture
 
 Wire canonical generated mesh into preview.
 
+Implement the Core GLB writer of Section 11.1 and choose the mesh-resolution rule of Section 11.3 once, here, for every later category.
+
 Gate:
 
 - generated mesh can be orbited/inspected;
 - preview-camera changes never alter canonical mesh hash;
-- source colours remain visible.
+- source colours remain visible;
+- the GLB is written and re-read without the Godot editor, and identical input reproduces identical bytes.
 
 ---
 
@@ -1929,6 +2106,8 @@ Gate:
 
 Add generated cosmetic catalogue/resource path.
 
+Open the four seams of Section 18.2 — feature catalogue, content IDs, launch policy, visual catalogue — before wiring export. Merging priced catalogues alone produces a shop entry the character validator rejects.
+
 Refactor runtime catalogue loading to merge:
 
 ```text
@@ -1985,13 +2164,19 @@ PairedPartReplacement
 
 Implement visual override of default torso/foot meshes while preserving original physics.
 
+Implement the paint rule of Section 16.4: the replaced part's paint shell hides with its default visual, painted pixels are never rewritten, and brush input over a replaced part does nothing.
+
+Define the outline behavior for replacement meshes. Default parts carry an inverted-hull outline shell; a generated non-convex mesh needs a stated rule rather than an inherited grow amount that closes its own concavities.
+
 Add Asset Forge physics-envelope preview/warnings.
 
 Gate:
 
 - replacing torso/feet changes only presentation;
 - existing physics/ragdoll tests remain unchanged;
-- no collision/mass/force/profile mutations.
+- no collision/mass/force/profile mutations;
+- paint a torso, equip a replacement, remove it: the original paint returns byte-identical;
+- an equipped replacement is unpainted and stays unpainted under brush input.
 
 ---
 
@@ -2124,6 +2309,8 @@ FAIL lamp.bubble
 
 `Verify All` should run from command line without launching the Asset Forge UI so CI can eventually validate committed generated content.
 
+This is only possible because the Core owns the GLB writer (Section 11.1). Verification re-derives geometry and bytes from source + recipe in the pure library and compares hashes; it never boots Godot.
+
 ---
 
 # 34. Automated test matrix
@@ -2216,7 +2403,9 @@ left/right feet replaced
 physics unchanged
 connectors unchanged
 old base visual hidden correctly
-paint does not visibly bleed through incorrectly
+paint shell hides with the default visual
+paint returns unchanged when the replacement is removed
+brush input over a replaced part is a no-op
 ```
 
 ## Environment
@@ -2257,8 +2446,8 @@ At minimum:
 10. Generated cosmetic definition/catalogue content is data-driven rather than requiring a new renderer switch case per exported item.
 11. Pink-glasses vertical slice works end-to-end in Buddy Studio: preview -> buy -> own -> equip -> save/load.
 12. Generated glasses remain visually valid as the Buddy turns and temples/depth are visible.
-13. Part-replacement seam exists and changes presentation only.
-14. Tops are torso-shape replacements and Shoes are foot-shape replacements.
+13. Part-replacement seam exists and changes presentation only, and body paint under a replacement follows Section 16.4 without ever being rewritten.
+14. Tops are torso-shape replacements and Shoes are foot-shape replacements, and the two shipped items are re-authored under that model.
 15. Generated Environment visual seam exists without altering the Environment transaction model.
 16. At least one generated Lamp works end-to-end through Environment Decorator.
 17. Generated Environment assets remain non-physical by default.

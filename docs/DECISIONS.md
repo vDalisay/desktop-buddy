@@ -4,6 +4,32 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Asset Forge and Shape Replacements — Owner Approved (2026-08-12)
+
+The owner approved `docs/ASSET_FORGE_IMPLEMENTATION_PLAN.md` and resolved the four decisions
+its review raised.
+
+**Tops and Shoes are shape replacements, not overlays.** A Top is a new torso shape — triangular,
+pear-shaped, whatever the source art draws — in exactly the sense the default torso is a shape
+today, and a Shoe is the same for feet. This supersedes the overlay interpretation wherever it
+appears, including the shipped `TopUtilityBib` and `ShoesSoftSteps` renderers and the
+`trusted torso/foot overlay` wording in `docs/BUDDY_STUDIO_FULL_RELEASE_PLAN.md`. Underlying 2D
+physics is untouched: replacement is visual-only by construction.
+
+**No migration.** There are no existing players, so both shipped items are simply re-authored
+under the replacement model. No ownership, catalogue, or save migration is required.
+
+**Body paint under a replacement.** Equipping a replacement replaces the part's visual; the
+replacement is always unpainted, every time it is equipped. The default part visual and its
+painted pixels are hidden rather than deleted and return unchanged when the replacement is
+removed. Painting a replacement is future work — paint input over a replaced part does nothing,
+and the analytic frontal brush mapper keeps owning the primitive parts only.
+
+**Asset Forge is not roadmap-gated.** It is a developer-facing side tool, deliberately outside
+the locked Steam demo order in `docs/ROADMAP.md`, and may start at any time without consuming
+demo scope. Work on the game-side seams that receive its exported content remains ordinary game
+work under the normal architecture, test, and review discipline.
+
 ## Environment Decorations Have No Sell Flow — Owner Approved (2026-08-10)
 
 Purchased environment decorations cannot be sold or refunded. The owner does not see product

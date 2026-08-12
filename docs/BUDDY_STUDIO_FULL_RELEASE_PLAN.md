@@ -60,8 +60,10 @@ Templates may use different mappings depending on category:
 - flat front-facing decal/overlay;
 - paired mirrored decal;
 - trusted head-crown attachment plane;
-- trusted torso/foot overlay;
+- trusted torso/foot shape-replacement surface;
 - a predefined wrapped cosmetic surface when a category genuinely needs it.
+
+The Tops/Shoes mapping is a **shape replacement**, not an overlay, per the 2026-08-12 owner decision in `docs/DECISIONS.md`. A drawn Top authors the torso's own surface; it is never a layer in front of it. The generated-mesh UV contract in `docs/ASSET_FORGE_IMPLEMENTATION_PLAN.md` Section 9.8 is the same contract these templates use — one paint-layout version, not two.
 
 No custom cosmetic file may supply an arbitrary resource path, shader, material, script, mesh or executable behavior.
 
@@ -388,7 +390,7 @@ That distinction must remain explicit in schema, imports and Steam packaging.
 
 ### 6.3 Paint and custom cosmetics remain separate assets
 
-Paint Buddy edits the buddy's canonical body paint surfaces. A player-created Hair/Tops/etc. cosmetic is its own asset layered through Buddy Studio. Creating or editing one must never rewrite the character's body-paint PNGs.
+Paint Buddy edits the buddy's canonical body paint surfaces. A player-created Hair/Tops/etc. cosmetic is its own asset selected through Buddy Studio. Creating or editing one must never rewrite the character's body-paint PNGs, and equipping a shape replacement hides the underlying painted surface rather than editing it.
 
 ---
 
