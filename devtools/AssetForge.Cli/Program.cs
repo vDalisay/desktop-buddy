@@ -8,60 +8,110 @@ internal static class Program
     {
         try
         {
-            if (args.Length != 2 || !string.Equals(args[0], "--ci-fixture", StringComparison.Ordinal))
+            if (args.Length >= 2 && string.Equals(args[0], "--ci-fixture", StringComparison.Ordinal))
+                return GenerateCiFixture(Path.GetFullPath(args[1]));
+            if (args.Length == 2 && string.Equals(args[0], "--verify-all", StringComparison.Ordinal))
+                return PrintVerification(RepositoryAssetVerifier.VerifyAll(Path.GetFullPath(args[1])));
+            if (args.Length == 3 && string.Equals(args[0], "--verify", StringComparison.Ordinal))
+                return PrintVerification(RepositoryAssetVerifier.Verify(Path.GetFullPath(args[1]), args[2]));
+            if (args.Length == 2 && string.Equals(args[0], "--regenerate-all", StringComparison.Ordinal))
             {
-                Console.Error.WriteLine("Usage: DesktopBuddy.AssetForge.Cli --ci-fixture <repository-root>");
-                return 2;
+                RepositoryRegenerationResult result = RepositoryAssetRegenerator.RegenerateAll(Path.GetFullPath(args[1]));
+                Console.WriteLine($"Regenerated {result.RegeneratedFeatureIds.Count} asset(s): {string.Join(", ", result.RegeneratedFeatureIds)}");
+                return PrintVerification(result.Verification);
+            }
+            if (args.Length == 3 && string.Equals(args[0], "--regenerate", StringComparison.Ordinal))
+            {
+                RepositoryRegenerationResult result = RepositoryAssetRegenerator.Regenerate(Path.GetFullPath(args[1]), args[2]);
+                Console.WriteLine($"Regenerated {string.Join(", ", result.RegeneratedFeatureIds)}");
+                return PrintVerification(result.Verification);
             }
 
-            string repositoryRoot = Path.GetFullPath(args[1]);
-            AssetRecipe recipe = AssetRecipe.GlassesDefaults() with
-            {
-                FeatureId = "glasses.ci_pink_round",
-                ContentId = "cosmetic.glasses.ci_pink_round",
-                DisplayName = "CI Pink Round",
-                PriceCredits = 125,
-                SortOrder = 9900,
-                Geometry = AssetRecipe.GlassesDefaults().Geometry with
-                {
-                    GeometryResolution = 128,
-                    RuntimeTextureResolution = 256,
-                    SymmetryMode = SymmetryMode.Off,
-                },
-            };
-
-            RgbaImage source = CreatePinkRoundGlasses();
-            byte[] sourcePng = PngCodec.EncodeRgba8(source);
-            GeneratedAsset first = AssetForgeGenerator.Generate(sourcePng, recipe);
-            GeneratedAsset second = AssetForgeGenerator.Generate(sourcePng, recipe);
-            if (!first.GlbBytes.SequenceEqual(second.GlbBytes) ||
-                !string.Equals(first.CanonicalAssetHash, second.CanonicalAssetHash, StringComparison.Ordinal))
-                throw new InvalidOperationException("CI fixture regeneration was not deterministic.");
-
-            RepositoryExporter.ExportGlasses(repositoryRoot, sourcePng, first, first.AlbedoPng);
-            string assetRoot = Path.Combine(repositoryRoot, "assets", "generated", "cosmetics", recipe.FeatureId);
-            string definition = Path.Combine(repositoryRoot, "data", "cosmetics", "generated", recipe.FeatureId + ".tres");
-            string sale = Path.Combine(repositoryRoot, "data", "catalogue", "generated", "cosmetic_glasses_ci_pink_round.tres");
-            foreach (string path in new[]
-                     {
-                         Path.Combine(assetRoot, "mesh.glb"),
-                         Path.Combine(assetRoot, "albedo.png"),
-                         Path.Combine(assetRoot, "thumbnail.png"),
-                         definition,
-                         sale,
-                         Path.Combine(repositoryRoot, "data", "cosmetics", "generated", "catalogue.tres"),
-                         Path.Combine(repositoryRoot, "data", "catalogue", "generated_cosmetics.tres"),
-                     })
-                if (!File.Exists(path)) throw new FileNotFoundException("Expected Asset Forge export was not written.", path);
-
-            Console.WriteLine($"Generated {recipe.FeatureId}: {first.Diagnostics.Holes} holes, {first.TriangleCount} triangles, asset {first.CanonicalAssetHash}.");
-            return 0;
+            PrintUsage();
+            return 2;
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine(exception);
             return 1;
         }
+    }
+
+    private static int GenerateCiFixture(string repositoryRoot)
+    {
+        AssetRecipe recipe = AssetRecipe.GlassesDefaults() with
+        {
+            FeatureId = "glasses.ci_pink_round",
+            ContentId = "cosmetic.glasses.ci_pink_round",
+            DisplayName = "CI Pink Round",
+            PriceCredits = 125,
+            SortOrder = 9900,
+            Geometry = AssetRecipe.GlassesDefaults().Geometry with
+            {
+                GeometryResolution = 128,
+                RuntimeTextureResolution = 256,
+                SymmetryMode = SymmetryMode.Off,
+                ShapeMode = ShapeMode.RoundedExtrusion,
+                Roundness = 0.55,
+            },
+        };
+
+        RgbaImage source = CreatePinkRoundGlasses();
+        byte[] sourcePng = PngCodec.EncodeRgba8(source);
+        GeneratedAsset first = AssetForgeGenerator.Generate(sourcePng, recipe);
+        GeneratedAsset second = AssetForgeGenerator.Generate(sourcePng, recipe);
+        if (!first.GlbBytes.SequenceEqual(second.GlbBytes) ||
+            !string.Equals(first.CanonicalAssetHash, second.CanonicalAssetHash, StringComparison.Ordinal))
+            throw new InvalidOperationException("CI fixture regeneration was not deterministic.");
+
+        RepositoryExporter.ExportGlasses(repositoryRoot, sourcePng, first, first.AlbedoPng);
+        string assetRoot = Path.Combine(repositoryRoot, "assets", "generated", "cosmetics", recipe.FeatureId);
+        string definition = Path.Combine(repositoryRoot, "data", "cosmetics", "generated", recipe.FeatureId + ".tres");
+        string sale = Path.Combine(repositoryRoot, "data", "catalogue", "generated", "cosmetic_glasses_ci_pink_round.tres");
+        foreach (string path in new[]
+                 {
+                     Path.Combine(assetRoot, "mesh.glb"),
+                     Path.Combine(assetRoot, "albedo.png"),
+                     Path.Combine(assetRoot, "thumbnail.png"),
+                     definition,
+                     sale,
+                     Path.Combine(repositoryRoot, "data", "cosmetics", "generated", "catalogue.tres"),
+                     Path.Combine(repositoryRoot, "data", "catalogue", "generated_cosmetics.tres"),
+                 })
+            if (!File.Exists(path)) throw new FileNotFoundException("Expected Asset Forge export was not written.", path);
+
+        Console.WriteLine($"Generated {recipe.FeatureId}: {first.Diagnostics.Holes} holes, {first.TriangleCount} triangles, asset {first.CanonicalAssetHash}.");
+        return 0;
+    }
+
+    private static int PrintVerification(AssetVerificationResult result)
+    {
+        Console.WriteLine($"{(result.Passed ? "OK" : "FAIL")} {result.FeatureId}");
+        foreach (string diagnostic in result.Diagnostics) Console.WriteLine("  " + diagnostic);
+        return result.Passed ? 0 : 1;
+    }
+
+    private static int PrintVerification(RepositoryVerificationResult result)
+    {
+        foreach (AssetVerificationResult asset in result.Assets)
+        {
+            Console.WriteLine($"{(asset.Passed ? "OK" : "FAIL")} {asset.FeatureId}");
+            foreach (string diagnostic in asset.Diagnostics) Console.WriteLine("  " + diagnostic);
+        }
+        foreach (string diagnostic in result.RepositoryDiagnostics) Console.WriteLine("FAIL repository\n  " + diagnostic);
+        if (result.Assets.Count == 0 && result.RepositoryDiagnostics.Count == 0)
+            Console.WriteLine("OK repository\n  no authored Asset Forge assets yet");
+        return result.Passed ? 0 : 1;
+    }
+
+    private static void PrintUsage()
+    {
+        Console.Error.WriteLine("Desktop Buddy Asset Forge CLI");
+        Console.Error.WriteLine("  --verify-all <repository-root>");
+        Console.Error.WriteLine("  --verify <repository-root> <feature-id>");
+        Console.Error.WriteLine("  --regenerate-all <repository-root>");
+        Console.Error.WriteLine("  --regenerate <repository-root> <feature-id>");
+        Console.Error.WriteLine("  --ci-fixture <repository-root>");
     }
 
     private static RgbaImage CreatePinkRoundGlasses()
