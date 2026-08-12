@@ -6,7 +6,7 @@ namespace DesktopBuddy.AssetForge;
 public partial class AssetForgeMain : Control
 {
     private LineEdit _source = null!, _displayName = null!, _featureId = null!, _contentId = null!;
-    private SpinBox _price = null!, _sort = null!, _alpha = null!, _depth = null!, _roundness = null!, _bias = null!, _templeThickness = null!, _templeLength = null!, _templeDrop = null!;
+    private SpinBox _price = null!, _sort = null!, _alpha = null!, _frameThickness = null!, _depth = null!, _roundness = null!, _bias = null!, _templeThickness = null!, _templeLength = null!, _templeDrop = null!;
     private OptionButton _geometryResolution = null!, _textureResolution = null!, _shapeMode = null!, _symmetry = null!;
     private AssetForgePreview _preview = null!;
     private Label _status = null!, _hashes = null!;
@@ -20,7 +20,7 @@ public partial class AssetForgeMain : Control
     {
         BuildUi();
         ApplyRecipe(AssetRecipe.GlassesDefaults());
-        SetStatus("Choose a 1024×1024 transparent RGBA PNG, then Generate.");
+        SetStatus("Choose a 1024×1024 PNG. Transparent backgrounds are preferred; a flat opaque canvas such as white is removed automatically.");
     }
 
     private void BuildUi()
@@ -73,10 +73,10 @@ public partial class AssetForgeMain : Control
         _price = Spin(left, "Price (credits)", 1, 100000, 1);
         _sort = Spin(left, "Sort order", 0, 100000, 1);
         left.AddChild(new HSeparator());
-        left.AddChild(new Label { Text = "Preset controls" });
-        _depth = Spin(left, "Frame depth", 0.01, 1.0, 0.01);
+        left.AddChild(new Label { Text = "Glasses template controls" });
+        _frameThickness = Spin(left, "Frame thickness", 0.01, 0.25, 0.005);
+        _depth = Spin(left, "Frame depth", 0.01, 1.0, 0.005);
         _roundness = Spin(left, "Frame roundness", 0.0, 1.0, 0.01);
-        _bias = Spin(left, "Frame thickness bias", -8, 8, 1);
         _templeThickness = Spin(left, "Temple thickness", 0.01, 0.3, 0.005);
         _templeLength = Spin(left, "Temple length", 0.05, 1.5, 0.01);
         _templeDrop = Spin(left, "Temple drop", -0.5, 0.5, 0.01);
@@ -86,10 +86,16 @@ public partial class AssetForgeMain : Control
         advancedToggle.Toggled += value => advanced.Visible = value;
         left.AddChild(advanced);
         _alpha = Spin(advanced, "Alpha threshold", 0.01, 0.99, 0.01);
-        _geometryResolution = Options(advanced, "Geometry resolution", ["64", "128", "256"]);
+        _bias = Spin(advanced, "Source mask thickness bias", -8, 8, 1);
+        _geometryResolution = Options(advanced, "Geometry resolution", ["64", "128", "256", "512"]);
         _textureResolution = Options(advanced, "Runtime texture", ["256", "512", "1024"]);
-        _shapeMode = Options(advanced, "Shape mode", ["Flat extrusion", "Rounded extrusion"]);
+        _shapeMode = Options(advanced, "Shape mode", ["Flat silhouette extrusion", "Rounded glasses template"]);
         _symmetry = Options(advanced, "Symmetry", ["Off", "Left → Right", "Right → Left", "Average both"]);
+        advanced.AddChild(new Label
+        {
+            Text = "Rounded glasses template uses the two closed lens openings as shape guides. Flat extrusion is the fallback for artwork without two lens holes.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        });
 
         var previewPanel = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
         body.AddChild(previewPanel);
@@ -119,7 +125,7 @@ public partial class AssetForgeMain : Control
         _source.Text = path;
         _generated = null;
         _export.Disabled = true;
-        SetStatus("Source selected. Generate to build the deterministic asset.");
+        SetStatus("Source selected. Generate to fit the glasses template to the drawing.");
     }
 
     private void Generate()
@@ -133,7 +139,11 @@ public partial class AssetForgeMain : Control
             _preview.ShowGenerated(_generated, _sourcePath);
             _export.Disabled = false;
             MaskDiagnostics d = _generated.Diagnostics;
-            SetStatus($"Generated: {d.Components} component(s), {d.Holes} hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles.");
+            string generation = _generated.UsedGlassesTemplate ? "rounded glasses template fit" : "silhouette extrusion fallback";
+            SetStatus(
+                $"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} lens hole(s), " +
+                $"{_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles. " +
+                $"Foreground: {_generated.Foreground.Summary}.");
             _hashes.Text = $"Input {_generated.InputHash[..12]}  Recipe {_generated.RecipeHash[..12]}  Geometry {_generated.GeometryHash[..12]}  Asset {_generated.CanonicalAssetHash[..12]}  ✓ deterministic output";
         }
         catch (Exception exception)
@@ -210,7 +220,7 @@ public partial class AssetForgeMain : Control
         {
             if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) path += ".png";
             File.WriteAllBytes(path, AuthoringTemplateGenerator.CreateGlassesTemplatePng());
-            SetStatus("Glasses guide saved. Use it as a reference layer; hide/remove the guide before exporting your transparent source PNG.\n" + path);
+            SetStatus("Glasses guide saved. Draw two closed lens openings plus the bridge. Export transparency when convenient; a flat opaque canvas is also supported.\n" + path);
         }
         catch (Exception exception)
         {
@@ -293,6 +303,7 @@ public partial class AssetForgeMain : Control
             Geometry = defaults.Geometry with
             {
                 AlphaThreshold = _alpha.Value,
+                FrameThickness = _frameThickness.Value,
                 Depth = _depth.Value,
                 Roundness = _roundness.Value,
                 ThicknessBiasPixels = (int)_bias.Value,
@@ -315,6 +326,7 @@ public partial class AssetForgeMain : Control
         _price.Value = recipe.PriceCredits;
         _sort.Value = recipe.SortOrder;
         _alpha.Value = recipe.Geometry.AlphaThreshold;
+        _frameThickness.Value = recipe.Geometry.FrameThickness;
         _depth.Value = recipe.Geometry.Depth;
         _roundness.Value = recipe.Geometry.Roundness;
         _bias.Value = recipe.Geometry.ThicknessBiasPixels;
@@ -351,8 +363,6 @@ public partial class AssetForgeMain : Control
 
     private FileDialog Dialog(FileDialog.FileModeEnum mode, string title, string[] filters)
     {
-        // Native picker: Godot's built-in browser opens inside the project folder and makes
-        // reaching an image elsewhere on disk painful. Godot falls back to it if unsupported.
         var dialog = new FileDialog
         {
             FileMode = mode,

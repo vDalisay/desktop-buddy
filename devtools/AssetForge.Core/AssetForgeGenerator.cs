@@ -7,6 +7,7 @@ public sealed record GeneratedAsset(
     CanonicalMesh Mesh,
     MaskDiagnostics Diagnostics,
     ForegroundDiagnostics Foreground,
+    bool UsedGlassesTemplate,
     byte[] GlbBytes,
     byte[] AlbedoPng,
     string InputHash,
@@ -37,9 +38,6 @@ public static class AssetForgeGenerator
         string inputHash = Hashing.Sha256Hex(source);
         string recipeHash = RecipeCodec.Hash(recipe);
 
-        // The author may give us a normal transparent PNG or a fully-opaque drawing on a flat
-        // canvas (the common white-canvas case). The glasses preset canonicalizes both into the
-        // same transparent foreground representation before any topology is derived.
         ForegroundExtractionResult foreground = ForegroundExtractor.Extract(decoded);
         MaskGrid mask = MaskGrid.FromImage(foreground.Image, recipe.Geometry);
         MaskDiagnostics diagnostics = MaskAnalyzer.Analyze(mask);
@@ -54,15 +52,16 @@ public static class AssetForgeGenerator
                 "use a cleaner transparent/uniform-background source or increase separation between the frame colour and the background.");
         }
 
-        CanonicalMesh mesh = ExtrusionGenerator.GenerateGlasses(mask, recipe.Geometry);
+        bool usedTemplate = recipe.Geometry.ShapeMode == ShapeMode.RoundedExtrusion &&
+            GlassesTemplateGenerator.TryGenerate(mask, recipe.Geometry, out CanonicalMesh? semanticMesh);
+        CanonicalMesh mesh = usedTemplate
+            ? semanticMesh!
+            : ExtrusionGenerator.GenerateGlasses(mask, recipe.Geometry);
         string geometryHash = mesh.CanonicalHash();
         byte[] glb = GlbWriter.Write(mesh);
         GlbWriter.ValidateSingleMesh(glb);
         string glbHash = Hashing.Sha256Hex(glb);
 
-        // Runtime/preview albedo is built from the canonical foreground, not the original opaque
-        // canvas. This prevents the removed white/flat background from reappearing in texture
-        // sampling around the frame edges.
         RgbaImage runtime = PngCodec.ResizeBox(foreground.Image, recipe.Geometry.RuntimeTextureResolution);
         byte[] albedo = PngCodec.EncodeRgba8(runtime);
         string albedoHash = Hashing.Sha256Hex(albedo);
@@ -80,6 +79,7 @@ public static class AssetForgeGenerator
             mesh,
             diagnostics,
             foreground.Diagnostics,
+            usedTemplate,
             glb,
             albedo,
             inputHash,

@@ -19,6 +19,7 @@ public sealed class AssetForgeCoreTests
         AssetRecipe loaded = RecipeCodec.Read(json);
         Assert.Equal(json, RecipeCodec.WriteCanonical(loaded));
         Assert.Equal(RecipeCodec.Hash(source), RecipeCodec.Hash(loaded));
+        Assert.Contains("\"frameThickness\"", json, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -60,6 +61,7 @@ public sealed class AssetForgeCoreTests
         Assert.Equal((byte)255, opaque.Foreground.BackgroundB);
         Assert.Equal(1, opaque.Diagnostics.Components);
         Assert.Equal(2, opaque.Diagnostics.Holes);
+        Assert.True(opaque.UsedGlassesTemplate);
         Assert.Equal(transparent.GeometryHash, opaque.GeometryHash);
 
         RgbaImage albedo = PngCodec.DecodeRgba8(opaque.AlbedoPng);
@@ -68,21 +70,56 @@ public sealed class AssetForgeCoreTests
     }
 
     [Fact]
-    public void Glasses_preset_fits_source_shape_to_head_envelope_without_changing_proportions_to_a_full_canvas_slab()
+    public void Rounded_glasses_use_semantic_template_fit_from_two_lens_openings()
     {
         GeneratedAsset generated = AssetForgeGenerator.Generate(
             PngCodec.EncodeRgba8(TestGlassesImage(opaqueWhiteBackground: true)),
             Recipe());
+
+        Assert.True(generated.UsedGlassesTemplate);
+        Assert.Equal(2, generated.Diagnostics.Holes);
         float minX = generated.Mesh.Positions.Min(static p => p.X);
         float maxX = generated.Mesh.Positions.Max(static p => p.X);
         float minY = generated.Mesh.Positions.Min(static p => p.Y);
         float maxY = generated.Mesh.Positions.Max(static p => p.Y);
         float width = maxX - minX;
         float height = maxY - minY;
-
-        Assert.InRange(width, 1.25f, 2.10f); // frame + modest outward temple flare, not the 2x2 source canvas
-        Assert.InRange(height, 0.45f, 1.15f);
+        Assert.InRange(width, 1.25f, 2.10f);
+        Assert.InRange(height, 0.40f, 1.15f);
         Assert.True(width > height, $"Expected glasses proportions, got {width:0.###} x {height:0.###}.");
+    }
+
+    [Fact]
+    public void Frame_thickness_is_a_real_template_parameter_not_source_stroke_width()
+    {
+        byte[] png = PngCodec.EncodeRgba8(TestGlassesImage(opaqueWhiteBackground: true));
+        AssetRecipe thinRecipe = Recipe() with
+        {
+            Geometry = Recipe().Geometry with { FrameThickness = 0.035 },
+        };
+        AssetRecipe thickRecipe = Recipe() with
+        {
+            Geometry = Recipe().Geometry with { FrameThickness = 0.11 },
+        };
+
+        GeneratedAsset thin = AssetForgeGenerator.Generate(png, thinRecipe);
+        GeneratedAsset thick = AssetForgeGenerator.Generate(png, thickRecipe);
+        Assert.True(thin.UsedGlassesTemplate && thick.UsedGlassesTemplate);
+        Assert.NotEqual(thin.GeometryHash, thick.GeometryHash);
+        float thinWidth = thin.Mesh.Positions.Max(static p => p.X) - thin.Mesh.Positions.Min(static p => p.X);
+        float thickWidth = thick.Mesh.Positions.Max(static p => p.X) - thick.Mesh.Positions.Min(static p => p.X);
+        Assert.True(thickWidth > thinWidth, $"Expected thicker template to expand frame bounds: thin={thinWidth}, thick={thickWidth}");
+    }
+
+    [Fact]
+    public void Diamond_lens_drawing_keeps_two_distinct_lens_shapes_and_uses_template()
+    {
+        byte[] png = PngCodec.EncodeRgba8(TestDiamondGlassesImage());
+        GeneratedAsset generated = AssetForgeGenerator.Generate(png, Recipe());
+        Assert.True(generated.UsedGlassesTemplate);
+        Assert.Equal(2, generated.Diagnostics.Holes);
+        Assert.True(generated.VertexCount > 100);
+        Assert.True(generated.TriangleCount > 100);
     }
 
     [Fact]
@@ -115,7 +152,7 @@ public sealed class AssetForgeCoreTests
     }
 
     [Fact]
-    public void Rounded_extrusion_produces_a_bevel_profile_and_rounded_temples()
+    public void Rounded_template_produces_round_cross_section_and_3d_temples()
     {
         byte[] png = PngCodec.EncodeRgba8(TestGlassesImage());
         AssetRecipe roundedRecipe = Recipe() with
@@ -123,7 +160,7 @@ public sealed class AssetForgeCoreTests
             Geometry = Recipe().Geometry with
             {
                 ShapeMode = ShapeMode.RoundedExtrusion,
-                Roundness = 0.65,
+                Roundness = 0.85,
             },
         };
         AssetRecipe flatRecipe = roundedRecipe with
@@ -137,14 +174,16 @@ public sealed class AssetForgeCoreTests
 
         GeneratedAsset rounded = AssetForgeGenerator.Generate(png, roundedRecipe);
         GeneratedAsset flat = AssetForgeGenerator.Generate(png, flatRecipe);
-        int roundedPositiveDepths = rounded.Mesh.Positions
-            .Where(static p => p.Z > 0)
+        int roundedDepths = rounded.Mesh.Positions
             .Select(static p => MathF.Round(p.Z, 5))
             .Distinct()
             .Count();
 
-        Assert.True(roundedPositiveDepths >= 3, $"Expected a bevel profile, got {roundedPositiveDepths} positive Z levels.");
+        Assert.True(rounded.UsedGlassesTemplate);
+        Assert.False(flat.UsedGlassesTemplate);
+        Assert.True(roundedDepths >= 6, $"Expected a rounded tube cross-section, got {roundedDepths} Z levels.");
         Assert.NotEqual(flat.GeometryHash, rounded.GeometryHash);
+        Assert.True(rounded.Mesh.Positions.Min(static p => p.Z) < -0.20f, "Template should include temples extending behind the frame plane.");
         Assert.True(rounded.Mesh.Normals.All(static n => float.IsFinite(n.X) && float.IsFinite(n.Y) && float.IsFinite(n.Z)));
     }
 
@@ -199,7 +238,8 @@ public sealed class AssetForgeCoreTests
         DisplayName = "Test Round",
         Geometry = AssetRecipe.GlassesDefaults().Geometry with
         {
-            GeometryResolution = 128,
+            GeometryResolution = 256,
+            RuntimeTextureResolution = 256,
             SymmetryMode = SymmetryMode.Off,
         },
     };
@@ -207,21 +247,43 @@ public sealed class AssetForgeCoreTests
     private static RgbaImage TestGlassesImage(bool opaqueWhiteBackground = false)
     {
         const int size = 1024;
-        byte[] pixels = new byte[size * size * 4];
-        if (opaqueWhiteBackground)
-        {
-            for (int i = 0; i < pixels.Length; i += 4)
-            {
-                pixels[i] = 255;
-                pixels[i + 1] = 255;
-                pixels[i + 2] = 255;
-                pixels[i + 3] = 255;
-            }
-        }
+        byte[] pixels = NewCanvas(opaqueWhiteBackground);
         DrawFrame(pixels, 215, 390, 475, 620, 38);
         DrawFrame(pixels, 549, 390, 809, 620, 38);
         FillPink(pixels, 470, 485, 554, 525);
         return new RgbaImage(size, size, pixels);
+    }
+
+    private static RgbaImage TestDiamondGlassesImage()
+    {
+        const int size = 1024;
+        byte[] pixels = NewCanvas(opaqueWhite: true);
+        const int brush = 18;
+        DrawThickLine(pixels, 300, 395, 425, 265, brush);
+        DrawThickLine(pixels, 425, 265, 490, 395, brush);
+        DrawThickLine(pixels, 490, 395, 375, 535, brush);
+        DrawThickLine(pixels, 375, 535, 300, 395, brush);
+        DrawThickLine(pixels, 640, 400, 735, 275, brush);
+        DrawThickLine(pixels, 735, 275, 805, 415, brush);
+        DrawThickLine(pixels, 805, 415, 710, 545, brush);
+        DrawThickLine(pixels, 710, 545, 640, 400, brush);
+        DrawThickLine(pixels, 485, 395, 645, 400, brush);
+        return new RgbaImage(size, size, pixels);
+    }
+
+    private static byte[] NewCanvas(bool opaqueWhite)
+    {
+        const int size = 1024;
+        byte[] pixels = new byte[size * size * 4];
+        if (!opaqueWhite) return pixels;
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 255;
+            pixels[i + 1] = 255;
+            pixels[i + 2] = 255;
+            pixels[i + 3] = 255;
+        }
+        return pixels;
     }
 
     private static void DrawFrame(byte[] pixels, int x0, int y0, int x1, int y1, int thickness)
@@ -232,9 +294,27 @@ public sealed class AssetForgeCoreTests
         FillPink(pixels, x1 - thickness, y0, x1, y1);
     }
 
+    private static void DrawThickLine(byte[] pixels, int x0, int y0, int x1, int y1, int radius)
+    {
+        int dx = Math.Abs(x1 - x0);
+        int dy = Math.Abs(y1 - y0);
+        int steps = Math.Max(dx, dy);
+        for (int step = 0; step <= steps; step++)
+        {
+            double t = steps == 0 ? 0 : (double)step / steps;
+            int cx = (int)Math.Round(x0 + (x1 - x0) * t);
+            int cy = (int)Math.Round(y0 + (y1 - y0) * t);
+            FillPink(pixels, cx - radius, cy - radius, cx + radius + 1, cy + radius + 1);
+        }
+    }
+
     private static void FillPink(byte[] pixels, int x0, int y0, int x1, int y1)
     {
         const int size = 1024;
+        x0 = Math.Clamp(x0, 0, size);
+        x1 = Math.Clamp(x1, 0, size);
+        y0 = Math.Clamp(y0, 0, size);
+        y1 = Math.Clamp(y1, 0, size);
         for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++)
         {

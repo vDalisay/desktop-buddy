@@ -11,15 +11,15 @@ public enum SymmetryMode { Off = 0, MirrorLeftToRight = 1, MirrorRightToLeft = 2
 
 public sealed record GeometrySettings
 {
-    // 256 is still inexpensive for the sparse glasses foreground, while retaining noticeably
-    // more of a hand-drawn frame silhouette than the prototype 128-cell grid.
-    public int GeometryResolution { get; init; } = 256;
+    // The semantic glasses path simplifies detected contours after sampling, so 512 retains the
+    // hand-drawn shape without turning the final mesh into one cell per source pixel.
+    public int GeometryResolution { get; init; } = 512;
     public double AlphaThreshold { get; init; } = 0.50;
     public int ThicknessBiasPixels { get; init; }
-    public double Depth { get; init; } = 0.10;
-    public double Roundness { get; init; } = 0.75;
+    public double FrameThickness { get; init; } = 0.055;
+    public double Depth { get; init; } = 0.065;
+    public double Roundness { get; init; } = 0.85;
     public ShapeMode ShapeMode { get; init; } = ShapeMode.RoundedExtrusion;
-    // Shape fidelity wins by default. Symmetry remains available as an explicit authoring choice.
     public SymmetryMode SymmetryMode { get; init; } = SymmetryMode.Off;
     public int RuntimeTextureResolution { get; init; } = 512;
     public double TempleThickness { get; init; } = 0.045;
@@ -69,13 +69,14 @@ public sealed record AssetRecipe
         if (Geometry.RuntimeTextureResolution is < 64 or > 1024 || 1024 % Geometry.RuntimeTextureResolution != 0) errors.Add("RuntimeTextureResolution must be a 64-1024 divisor of 1024.");
         if (!FiniteRange(Geometry.AlphaThreshold, 0.01, 0.99)) errors.Add("AlphaThreshold must be within 0.01-0.99.");
         if (Geometry.ThicknessBiasPixels is < -8 or > 8) errors.Add("ThicknessBiasPixels must be within -8..8.");
+        if (!FiniteRange(Geometry.FrameThickness, 0.01, 0.25)) errors.Add("FrameThickness must be within 0.01-0.25.");
         if (!FiniteRange(Geometry.Depth, 0.01, 1.0)) errors.Add("Depth must be within 0.01-1.0.");
         if (!FiniteRange(Geometry.Roundness, 0, 1)) errors.Add("Roundness must be within 0-1.");
         if (Geometry.ShapeMode is not ShapeMode.FlatExtrusion and not ShapeMode.RoundedExtrusion)
             errors.Add("glasses@1 supports only FlatExtrusion and RoundedExtrusion shape modes.");
         if (!FiniteRange(Geometry.TempleThickness, 0.01, 0.3)) errors.Add("TempleThickness must be within 0.01-0.3.");
         if (!FiniteRange(Geometry.TempleLength, 0.05, 1.5)) errors.Add("TempleLength must be within 0.05-1.5.");
-        if (!FiniteRange(Geometry.TempleDrop, -0.5, 0.5)) errors.Add("TempleDrop must be within -0.5..0.5.");
+        if (!FiniteRange(Geometry.TempleDrop, -0.5, 0.5)) errors.Add("TempleDrop must be within -0.5-0.5.");
         if (!FiniteRange(Thumbnail.Padding, 0, 0.45)) errors.Add("Thumbnail padding must be within 0-0.45.");
         return errors;
     }
@@ -132,6 +133,7 @@ public static class RecipeCodec
             writer.WriteNumber("geometryResolution", g.GeometryResolution);
             writer.WriteNumber("alphaThreshold", g.AlphaThreshold);
             writer.WriteNumber("thicknessBiasPixels", g.ThicknessBiasPixels);
+            writer.WriteNumber("frameThickness", g.FrameThickness);
             writer.WriteNumber("depth", g.Depth);
             writer.WriteNumber("roundness", g.Roundness);
             writer.WriteNumber("shapeMode", (int)g.ShapeMode);
@@ -149,8 +151,6 @@ public static class RecipeCodec
             writer.WriteEndObject();
             writer.WriteEndObject();
         }
-        // Utf8JsonWriter indents with Environment.NewLine on .NET 8, so force LF: canonical bytes
-        // must not depend on the authoring machine's platform.
         return Encoding.UTF8.GetString(stream.ToArray()).Replace("\r\n", "\n", StringComparison.Ordinal) + "\n";
     }
 
