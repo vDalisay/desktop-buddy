@@ -50,6 +50,9 @@ jobs:
       - name: Generate and transactionally export CI glasses fixture
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --ci-fixture "$PWD"
 
+      - name: Verify generated fixture by re-deriving it without Godot
+        run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --verify-all "$PWD"
+
       - name: Download pinned Godot (.NET/mono, Linux)
         run: |
           set -euo pipefail
