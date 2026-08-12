@@ -351,7 +351,17 @@ public partial class AssetForgeMain : Control
 
     private FileDialog Dialog(FileDialog.FileModeEnum mode, string title, string[] filters)
     {
-        var dialog = new FileDialog { FileMode = mode, Access = FileDialog.AccessEnum.Filesystem, Title = title, Filters = filters };
+        // Native picker: Godot's built-in browser opens inside the project folder and makes
+        // reaching an image elsewhere on disk painful. Godot falls back to it if unsupported.
+        var dialog = new FileDialog
+        {
+            FileMode = mode,
+            Access = FileDialog.AccessEnum.Filesystem,
+            Title = title,
+            Filters = filters,
+            UseNativeDialog = true,
+            CurrentDir = OS.GetSystemDir(OS.SystemDir.Pictures),
+        };
         AddChild(dialog);
         return dialog;
     }

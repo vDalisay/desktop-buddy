@@ -20,7 +20,7 @@ echo [play_game_diagnostics] Build log: %BUILD_LOG%
 echo.
 
 pushd "%PROJECT_ROOT%"
-dotnet build "%PROJECT_ROOT%\DesktopBuddy.csproj" --configuration Debug --nologo --verbosity minimal -flp:"logfile=%BUILD_LOG%;verbosity=normal"
+call dotnet build "%PROJECT_ROOT%\DesktopBuddy.csproj" --configuration Debug --nologo --verbosity minimal -flp:"logfile=%BUILD_LOG%;verbosity=normal"
 set "BUILD_RESULT=%ERRORLEVEL%"
 if not "%BUILD_RESULT%"=="0" goto :build_failed
 

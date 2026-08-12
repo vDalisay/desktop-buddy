@@ -146,7 +146,9 @@ public static class RecipeCodec
             writer.WriteEndObject();
             writer.WriteEndObject();
         }
-        return Encoding.UTF8.GetString(stream.ToArray()) + "\n";
+        // Utf8JsonWriter indents with Environment.NewLine on .NET 8, so force LF: canonical bytes
+        // must not depend on the authoring machine's platform.
+        return Encoding.UTF8.GetString(stream.ToArray()).Replace("\r\n", "\n", StringComparison.Ordinal) + "\n";
     }
 
     public static string Hash(AssetRecipe recipe) => Hashing.Sha256Hex(Encoding.UTF8.GetBytes(WriteCanonical(recipe)));
