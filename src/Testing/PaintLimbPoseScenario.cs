@@ -87,6 +87,29 @@ public sealed class PaintLimbPoseScenario : IScenario
                 $"left={torsoLeft} right={torsoRight} up={torsoUp} down={torsoDown} outside={torsoOutside}"));
 
             canvas.Workspace.EraseAll();
+            canvas.Workspace.SetBrushDiameter(PaintPolicy.MaxBrushDiameter);
+            Vector2 torsoCenter = CanvasPoint(0, 0);
+            string blankTorso = canvas.Workspace.Surfaces[PaintPart.Torso].ComputeHash();
+            Click(canvas, torsoCenter);
+            int torsoGaps = 0;
+            for (int y = -6; y <= 6; y++)
+            {
+                for (int x = -12; x <= 12; x++)
+                {
+                    if (!Painted(canvas, torsoCenter + new Vector2(x, y)))
+                        torsoGaps++;
+                }
+            }
+            bool torsoUndo = canvas.Workspace.Undo() &&
+                canvas.Workspace.Surfaces[PaintPart.Torso].ComputeHash() == blankTorso;
+            bool torsoSolid = torsoGaps == 0 && torsoUndo;
+            checks.Add(new StartupCheck(
+                "paint_max_pen_dab_fills_torso_without_stripes",
+                torsoSolid,
+                $"gaps={torsoGaps} undo={torsoUndo}"));
+
+            canvas.Workspace.EraseAll();
+            canvas.Workspace.SetBrushDiameter(64);
             Click(canvas, rightHandHome);
             bool limbLeft = Painted(canvas, rightHandHome + Vector2.Left * 9);
             bool limbRight = Painted(canvas, rightHandHome + Vector2.Right * 9);
@@ -105,13 +128,19 @@ public sealed class PaintLimbPoseScenario : IScenario
                 maximumVisibleDiameter,
                 PaintPolicy.MaxBrushDiameter);
             int penCandidates = (penGridRadius * 2 + 1) * (penGridRadius * 2 + 1);
+            int penSampleDiameter = PaintCanvasControl.PenSampleDiameter(
+                maximumVisibleDiameter,
+                PaintPolicy.MaxBrushDiameter,
+                penGridRadius);
+            long penTexelVisitBound = (long)penCandidates * penSampleDiameter * penSampleDiameter;
             float brushSpacing = PaintCanvasControl.StrokeSampleSpacing(
                 PaintTool.Brush,
                 maximumVisibleDiameter);
             checks.Add(new StartupCheck(
                 "paint_max_brush_sampling_is_bounded",
-                penCandidates <= 16384 && brushSpacing >= 4f,
-                $"pen_candidates={penCandidates} brush_spacing={brushSpacing:0.00}px"));
+                penCandidates <= 16384 && penTexelVisitBound <= 1_000_000 && brushSpacing >= 4f,
+                $"pen_candidates={penCandidates} sample={penSampleDiameter}px " +
+                $"texel_bound={penTexelVisitBound} brush_spacing={brushSpacing:0.00}px"));
 
             var paletteRoot = new Control();
             var paletteBootstrap = new Win98PaintCustomPaletteBootstrap();

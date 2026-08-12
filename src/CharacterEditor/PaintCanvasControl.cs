@@ -330,6 +330,7 @@ public partial class PaintCanvasControl : Control
         float texturePixelSize = VisibleBrushDiameter() / Math.Max(1, Workspace.BrushDiameter);
         float sampleRadius = Math.Max(0f, radius - (texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f));
         int steps = PenSampleSteps(VisibleBrushDiameter(), Workspace.BrushDiameter);
+        int sampleDiameter = PenSampleDiameter(VisibleBrushDiameter(), Workspace.BrushDiameter, steps);
         float spacing = steps <= 0 ? 0f : sampleRadius / steps;
         var hits = new List<PaintHit>((steps * 2 + 1) * (steps * 2 + 1));
         for (int y = -steps; y <= steps; y++)
@@ -343,7 +344,7 @@ public partial class PaintCanvasControl : Control
                     hits.Add(hit);
             }
         }
-        Workspace.StampPenDab(hits);
+        Workspace.StampPenDab(hits, sampleDiameter);
     }
 
     private bool TryBucketFillConnector(PaintHit? hit)
@@ -377,6 +378,21 @@ public partial class PaintCanvasControl : Control
             visibleBrushDiameter * 0.5f - texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f);
         float spacing = Math.Max(1.25f, texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f);
         return Math.Clamp((int)Math.Ceiling(sampleRadius / spacing), 1, MaxPenSampleSteps);
+    }
+
+    internal static int PenSampleDiameter(float visibleBrushDiameter, int brushDiameter, int sampleSteps)
+    {
+        float texturePixelSize = visibleBrushDiameter / Math.Max(1, brushDiameter);
+        float sampleRadius = Math.Max(
+            0f,
+            visibleBrushDiameter * 0.5f - texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f);
+        float actualSpacing = sampleRadius / Math.Max(1, sampleSteps);
+        float denseSpacing = Math.Max(0.25f, texturePixelSize * PaintPolicy.MinBrushDiameter * 0.25f);
+        float spacingRatio = actualSpacing / denseSpacing;
+        int diameter = spacingRatio <= 1f
+            ? PaintPolicy.MinBrushDiameter
+            : (int)Math.Ceiling(PaintPolicy.MinBrushDiameter * spacingRatio * 1.5f);
+        return Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, brushDiameter);
     }
 
     private void BeginCurve(Vector2 canvas)

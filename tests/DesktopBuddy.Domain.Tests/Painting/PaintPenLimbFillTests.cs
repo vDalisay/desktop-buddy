@@ -3,58 +3,41 @@ using Xunit;
 
 namespace DesktopBuddy.Domain.Tests.Painting;
 
-public sealed class PaintPenLimbFillTests
+public sealed class PaintPenLimbDabTests
 {
-    [Fact]
-    public void PenDabOnLimbReplacesStripeyLaneWithOneSolidUndoableColor()
+    [Theory]
+    [InlineData(PaintPart.LeftHand)]
+    [InlineData(PaintPart.RightHand)]
+    [InlineData(PaintPart.LeftFoot)]
+    [InlineData(PaintPart.RightFoot)]
+    public void SmallPenDabOnLimbStaysLocalizedAndUndoable(PaintPart part)
     {
         PaintWorkspace workspace = new()
         {
             SelectedTool = PaintTool.Pen,
             SelectedColor = new PaintColor(245, 40, 210),
         };
-        PaintSurface surface = workspace.Surfaces[PaintPart.LeftFoot];
-        byte[] pixels = new byte[PaintPolicy.SurfaceBytes];
-
-        // Reproduce the old failure shape: alternating painted/blank rows in the limb-end lane.
-        for (int y = 0; y < PaintPolicy.SurfaceSize; y++)
-        {
-            for (int x = PaintUvRegion.LimbEnd.StartPixel;
-                 x < PaintUvRegion.LimbEnd.StartPixel + PaintUvRegion.LimbEnd.PixelWidth;
-                 x++)
-            {
-                if ((y / 4) % 2 == 0)
-                    WritePixel(pixels, x, y, new PaintColor(20, 160, 240));
-            }
-
-            // Connector lane contains unrelated paint and must not be changed by an end-part dab.
-            for (int x = PaintUvRegion.LimbConnector.StartPixel;
-                 x < PaintUvRegion.LimbConnector.StartPixel + PaintUvRegion.LimbConnector.PixelWidth;
-                 x++)
-            {
-                WritePixel(pixels, x, y, new PaintColor(30, 70, 110));
-            }
-        }
-        surface.Replace(pixels);
+        PaintSurface surface = workspace.Surfaces[part];
         string before = surface.ComputeHash();
 
         workspace.BeginGesture(null);
         workspace.StampPenDab([
-            new PaintHit(PaintPart.LeftFoot, new PaintPoint(0.25, 0.5), 0.0),
+            new PaintHit(part, new PaintPoint(0.25, 0.5), 0.0),
         ]);
         workspace.EndGesture();
 
-        AssertSolid(surface, 0.01, workspace.SelectedColor);
-        AssertSolid(surface, 0.25, workspace.SelectedColor);
-        AssertSolid(surface, 0.49, workspace.SelectedColor);
-        AssertSolid(surface, 0.75, new PaintColor(30, 70, 110));
+        Assert.True(surface.TrySample(new PaintPoint(0.25, 0.5), out PaintColor actual));
+        Assert.Equal(workspace.SelectedColor, actual);
+        Assert.False(surface.TrySample(new PaintPoint(0.05, 0.1), out _));
+        Assert.False(surface.TrySample(new PaintPoint(0.45, 0.9), out _));
+        Assert.False(surface.TrySample(new PaintPoint(0.75, 0.5), out _));
         Assert.True(workspace.CanUndo);
         Assert.True(workspace.Undo());
         Assert.Equal(before, surface.ComputeHash());
     }
 
     [Fact]
-    public void PenDabOnConnectorSolidFillsOnlyConnectorLane()
+    public void SmallPenDabOnConnectorStaysLocalizedToConnectorLane()
     {
         PaintWorkspace workspace = new()
         {
@@ -73,27 +56,10 @@ public sealed class PaintPenLimbFillTests
         ]);
         workspace.EndGesture();
 
+        Assert.True(surface.TrySample(new PaintPoint(0.75, 0.5), out PaintColor actual));
+        Assert.Equal(workspace.SelectedColor, actual);
         Assert.False(surface.TrySample(new PaintPoint(0.25, 0.5), out _));
-        AssertSolid(surface, 0.51, workspace.SelectedColor);
-        AssertSolid(surface, 0.75, workspace.SelectedColor);
-        AssertSolid(surface, 0.99, workspace.SelectedColor);
-    }
-
-    private static void AssertSolid(PaintSurface surface, double u, PaintColor expected)
-    {
-        foreach (double v in new[] { 0.01, 0.25, 0.5, 0.75, 0.99 })
-        {
-            Assert.True(surface.TrySample(new PaintPoint(u, v), out PaintColor actual));
-            Assert.Equal(expected, actual);
-        }
-    }
-
-    private static void WritePixel(byte[] pixels, int x, int y, PaintColor color)
-    {
-        int index = ((y * PaintPolicy.SurfaceSize) + x) * PaintPolicy.BytesPerPixel;
-        pixels[index] = color.R;
-        pixels[index + 1] = color.G;
-        pixels[index + 2] = color.B;
-        pixels[index + 3] = byte.MaxValue;
+        Assert.False(surface.TrySample(new PaintPoint(0.55, 0.1), out _));
+        Assert.False(surface.TrySample(new PaintPoint(0.95, 0.9), out _));
     }
 }

@@ -322,11 +322,17 @@ public sealed class PaintWorkspace
         _lastHit = current;
     }
 
-    public void StampPenDab(IReadOnlyList<PaintHit> hits)
+    public void StampPenDab(
+        IReadOnlyList<PaintHit> hits,
+        int sampleDiameter = PaintPolicy.MinBrushDiameter)
     {
         ArgumentNullException.ThrowIfNull(hits);
         if (!_gestureActive || _selectedTool != PaintTool.Pen || hits.Count == 0)
             return;
+        sampleDiameter = Math.Clamp(
+            sampleDiameter,
+            PaintPolicy.MinBrushDiameter,
+            PaintPolicy.MaxBrushDiameter);
 
         var samples = new List<PaintHit>(hits.Count);
         foreach (PaintHit hit in hits)
@@ -338,10 +344,11 @@ public sealed class PaintWorkspace
         var boundsByPart = new Dictionary<PaintPart, PaintRect>();
         foreach (PaintHit sample in samples)
         {
+            PaintUvRegion region = PaintUvRegion.For(sample);
             PaintRect bounds = PaintSurface.StampBounds(
                 sample.Uv,
-                PaintPolicy.MinBrushDiameter,
-                region: PaintUvRegion.For(sample));
+                sampleDiameter,
+                region: region);
             boundsByPart[sample.Part] = boundsByPart.TryGetValue(sample.Part, out PaintRect prior)
                 ? PaintRect.Union(prior, bounds)
                 : bounds;
@@ -349,12 +356,15 @@ public sealed class PaintWorkspace
         foreach ((PaintPart part, PaintRect bounds) in boundsByPart)
             CaptureBefore(_gestureBefore, part, bounds);
         foreach (PaintHit sample in samples)
+        {
+            PaintUvRegion region = PaintUvRegion.For(sample);
             _surfaces[sample.Part].Stamp(
                 sample.Uv,
-                PaintPolicy.MinBrushDiameter,
+                sampleDiameter,
                 PaintTool.Pen,
                 SelectedColor,
-                region: PaintUvRegion.For(sample));
+                region: region);
+        }
     }
 
     public void EndGesture()

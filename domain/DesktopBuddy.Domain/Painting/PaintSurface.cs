@@ -1,6 +1,5 @@
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Security.Cryptography;
 
 namespace DesktopBuddy.Domain.Painting;
@@ -25,8 +24,6 @@ public readonly record struct PaintRect(int X, int Y, int Width, int Height)
 public sealed class PaintSurface
 {
     private readonly byte[] _pixels = new byte[PaintPolicy.SurfaceBytes];
-    private readonly Dictionary<int, PaintColor> _solidRegionColors = new();
-
     public long Revision { get; private set; }
     public ReadOnlyMemory<byte> Pixels => _pixels;
 
@@ -41,13 +38,6 @@ public sealed class PaintSurface
         region = ValidRegion(region);
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
         verticalScale = ValidVerticalScale(verticalScale);
-
-        // Screen-space Pen dabs are rasterized as many minimum-size samples. On a half-atlas
-        // limb lane those samples deliberately collapse to one solid bucket-style limb fill.
-        // Return the whole lane here so PaintWorkspace captures a complete undo patch before
-        // the first sample mutates pixels outside the tiny sample's normal bounds.
-        if (IsSolidLimbPenSample(diameter, verticalScale, region))
-            return RegionBounds(region);
 
         double centerX = region.PixelX(uv.X);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
@@ -98,15 +88,6 @@ public sealed class PaintSurface
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
         verticalScale = ValidVerticalScale(verticalScale);
 
-        // The accepted limb compromise is bucket-style painting rather than attempting to
-        // reconstruct a solid screen-space Pen circle through the very small curved UV island.
-        // PaintWorkspace's Pen path reaches this method as minimum-size samples. The first sample
-        // fills the entire touched end/connector lane; subsequent samples are O(1) via the solid
-        // lane cache, avoiding both striping and the old max-size performance cost.
-        if (tool == PaintTool.Pen && region.Width < PaintUvRegion.Full.Width)
-            return FillRegionSolid(region, color);
-
-        InvalidateSolidRegion(region);
         double centerX = region.PixelX(uv.X);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
         double radiusX = diameter / 2.0;
@@ -153,7 +134,6 @@ public sealed class PaintSurface
         region = ValidRegion(region);
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
         verticalScale = ValidVerticalScale(verticalScale);
-        InvalidateSolidRegion(region);
         double centerX = region.PixelX(uv.X);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
         double radius = diameter / 2.0;
@@ -248,7 +228,6 @@ public sealed class PaintSurface
             bytes.Slice(source, rectangle.Width * PaintPolicy.BytesPerPixel).CopyTo(_pixels.AsSpan(target));
             source += rectangle.Width * PaintPolicy.BytesPerPixel;
         }
-        _solidRegionColors.Clear();
         Revision++;
     }
 
@@ -259,7 +238,6 @@ public sealed class PaintSurface
         if (pixels.Length != PaintPolicy.SurfaceBytes)
             throw new ArgumentException("Paint surface must be exactly 512x512 RGBA8.", nameof(pixels));
         pixels.CopyTo(_pixels);
-        _solidRegionColors.Clear();
         Revision++;
     }
 
@@ -267,41 +245,10 @@ public sealed class PaintSurface
     {
         if (Array.TrueForAll(_pixels, value => value == 0)) return;
         Array.Clear(_pixels);
-        _solidRegionColors.Clear();
         Revision++;
     }
 
     public string ComputeHash() => Convert.ToHexString(SHA256.HashData(_pixels));
-
-    private PaintRect FillRegionSolid(PaintUvRegion region, PaintColor color)
-    {
-        if (_solidRegionColors.TryGetValue(region.StartPixel, out PaintColor known) && known == color)
-            return default;
-
-        bool changed = false;
-        int endX = region.StartPixel + region.PixelWidth;
-        for (int y = 0; y < PaintPolicy.SurfaceSize; y++)
-        {
-            for (int x = region.StartPixel; x < endX; x++)
-            {
-                int index = ((y * PaintPolicy.SurfaceSize) + x) * PaintPolicy.BytesPerPixel;
-                changed |= Write(index, color.R, color.G, color.B, byte.MaxValue);
-            }
-        }
-
-        _solidRegionColors[region.StartPixel] = color;
-        if (!changed) return default;
-        Revision++;
-        return RegionBounds(region);
-    }
-
-    private void InvalidateSolidRegion(PaintUvRegion region)
-    {
-        if (region.Width >= PaintUvRegion.Full.Width)
-            _solidRegionColors.Clear();
-        else
-            _solidRegionColors.Remove(region.StartPixel);
-    }
 
     private bool Write(int index, byte r, byte g, byte b, byte a)
     {
@@ -313,14 +260,6 @@ public sealed class PaintSurface
         _pixels[index + 3] = a;
         return true;
     }
-
-    private static bool IsSolidLimbPenSample(int diameter, double verticalScale, PaintUvRegion region) =>
-        region.Width < PaintUvRegion.Full.Width &&
-        diameter == PaintPolicy.MinBrushDiameter &&
-        Math.Abs(verticalScale - 1.0) <= 0.000001;
-
-    private static PaintRect RegionBounds(PaintUvRegion region) =>
-        new(region.StartPixel, 0, region.PixelWidth, PaintPolicy.SurfaceSize);
 
     private static double ValidVerticalScale(double value) =>
         double.IsFinite(value) && value > 0.0 ? Math.Clamp(value, 0.25, 8.0) : 1.0;
