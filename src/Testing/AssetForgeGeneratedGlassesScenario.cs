@@ -81,7 +81,7 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
             var progress = new BuddyProgressState(
                 cashPerPain: 0.01,
                 initialBalanceMilliCredits: 500_000);
-            var saves = new SaveCoordinator(progress, progressStore, characterSelection: selection);
+            var saves = new SaveCoordinator(progress, progressStore, selection: selection);
             var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
             var coordinator = new CharacterSelectionCoordinator(
                 store,
@@ -132,19 +132,19 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
                 $"buy={bought.Completed} equip={equipped.Completed} save={saved.Completed} owned={economy.IsUnlocked(ContentId)}"));
 
             CharacterLoadResult reloaded = await store.LoadAsync(id, CancellationToken.None);
-            CharacterCompileResult compiled = reloaded.Document is null
-                ? new CharacterCompileResult(null, ["reload failed"])
+            CharacterCompileResult? compiled = reloaded.Document is null
+                ? null
                 : CharacterCompiler.Compile(reloaded.Document, features);
-            bool survivesRestart = reloaded.IsSuccess && compiled.IsSuccess && compiled.Appearance is not null &&
+            bool survivesRestart = reloaded.IsSuccess && compiled is { IsSuccess: true, Appearance: not null } &&
                 CharacterDocumentEditor.ReadFeatureId(
                     reloaded.Document!, CharacterFeatureSlot.Glasses) == FeatureId &&
                 compiled.Appearance.Glasses.ResolvedFeatureId == FeatureId;
             checks.Add(new StartupCheck(
                 "af_generated_id_survives_reload_and_compile",
                 survivesRestart,
-                $"load={reloaded.Status} compile={compiled.IsSuccess} glasses={compiled.Appearance?.Glasses.ResolvedFeatureId}"));
+                $"load={reloaded.Status} compile={compiled?.IsSuccess} glasses={compiled?.Appearance?.Glasses.ResolvedFeatureId}"));
 
-            if (compiled.Appearance is not null)
+            if (compiled?.Appearance is not null)
             {
                 context.Preview.ApplyAppearance(compiled.Appearance);
                 context.Preview.RefreshCharacterCompositors();
