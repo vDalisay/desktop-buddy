@@ -25,6 +25,7 @@ public readonly record struct PaintRect(int X, int Y, int Width, int Height)
 public sealed class PaintSurface
 {
     private readonly byte[] _pixels = new byte[PaintPolicy.SurfaceBytes];
+    private readonly Dictionary<int, PaintColor> _solidRegionColors = new();
 
     public long Revision { get; private set; }
     public ReadOnlyMemory<byte> Pixels => _pixels;
@@ -100,11 +101,12 @@ public sealed class PaintSurface
         // The accepted limb compromise is bucket-style painting rather than attempting to
         // reconstruct a solid screen-space Pen circle through the very small curved UV island.
         // PaintWorkspace's Pen path reaches this method as minimum-size samples. The first sample
-        // fills the entire touched end/connector lane; subsequent samples hit an already-solid
-        // lane and return immediately, avoiding both striping and the old max-size performance cost.
+        // fills the entire touched end/connector lane; subsequent samples are O(1) via the solid
+        // lane cache, avoiding both striping and the old max-size performance cost.
         if (tool == PaintTool.Pen && region.Width < PaintUvRegion.Full.Width)
             return FillRegionSolid(region, color);
 
+        InvalidateSolidRegion(region);
         double centerX = region.PixelX(uv.X);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
         double radiusX = diameter / 2.0;
@@ -151,6 +153,7 @@ public sealed class PaintSurface
         region = ValidRegion(region);
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
         verticalScale = ValidVerticalScale(verticalScale);
+        InvalidateSolidRegion(region);
         double centerX = region.PixelX(uv.X);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
         double radius = diameter / 2.0;
@@ -245,6 +248,7 @@ public sealed class PaintSurface
             bytes.Slice(source, rectangle.Width * PaintPolicy.BytesPerPixel).CopyTo(_pixels.AsSpan(target));
             source += rectangle.Width * PaintPolicy.BytesPerPixel;
         }
+        _solidRegionColors.Clear();
         Revision++;
     }
 
@@ -255,6 +259,7 @@ public sealed class PaintSurface
         if (pixels.Length != PaintPolicy.SurfaceBytes)
             throw new ArgumentException("Paint surface must be exactly 512x512 RGBA8.", nameof(pixels));
         pixels.CopyTo(_pixels);
+        _solidRegionColors.Clear();
         Revision++;
     }
 
@@ -262,6 +267,7 @@ public sealed class PaintSurface
     {
         if (Array.TrueForAll(_pixels, value => value == 0)) return;
         Array.Clear(_pixels);
+        _solidRegionColors.Clear();
         Revision++;
     }
 
@@ -269,14 +275,8 @@ public sealed class PaintSurface
 
     private PaintRect FillRegionSolid(PaintUvRegion region, PaintColor color)
     {
-        int probeIndex = (region.StartPixel * PaintPolicy.BytesPerPixel);
-        if (_pixels[probeIndex] == color.R &&
-            _pixels[probeIndex + 1] == color.G &&
-            _pixels[probeIndex + 2] == color.B &&
-            _pixels[probeIndex + 3] == byte.MaxValue)
-        {
+        if (_solidRegionColors.TryGetValue(region.StartPixel, out PaintColor known) && known == color)
             return default;
-        }
 
         bool changed = false;
         int endX = region.StartPixel + region.PixelWidth;
@@ -289,9 +289,18 @@ public sealed class PaintSurface
             }
         }
 
+        _solidRegionColors[region.StartPixel] = color;
         if (!changed) return default;
         Revision++;
         return RegionBounds(region);
+    }
+
+    private void InvalidateSolidRegion(PaintUvRegion region)
+    {
+        if (region.Width >= PaintUvRegion.Full.Width)
+            _solidRegionColors.Clear();
+        else
+            _solidRegionColors.Remove(region.StartPixel);
     }
 
     private bool Write(int index, byte r, byte g, byte b, byte a)
