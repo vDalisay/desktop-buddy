@@ -68,6 +68,5 @@ public static class BuddySharedMaterialFactory
         LightEnergy = energy,
         ShadowEnabled = false,
         RotationDegrees = eulerDegrees,
-        PhysicsInterpolationMode = Node.PhysicsInterpolationModeEnum.Inherit,
     };
 }
