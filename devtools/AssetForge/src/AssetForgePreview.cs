@@ -31,7 +31,10 @@ public partial class AssetForgePreview : Control
         _viewport = new SubViewport
         {
             Name = "PreviewViewport",
-            TransparentBg = false,
+            // Blend the 3D reference/asset over the Asset Forge UI instead of showing the
+            // SubViewport's default black clear rectangle. This is also the correct basis for
+            // transparent catalogue thumbnails.
+            TransparentBg = true,
             Size = new Vector2I(720, 640),
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
         };
