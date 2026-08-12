@@ -106,9 +106,13 @@ public sealed class AssetForgeCoreTests
         GeneratedAsset thick = AssetForgeGenerator.Generate(png, thickRecipe);
         Assert.True(thin.UsedGlassesTemplate && thick.UsedGlassesTemplate);
         Assert.NotEqual(thin.GeometryHash, thick.GeometryHash);
-        float thinWidth = thin.Mesh.Positions.Max(static p => p.X) - thin.Mesh.Positions.Min(static p => p.X);
-        float thickWidth = thick.Mesh.Positions.Max(static p => p.X) - thick.Mesh.Positions.Min(static p => p.X);
-        Assert.True(thickWidth > thinWidth, $"Expected thicker template to expand frame bounds: thin={thinWidth}, thick={thickWidth}");
+
+        // Temples intentionally extend farther sideways than either lens, so total X width is not
+        // a useful frame-thickness measurement. The lens/frame vertical envelope is.
+        float thinHeight = thin.Mesh.Positions.Max(static p => p.Y) - thin.Mesh.Positions.Min(static p => p.Y);
+        float thickHeight = thick.Mesh.Positions.Max(static p => p.Y) - thick.Mesh.Positions.Min(static p => p.Y);
+        Assert.True(thickHeight > thinHeight + 0.03f,
+            $"Expected thicker template to expand the frame envelope: thin={thinHeight}, thick={thickHeight}");
     }
 
     [Fact]
