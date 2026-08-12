@@ -2,6 +2,9 @@ name: Asset Forge CI
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - asset-forge
 
 env:
   GODOT_VERSION: 4.6.1-stable
