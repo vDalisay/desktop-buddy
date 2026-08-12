@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Characters;
@@ -7,26 +10,37 @@ using DesktopBuddy.Domain.Characters;
 namespace DesktopBuddy.Persistence.Characters;
 
 /// <summary>
-/// Failure-safe local character document store. File validity is decided only by the
-/// character document policy; compiler/renderer failures never enter this boundary.
+/// Failure-safe local character document store. The immutable feature catalogue is injected so
+/// Asset Forge-generated trusted IDs survive save/load while tests and legacy callers continue to
+/// default to the shipped catalogue.
 /// </summary>
 public sealed class CharacterStore
 {
+    private static readonly JsonSerializerOptions SerializeOptions = new(JsonSerializerDefaults.Web)
+    {
+        WriteIndented = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
     private readonly ICharacterFileSystem _fileSystem;
     private readonly CharacterPaths _paths;
     private readonly Func<DateTimeOffset> _utcNow;
+    private readonly CharacterFeatureCatalog _featureCatalog;
 
     public CharacterStore(
         ICharacterFileSystem fileSystem,
         string resolvedRoot,
-        Func<DateTimeOffset>? utcNow = null)
+        Func<DateTimeOffset>? utcNow = null,
+        CharacterFeatureCatalog? featureCatalog = null)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _paths = new CharacterPaths(resolvedRoot);
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        _featureCatalog = featureCatalog ?? CharacterFeatureCatalog.Shipped;
     }
 
     public CharacterPaths Paths => _paths;
+    public CharacterFeatureCatalog FeatureCatalog => _featureCatalog;
     public long FullDocumentLoadCount { get; private set; }
     public long SaveCount { get; private set; }
     public long DeleteCount { get; private set; }
@@ -125,7 +139,7 @@ public sealed class CharacterStore
         try
         {
             CharacterNormalizationResult normalized = CharacterDocumentNormalizer.Normalize(document);
-            CharacterValidationResult validation = CharacterDocumentValidator.Validate(normalized.Document);
+            CharacterValidationResult validation = CharacterDocumentValidator.Validate(normalized.Document, _featureCatalog);
             if (!validation.IsValid)
             {
                 return new CharacterSaveResult(
@@ -133,6 +147,7 @@ public sealed class CharacterStore
                     null,
                     string.Join("; ", validation.Errors));
             }
+            CharacterDocumentPolicy.ValidatePaintManifest(normalized.Document.Paint);
 
             token.ThrowIfCancellationRequested();
             string directory = _paths.Directory(normalized.Document.Id);
@@ -148,7 +163,7 @@ public sealed class CharacterStore
             _fileSystem.CreateDirectory(directory);
             temporary = _paths.Temporary(normalized.Document.Id);
             _fileSystem.DeleteFile(temporary);
-            string json = CharacterDocumentPolicy.Serialize(normalized.Document);
+            string json = SerializeTrusted(normalized.Document);
             _fileSystem.WriteAllTextDurable(temporary, json);
             token.ThrowIfCancellationRequested();
 
@@ -180,6 +195,20 @@ public sealed class CharacterStore
                 SafeDeleteTemporary(temporary);
             return new CharacterSaveResult(CharacterSaveStatus.IoFailure, null, exception.Message);
         }
+    }
+
+    private string SerializeTrusted(CharacterDocument document)
+    {
+        CharacterValidationResult validation = CharacterDocumentValidator.Validate(document, _featureCatalog);
+        if (!validation.IsValid)
+        {
+            string detail = string.Join("; ", validation.Errors.Select(error => $"{error.Path}: {error.Message}"));
+            throw new ArgumentException(detail, nameof(document));
+        }
+        CharacterDocumentPolicy.ValidatePaintManifest(document.Paint);
+        return JsonSerializer.Serialize(
+            document with { SchemaVersion = CharacterDocumentPolicy.CurrentSchemaVersion },
+            SerializeOptions);
     }
 
     private CharacterDeleteResult DeleteCore(Guid id, CancellationToken token)
@@ -231,7 +260,7 @@ public sealed class CharacterStore
             return LoadAttempt.Invalid(decoded.Detail ?? "Character document is malformed.");
 
         CharacterNormalizationResult normalized = CharacterDocumentNormalizer.Normalize(decoded.Document);
-        CharacterValidationResult validation = CharacterDocumentValidator.Validate(normalized.Document);
+        CharacterValidationResult validation = CharacterDocumentValidator.Validate(normalized.Document, _featureCatalog);
         if (!validation.IsValid)
             return LoadAttempt.Invalid(string.Join("; ", validation.Errors));
         if (normalized.Document.Id != expectedId)
