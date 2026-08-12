@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Economy;
 using DesktopBuddy.Domain.Painting;
@@ -22,9 +23,9 @@ public readonly record struct CharacterEditorActionResult(
     string? Detail = null);
 
 /// <summary>
-/// Character-editor working-copy state machine. Document and paint edits remain preview-only
-/// until Save/Use. Paint pixels participate in the same dirty, discard and failure semantics.
-/// Never use ConfigureAwait(false): callers resume into Godot UI code on the main thread.
+/// Character-editor working-copy state machine. The feature catalogue is injected and immutable
+/// for the lifetime of the session so shipped and Asset Forge-generated definitions are resolved
+/// through the same validation/preview/purchase/save path without mutable global registration.
 /// </summary>
 public sealed class CharacterEditorSession
 {
@@ -36,6 +37,7 @@ public sealed class CharacterEditorSession
     private readonly BuddyVisualRigView _preview;
     private readonly Func<Guid> _newGuid;
     private readonly EconomyService? _economy;
+    private readonly CharacterFeatureCatalog _featureCatalog;
     private readonly Dictionary<CharacterFeatureSlot, CharacterFeatureDocument> _unownedPreviews = [];
     private readonly Dictionary<CharacterFeatureSlot, CharacterFeatureDocument> _ownedPreviews = [];
     private CharacterDocument? _savedDocument;
@@ -51,7 +53,8 @@ public sealed class CharacterEditorSession
         CharacterSelectionCoordinator selection,
         BuddyVisualRigView preview,
         Func<Guid>? newGuid = null,
-        EconomyService? economy = null)
+        EconomyService? economy = null,
+        CharacterFeatureCatalog? featureCatalog = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _library = library ?? throw new ArgumentNullException(nameof(library));
@@ -59,12 +62,14 @@ public sealed class CharacterEditorSession
         _preview = preview ?? throw new ArgumentNullException(nameof(preview));
         _newGuid = newGuid ?? Guid.NewGuid;
         _economy = economy;
+        _featureCatalog = featureCatalog ?? BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog;
     }
 
     public event Action? Changed;
     public event Action? LibraryChanged;
     public event Action<bool>? CloseResolved;
 
+    public CharacterFeatureCatalog FeatureCatalog => _featureCatalog;
     public CharacterDocument? WorkingDocument { get; private set; }
     public CharacterDocument? PreviewDocument => BuildPreviewDocument();
     public Guid? SelectedCharacterId => WorkingDocument?.Id;
@@ -117,10 +122,6 @@ public sealed class CharacterEditorSession
         return await SelectCoreAsync(characterId, token);
     }
 
-    /// <summary>
-    /// Opens the appearance currently used by the runtime. Built-in selection has no local
-    /// document, so it starts from the existing built-in defaults as a normal unsaved character.
-    /// </summary>
     public async Task<CharacterEditorActionResult> OpenActiveAsync(
         Guid? activeCharacterId,
         CancellationToken token = default)
@@ -170,10 +171,6 @@ public sealed class CharacterEditorSession
         return new CharacterEditorActionResult(true);
     }
 
-    /// <summary>
-    /// Per-character paint palette, carried in the document's extension data so it saves,
-    /// loads and participates in the dirty/discard rules without a schema change.
-    /// </summary>
     public IReadOnlyList<string> Palette =>
         WorkingDocument is not null &&
         WorkingDocument.ExtensionData.TryGetValue(PaletteKey, out System.Text.Json.JsonElement stored) &&
@@ -219,15 +216,15 @@ public sealed class CharacterEditorSession
             var owned = new HashSet<string>(StringComparer.Ordinal);
             if (_economy is not null)
             {
-                foreach (string cosmeticId in CharacterFeatureCatalog.Shipped.AllIds)
-                    if (CharacterFeatureCatalog.Shipped.TryGetDefinition(cosmeticId, out CosmeticDefinition definition) &&
+                foreach (string cosmeticId in _featureCatalog.AllIds)
+                    if (_featureCatalog.TryGetDefinition(cosmeticId, out CosmeticDefinition definition) &&
                         definition.OwnershipContentId is string contentId &&
                         _economy.IsUnlocked(contentId))
                         owned.Add(contentId);
             }
             CharacterDocument randomized = CharacterRandomizer.Randomize(
                 WorkingDocument,
-                CharacterFeatureCatalog.Shipped,
+                _featureCatalog,
                 owned,
                 seed);
             _unownedPreviews.Clear();
@@ -252,7 +249,7 @@ public sealed class CharacterEditorSession
 
     public bool IsCosmeticOwned(string cosmeticId)
     {
-        if (!CharacterFeatureCatalog.Shipped.TryGetDefinition(cosmeticId, out CosmeticDefinition definition))
+        if (!_featureCatalog.TryGetDefinition(cosmeticId, out CosmeticDefinition definition))
             return false;
         return definition.IsFreeDefault ||
             (definition.OwnershipContentId is string contentId &&
@@ -263,7 +260,7 @@ public sealed class CharacterEditorSession
     {
         if (WorkingDocument is null)
             return Failure("There is no working character to edit.");
-        if (!CharacterFeatureCatalog.Shipped.TryGetDefinition(cosmeticId, out CosmeticDefinition definition) ||
+        if (!_featureCatalog.TryGetDefinition(cosmeticId, out CosmeticDefinition definition) ||
             definition.Slot != CanonicalSlot(slot))
             return Failure($"Cosmetic '{cosmeticId}' does not belong to {slot}.");
 
@@ -289,15 +286,11 @@ public sealed class CharacterEditorSession
         return new CharacterEditorActionResult(true);
     }
 
-    /// <summary>
-    /// Shows a catalogue choice without equipping it. Owned/free previews remain saveable but
-    /// require an explicit Equip action; unowned previews retain the existing Save gate.
-    /// </summary>
     public CharacterEditorActionResult PreviewCosmetic(CharacterFeatureSlot slot, string cosmeticId)
     {
         if (WorkingDocument is null)
             return Failure("There is no working character to edit.");
-        if (!CharacterFeatureCatalog.Shipped.TryGetDefinition(cosmeticId, out CosmeticDefinition definition) ||
+        if (!_featureCatalog.TryGetDefinition(cosmeticId, out CosmeticDefinition definition) ||
             definition.Slot != CanonicalSlot(slot))
             return Failure($"Cosmetic '{cosmeticId}' does not belong to {slot}.");
 
@@ -351,7 +344,7 @@ public sealed class CharacterEditorSession
         if (_economy is null)
             return Failure("Cosmetic purchases are unavailable in this editor context.");
 
-        CosmeticDefinition definition = CharacterFeatureCatalog.Shipped.ResolveDefinition(
+        CosmeticDefinition definition = _featureCatalog.ResolveDefinition(
             canonical,
             preview.FeatureId,
             out bool known);
@@ -677,7 +670,7 @@ public sealed class CharacterEditorSession
         }
         CharacterCompileResult compiled = CharacterCompiler.Compile(
             BuildPreviewDocument()!,
-            CharacterFeatureCatalog.Shipped);
+            _featureCatalog);
         if (!compiled.IsSuccess || compiled.Appearance is null)
         {
             LastError = string.Join("; ", compiled.Errors);
