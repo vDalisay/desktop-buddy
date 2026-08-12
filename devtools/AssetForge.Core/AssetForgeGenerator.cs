@@ -52,10 +52,11 @@ public static class AssetForgeGenerator
                 "use a cleaner transparent/uniform-background source or increase separation between the frame colour and the background.");
         }
 
+        CanonicalMesh? semanticMesh = null;
         bool usedTemplate = recipe.Geometry.ShapeMode == ShapeMode.RoundedExtrusion &&
-            GlassesTemplateGenerator.TryGenerate(mask, recipe.Geometry, out CanonicalMesh? semanticMesh);
-        CanonicalMesh mesh = usedTemplate
-            ? semanticMesh!
+            GlassesTemplateGenerator.TryGenerate(mask, recipe.Geometry, out semanticMesh);
+        CanonicalMesh mesh = usedTemplate && semanticMesh is not null
+            ? semanticMesh
             : ExtrusionGenerator.GenerateGlasses(mask, recipe.Geometry);
         string geometryHash = mesh.CanonicalHash();
         byte[] glb = GlbWriter.Write(mesh);
