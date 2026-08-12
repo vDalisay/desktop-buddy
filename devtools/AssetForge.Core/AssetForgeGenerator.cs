@@ -54,7 +54,7 @@ public static class AssetForgeGenerator
 
         CanonicalMesh? semanticMesh = null;
         bool usedTemplate = recipe.Geometry.ShapeMode == ShapeMode.RoundedExtrusion &&
-            GlassesTemplateGenerator.TryGenerate(mask, recipe.Geometry, out semanticMesh);
+            GlassesTemplateGenerator.TryGenerate(mask, foreground.Image, recipe.Geometry, out semanticMesh);
         CanonicalMesh mesh = usedTemplate && semanticMesh is not null
             ? semanticMesh
             : ExtrusionGenerator.GenerateGlasses(mask, recipe.Geometry);

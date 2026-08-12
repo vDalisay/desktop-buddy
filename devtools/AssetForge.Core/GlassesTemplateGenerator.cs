@@ -14,6 +14,7 @@ public static class GlassesTemplateGenerator
     private const float TargetFrameCenterY = 0.18f;
     private const float SimplificationToleranceCells = 1.25f;
     private const float TempleOutward = 0.18f;
+    private const byte OpaqueSampleThreshold = 224;
 
     private readonly record struct GridPoint(int X, int Y);
     private readonly record struct Edge(GridPoint A, GridPoint B);
@@ -28,9 +29,14 @@ public static class GlassesTemplateGenerator
         public Vector2 Map(Vector2 raw) => (raw - SourceCenter) * Scale + new Vector2(0, TargetFrameCenterY);
     }
 
-    public static bool TryGenerate(MaskGrid grid, GeometrySettings settings, out CanonicalMesh mesh)
+    public static bool TryGenerate(
+        MaskGrid grid,
+        RgbaImage foreground,
+        GeometrySettings settings,
+        out CanonicalMesh mesh)
     {
         ArgumentNullException.ThrowIfNull(grid);
+        ArgumentNullException.ThrowIfNull(foreground);
         ArgumentNullException.ThrowIfNull(settings);
         IReadOnlyList<HoleContour> holes = ExtractHoleContours(grid);
         if (holes.Count < 2)
@@ -51,8 +57,8 @@ public static class GlassesTemplateGenerator
 
         List<Vector2> leftWorld = ToWorldLoop(grid, left.GridPoints, fit);
         List<Vector2> rightWorld = ToWorldLoop(grid, right.GridPoints, fit);
-        List<Vector2> leftUv = ToUvLoop(grid, left.GridPoints);
-        List<Vector2> rightUv = ToUvLoop(grid, right.GridPoints);
+        List<Vector2> leftUv = ToPaintUvLoop(grid, foreground, left.GridPoints);
+        List<Vector2> rightUv = ToPaintUvLoop(grid, foreground, right.GridPoints);
 
         mesh = new CanonicalMesh();
         float frameRadius = (float)settings.FrameThickness * 0.5f;
@@ -262,8 +268,76 @@ public static class GlassesTemplateGenerator
         return result;
     }
 
-    private static List<Vector2> ToUvLoop(MaskGrid grid, IReadOnlyList<Vector2> points) =>
-        points.Select(p => new Vector2(p.X / grid.Width, p.Y / grid.Height)).ToList();
+    /// <summary>
+    /// Hole contours lie exactly on the transparent/paint boundary. Sampling texture UVs at that
+    /// mathematical boundary makes anti-aliased source art fade or turn dark. Resolve the nearest
+    /// sufficiently opaque authored pixel instead, while keeping geometry on the lens contour.
+    /// </summary>
+    private static List<Vector2> ToPaintUvLoop(
+        MaskGrid grid,
+        RgbaImage foreground,
+        IReadOnlyList<Vector2> points)
+    {
+        var result = new List<Vector2>(points.Count);
+        int block = Math.Max(1, foreground.Width / grid.Width);
+        int maxRadius = Math.Max(6, block * 6);
+        foreach (Vector2 point in points)
+        {
+            int sourceX = Math.Clamp((int)MathF.Round(point.X * foreground.Width / grid.Width), 0, foreground.Width - 1);
+            int sourceY = Math.Clamp((int)MathF.Round(point.Y * foreground.Height / grid.Height), 0, foreground.Height - 1);
+            (int x, int y) = FindNearestOpaquePixel(foreground, sourceX, sourceY, maxRadius);
+            result.Add(new Vector2(
+                (x + 0.5f) / foreground.Width,
+                (y + 0.5f) / foreground.Height));
+        }
+        return result;
+    }
+
+    private static (int X, int Y) FindNearestOpaquePixel(
+        RgbaImage image,
+        int originX,
+        int originY,
+        int maxRadius)
+    {
+        int bestX = originX;
+        int bestY = originY;
+        byte bestAlpha = image.Alpha(originX, originY);
+        if (bestAlpha >= OpaqueSampleThreshold) return (bestX, bestY);
+
+        for (int radius = 1; radius <= maxRadius; radius++)
+        {
+            bool found = false;
+            byte ringBestAlpha = 0;
+            int ringBestX = 0;
+            int ringBestY = 0;
+            for (int dy = -radius; dy <= radius; dy++)
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                if (Math.Abs(dx) != radius && Math.Abs(dy) != radius) continue;
+                int x = originX + dx;
+                int y = originY + dy;
+                if (x < 0 || y < 0 || x >= image.Width || y >= image.Height) continue;
+                byte alpha = image.Alpha(x, y);
+                if (alpha > bestAlpha)
+                {
+                    bestAlpha = alpha;
+                    bestX = x;
+                    bestY = y;
+                }
+                if (alpha < OpaqueSampleThreshold) continue;
+                if (!found || alpha > ringBestAlpha ||
+                    alpha == ringBestAlpha && (y < ringBestY || y == ringBestY && x < ringBestX))
+                {
+                    found = true;
+                    ringBestAlpha = alpha;
+                    ringBestX = x;
+                    ringBestY = y;
+                }
+            }
+            if (found) return (ringBestX, ringBestY);
+        }
+        return (bestX, bestY);
+    }
 
     private static int CrossSectionSegments(double roundness)
     {
@@ -305,7 +379,6 @@ public static class GlassesTemplateGenerator
             for (int r = 0; r < radialSegments; r++)
             {
                 int s = (r + 1) % radialSegments;
-                // theta x path gives the radial/outward tube normal.
                 mesh.AddTriangle(rings[i, r], rings[j, s], rings[j, r]);
                 mesh.AddTriangle(rings[i, r], rings[i, s], rings[j, s]);
             }
