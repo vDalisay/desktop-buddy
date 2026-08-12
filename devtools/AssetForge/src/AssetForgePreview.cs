@@ -48,7 +48,8 @@ public partial class AssetForgePreview : Control
             "KeyLight", _profile.Look.KeyColor, _profile.Look.KeyEnergy, _profile.Look.KeyEulerDegrees);
         DirectionalLight3D fill = BuddySharedMaterialFactory.CreateDirectionalLight(
             "FillLight", _profile.Look.FillColor, _profile.Look.FillEnergy, _profile.Look.FillEulerDegrees);
-        world.AddChild(key); world.AddChild(fill);
+        world.AddChild(key);
+        world.AddChild(fill);
         _camera = new Camera3D
         {
             Name = "Camera",
@@ -63,12 +64,22 @@ public partial class AssetForgePreview : Control
 
     public void ShowGenerated(GeneratedAsset generated, string sourcePath)
     {
+        _ = sourcePath; // retained in the public signature for compatibility with the current UI caller.
         if (GodotObject.IsInstanceValid(_asset)) _asset!.QueueFree();
         _asset = new Node3D { Name = "GeneratedAsset", Scale = Vector3.One * _profile.HeadRadius };
         _reference.EyeGroup.AddChild(_asset);
         ArrayMesh mesh = ToGodotMesh(generated.Mesh);
-        Image source = Image.LoadFromFile(sourcePath);
-        if (source.IsEmpty()) throw new InvalidOperationException("Godot could not load the source PNG for preview.");
+
+        // Preview exactly the canonical albedo that will be exported. Loading the raw author PNG
+        // here was wrong for opaque white-canvas art: the geometry used one interpretation while
+        // the preview material still sampled the unprocessed background.
+        RgbaImage runtime = PngCodec.DecodeRgba8(generated.AlbedoPng);
+        Image source = Image.CreateFromData(
+            runtime.Width,
+            runtime.Height,
+            false,
+            Image.Format.Rgba8,
+            runtime.Pixels);
         Texture2D texture = ImageTexture.CreateFromImage(source);
         var instance = new MeshInstance3D
         {

@@ -44,6 +44,10 @@ public static class BuddySharedMaterialFactory
         StandardMaterial3D material = CreateLitMaterial(look, modulation);
         material.ResourceName = "BuddyLookTexturedMaterial";
         material.AlbedoTexture = albedo;
+        // Generated albedo deliberately carries transparent pixels after canonical background
+        // extraction. Honour them in both Asset Forge and the shipped game instead of sampling
+        // the removed canvas as an opaque/black texture region.
+        material.Transparency = BaseMaterial3D.TransparencyEnum.Alpha;
         return material;
     }
 

@@ -11,17 +11,20 @@ public enum SymmetryMode { Off = 0, MirrorLeftToRight = 1, MirrorRightToLeft = 2
 
 public sealed record GeometrySettings
 {
-    public int GeometryResolution { get; init; } = 128;
+    // 256 is still inexpensive for the sparse glasses foreground, while retaining noticeably
+    // more of a hand-drawn frame silhouette than the prototype 128-cell grid.
+    public int GeometryResolution { get; init; } = 256;
     public double AlphaThreshold { get; init; } = 0.50;
     public int ThicknessBiasPixels { get; init; }
-    public double Depth { get; init; } = 0.16;
-    public double Roundness { get; init; } = 0.35;
+    public double Depth { get; init; } = 0.10;
+    public double Roundness { get; init; } = 0.75;
     public ShapeMode ShapeMode { get; init; } = ShapeMode.RoundedExtrusion;
-    public SymmetryMode SymmetryMode { get; init; } = SymmetryMode.AverageBothSides;
+    // Shape fidelity wins by default. Symmetry remains available as an explicit authoring choice.
+    public SymmetryMode SymmetryMode { get; init; } = SymmetryMode.Off;
     public int RuntimeTextureResolution { get; init; } = 512;
-    public double TempleThickness { get; init; } = 0.055;
-    public double TempleLength { get; init; } = 0.48;
-    public double TempleDrop { get; init; } = 0.03;
+    public double TempleThickness { get; init; } = 0.045;
+    public double TempleLength { get; init; } = 0.52;
+    public double TempleDrop { get; init; } = 0.00;
 }
 
 public sealed record ThumbnailSettings

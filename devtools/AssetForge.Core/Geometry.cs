@@ -237,14 +237,34 @@ public sealed class CanonicalMesh
     }
 }
 
+/// <summary>
+/// Glasses-specific semantic generator. The 2D foreground defines the frame silhouette/bridge;
+/// the preset fits that silhouette to the trusted head envelope and adds genuinely 3D temple arms.
+/// It does not infer arbitrary unseen geometry: only the hidden temple depth is template-authored.
+/// </summary>
 public static class ExtrusionGenerator
 {
     private const int TempleSegments = 12;
+    private const float TargetFrameWidth = 1.58f;
+    private const float TargetFrameMaximumHeight = 0.95f;
+    private const float TargetFrameCenterY = 0.18f;
+    private const float TempleOutward = 0.18f;
     private static readonly (int X, int Y)[] Neighbors = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+
+    private readonly record struct FrameBounds(int MinX, int MaxX, int MinY, int MaxY);
+    private readonly record struct FrameFit(float Scale, float SourceCenterX, float SourceCenterY)
+    {
+        public Vector2 Map(float rawX, float rawY) => new(
+            (rawX - SourceCenterX) * Scale,
+            (rawY - SourceCenterY) * Scale + TargetFrameCenterY);
+    }
 
     public static CanonicalMesh GenerateGlasses(MaskGrid grid, GeometrySettings settings)
     {
         if (grid.FilledCount == 0) throw new InvalidOperationException("Source contains no visible geometry after thresholding.");
+
+        FrameBounds bounds = FindBounds(grid);
+        FrameFit fit = BuildFit(grid, bounds);
         var mesh = new CanonicalMesh();
         int[] inwardDistance = BuildInwardDistance(grid);
         var vertices = new Dictionary<int, uint>();
@@ -255,11 +275,14 @@ public static class ExtrusionGenerator
         {
             int key = (((vy * (grid.Width + 1)) + vx) << 1) | (front ? 1 : 0);
             if (vertices.TryGetValue(key, out uint existing)) return existing;
-            float x = -1f + vx * cell;
-            float y = 1f - vy * cell;
+            float rawX = -1f + vx * cell;
+            float rawY = 1f - vy * cell;
+            Vector2 fitted = fit.Map(rawX, rawY);
             float surfaceHalf = SurfaceHalfDepth(grid, inwardDistance, vx, vy, halfDepth, settings);
             float z = front ? surfaceHalf : -surfaceHalf;
-            uint created = mesh.AddVertex(new Vector3(x, y, z), new Vector2((float)vx / grid.Width, (float)vy / grid.Height));
+            uint created = mesh.AddVertex(
+                new Vector3(fitted.X, fitted.Y, z),
+                new Vector2((float)vx / grid.Width, (float)vy / grid.Height));
             vertices.Add(key, created);
             return created;
         }
@@ -278,8 +301,6 @@ public static class ExtrusionGenerator
             uint bBl = Vertex(x, y + 1, false);
             uint bBr = Vertex(x + 1, y + 1, false);
 
-            // Front (+Z) and back (-Z), sharing vertices across neighbouring cells so normals
-            // follow the deterministic bevel profile instead of producing one flat normal/cell.
             mesh.AddTriangle(fBl, fBr, fTr);
             mesh.AddTriangle(fBl, fTr, fTl);
             mesh.AddTriangle(bBl, bTr, bBr);
@@ -307,9 +328,44 @@ public static class ExtrusionGenerator
             }
         }
 
-        AddTemples(mesh, grid, settings, halfDepth);
+        AddTemples(mesh, grid, bounds, fit, settings, halfDepth);
         mesh.RecalculateNormals();
         return mesh;
+    }
+
+    private static FrameBounds FindBounds(MaskGrid grid)
+    {
+        int minX = grid.Width;
+        int maxX = -1;
+        int minY = grid.Height;
+        int maxY = -1;
+        for (int y = 0; y < grid.Height; y++)
+        for (int x = 0; x < grid.Width; x++)
+            if (grid[x, y])
+            {
+                minX = Math.Min(minX, x);
+                maxX = Math.Max(maxX, x);
+                minY = Math.Min(minY, y);
+                maxY = Math.Max(maxY, y);
+            }
+        if (maxX < minX || maxY < minY) throw new InvalidOperationException("No frame bounds could be resolved.");
+        return new FrameBounds(minX, maxX, minY, maxY);
+    }
+
+    private static FrameFit BuildFit(MaskGrid grid, FrameBounds bounds)
+    {
+        float cell = 2f / grid.Width;
+        float left = -1f + bounds.MinX * cell;
+        float right = -1f + (bounds.MaxX + 1) * cell;
+        float top = 1f - bounds.MinY * cell;
+        float bottom = 1f - (bounds.MaxY + 1) * cell;
+        float width = MathF.Max(cell, right - left);
+        float height = MathF.Max(cell, top - bottom);
+        float widthScale = TargetFrameWidth / width;
+        float heightScale = TargetFrameMaximumHeight / height;
+        float scale = MathF.Min(widthScale, heightScale);
+        scale = Math.Clamp(scale, 0.35f, 4.0f);
+        return new FrameFit(scale, (left + right) * 0.5f, (top + bottom) * 0.5f);
     }
 
     private static int[] BuildInwardDistance(MaskGrid grid)
@@ -355,9 +411,9 @@ public static class ExtrusionGenerator
         if (settings.ShapeMode == ShapeMode.FlatExtrusion || settings.Roundness <= 0.000001) return halfDepth;
 
         float roundness = (float)Math.Clamp(settings.Roundness, 0.0, 1.0);
-        float bevelDepth = halfDepth * 0.75f * roundness;
+        float bevelDepth = halfDepth * 0.80f * roundness;
         float sideHalf = halfDepth - bevelDepth;
-        int bevelCells = Math.Max(1, (int)MathF.Round(1f + roundness * 3f));
+        int bevelCells = Math.Max(1, (int)MathF.Round(1f + roundness * 4f));
         int inset = VertexInset(grid, inwardDistance, vx, vy);
         float t = Math.Clamp((float)inset / bevelCells, 0f, 1f);
         t = t * t * (3f - 2f * t);
@@ -384,66 +440,75 @@ public static class ExtrusionGenerator
         return minimum == int.MaxValue ? 0 : minimum + 1;
     }
 
-    private static void AddTemples(CanonicalMesh mesh, MaskGrid grid, GeometrySettings settings, float frontHalfDepth)
+    private static void AddTemples(
+        CanonicalMesh mesh,
+        MaskGrid grid,
+        FrameBounds bounds,
+        FrameFit fit,
+        GeometrySettings settings,
+        float frontHalfDepth)
     {
-        int minX = grid.Width;
-        int maxX = -1;
-        int minY = grid.Height;
-        int maxY = -1;
-        for (int y = 0; y < grid.Height; y++)
-        for (int x = 0; x < grid.Width; x++)
-            if (grid[x, y])
-            {
-                minX = Math.Min(minX, x);
-                maxX = Math.Max(maxX, x);
-                minY = Math.Min(minY, y);
-                maxY = Math.Max(maxY, y);
-            }
-
         float cell = 2f / grid.Width;
+        float rawLeft = -1f + bounds.MinX * cell;
+        float rawRight = -1f + (bounds.MaxX + 1) * cell;
+        float centerGridY = (bounds.MinY + bounds.MaxY + 1) * 0.5f;
+        float rawCenterY = 1f - centerGridY * cell;
+        Vector2 leftRoot2 = fit.Map(rawLeft, rawCenterY);
+        Vector2 rightRoot2 = fit.Map(rawRight, rawCenterY);
         float radius = (float)settings.TempleThickness * 0.5f;
-        float left = -1f + minX * cell + radius;
-        float right = -1f + (maxX + 1) * cell - radius;
-        float centerGridY = (minY + maxY + 1) * 0.5f;
-        float centerY = 1f - centerGridY * cell - (float)settings.TempleDrop;
         float length = (float)settings.TempleLength;
-        float endZ = frontHalfDepth - length;
+        float drop = (float)settings.TempleDrop;
         float rootV = centerGridY / grid.Height;
-        float leftU = (minX + 0.5f) / grid.Width;
-        float rightU = (maxX + 0.5f) / grid.Width;
+        float leftU = bounds.MinX / (float)grid.Width;
+        float rightU = (bounds.MaxX + 1) / (float)grid.Width;
 
-        AddRoundBar(mesh, new Vector2(left, centerY), frontHalfDepth, endZ, radius, new Vector2(leftU, rootV));
-        AddRoundBar(mesh, new Vector2(right, centerY), frontHalfDepth, endZ, radius, new Vector2(rightU, rootV));
+        AddTempleArm(mesh, leftRoot2, -1f, frontHalfDepth, length, drop, radius, new Vector2(leftU, rootV));
+        AddTempleArm(mesh, rightRoot2, 1f, frontHalfDepth, length, drop, radius, new Vector2(rightU, rootV));
     }
 
-    private static void AddRoundBar(
+    private static void AddTempleArm(
         CanonicalMesh mesh,
-        Vector2 center,
+        Vector2 root,
+        float side,
         float frontZ,
-        float backZ,
+        float length,
+        float drop,
         float radius,
         Vector2 uv)
     {
-        uint[] front = new uint[TempleSegments];
-        uint[] back = new uint[TempleSegments];
+        Vector3 start = new(root.X, root.Y, frontZ);
+        Vector3 hinge = new(root.X + side * TempleOutward * 0.60f, root.Y - drop * 0.25f, frontZ - MathF.Min(0.10f, length * 0.22f));
+        Vector3 end = new(root.X + side * TempleOutward, root.Y - drop, frontZ - length);
+        AddTubeSegment(mesh, start, hinge, radius, uv);
+        AddTubeSegment(mesh, hinge, end, radius, uv);
+    }
+
+    private static void AddTubeSegment(CanonicalMesh mesh, Vector3 start, Vector3 end, float radius, Vector2 uv)
+    {
+        Vector3 axis = end - start;
+        if (axis.LengthSquared() <= 1e-12f) return;
+        Vector3 forward = Vector3.Normalize(axis);
+        Vector3 reference = MathF.Abs(Vector3.Dot(forward, Vector3.UnitY)) < 0.92f ? Vector3.UnitY : Vector3.UnitX;
+        Vector3 u = Vector3.Normalize(Vector3.Cross(forward, reference));
+        Vector3 v = Vector3.Normalize(Vector3.Cross(forward, u));
+        uint[] first = new uint[TempleSegments];
+        uint[] second = new uint[TempleSegments];
         for (int i = 0; i < TempleSegments; i++)
         {
             float angle = MathF.Tau * i / TempleSegments;
-            float x = center.X + MathF.Cos(angle) * radius;
-            float y = center.Y + MathF.Sin(angle) * radius;
-            front[i] = mesh.AddVertex(new Vector3(x, y, frontZ), uv);
-            back[i] = mesh.AddVertex(new Vector3(x, y, backZ), uv);
+            Vector3 offset = (u * MathF.Cos(angle) + v * MathF.Sin(angle)) * radius;
+            first[i] = mesh.AddVertex(start + offset, uv);
+            second[i] = mesh.AddVertex(end + offset, uv);
         }
-        uint frontCenter = mesh.AddVertex(new Vector3(center.X, center.Y, frontZ), uv);
-        uint backCenter = mesh.AddVertex(new Vector3(center.X, center.Y, backZ), uv);
-
+        uint startCenter = mesh.AddVertex(start, uv);
+        uint endCenter = mesh.AddVertex(end, uv);
         for (int i = 0; i < TempleSegments; i++)
         {
             int j = (i + 1) % TempleSegments;
-            mesh.AddTriangle(front[i], back[j], front[j]);
-            mesh.AddTriangle(front[i], back[i], back[j]);
-            mesh.AddTriangle(frontCenter, front[i], front[j]);
-            mesh.AddTriangle(backCenter, back[j], back[i]);
+            mesh.AddTriangle(first[i], second[i], second[j]);
+            mesh.AddTriangle(first[i], second[j], first[j]);
+            mesh.AddTriangle(startCenter, first[j], first[i]);
+            mesh.AddTriangle(endCenter, second[i], second[j]);
         }
     }
 }

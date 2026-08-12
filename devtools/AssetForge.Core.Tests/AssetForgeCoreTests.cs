@@ -45,6 +45,47 @@ public sealed class AssetForgeCoreTests
     }
 
     [Fact]
+    public void Opaque_white_canvas_is_auto_removed_instead_of_becoming_a_slab()
+    {
+        AssetRecipe recipe = Recipe();
+        byte[] transparentPng = PngCodec.EncodeRgba8(TestGlassesImage());
+        byte[] opaquePng = PngCodec.EncodeRgba8(TestGlassesImage(opaqueWhiteBackground: true));
+
+        GeneratedAsset transparent = AssetForgeGenerator.Generate(transparentPng, recipe);
+        GeneratedAsset opaque = AssetForgeGenerator.Generate(opaquePng, recipe);
+
+        Assert.Equal(ForegroundExtractionMode.UniformBackground, opaque.Foreground.Mode);
+        Assert.Equal((byte)255, opaque.Foreground.BackgroundR);
+        Assert.Equal((byte)255, opaque.Foreground.BackgroundG);
+        Assert.Equal((byte)255, opaque.Foreground.BackgroundB);
+        Assert.Equal(1, opaque.Diagnostics.Components);
+        Assert.Equal(2, opaque.Diagnostics.Holes);
+        Assert.Equal(transparent.GeometryHash, opaque.GeometryHash);
+
+        RgbaImage albedo = PngCodec.DecodeRgba8(opaque.AlbedoPng);
+        Assert.Equal((byte)0, albedo.Alpha(0, 0));
+        Assert.Contains(albedo.Pixels.Where((_, index) => index % 4 == 3), alpha => alpha == 255);
+    }
+
+    [Fact]
+    public void Glasses_preset_fits_source_shape_to_head_envelope_without_changing_proportions_to_a_full_canvas_slab()
+    {
+        GeneratedAsset generated = AssetForgeGenerator.Generate(
+            PngCodec.EncodeRgba8(TestGlassesImage(opaqueWhiteBackground: true)),
+            Recipe());
+        float minX = generated.Mesh.Positions.Min(static p => p.X);
+        float maxX = generated.Mesh.Positions.Max(static p => p.X);
+        float minY = generated.Mesh.Positions.Min(static p => p.Y);
+        float maxY = generated.Mesh.Positions.Max(static p => p.Y);
+        float width = maxX - minX;
+        float height = maxY - minY;
+
+        Assert.InRange(width, 1.25f, 2.10f); // frame + modest outward temple flare, not the 2x2 source canvas
+        Assert.InRange(height, 0.45f, 1.15f);
+        Assert.True(width > height, $"Expected glasses proportions, got {width:0.###} x {height:0.###}.");
+    }
+
+    [Fact]
     public void Same_input_and_recipe_generate_byte_identical_glb()
     {
         byte[] png = PngCodec.EncodeRgba8(TestGlassesImage());
@@ -163,25 +204,35 @@ public sealed class AssetForgeCoreTests
         },
     };
 
-    private static RgbaImage TestGlassesImage()
+    private static RgbaImage TestGlassesImage(bool opaqueWhiteBackground = false)
     {
         const int size = 1024;
         byte[] pixels = new byte[size * size * 4];
+        if (opaqueWhiteBackground)
+        {
+            for (int i = 0; i < pixels.Length; i += 4)
+            {
+                pixels[i] = 255;
+                pixels[i + 1] = 255;
+                pixels[i + 2] = 255;
+                pixels[i + 3] = 255;
+            }
+        }
         DrawFrame(pixels, 215, 390, 475, 620, 38);
         DrawFrame(pixels, 549, 390, 809, 620, 38);
-        Fill(pixels, 470, 485, 554, 525);
+        FillPink(pixels, 470, 485, 554, 525);
         return new RgbaImage(size, size, pixels);
     }
 
     private static void DrawFrame(byte[] pixels, int x0, int y0, int x1, int y1, int thickness)
     {
-        Fill(pixels, x0, y0, x1, y0 + thickness);
-        Fill(pixels, x0, y1 - thickness, x1, y1);
-        Fill(pixels, x0, y0, x0 + thickness, y1);
-        Fill(pixels, x1 - thickness, y0, x1, y1);
+        FillPink(pixels, x0, y0, x1, y0 + thickness);
+        FillPink(pixels, x0, y1 - thickness, x1, y1);
+        FillPink(pixels, x0, y0, x0 + thickness, y1);
+        FillPink(pixels, x1 - thickness, y0, x1, y1);
     }
 
-    private static void Fill(byte[] pixels, int x0, int y0, int x1, int y1)
+    private static void FillPink(byte[] pixels, int x0, int y0, int x1, int y1)
     {
         const int size = 1024;
         for (int y = y0; y < y1; y++)
