@@ -23,6 +23,11 @@ mono_crash.*.json
 !/artifacts/.gdignore
 /.artifacts/
 
+# Asset Forge transient/synchronized developer state. Recipes and exported generated game
+# content are committed separately; these directories are reproducible build/run scratch data.
+/.asset-forge-staging/
+/devtools/AssetForge/.generated/profiles/
+
 # Development Steam app id — never committed; ships only via the release export path
 steam_appid.txt
 
