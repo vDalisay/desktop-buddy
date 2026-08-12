@@ -1,0 +1,13 @@
+<Project Sdk="Godot.NET.Sdk/4.6.1">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <RootNamespace>DesktopBuddy.AssetForge</RootNamespace>
+    <AssemblyName>DesktopBuddy.AssetForge</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AssetForge.Core\DesktopBuddy.AssetForge.Core.csproj" />
+    <ProjectReference Include="..\..\shared\DesktopBuddy.Visuals\DesktopBuddy.Visuals.csproj" />
+  </ItemGroup>
+</Project>
