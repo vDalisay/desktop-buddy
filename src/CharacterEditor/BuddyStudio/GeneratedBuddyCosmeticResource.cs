@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Characters;
 using Godot;
