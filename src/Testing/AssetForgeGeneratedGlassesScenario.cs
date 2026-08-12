@@ -132,21 +132,26 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
                 $"buy={bought.Completed} equip={equipped.Completed} save={saved.Completed} owned={economy.IsUnlocked(ContentId)}"));
 
             CharacterLoadResult reloaded = await store.LoadAsync(id, CancellationToken.None);
-            CharacterCompileResult? compiled = reloaded.Document is null
-                ? null
-                : CharacterCompiler.Compile(reloaded.Document, features);
-            bool survivesRestart = reloaded.IsSuccess && compiled is { IsSuccess: true, Appearance: not null } &&
+            CompiledCharacterAppearance? compiledAppearance = null;
+            bool compileSucceeded = false;
+            if (reloaded.Document is not null)
+            {
+                CharacterCompileResult compileResult = CharacterCompiler.Compile(reloaded.Document, features);
+                compileSucceeded = compileResult.IsSuccess;
+                compiledAppearance = compileResult.Appearance;
+            }
+            bool survivesRestart = reloaded.IsSuccess && compileSucceeded && compiledAppearance is not null &&
                 CharacterDocumentEditor.ReadFeatureId(
                     reloaded.Document!, CharacterFeatureSlot.Glasses) == FeatureId &&
-                compiled.Appearance.Glasses.ResolvedFeatureId == FeatureId;
+                compiledAppearance.Glasses.ResolvedFeatureId == FeatureId;
             checks.Add(new StartupCheck(
                 "af_generated_id_survives_reload_and_compile",
                 survivesRestart,
-                $"load={reloaded.Status} compile={compiled?.IsSuccess} glasses={compiled?.Appearance?.Glasses.ResolvedFeatureId}"));
+                $"load={reloaded.Status} compile={compileSucceeded} glasses={compiledAppearance?.Glasses.ResolvedFeatureId}"));
 
-            if (compiled?.Appearance is not null)
+            if (compiledAppearance is not null)
             {
-                context.Preview.ApplyAppearance(compiled.Appearance);
+                context.Preview.ApplyAppearance(compiledAppearance);
                 context.Preview.RefreshCharacterCompositors();
             }
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
