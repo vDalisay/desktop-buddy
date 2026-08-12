@@ -56,13 +56,19 @@ internal static class Program
             },
         };
 
-        RgbaImage source = CreatePinkRoundGlasses();
+        // Deliberately use the same class of input that exposed the prototype bug: fully opaque
+        // pink glasses drawn on a white canvas. If foreground extraction regresses, this fixture
+        // becomes a full slab and the Core/runtime gates fail before a developer sees it locally.
+        RgbaImage source = CreatePinkRoundGlassesOnOpaqueWhiteCanvas();
         byte[] sourcePng = PngCodec.EncodeRgba8(source);
         GeneratedAsset first = AssetForgeGenerator.Generate(sourcePng, recipe);
         GeneratedAsset second = AssetForgeGenerator.Generate(sourcePng, recipe);
         if (!first.GlbBytes.SequenceEqual(second.GlbBytes) ||
             !string.Equals(first.CanonicalAssetHash, second.CanonicalAssetHash, StringComparison.Ordinal))
             throw new InvalidOperationException("CI fixture regeneration was not deterministic.");
+        if (first.Foreground.Mode != ForegroundExtractionMode.UniformBackground || first.Diagnostics.Holes != 2)
+            throw new InvalidOperationException(
+                $"Opaque-canvas glasses were not interpreted as a two-hole frame. mode={first.Foreground.Mode} holes={first.Diagnostics.Holes}.");
 
         RepositoryExporter.ExportGlasses(repositoryRoot, sourcePng, first, first.AlbedoPng);
         string assetRoot = Path.Combine(repositoryRoot, "assets", "generated", "cosmetics", recipe.FeatureId);
@@ -80,7 +86,9 @@ internal static class Program
                  })
             if (!File.Exists(path)) throw new FileNotFoundException("Expected Asset Forge export was not written.", path);
 
-        Console.WriteLine($"Generated {recipe.FeatureId}: {first.Diagnostics.Holes} holes, {first.TriangleCount} triangles, asset {first.CanonicalAssetHash}.");
+        Console.WriteLine(
+            $"Generated {recipe.FeatureId}: {first.Diagnostics.Holes} holes, {first.TriangleCount} triangles, " +
+            $"foreground={first.Foreground.Summary}, asset {first.CanonicalAssetHash}.");
         return 0;
     }
 
@@ -114,10 +122,17 @@ internal static class Program
         Console.Error.WriteLine("  --ci-fixture <repository-root>");
     }
 
-    private static RgbaImage CreatePinkRoundGlasses()
+    private static RgbaImage CreatePinkRoundGlassesOnOpaqueWhiteCanvas()
     {
         const int size = 1024;
         byte[] pixels = new byte[size * size * 4];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 255;
+            pixels[i + 1] = 255;
+            pixels[i + 2] = 255;
+            pixels[i + 3] = 255;
+        }
         DrawFrame(pixels, 215, 390, 475, 620, 38);
         DrawFrame(pixels, 549, 390, 809, 620, 38);
         Fill(pixels, 470, 485, 554, 525);
