@@ -24,7 +24,7 @@ public sealed record GeneratedAsset(
 public static class AssetForgeGenerator
 {
     public const int SourceSize = 1024;
-    private const int TextureBleedPixels = 8;
+    private const int RuntimeTextureBleedPixels = 4;
 
     public static GeneratedAsset Generate(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe)
     {
@@ -79,11 +79,11 @@ public static class AssetForgeGenerator
         GlbWriter.ValidateSingleMesh(glb);
         string glbHash = Hashing.Sha256Hex(glb);
 
-        // Geometry owns the visible silhouette. Pad authored colour slightly into transparent
-        // texture space before box-downsampling so frame UV seams never average against the
-        // removed white/transparent canvas and turn dark or partially invisible.
-        RgbaImage paddedForeground = TextureBleed.Expand(foreground.Image, TextureBleedPixels);
-        RgbaImage runtime = PngCodec.ResizeBox(paddedForeground, recipe.Geometry.RuntimeTextureResolution);
+        // First produce the exact runtime resolution, then pad that final texture by a few texels.
+        // This directly guarantees the pixels the GPU samples around a semantic frame UV are
+        // authored colour rather than a source-resolution edge that box filtering diluted.
+        RgbaImage runtimeBase = PngCodec.ResizeBox(foreground.Image, recipe.Geometry.RuntimeTextureResolution);
+        RgbaImage runtime = TextureBleed.Expand(runtimeBase, RuntimeTextureBleedPixels);
         byte[] albedo = PngCodec.EncodeRgba8(runtime);
         string albedoHash = Hashing.Sha256Hex(albedo);
         string canonical = Hashing.Sha256Hex(Encoding.UTF8.GetBytes(string.Join(
