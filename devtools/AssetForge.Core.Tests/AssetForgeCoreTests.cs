@@ -73,6 +73,84 @@ public sealed class AssetForgeCoreTests
             AssetForgeGenerator.Generate(png, secondRecipe).CanonicalAssetHash);
     }
 
+    [Fact]
+    public void Rounded_extrusion_produces_a_bevel_profile_and_rounded_temples()
+    {
+        byte[] png = PngCodec.EncodeRgba8(TestGlassesImage());
+        AssetRecipe roundedRecipe = Recipe() with
+        {
+            Geometry = Recipe().Geometry with
+            {
+                ShapeMode = ShapeMode.RoundedExtrusion,
+                Roundness = 0.65,
+            },
+        };
+        AssetRecipe flatRecipe = roundedRecipe with
+        {
+            Geometry = roundedRecipe.Geometry with
+            {
+                ShapeMode = ShapeMode.FlatExtrusion,
+                Roundness = 0.0,
+            },
+        };
+
+        GeneratedAsset rounded = AssetForgeGenerator.Generate(png, roundedRecipe);
+        GeneratedAsset flat = AssetForgeGenerator.Generate(png, flatRecipe);
+        int roundedPositiveDepths = rounded.Mesh.Positions
+            .Where(static p => p.Z > 0)
+            .Select(static p => MathF.Round(p.Z, 5))
+            .Distinct()
+            .Count();
+
+        Assert.True(roundedPositiveDepths >= 3, $"Expected a bevel profile, got {roundedPositiveDepths} positive Z levels.");
+        Assert.NotEqual(flat.GeometryHash, rounded.GeometryHash);
+        Assert.True(rounded.Mesh.Normals.All(static n => float.IsFinite(n.X) && float.IsFinite(n.Y) && float.IsFinite(n.Z)));
+    }
+
+    [Fact]
+    public void Glasses_authoring_template_is_deterministic_1024_rgba()
+    {
+        byte[] first = AuthoringTemplateGenerator.CreateGlassesTemplatePng();
+        byte[] second = AuthoringTemplateGenerator.CreateGlassesTemplatePng();
+        Assert.Equal(first, second);
+        RgbaImage image = PngCodec.DecodeRgba8(first);
+        Assert.Equal(1024, image.Width);
+        Assert.Equal(1024, image.Height);
+        Assert.Contains(image.Pixels.Where((_, index) => index % 4 == 3), alpha => alpha > 0);
+    }
+
+    [Fact]
+    public void Verify_all_rederives_committed_asset_and_detects_drift_without_godot()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "desktop-buddy-asset-forge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "DesktopBuddy.csproj"), "<Project />\n");
+            byte[] png = PngCodec.EncodeRgba8(TestGlassesImage());
+            AssetRecipe recipe = Recipe();
+            GeneratedAsset generated = AssetForgeGenerator.Generate(png, recipe);
+            RepositoryExporter.ExportGlasses(root, png, generated, generated.AlbedoPng);
+
+            RepositoryVerificationResult clean = RepositoryAssetVerifier.VerifyAll(root);
+            Assert.True(clean.Passed, string.Join("; ", clean.Assets.SelectMany(static asset => asset.Diagnostics).Concat(clean.RepositoryDiagnostics)));
+            Assert.Single(clean.Assets);
+
+            string meshPath = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId, "mesh.glb");
+            byte[] drifted = File.ReadAllBytes(meshPath);
+            drifted[^1] ^= 0x01;
+            File.WriteAllBytes(meshPath, drifted);
+
+            RepositoryVerificationResult dirty = RepositoryAssetVerifier.VerifyAll(root);
+            Assert.False(dirty.Passed);
+            Assert.Contains(dirty.Assets.Single().Diagnostics, static diagnostic => diagnostic.Contains("mesh.glb differs", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static AssetRecipe Recipe() => AssetRecipe.GlassesDefaults() with
     {
         FeatureId = "glasses.test_round",
@@ -110,7 +188,10 @@ public sealed class AssetForgeCoreTests
         for (int x = x0; x < x1; x++)
         {
             int i = (y * size + x) * 4;
-            pixels[i] = 239; pixels[i + 1] = 123; pixels[i + 2] = 175; pixels[i + 3] = 255;
+            pixels[i] = 239;
+            pixels[i + 1] = 123;
+            pixels[i + 2] = 175;
+            pixels[i + 3] = 255;
         }
     }
 }
