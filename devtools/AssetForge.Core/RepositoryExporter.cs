@@ -10,8 +10,9 @@ public sealed record ExportResult(
     string AuthoringDirectory);
 
 /// <summary>
-/// Developer-only transactional exporter. It can write only the four Asset Forge-owned roots
-/// below. All bytes are staged and validated before any repository file is replaced.
+/// Developer-only transactional exporter. It can write only the Asset Forge-owned roots and
+/// exact aggregate files below. All bytes are staged and validated before any repository file
+/// is replaced.
 /// </summary>
 public static class RepositoryExporter
 {
@@ -21,6 +22,11 @@ public static class RepositoryExporter
         "assets/generated/cosmetics/",
         "data/cosmetics/generated/",
         "data/catalogue/generated/",
+    ];
+
+    private static readonly string[] OwnedFiles =
+    [
+        "data/catalogue/generated_cosmetics.tres",
     ];
 
     public static ExportResult ExportGlasses(
@@ -281,7 +287,9 @@ public static class RepositoryExporter
     private static void EnsureOwned(string relative)
     {
         string normalized = relative.Replace('\\', '/').TrimStart('/');
-        if (!OwnedRoots.Any(root => normalized.StartsWith(root, StringComparison.Ordinal)))
+        bool owned = OwnedRoots.Any(root => normalized.StartsWith(root, StringComparison.Ordinal)) ||
+            OwnedFiles.Contains(normalized, StringComparer.Ordinal);
+        if (!owned)
             throw new InvalidOperationException($"Asset Forge cannot write outside its trusted roots: {relative}");
         if (normalized.Contains("../", StringComparison.Ordinal) ||
             normalized.Contains("/..", StringComparison.Ordinal))
