@@ -142,11 +142,25 @@ public sealed class CanonicalMesh
 
     public string CanonicalHash()
     {
-        using var stream=new MemoryStream();
-        Span<byte> four=stackalloc byte[4];
-        void F(float value){ float q=MathF.Round(value*1_000_000f)/1_000_000f; BinaryPrimitives.WriteSingleLittleEndian(four,q); stream.Write(four); }
-        foreach(Vector3 p in Positions){F(p.X);F(p.Y);F(p.Z);} foreach(Vector3 n in Normals){F(n.X);F(n.Y);F(n.Z);} foreach(Vector2 uv in Uvs){F(uv.X);F(uv.Y);}
-        foreach(uint index in Indices){BinaryPrimitives.WriteUInt32LittleEndian(four,index);stream.Write(four);} return Hashing.Sha256Hex(stream.ToArray());
+        using var stream = new MemoryStream();
+        foreach (Vector3 p in Positions) { WriteQuantized(stream, p.X); WriteQuantized(stream, p.Y); WriteQuantized(stream, p.Z); }
+        foreach (Vector3 n in Normals) { WriteQuantized(stream, n.X); WriteQuantized(stream, n.Y); WriteQuantized(stream, n.Z); }
+        foreach (Vector2 uv in Uvs) { WriteQuantized(stream, uv.X); WriteQuantized(stream, uv.Y); }
+        Span<byte> four = stackalloc byte[4];
+        foreach (uint index in Indices)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(four, index);
+            stream.Write(four);
+        }
+        return Hashing.Sha256Hex(stream.ToArray());
+    }
+
+    private static void WriteQuantized(Stream stream, float value)
+    {
+        float quantized = MathF.Round(value * 1_000_000f) / 1_000_000f;
+        Span<byte> bytes = stackalloc byte[4];
+        BinaryPrimitives.WriteSingleLittleEndian(bytes, quantized);
+        stream.Write(bytes);
     }
 }
 
