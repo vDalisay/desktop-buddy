@@ -6,13 +6,13 @@ namespace DesktopBuddy.AssetForge;
 public partial class AssetForgeMain : Control
 {
     private LineEdit _source = null!, _displayName = null!, _featureId = null!, _contentId = null!;
-    private SpinBox _price = null!, _sort = null!, _alpha = null!, _depth = null!, _bias = null!, _templeThickness = null!, _templeLength = null!, _templeDrop = null!;
-    private OptionButton _geometryResolution = null!, _textureResolution = null!, _symmetry = null!;
+    private SpinBox _price = null!, _sort = null!, _alpha = null!, _depth = null!, _roundness = null!, _bias = null!, _templeThickness = null!, _templeLength = null!, _templeDrop = null!;
+    private OptionButton _geometryResolution = null!, _textureResolution = null!, _shapeMode = null!, _symmetry = null!;
     private AssetForgePreview _preview = null!;
     private Label _status = null!, _hashes = null!;
     private Button _export = null!;
     private CheckBox _reference = null!;
-    private FileDialog _sourceDialog = null!, _openRecipeDialog = null!, _saveRecipeDialog = null!;
+    private FileDialog _sourceDialog = null!, _openRecipeDialog = null!, _saveRecipeDialog = null!, _templateDialog = null!;
     private GeneratedAsset? _generated;
     private string? _sourcePath;
 
@@ -33,6 +33,7 @@ public partial class AssetForgeMain : Control
         var toolbar = new HBoxContainer { Name = "Toolbar" };
         root.AddChild(toolbar);
         AddButton(toolbar, "Open Image…", ChooseSource);
+        AddButton(toolbar, "Save Glasses Template…", () => _templateDialog.PopupCenteredRatio(0.65f));
         AddButton(toolbar, "Open Recipe…", () => _openRecipeDialog.PopupCenteredRatio(0.65f));
         AddButton(toolbar, "Save Recipe…", () => _saveRecipeDialog.PopupCenteredRatio(0.65f));
         toolbar.AddChild(new VSeparator());
@@ -45,6 +46,16 @@ public partial class AssetForgeMain : Control
         toolbar.AddChild(_reference);
         AddButton(toolbar, "Reset View", () => _preview.ResetView());
 
+        var repositoryTools = new HBoxContainer { Name = "RepositoryTools" };
+        root.AddChild(repositoryTools);
+        repositoryTools.AddChild(new Label { Text = "Saved authoring:" });
+        AddButton(repositoryTools, "Regenerate", RegenerateCurrent);
+        AddButton(repositoryTools, "Regenerate All", RegenerateAll);
+        AddButton(repositoryTools, "Verify", VerifyCurrent);
+        AddButton(repositoryTools, "Verify All", VerifyAll);
+        repositoryTools.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
+        repositoryTools.AddChild(new Label { Text = "Verify/Regenerate run without Godot generation state." });
+
         var body = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         body.AddThemeConstantOverride("separation", 8);
         root.AddChild(body);
@@ -54,7 +65,8 @@ public partial class AssetForgeMain : Control
         left.AddThemeConstantOverride("separation", 5);
         leftScroll.AddChild(left);
         left.AddChild(new Label { Text = "Buddy Studio > Glasses / glasses@1" });
-        _source = Field(left, "Source PNG"); _source.Editable = false;
+        _source = Field(left, "Source PNG");
+        _source.Editable = false;
         _displayName = Field(left, "Display name");
         _featureId = Field(left, "Feature ID");
         _contentId = Field(left, "Ownership content ID");
@@ -63,6 +75,7 @@ public partial class AssetForgeMain : Control
         left.AddChild(new HSeparator());
         left.AddChild(new Label { Text = "Preset controls" });
         _depth = Spin(left, "Frame depth", 0.01, 1.0, 0.01);
+        _roundness = Spin(left, "Frame roundness", 0.0, 1.0, 0.01);
         _bias = Spin(left, "Frame thickness bias", -8, 8, 1);
         _templeThickness = Spin(left, "Temple thickness", 0.01, 0.3, 0.005);
         _templeLength = Spin(left, "Temple length", 0.05, 1.5, 0.01);
@@ -75,6 +88,7 @@ public partial class AssetForgeMain : Control
         _alpha = Spin(advanced, "Alpha threshold", 0.01, 0.99, 0.01);
         _geometryResolution = Options(advanced, "Geometry resolution", ["64", "128", "256"]);
         _textureResolution = Options(advanced, "Runtime texture", ["256", "512", "1024"]);
+        _shapeMode = Options(advanced, "Shape mode", ["Flat extrusion", "Rounded extrusion"]);
         _symmetry = Options(advanced, "Symmetry", ["Off", "Left → Right", "Right → Left", "Average both"]);
 
         var previewPanel = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
@@ -88,11 +102,13 @@ public partial class AssetForgeMain : Control
         root.AddChild(_hashes);
 
         _sourceDialog = Dialog(FileDialog.FileModeEnum.OpenFile, "Choose 1024×1024 RGBA PNG", ["*.png ; PNG image"]);
-        _sourceDialog.FileSelected += path => SetSource(path);
+        _sourceDialog.FileSelected += SetSource;
         _openRecipeDialog = Dialog(FileDialog.FileModeEnum.OpenFile, "Open Asset Forge recipe", ["*.json ; Asset Forge recipe"]);
         _openRecipeDialog.FileSelected += OpenRecipe;
         _saveRecipeDialog = Dialog(FileDialog.FileModeEnum.SaveFile, "Save Asset Forge recipe", ["*.json ; Asset Forge recipe"]);
         _saveRecipeDialog.FileSelected += SaveRecipe;
+        _templateDialog = Dialog(FileDialog.FileModeEnum.SaveFile, "Save 1024×1024 Glasses authoring guide", ["*.png ; PNG image"]);
+        _templateDialog.FileSelected += SaveTemplate;
     }
 
     private void ChooseSource() => _sourceDialog.PopupCenteredRatio(0.72f);
@@ -110,7 +126,8 @@ public partial class AssetForgeMain : Control
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(_sourcePath) || !File.Exists(_sourcePath)) throw new InvalidOperationException("Choose a source PNG first.");
+            if (string.IsNullOrWhiteSpace(_sourcePath) || !File.Exists(_sourcePath))
+                throw new InvalidOperationException("Choose a source PNG first.");
             AssetRecipe recipe = ReadRecipeFromUi();
             _generated = AssetForgeGenerator.Generate(File.ReadAllBytes(_sourcePath), recipe);
             _preview.ShowGenerated(_generated, _sourcePath);
@@ -121,7 +138,9 @@ public partial class AssetForgeMain : Control
         }
         catch (Exception exception)
         {
-            _generated = null; _export.Disabled = true; SetStatus("Generate failed: " + exception.Message);
+            _generated = null;
+            _export.Disabled = true;
+            SetStatus("Generate failed: " + exception.Message);
         }
     }
 
@@ -129,15 +148,23 @@ public partial class AssetForgeMain : Control
     {
         try
         {
-            if (_generated is null || string.IsNullOrWhiteSpace(_sourcePath)) throw new InvalidOperationException("Generate the asset first.");
+            if (_generated is null || string.IsNullOrWhiteSpace(_sourcePath))
+                throw new InvalidOperationException("Generate the asset first.");
             byte[] thumbnail;
             try { thumbnail = _preview.CaptureThumbnailPng(); }
             catch { thumbnail = _generated.AlbedoPng; }
-            string repo = Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", ".."));
+            string repo = RepositoryRoot();
             ExportResult result = RepositoryExporter.ExportGlasses(repo, File.ReadAllBytes(_sourcePath), _generated, thumbnail);
-            SetStatus($"Exported {_generated.Recipe.DisplayName} into the game source. Build/run Desktop Buddy to inspect Buddy Studio > Glasses.\n{result.AssetDirectory}");
+            AssetVerificationResult verification = RepositoryAssetVerifier.Verify(repo, _generated.Recipe.FeatureId);
+            _hashes.Text = FormatVerification(verification);
+            SetStatus(verification.Passed
+                ? $"Exported and verified {_generated.Recipe.DisplayName}. Build/run Desktop Buddy to inspect Buddy Studio > Glasses.\n{result.AssetDirectory}"
+                : $"Export completed, but Verify found drift. Review the diagnostics below before committing.\n{result.AssetDirectory}");
         }
-        catch (Exception exception) { SetStatus("Export failed; repository content was rolled back: " + exception.Message); }
+        catch (Exception exception)
+        {
+            SetStatus("Export failed; repository content was rolled back when possible: " + exception.Message);
+        }
     }
 
     private void OpenRecipe(string path)
@@ -148,10 +175,19 @@ public partial class AssetForgeMain : Control
             ApplyRecipe(recipe);
             string source = Path.Combine(Path.GetDirectoryName(path)!, recipe.SourceFile);
             if (File.Exists(source)) SetSource(source);
-            else { _sourcePath = null; _source.Text = $"Missing beside recipe: {recipe.SourceFile}"; }
+            else
+            {
+                _sourcePath = null;
+                _source.Text = $"Missing beside recipe: {recipe.SourceFile}";
+                _generated = null;
+                _export.Disabled = true;
+            }
             SetStatus("Recipe opened.");
         }
-        catch (Exception exception) { SetStatus("Open recipe failed: " + exception.Message); }
+        catch (Exception exception)
+        {
+            SetStatus("Open recipe failed: " + exception.Message);
+        }
     }
 
     private void SaveRecipe(string path)
@@ -162,7 +198,86 @@ public partial class AssetForgeMain : Control
             File.WriteAllText(path, RecipeCodec.WriteCanonical(ReadRecipeFromUi()));
             SetStatus("Recipe saved: " + path);
         }
-        catch (Exception exception) { SetStatus("Save recipe failed: " + exception.Message); }
+        catch (Exception exception)
+        {
+            SetStatus("Save recipe failed: " + exception.Message);
+        }
+    }
+
+    private void SaveTemplate(string path)
+    {
+        try
+        {
+            if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) path += ".png";
+            File.WriteAllBytes(path, AuthoringTemplateGenerator.CreateGlassesTemplatePng());
+            SetStatus("Glasses guide saved. Use it as a reference layer; hide/remove the guide before exporting your transparent source PNG.\n" + path);
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Save template failed: " + exception.Message);
+        }
+    }
+
+    private void VerifyCurrent()
+    {
+        try
+        {
+            AssetVerificationResult result = RepositoryAssetVerifier.Verify(RepositoryRoot(), _featureId.Text.Trim());
+            _hashes.Text = FormatVerification(result);
+            SetStatus(result.Passed ? $"Verify passed for {result.FeatureId}." : $"Verify failed for {result.FeatureId}.");
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Verify failed: " + exception.Message);
+        }
+    }
+
+    private void VerifyAll()
+    {
+        try
+        {
+            RepositoryVerificationResult result = RepositoryAssetVerifier.VerifyAll(RepositoryRoot());
+            _hashes.Text = FormatVerification(result);
+            SetStatus(result.Passed
+                ? $"Verify All passed: {result.PassedCount}/{result.Assets.Count} authored asset(s) match committed generated content."
+                : $"Verify All failed: {result.PassedCount}/{result.Assets.Count} authored asset(s) passed. Review diagnostics below.");
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Verify All failed: " + exception.Message);
+        }
+    }
+
+    private void RegenerateCurrent()
+    {
+        try
+        {
+            RepositoryRegenerationResult result = RepositoryAssetRegenerator.Regenerate(RepositoryRoot(), _featureId.Text.Trim());
+            _hashes.Text = FormatVerification(result.Verification);
+            SetStatus(result.Verification.Passed
+                ? $"Regenerated and verified {string.Join(", ", result.RegeneratedFeatureIds)}."
+                : "Regeneration completed, but Verify All still reports drift.");
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Regenerate failed: " + exception.Message);
+        }
+    }
+
+    private void RegenerateAll()
+    {
+        try
+        {
+            RepositoryRegenerationResult result = RepositoryAssetRegenerator.RegenerateAll(RepositoryRoot());
+            _hashes.Text = FormatVerification(result.Verification);
+            SetStatus(result.Verification.Passed
+                ? $"Regenerated {result.RegeneratedFeatureIds.Count} authored asset(s); Verify All passed."
+                : $"Regenerated {result.RegeneratedFeatureIds.Count} authored asset(s), but Verify All still reports drift.");
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Regenerate All failed: " + exception.Message);
+        }
     }
 
     private AssetRecipe ReadRecipeFromUi()
@@ -179,12 +294,14 @@ public partial class AssetForgeMain : Control
             {
                 AlphaThreshold = _alpha.Value,
                 Depth = _depth.Value,
+                Roundness = _roundness.Value,
                 ThicknessBiasPixels = (int)_bias.Value,
                 TempleThickness = _templeThickness.Value,
                 TempleLength = _templeLength.Value,
                 TempleDrop = _templeDrop.Value,
                 GeometryResolution = int.Parse(_geometryResolution.GetItemText(_geometryResolution.Selected)),
                 RuntimeTextureResolution = int.Parse(_textureResolution.GetItemText(_textureResolution.Selected)),
+                ShapeMode = (ShapeMode)_shapeMode.Selected,
                 SymmetryMode = (SymmetryMode)_symmetry.Selected,
             },
         };
@@ -192,39 +309,95 @@ public partial class AssetForgeMain : Control
 
     private void ApplyRecipe(AssetRecipe recipe)
     {
-        _displayName.Text = recipe.DisplayName; _featureId.Text = recipe.FeatureId; _contentId.Text = recipe.ContentId;
-        _price.Value = recipe.PriceCredits; _sort.Value = recipe.SortOrder; _alpha.Value = recipe.Geometry.AlphaThreshold;
-        _depth.Value = recipe.Geometry.Depth; _bias.Value = recipe.Geometry.ThicknessBiasPixels;
-        _templeThickness.Value = recipe.Geometry.TempleThickness; _templeLength.Value = recipe.Geometry.TempleLength; _templeDrop.Value = recipe.Geometry.TempleDrop;
+        _displayName.Text = recipe.DisplayName;
+        _featureId.Text = recipe.FeatureId;
+        _contentId.Text = recipe.ContentId;
+        _price.Value = recipe.PriceCredits;
+        _sort.Value = recipe.SortOrder;
+        _alpha.Value = recipe.Geometry.AlphaThreshold;
+        _depth.Value = recipe.Geometry.Depth;
+        _roundness.Value = recipe.Geometry.Roundness;
+        _bias.Value = recipe.Geometry.ThicknessBiasPixels;
+        _templeThickness.Value = recipe.Geometry.TempleThickness;
+        _templeLength.Value = recipe.Geometry.TempleLength;
+        _templeDrop.Value = recipe.Geometry.TempleDrop;
         SelectText(_geometryResolution, recipe.Geometry.GeometryResolution.ToString());
         SelectText(_textureResolution, recipe.Geometry.RuntimeTextureResolution.ToString());
+        _shapeMode.Select((int)recipe.Geometry.ShapeMode);
         _symmetry.Select((int)recipe.Geometry.SymmetryMode);
+    }
+
+    private string RepositoryRoot() => Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", ".."));
+
+    private static string FormatVerification(AssetVerificationResult result)
+    {
+        var lines = new List<string> { $"{(result.Passed ? "OK" : "FAIL")} {result.FeatureId}" };
+        lines.AddRange(result.Diagnostics.Select(static diagnostic => "  " + diagnostic));
+        return string.Join("\n", lines);
+    }
+
+    private static string FormatVerification(RepositoryVerificationResult result)
+    {
+        var lines = new List<string>();
+        foreach (AssetVerificationResult asset in result.Assets)
+        {
+            lines.Add($"{(asset.Passed ? "OK" : "FAIL")} {asset.FeatureId}");
+            lines.AddRange(asset.Diagnostics.Take(6).Select(static diagnostic => "  " + diagnostic));
+        }
+        foreach (string diagnostic in result.RepositoryDiagnostics) lines.Add("FAIL repository  " + diagnostic);
+        if (lines.Count == 0) lines.Add("OK repository  no authored Asset Forge assets yet");
+        return string.Join("\n", lines);
     }
 
     private FileDialog Dialog(FileDialog.FileModeEnum mode, string title, string[] filters)
     {
         var dialog = new FileDialog { FileMode = mode, Access = FileDialog.AccessEnum.Filesystem, Title = title, Filters = filters };
-        AddChild(dialog); return dialog;
+        AddChild(dialog);
+        return dialog;
     }
+
     private static Button AddButton(Container parent, string text, Action action)
     {
-        var button = new Button { Text = text }; button.Pressed += action; parent.AddChild(button); return button;
+        var button = new Button { Text = text };
+        button.Pressed += action;
+        parent.AddChild(button);
+        return button;
     }
+
     private static LineEdit Field(Container parent, string label)
     {
-        parent.AddChild(new Label { Text = label }); var field = new LineEdit(); parent.AddChild(field); return field;
+        parent.AddChild(new Label { Text = label });
+        var field = new LineEdit();
+        parent.AddChild(field);
+        return field;
     }
+
     private static SpinBox Spin(Container parent, string label, double min, double max, double step)
     {
-        parent.AddChild(new Label { Text = label }); var box = new SpinBox { MinValue = min, MaxValue = max, Step = step, AllowGreater = false, AllowLesser = false }; parent.AddChild(box); return box;
+        parent.AddChild(new Label { Text = label });
+        var box = new SpinBox { MinValue = min, MaxValue = max, Step = step, AllowGreater = false, AllowLesser = false };
+        parent.AddChild(box);
+        return box;
     }
+
     private static OptionButton Options(Container parent, string label, string[] values)
     {
-        parent.AddChild(new Label { Text = label }); var option = new OptionButton(); foreach (string value in values) option.AddItem(value); parent.AddChild(option); return option;
+        parent.AddChild(new Label { Text = label });
+        var option = new OptionButton();
+        foreach (string value in values) option.AddItem(value);
+        parent.AddChild(option);
+        return option;
     }
+
     private static void SelectText(OptionButton option, string wanted)
     {
-        for (int i = 0; i < option.ItemCount; i++) if (option.GetItemText(i) == wanted) { option.Select(i); return; }
+        for (int i = 0; i < option.ItemCount; i++)
+            if (option.GetItemText(i) == wanted)
+            {
+                option.Select(i);
+                return;
+            }
     }
+
     private void SetStatus(string text) => _status.Text = text;
 }
