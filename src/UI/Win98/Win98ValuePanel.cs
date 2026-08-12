@@ -14,7 +14,8 @@ public readonly record struct Win98ValueRowPresentation(
     string Label,
     string Value,
     bool Emphasized = false,
-    bool Visible = true);
+    bool Visible = true,
+    Color? ValueColor = null);
 
 /// <summary>
 /// Small shared Win98 inspector panel used for price/ownership/budget summaries. Business
@@ -109,6 +110,8 @@ public partial class Win98ValuePanel : PanelContainer
                 label.AddThemeFontSizeOverride("font_size", 15);
                 value.AddThemeFontSizeOverride("font_size", 15);
             }
+            if (item.ValueColor is Color valueColor)
+                value.AddThemeColorOverride("font_color", valueColor);
             row.AddChild(label);
             row.AddChild(value);
             _rows[item.Id] = new RowParts(row, label, value);

@@ -7,6 +7,7 @@ using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Presentation3D;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Work;
@@ -38,6 +39,7 @@ public partial class WorkCompanionView : CanvasLayer
     private SandboxRoot _sandbox = null!;
     private Control _root = null!;
     private WorkCrtDisplay _counter = null!;
+    private PanelContainer _controlBar = null!;
     private Button _resizeButton = null!;
     private Button _motionToggle = null!;
     private Button _exitButton = null!;
@@ -48,6 +50,7 @@ public partial class WorkCompanionView : CanvasLayer
     private bool _animationsEnabled = true;
     private bool _dragCandidate;
     private bool _dragging;
+    private bool _pressedCrt;
     private Vector2 _dragOrigin;
     private double _reactionRemaining;
     private int _reactionSide = -1;
@@ -58,6 +61,7 @@ public partial class WorkCompanionView : CanvasLayer
 
     private static readonly Rect2 BuddyHitRect = new(228, 78, 152, 228);
     private static readonly Rect2 CrtHitRect = new(418, 102, 121, 92);
+    private static readonly Rect2 ComputerHitRect = new(385, 68, 240, 270);
     private static readonly Rect2 ResizeButtonRect = new(601, 10, 31, 25);
     private static readonly Rect2 MotionToggleRect = new(638, 10, 31, 25);
     private static readonly Rect2 ExitButtonRect = new(675, 10, 31, 25);
@@ -101,6 +105,7 @@ public partial class WorkCompanionView : CanvasLayer
     public override void _Process(double delta)
     {
         SyncCompositionToWindow();
+        TickNativeWindowShape(delta);
         if (_reactionRemaining <= 0.0)
             return;
         _reactionRemaining = Math.Max(0.0, _reactionRemaining - delta);
@@ -161,14 +166,6 @@ public partial class WorkCompanionView : CanvasLayer
             Vector2 position = ToCompositionPosition(button.Position);
             if (button.Pressed)
             {
-                if (CrtHitRect.HasPoint(position))
-                {
-                    if (!button.DoubleClick)
-                        CounterModeToggleRequested?.Invoke();
-                    GetViewport().SetInputAsHandled();
-                    return;
-                }
-
                 if (button.DoubleClick && BuddyHitRect.HasPoint(position))
                 {
                     ExitRequested?.Invoke();
@@ -176,22 +173,25 @@ public partial class WorkCompanionView : CanvasLayer
                     return;
                 }
 
-                if (!_resizeButton.GetGlobalRect().HasPoint(button.Position) &&
-                    !_motionToggle.GetGlobalRect().HasPoint(button.Position) &&
-                    !_exitButton.GetGlobalRect().HasPoint(button.Position))
+                if (IsDragSurface(position) && !IsOverControlButton(button.Position))
                 {
                     _dragCandidate = true;
                     _dragging = false;
+                    _pressedCrt = CrtHitRect.HasPoint(position);
                     _dragOrigin = button.Position;
                 }
             }
             else if (_dragCandidate)
             {
                 bool wasDragging = _dragging;
+                bool toggleCounter = _pressedCrt && !wasDragging;
                 _dragCandidate = false;
                 _dragging = false;
+                _pressedCrt = false;
                 if (wasDragging)
                     DragFinished?.Invoke();
+                else if (toggleCounter)
+                    CounterModeToggleRequested?.Invoke();
             }
         }
         else if (input is InputEventMouseMotion motion && _dragCandidate)
@@ -243,6 +243,16 @@ public partial class WorkCompanionView : CanvasLayer
 
         // Controls sit in the top-right corner above the monitor, clear of the buddy and
         // the CRT, and only appear while the pointer is over the companion.
+        _controlBar = new PanelContainer
+        {
+            Name = "WorkControlTitleBar",
+            Position = new Vector2(0, 4),
+            Size = new Vector2(720, 38),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _controlBar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.ActiveTitle, 2));
+        _root.AddChild(_controlBar);
+
         _resizeButton = new Button
         {
             Name = "WorkResizeButton",
@@ -254,6 +264,7 @@ public partial class WorkCompanionView : CanvasLayer
             MouseDefaultCursorShape = Control.CursorShape.Fdiagsize,
         };
         _resizeButton.AddThemeFontSizeOverride("font_size", 13);
+        ApplyWin98ButtonStyle(_resizeButton);
         _resizeButton.ButtonDown += () => ResizeRequested?.Invoke();
         _root.AddChild(_resizeButton);
 
@@ -267,6 +278,7 @@ public partial class WorkCompanionView : CanvasLayer
             MouseDefaultCursorShape = Control.CursorShape.PointingHand,
         };
         _motionToggle.AddThemeFontSizeOverride("font_size", 11);
+        ApplyWin98ButtonStyle(_motionToggle);
         _motionToggle.Toggled += enabled => SetAnimationsEnabled(enabled);
         _root.AddChild(_motionToggle);
 
@@ -281,6 +293,7 @@ public partial class WorkCompanionView : CanvasLayer
             MouseDefaultCursorShape = Control.CursorShape.PointingHand,
         };
         _exitButton.AddThemeFontSizeOverride("font_size", 11);
+        ApplyWin98ButtonStyle(_exitButton);
         _exitButton.Pressed += () => ExitRequested?.Invoke();
         _root.AddChild(_exitButton);
 
@@ -307,6 +320,8 @@ public partial class WorkCompanionView : CanvasLayer
 
     private void SetHoverControlsVisible(bool visible)
     {
+        if (GodotObject.IsInstanceValid(_controlBar))
+            _controlBar.Visible = visible;
         if (GodotObject.IsInstanceValid(_resizeButton))
             _resizeButton.Visible = visible;
         if (GodotObject.IsInstanceValid(_motionToggle))
@@ -331,7 +346,27 @@ public partial class WorkCompanionView : CanvasLayer
             _root.Position = _compositionOffset;
             _root.Scale = Vector2.One * _compositionScale;
         }
-        RefreshNativeWindowShape();
+        ScheduleNativeWindowShapeRefresh();
+    }
+
+    private static bool IsDragSurface(Vector2 compositionPosition) =>
+        BuddyHitRect.HasPoint(compositionPosition) || ComputerHitRect.HasPoint(compositionPosition);
+
+    private bool IsOverControlButton(Vector2 windowPosition) =>
+        _resizeButton.GetGlobalRect().HasPoint(windowPosition) ||
+        _motionToggle.GetGlobalRect().HasPoint(windowPosition) ||
+        _exitButton.GetGlobalRect().HasPoint(windowPosition);
+
+    private static void ApplyWin98ButtonStyle(Button button)
+    {
+        button.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
+        button.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Highlight, 2));
+        button.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 2));
+        button.AddThemeStyleboxOverride("hover_pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Highlight, 2));
+        button.AddThemeColorOverride("font_color", Win98ThemeFactory.Dark);
+        button.AddThemeColorOverride("font_hover_color", Win98ThemeFactory.Dark);
+        button.AddThemeColorOverride("font_hover_pressed_color", Win98ThemeFactory.Dark);
+        button.AddThemeColorOverride("font_pressed_color", Win98ThemeFactory.Dark);
     }
 
     private Vector2 ToCompositionPosition(Vector2 windowPosition) =>

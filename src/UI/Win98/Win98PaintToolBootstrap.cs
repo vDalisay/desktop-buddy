@@ -12,8 +12,10 @@ public partial class Win98PaintToolBootstrap : Node
 {
     private PaintCanvasControl? _canvas;
     private Button? _brush;
+    private Button? _pen;
     private Button? _eraser;
     private Button? _spray;
+    private Button? _fill;
     private Button? _eyedropper;
     private Button? _curve;
     private Button? _pan;
@@ -25,7 +27,9 @@ public partial class Win98PaintToolBootstrap : Node
     public override void _Process(double delta)
     {
         if (GodotObject.IsInstanceValid(_canvas) &&
+            GodotObject.IsInstanceValid(_pen) &&
             GodotObject.IsInstanceValid(_spray) &&
+            GodotObject.IsInstanceValid(_fill) &&
             GodotObject.IsInstanceValid(_eyedropper) &&
             GodotObject.IsInstanceValid(_curve) &&
             GodotObject.IsInstanceValid(_pan))
@@ -59,11 +63,21 @@ public partial class Win98PaintToolBootstrap : Node
         PaintToolIconProvider.Apply(
             _eraser!, PaintToolIconProvider.Eraser, "Eraser", "Erase buddy paint with the current Brush Size.");
 
+        _pen = ToolButton(
+            "PaintPenButton",
+            PaintToolIconProvider.Pen,
+            "Pen",
+            "Paint with a solid pen nib (P).");
         _spray = ToolButton(
             "PaintSprayButton",
             PaintToolIconProvider.Spray,
             "Spray",
             "Airbrush sparse paint inside the current Brush Size envelope (S).");
+        _fill = ToolButton(
+            "PaintFillButton",
+            PaintToolIconProvider.Fill,
+            "Bucket Fill",
+            "Fill one connected paint region with the current color (F).");
         _eyedropper = ToolButton(
             "PaintEyedropperButton",
             PaintToolIconProvider.PickColor,
@@ -80,22 +94,27 @@ public partial class Win98PaintToolBootstrap : Node
             "Hand",
             "Pan the buddy viewport with the left mouse button.");
 
-        // Locked ordering: Brush | Eraser / Spray | Pick / Curve | Hand.
-        picker!.AddChild(_spray);
+        // Mutation tools first, then inspection/movement tools. Win98PaintUxPolishBootstrap
+        // may relayout the same stable node names without changing their behavior.
+        picker!.AddChild(_pen);
+        picker.AddChild(_spray);
+        picker.AddChild(_fill);
         picker.AddChild(_eyedropper);
         picker.AddChild(_curve);
         picker.AddChild(_pan);
 
-        IconizeOptional("PaintUndoButton", PaintToolIconProvider.Undo, "Undo", "Undo the last paint action (Ctrl+Z).");
-        IconizeOptional("PaintRedoButton", PaintToolIconProvider.Redo, "Redo", "Redo the last undone paint action (Ctrl+Y or Ctrl+Shift+Z).");
-        IconizeOptional("PaintEraseAllButton", PaintToolIconProvider.EraseAll, "Erase All", "Erase all buddy paint after confirmation.");
+        IconizeOptional("PaintUndoButton", PaintToolIconProvider.Undo, "Undo", "Undo the last paint action (Ctrl+Z).", keepText: true);
+        IconizeOptional("PaintRedoButton", PaintToolIconProvider.Redo, "Redo", "Redo the last undone paint action (Ctrl+Y or Ctrl+Shift+Z).", keepText: true);
+        IconizeOptional("PaintEraseAllButton", PaintToolIconProvider.EraseAll, "Erase All", "Erase all buddy paint after confirmation.", keepText: true);
         IconizeOptional("PaintZoomOutButton", PaintToolIconProvider.ZoomOut, "Zoom Out", "Zoom the paint preview out.");
         IconizeOptional("PaintZoomInButton", PaintToolIconProvider.ZoomIn, "Zoom In", "Zoom the paint preview in.");
         IconizeOptional("PaintResetViewButton", PaintToolIconProvider.ResetView, "Reset View", "Reset paint preview zoom and pan.");
 
         _brush!.Pressed += SelectBrush;
+        _pen.Pressed += SelectPen;
         _eraser!.Pressed += SelectEraser;
         _spray.Pressed += SelectSpray;
+        _fill.Pressed += SelectFill;
         _eyedropper.Pressed += SelectEyedropper;
         _curve.Pressed += SelectCurve;
         _pan.Pressed += SelectPan;
@@ -115,6 +134,12 @@ public partial class Win98PaintToolBootstrap : Node
         {
             case Key.S:
                 SelectSpray();
+                break;
+            case Key.P:
+                SelectPen();
+                break;
+            case Key.F:
+                SelectFill();
                 break;
             case Key.C:
                 SelectCurve();
@@ -139,15 +164,17 @@ public partial class Win98PaintToolBootstrap : Node
         return button;
     }
 
-    private void IconizeOptional(string nodeName, string iconId, string fallbackText, string tooltip)
+    private void IconizeOptional(string nodeName, string iconId, string fallbackText, string tooltip, bool keepText = false)
     {
         if (GetTree().Root.FindChild(nodeName, recursive: true, owned: false) is Button button)
-            PaintToolIconProvider.Apply(button, iconId, fallbackText, tooltip);
+            PaintToolIconProvider.Apply(button, iconId, fallbackText, tooltip, keepText);
     }
 
     private void SelectBrush() => SelectPaintMutation(PaintTool.Brush, _brush);
+    private void SelectPen() => SelectPaintMutation(PaintTool.Pen, _pen);
     private void SelectEraser() => SelectPaintMutation(PaintTool.Eraser, _eraser);
     private void SelectSpray() => SelectPaintMutation(PaintTool.Spray, _spray);
+    private void SelectFill() => SelectPaintMutation(PaintTool.Fill, _fill);
     private void SelectCurve() => SelectPaintMutation(PaintTool.Curve, _curve);
 
     private void SelectPaintMutation(PaintTool tool, Button? button)
@@ -186,8 +213,10 @@ public partial class Win98PaintToolBootstrap : Node
     private void SetPressed(Button? selected)
     {
         _brush!.ButtonPressed = ReferenceEquals(selected, _brush);
+        _pen!.ButtonPressed = ReferenceEquals(selected, _pen);
         _eraser!.ButtonPressed = ReferenceEquals(selected, _eraser);
         _spray!.ButtonPressed = ReferenceEquals(selected, _spray);
+        _fill!.ButtonPressed = ReferenceEquals(selected, _fill);
         _eyedropper!.ButtonPressed = ReferenceEquals(selected, _eyedropper);
         _curve!.ButtonPressed = ReferenceEquals(selected, _curve);
         _pan!.ButtonPressed = ReferenceEquals(selected, _pan);
@@ -202,9 +231,11 @@ public partial class Win98PaintToolBootstrap : Node
 
     private bool ReadyForSelection() =>
         GodotObject.IsInstanceValid(_canvas) &&
-        GodotObject.IsInstanceValid(_brush) &&
+            GodotObject.IsInstanceValid(_brush) &&
+            GodotObject.IsInstanceValid(_pen) &&
         GodotObject.IsInstanceValid(_eraser) &&
         GodotObject.IsInstanceValid(_spray) &&
+        GodotObject.IsInstanceValid(_fill) &&
         GodotObject.IsInstanceValid(_eyedropper) &&
         GodotObject.IsInstanceValid(_curve) &&
         GodotObject.IsInstanceValid(_pan);

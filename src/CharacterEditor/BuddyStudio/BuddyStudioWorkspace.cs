@@ -24,8 +24,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     [
         CharacterFeatureSlot.Face, CharacterFeatureSlot.Hair, CharacterFeatureSlot.Brows,
         CharacterFeatureSlot.Eyes, CharacterFeatureSlot.Nose, CharacterFeatureSlot.Mouth,
-        CharacterFeatureSlot.Ears, CharacterFeatureSlot.Accessories, CharacterFeatureSlot.Glasses,
-        CharacterFeatureSlot.Headwear, CharacterFeatureSlot.Tops, CharacterFeatureSlot.Shoes,
+        CharacterFeatureSlot.Ears, CharacterFeatureSlot.Glasses, CharacterFeatureSlot.Headwear,
+        CharacterFeatureSlot.Tops, CharacterFeatureSlot.Shoes,
     ];
 
     private static readonly (string Name, Rgba32 Color)[] Palette =
@@ -105,6 +105,11 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         }
         _previewInput.Reparent(_previewColumn);
         _previewAttached = true;
+        if (!GodotObject.IsInstanceValid(_previewRig))
+            _previewRig = _previewInput.FindChildren("*", nameof(BuddyVisualRigView), true, false)
+                .OfType<BuddyVisualRigView>()
+                .FirstOrDefault();
+        _previewRig?.SetPreviewFaceState(BuiltInCharacterAppearance.NeutralFaceState);
         ResetView();
     }
 
@@ -122,6 +127,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             _previewCamera.Size = _cameraHomeSize;
         }
         _cameraStateCaptured = false;
+        _previewRig?.ClearPreviewFaceState();
         SetMoveMode(false);
         _previewAttached = false;
         if (GodotObject.IsInstanceValid(_frame))
@@ -214,6 +220,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     {
         if (!CategoryOrder.Contains(slot))
             throw new ArgumentOutOfRangeException(nameof(slot));
+        _session.CancelCosmeticPreviews();
         _slot = slot;
         _categories.Select(SlotId(slot), notify: false);
         SetMoveMode(false);
@@ -250,16 +257,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         BuildPreviewPane(body);
         BuildCatalogPane(body);
         BuildInspectorPane(body);
-
-        var actions = new HBoxContainer { Name = "BuddyStudioActions" };
-        actions.AddThemeConstantOverride("separation", 6);
-        AddChild(actions);
-        actions.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
-        _save = Action(actions, "Save", () => _ = SaveAsync());
-        _save.Name = "BuddyStudioSave";
-        _save.TooltipText = "Save this character (Ctrl+S).";
-        Button cancel = Action(actions, "Cancel", () => _ = CancelAsync());
-        cancel.Name = "BuddyStudioCancel";
 
         BuildDirtyDialog();
         BuildMoveBlocker();
@@ -329,6 +326,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _catalog = new Win98CatalogGrid { Name = "BuddyStudioCatalog" };
         _catalog.ConfigureTileSize(122, 142);
         _catalog.SelectionChanged += SelectCosmetic;
+        _catalog.ItemActivated += cosmeticId => _ = ActivateCosmeticAsync(cosmeticId);
         column.AddChild(_catalog);
     }
 
@@ -350,18 +348,27 @@ public partial class BuddyStudioWorkspace : VBoxContainer
                 Handle(_session.SetFeatureColor(_slot, ToRgba(color)));
         };
         column.AddChild(_color);
-        _presets = new GridContainer { Name = "BuddyStudioColorPresets", Columns = 3 };
+        _presets = new GridContainer
+        {
+            Name = "BuddyStudioColorPresets",
+            Columns = 3,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
         column.AddChild(_presets);
         foreach ((string name, Rgba32 color) in Palette)
         {
             Rgba32 captured = color;
             var preset = new Button
             {
-                Text = name,
                 FocusMode = FocusModeEnum.All,
                 CustomMinimumSize = new Vector2(68, 32),
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
                 TooltipText = $"Use {name} ({color.ToHex()}).",
             };
+            Color swatch = FromRgba(color);
+            preset.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Raised(swatch, 2));
+            preset.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(swatch.Lightened(0.18f), 2));
+            preset.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(swatch, 2));
             preset.Pressed += () => Handle(_session.SetFeatureColor(_slot, captured));
             _presets.AddChild(preset);
         }
@@ -369,6 +376,22 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         column.AddChild(_values);
         _buy = Action(column, "Buy", () => _ = PurchaseOrEquipAsync());
         _buy.Name = "BuddyStudioBuy";
+
+        column.AddChild(new Control { SizeFlagsVertical = SizeFlags.ExpandFill });
+        var actions = new HBoxContainer
+        {
+            Name = "BuddyStudioActions",
+            Alignment = BoxContainer.AlignmentMode.End,
+        };
+        actions.AddThemeConstantOverride("separation", 6);
+        column.AddChild(actions);
+        _save = Action(actions, "Save", () => _ = SaveAsync());
+        _save.Name = "BuddyStudioSave";
+        _save.CustomMinimumSize = new Vector2(96, 30);
+        _save.TooltipText = "Save this character (Ctrl+S).";
+        Button exit = Action(actions, "Exit", () => _ = CancelAsync());
+        exit.Name = "BuddyStudioCancel";
+        exit.CustomMinimumSize = new Vector2(96, 30);
     }
 
     private void BuildDirtyDialog()
@@ -492,10 +515,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         {
             CharacterDocument? document = _session.PreviewDocument;
             _name.Text = document?.DisplayName ?? "No character selected";
-            _save.Disabled = !_session.CanSave || !_session.IsDirty;
-            _save.TooltipText = !_session.CanSave
-                ? "Buy or deselect previewed cosmetics before saving."
-                : "Save this character (Ctrl+S).";
+            _save.Disabled = !_session.IsDirty;
+            _save.TooltipText = "Save this character (Ctrl+S).";
             RefreshCatalog();
             RefreshSelectionPane();
             SetStatus(_session.LastError ?? StatusText(document));
@@ -521,14 +542,27 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private Win98CatalogItemPresentation Presentation(CosmeticDefinition definition)
     {
         bool owned = _session.IsCosmeticOwned(definition.Id);
-        string secondary = owned ? (definition.IsFreeDefault ? "Free" : "Owned") : PriceText(definition);
+        bool equipped = IsEquipped(definition.Id);
+        bool previewed = _session.PreviewDocument is CharacterDocument preview &&
+            string.Equals(CharacterDocumentEditor.ReadFeatureId(preview, _slot), definition.Id, StringComparison.Ordinal);
+        string secondary = owned ? string.Empty : PriceText(definition);
+        Color? priceColor = null;
+        if (!owned && definition.OwnershipContentId is string contentId &&
+            _economy.Catalogue.TryGet(contentId, out CatalogueEntry entry) && entry.HasValidPrice)
+        {
+            priceColor = entry.PriceMilliCredits <= _economy.BalanceMilliCredits
+                ? Color.Color8(0, 128, 0)
+                : Color.Color8(192, 0, 0);
+        }
         return new Win98CatalogItemPresentation(
             definition.Id,
             CosmeticName(definition),
             secondary,
             BuddyStudioThumbnailCache.For(definition),
-            Tooltip: owned ? "Available to save." : "Preview only until acquired.",
-            BadgeText: owned ? "Owned" : "Preview");
+            Tooltip: equipped ? "Currently equipped." : owned ? "Single-click to preview; double-click to equip." : "Single-click to preview; double-click to buy and equip.",
+            BadgeText: equipped ? "Equipped" : owned ? "Owned" : string.Empty,
+            Accented: previewed,
+            SecondaryColor: priceColor);
     }
 
     private void RefreshSelectionPane()
@@ -539,27 +573,26 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         string id = CharacterDocumentEditor.ReadFeatureId(preview, _slot);
         CosmeticDefinition definition = CharacterFeatureCatalog.Shipped.ResolveDefinition(_slot, id, out _);
         bool owned = _session.IsCosmeticOwned(definition.Id);
-        string equippedId = CharacterDocumentEditor.ReadFeatureId(_session.WorkingDocument!, _slot);
-        bool equipped = string.Equals(equippedId, definition.Id, StringComparison.Ordinal) &&
-            !_session.HasOwnedPreview(_slot) && !_session.HasUnownedPreview(_slot);
+        bool equipped = IsEquipped(definition.Id);
         CatalogueEntry entry = default;
         bool purchasable = !owned && definition.OwnershipContentId is string contentId &&
             _economy.Catalogue.TryGet(contentId, out entry) && entry.Visible &&
             entry.Kind == CatalogueEntryKind.Cosmetic && entry.HasValidPrice;
         bool affordable = !purchasable || entry.PriceMilliCredits <= _economy.BalanceMilliCredits;
+        string status = equipped ? "Equipped" : owned ? "Owned preview" : "UNOWNED PREVIEW";
         _values.SetRows(
         [
-            new Win98ValueRowPresentation("status", "Status", owned ? "Owned" : "Preview", true),
+            new Win98ValueRowPresentation("status", "Status", status, true),
             new Win98ValueRowPresentation("price", "Price", owned ? "—" : PriceText(definition)),
             new Win98ValueRowPresentation("balance", "Balance", ContentDisplayName.Credits(_economy.BalanceMilliCredits)),
         ]);
         _buy.Text = owned ? (equipped ? "Equipped" : "Equip") :
-            purchasable ? "Buy" : "Earn in Work Mode";
+            purchasable ? $"Buy • {PriceText(definition)}" : "Earn in Work Mode";
         _buy.Disabled = equipped || (!owned && (!purchasable || !affordable));
         _buy.TooltipText = equipped ? "This cosmetic is currently equipped."
-            : owned ? "Equip this cosmetic on the working character."
-            : purchasable && !affordable ? "Earn more credits before buying this cosmetic."
-            : purchasable ? "Buy this cosmetic permanently; equip it with the next action."
+            : owned ? "Equip this owned cosmetic now."
+            : purchasable && !affordable ? $"Costs {PriceText(definition)}. Earn more credits before buying."
+            : purchasable ? $"Buy permanently for {PriceText(definition)} and equip immediately."
             : "This cosmetic is earned elsewhere and cannot be bought here.";
         bool hasColor = definition.ColorChannels.Count > 0;
         _color.Disabled = !hasColor;
@@ -572,6 +605,13 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _resetTransform.Disabled = !transformable;
         if (!transformable)
             SetMoveMode(false);
+    }
+
+    private bool IsEquipped(string cosmeticId)
+    {
+        CharacterDocument? working = _session.WorkingDocument;
+        return working is not null &&
+            string.Equals(CharacterDocumentEditor.ReadFeatureId(working, _slot), cosmeticId, StringComparison.Ordinal);
     }
 
     private string PriceText(CosmeticDefinition definition)
@@ -587,37 +627,55 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         if (document is null)
             return "Select or create a character first.";
         if (_session.HasUnownedPreviews)
-            return "Previewing an unowned cosmetic — Save is unavailable.";
+            return "UNOWNED PREVIEW — double-click to buy and equip; changing tabs restores the equipped item.";
         if (_session.HasOwnedPreviews)
-            return "Previewing an owned cosmetic — choose Equip to apply it.";
+            return "Owned preview — double-click or choose Equip to apply it.";
         if (_moveMode)
             return "Move: drag the preview or use arrows; Shift moves farther; Escape exits.";
         return _session.IsDirty ? "Unsaved changes." : "Ready.";
     }
 
-    private void SelectCosmetic(string cosmeticId) => Handle(_session.PreviewCosmetic(_slot, cosmeticId));
+    private void SelectCosmetic(string cosmeticId)
+    {
+        Handle(_session.PreviewCosmetic(_slot, cosmeticId));
+    }
+
+    private async Task ActivateCosmeticAsync(string cosmeticId)
+    {
+        CharacterEditorActionResult preview = _session.PreviewCosmetic(_slot, cosmeticId);
+        Handle(preview);
+        if (preview.Completed)
+            await PurchaseOrEquipAsync();
+    }
 
     private async Task PurchaseOrEquipAsync()
     {
         string cosmeticId = CharacterDocumentEditor.ReadFeatureId(_session.PreviewDocument!, _slot);
         bool owned = _session.IsCosmeticOwned(cosmeticId);
-        CharacterEditorActionResult result = owned
-            ? _session.EquipPreviewedCosmetic(_slot)
-            : _session.BuyPreviewedCosmetic(_slot);
-        Handle(result);
-        string? saveFailure = null;
-        if (result.Completed && !owned)
+        if (owned)
         {
-            try
-            {
-                await _flushProgress();
-            }
-            catch (Exception error)
-            {
-                saveFailure = $"Purchase is owned; progress save will retry: {error.Message}";
-            }
+            Handle(_session.EquipPreviewedCosmetic(_slot));
+            return;
         }
-        Refresh();
+
+        CharacterEditorActionResult purchase = _session.BuyPreviewedCosmetic(_slot);
+        Handle(purchase);
+        if (!purchase.Completed)
+            return;
+
+        string? saveFailure = null;
+        try
+        {
+            await _flushProgress();
+        }
+        catch (Exception error)
+        {
+            saveFailure = $"Purchase is owned; progress save will retry: {error.Message}";
+        }
+
+        // Buying from Studio is one clear action: ownership becomes permanent and the item
+        // immediately becomes the working selection. Save still controls the character document.
+        Handle(_session.EquipPreviewedCosmetic(_slot));
         if (saveFailure is not null)
             SetStatus(saveFailure);
     }

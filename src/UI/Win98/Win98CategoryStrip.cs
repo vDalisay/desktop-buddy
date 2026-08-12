@@ -110,9 +110,9 @@ public partial class Win98CategoryStrip : HBoxContainer
             Text = text,
             FocusMode = FocusModeEnum.All,
             CustomMinimumSize = new Vector2(28, Win98ThemeFactory.ControlHeight),
-            TooltipText = direction < 0 ? "Scroll categories left." : "Scroll categories right.",
+            TooltipText = direction < 0 ? "Select the previous category." : "Select the next category.",
         };
-        button.Pressed += () => ScrollBy(direction * 120);
+        button.Pressed += () => MoveSelection(direction);
         return button;
     }
 
@@ -216,6 +216,21 @@ public partial class Win98CategoryStrip : HBoxContainer
         if (!GodotObject.IsInstanceValid(_scroll))
             return;
         _scroll.ScrollHorizontal = Math.Max(0, _scroll.ScrollHorizontal + delta);
+    }
+
+    private void MoveSelection(int direction)
+    {
+        int current = _selectedId is null
+            ? -1
+            : Array.FindIndex(_items.ToArray(), item => item.Id == _selectedId);
+        for (int index = current + direction; index >= 0 && index < _items.Count; index += direction)
+        {
+            if (_items[index].Enabled)
+            {
+                Select(_items[index].Id);
+                return;
+            }
+        }
     }
 
     private static string Sanitize(string id)

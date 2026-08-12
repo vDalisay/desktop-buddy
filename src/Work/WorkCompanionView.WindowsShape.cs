@@ -16,9 +16,12 @@ public partial class WorkCompanionView
     private const int RgnOr = 2;
     private nint _ownedWorkWindowHandle;
     private bool _nativeShapeApplied;
+    private bool _nativeShapeRefreshPending;
+    private double _nativeShapeStableSeconds;
     private Win98BuddyShellController? _normalWin98Shell;
     private WorldEnvironment? _normalBackdrop;
     private bool _normalShellWasProcessing;
+    private bool _normalFrameWasVisible;
     private Godot.Environment? _normalBackdropEnvironment;
     private bool _normalShellIsolated;
 
@@ -30,6 +33,7 @@ public partial class WorkCompanionView
 
     public override void _ExitTree()
     {
+        _nativeShapeRefreshPending = false;
         ClearNativeWindowShape();
         RestoreNormalShell();
     }
@@ -41,6 +45,8 @@ public partial class WorkCompanionView
         if (GodotObject.IsInstanceValid(_normalWin98Shell))
         {
             _normalShellWasProcessing = _normalWin98Shell!.IsProcessing();
+            _normalFrameWasVisible = _normalWin98Shell.Frame.Visible;
+            _normalWin98Shell.Frame.Visible = false;
             _normalWin98Shell.SetProcess(false);
         }
 
@@ -76,7 +82,10 @@ public partial class WorkCompanionView
         }
         _normalBackdropEnvironment = null;
         if (GodotObject.IsInstanceValid(_normalWin98Shell))
+        {
+            _normalWin98Shell!.Frame.Visible = _normalFrameWasVisible;
             _normalWin98Shell!.SetProcess(_normalShellWasProcessing);
+        }
 
         _normalBackdrop = null;
         _normalWin98Shell = null;
@@ -101,7 +110,7 @@ public partial class WorkCompanionView
         // for tiny hand excursions while empty corners stay outside the HWND and click through.
         Rect2I[] regions =
         [
-            new Rect2I(595, 4, 115, 38),     // hover-only resize, motion + exit controls
+            new Rect2I(0, 4, 720, 38),       // full-width Win98 title bar and controls
             new Rect2I(228, 78, 152, 228),   // sideways buddy + alternating typing hands
             new Rect2I(385, 68, 240, 270),   // smaller supplied monitor and PC chassis
         ];
@@ -141,10 +150,25 @@ public partial class WorkCompanionView
         _nativeShapeApplied = true;
     }
 
-    private void RefreshNativeWindowShape()
+    private void ScheduleNativeWindowShapeRefresh()
     {
+        if (!OperatingSystem.IsWindows() || DisplayServer.GetName() == "headless")
+            return;
+        _nativeShapeRefreshPending = true;
+        _nativeShapeStableSeconds = 0.0;
         if (_nativeShapeApplied)
-            ApplyNativeWindowShape();
+            ClearNativeWindowShape();
+    }
+
+    private void TickNativeWindowShape(double delta)
+    {
+        if (!_nativeShapeRefreshPending)
+            return;
+        _nativeShapeStableSeconds += Math.Max(0.0, delta);
+        if (_nativeShapeStableSeconds < 0.08)
+            return;
+        _nativeShapeRefreshPending = false;
+        ApplyNativeWindowShape();
     }
 
     private void ClearNativeWindowShape()

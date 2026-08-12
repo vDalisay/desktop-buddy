@@ -39,13 +39,21 @@ public sealed class PaintUndoMemoryTests
     public void ExpandedStrokePatch_RestoresOriginalBytesExactly()
     {
         var workspace = new PaintWorkspace();
+        workspace.SetBrushDiameter(PaintPolicy.MaxBrushDiameter);
         string before = workspace.Surfaces[PaintPart.Torso].ComputeHash();
 
         workspace.BeginGesture(new PaintHit(PaintPart.Torso, new PaintPoint(0.2, 0.4), 0));
-        workspace.ContinueGesture(new PaintHit(PaintPart.Torso, new PaintPoint(0.8, 0.6), 0));
+        long allocationStart = System.GC.GetAllocatedBytesForCurrentThread();
+        for (int step = 1; step <= 120; step++)
+            workspace.ContinueGesture(new PaintHit(
+                PaintPart.Torso,
+                new PaintPoint(0.2 + 0.6 * step / 120.0, 0.4 + 0.2 * step / 120.0),
+                0));
         workspace.EndGesture();
+        long allocated = System.GC.GetAllocatedBytesForCurrentThread() - allocationStart;
 
         Assert.NotEqual(before, workspace.Surfaces[PaintPart.Torso].ComputeHash());
+        Assert.InRange(allocated, 1, 8 * 1024 * 1024);
         Assert.True(workspace.Undo());
         Assert.Equal(before, workspace.Surfaces[PaintPart.Torso].ComputeHash());
     }

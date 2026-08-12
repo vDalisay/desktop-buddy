@@ -25,6 +25,7 @@ public partial class WorkCompanionCoordinator
     public override void _EnterTree()
     {
         SubscribeResilienceEvents();
+        EnsureExitToolHook();
 
         // The pre-revamp shell defaulted to its click-through state named "Work". The revised
         // feature is a deliberate companion mode, so loading an old/default setting must not

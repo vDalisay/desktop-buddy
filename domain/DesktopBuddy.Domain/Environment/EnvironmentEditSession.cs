@@ -112,6 +112,17 @@ public sealed class EnvironmentEditSession
         return new(EnvironmentEditStatus.Succeeded, instanceId);
     }
 
+    /// <summary>Stages one purchase into storage without entering placement mode.</summary>
+    public EnvironmentEditResult Buy(DecorationDefinitionId definitionId, long currentBalanceMilliCredits)
+    {
+        if (!_catalogue.TryGet(definitionId, out DecorationDefinition definition)) return new(EnvironmentEditStatus.UnknownDefinition);
+        if (!definition.Visible) return new(EnvironmentEditStatus.HiddenDefinition);
+        if (!TryChangeDelta(-definition.PriceMilliCredits, currentBalanceMilliCredits))
+            return new(EnvironmentEditStatus.InsufficientFunds);
+        ReturnToStorage(definition.Id);
+        return new(EnvironmentEditStatus.Succeeded);
+    }
+
     public EnvironmentEditResult PlaceReserved(CanonicalRoomPosition position)
     {
         if (!HasReservation) return new(EnvironmentEditStatus.NoReservation);

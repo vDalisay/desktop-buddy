@@ -6,10 +6,12 @@ using DesktopBuddy.App;
 using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Platform;
+using DesktopBuddy.UI.Win98;
 using DesktopBuddy.Work;
 using Godot;
 
@@ -84,6 +86,103 @@ public sealed class WorkModeResilienceScenario : IScenario
                 entered && !sandbox.IsPhysicsProcessing() && source.IsRunning,
                 $"physics={sandbox.IsPhysicsProcessing()} source={source.IsRunning}"));
 
+            var workView = tree.Root.FindChild(
+                nameof(WorkCompanionView), recursive: true, owned: false) as WorkCompanionView;
+            Rect2I beforeWheel = sandbox.Window.WorkCompanionRect;
+            Vector2 viewportSize = workView?.GetWindow().Size ?? Vector2.Zero;
+            float compositionScale = Math.Max(0.01f, Math.Min(
+                viewportSize.X / WorkCompanionView.PreferredSize.X,
+                viewportSize.Y / WorkCompanionView.PreferredSize.Y));
+            Vector2 compositionOffset = (viewportSize - ((Vector2)WorkCompanionView.PreferredSize * compositionScale)) * .5f;
+            Vector2 resizePointer = compositionOffset + (new Vector2(478, 148) * compositionScale);
+            if (GodotObject.IsInstanceValid(workView))
+            {
+                workView!._Input(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = true,
+                    Position = resizePointer,
+                });
+                workView._Input(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.WheelUp,
+                    Pressed = true,
+                    Position = resizePointer,
+                });
+                workView._Input(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = false,
+                    Position = resizePointer,
+                });
+            }
+            Rect2I afterWheel = sandbox.Window.WorkCompanionRect;
+            Vector2 beforeAnchor = (Vector2)beforeWheel.Position + resizePointer;
+            Vector2 normalizedAnchor = new(
+                resizePointer.X / beforeWheel.Size.X,
+                resizePointer.Y / beforeWheel.Size.Y);
+            Vector2 afterAnchor = (Vector2)afterWheel.Position + ((Vector2)afterWheel.Size * normalizedAnchor);
+            checks.Add(new StartupCheck(
+                "work_lmb_wheel_resizes_from_pc_surface",
+                GodotObject.IsInstanceValid(workView) &&
+                    afterWheel.Size.X > beforeWheel.Size.X && afterWheel.Size.Y > beforeWheel.Size.Y &&
+                    afterWheel.Size.X < beforeWheel.Size.X * 1.04f &&
+                    afterAnchor.DistanceTo(beforeAnchor) <= 2.0f,
+                $"view={GodotObject.IsInstanceValid(workView)} size={beforeWheel}->{afterWheel}"));
+
+            if (GodotObject.IsInstanceValid(workView))
+            {
+                Rect2I beforeDrag = sandbox.Window.WorkCompanionRect;
+                bool counterBefore = workView!.ShowLifetime;
+                workView._UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = true,
+                    Position = resizePointer,
+                });
+                workView._UnhandledInput(new InputEventMouseMotion
+                {
+                    Position = resizePointer + new Vector2(12, 8),
+                    Relative = new Vector2(12, 8),
+                });
+                workView._UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = false,
+                    Position = resizePointer + new Vector2(12, 8),
+                });
+                Rect2I afterDrag = sandbox.Window.WorkCompanionRect;
+                workView._UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = true,
+                    Position = resizePointer,
+                });
+                workView._UnhandledInput(new InputEventMouseButton
+                {
+                    ButtonIndex = MouseButton.Left,
+                    Pressed = false,
+                    Position = resizePointer,
+                });
+                Button resize = (Button)workView.FindChild("WorkResizeButton", true, false);
+                Button motion = (Button)workView.FindChild("WorkMotionToggle", true, false);
+                Button exit = (Button)workView.FindChild("WorkExitButton", true, false);
+                PanelContainer titleBar = (PanelContainer)workView.FindChild("WorkControlTitleBar", true, false);
+                bool win98TitleBar = titleBar.GetThemeStylebox("panel") is StyleBoxFlat bar &&
+                    bar.BgColor == Win98ThemeFactory.ActiveTitle &&
+                    bar.GetBorderWidth(Side.Left) == 2 &&
+                    Mathf.IsEqualApprox(titleBar.Size.X, WorkCompanionView.PreferredSize.X) &&
+                    resize.GetThemeStylebox("hover") is StyleBoxFlat hover &&
+                    hover.BgColor == Win98ThemeFactory.Highlight &&
+                    resize.GetThemeColor("font_hover_color") == Win98ThemeFactory.Dark;
+                checks.Add(new StartupCheck(
+                    "work_crt_drag_moves_click_toggles_and_controls_sit_on_win98_title_bar",
+                    afterDrag.Position != beforeDrag.Position && workView.ShowLifetime != counterBefore &&
+                        resize.HasThemeStyleboxOverride("normal") && motion.HasThemeStyleboxOverride("normal") &&
+                        exit.HasThemeStyleboxOverride("normal") && win98TitleBar,
+                    $"position={beforeDrag.Position}->{afterDrag.Position} counter={counterBefore}->{workView.ShowLifetime}"));
+            }
+
             var requestedWorkSize = new Vector2I(600, 358);
             sandbox.Window.ResizeWorkCompanion(requestedWorkSize);
             sandbox.Shell.CaptureWindowStateForSave();
@@ -124,6 +223,10 @@ public sealed class WorkModeResilienceScenario : IScenario
                 $"stopped={stoppedForSuspend} restarted={restartedAfterResume} " +
                 $"starts={source.StartCount} stops={source.StopCount}"));
 
+            progress.Unlock(ContentIds.ToolBaseballBat);
+            sandbox.Pipeline.SelectTool(ToolId.BaseballBat);
+            bool nonGrabWasSelectedDuringWork = sandbox.Pipeline.SelectedTool == ToolId.BaseballBat;
+
             await coordinator.ExitAsync();
             LocalSettingsSave savedSettings = sandbox.Shell.CurrentLocalSettings;
             checks.Add(new StartupCheck(
@@ -137,6 +240,10 @@ public sealed class WorkModeResilienceScenario : IScenario
                 $"active={coordinator.IsActive} running={source.IsRunning} disposed={source.Disposed} " +
                 $"physics={sandbox.IsPhysicsProcessing()} window={sandbox.Window.WorkCompanionActive} " +
                 $"journal={work.ActiveSession.HasValue}/{store.Progress?.Work.ActiveSession is not null}"));
+            checks.Add(new StartupCheck(
+                "work_exit_selects_normal_grab",
+                nonGrabWasSelectedDuringWork && sandbox.Pipeline.SelectedTool == ToolId.Grab,
+                $"preExitBat={nonGrabWasSelectedDuringWork} selected={sandbox.Pipeline.SelectedTool}"));
             checks.Add(new StartupCheck(
                 "work_size_persists_separately_for_next_entry",
                 sandbox.Window.CompactRect == normalRect &&

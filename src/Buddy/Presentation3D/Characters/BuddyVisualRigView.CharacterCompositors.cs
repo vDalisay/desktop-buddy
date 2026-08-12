@@ -21,7 +21,10 @@ public partial class BuddyVisualRigView
     public override void _Process(double delta)
     {
         if (IsInitialized)
+        {
+            EnsurePaintAtlasSamplingGuard();
             RefreshCharacterCompositors();
+        }
     }
 
     /// <summary>

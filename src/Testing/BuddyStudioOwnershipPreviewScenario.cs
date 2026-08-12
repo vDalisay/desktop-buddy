@@ -88,10 +88,9 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
             CharacterEditorActionResult tinted = session.SetFeatureColor(
                 CharacterFeatureSlot.Glasses,
                 previewTint);
-            CharacterEditorActionResult blockedSave = await session.SaveAsync();
             bool previewOnly =
-                previewed.Completed && tinted.Completed && session.HasUnownedPreviews && !session.CanSave &&
-                session.IsDirty && !blockedSave.Completed &&
+                previewed.Completed && tinted.Completed && session.HasUnownedPreviews && session.CanSave &&
+                !session.IsDirty &&
                 CharacterDocumentEditor.ReadFeatureId(
                     session.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesNone &&
                 CharacterDocumentEditor.ReadFeatureId(
@@ -101,9 +100,9 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                 CharacterDocumentEditor.ReadFeatureColor(
                     session.PreviewDocument!, CharacterFeatureSlot.Glasses) == previewTint;
             checks.Add(new StartupCheck(
-                "bs4_unowned_selection_is_preview_only_and_blocks_save",
+                "bs4_unowned_selection_is_transient_preview_only",
                 previewOnly,
-                $"preview={session.HasUnownedPreviews} can_save={session.CanSave} error={blockedSave.Detail}"));
+                $"preview={session.HasUnownedPreviews} can_save={session.CanSave} dirty={session.IsDirty}"));
 
             CharacterEditorActionResult bought = session.BuyPreviewedCosmetic(CharacterFeatureSlot.Glasses);
             await saves.FlushProgressAsync();
@@ -183,7 +182,7 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
             resetSession.SelectCosmetic(CharacterFeatureSlot.Glasses, CharacterFeatureIds.GlassesNone);
             resetSession.SelectCosmetic(CharacterFeatureSlot.Glasses, CharacterFeatureIds.GlassesWorkClassic);
             bool deselectionIsOneWay =
-                resetSession.HasUnownedPreviews && !resetSession.CanSave &&
+                resetSession.HasUnownedPreviews && resetSession.CanSave &&
                 CharacterDocumentEditor.ReadFeatureId(
                     resetSession.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesNone;
             checks.Add(new StartupCheck(

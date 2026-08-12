@@ -35,6 +35,7 @@ public partial class Win98CommandBarBootstrap : Node
 
     private PanelContainer _bar = null!;
     private PanelContainer _flyout = null!;
+    private Win98PinnablePanel _flyoutPin = null!;
     private PanelContainer _flyoutBody = null!;
     private Label _flyoutTitle = null!;
     private Button _shopButton = null!;
@@ -270,6 +271,7 @@ public partial class Win98CommandBarBootstrap : Node
 
         var titleBar = new PanelContainer
         {
+            Name = "TitleBar",
             CustomMinimumSize = new Vector2(0, Win98ThemeFactory.TitleBarHeight),
             MouseFilter = Control.MouseFilterEnum.Stop,
         };
@@ -289,7 +291,15 @@ public partial class Win98CommandBarBootstrap : Node
         _flyoutTitle.AddThemeColorOverride("font_color", Colors.White);
         titleRow.AddChild(_flyoutTitle);
         var close = AddMenuCommand(titleRow, "×", "Close this menu.", CloseFlyout);
+        close.Name = "CloseBox";
         close.CustomMinimumSize = new Vector2(22, 18);
+        close.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
+        close.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Highlight, 2));
+        close.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 2));
+        close.AddThemeStyleboxOverride("hover_pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Highlight, 2));
+        close.AddThemeColorOverride("font_color", Win98ThemeFactory.Dark);
+        close.AddThemeColorOverride("font_hover_color", Win98ThemeFactory.Dark);
+        close.AddThemeColorOverride("font_pressed_color", Win98ThemeFactory.Dark);
 
         _flyoutBody = new PanelContainer
         {
@@ -300,6 +310,10 @@ public partial class Win98CommandBarBootstrap : Node
         };
         _flyoutBody.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
         column.AddChild(_flyoutBody);
+
+        _flyoutPin = new Win98PinnablePanel { Name = "InventoryPinController" };
+        AddChild(_flyoutPin);
+        _flyoutPin.Configure(_flyout, new Vector2I(520, 600), "InventoryWindow");
     }
 
     private static Button AddMenuCommand(Control parent, string text, string tooltip, Action action)
@@ -566,6 +580,8 @@ public partial class Win98CommandBarBootstrap : Node
     private void LayoutFlyout()
     {
         if (!GodotObject.IsInstanceValid(_flyout) || !GodotObject.IsInstanceValid(_bar))
+            return;
+        if (GodotObject.IsInstanceValid(_flyoutPin) && _flyoutPin.IsFloating)
             return;
 
         Rect2 content = _frame.Visible ? _frame.ContentViewportRect : GetViewport().GetVisibleRect();

@@ -8,6 +8,22 @@ public partial class PaintCanvasControl
     public PaintCanvasControl()
     {
         Workspace.PreviewTransactionEnded += OnPreviewTransactionEnded;
+        WorkspaceChanged += EnsurePaintInputAccumulated;
+    }
+
+    /// <summary>
+    /// Buddy paint must keep Godot's mouse-motion accumulation enabled. The canvas historically
+    /// disabled accumulation while dragging, which made high-polling mice feed every raw motion
+    /// event into the CPU paint rasterizer. At large brush sizes that multiplied expensive stamps
+    /// hundreds or thousands of times per second and produced a backlog that looked like striped,
+    /// discontinuous paint. The room painter already relies on accumulated input and remains smooth;
+    /// Buddy paint uses the same frame-coalesced policy while PaintWorkspace still interpolates
+    /// between the coalesced samples for continuous strokes.
+    /// </summary>
+    internal static void EnsurePaintInputAccumulated()
+    {
+        if (!Input.UseAccumulatedInput)
+            Input.UseAccumulatedInput = true;
     }
 
     /// <summary>

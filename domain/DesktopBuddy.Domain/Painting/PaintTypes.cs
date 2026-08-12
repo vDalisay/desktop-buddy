@@ -5,7 +5,7 @@ using System.Linq;
 namespace DesktopBuddy.Domain.Painting;
 
 public enum PaintPart { Head, Torso, LeftHand, RightHand, LeftFoot, RightFoot }
-public enum PaintTool { Brush, Spray, Curve, Eraser }
+public enum PaintTool { Brush, Spray, Curve, Eraser, Fill, Pen }
 
 public readonly record struct PaintColor(byte R, byte G, byte B)
 {
@@ -21,10 +21,40 @@ public readonly record struct PaintPoint(double X, double Y)
     public static PaintPoint operator *(PaintPoint point, double scalar) => new(point.X * scalar, point.Y * scalar);
 }
 
-public readonly record struct PaintHit(PaintPart Part, PaintPoint Uv, double Depth)
+public readonly record struct PaintHit(PaintPart Part, PaintPoint Uv, double Depth, bool IsConnector = false)
 {
     public bool IsValid => Uv.IsFinite && double.IsFinite(Depth) &&
         Uv.X >= 0.0 && Uv.X <= 1.0 && Uv.Y >= 0.0 && Uv.Y <= 1.0;
+}
+
+/// <summary>Two atlas lanes share each limb's existing 512x512 surface.</summary>
+public readonly record struct PaintUvRegion(double Start, double Width)
+{
+    public static PaintUvRegion Full { get; } = new(0.0, 1.0);
+    public static PaintUvRegion LimbEnd { get; } = new(0.0, 0.5);
+    public static PaintUvRegion LimbConnector { get; } = new(0.5, 0.5);
+    public bool IsValid => Start >= 0.0 && Width > 0.0 && Start + Width <= 1.0;
+    public int StartPixel => (int)Math.Round(Start * PaintPolicy.SurfaceSize);
+    public int PixelWidth => (int)Math.Round(Width * PaintPolicy.SurfaceSize);
+
+    public static bool IsLimb(PaintPart part) => part is
+        PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot;
+
+    public static PaintUvRegion For(PaintHit hit) => IsLimb(hit.Part)
+        ? hit.IsConnector ? LimbConnector : LimbEnd
+        : Full;
+
+    public PaintPoint MapLocal(PaintPoint uv) => new(Start + (Wrap(uv.X) * Width), uv.Y);
+    public double LocalU(double atlasU) => (atlasU - Start) / Width;
+    public double AtlasU(double localU) => Start + (Wrap(localU) * Width);
+    public double PixelX(double atlasU) => StartPixel + (LocalU(atlasU) * (PixelWidth - 1));
+    public int WrapPixelX(int x) => StartPixel + (((x - StartPixel) % PixelWidth) + PixelWidth) % PixelWidth;
+
+    private static double Wrap(double value)
+    {
+        double wrapped = value - Math.Floor(value);
+        return wrapped >= 1.0 ? 0.0 : wrapped;
+    }
 }
 
 public static class PaintPolicy

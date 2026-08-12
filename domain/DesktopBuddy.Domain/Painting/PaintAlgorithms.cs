@@ -151,6 +151,18 @@ public static class ClassicCurveGeometry
         return new CubicPaintCurve(start, control1, control2, end);
     }
 
+    public static PaintCurveBend ScaleBendMovement(
+        CubicPaintCurve current,
+        PaintCurveBend requested,
+        double sensitivity)
+    {
+        if (!double.IsFinite(sensitivity) || sensitivity < 0.0 || sensitivity > 1.0)
+            throw new ArgumentOutOfRangeException(nameof(sensitivity));
+        double t = ClampBendParameter(requested.T);
+        PaintPoint origin = current.Evaluate(t);
+        return new PaintCurveBend(t, origin + ((requested.Target - origin) * sensitivity));
+    }
+
     public static IReadOnlyList<PaintPoint> Sample(CubicPaintCurve curve, double maximumSegmentLength)
     {
         if (!double.IsFinite(maximumSegmentLength) || maximumSegmentLength <= 0.0)

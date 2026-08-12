@@ -75,9 +75,9 @@ public static class ToolCatalog
 
 /// <summary>
 /// Holds the currently selected tool. A new save starts with <see cref="ToolId.Grab"/>
-/// selected (RAGDOLL §9). Selection changes only on an explicit pick and never from a
-/// Work/Play transition — the input-mode state machine models no tool, so a mode change
-/// cannot mutate this (RAGDOLL "Overlay and Interface", M2 invariant).
+/// selected (RAGDOLL §9). Ordinary Play/Work input-mode toggles do not carry tool semantics;
+/// deliberate tool selection routes through this state. The dedicated Work companion applies
+/// one explicit product rule on exit: it selects normal Grab before direct buddy play resumes.
 /// </summary>
 public sealed class ToolSelection
 {
