@@ -52,12 +52,27 @@ public static class AssetForgeGenerator
                 "use a cleaner transparent/uniform-background source or increase separation between the frame colour and the background.");
         }
 
-        CanonicalMesh? semanticMesh = null;
-        bool usedTemplate = recipe.Geometry.ShapeMode == ShapeMode.RoundedExtrusion &&
-            GlassesTemplateGenerator.TryGenerate(mask, foreground.Image, recipe.Geometry, out semanticMesh);
-        CanonicalMesh mesh = usedTemplate && semanticMesh is not null
-            ? semanticMesh
-            : ExtrusionGenerator.GenerateGlasses(mask, recipe.Geometry);
+        CanonicalMesh mesh;
+        bool usedTemplate;
+        if (recipe.Geometry.ShapeMode == ShapeMode.RoundedExtrusion)
+        {
+            if (diagnostics.Holes < 2 ||
+                !GlassesTemplateGenerator.TryGenerate(mask, foreground.Image, recipe.Geometry, out CanonicalMesh semanticMesh))
+            {
+                throw new InvalidOperationException(
+                    $"Rounded glasses template needs two closed lens openings, but the processed drawing contains {diagnostics.Holes}. " +
+                    "Draw a closed left and right lens/frame shape (with transparent/background space inside each lens), " +
+                    "or explicitly choose Flat silhouette extrusion in Advanced settings.");
+            }
+            mesh = semanticMesh;
+            usedTemplate = true;
+        }
+        else
+        {
+            mesh = ExtrusionGenerator.GenerateGlasses(mask, recipe.Geometry);
+            usedTemplate = false;
+        }
+
         string geometryHash = mesh.CanonicalHash();
         byte[] glb = GlbWriter.Write(mesh);
         GlbWriter.ValidateSingleMesh(glb);
