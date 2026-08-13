@@ -24,7 +24,7 @@ public sealed record GeneratedAsset(
 public static class AssetForgeGenerator
 {
     public const int SourceSize = 1024;
-    private const int RuntimeTextureBleedPixels = 4;
+    private const int FlatExtrusionTextureBleedPixels = 4;
 
     public static GeneratedAsset Generate(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe)
     {
@@ -79,11 +79,16 @@ public static class AssetForgeGenerator
         GlbWriter.ValidateSingleMesh(glb);
         string glbHash = Hashing.Sha256Hex(glb);
 
-        // First produce the exact runtime resolution, then pad that final texture by a few texels.
-        // This directly guarantees the pixels the GPU samples around a semantic frame UV are
-        // authored colour rather than a source-resolution edge that box filtering diluted.
         RgbaImage runtimeBase = PngCodec.ResizeBox(foreground.Image, recipe.Geometry.RuntimeTextureResolution);
-        RgbaImage runtime = TextureBleed.Expand(runtimeBase, RuntimeTextureBleedPixels);
+        // Rounded/template glasses are an opaque 3D surface. Their lens openings are real geometry,
+        // not texture transparency. Leaving transparent-black texels in this texture is therefore
+        // incorrect: StandardMaterial3D's opaque mode ignores alpha and those texels render black.
+        // Fill all non-authored texture space from the nearest authored colour so interpolated UVs
+        // remain faithful to the drawing from every viewing angle. Flat silhouette extrusion keeps
+        // only a small bleed because it retains the source-space surface interpretation.
+        RgbaImage runtime = usedTemplate
+            ? TextureBleed.FillTransparentWithNearestAuthoredColour(runtimeBase)
+            : TextureBleed.Expand(runtimeBase, FlatExtrusionTextureBleedPixels);
         byte[] albedo = PngCodec.EncodeRgba8(runtime);
         string albedoHash = Hashing.Sha256Hex(albedo);
         string canonical = Hashing.Sha256Hex(Encoding.UTF8.GetBytes(string.Join(
