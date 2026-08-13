@@ -39,6 +39,7 @@ public static class GlassesTemplateGeneratorV2
 
         mesh = new CanonicalMesh();
         float frameRadius = (float)settings.FrameThickness * 0.5f;
+        float bridgeRadius = BridgeThicknessAdjuster.PathRadius(frameRadius, settings);
         float depthRadius = (float)settings.Depth * 0.5f;
         int radialSegments = CrossSectionSegments(settings.Roundness);
         AddClosedFrameTube(mesh, leftWorld, leftUv, frameRadius, depthRadius, radialSegments);
@@ -57,7 +58,7 @@ public static class GlassesTemplateGeneratorV2
         if (!bridgeAdded &&
             TryTraceAuthoredBridge(grid, foreground, leftBridgeRoot, rightBridgeRoot, out List<Vector2> bridgeGrid, out List<Vector2> bridgeUv))
         {
-            AddOpenFrameTube(mesh, ToHeadLoop(grid, bridgeGrid), bridgeUv, frameRadius, depthRadius, radialSegments);
+            AddOpenFrameTube(mesh, ToHeadLoop(grid, bridgeGrid), bridgeUv, bridgeRadius, depthRadius, radialSegments);
         }
 
         int leftOuter = IndexOfMinimumX(leftWorld);
