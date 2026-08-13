@@ -6,7 +6,7 @@ namespace DesktopBuddy.AssetForge;
 public partial class AssetForgeMain : Control
 {
     private LineEdit _source = null!, _displayName = null!, _featureId = null!, _contentId = null!;
-    private SpinBox _price = null!, _sort = null!, _alpha = null!, _frameThickness = null!, _depth = null!, _roundness = null!, _bias = null!, _templeThickness = null!, _templeLength = null!, _templeDrop = null!;
+    private SpinBox _price = null!, _sort = null!, _alpha = null!, _frameThickness = null!, _depth = null!, _roundness = null!, _lightingLevel = null!, _bias = null!, _templeThickness = null!, _templeLength = null!, _templeDrop = null!;
     private OptionButton _geometryResolution = null!, _textureResolution = null!, _shapeMode = null!, _symmetry = null!;
     private AssetForgePreview _preview = null!;
     private Label _status = null!, _hashes = null!, _presetLabel = null!;
@@ -84,6 +84,15 @@ public partial class AssetForgeMain : Control
         _frameThickness = Spin(left, "Frame thickness", 0.01, 0.25, 0.005);
         _depth = Spin(left, "Frame depth", 0.01, 1.0, 0.005);
         _roundness = Spin(left, "Frame roundness", 0.0, 1.0, 0.01);
+        _lightingLevel = Spin(left, "Lighting level", 0.0, 1.0, 0.01);
+        _lightingLevel.TooltipText = "Authored-colour light floor. 0 uses scene lighting only; 0.36 is the current approved default. Exported cosmetics keep this value.";
+        _lightingLevel.ValueChanged += value =>
+        {
+            _preview.SetLightingLevel((float)value);
+            if (_generated is null) return;
+            _export.Disabled = true;
+            SetStatus("Lighting preview changed. Click Generate to commit this lighting level to the deterministic recipe before exporting.");
+        };
         _templeThickness = Spin(left, "Temple thickness", 0.01, 0.3, 0.005);
         _templeLength = Spin(left, "Temple length", 0.05, 1.5, 0.01);
         _templeDrop = Spin(left, "Temple drop", -0.5, 0.5, 0.01);
@@ -100,7 +109,7 @@ public partial class AssetForgeMain : Control
         _symmetry = Options(advanced, "Symmetry", ["Off", "Left → Right", "Right → Left", "Average both"]);
         advanced.AddChild(new Label
         {
-            Text = "glasses@2 maps the clean 1024×1024 drawing directly onto the Buddy-head guide: lens placement, dimensions, and the drawn nose bridge are authored. Temples and physical depth stay preset-controlled.",
+            Text = "glasses@2 maps the clean 1024×1024 drawing directly onto the Buddy-head guide. The two largest enclosed openings define the lens frames; complex bridge artwork is preserved as its full silhouette, including additional interior holes. Very thin/open bridges use the path fallback. Temples and physical depth stay preset-controlled.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         });
 
@@ -163,7 +172,7 @@ public partial class AssetForgeMain : Control
             _export.Disabled = false;
             MaskDiagnostics d = _generated.Diagnostics;
             string generation = _generated.UsedGlassesTemplate ? $"glasses@{recipe.PresetVersion} rounded template" : "silhouette extrusion fallback";
-            SetStatus($"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} lens hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles. Foreground: {_generated.Foreground.Summary}.");
+            SetStatus($"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} interior hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles. Lighting {recipe.LightingLevel:0.00}. Foreground: {_generated.Foreground.Summary}.");
             _hashes.Text = $"Input {_generated.InputHash[..12]}  Recipe {_generated.RecipeHash[..12]}  Geometry {_generated.GeometryHash[..12]}  Asset {_generated.CanonicalAssetHash[..12]}  ✓ deterministic output";
         }
         catch (Exception exception)
@@ -348,6 +357,7 @@ public partial class AssetForgeMain : Control
             ContentId = _contentId.Text.Trim(),
             PriceCredits = (int)_price.Value,
             SortOrder = (int)_sort.Value,
+            LightingLevel = _lightingLevel.Value,
             Geometry = defaults.Geometry with
             {
                 AlphaThreshold = _alpha.Value,
@@ -375,6 +385,7 @@ public partial class AssetForgeMain : Control
         _contentId.Text = recipe.ContentId;
         _price.Value = recipe.PriceCredits;
         _sort.Value = recipe.SortOrder;
+        _lightingLevel.Value = recipe.LightingLevel;
         _alpha.Value = recipe.Geometry.AlphaThreshold;
         _frameThickness.Value = recipe.Geometry.FrameThickness;
         _depth.Value = recipe.Geometry.Depth;
