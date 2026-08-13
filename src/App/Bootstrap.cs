@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Automation;
+using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Content;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
@@ -96,7 +97,18 @@ public partial class Bootstrap : Node
         GameResource[] resources;
         try
         {
-            resources = [CatalogueLoader.Definition];
+            GeneratedBuddyCosmeticCatalogueResource generatedCosmetics =
+                GD.Load<GeneratedBuddyCosmeticCatalogueResource>(BuddyGeneratedCosmeticRegistry.CataloguePath)
+                ?? throw new InvalidOperationException(
+                    $"Missing generated cosmetic catalogue at {BuddyGeneratedCosmeticRegistry.CataloguePath}.");
+            resources =
+            [
+                CatalogueLoader.Definition,
+                CatalogueLoader.GeneratedDefinition,
+                generatedCosmetics,
+            ];
+            _ = BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog;
+            _ = CatalogueLoader.Catalogue;
         }
         catch (Exception exception)
         {
@@ -167,7 +179,8 @@ public partial class Bootstrap : Node
             newSemanticState ? null : loadedProgress?.ActiveCharacterId);
         var characters = new CharacterStore(
             new CharacterFileSystem(),
-            characterRoot);
+            characterRoot,
+            featureCatalog: BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
         var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
         var saves = new SaveCoordinator(
             progress,

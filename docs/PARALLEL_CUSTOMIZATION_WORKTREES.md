@@ -29,7 +29,7 @@ Custom destinations can be supplied to the PowerShell script:
 
 ## Runtime/save isolation
 
-Each worktree receives a local, untracked `override.cfg`. Godot automatically loads `res://override.cfg`, so the normal `tools\play_game.bat` launcher requires no feature-specific changes.
+Each worktree receives a local, untracked `override.cfg`. Godot automatically loads `res://override.cfg`, so the normal `devtools\play_game.bat` launcher requires no feature-specific changes.
 
 Environment worktree:
 

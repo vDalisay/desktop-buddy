@@ -4,7 +4,7 @@ setlocal EnableExtensions
 if /I "%~1"=="--help" goto :help
 
 set "PROJECT_ROOT=%~dp0.."
-call "%~dp0resolve_godot.bat"
+call "%~dp0..\tools\resolve_godot.bat"
 if errorlevel 1 goto :resolve_failed
 
 set "LOG_DIR=%PROJECT_ROOT%\artifacts\logs"
@@ -20,7 +20,7 @@ echo [play_game_diagnostics] Build log: %BUILD_LOG%
 echo.
 
 pushd "%PROJECT_ROOT%"
-dotnet build "%PROJECT_ROOT%\DesktopBuddy.csproj" --configuration Debug --nologo --verbosity minimal -flp:"logfile=%BUILD_LOG%;verbosity=normal"
+call dotnet build "%PROJECT_ROOT%\DesktopBuddy.csproj" --configuration Debug --nologo --verbosity minimal -flp:"logfile=%BUILD_LOG%;verbosity=normal"
 set "BUILD_RESULT=%ERRORLEVEL%"
 if not "%BUILD_RESULT%"=="0" goto :build_failed
 
@@ -67,5 +67,5 @@ echo This launcher always pauses after Godot exits.
 echo Build log: artifacts\logs\play_game-build-latest.log
 echo Runtime log: artifacts\logs\play_game-latest.log
 echo Exit code: artifacts\logs\play_game-exit-code.txt
-echo Use tools\play_game.bat for the normal launcher.
+echo Use devtools\play_game.bat for the normal launcher.
 exit /b 0

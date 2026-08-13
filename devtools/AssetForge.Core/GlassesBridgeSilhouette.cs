@@ -1,0 +1,263 @@
+using System.Numerics;
+
+namespace DesktopBuddy.AssetForge.Core;
+
+/// <summary>
+/// Preserves complex authored bridge artwork for glasses@2 instead of reducing it to a single
+/// center-line. The bridge remains visual-only geometry in the canonical Buddy-head template
+/// coordinate system. Empty cells remain empty, so hollow arrows and other interior cut-outs are
+/// real mesh holes rather than texture transparency.
+/// </summary>
+internal static class GlassesBridgeSilhouette
+{
+    // Bridge art can intentionally extend a little way into the inner lens/frame area (for example
+    // arrow stems). Keep enough horizontal padding for that artwork, but constrain the vertical
+    // corridor so we do not duplicate the full lens frame as flat bridge geometry.
+    private const float RoiPaddingFraction = 0.055f;
+    private const float CoreInsetFraction = 0.20f;
+    private const float VerticalPaddingFraction = 0.025f;
+    private const float RequiredColumnCoverage = 0.55f;
+    private const float ComplexSolidThicknessFraction = 0.08f;
+    private const int MinimumComplexRunThickness = 3;
+
+    public static bool TryAdd(
+        CanonicalMesh mesh,
+        MaskGrid grid,
+        RgbaImage foreground,
+        Vector2 leftInner,
+        Vector2 rightInner,
+        GeometrySettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(mesh);
+        ArgumentNullException.ThrowIfNull(grid);
+        ArgumentNullException.ThrowIfNull(foreground);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        if (rightInner.X < leftInner.X)
+            (leftInner, rightInner) = (rightInner, leftInner);
+
+        float gapWidth = rightInner.X - leftInner.X;
+        if (gapWidth < 2f)
+            return false;
+
+        int padding = Math.Max(4, (int)MathF.Round(grid.Width * RoiPaddingFraction));
+        int x0 = Math.Clamp((int)MathF.Floor(leftInner.X) - padding, 0, grid.Width - 1);
+        int x1 = Math.Clamp((int)MathF.Ceiling(rightInner.X) + padding, 0, grid.Width - 1);
+        if (x1 - x0 < 2)
+            return false;
+
+        // Determine the authored bridge height from actual foreground in the middle of the lens
+        // gap, not from whichever equal-distance pair ClosestPair happened to pick vertically.
+        int coreX0 = Math.Clamp(
+            (int)MathF.Ceiling(leftInner.X + gapWidth * CoreInsetFraction),
+            0,
+            grid.Width - 1);
+        int coreX1 = Math.Clamp(
+            (int)MathF.Floor(rightInner.X - gapWidth * CoreInsetFraction),
+            0,
+            grid.Width - 1);
+        if (coreX1 < coreX0 ||
+            !TryFindAuthoredVerticalSpan(grid, coreX0, coreX1, out int authoredMinY, out int authoredMaxY))
+            return false;
+
+        int verticalPadding = Math.Max(6, (int)MathF.Round(grid.Height * VerticalPaddingFraction));
+        int y0 = Math.Clamp(authoredMinY - verticalPadding, 0, grid.Height - 1);
+        int y1 = Math.Clamp(authoredMaxY + verticalPadding, 0, grid.Height - 1);
+
+        int columnsWithForeground = 0;
+        int filledCells = 0;
+        int maxVerticalRun = 0;
+        for (int x = x0; x <= x1; x++)
+        {
+            bool columnFilled = false;
+            int run = 0;
+            for (int y = y0; y <= y1; y++)
+            {
+                if (!grid[x, y])
+                {
+                    run = 0;
+                    continue;
+                }
+
+                columnFilled = true;
+                filledCells++;
+                run++;
+                maxVerticalRun = Math.Max(maxVerticalRun, run);
+            }
+            if (columnFilled)
+                columnsWithForeground++;
+        }
+
+        int roiWidth = x1 - x0 + 1;
+        int requiredCoverage = Math.Max(2, (int)MathF.Ceiling(roiWidth * RequiredColumnCoverage));
+        if (columnsWithForeground < requiredCoverage ||
+            filledCells < requiredCoverage * 2 ||
+            maxVerticalRun < MinimumComplexRunThickness)
+            return false;
+
+        // Simple two-lens bridges stay on the rounded authored-path generator. Full silhouette
+        // mode is for bridge art whose topology actually needs it: additional enclosed cut-outs
+        // such as the owner's inward hollow arrows, or a broad solid authored shape that would be
+        // visibly destroyed by center-line skeletonization.
+        bool hasAdditionalInteriorCutouts = MaskAnalyzer.Analyze(grid).Holes > 2;
+        int thickShapeThreshold = Math.Max(
+            MinimumComplexRunThickness,
+            (int)MathF.Ceiling(grid.Height * ComplexSolidThicknessFraction));
+        bool isBroadSolidShape = maxVerticalRun >= thickShapeThreshold;
+        if (!hasAdditionalInteriorCutouts && !isBroadSolidShape)
+            return false;
+
+        int biasCells = BridgeThicknessAdjuster.BiasCells(grid, settings);
+        MaskGrid renderGrid = grid;
+        int renderX0 = x0;
+        int renderX1 = x1;
+        int renderY0 = y0;
+        int renderY1 = y1;
+        if (biasCells != 0)
+        {
+            renderGrid = BridgeThicknessAdjuster.BuildBiasedRegion(grid, x0, x1, y0, y1, biasCells);
+            int expansion = Math.Abs(biasCells) + 1;
+            renderX0 = Math.Max(0, x0 - expansion);
+            renderX1 = Math.Min(grid.Width - 1, x1 + expansion);
+            renderY0 = Math.Max(0, y0 - expansion);
+            renderY1 = Math.Min(grid.Height - 1, y1 + expansion);
+        }
+
+        int triangleCountBefore = mesh.TriangleCount;
+        float halfDepth = MathF.Max(0.001f, (float)settings.Depth * 0.5f);
+
+        // Front/back are emitted as horizontal runs rather than one quad per cell. With a non-zero
+        // bridge thickness adjustment, only this bridge-local mask is dilated/eroded; lens frames
+        // and temples remain untouched.
+        for (int y = renderY0; y <= renderY1; y++)
+        {
+            int x = renderX0;
+            while (x <= renderX1)
+            {
+                while (x <= renderX1 && !renderGrid[x, y]) x++;
+                if (x > renderX1) break;
+                int runStart = x;
+                while (x <= renderX1 && renderGrid[x, y]) x++;
+                AddFrontBackRun(mesh, grid, foreground, runStart, x, y, halfDepth);
+            }
+        }
+
+        // Zero bias preserves the historic wall behavior exactly. For a tuned bridge, boundaries
+        // come from the bridge-local adjusted mask; outside that adjusted corridor, the original
+        // frame mask still suppresses artificial caps where bridge and lens naturally overlap.
+        for (int y = renderY0; y <= renderY1; y++)
+        for (int x = renderX0; x <= renderX1; x++)
+        {
+            if (!renderGrid[x, y]) continue;
+            if (!FilledForWall(renderGrid, grid, x, y - 1, renderX0, renderX1, renderY0, renderY1)) AddWall(mesh, grid, foreground, x, y, x + 1, y, halfDepth);
+            if (!FilledForWall(renderGrid, grid, x + 1, y, renderX0, renderX1, renderY0, renderY1)) AddWall(mesh, grid, foreground, x + 1, y, x + 1, y + 1, halfDepth);
+            if (!FilledForWall(renderGrid, grid, x, y + 1, renderX0, renderX1, renderY0, renderY1)) AddWall(mesh, grid, foreground, x + 1, y + 1, x, y + 1, halfDepth);
+            if (!FilledForWall(renderGrid, grid, x - 1, y, renderX0, renderX1, renderY0, renderY1)) AddWall(mesh, grid, foreground, x, y + 1, x, y, halfDepth);
+        }
+
+        return mesh.TriangleCount > triangleCountBefore;
+    }
+
+    private static bool TryFindAuthoredVerticalSpan(
+        MaskGrid grid,
+        int x0,
+        int x1,
+        out int minY,
+        out int maxY)
+    {
+        minY = grid.Height;
+        maxY = -1;
+        for (int x = x0; x <= x1; x++)
+        for (int y = 0; y < grid.Height; y++)
+        {
+            if (!grid[x, y]) continue;
+            minY = Math.Min(minY, y);
+            maxY = Math.Max(maxY, y);
+        }
+        return maxY >= minY;
+    }
+
+    private static bool FilledForWall(
+        MaskGrid renderGrid,
+        MaskGrid sourceGrid,
+        int x,
+        int y,
+        int x0,
+        int x1,
+        int y0,
+        int y1)
+    {
+        if (x >= x0 && x <= x1 && y >= y0 && y <= y1)
+            return renderGrid[x, y];
+        return sourceGrid[x, y];
+    }
+
+    private static void AddFrontBackRun(
+        CanonicalMesh mesh,
+        MaskGrid grid,
+        RgbaImage foreground,
+        int x0,
+        int x1Exclusive,
+        int y,
+        float halfDepth)
+    {
+        Vector2 g0 = new(x0, y);
+        Vector2 g1 = new(x1Exclusive, y);
+        Vector2 g2 = new(x1Exclusive, y + 1);
+        Vector2 g3 = new(x0, y + 1);
+        Vector2 uv0 = Uv(grid, foreground, g0);
+        Vector2 uv1 = Uv(grid, foreground, g1);
+        Vector2 uv2 = Uv(grid, foreground, g2);
+        Vector2 uv3 = Uv(grid, foreground, g3);
+
+        uint f0 = mesh.AddVertex(World(grid, g0, halfDepth), uv0);
+        uint f1 = mesh.AddVertex(World(grid, g1, halfDepth), uv1);
+        uint f2 = mesh.AddVertex(World(grid, g2, halfDepth), uv2);
+        uint f3 = mesh.AddVertex(World(grid, g3, halfDepth), uv3);
+        mesh.AddTriangle(f0, f2, f1);
+        mesh.AddTriangle(f0, f3, f2);
+
+        uint b0 = mesh.AddVertex(World(grid, g0, -halfDepth), uv0);
+        uint b1 = mesh.AddVertex(World(grid, g1, -halfDepth), uv1);
+        uint b2 = mesh.AddVertex(World(grid, g2, -halfDepth), uv2);
+        uint b3 = mesh.AddVertex(World(grid, g3, -halfDepth), uv3);
+        mesh.AddTriangle(b0, b1, b2);
+        mesh.AddTriangle(b0, b2, b3);
+    }
+
+    private static void AddWall(
+        CanonicalMesh mesh,
+        MaskGrid grid,
+        RgbaImage foreground,
+        float ax,
+        float ay,
+        float bx,
+        float by,
+        float halfDepth)
+    {
+        Vector2 a = new(ax, ay);
+        Vector2 b = new(bx, by);
+        Vector2 uvA = Uv(grid, foreground, a);
+        Vector2 uvB = Uv(grid, foreground, b);
+        uint frontA = mesh.AddVertex(World(grid, a, halfDepth), uvA);
+        uint frontB = mesh.AddVertex(World(grid, b, halfDepth), uvB);
+        uint backB = mesh.AddVertex(World(grid, b, -halfDepth), uvB);
+        uint backA = mesh.AddVertex(World(grid, a, -halfDepth), uvA);
+        mesh.AddTriangle(frontA, frontB, backB);
+        mesh.AddTriangle(frontA, backB, backA);
+    }
+
+    private static Vector3 World(MaskGrid grid, Vector2 point, float z)
+    {
+        Vector2 xy = GlassesTemplateSpace.GridPointToHead(grid, point);
+        return new Vector3(xy, z);
+    }
+
+    private static Vector2 Uv(MaskGrid grid, RgbaImage foreground, Vector2 point)
+    {
+        Vector2 source = GlassesTemplateSpace.GridPointToSourcePixel(grid, point);
+        return new Vector2(
+            Math.Clamp(source.X / foreground.Width, 0f, 1f),
+            Math.Clamp(source.Y / foreground.Height, 0f, 1f));
+    }
+}

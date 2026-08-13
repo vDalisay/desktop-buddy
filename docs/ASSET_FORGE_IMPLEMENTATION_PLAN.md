@@ -1925,8 +1925,8 @@ Apply the four build boundaries in Section 4.3: `DefaultItemExcludes`, `export_p
 Add development scripts such as:
 
 ```text
-tools/build_asset_forge.bat
-tools/run_asset_forge.bat
+devtools/AssetForge/build_asset_forge.bat
+devtools/AssetForge/run_asset_forge.bat
 ```
 
 Build empty functional UI with:

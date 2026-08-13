@@ -112,7 +112,7 @@ The new gates cover catalogue/category integrity, semantic previews, non-physica
 A focused runner now performs the automated pre-owner gate:
 
 ```bat
-tools\validate_environment.bat
+devtools\verification\validate_environment.bat
 ```
 
 It builds the solution, runs the domain test project, imports the Godot project, then executes the non-duplicated closure matrices for catalogue/rendering, transactions/ownership/wallpaper, placement/snap/resize, restart restoration, the in-scene room-build flow, and paint toolbar icons. Logs/artifacts go under `.artifacts\environment`.
@@ -128,7 +128,7 @@ No additional feature implementation should be started before this gate. What re
 Run:
 
 ```bat
-tools\validate_environment.bat
+devtools\verification\validate_environment.bat
 ```
 
 Any compiler, domain-test, import, or scenario failure is implementation work and should be fixed before subjective review.

@@ -807,7 +807,7 @@ into `tests/journeys/m5_homerun_bat.json` using semantic targets and real input 
 hold primary, hold secondary for exactly `600` routed ticks, release, assert one attributed
 impact, whole-game freeze, resumed launch, and recovery). Keep `m5_baseball_bat` as the weak
 free-swing journey with its new upper bound. Update `docs/DECISIONS.md`, `CHECKLIST.md`, and
-`docs/TEST_PLAN.md`; run `tools/quick_validate.bat`, the domain suite, `homerun_bat_feel`,
+`docs/TEST_PLAN.md`; run `devtools/verification/quick_validate.bat`, the domain suite, `homerun_bat_feel`,
 presentation regressions, and both bat journeys at `--fixed-fps 120`. Then conduct the
 side-by-side owner feel review. *Accept:* every automated gate is green and the owner accepts
 the feel before the catalogue entry becomes visible.

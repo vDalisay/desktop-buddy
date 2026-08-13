@@ -222,7 +222,7 @@ Tab-swap grab):
 
 1. Keep the current provisional profiles as **A** (baseline); build candidates as
    **B** copies (`data/buddy/candidate_*.tres`, export-excluded).
-2. Owner sessions: `tools\play_buddy_lab.bat --dual` with A vs B; owner exercises
+2. Owner sessions: `devtools\play_buddy_lab.bat --dual` with A vs B; owner exercises
    dangle, fling, knockdown, recovery, walk; agent records verdicts per behavior
    (`REFERENCE_RESEARCH.md` §7 workflow, side-by-side with the v1.01 reference where
    useful).

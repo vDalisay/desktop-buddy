@@ -1,0 +1,86 @@
+name: Asset Forge CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - asset-forge
+
+env:
+  GODOT_VERSION: 4.6.1-stable
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build game solution
+        run: dotnet build DesktopBuddy.sln -c Debug
+
+      # The repository's normal CI is intentionally manual-only while six ProgressStoreTests
+      # that hard-code Windows paths are investigated on Linux. Asset Forge does not touch that
+      # store, so keep the remaining domain suite as this branch's regression gate.
+      - name: Domain unit tests (excluding known Linux-only ProgressStoreTests)
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
+
+      - name: Asset Forge deterministic Core tests
+        run: dotnet test devtools/AssetForge.Core.Tests/DesktopBuddy.AssetForge.Core.Tests.csproj -c Debug
+
+      - name: Build standalone Asset Forge
+        run: dotnet build devtools/AssetForge/DesktopBuddy.AssetForge.csproj -c Debug
+
+      - name: Verify developer-only source is excluded from the game project
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'devtools/**/*' DesktopBuddy.csproj
+          grep -F 'authoring/**/*' DesktopBuddy.csproj
+          grep -F 'shared/**/*' DesktopBuddy.csproj
+          grep -F 'devtools/*' export_presets.cfg
+          grep -F 'authoring/*' export_presets.cfg
+
+      - name: Generate and transactionally export CI glasses fixture
+        run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --ci-fixture "$PWD"
+
+      - name: Verify generated fixture by re-deriving it without Godot
+        run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --verify-all "$PWD"
+
+      - name: Download pinned Godot (.NET/mono, Linux)
+        run: |
+          set -euo pipefail
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          curl -fL --retry 3 -o godot.zip "$URL"
+          unzip -q godot.zip
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+      - name: Import game with generated glasses catalogue
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
+
+      - name: Boot smoke with generated glasses catalogue
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
+
+      - name: Exercise generated glasses catalogue, purchase, render, and persistence
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_glasses --seed=1
+
+      - name: Import standalone Asset Forge project
+        run: |
+          mkdir -p devtools/AssetForge/.generated/profiles
+          cp data/buddy/lab_buddy_look.tres devtools/AssetForge/.generated/profiles/
+          cp data/buddy/lab_buddy_visual.tres devtools/AssetForge/.generated/profiles/
+          cp data/buddy/lab_puppet_rig.tres devtools/AssetForge/.generated/profiles/
+          xvfb-run -a "$GODOT_BIN" --headless --path devtools/AssetForge --import
+
+      - name: Boot standalone Asset Forge workspace
+        run: xvfb-run -a "$GODOT_BIN" --headless --path devtools/AssetForge --quit-after 5

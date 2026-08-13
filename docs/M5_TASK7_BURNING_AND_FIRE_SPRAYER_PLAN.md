@@ -339,7 +339,7 @@ tint, and torso non-propagation.
 
 - `dotnet test`: **1036 passed, 0 failed** (baseline `999`; +18 `BurningStatusModelTests`,
   +19 `ScorchStateModelTests` after the feel-gate pass).
-- `tools\quick_validate.bat`: **passed**, now 30 steps.
+- `devtools\verification\quick_validate.bat`: **passed**, now 30 steps.
 - `burning_status` (now 21 checks): seed `1` green in `Mii3D` after feel-gate pass 4;
   prior seeds `1/7/13` green in `Mii3D` and `1/7` green in legacy.
 - `m5_fire_sprayer`: seeds `1/7` green in `Mii3D`; seeds `1/7` green in legacy.

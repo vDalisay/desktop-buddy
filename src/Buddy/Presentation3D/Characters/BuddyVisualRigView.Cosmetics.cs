@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
+using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Domain.Characters;
 using Godot;
 
@@ -71,7 +73,7 @@ public partial class BuddyVisualRigView
         UpdateVisual(CharacterFeatureSlot.Tops, appearance.Tops, ref _topAppearance, ref _topVisual);
         UpdatePairedVisual(CharacterFeatureSlot.Shoes, appearance.Shoes, ref _shoesAppearance, ref _shoesVisual, ref _rightShoesVisual);
 
-        bool hidesHair = CharacterFeatureCatalog.Shipped.TryGetDefinition(
+        bool hidesHair = BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog.TryGetDefinition(
             appearance.Headwear.ResolvedFeatureId,
             out CosmeticDefinition headwear) && headwear.HidesHair;
         if (GodotObject.IsInstanceValid(_hairVisual))
@@ -111,10 +113,7 @@ public partial class BuddyVisualRigView
 
         RemoveVisual(ref activeVisual);
         activeAppearance = appearance;
-        BuddyCosmeticVisualDefinition visual = _cosmeticVisualCatalog!.Resolve(
-            slot,
-            appearance.ResolvedFeatureId,
-            out _);
+        BuddyCosmeticVisualDefinition visual = _cosmeticVisualCatalog!.Resolve(slot, appearance.ResolvedFeatureId, out _);
         if (visual.Kind == BuddyCosmeticVisualKind.None)
             return;
 
@@ -137,10 +136,7 @@ public partial class BuddyVisualRigView
         RemoveVisual(ref primaryVisual);
         RemoveVisual(ref secondaryVisual);
         activeAppearance = appearance;
-        BuddyCosmeticVisualDefinition visual = _cosmeticVisualCatalog!.Resolve(
-            slot,
-            appearance.ResolvedFeatureId,
-            out _);
+        BuddyCosmeticVisualDefinition visual = _cosmeticVisualCatalog!.Resolve(slot, appearance.ResolvedFeatureId, out _);
         if (visual.Kind == BuddyCosmeticVisualKind.None)
             return;
         if (visual.SecondaryAnchor is not BuddyCosmeticAnchorId secondaryAnchor)
@@ -151,10 +147,7 @@ public partial class BuddyVisualRigView
         BuildVisual(primaryVisual, secondaryVisual, visual, appearance);
     }
 
-    private Node3D CreateVisualRoot(
-        CharacterFeatureSlot slot,
-        BuddyCosmeticAnchorId anchor,
-        string suffix)
+    private Node3D CreateVisualRoot(CharacterFeatureSlot slot, BuddyCosmeticAnchorId anchor, string suffix)
     {
         var root = new Node3D { Name = $"Cosmetic_{slot}_{suffix}" };
         _cosmeticAnchors[anchor].AddChild(root);
@@ -181,8 +174,7 @@ public partial class BuddyVisualRigView
                 AddEllipsoid(root, "Button", Vector3.Zero, new Vector3(0.24f, 0.18f, 0.14f), headRadius, color, visual.Layer);
                 break;
             case BuddyCosmeticVisualKind.EarsRoundTabs:
-                if (pairedRoot is null)
-                    throw new InvalidOperationException("Ear visuals require both trusted ear anchors.");
+                if (pairedRoot is null) throw new InvalidOperationException("Ear visuals require both trusted ear anchors.");
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
                 ApplyFeatureTransform(pairedRoot, appearance.Transform, headRadius);
                 AddEllipsoid(root, "LeftTab", Vector3.Zero, new Vector3(0.28f, 0.48f, 0.22f), headRadius, color, visual.Layer);
@@ -191,6 +183,10 @@ public partial class BuddyVisualRigView
             case BuddyCosmeticVisualKind.WorkClassicGlasses:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
                 AddGlasses(root, headRadius, color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.GeneratedAsset:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddGeneratedAsset(root, visual, headRadius);
                 break;
             case BuddyCosmeticVisualKind.HeadwearSoftCap:
                 AddEllipsoid(root, "Crown", Vector3.Zero, new Vector3(1.05f, 0.42f, 0.58f), headRadius, color, visual.Layer);
@@ -203,8 +199,7 @@ public partial class BuddyVisualRigView
                 AddBox(root, "RightStrap", new Vector3(torsoRadius * 0.34f, torsoRadius * 0.48f, 0), new Vector3(torsoRadius * 0.14f, torsoRadius * 0.42f, torsoRadius * 0.10f), color, visual.Layer);
                 break;
             case BuddyCosmeticVisualKind.ShoesSoftSteps:
-                if (pairedRoot is null)
-                    throw new InvalidOperationException("Shoe visuals require both trusted foot anchors.");
+                if (pairedRoot is null) throw new InvalidOperationException("Shoe visuals require both trusted foot anchors.");
                 float footRadius = PartMeshRadius(BuddyPartId.LeftFoot);
                 Vector3 shoePosition = new(0, -footRadius * 0.08f, footRadius * 0.14f);
                 Vector3 shoeScale = new(1.08f, 0.72f, 1.18f);
@@ -216,10 +211,44 @@ public partial class BuddyVisualRigView
         }
     }
 
+    private void AddGeneratedAsset(Node3D root, BuddyCosmeticVisualDefinition visual, float headRadius)
+    {
+        GeneratedBuddyCosmeticResource resource = visual.GeneratedResource
+            ?? throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' has no trusted generated resource.");
+        if (!GodotObject.IsInstanceValid(resource.MeshScene) || !GodotObject.IsInstanceValid(resource.AlbedoTexture))
+            throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' has missing imported assets.");
+
+        Node scene = resource.MeshScene!.Instantiate();
+        if (scene is not Node3D scene3D)
+        {
+            scene.QueueFree();
+            throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' GLB root must be Node3D.");
+        }
+        root.AddChild(scene3D);
+        scene3D.Name = "GeneratedMesh";
+        scene3D.Scale = Vector3.One * headRadius;
+
+        var meshes = new List<MeshInstance3D>();
+        if (scene3D is MeshInstance3D rootMesh) meshes.Add(rootMesh);
+        meshes.AddRange(scene3D.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>());
+        if (meshes.Count != 1)
+        {
+            scene3D.QueueFree();
+            throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' must contain exactly one mesh node; found {meshes.Count}.");
+        }
+
+        MeshInstance3D instance = meshes[0];
+        StandardMaterial3D material = _materials.CreateLitTexturedMaterial(resource.AlbedoTexture!, Colors.White);
+        material.ResourceName = $"BuddyGenerated_{visual.CosmeticId}";
+        material.RenderPriority = (int)visual.Layer;
+        instance.MaterialOverride = material;
+        instance.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+        instance.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit;
+    }
+
     private void EnsureCosmeticAnchors()
     {
-        if (_cosmeticAnchors.Count > 0)
-            return;
+        if (_cosmeticAnchors.Count > 0) return;
 
         float headRadius = PartMeshRadius(BuddyPartId.Head);
         float torsoRadius = PartMeshRadius(BuddyPartId.Torso);
@@ -247,15 +276,7 @@ public partial class BuddyVisualRigView
         _cosmeticAnchors.Add(id, anchor);
     }
 
-    /// <summary>
-    /// One offsetY convention across the product: a positive documented offset moves the feature
-    /// up, matching the Y-up normalized space the feature painters draw in and Godot's own +Y.
-    /// Characters saved before schema 4 carried the opposite sign here and are migrated on load.
-    /// </summary>
-    private static void ApplyFeatureTransform(
-        Node3D root,
-        in NormalizedFeatureTransform transform,
-        float radius)
+    private static void ApplyFeatureTransform(Node3D root, in NormalizedFeatureTransform transform, float radius)
     {
         root.Position = new Vector3(
             (float)transform.OffsetX * radius * 0.35f,
@@ -264,11 +285,7 @@ public partial class BuddyVisualRigView
         root.Scale = Vector3.One * (float)transform.Scale;
     }
 
-    private void AddGlasses(
-        Node3D root,
-        float radius,
-        Color color,
-        BuddyCosmeticRenderLayer layer)
+    private void AddGlasses(Node3D root, float radius, Color color, BuddyCosmeticRenderLayer layer)
     {
         float lensWidth = radius * 0.62f;
         float lensHeight = radius * 0.42f;

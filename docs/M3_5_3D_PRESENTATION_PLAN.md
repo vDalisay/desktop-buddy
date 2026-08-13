@@ -322,7 +322,7 @@ owner-manual real-game look gate pass.
 ### Task 8 — Acceptance flip, demotion, and documentation (owner-gated)
 Only after the Task 7.5 exit gate: flip the default `PresentationMode` to `Mii3D` in
 both scenes
-and rerun `tools\quick_validate.bat` plus the full `idle_soak`; demote `LegacyCircles` to
+and rerun `devtools\verification\quick_validate.bat` plus the full `idle_soak`; demote `LegacyCircles` to
 a lab-only debug view or delete it (owner choice recorded at the gate); amend
 `ARCHITECTURE.md` §14 (3D layer, mapping contract, visual/physics resource split, tool
 pattern), `ROADMAP.md` M7 wording, and `README.md` status; record in `DECISIONS.md`:
@@ -363,8 +363,8 @@ dotnet test                              # domain suite unchanged and green
 <godot> --headless --path . -- --scenario=tool_feel_reactions --seed=1
 <godot> --headless --path . -- --journey=lab_spawn_settle --seed=1
 <godot> --headless --path . -- --journey=m3_glove_strike --seed=1
-tools\play_buddy_lab.bat                 # owner A/B via the V toggle
-tools\quick_validate.bat                 # before any handoff
+devtools\play_buddy_lab.bat                 # owner A/B via the V toggle
+devtools\verification\quick_validate.bat                 # before any handoff
 ```
 
 ## Deferred

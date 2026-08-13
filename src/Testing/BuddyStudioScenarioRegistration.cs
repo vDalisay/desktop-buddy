@@ -19,5 +19,6 @@ internal static class BuddyStudioScenarioRegistration
         factories["buddy_studio_ownership_preview"] = () => new BuddyStudioOwnershipPreviewScenario();
         factories["buddy_studio_randomize"] = () => new BuddyStudioRandomizeScenario();
         factories["buddy_studio_ui_composition"] = () => new BuddyStudioUiCompositionScenario();
+        factories["asset_forge_generated_glasses"] = () => new AssetForgeGeneratedGlassesScenario();
     }
 }

@@ -3,7 +3,7 @@
 At the pre-acceptance review, automated prerequisites completed 2026-07-26 and
 were re-verified after the review-fix
 pass (`docs/M4_REVIEW_FIXES_PLAN.md`): `dotnet test` is green at 638/638,
-`tools\quick_validate.bat` passes all 15 checks, the valid headless scenario matrix
+`devtools\verification\quick_validate.bat` passes all 15 checks, the valid headless scenario matrix
 is 78/78 (39 runnable scenarios in both presentations; the window-only visual gate
 excluded and the 30-minute soak run as `idle_soak_ci`), and the valid journey matrix
 is 21/21. This review is windowed; do not run `owner_feedback_visual` headless.
@@ -78,7 +78,7 @@ Lab now owns the lifecycle command seam, the help shortcut accepts only unmodifi
 
 Automated scenarios drive the real `Ctrl+Shift+H` input chord and verify the command
 request, paused lifecycle, hidden adapter state, and restoration path. The owner then
-rechecked the repaired path through `tools\play_buddy_lab.bat`: the Buddy Lab window
+rechecked the repaired path through `devtools\play_buddy_lab.bat`: the Buddy Lab window
 disappeared, and an engineering process inspection confirmed that Godot remained alive
 and responsive in hidden low-cost operation rather than exiting.
 

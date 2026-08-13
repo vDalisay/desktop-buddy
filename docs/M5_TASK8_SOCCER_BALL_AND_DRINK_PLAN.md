@@ -198,7 +198,7 @@ message, never silently absorbed.
 - Neighbours: `baseball_pullback`, `meal_consume`, `grenade_fuse`, `consume_care_cooldown`,
   and `object_budget` all green with unmoved readings — `baseball_pullback` still measures
   launch `1575 px/s`, impact impulse `426.8`, pain `4.4`.
-- `tools\quick_validate.bat` — 31 steps, green.
+- `devtools\verification\quick_validate.bat` — 31 steps, green.
 
 **Deviations from the plan, both additive and both stated:**
 

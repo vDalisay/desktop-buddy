@@ -144,7 +144,7 @@ Extend `presentation_3d` or add a focused `presentation_look` scenario with:
   remain constant through the existing 21,600-tick soak.
 
 Rerun the full M3.5 Task 7 list explicitly under `--presentation=mii3d`, then
-`tools\quick_validate.bat`. The normal legacy baseline verdicts must remain unchanged.
+`devtools\verification\quick_validate.bat`. The normal legacy baseline verdicts must remain unchanged.
 
 ### L6 — Interactive acceptance and handoff to Task 8
 
@@ -220,7 +220,7 @@ green: `look_profile_valid`, `soft_toon_material_contract`, `transparent_safe_li
 21,600-tick soak. Full M3.5 Task 7 matrix rerun under `--presentation=mii3d`
 (`presentation_3d`, `room_resize_zoom`, `repeat_envelope`, `m3_presentation`,
 `tool_feel_reactions`, `idle_soak_ci`; journeys `lab_spawn_settle`, `m3_glove_strike`) all pass,
-and the legacy-default baseline of the same matrix is unchanged. `tools\quick_validate.bat`
+and the legacy-default baseline of the same matrix is unchanged. `devtools\verification\quick_validate.bat`
 passes (9/9). Build 0/0, domain 230/230. **L6 (interactive owner acceptance) and Task 8
 (default flip) remain owner-gated and out of scope here.**
 

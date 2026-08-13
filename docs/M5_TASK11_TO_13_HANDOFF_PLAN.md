@@ -96,7 +96,7 @@ Before the first code edit, capture the current verdict of:
 ```text
 dotnet test
 dotnet build DesktopBuddy.sln -c Debug
-tools\quick_validate.bat
+devtools\verification\quick_validate.bat
 ```
 
 The expected baseline as of 2026-08-02 is **1114/1114 domain tests** and **37/37 quick-suite steps**.
@@ -408,7 +408,7 @@ any of them changes):
 `scenes/sandbox.tscn`, `scenes/buddy_lab.tscn`, and `scenes/dual_profile_lab.tscn` to
 `res://data/grab/power_grab_profile.tres`. Same resource in all three roots.
 
-**Done when:** `dotnet build DesktopBuddy.sln -c Debug` and `tools\quick_validate.bat` green, and
+**Done when:** `dotnet build DesktopBuddy.sln -c Debug` and `devtools\verification\quick_validate.bat` green, and
 every pre-existing grab scenario still passes unchanged (they call the 2-argument `TryGrab`).
 
 ---
@@ -489,7 +489,7 @@ Repair Kit (auto-select or not), Power Grab does the same. Do **not** add a Powe
 starting-set checks already exist): every entry's `ProgressionOrder` is unique, and the ordered
 purchasable IDs equal the §1.1 sequence. Test in `Content/CataloguePolicyTests.cs`.
 
-**Done when:** `tools\quick_validate.bat` green and `BootSmokeScenario` passes with its updated
+**Done when:** `devtools\verification\quick_validate.bat` green and `BootSmokeScenario` passes with its updated
 assertion from 11A-7.
 
 ---
@@ -813,7 +813,7 @@ never be an artefact of the reset having already run.
 |---|---|---|
 | 1 | `dotnet test` | 1114 + the new tests, 0 failed |
 | 2 | `dotnet build DesktopBuddy.sln -c Debug` | 0 warnings introduced |
-| 3 | `tools\quick_validate.bat` | 37 + the new steps |
+| 3 | `devtools\verification\quick_validate.bat` | 37 + the new steps |
 | 4 | every milestone scenario and journey, `mii3d` **and** `legacy` | all pass |
 | 5 | `power_grab` + `m5_power_grab`, seeds 1 and 7, both modes | all pass |
 | 6 | `economy_calibration`, all 5 seeds × 7 strategies | all in band |
@@ -880,7 +880,7 @@ Use repository-standard commands and preserve verdicts/artifacts:
 ```text
 dotnet test
 dotnet build DesktopBuddy.sln -c Debug
-tools\quick_validate.bat
+devtools\verification\quick_validate.bat
 <godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n> --presentation=<mode> --artifacts=<dir>
 <godot> --headless --fixed-fps 120 --path . -- --journey=<id> --seed=<n> --presentation=<mode> --artifacts=<dir>
 ```

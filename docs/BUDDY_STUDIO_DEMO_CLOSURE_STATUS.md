@@ -121,7 +121,7 @@ All visible cosmetic definitions resolve an original cached Studio thumbnail. Mi
 Run:
 
 ```bat
-tools\validate_buddy_studio.bat
+devtools\verification\validate_buddy_studio.bat
 ```
 
 The focused validator performs:

@@ -43,7 +43,7 @@ Working tree changes `run/main_scene` from `scenes/bootstrap.tscn` to `scenes/bu
 `exclude_filter`, so an export from this tree ships a build whose main scene does not exist, and the
 boot-smoke contract (bootstrap composition) no longer matches normal boot.
 **Steer:** revert the working-tree change; keep bootstrap as main scene permanently. For editor
-convenience use `tools/play_buddy_lab.bat`, the editor's "Run Specific Scene" (F6/Ctrl+R on the lab
+convenience use `devtools/play_buddy_lab.bat`, the editor's "Run Specific Scene" (F6/Ctrl+R on the lab
 scene), or a `--scene` launch config — never the project main scene.
 
 ### P2. Milestone 1 journey coverage is one of four

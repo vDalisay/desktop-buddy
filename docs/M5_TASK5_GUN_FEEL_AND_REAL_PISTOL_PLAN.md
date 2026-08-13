@@ -756,7 +756,7 @@ remain a separate owner call.
 
 ## 7. Validation commands
 
-The standard three (see `tools/quick_validate.bat` and the toolchain notes): .NET build +
+The standard three (see `devtools/verification/quick_validate.bat` and the toolchain notes): .NET build +
 domain test suite (baseline 971 + new), the quick scenario suite, and the targeted
 scenario/journey runs (`pistol_fire`, the new/extended aim scenario, `m5_pistol`) across
 seeds 1/7/13 and both presentation modes. Any baseline movement is stated in the commit

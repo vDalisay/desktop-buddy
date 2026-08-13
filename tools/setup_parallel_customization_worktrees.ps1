@@ -129,7 +129,7 @@ try {
     Ensure-LocalBranch -Branch "buddy-studio"
 
     # override.cfg is deliberately local-only. Godot reads res://override.cfg automatically,
-    # so each worktree can keep using tools/play_game.bat while resolving user:// elsewhere.
+    # so each worktree can keep using devtools/play_game.bat while resolving user:// elsewhere.
     $commonDir = (& git rev-parse --git-common-dir).Trim()
     if (-not [System.IO.Path]::IsPathRooted($commonDir)) {
         $commonDir = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $commonDir))
@@ -169,7 +169,7 @@ try {
     Write-Host "Environment : $environmentWorktree"
     Write-Host "Buddy Studio: $studioWorktree"
     Write-Host ""
-    Write-Host "Each agent can run tools\play_game.bat from its own worktree concurrently."
+    Write-Host "Each agent can run devtools\play_game.bat from its own worktree concurrently."
     Write-Host "The source tree, .godot cache, bin/obj outputs, logs, and user:// saves are isolated."
     Write-Host "Your normal DesktopBuddy save directory is not used by either development workspace."
 }

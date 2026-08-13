@@ -113,7 +113,7 @@ events. Three defects followed:
 - `grab_hard_recovery`, `laboratory_controls`, `room_resize_zoom` pass (pointer interacts
   with zoom via the canvas transform now).
 - `lab_grab_throw --seed=1` passes headless **and windowed**.
-- Windowed manual smoke: run `tools/play_buddy_lab.bat`, drag a part with the mouse,
+- Windowed manual smoke: run `devtools/play_buddy_lab.bat`, drag a part with the mouse,
   confirm grab/drag/release and that clicking lab UI buttons does not grab.
 
 **Done when:** all of the above green; no `DisplayServer.GetName()` checks remain in the
@@ -362,7 +362,7 @@ review (responsiveness, impulse propagation, knockout, recovery) cannot be perfo
    criteria list as is.
 
 **Verify:** `dual_profile_smoke --seed=1` and `--seed=7` pass;
-`tools\play_buddy_lab.bat --dual` manual check — grab buddy A, press Tab, confirm grabs
+`devtools\play_buddy_lab.bat --dual` manual check — grab buddy A, press Tab, confirm grabs
 now hit buddy B only; both metrics labels update; telemetry export with `--artifacts`
 produces `telemetry_dual_profile_a/_b.jsonl` + envelopes.
 

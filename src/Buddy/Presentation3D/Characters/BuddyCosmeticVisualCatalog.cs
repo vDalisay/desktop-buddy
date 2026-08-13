@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Domain.Characters;
 
 namespace DesktopBuddy.Buddy.Presentation3D.Characters;
@@ -38,6 +39,7 @@ public enum BuddyCosmeticVisualKind
     HeadwearSoftCap,
     TopUtilityBib,
     ShoesSoftSteps,
+    GeneratedAsset,
 }
 
 public sealed record BuddyCosmeticVisualDefinition(
@@ -46,20 +48,27 @@ public sealed record BuddyCosmeticVisualDefinition(
     BuddyCosmeticAnchorId Anchor,
     BuddyCosmeticRenderLayer Layer,
     BuddyCosmeticVisualKind Kind,
-    BuddyCosmeticAnchorId? SecondaryAnchor = null);
+    BuddyCosmeticAnchorId? SecondaryAnchor = null,
+    GeneratedBuddyCosmeticResource? GeneratedResource = null);
 
 /// <summary>
-/// Closed project-owned mapping from stable cosmetic IDs to trusted render kinds and anchors.
-/// Character files can select IDs and bounded values, but can never name a Godot resource.
+/// Project-owned mapping from stable cosmetic IDs to trusted render families and anchors.
+/// Legacy shipped visuals remain procedural; Asset Forge entries arrive through the separately
+/// validated generated registry and never allow character JSON to name a resource path.
 /// </summary>
 public sealed class BuddyCosmeticVisualCatalog
 {
     private readonly IReadOnlyDictionary<string, BuddyCosmeticVisualDefinition> _definitions;
     private readonly CharacterFeatureCatalog _cosmetics;
 
-    public BuddyCosmeticVisualCatalog(CharacterFeatureCatalog? cosmetics = null)
+    public BuddyCosmeticVisualCatalog(
+        CharacterFeatureCatalog? cosmetics = null,
+        BuddyGeneratedCosmeticRegistry? generated = null)
     {
-        _cosmetics = cosmetics ?? CharacterFeatureCatalog.Shipped;
+        if (cosmetics is null && generated is null)
+            generated = BuddyGeneratedCosmeticRegistry.Current;
+        _cosmetics = cosmetics ?? generated!.FeatureCatalog;
+
         var definitions = new Dictionary<string, BuddyCosmeticVisualDefinition>(StringComparer.Ordinal);
         Add(definitions, CharacterFeatureIds.FaceClassicPlate, CharacterFeatureSlot.Face, BuddyCosmeticAnchorId.HeadFront, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.None);
         Add(definitions, CharacterFeatureIds.HairNone, CharacterFeatureSlot.Hair, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Hair, BuddyCosmeticVisualKind.None);
@@ -77,11 +86,20 @@ public sealed class BuddyCosmeticVisualCatalog
         Add(definitions, CharacterFeatureIds.ShoesNone, CharacterFeatureSlot.Shoes, BuddyCosmeticAnchorId.LeftFoot, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.None, BuddyCosmeticAnchorId.RightFoot);
         Add(definitions, CharacterFeatureIds.ShoesSoftSteps, CharacterFeatureSlot.Shoes, BuddyCosmeticAnchorId.LeftFoot, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.ShoesSoftSteps, BuddyCosmeticAnchorId.RightFoot);
 
-        foreach (BuddyCosmeticVisualDefinition definition in definitions.Values)
+        if (generated is not null)
         {
+            foreach (GeneratedBuddyCosmeticResource resource in generated.Entries)
+            {
+                if (!_cosmetics.Contains(resource.Slot, resource.FeatureId))
+                    throw new InvalidOperationException($"Generated visual '{resource.FeatureId}' is not in its composed feature catalogue.");
+                AddGenerated(definitions, resource);
+            }
+        }
+
+        foreach (BuddyCosmeticVisualDefinition definition in definitions.Values)
             if (!_cosmetics.Contains(definition.Slot, definition.CosmeticId))
                 throw new InvalidOperationException($"Visual '{definition.CosmeticId}' is not in its domain category.");
-        }
+
         foreach (CharacterFeatureSlot slot in new[]
                  {
                      CharacterFeatureSlot.Hair,
@@ -104,21 +122,36 @@ public sealed class BuddyCosmeticVisualCatalog
 
     public IEnumerable<BuddyCosmeticVisualDefinition> Definitions => _definitions.Values;
 
-    public BuddyCosmeticVisualDefinition Resolve(
-        CharacterFeatureSlot slot,
-        string cosmeticId,
-        out bool usedFallback)
+    public BuddyCosmeticVisualDefinition Resolve(CharacterFeatureSlot slot, string cosmeticId, out bool usedFallback)
     {
-        if (_definitions.TryGetValue(cosmeticId, out BuddyCosmeticVisualDefinition? definition) &&
-            definition.Slot == slot)
+        if (_definitions.TryGetValue(cosmeticId, out BuddyCosmeticVisualDefinition? definition) && definition.Slot == slot)
         {
             usedFallback = false;
             return definition;
         }
-
         string fallbackId = _cosmetics.GetDefaultId(slot);
         usedFallback = true;
         return _definitions[fallbackId];
+    }
+
+    private static void AddGenerated(
+        IDictionary<string, BuddyCosmeticVisualDefinition> definitions,
+        GeneratedBuddyCosmeticResource resource)
+    {
+        BuddyCosmeticAnchorId anchor = resource.Slot switch
+        {
+            CharacterFeatureSlot.Glasses => BuddyCosmeticAnchorId.EyeGroup,
+            _ => throw new InvalidOperationException($"Asset Forge v1 does not support generated {resource.Slot} visuals."),
+        };
+        if (!definitions.TryAdd(resource.FeatureId,
+                new BuddyCosmeticVisualDefinition(
+                    resource.FeatureId,
+                    resource.Slot,
+                    anchor,
+                    BuddyCosmeticRenderLayer.Glasses,
+                    BuddyCosmeticVisualKind.GeneratedAsset,
+                    GeneratedResource: resource)))
+            throw new InvalidOperationException($"Duplicate trusted cosmetic visual '{resource.FeatureId}'.");
     }
 
     private static void Add(

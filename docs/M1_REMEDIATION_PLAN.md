@@ -20,7 +20,7 @@ Execute tasks in order — later tasks consume earlier outputs. Read `docs/ROADM
   `dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj` green, new
   scenario/journey passing headless locally, and a CI step added to `.github/workflows/ci.yml`
   mirroring the existing step style. Verify commands are in `README.md` and
-  `tools/quick_validate.bat`.
+  `devtools/verification/quick_validate.bat`.
 - Development-only code (telemetry export, tracing) must stay out of release exports: guard with
   debug-build checks like the existing lab code and keep new lab-only scenes/data inside the
   existing `exclude_filter` paths or add to it.
@@ -146,7 +146,7 @@ Keep it cheap — this is a lab workflow, not a product feature:
    propagation, sideways knockout, recovery feel" acceptance looks like) in a short section appended
    to this file or `docs/DECISIONS.md` when the review happens.
 
-**Done when:** `tools/play_buddy_lab.bat` variant (or flag) launches the dual view; both rigs run
+**Done when:** `devtools/play_buddy_lab.bat` variant (or flag) launches the dual view; both rigs run
 seeded and stable; a scenario smoke-checks that the dual composition initializes and ticks 10
 seconds without divergence-to-NaN.
 
