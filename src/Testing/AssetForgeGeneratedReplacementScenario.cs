@@ -1,8 +1,10 @@
 using System.Linq;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
+using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Startup;
@@ -10,93 +12,136 @@ using Godot;
 
 namespace DesktopBuddy.Testing;
 
-public sealed class AssetForgeGeneratedReplacementScenario : ITestScenario
+public sealed class AssetForgeGeneratedReplacementScenario : IScenario
 {
-    public const string ScenarioId = "asset_forge_generated_replacements";
     private const string TopFeatureId = "top.ci_pear_torso";
     private const string TopContentId = "cosmetic.top.ci_pear_torso";
     private const string ShoesFeatureId = "shoes.ci_soft_foot";
     private const string ShoesContentId = "cosmetic.shoes.ci_soft_foot";
 
-    public string Id => ScenarioId;
-
-    public void Run(TestScenarioContext context)
+    public async Task<ScenarioResult> RunAsync(SceneTree tree, int seed, CancellationToken cancellationToken)
     {
-        BuddyGeneratedCosmeticRegistry registry = BuddyGeneratedCosmeticRegistry.Current;
-        Require(registry.FeatureCatalog.Contains(CharacterFeatureSlot.Tops, TopFeatureId), "Generated Top fixture was not composed into Tops.");
-        Require(registry.FeatureCatalog.Contains(CharacterFeatureSlot.Shoes, ShoesFeatureId), "Generated Shoes fixture was not composed into Shoes.");
-        Require(registry.TryGet(TopFeatureId, out GeneratedBuddyCosmeticResource topResource), "Generated Top resource was not loaded.");
-        Require(registry.TryGet(ShoesFeatureId, out GeneratedBuddyCosmeticResource shoesResource), "Generated Shoes resource was not loaded.");
-        Require(topResource.Slot == CharacterFeatureSlot.Tops, "Generated Top resource has wrong slot.");
-        Require(shoesResource.Slot == CharacterFeatureSlot.Shoes, "Generated Shoes resource has wrong slot.");
-
-        ContentCatalogue catalogue = CatalogueLoader.LoadLaunchCatalogue();
-        Require(catalogue.TryGet(TopContentId, out CatalogueEntry topSale) && topSale.PriceMilliCredits == 175_000, "Generated Top commerce entry missing or wrong price.");
-        Require(catalogue.TryGet(ShoesContentId, out CatalogueEntry shoesSale) && shoesSale.PriceMilliCredits == 160_000, "Generated Shoes commerce entry missing or wrong price.");
-
-        var visualCatalog = new BuddyCosmeticVisualCatalog(registry.FeatureCatalog, registry);
-        BuddyCosmeticVisualDefinition topVisualDefinition = visualCatalog.Resolve(CharacterFeatureSlot.Tops, TopFeatureId, out bool topFallback);
-        BuddyCosmeticVisualDefinition shoesVisualDefinition = visualCatalog.Resolve(CharacterFeatureSlot.Shoes, ShoesFeatureId, out bool shoesFallback);
-        Require(!topFallback && topVisualDefinition.ApplicationMode == BuddyCosmeticApplicationMode.PartReplacement, "Generated Top is not registered as a part replacement.");
-        Require(!shoesFallback && shoesVisualDefinition.ApplicationMode == BuddyCosmeticApplicationMode.PairedPartReplacement, "Generated Shoes are not registered as a paired part replacement.");
-
-        BuddyVisualProfile profile = ResourceLoader.Load<BuddyVisualProfile>("res://data/buddy/lab_buddy_visual.tres")
-            ?? throw new InvalidOperationException("Trusted Buddy visual profile could not be loaded.");
-        var root = new Node3D { Name = "AssetForgeReplacementScenarioRoot" };
-        context.SceneRoot.AddChild(root);
+        var checks = new List<StartupCheck>();
+        CharacterEditorScenarioSupport.Context context = await CharacterEditorScenarioSupport.Create(tree, cancellationToken);
         try
         {
-            var rig = new BuddyVisualRigView { Name = "ReplacementRig" };
-            root.AddChild(rig);
-            rig.Initialize(profile, new TestGeometrySource());
-            BuddyVisualRigTrustSnapshot before = rig.CaptureTrustSnapshot();
+            BuddyGeneratedCosmeticRegistry registry = BuddyGeneratedCosmeticRegistry.Current;
+            bool resourcesLoaded =
+                registry.FeatureCatalog.Contains(CharacterFeatureSlot.Tops, TopFeatureId) &&
+                registry.FeatureCatalog.Contains(CharacterFeatureSlot.Shoes, ShoesFeatureId) &&
+                registry.TryGet(TopFeatureId, out GeneratedBuddyCosmeticResource topResource) &&
+                registry.TryGet(ShoesFeatureId, out GeneratedBuddyCosmeticResource shoesResource) &&
+                topResource.Slot == CharacterFeatureSlot.Tops &&
+                shoesResource.Slot == CharacterFeatureSlot.Shoes;
+            checks.Add(new StartupCheck(
+                "af_generated_replacement_resources_loaded",
+                resourcesLoaded,
+                $"top={registry.FeatureCatalog.Contains(CharacterFeatureSlot.Tops, TopFeatureId)} shoes={registry.FeatureCatalog.Contains(CharacterFeatureSlot.Shoes, ShoesFeatureId)}"));
 
-            CharacterDocument document = CharacterDefaults.CreateDocument("asset-forge-generated-replacements", "Asset Forge Replacement");
+            ContentCatalogue catalogue = CatalogueLoader.Catalogue;
+            bool commerceLoaded =
+                catalogue.TryGet(TopContentId, out CatalogueEntry topSale) && topSale.PriceMilliCredits == 175_000 &&
+                catalogue.TryGet(ShoesContentId, out CatalogueEntry shoesSale) && shoesSale.PriceMilliCredits == 160_000;
+            checks.Add(new StartupCheck(
+                "af_generated_replacement_commerce_loaded",
+                commerceLoaded,
+                $"topPrice={topSale.PriceMilliCredits} shoesPrice={shoesSale.PriceMilliCredits}"));
+
+            var visualCatalog = new BuddyCosmeticVisualCatalog(registry.FeatureCatalog, registry);
+            BuddyCosmeticVisualDefinition topVisual = visualCatalog.Resolve(CharacterFeatureSlot.Tops, TopFeatureId, out bool topFallback);
+            BuddyCosmeticVisualDefinition shoesVisual = visualCatalog.Resolve(CharacterFeatureSlot.Shoes, ShoesFeatureId, out bool shoesFallback);
+            bool applicationModes = !topFallback && !shoesFallback &&
+                topVisual.ApplicationMode == BuddyCosmeticApplicationMode.PartReplacement &&
+                shoesVisual.ApplicationMode == BuddyCosmeticApplicationMode.PairedPartReplacement;
+            checks.Add(new StartupCheck(
+                "af_generated_replacement_application_modes",
+                applicationModes,
+                $"top={topVisual.ApplicationMode} shoes={shoesVisual.ApplicationMode}"));
+
+            BuddyVisualRigTrustSnapshot before = context.Preview.CaptureTrustSnapshot();
+            CharacterDocument document = CharacterDocument.CreateDefault(
+                Guid.Parse("af200000-0000-4000-8000-000000000001"),
+                "Asset Forge Replacements");
             document = CharacterDocumentEditor.WriteFeatureId(document, CharacterFeatureSlot.Tops, TopFeatureId);
             document = CharacterDocumentEditor.WriteFeatureId(document, CharacterFeatureSlot.Shoes, ShoesFeatureId);
-            CompiledCharacterAppearance compiled = CharacterCompiler.Compile(document, registry.FeatureCatalog);
-            rig.ApplyAppearance(compiled);
+            CharacterCompileResult compiled = CharacterCompiler.Compile(document, registry.FeatureCatalog);
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_compile",
+                compiled.IsSuccess && compiled.Appearance is not null,
+                $"status={compiled.Status} issues={compiled.Issues.Count}"));
 
-            Require(rig.IsPartVisualReplaced(BuddyPartId.Torso), "Generated Top did not enter torso replacement state.");
-            Require(rig.IsPartVisualReplaced(BuddyPartId.LeftFoot) && rig.IsPartVisualReplaced(BuddyPartId.RightFoot), "Generated Shoes did not replace both feet.");
-            Require(!rig.GetPartMesh(BuddyPartId.Torso).Visible && !rig.GetPartOutline(BuddyPartId.Torso).Visible, "Trusted torso visual remained visible under generated replacement.");
-            Require(!rig.GetPartMesh(BuddyPartId.LeftFoot).Visible && !rig.GetPartMesh(BuddyPartId.RightFoot).Visible, "Trusted foot meshes remained visible under generated Shoes.");
-            Require(GodotObject.IsInstanceValid(rig.GetCosmeticVisual(CharacterFeatureSlot.Tops)), "Generated Top visual root was not instantiated.");
-            Require(GodotObject.IsInstanceValid(rig.GetCosmeticVisual(CharacterFeatureSlot.Shoes)), "Generated left Shoe visual root was not instantiated.");
-            Require(GodotObject.IsInstanceValid(rig.GetPairedCosmeticVisual(CharacterFeatureSlot.Shoes)), "Generated right Shoe visual root was not instantiated.");
-            Require(CountPhysicsNodes(rig.GetCosmeticVisual(CharacterFeatureSlot.Tops)!) == 0, "Generated Top introduced physics nodes.");
-            Require(CountPhysicsNodes(rig.GetCosmeticVisual(CharacterFeatureSlot.Shoes)!) == 0, "Generated Shoes introduced physics nodes.");
-            Require(rig.TrustedGeometryMatches(before), "Generated replacements mutated trusted Buddy geometry/physics presentation inputs.");
+            if (compiled.Appearance is not null)
+            {
+                context.Preview.ApplyAppearance(compiled.Appearance);
+                context.Preview.RefreshCharacterCompositors();
+            }
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
-            CharacterDocument defaults = CharacterDefaults.CreateDocument("asset-forge-generated-replacements-default", "Asset Forge Default");
-            rig.ApplyAppearance(CharacterCompiler.Compile(defaults, registry.FeatureCatalog));
-            Require(!rig.IsPartVisualReplaced(BuddyPartId.Torso) && !rig.IsPartVisualReplaced(BuddyPartId.LeftFoot) && !rig.IsPartVisualReplaced(BuddyPartId.RightFoot), "Removing replacements did not clear replacement state.");
-            Require(rig.GetPartMesh(BuddyPartId.Torso).Visible && rig.GetPartMesh(BuddyPartId.LeftFoot).Visible && rig.GetPartMesh(BuddyPartId.RightFoot).Visible, "Trusted base visuals did not return after replacement removal.");
-            Require(rig.GetCosmeticVisual(CharacterFeatureSlot.Tops) is null && rig.GetCosmeticVisual(CharacterFeatureSlot.Shoes) is null, "Replacement visual roots remained active after defaults were restored.");
-            Require(rig.TrustedGeometryMatches(before), "Replacement removal changed trusted geometry.");
+            Node3D? topRoot = context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Tops);
+            Node3D? leftShoeRoot = context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Shoes);
+            Node3D? rightShoeRoot = context.Preview.GetPairedCosmeticVisual(CharacterFeatureSlot.Shoes);
+            bool replacementState =
+                context.Preview.IsPartVisualReplaced(BuddyPartId.Torso) &&
+                context.Preview.IsPartVisualReplaced(BuddyPartId.LeftFoot) &&
+                context.Preview.IsPartVisualReplaced(BuddyPartId.RightFoot) &&
+                !context.Preview.GetPartMesh(BuddyPartId.Torso).Visible &&
+                !context.Preview.GetPartOutline(BuddyPartId.Torso).Visible &&
+                !context.Preview.GetPartMesh(BuddyPartId.LeftFoot).Visible &&
+                !context.Preview.GetPartMesh(BuddyPartId.RightFoot).Visible &&
+                GodotObject.IsInstanceValid(topRoot) &&
+                GodotObject.IsInstanceValid(leftShoeRoot) &&
+                GodotObject.IsInstanceValid(rightShoeRoot);
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_hide_base_visuals",
+                replacementState,
+                $"torso={context.Preview.IsPartVisualReplaced(BuddyPartId.Torso)} leftFoot={context.Preview.IsPartVisualReplaced(BuddyPartId.LeftFoot)} rightFoot={context.Preview.IsPartVisualReplaced(BuddyPartId.RightFoot)}"));
 
-            context.Report.Pass(
-                Id,
-                $"Generated Top/Shoes resolved through trusted catalogue; base torso/feet were visually replaced and restored; physics nodes=0; prices={topSale.PriceMilliCredits}/{shoesSale.PriceMilliCredits}.");
+            int physicsNodes = (topRoot is null ? 0 : CountPhysics(topRoot)) +
+                               (leftShoeRoot is null ? 0 : CountPhysics(leftShoeRoot)) +
+                               (rightShoeRoot is null ? 0 : CountPhysics(rightShoeRoot));
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_visual_only",
+                physicsNodes == 0 && context.Preview.TrustedGeometryMatches(before),
+                $"physics={physicsNodes} geometryMatches={context.Preview.TrustedGeometryMatches(before)}"));
+
+            CharacterDocument defaults = CharacterDocument.CreateDefault(
+                Guid.Parse("af200000-0000-4000-8000-000000000002"),
+                "Asset Forge Defaults");
+            CharacterCompileResult defaultCompile = CharacterCompiler.Compile(defaults, registry.FeatureCatalog);
+            if (defaultCompile.Appearance is not null)
+            {
+                context.Preview.ApplyAppearance(defaultCompile.Appearance);
+                context.Preview.RefreshCharacterCompositors();
+            }
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+            bool restored =
+                !context.Preview.IsPartVisualReplaced(BuddyPartId.Torso) &&
+                !context.Preview.IsPartVisualReplaced(BuddyPartId.LeftFoot) &&
+                !context.Preview.IsPartVisualReplaced(BuddyPartId.RightFoot) &&
+                context.Preview.GetPartMesh(BuddyPartId.Torso).Visible &&
+                context.Preview.GetPartMesh(BuddyPartId.LeftFoot).Visible &&
+                context.Preview.GetPartMesh(BuddyPartId.RightFoot).Visible &&
+                context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Tops) is null &&
+                context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Shoes) is null &&
+                context.Preview.TrustedGeometryMatches(before);
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_restore_defaults",
+                restored,
+                $"torsoVisible={context.Preview.GetPartMesh(BuddyPartId.Torso).Visible} feetVisible={context.Preview.GetPartMesh(BuddyPartId.LeftFoot).Visible}/{context.Preview.GetPartMesh(BuddyPartId.RightFoot).Visible}"));
         }
         finally
         {
-            root.QueueFree();
+            await CharacterEditorScenarioSupport.Cleanup(tree, context);
         }
+
+        return CharacterEditorScenarioSupport.Result(checks, seed);
     }
 
-    private static int CountPhysicsNodes(Node root) => root.FindChildren("*", string.Empty, true, false)
-        .Count(static node => node is PhysicsBody3D or CollisionObject3D or CollisionShape3D);
-
-    private static void Require(bool condition, string message)
+    private static int CountPhysics(Node node)
     {
-        if (!condition) throw new InvalidOperationException(message);
-    }
-
-    private sealed class TestGeometrySource : IBuddyVisualTransformSource
-    {
-        public Vector3 WorldToVisual(Vector2 worldPoint) => new(worldPoint.X, -worldPoint.Y, 0f);
-        public float WorldLengthToVisual(float worldLength) => worldLength;
-        public float WorldAngleToVisual(float worldAngleRadians) => -worldAngleRadians;
+        int count = node is CollisionObject2D or CollisionObject3D or Joint2D or Joint3D ? 1 : 0;
+        foreach (Node child in node.GetChildren()) count += CountPhysics(child);
+        return count;
     }
 }
