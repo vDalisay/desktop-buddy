@@ -57,13 +57,21 @@ public static class TextureBleed
     /// glasses: the mesh contains the holes, while the material is opaque and therefore must never
     /// sample transparent texels whose RGB would otherwise render black in Godot.
     /// </summary>
-    public static RgbaImage FillTransparentWithNearestAuthoredColour(RgbaImage source, byte seedAlpha = 128)
+    public static RgbaImage FillTransparentWithNearestAuthoredColour(RgbaImage source, byte seedAlpha = 255)
     {
         ArgumentNullException.ThrowIfNull(source);
         int width = source.Width;
         int height = source.Height;
         byte[] output = source.Pixels.ToArray();
+        // Only fully covered texels carry pure authored colour; box-downscaled edge texels blend the
+        // removed background into their RGB, so seeding from them would bleed background fringe over
+        // the whole opaque frame. Thin strokes may leave no fully covered texel, so fall back.
         bool[] filled = CreateSeedMask(output, seedAlpha);
+        if (!filled.Any(static seed => seed))
+        {
+            output = source.Pixels.ToArray();
+            filled = CreateSeedMask(output, 128);
+        }
         var queue = new Queue<int>(filled.Length);
 
         // Seeds enter row-major order. Together with fixed neighbour order this gives deterministic
