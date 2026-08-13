@@ -58,7 +58,7 @@ public static class AssetForgeGenerator
         if (recipe.Geometry.ShapeMode == ShapeMode.RoundedExtrusion)
         {
             if (diagnostics.Holes < 2 ||
-                !GlassesTemplateGenerator.TryGenerate(mask, foreground.Image, recipe.Geometry, out CanonicalMesh semanticMesh))
+                !GlassesTemplateGeneratorV2.TryGenerate(mask, foreground.Image, recipe.Geometry, out CanonicalMesh semanticMesh))
             {
                 throw new InvalidOperationException(
                     $"Rounded glasses template needs two closed lens openings, but the processed drawing contains {diagnostics.Holes}. " +
@@ -81,11 +81,8 @@ public static class AssetForgeGenerator
 
         RgbaImage runtimeBase = PngCodec.ResizeBox(foreground.Image, recipe.Geometry.RuntimeTextureResolution);
         // Rounded/template glasses are an opaque 3D surface. Their lens openings are real geometry,
-        // not texture transparency. Leaving transparent-black texels in this texture is therefore
-        // incorrect: StandardMaterial3D's opaque mode ignores alpha and those texels render black.
-        // Fill all non-authored texture space from the nearest authored colour so interpolated UVs
-        // remain faithful to the drawing from every viewing angle. Flat silhouette extrusion keeps
-        // only a small bleed because it retains the source-space surface interpretation.
+        // not texture transparency. Fill every unused texture texel from nearest authored colour so
+        // the opaque generated material never samples removed-canvas RGB at interpolated UVs.
         RgbaImage runtime = usedTemplate
             ? TextureBleed.FillTransparentWithNearestAuthoredColour(runtimeBase)
             : TextureBleed.Expand(runtimeBase, FlatExtrusionTextureBleedPixels);
