@@ -21,6 +21,7 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
 {
     private const string FeatureId = "glasses.ci_pink_round";
     private const string ContentId = "cosmetic.glasses.ci_pink_round";
+    private const float ExpectedLightingLevel = 0.22f;
 
     public string Id => "asset_forge_generated_glasses";
 
@@ -34,13 +35,16 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
             bool resourceLoaded = generated.TryGet(FeatureId, out GeneratedBuddyCosmeticResource resource) &&
                 resource.Slot == CharacterFeatureSlot.Glasses &&
                 string.Equals(resource.ContentId, ContentId, StringComparison.Ordinal) &&
+                Mathf.IsEqualApprox(resource.LightingLevel, ExpectedLightingLevel) &&
                 GodotObject.IsInstanceValid(resource.MeshScene) &&
                 GodotObject.IsInstanceValid(resource.AlbedoTexture) &&
                 GodotObject.IsInstanceValid(resource.Thumbnail);
             checks.Add(new StartupCheck(
                 "af_generated_resource_imported",
                 resourceLoaded,
-                resourceLoaded ? $"hash={resource.CanonicalAssetHash}" : "CI generated glasses resource was not loaded."));
+                resourceLoaded
+                    ? $"hash={resource.CanonicalAssetHash} lighting={resource.LightingLevel:0.00}"
+                    : "CI generated glasses resource was not loaded with its authored lighting level."));
             if (!resourceLoaded)
                 return CharacterEditorScenarioSupport.Result(checks, seed);
 
@@ -134,6 +138,8 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
             }
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             Node3D? visual = context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Glasses);
+            MeshInstance3D? generatedMesh = visual as MeshInstance3D ??
+                visual?.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>().SingleOrDefault();
             int meshCount = visual is null
                 ? 0
                 : (visual is MeshInstance3D ? 1 : 0) + visual.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>().Count();
@@ -143,6 +149,14 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
                 "af_generated_glb_renders_visual_only",
                 generatedRendered,
                 $"visual={GodotObject.IsInstanceValid(visual)} meshes={meshCount} physics={physicsNodes}"));
+
+            StandardMaterial3D? generatedMaterial = generatedMesh?.MaterialOverride as StandardMaterial3D;
+            bool lightingApplied = GodotObject.IsInstanceValid(generatedMaterial) &&
+                Mathf.IsEqualApprox(generatedMaterial!.EmissionEnergyMultiplier, ExpectedLightingLevel);
+            checks.Add(new StartupCheck(
+                "af_generated_lighting_reaches_runtime_material",
+                lightingApplied,
+                $"expected={ExpectedLightingLevel:0.00} actual={generatedMaterial?.EmissionEnergyMultiplier:0.00}"));
         }
         finally
         {
