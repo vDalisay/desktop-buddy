@@ -5,6 +5,7 @@ namespace DesktopBuddy.AssetForge;
 
 public partial class AssetForgeMain
 {
+    private Label _bridgeThicknessLabel = null!;
     private SpinBox _bridgeThickness = null!;
     private bool _bridgeThicknessUiInstalled;
 
@@ -18,7 +19,7 @@ public partial class AssetForgeMain
     {
         if (_frameThickness.GetParent() is not Container controls) return;
 
-        var label = new Label { Text = "Bridge thickness adjustment (px)" };
+        _bridgeThicknessLabel = new Label { Text = "Bridge thickness adjustment (px)" };
         _bridgeThickness = new SpinBox
         {
             MinValue = -24,
@@ -28,10 +29,16 @@ public partial class AssetForgeMain
             AllowLesser = false,
             TooltipText = "Fine-tunes only the authored nose bridge. 0 preserves the drawing exactly; positive values thicken it and negative values thin it. Lens frames and temples are unchanged.",
         };
+        _bridgeThickness.ValueChanged += _ =>
+        {
+            if (_generated is null) return;
+            _export.Disabled = true;
+            SetStatus("Bridge thickness changed. Click Generate to commit the new bridge geometry before exporting.");
+        };
 
         int insertionIndex = _frameThickness.GetIndex() + 1;
-        controls.AddChild(label);
-        controls.MoveChild(label, insertionIndex);
+        controls.AddChild(_bridgeThicknessLabel);
+        controls.MoveChild(_bridgeThicknessLabel, insertionIndex);
         controls.AddChild(_bridgeThickness);
         controls.MoveChild(_bridgeThickness, insertionIndex + 1);
 
@@ -46,8 +53,18 @@ public partial class AssetForgeMain
         _openRecipeDialog.FileSelected += OpenRecipeWithBridgeThickness;
         _saveRecipeDialog.FileSelected -= SaveRecipe;
         _saveRecipeDialog.FileSelected += SaveRecipeWithBridgeThickness;
+        _migratePreset.Pressed += RefreshBridgeThicknessVisibility;
 
         _bridgeThicknessUiInstalled = true;
+        RefreshBridgeThicknessVisibility();
+    }
+
+    private void RefreshBridgeThicknessVisibility()
+    {
+        if (!GodotObject.IsInstanceValid(_bridgeThicknessLabel) || !GodotObject.IsInstanceValid(_bridgeThickness)) return;
+        bool visible = _activePresetVersion >= 2;
+        _bridgeThicknessLabel.Visible = visible;
+        _bridgeThickness.Visible = visible;
     }
 
     private AssetRecipe ReadRecipeWithBridgeThickness()
@@ -57,7 +74,7 @@ public partial class AssetForgeMain
         {
             Geometry = recipe.Geometry with
             {
-                BridgeThicknessBiasPixels = (int)_bridgeThickness.Value,
+                BridgeThicknessBiasPixels = _activePresetVersion >= 2 ? (int)_bridgeThickness.Value : 0,
             },
         };
     }
@@ -95,6 +112,7 @@ public partial class AssetForgeMain
         {
             AssetRecipe recipe = RecipeCodec.Read(File.ReadAllText(path));
             _bridgeThickness.Value = recipe.Geometry.BridgeThicknessBiasPixels;
+            RefreshBridgeThicknessVisibility();
         }
         catch
         {
