@@ -11,6 +11,7 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 public sealed class BuddyLookMaterialLibrary
 {
     private const float GeneratedCosmeticEmissionFloor = 0.36f;
+    private const string GeneratedCosmeticLightingMetadataKey = "desktop_buddy_asset_forge_lighting_level";
     private readonly BuddySharedLook _look;
     private StandardMaterial3D? _outline;
 
@@ -43,7 +44,15 @@ public sealed class BuddyLookMaterialLibrary
         StandardMaterial3D material =
             BuddySharedMaterialFactory.CreateGeneratedAssetMaterial(_look, albedo, modulation);
         material.AlbedoTextureForceSrgb = true;
-        material.EmissionEnergyMultiplier = GeneratedCosmeticEmissionFloor;
+
+        float lightingLevel = GeneratedCosmeticEmissionFloor;
+        if (albedo.HasMeta(GeneratedCosmeticLightingMetadataKey))
+        {
+            double authored = albedo.GetMeta(GeneratedCosmeticLightingMetadataKey).AsDouble();
+            if (double.IsFinite(authored))
+                lightingLevel = Math.Clamp((float)authored, 0f, 1f);
+        }
+        material.EmissionEnergyMultiplier = lightingLevel;
         return material;
     }
 
