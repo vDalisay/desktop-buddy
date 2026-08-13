@@ -15,10 +15,6 @@ public sealed record GeometrySettings
     public double AlphaThreshold { get; init; } = 0.50;
     public int ThicknessBiasPixels { get; init; }
     public double FrameThickness { get; init; } = 0.055;
-    /// <summary>
-    /// Signed source-canvas thickness adjustment applied only to the authored nose bridge.
-    /// Zero preserves the source bridge exactly; positive values thicken and negative values thin.
-    /// </summary>
     public int BridgeThicknessBiasPixels { get; init; }
     public double Depth { get; init; } = 0.065;
     public double Roundness { get; init; } = 0.85;
@@ -52,24 +48,89 @@ public sealed record AssetRecipe
     public string SourceFile { get; init; } = "source.png";
     public int PriceCredits { get; init; } = 100;
     public int SortOrder { get; init; } = 100;
-    /// <summary>
-    /// Texture-coloured emission floor applied on top of the normal Buddy scene lighting.
-    /// Zero means fully scene-lit; 0.36 preserves the approved current appearance.
-    /// </summary>
     public double LightingLevel { get; init; } = DefaultLightingLevel;
     public GeometrySettings Geometry { get; init; } = new();
     public ThumbnailSettings Thumbnail { get; init; } = new();
 
     public static AssetRecipe GlassesDefaults() => new();
 
+    public static AssetRecipe TorsoShapeDefaults() => new()
+    {
+        PresetId = "torso_shape",
+        PresetVersion = 1,
+        Category = AssetCategory.TorsoShape,
+        FeatureId = "top.new_asset",
+        ContentId = "cosmetic.top.new_asset",
+        DisplayName = "New Torso Shape",
+        Geometry = new GeometrySettings
+        {
+            GeometryResolution = 256,
+            RuntimeTextureResolution = 512,
+            Depth = 0.90,
+            Roundness = 0.90,
+            ShapeMode = ShapeMode.InflatedSolid,
+            SymmetryMode = SymmetryMode.Off,
+        },
+    };
+
+    public static AssetRecipe FootShapeDefaults() => new()
+    {
+        PresetId = "foot_shape",
+        PresetVersion = 1,
+        Category = AssetCategory.FootShape,
+        FeatureId = "shoes.new_asset",
+        ContentId = "cosmetic.shoes.new_asset",
+        DisplayName = "New Foot Shape",
+        Geometry = new GeometrySettings
+        {
+            GeometryResolution = 256,
+            RuntimeTextureResolution = 512,
+            Depth = 1.10,
+            Roundness = 0.90,
+            ShapeMode = ShapeMode.InflatedSolid,
+            SymmetryMode = SymmetryMode.Off,
+        },
+    };
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
         if (GeneratorVersion != CurrentGeneratorVersion) errors.Add($"Unsupported generator version {GeneratorVersion}.");
-        if (PresetId != "glasses" || PresetVersion is not 1 and not 2) errors.Add("Current Asset Forge supports glasses@1 and glasses@2.");
-        if (AssetFamily != AssetFamily.BuddyStudio || Category != AssetCategory.Glasses) errors.Add("Current Asset Forge exports Buddy Studio glasses only.");
-        if (!StableId(FeatureId) || !FeatureId.StartsWith("glasses.", StringComparison.Ordinal)) errors.Add("FeatureId must be a stable lowercase glasses.* ID.");
-        if (!StableId(ContentId) || !ContentId.StartsWith("cosmetic.glasses.", StringComparison.Ordinal)) errors.Add("ContentId must be a stable lowercase cosmetic.glasses.* ID.");
+
+        switch (Category)
+        {
+            case AssetCategory.Glasses:
+                if (PresetId != "glasses" || PresetVersion is not 1 and not 2)
+                    errors.Add("Glasses recipes support glasses@1 and glasses@2.");
+                ValidateIdentity(errors, AssetFamily.BuddyStudio, "glasses.", "cosmetic.glasses.");
+                if (Geometry.ShapeMode is not ShapeMode.FlatExtrusion and not ShapeMode.RoundedExtrusion)
+                    errors.Add("Glasses presets support only FlatExtrusion and RoundedExtrusion shape modes.");
+                if (!FiniteRange(Geometry.FrameThickness, 0.01, 0.25)) errors.Add("FrameThickness must be within 0.01-0.25.");
+                if (Geometry.BridgeThicknessBiasPixels is < -24 or > 24) errors.Add("BridgeThicknessBiasPixels must be within -24..24.");
+                if (!FiniteRange(Geometry.TempleThickness, 0.01, 0.3)) errors.Add("TempleThickness must be within 0.01-0.3.");
+                if (!FiniteRange(Geometry.TempleLength, 0.05, 1.5)) errors.Add("TempleLength must be within 0.05-1.5.");
+                if (!FiniteRange(Geometry.TempleDrop, -0.5, 0.5)) errors.Add("TempleDrop must be within -0.5-0.5.");
+                break;
+
+            case AssetCategory.TorsoShape:
+                if (PresetId != "torso_shape" || PresetVersion != 1)
+                    errors.Add("Torso replacements currently support torso_shape@1 only.");
+                ValidateIdentity(errors, AssetFamily.BuddyStudio, "top.", "cosmetic.top.");
+                ValidateReplacementGeometry(errors, "Torso");
+                break;
+
+            case AssetCategory.FootShape:
+                if (PresetId != "foot_shape" || PresetVersion != 1)
+                    errors.Add("Foot replacements currently support foot_shape@1 only.");
+                ValidateIdentity(errors, AssetFamily.BuddyStudio, "shoes.", "cosmetic.shoes.");
+                ValidateReplacementGeometry(errors, "Foot");
+                break;
+
+            default:
+                errors.Add($"Asset category {Category} has a template contract but its generator is not implemented yet.");
+                break;
+        }
+
         if (string.IsNullOrWhiteSpace(DisplayName) || DisplayName.Length > 80) errors.Add("DisplayName must contain 1-80 characters.");
         if (!string.Equals(SourceFile, "source.png", StringComparison.Ordinal)) errors.Add("Recipe source must be source.png.");
         if (PriceCredits <= 0 || PriceCredits > 100000) errors.Add("PriceCredits must be within 1-100000.");
@@ -79,17 +140,27 @@ public sealed record AssetRecipe
         if (Geometry.RuntimeTextureResolution is < 64 or > 1024 || 1024 % Geometry.RuntimeTextureResolution != 0) errors.Add("RuntimeTextureResolution must be a 64-1024 divisor of 1024.");
         if (!FiniteRange(Geometry.AlphaThreshold, 0.01, 0.99)) errors.Add("AlphaThreshold must be within 0.01-0.99.");
         if (Geometry.ThicknessBiasPixels is < -8 or > 8) errors.Add("ThicknessBiasPixels must be within -8..8.");
-        if (!FiniteRange(Geometry.FrameThickness, 0.01, 0.25)) errors.Add("FrameThickness must be within 0.01-0.25.");
-        if (Geometry.BridgeThicknessBiasPixels is < -24 or > 24) errors.Add("BridgeThicknessBiasPixels must be within -24..24.");
-        if (!FiniteRange(Geometry.Depth, 0.01, 1.0)) errors.Add("Depth must be within 0.01-1.0.");
+        if (!FiniteRange(Geometry.Depth, 0.01, 1.5)) errors.Add("Depth must be within 0.01-1.5.");
         if (!FiniteRange(Geometry.Roundness, 0, 1)) errors.Add("Roundness must be within 0-1.");
-        if (Geometry.ShapeMode is not ShapeMode.FlatExtrusion and not ShapeMode.RoundedExtrusion)
-            errors.Add("Glasses presets support only FlatExtrusion and RoundedExtrusion shape modes.");
-        if (!FiniteRange(Geometry.TempleThickness, 0.01, 0.3)) errors.Add("TempleThickness must be within 0.01-0.3.");
-        if (!FiniteRange(Geometry.TempleLength, 0.05, 1.5)) errors.Add("TempleLength must be within 0.05-1.5.");
-        if (!FiniteRange(Geometry.TempleDrop, -0.5, 0.5)) errors.Add("TempleDrop must be within -0.5-0.5.");
         if (!FiniteRange(Thumbnail.Padding, 0, 0.45)) errors.Add("Thumbnail padding must be within 0-0.45.");
         return errors;
+    }
+
+    private void ValidateIdentity(List<string> errors, AssetFamily family, string featurePrefix, string contentPrefix)
+    {
+        if (AssetFamily != family) errors.Add($"{Category} must use asset family {family}.");
+        if (!StableId(FeatureId) || !FeatureId.StartsWith(featurePrefix, StringComparison.Ordinal))
+            errors.Add($"FeatureId must be a stable lowercase {featurePrefix}* ID.");
+        if (!StableId(ContentId) || !ContentId.StartsWith(contentPrefix, StringComparison.Ordinal))
+            errors.Add($"ContentId must be a stable lowercase {contentPrefix}* ID.");
+    }
+
+    private void ValidateReplacementGeometry(List<string> errors, string label)
+    {
+        if (Geometry.ShapeMode is not ShapeMode.RoundedExtrusion and not ShapeMode.InflatedSolid)
+            errors.Add($"{label} replacement presets support RoundedExtrusion or InflatedSolid shape modes.");
+        if (Geometry.BridgeThicknessBiasPixels != 0)
+            errors.Add("BridgeThicknessBiasPixels is glasses-only and must be zero for part replacements.");
     }
 
     private static bool StableId(string value)
@@ -146,8 +217,6 @@ public static class RecipeCodec
             writer.WriteNumber("alphaThreshold", g.AlphaThreshold);
             writer.WriteNumber("thicknessBiasPixels", g.ThicknessBiasPixels);
             writer.WriteNumber("frameThickness", g.FrameThickness);
-            // Keep default-valued legacy/current recipes byte-canonical: bridge thickness is an
-            // optional glasses@2 authoring refinement and zero means the pre-existing behavior.
             if (g.BridgeThicknessBiasPixels != 0)
                 writer.WriteNumber("bridgeThicknessBiasPixels", g.BridgeThicknessBiasPixels);
             writer.WriteNumber("depth", g.Depth);

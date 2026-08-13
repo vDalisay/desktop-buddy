@@ -13,6 +13,7 @@ public enum BuddyCosmeticAnchorId
     LeftEar,
     RightEar,
     EyeGroup,
+    TorsoBody,
     TorsoFront,
     TorsoAttachment,
     LeftFoot,
@@ -42,6 +43,13 @@ public enum BuddyCosmeticVisualKind
     GeneratedAsset,
 }
 
+public enum BuddyCosmeticApplicationMode
+{
+    Attachment,
+    PartReplacement,
+    PairedPartReplacement,
+}
+
 public sealed record BuddyCosmeticVisualDefinition(
     string CosmeticId,
     CharacterFeatureSlot Slot,
@@ -49,7 +57,8 @@ public sealed record BuddyCosmeticVisualDefinition(
     BuddyCosmeticRenderLayer Layer,
     BuddyCosmeticVisualKind Kind,
     BuddyCosmeticAnchorId? SecondaryAnchor = null,
-    GeneratedBuddyCosmeticResource? GeneratedResource = null);
+    GeneratedBuddyCosmeticResource? GeneratedResource = null,
+    BuddyCosmeticApplicationMode ApplicationMode = BuddyCosmeticApplicationMode.Attachment);
 
 /// <summary>
 /// Project-owned mapping from stable cosmetic IDs to trusted render families and anchors.
@@ -81,10 +90,12 @@ public sealed class BuddyCosmeticVisualCatalog
         Add(definitions, CharacterFeatureIds.GlassesWorkClassic, CharacterFeatureSlot.Glasses, BuddyCosmeticAnchorId.EyeGroup, BuddyCosmeticRenderLayer.Glasses, BuddyCosmeticVisualKind.WorkClassicGlasses);
         Add(definitions, CharacterFeatureIds.HeadwearNone, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.None);
         Add(definitions, CharacterFeatureIds.HeadwearSoftCap, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.HeadwearSoftCap);
-        Add(definitions, CharacterFeatureIds.TopNone, CharacterFeatureSlot.Tops, BuddyCosmeticAnchorId.TorsoFront, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.None);
-        Add(definitions, CharacterFeatureIds.TopUtilityBib, CharacterFeatureSlot.Tops, BuddyCosmeticAnchorId.TorsoFront, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.TopUtilityBib);
+        Add(definitions, CharacterFeatureIds.TopNone, CharacterFeatureSlot.Tops, BuddyCosmeticAnchorId.TorsoBody, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.None);
+        Add(definitions, CharacterFeatureIds.TopUtilityBib, CharacterFeatureSlot.Tops, BuddyCosmeticAnchorId.TorsoBody, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.TopUtilityBib,
+            applicationMode: BuddyCosmeticApplicationMode.PartReplacement);
         Add(definitions, CharacterFeatureIds.ShoesNone, CharacterFeatureSlot.Shoes, BuddyCosmeticAnchorId.LeftFoot, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.None, BuddyCosmeticAnchorId.RightFoot);
-        Add(definitions, CharacterFeatureIds.ShoesSoftSteps, CharacterFeatureSlot.Shoes, BuddyCosmeticAnchorId.LeftFoot, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.ShoesSoftSteps, BuddyCosmeticAnchorId.RightFoot);
+        Add(definitions, CharacterFeatureIds.ShoesSoftSteps, CharacterFeatureSlot.Shoes, BuddyCosmeticAnchorId.LeftFoot, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.ShoesSoftSteps, BuddyCosmeticAnchorId.RightFoot,
+            applicationMode: BuddyCosmeticApplicationMode.PairedPartReplacement);
 
         if (generated is not null)
         {
@@ -138,19 +149,36 @@ public sealed class BuddyCosmeticVisualCatalog
         IDictionary<string, BuddyCosmeticVisualDefinition> definitions,
         GeneratedBuddyCosmeticResource resource)
     {
-        BuddyCosmeticAnchorId anchor = resource.Slot switch
+        (BuddyCosmeticAnchorId anchor, BuddyCosmeticRenderLayer layer, BuddyCosmeticAnchorId? secondary,
+            BuddyCosmeticApplicationMode applicationMode) = resource.Slot switch
         {
-            CharacterFeatureSlot.Glasses => BuddyCosmeticAnchorId.EyeGroup,
-            _ => throw new InvalidOperationException($"Asset Forge v1 does not support generated {resource.Slot} visuals."),
+            CharacterFeatureSlot.Glasses => (
+                BuddyCosmeticAnchorId.EyeGroup,
+                BuddyCosmeticRenderLayer.Glasses,
+                null,
+                BuddyCosmeticApplicationMode.Attachment),
+            CharacterFeatureSlot.Tops => (
+                BuddyCosmeticAnchorId.TorsoBody,
+                BuddyCosmeticRenderLayer.Top,
+                null,
+                BuddyCosmeticApplicationMode.PartReplacement),
+            CharacterFeatureSlot.Shoes => (
+                BuddyCosmeticAnchorId.LeftFoot,
+                BuddyCosmeticRenderLayer.Top,
+                BuddyCosmeticAnchorId.RightFoot,
+                BuddyCosmeticApplicationMode.PairedPartReplacement),
+            _ => throw new InvalidOperationException($"Asset Forge does not support generated {resource.Slot} visuals yet."),
         };
         if (!definitions.TryAdd(resource.FeatureId,
                 new BuddyCosmeticVisualDefinition(
                     resource.FeatureId,
                     resource.Slot,
                     anchor,
-                    BuddyCosmeticRenderLayer.Glasses,
+                    layer,
                     BuddyCosmeticVisualKind.GeneratedAsset,
-                    GeneratedResource: resource)))
+                    secondary,
+                    resource,
+                    applicationMode)))
             throw new InvalidOperationException($"Duplicate trusted cosmetic visual '{resource.FeatureId}'.");
     }
 
@@ -161,9 +189,12 @@ public sealed class BuddyCosmeticVisualCatalog
         BuddyCosmeticAnchorId anchor,
         BuddyCosmeticRenderLayer layer,
         BuddyCosmeticVisualKind kind,
-        BuddyCosmeticAnchorId? secondaryAnchor = null)
+        BuddyCosmeticAnchorId? secondaryAnchor = null,
+        GeneratedBuddyCosmeticResource? generatedResource = null,
+        BuddyCosmeticApplicationMode applicationMode = BuddyCosmeticApplicationMode.Attachment)
     {
-        if (!definitions.TryAdd(id, new BuddyCosmeticVisualDefinition(id, slot, anchor, layer, kind, secondaryAnchor)))
+        if (!definitions.TryAdd(id, new BuddyCosmeticVisualDefinition(
+                id, slot, anchor, layer, kind, secondaryAnchor, generatedResource, applicationMode)))
             throw new InvalidOperationException($"Duplicate trusted cosmetic visual '{id}'.");
     }
 }
