@@ -14,7 +14,7 @@ internal static class GlassesBridgeSilhouette
     // arrow stems). Keep enough horizontal padding for that artwork, but constrain the vertical
     // corridor so we do not duplicate the full lens frame as flat bridge geometry.
     private const float RoiPaddingFraction = 0.055f;
-    private const float VerticalBandFraction = 0.09f;
+    private const float VerticalBandFraction = 0.082f;
     private const float RequiredColumnCoverage = 0.55f;
     private const int MinimumComplexRunThickness = 3;
 
@@ -78,8 +78,6 @@ internal static class GlassesBridgeSilhouette
         int triangleCountBefore = mesh.TriangleCount;
         float halfDepth = MathF.Max(0.001f, (float)settings.Depth * 0.5f);
 
-        // Front/back are emitted as horizontal runs rather than one quad per cell. This preserves
-        // the exact mask (including holes) while keeping arrow-like bridge artwork inexpensive.
         for (int y = y0; y <= y1; y++)
         {
             int x = x0;
@@ -93,9 +91,6 @@ internal static class GlassesBridgeSilhouette
             }
         }
 
-        // Boundary walls are driven by the global source mask, not merely the clipped ROI. That
-        // avoids adding artificial caps where a bridge naturally joins a lens/frame while still
-        // producing walls around authored interior cut-outs.
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
         {
