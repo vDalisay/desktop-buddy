@@ -1,0 +1,186 @@
+using System.Numerics;
+
+namespace DesktopBuddy.AssetForge.Core;
+
+/// <summary>
+/// Preserves complex authored bridge artwork for glasses@2 instead of reducing it to a single
+/// center-line. The bridge remains visual-only geometry in the canonical Buddy-head template
+/// coordinate system. Empty cells remain empty, so hollow arrows and other interior cut-outs are
+/// real mesh holes rather than texture transparency.
+/// </summary>
+internal static class GlassesBridgeSilhouette
+{
+    private const float RoiPaddingFraction = 0.04f;
+    private const float VerticalBandFraction = 0.20f;
+    private const float RequiredColumnCoverage = 0.55f;
+    private const int MinimumComplexRunThickness = 3;
+
+    public static bool TryAdd(
+        CanonicalMesh mesh,
+        MaskGrid grid,
+        RgbaImage foreground,
+        Vector2 leftInner,
+        Vector2 rightInner,
+        GeometrySettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(mesh);
+        ArgumentNullException.ThrowIfNull(grid);
+        ArgumentNullException.ThrowIfNull(foreground);
+        ArgumentNullException.ThrowIfNull(settings);
+
+        if (rightInner.X < leftInner.X)
+            (leftInner, rightInner) = (rightInner, leftInner);
+
+        int padding = Math.Max(4, (int)MathF.Round(grid.Width * RoiPaddingFraction));
+        int x0 = Math.Clamp((int)MathF.Floor(leftInner.X) - padding, 0, grid.Width - 1);
+        int x1 = Math.Clamp((int)MathF.Ceiling(rightInner.X) + padding, 0, grid.Width - 1);
+        if (x1 - x0 < 2)
+            return false;
+
+        int verticalBand = Math.Max(10, (int)MathF.Round(grid.Height * VerticalBandFraction));
+        int y0 = Math.Clamp((int)MathF.Floor(MathF.Min(leftInner.Y, rightInner.Y)) - verticalBand, 0, grid.Height - 1);
+        int y1 = Math.Clamp((int)MathF.Ceiling(MathF.Max(leftInner.Y, rightInner.Y)) + verticalBand, 0, grid.Height - 1);
+
+        int columnsWithForeground = 0;
+        int filledCells = 0;
+        int maxVerticalRun = 0;
+        for (int x = x0; x <= x1; x++)
+        {
+            bool columnFilled = false;
+            int run = 0;
+            for (int y = y0; y <= y1; y++)
+            {
+                if (!grid[x, y])
+                {
+                    run = 0;
+                    continue;
+                }
+
+                columnFilled = true;
+                filledCells++;
+                run++;
+                maxVerticalRun = Math.Max(maxVerticalRun, run);
+            }
+            if (columnFilled)
+                columnsWithForeground++;
+        }
+
+        int roiWidth = x1 - x0 + 1;
+        int requiredCoverage = Math.Max(2, (int)MathF.Ceiling(roiWidth * RequiredColumnCoverage));
+        if (columnsWithForeground < requiredCoverage ||
+            filledCells < requiredCoverage * 2 ||
+            maxVerticalRun < MinimumComplexRunThickness)
+            return false;
+
+        int triangleCountBefore = mesh.TriangleCount;
+        float halfDepth = MathF.Max(0.001f, (float)settings.Depth * 0.5f);
+
+        // Front/back are emitted as horizontal runs rather than one quad per cell. This preserves
+        // the exact mask (including holes) while keeping arrow-like bridge artwork inexpensive.
+        for (int y = y0; y <= y1; y++)
+        {
+            int x = x0;
+            while (x <= x1)
+            {
+                while (x <= x1 && !grid[x, y]) x++;
+                if (x > x1) break;
+                int runStart = x;
+                while (x <= x1 && grid[x, y]) x++;
+                AddFrontBackRun(mesh, grid, foreground, runStart, x, y, halfDepth);
+            }
+        }
+
+        // Boundary walls are driven by the global source mask, not merely the clipped ROI. That
+        // avoids adding artificial caps where a bridge naturally joins a lens/frame while still
+        // producing walls around authored interior cut-outs.
+        for (int y = y0; y <= y1; y++)
+        for (int x = x0; x <= x1; x++)
+        {
+            if (!grid[x, y]) continue;
+            if (!Filled(grid, x, y - 1)) AddWall(mesh, grid, foreground, x, y, x + 1, y, halfDepth);       // top
+            if (!Filled(grid, x + 1, y)) AddWall(mesh, grid, foreground, x + 1, y, x + 1, y + 1, halfDepth); // right
+            if (!Filled(grid, x, y + 1)) AddWall(mesh, grid, foreground, x + 1, y + 1, x, y + 1, halfDepth); // bottom
+            if (!Filled(grid, x - 1, y)) AddWall(mesh, grid, foreground, x, y + 1, x, y, halfDepth);       // left
+        }
+
+        return mesh.TriangleCount > triangleCountBefore;
+    }
+
+    private static bool Filled(MaskGrid grid, int x, int y) =>
+        x >= 0 && y >= 0 && x < grid.Width && y < grid.Height && grid[x, y];
+
+    private static void AddFrontBackRun(
+        CanonicalMesh mesh,
+        MaskGrid grid,
+        RgbaImage foreground,
+        int x0,
+        int x1Exclusive,
+        int y,
+        float halfDepth)
+    {
+        Vector2 g0 = new(x0, y);
+        Vector2 g1 = new(x1Exclusive, y);
+        Vector2 g2 = new(x1Exclusive, y + 1);
+        Vector2 g3 = new(x0, y + 1);
+        Vector2 uv0 = Uv(grid, foreground, g0);
+        Vector2 uv1 = Uv(grid, foreground, g1);
+        Vector2 uv2 = Uv(grid, foreground, g2);
+        Vector2 uv3 = Uv(grid, foreground, g3);
+
+        uint f0 = mesh.AddVertex(World(grid, g0, halfDepth), uv0);
+        uint f1 = mesh.AddVertex(World(grid, g1, halfDepth), uv1);
+        uint f2 = mesh.AddVertex(World(grid, g2, halfDepth), uv2);
+        uint f3 = mesh.AddVertex(World(grid, g3, halfDepth), uv3);
+        // Grid Y grows downward while Buddy-head Y grows upward, so this winding faces +Z.
+        mesh.AddTriangle(f0, f2, f1);
+        mesh.AddTriangle(f0, f3, f2);
+
+        uint b0 = mesh.AddVertex(World(grid, g0, -halfDepth), uv0);
+        uint b1 = mesh.AddVertex(World(grid, g1, -halfDepth), uv1);
+        uint b2 = mesh.AddVertex(World(grid, g2, -halfDepth), uv2);
+        uint b3 = mesh.AddVertex(World(grid, g3, -halfDepth), uv3);
+        mesh.AddTriangle(b0, b1, b2);
+        mesh.AddTriangle(b0, b2, b3);
+    }
+
+    /// <summary>
+    /// Adds a clockwise-in-grid boundary edge. Because template Y is inverted into Buddy-head
+    /// space, this ordering gives the side wall an outward-facing normal for top/right/bottom/left
+    /// edges respectively.
+    /// </summary>
+    private static void AddWall(
+        CanonicalMesh mesh,
+        MaskGrid grid,
+        RgbaImage foreground,
+        float ax,
+        float ay,
+        float bx,
+        float by,
+        float halfDepth)
+    {
+        Vector2 a = new(ax, ay);
+        Vector2 b = new(bx, by);
+        Vector2 uvA = Uv(grid, foreground, a);
+        Vector2 uvB = Uv(grid, foreground, b);
+        uint frontA = mesh.AddVertex(World(grid, a, halfDepth), uvA);
+        uint frontB = mesh.AddVertex(World(grid, b, halfDepth), uvB);
+        uint backB = mesh.AddVertex(World(grid, b, -halfDepth), uvB);
+        uint backA = mesh.AddVertex(World(grid, a, -halfDepth), uvA);
+        mesh.AddTriangle(frontA, frontB, backB);
+        mesh.AddTriangle(frontA, backB, backA);
+    }
+
+    private static Vector3 World(MaskGrid grid, Vector2 point, float z)
+    {
+        Vector2 xy = GlassesTemplateSpace.GridPointToHead(grid, point);
+        return new Vector3(xy, z);
+    }
+
+    private static Vector2 Uv(MaskGrid grid, RgbaImage foreground, Vector2 point)
+    {
+        Vector2 source = GlassesTemplateSpace.GridPointToSourcePixel(grid, point);
+        return new Vector2(
+            Math.Clamp(source.X / foreground.Width, 0f, 1f),
+            Math.Clamp(source.Y / foreground.Height, 0f, 1f));
+    }
+}
