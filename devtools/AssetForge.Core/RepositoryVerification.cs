@@ -17,11 +17,6 @@ public sealed record RepositoryRegenerationResult(
     IReadOnlyList<string> RegeneratedFeatureIds,
     RepositoryVerificationResult Verification);
 
-/// <summary>
-/// Pure .NET regeneration/verification for committed Asset Forge content. This deliberately
-/// does not depend on Godot: source + canonical recipe are enough to reproduce GLB and albedo
-/// bytes and to validate the trusted metadata that points at them.
-/// </summary>
 public static class RepositoryAssetVerifier
 {
     public static RepositoryVerificationResult VerifyAll(string repositoryRoot)
@@ -76,6 +71,7 @@ public static class RepositoryAssetVerifier
                     $"ContentId = \"{Escape(recipe.ContentId)}\"",
                     $"DisplayName = \"{Escape(recipe.DisplayName)}\"",
                     $"SortOrder = {recipe.SortOrder}",
+                    GeneratedCosmeticLightingPersistence.ExpectedMarker(recipe),
                     $"GeneratorVersion = {recipe.GeneratorVersion}",
                     $"CanonicalAssetHash = \"{expected.CanonicalAssetHash}\"",
                     $"res://assets/generated/cosmetics/{recipe.FeatureId}/mesh.glb",
@@ -129,10 +125,7 @@ public static class RepositoryAssetVerifier
         return new AssetVerificationResult(displayId, passed, diagnostics);
     }
 
-    private static void VerifyNoOrphans(
-        string root,
-        IReadOnlyList<AssetVerificationResult> assets,
-        List<string> diagnostics)
+    private static void VerifyNoOrphans(string root, IReadOnlyList<AssetVerificationResult> assets, List<string> diagnostics)
     {
         var featureIds = assets.Select(static asset => asset.FeatureId).ToHashSet(StringComparer.Ordinal);
         string cosmeticDir = Path.Combine(root, "data", "cosmetics", "generated");
@@ -241,6 +234,7 @@ public static class RepositoryAssetRegenerator
         string thumbnailPath = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId, "thumbnail.png");
         byte[] thumbnail = File.Exists(thumbnailPath) ? File.ReadAllBytes(thumbnailPath) : generated.AlbedoPng;
         RepositoryExporter.ExportGlasses(root, source, generated, thumbnail);
+        GeneratedCosmeticLightingPersistence.Apply(root, recipe);
         return recipe.FeatureId;
     }
 }
