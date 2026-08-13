@@ -15,6 +15,11 @@ public sealed record GeometrySettings
     public double AlphaThreshold { get; init; } = 0.50;
     public int ThicknessBiasPixels { get; init; }
     public double FrameThickness { get; init; } = 0.055;
+    /// <summary>
+    /// Signed source-canvas thickness adjustment applied only to the authored nose bridge.
+    /// Zero preserves the source bridge exactly; positive values thicken and negative values thin.
+    /// </summary>
+    public int BridgeThicknessBiasPixels { get; init; }
     public double Depth { get; init; } = 0.065;
     public double Roundness { get; init; } = 0.85;
     public ShapeMode ShapeMode { get; init; } = ShapeMode.RoundedExtrusion;
@@ -75,6 +80,7 @@ public sealed record AssetRecipe
         if (!FiniteRange(Geometry.AlphaThreshold, 0.01, 0.99)) errors.Add("AlphaThreshold must be within 0.01-0.99.");
         if (Geometry.ThicknessBiasPixels is < -8 or > 8) errors.Add("ThicknessBiasPixels must be within -8..8.");
         if (!FiniteRange(Geometry.FrameThickness, 0.01, 0.25)) errors.Add("FrameThickness must be within 0.01-0.25.");
+        if (Geometry.BridgeThicknessBiasPixels is < -24 or > 24) errors.Add("BridgeThicknessBiasPixels must be within -24..24.");
         if (!FiniteRange(Geometry.Depth, 0.01, 1.0)) errors.Add("Depth must be within 0.01-1.0.");
         if (!FiniteRange(Geometry.Roundness, 0, 1)) errors.Add("Roundness must be within 0-1.");
         if (Geometry.ShapeMode is not ShapeMode.FlatExtrusion and not ShapeMode.RoundedExtrusion)
@@ -140,6 +146,10 @@ public static class RecipeCodec
             writer.WriteNumber("alphaThreshold", g.AlphaThreshold);
             writer.WriteNumber("thicknessBiasPixels", g.ThicknessBiasPixels);
             writer.WriteNumber("frameThickness", g.FrameThickness);
+            // Keep default-valued legacy/current recipes byte-canonical: bridge thickness is an
+            // optional glasses@2 authoring refinement and zero means the pre-existing behavior.
+            if (g.BridgeThicknessBiasPixels != 0)
+                writer.WriteNumber("bridgeThicknessBiasPixels", g.BridgeThicknessBiasPixels);
             writer.WriteNumber("depth", g.Depth);
             writer.WriteNumber("roundness", g.Roundness);
             writer.WriteNumber("shapeMode", (int)g.ShapeMode);
