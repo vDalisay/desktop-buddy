@@ -20,8 +20,6 @@ public readonly record struct CharacterEditorModeSnapshot(
 /// </summary>
 public sealed class CharacterEditorModeCoordinator
 {
-    public static readonly Vector2I EditorClientSize = new(960, 720);
-
     private readonly DesktopWindowController _window;
     private readonly DesktopShellController _shell;
     private readonly LifecycleCoordinator _lifecycle;
@@ -49,7 +47,9 @@ public sealed class CharacterEditorModeCoordinator
         if (IsActive)
             return false;
 
-        WindowSettings compact = _window.CompactWindowSettings;
+        WindowSettings compact = _window.LayoutMode == WindowLayoutMode.Compact
+            ? _window.CurrentSettings
+            : _window.CompactWindowSettings;
         _snapshot = new CharacterEditorModeSnapshot(
             compact,
             _window.LayoutMode,
@@ -61,8 +61,7 @@ public sealed class CharacterEditorModeCoordinator
         if (_window.LayoutMode == WindowLayoutMode.FullscreenOverlay)
             _window.TrySetLayoutMode(WindowLayoutMode.Compact, _window.FullscreenMonitor);
 
-        Rect2I candidate = new(compact.Rect.Position, EditorClientSize);
-        Rect2I recovered = _window.ResolvePlacement(candidate);
+        Rect2I recovered = _window.ResolvePlacement(compact.Rect);
         _window.ApplyWindowSettings(compact with
         {
             Rect = recovered,

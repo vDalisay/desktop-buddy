@@ -1,18 +1,20 @@
 # Desktop Buddy — Potion Shop / Effect Consumables Concept
 
-Status: **Approved roadmap addition; detailed design still pending**  
+Status: **Approved Full Release roadmap addition; detailed design still pending**  
 Recorded: 2026-08-11  
-Target: Steam demo before the final polish/content-complete pass
+Target: **Full Release — explicitly excluded from Steam Demo scope**
 
 ## 1. Product goal
 
-Add a dedicated Potion Shop that lets the player spend earned currency on temporary, highly visible effects for the buddy. The feature should create short, toy-like moments that are easy to understand, fun to combine with normal tools, and visually useful for the Steam demo/trailer.
+Add a dedicated Potion Shop that lets the player spend earned currency on temporary, highly visible effects for the buddy. The feature should create short, toy-like moments that are easy to understand and fun to combine with normal tools.
 
-This is intentionally a concept boundary rather than a locked implementation spec. Exact effect durations, prices, stacking rules, economy tuning, UI layout, and the demo's final three-item selection are still owner-design decisions.
+The owner moved this feature out of the Steam Demo so the demo can focus on polishing and releasing the systems already implemented. No Potion Shop code, economy, effects, UI, assets or marketing footage are required for the Steam Demo.
 
-## 2. Demo target
+This document remains a concept boundary rather than a locked implementation spec. Exact effect durations, prices, stacking rules, economy tuning, UI layout and the initial Full Release effect selection are still owner-design decisions.
 
-Aim for roughly **three polished showcase effects/items** in the Steam demo rather than a large shallow catalogue. Every shipped entry must have final presentation, sound, clear purchase/use feedback, and a working interaction loop.
+## 2. Initial Full Release target
+
+Start with a **small polished effect set** rather than a large shallow catalogue. Roughly three showcase entries remains a useful first-slice target, but it is not a demo requirement and can be changed during the Full Release design pass.
 
 Candidate effects from the current owner notes include:
 
@@ -24,19 +26,19 @@ Candidate effects from the current owner notes include:
 - poison/sickness effect with damage/reaction feedback;
 - a flashlight as a separate buyable toy that can interact with light-sensitive potion effects.
 
-The final demo subset is not locked yet.
+The final initial subset is not locked yet.
 
 ## 3. Economy / Work Mode integration
 
-Work Mode should contribute meaningfully to this loop, but the exact economy model is deliberately unresolved.
+Work Mode may contribute meaningfully to this loop, but the exact economy model is deliberately unresolved.
 
 Design options to evaluate before implementation:
 
 1. keep the existing credit economy and make Work Mode an additional way to afford potions;
 2. award a limited Work/AFK bonus token that can be spent in the Potion Shop;
-3. use Work milestones to grant discounts, free samples, or occasional potion rewards without adding a second permanent currency.
+3. use Work milestones to grant discounts, free samples or occasional potion rewards without adding a second permanent currency.
 
-Do **not** add a parallel currency ledger until the design pass explicitly chooses it and defines reset, persistence, earning, spending, UI, and migration rules.
+Do **not** add a parallel currency ledger until the Full Release design pass explicitly chooses it and defines reset, persistence, earning, spending, UI and migration rules.
 
 ## 4. Architecture boundaries
 
@@ -57,26 +59,30 @@ If effects can stack, combinations must be intentionally authored or resolved by
 
 Lock these decisions before implementation:
 
-- final three-ish demo entries;
-- purchase model: single-use, timed activation, inventory quantity, or immediate consume;
+- initial effect entries;
+- purchase model: single-use, timed activation, inventory quantity or immediate consume;
 - effect duration and whether time advances in Work/hidden modes;
 - whether more than one potion can be active;
 - normal credits vs Work-specific reward integration;
 - where the Potion Shop lives in the Win98 shell;
-- whether the flashlight belongs to the Potion Shop or the normal unified Shop;
+- whether the flashlight belongs to the Potion Shop or the normal unified Inventory;
 - reset/restart behavior;
 - HUD/status treatment for active effects;
 - accessibility options for flashing/RGB/glow effects;
 - SFX/VFX asset requirements.
 
-## 6. Demo exit gate
+## 6. Full Release implementation gate
 
-The Potion Shop is demo-complete when:
+The initial Potion Shop slice is complete when:
 
-- the selected demo effects are visually distinct and production-presentable;
+- the selected effects are visually distinct and production-presentable;
 - purchase/use/expiry behavior is obvious without debug text;
 - Work Mode integration follows the approved economy decision;
 - effects cleanly restore the buddy's prior visual/gameplay state;
-- effects do not corrupt Paint Buddy, Buddy Studio, room/environment, physics, or save data;
-- all shipped entries have final or approved demo-quality assets and SFX;
+- effects do not corrupt Paint Buddy, Buddy Studio, room/environment, physics or save data;
+- all shipped entries have production-quality assets and SFX;
 - automated state/cleanup/economy tests and a local owner feel gate pass.
+
+## 7. Sequencing
+
+Do not implement this feature during Steam Demo polish, Steam platform foundation, Steam marketing production or Steam Demo RC. The current sequencing authority in `docs/ROADMAP.md` places Potion Shop at the start of the post-demo Full Release expansion program.

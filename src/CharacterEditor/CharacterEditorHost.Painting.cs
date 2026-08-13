@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Painting;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.CharacterEditor;
@@ -19,7 +20,8 @@ public partial class CharacterEditorHost
     private ColorPickerButton _paintColorPicker = null!;
     private ColorRect _currentColorSwatch = null!;
     private Camera3D _paintCamera = null!;
-    private ConfirmationDialog _eraseAllConfirmation = null!;
+    private Control _eraseAllBlocker = null!;
+    private PanelContainer _eraseAllConfirmation = null!;
     private bool _paintAttachStarted;
 
     public bool IsPaintMode => _paintControls is not null && _paintControls.Visible;
@@ -27,6 +29,13 @@ public partial class CharacterEditorHost
 
     public async Task OpenPaintEditorAsync()
     {
+        CharacterEditorActionResult opened = await _session.OpenActiveAsync(
+            _context.CharacterSelection?.ActiveCharacterId);
+        if (!opened.Completed)
+        {
+            Handle(opened);
+            return;
+        }
         await OpenEditorAsync();
         if (!IsEditorOpen) return;
 
@@ -179,7 +188,8 @@ public partial class CharacterEditorHost
         eraseAll.Pressed += () =>
         {
             _paintCanvas.CancelCurve();
-            _eraseAllConfirmation.PopupCentered();
+            _eraseAllBlocker.Visible = true;
+            _eraseAllConfirmation.Visible = true;
         };
         commandRow.AddChild(eraseAll);
 
@@ -210,21 +220,39 @@ public partial class CharacterEditorHost
             Visible = false,
         });
 
-        _eraseAllConfirmation = new ConfirmationDialog
+        _eraseAllBlocker = Win98Dialog.Blocker(_editorRoot, "PaintEraseAllBlocker");
+        _eraseAllConfirmation = Win98Dialog.Create(
+            "PaintEraseAllConfirmation",
+            PaintUiText.Get(PaintUiText.EraseAllTitle),
+            new Vector2(360, 160),
+            out VBoxContainer eraseBody,
+            HideEraseAllConfirmation,
+            draggable: false);
+        _eraseAllBlocker.AddChild(_eraseAllConfirmation);
+        eraseBody.AddChild(new Label
         {
-            Name = "PaintEraseAllConfirmation",
-            Title = PaintUiText.Get(PaintUiText.EraseAllTitle),
-            DialogText = PaintUiText.Get(PaintUiText.EraseAllBody),
-            OkButtonText = PaintUiText.Get(PaintUiText.EraseAll),
-        };
-        _eraseAllConfirmation.Confirmed += () =>
+            Text = PaintUiText.Get(PaintUiText.EraseAllBody),
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        });
+        var eraseActions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        eraseBody.AddChild(eraseActions);
+        Win98Dialog.Action(eraseActions, PaintUiText.Get(PaintUiText.EraseAll), () =>
         {
             _paintCanvas.Workspace.EraseAll();
             QueueAllPaintTextures();
             RefreshPaintStatus();
-        };
-        AddChild(_eraseAllConfirmation);
+            HideEraseAllConfirmation();
+        }).Name = "PaintEraseAllConfirmButton";
+        Win98Dialog.Action(eraseActions, "Cancel", HideEraseAllConfirmation).Name = "PaintEraseAllCancelButton";
         RefreshPaintStatus();
+    }
+
+    private void HideEraseAllConfirmation()
+    {
+        if (GodotObject.IsInstanceValid(_eraseAllConfirmation))
+            _eraseAllConfirmation.Visible = false;
+        if (GodotObject.IsInstanceValid(_eraseAllBlocker))
+            _eraseAllBlocker.Visible = false;
     }
 
     private void HoldRepeat(Button button, int step)
@@ -370,6 +398,7 @@ public partial class CharacterEditorHost
         string tool = _paintCanvas.Workspace.SelectedTool switch
         {
             PaintTool.Brush => PaintUiText.Get(PaintUiText.Brush),
+            PaintTool.Pen => "Pen",
             PaintTool.Eraser => PaintUiText.Get(PaintUiText.Eraser),
             PaintTool.Spray => "Spray",
             PaintTool.Curve => "Curve",

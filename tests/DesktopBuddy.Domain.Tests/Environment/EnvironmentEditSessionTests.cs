@@ -108,6 +108,24 @@ public sealed class EnvironmentEditSessionTests
     }
 
     [Fact]
+    public void BuyBanksACopyAndOwnedPlaceDoesNotChargeAgain()
+    {
+        var session = new EnvironmentEditSession(new EnvironmentLayout(), 150_000, Catalogue(), () => Id(27));
+
+        Assert.True(session.Buy(Lamp.Id, 150_000).Succeeded);
+        Assert.Equal([Lamp.Id], session.OwnedUnplaced);
+        Assert.Equal(75_000, session.ProjectedBalanceMilliCredits);
+        Assert.True(session.Place(Lamp.Id, Position(.4f, .7f)).Succeeded);
+        Assert.Empty(session.OwnedUnplaced);
+        Assert.Equal(75_000, session.ProjectedBalanceMilliCredits);
+
+        session.Cancel();
+        Assert.False(session.IsDirty);
+        Assert.Empty(session.OwnedUnplaced);
+        Assert.Equal(150_000, session.ProjectedBalanceMilliCredits);
+    }
+
+    [Fact]
     public void FocusedMoveCanRotateEitherWayAndRestoreItsBaseline()
     {
         var original = new PlacedDecoration(Id(24), Lamp.Id, Position(.2f, .8f), 0, Lamp.RenderBand, Lamp.PriceMilliCredits);

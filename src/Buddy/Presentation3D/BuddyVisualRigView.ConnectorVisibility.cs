@@ -19,6 +19,8 @@ public partial class BuddyVisualRigView
             MeshInstance3D connector = _connectorMeshes[index];
             if (GodotObject.IsInstanceValid(connector))
                 connector.Visible = visible;
+            if (_connectorPaintLayers[index] is MeshInstance3D paint && GodotObject.IsInstanceValid(paint))
+                paint.Visible = visible && paint.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null };
         }
     }
 }

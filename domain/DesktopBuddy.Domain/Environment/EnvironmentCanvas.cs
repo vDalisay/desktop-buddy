@@ -35,6 +35,7 @@ public static class EnvironmentCanvasPolicy
 /// </summary>
 public sealed class EnvironmentCanvas
 {
+    private const double SecondBendSensitivity = 0.35;
     private readonly byte[] _pixels = new byte[EnvironmentCanvasPolicy.Bytes];
     private readonly LinkedList<byte[]> _undo = new();
     private byte[]? _strokeBase;
@@ -102,8 +103,8 @@ public sealed class EnvironmentCanvas
     private double _pixelAspect = 1.0;
 
     /// <summary>
-    /// Canvas pixels per screen pixel ratio (room width / room height). Round tools (Pen, Spray)
-    /// stretch their canvas-space footprint by it so they land as circles on the stretched room.
+    /// Canvas pixels per screen pixel ratio (room width / room height). Round tools (Pen, Eraser,
+    /// Spray) stretch their canvas-space footprint by it so they land as circles on the stretched room.
     /// </summary>
     public double PixelAspect
     {
@@ -151,7 +152,7 @@ public sealed class EnvironmentCanvas
                 Spray(px, py, Color, NextSpraySeed());
                 break;
             case EnvironmentPaintTool.Eraser:
-                Stamp(px, py, EnvironmentCanvasPolicy.Blank);
+                Stamp(px, py, EnvironmentCanvasPolicy.Blank, round: true);
                 break;
             case EnvironmentPaintTool.Fill:
                 Fill(px, py, Color);
@@ -186,7 +187,7 @@ public sealed class EnvironmentCanvas
                 Spray(px, py, Color, NextSpraySeed());
                 break;
             case EnvironmentPaintTool.Eraser:
-                Line(_lastX, _lastY, px, py, EnvironmentCanvasPolicy.Blank);
+                Line(_lastX, _lastY, px, py, EnvironmentCanvasPolicy.Blank, round: true);
                 break;
             case EnvironmentPaintTool.Square:
             case EnvironmentPaintTool.Circle:
@@ -323,7 +324,12 @@ public sealed class EnvironmentCanvas
                 break;
             case EnvironmentCurvePhase.SecondBendDragging:
                 _previewBend = new PaintCurveBend(_activeBendT, pointer);
-                _curve = ClassicCurveGeometry.BendTwice(_curve.Start, _curve.End, _firstBend, _previewBend);
+                CubicPaintCurve firstBendCurve = ClassicCurveGeometry.BendOnce(
+                    _curve.Start, _curve.End, _firstBend);
+                PaintCurveBend softened = ClassicCurveGeometry.ScaleBendMovement(
+                    firstBendCurve, _previewBend, SecondBendSensitivity);
+                _curve = ClassicCurveGeometry.BendTwice(
+                    _curve.Start, _curve.End, _firstBend, softened);
                 PreviewCurve();
                 break;
         }

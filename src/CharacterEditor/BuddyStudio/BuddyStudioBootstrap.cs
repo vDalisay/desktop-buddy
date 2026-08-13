@@ -55,16 +55,16 @@ public partial class BuddyStudioBootstrap : Node
             return;
         }
 
-        _registration = commandBar!.RegisterCustomizeCommand(
-            new CustomizeCommandDefinition(
-                CustomizeCommandIds.BuddyStudio,
+        _registration = commandBar!.RegisterTopLevelCommand(
+            new TopLevelCommandDefinition(
+                TopLevelCommandIds.BuddyStudio,
                 "Buddy Studio",
                 "Customize your buddy's appearance.",
-                CustomizeCommandIds.BuddyStudioOrder),
+                TopLevelCommandIds.BuddyStudioOrder),
             () => _ = host.OpenBuddyStudioAsync(),
             isVisible: () => host.IsBuddyStudioReady,
             isEnabled: () => host.IsBuddyStudioReady && !host.IsEditorOpen);
-        Log.Info(Category, "Customize > Buddy Studio registered and ready.");
+        Log.Info(Category, "Buddy Studio top-level command registered and ready.");
         ScheduleStartupProbeIfRequested();
     }
 

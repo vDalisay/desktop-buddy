@@ -94,6 +94,23 @@ public sealed class PaintAlgorithmTests
     }
 
     [Fact]
+    public void ScaledSecondBendNeedsMorePointerTravel()
+    {
+        CubicPaintCurve first = ClassicCurveGeometry.BendOnce(
+            new PaintPoint(0, 0),
+            new PaintPoint(100, 0),
+            new PaintCurveBend(0.3, new PaintPoint(30, 20)));
+        PaintPoint origin = first.Evaluate(0.7);
+
+        PaintCurveBend scaled = ClassicCurveGeometry.ScaleBendMovement(
+            first,
+            new PaintCurveBend(0.7, origin + new PaintPoint(0, 20)),
+            0.35);
+
+        Assert.Equal(origin.Y + 7, scaled.Target.Y, 8);
+    }
+
+    [Fact]
     public void DegenerateBendInputs_FallBackSafely()
     {
         PaintPoint same = new(12, 34);

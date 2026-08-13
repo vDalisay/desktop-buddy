@@ -284,7 +284,7 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
         {
             case FaceMouthPose.Flat:
             case FaceMouthPose.ChewClosed:
-                AddPath(commands, [center + new Vector2(-0.12f, 0.0f), center + new Vector2(0.12f, 0.0f)], fill, trustedOutlineColor, transform);
+                AddIdleSignature(commands, center, fill, trustedOutlineColor, transform);
                 break;
             case FaceMouthPose.Smile:
                 AddPath(commands, CharacterGeometry.Arc(center + new Vector2(0.0f, 0.06f), 0.18f, 0.12f, Mathf.Pi, Mathf.Tau), fill, trustedOutlineColor, transform);
@@ -319,6 +319,45 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
         }
 
         return commands;
+    }
+
+    /// <summary>
+    /// Neutral/closed mouths deliberately carry a strong family silhouette. User testing showed
+    /// the old variants differed mostly by line width, so they were hard to distinguish in Studio.
+    /// The three shipped families now read as rounded "3"-like, angular caret, and flat line while
+    /// all reaction poses continue to be driven by the same semantic FaceMouthPose contract.
+    /// </summary>
+    private void AddIdleSignature(
+        List<CharacterDrawCommand> commands,
+        Vector2 center,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform)
+    {
+        switch (_variant)
+        {
+            case MouthVariant.Rounded:
+                AddPath(commands,
+                    CharacterGeometry.Arc(center + new Vector2(-0.07f, 0.035f), 0.085f, 0.065f, Mathf.Pi, Mathf.Tau),
+                    fill, outline, transform);
+                AddPath(commands,
+                    CharacterGeometry.Arc(center + new Vector2(0.07f, 0.035f), 0.085f, 0.065f, Mathf.Pi, Mathf.Tau),
+                    fill, outline, transform);
+                break;
+            case MouthVariant.Pixel:
+                // Strong angular ^ silhouette; AddPath then applies the family pixel stepping.
+                AddPath(commands,
+                    [center + new Vector2(-0.15f, -0.045f), center + new Vector2(0.0f, 0.075f), center + new Vector2(0.15f, -0.045f)],
+                    fill, outline, transform);
+                break;
+            case MouthVariant.Line:
+                AddPath(commands,
+                    [center + new Vector2(-0.16f, 0.0f), center + new Vector2(0.16f, 0.0f)],
+                    fill, outline, transform);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
     }
 
     private void AddPath(

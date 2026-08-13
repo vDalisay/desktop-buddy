@@ -15,6 +15,7 @@ namespace DesktopBuddy.UI.Win98;
 /// </summary>
 public partial class Win98PaintCustomPaletteBootstrap : Node
 {
+    private const int ModalZIndex = 200;
     private const int MaxColors = 64;
     private const float SwatchWidth = 22f;
     private const float SwatchHeight = 18f;
@@ -226,12 +227,13 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
 
     // ---- block editor sub-window ---------------------------------------------------------
 
-    private void EnsureEditDialog(Control root)
+    internal void EnsureEditDialog(Control root)
     {
         if (GodotObject.IsInstanceValid(_editPanel))
             return;
 
         _editBlocker = Win98Dialog.Blocker(root, "PaintColorBlockModalBlocker");
+        _editBlocker.ZIndex = ModalZIndex;
         if (root.FindChild("PaintColorBlockEditor", false, false) is PanelContainer existing)
         {
             _editPanel = existing;
@@ -245,6 +247,7 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
             new Vector2(320, 420),
             out VBoxContainer body,
             CancelEdit);
+        _editPanel.ZIndex = ModalZIndex + 1;
         root.AddChild(_editPanel);
 
         _editPicker = new ColorPicker

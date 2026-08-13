@@ -1,6 +1,5 @@
 using System;
 using System.Buffers.Binary;
-using System.Collections.Generic;
 using System.Security.Cryptography;
 
 namespace DesktopBuddy.Domain.Painting;
@@ -25,31 +24,46 @@ public readonly record struct PaintRect(int X, int Y, int Width, int Height)
 public sealed class PaintSurface
 {
     private readonly byte[] _pixels = new byte[PaintPolicy.SurfaceBytes];
-
     public long Revision { get; private set; }
     public ReadOnlyMemory<byte> Pixels => _pixels;
 
-    private const double StampSpacingFactor = 0.08;
+    public const double StampSpacingFactor = 0.08;
 
-    public static PaintRect StampBounds(PaintPoint uv, int diameter)
+    public static PaintRect StampBounds(
+        PaintPoint uv,
+        int diameter,
+        double verticalScale = 1.0,
+        PaintUvRegion region = default)
     {
+        region = ValidRegion(region);
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
-        double centerX = uv.X * (PaintPolicy.SurfaceSize - 1);
+        verticalScale = ValidVerticalScale(verticalScale);
+
+        double centerX = region.PixelX(uv.X);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
-        double radius = diameter / 2.0;
-        int minX = (int)Math.Floor(centerX - radius);
-        int maxX = (int)Math.Ceiling(centerX + radius);
-        int minY = Math.Clamp((int)Math.Floor(centerY - radius), 0, PaintPolicy.SurfaceSize - 1);
-        int maxY = Math.Clamp((int)Math.Ceiling(centerY + radius), 0, PaintPolicy.SurfaceSize - 1);
-        return minX < 0 || maxX > PaintPolicy.SurfaceSize - 1
-            ? new PaintRect(0, minY, PaintPolicy.SurfaceSize, (maxY - minY) + 1)
+        double radiusX = diameter / 2.0;
+        double radiusY = radiusX * verticalScale;
+        int minX = (int)Math.Floor(centerX - radiusX);
+        int maxX = (int)Math.Ceiling(centerX + radiusX);
+        int minY = Math.Clamp((int)Math.Floor(centerY - radiusY), 0, PaintPolicy.SurfaceSize - 1);
+        int maxY = Math.Clamp((int)Math.Ceiling(centerY + radiusY), 0, PaintPolicy.SurfaceSize - 1);
+        int regionEnd = region.StartPixel + region.PixelWidth - 1;
+        return minX < region.StartPixel || maxX > regionEnd
+            ? new PaintRect(region.StartPixel, minY, region.PixelWidth, (maxY - minY) + 1)
             : new PaintRect(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1);
     }
 
-    public static PaintRect StrokeBounds(PaintPoint from, PaintPoint to, int diameter)
+    public static PaintRect StrokeBounds(
+        PaintPoint from,
+        PaintPoint to,
+        int diameter,
+        double verticalScale = 1.0,
+        PaintUvRegion region = default)
     {
-        to = NormalizeStrokeTarget(from, to);
-        double distancePixels = (to - from).Length * PaintPolicy.SurfaceSize;
+        region = ValidRegion(region);
+        to = NormalizeStrokeTarget(from, to, region);
+        PaintPoint delta = new((to.X - from.X) / region.Width, to.Y - from.Y);
+        double distancePixels = delta.Length * PaintPolicy.SurfaceSize;
         double spacing = Math.Max(0.5, diameter * StampSpacingFactor);
         int steps = Math.Max(1, (int)Math.Ceiling(distancePixels / spacing));
         PaintRect dirty = default;
@@ -57,34 +71,43 @@ public sealed class PaintSurface
         {
             double t = step / (double)steps;
             PaintPoint point = from + ((to - from) * t);
-            dirty = PaintRect.Union(dirty, StampBounds(point, diameter));
+            dirty = PaintRect.Union(dirty, StampBounds(point, diameter, verticalScale, region));
         }
         return dirty;
     }
 
-    public PaintRect Stamp(PaintPoint uv, int diameter, PaintTool tool, PaintColor color)
+    public PaintRect Stamp(
+        PaintPoint uv,
+        int diameter,
+        PaintTool tool,
+        PaintColor color,
+        double verticalScale = 1.0,
+        PaintUvRegion region = default)
     {
+        region = ValidRegion(region);
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
-        double centerX = uv.X * (PaintPolicy.SurfaceSize - 1);
+        verticalScale = ValidVerticalScale(verticalScale);
+
+        double centerX = region.PixelX(uv.X);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
-        double radius = diameter / 2.0;
-        int minX = (int)Math.Floor(centerX - radius);
-        int maxX = (int)Math.Ceiling(centerX + radius);
-        int minY = Math.Clamp((int)Math.Floor(centerY - radius), 0, PaintPolicy.SurfaceSize - 1);
-        int maxY = Math.Clamp((int)Math.Ceiling(centerY + radius), 0, PaintPolicy.SurfaceSize - 1);
-        double radiusSquared = radius * radius;
+        double radiusX = diameter / 2.0;
+        double radiusY = radiusX * verticalScale;
+        int minX = (int)Math.Floor(centerX - radiusX);
+        int maxX = (int)Math.Ceiling(centerX + radiusX);
+        int minY = Math.Clamp((int)Math.Floor(centerY - radiusY), 0, PaintPolicy.SurfaceSize - 1);
+        int maxY = Math.Clamp((int)Math.Ceiling(centerY + radiusY), 0, PaintPolicy.SurfaceSize - 1);
         bool changed = false;
 
         for (int y = minY; y <= maxY; y++)
         {
             for (int x = minX; x <= maxX; x++)
             {
-                double dx = (x + 0.5) - centerX;
-                double dy = (y + 0.5) - centerY;
-                if ((dx * dx) + (dy * dy) > radiusSquared)
+                double dx = ((x + 0.5) - centerX) / radiusX;
+                double dy = ((y + 0.5) - centerY) / radiusY;
+                if ((dx * dx) + (dy * dy) > 1.0)
                     continue;
 
-                int wrappedX = WrapPixelX(x);
+                int wrappedX = region.WrapPixelX(x);
                 int index = ((y * PaintPolicy.SurfaceSize) + wrappedX) * PaintPolicy.BytesPerPixel;
                 byte r = tool == PaintTool.Eraser ? (byte)0 : color.R;
                 byte g = tool == PaintTool.Eraser ? (byte)0 : color.G;
@@ -96,14 +119,22 @@ public sealed class PaintSurface
 
         if (!changed) return default;
         Revision++;
-        return StampBounds(uv, diameter);
+        return StampBounds(uv, diameter, verticalScale, region);
     }
 
     /// <summary>Sparse selected-colour dots in a circular envelope. U wraps; V clips.</summary>
-    public PaintRect Spray(PaintPoint uv, int diameter, PaintColor color, ulong seed)
+    public PaintRect Spray(
+        PaintPoint uv,
+        int diameter,
+        PaintColor color,
+        ulong seed,
+        double verticalScale = 1.0,
+        PaintUvRegion region = default)
     {
+        region = ValidRegion(region);
         diameter = Math.Clamp(diameter, PaintPolicy.MinBrushDiameter, PaintPolicy.MaxBrushDiameter);
-        double centerX = uv.X * (PaintPolicy.SurfaceSize - 1);
+        verticalScale = ValidVerticalScale(verticalScale);
+        double centerX = region.PixelX(uv.X);
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
         double radius = diameter / 2.0;
         PaintPoint[] offsets = SprayPattern.SampleUnitDisk(seed, SprayPattern.PointCountForDiameter(diameter));
@@ -112,23 +143,32 @@ public sealed class PaintSurface
         foreach (PaintPoint offset in offsets)
         {
             int x = (int)Math.Round(centerX + (offset.X * radius));
-            int y = (int)Math.Round(centerY + (offset.Y * radius));
+            int y = (int)Math.Round(centerY + (offset.Y * radius * verticalScale));
             if (y < 0 || y >= PaintPolicy.SurfaceSize)
                 continue;
-            int wrappedX = WrapPixelX(x);
+            int wrappedX = region.WrapPixelX(x);
             int index = ((y * PaintPolicy.SurfaceSize) + wrappedX) * PaintPolicy.BytesPerPixel;
             changed |= Write(index, color.R, color.G, color.B, byte.MaxValue);
         }
 
         if (!changed) return default;
         Revision++;
-        return StampBounds(uv, diameter);
+        return StampBounds(uv, diameter, verticalScale, region);
     }
 
-    public PaintRect Stroke(PaintPoint from, PaintPoint to, int diameter, PaintTool tool, PaintColor color)
+    public PaintRect Stroke(
+        PaintPoint from,
+        PaintPoint to,
+        int diameter,
+        PaintTool tool,
+        PaintColor color,
+        double verticalScale = 1.0,
+        PaintUvRegion region = default)
     {
-        to = NormalizeStrokeTarget(from, to);
-        double distancePixels = (to - from).Length * PaintPolicy.SurfaceSize;
+        region = ValidRegion(region);
+        to = NormalizeStrokeTarget(from, to, region);
+        PaintPoint delta = new((to.X - from.X) / region.Width, to.Y - from.Y);
+        double distancePixels = delta.Length * PaintPolicy.SurfaceSize;
         double spacing = Math.Max(0.5, diameter * StampSpacingFactor);
         int steps = Math.Max(1, (int)Math.Ceiling(distancePixels / spacing));
         PaintRect dirty = default;
@@ -136,7 +176,7 @@ public sealed class PaintSurface
         {
             double t = step / (double)steps;
             PaintPoint point = from + ((to - from) * t);
-            dirty = PaintRect.Union(dirty, Stamp(point, diameter, tool, color));
+            dirty = PaintRect.Union(dirty, Stamp(point, diameter, tool, color, verticalScale, region));
         }
         return dirty;
     }
@@ -221,12 +261,15 @@ public sealed class PaintSurface
         return true;
     }
 
-    private static int WrapPixelX(int x) => ((x % PaintPolicy.SurfaceSize) + PaintPolicy.SurfaceSize) % PaintPolicy.SurfaceSize;
+    private static double ValidVerticalScale(double value) =>
+        double.IsFinite(value) && value > 0.0 ? Math.Clamp(value, 0.25, 8.0) : 1.0;
 
-    private static PaintPoint NormalizeStrokeTarget(PaintPoint from, PaintPoint to)
+    private static PaintUvRegion ValidRegion(PaintUvRegion region) => region.IsValid ? region : PaintUvRegion.Full;
+
+    private static PaintPoint NormalizeStrokeTarget(PaintPoint from, PaintPoint to, PaintUvRegion region)
     {
-        if (Math.Abs(to.X - from.X) > 0.5)
-            return new PaintPoint(to.X + (to.X < from.X ? 1.0 : -1.0), to.Y);
+        if (Math.Abs(to.X - from.X) > region.Width * 0.5)
+            return new PaintPoint(to.X + (to.X < from.X ? region.Width : -region.Width), to.Y);
         return to;
     }
 }

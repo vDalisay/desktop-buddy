@@ -82,11 +82,25 @@ public partial class DesktopWindowController
     }
 
     public void ResizeWorkCompanion(Vector2I requestedSize)
+        => ResizeWorkCompanion(requestedSize, null);
+
+    public void ResizeWorkCompanion(Vector2I requestedSize, Vector2? normalizedAnchor)
     {
         if (!WorkCompanionActive)
             return;
+        Vector2I requestedPosition = _lastAppliedRect.Position;
+        if (normalizedAnchor is Vector2 anchor && anchor.IsFinite())
+        {
+            anchor = anchor.Clamp(Vector2.Zero, Vector2.One);
+            Vector2 desktopAnchor = (Vector2)_lastAppliedRect.Position +
+                ((Vector2)_lastAppliedRect.Size * anchor);
+            Vector2 anchoredPosition = desktopAnchor - ((Vector2)requestedSize * anchor);
+            requestedPosition = new Vector2I(
+                Mathf.RoundToInt(anchoredPosition.X),
+                Mathf.RoundToInt(anchoredPosition.Y));
+        }
         Rect2I recovered = RecoverWorkCompanionRect(
-            new Rect2I(_lastAppliedRect.Position, requestedSize));
+            new Rect2I(requestedPosition, requestedSize));
         _lastAppliedRect = recovered;
         _lastAppliedSettings = _lastAppliedSettings with { Rect = recovered };
         if (!_headless)

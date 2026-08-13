@@ -74,6 +74,13 @@ public partial class CharacterEditorHost : CanvasLayer
     public Button UseButton { get; private set; } = null!;
     public Button CloseButton { get; private set; } = null!;
 
+    public CharacterEditorActionResult RequestNewCharacterPrompt()
+    {
+        CharacterEditorActionResult result = _session.RequestNewCharacterPrompt();
+        Handle(result);
+        return result;
+    }
+
     public void Configure(
         SandboxRoot sandbox,
         RunContext context,
@@ -202,7 +209,7 @@ public partial class CharacterEditorHost : CanvasLayer
         // Every dock panel is a free-floating desktop window, so none of them are clipped to
         // the buddy box and the player can park them anywhere.
         _shopPanel = new ShopPanel();
-        _shopPanel.Configure(_context.Progress, _context.Economy, CatalogueLoader.Catalogue);
+        _shopPanel.Configure(_context.Progress, _context.Economy, CatalogueLoader.Catalogue, _sandbox.Pipeline);
         _shopWindow = OpenableWindow("Shop", _shopPanel, _shopPanel.Refresh);
 
         _toolPanel = new ToolSelectionPanel();

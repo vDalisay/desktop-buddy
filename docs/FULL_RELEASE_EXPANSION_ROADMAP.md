@@ -3,9 +3,9 @@
 Status: **Owner-approved direction; begins after the Steam demo ships**  
 Recorded: 2026-08-11
 
-This roadmap collects the currently approved post-demo expansion directions into one sequence. Detailed implementation plans remain authoritative for the systems that already have them, especially Environment Customization and Buddy Studio.
+This roadmap collects the currently approved post-demo expansion directions into one sequence. Detailed implementation plans remain authoritative for the systems that already have them, especially Potion Shop, Environment Customization and Buddy Studio.
 
-The Steam demo is intentionally narrower: one room/profile, authored non-physical room items, the current Buddy Studio, Work Mode, Paint Buddy/Background, core tools, and the planned Potion Shop/demo effects. The items below are full-release work and should not be pulled into the demo polish phase unless the owner explicitly promotes them.
+The Steam demo is intentionally narrower: one room/profile, authored non-physical room items, the current Buddy Studio, Work Mode, Paint Buddy/Background and core tools. **Potion Shop temporary effects are now Full Release scope and must not be pulled back into the Steam Demo unless the owner explicitly reverses that decision.**
 
 ---
 
@@ -13,14 +13,54 @@ The Steam demo is intentionally narrower: one room/profile, authored non-physica
 
 Before user-generated or shareable content:
 
-- complete the Milestone 6 local/Steam platform abstraction;
+- complete the Milestone 6 local/Steam platform abstraction during the Steam Demo program;
 - establish stable cloud/local data boundaries;
-- finish safe versioned package/import primitives;
+- finish safe versioned package/import primitives before UGC work;
 - define Steam UGC/Workshop policy, moderation and failure behavior;
 - rehearse migrations from the Steam demo data formats;
 - ensure missing/unsubscribed shared content degrades safely without corrupting saves.
 
 No arbitrary script/mod loader is introduced as a prerequisite for these features.
+
+---
+
+## RELEASE-POTION — Potion Shop / temporary buddy effects
+
+Reference: `docs/POTION_SHOP_CONCEPT.md`.
+
+Potion Shop is the first newly promoted Full Release feature after the Steam Demo ships/stabilizes. It provides temporary, highly visible buddy effects without mutating permanent Paint Buddy or Buddy Studio data.
+
+Start with a small polished initial set rather than a large catalogue. Candidate ideas include:
+
+- temporary tail;
+- glossy/shiny treatment;
+- RGB/cycling-color effect;
+- glow-in-the-dark treatment, potentially reacting to a flashlight;
+- metallic treatment with matching SFX and a possible gameplay modifier only if separately approved;
+- poison/sickness effect;
+- flashlight as a possible separate buyable toy/effect companion.
+
+Before implementation, explicitly lock:
+
+- initial effect set;
+- purchase/consume model;
+- durations and whether timers advance in Work/hidden modes;
+- stacking/compatibility policy;
+- normal credits vs Work Mode reward integration;
+- reset/restart/mode-transition cleanup;
+- active-effect HUD/status treatment;
+- reduced-motion/flashing/accessibility treatment;
+- VFX/SFX requirements.
+
+Do not add a second economy ledger by assumption. Any gameplay-changing potion uses an explicit trusted authored effect policy rather than arbitrary scripting.
+
+Exit gate:
+
+- purchase/use/expiry is understandable without debug UI;
+- effects cleanly restore prior buddy visual/gameplay state;
+- no stuck effect survives restart/reset/mode changes;
+- Paint Buddy, Buddy Studio, room/environment, physics, tools and saves remain intact;
+- initial entries have production-quality VFX/SFX and owner acceptance.
 
 ---
 
@@ -119,7 +159,7 @@ Do not turn the Accessories slot into a generic scripting/mod interface.
 
 ### Economy boundary
 
-If an interactive accessory generates passive money, its rate and conditions belong to the normal economy/reward model and must be calibrated with Work Mode and other passive sources. Equipping multiple accessories must not create uncontrolled income stacking.
+If an interactive accessory generates passive money, its rate and conditions belong to the normal economy/reward model and must be calibrated with Work Mode, Potion Shop and other passive sources. Equipping multiple accessories must not create uncontrolled income stacking.
 
 ---
 
@@ -205,6 +245,7 @@ After the expansion systems are real, run another deliberate polish phase rather
 
 Include:
 
+- Potion Shop lifecycle/economy/VFX/SFX polish;
 - full Buddy Studio UX revamp verification;
 - large cosmetic/room library performance;
 - interactive accessory/furniture animation polish;

@@ -13,9 +13,9 @@ using Godot;
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// The dock shop and tool picker over the real sandbox composition: the shop offers exactly
-/// the gate-passed entries and spends the authored price once, and the picker equips only what
-/// is owned, through the pipeline's single selection seam.
+/// The unified player catalogue over the real sandbox composition: every released selectable
+/// tool appears once, unowned tools buy at the authored price, and owned tools equip through
+/// the pipeline's single selection seam.
 /// </summary>
 public sealed class ShopPanelScenario : IScenario
 {
@@ -37,23 +37,15 @@ public sealed class ShopPanelScenario : IScenario
         BuddyProgressState progress = sandbox.Progress;
         EconomyService economy = sandbox.Economy;
         ToolCatalogue catalogue = CatalogueLoader.Catalogue;
-        IReadOnlyList<CatalogueEntry> offered = CataloguePolicy.ShopEntries(catalogue);
+        IReadOnlyList<CatalogueEntry> offered = CataloguePolicy.SelectableEntries(catalogue);
 
         var shop = new ShopPanel();
         tree.Root.AddChild(shop);
-        shop.Configure(progress, economy, catalogue);
-        var tools = new ToolSelectionPanel();
-        tree.Root.AddChild(tools);
-        tools.Configure(progress, sandbox.Pipeline, catalogue);
-        // The same wiring the dock host installs: a purchase in one window immediately makes
-        // the tool selectable in the other, without waiting for a reopen.
-        shop.Purchased += tools.Refresh;
+        shop.Configure(progress, economy, catalogue, sandbox.Pipeline);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
         try
         {
-            // Only gate-passed, non-starting entries are on sale (the owner's "no unfinished
-            // shop entry is shown" rule), and each carries a spendable price.
             var rows = new List<Button>();
             foreach (CatalogueEntry entry in offered)
             {
@@ -63,71 +55,65 @@ public sealed class ShopPanelScenario : IScenario
 
             bool listMatchesPolicy = rows.Count == offered.Count &&
                 shop.OfferedContentIds.SequenceEqual(offered.Select(static e => e.ContentId)) &&
-                offered.All(static e => e.Visible && !e.IsStarting && e.HasValidPrice);
-            checks.Add(new StartupCheck("shop_lists_only_gate_passed_entries", listMatchesPolicy,
+                offered.All(static e => e.Visible && e.IsSelectable);
+            checks.Add(new StartupCheck("catalogue_lists_all_selectable_entries", listMatchesPolicy,
                 $"rows={rows.Count} offered={offered.Count} catalogue={catalogue.Count}"));
 
-            bool brokeDisablesEveryBuy = progress.BalanceMilliCredits == 0 &&
-                rows.All(static button => button.Disabled);
-            checks.Add(new StartupCheck("shop_refuses_purchases_while_broke", brokeDisablesEveryBuy,
+            CatalogueEntry grab = offered.First(static e => e.ContentId == ContentIds.ToolGrab);
+            Button grabAction = shop.BuyButtonFor(grab.ContentId)!;
+            bool startingToolIsOwned = progress.SelectedTool == ToolId.Grab &&
+                grabAction is { Disabled: true, Text: "Equipped" };
+            checks.Add(new StartupCheck("catalogue_includes_starting_tools_as_owned", startingToolIsOwned,
+                $"selected={progress.SelectedTool} grab={grabAction.Text}/{grabAction.Disabled}"));
+
+            IReadOnlyList<CatalogueEntry> purchasable = offered
+                .Where(static e => !e.IsStarting)
+                .ToArray();
+            bool brokeDisablesUnownedBuys = progress.BalanceMilliCredits == 0 &&
+                purchasable.All(entry => shop.BuyButtonFor(entry.ContentId) is { Disabled: true, Text: "Buy" });
+            checks.Add(new StartupCheck("catalogue_refuses_purchases_while_broke", brokeDisablesUnownedBuys,
                 $"balance={progress.BalanceMilliCredits}"));
 
-            CatalogueEntry cheapest = offered
-                .Where(static e => ContentIds.TryParseTool(e.ContentId, out _))
+            CatalogueEntry cheapest = purchasable
                 .OrderBy(static e => e.PriceMilliCredits)
                 .First();
             ContentIds.TryParseTool(cheapest.ContentId, out ToolId boughtTool);
-
-            // An unowned tool is listed with its price and refuses to equip.
-            Button? unownedSelect = tools.SelectButtonFor(cheapest.ContentId);
-            bool unownedIsBlocked = unownedSelect is { Disabled: true } &&
-                !progress.IsToolUnlocked(cheapest.ContentId);
-            checks.Add(new StartupCheck("tools_cannot_equip_an_unowned_tool", unownedIsBlocked,
-                $"id={cheapest.ContentId} disabled={unownedSelect?.Disabled}"));
 
             economy.DepositPassive(cheapest.PriceMilliCredits);
             shop.Refresh();
             long balanceBefore = progress.BalanceMilliCredits;
 
-            Button buy = shop.BuyButtonFor(cheapest.ContentId)!;
-            buy.EmitSignal(BaseButton.SignalName.Pressed);
+            Button action = shop.BuyButtonFor(cheapest.ContentId)!;
+            bool becameBuyable = !action.Disabled && action.Text == "Buy";
+            action.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
-            bool bought = progress.IsToolUnlocked(cheapest.ContentId) &&
+            bool bought = becameBuyable &&
+                progress.IsToolUnlocked(cheapest.ContentId) &&
                 progress.BalanceMilliCredits == balanceBefore - cheapest.PriceMilliCredits &&
-                shop.PurchaseCount == 1;
-            checks.Add(new StartupCheck("shop_purchase_charges_the_authored_price", bought,
+                shop.PurchaseCount == 1 &&
+                action is { Disabled: false, Text: "Equip" };
+            checks.Add(new StartupCheck("catalogue_purchase_charges_authored_price_once", bought,
                 $"id={cheapest.ContentId} price={cheapest.PriceMilliCredits} " +
-                $"balance={balanceBefore}->{progress.BalanceMilliCredits}"));
+                $"balance={balanceBefore}->{progress.BalanceMilliCredits} action={action.Text}"));
 
             long afterPurchase = progress.BalanceMilliCredits;
-            buy.EmitSignal(BaseButton.SignalName.Pressed);
+            action.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            bool ownedIsInert = buy is { Disabled: true, Text: "Owned" } &&
-                progress.BalanceMilliCredits == afterPurchase &&
-                shop.PurchaseCount == 1;
-            checks.Add(new StartupCheck("shop_never_charges_twice", ownedIsInert,
-                $"disabled={buy.Disabled} text={buy.Text} balance={progress.BalanceMilliCredits}"));
 
-            // The purchase reached the picker (the shop raises Purchased), and equipping
-            // routes through the pipeline rather than writing progress directly.
-            Button equip = tools.SelectButtonFor(cheapest.ContentId)!;
-            bool becameSelectable = !equip.Disabled;
-            equip.EmitSignal(BaseButton.SignalName.Pressed);
-            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            bool equipped = becameSelectable &&
+            bool equipped = progress.BalanceMilliCredits == afterPurchase &&
                 progress.SelectedTool == boughtTool &&
                 sandbox.Pipeline.SelectedTool == boughtTool &&
-                equip.Text == "Equipped" &&
-                tools.SelectionCount == 1;
-            checks.Add(new StartupCheck("tools_equip_a_bought_tool", equipped,
-                $"selectable={becameSelectable} selected={progress.SelectedTool} " +
-                $"picks={tools.SelectionCount}"));
+                action is { Disabled: true, Text: "Equipped" } &&
+                shop.PurchaseCount == 1 &&
+                shop.EquipCount == 1;
+            checks.Add(new StartupCheck("catalogue_equips_owned_tool_without_second_charge", equipped,
+                $"selected={progress.SelectedTool} purchases={shop.PurchaseCount} " +
+                $"equips={shop.EquipCount} balance={progress.BalanceMilliCredits}"));
         }
         finally
         {
             shop.QueueFree();
-            tools.QueueFree();
             await M4LifecycleScenarioSupport.Cleanup(tree, sandbox);
         }
 

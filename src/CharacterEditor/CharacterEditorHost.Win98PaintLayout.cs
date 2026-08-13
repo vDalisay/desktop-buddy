@@ -301,19 +301,32 @@ public partial class CharacterEditorHost
         _paintColorPicker.TooltipText = "Open the full color picker.";
         _paintColorPicker.CustomMinimumSize = new Vector2(46, 48);
 
-        var actions = new VBoxContainer();
-        actions.AddThemeConstantOverride("separation", 1);
+        row.AddChild(new Control
+        {
+            Name = "PaintActionSpacer",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        });
+
+        var actions = new HBoxContainer
+        {
+            Name = "PaintPrimaryActions",
+            SizeFlagsHorizontal = Control.SizeFlags.ShrinkEnd,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        actions.AddThemeConstantOverride("separation", 2);
         row.AddChild(actions);
-        var primary = new HBoxContainer();
-        primary.AddThemeConstantOverride("separation", 2);
-        actions.AddChild(primary);
-        SaveButton.Reparent(primary, false);
-        UseButton.Reparent(primary, false);
-        var secondary = new HBoxContainer();
-        secondary.AddThemeConstantOverride("separation", 2);
-        actions.AddChild(secondary);
-        ResetButton.Reparent(secondary, false);
-        CloseButton.Reparent(secondary, false);
+        SaveButton.Reparent(actions, false);
+        UseButton.Reparent(actions, false);
+        ResetButton.Reparent(actions, false);
+        CloseButton.Reparent(actions, false);
+        CloseButton.Text = "Exit";
+        foreach (Button button in new[] { SaveButton, UseButton, ResetButton, CloseButton })
+        {
+            button.CustomMinimumSize = new Vector2(100, 30);
+            button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            button.SizeFlagsVertical = Control.SizeFlags.ShrinkEnd;
+        }
     }
 
     private void MoveEditorActionsIntoWorkspace()

@@ -122,6 +122,22 @@ public sealed class PaintingPhaseBTests
     }
 
     [Fact]
+    public void PenDabCommitsMappedSamplesAsOneUndoableGesture()
+    {
+        PaintWorkspace workspace = new() { SelectedTool = PaintTool.Pen };
+        PaintHit hit = new(PaintPart.Torso, new PaintPoint(0.5, 0.5), 0);
+        string before = workspace.Surfaces[PaintPart.Torso].ComputeHash();
+
+        workspace.BeginGesture(null);
+        workspace.StampPenDab([hit]);
+        workspace.EndGesture();
+
+        Assert.NotEqual(before, workspace.Surfaces[PaintPart.Torso].ComputeHash());
+        Assert.True(workspace.Undo());
+        Assert.Equal(before, workspace.Surfaces[PaintPart.Torso].ComputeHash());
+    }
+
+    [Fact]
     public void FastDragThatSkipsOverTheSilhouetteStillDrawsAContinuousStroke()
     {
         PaintWorkspace bridged = new();
