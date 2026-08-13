@@ -71,6 +71,7 @@ internal static class Program
                 $"Opaque-canvas glasses were not interpreted as a two-hole frame. mode={first.Foreground.Mode} holes={first.Diagnostics.Holes}.");
 
         RepositoryExporter.ExportGlasses(repositoryRoot, sourcePng, first, first.AlbedoPng);
+        GeneratedCosmeticLightingPersistence.Apply(repositoryRoot, recipe);
         string assetRoot = Path.Combine(repositoryRoot, "assets", "generated", "cosmetics", recipe.FeatureId);
         string definition = Path.Combine(repositoryRoot, "data", "cosmetics", "generated", recipe.FeatureId + ".tres");
         string sale = Path.Combine(repositoryRoot, "data", "catalogue", "generated", "cosmetic_glasses_ci_pink_round.tres");
@@ -88,7 +89,7 @@ internal static class Program
 
         Console.WriteLine(
             $"Generated {recipe.FeatureId}: {first.Diagnostics.Holes} holes, {first.TriangleCount} triangles, " +
-            $"foreground={first.Foreground.Summary}, asset {first.CanonicalAssetHash}.");
+            $"lighting={recipe.LightingLevel:0.00}, foreground={first.Foreground.Summary}, asset {first.CanonicalAssetHash}.");
         return 0;
     }
 
