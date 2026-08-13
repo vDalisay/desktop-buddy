@@ -25,7 +25,7 @@ public static class GeneratedCosmeticLightingPersistence
         if (!File.Exists(path))
             throw new FileNotFoundException("Generated cosmetic definition was not produced by Asset Forge.", path);
 
-        string marker = "LightingLevel = " + recipe.LightingLevel.ToString("0.###", CultureInfo.InvariantCulture);
+        string marker = LightingMarker(recipe.LightingLevel);
         string normalized = File.ReadAllText(path).Replace("\r\n", "\n", StringComparison.Ordinal);
         string[] lines = normalized.Split('\n');
         bool replaced = false;
@@ -53,6 +53,16 @@ public static class GeneratedCosmeticLightingPersistence
         return path;
     }
 
+    /// <summary>
+    /// Default-lighting assets remain compatible with older/raw exporter fixtures because the
+    /// runtime resource itself defaults to 0.36. Any customized value must be explicitly present
+    /// in the generated TRES and is therefore verified as authored metadata.
+    /// </summary>
     public static string ExpectedMarker(AssetRecipe recipe) =>
-        "LightingLevel = " + recipe.LightingLevel.ToString("0.###", CultureInfo.InvariantCulture);
+        Math.Abs(recipe.LightingLevel - AssetRecipe.DefaultLightingLevel) <= 0.0005
+            ? $"GeneratorVersion = {recipe.GeneratorVersion}"
+            : LightingMarker(recipe.LightingLevel);
+
+    private static string LightingMarker(double value) =>
+        "LightingLevel = " + value.ToString("0.###", CultureInfo.InvariantCulture);
 }
