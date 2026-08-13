@@ -30,7 +30,7 @@ public static class BuddySharedMaterialFactory
     /// authored-colour contribution prevents those valid surfaces collapsing to black while normal
     /// per-pixel diffuse/specular shading still supplies the 3D form.
     /// </summary>
-    public const float GeneratedAssetEmissionFloor = 0.16f;
+    public const float GeneratedAssetEmissionFloor = 0.36f;
 
     public static StandardMaterial3D CreateLitMaterial(in BuddySharedLook look, Color albedo) => new()
     {
