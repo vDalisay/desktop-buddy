@@ -1,3 +1,4 @@
+using DesktopBuddy.Buddy.Presentation3D.Shared;
 using Godot;
 
 namespace DesktopBuddy.AssetForge;
@@ -20,7 +21,7 @@ public partial class AssetForgePreview
         // Runtime generated cosmetics already force authored color textures through sRGB.
         // Do the same in Forge so preview brightness/hue cannot differ from the equipped item.
         material.AlbedoTextureForceSrgb = true;
-        material.EmissionEnergyMultiplier = Buddy.Presentation3D.Shared.BuddySharedMaterialFactory.GeneratedAssetEmissionFloor;
+        material.EmissionEnergyMultiplier = BuddySharedMaterialFactory.GeneratedAssetEmissionFloor;
         _lastColorTunedGeneratedMaterial = material;
     }
 }
