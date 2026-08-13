@@ -39,11 +39,12 @@ public sealed class BuddyLookMaterialLibrary
         BuddySharedMaterialFactory.CreateLitMaterial(_look, albedo);
 
     /// <summary>
-    /// Generated cosmetics use this seam: authored PNG colour stays authoritative while the same
-    /// accepted Buddy lighting/specular/roughness treatment is applied at runtime.
+    /// Generated cosmetics use this seam: authored PNG colour stays authoritative, alpha has
+    /// already become geometry, and the same opaque generated-asset lighting contract used by
+    /// Asset Forge is applied at runtime.
     /// </summary>
     public StandardMaterial3D CreateLitTexturedMaterial(Texture2D albedo, Color modulation) =>
-        BuddySharedMaterialFactory.CreateLitTexturedMaterial(_look, albedo, modulation);
+        BuddySharedMaterialFactory.CreateGeneratedAssetMaterial(_look, albedo, modulation);
 
     public const float PaintShellGrowAmount = 0.05f;
 

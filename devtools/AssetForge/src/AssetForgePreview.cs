@@ -88,7 +88,12 @@ public partial class AssetForgePreview : Control
         {
             Name = "Mesh",
             Mesh = mesh,
-            MaterialOverride = BuddySharedMaterialFactory.CreateLitTexturedMaterial(_profile.Look, texture, Colors.White),
+            // Generated alpha has already become silhouette/holes. Use the same opaque material
+            // contract as the shipping cosmetic renderer so the Forge preview cannot drift.
+            MaterialOverride = BuddySharedMaterialFactory.CreateGeneratedAssetMaterial(
+                _profile.Look,
+                texture,
+                Colors.White),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         };
         _asset.AddChild(instance);

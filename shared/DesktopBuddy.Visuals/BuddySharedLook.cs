@@ -24,6 +24,14 @@ public readonly record struct BuddySharedLook(
 
 public static class BuddySharedMaterialFactory
 {
+    /// <summary>
+    /// Low texture-coloured light floor used only by generated opaque assets. Their narrow rounded
+    /// surfaces can point almost perpendicular to both Buddy directional lights; keeping a small
+    /// authored-colour contribution prevents those valid surfaces collapsing to black while normal
+    /// per-pixel diffuse/specular shading still supplies the 3D form.
+    /// </summary>
+    public const float GeneratedAssetEmissionFloor = 0.16f;
+
     public static StandardMaterial3D CreateLitMaterial(in BuddySharedLook look, Color albedo) => new()
     {
         ResourceName = "BuddyLookLitMaterial",
@@ -44,10 +52,35 @@ public static class BuddySharedMaterialFactory
         StandardMaterial3D material = CreateLitMaterial(look, modulation);
         material.ResourceName = "BuddyLookTexturedMaterial";
         material.AlbedoTexture = albedo;
-        // Generated albedo deliberately carries transparent pixels after canonical background
-        // extraction. Honour them in both Asset Forge and the shipped game instead of sampling
-        // the removed canvas as an opaque/black texture region.
+        // This generic textured seam preserves source alpha for callers whose visible surface is
+        // still texture-defined. Generated solid assets use CreateGeneratedAssetMaterial instead.
         material.Transparency = BaseMaterial3D.TransparencyEnum.Alpha;
+        return material;
+    }
+
+    /// <summary>
+    /// Material contract for deterministic Asset Forge geometry. Alpha has already been converted
+    /// into mesh silhouette (including real lens holes), and the exported albedo has safe colour
+    /// bleed for every UV sample. The material must therefore stay opaque: re-enabling alpha
+    /// blending would make the render contract disagree with the generated geometry.
+    /// </summary>
+    public static StandardMaterial3D CreateGeneratedAssetMaterial(
+        in BuddySharedLook look,
+        Texture2D albedo,
+        Color modulation)
+    {
+        StandardMaterial3D material = CreateLitMaterial(look, modulation);
+        material.ResourceName = "BuddyLookGeneratedAssetMaterial";
+        material.AlbedoTexture = albedo;
+
+        // Generated assets are intentionally solid geometry. StandardMaterial3D is opaque by
+        // default, so do not opt into a transparency mode here.
+        // Use the authored texture as a small emission contribution rather than making the mesh
+        // unshaded. Emission defaults to black/additive, so the texture alone supplies the floor.
+        material.EmissionEnabled = true;
+        material.Emission = Colors.Black;
+        material.EmissionTexture = albedo;
+        material.EmissionEnergyMultiplier = GeneratedAssetEmissionFloor;
         return material;
     }
 
