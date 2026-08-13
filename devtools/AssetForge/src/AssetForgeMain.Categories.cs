@@ -12,7 +12,6 @@ public partial class AssetForgeMain
     private void EnsureCategoryWorkflowUi()
     {
         if (_categoryWorkflowInstalled || !_modernWorkspaceInstalled || !GodotObject.IsInstanceValid(_categorySelector)) return;
-
         if (_shapeMode.ItemCount < 3) _shapeMode.AddItem("Inflated solid");
         if (_shapeMode.ItemCount < 4) _shapeMode.AddItem("Relief");
         _categorySelector.ItemSelected += OnAuthoringCategorySelected;
@@ -133,9 +132,9 @@ public partial class AssetForgeMain
                 ? RepositoryExporter.ExportGlasses(_root.Text.Trim(), source, _generated, thumbnail)
                 : RepositoryBuddyReplacementExporter.Export(_root.Text.Trim(), source, _generated, thumbnail);
             GeneratedCosmeticLightingPersistence.Apply(_root.Text.Trim(), _generated.Recipe);
-            VerificationResult verification = RepositoryAssetVerifier.Verify(_root.Text.Trim(), _generated.Recipe.FeatureId);
-            if (!verification.Success)
-                throw new InvalidOperationException("Export committed but verification failed: " + FormatVerification(verification));
+            AssetVerificationResult verification = RepositoryAssetVerifier.Verify(_root.Text.Trim(), _generated.Recipe.FeatureId);
+            if (!verification.Passed)
+                throw new InvalidOperationException("Export committed but verification failed: " + string.Join("; ", verification.Diagnostics));
 
             string category = _generated.Recipe.Category switch
             {
@@ -157,13 +156,10 @@ public partial class AssetForgeMain
         if (!GodotObject.IsInstanceValid(_shapeMode)) return;
         bool glasses = _activeCategory == AssetCategory.Glasses;
         bool replacement = _activeCategory is AssetCategory.TorsoShape or AssetCategory.FootShape;
-
         SetLabeledVisible(_frameThickness, glasses);
         RefreshBridgeThicknessVisibility();
-        if (GodotObject.IsInstanceValid(_templeThickness) && _templeThickness.GetParent()?.GetParent() is Control templeCard)
-            templeCard.Visible = glasses;
-        if (GodotObject.IsInstanceValid(_migratePreset))
-            _migratePreset.Visible = glasses && _activePresetVersion < 2;
+        if (GodotObject.IsInstanceValid(_templeThickness) && _templeThickness.GetParent()?.GetParent() is Control templeCard) templeCard.Visible = glasses;
+        if (GodotObject.IsInstanceValid(_migratePreset)) _migratePreset.Visible = glasses && _activePresetVersion < 2;
 
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.FlatExtrusion, replacement);
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.RoundedExtrusion, false);
