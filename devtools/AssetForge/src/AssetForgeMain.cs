@@ -194,6 +194,7 @@ public partial class AssetForgeMain : Control
             catch { thumbnail = _generated.AlbedoPng; }
             string repo = RepositoryRoot();
             ExportResult result = RepositoryExporter.ExportGlasses(repo, File.ReadAllBytes(_sourcePath), _generated, thumbnail);
+            GeneratedCosmeticLightingPersistence.Apply(repo, _generated.Recipe);
             AssetVerificationResult verification = RepositoryAssetVerifier.Verify(repo, _generated.Recipe.FeatureId);
             _hashes.Text = FormatVerification(verification);
             SetStatus(verification.Passed
