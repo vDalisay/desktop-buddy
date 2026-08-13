@@ -43,6 +43,23 @@ public sealed class GlassesTemplateV2PlacementTests
         Assert.NotEqual(straight.GeometryHash, raised.GeometryHash);
     }
 
+    [Fact]
+    public void Glasses2_preserves_complex_closed_bridge_artwork_as_a_full_silhouette()
+    {
+        GeneratedAsset generated = Generate(CreateArrowBridgeGlasses(), 2);
+        Assert.True(generated.Diagnostics.Holes >= 4, $"Expected at least four interior holes, got {generated.Diagnostics.Holes}.");
+
+        float halfDepth = (float)generated.Recipe.Geometry.Depth * 0.5f;
+        float[] bridgeY = generated.Mesh.Positions
+            .Where(p => MathF.Abs(p.X) < 0.38f && MathF.Abs(p.Z - halfDepth) < 0.002f)
+            .Select(static p => p.Y)
+            .ToArray();
+        Assert.NotEmpty(bridgeY);
+        Assert.True(
+            bridgeY.Max() - bridgeY.Min() > 0.20f,
+            $"Complex bridge was collapsed toward a center-line; front silhouette Y span was {bridgeY.Max() - bridgeY.Min():0.000}.");
+    }
+
     private static float CenterBridgeTop(GeneratedAsset generated)
     {
         float[] candidates = generated.Mesh.Positions
@@ -83,12 +100,37 @@ public sealed class GlassesTemplateV2PlacementTests
         return new RgbaImage(size, size, pixels);
     }
 
+    private static RgbaImage CreateArrowBridgeGlasses()
+    {
+        const int size = 1024;
+        byte[] pixels = new byte[size * size * 4];
+        DrawFrame(pixels, 245, 320, 440, 575, 14);
+        DrawFrame(pixels, 584, 320, 779, 575, 14);
+
+        // Two complete hollow arrows point inward. These deliberately add two more enclosed holes
+        // between the lens holes, matching the owner-provided regression image that used to be
+        // skeletonized by TryTraceAuthoredBridge.
+        DrawPolyline(pixels,
+            [(425, 440), (480, 440), (480, 414), (540, 474), (480, 534), (480, 508), (425, 508), (425, 440)],
+            9);
+        DrawPolyline(pixels,
+            [(599, 440), (544, 440), (544, 414), (484, 474), (544, 534), (544, 508), (599, 508), (599, 440)],
+            9);
+        return new RgbaImage(size, size, pixels);
+    }
+
     private static void DrawFrame(byte[] pixels, int x0, int y0, int x1, int y1, int radius)
     {
         DrawLine(pixels, x0, y0, x1, y0, radius);
         DrawLine(pixels, x1, y0, x1, y1, radius);
         DrawLine(pixels, x1, y1, x0, y1, radius);
         DrawLine(pixels, x0, y1, x0, y0, radius);
+    }
+
+    private static void DrawPolyline(byte[] pixels, IReadOnlyList<(int X, int Y)> points, int radius)
+    {
+        for (int i = 0; i < points.Count - 1; i++)
+            DrawLine(pixels, points[i].X, points[i].Y, points[i + 1].X, points[i + 1].Y, radius);
     }
 
     private static void DrawLine(byte[] pixels, int x0, int y0, int x1, int y1, int radius)
