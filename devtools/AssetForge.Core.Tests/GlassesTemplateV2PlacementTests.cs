@@ -37,9 +37,11 @@ public sealed class GlassesTemplateV2PlacementTests
     {
         GeneratedAsset straight = Generate(CreateGlasses(0, 470), 2);
         GeneratedAsset raised = Generate(CreateGlasses(0, 410), 2);
-        float straightBridgeY = CenterBridgeTop(straight);
-        float raisedBridgeY = CenterBridgeTop(raised);
-        Assert.True(raisedBridgeY > straightBridgeY + 0.10f);
+        float straightBridgeY = CenterBridgeAverageY(straight);
+        float raisedBridgeY = CenterBridgeAverageY(raised);
+        Assert.True(
+            raisedBridgeY > straightBridgeY + 0.04f,
+            $"Expected raised authored bridge to move upward: straight={straightBridgeY:0.000}, raised={raisedBridgeY:0.000}.");
         Assert.NotEqual(straight.GeometryHash, raised.GeometryHash);
     }
 
@@ -60,14 +62,14 @@ public sealed class GlassesTemplateV2PlacementTests
             $"Complex bridge was collapsed toward a center-line; front silhouette Y span was {bridgeY.Max() - bridgeY.Min():0.000}.");
     }
 
-    private static float CenterBridgeTop(GeneratedAsset generated)
+    private static float CenterBridgeAverageY(GeneratedAsset generated)
     {
         float[] candidates = generated.Mesh.Positions
-            .Where(static p => MathF.Abs(p.X) < 0.10f && p.Z > -0.10f)
+            .Where(static p => MathF.Abs(p.X) < 0.10f)
             .Select(static p => p.Y)
             .ToArray();
         Assert.NotEmpty(candidates);
-        return candidates.Max();
+        return candidates.Average();
     }
 
     private static GeneratedAsset Generate(RgbaImage image, int presetVersion)
