@@ -51,16 +51,20 @@ public partial class GeneratedBuddyCosmeticResource : GameResource
 
     public CosmeticDefinition ToDefinition()
     {
-        if (Slot != CharacterFeatureSlot.Glasses)
-            throw new InvalidOperationException("Asset Forge v1 generated runtime supports Glasses only.");
+        if (Slot is not (CharacterFeatureSlot.Glasses or CharacterFeatureSlot.Tops or CharacterFeatureSlot.Shoes))
+            throw new InvalidOperationException($"Asset Forge generated runtime does not support {Slot} yet.");
+
+        CosmeticTransformPolicy transformPolicy = Slot == CharacterFeatureSlot.Glasses
+            ? CosmeticTransformPolicy.MoveAndUniformScale
+            : CosmeticTransformPolicy.None;
         return new CosmeticDefinition(
             FeatureId,
             Slot,
             DisplayName,
             SortOrder,
             isFreeDefault: false,
-            CosmeticTransformPolicy.MoveAndUniformScale,
-            CosmeticTransformBounds.Standard,
+            transformPolicy,
+            transformPolicy == CosmeticTransformPolicy.None ? CosmeticTransformBounds.None : CosmeticTransformBounds.Standard,
             NormalizedFeatureTransform.Identity,
             colorChannels: [],
             CharacterFeatureCatalog.Shipped.GetDefaultId(Slot),
@@ -72,8 +76,18 @@ public partial class GeneratedBuddyCosmeticResource : GameResource
         var errors = new Godot.Collections.Array<string>();
         try { _ = ToDefinition(); }
         catch (Exception exception) { errors.Add(exception.Message); }
-        if (!FeatureId.StartsWith("glasses.", StringComparison.Ordinal)) errors.Add("Generated glasses feature ID must use glasses.*.");
-        if (!ContentId.StartsWith("cosmetic.glasses.", StringComparison.Ordinal)) errors.Add("Generated glasses content ID must use cosmetic.glasses.*.");
+
+        (string featurePrefix, string contentPrefix) = Slot switch
+        {
+            CharacterFeatureSlot.Glasses => ("glasses.", "cosmetic.glasses."),
+            CharacterFeatureSlot.Tops => ("top.", "cosmetic.top."),
+            CharacterFeatureSlot.Shoes => ("shoes.", "cosmetic.shoes."),
+            _ => (string.Empty, string.Empty),
+        };
+        if (featurePrefix.Length > 0 && !FeatureId.StartsWith(featurePrefix, StringComparison.Ordinal))
+            errors.Add($"Generated {Slot} feature ID must use {featurePrefix}*.");
+        if (contentPrefix.Length > 0 && !ContentId.StartsWith(contentPrefix, StringComparison.Ordinal))
+            errors.Add($"Generated {Slot} content ID must use {contentPrefix}*.");
         if (string.IsNullOrWhiteSpace(DisplayName)) errors.Add("Generated cosmetic display name is required.");
         if (!GodotObject.IsInstanceValid(MeshScene)) errors.Add($"'{FeatureId}' is missing its generated GLB scene.");
         if (!GodotObject.IsInstanceValid(AlbedoTexture)) errors.Add($"'{FeatureId}' is missing its generated albedo.");
