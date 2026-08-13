@@ -17,11 +17,6 @@ using Godot;
 
 namespace DesktopBuddy.Testing;
 
-/// <summary>
-/// CI generates glasses.ci_pink_round immediately before Godot import, then this scenario proves
-/// that the generated trust/catalogue/economy/editor/render/persistence seams agree on that asset.
-/// The fixture itself is intentionally not committed.
-/// </summary>
 public sealed class AssetForgeGeneratedGlassesScenario : IScenario
 {
     private const string FeatureId = "glasses.ci_pink_round";
@@ -32,8 +27,7 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
     public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
     {
         var checks = new List<StartupCheck>();
-        CharacterEditorScenarioSupport.Context context =
-            await CharacterEditorScenarioSupport.Create(tree, Id);
+        CharacterEditorScenarioSupport.Context context = await CharacterEditorScenarioSupport.Create(tree, Id);
         try
         {
             BuddyGeneratedCosmeticRegistry generated = BuddyGeneratedCosmeticRegistry.Current;
@@ -72,23 +66,13 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
             if (!featureComposed || !commerceComposed)
                 return CharacterEditorScenarioSupport.Result(checks, seed);
 
-            var store = new CharacterStore(
-                new CharacterFileSystem(),
-                context.Root,
-                featureCatalog: features);
+            var store = new CharacterStore(new CharacterFileSystem(), context.Root, featureCatalog: features);
             var selection = new CharacterSelectionState();
             var progressStore = new InMemoryProgressStore();
-            var progress = new BuddyProgressState(
-                cashPerPain: 0.01,
-                initialBalanceMilliCredits: 500_000);
+            var progress = new BuddyProgressState(cashPerPain: 0.01, initialBalanceMilliCredits: 500_000);
             var saves = new SaveCoordinator(progress, progressStore, selection: selection);
             var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
-            var coordinator = new CharacterSelectionCoordinator(
-                store,
-                selection,
-                context.Preview,
-                saves,
-                features);
+            var coordinator = new CharacterSelectionCoordinator(store, selection, context.Preview, saves, features);
             var library = new CharacterLibraryIndex(new CharacterFileSystem(), context.Root);
             var session = new CharacterEditorSession(
                 store,
@@ -103,20 +87,16 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
                 CharacterDocument.CreateDefault(id, "Asset Forge Fixture"),
                 CancellationToken.None);
             CharacterEditorActionResult opened = await session.OpenActiveAsync(id);
-            CharacterEditorActionResult previewed = session.PreviewCosmetic(
-                CharacterFeatureSlot.Glasses,
-                FeatureId);
+            CharacterEditorActionResult previewed = session.PreviewCosmetic(CharacterFeatureSlot.Glasses, FeatureId);
             bool previewOnly = baselineSaved.IsSuccess && opened.Completed && previewed.Completed &&
                 session.HasUnownedPreview(CharacterFeatureSlot.Glasses) &&
-                !session.CanSave &&
-                CharacterDocumentEditor.ReadFeatureId(
-                    session.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesNone &&
-                CharacterDocumentEditor.ReadFeatureId(
-                    session.PreviewDocument!, CharacterFeatureSlot.Glasses) == FeatureId;
+                !session.IsDirty &&
+                CharacterDocumentEditor.ReadFeatureId(session.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesNone &&
+                CharacterDocumentEditor.ReadFeatureId(session.PreviewDocument!, CharacterFeatureSlot.Glasses) == FeatureId;
             checks.Add(new StartupCheck(
                 "af_generated_unowned_preview",
                 previewOnly,
-                $"opened={opened.Completed} preview={previewed.Completed} canSave={session.CanSave}"));
+                $"opened={opened.Completed} preview={previewed.Completed} dirty={session.IsDirty} canSave={session.CanSave}"));
 
             CharacterEditorActionResult bought = session.BuyPreviewedCosmetic(CharacterFeatureSlot.Glasses);
             CharacterEditorActionResult equipped = session.EquipPreviewedCosmetic(CharacterFeatureSlot.Glasses);
@@ -124,8 +104,7 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
             await saves.FlushProgressAsync(force: true);
             bool purchaseEquipSave = bought.Completed && equipped.Completed && saved.Completed &&
                 economy.IsUnlocked(ContentId) && session.CanSave &&
-                CharacterDocumentEditor.ReadFeatureId(
-                    session.WorkingDocument!, CharacterFeatureSlot.Glasses) == FeatureId;
+                CharacterDocumentEditor.ReadFeatureId(session.WorkingDocument!, CharacterFeatureSlot.Glasses) == FeatureId;
             checks.Add(new StartupCheck(
                 "af_generated_purchase_equip_save",
                 purchaseEquipSave,
@@ -141,8 +120,7 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
                 compiledAppearance = compileResult.Appearance;
             }
             bool survivesRestart = reloaded.IsSuccess && compileSucceeded && compiledAppearance is not null &&
-                CharacterDocumentEditor.ReadFeatureId(
-                    reloaded.Document!, CharacterFeatureSlot.Glasses) == FeatureId &&
+                CharacterDocumentEditor.ReadFeatureId(reloaded.Document!, CharacterFeatureSlot.Glasses) == FeatureId &&
                 compiledAppearance.Glasses.ResolvedFeatureId == FeatureId;
             checks.Add(new StartupCheck(
                 "af_generated_id_survives_reload_and_compile",
@@ -158,8 +136,7 @@ public sealed class AssetForgeGeneratedGlassesScenario : IScenario
             Node3D? visual = context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Glasses);
             int meshCount = visual is null
                 ? 0
-                : (visual is MeshInstance3D ? 1 : 0) +
-                  visual.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>().Count();
+                : (visual is MeshInstance3D ? 1 : 0) + visual.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>().Count();
             int physicsNodes = visual is null ? 0 : CountPhysics(visual);
             bool generatedRendered = GodotObject.IsInstanceValid(visual) && meshCount == 1 && physicsNodes == 0;
             checks.Add(new StartupCheck(
