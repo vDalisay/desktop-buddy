@@ -64,9 +64,6 @@ public sealed class AssetForgeCoreTests
         Assert.True(opaque.UsedGlassesTemplate);
         Assert.Equal(transparent.GeometryHash, opaque.GeometryHash);
 
-        // Semantic glasses use geometry for their lens holes. Their final opaque material texture
-        // therefore deliberately fills non-authored canvas texels from the nearest authored colour
-        // instead of retaining transparent-black texels that Godot would render as black.
         RgbaImage albedo = PngCodec.DecodeRgba8(opaque.AlbedoPng);
         Assert.Equal((byte)255, albedo.Alpha(0, 0));
         Assert.Equal((byte)239, albedo.Pixels[0]);
@@ -112,12 +109,24 @@ public sealed class AssetForgeCoreTests
         Assert.True(thin.UsedGlassesTemplate && thick.UsedGlassesTemplate);
         Assert.NotEqual(thin.GeometryHash, thick.GeometryHash);
 
-        // Temples intentionally extend farther sideways than either lens, so total X width is not
-        // a useful frame-thickness measurement. The lens/frame vertical envelope is.
-        float thinHeight = thin.Mesh.Positions.Max(static p => p.Y) - thin.Mesh.Positions.Min(static p => p.Y);
-        float thickHeight = thick.Mesh.Positions.Max(static p => p.Y) - thick.Mesh.Positions.Min(static p => p.Y);
+        // A complex authored bridge now deliberately preserves its source silhouette and therefore
+        // has a thickness-independent envelope. Measure the interior span of the left lens tube,
+        // away from both the bridge and outward-running temple, to keep this assertion about the
+        // actual FrameThickness parameter.
+        float thinHeight = LeftLensHeight(thin);
+        float thickHeight = LeftLensHeight(thick);
         Assert.True(thickHeight > thinHeight + 0.03f,
-            $"Expected thicker template to expand the frame envelope: thin={thinHeight}, thick={thickHeight}");
+            $"Expected thicker template to expand the lens frame: thin={thinHeight}, thick={thickHeight}");
+    }
+
+    private static float LeftLensHeight(GeneratedAsset generated)
+    {
+        float[] y = generated.Mesh.Positions
+            .Where(static p => p.X > -0.75f && p.X < -0.25f)
+            .Select(static p => p.Y)
+            .ToArray();
+        Assert.NotEmpty(y);
+        return y.Max() - y.Min();
     }
 
     [Fact]
