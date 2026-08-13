@@ -10,6 +10,7 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 /// </summary>
 public sealed class BuddyLookMaterialLibrary
 {
+    private const float GeneratedCosmeticEmissionFloor = 0.28f;
     private readonly BuddySharedLook _look;
     private StandardMaterial3D? _outline;
 
@@ -34,17 +35,17 @@ public sealed class BuddyLookMaterialLibrary
             look.OutlineGrowAmount);
     }
 
-    /// <summary>Returns a new accepted soft-toon material with the supplied solid albedo.</summary>
     public StandardMaterial3D CreateLitMaterial(Color albedo) =>
         BuddySharedMaterialFactory.CreateLitMaterial(_look, albedo);
 
-    /// <summary>
-    /// Generated cosmetics use this seam: authored PNG colour stays authoritative, alpha has
-    /// already become geometry, and the same opaque generated-asset lighting contract used by
-    /// Asset Forge is applied at runtime.
-    /// </summary>
-    public StandardMaterial3D CreateLitTexturedMaterial(Texture2D albedo, Color modulation) =>
-        BuddySharedMaterialFactory.CreateGeneratedAssetMaterial(_look, albedo, modulation);
+    public StandardMaterial3D CreateLitTexturedMaterial(Texture2D albedo, Color modulation)
+    {
+        StandardMaterial3D material =
+            BuddySharedMaterialFactory.CreateGeneratedAssetMaterial(_look, albedo, modulation);
+        material.AlbedoTextureForceSrgb = true;
+        material.EmissionEnergyMultiplier = GeneratedCosmeticEmissionFloor;
+        return material;
+    }
 
     public const float PaintShellGrowAmount = 0.05f;
 
