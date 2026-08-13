@@ -10,8 +10,11 @@ namespace DesktopBuddy.AssetForge.Core;
 /// </summary>
 internal static class GlassesBridgeSilhouette
 {
-    private const float RoiPaddingFraction = 0.04f;
-    private const float VerticalBandFraction = 0.20f;
+    // Bridge art can intentionally extend a little way into the inner lens/frame area (for example
+    // arrow stems). Keep enough horizontal padding for that artwork, but constrain the vertical
+    // corridor so we do not duplicate the full lens frame as flat bridge geometry.
+    private const float RoiPaddingFraction = 0.055f;
+    private const float VerticalBandFraction = 0.09f;
     private const float RequiredColumnCoverage = 0.55f;
     private const int MinimumComplexRunThickness = 3;
 
@@ -97,10 +100,10 @@ internal static class GlassesBridgeSilhouette
         for (int x = x0; x <= x1; x++)
         {
             if (!grid[x, y]) continue;
-            if (!Filled(grid, x, y - 1)) AddWall(mesh, grid, foreground, x, y, x + 1, y, halfDepth);       // top
-            if (!Filled(grid, x + 1, y)) AddWall(mesh, grid, foreground, x + 1, y, x + 1, y + 1, halfDepth); // right
-            if (!Filled(grid, x, y + 1)) AddWall(mesh, grid, foreground, x + 1, y + 1, x, y + 1, halfDepth); // bottom
-            if (!Filled(grid, x - 1, y)) AddWall(mesh, grid, foreground, x, y + 1, x, y, halfDepth);       // left
+            if (!Filled(grid, x, y - 1)) AddWall(mesh, grid, foreground, x, y, x + 1, y, halfDepth);
+            if (!Filled(grid, x + 1, y)) AddWall(mesh, grid, foreground, x + 1, y, x + 1, y + 1, halfDepth);
+            if (!Filled(grid, x, y + 1)) AddWall(mesh, grid, foreground, x + 1, y + 1, x, y + 1, halfDepth);
+            if (!Filled(grid, x - 1, y)) AddWall(mesh, grid, foreground, x, y + 1, x, y, halfDepth);
         }
 
         return mesh.TriangleCount > triangleCountBefore;
@@ -131,7 +134,6 @@ internal static class GlassesBridgeSilhouette
         uint f1 = mesh.AddVertex(World(grid, g1, halfDepth), uv1);
         uint f2 = mesh.AddVertex(World(grid, g2, halfDepth), uv2);
         uint f3 = mesh.AddVertex(World(grid, g3, halfDepth), uv3);
-        // Grid Y grows downward while Buddy-head Y grows upward, so this winding faces +Z.
         mesh.AddTriangle(f0, f2, f1);
         mesh.AddTriangle(f0, f3, f2);
 
@@ -143,11 +145,6 @@ internal static class GlassesBridgeSilhouette
         mesh.AddTriangle(b0, b2, b3);
     }
 
-    /// <summary>
-    /// Adds a clockwise-in-grid boundary edge. Because template Y is inverted into Buddy-head
-    /// space, this ordering gives the side wall an outward-facing normal for top/right/bottom/left
-    /// edges respectively.
-    /// </summary>
     private static void AddWall(
         CanonicalMesh mesh,
         MaskGrid grid,
