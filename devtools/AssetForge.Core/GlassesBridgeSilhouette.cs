@@ -107,35 +107,52 @@ internal static class GlassesBridgeSilhouette
         if (!hasAdditionalInteriorCutouts && !isBroadSolidShape)
             return false;
 
+        int biasCells = BridgeThicknessAdjuster.BiasCells(grid, settings);
+        MaskGrid renderGrid = grid;
+        int renderX0 = x0;
+        int renderX1 = x1;
+        int renderY0 = y0;
+        int renderY1 = y1;
+        if (biasCells != 0)
+        {
+            renderGrid = BridgeThicknessAdjuster.BuildBiasedRegion(grid, x0, x1, y0, y1, biasCells);
+            int expansion = Math.Abs(biasCells) + 1;
+            renderX0 = Math.Max(0, x0 - expansion);
+            renderX1 = Math.Min(grid.Width - 1, x1 + expansion);
+            renderY0 = Math.Max(0, y0 - expansion);
+            renderY1 = Math.Min(grid.Height - 1, y1 + expansion);
+        }
+
         int triangleCountBefore = mesh.TriangleCount;
         float halfDepth = MathF.Max(0.001f, (float)settings.Depth * 0.5f);
 
-        // Front/back are emitted as horizontal runs rather than one quad per cell. This preserves
-        // the exact mask (including holes) while keeping arrow-like bridge artwork inexpensive.
-        for (int y = y0; y <= y1; y++)
+        // Front/back are emitted as horizontal runs rather than one quad per cell. With a non-zero
+        // bridge thickness adjustment, only this bridge-local mask is dilated/eroded; lens frames
+        // and temples remain untouched.
+        for (int y = renderY0; y <= renderY1; y++)
         {
-            int x = x0;
-            while (x <= x1)
+            int x = renderX0;
+            while (x <= renderX1)
             {
-                while (x <= x1 && !grid[x, y]) x++;
-                if (x > x1) break;
+                while (x <= renderX1 && !renderGrid[x, y]) x++;
+                if (x > renderX1) break;
                 int runStart = x;
-                while (x <= x1 && grid[x, y]) x++;
+                while (x <= renderX1 && renderGrid[x, y]) x++;
                 AddFrontBackRun(mesh, grid, foreground, runStart, x, y, halfDepth);
             }
         }
 
-        // Boundary walls are driven by the global source mask, not merely the clipped ROI. That
-        // avoids adding artificial caps where a bridge naturally joins a lens/frame while still
-        // producing walls around authored interior cut-outs.
-        for (int y = y0; y <= y1; y++)
-        for (int x = x0; x <= x1; x++)
+        // Zero bias preserves the historic wall behavior exactly. For a tuned bridge, boundaries
+        // come from the bridge-local adjusted mask; outside that adjusted corridor, the original
+        // frame mask still suppresses artificial caps where bridge and lens naturally overlap.
+        for (int y = renderY0; y <= renderY1; y++)
+        for (int x = renderX0; x <= renderX1; x++)
         {
-            if (!grid[x, y]) continue;
-            if (!Filled(grid, x, y - 1)) AddWall(mesh, grid, foreground, x, y, x + 1, y, halfDepth);
-            if (!Filled(grid, x + 1, y)) AddWall(mesh, grid, foreground, x + 1, y, x + 1, y + 1, halfDepth);
-            if (!Filled(grid, x, y + 1)) AddWall(mesh, grid, foreground, x + 1, y + 1, x, y + 1, halfDepth);
-            if (!Filled(grid, x - 1, y)) AddWall(mesh, grid, foreground, x, y + 1, x, y, halfDepth);
+            if (!renderGrid[x, y]) continue;
+            if (!FilledForWall(renderGrid, grid, x, y - 1, renderX0, renderX1, renderY0, renderY1)) AddWall(mesh, grid, foreground, x, y, x + 1, y, halfDepth);
+            if (!FilledForWall(renderGrid, grid, x + 1, y, renderX0, renderX1, renderY0, renderY1)) AddWall(mesh, grid, foreground, x + 1, y, x + 1, y + 1, halfDepth);
+            if (!FilledForWall(renderGrid, grid, x, y + 1, renderX0, renderX1, renderY0, renderY1)) AddWall(mesh, grid, foreground, x + 1, y + 1, x, y + 1, halfDepth);
+            if (!FilledForWall(renderGrid, grid, x - 1, y, renderX0, renderX1, renderY0, renderY1)) AddWall(mesh, grid, foreground, x, y + 1, x, y, halfDepth);
         }
 
         return mesh.TriangleCount > triangleCountBefore;
@@ -160,8 +177,20 @@ internal static class GlassesBridgeSilhouette
         return maxY >= minY;
     }
 
-    private static bool Filled(MaskGrid grid, int x, int y) =>
-        x >= 0 && y >= 0 && x < grid.Width && y < grid.Height && grid[x, y];
+    private static bool FilledForWall(
+        MaskGrid renderGrid,
+        MaskGrid sourceGrid,
+        int x,
+        int y,
+        int x0,
+        int x1,
+        int y0,
+        int y1)
+    {
+        if (x >= x0 && x <= x1 && y >= y0 && y <= y1)
+            return renderGrid[x, y];
+        return sourceGrid[x, y];
+    }
 
     private static void AddFrontBackRun(
         CanonicalMesh mesh,
