@@ -35,37 +35,48 @@ public sealed class GlassesSemanticTemplateTests
     }
 
     [Fact]
-    public void Rounded_glasses_front_and_back_surface_normals_face_outward()
+    public void Rounded_glasses_frame_ring_normals_face_away_from_each_tube_centerline()
     {
         GeneratedAsset generated = GenerateDiamond();
-        float depth = (float)generated.Recipe.Geometry.Depth * 0.5f;
-        float threshold = depth * 0.45f;
-        int front = 0;
-        int frontOutward = 0;
-        int back = 0;
-        int backOutward = 0;
+        CanonicalMesh mesh = generated.Mesh;
+        int radialSegments = CrossSectionSegments(generated.Recipe.Geometry.Roundness);
+        int checkedRings = 0;
+        int checkedVertices = 0;
+        int outwardVertices = 0;
 
-        for (int i = 0; i < generated.Mesh.Positions.Count; i++)
+        // AddClosedFrameTube writes one consecutive run of identical UVs per contour point, with
+        // exactly radialSegments vertices in that run. Temple vertices use one UV for a much longer
+        // consecutive run, so this selects the two lens-frame tubes without treating temple side
+        // normals as if they were supposed to point along +/-Z.
+        int start = 0;
+        while (start < mesh.Uvs.Count)
         {
-            System.Numerics.Vector3 position = generated.Mesh.Positions[i];
-            System.Numerics.Vector3 normal = generated.Mesh.Normals[i];
-            if (position.Z > threshold)
+            System.Numerics.Vector2 uv = mesh.Uvs[start];
+            int end = start + 1;
+            while (end < mesh.Uvs.Count && mesh.Uvs[end] == uv) end++;
+            int count = end - start;
+            if (count == radialSegments)
             {
-                front++;
-                if (normal.Z > 0.05f) frontOutward++;
+                System.Numerics.Vector3 center = System.Numerics.Vector3.Zero;
+                for (int i = start; i < end; i++) center += mesh.Positions[i];
+                center /= count;
+
+                for (int i = start; i < end; i++)
+                {
+                    System.Numerics.Vector3 radial = mesh.Positions[i] - center;
+                    if (radial.LengthSquared() <= 1e-10f) continue;
+                    checkedVertices++;
+                    if (System.Numerics.Vector3.Dot(mesh.Normals[i], radial) > 0f) outwardVertices++;
+                }
+                checkedRings++;
             }
-            else if (position.Z < -threshold)
-            {
-                back++;
-                if (normal.Z < -0.05f) backOutward++;
-            }
+            start = end;
         }
 
-        Assert.True(front > 0 && back > 0, "Expected rounded frame vertices on both depth faces.");
-        Assert.True(frontOutward >= front * 0.85f,
-            $"Expected front tube normals to face the camera side, got {frontOutward}/{front} outward.");
-        Assert.True(backOutward >= back * 0.85f,
-            $"Expected back tube normals to face away from the camera side, got {backOutward}/{back} outward.");
+        Assert.True(checkedRings >= 8, $"Expected multiple semantic frame rings, found {checkedRings}.");
+        Assert.True(checkedVertices > 0);
+        Assert.True(outwardVertices >= checkedVertices * 0.95f,
+            $"Expected frame tube normals to face outward from their ring centerlines, got {outwardVertices}/{checkedVertices} outward.");
     }
 
     [Fact]
@@ -85,6 +96,13 @@ public sealed class GlassesSemanticTemplateTests
         GeneratedAsset fromTransparent = AssetForgeGenerator.Generate(PngCodec.EncodeRgba8(transparent), recipe);
         Assert.True(fromOpaque.UsedGlassesTemplate && fromTransparent.UsedGlassesTemplate);
         Assert.Equal(fromOpaque.GeometryHash, fromTransparent.GeometryHash);
+    }
+
+    private static int CrossSectionSegments(double roundness)
+    {
+        int segments = (int)Math.Round(6 + Math.Clamp(roundness, 0, 1) * 10, MidpointRounding.AwayFromZero);
+        if ((segments & 1) != 0) segments++;
+        return Math.Clamp(segments, 6, 16);
     }
 
     private static GeneratedAsset GenerateDiamond() => AssetForgeGenerator.Generate(
