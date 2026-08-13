@@ -39,6 +39,12 @@ public partial class BuddyExpressionProfile : GameResource
     [Export(PropertyHint.Range, "0,0.99,0.01")]
     public float FacingWalkDeadband { get; set; } = 0.05f;
 
+    // Hysteresis for the engaged path, the counterpart of FacingWalkCommitTicks: how long
+    // the cursor must stay on one side before it may flip the committed side. Short enough
+    // that petting from the right still turns the buddy right within a fifth of a second.
+    [Export(PropertyHint.Range, "0,600,1")]
+    public int FacingSideCommitTicks { get; set; } = 24;
+
     [Export(PropertyHint.Range, "1,14400,1")]
     public int FacingIdleFlipMinimumTicks { get; set; } = 720;
 

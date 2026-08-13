@@ -76,10 +76,12 @@ public sealed class FacingModelTests
     }
 
     [Fact]
-    public void EngagedInteraction_CommitsCursorSideImmediately()
+    public void EngagedInteraction_CommitsCursorSideAfterItsShortStreak()
     {
         FacingModel model = NewModel();
         model.Update(new FacingInputs(true, -1.0f, 0.0f), 1, 1.0 / 120.0);
+        Assert.Equal(FacingSide.Frontal, model.CommittedSide);
+        model.Update(new FacingInputs(true, -1.0f, 0.0f), 24, 24.0 / 120.0);
         Assert.Equal(FacingSide.Left, model.CommittedSide);
     }
 
@@ -89,8 +91,25 @@ public sealed class FacingModelTests
         FacingModel model = NewModel();
         model.Update(WalkRight, 40, 0.33);
         Assert.Equal(FacingSide.Right, model.CommittedSide);
-        model.Update(new FacingInputs(true, -1.0f, 1.0f), 1, 1.0 / 120.0);
+        model.Update(new FacingInputs(true, -1.0f, 1.0f), 25, 25.0 / 120.0);
         Assert.Equal(FacingSide.Left, model.CommittedSide);
+    }
+
+    [Fact]
+    public void EngagedCursorSideJitter_NeverFlipsTheCommittedSide()
+    {
+        // The reported wobble: a cursor sitting roughly above a walking buddy made
+        // Sign(cursorX - torsoX) alternate per rendered frame.
+        FacingModel model = NewModel();
+        model.Update(new FacingInputs(true, 1.0f, 0.0f), 30, 0.25);
+        Assert.Equal(FacingSide.Right, model.CommittedSide);
+
+        for (int frame = 0; frame < 240; frame++)
+        {
+            model.Update(
+                new FacingInputs(true, frame % 2 == 0 ? -1.0f : 1.0f, 0.0f), 2, 2.0 / 120.0);
+            Assert.Equal(FacingSide.Right, model.CommittedSide);
+        }
     }
 
     [Fact]

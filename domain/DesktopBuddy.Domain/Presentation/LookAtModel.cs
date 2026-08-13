@@ -70,6 +70,9 @@ public sealed class LookAtModel
 {
     private const int GlanceSampleResolution = 1000;
 
+    /// <summary>How much further than the acquire range a held cursor keeps the gaze.</summary>
+    private const float ReleaseRangeFactor = 1.25f;
+
     private readonly IRandomSource _random;
     private readonly LookAtParameters _parameters;
 
@@ -244,9 +247,23 @@ public sealed class LookAtModel
         _glanceActive = false;
     }
 
-    private bool WithinRange(float dx, float dy) =>
-        float.IsFinite(dx) && float.IsFinite(dy) &&
-        (dx * dx) + (dy * dy) <= _parameters.EngagementRange * _parameters.EngagementRange;
+    /// <summary>
+    /// The engagement range, widened while the cursor is already the held source. Without
+    /// the release margin a buddy walking past a resting cursor crossed the boundary every
+    /// few frames, and each crossing restarted the ease between a cursor angle and an
+    /// ambient one — a head visibly snapping back and forth (owner report 2026-08-13).
+    /// </summary>
+    private bool WithinRange(float dx, float dy)
+    {
+        if (!float.IsFinite(dx) || !float.IsFinite(dy))
+        {
+            return false;
+        }
+
+        float range = _parameters.EngagementRange *
+            (_lastSource == LookAtSource.Cursor ? ReleaseRangeFactor : 1.0f);
+        return (dx * dx) + (dy * dy) <= range * range;
+    }
 
     /// <summary>Point-to-angle convention: atan2 of the world delta over the gaze depth.</summary>
     private void Aim(float dx, float dy, out float yawDegrees, out float pitchDegrees)

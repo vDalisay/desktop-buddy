@@ -96,6 +96,25 @@ public sealed class StandingRecoveryScenario : IScenario
             $"reason={lab.Buddy.Recovery.LastHardRecoveryReason}"));
         checks.Add(new StartupCheck("hard_recovery_restores_safe_pose", safeAfterHardRecovery,
             $"inside={lab.Buddy.Recovery.AllBodiesInsideSafeBounds()} finite={lab.Buddy.Rig.AllBodiesFinite()}"));
+        // Owner report 2026-08-13: a hard bat hit could push one part through the wall in a
+        // single step, and re-posing the whole rig teleported the buddy to the middle of the
+        // room. A part one step past the wall is contained against it instead, and the parts
+        // still inside stay exactly where the hit sent them. Being flung far outside the room
+        // is still broken state, and the check above still asserts the full re-pose for it.
+        await ScenarioSteps.WaitForStanding(tree, lab, 900);
+        Vector2 torsoBeforeTunnel = lab.Buddy.Rig.Torso.GlobalPosition;
+        int recoveriesBeforeTunnel = lab.Buddy.Recovery.HardRecoveryCount;
+        Rect2 safe = lab.Buddy.Recovery.SafeBounds;
+        lab.Buddy.Rig.Head.GlobalPosition = new Vector2(safe.Position.X - 24.0f, safe.GetCenter().Y);
+        lab.Buddy.Rig.Head.LinearVelocity = new Vector2(-3_000.0f, 0.0f);
+        await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+        float torsoDisplacement = lab.Buddy.Rig.Torso.GlobalPosition.DistanceTo(torsoBeforeTunnel);
+        checks.Add(new StartupCheck("tunnelled_part_is_contained_not_repositioned",
+            lab.Buddy.Recovery.HardRecoveryCount == recoveriesBeforeTunnel + 1 &&
+            lab.Buddy.Recovery.AllBodiesInsideSafeBounds() && torsoDisplacement < 8.0f,
+            $"torso_moved={torsoDisplacement:F2} head={lab.Buddy.Rig.Head.GlobalPosition} " +
+            $"origin={lab.Buddy.Recovery.SafePoseOrigin}"));
 
         int beforeInvalidRecovery = lab.Buddy.Recovery.HardRecoveryCount;
         lab.Buddy.Rig.RightHand.LinearVelocity = new Vector2(float.NaN, 0.0f);

@@ -86,7 +86,12 @@ public partial class PuppetRoomContainmentComponent : Node
             innerBounds.End.Y - lowestRestExtent - Profile.SafePoseFloorClearance);
     }
 
-    private static bool CorrectBody(PuppetPartBody body, Rect2 bounds)
+    /// <summary>
+    /// Clamps one body inside <paramref name="bounds"/>, removing only the velocity that
+    /// pushes outward. Shared with <see cref="RecoveryComponent"/>, which uses it to contain
+    /// a part that tunnelled a wall instead of re-posing the whole rig.
+    /// </summary>
+    public static bool CorrectBody(PuppetPartBody body, Rect2 bounds)
     {
         float minimumX = bounds.Position.X + body.Radius;
         float maximumX = bounds.End.X - body.Radius;

@@ -26,6 +26,9 @@ public partial class FacingController : Node
     // never perturb autonomy outcomes, so it salts the shared seed into its own stream.
     private const ulong FacingStreamSalt = 0xFACE_5EED_2026_0718UL;
 
+    /// <summary>Matches the look-at release margin, so gaze and facing let go together.</summary>
+    private const float CursorReleaseRangeFactor = 1.25f;
+
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public InteractionDamageComponent DamagePipeline { get; set; } = null!;
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
@@ -35,6 +38,7 @@ public partial class FacingController : Node
     private FacingModel _model = null!;
     private long _lastRoutedTick;
     private int _developmentSide;
+    private bool _cursorEngaged;
 
     public bool IsInitialized { get; private set; }
     public FacingSide CommittedSide => IsInitialized ? _model.CommittedSide : FacingSide.Frontal;
@@ -120,7 +124,8 @@ public partial class FacingController : Node
 
         bool engaged = false;
         float side = 0.0f;
-        float torsoX = Buddy.Rig.Torso.GlobalPosition.X;
+        Vector2 torso = Buddy.Rig.Torso.GlobalPosition;
+        float torsoX = torso.X;
         ToolId tool = DamagePipeline.SelectedTool;
         if (_developmentSide != 0)
         {
@@ -133,7 +138,7 @@ public partial class FacingController : Node
             engaged = true;
             side = MathF.Sign(CareStroke.Cursor.X - torsoX);
         }
-        else if (CursorTools.DrivesTool(tool) && CursorTools.HasCursor)
+        else if (CursorToolWithinReach(tool, torso))
         {
             engaged = true;
             side = MathF.Sign(CursorTools.Cursor.X - torsoX);
@@ -157,5 +162,29 @@ public partial class FacingController : Node
             Buddy.CurrentDriveIntent.WalkDirection,
             ForceFrontal: facesFront);
         return _model.Update(inputs, ticksElapsed, deltaSeconds);
+    }
+
+    /// <summary>
+    /// Whether a live cursor tool is close enough to be an engagement. Merely having a tool
+    /// selected used to count, with no distance gate at all, so a pointer resting anywhere in
+    /// the window pinned the committed side for as long as it sat there: the buddy walked one
+    /// way while its body and head stayed turned the other (measured 2376/2400 frames pinned,
+    /// 254 of them walking the opposite direction — owner report 2026-08-13). Out of reach the
+    /// walk direction owns facing again, which is the "looking where it is going" default.
+    /// The same acquire/release margin as <see cref="Domain.Presentation.LookAtModel"/> keeps a
+    /// buddy walking along the range boundary from toggling between the two paths.
+    /// </summary>
+    private bool CursorToolWithinReach(ToolId tool, Vector2 torso)
+    {
+        if (!CursorTools.DrivesTool(tool) || !CursorTools.HasCursor)
+        {
+            _cursorEngaged = false;
+            return false;
+        }
+
+        float range = Profile.LookEngagementRangePixels *
+            (_cursorEngaged ? CursorReleaseRangeFactor : 1.0f);
+        _cursorEngaged = CursorTools.Cursor.DistanceSquaredTo(torso) <= range * range;
+        return _cursorEngaged;
     }
 }

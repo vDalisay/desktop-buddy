@@ -98,6 +98,33 @@ public sealed class LookAtModelTests
     }
 
     [Fact]
+    public void CursorHoveringAtTheRangeBoundary_DoesNotChatter()
+    {
+        // Walking past a resting cursor used to cross the acquire range every few frames,
+        // and every crossing restarted the ease between a cursor angle and an ambient one.
+        LookAtModel model = NewModel();
+        LookAtInputs inside = Idle with
+        {
+            InteractionEngaged = true,
+            CursorX = 219.0f,
+            CursorY = 0.0f,
+        };
+        LookAtInputs justOutside = inside with { CursorX = 221.0f };
+
+        model.Update(inside, 1, Frame);
+        Assert.Equal(LookAtSource.Cursor, model.CurrentSource);
+        for (int frame = 0; frame < 20; frame++)
+        {
+            model.Update(frame % 2 == 0 ? justOutside : inside, 1, Frame);
+            Assert.Equal(LookAtSource.Cursor, model.CurrentSource);
+        }
+
+        // Past the release margin the gaze does let go.
+        model.Update(inside with { CursorX = 300.0f }, 1, Frame);
+        Assert.NotEqual(LookAtSource.Cursor, model.CurrentSource);
+    }
+
+    [Fact]
     public void UnengagedCursor_IsNeverTracked()
     {
         // Owner-resolved scope: plain idle ignores the cursor entirely.

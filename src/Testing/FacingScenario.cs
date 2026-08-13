@@ -43,6 +43,7 @@ public sealed class FacingScenario : IScenario
         checks.Add(await CheckWalkCommitsMatchingSide(tree, lab, messages));
         checks.Add(await CheckInteractionBiasFlipsSide(tree, lab, messages));
         checks.Add(await CheckTrackingSnapsDisplayedYaw(tree, lab, messages));
+        checks.Add(await CheckDistantToolDoesNotPinTheSide(tree, lab, messages));
 
         lab.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
@@ -54,6 +55,69 @@ public sealed class FacingScenario : IScenario
         }
 
         return new ScenarioResult(passed, checks, messages);
+    }
+
+    /// <summary>
+    /// Owner report 2026-08-13: with a cursor tool merely selected, the engaged path pinned the
+    /// committed side to wherever the pointer rested — measured 2376/2400 frames pinned, 254 of
+    /// them walking the opposite way — so the buddy walked one direction while its body and head
+    /// stayed turned the other. A pointer parked out of reach must leave facing to the walk, and
+    /// the only frames allowed to disagree are the walk-commit streak after a direction change.
+    /// </summary>
+    private static async Task<StartupCheck> CheckDistantToolDoesNotPinTheSide(
+        SceneTree tree, BuddyLab lab, List<string> messages)
+    {
+        FacingController facing = lab.Facing;
+        lab.Pipeline.SelectTool(ToolId.BaseballBat);
+        Rect2 room = lab.Boundaries.InnerBounds;
+        float outOfReach = facing.Profile.LookEngagementRangePixels * 1.3f;
+        await ScenarioSteps.WaitForStanding(tree, lab, 1800);
+
+        // The pointer is parked on the far side AGAINST the walk each frame, so the old
+        // ungated behaviour disagrees with the walk on every sampled frame by construction.
+        int settledFrames = 0;
+        int disagreements = 0;
+        float streakSign = 0.0f;
+        int streakFrames = 0;
+        int bound = facing.Profile.FacingWalkCommitTicks +
+            Mathf.CeilToInt(facing.Profile.FacingTurnSeconds * 120.0f);
+
+        for (int frame = 0; frame < 1800; frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+            float walk = lab.Buddy.CurrentDriveIntent.WalkDirection;
+            Vector2 torso = lab.Buddy.Rig.Torso.GlobalPosition;
+            Vector2 parked = new(
+                walk > 0.0f ? room.Position.X + 8.0f : room.End.X - 8.0f,
+                room.Position.Y + 8.0f);
+            lab.CursorTools.MoveCursor(parked);
+
+            if (Mathf.IsZeroApprox(walk))
+            {
+                streakSign = 0.0f;
+                streakFrames = 0;
+                continue;
+            }
+
+            streakFrames = Mathf.IsEqualApprox(Mathf.Sign(walk), streakSign) ? streakFrames + 1 : 1;
+            streakSign = Mathf.Sign(walk);
+
+            // Only sample once the walk has held long enough that the committed side must have
+            // caught up, and only while the parked pointer is genuinely out of reach.
+            if (streakFrames <= bound || torso.DistanceTo(parked) < outOfReach)
+                continue;
+
+            settledFrames++;
+            if (facing.CommittedSide != (walk > 0.0f ? FacingSide.Right : FacingSide.Left))
+                disagreements++;
+        }
+
+        lab.Pipeline.SelectTool(ToolId.Grab);
+        bool passed = settledFrames > 60 && disagreements == 0;
+        messages.Add($"distant_tool settled_frames={settledFrames} disagreements={disagreements}");
+        return new StartupCheck("distant_tool_does_not_pin_the_side", passed,
+            $"settled_frames={settledFrames} disagreements={disagreements} bound={bound}");
     }
 
     private static async Task<StartupCheck> CheckWalkCommitsMatchingSide(
@@ -177,8 +241,12 @@ public sealed class FacingScenario : IScenario
                 true, lab.Buddy.Rig.Head.GlobalPosition + new Vector2(-10.0f, 0.0f));
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             float yaw = facing.CurrentYawDegrees;
+            bool wasCommitted = leftCommitted;
             leftCommitted |= facing.CommittedSide == FacingSide.Left;
-            monotonic &= yaw <= previous + 0.001f;
+            // Only the turn itself must be monotonic. The engaged side now needs its short
+            // commit streak (FacingSideCommitTicks) before it flips, and the previous turn
+            // keeps easing toward its own target during that window.
+            monotonic &= !wasCommitted || yaw <= previous + 0.001f;
             neverOvershot &= Mathf.Abs(yaw) <= yawTarget + 0.001f;
             crossedZero |= yaw < 0.0f && previous >= 0.0f;
             previous = yaw;

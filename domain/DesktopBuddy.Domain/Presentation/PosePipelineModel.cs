@@ -155,7 +155,8 @@ public readonly record struct ExpressionTuningData(
     int BlinkIntervalMinimumTicks,
     int BlinkIntervalMaximumTicks,
     int BlinkClosedTicks,
-    int ChewCycleTicks)
+    int ChewCycleTicks,
+    int FacingSideCommitTicks = 24)
 {
     /// <summary>Plan prime invariant 2: the per-part offset cap may never exceed half the part radius.</summary>
     public const float MaximumOffsetCapRadiusFraction = 0.5f;
@@ -248,6 +249,11 @@ public readonly record struct ExpressionTuningData(
         if (FacingWalkCommitTicks < 1 || FacingWalkCommitTicks > MaximumFacingWalkCommitTicks)
         {
             errors.Add($"facing walk commit ticks must be within 1-{MaximumFacingWalkCommitTicks}");
+        }
+
+        if (FacingSideCommitTicks < 0 || FacingSideCommitTicks > MaximumFacingWalkCommitTicks)
+        {
+            errors.Add($"facing side commit ticks must be within 0-{MaximumFacingWalkCommitTicks}");
         }
 
         if (!float.IsFinite(FacingWalkDeadband) ||
@@ -368,5 +374,6 @@ public readonly record struct ExpressionTuningData(
         FacingWalkCommitTicks,
         FacingWalkDeadband,
         FacingIdleFlipMinimumTicks,
-        FacingIdleFlipMaximumTicks);
+        FacingIdleFlipMaximumTicks,
+        FacingSideCommitTicks);
 }

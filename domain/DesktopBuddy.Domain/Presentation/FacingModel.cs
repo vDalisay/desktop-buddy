@@ -23,17 +23,26 @@ public readonly record struct FacingInputs(
     bool ForceFrontal = false);
 
 /// <summary>Facing tuning subset consumed by the pure model.</summary>
+/// <param name="SideCommitTicks">
+/// How long the engaged cursor must stay on one side before it flips the committed side.
+/// The engaged path's counterpart of <paramref name="WalkCommitTicks"/>: without it a
+/// cursor sitting roughly above a walking buddy flipped the side on every rendered frame,
+/// and the body turned back and forth in place (owner report 2026-08-13). Zero restores
+/// the original instant flip.
+/// </param>
 public readonly record struct FacingParameters(
     float YawDegrees,
     float TurnSeconds,
     int WalkCommitTicks,
     float WalkDeadband,
     int IdleFlipMinimumTicks,
-    int IdleFlipMaximumTicks);
+    int IdleFlipMaximumTicks,
+    int SideCommitTicks = 24);
 
 /// <summary>
 /// Pure facing arbitration and easing (M3_6_EXPRESSIVE_PRESENTATION_PLAN.md Task 2).
-/// Priority: an engaged interaction biases toward the cursor's side immediately; a
+/// Priority: an engaged interaction biases toward the cursor's side after its own short
+/// commit streak (fast, but never per-frame — see <see cref="FacingParameters"/>); a
 /// sustained drive walk direction commits its side only after the hysteresis streak
 /// (autonomy jitter cannot flip-flop the model); seeded idle variety occasionally flips
 /// the side while idle. The yaw eases start-to-target through zero on a monotonic
@@ -50,6 +59,8 @@ public sealed class FacingModel
     private double _turnProgress = 1.0;
     private float _walkStreakSign;
     private int _walkStreakTicks;
+    private float _sideStreakSign;
+    private int _sideStreakTicks;
     private bool _idleTimerArmed;
     private int _idleTicksRemaining;
 
@@ -59,6 +70,7 @@ public sealed class FacingModel
         if (parameters.YawDegrees <= 0.0f || !float.IsFinite(parameters.YawDegrees) ||
             parameters.TurnSeconds <= 0.0f || !float.IsFinite(parameters.TurnSeconds) ||
             parameters.WalkCommitTicks < 1 ||
+            parameters.SideCommitTicks < 0 ||
             !float.IsFinite(parameters.WalkDeadband) || parameters.WalkDeadband < 0.0f ||
             parameters.IdleFlipMinimumTicks < 1 ||
             parameters.IdleFlipMaximumTicks <= parameters.IdleFlipMinimumTicks)
@@ -84,6 +96,12 @@ public sealed class FacingModel
         }
 
         FacingSide wanted = CommittedSide;
+        if (!inputs.InteractionEngaged || inputs.ForceFrontal)
+        {
+            _sideStreakSign = 0.0f;
+            _sideStreakTicks = 0;
+        }
+
         if (inputs.ForceFrontal)
         {
             _walkStreakTicks = 0;
@@ -92,13 +110,26 @@ public sealed class FacingModel
         }
         else if (inputs.InteractionEngaged)
         {
-            if (inputs.InteractionSide > 0.0f)
+            // The cursor's side must hold for the commit window before it turns the buddy,
+            // so per-frame sign noise around a cursor sitting above the body cannot
+            // oscillate the turn. A side already committed keeps the streak cleared, so
+            // returning to it after a brief excursion costs nothing.
+            float sign = MathF.Sign(inputs.InteractionSide);
+            FacingSide side = sign > 0.0f ? FacingSide.Right :
+                sign < 0.0f ? FacingSide.Left : CommittedSide;
+            if (sign == 0.0f || side == CommittedSide)
             {
-                wanted = FacingSide.Right;
+                _sideStreakSign = 0.0f;
+                _sideStreakTicks = 0;
             }
-            else if (inputs.InteractionSide < 0.0f)
+            else
             {
-                wanted = FacingSide.Left;
+                _sideStreakTicks = sign == _sideStreakSign ? _sideStreakTicks + ticksElapsed : ticksElapsed;
+                _sideStreakSign = sign;
+                if (_sideStreakTicks >= _parameters.SideCommitTicks)
+                {
+                    wanted = side;
+                }
             }
 
             _walkStreakTicks = 0;

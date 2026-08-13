@@ -19,6 +19,8 @@ public enum HardRecoveryReason
 [GlobalClass]
 public partial class RecoveryComponent : Node
 {
+    private const float ContainableEscapeMarginPx = 128.0f;
+
     private readonly RecoveryClock _clock = new();
 
     [Export] public PuppetRig Rig { get; set; } = null!;
@@ -98,6 +100,26 @@ public partial class RecoveryComponent : Node
         SessionResumed?.Invoke();
     }
 
+    /// <summary>
+    /// Whether every escaped part is close enough to the room to be a tunnelling artifact
+    /// rather than genuinely lost state. One 120 Hz step of the fastest thing in the game
+    /// (a fully charged bat tip, 6000 px/s) covers 50 px, so a part further out than this
+    /// margin did not get there by being hit, and the whole rig is re-posed as before.
+    /// </summary>
+    private bool EscapeIsContainable()
+    {
+        Rect2 reachable = SafeBounds.Grow(ContainableEscapeMarginPx);
+        foreach (PuppetPartBody body in Rig.Parts)
+        {
+            if (!reachable.HasPoint(body.GlobalPosition))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private HardRecoveryReason? FindImmediateRecoveryReason()
     {
         if (!Rig.AllBodiesFinite())
@@ -112,7 +134,25 @@ public partial class RecoveryComponent : Node
     {
         _clock.Reset();
         Standing.Reset();
-        Rig.ResetToSafePose(SafePoseOrigin);
+        if (reason == HardRecoveryReason.OutOfBounds && EscapeIsContainable())
+        {
+            // A hard bat/shotgun hit can push a part through the 16 px wall in one 120 Hz
+            // step (no CCD on the parts), and re-posing the whole rig at the safe origin
+            // teleported the buddy to the middle of the room mid-flight — the launch read
+            // as a respawn (owner report 2026-08-13). A tunnelled part is a containment
+            // problem, not a broken simulation: clamp it back against the inner wall face
+            // and drop its outward velocity, exactly as a room resize does. Parts still
+            // inside are untouched, so the rest of the buddy keeps flying.
+            foreach (PuppetPartBody body in Rig.Parts)
+            {
+                Sandbox.PuppetRoomContainmentComponent.CorrectBody(body, SafeBounds);
+            }
+        }
+        else
+        {
+            Rig.ResetToSafePose(SafePoseOrigin);
+        }
+
         HardRecoveryCount++;
         LastHardRecoveryReason = reason;
         HardRecovered?.Invoke(reason);

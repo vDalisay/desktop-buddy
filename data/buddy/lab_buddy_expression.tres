@@ -11,6 +11,7 @@ FacingYawDegrees = 30.0
 FacingTurnSeconds = 0.5
 FacingWalkCommitTicks = 90
 FacingWalkDeadband = 0.05
+FacingSideCommitTicks = 24
 FacingIdleFlipMinimumTicks = 1440
 FacingIdleFlipMaximumTicks = 3600
 ActivityWalkSpeedThreshold = 8.0

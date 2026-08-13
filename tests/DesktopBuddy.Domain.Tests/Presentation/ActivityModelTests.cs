@@ -26,6 +26,28 @@ public sealed class ActivitySelectorTests
     }
 
     [Fact]
+    public void SpeedHoveringAtTheThreshold_DoesNotFlipBetweenWalkAndIdle()
+    {
+        // A fleeing buddy retreats and stops repeatedly, so its travel sits right on the
+        // threshold. Every flip restarted a clip from zero, which read as the dressing
+        // snapping and replaying (owner report 2026-08-13).
+        ActivitySelector selector = NewSelector();
+        selector.Update(Walking, Dt);
+        Assert.Equal(ActivityId.WalkCycle, selector.Current);
+
+        for (int frame = 0; frame < 200; frame++)
+        {
+            float speed = frame % 2 == 0 ? 7.9f : 8.1f;
+            Assert.Equal(
+                ActivityId.WalkCycle,
+                selector.Update(new ActivityInputs(true, speed, false), Dt));
+        }
+
+        // Coming to a real stop still hands over to idle.
+        Assert.Equal(ActivityId.IdleBreathe, selector.Update(CalmIdle, Dt));
+    }
+
+    [Fact]
     public void TrackingSuppression_SelectsNone()
     {
         ActivitySelector selector = NewSelector();

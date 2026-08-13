@@ -115,7 +115,17 @@ public readonly record struct ActivityTuningData(
 /// </summary>
 public sealed class ActivitySelector
 {
+    /// <summary>
+    /// Fraction of the walk threshold the buddy must drop below before the walk cycle gives
+    /// way to idle. A bare threshold flip-flopped between the two clips on adjacent frames
+    /// whenever travel hovered near it — which is most of the time while afraid, since fleeing
+    /// is a repeated retreat-and-stop — and each flip restarted a clip from zero, so the
+    /// dressing visibly snapped and replayed (owner report 2026-08-13).
+    /// </summary>
+    private const float WalkReleaseFraction = 0.6f;
+
     private readonly ActivityParameters _parameters;
+    private bool _walking;
     private double _eatSecondsRemaining;
     private double _refuseSecondsRemaining;
     private double _waveSecondsRemaining;
@@ -218,8 +228,7 @@ public sealed class ActivitySelector
         {
             Current = ActivityId.JumpAnticipation;
         }
-        else if (float.IsFinite(inputs.HorizontalSpeed) &&
-            MathF.Abs(inputs.HorizontalSpeed) > _parameters.WalkSpeedThreshold)
+        else if (IsWalking(inputs.HorizontalSpeed))
         {
             Current = ActivityId.WalkCycle;
             float travel = MathF.Abs(inputs.HorizontalSpeed) * (float)deltaSeconds;
@@ -231,5 +240,21 @@ public sealed class ActivitySelector
         }
 
         return Current;
+    }
+
+    /// <summary>Walk starts above the threshold and only ends below the release fraction of it.</summary>
+    private bool IsWalking(float horizontalSpeed)
+    {
+        if (!float.IsFinite(horizontalSpeed))
+        {
+            _walking = false;
+            return false;
+        }
+
+        float speed = MathF.Abs(horizontalSpeed);
+        _walking = _walking
+            ? speed > _parameters.WalkSpeedThreshold * WalkReleaseFraction
+            : speed > _parameters.WalkSpeedThreshold;
+        return _walking;
     }
 }

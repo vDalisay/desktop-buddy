@@ -260,6 +260,19 @@ public partial class ActivityAnimator : Node3D
         }
         if (_player.CurrentAnimation != clip)
         {
+            // Every clip animates a different subset of the proxies, and the player is in
+            // Manual callback mode, so it only ever writes the tracks the current clip owns.
+            // Whatever the previous clip last wrote to the others stayed frozen there — walk
+            // left its foot and hand offsets standing in the idle pose, and vice versa. Clear
+            // the whole set on the change so each clip starts from the authored rest base and
+            // the seek below writes only what this clip actually says (owner report
+            // 2026-08-13: "animations not transitioning into one another").
+            for (int index = 0; index < _proxies.Length; index++)
+            {
+                _proxies[index].Position = Vector3.Zero;
+                _proxies[index].Rotation = Vector3.Zero;
+            }
+
             _player.Play(clip);
         }
 
