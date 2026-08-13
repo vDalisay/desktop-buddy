@@ -8,6 +8,8 @@ namespace DesktopBuddy.AssetForge;
 
 public partial class AssetForgePreview : Control
 {
+    private const float ThumbnailCropFraction = 0.78f;
+
     private SubViewport _viewport = null!;
     private Node3D _orbit = null!;
     private Camera3D _camera = null!;
@@ -95,8 +97,18 @@ public partial class AssetForgePreview : Control
     {
         Image image = _viewport.GetTexture().GetImage();
         if (image.IsEmpty()) throw new InvalidOperationException("Preview has no rendered image yet.");
-        image.Resize(256, 256, Image.Interpolation.Lanczos);
-        return image.SavePngToBuffer();
+
+        // Catalogue tiles are small, so the previous full-viewport downsample made the Buddy head
+        // and especially glasses too difficult to read. Keep the authored preview itself unchanged,
+        // but standardize thumbnails around a tighter centered square before the 256px downsample.
+        // With the default preview camera the head grows from roughly 62% to ~80% of the thumbnail.
+        int sourceSide = Math.Min(image.GetWidth(), image.GetHeight());
+        int cropSide = Math.Clamp((int)MathF.Round(sourceSide * ThumbnailCropFraction), 1, sourceSide);
+        int cropX = Math.Max(0, (image.GetWidth() - cropSide) / 2);
+        int cropY = Math.Max(0, (image.GetHeight() - cropSide) / 2);
+        Image cropped = image.GetRegion(new Rect2I(cropX, cropY, cropSide, cropSide));
+        cropped.Resize(256, 256, Image.Interpolation.Lanczos);
+        return cropped.SavePngToBuffer();
     }
 
     public void ResetView()
