@@ -64,9 +64,14 @@ public sealed class AssetForgeCoreTests
         Assert.True(opaque.UsedGlassesTemplate);
         Assert.Equal(transparent.GeometryHash, opaque.GeometryHash);
 
+        // Semantic glasses use geometry for their lens holes. Their final opaque material texture
+        // therefore deliberately fills non-authored canvas texels from the nearest authored colour
+        // instead of retaining transparent-black texels that Godot would render as black.
         RgbaImage albedo = PngCodec.DecodeRgba8(opaque.AlbedoPng);
-        Assert.Equal((byte)0, albedo.Alpha(0, 0));
-        Assert.Contains(albedo.Pixels.Where((_, index) => index % 4 == 3), alpha => alpha == 255);
+        Assert.Equal((byte)255, albedo.Alpha(0, 0));
+        Assert.Equal((byte)239, albedo.Pixels[0]);
+        Assert.Equal((byte)123, albedo.Pixels[1]);
+        Assert.Equal((byte)175, albedo.Pixels[2]);
     }
 
     [Fact]
