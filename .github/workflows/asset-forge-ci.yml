@@ -81,3 +81,6 @@ jobs:
           cp data/buddy/lab_buddy_visual.tres devtools/AssetForge/.generated/profiles/
           cp data/buddy/lab_puppet_rig.tres devtools/AssetForge/.generated/profiles/
           xvfb-run -a "$GODOT_BIN" --headless --path devtools/AssetForge --import
+
+      - name: Boot standalone Asset Forge workspace
+        run: xvfb-run -a "$GODOT_BIN" --headless --path devtools/AssetForge --quit-after 5
