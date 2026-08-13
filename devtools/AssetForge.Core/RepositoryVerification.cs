@@ -70,6 +70,7 @@ public static class RepositoryAssetVerifier
                     $"FeatureId = \"{Escape(recipe.FeatureId)}\"",
                     $"ContentId = \"{Escape(recipe.ContentId)}\"",
                     $"DisplayName = \"{Escape(recipe.DisplayName)}\"",
+                    GeneratedCosmeticCategoryPersistence.ExpectedMarker(recipe),
                     $"SortOrder = {recipe.SortOrder}",
                     GeneratedCosmeticLightingPersistence.ExpectedMarker(recipe),
                     $"GeneratorVersion = {recipe.GeneratorVersion}",
@@ -233,7 +234,10 @@ public static class RepositoryAssetRegenerator
         GeneratedAsset generated = AssetForgeGenerator.Generate(source, recipe);
         string thumbnailPath = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId, "thumbnail.png");
         byte[] thumbnail = File.Exists(thumbnailPath) ? File.ReadAllBytes(thumbnailPath) : generated.AlbedoPng;
-        RepositoryExporter.ExportGlasses(root, source, generated, thumbnail);
+        if (recipe.Category == AssetCategory.Glasses)
+            RepositoryExporter.ExportGlasses(root, source, generated, thumbnail);
+        else
+            RepositoryBuddyReplacementExporter.Export(root, source, generated, thumbnail);
         GeneratedCosmeticLightingPersistence.Apply(root, recipe);
         return recipe.FeatureId;
     }
