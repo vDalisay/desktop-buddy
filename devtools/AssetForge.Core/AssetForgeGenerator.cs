@@ -57,15 +57,16 @@ public static class AssetForgeGenerator
         bool usedTemplate;
         if (recipe.Geometry.ShapeMode == ShapeMode.RoundedExtrusion)
         {
-            if (diagnostics.Holes < 2 ||
-                !GlassesTemplateGeneratorV2.TryGenerate(mask, foreground.Image, recipe.Geometry, out CanonicalMesh semanticMesh))
+            bool generated = recipe.PresetVersion >= 2
+                ? GlassesTemplateGeneratorV2.TryGenerate(mask, foreground.Image, recipe.Geometry, out mesh!)
+                : GlassesTemplateGenerator.TryGenerate(mask, foreground.Image, recipe.Geometry, out mesh!);
+            if (diagnostics.Holes < 2 || !generated)
             {
                 throw new InvalidOperationException(
-                    $"Rounded glasses template needs two closed lens openings, but the processed drawing contains {diagnostics.Holes}. " +
+                    $"Rounded {recipe.PresetId}@{recipe.PresetVersion} needs two closed lens openings, but the processed drawing contains {diagnostics.Holes}. " +
                     "Draw a closed left and right lens/frame shape (with transparent/background space inside each lens), " +
                     "or explicitly choose Flat silhouette extrusion in Advanced settings.");
             }
-            mesh = semanticMesh;
             usedTemplate = true;
         }
         else
@@ -80,9 +81,6 @@ public static class AssetForgeGenerator
         string glbHash = Hashing.Sha256Hex(glb);
 
         RgbaImage runtimeBase = PngCodec.ResizeBox(foreground.Image, recipe.Geometry.RuntimeTextureResolution);
-        // Rounded/template glasses are an opaque 3D surface. Their lens openings are real geometry,
-        // not texture transparency. Fill every unused texture texel from nearest authored colour so
-        // the opaque generated material never samples removed-canvas RGB at interpolated UVs.
         RgbaImage runtime = usedTemplate
             ? TextureBleed.FillTransparentWithNearestAuthoredColour(runtimeBase)
             : TextureBleed.Expand(runtimeBase, FlatExtrusionTextureBleedPixels);
