@@ -87,12 +87,12 @@ public partial class BuddyVisualRigView
         bool hidesHair = BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog.TryGetDefinition(
             appearance.Headwear.ResolvedFeatureId,
             out CosmeticDefinition headwear) && headwear.HidesHair;
-        if (GodotObject.IsInstanceValid(_hairVisual))
-            _hairVisual!.Visible = !hidesHair;
+        if (GodotObject.IsInstanceValid(_hairVisual)) _hairVisual!.Visible = !hidesHair;
 
         BuddyCosmeticVisualDefinition top = _cosmeticVisualCatalog.Resolve(CharacterFeatureSlot.Tops, appearance.Tops.ResolvedFeatureId, out _);
         BuddyCosmeticVisualDefinition shoes = _cosmeticVisualCatalog.Resolve(CharacterFeatureSlot.Shoes, appearance.Shoes.ResolvedFeatureId, out _);
-        SetPartReplacementState(BuddyPartId.Torso, top.ApplicationMode == BuddyCosmeticApplicationMode.PartReplacement && top.Kind != BuddyCosmeticVisualKind.None);
+        SetPartReplacementState(BuddyPartId.Torso,
+            top.ApplicationMode == BuddyCosmeticApplicationMode.PartReplacement && top.Kind != BuddyCosmeticVisualKind.None);
         bool replaceFeet = shoes.ApplicationMode == BuddyCosmeticApplicationMode.PairedPartReplacement && shoes.Kind != BuddyCosmeticVisualKind.None;
         SetPartReplacementState(BuddyPartId.LeftFoot, replaceFeet);
         SetPartReplacementState(BuddyPartId.RightFoot, replaceFeet);
@@ -133,18 +133,13 @@ public partial class BuddyVisualRigView
             case BuddyPartId.RightFoot: _rightFootVisualReplaced = replaced; break;
             default: throw new ArgumentOutOfRangeException(nameof(partId), partId, "Only torso/foot visual replacements are supported.");
         }
-
         if (GodotObject.IsInstanceValid(_partMeshes[index])) _partMeshes[index].Visible = !replaced;
         if (GodotObject.IsInstanceValid(_partOutlines[index])) _partOutlines[index].Visible = !replaced;
         if (_paintLayers[index] is MeshInstance3D paint && GodotObject.IsInstanceValid(paint))
             paint.Visible = !replaced && _surfaceUnderlays[index] is not null;
     }
 
-    private void UpdateVisual(
-        CharacterFeatureSlot slot,
-        in CompiledFeatureAppearance appearance,
-        ref CompiledFeatureAppearance? activeAppearance,
-        ref Node3D? activeVisual)
+    private void UpdateVisual(CharacterFeatureSlot slot, in CompiledFeatureAppearance appearance, ref CompiledFeatureAppearance? activeAppearance, ref Node3D? activeVisual)
     {
         if (activeAppearance == appearance) return;
         RemoveVisual(ref activeVisual);
@@ -157,12 +152,7 @@ public partial class BuddyVisualRigView
         BuildVisual(activeVisual, null, visual, appearance);
     }
 
-    private void UpdatePairedVisual(
-        CharacterFeatureSlot slot,
-        in CompiledFeatureAppearance appearance,
-        ref CompiledFeatureAppearance? activeAppearance,
-        ref Node3D? primaryVisual,
-        ref Node3D? secondaryVisual)
+    private void UpdatePairedVisual(CharacterFeatureSlot slot, in CompiledFeatureAppearance appearance, ref CompiledFeatureAppearance? activeAppearance, ref Node3D? primaryVisual, ref Node3D? secondaryVisual)
     {
         if (activeAppearance == appearance) return;
         RemoveVisual(ref primaryVisual);
@@ -223,9 +213,9 @@ public partial class BuddyVisualRigView
                 else if (visual.Slot == CharacterFeatureSlot.Shoes)
                 {
                     if (pairedRoot is null) throw new InvalidOperationException("Generated Shoes require both trusted foot anchors.");
-                    float footRadius = PartMeshRadius(BuddyPartId.LeftFoot);
-                    AddGeneratedAsset(root, visual, footRadius, false);
-                    AddGeneratedAsset(pairedRoot, visual, footRadius, true);
+                    float generatedFootRadius = PartMeshRadius(BuddyPartId.LeftFoot);
+                    AddGeneratedAsset(root, visual, generatedFootRadius, false);
+                    AddGeneratedAsset(pairedRoot, visual, generatedFootRadius, true);
                 }
                 else throw new InvalidOperationException($"Unsupported generated slot {visual.Slot}.");
                 break;
@@ -253,11 +243,9 @@ public partial class BuddyVisualRigView
 
     private void AddGeneratedAsset(Node3D root, BuddyCosmeticVisualDefinition visual, float targetRadius, bool mirrorX)
     {
-        GeneratedBuddyCosmeticResource resource = visual.GeneratedResource
-            ?? throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' has no trusted generated resource.");
+        GeneratedBuddyCosmeticResource resource = visual.GeneratedResource ?? throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' has no trusted generated resource.");
         if (!GodotObject.IsInstanceValid(resource.MeshScene) || !GodotObject.IsInstanceValid(resource.AlbedoTexture))
             throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' has missing imported assets.");
-
         Node scene = resource.MeshScene!.Instantiate();
         if (scene is not Node3D scene3D)
         {
@@ -267,7 +255,6 @@ public partial class BuddyVisualRigView
         root.AddChild(scene3D);
         scene3D.Name = "GeneratedMesh";
         scene3D.Scale = new Vector3(mirrorX ? -targetRadius : targetRadius, targetRadius, targetRadius);
-
         var meshes = new List<MeshInstance3D>();
         if (scene3D is MeshInstance3D rootMesh) meshes.Add(rootMesh);
         meshes.AddRange(scene3D.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>());
@@ -276,7 +263,6 @@ public partial class BuddyVisualRigView
             scene3D.QueueFree();
             throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' must contain exactly one mesh node; found {meshes.Count}.");
         }
-
         MeshInstance3D instance = meshes[0];
         StandardMaterial3D material = _materials.CreateLitTexturedMaterial(resource.AlbedoTexture!, Colors.White);
         material.ResourceName = $"BuddyGenerated_{visual.CosmeticId}";
@@ -356,14 +342,7 @@ public partial class BuddyVisualRigView
         StandardMaterial3D material = _materials.CreateLitMaterial(color);
         material.ResourceName = $"BuddyCosmetic_{name}";
         material.RenderPriority = (int)layer;
-        return new MeshInstance3D
-        {
-            Name = name,
-            Mesh = mesh,
-            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-            MaterialOverride = material,
-            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
-        };
+        return new MeshInstance3D { Name = name, Mesh = mesh, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off, MaterialOverride = material, PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit };
     }
 
     private static void RemoveVisual(ref Node3D? visual)
