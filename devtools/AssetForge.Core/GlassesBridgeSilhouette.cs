@@ -11,13 +11,13 @@ namespace DesktopBuddy.AssetForge.Core;
 internal static class GlassesBridgeSilhouette
 {
     // Bridge art can intentionally extend a little way into the inner lens/frame area (for example
-    // arrow stems). Horizontal padding preserves that authored overlap. Vertical placement is not
-    // derived from an arbitrary closest lens pair: it is measured from actual foreground in the
-    // central lens gap, then padded only slightly.
+    // arrow stems). Keep enough horizontal padding for that artwork, but constrain the vertical
+    // corridor so we do not duplicate the full lens frame as flat bridge geometry.
     private const float RoiPaddingFraction = 0.055f;
     private const float CoreInsetFraction = 0.20f;
     private const float VerticalPaddingFraction = 0.025f;
     private const float RequiredColumnCoverage = 0.55f;
+    private const float ComplexSolidThicknessFraction = 0.08f;
     private const int MinimumComplexRunThickness = 3;
 
     public static bool TryAdd(
@@ -46,10 +46,8 @@ internal static class GlassesBridgeSilhouette
         if (x1 - x0 < 2)
             return false;
 
-        // Measure bridge Y from the middle 60% of the inter-lens gap. That excludes the facing
-        // vertical lens bars but still sees the body/arrowheads of an authored bridge. The wider
-        // x0..x1 ROI is used only after this vertical bridge corridor is known, so stems that enter
-        // the frame area are preserved without copying the whole lens frame.
+        // Determine the authored bridge height from actual foreground in the middle of the lens
+        // gap, not from whichever equal-distance pair ClosestPair happened to pick vertically.
         int coreX0 = Math.Clamp(
             (int)MathF.Ceiling(leftInner.X + gapWidth * CoreInsetFraction),
             0,
@@ -58,10 +56,8 @@ internal static class GlassesBridgeSilhouette
             (int)MathF.Floor(rightInner.X - gapWidth * CoreInsetFraction),
             0,
             grid.Width - 1);
-        if (coreX1 < coreX0)
-            return false;
-
-        if (!TryFindAuthoredVerticalSpan(grid, coreX0, coreX1, out int authoredMinY, out int authoredMaxY))
+        if (coreX1 < coreX0 ||
+            !TryFindAuthoredVerticalSpan(grid, coreX0, coreX1, out int authoredMinY, out int authoredMaxY))
             return false;
 
         int verticalPadding = Math.Max(6, (int)MathF.Round(grid.Height * VerticalPaddingFraction));
@@ -99,9 +95,23 @@ internal static class GlassesBridgeSilhouette
             maxVerticalRun < MinimumComplexRunThickness)
             return false;
 
+        // Simple two-lens bridges stay on the rounded authored-path generator. Full silhouette
+        // mode is for bridge art whose topology actually needs it: additional enclosed cut-outs
+        // such as the owner's inward hollow arrows, or a broad solid authored shape that would be
+        // visibly destroyed by center-line skeletonization.
+        bool hasAdditionalInteriorCutouts = MaskAnalyzer.Analyze(grid).Holes > 2;
+        int thickShapeThreshold = Math.Max(
+            MinimumComplexRunThickness,
+            (int)MathF.Ceiling(grid.Height * ComplexSolidThicknessFraction));
+        bool isBroadSolidShape = maxVerticalRun >= thickShapeThreshold;
+        if (!hasAdditionalInteriorCutouts && !isBroadSolidShape)
+            return false;
+
         int triangleCountBefore = mesh.TriangleCount;
         float halfDepth = MathF.Max(0.001f, (float)settings.Depth * 0.5f);
 
+        // Front/back are emitted as horizontal runs rather than one quad per cell. This preserves
+        // the exact mask (including holes) while keeping arrow-like bridge artwork inexpensive.
         for (int y = y0; y <= y1; y++)
         {
             int x = x0;
@@ -115,6 +125,9 @@ internal static class GlassesBridgeSilhouette
             }
         }
 
+        // Boundary walls are driven by the global source mask, not merely the clipped ROI. That
+        // avoids adding artificial caps where a bridge naturally joins a lens/frame while still
+        // producing walls around authored interior cut-outs.
         for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
         {
