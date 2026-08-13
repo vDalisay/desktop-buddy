@@ -338,7 +338,10 @@ Contributors, all engine-free models under `DesktopBuddy.Domain.Presentation` wi
 - **Activities** (`BehaviorActivityComponent` / `ActivitySelector` / `ActivityAnimator`) —
   gameplay requests route through `BuddyRoot.SetBehaviorActivity` into a fixed-tick semantic
   activity; presentation observes its change event. One manual-mode `AnimationPlayer`
-  animates six offset proxies, never sockets or bodies. Priority
+  animates six offset proxies, never sockets or bodies. Ordinary clip changes snapshot the
+  outgoing proxy pose and cross-fade it into the newly sampled pose, which works equally for
+  time-advanced and phase-seeked clips while clearing channels the incoming clip does not own.
+  Tracking-mode cuts remain immediate. Priority
   `Eat > Wave > JumpAnticipation > WalkCycle > IdleBreathe`; walk phase derives from
   measured torso travel, so steps match speed and freeze at rest. Eat's typed fixed-tick
   sequence emits exactly five bite events. `ActiveDriveComponent` holds both physical

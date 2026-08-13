@@ -159,6 +159,7 @@ public sealed class MealConsumeScenario : IScenario
         bool yawBounded = true;
         bool pitchAndRollStable = true;
         bool headTranslationStable = true;
+        float maximumSettledHeadTranslation = 0.0f;
         float shakeLeft = 0.0f;
         float shakeRight = 0.0f;
         var yawLobePeaks = new float[4];
@@ -206,8 +207,18 @@ public sealed class MealConsumeScenario : IScenario
                 Mathf.Abs(lab.VisualPresenter.AppliedHeadPitchDegrees) < 0.5f &&
                 Mathf.Abs(lab.Activities.RotationFor((int)BuddyPartId.Head).X) < 0.001f &&
                 Mathf.Abs(lab.Activities.RotationFor((int)BuddyPartId.Head).Z) < 0.001f;
-            headTranslationStable &=
-                lab.Activities.OffsetFor((int)BuddyPartId.Head).Length() < 0.05f;
+            // Refusal is rotation-only — but the incoming cross-fade legitimately carries the
+            // previous clip's decaying head translation for the blend window, so only assert
+            // once the transition has finished.
+            if (!lab.Activities.IsBlendingClips)
+            {
+                float headTranslation =
+                    lab.Activities.OffsetFor((int)BuddyPartId.Head).Length();
+                maximumSettledHeadTranslation = Mathf.Max(
+                    maximumSettledHeadTranslation,
+                    headTranslation);
+                headTranslationStable &= headTranslation < 0.05f;
+            }
 
             int yawSign = headYaw < -2.0f ? -1 : headYaw > 2.0f ? 1 : 0;
             if (yawSign == 0)
@@ -269,6 +280,9 @@ public sealed class MealConsumeScenario : IScenario
             () => !lab.Buddy.ObjectInteraction.IsHolding &&
                   !lab.Buddy.ObjectInteraction.IsRefusing,
             600);
+        bool refusalChangedMood = Mathf.Abs(lab.Progress.Mood - moodBeforeRefusal) >= 0.01f;
+        for (int frame = 0; frame < 60 && lab.Activities.IsBlendingClips; frame++)
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
         checks.Add(new StartupCheck(
             "the_refused_meal_is_held_in_one_hand",
@@ -297,7 +311,8 @@ public sealed class MealConsumeScenario : IScenario
             Mathf.Abs(lab.VisualPresenter.AppliedActivityHeadYawDegrees) < 0.5f,
             $"clip={shakeClipPlayed} left={shakeLeft:F1} right={shakeRight:F1} " +
             $"frontal={frontalThroughout} bounded={yawBounded} pitch_roll={pitchAndRollStable} " +
-            $"translated={!headTranslationStable} lobes={yawLobeCount} " +
+            $"translated={!headTranslationStable} max_translation={maximumSettledHeadTranslation:F2} " +
+            $"lobes={yawLobeCount} " +
             $"peaks={yawLobePeaks[0]:F1}/{yawLobePeaks[1]:F1}/" +
             $"{yawLobePeaks[2]:F1}/{yawLobePeaks[3]:F1} " +
             $"middle_neutral_frames={maximumMiddleNeutralFrames}"));
@@ -335,7 +350,7 @@ public sealed class MealConsumeScenario : IScenario
             lab.Buddy.ObjectInteraction.RefusalCount == 1 &&
             lab.Buddy.ObjectInteraction.LastConsumeRejection == ConsumeRejection.TooFull &&
             lab.Buddy.ObjectInteraction.ConsumeSuccessCount == successesBeforeRefusal &&
-            Mathf.Abs(lab.Progress.Mood - moodBeforeRefusal) < 0.01f,
+            !refusalChangedMood,
             $"shook={shookItsHead} released={releasedIt} " +
             $"refusals={lab.Buddy.ObjectInteraction.RefusalCount} " +
             $"rejection={lab.Buddy.ObjectInteraction.LastConsumeRejection} " +

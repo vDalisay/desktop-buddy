@@ -93,6 +93,15 @@ public partial class BuddyExpressionProfile : GameResource
     [Export(PropertyHint.Range, "20,30,0.5")]
     public float ActivityRefuseYawDegrees { get; set; } = 30.0f;
 
+    /// <summary>
+    /// Cross-fade applied to EVERY activity clip change. The animator blends the pose it was
+    /// showing into the newly sampled clip pose per part, so walk/eat/refuse — which are
+    /// seeked, not advanced — fade exactly like the time-advanced clips do (owner report
+    /// 2026-08-13: "the remaining transitions feel as hardcuts").
+    /// </summary>
+    [Export(PropertyHint.Range, "0.02,1,0.01")]
+    public float ActivityClipBlendSeconds { get; set; } = 0.06f;
+
     // Task 4 look-at tuning: the cone the head may turn inside, the acquisition ease, the
     // virtual gaze depth the target angles are measured against, how close an engaged
     // cursor must be to be worth watching, how long a hit stays interesting, the seeded
@@ -208,7 +217,8 @@ public partial class BuddyExpressionProfile : GameResource
         ActivityWaveAmplitude,
         ActivityChewAmplitude,
         ActivityJumpSquashAmplitude,
-        ActivityRefuseYawDegrees);
+        ActivityRefuseYawDegrees,
+        ActivityClipBlendSeconds);
 
     /// <summary>Projects the exported Godot fields into the pure-logic validation image.</summary>
     public ExpressionTuningData ToData() => new(

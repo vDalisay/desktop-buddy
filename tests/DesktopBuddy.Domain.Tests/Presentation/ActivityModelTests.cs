@@ -198,7 +198,8 @@ public sealed class ActivityTuningDataTests
         WaveAmplitude: 3.0f,
         ChewAmplitude: 1.0f,
         JumpSquashAmplitude: 2.5f,
-        RefuseYawDegrees: 30.0f);
+        RefuseYawDegrees: 30.0f,
+        ClipBlendSeconds: 0.06f);
 
     [Fact]
     public void AcceptedDefaults_Pass() => Assert.Empty(Accepted.Validate());
@@ -231,6 +232,19 @@ public sealed class ActivityTuningDataTests
     [InlineData(30.0f)]
     public void RefuseYawAtOwnerBounds_Passes(float yawDegrees) =>
         Assert.Empty((Accepted with { RefuseYawDegrees = yawDegrees }).Validate());
+
+    /// <summary>
+    /// Every clip change cross-fades over this window. Zero would restore the hard cuts the
+    /// owner rejected; anything beyond a second stops reading as a transition at all.
+    /// </summary>
+    [Theory]
+    [InlineData(0.0f)]
+    [InlineData(1.01f)]
+    [InlineData(float.NaN)]
+    public void ClipBlendOutsideBounds_Fails(float seconds) =>
+        Assert.Single(
+            (Accepted with { ClipBlendSeconds = seconds }).Validate(),
+            error => error.Contains("clip blend seconds"));
 
     [Theory]
     [InlineData(0.0f)]

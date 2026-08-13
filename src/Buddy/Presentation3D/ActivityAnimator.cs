@@ -28,6 +28,15 @@ public partial class ActivityAnimator : Node3D
     [Export] public BuddyExpressionProfile Profile { get; set; } = null!;
 
     private readonly Node3D[] _proxies = new Node3D[PuppetRigProfile.RequiredPartCount];
+
+    // Cross-fade state: the pose the previous clip was showing at the instant the clip
+    // changed, and how much of the fade is left. See Evaluate for why the blend cannot be
+    // delegated to AnimationPlayer.Play's own custom blend.
+    private readonly Vector3[] _fadeFromPosition = new Vector3[PuppetRigProfile.RequiredPartCount];
+    private readonly Vector3[] _fadeFromRotation = new Vector3[PuppetRigProfile.RequiredPartCount];
+    private double _fadeRemainingSeconds;
+    private double _clipBlendSeconds = 0.06;
+
     private AnimationPlayer _player = null!;
     private ActivitySelector _selector = null!;
     private float _refuseClipLength = 1.0f;
@@ -37,6 +46,12 @@ public partial class ActivityAnimator : Node3D
     public ActivityId Current => IsInitialized ? _selector.Current : ActivityId.None;
     public float WalkPhase => IsInitialized ? _selector.WalkPhase : 0.0f;
     public string CurrentClipName => IsInitialized ? (string)_player.CurrentAnimation : string.Empty;
+
+    /// <summary>
+    /// True while the outgoing clip's pose is still being cross-faded into the current clip.
+    /// Verification uses it to skip single-clip pose assertions during the transition window.
+    /// </summary>
+    public bool IsBlendingClips => _fadeRemainingSeconds > 0.0;
 
     public void Initialize()
     {
@@ -60,6 +75,7 @@ public partial class ActivityAnimator : Node3D
         }
 
         ActivityTuningData tuning = Profile.ToActivityData();
+        _clipBlendSeconds = tuning.ClipBlendSeconds;
         _selector = new ActivitySelector(tuning.ToActivityParameters());
         Buddy.BehaviorActivityChanged += OnBehaviorActivityChanged;
         Buddy.Activity.EatBiteCompleted += OnEatBiteCompleted;
@@ -242,38 +258,47 @@ public partial class ActivityAnimator : Node3D
                 _proxies[index].Rotation = Vector3.Zero;
             }
 
+            // Tracking owns the body; the performance weight is already zero here, so there
+            // is nothing to fade out of and a stale fade must not bleed into the next clip.
+            _fadeRemainingSeconds = 0.0;
             return;
         }
 
         string clip = ClipNameFor(activity);
-        if (activity == ActivityId.Refuse)
-        {
-            // Refusal is rotation-only. Clear any sampled breathe/walk head translation from
-            // the previous clip before seeking the yaw track.
-            _proxies[(int)BuddyPartId.Head].Position = Vector3.Zero;
-        }
-        else
-        {
-            // Other clips have no rotation track. Clear the last seeked refusal sample so
-            // ambient/walk/eat cannot inherit a residual over-the-shoulder look.
-            _proxies[(int)BuddyPartId.Head].Rotation = Vector3.Zero;
-        }
         if (_player.CurrentAnimation != clip)
         {
-            // Every clip animates a different subset of the proxies, and the player is in
-            // Manual callback mode, so it only ever writes the tracks the current clip owns.
-            // Whatever the previous clip last wrote to the others stayed frozen there — walk
-            // left its foot and hand offsets standing in the idle pose, and vice versa. Clear
-            // the whole set on the change so each clip starts from the authored rest base and
-            // the seek below writes only what this clip actually says (owner report
-            // 2026-08-13: "animations not transitioning into one another").
+            // Cross-fade, not a cut. AnimationPlayer.Play(clip, customBlend) is useless here:
+            // the player is in Manual callback mode, so its blend timer only runs when the
+            // player is advanced — and walk/eat/refuse are SEEKED from measured travel and
+            // routed progress, never advanced. Those are exactly the transitions the owner
+            // called hard cuts. So the blend is done here instead, over the proxy poses, and
+            // therefore works identically for seeked and advanced clips.
+            for (int index = 0; index < _proxies.Length; index++)
+            {
+                _fadeFromPosition[index] = _proxies[index].Position;
+                _fadeFromRotation[index] = _proxies[index].Rotation;
+            }
+
+            _fadeRemainingSeconds = _clipBlendSeconds;
+            _player.Play(clip);
+        }
+
+        bool fading = _fadeRemainingSeconds > 0.0;
+        if (fading)
+        {
+            // Every clip animates a different subset of the proxies, and Manual mode only
+            // writes the tracks the current clip owns — whatever the previous clip last wrote
+            // to the others stays frozen there (walk left its foot and hand offsets standing
+            // in the idle pose). Rest the whole set before sampling, so a part the new clip
+            // does not animate fades from the snapshot to its authored rest base instead of
+            // holding a leftover. This also clears the refusal head yaw for the position-only
+            // clips and the sampled head translation for refusal, which used to need their own
+            // special cases.
             for (int index = 0; index < _proxies.Length; index++)
             {
                 _proxies[index].Position = Vector3.Zero;
                 _proxies[index].Rotation = Vector3.Zero;
             }
-
-            _player.Play(clip);
         }
 
         if (activity == ActivityId.WalkCycle)
@@ -294,6 +319,23 @@ public partial class ActivityAnimator : Node3D
         else
         {
             _player.Advance(deltaSeconds);
+        }
+
+        if (!fading)
+        {
+            return;
+        }
+
+        // Frame-delta driven (zero while the sim is held), never wall-clock, so a seeded
+        // laboratory run stays deterministic.
+        _fadeRemainingSeconds = Math.Max(0.0, _fadeRemainingSeconds - deltaSeconds);
+        float previousWeight = (float)(_fadeRemainingSeconds / _clipBlendSeconds);
+        for (int index = 0; index < _proxies.Length; index++)
+        {
+            _proxies[index].Position =
+                _proxies[index].Position.Lerp(_fadeFromPosition[index], previousWeight);
+            _proxies[index].Rotation =
+                _proxies[index].Rotation.Lerp(_fadeFromRotation[index], previousWeight);
         }
     }
 

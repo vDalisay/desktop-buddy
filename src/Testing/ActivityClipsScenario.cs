@@ -42,6 +42,7 @@ public sealed class ActivityClipsScenario : IScenario
         checks.Add(CheckClipMapping(lab, messages));
         checks.Add(await CheckEatFacesFood(tree, lab, messages));
         checks.Add(await CheckWalkCycleSpeedMatch(tree, lab, messages));
+        checks.Add(await CheckClipChangeCrossFades(tree, lab, messages));
         checks.Add(await CheckEatClipItemAgnostic(tree, lab, messages));
         checks.Add(await CheckEatFiveBiteSequence(tree, lab, messages));
         checks.Add(await CheckEatReachesAndStands(tree, lab, messages));
@@ -189,7 +190,7 @@ public sealed class ActivityClipsScenario : IScenario
         foreach (ActivityId activity in new[]
         {
             ActivityId.IdleBreathe, ActivityId.WalkCycle, ActivityId.JumpAnticipation,
-            ActivityId.Wave, ActivityId.Eat,
+            ActivityId.Wave, ActivityId.Eat, ActivityId.Refuse,
         })
         {
             string name = ActivityAnimator.ClipNameFor(activity);
@@ -251,6 +252,75 @@ public sealed class ActivityClipsScenario : IScenario
         return new StartupCheck("walk_cycle_speed_match", passed,
             $"walk_frames={walkFrames} expected_cycles={expectedCycles:F3} " +
             $"actual_cycles={actualCycles:F3} ratio={ratio:F3} frozen_outside={frozenOutsideWalk}");
+    }
+
+    /// <summary>
+    /// Clip changes cross-fade instead of cutting (owner report 2026-08-13). Raises the wave
+    /// hand well away from rest, drops the gesture so the animator swaps clips, and requires
+    /// the first Refuse frame to retain most of the abandoned position. It then switches
+    /// out of Refuse and makes the same assertion for its outgoing head rotation. Refuse is
+    /// phase-seeked; without the proxy fade both values disappear in one frame.
+    /// </summary>
+    private static async Task<StartupCheck> CheckClipChangeCrossFades(
+        SceneTree tree, BuddyLab lab, List<string> messages)
+    {
+        ActivityAnimator animator = lab.Activities;
+        await ScenarioSteps.WaitForStanding(tree, lab, 1200);
+        lab.Buddy.SetBehaviorActivity(ActivityId.Wave);
+
+        float abandonedPose = 0.0f;
+        for (int frame = 0; frame < 240 && abandonedPose < 4.0f; frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            abandonedPose = animator.OffsetFor((int)BuddyPartId.RightHand).Length();
+        }
+
+        string clipBefore = animator.CurrentClipName;
+        lab.Buddy.SetBehaviorActivity(ActivityId.Refuse);
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        string clipAfter = animator.CurrentClipName;
+        float firstIncomingPose = animator.OffsetFor((int)BuddyPartId.RightHand).Length();
+
+        bool changed = clipBefore == "wave" && clipAfter == "refuse";
+        bool bigEnoughPose = abandonedPose >= 4.0f;
+        bool positionFaded = bigEnoughPose &&
+            firstIncomingPose > abandonedPose * 0.75f;
+
+        float refusedYaw = 0.0f;
+        for (int frame = 0; frame < 240 && refusedYaw < 10.0f; frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            if (!animator.IsBlendingClips)
+            {
+                refusedYaw = Mathf.Abs(Mathf.RadToDeg(
+                    animator.YawRadiansFor((int)BuddyPartId.Head)));
+            }
+        }
+
+        lab.Buddy.SetBehaviorActivity(ActivityId.None);
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        string clipAfterRefuse = animator.CurrentClipName;
+        float firstAmbientYaw = Mathf.Abs(Mathf.RadToDeg(
+            animator.YawRadiansFor((int)BuddyPartId.Head)));
+        bool rotationFaded = clipAfterRefuse != "refuse" &&
+            refusedYaw >= 10.0f && firstAmbientYaw > refusedYaw * 0.75f;
+        for (int frame = 0; frame < 60; frame++)
+        {
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        }
+
+        bool completed =
+            animator.OffsetFor((int)BuddyPartId.RightHand).Length() < 1.0f &&
+            Mathf.Abs(animator.YawRadiansFor((int)BuddyPartId.Head)) < 0.01f;
+        bool passed = changed && positionFaded && rotationFaded && completed;
+        messages.Add($"clip_cross_fade {clipBefore}->{clipAfter}->{clipAfterRefuse} " +
+            $"position={abandonedPose:F2}/{firstIncomingPose:F2} " +
+            $"yaw={refusedYaw:F2}/{firstAmbientYaw:F2} completed={completed}");
+        return new StartupCheck("clip_change_cross_fades", passed,
+            $"{clipBefore}->{clipAfter}->{clipAfterRefuse} " +
+            $"position={abandonedPose:F2}/{firstIncomingPose:F2} " +
+            $"yaw={refusedYaw:F2}/{firstAmbientYaw:F2} completed={completed}");
     }
 
     private static async Task<StartupCheck> CheckEatClipItemAgnostic(

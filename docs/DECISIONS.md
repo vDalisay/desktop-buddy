@@ -4,6 +4,15 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Activity Clip Cross-Fades — Owner Approved (2026-08-13)
+
+All ordinary activity-clip changes cross-fade instead of hard-cutting, including the
+phase-seeked Walk, Eat, and Refuse clips. Because the shared `AnimationPlayer` runs in manual
+callback mode and those clips are positioned by gameplay phase rather than time advancement,
+the transition blends a snapshot of the outgoing proxy pose into the newly sampled pose. It
+must also fade untracked position and rotation channels back to rest so no prior clip residue
+survives. Tracking-mode cuts remain immediate because physics owns the displayed pose there.
+
 ## Asset Forge and Shape Replacements — Owner Approved (2026-08-12)
 
 The owner approved `docs/ASSET_FORGE_IMPLEMENTATION_PLAN.md` and resolved the four decisions

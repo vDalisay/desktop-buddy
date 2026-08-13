@@ -56,7 +56,8 @@ public readonly record struct ActivityTuningData(
     float WaveAmplitude,
     float ChewAmplitude,
     float JumpSquashAmplitude,
-    float RefuseYawDegrees)
+    float RefuseYawDegrees,
+    float ClipBlendSeconds)
 {
     // "Alive but never busy": authored positional amplitudes stay tiny in world pixels. The
     // smallest part cap today is ~0.5 x hand radius; six pixels already reads bold.
@@ -65,6 +66,12 @@ public readonly record struct ActivityTuningData(
     public const float MaximumWalkCyclePixels = 400.0f;
     public const float MinimumRefuseYawDegrees = 20.0f;
     public const float MaximumRefuseYawDegrees = 30.0f;
+
+    /// <summary>
+    /// Upper bound on the clip cross-fade. Anything past a few tenths of a second stops
+    /// reading as a transition and starts reading as the buddy being underwater.
+    /// </summary>
+    public const float MaximumClipBlendSeconds = 1.0f;
 
     public IReadOnlyList<string> Validate()
     {
@@ -80,6 +87,7 @@ public readonly record struct ActivityTuningData(
         AddPositiveBounded(errors, WaveAmplitude, MaximumAmplitude, "activity wave amplitude");
         AddPositiveBounded(errors, ChewAmplitude, MaximumAmplitude, "activity chew amplitude");
         AddPositiveBounded(errors, JumpSquashAmplitude, MaximumAmplitude, "activity jump squash amplitude");
+        AddPositiveBounded(errors, ClipBlendSeconds, MaximumClipBlendSeconds, "activity clip blend seconds");
         if (!float.IsFinite(RefuseYawDegrees) ||
             RefuseYawDegrees < MinimumRefuseYawDegrees ||
             RefuseYawDegrees > MaximumRefuseYawDegrees)
