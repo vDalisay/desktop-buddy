@@ -108,19 +108,36 @@ public partial class AssetForgePreview : Control
 
     private static ArrayMesh ToGodotMesh(CanonicalMesh source)
     {
+        if (source.Indices.Count % 3 != 0)
+            throw new InvalidOperationException("Canonical mesh triangle index count is invalid.");
+
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
-        foreach (uint rawIndex in source.Indices)
+
+        // Canonical Asset Forge geometry is also written directly to glTF/GLB, whose positive-
+        // determinant triangle convention is counter-clockwise. Godot procedural triangle meshes
+        // use clockwise front faces. Reverse each triangle only in this live-preview adapter so
+        // broad planar surfaces (notably complex authored bridge front/back plates) are not
+        // back-face culled when viewed head-on. Keep the canonical normals unchanged: they already
+        // describe the intended outward lighting direction and remain correct for exported GLB.
+        for (int triangle = 0; triangle < source.Indices.Count; triangle += 3)
         {
-            int index = checked((int)rawIndex);
-            NumericsVector3 p = source.Positions[index];
-            NumericsVector3 n = source.Normals[index];
-            NumericsVector2 uv = source.Uvs[index];
-            surface.SetNormal(new Vector3(n.X, n.Y, n.Z));
-            surface.SetUV(new Vector2(uv.X, uv.Y));
-            surface.AddVertex(new Vector3(p.X, p.Y, p.Z));
+            AddPreviewVertex(source, surface, source.Indices[triangle]);
+            AddPreviewVertex(source, surface, source.Indices[triangle + 2]);
+            AddPreviewVertex(source, surface, source.Indices[triangle + 1]);
         }
         return surface.Commit();
+    }
+
+    private static void AddPreviewVertex(CanonicalMesh source, SurfaceTool surface, uint rawIndex)
+    {
+        int index = checked((int)rawIndex);
+        NumericsVector3 p = source.Positions[index];
+        NumericsVector3 n = source.Normals[index];
+        NumericsVector2 uv = source.Uvs[index];
+        surface.SetNormal(new Vector3(n.X, n.Y, n.Z));
+        surface.SetUV(new Vector2(uv.X, uv.Y));
+        surface.AddVertex(new Vector3(p.X, p.Y, p.Z));
     }
 
     private void OnPreviewInput(InputEvent input)
