@@ -62,6 +62,38 @@ public sealed class GlassesTemplateV2PlacementTests
             $"Complex bridge was collapsed toward a center-line; front silhouette Y span was {bridgeY.Max() - bridgeY.Min():0.000}.");
     }
 
+    [Fact]
+    public void Glasses2_bridge_thickness_adjusts_complex_bridge_only()
+    {
+        GeneratedAsset thinner = Generate(CreateArrowBridgeGlasses(), 2, bridgeBiasPixels: -6);
+        GeneratedAsset baseline = Generate(CreateArrowBridgeGlasses(), 2, bridgeBiasPixels: 0);
+        GeneratedAsset thicker = Generate(CreateArrowBridgeGlasses(), 2, bridgeBiasPixels: 8);
+
+        float thinnerSpan = CenterBridgeFrontSpan(thinner);
+        float baselineSpan = CenterBridgeFrontSpan(baseline);
+        float thickerSpan = CenterBridgeFrontSpan(thicker);
+        Assert.True(thinnerSpan < baselineSpan, $"Expected thinner bridge: thin={thinnerSpan:0.000}, base={baselineSpan:0.000}.");
+        Assert.True(thickerSpan > baselineSpan, $"Expected thicker bridge: thick={thickerSpan:0.000}, base={baselineSpan:0.000}.");
+        Assert.NotEqual(thinner.GeometryHash, baseline.GeometryHash);
+        Assert.NotEqual(thicker.GeometryHash, baseline.GeometryHash);
+
+        Assert.Equal(OuterLensTubeVertices(baseline), OuterLensTubeVertices(thinner));
+        Assert.Equal(OuterLensTubeVertices(baseline), OuterLensTubeVertices(thicker));
+    }
+
+    [Fact]
+    public void Glasses2_bridge_thickness_also_adjusts_thin_path_fallback()
+    {
+        GeneratedAsset thinner = Generate(CreateGlasses(0, 470), 2, bridgeBiasPixels: -4);
+        GeneratedAsset thicker = Generate(CreateGlasses(0, 470), 2, bridgeBiasPixels: 8);
+
+        float thinnerSpan = CenterBridgeCrossSectionSpan(thinner);
+        float thickerSpan = CenterBridgeCrossSectionSpan(thicker);
+        Assert.True(thickerSpan > thinnerSpan + 0.02f,
+            $"Expected rounded bridge path to thicken: thin={thinnerSpan:0.000}, thick={thickerSpan:0.000}.");
+        Assert.Equal(OuterLensTubeVertices(thinner), OuterLensTubeVertices(thicker));
+    }
+
     private static float CenterBridgeAverageY(GeneratedAsset generated)
     {
         float halfDepth = (float)generated.Recipe.Geometry.Depth * 0.5f;
@@ -73,7 +105,38 @@ public sealed class GlassesTemplateV2PlacementTests
         return candidates.Average();
     }
 
-    private static GeneratedAsset Generate(RgbaImage image, int presetVersion)
+    private static float CenterBridgeFrontSpan(GeneratedAsset generated)
+    {
+        float halfDepth = (float)generated.Recipe.Geometry.Depth * 0.5f;
+        float[] candidates = generated.Mesh.Positions
+            .Where(p => MathF.Abs(p.X) < 0.28f && MathF.Abs(p.Z - halfDepth) < 0.002f)
+            .Select(static p => p.Y)
+            .ToArray();
+        Assert.NotEmpty(candidates);
+        return candidates.Max() - candidates.Min();
+    }
+
+    private static float CenterBridgeCrossSectionSpan(GeneratedAsset generated)
+    {
+        float[] candidates = generated.Mesh.Positions
+            .Where(static p => MathF.Abs(p.X) < 0.10f)
+            .Select(static p => p.Y)
+            .ToArray();
+        Assert.NotEmpty(candidates);
+        return candidates.Max() - candidates.Min();
+    }
+
+    private static string[] OuterLensTubeVertices(GeneratedAsset generated)
+    {
+        float halfDepth = (float)generated.Recipe.Geometry.Depth * 0.5f;
+        return generated.Mesh.Positions
+            .Where(p => MathF.Abs(p.X) > 0.55f && MathF.Abs(p.Z) < halfDepth - 0.003f)
+            .Select(static p => $"{p.X:0.000000},{p.Y:0.000000},{p.Z:0.000000}")
+            .OrderBy(static p => p, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static GeneratedAsset Generate(RgbaImage image, int presetVersion, int bridgeBiasPixels = 0)
     {
         AssetRecipe recipe = AssetRecipe.GlassesDefaults() with
         {
@@ -87,6 +150,7 @@ public sealed class GlassesTemplateV2PlacementTests
                 RuntimeTextureResolution = 256,
                 ShapeMode = ShapeMode.RoundedExtrusion,
                 SymmetryMode = SymmetryMode.Off,
+                BridgeThicknessBiasPixels = bridgeBiasPixels,
             },
         };
         return AssetForgeGenerator.Generate(PngCodec.EncodeRgba8(image), recipe);
