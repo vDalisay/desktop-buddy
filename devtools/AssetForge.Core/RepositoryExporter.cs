@@ -135,6 +135,59 @@ public static class RepositoryExporter
         }
     }
 
+    /// <summary>Authored assets that currently ship with the game, newest recipe order.</summary>
+    public static IReadOnlyList<AssetRecipe> ListExported(string repositoryRoot)
+    {
+        string root = RepositoryAssetVerifier.ValidateRoot(repositoryRoot);
+        return RepositoryAssetVerifier.DiscoverRecipeFiles(root)
+            .Select(static path => RecipeCodec.Read(File.ReadAllText(path)))
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Removes an exported asset: authoring input, generated files, both definitions, and the
+    /// aggregate catalogue entries, so the asset is no longer built or shipped.
+    /// </summary>
+    // ponytail: deletes in place with no staging/rollback (export has both); the repo is git
+    // tracked, so `git checkout` is the undo. Add a backup pass if that stops being true.
+    public static void Delete(string repositoryRoot, string featureId)
+    {
+        string root = RepositoryAssetVerifier.ValidateRoot(repositoryRoot);
+        string recipePath = RepositoryAssetVerifier.FindRecipe(root, featureId);
+        AssetRecipe recipe = RecipeCodec.Read(File.ReadAllText(recipePath));
+
+        string authoringRelative = Path.GetRelativePath(root, Path.GetDirectoryName(recipePath)!).Replace('\\', '/');
+        DeleteDirectory(root, authoringRelative);
+        DeleteDirectory(root, $"assets/generated/cosmetics/{recipe.FeatureId}");
+        DeleteFile(root, $"data/cosmetics/generated/{recipe.FeatureId}.tres");
+        DeleteFile(root, $"data/catalogue/generated/{recipe.ContentId.Replace('.', '_')}.tres");
+
+        WriteLf(
+            Path.Combine(root, Native("data/cosmetics/generated/catalogue.tres")),
+            AggregateCosmetics(ExistingDefinitions(root, "data/cosmetics/generated", "catalogue.tres").ToArray()));
+        WriteLf(
+            Path.Combine(root, Native("data/catalogue/generated_cosmetics.tres")),
+            AggregateSales(ExistingDefinitions(root, "data/catalogue/generated", excludeName: null).ToArray()));
+    }
+
+    // Committed generated content is LF, exactly like the exporter's staged writes.
+    private static void WriteLf(string path, string text) =>
+        File.WriteAllText(path, text.Replace("\r\n", "\n", StringComparison.Ordinal));
+
+    private static void DeleteDirectory(string root, string relative)
+    {
+        EnsureOwned(relative);
+        string path = Path.Combine(root, Native(relative));
+        if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+    }
+
+    private static void DeleteFile(string root, string relative)
+    {
+        EnsureOwned(relative);
+        string path = Path.Combine(root, Native(relative));
+        if (File.Exists(path)) File.Delete(path);
+    }
+
     private static void Commit(string root, string backupRoot, IReadOnlyDictionary<string, string> staged)
     {
         var backups = new Dictionary<string, string?>(StringComparer.Ordinal);

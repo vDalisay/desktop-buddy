@@ -7,7 +7,7 @@ Asset Forge is a developer-only Godot executable for turning a standardized 2D s
 From the repository root on Windows:
 
 ```bat
-tools\run_asset_forge.bat
+devtools\AssetForge\run_asset_forge.bat
 ```
 
 The launcher synchronizes the trusted Buddy visual profiles, runs the pure deterministic Core tests, builds the standalone Godot project, and launches Asset Forge. The tool is excluded from normal Desktop Buddy compilation and game/Steam export.
@@ -48,7 +48,7 @@ If Rounded glasses template cannot find two closed lens openings, it fails with 
 
 ## Authoring flow
 
-1. Start `tools\run_asset_forge.bat`.
+1. Start `devtools\AssetForge\run_asset_forge.bat`.
 2. Optionally save the Glasses template and draw the frame against it in the art program of choice.
 3. Draw a closed left and right lens/frame shape plus bridge. Export a 1024×1024 RGBA PNG; transparency is preferred but a flat opaque canvas is accepted.
 4. Choose **Open Image…**.
@@ -85,13 +85,13 @@ Asset Forge Core owns the GLB writer, so committed generated content can be re-d
 Verify every saved authored asset:
 
 ```bat
-tools\verify_asset_forge.bat
+devtools\AssetForge\verify_asset_forge.bat
 ```
 
 Regenerate every saved authored asset, preserving an existing thumbnail when available, then verify the repository:
 
 ```bat
-tools\regenerate_asset_forge.bat
+devtools\AssetForge\regenerate_asset_forge.bat
 ```
 
 The standalone UI also exposes **Regenerate**, **Regenerate All**, **Verify**, and **Verify All** for saved authoring content.

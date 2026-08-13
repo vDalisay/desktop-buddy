@@ -540,7 +540,7 @@ dotnet build DesktopBuddy.sln -c Debug
 <godot> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>
 ```
 
-Plus `tools\quick_validate.bat`; the slice's real-input MCP verification and promoted
+Plus `devtools\verification\quick_validate.bat`; the slice's real-input MCP verification and promoted
 journey; at Tasks 1, 12, and 13 the full catalogue sweep in both presentation modes;
 and at Task 13 the reference-hardware/allocation/pool performance gate. "Done without
 running the suite" remains the failure mode this plan exists to prevent.

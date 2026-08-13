@@ -13,6 +13,9 @@ public partial class AssetForgeMain : Control
     private Button _export = null!;
     private CheckBox _reference = null!;
     private FileDialog _sourceDialog = null!, _openRecipeDialog = null!, _saveRecipeDialog = null!, _templateDialog = null!;
+    private static readonly Vector2I DeleteDialogSize = new(400, 800);
+    private ConfirmationDialog _deleteDialog = null!;
+    private ItemList _deleteList = null!;
     private GeneratedAsset? _generated;
     private string? _sourcePath;
 
@@ -53,6 +56,7 @@ public partial class AssetForgeMain : Control
         AddButton(repositoryTools, "Regenerate All", RegenerateAll);
         AddButton(repositoryTools, "Verify", VerifyCurrent);
         AddButton(repositoryTools, "Verify All", VerifyAll);
+        AddButton(repositoryTools, "Delete Asset…", ShowDeleteDialog);
         repositoryTools.AddChild(new Control { SizeFlagsHorizontal = SizeFlags.ExpandFill });
         repositoryTools.AddChild(new Label { Text = "Verify/Regenerate run without Godot generation state." });
 
@@ -115,6 +119,26 @@ public partial class AssetForgeMain : Control
         _saveRecipeDialog.FileSelected += SaveRecipe;
         _templateDialog = Dialog(FileDialog.FileModeEnum.SaveFile, "Save 1024×1024 Glasses authoring guide", ["*.png ; PNG image"]);
         _templateDialog.FileSelected += SaveTemplate;
+
+        _deleteDialog = new ConfirmationDialog
+        {
+            Title = "Delete exported asset",
+            OkButtonText = "Delete",
+        };
+        // The dialog is a fixed 400x800 box. Every child min size stays under that, otherwise
+        // Window clamps up to the contents minimum and the button row falls off screen.
+        _deleteList = new ItemList { SizeFlagsVertical = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 0) };
+        var deleteBody = new VBoxContainer();
+        deleteBody.AddChild(new Label
+        {
+            Text = "Removes authoring input, generated files and catalogue entries. Undo with git.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(DeleteDialogSize.X - 24, 0),
+        });
+        deleteBody.AddChild(_deleteList);
+        _deleteDialog.AddChild(deleteBody);
+        _deleteDialog.Confirmed += DeleteSelected;
+        AddChild(_deleteDialog);
     }
 
     private void ChooseSource() => _sourceDialog.PopupCenteredRatio(0.72f);
@@ -225,6 +249,46 @@ public partial class AssetForgeMain : Control
         catch (Exception exception)
         {
             SetStatus("Save template failed: " + exception.Message);
+        }
+    }
+
+    private void ShowDeleteDialog()
+    {
+        try
+        {
+            _deleteList.Clear();
+            foreach (AssetRecipe recipe in RepositoryExporter.ListExported(RepositoryRoot()))
+                _deleteList.AddItem($"{recipe.DisplayName}  ({recipe.FeatureId})");
+            _deleteDialog.GetOkButton().Disabled = _deleteList.ItemCount == 0;
+            if (_deleteList.ItemCount == 0)
+                _deleteList.AddItem("No exported assets.", selectable: false);
+            // Never taller than the window, or the Delete/Cancel row lands off screen.
+            var size = new Vector2I(
+                DeleteDialogSize.X,
+                Math.Min(DeleteDialogSize.Y, (int)GetViewportRect().Size.Y - 120));
+            _deleteDialog.PopupCentered(size);
+            _deleteDialog.Size = size;
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Could not list exported assets: " + exception.Message);
+        }
+    }
+
+    private void DeleteSelected()
+    {
+        try
+        {
+            int[] selected = _deleteList.GetSelectedItems();
+            if (selected.Length == 0) throw new InvalidOperationException("Select an asset to delete.");
+            AssetRecipe recipe = RepositoryExporter.ListExported(RepositoryRoot())[selected[0]];
+            RepositoryExporter.Delete(RepositoryRoot(), recipe.FeatureId);
+            _hashes.Text = FormatVerification(RepositoryAssetVerifier.VerifyAll(RepositoryRoot()));
+            SetStatus($"Deleted {recipe.DisplayName} ({recipe.FeatureId}). It no longer ships with the game.");
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Delete failed: " + exception.Message);
         }
     }
 

@@ -134,7 +134,7 @@ The broader content-complete audio consistency pass remains in the later Steam-d
 Run from the repository root:
 
 ```bat
-tools\validate_user_testing_polish.bat
+devtools\verification\validate_user_testing_polish.bat
 ```
 
 The runner performs:
@@ -157,7 +157,7 @@ The running-game MCP pass also verified the top-level Buddy Studio route, active
 
 ## Final owner manual gate
 
-Launch `tools\play_game.bat` and verify the interaction/feel items that automation cannot judge:
+Launch `devtools\play_game.bat` and verify the interaction/feel items that automation cannot judge:
 
 - Paint Background: Curve guidance reads naturally; control points appear/disappear at the right moments; Eraser footprint and active tool/shape are visually obvious.
 - Paint Buddy: Mirror/backside/fill feel correct; the complete palette detaches/drags/resizes/docks; lower-left turn/zoom cluster is unobtrusive; and Show limbs makes hands, feet, arms, and legs intentionally paintable before restoring the normal preview.

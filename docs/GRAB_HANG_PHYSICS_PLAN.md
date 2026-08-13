@@ -172,7 +172,7 @@ file `HangFrame.cs`), following the `PassiveSpring`/`GrabTether` pattern
 - Unit: `dotnet test`
 - Scenario: `<godot_console> --headless --fixed-fps 120 --path . -- --scenario=<id> --seed=<n>`
   (`<godot_console>` = `C:\Users\Home\Downloads\Godot_v4.6.1-stable_mono_win64\Godot_v4.6.1-stable_mono_win64_console.exe`)
-- Quick suite: `tools\quick_validate.bat`
+- Quick suite: `devtools\verification\quick_validate.bat`
 - Gotchas: close any `--editor` Godot instance first (headless deadlocks);
   `--fixed-fps 120` is mandatory for pacing-sensitive scenarios; wrap headless
   runs in a hard timeout.

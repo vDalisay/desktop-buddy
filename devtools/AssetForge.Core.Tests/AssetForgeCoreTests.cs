@@ -240,6 +240,39 @@ public sealed class AssetForgeCoreTests
         }
     }
 
+    [Fact]
+    public void Delete_removes_every_exported_file_and_empties_the_catalogues()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "desktop-buddy-asset-forge-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "DesktopBuddy.csproj"), "<Project />\n");
+            byte[] png = PngCodec.EncodeRgba8(TestGlassesImage());
+            AssetRecipe recipe = Recipe();
+            RepositoryExporter.ExportGlasses(root, png, AssetForgeGenerator.Generate(png, recipe), png);
+            Assert.Single(RepositoryExporter.ListExported(root));
+
+            RepositoryExporter.Delete(root, recipe.FeatureId);
+
+            Assert.Empty(RepositoryExporter.ListExported(root));
+            Assert.False(Directory.Exists(Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId)));
+            Assert.False(File.Exists(Path.Combine(root, "data", "cosmetics", "generated", recipe.FeatureId + ".tres")));
+            Assert.False(File.Exists(Path.Combine(root, "data", "catalogue", "generated", recipe.ContentId.Replace('.', '_') + ".tres")));
+            string cosmeticCatalogue = File.ReadAllText(Path.Combine(root, "data", "cosmetics", "generated", "catalogue.tres"));
+            string saleCatalogue = File.ReadAllText(Path.Combine(root, "data", "catalogue", "generated_cosmetics.tres"));
+            Assert.Contains("Entries = Array[Resource]([])", cosmeticCatalogue, StringComparison.Ordinal);
+            Assert.Contains("Entries = Array[Resource]([])", saleCatalogue, StringComparison.Ordinal);
+            Assert.DoesNotContain("\r\n", cosmeticCatalogue, StringComparison.Ordinal);
+            Assert.DoesNotContain("\r\n", saleCatalogue, StringComparison.Ordinal);
+            Assert.True(RepositoryAssetVerifier.VerifyAll(root).Passed);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static AssetRecipe Recipe() => AssetRecipe.GlassesDefaults() with
     {
         FeatureId = "glasses.test_round",

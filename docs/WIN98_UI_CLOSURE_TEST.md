@@ -5,7 +5,7 @@ This is the final owner test pass for the `win98-feel` branch. Agent-side implem
 ## 1. Build and startup
 
 1. Run the normal build command.
-2. Launch with `tools/play_game.bat`.
+2. Launch with `devtools/play_game.bat`.
 3. Confirm there is no C# build failure, exception spam, missing autoload error, or immediately closing terminal.
 4. Confirm the main shell accepts buddy input and command-bar input.
 

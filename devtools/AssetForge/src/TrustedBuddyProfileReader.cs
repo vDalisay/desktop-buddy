@@ -46,7 +46,7 @@ public static class TrustedBuddyProfileReader
     {
         string path = Path.Combine(root, name);
         if (!File.Exists(path))
-            throw new FileNotFoundException($"Trusted Buddy preview data is missing: {path}. Run tools/build_asset_forge.bat.");
+            throw new FileNotFoundException($"Trusted Buddy preview data is missing: {path}. Run devtools/AssetForge/build_asset_forge.bat.");
         return File.ReadAllText(path);
     }
 

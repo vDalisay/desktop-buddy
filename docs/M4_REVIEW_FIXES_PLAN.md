@@ -6,7 +6,7 @@ implementation/code review of all six M4 tasks against
 
 M4's automated gates are green and were re-verified independently at the start of
 this review: build clean with zero warnings, `dotnet test` **611/611**,
-`tools\quick_validate.bat` **15/15**, catalog **41 scenarios / 11 journeys**
+`devtools\verification\quick_validate.bat` **15/15**, catalog **41 scenarios / 11 journeys**
 matching `CHECKLIST.md:58-59`. The architecture holds: domain stays Godot-free,
 stable string content IDs cross every seam, physics is forces-only with one-shot
 release impulses and no transform/velocity writes, there is one gameplay
@@ -305,7 +305,7 @@ complete the snapshot with a `with` expression (a stack copy on a
 ```bat
 dotnet build DesktopBuddy.sln -c Debug
 dotnet test tests\DesktopBuddy.Domain.Tests\DesktopBuddy.Domain.Tests.csproj -c Debug
-tools\quick_validate.bat
+devtools\verification\quick_validate.bat
 ```
 
 Affected scenarios on seeds 1 and 7 under `--presentation=mii3d` and

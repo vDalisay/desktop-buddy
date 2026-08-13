@@ -120,7 +120,7 @@ This records owner acceptance of the manually exercised functional behavior. DPI
 Run from the repository root:
 
 ```bat
-tools\build_game.bat
+devtools\build_game.bat
 ```
 
 ```bat
@@ -159,13 +159,13 @@ Godot_v4.6.1-stable_mono_win64_console.exe ^
 Then run:
 
 ```bat
-tools\quick_validate.bat
+devtools\verification\quick_validate.bat
 ```
 
 Manual launch:
 
 ```bat
-tools\play_game.bat
+devtools\play_game.bat
 ```
 
 ## Final acceptance status

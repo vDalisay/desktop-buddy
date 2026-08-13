@@ -3,8 +3,8 @@ setlocal
 
 if /I "%~1"=="--help" goto :help
 
-set "PROJECT_ROOT=%~dp0.."
-call "%~dp0resolve_godot.bat"
+set "PROJECT_ROOT=%~dp0..\.."
+call "%~dp0..\..\tools\resolve_godot.bat"
 if errorlevel 1 exit /b %ERRORLEVEL%
 
 set "GODOT_HEADLESS=%GODOT_EXE%"

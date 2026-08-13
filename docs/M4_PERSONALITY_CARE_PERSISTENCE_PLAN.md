@@ -416,7 +416,7 @@ accounting, HUD passive updates, and a recorded native manual-matrix entry
   no autoload and no second physics root.
 - Register the eight M4 scenarios in `src/Testing/ScenarioCatalog.cs`: expected
   total becomes **41**. Add `care_persistence`: expected journey total becomes **11**.
-- Expand `tools/quick_validate.bat` with focused M4 gates; keep full matrices and
+- Expand `devtools/verification/quick_validate.bat` with focused M4 gates; keep full matrices and
   soaks outside the quick path.
 - Run the allocation regression with arbiter, object sensor/registry, persistence,
   and lifecycle live after warm-up.
@@ -474,7 +474,7 @@ For each new scenario, seeds 1 and 7, both presentations:
 Run all journeys in both presentations, including cross-process `care_persistence`, then:
 
 ```bat
-tools\quick_validate.bat
+devtools\verification\quick_validate.bat
 ```
 
 Finally use the project `verify` skill to drive real runtime flows, run windowed

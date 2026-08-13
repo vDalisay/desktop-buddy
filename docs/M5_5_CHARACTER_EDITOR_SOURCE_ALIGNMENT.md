@@ -352,7 +352,7 @@ Before changing code, an A1+ agent must:
 2. read this supplement;
 3. read `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md` through the assigned task and dependencies;
 4. inspect the current implementation seams named by that task;
-5. capture current `dotnet build`, `dotnet test`, and `tools\quick_validate.bat` verdicts.
+5. capture current `dotnet build`, `dotnet test`, and `devtools\verification\quick_validate.bat` verdicts.
 
 Each task handoff must report:
 

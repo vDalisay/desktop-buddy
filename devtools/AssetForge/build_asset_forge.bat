@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "PROJECT_ROOT=%~dp0.."
+set "PROJECT_ROOT=%~dp0..\.."
 rem `call` matters: if dotnet resolves to a .cmd shim, running it without call ends this script.
 call powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sync_asset_forge_profiles.ps1"
 if errorlevel 1 exit /b 1
