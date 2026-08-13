@@ -46,6 +46,7 @@ internal static class Program
             DisplayName = "CI Pink Round",
             PriceCredits = 125,
             SortOrder = 9900,
+            LightingLevel = 0.22,
             Geometry = AssetRecipe.GlassesDefaults().Geometry with
             {
                 GeometryResolution = 128,
@@ -86,6 +87,10 @@ internal static class Program
                      Path.Combine(repositoryRoot, "data", "catalogue", "generated_cosmetics.tres"),
                  })
             if (!File.Exists(path)) throw new FileNotFoundException("Expected Asset Forge export was not written.", path);
+
+        string definitionText = File.ReadAllText(definition);
+        if (!definitionText.Contains("LightingLevel = 0.22", StringComparison.Ordinal))
+            throw new InvalidOperationException("CI fixture did not persist its non-default generated-asset lighting level.");
 
         Console.WriteLine(
             $"Generated {recipe.FeatureId}: {first.Diagnostics.Holes} holes, {first.TriangleCount} triangles, " +
