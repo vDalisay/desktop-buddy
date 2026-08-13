@@ -11,10 +11,12 @@ namespace DesktopBuddy.AssetForge.Core;
 internal static class GlassesBridgeSilhouette
 {
     // Bridge art can intentionally extend a little way into the inner lens/frame area (for example
-    // arrow stems). Keep enough horizontal padding for that artwork, but constrain the vertical
-    // corridor so we do not duplicate the full lens frame as flat bridge geometry.
+    // arrow stems). Horizontal padding preserves that authored overlap. Vertical placement is not
+    // derived from an arbitrary closest lens pair: it is measured from actual foreground in the
+    // central lens gap, then padded only slightly.
     private const float RoiPaddingFraction = 0.055f;
-    private const float VerticalBandFraction = 0.082f;
+    private const float CoreInsetFraction = 0.20f;
+    private const float VerticalPaddingFraction = 0.025f;
     private const float RequiredColumnCoverage = 0.55f;
     private const int MinimumComplexRunThickness = 3;
 
@@ -34,15 +36,37 @@ internal static class GlassesBridgeSilhouette
         if (rightInner.X < leftInner.X)
             (leftInner, rightInner) = (rightInner, leftInner);
 
+        float gapWidth = rightInner.X - leftInner.X;
+        if (gapWidth < 2f)
+            return false;
+
         int padding = Math.Max(4, (int)MathF.Round(grid.Width * RoiPaddingFraction));
         int x0 = Math.Clamp((int)MathF.Floor(leftInner.X) - padding, 0, grid.Width - 1);
         int x1 = Math.Clamp((int)MathF.Ceiling(rightInner.X) + padding, 0, grid.Width - 1);
         if (x1 - x0 < 2)
             return false;
 
-        int verticalBand = Math.Max(10, (int)MathF.Round(grid.Height * VerticalBandFraction));
-        int y0 = Math.Clamp((int)MathF.Floor(MathF.Min(leftInner.Y, rightInner.Y)) - verticalBand, 0, grid.Height - 1);
-        int y1 = Math.Clamp((int)MathF.Ceiling(MathF.Max(leftInner.Y, rightInner.Y)) + verticalBand, 0, grid.Height - 1);
+        // Measure bridge Y from the middle 60% of the inter-lens gap. That excludes the facing
+        // vertical lens bars but still sees the body/arrowheads of an authored bridge. The wider
+        // x0..x1 ROI is used only after this vertical bridge corridor is known, so stems that enter
+        // the frame area are preserved without copying the whole lens frame.
+        int coreX0 = Math.Clamp(
+            (int)MathF.Ceiling(leftInner.X + gapWidth * CoreInsetFraction),
+            0,
+            grid.Width - 1);
+        int coreX1 = Math.Clamp(
+            (int)MathF.Floor(rightInner.X - gapWidth * CoreInsetFraction),
+            0,
+            grid.Width - 1);
+        if (coreX1 < coreX0)
+            return false;
+
+        if (!TryFindAuthoredVerticalSpan(grid, coreX0, coreX1, out int authoredMinY, out int authoredMaxY))
+            return false;
+
+        int verticalPadding = Math.Max(6, (int)MathF.Round(grid.Height * VerticalPaddingFraction));
+        int y0 = Math.Clamp(authoredMinY - verticalPadding, 0, grid.Height - 1);
+        int y1 = Math.Clamp(authoredMaxY + verticalPadding, 0, grid.Height - 1);
 
         int columnsWithForeground = 0;
         int filledCells = 0;
@@ -102,6 +126,25 @@ internal static class GlassesBridgeSilhouette
         }
 
         return mesh.TriangleCount > triangleCountBefore;
+    }
+
+    private static bool TryFindAuthoredVerticalSpan(
+        MaskGrid grid,
+        int x0,
+        int x1,
+        out int minY,
+        out int maxY)
+    {
+        minY = grid.Height;
+        maxY = -1;
+        for (int x = x0; x <= x1; x++)
+        for (int y = 0; y < grid.Height; y++)
+        {
+            if (!grid[x, y]) continue;
+            minY = Math.Min(minY, y);
+            maxY = Math.Max(maxY, y);
+        }
+        return maxY >= minY;
     }
 
     private static bool Filled(MaskGrid grid, int x, int y) =>
