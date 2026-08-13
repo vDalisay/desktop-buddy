@@ -29,6 +29,7 @@ public readonly record struct LookAtInputs(
     int TicksSinceImpact,
     float ImpactX,
     float ImpactY,
+    bool AmbientAllowed,
     bool FaceSuppressed,
     float HeadX,
     float HeadY);
@@ -62,9 +63,9 @@ public readonly record struct LookAtAngles(float YawDegrees, float PitchDegrees)
 /// clamped into the cone BEFORE easing, so the eased value (a lerp between two in-cone
 /// angles) can never leave the cone or overshoot. The ease restarts only when the gaze
 /// ACQUIRES something new (a different source, or a freshly sampled glance); while a
-/// source is held the target keeps updating, so the head follows a moving cursor instead
-/// of stalling on a smoothstep that restarts every frame. Presentation-only: nothing here
-/// reads or writes physics.
+/// source is held the target keeps updating through a step-independent follow ease, so the
+/// head follows moving world targets without either stalling or exposing frame-to-frame
+/// physics noise. Presentation-only: nothing here reads or writes physics.
 /// </summary>
 public sealed class LookAtModel
 {
@@ -153,14 +154,28 @@ public sealed class LookAtModel
         _targetPitchDegrees = targetPitch;
         CurrentSource = source;
 
-        if (_easeProgress < 1.0 && deltaSeconds > 0.0)
+        bool acquiring = _easeProgress < 1.0;
+        if (acquiring && deltaSeconds > 0.0)
         {
             _easeProgress = Math.Min(1.0, _easeProgress + (deltaSeconds / _parameters.EaseSeconds));
         }
 
-        float eased = SmoothStep((float)_easeProgress);
-        CurrentYawDegrees = _startYawDegrees + ((_targetYawDegrees - _startYawDegrees) * eased);
-        CurrentPitchDegrees = _startPitchDegrees + ((_targetPitchDegrees - _startPitchDegrees) * eased);
+        if (acquiring)
+        {
+            float eased = SmoothStep((float)_easeProgress);
+            CurrentYawDegrees = _startYawDegrees + ((_targetYawDegrees - _startYawDegrees) * eased);
+            CurrentPitchDegrees = _startPitchDegrees + ((_targetPitchDegrees - _startPitchDegrees) * eased);
+        }
+        else if (deltaSeconds > 0.0)
+        {
+            // Once acquisition has completed the target may still move every frame: cursor,
+            // carried item, impact point relative to a physical head, or the head itself.
+            // Following it directly made ordinary physics noise visible as head jitter.
+            float follow = 1.0f - MathF.Exp(
+                -4.0f * (float)deltaSeconds / _parameters.EaseSeconds);
+            CurrentYawDegrees += (_targetYawDegrees - CurrentYawDegrees) * follow;
+            CurrentPitchDegrees += (_targetPitchDegrees - CurrentPitchDegrees) * follow;
+        }
         PupilOffsetX = Quantize(CurrentYawDegrees / _parameters.ConeYawDegrees);
         PupilOffsetY = Quantize(CurrentPitchDegrees / _parameters.ConePitchDegrees);
         return new LookAtAngles(CurrentYawDegrees, CurrentPitchDegrees);
@@ -200,6 +215,12 @@ public sealed class LookAtModel
             DisarmGlance();
             Aim(inputs.ImpactX - inputs.HeadX, inputs.ImpactY - inputs.HeadY, out targetYaw, out targetPitch);
             return LookAtSource.Impact;
+        }
+
+        if (!inputs.AmbientAllowed)
+        {
+            DisarmGlance();
+            return LookAtSource.Rest;
         }
 
         // Ambient: the seeded timer alternates a quiet rest interval with a held glance.

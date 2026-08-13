@@ -11,6 +11,7 @@ public readonly record struct StandingSnapshot(
     float CenterOfMassError,
     float MaximumBodySpeed,
     int StableTicks,
+    bool HasStablePosture,
     bool MeetsCriteria,
     bool IsStable,
     Vector2 CenterOfMass,

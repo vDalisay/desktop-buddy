@@ -154,6 +154,34 @@ public sealed class FacingModelTests
     }
 
     [Fact]
+    public void ReversalDuringTurn_DoesNotFinishTurningTowardTheOldDirection()
+    {
+        FacingModel model = NewModel();
+        model.Update(WalkLeft, 36, 0.0);
+        float turningLeft = model.Update(WalkLeft, 1, 0.15);
+        Assert.True(turningLeft < 0.0f);
+
+        // The new direction has not earned its commitment yet. Hold the displayed yaw;
+        // continuing toward the old target makes the head visibly turn the wrong way.
+        float held = model.Update(WalkRight, 1, 0.15);
+        Assert.Equal(turningLeft, held, 4);
+        for (int tick = 1; tick < Parameters.WalkCommitTicks - 1; tick++)
+            held = model.Update(WalkRight, 1, 1.0 / 120.0);
+        Assert.Equal(turningLeft, held, 4);
+
+        // Once committed, there is one continuous turn toward the new side.
+        float previous = model.Update(WalkRight, 1, 1.0 / 120.0);
+        for (int frame = 0; frame < 90; frame++)
+        {
+            float yaw = model.Update(WalkRight, 1, 1.0 / 120.0);
+            Assert.True(yaw >= previous - 0.0001f, $"yaw regressed at frame {frame}");
+            previous = yaw;
+        }
+        Assert.Equal(FacingSide.Right, model.CommittedSide);
+        Assert.Equal(30.0f, model.CurrentYawDegrees, 3);
+    }
+
+    [Fact]
     public void ForcedFrontal_TurnsToZeroAndRestoresCommittedSideAfterRelease()
     {
         FacingModel model = NewModel();

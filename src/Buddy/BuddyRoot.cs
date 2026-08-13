@@ -2,6 +2,7 @@ using System;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Presentation;
@@ -50,6 +51,8 @@ public partial class BuddyRoot : Node2D
     /// </summary>
     public long RoutedTicks { get; private set; }
     public ToolReactionIntent CurrentToolReactionIntent { get; private set; }
+
+    private float _tracedWalkDirection;
 
     public override void _Ready()
     {
@@ -125,6 +128,7 @@ public partial class BuddyRoot : Node2D
             hardRecoveredThisTick,
             cursorWorldPosition,
             socialTargetValid);
+        TraceWalkDecision();
         if (grabbedPart == BuddyPartId.Head)
             ActiveDrive.NotifyHeadDisturbed();
         ActiveDrive.PhysicsTick(
@@ -151,8 +155,47 @@ public partial class BuddyRoot : Node2D
 
     public override void _ExitTree()
     {
+        if (BuildInfo.IsDebugBuild && !Mathf.IsZeroApprox(_tracedWalkDirection))
+        {
+            Log.Debug("AnimationTrace",
+                $"event=end lane=body.walk name=walk reason=node_exit tick={RoutedTicks} " +
+                $"direction={_tracedWalkDirection:0.###}");
+        }
+
         if (GodotObject.IsInstanceValid(Activity))
             Activity.ActivityChanged -= OnBehaviorActivityChanged;
+    }
+
+    private void TraceWalkDecision()
+    {
+        if (!BuildInfo.IsDebugBuild)
+            return;
+
+        float direction = MathF.Sign(CurrentDriveIntent.WalkDirection);
+        if (Mathf.IsEqualApprox(direction, _tracedWalkDirection))
+            return;
+
+        if (!Mathf.IsZeroApprox(_tracedWalkDirection))
+        {
+            Log.Debug("AnimationTrace",
+                $"event=end lane=body.walk name=walk " +
+                $"reason={(Mathf.IsZeroApprox(direction) ? "decision_cleared" : "direction_changed")} " +
+                $"tick={RoutedTicks} direction={_tracedWalkDirection:0.###} " +
+                $"torso=({Rig.Torso.GlobalPosition.X:0.##},{Rig.Torso.GlobalPosition.Y:0.##}) " +
+                $"head=({Rig.Head.GlobalPosition.X:0.##},{Rig.Head.GlobalPosition.Y:0.##})");
+        }
+
+        _tracedWalkDirection = direction;
+        if (!Mathf.IsZeroApprox(direction))
+        {
+            Log.Debug("AnimationTrace",
+                $"event=start lane=body.walk name=walk reason=arbiter_decision " +
+                $"tick={RoutedTicks} direction={direction:0.###} " +
+                $"scale={CurrentDriveIntent.LocomotionScale:0.###} " +
+                $"activity={Activity.Current} consciousness={CurrentConsciousness} " +
+                $"torso=({Rig.Torso.GlobalPosition.X:0.##},{Rig.Torso.GlobalPosition.Y:0.##}) " +
+                $"head=({Rig.Head.GlobalPosition.X:0.##},{Rig.Head.GlobalPosition.Y:0.##})");
+        }
     }
 
     public void SetConsciousness(Consciousness consciousness)

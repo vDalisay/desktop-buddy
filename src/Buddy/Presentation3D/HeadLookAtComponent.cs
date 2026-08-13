@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Buddy.Presentation;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
@@ -45,6 +46,7 @@ public partial class HeadLookAtComponent : Node
     // Routed-tick stamp and world point of the last accepted impact; MinValue = never.
     private long _lastImpactTick = long.MinValue;
     private Vector2 _lastImpactPoint;
+    private LookAtSource _tracedSource = LookAtSource.Rest;
 
     public bool IsInitialized { get; private set; }
     public LookAtSource CurrentSource => IsInitialized ? _model.CurrentSource : LookAtSource.Rest;
@@ -94,6 +96,9 @@ public partial class HeadLookAtComponent : Node
 
     public override void _ExitTree()
     {
+        if (BuildInfo.IsDebugBuild && _tracedSource != LookAtSource.Rest)
+            TraceSource("end", _tracedSource, "node_exit");
+
         if (!IsInitialized)
         {
             return;
@@ -111,9 +116,16 @@ public partial class HeadLookAtComponent : Node
     }
 
     /// <summary>Rebuilds the ambient glance stream from the shared seed (own salted stream).</summary>
-    public void Reseed(ulong seed) => _model = new LookAtModel(
-        new SeededRandomSource(seed ^ LookAtStreamSalt),
-        Profile.ToData().ToLookAtParameters());
+    public void Reseed(ulong seed)
+    {
+        if (BuildInfo.IsDebugBuild && _tracedSource != LookAtSource.Rest && _model is not null)
+            TraceSource("end", _tracedSource, "reseeded");
+
+        _model = new LookAtModel(
+            new SeededRandomSource(seed ^ LookAtStreamSalt),
+            Profile.ToData().ToLookAtParameters());
+        _tracedSource = LookAtSource.Rest;
+    }
 
     /// <summary>
     /// Samples current semantics and advances the model; returns the eased head angles in
@@ -176,13 +188,32 @@ public partial class HeadLookAtComponent : Node
             item.X, item.Y,
             (int)Math.Clamp(ticksSinceImpact, 0, int.MaxValue),
             _lastImpactPoint.X, _lastImpactPoint.Y,
+            Mathf.IsZeroApprox(Buddy.CurrentDriveIntent.WalkDirection),
             // A refusal owns the head exactly like a high-priority reaction face does: the gaze
             // rests dead ahead — at the player the buddy is saying no to — so an ambient glance
             // cannot wander off mid-shake (owner instruction 2026-07-29).
             Profile.SuppressesLookAt(Reactions.CurrentFace) || Buddy.Activity.IsRefusing,
             head.X, head.Y);
-        return _model.Update(inputs, ticksElapsed, deltaSeconds);
+        LookAtAngles angles = _model.Update(inputs, ticksElapsed, deltaSeconds);
+        LookAtSource after = _model.CurrentSource;
+        if (BuildInfo.IsDebugBuild && after != _tracedSource)
+        {
+            if (_tracedSource != LookAtSource.Rest)
+                TraceSource("end", _tracedSource, "source_changed");
+            if (after != LookAtSource.Rest)
+                TraceSource("start", after, "selected");
+            _tracedSource = after;
+        }
+
+        return angles;
     }
+
+    private void TraceSource(string @event, LookAtSource source, string reason) =>
+        Log.Debug("AnimationTrace",
+            $"event={@event} lane=head.look name={source.ToString().ToLowerInvariant()} " +
+            $"reason={reason} tick={Buddy.RoutedTicks} frame={Engine.GetProcessFrames()} " +
+            $"yaw={_model.CurrentYawDegrees:0.###} pitch={_model.CurrentPitchDegrees:0.###} " +
+            $"activity={Activities.Current} face={Reactions.CurrentFace}");
 
     private void OnImpactAccepted(AcceptedImpact impact)
     {

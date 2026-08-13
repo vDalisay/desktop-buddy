@@ -215,12 +215,22 @@ public sealed class ActivityClipsScenario : IScenario
         double expectedCycles = 0.0;
         double actualCycles = 0.0;
         bool frozenOutsideWalk = true;
+        bool performanceHeldThroughWalkRelease = true;
+        long lastWalkIntentTick = long.MinValue;
         float previousPhase = animator.WalkPhase;
         int walkFrames = 0;
         for (int frame = 0; frame < 14400 && expectedCycles < 0.75; frame++)
         {
             float speedBefore = Mathf.Abs(lab.Buddy.Rig.Torso.LinearVelocity.X);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            if (!Mathf.IsZeroApprox(lab.Buddy.CurrentDriveIntent.WalkDirection))
+                lastWalkIntentTick = lab.Buddy.RoutedTicks;
+            if (lastWalkIntentTick != long.MinValue &&
+                lab.Buddy.RoutedTicks - lastWalkIntentTick <= 8)
+            {
+                performanceHeldThroughWalkRelease &=
+                    lab.PosePipeline.Mode == PresentationPoseMode.Performance;
+            }
             float phase = animator.WalkPhase;
             float delta = phase - previousPhase;
             if (delta < -0.5f)
@@ -246,12 +256,16 @@ public sealed class ActivityClipsScenario : IScenario
         double ratio = enoughTravel ? actualCycles / expectedCycles : 0.0;
         bool proportional = enoughTravel && ratio > 0.85 && ratio < 1.15;
 
-        bool passed = enoughTravel && proportional && frozenOutsideWalk;
+        bool passed = enoughTravel && proportional && frozenOutsideWalk &&
+            performanceHeldThroughWalkRelease;
         messages.Add($"walk_cycle frames={walkFrames} expected={expectedCycles:F3} " +
-            $"actual={actualCycles:F3} ratio={ratio:F3} frozen={frozenOutsideWalk}");
+            $"actual={actualCycles:F3} ratio={ratio:F3} frozen={frozenOutsideWalk} " +
+            $"release_performance={performanceHeldThroughWalkRelease}");
         return new StartupCheck("walk_cycle_speed_match", passed,
             $"walk_frames={walkFrames} expected_cycles={expectedCycles:F3} " +
-            $"actual_cycles={actualCycles:F3} ratio={ratio:F3} frozen_outside={frozenOutsideWalk}");
+            $"actual_cycles={actualCycles:F3} ratio={ratio:F3} " +
+            $"frozen_outside={frozenOutsideWalk} " +
+            $"release_performance={performanceHeldThroughWalkRelease}");
     }
 
     /// <summary>

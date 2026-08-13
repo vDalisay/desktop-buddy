@@ -72,7 +72,7 @@ public readonly record struct SocialBandTuning(
     /// Fearful: maximum distance, flees approach, never catches. Only fear refuses a
     /// thrown object outright (owner correction 2026-07-26 — see <see cref="Wary"/>).
     /// </summary>
-    public static SocialBandTuning Fearful => new(260.0f, 0.0f, 24.0f, false, false, 1.0f, 0);
+    public static SocialBandTuning Fearful => new(520.0f, 0.0f, 24.0f, false, false, 1.0f, 0);
 
     /// <summary>
     /// Wary: moderate standoff, never approaches the cursor, but <b>does</b> catch.

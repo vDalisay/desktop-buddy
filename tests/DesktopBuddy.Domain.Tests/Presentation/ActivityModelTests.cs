@@ -14,8 +14,8 @@ public sealed class ActivitySelectorTests
 
     private static ActivitySelector NewSelector() => new(Parameters);
 
-    private static readonly ActivityInputs CalmIdle = new(true, 0.0f, false);
-    private static readonly ActivityInputs Walking = new(true, 48.0f, false);
+    private static readonly ActivityInputs CalmIdle = new(true, 0.0f, false, false);
+    private static readonly ActivityInputs Walking = new(true, 48.0f, true, false);
     private const double Dt = 1.0 / 120.0;
 
     [Fact]
@@ -26,25 +26,30 @@ public sealed class ActivitySelectorTests
     }
 
     [Fact]
-    public void SpeedHoveringAtTheThreshold_DoesNotFlipBetweenWalkAndIdle()
+    public void WalkIntentWithPulsingPhysicalSpeed_DoesNotFlipBetweenWalkAndIdle()
     {
-        // A fleeing buddy retreats and stops repeatedly, so its travel sits right on the
-        // threshold. Every flip restarted a clip from zero, which read as the dressing
-        // snapping and replaying (owner report 2026-08-13).
+        // The active puppet's instantaneous torso speed pulses with every stride. Selection
+        // follows locomotion intent; only phase follows measured travel.
         ActivitySelector selector = NewSelector();
         selector.Update(Walking, Dt);
         Assert.Equal(ActivityId.WalkCycle, selector.Current);
 
         for (int frame = 0; frame < 200; frame++)
         {
-            float speed = frame % 2 == 0 ? 7.9f : 8.1f;
+            float speed = frame == 100 ? float.NaN : frame % 2 == 0 ? 1.0f : 12.0f;
             Assert.Equal(
                 ActivityId.WalkCycle,
-                selector.Update(new ActivityInputs(true, speed, false), Dt));
+                selector.Update(new ActivityInputs(true, speed, true, false), Dt));
         }
 
-        // Coming to a real stop still hands over to idle.
-        Assert.Equal(ActivityId.IdleBreathe, selector.Update(CalmIdle, Dt));
+        // A brief intent dropout at a wall does not repeatedly restart both clips.
+        for (int frame = 0; frame < 6; frame++)
+            Assert.Equal(ActivityId.WalkCycle, selector.Update(CalmIdle, Dt));
+
+        // A real stop still hands over after the tiny release grace.
+        for (int frame = 0; frame < 3; frame++)
+            selector.Update(CalmIdle, Dt);
+        Assert.Equal(ActivityId.IdleBreathe, selector.Current);
     }
 
     [Fact]
@@ -52,7 +57,7 @@ public sealed class ActivitySelectorTests
     {
         ActivitySelector selector = NewSelector();
         selector.Update(Walking, Dt);
-        Assert.Equal(ActivityId.None, selector.Update(new ActivityInputs(false, 48.0f, false), Dt));
+        Assert.Equal(ActivityId.None, selector.Update(new ActivityInputs(false, 48.0f, true, false), Dt));
     }
 
     [Fact]
@@ -77,8 +82,8 @@ public sealed class ActivitySelectorTests
         ActivitySelector fast = NewSelector();
         for (int tick = 0; tick < 60; tick++)
         {
-            slow.Update(new ActivityInputs(true, 24.0f, false), Dt);
-            fast.Update(new ActivityInputs(true, 96.0f, false), Dt);
+            slow.Update(new ActivityInputs(true, 24.0f, true, false), Dt);
+            fast.Update(new ActivityInputs(true, 96.0f, true, false), Dt);
         }
 
         Assert.Equal(slow.WalkPhase * 4.0f, fast.WalkPhase, 3);
@@ -138,7 +143,7 @@ public sealed class ActivitySelectorTests
     {
         ActivitySelector selector = NewSelector();
         Assert.Equal(ActivityId.JumpAnticipation,
-            selector.Update(new ActivityInputs(true, 0.0f, true), Dt));
+            selector.Update(new ActivityInputs(true, 0.0f, false, true), Dt));
         for (int tick = 0; tick < 20; tick++)
         {
             selector.Update(CalmIdle, Dt);
@@ -152,7 +157,7 @@ public sealed class ActivitySelectorTests
     {
         ActivitySelector selector = NewSelector();
         selector.RequestEat(0.2);
-        var tracking = new ActivityInputs(false, 0.0f, false);
+        var tracking = new ActivityInputs(false, 0.0f, false, false);
         for (int tick = 0; tick < 36; tick++)
         {
             Assert.Equal(ActivityId.None, selector.Update(tracking, Dt));

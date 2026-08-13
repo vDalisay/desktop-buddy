@@ -2135,6 +2135,14 @@ is Phase C scope and moves to `docs/OPEN_QUESTIONS.md` when Phase C is scheduled
 Unchanged and still binding: customization is visual-only forever, enforced structurally by
 the compiler's output type, and exactly one buddy is active at a time.
 
+## Animation Stability and Fear Distance (Owner-confirmed 2026-08-13)
+
+- Real world targets (cursor, held item, and remembered impact) keep the head on a
+  world-relative yaw while body facing changes; entering and leaving that basis is eased.
+  Seeded ambient glances remain body-relative and run only while not walking.
+- The Fearful social-band standoff distance is doubled from `260 px` to `520 px`, so a
+  scared buddy retreats substantially farther before the social layer stands down.
+
 ## Planning Rule
 
 When a requirement or implementation choice is not covered here or in an approved specification, the implementation agent must stop and ask the project owner rather than inventing product behavior.

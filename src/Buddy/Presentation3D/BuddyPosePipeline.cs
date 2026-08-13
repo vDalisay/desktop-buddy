@@ -28,6 +28,13 @@ public partial class BuddyPosePipeline : Node
     private PerformanceBlend _blend = null!;
     // Routed-tick stamp of the last accepted impact; long.MinValue = never hit.
     private long _lastImpactTick = long.MinValue;
+    // Contact callbacks can briefly gap between alternating feet or while pressing a wall.
+    // That is not airborne/tumbling and must not pulse the presentation through Tracking.
+    private long _lastSupportedPostureTick = long.MinValue;
+    // Walk intent can clear a few ticks before the active puppet has settled back into the
+    // standing speed gate. Preserve Performance through that handoff so the animator can
+    // cross-fade walk to idle instead of taking a one-frame Tracking cut.
+    private long _lastWalkIntentTick = long.MinValue;
 
     public PresentationPoseMode Mode { get; private set; } = PresentationPoseMode.Tracking;
     public float PerformanceWeight => IsInitialized ? _blend.Weight : 0.0f;
@@ -83,12 +90,32 @@ public partial class BuddyPosePipeline : Node
         long ticksSinceImpact = _lastImpactTick == long.MinValue
             ? long.MaxValue
             : Buddy.RoutedTicks - _lastImpactTick;
+        long now = Buddy.RoutedTicks;
+        StandingSnapshot standing = Buddy.Standing.Snapshot;
+        if (standing.HasStablePosture)
+            _lastSupportedPostureTick = now;
+        if (!Mathf.IsZeroApprox(Buddy.CurrentDriveIntent.WalkDirection))
+            _lastWalkIntentTick = now;
+        if (Buddy.CurrentDriveIntent.JumpRequested)
+        {
+            _lastSupportedPostureTick = long.MinValue;
+            _lastWalkIntentTick = long.MinValue;
+        }
+        bool recentSupportedPosture = _lastSupportedPostureTick != long.MinValue &&
+            now - _lastSupportedPostureTick <= 8;
+        bool recentWalkIntent = _lastWalkIntentTick != long.MinValue &&
+            now - _lastWalkIntentTick <= 8;
+        bool supportedLocomotion =
+            recentWalkIntent &&
+            !Buddy.CurrentDriveIntent.JumpRequested &&
+            recentSupportedPosture;
         var inputs = new PoseModeInputs(
             Buddy.CurrentConsciousness == Consciousness.Unconscious,
             Buddy.Recovery.State.AssistanceActive,
             Grab.CurrentGrab.Active && Grab.CurrentGrab.Target is PuppetPartBody,
             Buddy.CurrentToolReactionIntent.Active,
-            Buddy.Standing.Snapshot.IsStable,
+            standing.IsStable,
+            supportedLocomotion,
             (int)Math.Clamp(ticksSinceImpact, 0, int.MaxValue));
         Mode = PoseModeArbiter.Evaluate(inputs, Profile.PostImpactCooldownTicks);
         return _blend.Update(deltaSeconds, Mode);

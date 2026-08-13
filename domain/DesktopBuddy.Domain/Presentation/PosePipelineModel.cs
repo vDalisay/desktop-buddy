@@ -22,6 +22,7 @@ public readonly record struct PoseModeInputs(
     bool GrabActive,
     bool ReactionActive,
     bool StableStanding,
+    bool SupportedLocomotion,
     int TicksSinceImpact);
 
 /// <summary>
@@ -45,7 +46,7 @@ public static class PoseModeArbiter
             inputs.RecoveryActive ||
             inputs.GrabActive ||
             inputs.ReactionActive ||
-            !inputs.StableStanding ||
+            (!inputs.StableStanding && !inputs.SupportedLocomotion) ||
             inputs.TicksSinceImpact < postImpactCooldownTicks;
         return tracking ? PresentationPoseMode.Tracking : PresentationPoseMode.Performance;
     }

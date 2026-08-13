@@ -12,6 +12,7 @@ public sealed class PoseModeArbiterTests
         GrabActive: false,
         ReactionActive: false,
         StableStanding: true,
+        SupportedLocomotion: false,
         TicksSinceImpact: int.MaxValue);
 
     [Fact]
@@ -41,6 +42,16 @@ public sealed class PoseModeArbiterTests
         Assert.Equal(
             PresentationPoseMode.Tracking,
             PoseModeArbiter.Evaluate(Calm with { StableStanding = false }, 60));
+
+    [Fact]
+    public void SupportedUprightLocomotion_AllowsPerformanceDespiteGaitSpeed() =>
+        Assert.Equal(
+            PresentationPoseMode.Performance,
+            PoseModeArbiter.Evaluate(Calm with
+            {
+                StableStanding = false,
+                SupportedLocomotion = true,
+            }, 60));
 
     [Theory]
     [InlineData(0, true)]

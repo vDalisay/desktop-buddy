@@ -281,6 +281,7 @@ public sealed class BehaviorArbiterModelTests
     [Fact]
     public void FearfulAndWary_MoveAwayFromTheTargetNotToward()
     {
+        Assert.Equal(520.0f, SocialBandTuning.Fearful.StandoffDistance);
         var arbiter = new BehaviorArbiterModel();
         BehaviorSnapshot near = Ambient() with
         {

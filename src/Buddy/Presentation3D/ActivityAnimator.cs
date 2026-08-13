@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Presentation;
 using Godot;
 
@@ -40,6 +41,7 @@ public partial class ActivityAnimator : Node3D
     private AnimationPlayer _player = null!;
     private ActivitySelector _selector = null!;
     private float _refuseClipLength = 1.0f;
+    private string _tracedClip = string.Empty;
 
     public bool IsInitialized { get; private set; }
     public Node3D ItemSocket { get; private set; } = null!;
@@ -168,6 +170,9 @@ public partial class ActivityAnimator : Node3D
 
     public override void _ExitTree()
     {
+        if (BuildInfo.IsDebugBuild && !string.IsNullOrEmpty(_tracedClip))
+            TraceClipBoundary("end", _tracedClip, "node_exit");
+
         if (GodotObject.IsInstanceValid(Buddy))
         {
             Buddy.BehaviorActivityChanged -= OnBehaviorActivityChanged;
@@ -228,6 +233,7 @@ public partial class ActivityAnimator : Node3D
         var inputs = new ActivityInputs(
             performanceActive,
             MathF.Abs(Buddy.Rig.Torso.LinearVelocity.X),
+            !Mathf.IsZeroApprox(Buddy.CurrentDriveIntent.WalkDirection),
             Buddy.CurrentDriveIntent.JumpRequested);
         // Refusal duration is authoritative routed-tick state. Pin selection to that state
         // instead of allowing one long rendered frame to expire a parallel seconds timer
@@ -249,6 +255,8 @@ public partial class ActivityAnimator : Node3D
         {
             if (!string.IsNullOrEmpty(_player.CurrentAnimation))
             {
+                TraceClipBoundary("end", _tracedClip, "tracking_cut");
+                _tracedClip = string.Empty;
                 _player.Stop();
             }
 
@@ -265,7 +273,8 @@ public partial class ActivityAnimator : Node3D
         }
 
         string clip = ClipNameFor(activity);
-        if (_player.CurrentAnimation != clip)
+        bool clipChanged = _player.CurrentAnimation != clip;
+        if (clipChanged)
         {
             // Cross-fade, not a cut. AnimationPlayer.Play(clip, customBlend) is useless here:
             // the player is in Manual callback mode, so its blend timer only runs when the
@@ -273,6 +282,9 @@ public partial class ActivityAnimator : Node3D
             // routed progress, never advanced. Those are exactly the transitions the owner
             // called hard cuts. So the blend is done here instead, over the proxy poses, and
             // therefore works identically for seeked and advanced clips.
+            if (!string.IsNullOrEmpty(_tracedClip))
+                TraceClipBoundary("end", _tracedClip, "clip_changed");
+
             for (int index = 0; index < _proxies.Length; index++)
             {
                 _fadeFromPosition[index] = _proxies[index].Position;
@@ -281,6 +293,7 @@ public partial class ActivityAnimator : Node3D
 
             _fadeRemainingSeconds = _clipBlendSeconds;
             _player.Play(clip);
+            _tracedClip = clip;
         }
 
         bool fading = _fadeRemainingSeconds > 0.0;
@@ -337,7 +350,45 @@ public partial class ActivityAnimator : Node3D
             _proxies[index].Rotation =
                 _proxies[index].Rotation.Lerp(_fadeFromRotation[index], previousWeight);
         }
+
+        if (clipChanged)
+            TraceClipBoundary("start", clip, "selected");
     }
+
+    private void TraceClipBoundary(string @event, string clip, string reason)
+    {
+        if (!BuildInfo.IsDebugBuild || string.IsNullOrEmpty(clip))
+            return;
+
+        Node3D head = _proxies[(int)BuddyPartId.Head];
+        Node3D torso = _proxies[(int)BuddyPartId.Torso];
+        Log.Debug("AnimationTrace",
+            $"event={@event} lane=head.activity name={clip} reason={reason} " +
+            $"tick={Buddy.RoutedTicks} frame={Engine.GetProcessFrames()} " +
+            $"affects={ClipAffectsHead(clip).ToString().ToLowerInvariant()} " +
+            $"position=({head.Position.X:0.###},{head.Position.Y:0.###},{head.Position.Z:0.###}) " +
+            $"rotation=({head.Rotation.X:0.###},{head.Rotation.Y:0.###},{head.Rotation.Z:0.###})");
+        Log.Debug("AnimationTrace",
+            $"event={@event} lane=body.activity name={clip} reason={reason} " +
+            $"tick={Buddy.RoutedTicks} frame={Engine.GetProcessFrames()} " +
+            $"affects={ClipAffectsBody(clip).ToString().ToLowerInvariant()} " +
+            $"torso=({torso.Position.X:0.###},{torso.Position.Y:0.###},{torso.Position.Z:0.###}) " +
+            $"hands=({_proxies[(int)BuddyPartId.LeftHand].Position.X:0.###}," +
+            $"{_proxies[(int)BuddyPartId.LeftHand].Position.Y:0.###})/" +
+            $"({_proxies[(int)BuddyPartId.RightHand].Position.X:0.###}," +
+            $"{_proxies[(int)BuddyPartId.RightHand].Position.Y:0.###}) " +
+            $"feet=({_proxies[(int)BuddyPartId.LeftFoot].Position.X:0.###}," +
+            $"{_proxies[(int)BuddyPartId.LeftFoot].Position.Y:0.###})/" +
+            $"({_proxies[(int)BuddyPartId.RightFoot].Position.X:0.###}," +
+            $"{_proxies[(int)BuddyPartId.RightFoot].Position.Y:0.###}) " +
+            $"walk_phase={WalkPhase:0.###} speed={MathF.Abs(Buddy.Rig.Torso.LinearVelocity.X):0.##}");
+    }
+
+    private static bool ClipAffectsHead(string clip) => clip is
+        "idle_breathe" or "jump_anticipation" or "eat" or "refuse";
+
+    private static bool ClipAffectsBody(string clip) => clip is
+        "idle_breathe" or "walk_cycle" or "jump_anticipation" or "wave";
 
     /// <summary>Called after the presenter resolves both hand sockets for this frame.</summary>
     public void SyncItemSocket()

@@ -48,12 +48,12 @@ public partial class StandingDetector : Node
         // Stability is a whole-body (center-of-mass) motion criterion, not per-limb
         // (RAGDOLL 5): a foot mid-swing during a normal step must not disqualify
         // standing, or the buddy is "unstable" the entire time it walks.
-        bool meets = supports > 0 &&
-                     torsoTilt <= Profile.MaximumStandingTorsoTilt &&
-                     headAbove >= Profile.MinimumHeadAboveTorso &&
-                     feetBelow >= Profile.MinimumFeetBelowTorso &&
-                     centerError <= Profile.MaximumCenterOfMassError &&
-                     centerOfMassSpeed <= Profile.MaximumStandingSpeed;
+        bool hasStablePosture = supports > 0 &&
+                                torsoTilt <= Profile.MaximumStandingTorsoTilt &&
+                                headAbove >= Profile.MinimumHeadAboveTorso &&
+                                feetBelow >= Profile.MinimumFeetBelowTorso &&
+                                centerError <= Profile.MaximumCenterOfMassError;
+        bool meets = hasStablePosture && centerOfMassSpeed <= Profile.MaximumStandingSpeed;
         _stableTicks = meets ? _stableTicks + 1 : 0;
         bool stable = _stableTicks >= Profile.StableStandingTicks;
 
@@ -65,6 +65,7 @@ public partial class StandingDetector : Node
             centerError,
             maximumSpeed,
             _stableTicks,
+            hasStablePosture,
             meets,
             stable,
             centerOfMass,

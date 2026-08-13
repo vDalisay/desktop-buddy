@@ -29,6 +29,7 @@ public enum ActivityId
 public readonly record struct ActivityInputs(
     bool PerformanceActive,
     float HorizontalSpeed,
+    bool WalkRequested,
     bool JumpRequested);
 
 /// <summary>Activity tuning subset consumed by the pure selector.</summary>
@@ -116,28 +117,21 @@ public readonly record struct ActivityTuningData(
 /// <summary>
 /// Pure activity arbitration and walk-cycle phase math. Priority: behavior-backed Eat,
 /// then the one-shot Wave request, then the JumpAnticipation squash window opened by a
-/// real jump request, then WalkCycle dressing whenever measured travel speed exceeds the
-/// threshold, then IdleBreathe. The walk phase advances proportionally to MEASURED
+/// real jump request, then WalkCycle dressing while locomotion is requested, then
+/// IdleBreathe. The walk phase advances proportionally to MEASURED
 /// horizontal speed (never a physics write), so the step rate always matches travel and
 /// freezes at rest — feet cannot moonwalk.
 /// </summary>
 public sealed class ActivitySelector
 {
-    /// <summary>
-    /// Fraction of the walk threshold the buddy must drop below before the walk cycle gives
-    /// way to idle. A bare threshold flip-flopped between the two clips on adjacent frames
-    /// whenever travel hovered near it — which is most of the time while afraid, since fleeing
-    /// is a repeated retreat-and-stop — and each flip restarted a clip from zero, so the
-    /// dressing visibly snapped and replayed (owner report 2026-08-13).
-    /// </summary>
-    private const float WalkReleaseFraction = 0.6f;
+    private const double WalkReleaseGraceSeconds = 0.06;
 
     private readonly ActivityParameters _parameters;
-    private bool _walking;
     private double _eatSecondsRemaining;
     private double _refuseSecondsRemaining;
     private double _waveSecondsRemaining;
     private double _jumpSecondsRemaining;
+    private double _walkReleaseSecondsRemaining;
 
     public ActivitySelector(in ActivityParameters parameters)
     {
@@ -211,6 +205,16 @@ public sealed class ActivitySelector
             _jumpSecondsRemaining = _parameters.JumpAnticipationSeconds;
         }
 
+        if (inputs.WalkRequested)
+        {
+            _walkReleaseSecondsRemaining = WalkReleaseGraceSeconds;
+        }
+        else if (deltaSeconds > 0.0)
+        {
+            _walkReleaseSecondsRemaining = Math.Max(
+                0.0, _walkReleaseSecondsRemaining - deltaSeconds);
+        }
+
         if (!inputs.PerformanceActive)
         {
             // Tracking cut: ambient state is suppressed instantly; behavior-backed
@@ -236,10 +240,12 @@ public sealed class ActivitySelector
         {
             Current = ActivityId.JumpAnticipation;
         }
-        else if (IsWalking(inputs.HorizontalSpeed))
+        else if (inputs.WalkRequested || _walkReleaseSecondsRemaining > 0.0)
         {
             Current = ActivityId.WalkCycle;
-            float travel = MathF.Abs(inputs.HorizontalSpeed) * (float)deltaSeconds;
+            float travel = float.IsFinite(inputs.HorizontalSpeed)
+                ? MathF.Abs(inputs.HorizontalSpeed) * (float)deltaSeconds
+                : 0.0f;
             WalkPhase = (WalkPhase + (travel / _parameters.WalkCyclePixelsPerCycle)) % 1.0f;
         }
         else
@@ -248,21 +254,5 @@ public sealed class ActivitySelector
         }
 
         return Current;
-    }
-
-    /// <summary>Walk starts above the threshold and only ends below the release fraction of it.</summary>
-    private bool IsWalking(float horizontalSpeed)
-    {
-        if (!float.IsFinite(horizontalSpeed))
-        {
-            _walking = false;
-            return false;
-        }
-
-        float speed = MathF.Abs(horizontalSpeed);
-        _walking = _walking
-            ? speed > _parameters.WalkSpeedThreshold * WalkReleaseFraction
-            : speed > _parameters.WalkSpeedThreshold;
-        return _walking;
     }
 }

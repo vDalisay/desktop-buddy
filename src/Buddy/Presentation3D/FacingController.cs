@@ -39,6 +39,9 @@ public partial class FacingController : Node
     private long _lastRoutedTick;
     private int _developmentSide;
     private bool _cursorEngaged;
+    private bool _tracedTurnActive;
+    private float _tracedTargetYaw;
+    private string _tracedTurnSource = "rest";
 
     public bool IsInitialized { get; private set; }
     public FacingSide CommittedSide => IsInitialized ? _model.CommittedSide : FacingSide.Frontal;
@@ -78,6 +81,9 @@ public partial class FacingController : Node
 
     public override void _ExitTree()
     {
+        if (BuildInfo.IsDebugBuild && _tracedTurnActive)
+            TraceTurn("end", "node_exit", CurrentYawDegrees, _tracedTargetYaw, _tracedTurnSource);
+
         if (IsInitialized && GodotObject.IsInstanceValid(Buddy))
         {
             Buddy.AutonomyReseeded -= Reseed;
@@ -85,9 +91,18 @@ public partial class FacingController : Node
     }
 
     /// <summary>Rebuilds the facing stream from the shared seed (own salted stream).</summary>
-    public void Reseed(ulong seed) => _model = new FacingModel(
-        new SeededRandomSource(seed ^ FacingStreamSalt),
-        Profile.ToData().ToFacingParameters());
+    public void Reseed(ulong seed)
+    {
+        if (BuildInfo.IsDebugBuild && _tracedTurnActive && _model is not null)
+            TraceTurn("end", "reseeded", CurrentYawDegrees, _tracedTargetYaw, _tracedTurnSource);
+
+        _model = new FacingModel(
+            new SeededRandomSource(seed ^ FacingStreamSalt),
+            Profile.ToData().ToFacingParameters());
+        _tracedTurnActive = false;
+        _tracedTargetYaw = 0.0f;
+        _tracedTurnSource = "rest";
+    }
 
     /// <summary>
     /// Development-only drive (laboratory keys, debug builds): stands in for an engaged
@@ -161,8 +176,54 @@ public partial class FacingController : Node
             side,
             Buddy.CurrentDriveIntent.WalkDirection,
             ForceFrontal: facesFront);
-        return _model.Update(inputs, ticksElapsed, deltaSeconds);
+        float yaw = _model.Update(inputs, ticksElapsed, deltaSeconds);
+        TraceFacingTurn(inputs, yaw);
+        return yaw;
     }
+
+    private void TraceFacingTurn(in FacingInputs inputs, float yaw)
+    {
+        if (!BuildInfo.IsDebugBuild)
+            return;
+
+        float target = inputs.ForceFrontal
+            ? 0.0f
+            : _model.CommittedSide switch
+            {
+                FacingSide.Left => -Profile.FacingYawDegrees,
+                FacingSide.Right => Profile.FacingYawDegrees,
+                _ => 0.0f,
+            };
+        string source = inputs.ForceFrontal ? "activity_front" :
+            inputs.InteractionEngaged ? "cursor_or_object" :
+            MathF.Abs(inputs.WalkDirection) > Profile.FacingWalkDeadband ? "walk" : "idle";
+
+        if (!Mathf.IsEqualApprox(target, _tracedTargetYaw))
+        {
+            if (_tracedTurnActive)
+                TraceTurn("end", "interrupted", yaw, _tracedTargetYaw, _tracedTurnSource);
+
+            _tracedTargetYaw = target;
+            _tracedTurnSource = source;
+            _tracedTurnActive = !Mathf.IsEqualApprox(yaw, target);
+            if (_tracedTurnActive)
+                TraceTurn("start", "target_changed", yaw, target, source);
+        }
+
+        if (_tracedTurnActive && MathF.Abs(yaw - _tracedTargetYaw) < 0.05f)
+        {
+            TraceTurn("end", "completed", yaw, _tracedTargetYaw, _tracedTurnSource);
+            _tracedTurnActive = false;
+        }
+    }
+
+    private void TraceTurn(
+        string @event, string reason, float yaw, float target, string source) =>
+        Log.Debug("AnimationTrace",
+            $"event={@event} lane=body.facing name=turn reason={reason} " +
+            $"tick={Buddy.RoutedTicks} frame={Engine.GetProcessFrames()} source={source} " +
+            $"yaw={yaw:0.###} target={target:0.###} side={CommittedSide} " +
+            $"walk_direction={Buddy.CurrentDriveIntent.WalkDirection:0.###}");
 
     /// <summary>
     /// Whether a live cursor tool is close enough to be an engagement. Merely having a tool

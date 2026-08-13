@@ -33,6 +33,7 @@ public partial class BuddyVisualPresenter : Node3D
     private float _developmentYawRadians;
     private float _headLookYawRadians;
     private float _headLookPitchRadians;
+    private float _headWorldReferenceWeight;
     private float _activityHeadYawRadians;
     private PerformanceBlend? _defendGazeBlend;
 
@@ -253,6 +254,15 @@ public partial class BuddyVisualPresenter : Node3D
         }
 
         LookAtAngles look = HeadLookAt.Evaluate(performanceDelta);
+        float worldReferenceTarget = HeadLookAt.CurrentSource is
+            LookAtSource.Cursor or LookAtSource.Item or LookAtSource.Impact ? 1.0f : 0.0f;
+        if (performanceDelta > 0.0)
+        {
+            _headWorldReferenceWeight = Mathf.MoveToward(
+                _headWorldReferenceWeight,
+                worldReferenceTarget,
+                (float)(performanceDelta / HeadLookAt.Profile.LookEaseSeconds));
+        }
         float defendGazeWeight = ResolveDefendGazeWeight(performanceDelta);
         float gazeWeight = HeadLookAt.CurrentSource == LookAtSource.Item
             ? 1.0f
@@ -298,9 +308,11 @@ public partial class BuddyVisualPresenter : Node3D
         Vector3 globalRotation;
         if (partId == BuddyPartId.Head)
         {
-            float headYaw = HeadLookAt?.CurrentSource == LookAtSource.Item
-                ? _headLookYawRadians + _activityHeadYawRadians
-                : _yawRadians + _headLookYawRadians + _activityHeadYawRadians;
+            float localHeadYaw = _yawRadians + _headLookYawRadians;
+            float worldHeadYaw = _headLookYawRadians;
+            float headYaw = Mathf.LerpAngle(
+                localHeadYaw, worldHeadYaw, _headWorldReferenceWeight) +
+                _activityHeadYawRadians;
             globalRotation = new Vector3(
                 _headLookPitchRadians,
                 headYaw,

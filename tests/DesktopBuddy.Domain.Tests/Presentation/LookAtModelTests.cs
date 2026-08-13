@@ -30,6 +30,7 @@ public sealed class LookAtModelTests
         ItemX: 0.0f, ItemY: 0.0f,
         TicksSinceImpact: int.MaxValue,
         ImpactX: 0.0f, ImpactY: 0.0f,
+        AmbientAllowed: true,
         FaceSuppressed: false,
         HeadX: 0.0f, HeadY: 0.0f);
 
@@ -242,6 +243,39 @@ public sealed class LookAtModelTests
     }
 
     [Fact]
+    public void EveryHeldWorldTargetMovement_RemainsSmoothedAfterAcquisition()
+    {
+        (LookAtSource Source, LookAtInputs Right, LookAtInputs Left)[] cases =
+        [
+            (LookAtSource.Cursor,
+                Idle with { InteractionEngaged = true, CursorX = 60.0f },
+                Idle with { InteractionEngaged = true, CursorX = -60.0f }),
+            (LookAtSource.Item,
+                Idle with { ItemTargetValid = true, ItemX = 60.0f },
+                Idle with { ItemTargetValid = true, ItemX = -60.0f }),
+            (LookAtSource.Impact,
+                Idle with { TicksSinceImpact = 0, ImpactX = 60.0f },
+                Idle with { TicksSinceImpact = 0, ImpactX = -60.0f }),
+        ];
+
+        foreach ((LookAtSource source, LookAtInputs right, LookAtInputs left) in cases)
+        {
+            LookAtModel model = NewModel();
+            Settle(model, right);
+            float before = model.CurrentYawDegrees;
+
+            // The source remains held while its world target moves. This used to bypass the
+            // completed acquisition ease and teleport the head to the new angle in one frame.
+            LookAtAngles after = model.Update(left, 1, Frame);
+
+            Assert.Equal(source, model.CurrentSource);
+            Assert.True(after.YawDegrees < before);
+            Assert.True(after.YawDegrees > 0.0f,
+                $"{source} target snapped: {before} -> {after.YawDegrees}");
+        }
+    }
+
+    [Fact]
     public void AmbientGlance_FiresOnTheSeededScheduleAndReturnsToRest()
     {
         // Scripted stream: interval 480, hold 72, glance yaw sample, glance pitch sample,
@@ -261,6 +295,21 @@ public sealed class LookAtModelTests
         Assert.Equal(LookAtSource.Rest, model.CurrentSource);
         Settle(model, Idle, 60);
         Assert.Equal(0.0f, model.CurrentYawDegrees, 3);
+    }
+
+    [Fact]
+    public void WalkingDisarmsAmbientGlance_ButNotRealTargets()
+    {
+        LookAtModel model = NewModel(480, 72, 1000, -1000);
+        model.Update(Idle, 480, 4.0);
+        Assert.Equal(LookAtSource.Glance, model.CurrentSource);
+
+        LookAtInputs walking = Idle with { AmbientAllowed = false };
+        model.Update(walking, 1, Frame);
+        Assert.Equal(LookAtSource.Rest, model.CurrentSource);
+
+        model.Update(walking with { ItemTargetValid = true, ItemX = 60.0f }, 1, Frame);
+        Assert.Equal(LookAtSource.Item, model.CurrentSource);
     }
 
     [Fact]

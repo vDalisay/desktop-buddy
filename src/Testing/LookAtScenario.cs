@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Presentation;
@@ -82,23 +83,23 @@ public sealed class LookAtScenario : IScenario
         float depth = look.Profile.LookGazeDepthPixels;
         lab.Pipeline.SelectTool(ToolId.Pet);
 
-        (bool acquired, bool matched, bool coned, float yaw) left =
+        (bool acquired, bool matched, bool worldAligned, bool coned, float yaw) left =
             await StrokeAndWatch(tree, lab, () => lab.Buddy.Rig.LeftFoot.GlobalPosition);
-        (bool acquired, bool matched, bool coned, float yaw) right =
+        (bool acquired, bool matched, bool worldAligned, bool coned, float yaw) right =
             await StrokeAndWatch(tree, lab, () => lab.Buddy.Rig.RightFoot.GlobalPosition);
 
         lab.CareStroke.SetStroke(false, Vector2.Zero);
         lab.Pipeline.SelectTool(ToolId.Grab);
 
-        bool passed = left.acquired && left.matched && left.coned &&
-            right.acquired && right.matched && right.coned;
+        bool passed = left.acquired && left.matched && left.worldAligned && left.coned &&
+            right.acquired && right.matched && right.worldAligned && right.coned;
         messages.Add($"engaged_cursor depth={depth} left_yaw={left.yaw:F3} right_yaw={right.yaw:F3}");
         return new StartupCheck("lookat_engaged_cursor_tracked", passed,
-            $"left=({left.acquired},{left.matched},{left.coned}) " +
-            $"right=({right.acquired},{right.matched},{right.coned})");
+            $"left=({left.acquired},{left.matched},{left.worldAligned},{left.coned}) " +
+            $"right=({right.acquired},{right.matched},{right.worldAligned},{right.coned})");
     }
 
-    private static async Task<(bool acquired, bool matched, bool coned, float yaw)> StrokeAndWatch(
+    private static async Task<(bool acquired, bool matched, bool worldAligned, bool coned, float yaw)> StrokeAndWatch(
         SceneTree tree, BuddyLab lab, Func<Vector2> target)
     {
         HeadLookAtComponent look = lab.HeadLookAt;
@@ -106,6 +107,7 @@ public sealed class LookAtScenario : IScenario
         bool acquired = false;
         bool coned = true;
         bool matched = false;
+        bool worldAligned = false;
         for (int frame = 0; frame < 360; frame++)
         {
             lab.CareStroke.SetStroke(true, target());
@@ -129,13 +131,18 @@ public sealed class LookAtScenario : IScenario
                 -look.Profile.LookConePitchDegrees, look.Profile.LookConePitchDegrees);
             matched = Mathf.Abs(look.CurrentYawDegrees - expectedYaw) < 0.5f &&
                 Mathf.Abs(look.CurrentPitchDegrees - expectedPitch) < 0.5f;
-            if (matched)
+            float renderedYaw = Mathf.RadToDeg(
+                lab.VisualPresenter.GetPartSocket(BuddyPartId.Head).Rotation.Y);
+            worldAligned = Mathf.Abs(Mathf.AngleDifference(
+                Mathf.DegToRad(renderedYaw), Mathf.DegToRad(expectedYaw))) <
+                Mathf.DegToRad(1.0f);
+            if (matched && worldAligned)
             {
                 break;
             }
         }
 
-        return (acquired, matched, coned, look.CurrentYawDegrees);
+        return (acquired, matched, worldAligned, coned, look.CurrentYawDegrees);
     }
 
     /// <summary>
@@ -240,14 +247,27 @@ public sealed class LookAtScenario : IScenario
         profile.LookGlanceHoldMinimumTicks = 24;
         profile.LookGlanceHoldMaximumTicks = 48;
 
+        AutonomousMotionProfile motion = lab.Buddy.AutonomousMotion.Profile;
+        int idleWeight = motion.IdleWeight;
+        int walkLeftWeight = motion.WalkLeftWeight;
+        int walkRightWeight = motion.WalkRightWeight;
+        motion.IdleWeight = 1;
+        motion.WalkLeftWeight = 0;
+        motion.WalkRightWeight = 0;
+
+        lab.Buddy.ReseedAutonomy(seed);
         (List<float> angles, bool coned, bool quantized) first = await ObserveGlances(tree, lab, seed);
+        lab.Buddy.ReseedAutonomy(seed);
         (List<float> angles, bool coned, bool quantized) second = await ObserveGlances(tree, lab, seed);
 
         profile.LookGlanceIntervalMinimumTicks = intervalMinimum;
         profile.LookGlanceIntervalMaximumTicks = intervalMaximum;
         profile.LookGlanceHoldMinimumTicks = holdMinimum;
         profile.LookGlanceHoldMaximumTicks = holdMaximum;
-        look.Reseed(seed);
+        motion.IdleWeight = idleWeight;
+        motion.WalkLeftWeight = walkLeftWeight;
+        motion.WalkRightWeight = walkRightWeight;
+        lab.Buddy.ReseedAutonomy(seed);
 
         bool observed = first.angles.Count >= 2;
         bool repeatable = first.angles.Count == second.angles.Count;

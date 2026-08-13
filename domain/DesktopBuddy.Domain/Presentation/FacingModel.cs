@@ -61,6 +61,7 @@ public sealed class FacingModel
     private int _walkStreakTicks;
     private float _sideStreakSign;
     private int _sideStreakTicks;
+    private bool _holdTurnForWalkCommit;
     private bool _idleTimerArmed;
     private int _idleTicksRemaining;
 
@@ -106,6 +107,7 @@ public sealed class FacingModel
         {
             _walkStreakTicks = 0;
             _walkStreakSign = 0.0f;
+            _holdTurnForWalkCommit = false;
             _idleTimerArmed = false;
         }
         else if (inputs.InteractionEngaged)
@@ -134,6 +136,7 @@ public sealed class FacingModel
 
             _walkStreakTicks = 0;
             _walkStreakSign = 0.0f;
+            _holdTurnForWalkCommit = false;
             _idleTimerArmed = false;
         }
         else if (MathF.Abs(inputs.WalkDirection) > _parameters.WalkDeadband)
@@ -152,6 +155,12 @@ public sealed class FacingModel
             if (_walkStreakTicks >= _parameters.WalkCommitTicks)
             {
                 wanted = sign > 0.0f ? FacingSide.Right : FacingSide.Left;
+                _holdTurnForWalkCommit = false;
+            }
+            else
+            {
+                FacingSide pending = sign > 0.0f ? FacingSide.Right : FacingSide.Left;
+                _holdTurnForWalkCommit = pending != CommittedSide;
             }
 
             _idleTimerArmed = false;
@@ -160,6 +169,7 @@ public sealed class FacingModel
         {
             _walkStreakTicks = 0;
             _walkStreakSign = 0.0f;
+            _holdTurnForWalkCommit = false;
             if (!_idleTimerArmed)
             {
                 _idleTicksRemaining = NextIdleInterval();
@@ -199,7 +209,7 @@ public sealed class FacingModel
             _turnProgress = 0.0;
         }
 
-        if (_turnProgress < 1.0 && deltaSeconds > 0.0)
+        if (_turnProgress < 1.0 && !_holdTurnForWalkCommit && deltaSeconds > 0.0)
         {
             _turnProgress = Math.Min(1.0, _turnProgress + (deltaSeconds / _parameters.TurnSeconds));
             float eased = SmoothStep((float)_turnProgress);
