@@ -11,8 +11,6 @@ public enum SymmetryMode { Off = 0, MirrorLeftToRight = 1, MirrorRightToLeft = 2
 
 public sealed record GeometrySettings
 {
-    // The semantic glasses path simplifies detected contours after sampling, so 512 retains the
-    // hand-drawn shape without turning the final mesh into one cell per source pixel.
     public int GeometryResolution { get; init; } = 512;
     public double AlphaThreshold { get; init; } = 0.50;
     public int ThicknessBiasPixels { get; init; }
@@ -39,7 +37,7 @@ public sealed record AssetRecipe
     public const int CurrentGeneratorVersion = 1;
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
     public string PresetId { get; init; } = "glasses";
-    public int PresetVersion { get; init; } = 1;
+    public int PresetVersion { get; init; } = 2;
     public AssetFamily AssetFamily { get; init; } = AssetFamily.BuddyStudio;
     public AssetCategory Category { get; init; } = AssetCategory.Glasses;
     public string FeatureId { get; init; } = "glasses.new_asset";
@@ -57,12 +55,12 @@ public sealed record AssetRecipe
     {
         var errors = new List<string>();
         if (GeneratorVersion != CurrentGeneratorVersion) errors.Add($"Unsupported generator version {GeneratorVersion}.");
-        if (PresetId != "glasses" || PresetVersion != 1) errors.Add("Version 1 currently supports only glasses@1.");
-        if (AssetFamily != AssetFamily.BuddyStudio || Category != AssetCategory.Glasses) errors.Add("Version 1 currently exports Buddy Studio glasses only.");
+        if (PresetId != "glasses" || PresetVersion is not 1 and not 2) errors.Add("Current Asset Forge supports glasses@1 and glasses@2.");
+        if (AssetFamily != AssetFamily.BuddyStudio || Category != AssetCategory.Glasses) errors.Add("Current Asset Forge exports Buddy Studio glasses only.");
         if (!StableId(FeatureId) || !FeatureId.StartsWith("glasses.", StringComparison.Ordinal)) errors.Add("FeatureId must be a stable lowercase glasses.* ID.");
         if (!StableId(ContentId) || !ContentId.StartsWith("cosmetic.glasses.", StringComparison.Ordinal)) errors.Add("ContentId must be a stable lowercase cosmetic.glasses.* ID.");
         if (string.IsNullOrWhiteSpace(DisplayName) || DisplayName.Length > 80) errors.Add("DisplayName must contain 1-80 characters.");
-        if (!string.Equals(SourceFile, "source.png", StringComparison.Ordinal)) errors.Add("Version 1 recipe source must be source.png.");
+        if (!string.Equals(SourceFile, "source.png", StringComparison.Ordinal)) errors.Add("Recipe source must be source.png.");
         if (PriceCredits <= 0 || PriceCredits > 100000) errors.Add("PriceCredits must be within 1-100000.");
         if (SortOrder < 0 || SortOrder > 100000) errors.Add("SortOrder must be within 0-100000.");
         if (Geometry.GeometryResolution is < 32 or > 512 || 1024 % Geometry.GeometryResolution != 0) errors.Add("GeometryResolution must be a 32-512 divisor of 1024.");
@@ -73,7 +71,7 @@ public sealed record AssetRecipe
         if (!FiniteRange(Geometry.Depth, 0.01, 1.0)) errors.Add("Depth must be within 0.01-1.0.");
         if (!FiniteRange(Geometry.Roundness, 0, 1)) errors.Add("Roundness must be within 0-1.");
         if (Geometry.ShapeMode is not ShapeMode.FlatExtrusion and not ShapeMode.RoundedExtrusion)
-            errors.Add("glasses@1 supports only FlatExtrusion and RoundedExtrusion shape modes.");
+            errors.Add("Glasses presets support only FlatExtrusion and RoundedExtrusion shape modes.");
         if (!FiniteRange(Geometry.TempleThickness, 0.01, 0.3)) errors.Add("TempleThickness must be within 0.01-0.3.");
         if (!FiniteRange(Geometry.TempleLength, 0.05, 1.5)) errors.Add("TempleLength must be within 0.05-1.5.");
         if (!FiniteRange(Geometry.TempleDrop, -0.5, 0.5)) errors.Add("TempleDrop must be within -0.5-0.5.");
