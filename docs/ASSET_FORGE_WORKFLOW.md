@@ -1,20 +1,20 @@
 # Desktop Buddy Asset Forge — Developer Workflow
 
-Asset Forge is a developer-only Godot executable for turning a standardized 2D source image into deterministic game-ready 3D cosmetic content. Version 1 completes the `Buddy Studio > Glasses` vertical slice.
+Asset Forge is a developer-only Godot executable for turning standardized 2D source art into deterministic game-ready 3D content. The current vertical slice is `Buddy Studio > Glasses`.
 
 ## Launch
 
 From the repository root on Windows:
 
 ```bat
-devtools\AssetForge\run_asset_forge.bat
+tools\run_asset_forge.bat
 ```
 
-The launcher synchronizes the trusted Buddy visual profiles, runs the pure deterministic Core tests, builds the standalone Godot project, and launches Asset Forge. The tool is excluded from normal Desktop Buddy compilation and game/Steam export.
+The tool remains excluded from the normal Desktop Buddy assembly and game/Steam export.
 
-## Source art contract
+## Glasses source contract
 
-Glasses v1 expects:
+New glasses use the **glasses@2** preset:
 
 ```text
 1024 × 1024
@@ -23,43 +23,60 @@ PNG
 front view
 ```
 
-A transparent background is preferred. A fully opaque drawing on a **single flat canvas colour** (for example pink glasses on white) is also supported: Asset Forge deterministically samples the outer border, removes that uniform background, and creates the same canonical transparent foreground before shape analysis. If an opaque border is not uniform enough to identify safely, generation fails instead of treating the whole canvas as geometry.
+A transparent background is preferred. A fully opaque drawing on one flat canvas colour is also supported: Asset Forge samples and removes the uniform border colour deterministically.
 
-Use **Save Glasses Template…** in Asset Forge to create the 1024×1024 reference guide. The guide contains the Buddy head outline, center/eye lines, eye centers, recommended frame envelope, and temple-root zones.
+### Coloring-page placement template
 
-The guide itself is a reference layer. Do not leave guide artwork mixed into the final frame drawing.
+Choose **Save Glasses Template…** to create the canonical 1024×1024 Buddy-head guide. It contains a low-opacity render of the Buddy head plus center/eye guides. Treat it like a coloring-page reference layer:
 
-### Rounded glasses template contract
+1. put the template on a low/background layer in your drawing program;
+2. draw the glasses on a separate layer over the head;
+3. use the head size and eye line to choose the exact scale and placement you want;
+4. hide/delete the Buddy template layer before exporting;
+5. export only the clean glasses artwork at the original 1024×1024 canvas size.
 
-The default **Rounded glasses template** mode is semantic rather than a literal pixel extrusion. The source drawing must contain **two closed lens openings**. Asset Forge then:
+**Do not crop, resize, recenter, or move the clean export after drawing it.** In glasses@2, source pixels map directly to Buddy-head-relative placement. Moving the drawing 50 pixels in the source therefore moves the resulting cosmetic by the corresponding amount on the head.
 
-1. extracts the foreground from transparency or a uniform opaque canvas;
-2. detects the two enclosed lens openings;
-3. traces and simplifies each lens contour deterministically;
-4. uniformly fits those contours to the trusted Buddy-head glasses envelope while preserving their proportions;
-5. sweeps a rounded 3D frame tube around the detected lens shapes;
-6. creates the bridge from the nearest inner lens points;
-7. creates 3D temple arms from the outer lens points and extends them backward around the head;
-8. samples colour from the nearest opaque authored frame pixels rather than from the transparent lens boundary.
+The guide is never included in generated game content.
 
-The source stroke tells Asset Forge **what shape the glasses are**. The physical 3D frame thickness is controlled separately by **Frame thickness**. This is intentional: a thick brush stroke should not force the shipped glasses mesh to have an equally thick physical cross-section.
+## Rounded glasses@2 behavior
 
-If Rounded glasses template cannot find two closed lens openings, it fails with an authoring error. It does **not** silently fall back to an unrelated mesh. **Flat silhouette extrusion** remains available explicitly under Advanced for unusual artwork that is intentionally meant to be extruded as drawn.
+Rounded mode is a glasses-specific semantic generator rather than literal pixel extrusion. The source must contain two closed lens openings. Asset Forge then:
+
+1. extracts foreground from alpha or a uniform opaque canvas;
+2. detects and traces the two lens openings;
+3. preserves their source-space placement and proportions using the 1024 Buddy-head template coordinate system;
+4. sweeps a rounded 3D frame around those authored lens shapes;
+5. traces the **authored bridge/nose** between the lenses from the drawing instead of replacing it with a fixed bridge;
+6. creates trusted 3D temple arms from the outside frame roots and extends them backward around the head;
+7. samples the authored colours into the generated opaque 3D material.
+
+This means the bridge is user-customizable. It may be straight, raised, lowered, sloped, curved, thicker in the source, or omitted; Asset Forge follows the authored bridge centerline when it can trace a continuous connection between the two frames. The physical 3D cross-section is still controlled by **Frame thickness** so brush width does not accidentally dictate real mesh thickness.
+
+Temples remain generated in the current preset because a single front-view image cannot reliably describe their side-view path. Their thickness, length, and drop remain editable preset controls.
+
+If rounded mode cannot identify two closed lens openings it fails with an authoring error. It does not silently return unrelated geometry. **Flat silhouette extrusion** remains an explicit Advanced fallback for artwork intentionally meant to be extruded as drawn.
+
+### Legacy glasses@1 recipes
+
+Existing saved recipes with `presetVersion: 1` remain valid and retain the older auto-fit/fixed-bridge behavior so committed assets remain deterministic. New recipes default to `presetVersion: 2`. To use coloring-page placement and the authored bridge, create a new recipe or intentionally migrate an old recipe to v2 and regenerate it.
+
+## Lighting and colour
+
+Generated semantic cosmetics use the same opaque generated-asset material in Asset Forge and in the shipped game. The authored PNG remains the albedo, normal Buddy diffuse/specular lighting supplies the 3D form, and a restrained texture-coloured light floor prevents narrow rounded surfaces from collapsing toward black. The current generated-cosmetic floor is intentionally stronger than the original proof of concept while remaining lit rather than unshaded.
 
 ## Authoring flow
 
-1. Start `devtools\AssetForge\run_asset_forge.bat`.
-2. Optionally save the Glasses template and draw the frame against it in the art program of choice.
-3. Draw a closed left and right lens/frame shape plus bridge. Export a 1024×1024 RGBA PNG; transparency is preferred but a flat opaque canvas is accepted.
-4. Choose **Open Image…**.
-5. Set display name, stable feature ID (`glasses.*`), ownership content ID (`cosmetic.glasses.*`), price, and sort order.
-6. Tune **Frame thickness**, frame depth, roundness, and temple dimensions. Advanced exposes alpha threshold, source-mask bias, geometry/runtime resolution, semantic rounded-template versus flat extrusion, and symmetry.
-7. Choose **Generate**.
-8. Check the status line. Normal glasses should report `rounded glasses template fit`, two lens holes, and either `source alpha` or `auto background rgb(...)`. A slab-like input is rejected.
-9. Inspect the actual 3D result against the trusted Buddy head. Left-drag orbits, middle-drag pans, mouse wheel zooms, and **Reset View** restores the camera.
-10. Save the editable recipe when desired.
-11. Choose **Export to Game**. Asset Forge writes the source/recipe, canonical GLB, albedo, thumbnail, generated cosmetic definition, generated sale definition, and aggregate generated catalogues transactionally.
-12. Export automatically runs the pure verifier for the new item. Do not commit generated content while verification reports drift.
+1. Run `tools\run_asset_forge.bat`.
+2. Save the Glasses template if you need a placement reference.
+3. Draw the complete front frame, including the bridge you want, over the template on a separate layer.
+4. Hide the Buddy/template layer and export the clean 1024×1024 PNG without changing canvas coordinates.
+5. Choose **Open Image…**.
+6. Set display name, stable feature ID (`glasses.*`), ownership content ID (`cosmetic.glasses.*`), price, and sort order.
+7. Tune frame thickness/depth/roundness and temple thickness/length/drop.
+8. Choose **Generate** and inspect front and angled views against the trusted Buddy head.
+9. Save the editable recipe when desired.
+10. Choose **Export to Game**. Export writes source/recipe, canonical GLB, albedo, thumbnail, generated definitions, and generated catalogues transactionally, then verifies the new item.
 
 Authoring source is stored under:
 
@@ -69,7 +86,7 @@ authoring/asset-forge/glasses/<slug>/
   recipe.json
 ```
 
-Generated trusted game content is stored under:
+Generated trusted content is stored under:
 
 ```text
 assets/generated/cosmetics/<feature-id>/
@@ -78,54 +95,33 @@ data/catalogue/generated/
 data/catalogue/generated_cosmetics.tres
 ```
 
-## Determinism / regeneration commands
+## Verification / regeneration
 
-Asset Forge Core owns the GLB writer, so committed generated content can be re-derived without starting Godot.
-
-Verify every saved authored asset:
+Verify all saved authored assets without Godot generation state:
 
 ```bat
-devtools\AssetForge\verify_asset_forge.bat
+tools\verify_asset_forge.bat
 ```
 
-Regenerate every saved authored asset, preserving an existing thumbnail when available, then verify the repository:
+Regenerate all authored assets and verify them:
 
 ```bat
-devtools\AssetForge\regenerate_asset_forge.bat
+tools\regenerate_asset_forge.bat
 ```
 
-The standalone UI also exposes **Regenerate**, **Regenerate All**, **Verify**, and **Verify All** for saved authoring content.
+The standalone UI also exposes **Regenerate**, **Regenerate All**, **Verify**, and **Verify All**.
 
-`Verify All` re-derives the canonical recipe, input-derived geometry, GLB bytes, and albedo bytes and checks the committed trusted metadata/catalogue references. Thumbnail pixels are only validated as a PNG because GPU thumbnail rasterization is intentionally not part of the canonical determinism hash.
+Canonical determinism covers generator/preset recipe, source bytes, geometry/normals/UVs, Core-written GLB bytes, and deterministic runtime albedo. Preview camera state and GPU thumbnail pixels are not part of the canonical asset hash.
 
-## What is deterministic
+## Local visual acceptance
 
-The canonical asset hash is derived from:
+Before merging a newly authored glasses asset, verify:
 
-- generator version;
-- source PNG byte hash;
-- canonical recipe hash;
-- canonical geometry/normal/UV hash;
-- Core-written GLB byte hash;
-- deterministic runtime albedo PNG hash.
-
-Preview camera state, Buddy-reference visibility, UI layout, and generated thumbnail pixels do not affect canonical output.
-
-## First local visual acceptance gate
-
-Automated CI covers build/import, deterministic generation, transactional export, generated catalogue loading, Buddy Studio purchase/equip, persistence, GLB rendering, and the visual-only/no-physics boundary. Core regression fixtures also include fully opaque white-canvas pink glasses so the original full-canvas/slab failure cannot return unnoticed.
-
-Create one real pair of glasses from your own 2D art and confirm:
-
-- front lens/frame shapes match the source art rather than the 1024 canvas bounds;
-- the two lens openings remain open;
-- frame cross-sections read as rounded 3D material rather than flat cards;
-- **Frame thickness** changes physical frame thickness independently of source brush width;
-- temples look plausible from roughly +30° and -30° views;
-- authored colours remain recognizable under the Buddy lighting;
-- the scale/position on the reference head looks correct;
-- the generated thumbnail is usable;
-- after **Export to Game**, the item appears under Buddy Studio > Glasses;
-- previewing an unowned item is free, buying charges once, Equip applies it, and Save/restart preserves it.
-
-If any of the visual bullets fail, keep the branch unmerged and adjust the Glasses preset/generator rather than hand-editing the generated GLB.
+- lens shapes match the clean source;
+- source placement/scale matches where you drew it on the Buddy template;
+- the authored bridge/nose shape is represented rather than replaced;
+- both lens openings remain open;
+- frame surfaces read as the authored colour with visible 3D shading, not near-black;
+- temples look plausible from roughly ±30°;
+- export appears in Buddy Studio > Glasses and can be purchased/equipped/saved;
+- no generated cosmetic changes 2D physics authority.
