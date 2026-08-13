@@ -65,14 +65,20 @@ public partial class BuddyStudioWorkspace
             return Presentation(definition);
 
         bool owned = _session.IsCosmeticOwned(definition.Id);
+        bool equipped = IsEquipped(definition.Id);
+        bool previewed = _session.PreviewDocument is CharacterDocument preview &&
+            string.Equals(CharacterDocumentEditor.ReadFeatureId(preview, _slot), definition.Id, StringComparison.Ordinal);
         string secondary = owned ? "Owned" : PriceText(definition);
         return new Win98CatalogItemPresentation(
             definition.Id,
             generated.DisplayName,
             secondary,
             generated.Thumbnail,
-            Tooltip: owned ? "Available to save." : "Preview only until acquired.",
-            BadgeText: owned ? "Owned" : "Preview");
+            Tooltip: equipped ? "Currently equipped."
+                : owned ? "Single-click to preview; double-click to equip."
+                : "Preview only until acquired.",
+            BadgeText: equipped ? "Equipped" : owned ? string.Empty : "Preview",
+            Accented: previewed);
     }
 
     private void RefreshGeneratedSelectionPane(GeneratedBuddyCosmeticResource generated)
@@ -81,18 +87,17 @@ public partial class BuddyStudioWorkspace
             return;
 
         bool owned = _session.IsCosmeticOwned(definition.Id);
-        string equippedId = CharacterDocumentEditor.ReadFeatureId(_session.WorkingDocument!, _slot);
-        bool equipped = string.Equals(equippedId, definition.Id, StringComparison.Ordinal) &&
-            !_session.HasOwnedPreview(_slot) && !_session.HasUnownedPreview(_slot);
+        bool equipped = IsEquipped(definition.Id);
         CatalogueEntry entry = default;
         bool purchasable = !owned && definition.OwnershipContentId is string contentId &&
             _economy.Catalogue.TryGet(contentId, out entry) && entry.Visible &&
             entry.Kind == CatalogueEntryKind.Cosmetic && entry.HasValidPrice;
         bool affordable = !purchasable || entry.PriceMilliCredits <= _economy.BalanceMilliCredits;
 
+        string status = equipped ? "Equipped" : owned ? "Owned preview" : "Preview";
         _values.SetRows(
         [
-            new Win98ValueRowPresentation("status", "Status", owned ? "Owned" : "Preview", true),
+            new Win98ValueRowPresentation("status", "Status", status, true),
             new Win98ValueRowPresentation("price", "Price", owned ? "—" : PriceText(definition)),
             new Win98ValueRowPresentation("balance", "Balance", ContentDisplayName.Credits(_economy.BalanceMilliCredits)),
         ]);
