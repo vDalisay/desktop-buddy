@@ -4,7 +4,8 @@ namespace DesktopBuddy.AssetForge.Core;
 
 /// <summary>
 /// Glasses@2 semantic generator. Source position/scale are interpreted directly through
-/// GlassesTemplateSpace and the bridge is traced from authored foreground instead of replaced.
+/// GlassesTemplateSpace. Complex authored bridge artwork is preserved as its full silhouette;
+/// the center-line tracer remains only as a fallback for very thin/open bridge strokes.
 /// </summary>
 public static class GlassesTemplateGeneratorV2
 {
@@ -44,7 +45,17 @@ public static class GlassesTemplateGeneratorV2
         AddClosedFrameTube(mesh, rightWorld, rightUv, frameRadius, depthRadius, radialSegments);
 
         (int leftInner, int rightInner) = ClosestPair(left.GridPoints, right.GridPoints);
-        if (TryTraceAuthoredBridge(grid, foreground, left.GridPoints[leftInner], right.GridPoints[rightInner], out List<Vector2> bridgeGrid, out List<Vector2> bridgeUv))
+        Vector2 leftBridgeRoot = left.GridPoints[leftInner];
+        Vector2 rightBridgeRoot = right.GridPoints[rightInner];
+        bool bridgeAdded = GlassesBridgeSilhouette.TryAdd(
+            mesh,
+            grid,
+            foreground,
+            leftBridgeRoot,
+            rightBridgeRoot,
+            settings);
+        if (!bridgeAdded &&
+            TryTraceAuthoredBridge(grid, foreground, leftBridgeRoot, rightBridgeRoot, out List<Vector2> bridgeGrid, out List<Vector2> bridgeUv))
         {
             AddOpenFrameTube(mesh, ToHeadLoop(grid, bridgeGrid), bridgeUv, frameRadius, depthRadius, radialSegments);
         }
