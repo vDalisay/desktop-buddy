@@ -35,6 +35,7 @@ public sealed record ThumbnailSettings
 public sealed record AssetRecipe
 {
     public const int CurrentGeneratorVersion = 1;
+    public const double DefaultLightingLevel = 0.36;
     public int GeneratorVersion { get; init; } = CurrentGeneratorVersion;
     public string PresetId { get; init; } = "glasses";
     public int PresetVersion { get; init; } = 2;
@@ -46,6 +47,11 @@ public sealed record AssetRecipe
     public string SourceFile { get; init; } = "source.png";
     public int PriceCredits { get; init; } = 100;
     public int SortOrder { get; init; } = 100;
+    /// <summary>
+    /// Texture-coloured emission floor applied on top of the normal Buddy scene lighting.
+    /// Zero means fully scene-lit; 0.36 preserves the approved current appearance.
+    /// </summary>
+    public double LightingLevel { get; init; } = DefaultLightingLevel;
     public GeometrySettings Geometry { get; init; } = new();
     public ThumbnailSettings Thumbnail { get; init; } = new();
 
@@ -63,6 +69,7 @@ public sealed record AssetRecipe
         if (!string.Equals(SourceFile, "source.png", StringComparison.Ordinal)) errors.Add("Recipe source must be source.png.");
         if (PriceCredits <= 0 || PriceCredits > 100000) errors.Add("PriceCredits must be within 1-100000.");
         if (SortOrder < 0 || SortOrder > 100000) errors.Add("SortOrder must be within 0-100000.");
+        if (!FiniteRange(LightingLevel, 0, 1)) errors.Add("LightingLevel must be within 0-1.");
         if (Geometry.GeometryResolution is < 32 or > 512 || 1024 % Geometry.GeometryResolution != 0) errors.Add("GeometryResolution must be a 32-512 divisor of 1024.");
         if (Geometry.RuntimeTextureResolution is < 64 or > 1024 || 1024 % Geometry.RuntimeTextureResolution != 0) errors.Add("RuntimeTextureResolution must be a 64-1024 divisor of 1024.");
         if (!FiniteRange(Geometry.AlphaThreshold, 0.01, 0.99)) errors.Add("AlphaThreshold must be within 0.01-0.99.");
@@ -125,6 +132,7 @@ public static class RecipeCodec
             writer.WriteString("sourceFile", recipe.SourceFile);
             writer.WriteNumber("priceCredits", recipe.PriceCredits);
             writer.WriteNumber("sortOrder", recipe.SortOrder);
+            writer.WriteNumber("lightingLevel", recipe.LightingLevel);
             writer.WritePropertyName("geometry");
             writer.WriteStartObject();
             GeometrySettings g = recipe.Geometry;
