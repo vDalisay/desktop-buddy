@@ -10,7 +10,7 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 /// </summary>
 public sealed class BuddyLookMaterialLibrary
 {
-    private const float GeneratedCosmeticEmissionFloor = 0.28f;
+    private const float GeneratedCosmeticEmissionFloor = 0.36f;
     private readonly BuddySharedLook _look;
     private StandardMaterial3D? _outline;
 
