@@ -233,7 +233,9 @@ public partial class Win98WindowFrame : PanelContainer
 
         row.AddChild(CommandButton("_", "Minimize", () => EmitSignal(SignalName.MinimizeRequested)));
         row.AddChild(CommandButton("□", "Maximize or restore", () => EmitSignal(SignalName.MaximizeRestoreRequested)));
-        row.AddChild(CommandButton("×", "Close", () => EmitSignal(SignalName.CloseRequested)));
+        Button close = CommandButton("×", "Close", () => EmitSignal(SignalName.CloseRequested));
+        UiFeedbackAudioBootstrap.Tag(close, UiSfx.Exit);
+        row.AddChild(close);
         return bar;
     }
 

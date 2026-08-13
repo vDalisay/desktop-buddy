@@ -7,6 +7,7 @@ using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Presentation3D;
+using DesktopBuddy.UI;
 using DesktopBuddy.UI.Win98;
 using Godot;
 
@@ -295,6 +296,8 @@ public partial class WorkCompanionView : CanvasLayer
         _exitButton.AddThemeFontSizeOverride("font_size", 11);
         ApplyWin98ButtonStyle(_exitButton);
         _exitButton.Pressed += () => ExitRequested?.Invoke();
+        // The coordinator sounds the exit for both routes out of Work Mode; see HookWork.
+        UiFeedbackAudioBootstrap.Tag(_exitButton, UiSfx.Silent);
         _root.AddChild(_exitButton);
 
         // Hover tracking lives on the Window, not on _root: Godot emits mouse_exited on a

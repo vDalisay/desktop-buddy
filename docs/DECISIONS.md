@@ -4,6 +4,16 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Supplied Impact and Landing Audio — Owner Approved (2026-08-13)
+
+The owner supplied five MP3 cues for the presentation layer: two random variations for ordinary
+blunt buddy impacts, two random variations for high-pain room-boundary impacts, and one light
+landing thud for dropped non-metallic loose objects. Ordinary blunt impacts use the normal pair;
+boundary impacts use the hard pair when the existing pain curve reaches its third anchor. The
+landing thud applies to every registry-backed non-metallic dropped item for now. Grenades retain
+their existing authored metallic landing cue and are not routed through the generic thud. These
+assets are presentation-only and do not alter physics, damage, payout, or attribution.
+
 ## Asset Forge and Shape Replacements — Owner Approved (2026-08-12)
 
 The owner approved `docs/ASSET_FORGE_IMPLEMENTATION_PLAN.md` and resolved the four decisions

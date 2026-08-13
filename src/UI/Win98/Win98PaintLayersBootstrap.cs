@@ -151,7 +151,10 @@ public partial class Win98PaintLayersBootstrap : Node
         }
 
         _canvas.QueueRedraw();
-        _list?.ReleaseFocus();
+        // Focus lives on the viewport, so releasing it needs the list to still be in the tree:
+        // teardown reaches here through _ExitTree → RestoreAllPartVisibility after it has left.
+        if (_list?.IsInsideTree() == true)
+            _list.ReleaseFocus();
     }
 
     /// <summary>Double-clicking a layer flips its "Show selected layer" checkbox.</summary>

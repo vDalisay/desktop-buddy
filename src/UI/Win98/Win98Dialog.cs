@@ -65,6 +65,7 @@ public static class Win98Dialog
                 FocusMode = Control.FocusModeEnum.All,
             };
             close.Pressed += onClose;
+            UiFeedbackAudioBootstrap.Tag(close, UiSfx.Exit);
             titleRow.AddChild(close);
         }
 

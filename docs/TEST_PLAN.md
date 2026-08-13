@@ -28,6 +28,11 @@ The implementation must expose one command for pure tests, one command for headl
 - Region multipliers are head `1.2x`, torso `1.0x`, and limbs `0.8x`.
 - Held impacts pay normally; continuous contacts deduplicate per source/body with the `0.15`-second rule.
 - Room-boundary, loose-object, projectile, and physical-weapon impacts enter the same thresholded/attributed pain pipeline.
+- The `m3_presentation` scenario verifies that accepted ordinary blunt impacts select a random
+  no-repeat variation from `Buddy_Impact1/2`, high-pain room-boundary impacts select the matching
+  `Buddy_Hard_Impact1/2` pair using the existing pain curve, and a registry-backed dropped
+  non-metallic item crossing onto the floor plays `Item_falling1`; grenades remain on their
+  separate metallic landing cue.
 - Each accepted harmful event applies `min(10, pain x 0.1)` mood loss.
 - The rolling pain window clears on knockout; unconscious hits pay and affect mood but cannot trigger or pre-load the next knockout.
 - Payout is derived only from pain, region, consciousness, and calibrated cash-per-pain.
