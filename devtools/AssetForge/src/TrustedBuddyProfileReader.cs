@@ -6,8 +6,12 @@ namespace DesktopBuddy.AssetForge;
 
 public readonly record struct TrustedBuddyPreviewProfile(
     float HeadRadius,
+    float TorsoRadius,
+    float FootRadius,
     float FaceDepthEpsilon,
     Color HeadColor,
+    Color TorsoColor,
+    Color FootColor,
     BuddySharedLook Look);
 
 /// <summary>Reads the synchronized authoritative Buddy *.tres values as developer data.</summary>
@@ -21,10 +25,19 @@ public static class TrustedBuddyProfileReader
         string look = Read(root, "lab_buddy_look.tres");
 
         string rigHead = Block(rig, "[sub_resource type=\"Resource\" id=\"PartHead\"]");
+        string rigTorso = Block(rig, "[sub_resource type=\"Resource\" id=\"PartTorso\"]");
+        string rigFoot = Block(rig, "[sub_resource type=\"Resource\" id=\"PartLeftFoot\"]");
         string visualHead = Block(visual, "[sub_resource type=\"Resource\" id=\"PartHead\"]");
+        string visualTorso = Block(visual, "[sub_resource type=\"Resource\" id=\"PartTorso\"]");
+        string visualFoot = Block(visual, "[sub_resource type=\"Resource\" id=\"PartLeftFoot\"]");
+
         float headRadius = Float(Value(rigHead, "Radius"));
+        float torsoRadius = Float(Value(rigTorso, "Radius"));
+        float footRadius = Float(Value(rigFoot, "Radius"));
         float epsilon = Float(Value(visual, "FaceDepthEpsilon"));
         Color headColor = ColorValue(Value(visualHead, "Color"));
+        Color torsoColor = ColorValue(Value(visualTorso, "Color"));
+        Color footColor = ColorValue(Value(visualFoot, "Color"));
         var shared = new BuddySharedLook(
             (BaseMaterial3D.DiffuseModeEnum)Int(Value(look, "DiffuseMode")),
             (BaseMaterial3D.SpecularModeEnum)Int(Value(look, "SpecularMode")),
@@ -39,7 +52,7 @@ public static class TrustedBuddyProfileReader
             Bool(Value(look, "ShadowsEnabled")),
             ColorValue(Value(look, "OutlineColor")),
             Float(Value(look, "OutlineGrowAmount")));
-        return new TrustedBuddyPreviewProfile(headRadius, epsilon, headColor, shared);
+        return new TrustedBuddyPreviewProfile(headRadius, torsoRadius, footRadius, epsilon, headColor, torsoColor, footColor, shared);
     }
 
     private static string Read(string root, string name)
