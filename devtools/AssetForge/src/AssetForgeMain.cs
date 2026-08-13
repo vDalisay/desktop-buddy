@@ -9,8 +9,8 @@ public partial class AssetForgeMain : Control
     private SpinBox _price = null!, _sort = null!, _alpha = null!, _frameThickness = null!, _depth = null!, _roundness = null!, _bias = null!, _templeThickness = null!, _templeLength = null!, _templeDrop = null!;
     private OptionButton _geometryResolution = null!, _textureResolution = null!, _shapeMode = null!, _symmetry = null!;
     private AssetForgePreview _preview = null!;
-    private Label _status = null!, _hashes = null!;
-    private Button _export = null!;
+    private Label _status = null!, _hashes = null!, _presetLabel = null!;
+    private Button _export = null!, _migratePreset = null!;
     private CheckBox _reference = null!;
     private FileDialog _sourceDialog = null!, _openRecipeDialog = null!, _saveRecipeDialog = null!, _templateDialog = null!;
     private static readonly Vector2I DeleteDialogSize = new(400, 800);
@@ -18,12 +18,13 @@ public partial class AssetForgeMain : Control
     private ItemList _deleteList = null!;
     private GeneratedAsset? _generated;
     private string? _sourcePath;
+    private int _activePresetVersion = AssetRecipe.GlassesDefaults().PresetVersion;
 
     public override void _Ready()
     {
         BuildUi();
         ApplyRecipe(AssetRecipe.GlassesDefaults());
-        SetStatus("Choose a 1024×1024 PNG. Transparent backgrounds are preferred; a flat opaque canvas such as white is removed automatically.");
+        SetStatus("Choose a 1024×1024 PNG. For glasses@2, draw over the Buddy-head guide and export the clean art at the same canvas position.");
     }
 
     private void BuildUi()
@@ -68,7 +69,9 @@ public partial class AssetForgeMain : Control
         var left = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
         left.AddThemeConstantOverride("separation", 5);
         leftScroll.AddChild(left);
-        left.AddChild(new Label { Text = "Buddy Studio > Glasses / glasses@1" });
+        _presetLabel = new Label();
+        left.AddChild(_presetLabel);
+        _migratePreset = AddButton(left, "Migrate this recipe to glasses@2 template space", MigrateToTemplateSpace);
         _source = Field(left, "Source PNG");
         _source.Editable = false;
         _displayName = Field(left, "Display name");
@@ -97,7 +100,7 @@ public partial class AssetForgeMain : Control
         _symmetry = Options(advanced, "Symmetry", ["Off", "Left → Right", "Right → Left", "Average both"]);
         advanced.AddChild(new Label
         {
-            Text = "Rounded glasses template uses the two closed lens openings as shape guides. Flat extrusion is the fallback for artwork without two lens holes.",
+            Text = "glasses@2 maps the clean 1024×1024 drawing directly onto the Buddy-head guide: lens placement, dimensions, and the drawn nose bridge are authored. Temples and physical depth stay preset-controlled.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         });
 
@@ -120,13 +123,7 @@ public partial class AssetForgeMain : Control
         _templateDialog = Dialog(FileDialog.FileModeEnum.SaveFile, "Save 1024×1024 Glasses authoring guide", ["*.png ; PNG image"]);
         _templateDialog.FileSelected += SaveTemplate;
 
-        _deleteDialog = new ConfirmationDialog
-        {
-            Title = "Delete exported asset",
-            OkButtonText = "Delete",
-        };
-        // The dialog is a fixed 400x800 box. Every child min size stays under that, otherwise
-        // Window clamps up to the contents minimum and the button row falls off screen.
+        _deleteDialog = new ConfirmationDialog { Title = "Delete exported asset", OkButtonText = "Delete" };
         _deleteList = new ItemList { SizeFlagsVertical = SizeFlags.ExpandFill, CustomMinimumSize = new Vector2(0, 0) };
         var deleteBody = new VBoxContainer();
         deleteBody.AddChild(new Label
@@ -149,7 +146,9 @@ public partial class AssetForgeMain : Control
         _source.Text = path;
         _generated = null;
         _export.Disabled = true;
-        SetStatus("Source selected. Generate to fit the glasses template to the drawing.");
+        SetStatus(_activePresetVersion >= 2
+            ? "Source selected. glasses@2 will keep this exact 1024×1024 placement relative to the Buddy-head guide."
+            : "Source selected. Legacy glasses@1 will auto-fit the detected frames as before.");
     }
 
     private void Generate()
@@ -163,11 +162,8 @@ public partial class AssetForgeMain : Control
             _preview.ShowGenerated(_generated, _sourcePath);
             _export.Disabled = false;
             MaskDiagnostics d = _generated.Diagnostics;
-            string generation = _generated.UsedGlassesTemplate ? "rounded glasses template fit" : "silhouette extrusion fallback";
-            SetStatus(
-                $"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} lens hole(s), " +
-                $"{_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles. " +
-                $"Foreground: {_generated.Foreground.Summary}.");
+            string generation = _generated.UsedGlassesTemplate ? $"glasses@{recipe.PresetVersion} rounded template" : "silhouette extrusion fallback";
+            SetStatus($"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} lens hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles. Foreground: {_generated.Foreground.Summary}.");
             _hashes.Text = $"Input {_generated.InputHash[..12]}  Recipe {_generated.RecipeHash[..12]}  Geometry {_generated.GeometryHash[..12]}  Asset {_generated.CanonicalAssetHash[..12]}  ✓ deterministic output";
         }
         catch (Exception exception)
@@ -216,7 +212,7 @@ public partial class AssetForgeMain : Control
                 _generated = null;
                 _export.Disabled = true;
             }
-            SetStatus("Recipe opened.");
+            SetStatus($"Recipe opened as glasses@{recipe.PresetVersion}. Its preset version will be preserved until explicitly migrated.");
         }
         catch (Exception exception)
         {
@@ -230,7 +226,7 @@ public partial class AssetForgeMain : Control
         {
             if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) path += ".json";
             File.WriteAllText(path, RecipeCodec.WriteCanonical(ReadRecipeFromUi()));
-            SetStatus("Recipe saved: " + path);
+            SetStatus($"glasses@{_activePresetVersion} recipe saved: {path}");
         }
         catch (Exception exception)
         {
@@ -244,12 +240,22 @@ public partial class AssetForgeMain : Control
         {
             if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) path += ".png";
             File.WriteAllBytes(path, AuthoringTemplateGenerator.CreateGlassesTemplatePng());
-            SetStatus("Glasses guide saved. Draw two closed lens openings plus the bridge. Export transparency when convenient; a flat opaque canvas is also supported.\n" + path);
+            SetStatus("glasses@2 Buddy-head guide saved. Draw the complete front frame and nose bridge over it, hide/remove the guide layer, and export the clean art without moving or resizing the 1024×1024 canvas.\n" + path);
         }
         catch (Exception exception)
         {
             SetStatus("Save template failed: " + exception.Message);
         }
+    }
+
+    private void MigrateToTemplateSpace()
+    {
+        if (_activePresetVersion >= 2) return;
+        _activePresetVersion = 2;
+        RefreshPresetPresentation();
+        _generated = null;
+        _export.Disabled = true;
+        SetStatus("Migrated this working recipe to glasses@2. The source now uses literal Buddy-head template placement; reposition/redraw it on the guide before Generate/Save if it was authored for legacy auto-fit.");
     }
 
     private void ShowDeleteDialog()
@@ -260,19 +266,12 @@ public partial class AssetForgeMain : Control
             foreach (AssetRecipe recipe in RepositoryExporter.ListExported(RepositoryRoot()))
                 _deleteList.AddItem($"{recipe.DisplayName}  ({recipe.FeatureId})");
             _deleteDialog.GetOkButton().Disabled = _deleteList.ItemCount == 0;
-            if (_deleteList.ItemCount == 0)
-                _deleteList.AddItem("No exported assets.", selectable: false);
-            // Never taller than the window, or the Delete/Cancel row lands off screen.
-            var size = new Vector2I(
-                DeleteDialogSize.X,
-                Math.Min(DeleteDialogSize.Y, (int)GetViewportRect().Size.Y - 120));
+            if (_deleteList.ItemCount == 0) _deleteList.AddItem("No exported assets.", selectable: false);
+            var size = new Vector2I(DeleteDialogSize.X, Math.Min(DeleteDialogSize.Y, (int)GetViewportRect().Size.Y - 120));
             _deleteDialog.PopupCentered(size);
             _deleteDialog.Size = size;
         }
-        catch (Exception exception)
-        {
-            SetStatus("Could not list exported assets: " + exception.Message);
-        }
+        catch (Exception exception) { SetStatus("Could not list exported assets: " + exception.Message); }
     }
 
     private void DeleteSelected()
@@ -286,10 +285,7 @@ public partial class AssetForgeMain : Control
             _hashes.Text = FormatVerification(RepositoryAssetVerifier.VerifyAll(RepositoryRoot()));
             SetStatus($"Deleted {recipe.DisplayName} ({recipe.FeatureId}). It no longer ships with the game.");
         }
-        catch (Exception exception)
-        {
-            SetStatus("Delete failed: " + exception.Message);
-        }
+        catch (Exception exception) { SetStatus("Delete failed: " + exception.Message); }
     }
 
     private void VerifyCurrent()
@@ -300,10 +296,7 @@ public partial class AssetForgeMain : Control
             _hashes.Text = FormatVerification(result);
             SetStatus(result.Passed ? $"Verify passed for {result.FeatureId}." : $"Verify failed for {result.FeatureId}.");
         }
-        catch (Exception exception)
-        {
-            SetStatus("Verify failed: " + exception.Message);
-        }
+        catch (Exception exception) { SetStatus("Verify failed: " + exception.Message); }
     }
 
     private void VerifyAll()
@@ -316,10 +309,7 @@ public partial class AssetForgeMain : Control
                 ? $"Verify All passed: {result.PassedCount}/{result.Assets.Count} authored asset(s) match committed generated content."
                 : $"Verify All failed: {result.PassedCount}/{result.Assets.Count} authored asset(s) passed. Review diagnostics below.");
         }
-        catch (Exception exception)
-        {
-            SetStatus("Verify All failed: " + exception.Message);
-        }
+        catch (Exception exception) { SetStatus("Verify All failed: " + exception.Message); }
     }
 
     private void RegenerateCurrent()
@@ -332,10 +322,7 @@ public partial class AssetForgeMain : Control
                 ? $"Regenerated and verified {string.Join(", ", result.RegeneratedFeatureIds)}."
                 : "Regeneration completed, but Verify All still reports drift.");
         }
-        catch (Exception exception)
-        {
-            SetStatus("Regenerate failed: " + exception.Message);
-        }
+        catch (Exception exception) { SetStatus("Regenerate failed: " + exception.Message); }
     }
 
     private void RegenerateAll()
@@ -348,15 +335,12 @@ public partial class AssetForgeMain : Control
                 ? $"Regenerated {result.RegeneratedFeatureIds.Count} authored asset(s); Verify All passed."
                 : $"Regenerated {result.RegeneratedFeatureIds.Count} authored asset(s), but Verify All still reports drift.");
         }
-        catch (Exception exception)
-        {
-            SetStatus("Regenerate All failed: " + exception.Message);
-        }
+        catch (Exception exception) { SetStatus("Regenerate All failed: " + exception.Message); }
     }
 
     private AssetRecipe ReadRecipeFromUi()
     {
-        AssetRecipe defaults = AssetRecipe.GlassesDefaults();
+        AssetRecipe defaults = AssetRecipe.GlassesDefaults() with { PresetVersion = _activePresetVersion };
         return defaults with
         {
             DisplayName = _displayName.Text.Trim(),
@@ -384,6 +368,8 @@ public partial class AssetForgeMain : Control
 
     private void ApplyRecipe(AssetRecipe recipe)
     {
+        _activePresetVersion = recipe.PresetVersion;
+        RefreshPresetPresentation();
         _displayName.Text = recipe.DisplayName;
         _featureId.Text = recipe.FeatureId;
         _contentId.Text = recipe.ContentId;
@@ -401,6 +387,15 @@ public partial class AssetForgeMain : Control
         SelectText(_textureResolution, recipe.Geometry.RuntimeTextureResolution.ToString());
         _shapeMode.Select((int)recipe.Geometry.ShapeMode);
         _symmetry.Select((int)recipe.Geometry.SymmetryMode);
+    }
+
+    private void RefreshPresetPresentation()
+    {
+        if (!GodotObject.IsInstanceValid(_presetLabel) || !GodotObject.IsInstanceValid(_migratePreset)) return;
+        _presetLabel.Text = _activePresetVersion >= 2
+            ? "Buddy Studio > Glasses / glasses@2 — literal 1024×1024 Buddy-head template placement"
+            : "Buddy Studio > Glasses / glasses@1 — legacy auto-fit placement";
+        _migratePreset.Visible = _activePresetVersion < 2;
     }
 
     private string RepositoryRoot() => Path.GetFullPath(Path.Combine(ProjectSettings.GlobalizePath("res://"), "..", ".."));
