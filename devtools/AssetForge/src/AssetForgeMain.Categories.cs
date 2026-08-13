@@ -13,13 +13,13 @@ public partial class AssetForgeMain
     {
         if (_categoryWorkflowInstalled || !_modernWorkspaceInstalled || !GodotObject.IsInstanceValid(_categorySelector)) return;
 
-        // Keep enum values aligned with option indices. Glasses simply disables the unsupported
-        // entries; replacement categories expose Rounded/Inflated only.
         if (_shapeMode.ItemCount < 3) _shapeMode.AddItem("Inflated solid");
         if (_shapeMode.ItemCount < 4) _shapeMode.AddItem("Relief");
         _categorySelector.ItemSelected += OnAuthoringCategorySelected;
         _templateDialog.FileSelected -= SaveTemplate;
         _templateDialog.FileSelected += SaveCategoryTemplate;
+        _export.Pressed -= Export;
+        _export.Pressed += ExportCategory;
         _categoryWorkflowInstalled = true;
         ConfigureActiveCategoryUi();
     }
@@ -116,6 +116,39 @@ public partial class AssetForgeMain
         catch (Exception exception)
         {
             SetStatus("Save template failed: " + exception.Message);
+        }
+    }
+
+    private void ExportCategory()
+    {
+        try
+        {
+            if (_generated is null || string.IsNullOrWhiteSpace(_sourcePath))
+                throw new InvalidOperationException("Generate the asset before export.");
+            byte[] thumbnail = _preview.CaptureThumbnailPng();
+            if (thumbnail.Length == 0) thumbnail = _generated.AlbedoPng;
+            byte[] source = File.ReadAllBytes(_sourcePath);
+
+            ExportResult result = _generated.Recipe.Category == AssetCategory.Glasses
+                ? RepositoryExporter.ExportGlasses(_root.Text.Trim(), source, _generated, thumbnail)
+                : RepositoryBuddyReplacementExporter.Export(_root.Text.Trim(), source, _generated, thumbnail);
+            GeneratedCosmeticLightingPersistence.Apply(_root.Text.Trim(), _generated.Recipe);
+            VerificationResult verification = RepositoryAssetVerifier.Verify(_root.Text.Trim(), _generated.Recipe.FeatureId);
+            if (!verification.Success)
+                throw new InvalidOperationException("Export committed but verification failed: " + FormatVerification(verification));
+
+            string category = _generated.Recipe.Category switch
+            {
+                AssetCategory.Glasses => "Glasses",
+                AssetCategory.TorsoShape => "Tops",
+                AssetCategory.FootShape => "Shoes",
+                _ => _generated.Recipe.Category.ToString(),
+            };
+            SetStatus($"Exported {_generated.Recipe.DisplayName} to Buddy Studio > {category} and verified deterministic package.\nAuthoring: {result.AuthoringDirectory}\nGenerated: {result.AssetDirectory}");
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Export failed: " + exception.Message);
         }
     }
 
