@@ -25,9 +25,6 @@ jobs:
       - name: Build game solution
         run: dotnet build DesktopBuddy.sln -c Debug
 
-      # The repository's normal CI is intentionally manual-only while six ProgressStoreTests
-      # that hard-code Windows paths are investigated on Linux. Asset Forge does not touch that
-      # store, so keep the remaining domain suite as this branch's regression gate.
       - name: Domain unit tests (excluding known Linux-only ProgressStoreTests)
         run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
 
@@ -47,10 +44,10 @@ jobs:
           grep -F 'devtools/*' export_presets.cfg
           grep -F 'authoring/*' export_presets.cfg
 
-      - name: Generate and transactionally export CI glasses fixture
+      - name: Generate and transactionally export Asset Forge CI fixtures
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --ci-fixture "$PWD"
 
-      - name: Verify generated fixture by re-deriving it without Godot
+      - name: Verify generated fixtures by re-deriving them without Godot
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --verify-all "$PWD"
 
       - name: Download pinned Godot (.NET/mono, Linux)
@@ -65,14 +62,17 @@ jobs:
           chmod +x "$GODOT_BIN"
           echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
 
-      - name: Import game with generated glasses catalogue
+      - name: Import game with generated Asset Forge catalogue
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
 
-      - name: Boot smoke with generated glasses catalogue
+      - name: Boot smoke with generated Asset Forge catalogue
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
 
       - name: Exercise generated glasses catalogue, purchase, render, and persistence
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_glasses --seed=1
+
+      - name: Exercise generated torso and foot visual replacements
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_replacements --seed=1
 
       - name: Import standalone Asset Forge project
         run: |
