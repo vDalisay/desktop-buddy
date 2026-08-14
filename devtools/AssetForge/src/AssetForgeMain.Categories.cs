@@ -13,7 +13,8 @@ public partial class AssetForgeMain
     {
         if (_categoryWorkflowInstalled || !_modernWorkspaceInstalled || !GodotObject.IsInstanceValid(_categorySelector)) return;
         if (_shapeMode.ItemCount < 3) _shapeMode.AddItem("Inflated solid");
-        if (_shapeMode.ItemCount < 4) _shapeMode.AddItem("Relief");
+        if (_shapeMode.ItemCount < 4) _shapeMode.AddItem("Soft pillow / relief");
+        EnsureReplacementQualityUi();
         _categorySelector.ItemSelected += OnAuthoringCategorySelected;
         _templateDialog.FileSelected -= SaveTemplate;
         _templateDialog.FileSelected += SaveCategoryTemplate;
@@ -37,9 +38,12 @@ public partial class AssetForgeMain
         };
         if (!spec.Implemented || category == _activeCategory) return;
 
+        _preview.ClearGenerated();
         _activeCategory = category;
         _activeTemplateId = spec.Id;
-        ApplyRecipe(CategoryDefaults(category));
+        AssetRecipe defaults = CategoryDefaults(category);
+        ApplyRecipe(defaults);
+        ApplyReplacementQualityRecipe(defaults);
         _sourcePath = null;
         _source.Text = "Choose a clean 1024×1024 PNG for this category.";
         _generated = null;
@@ -67,6 +71,7 @@ public partial class AssetForgeMain
                     break;
                 }
         }
+        ApplyReplacementQualityRecipe(recipe);
         ConfigureActiveCategoryUi();
     }
 
@@ -86,6 +91,7 @@ public partial class AssetForgeMain
                 AlphaThreshold = _alpha.Value,
                 Depth = _depth.Value,
                 Roundness = _roundness.Value,
+                SurfaceSmoothness = ReadReplacementSmoothness(defaults.Geometry),
                 ThicknessBiasPixels = (int)_bias.Value,
                 GeometryResolution = int.Parse(_geometryResolution.GetItemText(_geometryResolution.Selected)),
                 RuntimeTextureResolution = int.Parse(_textureResolution.GetItemText(_textureResolution.Selected)),
@@ -156,6 +162,7 @@ public partial class AssetForgeMain
         if (!GodotObject.IsInstanceValid(_shapeMode)) return;
         bool glasses = _activeCategory == AssetCategory.Glasses;
         bool replacement = _activeCategory is AssetCategory.TorsoShape or AssetCategory.FootShape;
+        ConfigureReplacementQualityUi(replacement);
         SetLabeledVisible(_frameThickness, glasses);
         RefreshBridgeThicknessVisibility();
         if (GodotObject.IsInstanceValid(_templeThickness) && _templeThickness.GetParent()?.GetParent() is Control templeCard) templeCard.Visible = glasses;
@@ -164,7 +171,7 @@ public partial class AssetForgeMain
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.FlatExtrusion, replacement);
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.RoundedExtrusion, false);
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.InflatedSolid, glasses);
-        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.Relief, true);
+        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.Relief, !replacement);
 
         string display = _activeCategory switch
         {
@@ -184,7 +191,7 @@ public partial class AssetForgeMain
             {
                 AssetCategory.Glasses => "Reference head",
                 AssetCategory.TorsoShape => "Reference torso",
-                AssetCategory.FootShape => "Reference foot",
+                AssetCategory.FootShape => "Reference feet",
                 _ => "Reference",
             };
         if (GodotObject.IsInstanceValid(_preview)) _preview.SetCategory(_activeCategory);
