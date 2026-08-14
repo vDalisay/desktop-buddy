@@ -36,10 +36,77 @@ public sealed class EnvironmentThumbnailTests
     }
 
     [Fact]
+    public void Shared_thumbnail_cache_reuses_canonical_asset_and_returns_defensive_copies()
+    {
+        AssetThumbnailCache.ClearMemoryCache();
+        GeneratedAsset asset = SofaAsset();
+        int calls = 0;
+        byte[] first = AssetThumbnailCache.GetOrCreate(asset, () =>
+        {
+            calls++;
+            return EnvironmentThumbnailGenerator.Create(asset.AlbedoPng);
+        });
+        byte originalFirstByte = first[0];
+        first[0] ^= 0xff;
+
+        byte[] second = AssetThumbnailCache.GetOrCreate(asset, () =>
+            throw new InvalidOperationException("Canonical thumbnail producer should not run twice."));
+
+        Assert.Equal(1, calls);
+        Assert.Equal(originalFirstByte, second[0]);
+        Assert.NotSame(first, second);
+    }
+
+    [Fact]
+    public void Thumbnail_recipe_changes_cache_key_without_changing_geometry_or_texture_identity()
+    {
+        GeneratedAsset asset = SofaAsset();
+        GeneratedAsset changed = asset with
+        {
+            Recipe = asset.Recipe with
+            {
+                Thumbnail = asset.Recipe.Thumbnail with { YawDegrees = asset.Recipe.Thumbnail.YawDegrees + 5 },
+            },
+        };
+
+        Assert.Equal(asset.GeometryHash, changed.GeometryHash);
+        Assert.Equal(asset.AlbedoHash, changed.AlbedoHash);
+        Assert.NotEqual(AssetThumbnailCache.KeyFor(asset), AssetThumbnailCache.KeyFor(changed));
+    }
+
+    [Fact]
+    public void Cached_thumbnail_producer_must_return_canonical_size()
+    {
+        AssetThumbnailCache.ClearMemoryCache();
+        GeneratedAsset asset = SofaAsset();
+        byte[] wrong = PngCodec.EncodeRgba8(new RgbaImage(64, 64, new byte[64 * 64 * 4]));
+        Assert.Throws<InvalidOperationException>(() => AssetThumbnailCache.GetOrCreate(asset, () => wrong));
+    }
+
+    [Fact]
     public void Empty_environment_thumbnail_is_rejected()
     {
         byte[] source = PngCodec.EncodeRgba8(new RgbaImage(64, 64, new byte[64 * 64 * 4]));
         Assert.Throws<InvalidOperationException>(() => EnvironmentThumbnailGenerator.Create(source));
+    }
+
+    private static GeneratedAsset SofaAsset()
+    {
+        AssetRecipe recipe = AssetRecipe.SofaDefaults() with
+        {
+            AssetId = "decoration.sofa.thumbnail_test",
+            Geometry = AssetRecipe.SofaDefaults().Geometry with
+            {
+                GeometryResolution = 32,
+                RuntimeTextureResolution = 64,
+            },
+        };
+        byte[] pixels = new byte[1024 * 1024 * 4];
+        Fill(pixels, 1024, 300, 390, 724, 820, 178, 125, 195);
+        Fill(pixels, 1024, 340, 300, 684, 600, 204, 151, 214);
+        return AssetForgeCompiler.Generate(
+            PngCodec.EncodeRgba8(new RgbaImage(1024, 1024, pixels)),
+            recipe);
     }
 
     private static Bounds VisibleBounds(RgbaImage image)
