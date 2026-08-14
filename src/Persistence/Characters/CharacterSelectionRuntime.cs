@@ -29,6 +29,11 @@ public partial class CharacterSelectionRuntime : Node
             throw new InvalidOperationException("CharacterSelectionRuntime must be configured before entering the tree.");
         _sandbox = sandbox ?? throw new ArgumentNullException(nameof(sandbox));
         _context = context ?? throw new ArgumentNullException(nameof(context));
+
+        // Character activation is a presentation/persistence boundary, not gameplay simulation.
+        // Buddy Studio deliberately pauses the gameplay tree, but a queued "Use Character" must
+        // still reach the live rig before the editor is dismissed or Work Mode is entered.
+        ProcessMode = ProcessModeEnum.Always;
     }
 
     public override void _Ready()

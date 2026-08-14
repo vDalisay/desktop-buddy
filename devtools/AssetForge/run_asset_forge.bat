@@ -1,7 +1,8 @@
 @echo off
 setlocal
 set "PROJECT_ROOT=%~dp0..\.."
-call "%~dp0build_asset_forge.bat"
+rem Startup is intentionally launch-only. Use build_asset_forge.bat when source/tests need rebuilding.
+call powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sync_asset_forge_profiles.ps1"
 if errorlevel 1 goto :done
 call "%~dp0..\..\tools\resolve_godot.bat"
 if errorlevel 1 goto :done

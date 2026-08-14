@@ -24,6 +24,15 @@ public partial class BuddyVisualRigView
         {
             EnsurePaintAtlasSamplingGuard();
             RefreshCharacterCompositors();
+            // Generated replacement shells are normalized meshes scaled by the trusted part radius.
+            // Keep outline/paint thickness in world units and bind the existing paint surfaces before
+            // connector fitting inspects the final visible replacement geometry.
+            RefreshGeneratedReplacementVisuals();
+            // Buddy Studio deliberately hides connector meshes. Do not spend every rendered frame
+            // traversing generated replacement bounds to fit invisible connectors there. Gameplay and
+            // Paint Buddy retain the existing connector attachment pass.
+            if (!_studioPreviewMode)
+                RefreshReplacementConnectorAttachment();
         }
     }
 

@@ -28,6 +28,9 @@ public static class AssetForgeGenerator
 
     public static GeneratedAsset Generate(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe)
     {
+        if (recipe.Category != AssetCategory.Glasses)
+            return AssetForgeCompiler.Generate(sourcePng, recipe);
+
         IReadOnlyList<string> errors = recipe.Validate();
         if (errors.Count > 0) throw new ArgumentException(string.Join("; ", errors), nameof(recipe));
 
@@ -38,7 +41,6 @@ public static class AssetForgeGenerator
 
         string inputHash = Hashing.Sha256Hex(source);
         string recipeHash = RecipeCodec.Hash(recipe);
-
         ForegroundExtractionResult foreground = ForegroundExtractor.Extract(decoded);
         MaskGrid mask = MaskGrid.FromImage(foreground.Image, recipe.Geometry);
         MaskDiagnostics diagnostics = MaskAnalyzer.Analyze(mask);
@@ -47,11 +49,7 @@ public static class AssetForgeGenerator
 
         double maskFraction = (double)diagnostics.FilledCells / (mask.Width * mask.Height);
         if (maskFraction > 0.50)
-        {
-            throw new InvalidOperationException(
-                $"The glasses mask still covers {maskFraction:P0} of the canvas. Refusing to create a slab-shaped asset; " +
-                "use a cleaner transparent/uniform-background source or increase separation between the frame colour and the background.");
-        }
+            throw new InvalidOperationException($"The glasses mask still covers {maskFraction:P0} of the canvas. Use a cleaner source.");
 
         CanonicalMesh mesh;
         bool usedTemplate;
@@ -61,12 +59,7 @@ public static class AssetForgeGenerator
                 ? GlassesTemplateGeneratorV2.TryGenerate(mask, foreground.Image, recipe.Geometry, out mesh!)
                 : GlassesTemplateGenerator.TryGenerate(mask, foreground.Image, recipe.Geometry, out mesh!);
             if (diagnostics.Holes < 2 || !generated)
-            {
-                throw new InvalidOperationException(
-                    $"Rounded {recipe.PresetId}@{recipe.PresetVersion} needs two closed lens openings, but the processed drawing contains {diagnostics.Holes}. " +
-                    "Draw a closed left and right lens/frame shape (with transparent/background space inside each lens), " +
-                    "or explicitly choose Flat silhouette extrusion in Advanced settings.");
-            }
+                throw new InvalidOperationException($"Rounded {recipe.PresetId}@{recipe.PresetVersion} needs two closed lens openings, but the processed drawing contains {diagnostics.Holes}.");
             usedTemplate = true;
         }
         else
@@ -79,35 +72,14 @@ public static class AssetForgeGenerator
         byte[] glb = GlbWriter.Write(mesh);
         GlbWriter.ValidateSingleMesh(glb);
         string glbHash = Hashing.Sha256Hex(glb);
-
         RgbaImage runtimeBase = PngCodec.ResizeBox(foreground.Image, recipe.Geometry.RuntimeTextureResolution);
         RgbaImage runtime = usedTemplate
             ? TextureBleed.FillTransparentWithNearestAuthoredColour(runtimeBase)
             : TextureBleed.Expand(runtimeBase, FlatExtrusionTextureBleedPixels);
         byte[] albedo = PngCodec.EncodeRgba8(runtime);
         string albedoHash = Hashing.Sha256Hex(albedo);
-        string canonical = Hashing.Sha256Hex(Encoding.UTF8.GetBytes(string.Join(
-            "\n",
-            recipe.GeneratorVersion,
-            inputHash,
-            recipeHash,
-            geometryHash,
-            glbHash,
-            albedoHash)));
+        string canonical = Hashing.Sha256Hex(Encoding.UTF8.GetBytes(string.Join("\n", recipe.GeneratorVersion, inputHash, recipeHash, geometryHash, glbHash, albedoHash)));
 
-        return new GeneratedAsset(
-            recipe,
-            mesh,
-            diagnostics,
-            foreground.Diagnostics,
-            usedTemplate,
-            glb,
-            albedo,
-            inputHash,
-            recipeHash,
-            geometryHash,
-            glbHash,
-            albedoHash,
-            canonical);
+        return new GeneratedAsset(recipe, mesh, diagnostics, foreground.Diagnostics, usedTemplate, glb, albedo, inputHash, recipeHash, geometryHash, glbHash, albedoHash, canonical);
     }
 }

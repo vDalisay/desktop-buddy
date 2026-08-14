@@ -69,6 +69,35 @@ public sealed class BuddyLookMaterialLibrary
         return material;
     }
 
+    /// <summary>
+    /// Generated replacements use a uniformly enlarged back-face outline shell instead of normal-
+    /// based material Grow. The latter self-intersects on pixel-derived sidewalls and shows up as
+    /// dark horizontal stripes. Uniform shell scaling preserves the outer Buddy silhouette without
+    /// creating internal sidewall bands.
+    /// </summary>
+    public StandardMaterial3D CreateScaledOutlineMaterial(float meshScale)
+    {
+        _ = SafeMeshScale(meshScale);
+        StandardMaterial3D material = BuddySharedMaterialFactory.CreateOutlineMaterial(_look);
+        material.ResourceName = "BuddyLookScaledOutlineMaterial";
+        material.Grow = false;
+        material.GrowAmount = 0f;
+        return material;
+    }
+
+    public float ReplacementOutlineScale(float meshScale)
+    {
+        float scale = SafeMeshScale(meshScale);
+        return 1f + (_look.OutlineGrowAmount / scale);
+    }
+
+    private static float SafeMeshScale(float meshScale)
+    {
+        if (!float.IsFinite(meshScale) || meshScale <= 0.0001f)
+            throw new ArgumentOutOfRangeException(nameof(meshScale), meshScale, "Generated mesh scale must be finite and positive.");
+        return meshScale;
+    }
+
     public StandardMaterial3D OutlineMaterial =>
         _outline ??= BuddySharedMaterialFactory.CreateOutlineMaterial(_look);
 }
