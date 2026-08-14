@@ -91,13 +91,27 @@ public sealed class BuddyLookMaterialLibrary
         return 1f + (_look.OutlineGrowAmount / scale);
     }
 
+    /// <summary>
+    /// Generated replacement paint uses the same shell strategy as the replacement outline.
+    /// Normal-based Grow is safe for the built-in primitives but can fold/self-intersect around a
+    /// generated concave contour, exposing small islands of the albedo underneath an otherwise
+    /// opaque paint fill. The material therefore stays ungrown and the paint MeshInstance is
+    /// enlarged uniformly by <see cref="ReplacementPaintScale"/>.
+    /// </summary>
     public StandardMaterial3D CreateScaledPaintMaterial(float meshScale)
     {
-        float scale = SafeMeshScale(meshScale);
+        _ = SafeMeshScale(meshScale);
         StandardMaterial3D material = CreatePaintMaterial();
         material.ResourceName = "BuddyLookScaledPaintMaterial";
-        material.GrowAmount = PaintShellGrowAmount / scale;
+        material.Grow = false;
+        material.GrowAmount = 0f;
         return material;
+    }
+
+    public float ReplacementPaintScale(float meshScale)
+    {
+        float scale = SafeMeshScale(meshScale);
+        return 1f + (PaintShellGrowAmount / scale);
     }
 
     private static float SafeMeshScale(float meshScale)
