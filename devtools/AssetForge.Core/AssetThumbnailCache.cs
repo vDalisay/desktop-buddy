@@ -43,9 +43,13 @@ public static class AssetThumbnailCache
         lock (Gate)
         {
             if (Memory.TryGetValue(key, out byte[]? cached))
+            {
+                AssetForgeDiagnostics.RecordThumbnailCacheHit();
                 return (byte[])cached.Clone();
+            }
         }
 
+        AssetForgeDiagnostics.RecordThumbnailCacheMiss();
         byte[] produced = producer() ?? throw new InvalidOperationException("Thumbnail producer returned null.");
         byte[] canonical = Canonicalize(produced);
         lock (Gate)
