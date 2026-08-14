@@ -87,7 +87,10 @@ public partial class AssetForgeMain
 
     private AssetRecipe ReadCategoryRecipeFromUi()
     {
-        AssetRecipe defaults = CategoryDefaults(_activeCategory);
+        // The opened recipe version is authoritative until the user explicitly migrates it. This
+        // is especially important for Lamp@1: LampDefaults is now @2, but merely editing/saving an
+        // old recipe must not opt it into literal template placement or baked emitter semantics.
+        AssetRecipe defaults = CategoryDefaults(_activeCategory) with { PresetVersion = _activePresetVersion };
         AssetRecipe recipe = defaults with
         {
             DisplayName = _displayName.Text.Trim(),
@@ -241,9 +244,10 @@ public partial class AssetForgeMain
         {
             AssetCategory.Glasses when _activePresetVersion >= 2 => "Buddy Studio > Glasses / glasses@2 — literal 1024×1024 Buddy-head placement",
             AssetCategory.Glasses => "Buddy Studio > Glasses / glasses@1 — legacy auto-fit placement",
-            AssetCategory.Lamp => "Environment > Lamp / lamp@2 — literal floor-template placement with visual light metadata",
+            AssetCategory.Lamp when _activePresetVersion >= 2 => "Environment > Lamp / lamp@2 — literal floor-template placement with visual light metadata",
+            AssetCategory.Lamp => "Environment > Lamp / lamp@1 — legacy visible-bounds auto-fit placement",
             AssetCategory.Sofa => "Environment > Sofa / sofa@1 — front-only stylized 2.5D, literal floor-template placement",
-            _ => $"Buddy Studio > {display} / {CategoryDefaults(_activeCategory).PresetId}@1 — literal 1024×1024 replacement placement",
+            _ => $"Buddy Studio > {display} / {CategoryDefaults(_activeCategory).PresetId}@{_activePresetVersion} — literal 1024×1024 replacement placement",
         };
         if (GodotObject.IsInstanceValid(_reference))
             _reference.Text = _activeCategory switch
