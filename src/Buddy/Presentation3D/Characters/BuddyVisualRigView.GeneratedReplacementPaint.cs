@@ -67,11 +67,6 @@ public partial class BuddyVisualRigView
         paint.Visible = texture is not null;
     }
 
-    /// <summary>
-    /// Paint-editor mapping against the actual visible replacement triangles. This intentionally
-    /// avoids the legacy sphere/capsule mapper: arbitrary Asset Forge silhouettes, holes, depth,
-    /// body yaw and the mirrored left foot all resolve through their real mesh UVs.
-    /// </summary>
     internal bool TryMapGeneratedReplacementPaintHit(Vector2 paintWorldPoint, out PaintHit hit)
     {
         hit = default;
@@ -172,9 +167,10 @@ public partial class BuddyVisualRigView
 
     /// <summary>
     /// Fast replacement paint hit-test. Mesh arrays are immutable for an equipped generated asset,
-    /// so extract them once and cache local-space triangles/UVs. Each pointer sample transforms one
-    /// ray into mesh-local space instead of transforming every vertex into world space. Per-triangle
-    /// AABB rejection removes most Moller-Trumbore tests before barycentric UV interpolation.
+    /// so extraction and BVH construction happen once per imported ArrayMesh. Each pointer sample
+    /// transforms one ray into mesh-local space and traverses only intersected BVH nodes instead of
+    /// scanning tens of thousands of triangles. This keeps old 256-resolution assets usable while
+    /// new replacements export at the lighter 128-resolution default.
     /// </summary>
     private static bool TryRaycastGeneratedSurface(
         MeshInstance3D surface,
@@ -194,7 +190,7 @@ public partial class BuddyVisualRigView
             cache = GeneratedPaintMeshCache.Build(mesh);
             GeneratedPaintCaches[cacheKey] = cache;
         }
-        if (cache.Triangles.Length == 0) return false;
+        if (cache.Triangles.Length == 0 || cache.Nodes.Length == 0) return false;
 
         Vector3 worldOrigin = new(paintWorldPoint.X, -paintWorldPoint.Y, 4096f);
         Vector3 worldDirection = new(0f, 0f, -1f);
@@ -206,21 +202,41 @@ public partial class BuddyVisualRigView
         float bestWorldDistance = float.PositiveInfinity;
         float bestWorldDepth = float.NegativeInfinity;
         Vector2 bestUv = default;
-        foreach (GeneratedPaintTriangle triangle in cache.Triangles)
-        {
-            if (!RayAabb(localOrigin, localDirection, triangle.Min, triangle.Max)) continue;
-            if (!RayTriangle(localOrigin, localDirection, triangle.A, triangle.B, triangle.C,
-                    out float localDistance, out float baryB, out float baryC)) continue;
+        int[] stack = new int[Math.Max(64, cache.MaxTreeDepth * 2 + 8)];
+        int stackCount = 1;
+        stack[0] = 0;
 
-            Vector3 localHit = localOrigin + localDirection * localDistance;
-            Vector3 worldHit = surface.GlobalTransform * localHit;
-            float worldDistance = worldOrigin.DistanceTo(worldHit);
-            if (worldDistance >= bestWorldDistance) continue;
-            float baryA = 1f - baryB - baryC;
-            bestUv = triangle.UvA * baryA + triangle.UvB * baryB + triangle.UvC * baryC;
-            bestWorldDistance = worldDistance;
-            bestWorldDepth = worldHit.Z;
-            found = true;
+        while (stackCount > 0)
+        {
+            BvhNode node = cache.Nodes[stack[--stackCount]];
+            if (!RayAabb(localOrigin, localDirection, node.Min, node.Max, out _)) continue;
+
+            if (node.IsLeaf)
+            {
+                int end = node.Start + node.Count;
+                for (int i = node.Start; i < end; i++)
+                {
+                    GeneratedPaintTriangle triangle = cache.Triangles[i];
+                    if (!RayTriangle(localOrigin, localDirection, triangle.A, triangle.B, triangle.C,
+                            out float localDistance, out float baryB, out float baryC)) continue;
+                    Vector3 localHit = localOrigin + localDirection * localDistance;
+                    Vector3 worldHit = surface.GlobalTransform * localHit;
+                    float candidate = worldOrigin.DistanceTo(worldHit);
+                    if (candidate >= bestWorldDistance) continue;
+                    float baryA = 1f - baryB - baryC;
+                    bestUv = triangle.UvA * baryA + triangle.UvB * baryB + triangle.UvC * baryC;
+                    bestWorldDistance = candidate;
+                    bestWorldDepth = worldHit.Z;
+                    found = true;
+                }
+                continue;
+            }
+
+            if (stackCount + 2 > stack.Length) Array.Resize(ref stack, stack.Length * 2);
+            // Traversal order is deterministic. The closest triangle is still chosen by actual
+            // world-ray distance, so ordering has no effect on authored paint results.
+            stack[stackCount++] = node.Right;
+            stack[stackCount++] = node.Left;
         }
 
         hitUv = bestUv;
@@ -229,13 +245,15 @@ public partial class BuddyVisualRigView
         return found;
     }
 
-    private static bool RayAabb(Vector3 origin, Vector3 direction, Vector3 min, Vector3 max)
+    private static bool RayAabb(Vector3 origin, Vector3 direction, Vector3 min, Vector3 max, out float nearDistance)
     {
         float tMin = 0f;
         float tMax = float.PositiveInfinity;
-        return Axis(origin.X, direction.X, min.X, max.X, ref tMin, ref tMax) &&
-               Axis(origin.Y, direction.Y, min.Y, max.Y, ref tMin, ref tMax) &&
-               Axis(origin.Z, direction.Z, min.Z, max.Z, ref tMin, ref tMax);
+        bool hit = Axis(origin.X, direction.X, min.X, max.X, ref tMin, ref tMax) &&
+                   Axis(origin.Y, direction.Y, min.Y, max.Y, ref tMin, ref tMax) &&
+                   Axis(origin.Z, direction.Z, min.Z, max.Z, ref tMin, ref tMax);
+        nearDistance = tMin;
+        return hit;
 
         static bool Axis(float originValue, float directionValue, float minValue, float maxValue, ref float near, ref float far)
         {
@@ -282,13 +300,21 @@ public partial class BuddyVisualRigView
 
     private sealed class GeneratedPaintMeshCache
     {
+        private const int LeafSize = 16;
         public GeneratedPaintTriangle[] Triangles { get; }
+        public BvhNode[] Nodes { get; }
+        public int MaxTreeDepth { get; }
 
-        private GeneratedPaintMeshCache(GeneratedPaintTriangle[] triangles) => Triangles = triangles;
+        private GeneratedPaintMeshCache(GeneratedPaintTriangle[] triangles, BvhNode[] nodes, int maxTreeDepth)
+        {
+            Triangles = triangles;
+            Nodes = nodes;
+            MaxTreeDepth = maxTreeDepth;
+        }
 
         public static GeneratedPaintMeshCache Build(ArrayMesh mesh)
         {
-            var triangles = new List<GeneratedPaintTriangle>();
+            var triangleList = new List<GeneratedPaintTriangle>();
             for (int surfaceIndex = 0; surfaceIndex < mesh.GetSurfaceCount(); surfaceIndex++)
             {
                 if (mesh.SurfaceGetPrimitiveType(surfaceIndex) != Mesh.PrimitiveType.Triangles) continue;
@@ -312,27 +338,100 @@ public partial class BuddyVisualRigView
                 void Add(int ia, int ib, int ic)
                 {
                     if ((uint)ia >= (uint)vertices.Length || (uint)ib >= (uint)vertices.Length || (uint)ic >= (uint)vertices.Length) return;
-                    triangles.Add(new GeneratedPaintTriangle(
+                    triangleList.Add(GeneratedPaintTriangle.Create(
                         vertices[ia], vertices[ib], vertices[ic],
                         uvs[ia], uvs[ib], uvs[ic]));
                 }
             }
-            return new GeneratedPaintMeshCache(triangles.ToArray());
+
+            GeneratedPaintTriangle[] triangles = triangleList.ToArray();
+            if (triangles.Length == 0) return new GeneratedPaintMeshCache(triangles, [], 0);
+            var nodes = new List<BvhNode>(triangles.Length / LeafSize * 2 + 1);
+            int maxDepth = 0;
+            BuildNode(triangles, nodes, 0, triangles.Length, 0, ref maxDepth);
+            return new GeneratedPaintMeshCache(triangles, nodes.ToArray(), maxDepth);
         }
+
+        private static int BuildNode(
+            GeneratedPaintTriangle[] triangles,
+            List<BvhNode> nodes,
+            int start,
+            int count,
+            int depth,
+            ref int maxDepth)
+        {
+            maxDepth = Math.Max(maxDepth, depth);
+            Bounds(triangles, start, count, out Vector3 min, out Vector3 max);
+            int nodeIndex = nodes.Count;
+            nodes.Add(default);
+            if (count <= LeafSize)
+            {
+                nodes[nodeIndex] = new BvhNode(min, max, start, count, -1, -1);
+                return nodeIndex;
+            }
+
+            Vector3 extent = max - min;
+            int axis = extent.X >= extent.Y && extent.X >= extent.Z ? 0 : extent.Y >= extent.Z ? 1 : 2;
+            Array.Sort(triangles, start, count, Comparer<GeneratedPaintTriangle>.Create((a, b) =>
+                Axis(a.Center, axis).CompareTo(Axis(b.Center, axis))));
+            int leftCount = count / 2;
+            int left = BuildNode(triangles, nodes, start, leftCount, depth + 1, ref maxDepth);
+            int right = BuildNode(triangles, nodes, start + leftCount, count - leftCount, depth + 1, ref maxDepth);
+            nodes[nodeIndex] = new BvhNode(min, max, start, 0, left, right);
+            return nodeIndex;
+        }
+
+        private static void Bounds(GeneratedPaintTriangle[] triangles, int start, int count, out Vector3 min, out Vector3 max)
+        {
+            min = triangles[start].Min;
+            max = triangles[start].Max;
+            int end = start + count;
+            for (int i = start + 1; i < end; i++)
+            {
+                min = new Vector3(
+                    Mathf.Min(min.X, triangles[i].Min.X),
+                    Mathf.Min(min.Y, triangles[i].Min.Y),
+                    Mathf.Min(min.Z, triangles[i].Min.Z));
+                max = new Vector3(
+                    Mathf.Max(max.X, triangles[i].Max.X),
+                    Mathf.Max(max.Y, triangles[i].Max.Y),
+                    Mathf.Max(max.Z, triangles[i].Max.Z));
+            }
+        }
+
+        private static float Axis(Vector3 value, int axis) => axis switch
+        {
+            0 => value.X,
+            1 => value.Y,
+            _ => value.Z,
+        };
+    }
+
+    private readonly record struct BvhNode(Vector3 Min, Vector3 Max, int Start, int Count, int Left, int Right)
+    {
+        public bool IsLeaf => Count > 0;
     }
 
     private readonly record struct GeneratedPaintTriangle(
         Vector3 A, Vector3 B, Vector3 C,
-        Vector2 UvA, Vector2 UvB, Vector2 UvC)
+        Vector2 UvA, Vector2 UvB, Vector2 UvC,
+        Vector3 Min, Vector3 Max, Vector3 Center)
     {
         private const float Padding = 0.0001f;
-        public Vector3 Min => new(
-            Mathf.Min(A.X, Mathf.Min(B.X, C.X)) - Padding,
-            Mathf.Min(A.Y, Mathf.Min(B.Y, C.Y)) - Padding,
-            Mathf.Min(A.Z, Mathf.Min(B.Z, C.Z)) - Padding);
-        public Vector3 Max => new(
-            Mathf.Max(A.X, Mathf.Max(B.X, C.X)) + Padding,
-            Mathf.Max(A.Y, Mathf.Max(B.Y, C.Y)) + Padding,
-            Mathf.Max(A.Z, Mathf.Max(B.Z, C.Z)) + Padding);
+
+        public static GeneratedPaintTriangle Create(
+            Vector3 a, Vector3 b, Vector3 c,
+            Vector2 uvA, Vector2 uvB, Vector2 uvC)
+        {
+            Vector3 min = new(
+                Mathf.Min(a.X, Mathf.Min(b.X, c.X)) - Padding,
+                Mathf.Min(a.Y, Mathf.Min(b.Y, c.Y)) - Padding,
+                Mathf.Min(a.Z, Mathf.Min(b.Z, c.Z)) - Padding);
+            Vector3 max = new(
+                Mathf.Max(a.X, Mathf.Max(b.X, c.X)) + Padding,
+                Mathf.Max(a.Y, Mathf.Max(b.Y, c.Y)) + Padding,
+                Mathf.Max(a.Z, Mathf.Max(b.Z, c.Z)) + Padding);
+            return new GeneratedPaintTriangle(a, b, c, uvA, uvB, uvC, min, max, (a + b + c) / 3f);
+        }
     }
 }
