@@ -100,10 +100,9 @@ public static class PartReplacementGenerator
     }
 
     /// <summary>
-    /// Deterministic chamfer-distance + relaxation field. The old generator used four-neighbour
-    /// Manhattan rings, which became visible as horizontal/vertical ridges under Buddy lighting.
-    /// Diagonal distance plus several bounded relaxation passes produces a continuous-looking
-    /// height field while keeping the authored alpha silhouette and holes unchanged.
+    /// Deterministic chamfer-distance + relaxation field. 0..1 gives the normal softening range;
+    /// values above 1 intentionally add more relaxation passes (up to 30 at 3.0) so artists can
+    /// push plush/cartoon forms further without changing the authored XY silhouette.
     /// </summary>
     private static float[] BuildSmoothInwardDistance(MaskGrid grid, double smoothness)
     {
@@ -121,7 +120,6 @@ public static class PartReplacementGenerator
             distance[index] = IsBoundary(grid, x, y) ? 0f : infinity;
         }
 
-        // Forward chamfer pass.
         for (int y = 0; y < grid.Height; y++)
         for (int x = 0; x < grid.Width; x++)
         {
@@ -133,7 +131,6 @@ public static class PartReplacementGenerator
             Relax(grid, distance, x, y, index, 1, -1, DiagonalWeight);
         }
 
-        // Backward chamfer pass.
         for (int y = grid.Height - 1; y >= 0; y--)
         for (int x = grid.Width - 1; x >= 0; x--)
         {
@@ -145,7 +142,7 @@ public static class PartReplacementGenerator
             Relax(grid, distance, x, y, index, -1, 1, DiagonalWeight);
         }
 
-        int passes = Math.Clamp((int)Math.Round(Math.Clamp(smoothness, 0.0, 1.0) * 10.0), 1, 10);
+        int passes = Math.Clamp((int)Math.Round(Math.Clamp(smoothness, 0.0, 3.0) * 10.0), 1, 30);
         float[] scratch = new float[distance.Length];
         for (int pass = 0; pass < passes; pass++)
         {
@@ -236,15 +233,12 @@ public static class PartReplacementGenerator
         float normalized = maximumInset <= 0.0001f ? 0f : Math.Clamp(inset / maximumInset, 0f, 1f);
         if (settings.ShapeMode == ShapeMode.InflatedSolid)
         {
-            // A sine dome has a much softer derivative than sqrt(distance) near the medial axis,
-            // which removes the hard contour bands visible in the first torso/foot prototype.
             float profile = MathF.Sin(MathF.Pow(normalized, 0.82f + (1f - roundness) * 0.55f) * MathF.PI * 0.5f);
             float edgeFactor = 0.18f + (1f - roundness) * 0.24f;
             return halfDepth * (edgeFactor + (1f - edgeFactor) * profile);
         }
         if (settings.ShapeMode == ShapeMode.Relief)
         {
-            // "Soft pillow": a broad, deliberately shallow edge transition for plush/cartoon forms.
             float profile = SmoothStep(MathF.Pow(normalized, 0.72f));
             float edgeFactor = 0.48f - roundness * 0.16f;
             return halfDepth * (edgeFactor + (1f - edgeFactor) * profile);
