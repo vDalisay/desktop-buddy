@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - asset-forge
+  pull_request:
+    branches:
+      - asset-forge
 
 env:
   GODOT_VERSION: 4.6.1-stable
@@ -73,6 +76,12 @@ jobs:
 
       - name: Exercise generated torso and foot visual replacements
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_replacements --seed=1
+
+      - name: Gate generated replacement front/back paint UV separation
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_paint_uvs --seed=1
+
+      - name: Gate Buddy Studio owned-preview Use Character persistence
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=buddy_studio_ownership_preview --seed=1
 
       - name: Gate generated replacement outline, paint mapping, and connector fitting
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_replacement_connector_fit --seed=1

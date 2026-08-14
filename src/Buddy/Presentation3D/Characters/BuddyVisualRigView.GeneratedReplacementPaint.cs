@@ -8,15 +8,15 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 
 /// <summary>
 /// Presentation-only support for Asset Forge torso/foot replacements. Generated meshes stay visual
-/// replacements; the trusted 2D bodies remain authoritative. This seam keeps outline/paint shell
-/// thickness in world units, binds the existing character paint surfaces to the replacement mesh,
+/// replacements; the trusted 2D bodies remain authoritative. This seam keeps outline thickness in
+/// world units, binds the existing character paint surfaces to the replacement mesh,
 /// and performs editor-only triangle/UV hit testing against the visible generated geometry.
 /// </summary>
 public partial class BuddyVisualRigView
 {
     private const string GeneratedOutlineName = "GeneratedOutline";
-    private const string GeneratedPaintName = "GeneratedPaint";
     private static readonly Dictionary<ulong, GeneratedPaintMeshCache> GeneratedPaintCaches = [];
+    private static readonly Dictionary<(ulong Mesh, bool Limb), ArrayMesh> GeneratedPaintSurfaceMeshes = [];
     private static long _generatedPaintRaycastCount;
     private static long _generatedPaintBvhNodeVisitCount;
     private static long _generatedPaintTriangleTestCount;
@@ -48,29 +48,121 @@ public partial class BuddyVisualRigView
             outline.Scale = Vector3.One * _materials.ReplacementOutlineScale(targetRadius);
         }
 
-        MeshInstance3D? paint = surface.GetNodeOrNull<MeshInstance3D>(GeneratedPaintName);
-        if (!GodotObject.IsInstanceValid(paint))
+        surface.Mesh = ResolveGeneratedPaintSurfaceMesh(surface.Mesh, paintPart);
+        Texture2D? texture = _surfaceUnderlays[(int)partId];
+        if (surface.MaterialOverride is not StandardMaterial3D material) return;
+        material.DetailUVLayer = BaseMaterial3D.DetailUV.UV2;
+        material.DetailBlendMode = BaseMaterial3D.BlendModeEnum.Mix;
+        material.DetailAlbedo = texture;
+        material.DetailEnabled = texture is not null;
+    }
+
+    /// <summary>
+    /// Asset Forge albedo deliberately reuses the authored UVs on both sides of the generated
+    /// volume. Paint cannot do that: otherwise a mark on the front samples the same texel on the
+    /// back. The paint-only shell therefore gives front and back separate halves of the local U
+    /// range. The current inflated generator shares the geometric rim between both halves, so the
+    /// surface mesh duplicates only vertices that are referenced from both sides and stores paint
+    /// coordinates in UV2 while preserving authored albedo coordinates in UV1. That creates a real
+    /// UV seam without changing the visible surface or triangle count. PaintWorkspace's existing
+    /// "Paint backside too" transform can then add 0.5 local U to reach the opposite side.
+    /// </summary>
+    private static ArrayMesh ResolveGeneratedPaintSurfaceMesh(Mesh source, PaintPart paintPart)
+    {
+        if (source is not ArrayMesh mesh)
+            throw new InvalidOperationException("Generated replacement paint requires an ArrayMesh.");
+
+        var cacheKey = (mesh.GetInstanceId(), PaintUvRegion.IsLimb(paintPart));
+        if (GeneratedPaintSurfaceMeshes.TryGetValue(cacheKey, out ArrayMesh? cached) &&
+            GodotObject.IsInstanceValid(cached))
+            return cached;
+
+        foreach (ArrayMesh generated in GeneratedPaintSurfaceMeshes.Values)
+            if (ReferenceEquals(generated, mesh))
+                return mesh;
+
+        var paintMesh = new ArrayMesh();
+        for (int surfaceIndex = 0; surfaceIndex < mesh.GetSurfaceCount(); surfaceIndex++)
         {
-            StandardMaterial3D paintMaterial = _materials.CreateScaledPaintMaterial(targetRadius);
-            if (PaintUvRegion.IsLimb(paintPart))
-                paintMaterial.Uv1Scale = new Vector3(0.5f, 1.0f, 1.0f);
-            paint = new MeshInstance3D
+            if (mesh.SurfaceGetPrimitiveType(surfaceIndex) != Mesh.PrimitiveType.Triangles)
+                throw new InvalidOperationException("Generated replacement paint only supports triangle surfaces.");
+
+            Godot.Collections.Array sourceArrays = mesh.SurfaceGetArrays(surfaceIndex);
+            Vector3[] vertices = sourceArrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            Vector3[] normals = sourceArrays[(int)Mesh.ArrayType.Normal].AsVector3Array();
+            Vector2[] authoredUvs = sourceArrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+            int[] indices = sourceArrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+            if (vertices.Length < 3 || normals.Length != vertices.Length || authoredUvs.Length != vertices.Length)
+                throw new InvalidOperationException("Generated replacement paint requires position, normal, and UV data for every vertex.");
+
+            var paintVertices = new List<Vector3>(vertices.Length + 128);
+            var paintNormals = new List<Vector3>(vertices.Length + 128);
+            var albedoUvs = new List<Vector2>(vertices.Length + 128);
+            var paintUvs = new List<Vector2>(vertices.Length + 128);
+            var paintIndices = new List<int>(indices.Length > 0 ? indices.Length : vertices.Length);
+            var remap = new Dictionary<(int Source, bool Back), int>();
+
+            if (indices.Length >= 3)
             {
-                Name = GeneratedPaintName,
-                Mesh = surface.Mesh,
-                MaterialOverride = paintMaterial,
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-                PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
-                Visible = false,
-            };
-            surface.AddChild(paint);
+                for (int i = 0; i + 2 < indices.Length; i += 3)
+                    AddTriangle(indices[i], indices[i + 1], indices[i + 2]);
+            }
+            else
+            {
+                for (int i = 0; i + 2 < vertices.Length; i += 3)
+                    AddTriangle(i, i + 1, i + 2);
+            }
+
+            var paintArrays = new Godot.Collections.Array();
+            paintArrays.Resize((int)Mesh.ArrayType.Max);
+            paintArrays[(int)Mesh.ArrayType.Vertex] = paintVertices.ToArray();
+            paintArrays[(int)Mesh.ArrayType.Normal] = paintNormals.ToArray();
+            paintArrays[(int)Mesh.ArrayType.TexUV] = albedoUvs.ToArray();
+            paintArrays[(int)Mesh.ArrayType.TexUV2] = paintUvs.ToArray();
+            paintArrays[(int)Mesh.ArrayType.Index] = paintIndices.ToArray();
+            paintMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, paintArrays);
+
+            void AddTriangle(int ia, int ib, int ic)
+            {
+                if ((uint)ia >= (uint)vertices.Length || (uint)ib >= (uint)vertices.Length || (uint)ic >= (uint)vertices.Length)
+                    throw new InvalidOperationException("Generated replacement mesh contains an out-of-range triangle index.");
+                bool back = IsBackPaintTriangle(vertices[ia], vertices[ib], vertices[ic]);
+                paintIndices.Add(Map(ia, back));
+                paintIndices.Add(Map(ib, back));
+                paintIndices.Add(Map(ic, back));
+            }
+
+            int Map(int sourceIndex, bool back)
+            {
+                var key = (sourceIndex, back);
+                if (remap.TryGetValue(key, out int mapped))
+                    return mapped;
+                mapped = paintVertices.Count;
+                remap.Add(key, mapped);
+                paintVertices.Add(vertices[sourceIndex]);
+                paintNormals.Add(normals[sourceIndex]);
+                albedoUvs.Add(authoredUvs[sourceIndex]);
+                Vector2 paintUv = GeneratedPaintAtlasUv(authoredUvs[sourceIndex], back);
+                if (PaintUvRegion.IsLimb(paintPart))
+                    paintUv.X *= 0.5f;
+                paintUvs.Add(paintUv);
+                return mapped;
+            }
         }
 
-        Texture2D? texture = _surfaceUnderlays[(int)partId];
-        if (paint!.MaterialOverride is StandardMaterial3D material &&
-            !ReferenceEquals(material.AlbedoTexture, texture))
-            material.AlbedoTexture = texture;
-        paint.Visible = texture is not null;
+        GeneratedPaintSurfaceMeshes[cacheKey] = paintMesh;
+        return paintMesh;
+    }
+
+    private static bool IsBackPaintTriangle(Vector3 a, Vector3 b, Vector3 c) =>
+        a.Z + b.Z + c.Z < 0f;
+
+    private static Vector2 GeneratedPaintAtlasUv(Vector2 authoredUv, bool back)
+    {
+        float localU = Mathf.Clamp(authoredUv.X, 0f, 1f) * 0.5f;
+        if (back)
+            localU += 0.5f;
+        return new Vector2(localU, authoredUv.Y);
     }
 
     internal bool TryMapGeneratedReplacementPaintHit(Vector2 paintWorldPoint, out PaintHit hit)
@@ -115,7 +207,7 @@ public partial class BuddyVisualRigView
     internal bool HasGeneratedReplacementPaintParts =>
         _torsoVisualReplaced || _leftFootVisualReplaced || _rightFootVisualReplaced;
 
-    internal int GeneratedReplacementPaintShellCountForTest
+    internal int GeneratedReplacementPaintSurfaceCountForTest
     {
         get
         {
@@ -129,7 +221,7 @@ public partial class BuddyVisualRigView
             {
                 if (!IsPartVisualReplaced(part) || !GodotObject.IsInstanceValid(root)) return;
                 MeshInstance3D? surface = ResolveGeneratedReplacementSurface(root!, part);
-                if (GodotObject.IsInstanceValid(surface?.GetNodeOrNull<MeshInstance3D>(GeneratedPaintName))) count++;
+                if (surface?.Mesh is ArrayMesh mesh && MeshHasUv2(mesh)) count++;
             }
         }
     }
@@ -159,6 +251,44 @@ public partial class BuddyVisualRigView
                 ok &= !material.Grow && outline.Scale.IsEqualApprox(Vector3.One * wantedScale);
             }
         }
+    }
+
+    internal bool GeneratedReplacementPaintUsesSurfaceDetailForTest
+    {
+        get
+        {
+            bool ok = true;
+            Check(_topVisual, BuddyPartId.Torso);
+            Check(_shoesVisual, BuddyPartId.LeftFoot);
+            Check(_rightShoesVisual, BuddyPartId.RightFoot);
+            return ok;
+
+            void Check(Node3D? root, BuddyPartId part)
+            {
+                if (!IsPartVisualReplaced(part) || !GodotObject.IsInstanceValid(root)) return;
+                MeshInstance3D? surface = ResolveGeneratedReplacementSurface(root!, part);
+                if (surface?.Mesh is not ArrayMesh mesh || !MeshHasUv2(mesh) ||
+                    surface.MaterialOverride is not StandardMaterial3D material)
+                {
+                    ok = false;
+                    return;
+                }
+                ok &= material.DetailUVLayer == BaseMaterial3D.DetailUV.UV2 &&
+                      surface.GetNodeOrNull<MeshInstance3D>("GeneratedPaint") is null;
+            }
+        }
+    }
+
+    private static bool MeshHasUv2(ArrayMesh mesh)
+    {
+        for (int surfaceIndex = 0; surfaceIndex < mesh.GetSurfaceCount(); surfaceIndex++)
+        {
+            Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surfaceIndex);
+            if (arrays[(int)Mesh.ArrayType.TexUV2].AsVector2Array().Length !=
+                arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array().Length)
+                return false;
+        }
+        return mesh.GetSurfaceCount() > 0;
     }
 
     private MeshInstance3D? ResolveGeneratedReplacementSurface(Node3D visualRoot, BuddyPartId partId)
@@ -197,7 +327,7 @@ public partial class BuddyVisualRigView
         if (generatedRoot is MeshInstance3D direct) return direct;
         foreach (Node child in generatedRoot!.FindChildren("*", nameof(MeshInstance3D), true, false))
         {
-            if (child is MeshInstance3D mesh && mesh.Name != GeneratedOutlineName && mesh.Name != GeneratedPaintName)
+            if (child is MeshInstance3D mesh && mesh.Name != GeneratedOutlineName)
                 return mesh;
         }
         return null;
@@ -379,9 +509,12 @@ public partial class BuddyVisualRigView
                 void Add(int ia, int ib, int ic)
                 {
                     if ((uint)ia >= (uint)vertices.Length || (uint)ib >= (uint)vertices.Length || (uint)ic >= (uint)vertices.Length) return;
+                    bool back = IsBackPaintTriangle(vertices[ia], vertices[ib], vertices[ic]);
                     triangleList.Add(GeneratedPaintTriangle.Create(
                         vertices[ia], vertices[ib], vertices[ic],
-                        uvs[ia], uvs[ib], uvs[ic]));
+                        GeneratedPaintAtlasUv(uvs[ia], back),
+                        GeneratedPaintAtlasUv(uvs[ib], back),
+                        GeneratedPaintAtlasUv(uvs[ic], back)));
                 }
             }
 

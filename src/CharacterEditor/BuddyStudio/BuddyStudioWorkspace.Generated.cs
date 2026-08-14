@@ -110,8 +110,10 @@ public partial class BuddyStudioWorkspace
             : purchasable ? "Buy this cosmetic permanently; equip it with the next action."
             : "This generated cosmetic has no valid commerce entry.";
 
-        _color.Disabled = true;
-        _presets.Visible = false;
+        bool hasColor = definition.ColorChannels.Count > 0;
+        _color.Disabled = !hasColor;
+        _presets.Visible = hasColor;
+        _color.Color = FromRgba(CharacterDocumentEditor.ReadFeatureColor(_session.PreviewDocument!, _slot));
         _move.Disabled = true;
         _smaller.Disabled = true;
         _larger.Disabled = true;

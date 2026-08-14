@@ -91,15 +91,6 @@ public sealed class BuddyLookMaterialLibrary
         return 1f + (_look.OutlineGrowAmount / scale);
     }
 
-    public StandardMaterial3D CreateScaledPaintMaterial(float meshScale)
-    {
-        float scale = SafeMeshScale(meshScale);
-        StandardMaterial3D material = CreatePaintMaterial();
-        material.ResourceName = "BuddyLookScaledPaintMaterial";
-        material.GrowAmount = PaintShellGrowAmount / scale;
-        return material;
-    }
-
     private static float SafeMeshScale(float meshScale)
     {
         if (!float.IsFinite(meshScale) || meshScale <= 0.0001f)

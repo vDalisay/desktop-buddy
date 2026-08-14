@@ -226,7 +226,7 @@ public partial class BuddyVisualRigView : Node3D
 
         if (layer.MaterialOverride is StandardMaterial3D material)
             material.AlbedoTexture = texture;
-        layer.Visible = texture is not null;
+        layer.Visible = texture is not null && !IsPartVisualReplaced(partId);
 
         for (int connectorIndex = 0; connectorIndex < _connectorDefinitions.Length; connectorIndex++)
         {
@@ -238,6 +238,8 @@ public partial class BuddyVisualRigView : Node3D
                 connectorMaterial.AlbedoTexture = texture;
             connectorLayer.Visible = texture is not null && _connectorMeshes[connectorIndex].Visible;
         }
+
+        RefreshGeneratedReplacementVisuals();
     }
 
     internal Texture2D? SurfaceUnderlay(BuddyPartId partId) =>

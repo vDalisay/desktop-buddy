@@ -418,6 +418,7 @@ public sealed class CharacterEditorSession
     public async Task<CharacterEditorActionResult> UseCharacterAsync(CancellationToken token = default)
     {
         CancelTransientPaintPreview();
+        CommitOwnedCosmeticPreviews();
         CancelCosmeticPreviews();
         CharacterEditorActionResult saved = IsDirty ? await SaveAsync(token) : new CharacterEditorActionResult(true);
         if (!saved.Completed || WorkingDocument is null) return saved;
@@ -577,6 +578,25 @@ public sealed class CharacterEditorSession
     }
 
     private void CancelTransientPaintPreview() => _paintWorkspace?.CancelPreviewTransaction();
+
+    /// <summary>
+    /// "Use Character" means the appearance currently visible in the editor. Owned catalogue
+    /// previews are therefore promoted into the working document before save/activation. Unowned
+    /// previews remain transient and are still discarded. This prevents a generated torso selected
+    /// in Buddy Studio from disappearing when Paint Buddy activates the same visible character.
+    /// </summary>
+    private void CommitOwnedCosmeticPreviews()
+    {
+        if (WorkingDocument is null || _ownedPreviews.Count == 0)
+            return;
+
+        CharacterDocument committed = WorkingDocument;
+        foreach ((CharacterFeatureSlot slot, CharacterFeatureDocument feature) in
+                 _ownedPreviews.OrderBy(static pair => pair.Key))
+            committed = CharacterDocumentEditor.SetFeatureDocument(committed, slot, feature);
+        _ownedPreviews.Clear();
+        SetWorking(committed, _savedDocument);
+    }
 
     private CharacterEditorActionResult Mutate(Func<CharacterDocument, CharacterDocument> mutation)
     {
