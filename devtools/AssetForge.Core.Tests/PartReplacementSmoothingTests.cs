@@ -29,7 +29,7 @@ public sealed class PartReplacementSmoothingTests
     }
 
     [Fact]
-    public void Extended_smoothing_above_one_is_valid_deterministic_and_changes_depth_field()
+    public void Extended_smoothing_above_one_is_valid_deterministic_and_changes_geometry()
     {
         byte[] png = PngCodec.EncodeRgba8(Ellipse(512, 500, 170, 225));
         AssetRecipe basis = Fast(AssetRecipe.TorsoShapeDefaults());
@@ -47,26 +47,47 @@ public sealed class PartReplacementSmoothingTests
     }
 
     [Fact]
-    public void Side_rim_fairing_reduces_grid_staircase_without_adding_triangles()
+    public void Rounded_side_shell_adds_bounded_bevel_and_shares_normals_with_cap()
     {
         AssetRecipe basis = Fast(AssetRecipe.TorsoShapeDefaults());
-        GeometrySettings geometry = basis.Geometry with { SurfaceSmoothness = 1.0 };
+        GeometrySettings geometry = basis.Geometry with
+        {
+            SurfaceSmoothness = 1.0,
+            Roundness = 0.9,
+        };
         RgbaImage source = Ellipse(512, 500, 205, 265);
         MaskGrid mask = MaskGrid.FromImage(source, geometry);
 
         CanonicalMesh raw = PartReplacementGenerator.Generate(mask, geometry, AssetCategory.TorsoShape);
-        double rawRoughness = RimRoughness(raw);
-        int triangles = raw.TriangleCount;
-
         CanonicalMesh processed = PartReplacementMeshPostprocessor.Apply(
             PartReplacementGenerator.Generate(mask, geometry, AssetCategory.TorsoShape),
             geometry);
-        double processedRoughness = RimRoughness(processed);
 
-        Assert.Equal(triangles, processed.TriangleCount);
-        Assert.True(rawRoughness > 0.0);
-        Assert.True(processedRoughness < rawRoughness * 0.70,
-            $"Expected 3D rim fairing to remove high-frequency staircase turns; raw={rawRoughness:F6}, processed={processedRoughness:F6}.");
+        Assert.True(processed.TriangleCount > raw.TriangleCount,
+            "Rounded edge treatment should replace the single flat side wall with a small bevel strip.");
+        Assert.True(processed.TriangleCount < raw.TriangleCount + 4_000,
+            $"Bevel should remain O(perimeter), not densify the cap ({raw.TriangleCount:N0} -> {processed.TriangleCount:N0}).");
+
+        var capVertices = new HashSet<int>();
+        var bevelVertices = new HashSet<int>();
+        for (int triangle = 0; triangle < processed.Indices.Count; triangle += 3)
+        {
+            int a = checked((int)processed.Indices[triangle]);
+            int b = checked((int)processed.Indices[triangle + 1]);
+            int c = checked((int)processed.Indices[triangle + 2]);
+            int uniqueUvs = UniqueUvs(processed.Uvs[a], processed.Uvs[b], processed.Uvs[c]);
+            HashSet<int> target = uniqueUvs <= 2 ? bevelVertices : capVertices;
+            target.Add(a); target.Add(b); target.Add(c);
+        }
+
+        int[] shared = capVertices.Intersect(bevelVertices).ToArray();
+        Assert.NotEmpty(shared);
+        Assert.Contains(shared, index =>
+        {
+            Vector3 normal = processed.Normals[index];
+            float axial = MathF.Abs(normal.Z);
+            return normal.LengthSquared() > 0.99f && axial > 0.05f && axial < 0.995f;
+        });
     }
 
     [Fact]
@@ -127,68 +148,16 @@ public sealed class PartReplacementSmoothingTests
         Assert.Equal(0.0, roundTripped.Geometry.SurfaceSmoothness);
     }
 
-    private static double RimRoughness(CanonicalMesh mesh)
+    private static int UniqueUvs(Vector2 a, Vector2 b, Vector2 c)
     {
-        const float epsilon = 0.000001f;
-        var adjacency = new Dictionary<int, HashSet<int>>();
-        for (int triangle = 0; triangle < mesh.Indices.Count; triangle += 3)
+        var values = new HashSet<(int U, int V)>
         {
-            int a = checked((int)mesh.Indices[triangle]);
-            int b = checked((int)mesh.Indices[triangle + 1]);
-            int c = checked((int)mesh.Indices[triangle + 2]);
-            float za = mesh.Positions[a].Z;
-            float zb = mesh.Positions[b].Z;
-            float zc = mesh.Positions[c].Z;
-            bool side = (za > epsilon || zb > epsilon || zc > epsilon) &&
-                        (za < -epsilon || zb < -epsilon || zc < -epsilon);
-            if (!side)
-                continue;
-            Add(a, b);
-            Add(b, c);
-            Add(c, a);
-        }
+            Key(a), Key(b), Key(c),
+        };
+        return values.Count;
 
-        double total = 0.0;
-        int count = 0;
-        foreach ((int index, HashSet<int> neighbors) in adjacency)
-        {
-            if (neighbors.Count != 2)
-                continue;
-            int[] pair = neighbors.ToArray();
-            Vector2 point = Xy(mesh.Positions[index]);
-            Vector2 first = Xy(mesh.Positions[pair[0]]);
-            Vector2 second = Xy(mesh.Positions[pair[1]]);
-            float localScale = (Vector2.Distance(point, first) + Vector2.Distance(point, second)) * 0.5f;
-            if (localScale <= epsilon)
-                continue;
-            total += Vector2.Distance(point, (first + second) * 0.5f) / localScale;
-            count++;
-        }
-        return count == 0 ? 0.0 : total / count;
-
-        void Add(int left, int right)
-        {
-            float leftZ = mesh.Positions[left].Z;
-            float rightZ = mesh.Positions[right].Z;
-            bool sameFront = leftZ > epsilon && rightZ > epsilon;
-            bool sameBack = leftZ < -epsilon && rightZ < -epsilon;
-            if (!sameFront && !sameBack)
-                return;
-            Neighbor(left, right);
-            Neighbor(right, left);
-        }
-
-        void Neighbor(int index, int neighbor)
-        {
-            if (!adjacency.TryGetValue(index, out HashSet<int>? values))
-            {
-                values = [];
-                adjacency[index] = values;
-            }
-            values.Add(neighbor);
-        }
-
-        static Vector2 Xy(Vector3 value) => new(value.X, value.Y);
+        static (int U, int V) Key(Vector2 value) =>
+            (BitConverter.SingleToInt32Bits(value.X), BitConverter.SingleToInt32Bits(value.Y));
     }
 
     private static AssetRecipe Fast(AssetRecipe recipe) => recipe with
