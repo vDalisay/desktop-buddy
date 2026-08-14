@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
@@ -10,6 +11,7 @@ using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Persistence.Characters;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -62,6 +64,15 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
                 applicationModes,
                 $"top={topVisual.ApplicationMode} shoes={shoesVisual.ApplicationMode}"));
 
+            bool colorChannels =
+                registry.FeatureCatalog.ResolveDefinition(CharacterFeatureSlot.Tops, TopFeatureId, out bool knownTop).ColorChannels.Count > 0 &&
+                registry.FeatureCatalog.ResolveDefinition(CharacterFeatureSlot.Shoes, ShoesFeatureId, out bool knownShoes).ColorChannels.Count > 0 &&
+                knownTop && knownShoes;
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_expose_color_channel",
+                colorChannels,
+                $"top={knownTop} shoes={knownShoes}"));
+
             BuddyVisualRigTrustSnapshot before = context.Preview.CaptureTrustSnapshot();
             CharacterDocument document = CharacterDocument.CreateDefault(
                 Guid.Parse("af200000-0000-4000-8000-000000000001"),
@@ -73,6 +84,26 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
                 "af_generated_replacements_compile",
                 compiled.IsSuccess && compiled.Appearance is not null,
                 $"success={compiled.IsSuccess} errors={compiled.Errors.Count} warnings={compiled.Warnings.Count}"));
+
+            var store = new CharacterStore(
+                new CharacterFileSystem(),
+                context.Root,
+                featureCatalog: registry.FeatureCatalog);
+            CharacterSaveResult persisted = await store.SaveAsync(document, CancellationToken.None);
+            CharacterLoadResult reloaded = await store.LoadAsync(document.Id, CancellationToken.None);
+            CharacterCompileResult reloadedCompile = reloaded.Document is null
+                ? new CharacterCompileResult(null, [new CharacterValidationError("character", "Reload returned no document.")], [])
+                : CharacterCompiler.Compile(reloaded.Document, registry.FeatureCatalog);
+            bool survivesRestart = persisted.IsSuccess && reloaded.IsSuccess && reloaded.Document is not null &&
+                reloadedCompile.IsSuccess && reloadedCompile.Appearance is not null &&
+                CharacterDocumentEditor.ReadFeatureId(reloaded.Document, CharacterFeatureSlot.Tops) == TopFeatureId &&
+                CharacterDocumentEditor.ReadFeatureId(reloaded.Document, CharacterFeatureSlot.Shoes) == ShoesFeatureId &&
+                reloadedCompile.Appearance.Tops.ResolvedFeatureId == TopFeatureId &&
+                reloadedCompile.Appearance.Shoes.ResolvedFeatureId == ShoesFeatureId;
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_survive_reload_and_compile",
+                survivesRestart,
+                $"save={persisted.Status} load={reloaded.Status} top={reloadedCompile.Appearance?.Tops.ResolvedFeatureId} shoes={reloadedCompile.Appearance?.Shoes.ResolvedFeatureId}"));
 
             if (compiled.Appearance is not null)
             {
