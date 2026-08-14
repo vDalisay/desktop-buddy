@@ -1,3 +1,4 @@
+using System.Linq;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Presentation3D;
