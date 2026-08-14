@@ -43,15 +43,10 @@ public sealed class AssetForgeGeneratedPaintUvScenario : IScenario
                 $"success={compiled.IsSuccess} top={compiled.Appearance?.Tops.ResolvedFeatureId} shoes={compiled.Appearance?.Shoes.ResolvedFeatureId}"));
 
             if (compiled.Appearance is not null)
-            {
                 context.Preview.ApplyAppearance(compiled.Appearance);
-                context.Preview.RefreshCharacterCompositors();
-            }
-            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            context.Preview.RefreshCharacterCompositors();
+            context.Preview.RefreshGeneratedReplacementVisualsForTest();
 
-            // RefreshCharacterCompositors creates the paint-only shells. Their validation checks
-            // that front triangles stay in U 0..0.5, back triangles in U 0.5..1, and that the
-            // shared geometric rim actually exists twice with the expected half-atlas separation.
             bool split = context.Preview.GeneratedReplacementPaintUvSeamIsCorrectForTest;
             checks.Add(new StartupCheck(
                 "af_generated_paint_uvs_split_shared_rim",
