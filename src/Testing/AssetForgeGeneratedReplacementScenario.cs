@@ -64,10 +64,13 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
                 applicationModes,
                 $"top={topVisual.ApplicationMode} shoes={shoesVisual.ApplicationMode}"));
 
-            bool colorChannels =
-                registry.FeatureCatalog.ResolveDefinition(CharacterFeatureSlot.Tops, TopFeatureId, out bool knownTop).ColorChannels.Count > 0 &&
-                registry.FeatureCatalog.ResolveDefinition(CharacterFeatureSlot.Shoes, ShoesFeatureId, out bool knownShoes).ColorChannels.Count > 0 &&
-                knownTop && knownShoes;
+            CosmeticDefinition topDefinition = registry.FeatureCatalog.ResolveDefinition(
+                CharacterFeatureSlot.Tops, TopFeatureId, out bool knownTop);
+            CosmeticDefinition shoesDefinition = registry.FeatureCatalog.ResolveDefinition(
+                CharacterFeatureSlot.Shoes, ShoesFeatureId, out bool knownShoes);
+            bool colorChannels = knownTop && knownShoes &&
+                                 topDefinition.ColorChannels.Count > 0 &&
+                                 shoesDefinition.ColorChannels.Count > 0;
             checks.Add(new StartupCheck(
                 "af_generated_replacements_expose_color_channel",
                 colorChannels,
@@ -160,6 +163,12 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
                 "af_generated_replacements_use_uniform_paint_shell",
                 stablePaintShell,
                 $"shells={context.Preview.GeneratedReplacementPaintShellCountForTest} scaleOk={context.Preview.GeneratedReplacementPaintScaleIsCorrectForTest}"));
+
+            bool splitPaintUvs = context.Preview.GeneratedReplacementPaintUvSeamIsCorrectForTest;
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_split_front_back_paint_uvs",
+                splitPaintUvs,
+                $"split={splitPaintUvs}"));
 
             int physicsNodes = (topRoot is null ? 0 : CountPhysics(topRoot)) +
                                (leftShoeRoot is null ? 0 : CountPhysics(leftShoeRoot)) +
