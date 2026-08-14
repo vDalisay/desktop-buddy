@@ -52,8 +52,9 @@ public sealed class EnvironmentSofaTests
         (float X, float Y) a = Center(first.Mesh);
         (float X, float Y) b = Center(shifted.Mesh);
         float units = EnvironmentTemplateMapping.UnitsPerPixel(recipe);
-        Assert.InRange(b.X - a.X, 80f * units - .25f, 80f * units + .25f);
-        Assert.InRange(b.Y - a.Y, 50f * units - .25f, 50f * units + .25f);
+        float oneMaskCellWorld = (EnvironmentTemplateSpace.CanvasSize / (float)recipe.Geometry.GeometryResolution) * units;
+        Assert.InRange(b.X - a.X, 80f * units - oneMaskCellWorld, 80f * units + oneMaskCellWorld);
+        Assert.InRange(b.Y - a.Y, 50f * units - oneMaskCellWorld, 50f * units + oneMaskCellWorld);
         Assert.True(EnvironmentGeneratedBounds.Analyze(first.Mesh).Depth > 1f);
     }
 
@@ -66,7 +67,7 @@ public sealed class EnvironmentSofaTests
             AssetRecipe recipe = FastSofa();
             byte[] source = SofaSource(230, 330);
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            byte[] thumbnail = PngCodec.EncodeRgba8(PngCodec.ResizeBox(PngCodec.DecodeRgba8(source), 256));
+            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
 
             ExportResult result = RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
             Assert.Contains(Path.Combine("authoring", "asset-forge", "sofas"), result.AuthoringDirectory, StringComparison.OrdinalIgnoreCase);
