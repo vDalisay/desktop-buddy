@@ -1,3 +1,4 @@
+using System;
 using System.Globalization;
 using System.IO;
 using Godot;
@@ -87,7 +88,7 @@ public partial class CharacterEditorHost
 
         try
         {
-            File.AppendAllText(ProjectSettings.GlobalizePath(PaintPerformanceRelativePath), line + Environment.NewLine);
+            File.AppendAllText(ProjectSettings.GlobalizePath(PaintPerformanceRelativePath), line + System.Environment.NewLine);
         }
         catch (IOException exception)
         {
@@ -115,7 +116,7 @@ public partial class CharacterEditorHost
                 "timestamp,fps,process_ms,physics_ms,objects,nodes,render_objects,render_primitives,draw_calls," +
                 "static_memory_mb,managed_memory_mb,gc0,gc1,gc2,replacement_parts,replacement_vertices," +
                 "replacement_triangles,paint_cache_meshes,paint_raycasts_per_s,bvh_nodes_per_s," +
-                "triangle_tests_per_s,paint_texture_uploads_per_sample" + Environment.NewLine);
+                "triangle_tests_per_s,paint_texture_uploads_per_sample" + System.Environment.NewLine);
             GD.Print($"[PaintPerf] Writing Paint Buddy diagnostics to: {absolutePath}");
         }
         catch (IOException exception)
