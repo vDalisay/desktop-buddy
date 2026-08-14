@@ -11,17 +11,35 @@ public partial class AssetForgePreview
     {
         _ = delta;
         if (!GodotObject.IsInstanceValid(_asset)) return;
-        MeshInstance3D? instance = _asset!.GetNodeOrNull<MeshInstance3D>("Mesh");
-        if (instance?.MaterialOverride is not StandardMaterial3D material ||
-            ReferenceEquals(material, _lastColorTunedGeneratedMaterial))
+
+        // Runtime generated cosmetics force authored colour textures through sRGB. Do the same in
+        // Forge so preview brightness/hue cannot differ from the equipped item. Foot previews share
+        // one generated material, so tuning it once updates both members of the pair.
+        if (GodotObject.IsInstanceValid(_generatedMaterial) &&
+            !ReferenceEquals(_generatedMaterial, _lastColorTunedGeneratedMaterial))
         {
-            return;
+            _generatedMaterial!.AlbedoTextureForceSrgb = true;
+            _generatedMaterial.EmissionEnergyMultiplier = BuddySharedMaterialFactory.GeneratedAssetEmissionFloor;
+            _lastColorTunedGeneratedMaterial = _generatedMaterial;
         }
 
-        // Runtime generated cosmetics already force authored color textures through sRGB.
-        // Do the same in Forge so preview brightness/hue cannot differ from the equipped item.
-        material.AlbedoTextureForceSrgb = true;
-        material.EmissionEnergyMultiplier = BuddySharedMaterialFactory.GeneratedAssetEmissionFloor;
-        _lastColorTunedGeneratedMaterial = material;
+        // Torso/foot meshes are normalized and their preview roots are then scaled by the trusted
+        // Buddy part radius. StandardMaterial3D.Grow happens before that node transform. Applying
+        // the normal 1.5-unit Buddy outline directly therefore produced the giant navy blobs seen
+        // in owner testing. Divide by the preview-root scale so the final world-space outline stays
+        // exactly the same thickness as a built-in Buddy part.
+        foreach (Node node in _asset!.FindChildren("Outline", nameof(MeshInstance3D), true, false))
+        {
+            if (node is not MeshInstance3D outline ||
+                outline.MaterialOverride is not StandardMaterial3D material ||
+                outline.GetParent() is not Node3D scaledRoot)
+                continue;
+
+            float scale = Mathf.Abs(scaledRoot.Scale.X);
+            if (!float.IsFinite(scale) || scale <= 0.0001f) continue;
+            float wanted = _profile.Look.OutlineGrowAmount / scale;
+            if (!Mathf.IsEqualApprox(material.GrowAmount, wanted))
+                material.GrowAmount = wanted;
+        }
     }
 }
