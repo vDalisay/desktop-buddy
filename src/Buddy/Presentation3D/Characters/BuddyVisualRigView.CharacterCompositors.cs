@@ -28,9 +28,11 @@ public partial class BuddyVisualRigView
             // Keep outline/paint thickness in world units and bind the existing paint surfaces before
             // connector fitting inspects the final visible replacement geometry.
             RefreshGeneratedReplacementVisuals();
-            // Pose remains authoritative. This post-pose visual pass only trims/extends connector
-            // meshes to the actual rendered bounds of active torso/foot replacements.
-            RefreshReplacementConnectorAttachment();
+            // Buddy Studio deliberately hides connector meshes. Do not spend every rendered frame
+            // traversing generated replacement bounds to fit invisible connectors there. Gameplay and
+            // Paint Buddy retain the existing connector attachment pass.
+            if (!_studioPreviewMode)
+                RefreshReplacementConnectorAttachment();
         }
     }
 
