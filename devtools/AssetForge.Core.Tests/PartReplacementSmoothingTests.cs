@@ -28,6 +28,33 @@ public sealed class PartReplacementSmoothingTests
     }
 
     [Fact]
+    public void Extended_smoothing_above_one_is_valid_deterministic_and_changes_depth_field()
+    {
+        byte[] png = PngCodec.EncodeRgba8(Ellipse(512, 500, 170, 225));
+        AssetRecipe basis = Fast(AssetRecipe.TorsoShapeDefaults());
+        AssetRecipe normal = basis with { Geometry = basis.Geometry with { SurfaceSmoothness = 1.0 } };
+        AssetRecipe extra = basis with { Geometry = basis.Geometry with { SurfaceSmoothness = 2.5 } };
+
+        Assert.Empty(extra.Validate());
+        GeneratedAsset normalAsset = AssetForgeCompiler.Generate(png, normal);
+        GeneratedAsset a = AssetForgeCompiler.Generate(png, extra);
+        GeneratedAsset b = AssetForgeCompiler.Generate(png, extra);
+
+        Assert.NotEqual(normalAsset.GeometryHash, a.GeometryHash);
+        Assert.Equal(a.GeometryHash, b.GeometryHash);
+        Assert.Equal(a.GlbBytes, b.GlbBytes);
+    }
+
+    [Fact]
+    public void New_replacement_defaults_use_runtime_safe_128_resolution()
+    {
+        Assert.Equal(128, AssetRecipe.TorsoShapeDefaults().Geometry.GeometryResolution);
+        Assert.Equal(128, AssetRecipe.FootShapeDefaults().Geometry.GeometryResolution);
+        Assert.Equal(1.0, AssetRecipe.TorsoShapeDefaults().Geometry.SurfaceSmoothness);
+        Assert.Equal(1.0, AssetRecipe.FootShapeDefaults().Geometry.SurfaceSmoothness);
+    }
+
+    [Fact]
     public void Replacement_profiles_produce_distinct_deterministic_geometry()
     {
         byte[] png = PngCodec.EncodeRgba8(Ellipse(512, 520, 190, 150));
