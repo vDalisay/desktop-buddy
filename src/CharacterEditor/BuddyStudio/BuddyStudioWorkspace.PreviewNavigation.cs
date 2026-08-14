@@ -6,6 +6,7 @@ namespace DesktopBuddy.CharacterEditor.BuddyStudio;
 
 public partial class BuddyStudioWorkspace
 {
+    private const float AssetForgeShoesDefaultZoom = 0.78f;
     private bool _assetForgeNavigationInstalled;
     private bool _assetForgeStudioPreviewApplied;
     private bool _assetForgePanning;
@@ -22,6 +23,8 @@ public partial class BuddyStudioWorkspace
         {
             _assetForgeNavigationSlot = _slot;
             _assetForgeViewPan = Vector2.Zero;
+            _viewZoom = AssetForgeDefaultViewZoom();
+            ApplyAssetForgeView();
         }
 
         if (GodotObject.IsInstanceValid(_previewRig) && _assetForgeStudioPreviewApplied != _previewAttached)
@@ -31,6 +34,11 @@ public partial class BuddyStudioWorkspace
             _previewInput.MouseDefaultCursorShape = CursorShape.Arrow;
             _previewRig!.SetStudioPreviewMode(_previewAttached);
             _assetForgeStudioPreviewApplied = _previewAttached;
+            if (_previewAttached)
+            {
+                _viewZoom = AssetForgeDefaultViewZoom();
+                ApplyAssetForgeView();
+            }
         }
     }
 
@@ -114,10 +122,13 @@ public partial class BuddyStudioWorkspace
 
     private void AssetForgeResetView()
     {
-        _viewZoom = 1f;
+        _viewZoom = AssetForgeDefaultViewZoom();
         _assetForgeViewPan = Vector2.Zero;
         ApplyAssetForgeView();
     }
+
+    private float AssetForgeDefaultViewZoom() =>
+        _slot == CharacterFeatureSlot.Shoes ? AssetForgeShoesDefaultZoom : 1f;
 
     private void ApplyAssetForgeView()
     {
