@@ -23,7 +23,8 @@ public sealed class PartReplacementContourTopologyDiagnosticTests
             SymmetryMode = SymmetryMode.Off,
             ThicknessBiasPixels = 0,
         };
-        CanonicalMesh mesh = PartReplacementContourInflationGenerator.Generate(source, geometry, AssetCategory.TorsoShape);
+        CanonicalMesh mesh = PartReplacementTopologyWeld.Apply(
+            PartReplacementContourInflationGenerator.Generate(source, geometry, AssetCategory.TorsoShape));
 
         var edges = new Dictionary<(uint A, uint B), int>();
         for (int i = 0; i < mesh.Indices.Count; i += 3)
