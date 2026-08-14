@@ -26,6 +26,7 @@ public partial class BuddyStudioWorkspace
 
     public override void _Process(double delta)
     {
+        AssetForgeProcessNavigation();
         if (!IsConfigured || !IsInsideTree() || !GodotObject.IsInstanceValid(_catalog) || _session.PreviewDocument is null)
             return;
 
@@ -109,9 +110,6 @@ public partial class BuddyStudioWorkspace
             : purchasable ? "Buy this cosmetic permanently; equip it with the next action."
             : "This generated cosmetic has no valid commerce entry.";
 
-        // v1 generated glasses are positioned by their authoring preset. The existing Studio move
-        // helper still resolves shipped definitions internally, so keep these controls disabled
-        // until that older helper is replaced during the broader Studio UI revamp.
         _color.Disabled = true;
         _presets.Visible = false;
         _move.Disabled = true;
