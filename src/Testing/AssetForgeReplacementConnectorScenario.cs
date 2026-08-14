@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Painting;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -22,6 +25,7 @@ public sealed class AssetForgeReplacementConnectorScenario : IScenario
     {
         var checks = new List<StartupCheck>();
         CharacterEditorScenarioSupport.Context context = await CharacterEditorScenarioSupport.Create(tree, Id);
+        ImageTexture? paintTexture = null;
         try
         {
             BuddyGeneratedCosmeticRegistry registry = BuddyGeneratedCosmeticRegistry.Current;
@@ -44,7 +48,44 @@ public sealed class AssetForgeReplacementConnectorScenario : IScenario
                 fitted,
                 $"tracking={context.Preview.ReplacementConnectorTrackingReadyForTest} corrected={context.Preview.ReplacementConnectorCorrectionCountForTest}/{context.Preview.ConnectorVisualCount}"));
 
+            checks.Add(new StartupCheck(
+                "af_replacement_outline_keeps_buddy_world_thickness",
+                context.Preview.GeneratedReplacementOutlineScaleIsCorrectForTest,
+                $"outlineScaleCorrect={context.Preview.GeneratedReplacementOutlineScaleIsCorrectForTest}"));
+
+            // Existing character paint surfaces must render on the generated replacement itself,
+            // never on the hidden trusted sphere/capsule underneath it.
+            byte[] rgba =
+            [
+                255, 32, 64, 255, 255, 32, 64, 255,
+                255, 32, 64, 255, 255, 32, 64, 255,
+            ];
+            paintTexture = ImageTexture.CreateFromImage(Image.CreateFromData(2, 2, false, Image.Format.Rgba8, rgba));
+            context.Preview.SetSurfaceUnderlay(BuddyPartId.Torso, paintTexture);
+            context.Preview.SetSurfaceUnderlay(BuddyPartId.LeftFoot, paintTexture);
+            context.Preview.SetSurfaceUnderlay(BuddyPartId.RightFoot, paintTexture);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+            int paintShells = CountVisiblePaintShells(context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Tops)) +
+                              CountVisiblePaintShells(context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Shoes)) +
+                              CountVisiblePaintShells(context.Preview.GetPairedCosmeticVisual(CharacterFeatureSlot.Shoes));
+            checks.Add(new StartupCheck(
+                "af_replacement_paint_binds_to_visible_generated_meshes",
+                paintShells == 3 && context.Preview.GeneratedReplacementPaintShellCountForTest == 3,
+                $"visiblePaintShells={paintShells} tracked={context.Preview.GeneratedReplacementPaintShellCountForTest}"));
+
+            Vector2 torsoPoint = context.Preview.GeometrySource.ReadTransform(BuddyPartId.Torso).Position;
+            bool mappedTorso = context.Preview.TryMapGeneratedReplacementPaintHit(torsoPoint, out PaintHit torsoHit) &&
+                               torsoHit.Part == PaintPart.Torso && torsoHit.IsValid;
+            checks.Add(new StartupCheck(
+                "af_replacement_paint_hit_uses_generated_mesh_uv",
+                mappedTorso,
+                mappedTorso ? $"part={torsoHit.Part} uv=({torsoHit.Uv.X:F3},{torsoHit.Uv.Y:F3})" : "generated torso centre did not map"));
+
             BuddyVisualRigTrustSnapshot trust = context.Preview.CaptureTrustSnapshot();
+            context.Preview.SetSurfaceUnderlay(BuddyPartId.Torso, null);
+            context.Preview.SetSurfaceUnderlay(BuddyPartId.LeftFoot, null);
+            context.Preview.SetSurfaceUnderlay(BuddyPartId.RightFoot, null);
             CharacterDocument defaults = CharacterDocument.CreateDefault(
                 Guid.Parse("af300000-0000-4000-8000-000000000002"),
                 "Asset Forge Connector Defaults");
@@ -62,10 +103,19 @@ public sealed class AssetForgeReplacementConnectorScenario : IScenario
         }
         finally
         {
+            paintTexture?.Dispose();
             await CharacterEditorScenarioSupport.Cleanup(tree, context);
         }
 
         return CharacterEditorScenarioSupport.Result(checks, seed);
+    }
+
+    private static int CountVisiblePaintShells(Node3D? root)
+    {
+        if (!GodotObject.IsInstanceValid(root)) return 0;
+        return root!.FindChildren("GeneratedPaint", nameof(MeshInstance3D), true, false)
+            .OfType<MeshInstance3D>()
+            .Count(static mesh => mesh.Visible && mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null });
     }
 }
 
