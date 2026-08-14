@@ -102,9 +102,9 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
             checks.Add(new StartupCheck("af_generated_replacements_use_buddy_outline", outlines,
                 $"top={HasGeneratedOutline(topRoot)} left={HasGeneratedOutline(leftShoeRoot)} right={HasGeneratedOutline(rightShoeRoot)}"));
 
-            bool paintShell = context.Preview.GeneratedReplacementPaintShellCountForTest == 3 && context.Preview.GeneratedReplacementPaintScaleIsCorrectForTest;
-            checks.Add(new StartupCheck("af_generated_replacements_use_uniform_paint_shell", paintShell,
-                $"shells={context.Preview.GeneratedReplacementPaintShellCountForTest} scaleOk={context.Preview.GeneratedReplacementPaintScaleIsCorrectForTest}"));
+            bool paintSurface = context.Preview.GeneratedReplacementPaintSurfaceCountForTest == 3 && context.Preview.GeneratedReplacementPaintUsesSurfaceDetailForTest;
+            checks.Add(new StartupCheck("af_generated_replacements_use_surface_detail_paint", paintSurface,
+                $"surfaces={context.Preview.GeneratedReplacementPaintSurfaceCountForTest} detailOk={context.Preview.GeneratedReplacementPaintUsesSurfaceDetailForTest}"));
 
             bool splitUv = context.Preview.GeneratedReplacementPaintUvSeamIsCorrectForTest;
             checks.Add(new StartupCheck("af_generated_replacements_split_front_back_paint_uvs", splitUv, $"split={splitUv}"));

@@ -77,13 +77,16 @@ public sealed class AssetForgeReplacementConnectorScenario : IScenario
             context.Preview.SetSurfaceUnderlay(BuddyPartId.RightFoot, paintTexture);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
-            int paintShells = CountVisiblePaintShells(context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Tops)) +
-                              CountVisiblePaintShells(context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Shoes)) +
-                              CountVisiblePaintShells(context.Preview.GetPairedCosmeticVisual(CharacterFeatureSlot.Shoes));
+            int paintedSurfaces = CountPaintedSurfaces(context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Tops)) +
+                                  CountPaintedSurfaces(context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Shoes)) +
+                                  CountPaintedSurfaces(context.Preview.GetPairedCosmeticVisual(CharacterFeatureSlot.Shoes));
+            bool legacyLayersHidden = !context.Preview.GetPartMesh(BuddyPartId.Torso).Visible &&
+                                      !context.Preview.GetPartMesh(BuddyPartId.LeftFoot).Visible &&
+                                      !context.Preview.GetPartMesh(BuddyPartId.RightFoot).Visible;
             checks.Add(new StartupCheck(
                 "af_replacement_paint_binds_to_visible_generated_meshes",
-                paintShells == 3 && context.Preview.GeneratedReplacementPaintShellCountForTest == 3,
-                $"visiblePaintShells={paintShells} tracked={context.Preview.GeneratedReplacementPaintShellCountForTest}"));
+                paintedSurfaces == 3 && legacyLayersHidden && context.Preview.GeneratedReplacementPaintSurfaceCountForTest == 3,
+                $"paintedSurfaces={paintedSurfaces} legacyHidden={legacyLayersHidden} tracked={context.Preview.GeneratedReplacementPaintSurfaceCountForTest}"));
 
             Vector2 torsoPoint = context.Preview.GeometrySource.ReadTransform(BuddyPartId.Torso).Position;
             bool mappedTorso = context.Preview.TryMapGeneratedReplacementPaintHit(torsoPoint, out PaintHit torsoHit) &&
@@ -121,12 +124,12 @@ public sealed class AssetForgeReplacementConnectorScenario : IScenario
         return CharacterEditorScenarioSupport.Result(checks, seed);
     }
 
-    private static int CountVisiblePaintShells(Node3D? root)
+    private static int CountPaintedSurfaces(Node3D? root)
     {
         if (!GodotObject.IsInstanceValid(root)) return 0;
-        return root!.FindChildren("GeneratedPaint", nameof(MeshInstance3D), true, false)
+        return root!.FindChildren("*", nameof(MeshInstance3D), true, false)
             .OfType<MeshInstance3D>()
-            .Count(static mesh => mesh.Visible && mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null });
+            .Count(static mesh => mesh.Visible && mesh.MaterialOverride is StandardMaterial3D { DetailEnabled: true, DetailAlbedo: not null });
     }
 }
 

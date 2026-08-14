@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Domain.Characters;
@@ -15,37 +17,49 @@ namespace DesktopBuddy.Testing;
 /// </summary>
 public sealed class AssetForgeGeneratedPaintUvScenario : IScenario
 {
-    private const string TopFeatureId = "top.ci_pear_torso";
-    private const string ShoesFeatureId = "shoes.ci_soft_foot";
-
     public string Id => "asset_forge_generated_paint_uvs";
 
     public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
     {
         var checks = new List<StartupCheck>();
         CharacterEditorScenarioSupport.Context context = await CharacterEditorScenarioSupport.Create(tree, Id);
+        ImageTexture? paintTexture = null;
         try
         {
             BuddyGeneratedCosmeticRegistry registry = BuddyGeneratedCosmeticRegistry.Current;
+            GeneratedBuddyCosmeticResource? top = registry.Entries.FirstOrDefault(
+                static entry => entry.Slot == CharacterFeatureSlot.Tops);
             CharacterDocument document = CharacterDocument.CreateDefault(
                 Guid.Parse("af400000-0000-4000-8000-000000000001"),
                 "Asset Forge Paint UVs");
-            document = CharacterDocumentEditor.SetFeatureId(document, CharacterFeatureSlot.Tops, TopFeatureId);
-            document = CharacterDocumentEditor.SetFeatureId(document, CharacterFeatureSlot.Shoes, ShoesFeatureId);
+            if (top is not null)
+                document = CharacterDocumentEditor.SetFeatureId(document, CharacterFeatureSlot.Tops, top.FeatureId);
             CharacterCompileResult compiled = CharacterCompiler.Compile(document, registry.FeatureCatalog);
 
-            bool compiledGenerated = compiled.IsSuccess && compiled.Appearance is not null &&
-                                     compiled.Appearance.Tops.ResolvedFeatureId == TopFeatureId &&
-                                     compiled.Appearance.Shoes.ResolvedFeatureId == ShoesFeatureId;
+            bool compiledGenerated = top is not null && compiled.IsSuccess && compiled.Appearance is not null &&
+                                     compiled.Appearance.Tops.ResolvedFeatureId == top.FeatureId;
             checks.Add(new StartupCheck(
                 "af_generated_paint_uvs_compile_generated_replacements",
                 compiledGenerated,
-                $"success={compiled.IsSuccess} top={compiled.Appearance?.Tops.ResolvedFeatureId} shoes={compiled.Appearance?.Shoes.ResolvedFeatureId}"));
+                $"success={compiled.IsSuccess} top={compiled.Appearance?.Tops.ResolvedFeatureId}"));
 
             if (compiled.Appearance is not null)
                 context.Preview.ApplyAppearance(compiled.Appearance);
             context.Preview.RefreshCharacterCompositors();
             context.Preview.RefreshGeneratedReplacementVisualsForTest();
+
+            paintTexture = ImageTexture.CreateFromImage(Image.CreateFromData(
+                2, 2, false, Image.Format.Rgba8,
+                [255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255, 255, 0, 255, 255]));
+            context.Preview.SetSurfaceUnderlay(BuddyPartId.Torso, paintTexture);
+
+            bool bindsToReplacement = !context.Preview.GetPartMesh(BuddyPartId.Torso).Visible &&
+                                      context.Preview.GeneratedReplacementPaintSurfaceCountForTest == 1 &&
+                                      context.Preview.GeneratedReplacementPaintUsesSurfaceDetailForTest;
+            checks.Add(new StartupCheck(
+                "af_generated_paint_binds_without_restoring_legacy_torso",
+                bindsToReplacement,
+                $"legacyVisible={context.Preview.GetPartMesh(BuddyPartId.Torso).Visible} surfaces={context.Preview.GeneratedReplacementPaintSurfaceCountForTest}"));
 
             bool split = context.Preview.GeneratedReplacementPaintUvSeamIsCorrectForTest;
             checks.Add(new StartupCheck(
@@ -56,6 +70,7 @@ public sealed class AssetForgeGeneratedPaintUvScenario : IScenario
         finally
         {
             await CharacterEditorScenarioSupport.Cleanup(tree, context);
+            paintTexture?.Dispose();
         }
 
         return CharacterEditorScenarioSupport.Result(checks, seed);
