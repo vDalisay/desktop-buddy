@@ -144,13 +144,14 @@ public partial class AssetForgeMain
         {
             if (_generated is null || string.IsNullOrWhiteSpace(_sourcePath))
                 throw new InvalidOperationException("Generate the asset before export.");
-            // Buddy Studio thumbnails intentionally show their Buddy fit/reference. Environment
-            // catalogue art must contain only the authored decoration, never the floor/Buddy scale
-            // guide or the editable emitter gizmo, so use the clean deterministic albedo directly.
-            byte[] thumbnail = _generated.Recipe.AssetFamily == AssetFamily.Environment
-                ? EnvironmentThumbnailGenerator.Create(_generated.AlbedoPng)
-                : _preview.CaptureThumbnailPng();
-            if (thumbnail.Length == 0) thumbnail = _generated.AlbedoPng;
+            // AF-14: both families share one canonical cache key. Buddy Studio uses a Godot render
+            // producer while Environment uses a pure deterministic crop, but neither category owns
+            // per-item thumbnail drawing code or cache identity.
+            byte[] thumbnail = AssetThumbnailCache.GetOrCreate(
+                _generated,
+                () => _generated.Recipe.AssetFamily == AssetFamily.Environment
+                    ? EnvironmentThumbnailGenerator.Create(_generated.AlbedoPng)
+                    : _preview.CaptureThumbnailPng());
             byte[] source = File.ReadAllBytes(_sourcePath);
             string root = FindRepositoryRoot();
 
