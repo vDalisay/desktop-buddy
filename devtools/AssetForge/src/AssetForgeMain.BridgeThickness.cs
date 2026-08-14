@@ -102,7 +102,11 @@ public partial class AssetForgeMain
             {
                 AssetCategory.Glasses when _generated.UsedGlassesTemplate => $"glasses@{recipe.PresetVersion} rounded template",
                 AssetCategory.Glasses => "silhouette extrusion fallback",
-                _ => $"{recipe.PresetId}@{recipe.PresetVersion} literal replacement template",
+                AssetCategory.TorsoShape or AssetCategory.FootShape => $"{recipe.PresetId}@{recipe.PresetVersion} literal replacement template",
+                AssetCategory.Lamp when EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe) => $"lamp@{recipe.PresetVersion} literal floor-template placement",
+                AssetCategory.Lamp => $"lamp@{recipe.PresetVersion} legacy visible-bounds auto-fit",
+                AssetCategory.Sofa => $"sofa@{recipe.PresetVersion} front-derived literal floor-template volume",
+                _ => $"{recipe.PresetId}@{recipe.PresetVersion}",
             };
             string bridge = recipe.Category == AssetCategory.Glasses
                 ? $" Bridge thickness {recipe.Geometry.BridgeThicknessBiasPixels:+0;-0;0}px."
@@ -137,6 +141,7 @@ public partial class AssetForgeMain
                     : 0;
             RefreshBridgeThicknessVisibility();
             ConfigureActiveCategoryUi();
+            SetStatus($"Opened {recipe.PresetId}@{recipe.PresetVersion} ({recipe.Category}). Its preset version will be preserved until an explicit migration changes it.");
         }
         catch (Exception exception)
         {
