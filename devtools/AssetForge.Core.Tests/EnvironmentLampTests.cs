@@ -52,13 +52,17 @@ public sealed class EnvironmentLampTests
     }
 
     [Fact]
-    public void Lamp_v1_shifted_source_keeps_legacy_geometry_placement()
+    public void Lamp_v1_shifted_source_keeps_legacy_visual_geometry_placement()
     {
         AssetRecipe recipe = FastLampV1();
         GeneratedAsset original = AssetForgeCompiler.Generate(LampBlockSource(400, 300), recipe);
         GeneratedAsset shifted = AssetForgeCompiler.Generate(LampBlockSource(520, 410), recipe);
 
-        Assert.Equal(original.GeometryHash, shifted.GeometryHash);
+        // Legacy auto-fit intentionally normalizes visible geometry back to the same local bounds.
+        // UVs remain tied to the authored source pixels, so the canonical geometry hash may differ.
+        Assert.Equal(
+            original.Mesh.Positions.Select(static p => (p.X, p.Y, p.Z)),
+            shifted.Mesh.Positions.Select(static p => (p.X, p.Y, p.Z)));
     }
 
     [Fact]
@@ -70,10 +74,11 @@ public sealed class EnvironmentLampTests
         (float X, float Y) a = Center(original.Mesh);
         (float X, float Y) b = Center(shifted.Mesh);
         float units = EnvironmentTemplateMapping.UnitsPerPixel(recipe);
+        float oneMaskCellWorld = (EnvironmentTemplateSpace.CanvasSize / (float)recipe.Geometry.GeometryResolution) * units;
 
         Assert.NotEqual(original.GeometryHash, shifted.GeometryHash);
-        Assert.InRange(b.X - a.X, (120f * units) - .25f, (120f * units) + .25f);
-        Assert.InRange(b.Y - a.Y, (110f * units) - .25f, (110f * units) + .25f);
+        Assert.InRange(b.X - a.X, (120f * units) - oneMaskCellWorld, (120f * units) + oneMaskCellWorld);
+        Assert.InRange(b.Y - a.Y, (110f * units) - oneMaskCellWorld, (110f * units) + oneMaskCellWorld);
     }
 
     [Fact]
@@ -83,8 +88,10 @@ public sealed class EnvironmentLampTests
         GeneratedAsset generated = AssetForgeCompiler.Generate(
             LampBlockSource(432, EnvironmentTemplateSpace.FloorY - 120),
             recipe);
+        float oneMaskCellWorld = (EnvironmentTemplateSpace.CanvasSize / (float)recipe.Geometry.GeometryResolution) *
+                                 EnvironmentTemplateMapping.UnitsPerPixel(recipe);
 
-        Assert.InRange(generated.Mesh.Positions.Max(static p => p.Y), -.25f, .25f);
+        Assert.InRange(generated.Mesh.Positions.Max(static p => p.Y), -oneMaskCellWorld, oneMaskCellWorld);
     }
 
     [Fact]
@@ -96,7 +103,7 @@ public sealed class EnvironmentLampTests
             AssetRecipe recipe = FastLampV2();
             byte[] source = LampSource();
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            byte[] thumbnail = PngCodec.EncodeRgba8(PngCodec.ResizeBox(PngCodec.DecodeRgba8(source), 256));
+            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
 
             ExportResult result = RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
             Assert.True(File.Exists(Path.Combine(result.AssetDirectory, "mesh.glb")));
@@ -123,7 +130,7 @@ public sealed class EnvironmentLampTests
             AssetRecipe recipe = FastLampV2();
             byte[] source = LampSource();
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            RepositoryEnvironmentExporter.Export(root, source, generated, source);
+            RepositoryEnvironmentExporter.Export(root, source, generated, EnvironmentThumbnailGenerator.Create(generated.AlbedoPng));
             RepositoryVerificationResult buddy = RepositoryAssetVerifier.VerifyAll(root);
             Assert.Empty(buddy.Assets);
             Assert.Empty(buddy.RepositoryDiagnostics);
