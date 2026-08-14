@@ -8,6 +8,7 @@ public partial class AssetForgeMain
     private bool _categoryWorkflowInstalled;
     private AssetCategory _activeCategory = AssetCategory.Glasses;
     private string _activeTemplateId = AuthoringTemplateCatalog.GlassesId;
+    private AssetRecipe _workingRecipeBase = AssetRecipe.GlassesDefaults();
 
     private void EnsureCategoryWorkflowUi()
     {
@@ -46,6 +47,7 @@ public partial class AssetForgeMain
         _activeCategory = category;
         _activeTemplateId = spec.Id;
         AssetRecipe defaults = CategoryDefaults(category);
+        _workingRecipeBase = defaults;
         ApplyRecipe(defaults);
         ApplyReplacementQualityRecipe(defaults);
         ApplyLampRecipe(defaults);
@@ -60,6 +62,7 @@ public partial class AssetForgeMain
 
     private void SetActiveCategoryFromRecipe(AssetRecipe recipe)
     {
+        _workingRecipeBase = recipe;
         _activeCategory = recipe.Category;
         _activeTemplateId = recipe.Category switch
         {
@@ -85,12 +88,42 @@ public partial class AssetForgeMain
         ConfigureActiveCategoryUi();
     }
 
+    private AssetRecipe CurrentCategoryBase()
+    {
+        AssetRecipe basis = _workingRecipeBase.Category == _activeCategory
+            ? _workingRecipeBase
+            : CategoryDefaults(_activeCategory);
+        return basis with { PresetVersion = _activePresetVersion };
+    }
+
+    /// <summary>
+    /// The legacy Glasses UI knows all editable Glasses fields but not every recipe field (notably
+    /// thumbnail settings). Merge those visible edits onto the opened category recipe so an
+    /// open-save cycle never resets hidden metadata. Explicit preset migration still wins through
+    /// _activePresetVersion.
+    /// </summary>
+    private AssetRecipe MergeGlassesUiOntoWorkingRecipe(AssetRecipe edited)
+    {
+        AssetRecipe basis = CurrentCategoryBase();
+        return basis with
+        {
+            PresetVersion = _activePresetVersion,
+            FeatureId = edited.FeatureId,
+            ContentId = edited.ContentId,
+            DisplayName = edited.DisplayName,
+            PriceCredits = edited.PriceCredits,
+            SortOrder = edited.SortOrder,
+            LightingLevel = edited.LightingLevel,
+            Geometry = edited.Geometry,
+        };
+    }
+
     private AssetRecipe ReadCategoryRecipeFromUi()
     {
-        // The opened recipe version is authoritative until the user explicitly migrates it. This
-        // is especially important for Lamp@1: LampDefaults is now @2, but merely editing/saving an
-        // old recipe must not opt it into literal template placement or baked emitter semantics.
-        AssetRecipe defaults = CategoryDefaults(_activeCategory) with { PresetVersion = _activePresetVersion };
+        // Start with the actual opened recipe, not today's defaults. Hidden metadata such as the
+        // thumbnail camera and Lamp colour therefore survives open/edit/save; Lamp@1 also remains
+        // Lamp@1 until an explicit migration changes its version.
+        AssetRecipe defaults = CurrentCategoryBase();
         AssetRecipe recipe = defaults with
         {
             DisplayName = _displayName.Text.Trim(),
