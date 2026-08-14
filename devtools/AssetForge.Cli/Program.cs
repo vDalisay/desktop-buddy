@@ -145,7 +145,10 @@ internal static class Program
         GeneratedAsset second = AssetForgeCompiler.Generate(sourcePng, recipe);
         if (!first.GlbBytes.SequenceEqual(second.GlbBytes) || first.CanonicalAssetHash != second.CanonicalAssetHash)
             throw new InvalidOperationException($"{recipe.FeatureId} regeneration was not deterministic.");
-        RepositoryBuddyReplacementExporter.Export(repositoryRoot, sourcePng, first, first.AlbedoPng);
+        byte[] thumbnail = AssetThumbnailCache.GetOrCreate(
+            first,
+            () => EnvironmentThumbnailGenerator.Create(first.AlbedoPng));
+        RepositoryBuddyReplacementExporter.Export(repositoryRoot, sourcePng, first, thumbnail);
         GeneratedCosmeticLightingPersistence.Apply(repositoryRoot, recipe);
         AssertBuddyFixtureFiles(repositoryRoot, recipe);
 
