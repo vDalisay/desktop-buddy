@@ -1,3 +1,4 @@
+using DesktopBuddy.AssetForge.Core;
 using DesktopBuddy.Buddy.Presentation3D.Shared;
 using Godot;
 
@@ -23,23 +24,30 @@ public partial class AssetForgePreview
             _lastColorTunedGeneratedMaterial = _generatedMaterial;
         }
 
-        // Torso/foot meshes are normalized and their preview roots are then scaled by the trusted
-        // Buddy part radius. StandardMaterial3D.Grow happens before that node transform. Applying
-        // the normal 1.5-unit Buddy outline directly therefore produced the giant navy blobs seen
-        // in owner testing. Divide by the preview-root scale so the final world-space outline stays
-        // exactly the same thickness as a built-in Buddy part.
+        if (_category is not (AssetCategory.TorsoShape or AssetCategory.FootShape)) return;
+
+        // Pixel-derived replacement sidewalls contain many small direction changes. Normal-based
+        // StandardMaterial3D.Grow expands those side faces along their local normals; the expanded
+        // back-face shell can then intersect the visible surface and appear as dark horizontal
+        // stripes. Use the same uniform back-face shell strategy as the shipping Buddy renderer:
+        // disable Grow and enlarge the outline node itself by a scale-adjusted world-space amount.
         foreach (Node node in _asset!.FindChildren("Outline", nameof(MeshInstance3D), true, false))
         {
-            if (node is not MeshInstance3D outline ||
-                outline.MaterialOverride is not StandardMaterial3D material ||
-                outline.GetParent() is not Node3D scaledRoot)
+            if (node is not MeshInstance3D outline || outline.GetParent() is not Node3D scaledRoot)
                 continue;
 
             float scale = Mathf.Abs(scaledRoot.Scale.X);
             if (!float.IsFinite(scale) || scale <= 0.0001f) continue;
-            float wanted = _profile.Look.OutlineGrowAmount / scale;
-            if (!Mathf.IsEqualApprox(material.GrowAmount, wanted))
-                material.GrowAmount = wanted;
+            if (outline.MaterialOverride is not StandardMaterial3D material ||
+                material.ResourceName != "AssetForgeReplacementOutline")
+            {
+                material = BuddySharedMaterialFactory.CreateOutlineMaterial(_profile.Look);
+                material.ResourceName = "AssetForgeReplacementOutline";
+                material.Grow = false;
+                material.GrowAmount = 0f;
+                outline.MaterialOverride = material;
+            }
+            outline.Scale = Vector3.One * (1f + _profile.Look.OutlineGrowAmount / scale);
         }
     }
 }
