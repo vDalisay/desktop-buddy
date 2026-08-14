@@ -1,3 +1,4 @@
+using System.Linq;
 using DesktopBuddy.CharacterEditor;
 using Godot;
 
@@ -38,8 +39,11 @@ public partial class Win98PaintUserTestingLayoutBootstrap : Node
         if (!_wasPaintActive)
         {
             _wasPaintActive = true;
-            if (GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) is CharacterEditorHost host)
-                host.ResetPreviewRotationToFront();
+            CharacterEditorHost? host = GetTree().Root
+                .FindChildren("*", nameof(CharacterEditorHost), true, false)
+                .OfType<CharacterEditorHost>()
+                .FirstOrDefault();
+            host?.ResetPreviewRotationToFront();
         }
 
         EnsureViewportControls();
