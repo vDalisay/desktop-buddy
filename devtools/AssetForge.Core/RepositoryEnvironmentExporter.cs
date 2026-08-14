@@ -104,21 +104,21 @@ public static class RepositoryEnvironmentExporter
         text.AppendLine($"LightEnabled = {Bool(recipe.Light.LightEnabled)}");
         text.AppendLine($"Brightness = {number(recipe.Light.Brightness)}");
         text.AppendLine($"Range = {number(recipe.Light.Range)}");
-        text.AppendLine($"Color = Color({recipe.Light.Red / 255.0.ToString(CultureInfo.InvariantCulture)}, {recipe.Light.Green / 255.0.ToString(CultureInfo.InvariantCulture)}, {recipe.Light.Blue / 255.0.ToString(CultureInfo.InvariantCulture)}, 1)");
+        text.AppendLine($"Color = Color({number(recipe.Light.Red / 255.0)}, {number(recipe.Light.Green / 255.0)}, {number(recipe.Light.Blue / 255.0)}, 1)");
         text.AppendLine($"EmitterPosition = Vector2({number(recipe.Light.EmitterX)}, {number(recipe.Light.EmitterY)})");
         text.AppendLine();
         text.AppendLine("[resource]");
         text.AppendLine("script = ExtResource(\"1\")");
         text.AppendLine($"DefinitionId = \"{Escape(recipe.AssetId)}\"");
         text.AppendLine($"DisplayNameKey = \"{Escape(recipe.DisplayName)}\"");
-        text.AppendLine("Category = 0"); // DecorationCategory.Lamp
+        text.AppendLine("Category = 0");
         text.AppendLine($"PriceCredits = {recipe.PriceCredits}");
-        text.AppendLine("AnchorKind = 0"); // Floor
+        text.AppendLine("AnchorKind = 0");
         text.AppendLine($"AllowsRotation = {Bool(recipe.Environment.AllowsRotation)}");
         text.AppendLine($"RotationStepDegrees = {recipe.Environment.RotationStepDegrees}");
         text.AppendLine($"RenderBand = {RenderBand(recipe.Environment.RenderMode)}");
         text.AppendLine("Visible = true");
-        text.AppendLine("VisualSource = 1"); // GeneratedMesh
+        text.AppendLine("VisualSource = 1");
         text.AppendLine("VisualKind = 0");
         text.AppendLine($"VisualSize = Vector2({number(bounds.Width)}, {number(bounds.Height)})");
         text.AppendLine("GeneratedMesh = ExtResource(\"2\")");
