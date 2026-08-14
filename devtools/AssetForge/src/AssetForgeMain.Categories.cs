@@ -15,6 +15,7 @@ public partial class AssetForgeMain
         if (_shapeMode.ItemCount < 3) _shapeMode.AddItem("Inflated solid");
         if (_shapeMode.ItemCount < 4) _shapeMode.AddItem("Soft pillow / relief");
         EnsureReplacementQualityUi();
+        EnsureLampUi();
         _categorySelector.ItemSelected += OnAuthoringCategorySelected;
         _templateDialog.FileSelected -= SaveTemplate;
         _templateDialog.FileSelected += SaveCategoryTemplate;
@@ -34,6 +35,7 @@ public partial class AssetForgeMain
             AuthoringTemplateCatalog.GlassesId => AssetCategory.Glasses,
             AuthoringTemplateCatalog.TorsoId => AssetCategory.TorsoShape,
             AuthoringTemplateCatalog.FeetId => AssetCategory.FootShape,
+            AuthoringTemplateCatalog.LampId => AssetCategory.Lamp,
             _ => _activeCategory,
         };
         if (!spec.Implemented || category == _activeCategory) return;
@@ -44,6 +46,7 @@ public partial class AssetForgeMain
         AssetRecipe defaults = CategoryDefaults(category);
         ApplyRecipe(defaults);
         ApplyReplacementQualityRecipe(defaults);
+        ApplyLampRecipe(defaults);
         _sourcePath = null;
         _source.Text = "Choose a clean 1024×1024 PNG for this category.";
         _generated = null;
@@ -60,6 +63,7 @@ public partial class AssetForgeMain
             AssetCategory.Glasses => AuthoringTemplateCatalog.GlassesId,
             AssetCategory.TorsoShape => AuthoringTemplateCatalog.TorsoId,
             AssetCategory.FootShape => AuthoringTemplateCatalog.FeetId,
+            AssetCategory.Lamp => AuthoringTemplateCatalog.LampId,
             _ => _activeTemplateId,
         };
         if (GodotObject.IsInstanceValid(_categorySelector))
@@ -72,13 +76,14 @@ public partial class AssetForgeMain
                 }
         }
         ApplyReplacementQualityRecipe(recipe);
+        ApplyLampRecipe(recipe);
         ConfigureActiveCategoryUi();
     }
 
     private AssetRecipe ReadCategoryRecipeFromUi()
     {
         AssetRecipe defaults = CategoryDefaults(_activeCategory);
-        return defaults with
+        AssetRecipe recipe = defaults with
         {
             DisplayName = _displayName.Text.Trim(),
             FeatureId = _featureId.Text.Trim(),
@@ -99,6 +104,7 @@ public partial class AssetForgeMain
                 SymmetryMode = (SymmetryMode)_symmetry.Selected,
             },
         };
+        return ApplyLampUiToRecipe(recipe);
     }
 
     private static AssetRecipe CategoryDefaults(AssetCategory category) => category switch
@@ -106,6 +112,7 @@ public partial class AssetForgeMain
         AssetCategory.Glasses => AssetRecipe.GlassesDefaults(),
         AssetCategory.TorsoShape => AssetRecipe.TorsoShapeDefaults(),
         AssetCategory.FootShape => AssetRecipe.FootShapeDefaults(),
+        AssetCategory.Lamp => AssetRecipe.LampDefaults(),
         _ => throw new NotSupportedException($"Asset Forge category {category} is not enabled yet."),
     };
 
@@ -133,23 +140,51 @@ public partial class AssetForgeMain
             byte[] thumbnail = _preview.CaptureThumbnailPng();
             if (thumbnail.Length == 0) thumbnail = _generated.AlbedoPng;
             byte[] source = File.ReadAllBytes(_sourcePath);
+            string root = _root.Text.Trim();
 
-            ExportResult result = _generated.Recipe.Category == AssetCategory.Glasses
-                ? RepositoryExporter.ExportGlasses(_root.Text.Trim(), source, _generated, thumbnail)
-                : RepositoryBuddyReplacementExporter.Export(_root.Text.Trim(), source, _generated, thumbnail);
-            GeneratedCosmeticLightingPersistence.Apply(_root.Text.Trim(), _generated.Recipe);
-            AssetVerificationResult verification = RepositoryAssetVerifier.Verify(_root.Text.Trim(), _generated.Recipe.FeatureId);
-            if (!verification.Passed)
-                throw new InvalidOperationException("Export committed but verification failed: " + string.Join("; ", verification.Diagnostics));
-
-            string category = _generated.Recipe.Category switch
+            ExportResult result;
+            if (_generated.Recipe.Category == AssetCategory.Glasses)
             {
-                AssetCategory.Glasses => "Glasses",
-                AssetCategory.TorsoShape => "Tops",
-                AssetCategory.FootShape => "Shoes",
+                result = RepositoryExporter.ExportGlasses(root, source, _generated, thumbnail);
+                GeneratedCosmeticLightingPersistence.Apply(root, _generated.Recipe);
+            }
+            else if (_generated.Recipe.Category is AssetCategory.TorsoShape or AssetCategory.FootShape)
+            {
+                result = RepositoryBuddyReplacementExporter.Export(root, source, _generated, thumbnail);
+                GeneratedCosmeticLightingPersistence.Apply(root, _generated.Recipe);
+            }
+            else if (_generated.Recipe.Category == AssetCategory.Lamp)
+            {
+                result = RepositoryEnvironmentExporter.Export(root, source, _generated, thumbnail);
+            }
+            else throw new NotSupportedException($"Export for {_generated.Recipe.Category} is not implemented.");
+
+            bool verified;
+            IReadOnlyList<string> diagnostics;
+            if (_generated.Recipe.AssetFamily == AssetFamily.Environment)
+            {
+                EnvironmentAssetVerificationResult verification = RepositoryEnvironmentVerifier.Verify(root, _generated.Recipe.AssetId);
+                verified = verification.Passed;
+                diagnostics = verification.Diagnostics;
+            }
+            else
+            {
+                AssetVerificationResult verification = RepositoryAssetVerifier.Verify(root, _generated.Recipe.FeatureId);
+                verified = verification.Passed;
+                diagnostics = verification.Diagnostics;
+            }
+            if (!verified)
+                throw new InvalidOperationException("Export committed but verification failed: " + string.Join("; ", diagnostics));
+
+            string destination = _generated.Recipe.Category switch
+            {
+                AssetCategory.Glasses => "Buddy Studio > Glasses",
+                AssetCategory.TorsoShape => "Buddy Studio > Tops",
+                AssetCategory.FootShape => "Buddy Studio > Shoes",
+                AssetCategory.Lamp => "Room Decorator > Lamps",
                 _ => _generated.Recipe.Category.ToString(),
             };
-            SetStatus($"Exported {_generated.Recipe.DisplayName} to Buddy Studio > {category} and verified deterministic package.\nAuthoring: {result.AuthoringDirectory}\nGenerated: {result.AssetDirectory}");
+            SetStatus($"Exported {_generated.Recipe.DisplayName} to {destination} and verified deterministic package.\nAuthoring: {result.AuthoringDirectory}\nGenerated: {result.AssetDirectory}");
         }
         catch (Exception exception)
         {
@@ -162,28 +197,33 @@ public partial class AssetForgeMain
         if (!GodotObject.IsInstanceValid(_shapeMode)) return;
         bool glasses = _activeCategory == AssetCategory.Glasses;
         bool replacement = _activeCategory is AssetCategory.TorsoShape or AssetCategory.FootShape;
+        bool lamp = _activeCategory == AssetCategory.Lamp;
+        bool silhouette = replacement || lamp;
         ConfigureReplacementQualityUi(replacement);
+        ConfigureLampUi(lamp);
         SetLabeledVisible(_frameThickness, glasses);
         RefreshBridgeThicknessVisibility();
         if (GodotObject.IsInstanceValid(_templeThickness) && _templeThickness.GetParent()?.GetParent() is Control templeCard) templeCard.Visible = glasses;
         if (GodotObject.IsInstanceValid(_migratePreset)) _migratePreset.Visible = glasses && _activePresetVersion < 2;
 
-        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.FlatExtrusion, replacement);
+        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.FlatExtrusion, silhouette);
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.RoundedExtrusion, false);
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.InflatedSolid, glasses);
-        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.Relief, !replacement);
+        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.Relief, glasses);
 
         string display = _activeCategory switch
         {
             AssetCategory.Glasses => "Glasses",
             AssetCategory.TorsoShape => "Top / Torso replacement",
             AssetCategory.FootShape => "Shoes / Foot replacement",
+            AssetCategory.Lamp => "Lamp",
             _ => _activeCategory.ToString(),
         };
         _presetLabel.Text = _activeCategory switch
         {
             AssetCategory.Glasses when _activePresetVersion >= 2 => "Buddy Studio > Glasses / glasses@2 — literal 1024×1024 Buddy-head placement",
             AssetCategory.Glasses => "Buddy Studio > Glasses / glasses@1 — legacy auto-fit placement",
+            AssetCategory.Lamp => "Environment > Lamp / lamp@1 — floor-anchored 1024×1024 placement with visual light metadata",
             _ => $"Buddy Studio > {display} / {CategoryDefaults(_activeCategory).PresetId}@1 — literal 1024×1024 replacement placement",
         };
         if (GodotObject.IsInstanceValid(_reference))
@@ -192,11 +232,15 @@ public partial class AssetForgeMain
                 AssetCategory.Glasses => "Reference head",
                 AssetCategory.TorsoShape => "Reference torso",
                 AssetCategory.FootShape => "Reference feet",
+                AssetCategory.Lamp => "Room scale reference",
                 _ => "Reference",
             };
         if (GodotObject.IsInstanceValid(_preview)) _preview.SetCategory(_activeCategory);
 
-        Label? subtitle = FindLabel(this, "Glasses · category settings");
+        Label? subtitle = FindLabel(this, "Glasses · category settings") ??
+                          FindLabel(this, "Top / Torso replacement · category settings") ??
+                          FindLabel(this, "Shoes / Foot replacement · category settings") ??
+                          FindLabel(this, "Lamp · category settings");
         if (subtitle is not null) subtitle.Text = $"{display} · category settings";
     }
 
