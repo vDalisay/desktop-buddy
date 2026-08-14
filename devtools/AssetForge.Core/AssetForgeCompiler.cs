@@ -18,7 +18,9 @@ public static class AssetForgeCompiler
 
     private static GeneratedAsset GeneratePartReplacement(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) =>
         GenerateSilhouette(sourcePng, recipe,
-            mask => PartReplacementGenerator.Generate(mask, recipe.Geometry, recipe.Category),
+            mask => PartReplacementMeshPostprocessor.Apply(
+                PartReplacementGenerator.Generate(mask, recipe.Geometry, recipe.Category),
+                recipe.Geometry),
             maximumMaskFraction: .75,
             context: recipe.Category.ToString());
 
