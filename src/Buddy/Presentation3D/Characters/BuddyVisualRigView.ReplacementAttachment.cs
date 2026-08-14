@@ -6,6 +6,59 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 public partial class BuddyVisualRigView
 {
     /// <summary>
+    /// Re-fits only connectors touching an active visual replacement. The authoritative pose and
+    /// connector rotation still come from the normal rig update; this presentation pass changes
+    /// only the visible connector length/center so it terminates at rendered replacement bounds.
+    /// </summary>
+    private void RefreshReplacementConnectorAttachment()
+    {
+        if (!IsInitialized ||
+            (!_torsoVisualReplaced && !_leftFootVisualReplaced && !_rightFootVisualReplaced))
+            return;
+
+        for (int index = 0; index < _connectorDefinitions.Length; index++)
+        {
+            ConnectorVisualDefinition definition = _connectorDefinitions[index];
+            if (!IsPartVisualReplaced(definition.PartA) && !IsPartVisualReplaced(definition.PartB))
+                continue;
+
+            int aIndex = (int)definition.PartA;
+            int bIndex = (int)definition.PartB;
+            Vector3 a = _sockets[aIndex].GlobalPosition;
+            Vector3 b = _sockets[bIndex].GlobalPosition;
+            Vector3 delta = b - a;
+            float separation = delta.Length();
+            if (separation <= Mathf.Epsilon) continue;
+            Vector3 direction = delta / separation;
+
+            float trustedA = _meshRadii[aIndex];
+            float trustedB = _meshRadii[bIndex];
+            float visualA = ConnectorVisualExtent(definition.PartA, direction, trustedA);
+            float visualB = ConnectorVisualExtent(definition.PartB, -direction, trustedB);
+
+            float oldGap = separation - trustedA - trustedB;
+            float oldLength = Mathf.Max(_trustedProfile.ConnectorMinimumLength, oldGap);
+            Vector3 oldCenter = oldGap < _trustedProfile.ConnectorMinimumLength
+                ? (a + b) * 0.5f
+                : a + direction * (trustedA + oldLength * 0.5f);
+
+            float visualGap = separation - visualA - visualB;
+            float visualLength = Mathf.Max(_trustedProfile.ConnectorMinimumLength, visualGap);
+            Vector3 visualCenter = visualGap < _trustedProfile.ConnectorMinimumLength
+                ? (a + b) * 0.5f
+                : a + direction * (visualA + visualLength * 0.5f);
+
+            MeshInstance3D connector = _connectorMeshes[index];
+            // Preserve the normal connector update's authored depth/lane offset by applying only
+            // the delta between the trusted-radius and actual-rendered-bound centers.
+            connector.GlobalPosition += visualCenter - oldCenter;
+            Vector3 scale = connector.Scale;
+            scale.Y = visualLength / _connectorAuthoringLengths[index];
+            connector.Scale = scale;
+        }
+    }
+
+    /// <summary>
     /// Returns the rendered support distance from a part socket toward a connector endpoint.
     /// Normal Buddy parts retain their trusted radius. A visual replacement instead measures its
     /// actual rendered mesh bounds, so connector presentation reaches large/asymmetric authored
