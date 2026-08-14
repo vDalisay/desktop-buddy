@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 
 namespace DesktopBuddy.AssetForge.Core;
@@ -16,8 +17,8 @@ public static class RepositoryEnvironmentExporter
         ReadOnlySpan<byte> thumbnailPng)
     {
         AssetRecipe recipe = generated.Recipe;
-        if (recipe.Category != AssetCategory.Lamp || recipe.AssetFamily != AssetFamily.Environment)
-            throw new ArgumentException("Environment exporter currently accepts Lamp@1 recipes only.", nameof(generated));
+        if (recipe.AssetFamily != AssetFamily.Environment || !IsSupportedCategory(recipe.Category))
+            throw new ArgumentException("Environment exporter currently accepts Lamp and Sofa recipes only.", nameof(generated));
 
         string root = RepositoryAssetVerifier.ValidateRoot(repositoryRoot);
         RgbaImage source = PngCodec.DecodeRgba8(sourcePng);
@@ -26,8 +27,11 @@ public static class RepositoryEnvironmentExporter
         _ = PngCodec.DecodeRgba8(thumbnailPng);
         GlbWriter.ValidateSingleMesh(generated.GlbBytes);
 
-        string slug = recipe.AssetId["decoration.lamp.".Length..];
-        string authoringRelative = $"authoring/asset-forge/lamps/{slug}";
+        string prefix = AssetIdPrefix(recipe.Category);
+        if (!recipe.AssetId.StartsWith(prefix, StringComparison.Ordinal))
+            throw new InvalidOperationException($"Environment AssetId '{recipe.AssetId}' does not match the {recipe.Category} namespace.");
+        string slug = recipe.AssetId[prefix.Length..];
+        string authoringRelative = $"authoring/asset-forge/{AuthoringFolder(recipe.Category)}/{slug}";
         string assetRelative = $"assets/generated/environment/{recipe.AssetId}";
         string definitionRelative = $"data/environment/generated/{recipe.AssetId}.tres";
         string aggregateRelative = "data/environment/generated_decorations.tres";
@@ -87,31 +91,47 @@ public static class RepositoryEnvironmentExporter
     private static string DecorationResource(AssetRecipe recipe, GeneratedAsset generated, string assetRelative)
     {
         EnvironmentGeneratedBounds bounds = EnvironmentGeneratedBounds.Analyze(generated.Mesh);
+        bool hasLightProfile = recipe.Category == AssetCategory.Lamp && recipe.Light.Enabled;
         string number(double value) => value.ToString("0.######", CultureInfo.InvariantCulture);
         var text = new StringBuilder();
-        text.AppendLine("[gd_resource type=\"Resource\" script_class=\"EnvironmentDecorationResource\" load_steps=7 format=3]");
+        text.AppendLine($"[gd_resource type=\"Resource\" script_class=\"EnvironmentDecorationResource\" load_steps={(hasLightProfile ? 7 : 5)} format=3]");
         text.AppendLine();
         text.AppendLine("[ext_resource type=\"Script\" path=\"res://src/Environment/EnvironmentDecorationResource.cs\" id=\"1\"]");
         text.AppendLine($"[ext_resource type=\"PackedScene\" path=\"res://{assetRelative}/mesh.glb\" id=\"2\"]");
         text.AppendLine($"[ext_resource type=\"Texture2D\" path=\"res://{assetRelative}/albedo.png\" id=\"3\"]");
         text.AppendLine($"[ext_resource type=\"Texture2D\" path=\"res://{assetRelative}/thumbnail.png\" id=\"4\"]");
-        text.AppendLine("[ext_resource type=\"Script\" path=\"res://src/Environment/DecorationLightProfileResource.cs\" id=\"5\"]");
-        text.AppendLine();
-        text.AppendLine("[sub_resource type=\"Resource\" id=\"LightProfile\"]");
-        text.AppendLine("script = ExtResource(\"5\")");
-        text.AppendLine($"Enabled = {Bool(recipe.Light.Enabled)}");
-        text.AppendLine($"EmissionStrength = {number(recipe.Light.EmissionStrength)}");
-        text.AppendLine($"LightEnabled = {Bool(recipe.Light.LightEnabled)}");
-        text.AppendLine($"Brightness = {number(recipe.Light.Brightness)}");
-        text.AppendLine($"Range = {number(recipe.Light.Range)}");
-        text.AppendLine($"Color = Color({number(recipe.Light.Red / 255.0)}, {number(recipe.Light.Green / 255.0)}, {number(recipe.Light.Blue / 255.0)}, 1)");
-        text.AppendLine($"EmitterPosition = Vector2({number(recipe.Light.EmitterX)}, {number(recipe.Light.EmitterY)})");
+        if (hasLightProfile)
+            text.AppendLine("[ext_resource type=\"Script\" path=\"res://src/Environment/DecorationLightProfileResource.cs\" id=\"5\"]");
+
+        if (hasLightProfile)
+        {
+            text.AppendLine();
+            text.AppendLine("[sub_resource type=\"Resource\" id=\"LightProfile\"]");
+            text.AppendLine("script = ExtResource(\"5\")");
+            text.AppendLine($"Enabled = {Bool(recipe.Light.Enabled)}");
+            text.AppendLine($"EmissionStrength = {number(recipe.Light.EmissionStrength)}");
+            text.AppendLine($"LightEnabled = {Bool(recipe.Light.LightEnabled)}");
+            text.AppendLine($"Brightness = {number(recipe.Light.Brightness)}");
+            text.AppendLine($"Range = {number(recipe.Light.Range)}");
+            text.AppendLine($"Color = Color({number(recipe.Light.Red / 255.0)}, {number(recipe.Light.Green / 255.0)}, {number(recipe.Light.Blue / 255.0)}, 1)");
+            text.AppendLine($"EmitterPosition = Vector2({number(recipe.Light.EmitterX)}, {number(recipe.Light.EmitterY)})");
+            if (EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe))
+            {
+                Vector2 local = EnvironmentTemplateMapping.SourcePixelToWorld(
+                    recipe.Light.EmitterX * EnvironmentTemplateSpace.CanvasSize,
+                    recipe.Light.EmitterY * EnvironmentTemplateSpace.CanvasSize,
+                    recipe);
+                text.AppendLine("UsesLocalEmitterPosition = true");
+                text.AppendLine($"LocalEmitterPosition = Vector2({number(local.X)}, {number(local.Y)})");
+            }
+        }
+
         text.AppendLine();
         text.AppendLine("[resource]");
         text.AppendLine("script = ExtResource(\"1\")");
         text.AppendLine($"DefinitionId = \"{Escape(recipe.AssetId)}\"");
         text.AppendLine($"DisplayNameKey = \"{Escape(recipe.DisplayName)}\"");
-        text.AppendLine("Category = 0");
+        text.AppendLine($"Category = {DecorationCategory(recipe.Category)}");
         text.AppendLine($"PriceCredits = {recipe.PriceCredits}");
         text.AppendLine("AnchorKind = 0");
         text.AppendLine($"AllowsRotation = {Bool(recipe.Environment.AllowsRotation)}");
@@ -128,7 +148,8 @@ public static class RepositoryEnvironmentExporter
         text.AppendLine($"Pivot = Vector2({number(recipe.Environment.PivotX)}, {number(recipe.Environment.PivotY)})");
         text.AppendLine($"GeneratorVersion = {recipe.GeneratorVersion}");
         text.AppendLine($"CanonicalAssetHash = \"{generated.CanonicalAssetHash}\"");
-        text.AppendLine("LightProfile = SubResource(\"LightProfile\")");
+        if (hasLightProfile)
+            text.AppendLine("LightProfile = SubResource(\"LightProfile\")");
         return text.ToString();
     }
 
@@ -202,6 +223,7 @@ public static class RepositoryEnvironmentExporter
     {
         string normalized = relative.Replace('\\', '/').TrimStart('/');
         bool owned = normalized.StartsWith("authoring/asset-forge/lamps/", StringComparison.Ordinal) ||
+                     normalized.StartsWith("authoring/asset-forge/sofas/", StringComparison.Ordinal) ||
                      normalized.StartsWith("assets/generated/environment/", StringComparison.Ordinal) ||
                      normalized.StartsWith("data/environment/generated/", StringComparison.Ordinal) ||
                      normalized == "data/environment/generated_decorations.tres";
@@ -209,6 +231,30 @@ public static class RepositoryEnvironmentExporter
         if (normalized.Contains("../", StringComparison.Ordinal) || normalized.Contains("/..", StringComparison.Ordinal))
             throw new InvalidOperationException("Path traversal is forbidden.");
     }
+
+    private static bool IsSupportedCategory(AssetCategory category) =>
+        category is AssetCategory.Lamp or AssetCategory.Sofa;
+
+    private static string AssetIdPrefix(AssetCategory category) => category switch
+    {
+        AssetCategory.Lamp => "decoration.lamp.",
+        AssetCategory.Sofa => "decoration.sofa.",
+        _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
+    };
+
+    private static string AuthoringFolder(AssetCategory category) => category switch
+    {
+        AssetCategory.Lamp => "lamps",
+        AssetCategory.Sofa => "sofas",
+        _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
+    };
+
+    private static int DecorationCategory(AssetCategory category) => category switch
+    {
+        AssetCategory.Lamp => 0,
+        AssetCategory.Sofa => 1,
+        _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
+    };
 
     private static int RenderBand(EnvironmentRenderMode mode) => mode switch
     {
