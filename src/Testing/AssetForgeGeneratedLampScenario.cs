@@ -31,13 +31,14 @@ public sealed class AssetForgeGeneratedLampScenario : IScenario
             GodotObject.IsInstanceValid(resource.Thumbnail) &&
             GodotObject.IsInstanceValid(resource.LightProfile) &&
             resource.LightProfile!.Enabled &&
-            resource.LightProfile.LightEnabled;
+            resource.LightProfile.LightEnabled &&
+            resource.LightProfile.UsesLocalEmitterPosition;
         checks.Add(new StartupCheck(
             "af_generated_lamp_resource_imported",
             imported,
             imported
-                ? $"size={resource!.VisualSize} hash={resource.CanonicalAssetHash[..12]} price={resource.PriceCredits}"
-                : "Generated Lamp fixture was not imported through the generated Environment boundary."));
+                ? $"size={resource!.VisualSize} emitter={resource.LightProfile!.LocalEmitterPosition} hash={resource.CanonicalAssetHash[..12]} price={resource.PriceCredits}"
+                : "Generated Lamp fixture was not imported through the generated Environment boundary with its Lamp v2 local emitter."));
         if (!imported)
             return Result(checks, seed);
 
@@ -103,23 +104,35 @@ public sealed class AssetForgeGeneratedLampScenario : IScenario
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
             Node? generatedRoot = presenter.FindChild("GeneratedDecorationMesh", true, false);
+            MeshInstance3D? emitter = presenter.FindChild("GeneratedLampEmitterVisual", true, false) as MeshInstance3D;
+            OmniLight3D? localLight = presenter.FindChild("GeneratedLampLocalLight", true, false) as OmniLight3D;
             int authoredMeshes = generatedRoot is null ? 0 : CountMeshes(generatedRoot);
             int physicsNodes = CountPhysics(presenter);
+            Vector2 expectedEmitter = resource.LightProfile!.LocalEmitterPosition * resource.DefaultScale;
+            bool emitterPlacement = GodotObject.IsInstanceValid(emitter) && GodotObject.IsInstanceValid(localLight) &&
+                Mathf.IsEqualApprox(emitter!.Position.X, expectedEmitter.X) &&
+                Mathf.IsEqualApprox(emitter.Position.Y, expectedEmitter.Y) &&
+                Mathf.IsEqualApprox(localLight!.Position.X, expectedEmitter.X) &&
+                Mathf.IsEqualApprox(localLight.Position.Y, expectedEmitter.Y);
             bool visual = GodotObject.IsInstanceValid(generatedRoot) &&
                 authoredMeshes == 1 &&
-                presenter.FindChild("GeneratedLampEmitterVisual", true, false) is MeshInstance3D &&
-                presenter.FindChild("GeneratedLampLocalLight", true, false) is OmniLight3D &&
+                emitterPlacement &&
                 physicsNodes == 0 &&
                 Mathf.IsEqualApprox(presenter.Position.Z, EnvironmentDecorationPresenter.ZFor(definition.RenderBand));
             checks.Add(new StartupCheck(
                 "af_generated_lamp_renders_visual_only_with_authored_light",
                 visual,
-                $"generated={GodotObject.IsInstanceValid(generatedRoot)} meshes={authoredMeshes} emitter={presenter.FindChild("GeneratedLampEmitterVisual", true, false) is not null} light={presenter.FindChild("GeneratedLampLocalLight", true, false) is not null} physics={physicsNodes}"));
+                $"generated={GodotObject.IsInstanceValid(generatedRoot)} meshes={authoredMeshes} emitter={emitter?.Position} expected={expectedEmitter} light={localLight?.Position} physics={physicsNodes}"));
+
+            checks.Add(new StartupCheck(
+                "af_generated_lamp_v2_uses_baked_local_emitter",
+                emitterPlacement,
+                $"profile={resource.LightProfile.LocalEmitterPosition} scale={resource.DefaultScale:0.###} emitter={emitter?.Position} light={localLight?.Position}"));
 
             Texture2D thumbnail = EnvironmentDecorationVisualFactory.CreatePreview(resource!);
             checks.Add(new StartupCheck(
                 "af_generated_lamp_thumbnail_available",
-                GodotObject.IsInstanceValid(thumbnail) && thumbnail.GetWidth() > 0 && thumbnail.GetHeight() > 0,
+                GodotObject.IsInstanceValid(thumbnail) && thumbnail.GetWidth() == 256 && thumbnail.GetHeight() == 256,
                 $"thumbnail={thumbnail.GetWidth()}x{thumbnail.GetHeight()}"));
         }
         finally
