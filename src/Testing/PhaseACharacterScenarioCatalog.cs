@@ -13,6 +13,8 @@ public static class PhaseACharacterScenarioCatalog
         ["editor_window_monitor_removed"] = () => new EditorWindowMonitorRemovedScenario(),
         ["editor_resize_boundary_isolation"] = () => new EditorResizeBoundaryIsolationScenario(),
         ["shop_panel_purchase"] = () => new ShopPanelScenario(),
+        ["buddy_studio_ownership_preview"] = () => new BuddyStudioOwnershipPreviewScenario(),
+        ["asset_forge_generated_paint_uvs"] = () => new AssetForgeGeneratedPaintUvScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;
