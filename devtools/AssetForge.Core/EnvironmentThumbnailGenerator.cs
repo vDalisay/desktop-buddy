@@ -10,6 +10,14 @@ public static class EnvironmentThumbnailGenerator
     public const int OutputSize = 256;
     private const double PaddingFraction = .10;
 
+    public static byte[] Create(GeneratedAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        if (asset.Recipe.AssetFamily != AssetFamily.Environment)
+            throw new ArgumentException("Environment thumbnail generation requires an Environment asset.", nameof(asset));
+        return AssetThumbnailCache.GetOrCreate(asset, () => Create(asset.AlbedoPng));
+    }
+
     public static byte[] Create(ReadOnlySpan<byte> albedoPng)
     {
         RgbaImage source = PngCodec.DecodeRgba8(albedoPng);
