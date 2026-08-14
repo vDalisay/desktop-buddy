@@ -17,6 +17,7 @@ public partial class BuddyVisualRigView
     private const string GeneratedOutlineName = "GeneratedOutline";
     private const string GeneratedPaintName = "GeneratedPaint";
     private static readonly Dictionary<ulong, GeneratedPaintMeshCache> GeneratedPaintCaches = [];
+    private static readonly Dictionary<ulong, ArrayMesh> GeneratedPaintOverlayMeshes = [];
     private static long _generatedPaintRaycastCount;
     private static long _generatedPaintBvhNodeVisitCount;
     private static long _generatedPaintTriangleTestCount;
@@ -57,7 +58,7 @@ public partial class BuddyVisualRigView
             paint = new MeshInstance3D
             {
                 Name = GeneratedPaintName,
-                Mesh = surface.Mesh,
+                Mesh = ResolveGeneratedPaintOverlayMesh(surface.Mesh),
                 MaterialOverride = paintMaterial,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
@@ -71,6 +72,51 @@ public partial class BuddyVisualRigView
             !ReferenceEquals(material.AlbedoTexture, texture))
             material.AlbedoTexture = texture;
         paint.Visible = texture is not null;
+    }
+
+    /// <summary>
+    /// Asset Forge albedo deliberately reuses the authored UVs on both sides of the generated
+    /// volume. Paint cannot do that: otherwise a mark on the front samples the same texel on the
+    /// back. The paint-only shell therefore gives front and back separate halves of the local U
+    /// range. PaintWorkspace's existing "Paint backside too" transform adds 0.5 local U, so it now
+    /// targets the opposite half explicitly instead of the opposite side appearing implicitly.
+    /// </summary>
+    private static ArrayMesh ResolveGeneratedPaintOverlayMesh(Mesh source)
+    {
+        if (source is not ArrayMesh mesh)
+            throw new InvalidOperationException("Generated replacement paint requires an ArrayMesh.");
+
+        ulong cacheKey = mesh.GetInstanceId();
+        if (GeneratedPaintOverlayMeshes.TryGetValue(cacheKey, out ArrayMesh? cached) &&
+            GodotObject.IsInstanceValid(cached))
+            return cached;
+
+        var paintMesh = new ArrayMesh();
+        for (int surfaceIndex = 0; surfaceIndex < mesh.GetSurfaceCount(); surfaceIndex++)
+        {
+            Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surfaceIndex);
+            Vector3[] vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            Vector2[] authoredUvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+            if (vertices.Length > 0 && authoredUvs.Length == vertices.Length)
+            {
+                var paintUvs = new Vector2[authoredUvs.Length];
+                for (int i = 0; i < paintUvs.Length; i++)
+                    paintUvs[i] = GeneratedPaintAtlasUv(vertices[i], authoredUvs[i]);
+                arrays[(int)Mesh.ArrayType.TexUV] = paintUvs;
+            }
+            paintMesh.AddSurfaceFromArrays(mesh.SurfaceGetPrimitiveType(surfaceIndex), arrays);
+        }
+
+        GeneratedPaintOverlayMeshes[cacheKey] = paintMesh;
+        return paintMesh;
+    }
+
+    private static Vector2 GeneratedPaintAtlasUv(Vector3 vertex, Vector2 authoredUv)
+    {
+        float localU = Mathf.Clamp(authoredUv.X, 0f, 1f) * 0.5f;
+        if (vertex.Z < 0f)
+            localU += 0.5f;
+        return new Vector2(localU, authoredUv.Y);
     }
 
     internal bool TryMapGeneratedReplacementPaintHit(Vector2 paintWorldPoint, out PaintHit hit)
@@ -381,7 +427,9 @@ public partial class BuddyVisualRigView
                     if ((uint)ia >= (uint)vertices.Length || (uint)ib >= (uint)vertices.Length || (uint)ic >= (uint)vertices.Length) return;
                     triangleList.Add(GeneratedPaintTriangle.Create(
                         vertices[ia], vertices[ib], vertices[ic],
-                        uvs[ia], uvs[ib], uvs[ic]));
+                        GeneratedPaintAtlasUv(vertices[ia], uvs[ia]),
+                        GeneratedPaintAtlasUv(vertices[ib], uvs[ib]),
+                        GeneratedPaintAtlasUv(vertices[ic], uvs[ic])));
                 }
             }
 
