@@ -183,7 +183,12 @@ public static class RepositoryEnvironmentVerifier
     private static void ValidateThumbnail(string path, List<string> diagnostics)
     {
         if (!File.Exists(path)) { diagnostics.Add("missing generated Environment thumbnail.png"); return; }
-        try { _ = PngCodec.DecodeRgba8(File.ReadAllBytes(path)); }
+        try
+        {
+            RgbaImage image = PngCodec.DecodeRgba8(File.ReadAllBytes(path));
+            if (image.Width != EnvironmentThumbnailGenerator.OutputSize || image.Height != EnvironmentThumbnailGenerator.OutputSize)
+                diagnostics.Add($"generated Environment thumbnail.png must be {EnvironmentThumbnailGenerator.OutputSize}x{EnvironmentThumbnailGenerator.OutputSize}; found {image.Width}x{image.Height}");
+        }
         catch (Exception exception) { diagnostics.Add("generated Environment thumbnail.png is invalid: " + exception.Message); }
     }
 
@@ -238,8 +243,7 @@ public static class RepositoryEnvironmentRegenerator
         if (!File.Exists(sourcePath)) throw new FileNotFoundException("Authored Environment source image is missing.", sourcePath);
         byte[] source = File.ReadAllBytes(sourcePath);
         GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-        string thumbnailPath = Path.Combine(root, "assets", "generated", "environment", recipe.AssetId, "thumbnail.png");
-        byte[] thumbnail = File.Exists(thumbnailPath) ? File.ReadAllBytes(thumbnailPath) : generated.AlbedoPng;
+        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
         RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
         return recipe.AssetId;
     }
