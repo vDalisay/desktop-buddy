@@ -1,3 +1,4 @@
+using DesktopBuddy.Buddy.Physics;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Presentation3D;
