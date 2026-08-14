@@ -25,7 +25,8 @@ public partial class AssetForgePreview : Control
     private TrustedBuddyPreviewProfile _profile;
     private AssetCategory _category = AssetCategory.Glasses;
     private EnvironmentGeneratedBounds _environmentBounds;
-    private double _lampLogicalHeight = 150;
+    private AssetRecipe? _environmentRecipe;
+    private double _environmentLogicalHeight = 150;
     private DecorationLightSettings _lampSettings = new();
     private bool _referenceVisible = true;
     private bool _rotating;
@@ -132,14 +133,15 @@ public partial class AssetForgePreview : Control
             !GodotObject.IsInstanceValid(_partReferenceSecondary) ||
             !GodotObject.IsInstanceValid(_headReference.Root)) return;
 
-        _environmentReference.Visible = category == AssetCategory.Lamp && _referenceVisible;
+        bool environment = category is AssetCategory.Lamp or AssetCategory.Sofa;
+        _environmentReference.Visible = environment && _referenceVisible;
         if (category == AssetCategory.Glasses)
         {
             _partReference.Visible = false;
             _partReferenceSecondary.Visible = false;
             _headReference.Root.Visible = _referenceVisible;
         }
-        else if (category == AssetCategory.Lamp)
+        else if (environment)
         {
             _headReference.Root.Visible = false;
             _partReference.Visible = false;
@@ -196,6 +198,7 @@ public partial class AssetForgePreview : Control
         _lampEmitterGizmo = null;
         _lampPreviewLight = null;
         _environmentBounds = default;
+        _environmentRecipe = null;
     }
 
     public void ShowGenerated(GeneratedAsset generated, string sourcePath)
@@ -226,13 +229,18 @@ public partial class AssetForgePreview : Control
         {
             AddGeneratedPreviewMesh(_asset, mesh, ReferenceRadius(), Vector3.Zero, mirror: false, outline: true, "Mesh");
         }
-        else if (_category == AssetCategory.Lamp)
+        else if (_category is AssetCategory.Lamp or AssetCategory.Sofa)
         {
             _environmentBounds = EnvironmentGeneratedBounds.Analyze(generated.Mesh);
-            _lampLogicalHeight = generated.Recipe.Environment.LogicalHeight;
-            _lampSettings = generated.Recipe.Light;
-            AddGeneratedPreviewMesh(_asset, mesh, 1f, Vector3.Zero, mirror: false, outline: false, "LampMesh");
-            UpdateLampGizmo();
+            _environmentRecipe = generated.Recipe;
+            _environmentLogicalHeight = generated.Recipe.Environment.LogicalHeight;
+            AddGeneratedPreviewMesh(_asset, mesh, 1f, Vector3.Zero, mirror: false, outline: false,
+                _category == AssetCategory.Lamp ? "LampMesh" : "SofaMesh");
+            if (_category == AssetCategory.Lamp)
+            {
+                _lampSettings = generated.Recipe.Light;
+                UpdateLampGizmo();
+            }
         }
         else
         {
@@ -272,8 +280,10 @@ public partial class AssetForgePreview : Control
 
     public void SetLampPreviewSettings(double logicalHeight, DecorationLightSettings settings)
     {
-        _lampLogicalHeight = logicalHeight;
+        _environmentLogicalHeight = logicalHeight;
         _lampSettings = settings;
+        if (_environmentRecipe is not null && _environmentRecipe.Category == AssetCategory.Lamp)
+            _environmentRecipe = _environmentRecipe with { Environment = _environmentRecipe.Environment with { LogicalHeight = logicalHeight }, Light = settings };
         UpdateLampGizmo();
         if (_category == AssetCategory.Lamp) ResetView();
     }
@@ -285,9 +295,24 @@ public partial class AssetForgePreview : Control
         if (GodotObject.IsInstanceValid(_lampEmitterGizmo)) _lampEmitterGizmo!.QueueFree();
         if (GodotObject.IsInstanceValid(_lampPreviewLight)) _lampPreviewLight!.QueueFree();
 
+        Vector2 emitter2;
+        if (_environmentRecipe is not null && EnvironmentTemplateMapping.UsesLiteralTemplateSpace(_environmentRecipe))
+        {
+            NumericsVector2 mapped = EnvironmentTemplateMapping.SourcePixelToWorld(
+                _lampSettings.EmitterX * EnvironmentTemplateSpace.CanvasSize,
+                _lampSettings.EmitterY * EnvironmentTemplateSpace.CanvasSize,
+                _environmentRecipe);
+            emitter2 = new Vector2(mapped.X, mapped.Y);
+        }
+        else
+        {
+            emitter2 = new Vector2(
+                (float)(_lampSettings.EmitterX - .5) * _environmentBounds.Width,
+                -(float)(1.0 - _lampSettings.EmitterY) * _environmentBounds.Height);
+        }
         Vector3 position = new(
-            (float)(_lampSettings.EmitterX - .5) * _environmentBounds.Width,
-            -(float)(1.0 - _lampSettings.EmitterY) * _environmentBounds.Height,
+            emitter2.X,
+            emitter2.Y,
             MathF.Max(2f, _environmentBounds.Depth * .65f));
         float radius = Math.Clamp(MathF.Min(_environmentBounds.Width, _environmentBounds.Height) * .045f, 2.5f, 12f);
         Color color = Color.Color8(_lampSettings.Red, _lampSettings.Green, _lampSettings.Blue);
@@ -342,7 +367,7 @@ public partial class AssetForgePreview : Control
             if (GodotObject.IsInstanceValid(_partReference)) _partReference.Visible = visible;
             if (GodotObject.IsInstanceValid(_partReferenceSecondary)) _partReferenceSecondary.Visible = visible;
         }
-        else if (_category == AssetCategory.Lamp)
+        else if (_category is AssetCategory.Lamp or AssetCategory.Sofa)
         {
             if (GodotObject.IsInstanceValid(_environmentReference)) _environmentReference.Visible = visible;
         }
@@ -364,20 +389,21 @@ public partial class AssetForgePreview : Control
 
     public void ResetView()
     {
+        bool environment = _category is AssetCategory.Lamp or AssetCategory.Sofa;
         _orbit.RotationDegrees = Vector3.Zero;
-        _orbit.Position = _category == AssetCategory.Lamp
-            ? new Vector3(0, (float)_lampLogicalHeight * .5f, 0)
+        _orbit.Position = environment
+            ? new Vector3(0, (float)_environmentLogicalHeight * .5f, 0)
             : Vector3.Zero;
         if (!GodotObject.IsInstanceValid(_camera)) return;
         _camera.Size = _category switch
         {
             AssetCategory.FootShape => ReferenceRadius() * 5.2f,
             AssetCategory.TorsoShape => ReferenceRadius() * 3.4f,
-            AssetCategory.Lamp => (float)_lampLogicalHeight * 1.35f,
+            AssetCategory.Lamp or AssetCategory.Sofa => (float)_environmentLogicalHeight * 1.35f,
             _ => ReferenceRadius() * 3.2f,
         };
-        if (_category == AssetCategory.Lamp)
-            _camera.Position = new Vector3(0, 0, MathF.Max(400f, (float)_lampLogicalHeight * 4f));
+        if (environment)
+            _camera.Position = new Vector3(0, 0, MathF.Max(400f, (float)_environmentLogicalHeight * 4f));
         else
             _camera.Position = new Vector3(0, 0, ReferenceRadius() * 5f);
     }
@@ -389,8 +415,8 @@ public partial class AssetForgePreview : Control
         _ => _profile.HeadRadius,
     };
 
-    private float PreviewScaleBase() => _category == AssetCategory.Lamp
-        ? MathF.Max(32f, (float)_lampLogicalHeight)
+    private float PreviewScaleBase() => _category is AssetCategory.Lamp or AssetCategory.Sofa
+        ? MathF.Max(32f, (float)_environmentLogicalHeight)
         : ReferenceRadius();
 
     private static ArrayMesh ToGodotMesh(CanonicalMesh source)
