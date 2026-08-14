@@ -53,8 +53,19 @@ public sealed class AssetForgeReplacementConnectorScenario : IScenario
                 context.Preview.GeneratedReplacementOutlineScaleIsCorrectForTest,
                 $"outlineScaleCorrect={context.Preview.GeneratedReplacementOutlineScaleIsCorrectForTest}"));
 
-            // Existing character paint surfaces must render on the generated replacement itself,
-            // never on the hidden trusted sphere/capsule underneath it.
+            BuddyVisualRigTrustSnapshot studioTrust = context.Preview.CaptureTrustSnapshot();
+            context.Preview.SetStudioPreviewMode(true);
+            bool studioConnectorsHidden = context.Preview.StudioPreviewConnectorsHiddenForTest &&
+                context.Preview.TrustedGeometryMatches(studioTrust);
+            context.Preview.SetStudioPreviewMode(false);
+            bool studioConnectorsRestored = Enumerable.Range(0, context.Preview.ConnectorVisualCount)
+                .All(index => context.Preview.GetConnectorVisual(index).Visible) &&
+                context.Preview.TrustedGeometryMatches(studioTrust);
+            checks.Add(new StartupCheck(
+                "af_buddy_studio_preview_hides_connectors_only",
+                studioConnectorsHidden && studioConnectorsRestored,
+                $"hidden={studioConnectorsHidden} restored={studioConnectorsRestored}"));
+
             byte[] rgba =
             [
                 255, 32, 64, 255, 255, 32, 64, 255,
