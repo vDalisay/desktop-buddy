@@ -45,8 +45,57 @@ public static class EnvironmentThumbnailGenerator
             source.Pixels.AsSpan(sourceOffset, 4).CopyTo(cropPixels.AsSpan(targetOffset, 4));
         }
 
-        RgbaImage resized = PngCodec.ResizeBox(new RgbaImage(cropSide, cropSide, cropPixels), OutputSize);
+        // ResizeBox intentionally only supports exact integer-block reductions. Thumbnail crops
+        // have arbitrary alpha-derived dimensions, so use a deterministic bilinear sampler rather
+        // than altering the crop just to make its side divisible by 256.
+        RgbaImage resized = ResizeBilinearSquare(new RgbaImage(cropSide, cropSide, cropPixels), OutputSize);
         return PngCodec.EncodeRgba8(resized);
+    }
+
+    private static RgbaImage ResizeBilinearSquare(RgbaImage source, int target)
+    {
+        if (target <= 0) throw new ArgumentOutOfRangeException(nameof(target));
+        if (source.Width <= 0 || source.Height <= 0)
+            throw new ArgumentException("Thumbnail source dimensions must be positive.", nameof(source));
+        if (source.Width == target && source.Height == target)
+            return new RgbaImage(source.Width, source.Height, (byte[])source.Pixels.Clone());
+
+        byte[] pixels = new byte[target * target * 4];
+        double scaleX = source.Width / (double)target;
+        double scaleY = source.Height / (double)target;
+        for (int ty = 0; ty < target; ty++)
+        for (int tx = 0; tx < target; tx++)
+        {
+            double sx = ((tx + .5) * scaleX) - .5;
+            double sy = ((ty + .5) * scaleY) - .5;
+            double floorX = Math.Floor(sx);
+            double floorY = Math.Floor(sy);
+            int x0 = Math.Clamp((int)floorX, 0, source.Width - 1);
+            int y0 = Math.Clamp((int)floorY, 0, source.Height - 1);
+            int x1 = Math.Min(source.Width - 1, x0 + 1);
+            int y1 = Math.Min(source.Height - 1, y0 + 1);
+            double fx = Math.Clamp(sx - floorX, 0.0, 1.0);
+            double fy = Math.Clamp(sy - floorY, 0.0, 1.0);
+
+            int i00 = ((y0 * source.Width) + x0) * 4;
+            int i10 = ((y0 * source.Width) + x1) * 4;
+            int i01 = ((y1 * source.Width) + x0) * 4;
+            int i11 = ((y1 * source.Width) + x1) * 4;
+            int output = ((ty * target) + tx) * 4;
+            for (int channel = 0; channel < 4; channel++)
+            {
+                double top = source.Pixels[i00 + channel] +
+                    ((source.Pixels[i10 + channel] - source.Pixels[i00 + channel]) * fx);
+                double bottom = source.Pixels[i01 + channel] +
+                    ((source.Pixels[i11 + channel] - source.Pixels[i01 + channel]) * fx);
+                double value = top + ((bottom - top) * fy);
+                pixels[output + channel] = (byte)Math.Clamp(
+                    (int)Math.Round(value, MidpointRounding.AwayFromZero),
+                    0,
+                    255);
+            }
+        }
+        return new RgbaImage(target, target, pixels);
     }
 
     private static Bounds FindVisibleBounds(RgbaImage source)
