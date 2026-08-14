@@ -26,6 +26,13 @@
 [ext_resource type="AudioStream" path="res://assets/sfx/buddy/Buddy_Hard_Impact1.mp3" id="73_sfx_buddy_hard_impact_1"]
 [ext_resource type="AudioStream" path="res://assets/sfx/buddy/Buddy_Hard_Impact2.mp3" id="74_sfx_buddy_hard_impact_2"]
 [ext_resource type="AudioStream" path="res://assets/sfx/item/Item_falling1.mp3" id="75_sfx_item_falling_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/buddy/Impact 1.wav" id="79_sfx_glove_impact_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/buddy/Impact 2.wav" id="80_sfx_glove_impact_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/buddy/Impact 3.wav" id="81_sfx_glove_impact_3"]
+[ext_resource type="AudioStream" path="res://assets/sfx/buddy/Impact 4.wav" id="82_sfx_glove_impact_4"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/pistol_shot1.mp3" id="76_sfx_pistol_shot_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/pistol_shot2.mp3" id="77_sfx_pistol_shot_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/pistol_reload.mp3" id="78_sfx_pistol_reload"]
 [ext_resource type="Script" path="res://src/UI/MoneyHudPresenter.cs" id="20_hud"]
 [ext_resource type="Resource" path="res://data/buddy/lab_care_interaction.tres" id="21_care_profile"]
 [ext_resource type="Script" path="res://src/Buddy/Behavior/ToolReactionComponent.cs" id="22_tool_reaction"]
@@ -430,15 +437,23 @@ Profile = ExtResource("18_reaction_profile")
 CareStroke = NodePath("../CareStrokeComponent")
 ToolReaction = NodePath("../ToolReactionComponent")
 
-[node name="ReactionAudioPresenter" type="Node" parent="." node_paths=PackedStringArray("Pipeline", "Objects", "Player")]
+[node name="ReactionAudioPresenter" type="Node" parent="." node_paths=PackedStringArray("Pipeline", "Objects", "Guns", "Player")]
 script = ExtResource("19_audio")
 Pipeline = NodePath("../InteractionPipeline")
 Objects = NodePath("../LooseObjectRegistry")
+Guns = NodePath("../CursorGunComponent")
 BuddyImpact1 = ExtResource("71_sfx_buddy_impact_1")
 BuddyImpact2 = ExtResource("72_sfx_buddy_impact_2")
 BuddyHardImpact1 = ExtResource("73_sfx_buddy_hard_impact_1")
 BuddyHardImpact2 = ExtResource("74_sfx_buddy_hard_impact_2")
 ItemFalling = ExtResource("75_sfx_item_falling_1")
+GloveImpact1 = ExtResource("79_sfx_glove_impact_1")
+GloveImpact2 = ExtResource("80_sfx_glove_impact_2")
+GloveImpact3 = ExtResource("81_sfx_glove_impact_3")
+GloveImpact4 = ExtResource("82_sfx_glove_impact_4")
+PistolShot1 = ExtResource("76_sfx_pistol_shot_1")
+PistolShot2 = ExtResource("77_sfx_pistol_shot_2")
+PistolReload = ExtResource("78_sfx_pistol_reload")
 Profile = ExtResource("18_reaction_profile")
 Player = NodePath("AudioStreamPlayer")
 

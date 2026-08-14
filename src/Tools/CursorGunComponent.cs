@@ -107,6 +107,9 @@ public partial class CursorGunComponent : Node2D
     /// </summary>
     public event Action<GunProfile>? ShotFired;
 
+    /// <summary>Raised when a gun actually begins its authored reload.</summary>
+    public event Action<GunProfile>? ReloadStarted;
+
     /// <summary>Muzzle flash strength, 1 on the firing tick and 0 once it has burned out.</summary>
     public float MuzzleFlashStrength =>
         _flashTicks <= 0 || _flashDuration <= 0 ? 0.0f : (float)_flashTicks / _flashDuration;
@@ -407,6 +410,7 @@ public partial class CursorGunComponent : Node2D
             ReloadStartCount++;
             if (profile.DropsMagazineOnReload)
                 DropMagazine(gun);
+            ReloadStarted?.Invoke(profile);
         }
 
         if (shot.ReloadCompleted)

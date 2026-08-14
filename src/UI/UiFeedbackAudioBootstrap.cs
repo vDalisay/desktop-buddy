@@ -85,6 +85,7 @@ public partial class UiFeedbackAudioBootstrap : Node
     private AudioStream? _confirmLayer;
     private AudioStream? _equipLayer;
     private AudioStream? _purchaseLayer;
+    private AudioStream? _sliderTick;
     private AudioStreamPlayer[] _voices = Array.Empty<AudioStreamPlayer>();
     private AudioStreamPlayer[] _layerVoices = Array.Empty<AudioStreamPlayer>();
     private int _nextVoiceIndex;
@@ -126,6 +127,7 @@ public partial class UiFeedbackAudioBootstrap : Node
         _confirmLayer = LoadUiClip("Confirmation_equip_Save.mp3");
         _equipLayer = LoadUiClip("inventory_equip.mp3");
         _purchaseLayer = LoadUiClip("Money_purchase.mp3");
+        _sliderTick = LoadUiVariations("slider_tick", 6);
 
         GetTree().NodeAdded += OnNodeAdded;
         HookTree(GetTree().Root);
@@ -186,6 +188,14 @@ public partial class UiFeedbackAudioBootstrap : Node
             audio.Play(cue);
     }
 
+    public static void TryPlaySliderTick(Node context)
+    {
+        if (!GodotObject.IsInstanceValid(context) || !context.IsInsideTree())
+            return;
+        if (context.GetTree().Root.GetNodeOrNull<UiFeedbackAudioBootstrap>(nameof(UiFeedbackAudioBootstrap)) is { } audio)
+            audio.PlaySliderTick();
+    }
+
     public void Play(UiFeedbackCue cue)
     {
         if (cue == UiFeedbackCue.None || !GodotObject.IsInstanceValid(_player))
@@ -203,6 +213,13 @@ public partial class UiFeedbackAudioBootstrap : Node
             _ => _click,
         };
 
+        PlayOnPool(_voices, ref _nextVoiceIndex, stream);
+    }
+
+    private void PlaySliderTick()
+    {
+        if (_sliderTick is not { } stream || !GodotObject.IsInstanceValid(_player))
+            return;
         PlayOnPool(_voices, ref _nextVoiceIndex, stream);
     }
 
@@ -464,6 +481,26 @@ public partial class UiFeedbackAudioBootstrap : Node
         };
         randomizer.AddStream(-1, stream);
         return randomizer;
+    }
+
+    private static AudioStream? LoadUiVariations(string prefix, int count)
+    {
+        var randomizer = new AudioStreamRandomizer
+        {
+            PlaybackMode = AudioStreamRandomizer.PlaybackModeEnum.RandomNoRepeats,
+            RandomPitch = 1.06f,
+            RandomVolumeOffsetDb = 0.8f,
+        };
+        int loaded = 0;
+        for (int index = 1; index <= count; index++)
+        {
+            if (LoadStream($"{prefix}{index}.mp3") is not { } stream)
+                continue;
+            randomizer.AddStream(index - 1, stream);
+            loaded++;
+        }
+
+        return loaded == 0 ? null : randomizer;
     }
 
     /// <summary>

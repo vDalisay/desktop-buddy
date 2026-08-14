@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using DesktopBuddy.App;
 using DesktopBuddy.Ui;
+using DesktopBuddy.UI;
 using DesktopBuddy.UI.Win98;
 using Godot;
 
@@ -93,6 +94,7 @@ public partial class SettingsPanel : PanelContainer
         slider.ValueChanged += changedValue =>
         {
             readout.Text = Percent((float)changedValue);
+            UiFeedbackAudioBootstrap.TryPlaySliderTick(this);
             changed((float)changedValue);
         };
         if (committed is not null)

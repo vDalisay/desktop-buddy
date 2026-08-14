@@ -96,9 +96,10 @@ public sealed class M3PresentationScenario : IScenario
             $"label={visualPresenter.FaceLabel.Text} semantic={lab.Reactions.CurrentFace}"));
         checks.Add(new StartupCheck("sampled_buddy_impact_variation_played",
             lab.ReactionAudio.BuddyImpactCount == 1 &&
+            lab.ReactionAudio.GloveImpactCount == 1 &&
             lab.ReactionAudio.LastPlayedStream is AudioStreamRandomizer randomizer &&
             randomizer.RandomPitchSemitones > 0.0f,
-            $"normal={lab.ReactionAudio.BuddyImpactCount} " +
+            $"normal={lab.ReactionAudio.BuddyImpactCount} glove={lab.ReactionAudio.GloveImpactCount} " +
             $"stream={lab.ReactionAudio.LastPlayedStream?.GetType().Name} " +
             $"pitch={((lab.ReactionAudio.LastPlayedStream as AudioStreamRandomizer)?.RandomPitchSemitones ?? 0.0f):F1}st " +
             $"volume={normalImpactVolumeDb:F1}dB"));

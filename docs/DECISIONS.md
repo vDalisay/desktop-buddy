@@ -13,6 +13,13 @@ the transition blends a snapshot of the outgoing proxy pose into the newly sampl
 must also fade untracked position and rotation channels back to rest so no prior clip residue
 survives. Tracking-mode cuts remain immediate because physics owns the displayed pose there.
 
+## Supplied Boxing-Glove Impact Audio — Owner Approved (2026-08-15)
+
+The owner supplied four WAV cues for boxing-glove hits. Boxing-glove impacts use those four
+clips as randomized variations with the existing presentation pitch variation and overlapping
+voice pool. The clips are presentation-only and do not alter physics, damage, payout, or
+attribution.
+
 ## Supplied Impact and Landing Audio — Owner Approved (2026-08-13)
 
 The owner supplied five MP3 cues for the presentation layer: two random variations for ordinary

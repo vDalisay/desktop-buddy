@@ -6,11 +6,12 @@ using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Platform;
+using DesktopBuddy.Tools;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Presentation;
 
-/// <summary>Plays authored reaction, impact, and loose-object landing cues.</summary>
+/// <summary>Plays authored reaction, impact, landing, and cursor-gun cues.</summary>
 [GlobalClass]
 public partial class ReactionAudioPresenter : Node
 {
@@ -21,6 +22,7 @@ public partial class ReactionAudioPresenter : Node
     private const float QuietImpactVolumeDb = -12.0f;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public LooseObjectRegistry Objects { get; set; } = null!;
+    [Export] public CursorGunComponent Guns { get; set; } = null!;
     [Export] public ReactionProfile Profile { get; set; } = null!;
     [Export] public AudioStreamPlayer Player { get; set; } = null!;
     [Export] public AudioStream? BuddyImpact1 { get; set; }
@@ -28,10 +30,20 @@ public partial class ReactionAudioPresenter : Node
     [Export] public AudioStream? BuddyHardImpact1 { get; set; }
     [Export] public AudioStream? BuddyHardImpact2 { get; set; }
     [Export] public AudioStream? ItemFalling { get; set; }
+    [Export] public AudioStream? GloveImpact1 { get; set; }
+    [Export] public AudioStream? GloveImpact2 { get; set; }
+    [Export] public AudioStream? GloveImpact3 { get; set; }
+    [Export] public AudioStream? GloveImpact4 { get; set; }
+    [Export] public AudioStream? PistolShot1 { get; set; }
+    [Export] public AudioStream? PistolShot2 { get; set; }
+    [Export] public AudioStream? PistolReload { get; set; }
 
     private AudioStream? _buddyImpact;
     private AudioStream? _buddyHardImpact;
     private AudioStream? _itemFalling;
+    private AudioStream? _gloveImpact;
+    private AudioStream? _pistolShot;
+    private AudioStream? _pistolReload;
     private float _hardImpactPain;
     private float _maximumPain;
     private float _baseVolumeDb;
@@ -44,6 +56,9 @@ public partial class ReactionAudioPresenter : Node
     public int BuddyImpactCount { get; private set; }
     public int BuddyHardImpactCount { get; private set; }
     public int ItemFallingCount { get; private set; }
+    public int GloveImpactCount { get; private set; }
+    public int PistolShotCount { get; private set; }
+    public int PistolReloadCount { get; private set; }
     public int WallImpactCount { get; private set; }
     public BuddyPart? LastWallImpactPart { get; private set; }
     public AudioStream? LastWallImpactStream { get; private set; }
@@ -79,13 +94,18 @@ public partial class ReactionAudioPresenter : Node
 
     public void Initialize()
     {
-        if (!GodotObject.IsInstanceValid(Pipeline) || !GodotObject.IsInstanceValid(Profile) ||
+        if (!GodotObject.IsInstanceValid(Pipeline) || !GodotObject.IsInstanceValid(Guns) ||
+            !Guns.IsInitialized || !GodotObject.IsInstanceValid(Profile) ||
             !GodotObject.IsInstanceValid(Player))
-            throw new InvalidOperationException("ReactionAudioPresenter requires pipeline, profile, and player.");
+            throw new InvalidOperationException(
+                "ReactionAudioPresenter requires initialized pipeline/guns, profile, and player.");
 
         _buddyImpact = BuildVariations(BuddyImpact1, BuddyImpact2);
         _buddyHardImpact = BuildVariations(BuddyHardImpact1, BuddyHardImpact2);
         _itemFalling = IsValid(ItemFalling) ? ItemFalling : null;
+        _gloveImpact = BuildVariations(GloveImpact1, GloveImpact2, GloveImpact3, GloveImpact4);
+        _pistolShot = BuildVariations(PistolShot1, PistolShot2);
+        _pistolReload = BuildRandomized(PistolReload, 1.5f);
         _hardImpactPain = HardImpactPainFrom(Pipeline.Profile);
         _maximumPain = MaximumPainFrom(Pipeline.Profile);
         _grabbedBoundaryPainThreshold = GrabbedBoundaryPainFrom(Pipeline.Profile);
@@ -110,6 +130,8 @@ public partial class ReactionAudioPresenter : Node
         }
 
         Pipeline.ImpactAccepted += OnImpact;
+        Guns.ShotFired += OnGunShotFired;
+        Guns.ReloadStarted += OnGunReloadStarted;
         Pipeline.Grab.Released += OnGrabReleased;
         _pendingGrabbedWallImpacts = new AcceptedImpact?[Enum.GetValues<BuddyPart>().Length];
         _wallImpactDetectors = new BuddyPartWallImpactDetector[Enum.GetValues<BuddyPart>().Length];
@@ -139,6 +161,11 @@ public partial class ReactionAudioPresenter : Node
             Pipeline.Grab.Released -= OnGrabReleased;
             Pipeline.CareAwarded -= OnCare;
         }
+        if (GodotObject.IsInstanceValid(Guns))
+        {
+            Guns.ShotFired -= OnGunShotFired;
+            Guns.ReloadStarted -= OnGunReloadStarted;
+        }
         foreach (BuddyPartWallImpactDetector detector in _wallImpactDetectors)
         {
             if (GodotObject.IsInstanceValid(detector))
@@ -158,6 +185,24 @@ public partial class ReactionAudioPresenter : Node
         }
 
         _voices = Array.Empty<AudioStreamPlayer>();
+    }
+
+    private void OnGunShotFired(GunProfile profile)
+    {
+        if (profile.ContentId != ContentIds.ToolPistol || !IsValid(_pistolShot))
+            return;
+
+        PistolShotCount++;
+        PlayStream(_pistolShot!, _baseVolumeDb);
+    }
+
+    private void OnGunReloadStarted(GunProfile profile)
+    {
+        if (profile.ContentId != ContentIds.ToolPistol || !IsValid(_pistolReload))
+            return;
+
+        PistolReloadCount++;
+        PlayStream(_pistolReload!, _baseVolumeDb);
     }
 
     private void OnImpact(AcceptedImpact impact)
@@ -185,6 +230,13 @@ public partial class ReactionAudioPresenter : Node
         }
 
         BuddyImpactCount++;
+        if (impact.ContentId == ContentIds.ToolBoxingGlove)
+        {
+            GloveImpactCount++;
+            PlayImpact(IsValid(_gloveImpact) ? _gloveImpact : _buddyImpact, impact);
+            return;
+        }
+
         PlayImpact(_buddyImpact, impact);
     }
 
@@ -275,22 +327,51 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnCare(CareKind kind) => PlayChirp(Profile.CareChirpHz, 7_000.0f, _baseVolumeDb);
 
-    private static AudioStream? BuildVariations(AudioStream? first, AudioStream? second)
+    private static AudioStream? BuildVariations(params AudioStream?[] streams)
     {
-        bool firstValid = IsValid(first);
-        bool secondValid = IsValid(second);
-        if (!firstValid)
-            return secondValid ? second : null;
-        if (!secondValid)
-            return first;
+        AudioStream? firstValid = null;
+        int validCount = 0;
+        foreach (AudioStream? stream in streams)
+        {
+            if (!IsValid(stream))
+                continue;
+
+            firstValid ??= stream;
+            validCount++;
+        }
+
+        if (validCount == 0)
+            return null;
+        if (validCount == 1)
+            return firstValid;
 
         var randomizer = new AudioStreamRandomizer
         {
             PlaybackMode = AudioStreamRandomizer.PlaybackModeEnum.RandomNoRepeats,
             RandomPitchSemitones = ImpactRandomPitchSemitones,
         };
-        randomizer.AddStream(0, first!);
-        randomizer.AddStream(1, second!);
+        int variation = 0;
+        foreach (AudioStream? stream in streams)
+        {
+            if (IsValid(stream))
+                randomizer.AddStream(variation++, stream!);
+        }
+
+        return randomizer;
+    }
+
+    private static AudioStream? BuildRandomized(AudioStream? stream, float pitchSemitones)
+    {
+        if (!IsValid(stream))
+            return null;
+
+        var randomizer = new AudioStreamRandomizer
+        {
+            PlaybackMode = AudioStreamRandomizer.PlaybackModeEnum.RandomNoRepeats,
+            RandomPitchSemitones = pitchSemitones,
+            RandomVolumeOffsetDb = 0.5f,
+        };
+        randomizer.AddStream(0, stream!);
         return randomizer;
     }
 

@@ -70,6 +70,7 @@ public sealed class PistolPunctuationScenario : IScenario
 
         lab.CameraKick.ResetPeak();
         int kicksBefore = lab.CameraKick.KickCount;
+        int pistolShotCuesBefore = lab.ReactionAudio.PistolShotCount;
         float flashPeak = 0.0f;
         bool visualFlashSeen = false;
         for (int shot = 0; shot < BurstShots; shot++)
@@ -85,6 +86,14 @@ public sealed class PistolPunctuationScenario : IScenario
                 visualFlashSeen |= lab.CursorGunVisual.IsFlashVisible;
             }
         }
+
+        checks.Add(new StartupCheck(
+            "real_pistol_shots_play_imported_randomized_audio",
+            lab.ReactionAudio.PistolShotCount == pistolShotCuesBefore + BurstShots &&
+            lab.ReactionAudio.LastPlayedStream is AudioStreamRandomizer,
+            $"cues={lab.ReactionAudio.PistolShotCount - pistolShotCuesBefore} " +
+            $"stream={lab.ReactionAudio.LastPlayedStream?.GetType().Name} " +
+            $"voices={lab.ReactionAudio.VoicePoolSize}"));
 
         float burstPeak = lab.CameraKick.PeakOffsetPx;
         int kicks = lab.CameraKick.KickCount - kicksBefore;
@@ -114,6 +123,7 @@ public sealed class PistolPunctuationScenario : IScenario
         // flashed would be the gun claiming a shot it never made.
         await EmptyMagazine(tree, gun, pistol);
         int dryBefore = gun.DryFireCount;
+        int pistolReloadCuesBefore = lab.ReactionAudio.PistolReloadCount;
         float dryFlashPeak = 0.0f;
         gun.SetTriggerHeld(true);
         await Tick(tree);
@@ -209,6 +219,13 @@ public sealed class PistolPunctuationScenario : IScenario
             $"chest_moved={chestMoved:F2}px"));
 
         checks.Add(new StartupCheck(
+            "real_pistol_reload_plays_randomized_audio",
+            lab.ReactionAudio.PistolReloadCount == pistolReloadCuesBefore + 1 &&
+            lab.ReactionAudio.LastPlayedStream is AudioStreamRandomizer,
+            $"cues={lab.ReactionAudio.PistolReloadCount - pistolReloadCuesBefore} " +
+            $"stream={lab.ReactionAudio.LastPlayedStream?.GetType().Name}"));
+
+        checks.Add(new StartupCheck(
             "dropped_magazine_never_registers_as_a_loose_object",
             registryDuring == registryBefore && lab.Objects.Count == registryBefore,
             $"registry_before={registryBefore} during={registryDuring} " +
@@ -224,6 +241,8 @@ public sealed class PistolPunctuationScenario : IScenario
             $"dropped={gun.MagazinesDropped} linger={pistol.MagazineLingerTicks}"));
 
         // --- The toy authors none of it, and shows none of it ---
+        int pistolShotCuesAfterRealPistol = lab.ReactionAudio.PistolShotCount;
+        int pistolReloadCuesAfterRealPistol = lab.ReactionAudio.PistolReloadCount;
         await SelectAndAim(tree, lab, gun, ToolId.NerfBlaster, lane, Vector2.Right);
         GunProfile nerf = gun.ActiveProfile!;
         lab.CameraKick.ResetPeak();
@@ -245,11 +264,14 @@ public sealed class PistolPunctuationScenario : IScenario
             lab.CameraKick.KickCount == nerfKicksBefore &&
             lab.CameraKick.PeakOffsetPx <= 0.0f &&
             nerfFlashPeak <= 0.0f &&
-            gun.MagazinesDropped == nerfMagazinesBefore,
+            gun.MagazinesDropped == nerfMagazinesBefore &&
+            lab.ReactionAudio.PistolShotCount == pistolShotCuesAfterRealPistol &&
+            lab.ReactionAudio.PistolReloadCount == pistolReloadCuesAfterRealPistol,
             $"authored_shake={nerf.FireShakeAmplitudePx} flash_ticks={nerf.MuzzleFlashTicks} " +
             $"drops_magazine={nerf.DropsMagazineOnReload} kicks={lab.CameraKick.KickCount - nerfKicksBefore} " +
             $"peak={lab.CameraKick.PeakOffsetPx:F3}px flash_peak={nerfFlashPeak:F2} " +
-            $"magazines={gun.MagazinesDropped - nerfMagazinesBefore}"));
+            $"magazines={gun.MagazinesDropped - nerfMagazinesBefore} " +
+            $"pistol_audio={lab.ReactionAudio.PistolShotCount}/{lab.ReactionAudio.PistolReloadCount}"));
 
         messages.Add(
             $"shake_restart_peak={restartPeak:F3}px over {restartKicks} live restarts; " +

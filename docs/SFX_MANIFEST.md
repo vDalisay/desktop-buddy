@@ -72,7 +72,7 @@ like an equip, because buying flips "Buy" to "Equip" before the audio handler ev
 |---|---|---|---|---|
 | `buddy/hurt_light` | small impact accepted (low pain) | `InteractionDamageComponent.ImpactAccepted` | one-shot, 3 variations | SYNTH (pain chirp) |
 | `buddy/hurt_heavy` | big impact accepted (high pain) | same, pain ≥ threshold | one-shot, 3 variations | SYNTH |
-| `buddy/hurt_glove` | boxing-glove hit specifically | `ContentIds.ToolBoxingGlove` | one-shot, 2 var | SYNTH |
+| `buddy/hurt_glove` | boxing-glove hit specifically | `ContentIds.ToolBoxingGlove` | one-shot, 4 var | LIVE |
 | `buddy/enjoy` | impact the buddy *likes* | `ImpactMoodEffectKind.Enjoyment` | one-shot, 2 var | SYNTH (care chirp) |
 | `buddy/pet` | pet reward tick | `CareAwarded(CareKind.Pet)` | one-shot, 3 var | SYNTH |
 | `buddy/tickle_laugh` | tickle reward tick, friendly | `CareAwarded(CareKind.Tickle)` | one-shot, 3 var | SYNTH |
@@ -116,12 +116,12 @@ like an equip, because buying flips "Buy" to "Equip" before the audio handler ev
 ### Guns (`tool.pistol`, `tool.nerf_blaster`, `tool.shotgun`)
 | id | when | trigger | kind | status |
 |---|---|---|---|---|
-| `gun/pistol_fire` | pistol shot | `ShotFired` (per `GunProfile`) | one-shot, 2 var | NEW |
+| `gun/pistol_fire` | pistol shot | `ShotFired` (per `GunProfile`) | one-shot, 2 var | LIVE |
 | `gun/nerf_fire` | nerf shot | `ShotFired` | one-shot, 2 var | NEW |
 | `gun/shotgun_fire` | shotgun shot | `ShotFired` | one-shot, 2 var | NEW |
 | `gun/dry_fire` | trigger pulled, empty | empty-magazine path | one-shot | NEW |
 | `gun/mag_drop` | magazine hits the floor | `MagazineBody` ground contact | one-shot, 2 var | NEW |
-| `gun/reload` | magazine reinserted / reload | reload path | one-shot | NEW |
+| `gun/reload` | real pistol reload begins | `ReloadStarted` for `tool.pistol` | one-shot, pitch variation | LIVE |
 | `gun/projectile_hit` | projectile hits anything | `ProjectileBody` contact | one-shot, 3 var | NEW |
 
 ### Grenade (`tool.grenade`)
@@ -212,6 +212,7 @@ longer reach `Purchase`/`Confirm`/`Caution` (owner call: one click sound for all
 | `ui/window_close` | window closes | `CloseRequested` | one-shot | NEW |
 | `ui/window_minimize` | minimize | `MinimizeRequested` | one-shot | NEW |
 | `ui/coin_tick` | money HUD counting up | `BalanceChanged` | one-shot, short | NEW |
+| `ui/slider_tick` | settings slider crosses one step | shared `SettingsPanel.AddSlider` path | one-shot, 6 var | LIVE |
 | `ui/work_enter` | work mode entered | `ActiveChanged(true)` | one-shot | NEW |
 | `ui/work_exit` | work mode exited | `ActiveChanged(false)` | one-shot | SYNTH (confirm) |
 | `ui/startup` | app boot finished | bootstrap ready | one-shot | NEW |
@@ -228,3 +229,10 @@ one-line handler on the listed event. No per-tool audio classes beyond the four 
 
 Priority if you're recording in passes: **buddy hurt/pet/KO → guns → grenade/fire → world
 impacts → UI**. That order is roughly how often the player hears each one.
+
+## Next iteration notes (not shipped)
+
+- `buddy/hurt_glove`: the supplied clips read wetter than desired; dry the transient and reduce
+  the wet/squelchy body while keeping the impact punch.
+- `gun/pistol_fire`: the tail drops too abruptly; make the falloff more gradual, ideally with a
+  longer echoing tail that eases toward silence.
