@@ -343,10 +343,10 @@ public partial class WorkCompanionCoordinator : Node
         CompiledCharacterAppearance? liveAppearance = liveRig.ActiveAppearance;
         Guid? activeId = _context.CharacterSelection?.ActiveCharacterId;
 
-        // The live rig is the authoritative presentation while switching modes. Reuse it when it
-        // already represents the selected character so Work Mode cannot silently downgrade a
-        // generated torso/foot/glasses asset through a narrower catalogue on recompile.
-        if (!activeId.HasValue || liveAppearance?.CharacterId == activeId.Value || _context.Characters is null)
+        // CharacterId alone is not a freshness guarantee: Studio can save/equip another cosmetic
+        // on the same character while the live rig is still waiting for its queued activation.
+        // Work Mode must therefore compile the persisted active character every time it enters.
+        if (!activeId.HasValue || _context.Characters is null)
             return liveAppearance;
 
         CharacterLoadResult loaded = await _context.Characters.LoadAsync(activeId.Value, token);
