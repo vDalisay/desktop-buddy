@@ -83,7 +83,6 @@ public static class EnvironmentDecorationVisualFactory
                 ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
                 DiffuseMode = BaseMaterial3D.DiffuseModeEnum.Burley,
                 SpecularMode = BaseMaterial3D.SpecularModeEnum.SchlickGgx,
-                Specular = .18f,
                 Roughness = .82f,
                 CullMode = BaseMaterial3D.CullModeEnum.Back,
             };
