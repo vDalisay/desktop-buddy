@@ -17,6 +17,7 @@ public partial class AssetForgeMain
 
         EnsureModernWorkspaceUi();
         EnsureCategoryWorkflowUi();
+        EnsureCategorySourceHandler();
     }
 
     private void InstallBridgeThicknessUi()
