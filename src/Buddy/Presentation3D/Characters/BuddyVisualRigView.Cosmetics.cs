@@ -214,8 +214,10 @@ public partial class BuddyVisualRigView
                 {
                     if (pairedRoot is null) throw new InvalidOperationException("Generated Shoes require both trusted foot anchors.");
                     float generatedFootRadius = PartMeshRadius(BuddyPartId.LeftFoot);
-                    AddGeneratedAsset(root, visual, generatedFootRadius, false);
-                    AddGeneratedAsset(pairedRoot, visual, generatedFootRadius, true);
+                    // Source template points to the natural right side. Mirror the left foot with a
+                    // real rotation so both feet retain correct winding, normals and Buddy lighting.
+                    AddGeneratedAsset(root, visual, generatedFootRadius, true);
+                    AddGeneratedAsset(pairedRoot, visual, generatedFootRadius, false);
                 }
                 else throw new InvalidOperationException($"Unsupported generated slot {visual.Slot}.");
                 break;
@@ -254,23 +256,37 @@ public partial class BuddyVisualRigView
         }
         root.AddChild(scene3D);
         scene3D.Name = "GeneratedMesh";
-        scene3D.Scale = new Vector3(mirrorX ? -targetRadius : targetRadius, targetRadius, targetRadius);
+        scene3D.Scale = Vector3.One * targetRadius;
+        scene3D.RotationDegrees = mirrorX ? new Vector3(0, 180f, 0) : Vector3.Zero;
         var meshes = new List<MeshInstance3D>();
         if (scene3D is MeshInstance3D rootMesh) meshes.Add(rootMesh);
         meshes.AddRange(scene3D.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>());
         if (meshes.Count != 1)
         {
             scene3D.QueueFree();
-            throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' must contain exactly one mesh node; found {meshes.Count}.");
+            throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' must contain exactly one authored mesh node; found {meshes.Count}.");
         }
         MeshInstance3D instance = meshes[0];
         StandardMaterial3D material = _materials.CreateLitTexturedMaterial(resource.AlbedoTexture!, Colors.White);
         material.ResourceName = $"BuddyGenerated_{visual.CosmeticId}";
         material.RenderPriority = (int)visual.Layer;
-        if (mirrorX) material.CullMode = BaseMaterial3D.CullModeEnum.Disabled;
         instance.MaterialOverride = material;
         instance.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         instance.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit;
+
+        // Trusted Buddy body parts use a second grown front-cull mesh for the soft cartoon outline.
+        // Replacement body parts must use the same visual pass or they read as foreign GLB assets.
+        if (visual.Slot is CharacterFeatureSlot.Tops or CharacterFeatureSlot.Shoes)
+        {
+            instance.AddChild(new MeshInstance3D
+            {
+                Name = "GeneratedOutline",
+                Mesh = instance.Mesh,
+                MaterialOverride = _materials.OutlineMaterial,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
+            });
+        }
     }
 
     private void EnsureCosmeticAnchors()
