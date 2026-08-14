@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - asset-forge
+      - main
 
 env:
   GODOT_VERSION: 4.6.1-stable
