@@ -18,22 +18,26 @@ public static class AssetForgeCompiler
 
     private static GeneratedAsset GeneratePartReplacement(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) =>
         GenerateSilhouette(sourcePng, recipe,
-            mask => PartReplacementMeshPostprocessor.Apply(
-                PartReplacementGenerator.Generate(mask, recipe.Geometry, recipe.Category),
+            (mask, foreground) => PartReplacementMeshPostprocessor.Apply(
+                PartReplacementSubpixelContour.Apply(
+                    PartReplacementGenerator.Generate(mask, recipe.Geometry, recipe.Category),
+                    foreground,
+                    recipe.Geometry,
+                    recipe.Category),
                 recipe.Geometry),
             maximumMaskFraction: .75,
             context: recipe.Category.ToString());
 
     private static GeneratedAsset GenerateEnvironmentSilhouette(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) =>
         GenerateSilhouette(sourcePng, recipe,
-            mask => EnvironmentSilhouetteGenerator.Generate(mask, recipe),
+            (mask, _) => EnvironmentSilhouetteGenerator.Generate(mask, recipe),
             maximumMaskFraction: .82,
             context: recipe.Category.ToString());
 
     private static GeneratedAsset GenerateSilhouette(
         ReadOnlySpan<byte> sourcePng,
         AssetRecipe recipe,
-        Func<MaskGrid, CanonicalMesh> meshFactory,
+        Func<MaskGrid, RgbaImage, CanonicalMesh> meshFactory,
         double maximumMaskFraction,
         string context)
     {
@@ -57,7 +61,7 @@ public static class AssetForgeCompiler
         if (maskFraction > maximumMaskFraction)
             throw new InvalidOperationException($"The {context} mask covers {maskFraction:P0} of the canvas; use a cleaner source with more transparent/background space.");
 
-        CanonicalMesh mesh = meshFactory(mask);
+        CanonicalMesh mesh = meshFactory(mask, foreground.Image);
         string geometryHash = mesh.CanonicalHash();
         byte[] glb = GlbWriter.Write(mesh);
         GlbWriter.ValidateSingleMesh(glb);
