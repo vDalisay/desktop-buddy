@@ -47,29 +47,48 @@ public static class AssetThumbnailCache
         }
 
         byte[] produced = producer() ?? throw new InvalidOperationException("Thumbnail producer returned null.");
-        ValidateThumbnail(produced);
-        byte[] stable = (byte[])produced.Clone();
+        byte[] canonical = Canonicalize(produced);
         lock (Gate)
         {
             if (!Memory.TryGetValue(key, out byte[]? winner))
             {
-                Memory.Add(key, stable);
-                winner = stable;
+                Memory.Add(key, canonical);
+                winner = canonical;
             }
             return (byte[])winner.Clone();
+        }
+    }
+
+    /// <summary>
+    /// Export-boundary guard used for old callers and maintenance tools. Existing exact 256x256
+    /// thumbnails are preserved byte-for-byte; smaller/larger valid PNGs are normalized through the
+    /// same transparent-margin crop used by Environment content.
+    /// </summary>
+    public static byte[] Canonicalize(ReadOnlySpan<byte> png)
+    {
+        RgbaImage image = PngCodec.DecodeRgba8(png);
+        if (image.Width == EnvironmentThumbnailGenerator.OutputSize &&
+            image.Height == EnvironmentThumbnailGenerator.OutputSize)
+            return png.ToArray();
+        return EnvironmentThumbnailGenerator.Create(png);
+    }
+
+    public static bool IsCanonical(ReadOnlySpan<byte> png)
+    {
+        try
+        {
+            RgbaImage image = PngCodec.DecodeRgba8(png);
+            return image.Width == EnvironmentThumbnailGenerator.OutputSize &&
+                   image.Height == EnvironmentThumbnailGenerator.OutputSize;
+        }
+        catch
+        {
+            return false;
         }
     }
 
     public static void ClearMemoryCache()
     {
         lock (Gate) Memory.Clear();
-    }
-
-    private static void ValidateThumbnail(ReadOnlySpan<byte> png)
-    {
-        RgbaImage image = PngCodec.DecodeRgba8(png);
-        if (image.Width != EnvironmentThumbnailGenerator.OutputSize || image.Height != EnvironmentThumbnailGenerator.OutputSize)
-            throw new InvalidOperationException(
-                $"Asset Forge thumbnails must be exactly {EnvironmentThumbnailGenerator.OutputSize}x{EnvironmentThumbnailGenerator.OutputSize} RGBA PNG; found {image.Width}x{image.Height}.");
     }
 }
