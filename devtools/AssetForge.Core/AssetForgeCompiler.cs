@@ -8,13 +8,19 @@ namespace DesktopBuddy.AssetForge.Core;
 /// </summary>
 public static class AssetForgeCompiler
 {
-    public static GeneratedAsset Generate(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) => recipe.Category switch
+    public static GeneratedAsset Generate(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe)
     {
-        AssetCategory.Glasses => AssetForgeGenerator.Generate(sourcePng, recipe),
-        AssetCategory.TorsoShape or AssetCategory.FootShape => GeneratePartReplacement(sourcePng, recipe),
-        AssetCategory.Lamp or AssetCategory.Sofa => GenerateEnvironmentSilhouette(sourcePng, recipe),
-        _ => throw new NotSupportedException($"Generation for {recipe.Category} is not implemented yet."),
-    };
+        using AssetForgeDiagnostics.GenerationTimer timer = AssetForgeDiagnostics.BeginGeneration(recipe);
+        GeneratedAsset generated = recipe.Category switch
+        {
+            AssetCategory.Glasses => AssetForgeGenerator.Generate(sourcePng, recipe),
+            AssetCategory.TorsoShape or AssetCategory.FootShape => GeneratePartReplacement(sourcePng, recipe),
+            AssetCategory.Lamp or AssetCategory.Sofa => GenerateEnvironmentSilhouette(sourcePng, recipe),
+            _ => throw new NotSupportedException($"Generation for {recipe.Category} is not implemented yet."),
+        };
+        timer.Complete(generated);
+        return generated;
+    }
 
     private static GeneratedAsset GeneratePartReplacement(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) =>
         GenerateSilhouette(sourcePng, recipe,
