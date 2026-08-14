@@ -102,7 +102,6 @@ public partial class AssetForgePreview : Control
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         });
 
-        // Real Buddy radii provide a stable human-readable scale cue beside authored furniture.
         AddEnvironmentBuddyReference("BuddyTorso", new Vector3(-105, -58, -3), _profile.TorsoRadius, _profile.TorsoColor);
         AddEnvironmentBuddyReference("BuddyHead", new Vector3(-105, -120, -3), _profile.HeadRadius, _profile.HeadColor);
     }
@@ -181,7 +180,6 @@ public partial class AssetForgePreview : Control
             ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
             DiffuseMode = _profile.Look.DiffuseMode,
             SpecularMode = _profile.Look.SpecularMode,
-            Specular = _profile.Look.Specular,
             Roughness = _profile.Look.Roughness,
         };
     }
