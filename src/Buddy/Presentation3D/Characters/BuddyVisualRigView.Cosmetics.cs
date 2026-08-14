@@ -214,8 +214,6 @@ public partial class BuddyVisualRigView
                 {
                     if (pairedRoot is null) throw new InvalidOperationException("Generated Shoes require both trusted foot anchors.");
                     float generatedFootRadius = PartMeshRadius(BuddyPartId.LeftFoot);
-                    // Source template points to the natural right side. Mirror the left foot with a
-                    // real rotation so both feet retain correct winding, normals and Buddy lighting.
                     AddGeneratedAsset(root, visual, generatedFootRadius, true);
                     AddGeneratedAsset(pairedRoot, visual, generatedFootRadius, false);
                 }
@@ -274,18 +272,18 @@ public partial class BuddyVisualRigView
         instance.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         instance.PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit;
 
-        // Trusted Buddy body parts use a second grown front-cull mesh for the soft cartoon outline.
-        // Replacement body parts must use the same visual pass or they read as foreign GLB assets.
         if (visual.Slot is CharacterFeatureSlot.Tops or CharacterFeatureSlot.Shoes)
         {
-            instance.AddChild(new MeshInstance3D
+            var outline = new MeshInstance3D
             {
                 Name = "GeneratedOutline",
                 Mesh = instance.Mesh,
-                MaterialOverride = _materials.OutlineMaterial,
+                MaterialOverride = _materials.CreateScaledOutlineMaterial(targetRadius),
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
-            });
+                Scale = Vector3.One * _materials.ReplacementOutlineScale(targetRadius),
+            };
+            instance.AddChild(outline);
         }
     }
 
