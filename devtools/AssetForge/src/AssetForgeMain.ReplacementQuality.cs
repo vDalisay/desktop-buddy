@@ -37,6 +37,21 @@ public partial class AssetForgeMain
         shape.MoveChild(_surfaceSmoothnessLabel, insertionIndex);
         shape.AddChild(_surfaceSmoothness);
         shape.MoveChild(_surfaceSmoothness, insertionIndex + 1);
+
+        // Category defaults are applied by a later ItemSelected handler. Prepare the depth range
+        // first so replacement defaults above the old 1.0 glasses maximum are never clamped.
+        if (GodotObject.IsInstanceValid(_categorySelector))
+        {
+            _categorySelector.ItemSelected += rawIndex =>
+            {
+                int index = (int)rawIndex;
+                if (index < 0 || index >= AuthoringTemplateCatalog.All.Count) return;
+                string id = AuthoringTemplateCatalog.All[index].Id;
+                bool replacement = id is AuthoringTemplateCatalog.TorsoId or AuthoringTemplateCatalog.FeetId;
+                _depth.MaxValue = replacement ? 4.0 : 1.0;
+                _depth.Step = replacement ? 0.05 : 0.005;
+            };
+        }
     }
 
     private void ApplyReplacementQualityRecipe(AssetRecipe recipe)
