@@ -30,7 +30,30 @@ public static class EnvironmentTemplateMapping
         float units = UnitsPerPixel(recipe);
         return new Vector2(
             ((float)sourceX - EnvironmentTemplateSpace.CenterX) * units,
-            -((float)EnvironmentTemplateSpace.FloorY - (float)sourceY) * units);
+            ((float)sourceY - EnvironmentTemplateSpace.FloorY) * units);
+    }
+
+    /// <summary>
+    /// Inverse of SourcePixelToWorld for literal-template editor tools such as the Lamp emitter
+    /// gizmo. Returned coordinates are source-template pixels and are intentionally not clamped so
+    /// callers can choose whether out-of-canvas motion should clamp, reject or remain visible.
+    /// </summary>
+    public static Vector2 WorldToSourcePixel(Vector2 world, AssetRecipe recipe)
+    {
+        if (!float.IsFinite(world.X) || !float.IsFinite(world.Y))
+            throw new ArgumentOutOfRangeException(nameof(world), "World coordinates must be finite.");
+        float units = UnitsPerPixel(recipe);
+        if (!float.IsFinite(units) || units <= 0f)
+            throw new InvalidOperationException("Environment template world scale must be positive and finite.");
+        return new Vector2(
+            (world.X / units) + EnvironmentTemplateSpace.CenterX,
+            (world.Y / units) + EnvironmentTemplateSpace.FloorY);
+    }
+
+    public static Vector2 WorldToNormalizedSource(Vector2 world, AssetRecipe recipe)
+    {
+        Vector2 pixels = WorldToSourcePixel(world, recipe);
+        return pixels / EnvironmentTemplateSpace.CanvasSize;
     }
 
     public static Vector2 GridVertexToWorld(
