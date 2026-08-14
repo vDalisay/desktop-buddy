@@ -13,7 +13,10 @@ public partial class BuddyVisualRigView
         int ActiveParts,
         int Vertices,
         int Triangles,
-        int CachedPaintMeshes);
+        int CachedPaintMeshes,
+        long Raycasts,
+        long BvhNodeVisits,
+        long TriangleTests);
 
     internal GeneratedReplacementDiagnosticsSnapshot CaptureGeneratedReplacementDiagnostics()
     {
@@ -30,13 +33,16 @@ public partial class BuddyVisualRigView
             active,
             vertices,
             triangles,
-            GeneratedPaintCaches.Count);
+            GeneratedPaintCaches.Count,
+            _generatedPaintRaycastCount,
+            _generatedPaintBvhNodeVisitCount,
+            _generatedPaintTriangleTestCount);
 
         void Measure(Node3D? visualRoot, BuddyPartId partId)
         {
             if (!IsPartVisualReplaced(partId) || !GodotObject.IsInstanceValid(visualRoot))
                 return;
-            MeshInstance3D? surface = FindGeneratedReplacementSurface(visualRoot!);
+            MeshInstance3D? surface = ResolveGeneratedReplacementSurface(visualRoot!, partId);
             if (!GodotObject.IsInstanceValid(surface) || surface!.Mesh is not ArrayMesh mesh)
                 return;
 
