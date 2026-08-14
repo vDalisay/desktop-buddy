@@ -137,7 +137,12 @@ public partial class AssetForgeMain
         {
             if (_generated is null || string.IsNullOrWhiteSpace(_sourcePath))
                 throw new InvalidOperationException("Generate the asset before export.");
-            byte[] thumbnail = _preview.CaptureThumbnailPng();
+            // Buddy Studio thumbnails intentionally show their Buddy fit/reference. Environment
+            // catalogue art must contain only the authored decoration, never the floor/Buddy scale
+            // guide or the editable emitter gizmo, so use the clean deterministic albedo directly.
+            byte[] thumbnail = _generated.Recipe.AssetFamily == AssetFamily.Environment
+                ? _generated.AlbedoPng
+                : _preview.CaptureThumbnailPng();
             if (thumbnail.Length == 0) thumbnail = _generated.AlbedoPng;
             byte[] source = File.ReadAllBytes(_sourcePath);
             string root = FindRepositoryRoot();
