@@ -6,25 +6,29 @@ namespace DesktopBuddy.AssetForge.Core;
 /// Presentation-quality cleanup for generated torso/foot meshes.
 ///
 /// The part generator intentionally starts from a deterministic occupancy grid. That is useful for
-/// stable UVs and runtime budgets, but a 128-cell grid also leaves a visible stair-step contour and
-/// makes the side wall inherit normals from the front/back surface. At oblique angles those two
-/// properties show up as jagged silhouettes and alternating dark/light bands.
+/// stable UVs and runtime budgets, but a 128-cell grid leaves a high-frequency stair-step signal in
+/// the XY perimeter. A small local Laplacian pass improves a front-on view, yet the alternating
+/// turns remain very visible when the model is viewed obliquely.
 ///
 /// For non-zero SurfaceSmoothness we therefore do two bounded, deterministic cleanup steps:
-/// 1. relax only the XY rim vertices along their existing contour (Z/depth and interior vertices are
-///    untouched); and
+/// 1. extract each closed front/back rim from the generated side-wall topology and fair that 3D
+///    contour with a Taubin-style positive/negative low-pass pair. This attacks the alternating
+///    staircase turns much more strongly than the old one-neighbour relaxation while compensating
+///    for Laplacian shrinkage. Every point is still displacement-limited to less than one authored
+///    rim segment, so small deliberate user features are not free to collapse; and
 /// 2. split side-wall vertices from front/back vertices before recalculating normals, so side-wall
-///    shading is averaged around the contour instead of being contaminated by the face normals.
+///    shading is averaged around the contour instead of being contaminated by face normals.
 ///
-/// Zero smoothness remains a strict compatibility path and returns the legacy mesh unchanged.
-/// Triangle count is unchanged; only a small number of rim vertices are duplicated for hard normal
-/// separation. This is deliberately cheaper than raising the whole runtime grid back to 256.
+/// The source PNG and occupancy mask are never modified. Zero smoothness remains a strict
+/// compatibility path and returns the legacy mesh unchanged. Triangle count is unchanged; only a
+/// small number of rim vertices are duplicated for hard normal separation. This is deliberately
+/// cheaper than raising the whole runtime grid back to 256.
 /// </summary>
 public static class PartReplacementMeshPostprocessor
 {
     private const float SideSignEpsilon = 0.000001f;
-    private const float Relaxation = 0.42f;
-    private const float AnchorWeight = 0.16f;
+    private const float TaubinLambda = 0.50f;
+    private const float TaubinMu = -0.53f;
 
     public static CanonicalMesh Apply(CanonicalMesh mesh, GeometrySettings settings)
     {
@@ -37,6 +41,27 @@ public static class PartReplacementMeshPostprocessor
     }
 
     private static void SmoothRim(CanonicalMesh mesh, double smoothness)
+    {
+        Dictionary<int, HashSet<int>> adjacency = BuildRimAdjacency(mesh);
+        if (adjacency.Count == 0)
+            return;
+
+        IReadOnlyList<int[]> loops = ExtractClosedLoops(adjacency);
+        if (loops.Count == 0)
+            return;
+
+        double clampedSmoothness = Math.Clamp(smoothness, 0.0, 3.0);
+        int passes = Math.Clamp((int)Math.Ceiling(clampedSmoothness * 8.0), 1, 24);
+        float displacementFraction = 0.60f + (float)clampedSmoothness * 0.05f;
+        displacementFraction = Math.Clamp(displacementFraction, 0.60f, 0.75f);
+
+        foreach (int[] loop in loops)
+            FairClosedLoop(mesh, loop, passes, displacementFraction);
+
+        mesh.RecalculateNormals();
+    }
+
+    private static Dictionary<int, HashSet<int>> BuildRimAdjacency(CanonicalMesh mesh)
     {
         var adjacency = new Dictionary<int, HashSet<int>>();
         for (int triangle = 0; triangle < mesh.Indices.Count; triangle += 3)
@@ -51,47 +76,7 @@ public static class PartReplacementMeshPostprocessor
             AddSameFaceEdge(b, c);
             AddSameFaceEdge(c, a);
         }
-
-        if (adjacency.Count == 0)
-            return;
-
-        Vector3[] anchors = mesh.Positions.ToArray();
-        Vector3[] current = mesh.Positions.ToArray();
-        Vector3[] next = mesh.Positions.ToArray();
-        int passes = Math.Clamp((int)Math.Ceiling(Math.Clamp(smoothness, 0.0, 3.0) * 2.0), 1, 6);
-
-        for (int pass = 0; pass < passes; pass++)
-        {
-            Array.Copy(current, next, current.Length);
-            foreach ((int index, HashSet<int> neighbors) in adjacency)
-            {
-                // A regular closed contour has two same-face neighbours. Ambiguous diagonal-touch
-                // pixels can produce a branch; keep those anchored rather than risking a foldover.
-                if (neighbors.Count != 2)
-                    continue;
-
-                using IEnumerator<int> enumerator = neighbors.GetEnumerator();
-                enumerator.MoveNext();
-                int first = enumerator.Current;
-                enumerator.MoveNext();
-                int second = enumerator.Current;
-
-                Vector2 currentXy = new(current[index].X, current[index].Y);
-                Vector2 average = new(
-                    (current[first].X + current[second].X) * 0.5f,
-                    (current[first].Y + current[second].Y) * 0.5f);
-                Vector2 anchor = new(anchors[index].X, anchors[index].Y);
-                Vector2 relaxed = Vector2.Lerp(currentXy, average, Relaxation);
-                relaxed = Vector2.Lerp(relaxed, anchor, AnchorWeight);
-                next[index] = new Vector3(relaxed.X, relaxed.Y, current[index].Z);
-            }
-            (current, next) = (next, current);
-        }
-
-        for (int index = 0; index < current.Length; index++)
-            mesh.Positions[index] = current[index];
-        mesh.RecalculateNormals();
-        return;
+        return adjacency;
 
         void AddSameFaceEdge(int left, int right)
         {
@@ -113,6 +98,126 @@ public static class PartReplacementMeshPostprocessor
                 adjacency[index] = set;
             }
             set.Add(neighbor);
+        }
+    }
+
+    private static IReadOnlyList<int[]> ExtractClosedLoops(Dictionary<int, HashSet<int>> adjacency)
+    {
+        var loops = new List<int[]>();
+        var consumed = new HashSet<int>();
+
+        foreach (int seed in adjacency.Keys.OrderBy(static index => index))
+        {
+            if (consumed.Contains(seed))
+                continue;
+
+            var component = new List<int>();
+            var pending = new Stack<int>();
+            pending.Push(seed);
+            consumed.Add(seed);
+            bool regular = true;
+            while (pending.Count > 0)
+            {
+                int current = pending.Pop();
+                component.Add(current);
+                if (!adjacency.TryGetValue(current, out HashSet<int>? neighbors) || neighbors.Count != 2)
+                    regular = false;
+                if (neighbors is null)
+                    continue;
+                foreach (int neighbor in neighbors)
+                {
+                    if (consumed.Add(neighbor))
+                        pending.Push(neighbor);
+                }
+            }
+
+            // Diagonal-touching mask islands can create branched boundary graphs. Preserving those
+            // verbatim is preferable to guessing a path and potentially folding the authored mesh.
+            if (!regular || component.Count < 4)
+                continue;
+
+            int start = component.Min();
+            var loop = new List<int>(component.Count);
+            int previous = -1;
+            int currentVertex = start;
+            for (int guard = 0; guard <= component.Count; guard++)
+            {
+                loop.Add(currentVertex);
+                int[] neighbors = adjacency[currentVertex].OrderBy(static index => index).ToArray();
+                int next = neighbors[0] == previous ? neighbors[1] : neighbors[0];
+                if (next == start)
+                    break;
+                previous = currentVertex;
+                currentVertex = next;
+            }
+
+            if (loop.Count == component.Count && adjacency[loop[^1]].Contains(start))
+                loops.Add(loop.ToArray());
+        }
+
+        return loops;
+    }
+
+    private static void FairClosedLoop(
+        CanonicalMesh mesh,
+        int[] loop,
+        int passes,
+        float displacementFraction)
+    {
+        var anchors = new Vector2[loop.Length];
+        var current = new Vector2[loop.Length];
+        var scratch = new Vector2[loop.Length];
+        float[] segmentLengths = new float[loop.Length];
+        for (int i = 0; i < loop.Length; i++)
+        {
+            Vector3 position = mesh.Positions[loop[i]];
+            anchors[i] = current[i] = new Vector2(position.X, position.Y);
+        }
+        for (int i = 0; i < loop.Length; i++)
+            segmentLengths[i] = Vector2.Distance(anchors[i], anchors[(i + 1) % loop.Length]);
+
+        Array.Sort(segmentLengths);
+        float medianSegment = segmentLengths[segmentLengths.Length / 2];
+        if (medianSegment <= 0.000001f)
+            return;
+        float maximumDisplacement = medianSegment * displacementFraction;
+
+        for (int pass = 0; pass < passes; pass++)
+        {
+            FairStep(current, scratch, TaubinLambda);
+            FairStep(scratch, current, TaubinMu);
+            ClampToAuthoredNeighborhood(current, anchors, maximumDisplacement);
+        }
+
+        for (int i = 0; i < loop.Length; i++)
+        {
+            int index = loop[i];
+            Vector3 original = mesh.Positions[index];
+            mesh.Positions[index] = new Vector3(current[i].X, current[i].Y, original.Z);
+        }
+    }
+
+    private static void FairStep(Vector2[] source, Vector2[] destination, float amount)
+    {
+        for (int i = 0; i < source.Length; i++)
+        {
+            Vector2 previous = source[(i - 1 + source.Length) % source.Length];
+            Vector2 next = source[(i + 1) % source.Length];
+            Vector2 average = (previous + next) * 0.5f;
+            destination[i] = source[i] + (average - source[i]) * amount;
+        }
+    }
+
+    private static void ClampToAuthoredNeighborhood(Vector2[] points, Vector2[] anchors, float maximumDisplacement)
+    {
+        float maximumSquared = maximumDisplacement * maximumDisplacement;
+        for (int i = 0; i < points.Length; i++)
+        {
+            Vector2 delta = points[i] - anchors[i];
+            float lengthSquared = delta.LengthSquared();
+            if (lengthSquared <= maximumSquared || lengthSquared <= 0.000000000001f)
+                continue;
+            points[i] = anchors[i] + delta * (maximumDisplacement / MathF.Sqrt(lengthSquared));
         }
     }
 
