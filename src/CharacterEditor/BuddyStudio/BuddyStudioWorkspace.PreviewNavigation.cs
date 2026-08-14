@@ -26,6 +26,9 @@ public partial class BuddyStudioWorkspace
 
         if (GodotObject.IsInstanceValid(_previewRig) && _assetForgeStudioPreviewApplied != _previewAttached)
         {
+            _assetForgeViewPan = Vector2.Zero;
+            _assetForgePanning = false;
+            _previewInput.MouseDefaultCursorShape = CursorShape.Arrow;
             _previewRig!.SetStudioPreviewMode(_previewAttached);
             _assetForgeStudioPreviewApplied = _previewAttached;
         }
@@ -105,8 +108,6 @@ public partial class BuddyStudioWorkspace
     private void AssetForgeZoomBy(float factor)
     {
         if (!float.IsFinite(factor) || factor <= 0f) return;
-        // No arbitrary max/min framing limits. A tiny positive floor only prevents an invalid zero
-        // orthographic camera size after an extreme number of zoom-out clicks.
         _viewZoom = Math.Max(0.0001f, _viewZoom * factor);
         ApplyAssetForgeView();
     }
