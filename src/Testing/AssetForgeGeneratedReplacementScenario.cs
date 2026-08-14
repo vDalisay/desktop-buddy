@@ -92,7 +92,10 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
             CharacterSaveResult persisted = await store.SaveAsync(document, CancellationToken.None);
             CharacterLoadResult reloaded = await store.LoadAsync(document.Id, CancellationToken.None);
             CharacterCompileResult reloadedCompile = reloaded.Document is null
-                ? new CharacterCompileResult(null, [new CharacterValidationError("character", "Reload returned no document.")], [])
+                ? new CharacterCompileResult(
+                    null,
+                    Array.Empty<CharacterCompileWarning>(),
+                    [new CharacterValidationIssue("character", "Reload returned no document.")])
                 : CharacterCompiler.Compile(reloaded.Document, registry.FeatureCatalog);
             bool survivesRestart = persisted.IsSuccess && reloaded.IsSuccess && reloaded.Document is not null &&
                 reloadedCompile.IsSuccess && reloadedCompile.Appearance is not null &&
