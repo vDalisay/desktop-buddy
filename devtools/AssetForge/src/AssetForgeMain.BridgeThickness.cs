@@ -76,7 +76,7 @@ public partial class AssetForgeMain
         if (_activeCategory != AssetCategory.Glasses)
             return ReadCategoryRecipeFromUi();
 
-        AssetRecipe recipe = ReadRecipeFromUi();
+        AssetRecipe recipe = MergeGlassesUiOntoWorkingRecipe(ReadRecipeFromUi());
         return recipe with
         {
             Geometry = recipe.Geometry with
@@ -141,7 +141,7 @@ public partial class AssetForgeMain
                     : 0;
             RefreshBridgeThicknessVisibility();
             ConfigureActiveCategoryUi();
-            SetStatus($"Opened {recipe.PresetId}@{recipe.PresetVersion} ({recipe.Category}). Its preset version will be preserved until an explicit migration changes it.");
+            SetStatus($"Opened {recipe.PresetId}@{recipe.PresetVersion} ({recipe.Category}). Its preset version and hidden recipe metadata will be preserved until you explicitly change them.");
         }
         catch (Exception exception)
         {
