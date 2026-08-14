@@ -204,18 +204,18 @@ public partial class BuddyVisualRigView
                 if (visual.Slot == CharacterFeatureSlot.Glasses)
                 {
                     ApplyFeatureTransform(root, appearance.Transform, headRadius);
-                    AddGeneratedAsset(root, visual, headRadius, false);
+                    AddGeneratedAsset(root, visual, headRadius, false, color);
                 }
                 else if (visual.Slot == CharacterFeatureSlot.Tops)
                 {
-                    AddGeneratedAsset(root, visual, PartMeshRadius(BuddyPartId.Torso), false);
+                    AddGeneratedAsset(root, visual, PartMeshRadius(BuddyPartId.Torso), false, color);
                 }
                 else if (visual.Slot == CharacterFeatureSlot.Shoes)
                 {
                     if (pairedRoot is null) throw new InvalidOperationException("Generated Shoes require both trusted foot anchors.");
                     float generatedFootRadius = PartMeshRadius(BuddyPartId.LeftFoot);
-                    AddGeneratedAsset(root, visual, generatedFootRadius, true);
-                    AddGeneratedAsset(pairedRoot, visual, generatedFootRadius, false);
+                    AddGeneratedAsset(root, visual, generatedFootRadius, true, color);
+                    AddGeneratedAsset(pairedRoot, visual, generatedFootRadius, false, color);
                 }
                 else throw new InvalidOperationException($"Unsupported generated slot {visual.Slot}.");
                 break;
@@ -241,7 +241,7 @@ public partial class BuddyVisualRigView
         }
     }
 
-    private void AddGeneratedAsset(Node3D root, BuddyCosmeticVisualDefinition visual, float targetRadius, bool mirrorX)
+    private void AddGeneratedAsset(Node3D root, BuddyCosmeticVisualDefinition visual, float targetRadius, bool mirrorX, Color color)
     {
         GeneratedBuddyCosmeticResource resource = visual.GeneratedResource ?? throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' has no trusted generated resource.");
         if (!GodotObject.IsInstanceValid(resource.MeshScene) || !GodotObject.IsInstanceValid(resource.AlbedoTexture))
@@ -265,7 +265,7 @@ public partial class BuddyVisualRigView
             throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' must contain exactly one authored mesh node; found {meshes.Count}.");
         }
         MeshInstance3D instance = meshes[0];
-        StandardMaterial3D material = _materials.CreateLitTexturedMaterial(resource.AlbedoTexture!, Colors.White);
+        StandardMaterial3D material = _materials.CreateLitTexturedMaterial(resource.AlbedoTexture!, color);
         material.ResourceName = $"BuddyGenerated_{visual.CosmeticId}";
         material.RenderPriority = (int)visual.Layer;
         instance.MaterialOverride = material;
