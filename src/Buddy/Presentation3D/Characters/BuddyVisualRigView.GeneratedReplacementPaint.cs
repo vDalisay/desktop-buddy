@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Painting;
 using Godot;
@@ -15,6 +16,7 @@ public partial class BuddyVisualRigView
 {
     private const string GeneratedOutlineName = "GeneratedOutline";
     private const string GeneratedPaintName = "GeneratedPaint";
+    private static readonly Dictionary<ulong, GeneratedPaintMeshCache> GeneratedPaintCaches = [];
 
     private void RefreshGeneratedReplacementVisuals()
     {
@@ -34,16 +36,10 @@ public partial class BuddyVisualRigView
         MeshInstance3D? outline = surface.GetNodeOrNull<MeshInstance3D>(GeneratedOutlineName);
         if (GodotObject.IsInstanceValid(outline))
         {
-            float wantedGrow = _trustedProfile.Look.OutlineGrowAmount / Math.Max(0.0001f, targetRadius);
             StandardMaterial3D? existingOutline = outline!.MaterialOverride as StandardMaterial3D;
             if (existingOutline is null || existingOutline.ResourceName != "BuddyLookScaledOutlineMaterial")
-            {
                 outline.MaterialOverride = _materials.CreateScaledOutlineMaterial(targetRadius);
-            }
-            else if (!Mathf.IsEqualApprox(existingOutline.GrowAmount, wantedGrow))
-            {
-                existingOutline.GrowAmount = wantedGrow;
-            }
+            outline.Scale = Vector3.One * _materials.ReplacementOutlineScale(targetRadius);
         }
 
         MeshInstance3D? paint = surface.GetNodeOrNull<MeshInstance3D>(GeneratedPaintName);
@@ -155,7 +151,8 @@ public partial class BuddyVisualRigView
                     return;
                 }
                 float radius = PartMeshRadius(part);
-                ok &= Mathf.Abs(material.GrowAmount * radius - _trustedProfile.Look.OutlineGrowAmount) <= 0.01f;
+                float wantedScale = _materials.ReplacementOutlineScale(radius);
+                ok &= !material.Grow && outline.Scale.IsEqualApprox(Vector3.One * wantedScale);
             }
         }
     }
@@ -173,6 +170,12 @@ public partial class BuddyVisualRigView
         return null;
     }
 
+    /// <summary>
+    /// Fast replacement paint hit-test. Mesh arrays are immutable for an equipped generated asset,
+    /// so extract them once and cache local-space triangles/UVs. Each pointer sample transforms one
+    /// ray into mesh-local space instead of transforming every vertex into world space. Per-triangle
+    /// AABB rejection removes most Moller-Trumbore tests before barycentric UV interpolation.
+    /// </summary>
     private static bool TryRaycastGeneratedSurface(
         MeshInstance3D surface,
         Vector2 paintWorldPoint,
@@ -185,55 +188,68 @@ public partial class BuddyVisualRigView
         worldDepth = float.NegativeInfinity;
         if (surface.Mesh is not ArrayMesh mesh) return false;
 
-        // Character-editor preview is orthographic and looks down -Z. The paint canvas world point
-        // uses the same X/Y plane, with the standard 2D Y-down -> 3D Y-up mapping.
-        Vector3 origin = new(paintWorldPoint.X, -paintWorldPoint.Y, 4096f);
-        Vector3 direction = new(0f, 0f, -1f);
-        bool found = false;
-        float bestDistance = float.PositiveInfinity;
-        float bestDepth = float.NegativeInfinity;
-        Vector2 bestUv = default;
-
-        for (int surfaceIndex = 0; surfaceIndex < mesh.GetSurfaceCount(); surfaceIndex++)
+        ulong cacheKey = mesh.GetInstanceId();
+        if (!GeneratedPaintCaches.TryGetValue(cacheKey, out GeneratedPaintMeshCache? cache))
         {
-            if (mesh.SurfaceGetPrimitiveType(surfaceIndex) != Mesh.PrimitiveType.Triangles) continue;
-            Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surfaceIndex);
-            Vector3[] vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
-            Vector2[] uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
-            int[] indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
-            if (vertices.Length < 3 || uvs.Length != vertices.Length) continue;
+            cache = GeneratedPaintMeshCache.Build(mesh);
+            GeneratedPaintCaches[cacheKey] = cache;
+        }
+        if (cache.Triangles.Length == 0) return false;
 
-            if (indices.Length >= 3)
-            {
-                for (int i = 0; i + 2 < indices.Length; i += 3)
-                    TestTriangle(indices[i], indices[i + 1], indices[i + 2]);
-            }
-            else
-            {
-                for (int i = 0; i + 2 < vertices.Length; i += 3)
-                    TestTriangle(i, i + 1, i + 2);
-            }
+        Vector3 worldOrigin = new(paintWorldPoint.X, -paintWorldPoint.Y, 4096f);
+        Vector3 worldDirection = new(0f, 0f, -1f);
+        Transform3D inverse = surface.GlobalTransform.AffineInverse();
+        Vector3 localOrigin = inverse * worldOrigin;
+        Vector3 localDirection = (inverse.Basis * worldDirection).Normalized();
 
-            void TestTriangle(int ia, int ib, int ic)
-            {
-                if ((uint)ia >= (uint)vertices.Length || (uint)ib >= (uint)vertices.Length || (uint)ic >= (uint)vertices.Length) return;
-                Vector3 a = surface.GlobalTransform * vertices[ia];
-                Vector3 b = surface.GlobalTransform * vertices[ib];
-                Vector3 c = surface.GlobalTransform * vertices[ic];
-                if (!RayTriangle(origin, direction, a, b, c, out float distance, out float baryB, out float baryC)) return;
-                if (distance >= bestDistance) return;
-                float baryA = 1f - baryB - baryC;
-                bestUv = (uvs[ia] * baryA) + (uvs[ib] * baryB) + (uvs[ic] * baryC);
-                bestDistance = distance;
-                bestDepth = origin.Z - distance;
-                found = true;
-            }
+        bool found = false;
+        float bestWorldDistance = float.PositiveInfinity;
+        float bestWorldDepth = float.NegativeInfinity;
+        Vector2 bestUv = default;
+        foreach (GeneratedPaintTriangle triangle in cache.Triangles)
+        {
+            if (!RayAabb(localOrigin, localDirection, triangle.Min, triangle.Max)) continue;
+            if (!RayTriangle(localOrigin, localDirection, triangle.A, triangle.B, triangle.C,
+                    out float localDistance, out float baryB, out float baryC)) continue;
+
+            Vector3 localHit = localOrigin + localDirection * localDistance;
+            Vector3 worldHit = surface.GlobalTransform * localHit;
+            float worldDistance = worldOrigin.DistanceTo(worldHit);
+            if (worldDistance >= bestWorldDistance) continue;
+            float baryA = 1f - baryB - baryC;
+            bestUv = triangle.UvA * baryA + triangle.UvB * baryB + triangle.UvC * baryC;
+            bestWorldDistance = worldDistance;
+            bestWorldDepth = worldHit.Z;
+            found = true;
         }
 
         hitUv = bestUv;
-        cameraDistance = bestDistance;
-        worldDepth = bestDepth;
+        cameraDistance = bestWorldDistance;
+        worldDepth = bestWorldDepth;
         return found;
+    }
+
+    private static bool RayAabb(Vector3 origin, Vector3 direction, Vector3 min, Vector3 max)
+    {
+        float tMin = 0f;
+        float tMax = float.PositiveInfinity;
+        return Axis(origin.X, direction.X, min.X, max.X, ref tMin, ref tMax) &&
+               Axis(origin.Y, direction.Y, min.Y, max.Y, ref tMin, ref tMax) &&
+               Axis(origin.Z, direction.Z, min.Z, max.Z, ref tMin, ref tMax);
+
+        static bool Axis(float originValue, float directionValue, float minValue, float maxValue, ref float near, ref float far)
+        {
+            const float epsilon = 0.000001f;
+            if (Mathf.Abs(directionValue) <= epsilon)
+                return originValue >= minValue && originValue <= maxValue;
+            float inv = 1f / directionValue;
+            float a = (minValue - originValue) * inv;
+            float b = (maxValue - originValue) * inv;
+            if (a > b) (a, b) = (b, a);
+            near = Mathf.Max(near, a);
+            far = Mathf.Min(far, b);
+            return far >= near;
+        }
     }
 
     private static bool RayTriangle(
@@ -262,5 +278,61 @@ public partial class BuddyVisualRigView
         if (baryC < -epsilon || baryB + baryC > 1f + epsilon) return false;
         distance = edge2.Dot(q) * inverse;
         return distance >= 0f;
+    }
+
+    private sealed class GeneratedPaintMeshCache
+    {
+        public GeneratedPaintTriangle[] Triangles { get; }
+
+        private GeneratedPaintMeshCache(GeneratedPaintTriangle[] triangles) => Triangles = triangles;
+
+        public static GeneratedPaintMeshCache Build(ArrayMesh mesh)
+        {
+            var triangles = new List<GeneratedPaintTriangle>();
+            for (int surfaceIndex = 0; surfaceIndex < mesh.GetSurfaceCount(); surfaceIndex++)
+            {
+                if (mesh.SurfaceGetPrimitiveType(surfaceIndex) != Mesh.PrimitiveType.Triangles) continue;
+                Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surfaceIndex);
+                Vector3[] vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+                Vector2[] uvs = arrays[(int)Mesh.ArrayType.TexUV].AsVector2Array();
+                int[] indices = arrays[(int)Mesh.ArrayType.Index].AsInt32Array();
+                if (vertices.Length < 3 || uvs.Length != vertices.Length) continue;
+
+                if (indices.Length >= 3)
+                {
+                    for (int i = 0; i + 2 < indices.Length; i += 3)
+                        Add(indices[i], indices[i + 1], indices[i + 2]);
+                }
+                else
+                {
+                    for (int i = 0; i + 2 < vertices.Length; i += 3)
+                        Add(i, i + 1, i + 2);
+                }
+
+                void Add(int ia, int ib, int ic)
+                {
+                    if ((uint)ia >= (uint)vertices.Length || (uint)ib >= (uint)vertices.Length || (uint)ic >= (uint)vertices.Length) return;
+                    triangles.Add(new GeneratedPaintTriangle(
+                        vertices[ia], vertices[ib], vertices[ic],
+                        uvs[ia], uvs[ib], uvs[ic]));
+                }
+            }
+            return new GeneratedPaintMeshCache(triangles.ToArray());
+        }
+    }
+
+    private readonly record struct GeneratedPaintTriangle(
+        Vector3 A, Vector3 B, Vector3 C,
+        Vector2 UvA, Vector2 UvB, Vector2 UvC)
+    {
+        private const float Padding = 0.0001f;
+        public Vector3 Min => new(
+            Mathf.Min(A.X, Mathf.Min(B.X, C.X)) - Padding,
+            Mathf.Min(A.Y, Mathf.Min(B.Y, C.Y)) - Padding,
+            Mathf.Min(A.Z, Mathf.Min(B.Z, C.Z)) - Padding);
+        public Vector3 Max => new(
+            Mathf.Max(A.X, Mathf.Max(B.X, C.X)) + Padding,
+            Mathf.Max(A.Y, Mathf.Max(B.Y, C.Y)) + Padding,
+            Mathf.Max(A.Z, Mathf.Max(B.Z, C.Z)) + Padding);
     }
 }
