@@ -24,6 +24,9 @@ public partial class BuddyVisualRigView
         {
             EnsurePaintAtlasSamplingGuard();
             RefreshCharacterCompositors();
+            // Pose remains authoritative. This post-pose visual pass only trims/extends connector
+            // meshes to the actual rendered bounds of active torso/foot replacements.
+            RefreshReplacementConnectorAttachment();
         }
     }
 
