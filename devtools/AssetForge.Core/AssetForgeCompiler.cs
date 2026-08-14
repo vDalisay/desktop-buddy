@@ -19,10 +19,11 @@ public static class AssetForgeCompiler
     private static GeneratedAsset GeneratePartReplacement(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) =>
         GenerateSilhouette(sourcePng, recipe,
             (mask, foreground) => PartReplacementContourInflationGenerator.CanGenerate(recipe.Geometry)
-                ? PartReplacementContourInflationGenerator.Generate(
-                    foreground,
-                    recipe.Geometry,
-                    recipe.Category)
+                ? PartReplacementTopologyWeld.Apply(
+                    PartReplacementContourInflationGenerator.Generate(
+                        foreground,
+                        recipe.Geometry,
+                        recipe.Category))
                 : PartReplacementMeshPostprocessor.Apply(
                     PartReplacementSubpixelContour.Apply(
                         PartReplacementGenerator.Generate(mask, recipe.Geometry, recipe.Category),
