@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.UI;
 using DesktopBuddy.UI.Win98;
 using DesktopBuddy.Ui;
 using Godot;
@@ -98,6 +99,8 @@ public partial class BuddyStudioWorkspace
         ]);
         _buy.Text = owned ? (equipped ? "Equipped" : "Equip") : purchasable ? "Buy" : "Unavailable";
         _buy.Disabled = equipped || (!owned && (!purchasable || !affordable));
+        // No layer tag here: PurchaseOrEquipAsync sounds the commitment for every route in.
+        UiFeedbackAudioBootstrap.Tag(_buy, layer: UiSfx.NoLayer);
         _buy.TooltipText = equipped ? "This cosmetic is currently equipped."
             : owned ? "Equip this cosmetic on the working character."
             : purchasable && !affordable ? "Earn more credits before buying this cosmetic."

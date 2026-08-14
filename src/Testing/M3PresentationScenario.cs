@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Presentation3D;
@@ -83,16 +84,23 @@ public sealed class M3PresentationScenario : IScenario
 
         AcceptedImpact? impact = await ScenarioSteps.StrikePart(tree, lab, lab.Buddy.Rig.Head);
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        float normalImpactVolumeDb = lab.ReactionAudio.LastPlayedVolumeDb;
         checks.Add(new StartupCheck("pain_face_has_priority",
             impact is not null && lab.Reactions.CurrentFace == ">_<",
             $"face={lab.Reactions.CurrentFace}"));
-        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        for (int frame = 0; frame < 4 && visualPresenter.FaceLabel.Text != lab.Reactions.CurrentFace; frame++)
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         checks.Add(new StartupCheck("task4_presenter_face_tracks_semantic_face",
             visualPresenter.FaceLabel.Text == lab.Reactions.CurrentFace,
             $"label={visualPresenter.FaceLabel.Text} semantic={lab.Reactions.CurrentFace}"));
-        checks.Add(new StartupCheck("pain_chirp_generated",
-            lab.ReactionAudio.GetNode<AudioStreamPlayer>("AudioStreamPlayer").Stream is AudioStreamWav,
-            "semantic impact produced original PCM chirp"));
+        checks.Add(new StartupCheck("sampled_buddy_impact_variation_played",
+            lab.ReactionAudio.BuddyImpactCount == 1 &&
+            lab.ReactionAudio.LastPlayedStream is AudioStreamRandomizer randomizer &&
+            randomizer.RandomPitchSemitones > 0.0f,
+            $"normal={lab.ReactionAudio.BuddyImpactCount} " +
+            $"stream={lab.ReactionAudio.LastPlayedStream?.GetType().Name} " +
+            $"pitch={((lab.ReactionAudio.LastPlayedStream as AudioStreamRandomizer)?.RandomPitchSemitones ?? 0.0f):F1}st " +
+            $"volume={normalImpactVolumeDb:F1}dB"));
         checks.Add(new StartupCheck("ordinary_glove_hit_has_feedback_without_hit_stop",
             lab.ImpactFeedback.FeedbackCount == 1 && lab.ImpactFeedback.HitStopTriggerCount == 0,
             $"feedback={lab.ImpactFeedback.FeedbackCount} hitStops={lab.ImpactFeedback.HitStopTriggerCount}"));
@@ -146,6 +154,43 @@ public sealed class M3PresentationScenario : IScenario
             lab.Buddy.Recovery.HardRecoveryCount == recoveriesBefore + 1 && recoveredSnapError < 0.01f,
             $"recoveries={lab.Buddy.Recovery.HardRecoveryCount - recoveriesBefore} " +
             $"snap_error={recoveredSnapError:F4}"));
+
+        int hardBefore = lab.ReactionAudio.BuddyHardImpactCount;
+        AcceptedImpact? hardImpact = await ScenarioSteps.StrikePart(
+            tree,
+            lab,
+            lab.Buddy.Rig.Head,
+            ContentIds.RoomBoundary,
+            interactionId: 9101);
+        checks.Add(new StartupCheck("hard_boundary_uses_hard_impact_variation",
+            hardImpact is not null &&
+            lab.ReactionAudio.BuddyHardImpactCount == hardBefore + 1 &&
+            lab.ReactionAudio.LastPlayedStream is AudioStreamRandomizer,
+            $"accepted={hardImpact is not null} hard={lab.ReactionAudio.BuddyHardImpactCount} " +
+            $"threshold={lab.ReactionAudio.HardImpactPainThreshold:F1} " +
+            $"volume={lab.ReactionAudio.LastPlayedVolumeDb:F1}dB"));
+        bool volumeFollowsPain = hardImpact is not null && impact is not null &&
+            (hardImpact.Value.Pain >= impact.Value.Pain
+                ? lab.ReactionAudio.LastPlayedVolumeDb >= normalImpactVolumeDb
+                : lab.ReactionAudio.LastPlayedVolumeDb <= normalImpactVolumeDb);
+        checks.Add(new StartupCheck("impact_volume_tracks_pain",
+            volumeFollowsPain,
+            $"normalPain={impact?.Pain ?? 0.0f:F1} normal={normalImpactVolumeDb:F1}dB " +
+            $"hardPain={hardImpact?.Pain ?? 0.0f:F1} hard={lab.ReactionAudio.LastPlayedVolumeDb:F1}dB"));
+
+        int itemBefore = lab.ReactionAudio.ItemFallingCount;
+        Rect2 room = lab.Boundaries.InnerBounds;
+        var fallingItem = lab.SpawnLooseObject(
+            lab.SafeObjectProfile,
+            new Vector2(room.GetCenter().X, room.Position.Y + 40.0f),
+            Vector2.Down * 500.0f);
+        for (int tick = 0; tick < 240 && lab.ReactionAudio.ItemFallingCount == itemBefore; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        checks.Add(new StartupCheck("dropped_item_plays_falling_thud",
+            fallingItem is not null && lab.ReactionAudio.ItemFallingCount == itemBefore + 1 &&
+            lab.ReactionAudio.LastPlayedStream is AudioStream,
+            $"item={lab.ReactionAudio.ItemFallingCount - itemBefore} " +
+            $"stream={lab.ReactionAudio.LastPlayedStream?.GetType().Name}"));
 
         messages.Add($"face={lab.Reactions.CurrentFace} balance={lab.Pipeline.BalanceMilliCredits}");
         lab.QueueFree();

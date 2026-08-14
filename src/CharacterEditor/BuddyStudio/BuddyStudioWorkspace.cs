@@ -8,6 +8,7 @@ using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Economy;
+using DesktopBuddy.UI;
 using DesktopBuddy.UI.Win98;
 using DesktopBuddy.Ui;
 using Godot;
@@ -589,6 +590,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _buy.Text = owned ? (equipped ? "Equipped" : "Equip") :
             purchasable ? $"Buy • {PriceText(definition)}" : "Earn in Work Mode";
         _buy.Disabled = equipped || (!owned && (!purchasable || !affordable));
+        // No layer tag here: PurchaseOrEquipAsync sounds the commitment for every route in.
+        UiFeedbackAudioBootstrap.Tag(_buy, layer: UiSfx.NoLayer);
         _buy.TooltipText = equipped ? "This cosmetic is currently equipped."
             : owned ? "Equip this owned cosmetic now."
             : purchasable && !affordable ? $"Costs {PriceText(definition)}. Earn more credits before buying."
@@ -655,6 +658,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         if (owned)
         {
             Handle(_session.EquipPreviewedCosmetic(_slot));
+            UiFeedbackAudioBootstrap.TryPlayLayer(this, UiSfx.Equip);
             return;
         }
 
@@ -662,6 +666,10 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         Handle(purchase);
         if (!purchase.Completed)
             return;
+
+        // Sounded here, not on the Buy button: a catalogue tile can be double-clicked straight
+        // into a purchase without any button being pressed.
+        UiFeedbackAudioBootstrap.TryPlayLayer(this, UiSfx.Money);
 
         string? saveFailure = null;
         try

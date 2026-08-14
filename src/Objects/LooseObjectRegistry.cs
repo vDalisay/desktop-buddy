@@ -35,6 +35,9 @@ public partial class LooseObjectRegistry : Node
     public int EvictionCount { get; private set; }
     public int RejectedAdmissionCount { get; private set; }
 
+    /// <summary>Raised on the fixed tick when a tracked object crosses onto the floor.</summary>
+    public event Action<LooseObjectLanding>? Landed;
+
     public void Initialize()
     {
         Array.Clear(_entries);
@@ -91,6 +94,7 @@ public partial class LooseObjectRegistry : Node
             RuntimeId = runtimeId,
             SpawnSequence = _nextSpawnSequence++,
             AtRest = true,
+            PreviousSpeed = body.LinearVelocity.Length(),
             SoccerKickAllowed = profile.SoccerPlay is not null,
         };
         Count++;
@@ -266,16 +270,39 @@ public partial class LooseObjectRegistry : Node
             if (entry.IgnoreTicks > 0)
                 entry.IgnoreTicks--;
 
+            entry.PlayerHeld = body == playerHeld;
+            bool onFloor = boundsKnown &&
+                body.GlobalPosition.Y + body.Radius >= floorY - GroundContactTolerance;
+
+            if (boundsKnown)
+            {
+                if (!entry.FloorStateInitialized)
+                {
+                    entry.FloorStateInitialized = true;
+                    entry.WasAirborne = !onFloor;
+                }
+                else if (!onFloor)
+                {
+                    entry.WasAirborne = true;
+                }
+                else if (entry.WasAirborne && !entry.PlayerHeld && !entry.BuddyHeld)
+                {
+                    float impactSpeed = float.IsFinite(entry.PreviousSpeed)
+                        ? entry.PreviousSpeed
+                        : body.LinearVelocity.Length();
+                    Landed?.Invoke(new LooseObjectLanding(entry.Profile!.ContentId, impactSpeed));
+                    entry.WasAirborne = false;
+                }
+            }
+
             // Checked before the held/rest short-circuits below: a ball resting on the floor
             // when the player picks it up has plainly touched the ground, and the flag must
             // survive until the next throw clears it.
-            if (boundsKnown && !entry.TouchedGroundSinceThrow &&
-                body.GlobalPosition.Y + body.Radius >= floorY - GroundContactTolerance)
+            if (onFloor && !entry.TouchedGroundSinceThrow)
             {
                 entry.TouchedGroundSinceThrow = true;
             }
 
-            entry.PlayerHeld = body == playerHeld;
             if (entry.Profile!.SoccerPlay is not null)
             {
                 if (entry.PlayerHeld)
@@ -300,10 +327,12 @@ public partial class LooseObjectRegistry : Node
             {
                 entry.AtRest = false;
                 entry.RestTicks = 0;
+                entry.PreviousSpeed = body.LinearVelocity.Length();
                 continue;
             }
 
             float speed = body.LinearVelocity.Length();
+            entry.PreviousSpeed = speed;
             float edgeSpeed = speed + (Mathf.Abs(body.AngularVelocity) * body.Radius);
             if (edgeSpeed <= entry.Profile!.RestSpeedThreshold || body.Sleeping)
             {
@@ -416,6 +445,11 @@ public partial class LooseObjectRegistry : Node
         public bool SoccerTrapAllowed;
         public bool SoccerKickAllowed;
 
+        /// <summary>Last fixed-tick linear speed, retained for the floor-crossing cue.</summary>
+        public float PreviousSpeed;
+        public bool FloorStateInitialized;
+        public bool WasAirborne;
+
         /// <summary>
         /// Whether this object has reached the floor since the player last threw it. A catch
         /// only counts as clean while this is false (owner instruction 2026-07-27).
@@ -423,6 +457,9 @@ public partial class LooseObjectRegistry : Node
         public bool TouchedGroundSinceThrow;
     }
 }
+
+/// <summary>Read-only landing facts sent from the fixed object registry to presentation.</summary>
+public readonly record struct LooseObjectLanding(string ContentId, float ImpactSpeed);
 
 public readonly record struct LooseObjectSnapshot(
     int RuntimeId,

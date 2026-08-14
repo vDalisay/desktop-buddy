@@ -4,6 +4,7 @@ using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.UI;
 using DesktopBuddy.Ui;
 using Godot;
 
@@ -54,6 +55,7 @@ public partial class ToolSelectionPanel : PanelContainer
     {
         var select = new Button { Text = "Select" };
         select.Pressed += () => Select(entry.ContentId, tool);
+        UiFeedbackAudioBootstrap.Tag(select, layer: UiSfx.NoLayer);
         var price = new Label();
         PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, select);
         return new Row(entry, tool, select, price);
@@ -68,7 +70,10 @@ public partial class ToolSelectionPanel : PanelContainer
             ? $"{name} equipped."
             : $"{name} could not be equipped — buy it in the shop first.";
         if (applied)
+        {
             SelectionCount++;
+            UiFeedbackAudioBootstrap.TryPlayLayer(this, UiSfx.Equip);
+        }
         Refresh();
     }
 

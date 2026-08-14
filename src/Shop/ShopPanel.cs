@@ -6,6 +6,7 @@ using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.UI;
 using DesktopBuddy.Ui;
 using Godot;
 
@@ -98,6 +99,7 @@ public partial class ShopPanel : PanelContainer
         if (result.Succeeded)
         {
             PurchaseCount++;
+            UiFeedbackAudioBootstrap.TryPlayLayer(this, UiSfx.Money);
             Purchased?.Invoke();
         }
 
@@ -119,7 +121,10 @@ public partial class ShopPanel : PanelContainer
             ? $"{name} equipped."
             : $"{name} could not be equipped.";
         if (applied)
+        {
             EquipCount++;
+            UiFeedbackAudioBootstrap.TryPlayLayer(this, UiSfx.Equip);
+        }
         Refresh();
     }
 
@@ -160,6 +165,9 @@ public partial class ShopPanel : PanelContainer
                 : ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
             row.Action.Text = active ? "Equipped" : owned ? "Equip" : "Buy";
             row.Action.Disabled = active || (!owned && !affordable);
+            // No layer tag: Purchase and Equip sound themselves, so a press that fails — too
+            // expensive, pipeline gone — stays honestly silent.
+            UiFeedbackAudioBootstrap.Tag(row.Action, layer: UiSfx.NoLayer);
         }
     }
 
