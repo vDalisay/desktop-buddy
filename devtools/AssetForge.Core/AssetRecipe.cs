@@ -18,6 +18,12 @@ public sealed record GeometrySettings
     public int BridgeThicknessBiasPixels { get; init; }
     public double Depth { get; init; } = 0.065;
     public double Roundness { get; init; } = 0.85;
+    /// <summary>
+    /// Replacement-only smoothing strength. Zero intentionally preserves the original v1
+    /// Manhattan depth field so already-exported recipes can still regenerate byte-for-byte.
+    /// Newly-authored torso/foot replacements use the smoother chamfer/relaxation field.
+    /// </summary>
+    public double SurfaceSmoothness { get; init; }
     public ShapeMode ShapeMode { get; init; } = ShapeMode.RoundedExtrusion;
     public SymmetryMode SymmetryMode { get; init; } = SymmetryMode.Off;
     public int RuntimeTextureResolution { get; init; } = 512;
@@ -66,8 +72,9 @@ public sealed record AssetRecipe
         {
             GeometryResolution = 256,
             RuntimeTextureResolution = 512,
-            Depth = 0.90,
+            Depth = 1.10,
             Roundness = 0.90,
+            SurfaceSmoothness = 0.82,
             ShapeMode = ShapeMode.InflatedSolid,
             SymmetryMode = SymmetryMode.Off,
         },
@@ -85,8 +92,9 @@ public sealed record AssetRecipe
         {
             GeometryResolution = 256,
             RuntimeTextureResolution = 512,
-            Depth = 1.10,
+            Depth = 1.20,
             Roundness = 0.90,
+            SurfaceSmoothness = 0.82,
             ShapeMode = ShapeMode.InflatedSolid,
             SymmetryMode = SymmetryMode.Off,
         },
@@ -110,6 +118,8 @@ public sealed record AssetRecipe
                 if (!FiniteRange(Geometry.TempleThickness, 0.01, 0.3)) errors.Add("TempleThickness must be within 0.01-0.3.");
                 if (!FiniteRange(Geometry.TempleLength, 0.05, 1.5)) errors.Add("TempleLength must be within 0.05-1.5.");
                 if (!FiniteRange(Geometry.TempleDrop, -0.5, 0.5)) errors.Add("TempleDrop must be within -0.5-0.5.");
+                if (Geometry.SurfaceSmoothness != 0)
+                    errors.Add("SurfaceSmoothness is replacement-only and must be zero for Glasses.");
                 break;
 
             case AssetCategory.TorsoShape:
@@ -140,8 +150,10 @@ public sealed record AssetRecipe
         if (Geometry.RuntimeTextureResolution is < 64 or > 1024 || 1024 % Geometry.RuntimeTextureResolution != 0) errors.Add("RuntimeTextureResolution must be a 64-1024 divisor of 1024.");
         if (!FiniteRange(Geometry.AlphaThreshold, 0.01, 0.99)) errors.Add("AlphaThreshold must be within 0.01-0.99.");
         if (Geometry.ThicknessBiasPixels is < -8 or > 8) errors.Add("ThicknessBiasPixels must be within -8..8.");
-        if (!FiniteRange(Geometry.Depth, 0.01, 1.5)) errors.Add("Depth must be within 0.01-1.5.");
+        double depthMaximum = Category is AssetCategory.TorsoShape or AssetCategory.FootShape ? 4.0 : 1.5;
+        if (!FiniteRange(Geometry.Depth, 0.01, depthMaximum)) errors.Add($"Depth must be within 0.01-{depthMaximum:0.##}.");
         if (!FiniteRange(Geometry.Roundness, 0, 1)) errors.Add("Roundness must be within 0-1.");
+        if (!FiniteRange(Geometry.SurfaceSmoothness, 0, 1)) errors.Add("SurfaceSmoothness must be within 0-1.");
         if (!FiniteRange(Thumbnail.Padding, 0, 0.45)) errors.Add("Thumbnail padding must be within 0-0.45.");
         return errors;
     }
@@ -157,8 +169,8 @@ public sealed record AssetRecipe
 
     private void ValidateReplacementGeometry(List<string> errors, string label)
     {
-        if (Geometry.ShapeMode is not ShapeMode.RoundedExtrusion and not ShapeMode.InflatedSolid)
-            errors.Add($"{label} replacement presets support RoundedExtrusion or InflatedSolid shape modes.");
+        if (Geometry.ShapeMode is not ShapeMode.RoundedExtrusion and not ShapeMode.InflatedSolid and not ShapeMode.Relief)
+            errors.Add($"{label} replacement presets support RoundedExtrusion, InflatedSolid or Relief shape modes.");
         if (Geometry.BridgeThicknessBiasPixels != 0)
             errors.Add("BridgeThicknessBiasPixels is glasses-only and must be zero for part replacements.");
     }
@@ -221,6 +233,10 @@ public static class RecipeCodec
                 writer.WriteNumber("bridgeThicknessBiasPixels", g.BridgeThicknessBiasPixels);
             writer.WriteNumber("depth", g.Depth);
             writer.WriteNumber("roundness", g.Roundness);
+            // Omit the zero compatibility value so v1 replacement recipes authored before this
+            // field remain canonical and regenerate to their original bytes.
+            if (g.SurfaceSmoothness != 0)
+                writer.WriteNumber("surfaceSmoothness", g.SurfaceSmoothness);
             writer.WriteNumber("shapeMode", (int)g.ShapeMode);
             writer.WriteNumber("symmetryMode", (int)g.SymmetryMode);
             writer.WriteNumber("runtimeTextureResolution", g.RuntimeTextureResolution);
