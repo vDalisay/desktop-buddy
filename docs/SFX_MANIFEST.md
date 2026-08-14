@@ -166,7 +166,7 @@ like an equip, because buying flips "Buy" to "Equip" before the audio handler ev
 |---|---|---|---|---|
 | `world/object_impact_soft` | light loose-object collision | contact, low speed | one-shot, 3 var | NEW |
 | `world/object_impact_hard` | heavy loose-object collision | contact, high speed | one-shot, 3 var | NEW |
-| `world/wall_bump` | body hits the room boundary | `ContentIds.RoomBoundary` | one-shot, 2 var | NEW |
+| `world/wall_bump` | body part positively impacts the room boundary | six `BuddyPartWallImpactDetector`s on `ImpactAccepted` | temporary normal Buddy pair, pain-scaled | **TEMPORARY LIVE** |
 | `world/object_spawn` | loose object spawned | `LooseObjectSpawnRequested` | one-shot | NEW |
 | `world/object_clear` | room cleared of loose objects | `LooseObjectClearRequested` | one-shot | NEW |
 

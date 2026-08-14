@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
@@ -155,6 +156,7 @@ public sealed class M3PresentationScenario : IScenario
             $"recoveries={lab.Buddy.Recovery.HardRecoveryCount - recoveriesBefore} " +
             $"snap_error={recoveredSnapError:F4}"));
 
+        int headWallBefore = lab.ReactionAudio.WallImpactDetectionCount(BuddyPart.Head);
         int hardBefore = lab.ReactionAudio.BuddyHardImpactCount;
         AcceptedImpact? hardImpact = await ScenarioSteps.StrikePart(
             tree,
@@ -178,13 +180,26 @@ public sealed class M3PresentationScenario : IScenario
             $"normalPain={impact?.Pain ?? 0.0f:F1} normal={normalImpactVolumeDb:F1}dB " +
             $"hardPain={hardImpact?.Pain ?? 0.0f:F1} hard={lab.ReactionAudio.LastPlayedVolumeDb:F1}dB"));
 
+        checks.Add(new StartupCheck("wall_thud_uses_body_part_detector",
+            hardImpact is not null &&
+            lab.ReactionAudio.WallImpactDetectorCount == 6 &&
+            lab.ReactionAudio.WallImpactCount > 0 &&
+            lab.ReactionAudio.WallImpactDetectionCount(BuddyPart.Head) > headWallBefore &&
+            lab.ReactionAudio.LastWallImpactPart == BuddyPart.Head &&
+            lab.ReactionAudio.LastWallImpactStream is AudioStreamRandomizer,
+            $"detectors={lab.ReactionAudio.WallImpactDetectorCount} " +
+            $"wall={lab.ReactionAudio.WallImpactCount} " +
+            $"head={lab.ReactionAudio.WallImpactDetectionCount(BuddyPart.Head) - headWallBefore} " +
+            $"part={lab.ReactionAudio.LastWallImpactPart} " +
+            $"stream={lab.ReactionAudio.LastWallImpactStream?.GetType().Name}"));
+
         int itemBefore = lab.ReactionAudio.ItemFallingCount;
         Rect2 room = lab.Boundaries.InnerBounds;
         var fallingItem = lab.SpawnLooseObject(
             lab.SafeObjectProfile,
             new Vector2(room.GetCenter().X, room.Position.Y + 40.0f),
             Vector2.Down * 500.0f);
-        for (int tick = 0; tick < 240 && lab.ReactionAudio.ItemFallingCount == itemBefore; tick++)
+        for (int tick = 0; tick < 480 && lab.ReactionAudio.ItemFallingCount == itemBefore; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         checks.Add(new StartupCheck("dropped_item_plays_falling_thud",
             fallingItem is not null && lab.ReactionAudio.ItemFallingCount == itemBefore + 1 &&

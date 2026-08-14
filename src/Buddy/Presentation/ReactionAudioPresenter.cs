@@ -1,5 +1,6 @@
 using DesktopBuddy.Domain.Content;
 using System;
+using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
@@ -15,7 +16,8 @@ public partial class ReactionAudioPresenter : Node
 {
     private const int MixRate = 22050;
     private const int VoiceCount = 8;
-    private const float ImpactRandomPitchSemitones = 2.0f;
+    private const float ImpactRandomPitchSemitones = 3.5f;
+    private const float ImpactBaseVolumeOffsetDb = -6.0f;
     private const float QuietImpactVolumeDb = -12.0f;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public LooseObjectRegistry Objects { get; set; } = null!;
@@ -33,13 +35,28 @@ public partial class ReactionAudioPresenter : Node
     private float _hardImpactPain;
     private float _maximumPain;
     private float _baseVolumeDb;
+    private float _grabbedBoundaryPainThreshold;
     private AudioStreamPlayer[] _voices = Array.Empty<AudioStreamPlayer>();
+    private BuddyPartWallImpactDetector[] _wallImpactDetectors = Array.Empty<BuddyPartWallImpactDetector>();
+    private AcceptedImpact?[] _pendingGrabbedWallImpacts = Array.Empty<AcceptedImpact?>();
     private int _nextVoiceIndex;
 
     public int BuddyImpactCount { get; private set; }
     public int BuddyHardImpactCount { get; private set; }
     public int ItemFallingCount { get; private set; }
+    public int WallImpactCount { get; private set; }
+    public BuddyPart? LastWallImpactPart { get; private set; }
+    public AudioStream? LastWallImpactStream { get; private set; }
+    public float LastWallImpactVolumeDb { get; private set; }
     public float HardImpactPainThreshold => _hardImpactPain;
+    public int WallImpactDetectorCount => _wallImpactDetectors.Length;
+    public int WallImpactDetectionCount(BuddyPart part)
+    {
+        int index = (int)part;
+        return (uint)index < (uint)_wallImpactDetectors.Length
+            ? _wallImpactDetectors[index].DetectionCount
+            : 0;
+    }
     public StringName RoutedBus => Player.Bus;
     public int VoicePoolSize => _voices.Length;
     public int ActiveVoiceCount
@@ -71,6 +88,7 @@ public partial class ReactionAudioPresenter : Node
         _itemFalling = IsValid(ItemFalling) ? ItemFalling : null;
         _hardImpactPain = HardImpactPainFrom(Pipeline.Profile);
         _maximumPain = MaximumPainFrom(Pipeline.Profile);
+        _grabbedBoundaryPainThreshold = GrabbedBoundaryPainFrom(Pipeline.Profile);
         _baseVolumeDb = Player.VolumeDb;
         // Set before the voice pool below copies it.
         Player.Bus = AudioMix.Sfx;
@@ -92,6 +110,22 @@ public partial class ReactionAudioPresenter : Node
         }
 
         Pipeline.ImpactAccepted += OnImpact;
+        Pipeline.Grab.Released += OnGrabReleased;
+        _pendingGrabbedWallImpacts = new AcceptedImpact?[Enum.GetValues<BuddyPart>().Length];
+        _wallImpactDetectors = new BuddyPartWallImpactDetector[Enum.GetValues<BuddyPart>().Length];
+        foreach (BuddyPart part in Enum.GetValues<BuddyPart>())
+        {
+            var detector = new BuddyPartWallImpactDetector
+            {
+                Name = $"{part}WallImpactDetector",
+                Pipeline = Pipeline,
+                TargetPart = part,
+            };
+            detector.ContactDetected += OnWallContact;
+            AddChild(detector);
+            detector.Initialize();
+            _wallImpactDetectors[(int)part] = detector;
+        }
         Pipeline.CareAwarded += OnCare;
         if (GodotObject.IsInstanceValid(Objects))
             Objects.Landed += OnObjectLanded;
@@ -102,8 +136,16 @@ public partial class ReactionAudioPresenter : Node
         if (GodotObject.IsInstanceValid(Pipeline))
         {
             Pipeline.ImpactAccepted -= OnImpact;
+            Pipeline.Grab.Released -= OnGrabReleased;
             Pipeline.CareAwarded -= OnCare;
         }
+        foreach (BuddyPartWallImpactDetector detector in _wallImpactDetectors)
+        {
+            if (GodotObject.IsInstanceValid(detector))
+                detector.ContactDetected -= OnWallContact;
+        }
+        _wallImpactDetectors = Array.Empty<BuddyPartWallImpactDetector>();
+        _pendingGrabbedWallImpacts = Array.Empty<AcceptedImpact?>();
         if (GodotObject.IsInstanceValid(Objects))
             Objects.Landed -= OnObjectLanded;
         foreach (AudioStreamPlayer voice in _voices)
@@ -120,6 +162,12 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnImpact(AcceptedImpact impact)
     {
+        if (impact.ContentId == ContentIds.RoomBoundary && impact.IsBuddyGrabbed)
+        {
+            RememberGrabbedBoundaryImpact(impact);
+            return;
+        }
+
         if (impact.MoodEffect == ImpactMoodEffectKind.Enjoyment)
         {
             PlayChirp(Profile.CareChirpHz, 7_000.0f, _baseVolumeDb);
@@ -140,22 +188,79 @@ public partial class ReactionAudioPresenter : Node
         PlayImpact(_buddyImpact, impact);
     }
 
+    private void OnWallContact(AcceptedImpact impact)
+    {
+        WallImpactCount++;
+        LastWallImpactPart = impact.Part;
+        PlayImpact(_buddyImpact, impact.Pain);
+        LastWallImpactStream = LastPlayedStream;
+        LastWallImpactVolumeDb = LastPlayedVolumeDb;
+    }
+
+    private void RememberGrabbedBoundaryImpact(AcceptedImpact impact)
+    {
+        if (impact.Pain < _grabbedBoundaryPainThreshold)
+            return;
+
+        int index = (int)impact.Part;
+        if ((uint)index < (uint)_pendingGrabbedWallImpacts.Length)
+            _pendingGrabbedWallImpacts[index] = impact;
+    }
+
+    private void OnGrabReleased(RigidBody2D releasedBody, bool countsAsThrow)
+    {
+        // One grabbed point can pull the whole puppet into a multi-part slam, so replay
+        // every recent part candidate rather than only the body that was held.
+        for (int index = 0; index < _pendingGrabbedWallImpacts.Length; index++)
+        {
+            AcceptedImpact? pending = _pendingGrabbedWallImpacts[index];
+            _pendingGrabbedWallImpacts[index] = null;
+            if (pending is not { } impact)
+                continue;
+
+            // Match the router's episode re-arm window; a held scuff must not become a
+            // delayed sound several seconds after the player lets go.
+            if (Pipeline.NowSeconds - impact.TimeSeconds >
+                DesktopBuddy.Domain.Interaction.ImpactRouter.DefaultReArmSeconds)
+                continue;
+
+            WallImpactCount++;
+            LastWallImpactPart = impact.Part;
+            if (impact.Pain >= _hardImpactPain)
+            {
+                BuddyHardImpactCount++;
+                PlayImpact(_buddyHardImpact, impact);
+            }
+            else
+            {
+                PlayImpact(_buddyImpact, impact);
+            }
+
+            LastWallImpactStream = LastPlayedStream;
+            LastWallImpactVolumeDb = LastPlayedVolumeDb;
+        }
+    }
+
     private void PlayImpact(AudioStream? stream, AcceptedImpact impact)
+    {
+        PlayImpact(stream, impact.Pain, impact.ContentId == ContentIds.ToolBoxingGlove);
+    }
+
+    private void PlayImpact(AudioStream? stream, float pain, bool glove = false)
     {
         if (IsValid(stream))
         {
-            PlayStream(stream!, VolumeDbForPain(impact.Pain));
+            PlayStream(stream!, VolumeDbForPain(pain));
             return;
         }
 
-        bool glove = impact.ContentId == ContentIds.ToolBoxingGlove;
         float normalized = _maximumPain <= 0.0f
             ? 1.0f
-            : Mathf.Clamp(impact.Pain / _maximumPain, 0.0f, 1.0f);
+            : Mathf.Clamp(pain / _maximumPain, 0.0f, 1.0f);
         PlayChirp(
             Profile.PainChirpHz * Mathf.Lerp(1.15f, 0.72f, normalized),
             glove ? Profile.GloveImpactAmplitude : 7_000.0f,
-            VolumeDbForPain(impact.Pain));
+            VolumeDbForPain(pain));
     }
 
     private void OnObjectLanded(LooseObjectLanding landing)
@@ -203,6 +308,19 @@ public partial class ReactionAudioPresenter : Node
         return anchors[Math.Min(2, anchors.Length - 1)];
     }
 
+    private static float GrabbedBoundaryPainFrom(PainConversionProfile profile)
+    {
+        float[] anchors = profile.PainAnchors;
+        if (anchors is null || anchors.Length < 2)
+            return 20.0f;
+
+        // The first positive pain anchor is the existing curve's meaningful-hit point:
+        // below it, a held contact remains a quiet scuff; above it, a grabbed slam is
+        // deferred until release.
+        float threshold = anchors[1];
+        return float.IsFinite(threshold) && threshold > anchors[0] ? threshold : 20.0f;
+    }
+
     private static float MaximumPainFrom(PainConversionProfile profile)
     {
         float[] anchors = profile.PainAnchors;
@@ -218,7 +336,8 @@ public partial class ReactionAudioPresenter : Node
         float normalized = _maximumPain <= 0.0f
             ? 1.0f
             : Mathf.Clamp(pain / _maximumPain, 0.0f, 1.0f);
-        return _baseVolumeDb + Mathf.Lerp(QuietImpactVolumeDb, 0.0f, normalized);
+        return _baseVolumeDb + ImpactBaseVolumeOffsetDb +
+            Mathf.Lerp(QuietImpactVolumeDb, 0.0f, normalized);
     }
 
     private void PlayStream(AudioStream stream, float volumeDb)

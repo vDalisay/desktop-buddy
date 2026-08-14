@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
 using Godot;
 
@@ -42,6 +44,68 @@ public sealed class GrabReleaseScenario : IScenario
         bool standing = await WaitForStanding(tree, lab, SettleTimeoutTicks);
         checks.Add(new StartupCheck("grab_starts_from_standing", standing,
             $"stable_ticks={lab.Buddy.Standing.Snapshot.StableTicks}"));
+
+        int slamEpisodes = 0;
+        int slamImpacts = 0;
+        int slamGrabbedImpacts = 0;
+        float slamImpulse = 0.0f;
+        float slamPain = 0.0f;
+        void OnEpisode(AcceptedContactEpisode episode)
+        {
+            if (episode.ContentId == ContentIds.RoomBoundary)
+                slamEpisodes++;
+        }
+        void OnImpact(AcceptedImpact impact)
+        {
+            if (impact.ContentId != ContentIds.RoomBoundary)
+                return;
+
+            slamImpacts++;
+            slamGrabbedImpacts += impact.IsBuddyGrabbed ? 1 : 0;
+            slamImpulse = Mathf.Max(slamImpulse, impact.RawImpulse);
+            slamPain = Mathf.Max(slamPain, impact.Pain);
+        }
+
+        lab.Pipeline.EpisodeAccepted += OnEpisode;
+        lab.Pipeline.ImpactAccepted += OnImpact;
+        int wallAudioBeforeSlam = lab.ReactionAudio.WallImpactCount;
+        Rect2 slamRoom = lab.Boundaries.InnerBounds;
+        PuppetPartBody slamTarget = lab.Buddy.Rig.Torso;
+        bool slamGrabbed = lab.Grab.TryGrab(slamTarget, slamTarget.GlobalPosition);
+        Vector2 liftCursor = new(slamTarget.GlobalPosition.X, slamRoom.Position.Y + 110.0f);
+        for (int tick = 0; tick < 60; tick++)
+        {
+            lab.Grab.MoveCursor(liftCursor);
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+
+        Vector2 slamCursor = new(slamTarget.GlobalPosition.X,
+            slamRoom.End.Y - slamTarget.Radius);
+        // Force one deterministic boundary contact while the tether is still held. The
+        // audio must remain quiet during the hold and arrive from the release edge.
+        slamTarget.GlobalPosition = slamCursor;
+        slamTarget.LinearVelocity = Vector2.Down * 900.0f;
+        for (int tick = 0; tick < 12; tick++)
+        {
+            lab.Grab.MoveCursor(slamCursor);
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+
+        int heldSlamImpacts = slamGrabbedImpacts;
+        int heldSlamAudio = lab.ReactionAudio.WallImpactCount;
+        lab.Grab.Release();
+        for (int tick = 0; tick < 600 && slamImpacts == 0; tick++)
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        lab.Pipeline.EpisodeAccepted -= OnEpisode;
+        lab.Pipeline.ImpactAccepted -= OnImpact;
+        checks.Add(new StartupCheck("grab_release_floor_slam_reaches_audio_pipeline",
+            slamGrabbed && heldSlamImpacts > 0 &&
+            heldSlamAudio == wallAudioBeforeSlam &&
+            lab.ReactionAudio.WallImpactCount > wallAudioBeforeSlam,
+            $"grabbed={slamGrabbed} episodes={slamEpisodes} impacts={slamImpacts} " +
+            $"grabbed_impacts={slamGrabbedImpacts} held_impacts={heldSlamImpacts} " +
+            $"held_audio={heldSlamAudio} impulse={slamImpulse:F1} pain={slamPain:F1} " +
+            $"audio={lab.ReactionAudio.WallImpactCount}"));
 
         // Six buddy parts plus a loose object, acquired through the same contract.
         var targets = new List<RigidBody2D>();
