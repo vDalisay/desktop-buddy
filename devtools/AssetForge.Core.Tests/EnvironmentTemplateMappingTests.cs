@@ -46,6 +46,35 @@ public sealed class EnvironmentTemplateMappingTests
         Assert.Equal(-50f * units, b.Y - a.Y, 4);
     }
 
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(512, 880)]
+    [InlineData(356.25, 278.75)]
+    [InlineData(1024, 1024)]
+    public void Literal_template_mapping_round_trips_source_pixels(double x, double y)
+    {
+        AssetRecipe recipe = AssetRecipe.LampDefaults() with
+        {
+            Environment = AssetRecipe.LampDefaults().Environment with { LogicalHeight = 173 },
+        };
+        System.Numerics.Vector2 world = EnvironmentTemplateMapping.SourcePixelToWorld(x, y, recipe);
+        System.Numerics.Vector2 pixels = EnvironmentTemplateMapping.WorldToSourcePixel(world, recipe);
+
+        Assert.Equal((float)x, pixels.X, 3);
+        Assert.Equal((float)y, pixels.Y, 3);
+    }
+
+    [Fact]
+    public void World_to_normalized_source_is_the_inverse_used_by_editor_gizmos()
+    {
+        AssetRecipe recipe = AssetRecipe.LampDefaults();
+        System.Numerics.Vector2 world = EnvironmentTemplateMapping.SourcePixelToWorld(768, 256, recipe);
+        System.Numerics.Vector2 normalized = EnvironmentTemplateMapping.WorldToNormalizedSource(world, recipe);
+
+        Assert.Equal(.75f, normalized.X, 4);
+        Assert.Equal(.25f, normalized.Y, 4);
+    }
+
     [Fact]
     public void Lamp_v1_stays_legacy_while_v2_is_literal()
     {
