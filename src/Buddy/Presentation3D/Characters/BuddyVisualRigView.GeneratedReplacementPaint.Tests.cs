@@ -7,6 +7,13 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 
 public partial class BuddyVisualRigView
 {
+    /// <summary>
+    /// Scenario-only deterministic bridge. Editor preview rigs are not guaranteed to receive their
+    /// normal rendered _Process callback in headless test composition, so tests explicitly execute
+    /// the same production refresh that a live Paint Buddy frame performs.
+    /// </summary>
+    internal void RefreshGeneratedReplacementVisualsForTest() => RefreshGeneratedReplacementVisuals();
+
     internal bool GeneratedReplacementPaintUvSeamIsCorrectForTest
     {
         get
