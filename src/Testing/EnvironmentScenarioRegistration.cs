@@ -48,5 +48,9 @@ internal static class EnvironmentScenarioRegistration
             new EnvironmentRestartRestoreClosureScenario();
         factories["environment_decorator_room_build"] = () =>
             new EnvironmentDecoratorClosureScenario("environment_decorator_room_build");
+
+        // Asset Forge AF-11/AF-12: generated Environment assets use the same existing edit-session
+        // transaction and presenter seams as hand-authored room content.
+        factories["asset_forge_generated_lamp"] = () => new AssetForgeGeneratedLampScenario();
     }
 }
