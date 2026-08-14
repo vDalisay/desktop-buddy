@@ -66,7 +66,7 @@ public partial class GeneratedBuddyCosmeticResource : GameResource
             transformPolicy,
             transformPolicy == CosmeticTransformPolicy.None ? CosmeticTransformBounds.None : CosmeticTransformBounds.Standard,
             NormalizedFeatureTransform.Identity,
-            colorChannels: [],
+            colorChannels: [new CosmeticColorChannelDefinition(CosmeticDefinition.PrimaryColorChannel, Rgba32.Parse("#FFFFFF"))],
             CharacterFeatureCatalog.Shipped.GetDefaultId(Slot),
             ownershipContentId: ContentId);
     }
