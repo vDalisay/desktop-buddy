@@ -71,6 +71,11 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
 
     public Rect2I UsableMonitorRect => ResolveContainingMonitor(CurrentWindowRect());
 
+    /// <summary>How many displays the monitor picker can offer.</summary>
+    public int MonitorCount => _headless
+        ? Math.Max(1, _adapter.GetUsableMonitorRects().Count)
+        : Math.Max(1, DisplayServer.GetScreenCount());
+
     public void ApplyWindowSettings(WindowSettings settings)
     {
         bool wantTransparent = settings.Transparent && _adapter.TransparencyAvailable;
@@ -119,7 +124,8 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             MsaaLevel(GetViewport().Msaa2D),
             DisplayServer.WindowGetVsyncMode() != DisplayServer.VSyncMode.Disabled,
             window.Borderless,
-            !window.Unresizable);
+            !window.Unresizable,
+            _lastAppliedSettings.MaxFps);
     }
 
     /// <summary>Recover a captured rect against the current monitor topology.</summary>
@@ -307,10 +313,52 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
             ? Viewport.Msaa.Disabled
             : msaa;
         GetViewport().Msaa3D = msaa;
-        DisplayServer.WindowSetVsyncMode(settings.Vsync
+        ApplyFrameSettings(settings.Vsync, settings.MaxFps);
+    }
+
+    /// <summary>
+    /// Moves the buddy onto one monitor, centered in its usable area. Full-screen overlay just
+    /// re-takes the layout on the new monitor instead, since it owns the whole screen.
+    /// </summary>
+    public bool MoveToMonitor(int monitorIndex)
+    {
+        int index = ResolveMonitorIndex(monitorIndex);
+        if (LayoutMode == WindowLayoutMode.FullscreenOverlay)
+            return TrySetLayoutMode(WindowLayoutMode.FullscreenOverlay, index);
+
+        Rect2I monitor = MonitorRect(index);
+        Vector2I size = CurrentWindowRect().Size;
+        var position = new Vector2I(
+            monitor.Position.X + Math.Max(0, (monitor.Size.X - size.X) / 2),
+            monitor.Position.Y + Math.Max(0, (monitor.Size.Y - size.Y) / 2));
+        ApplyWindowSettings(_lastAppliedSettings with { Rect = new Rect2I(position, size) });
+        return true;
+    }
+
+    /// <summary>Topmost state on its own, without re-placing the window.</summary>
+    public void SetAlwaysOnTop(bool alwaysOnTop)
+    {
+        _lastAppliedSettings = _lastAppliedSettings with { AlwaysOnTop = alwaysOnTop };
+        if (LayoutMode == WindowLayoutMode.Compact)
+            _compactSettings = _compactSettings with { AlwaysOnTop = alwaysOnTop };
+        if (!_headless)
+            GetWindow().AlwaysOnTop = alwaysOnTop;
+    }
+
+    /// <summary>
+    /// The single place V-sync and the frame cap are applied, so the Settings rows change them
+    /// live without re-applying (and re-placing) the whole window. A chosen cap wins over the
+    /// V-sync-derived default; zero means "let V-sync decide".
+    /// </summary>
+    public void ApplyFrameSettings(bool vsync, int maxFps)
+    {
+        if (_headless)
+            return;
+
+        DisplayServer.WindowSetVsyncMode(vsync
             ? DisplayServer.VSyncMode.Enabled
             : DisplayServer.VSyncMode.Disabled);
-        Engine.MaxFps = settings.Vsync ? 0 : VsyncOffMaximumFps;
+        Engine.MaxFps = maxFps > 0 ? maxFps : vsync ? 0 : VsyncOffMaximumFps;
     }
 
     private void MoveTo(PixelRect rect)

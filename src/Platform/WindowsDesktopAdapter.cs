@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text;
 using DesktopBuddy.Diagnostics;
 using Godot;
 
@@ -25,6 +26,7 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     private const int SwHide = 0;
     private const int SwRestore = 9;
     private const uint MonitorDefaultToPrimary = 0x00000001;
+    private const uint MonitorDefaultToNearest = 0x00000002;
     private const int MdtEffectiveDpi = 0;
 
     private readonly IntPtr _hwnd;
@@ -42,6 +44,39 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
     public bool IsNative => true;
     public bool TransparencyAvailable { get; }
     public bool IsWindowVisible => IsWindowVisibleNative(_hwnd);
+
+    public bool ForegroundAppIsFullscreen
+    {
+        get
+        {
+            IntPtr foreground = GetForegroundWindow();
+            if (foreground == IntPtr.Zero || foreground == _hwnd)
+                return false;
+
+            // The desktop itself is always "full screen"; so is the shell's own backdrop.
+            var className = new StringBuilder(64);
+            if (GetClassName(foreground, className, className.Capacity) > 0 &&
+                className.ToString() is "Progman" or "WorkerW" or "Shell_TrayWnd")
+            {
+                return false;
+            }
+
+            if (!GetWindowRect(foreground, out RECT window))
+                return false;
+
+            var info = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+            IntPtr monitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
+            if (monitor == IntPtr.Zero || !GetMonitorInfo(monitor, ref info))
+                return false;
+
+            // Covering the monitor rect (not the work area) is what marks a window as
+            // full-screen: a maximized window stops at the taskbar, a game does not.
+            return window.Left <= info.rcMonitor.Left &&
+                window.Top <= info.rcMonitor.Top &&
+                window.Right >= info.rcMonitor.Right &&
+                window.Bottom >= info.rcMonitor.Bottom;
+        }
+    }
 
 #pragma warning disable CS0067
     public event Action? SystemSuspending;
@@ -300,6 +335,16 @@ public sealed class WindowsDesktopAdapter : IWindowsDesktopAdapter
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
+    private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

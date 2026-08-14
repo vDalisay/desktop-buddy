@@ -24,6 +24,9 @@ public sealed class EmulatedWindowsDesktopAdapter : IWindowsDesktopAdapter
     public bool TransparencyAvailable { get; }
     public bool IsWindowVisible { get; private set; } = true;
 
+    /// <summary>Settable here so headless scenarios can drive the hide-for-games behaviour.</summary>
+    public bool ForegroundAppIsFullscreen { get; set; }
+
     public event Action? SystemSuspending;
     public event Action? SystemResumed;
     public event Action<bool>? SessionLockChanged;

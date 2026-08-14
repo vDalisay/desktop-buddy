@@ -18,7 +18,8 @@ public readonly record struct WindowSettings(
     int MsaaLevel,
     bool Vsync,
     bool Borderless = true,
-    bool Resizable = false)
+    bool Resizable = false,
+    int MaxFps = 0)
 {
     /// <summary>First-run defaults: 480x360 at the origin, transparent, topmost, 2x MSAA, V-sync on.</summary>
     public static WindowSettings Defaults => new(

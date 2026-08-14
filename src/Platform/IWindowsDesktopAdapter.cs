@@ -67,6 +67,13 @@ public interface IWindowsDesktopAdapter
     /// </summary>
     void SetWindowVisible(bool visible);
 
+    /// <summary>
+    /// True while some other application owns the foreground with a window covering its whole
+    /// monitor — a game, a video, a presentation. The buddy gets out of the way while it is,
+    /// which is the setting desktop companions live or die by. Our own windows never count.
+    /// </summary>
+    bool ForegroundAppIsFullscreen { get; }
+
     /// <summary>Restore any subclassed window procedure and native state on shutdown.</summary>
     void Shutdown();
 }

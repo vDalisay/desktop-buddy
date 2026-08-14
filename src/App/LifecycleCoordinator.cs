@@ -27,11 +27,24 @@ public partial class LifecycleCoordinator : Node
     private double _pendingSeconds;
     private int _foregroundMaxFps;
     private bool _presentationThrottled;
+    private bool _trayHidden;
+    private bool _fullscreenHidden;
+    private double _fullscreenPollSeconds;
     private bool _shuttingDown;
     private bool _editorModeActive;
 
+    private const double FullscreenPollSeconds = 0.5;
+
+    private Func<bool>? _foregroundAppIsFullscreen;
+
     public bool IsInitialized { get; private set; }
     public bool IsHiddenToTray { get; private set; }
+
+    /// <summary>Frame cap while hidden or throttled; zero uses the tuning profile's value.</summary>
+    public int BackgroundMaxFps { get; set; }
+
+    /// <summary>Whether the buddy hides itself while a full-screen application is focused.</summary>
+    public bool HideForFullscreenApps { get; set; }
     /// <summary>
     /// A locked Windows session keeps running as hidden time with no discontinuity
     /// exclusion, and the prior presentation state is restored on unlock (FR-016.8).
@@ -54,8 +67,10 @@ public partial class LifecycleCoordinator : Node
         IMonotonicTimeSource? timeSource = null,
         Action? resumePresentation = null,
         Action<bool>? setWindowVisibility = null,
-        Func<bool>? isWorkMode = null)
+        Func<bool>? isWorkMode = null,
+        Func<bool>? foregroundAppIsFullscreen = null)
     {
+        _foregroundAppIsFullscreen = foregroundAppIsFullscreen;
         _isWorkMode = isWorkMode;
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
@@ -81,6 +96,7 @@ public partial class LifecycleCoordinator : Node
 
     public override void _Process(double delta)
     {
+        PollForegroundApplication(delta);
         if (!IsInitialized || _shuttingDown || _editorModeActive ||
             !_clock.TrySample(out double elapsed))
         {
@@ -113,6 +129,28 @@ public partial class LifecycleCoordinator : Node
 
     public void SetHiddenToTray(bool hidden)
     {
+        if (hidden == _trayHidden)
+            return;
+        _trayHidden = hidden;
+        UpdateHidden();
+    }
+
+    /// <summary>
+    /// The buddy steps aside while a full-screen application owns the screen. It is a second
+    /// reason to be hidden, not a second owner of visibility: a window hidden to the tray by
+    /// hand stays hidden when the game exits.
+    /// </summary>
+    public void SetHiddenForFullscreenApp(bool hidden)
+    {
+        if (hidden == _fullscreenHidden)
+            return;
+        _fullscreenHidden = hidden;
+        UpdateHidden();
+    }
+
+    private void UpdateHidden()
+    {
+        bool hidden = _trayHidden || _fullscreenHidden;
         if (!IsInitialized || _shuttingDown || hidden == IsHiddenToTray)
             return;
         SettleCurrentBucket();
@@ -146,6 +184,8 @@ public partial class LifecycleCoordinator : Node
         _clock.Reset();
         _pendingSeconds = 0.0;
         IsHiddenToTray = remainHidden;
+        _trayHidden = remainHidden;
+        _fullscreenHidden = false;
         PauseCoordinator.Set(GameplayPauseReason.Suspended, false);
         PauseCoordinator.Set(GameplayPauseReason.HiddenToTray, remainHidden);
         if (remainHidden)
@@ -198,12 +238,33 @@ public partial class LifecycleCoordinator : Node
         }
     }
 
+    /// <summary>
+    /// Polled rather than event-driven: Windows has no notification for "some window became
+    /// full-screen", and twice a second is far cheaper than any hook would be.
+    /// </summary>
+    private void PollForegroundApplication(double delta)
+    {
+        if (!IsInitialized || _shuttingDown || _foregroundAppIsFullscreen is null)
+            return;
+        if (!HideForFullscreenApps)
+        {
+            SetHiddenForFullscreenApp(false);
+            return;
+        }
+
+        _fullscreenPollSeconds += delta;
+        if (_fullscreenPollSeconds < FullscreenPollSeconds)
+            return;
+        _fullscreenPollSeconds = 0.0;
+        SetHiddenForFullscreenApp(_foregroundAppIsFullscreen());
+    }
+
     private void ThrottlePresentation()
     {
         if (_presentationThrottled || DisplayServer.GetName() == "headless")
             return;
         _foregroundMaxFps = Engine.MaxFps;
-        Engine.MaxFps = _profile.HiddenMaxFps;
+        Engine.MaxFps = BackgroundMaxFps > 0 ? BackgroundMaxFps : _profile.HiddenMaxFps;
         RenderingServer.RenderLoopEnabled = false;
         _presentationThrottled = true;
     }

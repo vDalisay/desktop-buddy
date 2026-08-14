@@ -87,6 +87,7 @@ public partial class CharacterEditorHost
         InteractionModeButton.Pressed += _sandbox.Shell.ToggleInteractionMode;
         compactBar.AddChild(InteractionModeButton);
 
+        ComposePresentationRows();
         WindowLayoutButton = _settingsPanel.AddAction(
             "Window Layout",
             "Switch between the compact buddy box and a transparent full-screen overlay.",
@@ -99,7 +100,8 @@ public partial class CharacterEditorHost
                         "Full-screen overlay requires per-pixel transparency on this display.";
                 }
                 UpdateWorkPlayLabels();
-            });
+            },
+            group: DisplayGroup);
         WindowLayoutButton.Name = "WindowLayoutToggleButton";
 
         // Full-screen Work passes the main window through to the desktop, so it needs a small

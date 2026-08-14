@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Platform;
 using Godot;
 
 namespace DesktopBuddy.Tools;
@@ -52,6 +53,8 @@ public partial class GrenadeAudioComponent : Node
             throw new InvalidOperationException(
                 "GrenadeAudioComponent requires an initialized grenade component and one player.");
         }
+
+        Player.Bus = AudioMix.Sfx;
 
         // Low burst with a noise tail: a body thump under a long decaying hiss.
         _boom = Synthesize(

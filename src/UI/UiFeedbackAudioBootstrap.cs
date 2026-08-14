@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Platform;
 using DesktopBuddy.Ui;
 using DesktopBuddy.Work;
 using Godot;
@@ -96,6 +97,7 @@ public partial class UiFeedbackAudioBootstrap : Node
         {
             Name = "UiFeedbackPlayer",
             ProcessMode = ProcessModeEnum.Always,
+            Bus = AudioMix.Ui,
             VolumeDb = -14.0f,
             MaxPolyphony = 1,
         };
@@ -104,6 +106,7 @@ public partial class UiFeedbackAudioBootstrap : Node
         {
             Name = "UiFeedbackLayerPlayer",
             ProcessMode = ProcessModeEnum.Always,
+            Bus = AudioMix.Ui,
             VolumeDb = -14.0f,
             MaxPolyphony = 1,
         };

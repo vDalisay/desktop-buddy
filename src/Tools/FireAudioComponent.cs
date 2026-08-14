@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Platform;
 using Godot;
 
 namespace DesktopBuddy.Tools;
@@ -57,6 +58,9 @@ public partial class FireAudioComponent : Node
             throw new InvalidOperationException(
                 "FireAudioComponent requires an initialized sprayer and both players.");
         }
+
+        Player.Bus = AudioMix.Sfx;
+        LoopPlayer.Bus = AudioMix.Sfx;
 
         // Band-limited noise with a slow breath under it: a gas flame, not a hi-hat. The
         // clip is authored to loop cleanly by cross-fading its own tail into its head.

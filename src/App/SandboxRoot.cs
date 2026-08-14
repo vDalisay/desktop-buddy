@@ -261,7 +261,10 @@ public partial class SandboxRoot : Node2D
             Window.Adapter.SetWindowVisible,
             // Work mode is the player getting on with something else; the buddy idles on
             // their desktop and barely works up an appetite.
-            () => Shell.Mode == DesktopBuddy.Domain.Platform.InputMode.Work);
+            () => Shell.Mode == DesktopBuddy.Domain.Platform.InputMode.Work,
+            () => Window.Adapter.ForegroundAppIsFullscreen);
+        Lifecycle.BackgroundMaxFps = Settings.BackgroundMaxFps;
+        Lifecycle.HideForFullscreenApps = Settings.HideForFullscreenApps;
         AddChild(Lifecycle);
 
         TrayCommands = new TrayCommandComponent { Name = nameof(TrayCommandComponent) };

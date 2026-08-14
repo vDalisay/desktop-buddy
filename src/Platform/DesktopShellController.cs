@@ -61,6 +61,7 @@ public partial class DesktopShellController : Node
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
         _saves.RegisterSettings(_settings);
         _mode = new InputModeStateMachine(WindowInteractionSettings.ReadInputMode(_settings));
+        HotkeyBinding.Apply(InputActions.ToggleInputMode, _settings.GlobalHotkey);
         _runtimeConfigured = true;
     }
 
@@ -89,8 +90,10 @@ public partial class DesktopShellController : Node
             AlwaysOnTop = _settings.AlwaysOnTop,
             MsaaLevel = _settings.Msaa,
             Vsync = _settings.VSync,
+            MaxFps = _settings.MaxFps,
         };
         Window.ApplyWindowSettings(launch);
+        _storedZoom = _settings.ZoomPercent / 100.0;
 
         WindowLayoutMode requestedLayout = _runtimeConfigured
             ? WindowInteractionSettings.ReadLayout(_settings)
@@ -220,6 +223,8 @@ public partial class DesktopShellController : Node
     private void ApplyMode(bool force)
     {
         Window.SetInputMode(_mode.Current, NativeFullscreenWorkHitRegions());
+        // "Mute while working" follows the mode, so it has to be re-evaluated on every change.
+        ApplyAudioSettings();
         if (force)
             ModeChangeCount = 0;
     }

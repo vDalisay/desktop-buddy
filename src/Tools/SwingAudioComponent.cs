@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Platform;
 using Godot;
 
 namespace DesktopBuddy.Tools;
@@ -51,6 +52,8 @@ public partial class SwingAudioComponent : Node
             throw new InvalidOperationException(
                 "SwingAudioComponent requires initialized tool/damage components and one player.");
         }
+
+        Player.Bus = AudioMix.Sfx;
 
         _chargeStarted = Synthesize(
             seconds: 0.11,

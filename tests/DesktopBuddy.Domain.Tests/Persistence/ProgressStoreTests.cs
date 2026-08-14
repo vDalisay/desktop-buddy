@@ -138,6 +138,66 @@ public sealed class ProgressStoreTests
         Assert.False(files.Exists(ProgressPath));
     }
 
+    [Fact]
+    public async Task AudioAndFrameSettings_RoundTripAndRejectOutOfRange()
+    {
+        var files = new MemoryFiles();
+        var store = Store(files);
+        var wanted = new LocalSettingsSave
+        {
+            Revision = 3,
+            MasterVolume = 0.4f,
+            SfxVolume = 0.0f,
+            UiVolume = 0.85f,
+            VSync = false,
+            MaxFps = 30,
+        };
+
+        await store.SaveSettingsAsync(wanted, default);
+        LoadResult<LocalSettingsSave> loaded = await store.LoadSettingsAsync(default);
+
+        Assert.Equal(SaveLoadStatus.Loaded, loaded.Status);
+        Assert.Equal(0.4f, loaded.Value!.MasterVolume);
+        Assert.Equal(0.0f, loaded.Value.SfxVolume);
+        Assert.Equal(0.85f, loaded.Value.UiVolume);
+        Assert.False(loaded.Value.VSync);
+        Assert.Equal(30, loaded.Value.MaxFps);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.SaveSettingsAsync(wanted with { UiVolume = 1.5f }, default));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.SaveSettingsAsync(wanted with { MaxFps = -1 }, default));
+    }
+
+    [Fact]
+    public async Task BehaviourSettings_RoundTripAndRejectUnknownStartupMode()
+    {
+        var files = new MemoryFiles();
+        var store = Store(files);
+        var wanted = new LocalSettingsSave
+        {
+            Revision = 4,
+            BackgroundMaxFps = 5,
+            HideForFullscreenApps = false,
+            StartupInputMode = "play",
+            MuteInWorkMode = false,
+            ZoomPercent = 150,
+        };
+
+        await store.SaveSettingsAsync(wanted, default);
+        LoadResult<LocalSettingsSave> loaded = await store.LoadSettingsAsync(default);
+
+        Assert.Equal(SaveLoadStatus.Loaded, loaded.Status);
+        Assert.Equal(5, loaded.Value!.BackgroundMaxFps);
+        Assert.False(loaded.Value.HideForFullscreenApps);
+        Assert.Equal("play", loaded.Value.StartupInputMode);
+        Assert.False(loaded.Value.MuteInWorkMode);
+        Assert.Equal(150, loaded.Value.ZoomPercent);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            store.SaveSettingsAsync(wanted with { StartupInputMode = "sideways" }, default));
+    }
+
     private const string ProgressPath = "C:\\save-test\\progress.json";
     private const string SettingsPath = "C:\\save-test\\settings.json";
 

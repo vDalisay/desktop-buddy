@@ -339,8 +339,24 @@ public sealed record LocalSettingsSave
     public int Monitor { get; init; }
     public int Dpi { get; init; } = 96;
     public int ZoomPercent { get; init; } = 100;
-    public float MasterVolume { get; init; } = 0.5f;
-    public float SfxVolume { get; init; } = 0.5f;
+
+    /// <summary>Interface and font scale: 100, 125, 150, 175, or 200 percent.</summary>
+    public int UiScalePercent { get; init; } = 100;
+    public float MasterVolume { get; init; } = 1.0f;
+    public float SfxVolume { get; init; } = 1.0f;
+    public float UiVolume { get; init; } = 1.0f;
+
+    /// <summary>Foreground frame cap; zero leaves the cap to V-sync.</summary>
+    public int MaxFps { get; init; }
+
+    /// <summary>Frame cap while hidden or throttled; zero uses the tuning profile's value.</summary>
+    public int BackgroundMaxFps { get; init; }
+
+    /// <summary>Hide the buddy while a full-screen application owns the foreground.</summary>
+    public bool HideForFullscreenApps { get; init; } = true;
+
+    /// <summary>"remember" (default), "work", or "play": which mode a launch starts in.</summary>
+    public string StartupInputMode { get; init; } = "remember";
     public bool MuteInWorkMode { get; init; } = true;
     public bool ReducedMotion { get; init; }
     public bool ScreenShake { get; init; } = true;

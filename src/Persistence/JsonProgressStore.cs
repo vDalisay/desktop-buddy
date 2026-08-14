@@ -228,10 +228,16 @@ public sealed class JsonProgressStore : IProgressStore
             settings.WorkWindowWidth < 0 || settings.WorkWindowHeight < 0 ||
             settings.Dpi <= 0 ||
             settings.ZoomPercent is not (75 or 100 or 125 or 150 or 175 or 200) ||
+            settings.UiScalePercent is not (100 or 125 or 150 or 175 or 200) ||
             !float.IsFinite(settings.MasterVolume) ||
             !float.IsFinite(settings.SfxVolume) ||
+            !float.IsFinite(settings.UiVolume) ||
             settings.MasterVolume is < 0.0f or > 1.0f ||
-            settings.SfxVolume is < 0.0f or > 1.0f)
+            settings.SfxVolume is < 0.0f or > 1.0f ||
+            settings.UiVolume is < 0.0f or > 1.0f ||
+            settings.MaxFps is < 0 or > 480 ||
+            settings.BackgroundMaxFps is < 0 or > 480 ||
+            settings.StartupInputMode is not ("remember" or "work" or "play"))
         {
             throw new ArgumentException("Local settings payload is invalid.", nameof(settings));
         }

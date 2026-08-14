@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using DesktopBuddy.App;
 using DesktopBuddy.Ui;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Shop;
@@ -27,21 +29,192 @@ public partial class SettingsPanel : PanelContainer
         IsInitialized = true;
     }
 
+    /// <summary>
+    /// The rows of one named group box, created on first use so groups appear in the order
+    /// their first row is added.
+    /// </summary>
+    private VBoxContainer Group(string? caption)
+    {
+        if (caption is null)
+            return _list;
+        if (_groups.TryGetValue(caption, out Win98GroupBox? existing))
+            return existing.Content;
+
+        var group = new Win98GroupBox { Name = $"Settings{caption.Replace(" ", string.Empty, StringComparison.Ordinal)}Group" };
+        group.Configure(caption);
+        _list.AddChild(group);
+        _groups.Add(caption, group);
+        return group.Content;
+    }
+
     /// <summary>Adds one labelled action row and returns its button.</summary>
-    public Button AddAction(string label, string description, Action pressed)
+    public Button AddAction(
+        string label,
+        string description,
+        Action pressed,
+        string? group = null,
+        string buttonText = "Open")
     {
         ArgumentNullException.ThrowIfNull(pressed);
-        var button = new Button { Text = "Open" };
+        var button = new Button { Text = buttonText };
         button.Pressed += pressed;
-        PanelChrome.Row(_list, label, new Label(), button);
+        PanelChrome.Row(Group(group), label, new Label(), button);
         button.TooltipText = description;
         _actions.Add(label, button);
         return button;
+    }
+
+    /// <summary>
+    /// A 0–1 slider row showing its value as a percentage. <paramref name="changed"/> fires on
+    /// every step so the change is audible while dragging; <paramref name="committed"/> fires
+    /// once the control is released, so a drag is one save rather than twenty.
+    /// </summary>
+    public HSlider AddSlider(
+        string label,
+        string description,
+        float value,
+        Action<float> changed,
+        Action? committed = null,
+        string? group = null)
+    {
+        ArgumentNullException.ThrowIfNull(changed);
+        var readout = new Label();
+        var slider = new HSlider
+        {
+            Name = ControlName(label),
+            MinValue = 0.0,
+            MaxValue = 1.0,
+            Step = 0.05,
+            Value = value,
+            TooltipText = description,
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        readout.Text = Percent(value);
+        slider.ValueChanged += changedValue =>
+        {
+            readout.Text = Percent((float)changedValue);
+            changed((float)changedValue);
+        };
+        if (committed is not null)
+            slider.DragEnded += _ => committed();
+
+        PanelChrome.Row(Group(group), label, readout, slider);
+        slider.CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(140), 0);
+        _controls.Add(label, slider);
+        return slider;
+    }
+
+    /// <summary>An on/off row: a period square check field, not a modern switch.</summary>
+    public CheckBox AddToggle(
+        string label,
+        string description,
+        bool value,
+        Action<bool> changed,
+        string? group = null)
+    {
+        ArgumentNullException.ThrowIfNull(changed);
+        var toggle = new CheckBox
+        {
+            Name = ControlName(label),
+            ButtonPressed = value,
+            TooltipText = description,
+        };
+        toggle.Toggled += pressed => changed(pressed);
+        PanelChrome.Row(Group(group), label, new Label(), toggle);
+        _controls.Add(label, toggle);
+        return toggle;
+    }
+
+    /// <summary>A row that picks one of a fixed set of values.</summary>
+    public OptionButton AddChoice(
+        string label,
+        string description,
+        IReadOnlyList<string> options,
+        int selected,
+        Action<int> changed,
+        string? group = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(changed);
+        var choice = new OptionButton
+        {
+            Name = ControlName(label),
+            TooltipText = description,
+        };
+        foreach (string option in options)
+            choice.AddItem(option);
+        choice.Selected = Math.Clamp(selected, 0, options.Count - 1);
+        choice.ItemSelected += index => changed((int)index);
+        Win98MenuStyle.Apply(choice.GetPopup());
+        PanelChrome.Row(Group(group), label, new Label(), choice);
+        _controls.Add(label, choice);
+        return choice;
+    }
+
+    /// <summary>
+    /// A rebind row: pressing the button listens for the next chord and reports it. Escape
+    /// abandons the capture, so a listening row can never trap the player.
+    /// </summary>
+    public Button AddHotkey(
+        string label,
+        string description,
+        string chord,
+        Action<string> changed,
+        string? group = null)
+    {
+        ArgumentNullException.ThrowIfNull(changed);
+        var button = new Button { Name = ControlName(label), Text = chord, TooltipText = description };
+        button.Pressed += () =>
+        {
+            _capturing = button;
+            _captureCallback = changed;
+            button.Text = "Press keys...";
+        };
+        PanelChrome.Row(Group(group), label, new Label(), button);
+        _controls.Add(label, button);
+        return button;
+    }
+
+    public override void _Input(InputEvent @event)
+    {
+        if (_capturing is null || @event is not InputEventKey { Pressed: true, Echo: false } key)
+            return;
+
+        Button button = _capturing;
+        _capturing = null;
+        Action<string>? callback = _captureCallback;
+        _captureCallback = null;
+        GetViewport().SetInputAsHandled();
+
+        if (key.Keycode == Key.Escape || !HotkeyBinding.IsCompleteChord(key))
+        {
+            button.Text = _lastChord ?? button.Text;
+            return;
+        }
+
+        string chord = HotkeyBinding.Format(key);
+        _lastChord = chord;
+        button.Text = chord;
+        callback?.Invoke(chord);
     }
 
     /// <summary>The action button for one row (test observability).</summary>
     public Button? ActionFor(string label) =>
         _actions.TryGetValue(label, out Button? button) ? button : null;
 
+    /// <summary>The slider, toggle, or choice control for one row (test observability).</summary>
+    public Control? ControlFor(string label) =>
+        _controls.TryGetValue(label, out Control? control) ? control : null;
+
+    private static string ControlName(string label) =>
+        $"Settings{label.Replace(" ", string.Empty, StringComparison.Ordinal)}Control";
+
+    private static string Percent(float value) => $"{Mathf.RoundToInt(value * 100.0f)}%";
+
     private readonly Dictionary<string, Button> _actions = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Control> _controls = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Win98GroupBox> _groups = new(StringComparer.Ordinal);
+    private Button? _capturing;
+    private Action<string>? _captureCallback;
+    private string? _lastChord;
 }

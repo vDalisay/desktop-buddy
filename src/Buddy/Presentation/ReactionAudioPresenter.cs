@@ -4,6 +4,7 @@ using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Platform;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Presentation;
@@ -71,6 +72,8 @@ public partial class ReactionAudioPresenter : Node
         _hardImpactPain = HardImpactPainFrom(Pipeline.Profile);
         _maximumPain = MaximumPainFrom(Pipeline.Profile);
         _baseVolumeDb = Player.VolumeDb;
+        // Set before the voice pool below copies it.
+        Player.Bus = AudioMix.Sfx;
         Player.MaxPolyphony = 1;
         _voices = new AudioStreamPlayer[VoiceCount];
         _voices[0] = Player;

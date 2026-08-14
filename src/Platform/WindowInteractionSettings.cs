@@ -47,7 +47,14 @@ public static class WindowInteractionSettings
     public static InputMode ReadInputMode(LocalSettingsSave settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        return string.Equals(settings.LastInputMode, "play", StringComparison.OrdinalIgnoreCase)
+        // A pinned startup mode wins over the remembered one; "remember" falls through.
+        string mode = settings.StartupInputMode switch
+        {
+            "work" => "work",
+            "play" => "play",
+            _ => settings.LastInputMode,
+        };
+        return string.Equals(mode, "play", StringComparison.OrdinalIgnoreCase)
             ? InputMode.Play
             : InputMode.Work;
     }
