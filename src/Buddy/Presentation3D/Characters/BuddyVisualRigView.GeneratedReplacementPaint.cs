@@ -35,12 +35,15 @@ public partial class BuddyVisualRigView
         if (GodotObject.IsInstanceValid(outline))
         {
             float wantedGrow = _trustedProfile.Look.OutlineGrowAmount / Math.Max(0.0001f, targetRadius);
-            bool needsOwnMaterial = outline!.MaterialOverride is not StandardMaterial3D outlineMaterial ||
-                outlineMaterial.ResourceName != "BuddyLookScaledOutlineMaterial";
-            if (needsOwnMaterial)
+            StandardMaterial3D? existingOutline = outline!.MaterialOverride as StandardMaterial3D;
+            if (existingOutline is null || existingOutline.ResourceName != "BuddyLookScaledOutlineMaterial")
+            {
                 outline.MaterialOverride = _materials.CreateScaledOutlineMaterial(targetRadius);
-            else if (!Mathf.IsEqualApprox(outlineMaterial!.GrowAmount, wantedGrow))
-                outlineMaterial.GrowAmount = wantedGrow;
+            }
+            else if (!Mathf.IsEqualApprox(existingOutline.GrowAmount, wantedGrow))
+            {
+                existingOutline.GrowAmount = wantedGrow;
+            }
         }
 
         MeshInstance3D? paint = surface.GetNodeOrNull<MeshInstance3D>(GeneratedPaintName);
@@ -80,9 +83,11 @@ public partial class BuddyVisualRigView
 
         bool found = false;
         float nearestCameraDistance = float.PositiveInfinity;
+        PaintHit bestHit = default;
         TryCandidate(_topVisual, BuddyPartId.Torso, PaintPart.Torso);
         TryCandidate(_shoesVisual, BuddyPartId.LeftFoot, PaintPart.LeftFoot);
         TryCandidate(_rightShoesVisual, BuddyPartId.RightFoot, PaintPart.RightFoot);
+        hit = bestHit;
         return found;
 
         void TryCandidate(Node3D? visualRoot, BuddyPartId partId, PaintPart paintPart)
@@ -90,14 +95,14 @@ public partial class BuddyVisualRigView
             if (!IsPartVisualReplaced(partId) || !GodotObject.IsInstanceValid(visualRoot)) return;
             MeshInstance3D? surface = FindGeneratedReplacementSurface(visualRoot!);
             if (!GodotObject.IsInstanceValid(surface) || !GodotObject.IsInstanceValid(surface!.Mesh)) return;
-            if (!TryRaycastGeneratedSurface(surface, paintWorldPoint, out Vector2 uv, out float cameraDistance, out float worldDepth)) return;
-            if (found && cameraDistance >= nearestCameraDistance) return;
+            if (!TryRaycastGeneratedSurface(surface, paintWorldPoint, out Vector2 uv, out float candidateDistance, out float candidateDepth)) return;
+            if (found && candidateDistance >= nearestCameraDistance) return;
 
             PaintPoint mapped = new(uv.X, uv.Y);
             if (PaintUvRegion.IsLimb(paintPart))
                 mapped = PaintUvRegion.LimbEnd.MapLocal(mapped);
-            hit = new PaintHit(paintPart, mapped, worldDepth);
-            nearestCameraDistance = cameraDistance;
+            bestHit = new PaintHit(paintPart, mapped, candidateDepth);
+            nearestCameraDistance = candidateDistance;
             found = true;
         }
     }
@@ -178,16 +183,18 @@ public partial class BuddyVisualRigView
         hitUv = default;
         cameraDistance = float.PositiveInfinity;
         worldDepth = float.NegativeInfinity;
-        Mesh? mesh = surface.Mesh;
-        if (!GodotObject.IsInstanceValid(mesh)) return false;
+        if (surface.Mesh is not ArrayMesh mesh) return false;
 
         // Character-editor preview is orthographic and looks down -Z. The paint canvas world point
         // uses the same X/Y plane, with the standard 2D Y-down -> 3D Y-up mapping.
         Vector3 origin = new(paintWorldPoint.X, -paintWorldPoint.Y, 4096f);
         Vector3 direction = new(0f, 0f, -1f);
         bool found = false;
+        float bestDistance = float.PositiveInfinity;
+        float bestDepth = float.NegativeInfinity;
+        Vector2 bestUv = default;
 
-        for (int surfaceIndex = 0; surfaceIndex < mesh!.GetSurfaceCount(); surfaceIndex++)
+        for (int surfaceIndex = 0; surfaceIndex < mesh.GetSurfaceCount(); surfaceIndex++)
         {
             if (mesh.SurfaceGetPrimitiveType(surfaceIndex) != Mesh.PrimitiveType.Triangles) continue;
             Godot.Collections.Array arrays = mesh.SurfaceGetArrays(surfaceIndex);
@@ -214,14 +221,18 @@ public partial class BuddyVisualRigView
                 Vector3 b = surface.GlobalTransform * vertices[ib];
                 Vector3 c = surface.GlobalTransform * vertices[ic];
                 if (!RayTriangle(origin, direction, a, b, c, out float distance, out float baryB, out float baryC)) return;
-                if (distance >= cameraDistance) return;
+                if (distance >= bestDistance) return;
                 float baryA = 1f - baryB - baryC;
-                hitUv = (uvs[ia] * baryA) + (uvs[ib] * baryB) + (uvs[ic] * baryC);
-                cameraDistance = distance;
-                worldDepth = origin.Z - distance;
+                bestUv = (uvs[ia] * baryA) + (uvs[ib] * baryB) + (uvs[ic] * baryC);
+                bestDistance = distance;
+                bestDepth = origin.Z - distance;
                 found = true;
             }
         }
+
+        hitUv = bestUv;
+        cameraDistance = bestDistance;
+        worldDepth = bestDepth;
         return found;
     }
 
