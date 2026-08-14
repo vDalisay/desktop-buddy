@@ -17,10 +17,16 @@ public partial class AssetForgePreview : Control
     private BuddyReferenceHead _headReference = null!;
     private MeshInstance3D _partReference = null!;
     private MeshInstance3D _partReferenceSecondary = null!;
+    private Node3D _environmentReference = null!;
     private Node3D? _asset;
     private StandardMaterial3D? _generatedMaterial;
+    private MeshInstance3D? _lampEmitterGizmo;
+    private OmniLight3D? _lampPreviewLight;
     private TrustedBuddyPreviewProfile _profile;
     private AssetCategory _category = AssetCategory.Glasses;
+    private EnvironmentGeneratedBounds _environmentBounds;
+    private double _lampLogicalHeight = 150;
+    private DecorationLightSettings _lampSettings = new();
     private bool _referenceVisible = true;
     private bool _rotating;
     private bool _panning;
@@ -52,6 +58,10 @@ public partial class AssetForgePreview : Control
         _partReferenceSecondary = CreatePartReference("PartReferenceSecondary");
         _orbit.AddChild(_partReference);
         _orbit.AddChild(_partReferenceSecondary);
+        _environmentReference = new Node3D { Name = "EnvironmentScaleReference", Visible = false };
+        _orbit.AddChild(_environmentReference);
+        BuildEnvironmentReference();
+
         world.AddChild(BuddySharedMaterialFactory.CreateDirectionalLight(
             "KeyLight", _profile.Look.KeyColor, _profile.Look.KeyEnergy, _profile.Look.KeyEulerDegrees));
         world.AddChild(BuddySharedMaterialFactory.CreateDirectionalLight(
@@ -75,6 +85,47 @@ public partial class AssetForgePreview : Control
         CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
     };
 
+    private void BuildEnvironmentReference()
+    {
+        var lineMaterial = new StandardMaterial3D
+        {
+            ResourceName = "AssetForgeFloorReference",
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = new Color(.36f, .70f, .42f, .55f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        };
+        _environmentReference.AddChild(new MeshInstance3D
+        {
+            Name = "FloorLine",
+            Mesh = new BoxMesh { Size = new Vector3(320, 1.5f, 1.5f) },
+            MaterialOverride = lineMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        });
+
+        // Real Buddy radii provide a stable human-readable scale cue beside authored furniture.
+        AddEnvironmentBuddyReference("BuddyTorso", new Vector3(-105, -58, -3), _profile.TorsoRadius, _profile.TorsoColor);
+        AddEnvironmentBuddyReference("BuddyHead", new Vector3(-105, -120, -3), _profile.HeadRadius, _profile.HeadColor);
+    }
+
+    private void AddEnvironmentBuddyReference(string name, Vector3 position, float radius, Color color)
+    {
+        var material = new StandardMaterial3D
+        {
+            ResourceName = name + "Material",
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = new Color(color.R, color.G, color.B, .18f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        };
+        _environmentReference.AddChild(new MeshInstance3D
+        {
+            Name = name,
+            Mesh = new SphereMesh { Radius = radius, Height = radius * 2 },
+            Position = position,
+            MaterialOverride = material,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        });
+    }
+
     public void SetCategory(AssetCategory category)
     {
         _category = category;
@@ -82,11 +133,18 @@ public partial class AssetForgePreview : Control
             !GodotObject.IsInstanceValid(_partReferenceSecondary) ||
             !GodotObject.IsInstanceValid(_headReference.Root)) return;
 
+        _environmentReference.Visible = category == AssetCategory.Lamp && _referenceVisible;
         if (category == AssetCategory.Glasses)
         {
             _partReference.Visible = false;
             _partReferenceSecondary.Visible = false;
             _headReference.Root.Visible = _referenceVisible;
+        }
+        else if (category == AssetCategory.Lamp)
+        {
+            _headReference.Root.Visible = false;
+            _partReference.Visible = false;
+            _partReferenceSecondary.Visible = false;
         }
         else
         {
@@ -137,6 +195,9 @@ public partial class AssetForgePreview : Control
         }
         _asset = null;
         _generatedMaterial = null;
+        _lampEmitterGizmo = null;
+        _lampPreviewLight = null;
+        _environmentBounds = default;
     }
 
     public void ShowGenerated(GeneratedAsset generated, string sourcePath)
@@ -145,7 +206,6 @@ public partial class AssetForgePreview : Control
         ClearGenerated();
         SetCategory(generated.Recipe.Category);
 
-        float targetRadius = ReferenceRadius();
         _asset = new Node3D { Name = "GeneratedAsset" };
         if (_category == AssetCategory.Glasses) _headReference.EyeGroup.AddChild(_asset);
         else _orbit.AddChild(_asset);
@@ -160,25 +220,36 @@ public partial class AssetForgePreview : Control
 
         if (_category == AssetCategory.FootShape)
         {
-            // The source guide describes the natural right-facing foot. Preview the left as a
-            // proper 180° Y rotation (not negative scale) so normals/winding remain valid.
-            AddGeneratedPreviewMesh(_asset, mesh, targetRadius, new Vector3(-targetRadius * FootPairOffsetRadii, 0, 0), mirror: true, "LeftFoot");
-            AddGeneratedPreviewMesh(_asset, mesh, targetRadius, new Vector3(targetRadius * FootPairOffsetRadii, 0, 0), mirror: false, "RightFoot");
+            float radius = ReferenceRadius();
+            AddGeneratedPreviewMesh(_asset, mesh, radius, new Vector3(-radius * FootPairOffsetRadii, 0, 0), mirror: true, outline: true, "LeftFoot");
+            AddGeneratedPreviewMesh(_asset, mesh, radius, new Vector3(radius * FootPairOffsetRadii, 0, 0), mirror: false, outline: true, "RightFoot");
+        }
+        else if (_category == AssetCategory.TorsoShape)
+        {
+            AddGeneratedPreviewMesh(_asset, mesh, ReferenceRadius(), Vector3.Zero, mirror: false, outline: true, "Mesh");
+        }
+        else if (_category == AssetCategory.Lamp)
+        {
+            _environmentBounds = EnvironmentGeneratedBounds.Analyze(generated.Mesh);
+            _lampLogicalHeight = generated.Recipe.Environment.LogicalHeight;
+            _lampSettings = generated.Recipe.Light;
+            AddGeneratedPreviewMesh(_asset, mesh, 1f, Vector3.Zero, mirror: false, outline: false, "LampMesh");
+            UpdateLampGizmo();
         }
         else
         {
-            AddGeneratedPreviewMesh(_asset, mesh, targetRadius, Vector3.Zero, mirror: false, "Mesh");
+            AddGeneratedPreviewMesh(_asset, mesh, ReferenceRadius(), Vector3.Zero, mirror: false, outline: false, "Mesh");
         }
         ResetView();
     }
 
-    private void AddGeneratedPreviewMesh(Node3D parent, ArrayMesh mesh, float radius, Vector3 position, bool mirror, string name)
+    private void AddGeneratedPreviewMesh(Node3D parent, ArrayMesh mesh, float scale, Vector3 position, bool mirror, bool outline, string name)
     {
         var root = new Node3D
         {
             Name = name,
             Position = position,
-            Scale = Vector3.One * radius,
+            Scale = Vector3.One * scale,
             RotationDegrees = mirror ? new Vector3(0, 180f, 0) : Vector3.Zero,
         };
         parent.AddChild(root);
@@ -189,13 +260,70 @@ public partial class AssetForgePreview : Control
             MaterialOverride = _generatedMaterial,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         });
-        root.AddChild(new MeshInstance3D
+        if (outline)
         {
-            Name = "Outline",
-            Mesh = mesh,
-            MaterialOverride = BuddySharedMaterialFactory.CreateOutlineMaterial(_profile.Look),
+            root.AddChild(new MeshInstance3D
+            {
+                Name = "Outline",
+                Mesh = mesh,
+                MaterialOverride = BuddySharedMaterialFactory.CreateOutlineMaterial(_profile.Look),
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            });
+        }
+    }
+
+    public void SetLampPreviewSettings(double logicalHeight, DecorationLightSettings settings)
+    {
+        _lampLogicalHeight = logicalHeight;
+        _lampSettings = settings;
+        UpdateLampGizmo();
+        if (_category == AssetCategory.Lamp) ResetView();
+    }
+
+    private void UpdateLampGizmo()
+    {
+        if (_category != AssetCategory.Lamp || !GodotObject.IsInstanceValid(_asset) ||
+            _environmentBounds.Width <= 0 || _environmentBounds.Height <= 0) return;
+        if (GodotObject.IsInstanceValid(_lampEmitterGizmo)) _lampEmitterGizmo!.QueueFree();
+        if (GodotObject.IsInstanceValid(_lampPreviewLight)) _lampPreviewLight!.QueueFree();
+
+        Vector3 position = new(
+            (float)(_lampSettings.EmitterX - .5) * _environmentBounds.Width,
+            -(float)(1.0 - _lampSettings.EmitterY) * _environmentBounds.Height,
+            MathF.Max(2f, _environmentBounds.Depth * .65f));
+        float radius = Math.Clamp(MathF.Min(_environmentBounds.Width, _environmentBounds.Height) * .045f, 2.5f, 12f);
+        Color color = Color.Color8(_lampSettings.Red, _lampSettings.Green, _lampSettings.Blue);
+        var material = new StandardMaterial3D
+        {
+            ResourceName = "LampEmitterGizmoMaterial",
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = color,
+            EmissionEnabled = true,
+            Emission = color,
+            EmissionEnergyMultiplier = (float)_lampSettings.EmissionStrength,
+        };
+        _lampEmitterGizmo = new MeshInstance3D
+        {
+            Name = "LampEmitterGizmo",
+            Mesh = new SphereMesh { Radius = radius, Height = radius * 2f },
+            Position = position,
+            MaterialOverride = material,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-        });
+        };
+        _asset!.AddChild(_lampEmitterGizmo);
+        if (_lampSettings.LightEnabled)
+        {
+            _lampPreviewLight = new OmniLight3D
+            {
+                Name = "LampPreviewLight",
+                Position = position,
+                LightColor = color,
+                LightEnergy = (float)_lampSettings.Brightness,
+                OmniRange = (float)_lampSettings.Range,
+                ShadowEnabled = false,
+            };
+            _asset.AddChild(_lampPreviewLight);
+        }
     }
 
     public void SetLightingLevel(float value)
@@ -216,6 +344,10 @@ public partial class AssetForgePreview : Control
             if (GodotObject.IsInstanceValid(_partReference)) _partReference.Visible = visible;
             if (GodotObject.IsInstanceValid(_partReferenceSecondary)) _partReferenceSecondary.Visible = visible;
         }
+        else if (_category == AssetCategory.Lamp)
+        {
+            if (GodotObject.IsInstanceValid(_environmentReference)) _environmentReference.Visible = visible;
+        }
         else if (GodotObject.IsInstanceValid(_partReference)) _partReference.Visible = visible;
     }
 
@@ -235,14 +367,21 @@ public partial class AssetForgePreview : Control
     public void ResetView()
     {
         _orbit.RotationDegrees = Vector3.Zero;
-        _orbit.Position = Vector3.Zero;
+        _orbit.Position = _category == AssetCategory.Lamp
+            ? new Vector3(0, (float)_lampLogicalHeight * .5f, 0)
+            : Vector3.Zero;
         if (!GodotObject.IsInstanceValid(_camera)) return;
         _camera.Size = _category switch
         {
             AssetCategory.FootShape => ReferenceRadius() * 5.2f,
             AssetCategory.TorsoShape => ReferenceRadius() * 3.4f,
+            AssetCategory.Lamp => (float)_lampLogicalHeight * 1.35f,
             _ => ReferenceRadius() * 3.2f,
         };
+        if (_category == AssetCategory.Lamp)
+            _camera.Position = new Vector3(0, 0, MathF.Max(400f, (float)_lampLogicalHeight * 4f));
+        else
+            _camera.Position = new Vector3(0, 0, ReferenceRadius() * 5f);
     }
 
     private float ReferenceRadius() => _category switch
@@ -251,6 +390,10 @@ public partial class AssetForgePreview : Control
         AssetCategory.FootShape => _profile.FootRadius,
         _ => _profile.HeadRadius,
     };
+
+    private float PreviewScaleBase() => _category == AssetCategory.Lamp
+        ? MathF.Max(32f, (float)_lampLogicalHeight)
+        : ReferenceRadius();
 
     private static ArrayMesh ToGodotMesh(CanonicalMesh source)
     {
@@ -280,13 +423,13 @@ public partial class AssetForgePreview : Control
 
     private void OnPreviewInput(InputEvent input)
     {
-        float radius = ReferenceRadius();
+        float basis = PreviewScaleBase();
         if (input is InputEventMouseButton button)
         {
             if (button.ButtonIndex == MouseButton.Left) _rotating = button.Pressed;
             else if (button.ButtonIndex == MouseButton.Middle) _panning = button.Pressed;
-            else if (button.Pressed && button.ButtonIndex == MouseButton.WheelUp) _camera.Size = Mathf.Max(radius * 1.4f, _camera.Size * 0.9f);
-            else if (button.Pressed && button.ButtonIndex == MouseButton.WheelDown) _camera.Size = Mathf.Min(radius * 8f, _camera.Size * 1.1f);
+            else if (button.Pressed && button.ButtonIndex == MouseButton.WheelUp) _camera.Size = Mathf.Max(basis * .7f, _camera.Size * .9f);
+            else if (button.Pressed && button.ButtonIndex == MouseButton.WheelDown) _camera.Size = Mathf.Min(basis * 8f, _camera.Size * 1.1f);
             AcceptEvent();
             return;
         }
@@ -294,8 +437,8 @@ public partial class AssetForgePreview : Control
         if (_rotating)
         {
             Vector3 rotation = _orbit.RotationDegrees;
-            rotation.Y += motion.Relative.X * 0.35f;
-            rotation.X = Mathf.Clamp(rotation.X + motion.Relative.Y * 0.25f, -55f, 55f);
+            rotation.Y += motion.Relative.X * .35f;
+            rotation.X = Mathf.Clamp(rotation.X + motion.Relative.Y * .25f, -55f, 55f);
             _orbit.RotationDegrees = rotation;
             AcceptEvent();
         }
