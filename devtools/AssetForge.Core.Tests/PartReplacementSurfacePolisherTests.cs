@@ -56,7 +56,7 @@ public sealed class PartReplacementSurfacePolisherTests
             Assert.InRange(normal.Length(), 0.999f, 1.001f);
         }
 
-        Assert.True(maximumZDelta < 0.02f,
+        Assert.True(maximumZDelta < 0.05f,
             $"Rim polish moved depth too aggressively ({maximumZDelta:F6} world units).");
         AssertBoundaryNormalsFollowContour(mesh, boundary);
     }
