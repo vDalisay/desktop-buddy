@@ -36,8 +36,8 @@ public partial class AssetForgeMain
         _lampEmitterY = LampSpin(0, 1, .01, "Emitter Y", "Normalized vertical emitter position in the original 1024×1024 template.");
         _lampLocalLight.Toggled += enabled =>
         {
-            _lampBrightness.Disabled = !enabled;
-            _lampRange.Disabled = !enabled;
+            _lampBrightness.Editable = enabled;
+            _lampRange.Editable = enabled;
             MarkLampOutputStale();
         };
         foreach (SpinBox field in new[] { _environmentHeight, _lampEmission, _lampBrightness, _lampRange, _lampEmitterX, _lampEmitterY })
@@ -82,8 +82,8 @@ public partial class AssetForgeMain
         _lampRange.Value = recipe.Light.Range;
         _lampEmitterX.Value = recipe.Light.EmitterX;
         _lampEmitterY.Value = recipe.Light.EmitterY;
-        _lampBrightness.Disabled = !recipe.Light.LightEnabled;
-        _lampRange.Disabled = !recipe.Light.LightEnabled;
+        _lampBrightness.Editable = recipe.Light.LightEnabled;
+        _lampRange.Editable = recipe.Light.LightEnabled;
         if (GodotObject.IsInstanceValid(_preview))
             _preview.SetLampPreviewSettings(recipe.Environment.LogicalHeight, recipe.Light);
     }
