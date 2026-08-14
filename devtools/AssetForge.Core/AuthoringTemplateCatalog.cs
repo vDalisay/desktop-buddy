@@ -7,6 +7,7 @@ public static class AuthoringTemplateCatalog
     public const string GlassesId = "buddy.glasses";
     public const string TorsoId = "buddy.torso";
     public const string FeetId = "buddy.feet";
+    public const string LampId = "environment.lamp";
 
     public static IReadOnlyList<AuthoringTemplateSpec> All { get; } =
     [
@@ -16,7 +17,7 @@ public static class AuthoringTemplateCatalog
         new("buddy.accessory", AssetFamily.BuddyStudio, "Accessory", "desktop_buddy_accessory_template_1024.png", "Head/face guide for authored accessory placement around known attachment regions.", ["Buddy head silhouette", "Face centre", "Eye line", "Ear-side regions", "Recommended attachment regions"], false),
         new(TorsoId, AssetFamily.BuddyStudio, "Top / Torso replacement", "desktop_buddy_torso_template_1024.png", "Torso replacement coloring guide aligned to the trusted Buddy visual rig.", ["Default torso silhouette", "Centre line", "Neck/shoulder connector region", "Lower connector region", "Recommended envelope", "Translucent physics envelope"], true),
         new(FeetId, AssetFamily.BuddyStudio, "Shoes / Foot replacement", "desktop_buddy_foot_template_1024.png", "Single-foot replacement guide; the paired counterpart is generated deterministically.", ["Default foot silhouette", "Ankle connector", "Forward direction", "Ground line", "Recommended envelope", "Translucent physics envelope"], true),
-        new("environment.lamp", AssetFamily.Environment, "Lamp", "desktop_buddy_lamp_template_1024.png", "Floor-anchored lamp guide defining base contact, body envelope and authored light region.", ["Floor line", "Bottom-centre base contact zone", "Vertical centre line", "Object safe bounds", "Shade envelope", "Light-source/emitter region", "Buddy scale reference"], false),
+        new(LampId, AssetFamily.Environment, "Lamp", "desktop_buddy_lamp_template_1024.png", "Floor-anchored lamp guide defining base contact, body envelope and authored light region.", ["Floor line", "Bottom-centre base contact zone", "Vertical centre line", "Object safe bounds", "Shade envelope", "Light-source/emitter region", "Buddy scale reference"], true),
         new("environment.sofa", AssetFamily.Environment, "Sofa", "desktop_buddy_sofa_template_1024.png", "Floor-anchored furniture guide with seat/back proportions and Buddy scale reference.", ["Floor line", "Base contact zone", "Centre line", "Seat-height guide", "Back envelope", "Object safe bounds", "Buddy scale reference"], false),
         new("environment.table", AssetFamily.Environment, "Table", "desktop_buddy_table_template_1024.png", "Floor-anchored table guide with authored support and tabletop regions.", ["Floor line", "Base/leg contact region", "Centre line", "Tabletop height", "Tabletop envelope", "Object safe bounds", "Buddy scale reference"], false),
         new("environment.plant", AssetFamily.Environment, "Plant", "desktop_buddy_plant_template_1024.png", "Floor-anchored plant guide separating pot/base contact from foliage volume.", ["Floor line", "Pot/base contact zone", "Centre line", "Pot envelope", "Foliage safe bounds", "Buddy scale reference"], false),
@@ -35,6 +36,7 @@ public static class AuthoringTemplateCatalog
             GlassesId => BuddyHeadTemplateGenerator.CreatePng(),
             TorsoId => PartReplacementTemplateGenerator.CreateTorsoPng(),
             FeetId => PartReplacementTemplateGenerator.CreateFootPng(),
+            LampId => EnvironmentTemplateGenerator.CreateLampPng(),
             _ => throw new NotSupportedException($"No template generator is registered for '{id}'."),
         };
     }
