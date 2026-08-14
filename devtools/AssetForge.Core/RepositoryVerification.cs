@@ -44,6 +44,8 @@ public static class RepositoryAssetVerifier
         {
             string recipeText = File.ReadAllText(recipePath);
             AssetRecipe recipe = RecipeCodec.Read(recipeText);
+            if (recipe.AssetFamily != AssetFamily.BuddyStudio)
+                throw new InvalidOperationException($"Buddy verifier received non-Buddy recipe {recipe.AssetId}.");
             displayId = recipe.FeatureId;
             string canonicalRecipe = RecipeCodec.WriteCanonical(recipe);
             if (!string.Equals(recipeText.Replace("\r\n", "\n", StringComparison.Ordinal), canonicalRecipe, StringComparison.Ordinal))
@@ -57,7 +59,7 @@ public static class RepositoryAssetVerifier
             }
 
             byte[] source = File.ReadAllBytes(sourcePath);
-            GeneratedAsset expected = AssetForgeGenerator.Generate(source, recipe);
+            GeneratedAsset expected = AssetForgeCompiler.Generate(source, recipe);
             string assetRoot = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId);
             CompareBytes(Path.Combine(assetRoot, "mesh.glb"), expected.GlbBytes, "generated mesh.glb differs from source + recipe", diagnostics);
             CompareBytes(Path.Combine(assetRoot, "albedo.png"), expected.AlbedoPng, "generated albedo.png differs from source + recipe", diagnostics);
@@ -173,13 +175,22 @@ public static class RepositoryAssetVerifier
             if (!text.Contains(marker, StringComparison.Ordinal)) diagnostics.Add($"{label} is stale or missing: {marker}");
     }
 
-    internal static string[] DiscoverRecipeFiles(string root)
+    /// <summary>All authoring recipes, including Environment. Family-specific verifiers filter this list.</summary>
+    internal static string[] DiscoverAllRecipeFiles(string root)
     {
         string authoring = Path.Combine(root, "authoring", "asset-forge");
         return Directory.Exists(authoring)
             ? Directory.GetFiles(authoring, "recipe.json", SearchOption.AllDirectories).OrderBy(static path => path, StringComparer.Ordinal).ToArray()
             : [];
     }
+
+    internal static string[] DiscoverRecipeFiles(string root) => DiscoverAllRecipeFiles(root)
+        .Where(static path =>
+        {
+            try { return RecipeCodec.Read(File.ReadAllText(path)).AssetFamily == AssetFamily.BuddyStudio; }
+            catch { return true; } // malformed recipes remain visible to the Buddy verifier diagnostic path
+        })
+        .ToArray();
 
     internal static string FindRecipe(string root, string featureId)
     {
@@ -231,7 +242,7 @@ public static class RepositoryAssetRegenerator
         string sourcePath = Path.Combine(Path.GetDirectoryName(recipePath)!, recipe.SourceFile);
         if (!File.Exists(sourcePath)) throw new FileNotFoundException("Authored source image is missing.", sourcePath);
         byte[] source = File.ReadAllBytes(sourcePath);
-        GeneratedAsset generated = AssetForgeGenerator.Generate(source, recipe);
+        GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
         string thumbnailPath = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId, "thumbnail.png");
         byte[] thumbnail = File.Exists(thumbnailPath) ? File.ReadAllBytes(thumbnailPath) : generated.AlbedoPng;
         if (recipe.Category == AssetCategory.Glasses)
