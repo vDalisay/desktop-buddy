@@ -1,4 +1,5 @@
 using DesktopBuddy.AssetForge.Core;
+using Godot;
 
 namespace DesktopBuddy.AssetForge;
 
@@ -8,19 +9,34 @@ public partial class AssetForgeMain
 
     private void EnsureCombinedMaintenanceUi()
     {
-        if (_combinedMaintenanceInstalled || !_modernWorkspaceInstalled ||
-            !Godot.GodotObject.IsInstanceValid(_verifyAll)) return;
+        if (_combinedMaintenanceInstalled || !_modernWorkspaceInstalled) return;
+        Button? regenerate = RepositoryToolButton("Regenerate");
+        Button? regenerateAll = RepositoryToolButton("Regenerate All");
+        Button? verify = RepositoryToolButton("Verify");
+        Button? verifyAll = RepositoryToolButton("Verify All");
+        if (!GodotObject.IsInstanceValid(regenerate) || !GodotObject.IsInstanceValid(regenerateAll) ||
+            !GodotObject.IsInstanceValid(verify) || !GodotObject.IsInstanceValid(verifyAll)) return;
 
-        _regenerate.Pressed -= Regenerate;
-        _regenerateAll.Pressed -= RegenerateAll;
-        _verify.Pressed -= Verify;
-        _verifyAll.Pressed -= VerifyAll;
+        regenerate!.Pressed -= RegenerateCurrent;
+        regenerateAll!.Pressed -= RegenerateAll;
+        verify!.Pressed -= VerifyCurrent;
+        verifyAll!.Pressed -= VerifyAll;
 
-        _regenerate.Pressed += RegenerateActiveAsset;
-        _regenerateAll.Pressed += RegenerateAllAssets;
-        _verify.Pressed += VerifyActiveAsset;
-        _verifyAll.Pressed += VerifyAllAssets;
+        regenerate.Pressed += RegenerateActiveAsset;
+        regenerateAll.Pressed += RegenerateAllAssets;
+        verify.Pressed += VerifyActiveAsset;
+        verifyAll.Pressed += VerifyAllAssets;
         _combinedMaintenanceInstalled = true;
+    }
+
+    private Button? RepositoryToolButton(string text)
+    {
+        Node? tools = FindChild("RepositoryTools", recursive: true, owned: false);
+        if (!GodotObject.IsInstanceValid(tools)) return null;
+        foreach (Node child in tools!.GetChildren())
+            if (child is Button button && string.Equals(button.Text, text, StringComparison.Ordinal))
+                return button;
+        return null;
     }
 
     private void VerifyActiveAsset()
@@ -32,12 +48,14 @@ public partial class AssetForgeMain
             if (RepositoryAssetForgeMaintenance.IsEnvironmentId(id))
             {
                 EnvironmentAssetVerificationResult result = RepositoryEnvironmentVerifier.Verify(root, id);
-                SetStatus(Format(result));
+                _hashes.Text = Format(result);
+                SetStatus(result.Passed ? $"Verify passed for {result.AssetId}." : $"Verify failed for {result.AssetId}.");
             }
             else
             {
                 AssetVerificationResult result = RepositoryAssetVerifier.Verify(root, id);
-                SetStatus(Format(result));
+                _hashes.Text = Format(result);
+                SetStatus(result.Passed ? $"Verify passed for {result.FeatureId}." : $"Verify failed for {result.FeatureId}.");
             }
         }
         catch (Exception exception)
@@ -51,7 +69,10 @@ public partial class AssetForgeMain
         try
         {
             AssetForgeRepositoryVerificationResult result = RepositoryAssetForgeMaintenance.VerifyAll(FindRepositoryRoot());
-            SetStatus(Format(result));
+            _hashes.Text = Format(result);
+            SetStatus(result.Passed
+                ? $"Verify All passed: {result.PassedCount}/{result.AssetCount} Asset Forge asset(s) match committed generated content."
+                : $"Verify All failed: {result.PassedCount}/{result.AssetCount} Asset Forge asset(s) passed. Review diagnostics below.");
         }
         catch (Exception exception)
         {
@@ -68,11 +89,13 @@ public partial class AssetForgeMain
             if (RepositoryAssetForgeMaintenance.IsEnvironmentId(id))
             {
                 EnvironmentRepositoryRegenerationResult result = RepositoryEnvironmentRegenerator.Regenerate(root, id);
+                _hashes.Text = Format(result.Verification);
                 SetStatus($"Regenerated {string.Join(", ", result.RegeneratedAssetIds)}.\n{Format(result.Verification)}");
             }
             else
             {
                 RepositoryRegenerationResult result = RepositoryAssetRegenerator.Regenerate(root, id);
+                _hashes.Text = Format(result.Verification);
                 SetStatus($"Regenerated {string.Join(", ", result.RegeneratedFeatureIds)}.\n{Format(result.Verification)}");
             }
         }
@@ -87,6 +110,7 @@ public partial class AssetForgeMain
         try
         {
             AssetForgeRepositoryRegenerationResult result = RepositoryAssetForgeMaintenance.RegenerateAll(FindRepositoryRoot());
+            _hashes.Text = Format(result.Verification);
             SetStatus($"Regenerated {result.RegeneratedIds.Count} Asset Forge asset(s).\n{Format(result.Verification)}");
         }
         catch (Exception exception)
@@ -97,9 +121,7 @@ public partial class AssetForgeMain
 
     private string ActiveMaintenanceId()
     {
-        string id = _activeCategory == AssetCategory.Lamp
-            ? _featureId.Text.Trim()
-            : _featureId.Text.Trim();
+        string id = _featureId.Text.Trim();
         if (string.IsNullOrWhiteSpace(id))
             throw new InvalidOperationException("Enter or open an authored Asset Forge ID first.");
         return id;
