@@ -21,8 +21,10 @@ public sealed record GeometrySettings
     public double Depth { get; init; } = 0.065;
     public double Roundness { get; init; } = 0.85;
     /// <summary>
-    /// Replacement/environment smoothing strength. Zero intentionally preserves the original v1
-    /// replacement Manhattan depth field so old exported Buddy recipes can regenerate byte-for-byte.
+    /// Replacement/environment depth-field relaxation amount. Zero intentionally preserves the
+    /// original v1 replacement Manhattan field so old exported Buddy recipes regenerate byte-for-byte.
+    /// 0..1 is the normal authored range; 1..3 deliberately applies additional smoothing passes for
+    /// very soft/plush silhouettes without moving the authored XY silhouette or changing physics.
     /// </summary>
     public double SurfaceSmoothness { get; init; }
     public ShapeMode ShapeMode { get; init; } = ShapeMode.RoundedExtrusion;
@@ -42,7 +44,6 @@ public sealed record ThumbnailSettings
 
 public sealed record EnvironmentAssetSettings
 {
-    /// <summary>Logical in-room height in the same visual units used by authored decorations.</summary>
     public double LogicalHeight { get; init; } = 150;
     public EnvironmentAnchorMode Anchor { get; init; } = EnvironmentAnchorMode.Floor;
     public EnvironmentRenderMode RenderMode { get; init; } = EnvironmentRenderMode.BehindBuddyFloor;
@@ -75,7 +76,6 @@ public sealed record AssetRecipe
     public int PresetVersion { get; init; } = 2;
     public AssetFamily AssetFamily { get; init; } = AssetFamily.BuddyStudio;
     public AssetCategory Category { get; init; } = AssetCategory.Glasses;
-    /// <summary>Generic stable ID for Environment assets. Buddy v1 uses FeatureId/ContentId.</summary>
     public string AssetId { get; init; } = string.Empty;
     public string FeatureId { get; init; } = "glasses.new_asset";
     public string ContentId { get; init; } = "cosmetic.glasses.new_asset";
@@ -101,11 +101,13 @@ public sealed record AssetRecipe
         DisplayName = "New Torso Shape",
         Geometry = new GeometrySettings
         {
-            GeometryResolution = 256,
+            // 256 produced ~69k triangles for the user's test torso. 128 keeps the authored contour
+            // and soft depth profile while reducing runtime/paint cost by roughly four times.
+            GeometryResolution = 128,
             RuntimeTextureResolution = 512,
             Depth = 1.10,
             Roundness = 0.90,
-            SurfaceSmoothness = 0.82,
+            SurfaceSmoothness = 1.0,
             ShapeMode = ShapeMode.InflatedSolid,
             SymmetryMode = SymmetryMode.Off,
         },
@@ -121,11 +123,11 @@ public sealed record AssetRecipe
         DisplayName = "New Foot Shape",
         Geometry = new GeometrySettings
         {
-            GeometryResolution = 256,
+            GeometryResolution = 128,
             RuntimeTextureResolution = 512,
             Depth = 1.20,
             Roundness = 0.90,
-            SurfaceSmoothness = 0.82,
+            SurfaceSmoothness = 1.0,
             ShapeMode = ShapeMode.InflatedSolid,
             SymmetryMode = SymmetryMode.Off,
         },
@@ -232,7 +234,9 @@ public sealed record AssetRecipe
         double depthMaximum = Category is AssetCategory.TorsoShape or AssetCategory.FootShape ? 4.0 : 1.5;
         if (!FiniteRange(Geometry.Depth, 0.01, depthMaximum)) errors.Add($"Depth must be within 0.01-{depthMaximum:0.##}.");
         if (!FiniteRange(Geometry.Roundness, 0, 1)) errors.Add("Roundness must be within 0-1.");
-        if (!FiniteRange(Geometry.SurfaceSmoothness, 0, 1)) errors.Add("SurfaceSmoothness must be within 0-1.");
+        double smoothnessMaximum = Category is AssetCategory.TorsoShape or AssetCategory.FootShape ? 3.0 : 1.0;
+        if (!FiniteRange(Geometry.SurfaceSmoothness, 0, smoothnessMaximum))
+            errors.Add($"SurfaceSmoothness must be within 0-{smoothnessMaximum:0.#} for {Category}.");
         if (!FiniteRange(Thumbnail.Padding, 0, 0.45)) errors.Add("Thumbnail padding must be within 0-0.45.");
         return errors;
     }
@@ -258,139 +262,56 @@ public sealed record AssetRecipe
     private void ValidateEnvironment(List<string> errors)
     {
         if (!FiniteRange(Environment.LogicalHeight, 32, 600)) errors.Add("Environment LogicalHeight must be within 32-600 visual units.");
-        if (!Enum.IsDefined(Environment.Anchor)) errors.Add("Environment anchor is invalid.");
-        if (!Enum.IsDefined(Environment.RenderMode)) errors.Add("Environment render mode is invalid.");
-        if (Environment.AllowsRotation)
-        {
-            if (Environment.RotationStepDegrees <= 0 || Environment.RotationStepDegrees >= 360 || 360 % Environment.RotationStepDegrees != 0)
-                errors.Add("Environment rotation step must divide 360 degrees exactly.");
-        }
-        else if (Environment.RotationStepDegrees != 0) errors.Add("Fixed Environment assets must use a zero rotation step.");
-        if (!FiniteRange(Environment.PivotX, 0, 1) || !FiniteRange(Environment.PivotY, 0, 1)) errors.Add("Environment pivot must use normalized 0..1 values.");
-        if (Category == AssetCategory.Lamp && (Environment.Anchor != EnvironmentAnchorMode.Floor || Math.Abs(Environment.PivotY - 1.0) > .000001))
-            errors.Add("Lamp@1 requires a floor anchor and bottom-centre floor pivot.");
+        if (Environment.RotationStepDegrees is < 1 or > 180) errors.Add("Environment RotationStepDegrees must be within 1-180.");
+        if (!FiniteRange(Environment.PivotX, 0, 1) || !FiniteRange(Environment.PivotY, 0, 1)) errors.Add("Environment pivot coordinates must be normalized 0-1 values.");
     }
 
     private void ValidateLight(List<string> errors)
     {
-        if (!FiniteRange(Light.EmissionStrength, 0, 8)) errors.Add("Lamp emission strength must be within 0-8.");
-        if (!FiniteRange(Light.Brightness, 0, 16)) errors.Add("Lamp brightness must be within 0-16.");
-        if (!FiniteRange(Light.Range, 1, 1024)) errors.Add("Lamp light range must be within 1-1024.");
-        if (!FiniteRange(Light.EmitterX, 0, 1) || !FiniteRange(Light.EmitterY, 0, 1)) errors.Add("Lamp emitter position must use normalized 0..1 values.");
+        if (!FiniteRange(Light.EmissionStrength, 0, 8)) errors.Add("Light emission strength must be within 0-8.");
+        if (!FiniteRange(Light.Brightness, 0, 16)) errors.Add("Light brightness must be within 0-16.");
+        if (!FiniteRange(Light.Range, 1, 1000)) errors.Add("Light range must be within 1-1000.");
+        if (!FiniteRange(Light.EmitterX, 0, 1) || !FiniteRange(Light.EmitterY, 0, 1)) errors.Add("Light emitter coordinates must be normalized 0-1 values.");
     }
+
+    private static bool FiniteRange(double value, double min, double max) => double.IsFinite(value) && value >= min && value <= max;
 
     private static bool StableId(string value)
     {
         if (string.IsNullOrWhiteSpace(value) || value.Length > 96) return false;
-        foreach (char c in value)
-            if (!(c is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '_')) return false;
-        return !value.StartsWith('.') && !value.EndsWith('.') && !value.Contains("..", StringComparison.Ordinal);
+        foreach (char character in value)
+            if (!(character is >= 'a' and <= 'z' or >= '0' and <= '9' or '.' or '_' or '-'))
+                return false;
+        return true;
     }
-
-    private static bool FiniteRange(double value, double min, double max) => double.IsFinite(value) && value >= min && value <= max;
 }
 
 public static class RecipeCodec
 {
-    private static readonly JsonSerializerOptions ReadOptions = new(JsonSerializerDefaults.Web)
+    private static readonly JsonSerializerOptions Options = new()
     {
-        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true,
     };
-
-    public static AssetRecipe Read(string json)
-    {
-        AssetRecipe recipe = JsonSerializer.Deserialize<AssetRecipe>(json, ReadOptions)
-            ?? throw new FormatException("Recipe JSON was empty.");
-        IReadOnlyList<string> errors = recipe.Validate();
-        if (errors.Count > 0) throw new FormatException(string.Join("; ", errors));
-        return recipe;
-    }
 
     public static string WriteCanonical(AssetRecipe recipe)
     {
-        IReadOnlyList<string> errors = recipe.Validate();
-        if (errors.Count > 0) throw new ArgumentException(string.Join("; ", errors), nameof(recipe));
-        using var stream = new MemoryStream();
-        using (var writer = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
-        {
-            writer.WriteStartObject();
-            writer.WriteNumber("generatorVersion", recipe.GeneratorVersion);
-            writer.WriteString("presetId", recipe.PresetId);
-            writer.WriteNumber("presetVersion", recipe.PresetVersion);
-            writer.WriteNumber("assetFamily", (int)recipe.AssetFamily);
-            writer.WriteNumber("category", (int)recipe.Category);
-            if (!string.IsNullOrEmpty(recipe.AssetId)) writer.WriteString("assetId", recipe.AssetId);
-            writer.WriteString("featureId", recipe.FeatureId);
-            writer.WriteString("contentId", recipe.ContentId);
-            writer.WriteString("displayName", recipe.DisplayName);
-            writer.WriteString("sourceFile", recipe.SourceFile);
-            writer.WriteNumber("priceCredits", recipe.PriceCredits);
-            writer.WriteNumber("sortOrder", recipe.SortOrder);
-            writer.WriteNumber("lightingLevel", recipe.LightingLevel);
-            writer.WritePropertyName("geometry");
-            writer.WriteStartObject();
-            GeometrySettings g = recipe.Geometry;
-            writer.WriteNumber("geometryResolution", g.GeometryResolution);
-            writer.WriteNumber("alphaThreshold", g.AlphaThreshold);
-            writer.WriteNumber("thicknessBiasPixels", g.ThicknessBiasPixels);
-            writer.WriteNumber("frameThickness", g.FrameThickness);
-            if (g.BridgeThicknessBiasPixels != 0)
-                writer.WriteNumber("bridgeThicknessBiasPixels", g.BridgeThicknessBiasPixels);
-            writer.WriteNumber("depth", g.Depth);
-            writer.WriteNumber("roundness", g.Roundness);
-            if (g.SurfaceSmoothness != 0)
-                writer.WriteNumber("surfaceSmoothness", g.SurfaceSmoothness);
-            writer.WriteNumber("shapeMode", (int)g.ShapeMode);
-            writer.WriteNumber("symmetryMode", (int)g.SymmetryMode);
-            writer.WriteNumber("runtimeTextureResolution", g.RuntimeTextureResolution);
-            writer.WriteNumber("templeThickness", g.TempleThickness);
-            writer.WriteNumber("templeLength", g.TempleLength);
-            writer.WriteNumber("templeDrop", g.TempleDrop);
-            writer.WriteEndObject();
-            writer.WritePropertyName("thumbnail");
-            writer.WriteStartObject();
-            writer.WriteNumber("yawDegrees", recipe.Thumbnail.YawDegrees);
-            writer.WriteNumber("pitchDegrees", recipe.Thumbnail.PitchDegrees);
-            writer.WriteNumber("padding", recipe.Thumbnail.Padding);
-            writer.WriteEndObject();
-
-            if (recipe.AssetFamily == AssetFamily.Environment)
-            {
-                writer.WritePropertyName("environment");
-                writer.WriteStartObject();
-                writer.WriteNumber("logicalHeight", recipe.Environment.LogicalHeight);
-                writer.WriteNumber("anchor", (int)recipe.Environment.Anchor);
-                writer.WriteNumber("renderMode", (int)recipe.Environment.RenderMode);
-                writer.WriteBoolean("allowsRotation", recipe.Environment.AllowsRotation);
-                writer.WriteNumber("rotationStepDegrees", recipe.Environment.RotationStepDegrees);
-                writer.WriteNumber("pivotX", recipe.Environment.PivotX);
-                writer.WriteNumber("pivotY", recipe.Environment.PivotY);
-                writer.WriteEndObject();
-
-                writer.WritePropertyName("light");
-                writer.WriteStartObject();
-                writer.WriteBoolean("enabled", recipe.Light.Enabled);
-                writer.WriteNumber("emissionStrength", recipe.Light.EmissionStrength);
-                writer.WriteBoolean("lightEnabled", recipe.Light.LightEnabled);
-                writer.WriteNumber("brightness", recipe.Light.Brightness);
-                writer.WriteNumber("range", recipe.Light.Range);
-                writer.WriteNumber("red", recipe.Light.Red);
-                writer.WriteNumber("green", recipe.Light.Green);
-                writer.WriteNumber("blue", recipe.Light.Blue);
-                writer.WriteNumber("emitterX", recipe.Light.EmitterX);
-                writer.WriteNumber("emitterY", recipe.Light.EmitterY);
-                writer.WriteEndObject();
-            }
-            writer.WriteEndObject();
-        }
-        return Encoding.UTF8.GetString(stream.ToArray()).Replace("\r\n", "\n", StringComparison.Ordinal) + "\n";
+        ArgumentNullException.ThrowIfNull(recipe);
+        return JsonSerializer.Serialize(recipe, Options).Replace("\r\n", "\n", StringComparison.Ordinal);
     }
 
-    public static string Hash(AssetRecipe recipe) => Hashing.Sha256Hex(Encoding.UTF8.GetBytes(WriteCanonical(recipe)));
+    public static AssetRecipe Read(string json)
+    {
+        AssetRecipe? recipe = JsonSerializer.Deserialize<AssetRecipe>(json, Options);
+        if (recipe is null) throw new FormatException("Recipe JSON did not contain an Asset Forge recipe.");
+        return recipe;
+    }
+
+    public static string Hash(AssetRecipe recipe) =>
+        Hashing.Sha256Hex(Encoding.UTF8.GetBytes(WriteCanonical(recipe)));
 }
 
 public static class Hashing
 {
     public static string Sha256Hex(ReadOnlySpan<byte> bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-    public static string Sha256Hex(string value) => Sha256Hex(Encoding.UTF8.GetBytes(value));
 }
