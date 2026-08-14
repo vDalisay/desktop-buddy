@@ -66,8 +66,8 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
             CharacterDocument document = CharacterDocument.CreateDefault(
                 Guid.Parse("af200000-0000-4000-8000-000000000001"),
                 "Asset Forge Replacements");
-            document = CharacterDocumentEditor.WriteFeatureId(document, CharacterFeatureSlot.Tops, TopFeatureId);
-            document = CharacterDocumentEditor.WriteFeatureId(document, CharacterFeatureSlot.Shoes, ShoesFeatureId);
+            document = CharacterDocumentEditor.SetFeatureId(document, CharacterFeatureSlot.Tops, TopFeatureId);
+            document = CharacterDocumentEditor.SetFeatureId(document, CharacterFeatureSlot.Shoes, ShoesFeatureId);
             CharacterCompileResult compiled = CharacterCompiler.Compile(document, registry.FeatureCatalog);
             checks.Add(new StartupCheck(
                 "af_generated_replacements_compile",
@@ -104,8 +104,8 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
             Node3D? rightGenerated = rightShoeRoot?.GetNodeOrNull<Node3D>("GeneratedMesh");
             bool pairedMirror =
                 GodotObject.IsInstanceValid(leftGenerated) && GodotObject.IsInstanceValid(rightGenerated) &&
-                Mathf.Abs(Mathf.Wrap(leftGenerated!.RotationDegrees.Y, 0f, 360f) - 180f) < 0.1f &&
-                Mathf.Abs(Mathf.Wrap(rightGenerated!.RotationDegrees.Y, 0f, 360f)) < 0.1f &&
+                Mathf.Abs(Mathf.Abs(leftGenerated!.RotationDegrees.Y) - 180f) < 0.1f &&
+                Mathf.Abs(rightGenerated!.RotationDegrees.Y) < 0.1f &&
                 leftGenerated.Scale.X > 0f && rightGenerated.Scale.X > 0f;
             checks.Add(new StartupCheck(
                 "af_generated_shoes_are_outward_mirrored_pair",
