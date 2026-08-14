@@ -87,14 +87,6 @@ public static class ScenarioCatalog
         ["shotgun_spread"] = () => new ShotgunSpreadScenario(),
         ["repair_kit"] = () => new RepairKitScenario(),
         ["economy_calibration"] = () => new EconomyCalibrationScenario(),
-
-        // Asset Forge CI invokes these IDs directly after generating its fixtures. Keep them in
-        // the authoritative scenario registry so a green workflow actually exercises the generated
-        // catalogues and replacement runtime rather than failing at scenario lookup.
-        ["asset_forge_generated_glasses"] = () => new AssetForgeGeneratedGlassesScenario(),
-        ["asset_forge_generated_replacements"] = () => new AssetForgeGeneratedReplacementScenario(),
-        ["asset_forge_replacement_connector_fit"] = () => new AssetForgeReplacementConnectorScenario(),
-        ["asset_forge_generated_lamp"] = () => new AssetForgeGeneratedLampScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids
