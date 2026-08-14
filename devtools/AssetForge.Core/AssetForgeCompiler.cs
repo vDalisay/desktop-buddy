@@ -12,10 +12,28 @@ public static class AssetForgeCompiler
     {
         AssetCategory.Glasses => AssetForgeGenerator.Generate(sourcePng, recipe),
         AssetCategory.TorsoShape or AssetCategory.FootShape => GeneratePartReplacement(sourcePng, recipe),
+        AssetCategory.Lamp => GenerateEnvironmentSilhouette(sourcePng, recipe),
         _ => throw new NotSupportedException($"Generation for {recipe.Category} is not implemented yet."),
     };
 
-    private static GeneratedAsset GeneratePartReplacement(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe)
+    private static GeneratedAsset GeneratePartReplacement(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) =>
+        GenerateSilhouette(sourcePng, recipe,
+            mask => PartReplacementGenerator.Generate(mask, recipe.Geometry, recipe.Category),
+            maximumMaskFraction: .75,
+            context: recipe.Category.ToString());
+
+    private static GeneratedAsset GenerateEnvironmentSilhouette(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) =>
+        GenerateSilhouette(sourcePng, recipe,
+            mask => EnvironmentSilhouetteGenerator.Generate(mask, recipe),
+            maximumMaskFraction: .82,
+            context: recipe.Category.ToString());
+
+    private static GeneratedAsset GenerateSilhouette(
+        ReadOnlySpan<byte> sourcePng,
+        AssetRecipe recipe,
+        Func<MaskGrid, CanonicalMesh> meshFactory,
+        double maximumMaskFraction,
+        string context)
     {
         IReadOnlyList<string> errors = recipe.Validate();
         if (errors.Count > 0) throw new ArgumentException(string.Join("; ", errors), nameof(recipe));
@@ -34,10 +52,10 @@ public static class AssetForgeCompiler
             throw new InvalidOperationException("Source has no visible cells after foreground extraction and thresholding.");
 
         double maskFraction = (double)diagnostics.FilledCells / (mask.Width * mask.Height);
-        if (maskFraction > 0.75)
-            throw new InvalidOperationException($"The {recipe.Category} mask covers {maskFraction:P0} of the canvas; use a cleaner source with more transparent/background space.");
+        if (maskFraction > maximumMaskFraction)
+            throw new InvalidOperationException($"The {context} mask covers {maskFraction:P0} of the canvas; use a cleaner source with more transparent/background space.");
 
-        CanonicalMesh mesh = PartReplacementGenerator.Generate(mask, recipe.Geometry, recipe.Category);
+        CanonicalMesh mesh = meshFactory(mask);
         string geometryHash = mesh.CanonicalHash();
         byte[] glb = GlbWriter.Write(mesh);
         GlbWriter.ValidateSingleMesh(glb);
