@@ -140,7 +140,7 @@ public partial class AssetForgeMain
             byte[] thumbnail = _preview.CaptureThumbnailPng();
             if (thumbnail.Length == 0) thumbnail = _generated.AlbedoPng;
             byte[] source = File.ReadAllBytes(_sourcePath);
-            string root = _root.Text.Trim();
+            string root = FindRepositoryRoot();
 
             ExportResult result;
             if (_generated.Recipe.Category == AssetCategory.Glasses)
