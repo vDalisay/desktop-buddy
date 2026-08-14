@@ -13,6 +13,7 @@ public static class EnvironmentDecorationRegistry
     private static EnvironmentDecorationCatalogueResource? _launchCatalogue;
     private static EnvironmentDecorationCatalogueResource? _generatedCatalogue;
     private static EnvironmentDecorationCatalogueResource? _composedCatalogue;
+    private static bool _runtimeCompositionActivated;
 
     /// <summary>Hand-authored launch catalogue only.</summary>
     public static EnvironmentDecorationCatalogueResource Launch =>
@@ -25,15 +26,29 @@ public static class EnvironmentDecorationRegistry
             ?? throw new InvalidOperationException($"Missing generated Environment catalogue at {GeneratedCataloguePath}.");
 
     /// <summary>
-    /// Historical Environment Decorator seam. It now exposes the validated composition of launch
-    /// plus generated definitions so the established browse/buy/place/save flow needs no fork.
+    /// Historical public resource seam. Before runtime editing is activated it intentionally
+    /// remains launch-only so launch-policy tests inspect the original authored boundary. Once the
+    /// live domain catalogue is requested, the Room Decorator sees the validated composed resource
+    /// through this same legacy seam and therefore needs no duplicated browse/purchase code.
     /// </summary>
     public static EnvironmentDecorationCatalogueResource Authored =>
+        _runtimeCompositionActivated ? Runtime : Launch;
+
+    public static EnvironmentDecorationCatalogueResource Runtime =>
         _composedCatalogue ??= Compose();
 
-    public static IEnumerable<EnvironmentDecorationResource> Entries => Authored.Entries;
-    public static DecorationCatalogue Domain => Authored.ToCatalogue();
-    public static EnvironmentDecorationResource? Find(DecorationDefinitionId id) => Authored.Find(id);
+    public static IEnumerable<EnvironmentDecorationResource> Entries => Runtime.Entries;
+
+    public static DecorationCatalogue Domain
+    {
+        get
+        {
+            _runtimeCompositionActivated = true;
+            return Runtime.ToCatalogue();
+        }
+    }
+
+    public static EnvironmentDecorationResource? Find(DecorationDefinitionId id) => Runtime.Find(id);
 
     private static EnvironmentDecorationCatalogueResource Compose()
     {
