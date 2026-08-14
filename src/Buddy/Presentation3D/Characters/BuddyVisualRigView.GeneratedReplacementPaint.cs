@@ -17,6 +17,12 @@ public partial class BuddyVisualRigView
     private const string GeneratedOutlineName = "GeneratedOutline";
     private const string GeneratedPaintName = "GeneratedPaint";
     private static readonly Dictionary<ulong, GeneratedPaintMeshCache> GeneratedPaintCaches = [];
+    private static long _generatedPaintRaycastCount;
+    private static long _generatedPaintBvhNodeVisitCount;
+    private static long _generatedPaintTriangleTestCount;
+    private MeshInstance3D? _generatedTorsoSurface;
+    private MeshInstance3D? _generatedLeftFootSurface;
+    private MeshInstance3D? _generatedRightFootSurface;
 
     private void RefreshGeneratedReplacementVisuals()
     {
@@ -29,7 +35,7 @@ public partial class BuddyVisualRigView
     private void RefreshGeneratedReplacement(Node3D? visualRoot, BuddyPartId partId, PaintPart paintPart)
     {
         if (!IsPartVisualReplaced(partId) || !GodotObject.IsInstanceValid(visualRoot)) return;
-        MeshInstance3D? surface = FindGeneratedReplacementSurface(visualRoot!);
+        MeshInstance3D? surface = ResolveGeneratedReplacementSurface(visualRoot!, partId);
         if (!GodotObject.IsInstanceValid(surface) || !GodotObject.IsInstanceValid(surface!.Mesh)) return;
 
         float targetRadius = PartMeshRadius(partId);
@@ -84,7 +90,7 @@ public partial class BuddyVisualRigView
         void TryCandidate(Node3D? visualRoot, BuddyPartId partId, PaintPart paintPart)
         {
             if (!IsPartVisualReplaced(partId) || !GodotObject.IsInstanceValid(visualRoot)) return;
-            MeshInstance3D? surface = FindGeneratedReplacementSurface(visualRoot!);
+            MeshInstance3D? surface = ResolveGeneratedReplacementSurface(visualRoot!, partId);
             if (!GodotObject.IsInstanceValid(surface) || !GodotObject.IsInstanceValid(surface!.Mesh)) return;
             if (!TryRaycastGeneratedSurface(surface, paintWorldPoint, out Vector2 uv, out float candidateDistance, out float candidateDepth)) return;
             if (found && candidateDistance >= nearestCameraDistance) return;
@@ -106,6 +112,9 @@ public partial class BuddyVisualRigView
         _ => false,
     };
 
+    internal bool HasGeneratedReplacementPaintParts =>
+        _torsoVisualReplaced || _leftFootVisualReplaced || _rightFootVisualReplaced;
+
     internal int GeneratedReplacementPaintShellCountForTest
     {
         get
@@ -119,7 +128,7 @@ public partial class BuddyVisualRigView
             void Count(Node3D? root, BuddyPartId part)
             {
                 if (!IsPartVisualReplaced(part) || !GodotObject.IsInstanceValid(root)) return;
-                MeshInstance3D? surface = FindGeneratedReplacementSurface(root!);
+                MeshInstance3D? surface = ResolveGeneratedReplacementSurface(root!, part);
                 if (GodotObject.IsInstanceValid(surface?.GetNodeOrNull<MeshInstance3D>(GeneratedPaintName))) count++;
             }
         }
@@ -138,7 +147,7 @@ public partial class BuddyVisualRigView
             void Check(Node3D? root, BuddyPartId part)
             {
                 if (!IsPartVisualReplaced(part) || !GodotObject.IsInstanceValid(root)) return;
-                MeshInstance3D? surface = FindGeneratedReplacementSurface(root!);
+                MeshInstance3D? surface = ResolveGeneratedReplacementSurface(root!, part);
                 MeshInstance3D? outline = surface?.GetNodeOrNull<MeshInstance3D>(GeneratedOutlineName);
                 if (outline?.MaterialOverride is not StandardMaterial3D material)
                 {
@@ -150,6 +159,35 @@ public partial class BuddyVisualRigView
                 ok &= !material.Grow && outline.Scale.IsEqualApprox(Vector3.One * wantedScale);
             }
         }
+    }
+
+    private MeshInstance3D? ResolveGeneratedReplacementSurface(Node3D visualRoot, BuddyPartId partId)
+    {
+        MeshInstance3D? cached = partId switch
+        {
+            BuddyPartId.Torso => _generatedTorsoSurface,
+            BuddyPartId.LeftFoot => _generatedLeftFootSurface,
+            BuddyPartId.RightFoot => _generatedRightFootSurface,
+            _ => null,
+        };
+        if (GodotObject.IsInstanceValid(cached) && GodotObject.IsInstanceValid(cached!.Mesh) &&
+            visualRoot.IsAncestorOf(cached))
+            return cached;
+
+        MeshInstance3D? resolved = FindGeneratedReplacementSurface(visualRoot);
+        switch (partId)
+        {
+            case BuddyPartId.Torso:
+                _generatedTorsoSurface = resolved;
+                break;
+            case BuddyPartId.LeftFoot:
+                _generatedLeftFootSurface = resolved;
+                break;
+            case BuddyPartId.RightFoot:
+                _generatedRightFootSurface = resolved;
+                break;
+        }
+        return resolved;
     }
 
     private static MeshInstance3D? FindGeneratedReplacementSurface(Node3D visualRoot)
@@ -169,8 +207,8 @@ public partial class BuddyVisualRigView
     /// Fast replacement paint hit-test. Mesh arrays are immutable for an equipped generated asset,
     /// so extraction and BVH construction happen once per imported ArrayMesh. Each pointer sample
     /// transforms one ray into mesh-local space and traverses only intersected BVH nodes instead of
-    /// scanning tens of thousands of triangles. This keeps old 256-resolution assets usable while
-    /// new replacements export at the lighter 128-resolution default.
+    /// scanning tens of thousands of triangles. The traversal stack stays on the stack for normal
+    /// Asset Forge meshes, avoiding a managed allocation for every pointer sample.
     /// </summary>
     private static bool TryRaycastGeneratedSurface(
         MeshInstance3D surface,
@@ -192,6 +230,7 @@ public partial class BuddyVisualRigView
         }
         if (cache.Triangles.Length == 0 || cache.Nodes.Length == 0) return false;
 
+        _generatedPaintRaycastCount++;
         Vector3 worldOrigin = new(paintWorldPoint.X, -paintWorldPoint.Y, 4096f);
         Vector3 worldDirection = new(0f, 0f, -1f);
         Transform3D inverse = surface.GlobalTransform.AffineInverse();
@@ -202,12 +241,16 @@ public partial class BuddyVisualRigView
         float bestWorldDistance = float.PositiveInfinity;
         float bestWorldDepth = float.NegativeInfinity;
         Vector2 bestUv = default;
-        int[] stack = new int[Math.Max(64, cache.MaxTreeDepth * 2 + 8)];
+        int requiredStack = Math.Max(64, cache.MaxTreeDepth * 2 + 8);
+        Span<int> stack = requiredStack <= 256
+            ? stackalloc int[requiredStack]
+            : new int[requiredStack];
         int stackCount = 1;
         stack[0] = 0;
 
         while (stackCount > 0)
         {
+            _generatedPaintBvhNodeVisitCount++;
             BvhNode node = cache.Nodes[stack[--stackCount]];
             if (!RayAabb(localOrigin, localDirection, node.Min, node.Max, out _)) continue;
 
@@ -216,6 +259,7 @@ public partial class BuddyVisualRigView
                 int end = node.Start + node.Count;
                 for (int i = node.Start; i < end; i++)
                 {
+                    _generatedPaintTriangleTestCount++;
                     GeneratedPaintTriangle triangle = cache.Triangles[i];
                     if (!RayTriangle(localOrigin, localDirection, triangle.A, triangle.B, triangle.C,
                             out float localDistance, out float baryB, out float baryC)) continue;
@@ -232,9 +276,6 @@ public partial class BuddyVisualRigView
                 continue;
             }
 
-            if (stackCount + 2 > stack.Length) Array.Resize(ref stack, stack.Length * 2);
-            // Traversal order is deterministic. The closest triangle is still chosen by actual
-            // world-ray distance, so ordering has no effect on authored paint results.
             stack[stackCount++] = node.Right;
             stack[stackCount++] = node.Left;
         }
