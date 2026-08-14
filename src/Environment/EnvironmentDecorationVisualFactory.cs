@@ -108,9 +108,14 @@ public static class EnvironmentDecorationVisualFactory
         DecorationLightProfileResource profile = definition.LightProfile!;
         Color lightColor = profile.Color;
         Vector2 size = definition.VisualSize * definition.DefaultScale;
+        Vector2 emitter2 = profile.UsesLocalEmitterPosition
+            ? profile.LocalEmitterPosition * definition.DefaultScale
+            : new Vector2(
+                (profile.EmitterPosition.X - .5f) * size.X,
+                -(1f - profile.EmitterPosition.Y) * size.Y);
         Vector3 emitter = new(
-            (profile.EmitterPosition.X - .5f) * size.X,
-            -(1f - profile.EmitterPosition.Y) * size.Y,
+            emitter2.X,
+            emitter2.Y,
             MathF.Max(1f, MathF.Min(size.X, size.Y) * .08f));
 
         // Keep emissive bulb presentation separate from the authored body texture so the complete
