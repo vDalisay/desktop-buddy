@@ -5,6 +5,10 @@ namespace DesktopBuddy.Buddy.Presentation3D;
 
 public partial class BuddyVisualRigView
 {
+    private Vector3[] _lastReplacementConnectorPosition = Array.Empty<Vector3>();
+    private Vector3[] _lastReplacementConnectorOffset = Array.Empty<Vector3>();
+    private bool[] _replacementConnectorWasCorrected = Array.Empty<bool>();
+
     /// <summary>
     /// Re-fits only connectors touching an active visual replacement. The authoritative pose and
     /// connector rotation still come from the normal rig update; this presentation pass changes
@@ -12,15 +16,23 @@ public partial class BuddyVisualRigView
     /// </summary>
     private void RefreshReplacementConnectorAttachment()
     {
-        if (!IsInitialized ||
-            (!_torsoVisualReplaced && !_leftFootVisualReplaced && !_rightFootVisualReplaced))
+        if (!IsInitialized) return;
+        EnsureReplacementConnectorTracking();
+
+        if (!_torsoVisualReplaced && !_leftFootVisualReplaced && !_rightFootVisualReplaced)
+        {
+            Array.Clear(_replacementConnectorWasCorrected);
             return;
+        }
 
         for (int index = 0; index < _connectorDefinitions.Length; index++)
         {
             ConnectorVisualDefinition definition = _connectorDefinitions[index];
             if (!IsPartVisualReplaced(definition.PartA) && !IsPartVisualReplaced(definition.PartB))
+            {
+                _replacementConnectorWasCorrected[index] = false;
                 continue;
+            }
 
             int aIndex = (int)definition.PartA;
             int bIndex = (int)definition.PartB;
@@ -49,13 +61,33 @@ public partial class BuddyVisualRigView
                 : a + direction * (visualA + visualLength * 0.5f);
 
             MeshInstance3D connector = _connectorMeshes[index];
-            // Preserve the normal connector update's authored depth/lane offset by applying only
-            // the delta between the trusted-radius and actual-rendered-bound centers.
-            connector.GlobalPosition += visualCenter - oldCenter;
+            Vector3 basePosition = connector.GlobalPosition;
+            if (_replacementConnectorWasCorrected[index] &&
+                basePosition.IsEqualApprox(_lastReplacementConnectorPosition[index]))
+            {
+                // No authoritative pose update occurred since the previous render frame. Undo our
+                // own prior correction first so repeated _Process calls cannot accumulate drift.
+                basePosition -= _lastReplacementConnectorOffset[index];
+            }
+
+            Vector3 correction = visualCenter - oldCenter;
+            connector.GlobalPosition = basePosition + correction;
             Vector3 scale = connector.Scale;
             scale.Y = visualLength / _connectorAuthoringLengths[index];
             connector.Scale = scale;
+
+            _replacementConnectorWasCorrected[index] = true;
+            _lastReplacementConnectorOffset[index] = correction;
+            _lastReplacementConnectorPosition[index] = connector.GlobalPosition;
         }
+    }
+
+    private void EnsureReplacementConnectorTracking()
+    {
+        if (_lastReplacementConnectorPosition.Length == _connectorDefinitions.Length) return;
+        _lastReplacementConnectorPosition = new Vector3[_connectorDefinitions.Length];
+        _lastReplacementConnectorOffset = new Vector3[_connectorDefinitions.Length];
+        _replacementConnectorWasCorrected = new bool[_connectorDefinitions.Length];
     }
 
     /// <summary>
