@@ -42,6 +42,8 @@ public sealed class AssetForgeGeneratedLampScenario : IScenario
         if (!imported)
             return Result(checks, seed);
 
+        EnvironmentDecorationResource lampResource = resource!;
+        DecorationLightProfileResource lightProfile = lampResource.LightProfile!;
         DecorationCatalogue catalogue = EnvironmentDecorationRegistry.Domain;
         bool composed = catalogue.TryGet(LampId, out DecorationDefinition definition) &&
             definition.Category == DecorationCategory.Lamp &&
@@ -100,7 +102,7 @@ public sealed class AssetForgeGeneratedLampScenario : IScenario
         {
             var presenter = new EnvironmentDecorationPresenter { Name = "GeneratedLampPresenter" };
             host.AddChild(presenter);
-            presenter.Configure(committedLamp!.Value, resource!);
+            presenter.Configure(committedLamp!.Value, lampResource);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
             Node? generatedRoot = presenter.FindChild("GeneratedDecorationMesh", true, false);
@@ -108,7 +110,7 @@ public sealed class AssetForgeGeneratedLampScenario : IScenario
             OmniLight3D? localLight = presenter.FindChild("GeneratedLampLocalLight", true, false) as OmniLight3D;
             int authoredMeshes = generatedRoot is null ? 0 : CountMeshes(generatedRoot);
             int physicsNodes = CountPhysics(presenter);
-            Vector2 expectedEmitter = resource.LightProfile!.LocalEmitterPosition * resource.DefaultScale;
+            Vector2 expectedEmitter = lightProfile.LocalEmitterPosition * lampResource.DefaultScale;
             bool emitterPlacement = GodotObject.IsInstanceValid(emitter) && GodotObject.IsInstanceValid(localLight) &&
                 Mathf.IsEqualApprox(emitter!.Position.X, expectedEmitter.X) &&
                 Mathf.IsEqualApprox(emitter.Position.Y, expectedEmitter.Y) &&
@@ -127,9 +129,9 @@ public sealed class AssetForgeGeneratedLampScenario : IScenario
             checks.Add(new StartupCheck(
                 "af_generated_lamp_v2_uses_baked_local_emitter",
                 emitterPlacement,
-                $"profile={resource.LightProfile.LocalEmitterPosition} scale={resource.DefaultScale:0.###} emitter={emitter?.Position} light={localLight?.Position}"));
+                $"profile={lightProfile.LocalEmitterPosition} scale={lampResource.DefaultScale:0.###} emitter={emitter?.Position} light={localLight?.Position}"));
 
-            Texture2D thumbnail = EnvironmentDecorationVisualFactory.CreatePreview(resource!);
+            Texture2D thumbnail = EnvironmentDecorationVisualFactory.CreatePreview(lampResource);
             checks.Add(new StartupCheck(
                 "af_generated_lamp_thumbnail_available",
                 GodotObject.IsInstanceValid(thumbnail) && thumbnail.GetWidth() == 256 && thumbnail.GetHeight() == 256,
