@@ -11,7 +11,8 @@ namespace DesktopBuddy.Testing;
 /// <summary>
 /// AF-13 end-to-end gate: generated Sofa content composes into the existing Environment catalogue,
 /// purchases per placed instance, persists by stable definition ID, renders its one trusted visual
-/// mesh and never introduces a Lamp light, collision or gameplay node.
+/// mesh and never introduces a Lamp light, collision or gameplay node. Multiple placements must
+/// instantiate nodes but continue sharing the imported mesh/texture resources.
 /// </summary>
 public sealed class AssetForgeGeneratedSofaScenario : IScenario
 {
@@ -86,28 +87,53 @@ public sealed class AssetForgeGeneratedSofaScenario : IScenario
             stableRestartPayload,
             $"sofas={reopened.WorkingLayout.Decorations.Count(item => item.DefinitionId == SofaId)}"));
 
-        PlacedDecoration sofa = commit.Layout.Decorations.First(item => item.DefinitionId == SofaId);
+        PlacedDecoration[] sofas = commit.Layout.Decorations.Where(item => item.DefinitionId == SofaId).ToArray();
         var host = new Node3D { Name = "AssetForgeGeneratedSofaHost" };
         tree.Root.AddChild(host);
         try
         {
-            var presenter = new EnvironmentDecorationPresenter { Name = "GeneratedSofaPresenter" };
-            host.AddChild(presenter);
-            presenter.Configure(sofa, resource!);
+            var firstPresenter = new EnvironmentDecorationPresenter { Name = "GeneratedSofaPresenterA" };
+            var secondPresenter = new EnvironmentDecorationPresenter { Name = "GeneratedSofaPresenterB" };
+            host.AddChild(firstPresenter);
+            host.AddChild(secondPresenter);
+            firstPresenter.Configure(sofas[0], resource!);
+            secondPresenter.Configure(sofas[1], resource!);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
-            Node? generatedRoot = presenter.FindChild("GeneratedDecorationMesh", true, false);
-            int authoredMeshes = generatedRoot is null ? 0 : CountMeshes(generatedRoot);
-            int physicsNodes = CountPhysics(presenter);
-            bool visual = GodotObject.IsInstanceValid(generatedRoot) && authoredMeshes == 1 &&
-                presenter.FindChild("GeneratedLampEmitterVisual", true, false) is null &&
-                presenter.FindChild("GeneratedLampLocalLight", true, false) is null &&
-                physicsNodes == 0 &&
-                Mathf.IsEqualApprox(presenter.Position.Z, EnvironmentDecorationPresenter.ZFor(definition.RenderBand));
+            Node? firstRoot = firstPresenter.FindChild("GeneratedDecorationMesh", true, false);
+            Node? secondRoot = secondPresenter.FindChild("GeneratedDecorationMesh", true, false);
+            MeshInstance3D? firstMesh = FirstMesh(firstRoot);
+            MeshInstance3D? secondMesh = FirstMesh(secondRoot);
+            int firstAuthoredMeshes = firstRoot is null ? 0 : CountMeshes(firstRoot);
+            int secondAuthoredMeshes = secondRoot is null ? 0 : CountMeshes(secondRoot);
+            int physicsNodes = CountPhysics(firstPresenter) + CountPhysics(secondPresenter);
+            bool noLampNodes =
+                firstPresenter.FindChild("GeneratedLampEmitterVisual", true, false) is null &&
+                firstPresenter.FindChild("GeneratedLampLocalLight", true, false) is null &&
+                secondPresenter.FindChild("GeneratedLampEmitterVisual", true, false) is null &&
+                secondPresenter.FindChild("GeneratedLampLocalLight", true, false) is null;
+            bool visual = GodotObject.IsInstanceValid(firstRoot) && GodotObject.IsInstanceValid(secondRoot) &&
+                firstAuthoredMeshes == 1 && secondAuthoredMeshes == 1 && noLampNodes && physicsNodes == 0 &&
+                Mathf.IsEqualApprox(firstPresenter.Position.Z, EnvironmentDecorationPresenter.ZFor(definition.RenderBand)) &&
+                Mathf.IsEqualApprox(secondPresenter.Position.Z, EnvironmentDecorationPresenter.ZFor(definition.RenderBand));
             checks.Add(new StartupCheck(
                 "af_generated_sofa_renders_visual_only_without_lamp_nodes",
                 visual,
-                $"generated={GodotObject.IsInstanceValid(generatedRoot)} meshes={authoredMeshes} lampEmitter={presenter.FindChild("GeneratedLampEmitterVisual", true, false) is not null} light={presenter.FindChild("GeneratedLampLocalLight", true, false) is not null} physics={physicsNodes}"));
+                $"roots={GodotObject.IsInstanceValid(firstRoot)}/{GodotObject.IsInstanceValid(secondRoot)} meshes={firstAuthoredMeshes}/{secondAuthoredMeshes} noLamp={noLampNodes} physics={physicsNodes}"));
+
+            bool sharedResources = GodotObject.IsInstanceValid(firstMesh) && GodotObject.IsInstanceValid(secondMesh) &&
+                GodotObject.IsInstanceValid(firstMesh!.Mesh) && GodotObject.IsInstanceValid(secondMesh!.Mesh) &&
+                firstMesh.Mesh.GetInstanceId() == secondMesh.Mesh.GetInstanceId() &&
+                firstMesh.MaterialOverride is StandardMaterial3D firstMaterial &&
+                secondMesh.MaterialOverride is StandardMaterial3D secondMaterial &&
+                GodotObject.IsInstanceValid(firstMaterial.AlbedoTexture) &&
+                GodotObject.IsInstanceValid(secondMaterial.AlbedoTexture) &&
+                firstMaterial.AlbedoTexture!.GetInstanceId() == secondMaterial.AlbedoTexture!.GetInstanceId() &&
+                firstMaterial.AlbedoTexture.GetInstanceId() == resource!.GeneratedAlbedo!.GetInstanceId();
+            checks.Add(new StartupCheck(
+                "af_generated_sofa_instances_share_mesh_and_texture_resources",
+                sharedResources,
+                $"meshIds={firstMesh?.Mesh?.GetInstanceId()}/{secondMesh?.Mesh?.GetInstanceId()} textureIds={(firstMesh?.MaterialOverride as StandardMaterial3D)?.AlbedoTexture?.GetInstanceId()}/{(secondMesh?.MaterialOverride as StandardMaterial3D)?.AlbedoTexture?.GetInstanceId()}"));
 
             Texture2D thumbnail = EnvironmentDecorationVisualFactory.CreatePreview(resource!);
             checks.Add(new StartupCheck(
@@ -122,6 +148,13 @@ public sealed class AssetForgeGeneratedSofaScenario : IScenario
         }
 
         return Result(checks, seed);
+    }
+
+    private static MeshInstance3D? FirstMesh(Node? root)
+    {
+        if (!GodotObject.IsInstanceValid(root)) return null;
+        if (root is MeshInstance3D own) return own;
+        return root!.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>().FirstOrDefault();
     }
 
     private static int CountMeshes(Node root)
