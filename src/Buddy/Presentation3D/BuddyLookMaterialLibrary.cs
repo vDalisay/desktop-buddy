@@ -69,6 +69,38 @@ public sealed class BuddyLookMaterialLibrary
         return material;
     }
 
+    /// <summary>
+    /// Generated replacement meshes are authored in normalized part-radius units and then scaled
+    /// by the trusted part radius. Godot applies material Grow before the node transform, so using
+    /// the normal Buddy grow value directly would multiply the outline/paint shell by that radius.
+    /// These helpers compensate for the node scale so shell thickness remains identical in world
+    /// units to the built-in Buddy meshes.
+    /// </summary>
+    public StandardMaterial3D CreateScaledOutlineMaterial(float meshScale)
+    {
+        float scale = SafeMeshScale(meshScale);
+        StandardMaterial3D material = BuddySharedMaterialFactory.CreateOutlineMaterial(_look);
+        material.ResourceName = "BuddyLookScaledOutlineMaterial";
+        material.GrowAmount = _look.OutlineGrowAmount / scale;
+        return material;
+    }
+
+    public StandardMaterial3D CreateScaledPaintMaterial(float meshScale)
+    {
+        float scale = SafeMeshScale(meshScale);
+        StandardMaterial3D material = CreatePaintMaterial();
+        material.ResourceName = "BuddyLookScaledPaintMaterial";
+        material.GrowAmount = PaintShellGrowAmount / scale;
+        return material;
+    }
+
+    private static float SafeMeshScale(float meshScale)
+    {
+        if (!float.IsFinite(meshScale) || meshScale <= 0.0001f)
+            throw new ArgumentOutOfRangeException(nameof(meshScale), meshScale, "Generated mesh scale must be finite and positive.");
+        return meshScale;
+    }
+
     public StandardMaterial3D OutlineMaterial =>
         _outline ??= BuddySharedMaterialFactory.CreateOutlineMaterial(_look);
 }
