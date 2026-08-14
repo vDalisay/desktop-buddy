@@ -21,9 +21,10 @@ public readonly record struct EnvironmentGeneratedBounds(float Width, float Heig
 }
 
 /// <summary>
-/// Deterministic front-derived 2.5D generator for floor Environment assets. The visible source
-/// bounds are scaled to recipe.Environment.LogicalHeight and translated so their bottom-centre is
-/// exactly the local origin. This gives placement a stable floor pivot without scene inference.
+/// Deterministic front-derived 2.5D generator for floor Environment assets. Legacy Lamp@1 keeps
+/// its accepted visible-bounds auto-fit contract. Lamp@2 and later template-space presets preserve
+/// literal 1024x1024 authoring coordinates through EnvironmentTemplateMapping, so moving/scaling
+/// clean source art produces the documented in-room placement change without silent re-centring.
 /// </summary>
 public static class EnvironmentSilhouetteGenerator
 {
@@ -38,9 +39,10 @@ public static class EnvironmentSilhouetteGenerator
 
         Bounds bounds = FindBounds(grid);
         float logicalHeight = (float)recipe.Environment.LogicalHeight;
-        float unitsPerCell = logicalHeight / Math.Max(1, bounds.MaxY - bounds.MinY + 1);
-        float centerX = (bounds.MinX + bounds.MaxX + 1) * .5f;
-        float floorY = bounds.MaxY + 1;
+        bool literalTemplate = EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe);
+        float legacyUnitsPerCell = logicalHeight / Math.Max(1, bounds.MaxY - bounds.MinY + 1);
+        float legacyCenterX = (bounds.MinX + bounds.MaxX + 1) * .5f;
+        float legacyFloorY = bounds.MaxY + 1;
         float halfDepth = logicalHeight * (float)recipe.Geometry.Depth * .5f;
         float[] inward = BuildDistance(grid, recipe.Geometry.SurfaceSmoothness);
         float maxInset = inward.DefaultIfEmpty(0f).Max();
@@ -52,8 +54,26 @@ public static class EnvironmentSilhouetteGenerator
         {
             int key = (((vy * (grid.Width + 1)) + vx) << 1) | (front ? 1 : 0);
             if (vertices.TryGetValue(key, out uint existing)) return existing;
-            float x = (vx - centerX) * unitsPerCell;
-            float y = -(floorY - vy) * unitsPerCell;
+
+            float x;
+            float y;
+            if (literalTemplate)
+            {
+                Vector2 mapped = EnvironmentTemplateMapping.GridVertexToWorld(
+                    vx,
+                    vy,
+                    grid.Width,
+                    grid.Height,
+                    recipe);
+                x = mapped.X;
+                y = mapped.Y;
+            }
+            else
+            {
+                x = (vx - legacyCenterX) * legacyUnitsPerCell;
+                y = -(legacyFloorY - vy) * legacyUnitsPerCell;
+            }
+
             float surface = SurfaceHalfDepth(grid, inward, maxInset, vx, vy, halfDepth, recipe.Geometry);
             uint created = mesh.AddVertex(
                 new Vector3(x, y, front ? surface : -surface),
