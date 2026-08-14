@@ -17,9 +17,26 @@ public sealed class EnvironmentLampTests
     }
 
     [Fact]
-    public void Lamp_generation_is_floor_pivoted_and_deterministic()
+    public void New_lamp_recipe_uses_literal_template_contract_and_template_emitter()
     {
-        AssetRecipe recipe = FastLamp();
+        AssetRecipe recipe = AssetRecipe.LampDefaults();
+
+        Assert.Equal(2, recipe.PresetVersion);
+        Assert.True(EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe));
+        Assert.Equal(
+            EnvironmentTemplateSpace.LampEmitterX / (double)EnvironmentTemplateSpace.CanvasSize,
+            recipe.Light.EmitterX,
+            8);
+        Assert.Equal(
+            EnvironmentTemplateSpace.LampEmitterY / (double)EnvironmentTemplateSpace.CanvasSize,
+            recipe.Light.EmitterY,
+            8);
+    }
+
+    [Fact]
+    public void Lamp_v1_generation_keeps_legacy_floor_fit_and_is_deterministic()
+    {
+        AssetRecipe recipe = FastLampV1();
         byte[] source = LampSource();
         GeneratedAsset a = AssetForgeCompiler.Generate(source, recipe);
         GeneratedAsset b = AssetForgeCompiler.Generate(source, recipe);
@@ -35,12 +52,48 @@ public sealed class EnvironmentLampTests
     }
 
     [Fact]
+    public void Lamp_v1_shifted_source_keeps_legacy_geometry_placement()
+    {
+        AssetRecipe recipe = FastLampV1();
+        GeneratedAsset original = AssetForgeCompiler.Generate(LampBlockSource(400, 300), recipe);
+        GeneratedAsset shifted = AssetForgeCompiler.Generate(LampBlockSource(520, 410), recipe);
+
+        Assert.Equal(original.GeometryHash, shifted.GeometryHash);
+    }
+
+    [Fact]
+    public void Lamp_v2_shifted_source_moves_geometry_in_literal_template_space()
+    {
+        AssetRecipe recipe = FastLampV2();
+        GeneratedAsset original = AssetForgeCompiler.Generate(LampBlockSource(400, 300), recipe);
+        GeneratedAsset shifted = AssetForgeCompiler.Generate(LampBlockSource(520, 410), recipe);
+        (float X, float Y) a = Center(original.Mesh);
+        (float X, float Y) b = Center(shifted.Mesh);
+        float units = EnvironmentTemplateMapping.UnitsPerPixel(recipe);
+
+        Assert.NotEqual(original.GeometryHash, shifted.GeometryHash);
+        Assert.InRange(b.X - a.X, (120f * units) - .25f, (120f * units) + .25f);
+        Assert.InRange(b.Y - a.Y, (110f * units) - .25f, (110f * units) + .25f);
+    }
+
+    [Fact]
+    public void Lamp_v2_template_floor_contact_maps_to_world_floor()
+    {
+        AssetRecipe recipe = FastLampV2();
+        GeneratedAsset generated = AssetForgeCompiler.Generate(
+            LampBlockSource(432, EnvironmentTemplateSpace.FloorY - 120),
+            recipe);
+
+        Assert.InRange(generated.Mesh.Positions.Max(static p => p.Y), -.25f, .25f);
+    }
+
+    [Fact]
     public void Lamp_export_round_trips_through_environment_verifier()
     {
         string root = TempRepository();
         try
         {
-            AssetRecipe recipe = FastLamp();
+            AssetRecipe recipe = FastLampV2();
             byte[] source = LampSource();
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
             byte[] thumbnail = PngCodec.EncodeRgba8(PngCodec.ResizeBox(PngCodec.DecodeRgba8(source), 256));
@@ -67,7 +120,7 @@ public sealed class EnvironmentLampTests
         string root = TempRepository();
         try
         {
-            AssetRecipe recipe = FastLamp();
+            AssetRecipe recipe = FastLampV2();
             byte[] source = LampSource();
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
             RepositoryEnvironmentExporter.Export(root, source, generated, source);
@@ -81,8 +134,12 @@ public sealed class EnvironmentLampTests
         }
     }
 
-    private static AssetRecipe FastLamp() => AssetRecipe.LampDefaults() with
+    private static AssetRecipe FastLampV1() => FastLamp(1);
+    private static AssetRecipe FastLampV2() => FastLamp(2);
+
+    private static AssetRecipe FastLamp(int presetVersion) => AssetRecipe.LampDefaults() with
     {
+        PresetVersion = presetVersion,
         AssetId = "decoration.lamp.ci_round",
         DisplayName = "CI Round Lamp",
         PriceCredits = 135,
@@ -117,6 +174,22 @@ public sealed class EnvironmentLampTests
             if (nx * nx + ny * ny <= 1.0) Pixel(pixels, x, y, 245, 184, 72);
         }
         return PngCodec.EncodeRgba8(new RgbaImage(1024, 1024, pixels));
+    }
+
+    private static byte[] LampBlockSource(int x, int y)
+    {
+        byte[] pixels = new byte[1024 * 1024 * 4];
+        Fill(pixels, x, y, x + 120, y + 120, 220, 170, 80);
+        return PngCodec.EncodeRgba8(new RgbaImage(1024, 1024, pixels));
+    }
+
+    private static (float X, float Y) Center(CanonicalMesh mesh)
+    {
+        float minX = mesh.Positions.Min(static p => p.X);
+        float maxX = mesh.Positions.Max(static p => p.X);
+        float minY = mesh.Positions.Min(static p => p.Y);
+        float maxY = mesh.Positions.Max(static p => p.Y);
+        return ((minX + maxX) * .5f, (minY + maxY) * .5f);
     }
 
     private static void Fill(byte[] pixels, int x0, int y0, int x1, int y1, byte r, byte g, byte b)
