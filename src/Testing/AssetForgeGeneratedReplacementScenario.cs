@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
@@ -7,7 +10,6 @@ using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
-using DesktopBuddy.Startup;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -19,10 +21,12 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
     private const string ShoesFeatureId = "shoes.ci_soft_foot";
     private const string ShoesContentId = "cosmetic.shoes.ci_soft_foot";
 
-    public async Task<ScenarioResult> RunAsync(SceneTree tree, int seed, CancellationToken cancellationToken)
+    public string Id => "asset_forge_generated_replacements";
+
+    public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
     {
         var checks = new List<StartupCheck>();
-        CharacterEditorScenarioSupport.Context context = await CharacterEditorScenarioSupport.Create(tree, cancellationToken);
+        CharacterEditorScenarioSupport.Context context = await CharacterEditorScenarioSupport.Create(tree, Id);
         try
         {
             BuddyGeneratedCosmeticRegistry registry = BuddyGeneratedCosmeticRegistry.Current;
@@ -38,14 +42,14 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
                 resourcesLoaded,
                 $"top={registry.FeatureCatalog.Contains(CharacterFeatureSlot.Tops, TopFeatureId)} shoes={registry.FeatureCatalog.Contains(CharacterFeatureSlot.Shoes, ShoesFeatureId)}"));
 
-            ContentCatalogue catalogue = CatalogueLoader.Catalogue;
-            bool commerceLoaded =
-                catalogue.TryGet(TopContentId, out CatalogueEntry topSale) && topSale.PriceMilliCredits == 175_000 &&
-                catalogue.TryGet(ShoesContentId, out CatalogueEntry shoesSale) && shoesSale.PriceMilliCredits == 160_000;
+            bool topCommerce = CatalogueLoader.Catalogue.TryGet(TopContentId, out CatalogueEntry topSale) &&
+                topSale.PriceMilliCredits == 175_000;
+            bool shoesCommerce = CatalogueLoader.Catalogue.TryGet(ShoesContentId, out CatalogueEntry shoesSale) &&
+                shoesSale.PriceMilliCredits == 160_000;
             checks.Add(new StartupCheck(
                 "af_generated_replacement_commerce_loaded",
-                commerceLoaded,
-                $"topPrice={topSale.PriceMilliCredits} shoesPrice={shoesSale.PriceMilliCredits}"));
+                topCommerce && shoesCommerce,
+                $"top={topCommerce} shoes={shoesCommerce}"));
 
             var visualCatalog = new BuddyCosmeticVisualCatalog(registry.FeatureCatalog, registry);
             BuddyCosmeticVisualDefinition topVisual = visualCatalog.Resolve(CharacterFeatureSlot.Tops, TopFeatureId, out bool topFallback);
@@ -68,7 +72,7 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
             checks.Add(new StartupCheck(
                 "af_generated_replacements_compile",
                 compiled.IsSuccess && compiled.Appearance is not null,
-                $"status={compiled.Status} issues={compiled.Issues.Count}"));
+                $"success={compiled.IsSuccess} errors={compiled.Errors.Count} warnings={compiled.Warnings.Count}"));
 
             if (compiled.Appearance is not null)
             {
@@ -95,6 +99,26 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
                 "af_generated_replacements_hide_base_visuals",
                 replacementState,
                 $"torso={context.Preview.IsPartVisualReplaced(BuddyPartId.Torso)} leftFoot={context.Preview.IsPartVisualReplaced(BuddyPartId.LeftFoot)} rightFoot={context.Preview.IsPartVisualReplaced(BuddyPartId.RightFoot)}"));
+
+            Node3D? leftGenerated = leftShoeRoot?.GetNodeOrNull<Node3D>("GeneratedMesh");
+            Node3D? rightGenerated = rightShoeRoot?.GetNodeOrNull<Node3D>("GeneratedMesh");
+            bool pairedMirror =
+                GodotObject.IsInstanceValid(leftGenerated) && GodotObject.IsInstanceValid(rightGenerated) &&
+                Mathf.Abs(Mathf.Wrap(leftGenerated!.RotationDegrees.Y, 0f, 360f) - 180f) < 0.1f &&
+                Mathf.Abs(Mathf.Wrap(rightGenerated!.RotationDegrees.Y, 0f, 360f)) < 0.1f &&
+                leftGenerated.Scale.X > 0f && rightGenerated.Scale.X > 0f;
+            checks.Add(new StartupCheck(
+                "af_generated_shoes_are_outward_mirrored_pair",
+                pairedMirror,
+                $"leftY={leftGenerated?.RotationDegrees.Y:0.0} rightY={rightGenerated?.RotationDegrees.Y:0.0} leftScale={leftGenerated?.Scale.X:0.00} rightScale={rightGenerated?.Scale.X:0.00}"));
+
+            bool buddyOutline = HasGeneratedOutline(topRoot) &&
+                HasGeneratedOutline(leftShoeRoot) &&
+                HasGeneratedOutline(rightShoeRoot);
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_use_buddy_outline",
+                buddyOutline,
+                $"top={HasGeneratedOutline(topRoot)} left={HasGeneratedOutline(leftShoeRoot)} right={HasGeneratedOutline(rightShoeRoot)}"));
 
             int physicsNodes = (topRoot is null ? 0 : CountPhysics(topRoot)) +
                                (leftShoeRoot is null ? 0 : CountPhysics(leftShoeRoot)) +
@@ -124,6 +148,7 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
                 context.Preview.GetPartMesh(BuddyPartId.RightFoot).Visible &&
                 context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Tops) is null &&
                 context.Preview.GetCosmeticVisual(CharacterFeatureSlot.Shoes) is null &&
+                context.Preview.GetPairedCosmeticVisual(CharacterFeatureSlot.Shoes) is null &&
                 context.Preview.TrustedGeometryMatches(before);
             checks.Add(new StartupCheck(
                 "af_generated_replacements_restore_defaults",
@@ -137,6 +162,12 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
 
         return CharacterEditorScenarioSupport.Result(checks, seed);
     }
+
+    private static bool HasGeneratedOutline(Node3D? root) =>
+        GodotObject.IsInstanceValid(root) &&
+        root!.FindChildren("GeneratedOutline", nameof(MeshInstance3D), true, false)
+            .OfType<MeshInstance3D>()
+            .Any();
 
     private static int CountPhysics(Node node)
     {
