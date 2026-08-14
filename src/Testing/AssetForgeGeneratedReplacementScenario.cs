@@ -154,6 +154,13 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
                 buddyOutline,
                 $"top={HasGeneratedOutline(topRoot)} left={HasGeneratedOutline(leftShoeRoot)} right={HasGeneratedOutline(rightShoeRoot)}"));
 
+            bool stablePaintShell = context.Preview.GeneratedReplacementPaintShellCountForTest == 3 &&
+                                    context.Preview.GeneratedReplacementPaintScaleIsCorrectForTest;
+            checks.Add(new StartupCheck(
+                "af_generated_replacements_use_uniform_paint_shell",
+                stablePaintShell,
+                $"shells={context.Preview.GeneratedReplacementPaintShellCountForTest} scaleOk={context.Preview.GeneratedReplacementPaintScaleIsCorrectForTest}"));
+
             int physicsNodes = (topRoot is null ? 0 : CountPhysics(topRoot)) +
                                (leftShoeRoot is null ? 0 : CountPhysics(leftShoeRoot)) +
                                (rightShoeRoot is null ? 0 : CountPhysics(rightShoeRoot));
