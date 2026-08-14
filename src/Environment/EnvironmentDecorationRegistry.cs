@@ -10,12 +10,13 @@ public static class EnvironmentDecorationRegistry
 {
     public const string CataloguePath = "res://data/environment/launch_decorations.tres";
     public const string GeneratedCataloguePath = "res://data/environment/generated_decorations.tres";
-    private static EnvironmentDecorationCatalogueResource? _catalogue;
+    private static EnvironmentDecorationCatalogueResource? _launchCatalogue;
     private static EnvironmentDecorationCatalogueResource? _generatedCatalogue;
+    private static EnvironmentDecorationCatalogueResource? _composedCatalogue;
 
-    /// <summary>Hand-authored launch catalogue. Launch-content tests intentionally inspect this boundary alone.</summary>
-    public static EnvironmentDecorationCatalogueResource Authored =>
-        _catalogue ??= GD.Load<EnvironmentDecorationCatalogueResource>(CataloguePath)
+    /// <summary>Hand-authored launch catalogue only.</summary>
+    public static EnvironmentDecorationCatalogueResource Launch =>
+        _launchCatalogue ??= GD.Load<EnvironmentDecorationCatalogueResource>(CataloguePath)
             ?? throw new InvalidOperationException($"Missing Environment catalogue at {CataloguePath}.");
 
     /// <summary>Asset Forge-owned catalogue. A clean checkout contains a valid empty aggregate.</summary>
@@ -23,41 +24,40 @@ public static class EnvironmentDecorationRegistry
         _generatedCatalogue ??= GD.Load<EnvironmentDecorationCatalogueResource>(GeneratedCataloguePath)
             ?? throw new InvalidOperationException($"Missing generated Environment catalogue at {GeneratedCataloguePath}.");
 
-    public static IEnumerable<EnvironmentDecorationResource> Entries =>
-        Authored.Entries.Concat(Generated.Entries)
-            .Where(static entry => GodotObject.IsInstanceValid(entry));
+    /// <summary>
+    /// Historical Environment Decorator seam. It now exposes the validated composition of launch
+    /// plus generated definitions so the established browse/buy/place/save flow needs no fork.
+    /// </summary>
+    public static EnvironmentDecorationCatalogueResource Authored =>
+        _composedCatalogue ??= Compose();
 
-    public static DecorationCatalogue Domain
-    {
-        get
-        {
-            ValidateGeneratedBoundary();
-            return new DecorationCatalogue(Entries.Select(static entry => entry.ToDefinition()));
-        }
-    }
+    public static IEnumerable<EnvironmentDecorationResource> Entries => Authored.Entries;
+    public static DecorationCatalogue Domain => Authored.ToCatalogue();
+    public static EnvironmentDecorationResource? Find(DecorationDefinitionId id) => Authored.Find(id);
 
-    public static EnvironmentDecorationResource? Find(DecorationDefinitionId id)
+    private static EnvironmentDecorationCatalogueResource Compose()
     {
-        EnvironmentDecorationResource? authored = Authored.Find(id);
-        if (authored is not null) return authored;
-        ValidateGeneratedBoundary();
-        return Generated.Find(id);
-    }
-
-    private static void ValidateGeneratedBoundary()
-    {
-        Godot.Collections.Array<string> errors = Generated.Validate();
-        if (errors.Count > 0)
-            throw new InvalidOperationException($"Invalid generated Environment catalogue: {string.Join("; ", errors)}");
+        Godot.Collections.Array<string> launchErrors = Launch.Validate();
+        if (launchErrors.Count > 0)
+            throw new InvalidOperationException($"Invalid launch Environment catalogue: {string.Join("; ", launchErrors)}");
+        Godot.Collections.Array<string> generatedErrors = Generated.Validate();
+        if (generatedErrors.Count > 0)
+            throw new InvalidOperationException($"Invalid generated Environment catalogue: {string.Join("; ", generatedErrors)}");
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        foreach (EnvironmentDecorationResource entry in Authored.Entries)
-            if (GodotObject.IsInstanceValid(entry)) seen.Add(entry.DefinitionId);
-        foreach (EnvironmentDecorationResource entry in Generated.Entries)
+        var entries = new Godot.Collections.Array<EnvironmentDecorationResource>();
+        foreach (EnvironmentDecorationResource entry in Launch.Entries.Concat(Generated.Entries))
         {
             if (!GodotObject.IsInstanceValid(entry)) continue;
             if (!seen.Add(entry.DefinitionId))
-                throw new InvalidOperationException($"Generated Environment definition '{entry.DefinitionId}' collides with an existing trusted definition.");
+                throw new InvalidOperationException($"Environment definition '{entry.DefinitionId}' appears in both trusted catalogue boundaries.");
+            entries.Add(entry);
         }
+
+        var composed = new EnvironmentDecorationCatalogueResource { Entries = entries };
+        Godot.Collections.Array<string> errors = composed.Validate();
+        if (errors.Count > 0)
+            throw new InvalidOperationException($"Invalid composed Environment catalogue: {string.Join("; ", errors)}");
+        return composed;
     }
 }
