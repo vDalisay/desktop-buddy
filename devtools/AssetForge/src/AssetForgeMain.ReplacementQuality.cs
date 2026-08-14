@@ -19,11 +19,11 @@ public partial class AssetForgeMain
         _surfaceSmoothness = new SpinBox
         {
             MinValue = 0.0,
-            MaxValue = 1.0,
-            Step = 0.01,
+            MaxValue = 3.0,
+            Step = 0.05,
             AllowGreater = false,
             AllowLesser = false,
-            TooltipText = "Smooths the generated depth field without moving the authored 2D silhouette. Higher values remove grid/ring ridges; 0 preserves legacy replacement geometry exactly.",
+            TooltipText = "Relaxes the generated depth field without moving the authored 2D silhouette. 0 preserves legacy geometry; 0-1 is the normal range; values up to 3 add progressively more smoothing passes for very soft/plush forms.",
         };
         _surfaceSmoothness.ValueChanged += _ =>
         {
@@ -69,7 +69,11 @@ public partial class AssetForgeMain
     {
         EnsureReplacementQualityUi();
         if (GodotObject.IsInstanceValid(_surfaceSmoothnessLabel)) _surfaceSmoothnessLabel.Visible = replacement;
-        if (GodotObject.IsInstanceValid(_surfaceSmoothness)) _surfaceSmoothness.Visible = replacement;
+        if (GodotObject.IsInstanceValid(_surfaceSmoothness))
+        {
+            _surfaceSmoothness.Visible = replacement;
+            _surfaceSmoothness.MaxValue = replacement ? 3.0 : 1.0;
+        }
 
         if (GodotObject.IsInstanceValid(_depth))
         {
@@ -87,6 +91,18 @@ public partial class AssetForgeMain
                 : "Rounds the front/back edge of the generated glasses frame.";
             if (_roundness.GetIndex() > 0 && _roundness.GetParent().GetChild(_roundness.GetIndex() - 1) is Label label)
                 label.Text = replacement ? "Edge roundness" : "Roundness";
+        }
+
+        // Geometry resolution is the runtime mesh density for replacement categories. Keep it in
+        // Advanced, but label it honestly so authors know lowering it is a performance choice rather
+        // than a texture-quality choice. New replacement defaults use 128 instead of the old 256.
+        if (GodotObject.IsInstanceValid(_geometryResolution) && _geometryResolution.GetIndex() > 0 &&
+            _geometryResolution.GetParent().GetChild(_geometryResolution.GetIndex() - 1) is Label resolutionLabel)
+        {
+            resolutionLabel.Text = replacement ? "Runtime mesh resolution" : "Geometry resolution";
+            _geometryResolution.TooltipText = replacement
+                ? "Controls exported mesh density. 128 is the recommended runtime default; 64 is lighter, 256 is high-detail and substantially more expensive to paint/hit-test."
+                : "Generator geometry resolution.";
         }
 
         if (!GodotObject.IsInstanceValid(_shapeMode) || _shapeMode.ItemCount < 4) return;
