@@ -38,11 +38,13 @@ public sealed class AssetForgeGeneratedReplacementScenario : IScenario
             checks.Add(new StartupCheck("af_generated_replacement_resources_loaded", resourcesLoaded,
                 $"top={registry.FeatureCatalog.Contains(CharacterFeatureSlot.Tops, TopFeatureId)} shoes={registry.FeatureCatalog.Contains(CharacterFeatureSlot.Shoes, ShoesFeatureId)}"));
 
-            bool commerce = CatalogueLoader.Catalogue.TryGet(TopContentId, out CatalogueEntry topSale) &&
-                            CatalogueLoader.Catalogue.TryGet(ShoesContentId, out CatalogueEntry shoesSale) &&
-                            topSale.PriceMilliCredits == 175_000 && shoesSale.PriceMilliCredits == 160_000;
+            bool topCommerce = CatalogueLoader.Catalogue.TryGet(TopContentId, out CatalogueEntry topSale) &&
+                               topSale.PriceMilliCredits == 175_000;
+            bool shoesCommerce = CatalogueLoader.Catalogue.TryGet(ShoesContentId, out CatalogueEntry shoesSale) &&
+                                 shoesSale.PriceMilliCredits == 160_000;
+            bool commerce = topCommerce && shoesCommerce;
             checks.Add(new StartupCheck("af_generated_replacement_commerce_loaded", commerce,
-                $"top={topSale.PriceMilliCredits} shoes={shoesSale.PriceMilliCredits}"));
+                $"top={topCommerce} shoes={shoesCommerce}"));
 
             var visualCatalog = new BuddyCosmeticVisualCatalog(registry.FeatureCatalog, registry);
             BuddyCosmeticVisualDefinition topVisual = visualCatalog.Resolve(CharacterFeatureSlot.Tops, TopFeatureId, out bool topFallback);
