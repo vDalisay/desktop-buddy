@@ -28,7 +28,8 @@ public sealed class PartReplacementContourInflationTests
             ? TwoCircleTorso()
             : Ellipse(512, 520, 205, 155);
 
-        CanonicalMesh mesh = PartReplacementContourInflationGenerator.Generate(source, geometry, category);
+        CanonicalMesh mesh = PartReplacementTopologyWeld.Apply(
+            PartReplacementContourInflationGenerator.Generate(source, geometry, category));
 
         Assert.True(mesh.TriangleCount > 1_000);
         Assert.True(mesh.TriangleCount < 20_000,
@@ -81,10 +82,11 @@ public sealed class PartReplacementContourInflationTests
             ThicknessBiasPixels = 0,
         };
 
-        CanonicalMesh mesh = PartReplacementContourInflationGenerator.Generate(
-            source,
-            geometry,
-            AssetCategory.TorsoShape);
+        CanonicalMesh mesh = PartReplacementTopologyWeld.Apply(
+            PartReplacementContourInflationGenerator.Generate(
+                source,
+                geometry,
+                AssetCategory.TorsoShape));
 
         double error = MeanEllipseBoundaryErrorPixels(mesh, cx, cy, rx, ry);
         Assert.True(error < 1.5,
@@ -122,6 +124,7 @@ public sealed class PartReplacementContourInflationTests
         Assert.Equal(a.GeometryHash, b.GeometryHash);
         Assert.Equal(a.GlbBytes, b.GlbBytes);
         Assert.True(a.Mesh.Positions.Count(position => MathF.Abs(position.Z) <= 0.00001f) > 100);
+        AssertWatertight(a.Mesh);
         Assert.DoesNotContain(a.Mesh.Indices.Chunk(3), triangle =>
         {
             float za = a.Mesh.Positions[checked((int)triangle[0])].Z;
