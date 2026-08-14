@@ -44,6 +44,7 @@ public partial class PaintCanvasControl : Control
     private const float ScreenStepPixels = 1.5f;
     private const int MaxScreenSteps = 512;
     private const int MaxPenSampleSteps = 32;
+    private const int MaxGeneratedReplacementPenSampleSteps = 8;
     private const double MinimumCurveBaselinePixels = 2.0;
     private const double SecondCurveBendSensitivity = 0.35;
 
@@ -330,6 +331,8 @@ public partial class PaintCanvasControl : Control
         float texturePixelSize = VisibleBrushDiameter() / Math.Max(1, Workspace.BrushDiameter);
         float sampleRadius = Math.Max(0f, radius - (texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f));
         int steps = PenSampleSteps(VisibleBrushDiameter(), Workspace.BrushDiameter);
+        if (GodotObject.IsInstanceValid(_host?.PreviewRig) && _host!.PreviewRig.HasGeneratedReplacementPaintParts)
+            steps = Math.Min(steps, MaxGeneratedReplacementPenSampleSteps);
         int sampleDiameter = PenSampleDiameter(VisibleBrushDiameter(), Workspace.BrushDiameter, steps);
         float spacing = steps <= 0 ? 0f : sampleRadius / steps;
         var hits = new List<PaintHit>((steps * 2 + 1) * (steps * 2 + 1));
