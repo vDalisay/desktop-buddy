@@ -87,6 +87,7 @@ internal static class Program
             },
             CreateFootReplacementFixture());
         GenerateLampFixture(repositoryRoot);
+        GenerateSofaFixture(repositoryRoot);
 
         AssetForgeRepositoryVerificationResult verification = RepositoryAssetForgeMaintenance.VerifyAll(repositoryRoot);
         if (!verification.Passed)
@@ -175,15 +176,40 @@ internal static class Program
                 Brightness = 1.1,
                 Range = 170,
                 EmitterX = .5,
-                EmitterY = .25,
+                EmitterY = EnvironmentTemplateSpace.LampEmitterY / (double)EnvironmentTemplateSpace.CanvasSize,
             },
         };
-        byte[] sourcePng = PngCodec.EncodeRgba8(CreateLampFixtureSource());
+        GenerateEnvironmentFixture(repositoryRoot, recipe, CreateLampFixtureSource());
+    }
+
+    private static void GenerateSofaFixture(string repositoryRoot)
+    {
+        AssetRecipe recipe = AssetRecipe.SofaDefaults() with
+        {
+            AssetId = "decoration.sofa.ci_soft",
+            DisplayName = "CI Soft Sofa",
+            PriceCredits = 185,
+            SortOrder = 9930,
+            LightingLevel = .34,
+            Geometry = AssetRecipe.SofaDefaults().Geometry with
+            {
+                GeometryResolution = 64,
+                RuntimeTextureResolution = 128,
+            },
+            Environment = AssetRecipe.SofaDefaults().Environment with { LogicalHeight = 105 },
+        };
+        GenerateEnvironmentFixture(repositoryRoot, recipe, CreateSofaFixtureSource());
+    }
+
+    private static void GenerateEnvironmentFixture(string repositoryRoot, AssetRecipe recipe, RgbaImage source)
+    {
+        byte[] sourcePng = PngCodec.EncodeRgba8(source);
         GeneratedAsset first = AssetForgeCompiler.Generate(sourcePng, recipe);
         GeneratedAsset second = AssetForgeCompiler.Generate(sourcePng, recipe);
         if (!first.GlbBytes.SequenceEqual(second.GlbBytes) || first.CanonicalAssetHash != second.CanonicalAssetHash)
             throw new InvalidOperationException($"{recipe.AssetId} regeneration was not deterministic.");
-        RepositoryEnvironmentExporter.Export(repositoryRoot, sourcePng, first, first.AlbedoPng);
+        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(first.AlbedoPng);
+        RepositoryEnvironmentExporter.Export(repositoryRoot, sourcePng, first, thumbnail);
 
         EnvironmentAssetVerificationResult verified = RepositoryEnvironmentVerifier.Verify(repositoryRoot, recipe.AssetId);
         if (!verified.Passed)
@@ -328,6 +354,19 @@ internal static class Program
             double ny = (y - 290) / 110.0;
             if (nx * nx + ny * ny <= 1.0) Set(pixels, x, y, 245, 184, 72);
         }
+        return new RgbaImage(size, size, pixels);
+    }
+
+    private static RgbaImage CreateSofaFixtureSource()
+    {
+        const int size = 1024;
+        byte[] pixels = new byte[size * size * 4];
+        Fill(pixels, 260, 570, 764, 830, 166, 111, 186);
+        Fill(pixels, 300, 330, 724, 625, 191, 142, 207);
+        Fill(pixels, 220, 520, 325, 820, 126, 83, 146);
+        Fill(pixels, 699, 520, 804, 820, 126, 83, 146);
+        Fill(pixels, 290, 820, 360, 880, 88, 58, 104);
+        Fill(pixels, 664, 820, 734, 880, 88, 58, 104);
         return new RgbaImage(size, size, pixels);
     }
 
