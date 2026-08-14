@@ -32,8 +32,13 @@ public partial class AssetForgeMain
         _lampCard.AddChild(_lampLocalLight);
         _lampBrightness = LampSpin(0, 16, .05, "Local light brightness", "Visual light energy.");
         _lampRange = LampSpin(1, 1024, 1, "Local light range", "Visual light radius in room units.");
-        _lampEmitterX = LampSpin(0, 1, .01, "Emitter X", "Normalized horizontal emitter position in the original 1024×1024 template.");
-        _lampEmitterY = LampSpin(0, 1, .01, "Emitter Y", "Normalized vertical emitter position in the original 1024×1024 template.");
+        _lampCard.AddChild(new Label
+        {
+            Text = "Emitter position — edit numerically or drag the glowing emitter in the frontal preview. Reset View before dragging if you have orbited the model.",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        });
+        _lampEmitterX = LampSpin(0, 1, .01, "Emitter X", "Normalized horizontal emitter position in the original fixed 1024×1024 template. You can also drag the preview emitter.");
+        _lampEmitterY = LampSpin(0, 1, .01, "Emitter Y", "Normalized vertical emitter position in the original fixed 1024×1024 template. You can also drag the preview emitter.");
         _lampLocalLight.Toggled += enabled =>
         {
             _lampBrightness.Editable = enabled;
@@ -42,6 +47,20 @@ public partial class AssetForgeMain
         };
         foreach (SpinBox field in new[] { _environmentHeight, _lampEmission, _lampBrightness, _lampRange, _lampEmitterX, _lampEmitterY })
             field.ValueChanged += _ => MarkLampOutputStale();
+
+        if (GodotObject.IsInstanceValid(_preview))
+        {
+            _preview.EnableLampEmitterInteraction();
+            _preview.LampEmitterDragged += OnLampEmitterDragged;
+        }
+    }
+
+    private void OnLampEmitterDragged(double x, double y)
+    {
+        if (_activeCategory != AssetCategory.Lamp) return;
+        _lampEmitterX.Value = x;
+        _lampEmitterY.Value = y;
+        MarkLampOutputStale();
     }
 
     private SpinBox LampSpin(double min, double max, double step, string label, string tooltip)
