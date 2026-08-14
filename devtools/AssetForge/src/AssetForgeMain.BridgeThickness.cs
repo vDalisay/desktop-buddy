@@ -5,6 +5,7 @@ namespace DesktopBuddy.AssetForge;
 
 public partial class AssetForgeMain
 {
+    private const int RecommendedReplacementRuntimeTriangleBudget = 20_000;
     private Label _bridgeThicknessLabel = null!;
     private SpinBox _bridgeThickness = null!;
     private bool _bridgeThicknessUiInstalled;
@@ -106,7 +107,13 @@ public partial class AssetForgeMain
             string bridge = recipe.Category == AssetCategory.Glasses
                 ? $" Bridge thickness {recipe.Geometry.BridgeThicknessBiasPixels:+0;-0;0}px."
                 : string.Empty;
-            SetStatus($"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} interior hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles.{bridge} Lighting {recipe.LightingLevel:0.00}. Foreground: {_generated.Foreground.Summary}.");
+            bool replacement = recipe.Category is AssetCategory.TorsoShape or AssetCategory.FootShape;
+            string performance = replacement && _generated.TriangleCount > RecommendedReplacementRuntimeTriangleBudget
+                ? $" ⚠ Runtime mesh is above the recommended {RecommendedReplacementRuntimeTriangleBudget:N0}-triangle Buddy-part budget; lower Runtime mesh resolution in Advanced before export if painting or Studio interaction is slow."
+                : replacement
+                    ? $" Runtime mesh is within the recommended {RecommendedReplacementRuntimeTriangleBudget:N0}-triangle Buddy-part budget."
+                    : string.Empty;
+            SetStatus($"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} interior hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles.{bridge} Lighting {recipe.LightingLevel:0.00}. Foreground: {_generated.Foreground.Summary}.{performance}");
             _hashes.Text = $"Input {_generated.InputHash[..12]}  Recipe {_generated.RecipeHash[..12]}  Geometry {_generated.GeometryHash[..12]}  Asset {_generated.CanonicalAssetHash[..12]}  ✓ deterministic output";
         }
         catch (Exception exception)
