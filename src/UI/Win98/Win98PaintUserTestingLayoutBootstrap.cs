@@ -1,3 +1,4 @@
+using System.Linq;
 using DesktopBuddy.CharacterEditor;
 using Godot;
 
@@ -15,6 +16,7 @@ public partial class Win98PaintUserTestingLayoutBootstrap : Node
     private PanelContainer? _palettePanel;
     private Win98PinnablePanel? _palettePin;
     private PanelContainer? _viewportControls;
+    private bool _wasPaintActive;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
 
@@ -27,10 +29,21 @@ public partial class Win98PaintUserTestingLayoutBootstrap : Node
         bool paintActive = _canvas!.IsVisibleInTree();
         if (!paintActive)
         {
+            _wasPaintActive = false;
             _palettePin?.Dock();
             if (GodotObject.IsInstanceValid(_viewportControls))
                 _viewportControls!.Visible = false;
             return;
+        }
+
+        if (!_wasPaintActive)
+        {
+            _wasPaintActive = true;
+            CharacterEditorHost? host = GetTree().Root
+                .FindChildren("*", nameof(CharacterEditorHost), true, false)
+                .OfType<CharacterEditorHost>()
+                .FirstOrDefault();
+            host?.ResetPreviewRotationToFront();
         }
 
         EnsureViewportControls();

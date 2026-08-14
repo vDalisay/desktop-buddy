@@ -245,6 +245,28 @@ public sealed class BuddyStudioOwnershipPreviewScenario : IScenario
                 purchaseEquipSaveRestart,
                 $"bought={boughtHair.Completed} equipped={equippedHair.Completed} saved={savedHair.Completed} owned={restartedEconomy.IsUnlocked(ContentIds.CosmeticHairShortSweep)}"));
 
+            // "Use Character" is stronger than closing/saving the editor: it explicitly asks to
+            // activate what is currently visible. An owned preview must therefore be committed
+            // before the document is persisted and queued, otherwise a generated/owned torso can
+            // disappear while its paint payload remains attached to the character.
+            CharacterEditorActionResult ownedGlassesPreview = restartedSession.PreviewCosmetic(
+                CharacterFeatureSlot.Glasses,
+                CharacterFeatureIds.GlassesWorkClassic);
+            CharacterEditorActionResult usedVisibleCharacter = await restartedSession.UseCharacterAsync();
+            CharacterLoadResult usedReload = await context.Store.LoadAsync(baselineId, CancellationToken.None);
+            bool useCharacterCommitsOwnedPreview =
+                ownedGlassesPreview.Completed && usedVisibleCharacter.Completed &&
+                !restartedSession.HasOwnedPreviews &&
+                CharacterDocumentEditor.ReadFeatureId(
+                    restartedSession.WorkingDocument!, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesWorkClassic &&
+                usedReload.IsSuccess && usedReload.Document is not null &&
+                CharacterDocumentEditor.ReadFeatureId(
+                    usedReload.Document, CharacterFeatureSlot.Glasses) == CharacterFeatureIds.GlassesWorkClassic;
+            checks.Add(new StartupCheck(
+                "bs7_use_character_commits_visible_owned_preview",
+                useCharacterCommitsOwnedPreview,
+                $"preview={ownedGlassesPreview.Completed} use={usedVisibleCharacter.Completed} persisted={usedReload.Document is not null}"));
+
             var builtInSession = new CharacterEditorSession(
                 context.Store,
                 library,

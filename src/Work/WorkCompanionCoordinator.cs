@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.CharacterEditor;
+using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Persistence;
@@ -338,17 +339,25 @@ public partial class WorkCompanionCoordinator : Node
 
     private async Task<CompiledCharacterAppearance?> ResolveAppearanceAsync(CancellationToken token)
     {
+        BuddyVisualRigView liveRig = _sandbox.VisualPresenter.RigView;
+        CompiledCharacterAppearance? liveAppearance = liveRig.ActiveAppearance;
         Guid? activeId = _context.CharacterSelection?.ActiveCharacterId;
+
+        // CharacterId alone is not a freshness guarantee: Studio can save/equip another cosmetic
+        // on the same character while the live rig is still waiting for its queued activation.
+        // Work Mode must therefore compile the persisted active character every time it enters.
         if (!activeId.HasValue || _context.Characters is null)
-            return _sandbox.VisualPresenter.RigView.ActiveAppearance;
+            return liveAppearance;
 
         CharacterLoadResult loaded = await _context.Characters.LoadAsync(activeId.Value, token);
         if (loaded.Document is null)
-            return _sandbox.VisualPresenter.RigView.ActiveAppearance;
+            return liveAppearance;
 
         CharacterNormalizationResult normalized = CharacterDocumentNormalizer.Normalize(loaded.Document);
-        CharacterCompileResult compiled = CharacterCompiler.Compile(normalized.Document, CharacterFeatureCatalog.Shipped);
-        return compiled.Appearance ?? _sandbox.VisualPresenter.RigView.ActiveAppearance;
+        CharacterCompileResult compiled = CharacterCompiler.Compile(
+            normalized.Document,
+            BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
+        return compiled.Appearance ?? liveAppearance;
     }
 
     private void HideNormalPresentation()

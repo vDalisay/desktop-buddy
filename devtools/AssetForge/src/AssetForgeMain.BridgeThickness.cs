@@ -5,14 +5,18 @@ namespace DesktopBuddy.AssetForge;
 
 public partial class AssetForgeMain
 {
+    private const int RecommendedReplacementRuntimeTriangleBudget = 20_000;
     private Label _bridgeThicknessLabel = null!;
     private SpinBox _bridgeThickness = null!;
     private bool _bridgeThicknessUiInstalled;
 
     public override void _Process(double delta)
     {
-        if (_bridgeThicknessUiInstalled || !GodotObject.IsInstanceValid(_frameThickness)) return;
-        InstallBridgeThicknessUi();
+        if (!_bridgeThicknessUiInstalled && GodotObject.IsInstanceValid(_frameThickness))
+            InstallBridgeThicknessUi();
+
+        EnsureModernWorkspaceUi();
+        EnsureCategoryWorkflowUi();
     }
 
     private void InstallBridgeThicknessUi()
@@ -27,7 +31,7 @@ public partial class AssetForgeMain
             Step = 1,
             AllowGreater = false,
             AllowLesser = false,
-            TooltipText = "Fine-tunes only the authored nose bridge. 0 preserves the drawing exactly; positive values thicken it and negative values thin it. Lens frames and temples are unchanged.",
+            TooltipText = "Fine-tunes only the authored glasses nose bridge. 0 preserves the drawing exactly; positive values thicken it and negative values thin it. Lens frames and temples are unchanged.",
         };
         _bridgeThickness.ValueChanged += _ =>
         {
@@ -62,13 +66,16 @@ public partial class AssetForgeMain
     private void RefreshBridgeThicknessVisibility()
     {
         if (!GodotObject.IsInstanceValid(_bridgeThicknessLabel) || !GodotObject.IsInstanceValid(_bridgeThickness)) return;
-        bool visible = _activePresetVersion >= 2;
+        bool visible = _activeCategory == AssetCategory.Glasses && _activePresetVersion >= 2;
         _bridgeThicknessLabel.Visible = visible;
         _bridgeThickness.Visible = visible;
     }
 
     private AssetRecipe ReadRecipeWithBridgeThickness()
     {
+        if (_activeCategory != AssetCategory.Glasses)
+            return ReadCategoryRecipeFromUi();
+
         AssetRecipe recipe = ReadRecipeFromUi();
         return recipe with
         {
@@ -87,14 +94,26 @@ public partial class AssetForgeMain
                 throw new InvalidOperationException("Choose a source PNG first.");
 
             AssetRecipe recipe = ReadRecipeWithBridgeThickness();
-            _generated = AssetForgeGenerator.Generate(File.ReadAllBytes(_sourcePath), recipe);
+            _generated = AssetForgeCompiler.Generate(File.ReadAllBytes(_sourcePath), recipe);
             _preview.ShowGenerated(_generated, _sourcePath);
             _export.Disabled = false;
             MaskDiagnostics d = _generated.Diagnostics;
-            string generation = _generated.UsedGlassesTemplate
-                ? $"glasses@{recipe.PresetVersion} rounded template"
-                : "silhouette extrusion fallback";
-            SetStatus($"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} interior hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles. Bridge thickness {recipe.Geometry.BridgeThicknessBiasPixels:+0;-0;0}px. Lighting {recipe.LightingLevel:0.00}. Foreground: {_generated.Foreground.Summary}.");
+            string generation = recipe.Category switch
+            {
+                AssetCategory.Glasses when _generated.UsedGlassesTemplate => $"glasses@{recipe.PresetVersion} rounded template",
+                AssetCategory.Glasses => "silhouette extrusion fallback",
+                _ => $"{recipe.PresetId}@{recipe.PresetVersion} literal replacement template",
+            };
+            string bridge = recipe.Category == AssetCategory.Glasses
+                ? $" Bridge thickness {recipe.Geometry.BridgeThicknessBiasPixels:+0;-0;0}px."
+                : string.Empty;
+            bool replacement = recipe.Category is AssetCategory.TorsoShape or AssetCategory.FootShape;
+            string performance = replacement && _generated.TriangleCount > RecommendedReplacementRuntimeTriangleBudget
+                ? $" ⚠ Runtime mesh is above the recommended {RecommendedReplacementRuntimeTriangleBudget:N0}-triangle Buddy-part budget; lower Runtime mesh resolution in Advanced before export if painting or Studio interaction is slow."
+                : replacement
+                    ? $" Runtime mesh is within the recommended {RecommendedReplacementRuntimeTriangleBudget:N0}-triangle Buddy-part budget."
+                    : string.Empty;
+            SetStatus($"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} interior hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles.{bridge} Lighting {recipe.LightingLevel:0.00}. Foreground: {_generated.Foreground.Summary}.{performance}");
             _hashes.Text = $"Input {_generated.InputHash[..12]}  Recipe {_generated.RecipeHash[..12]}  Geometry {_generated.GeometryHash[..12]}  Asset {_generated.CanonicalAssetHash[..12]}  ✓ deterministic output";
         }
         catch (Exception exception)
@@ -107,16 +126,21 @@ public partial class AssetForgeMain
 
     private void OpenRecipeWithBridgeThickness(string path)
     {
-        OpenRecipe(path);
         try
         {
             AssetRecipe recipe = RecipeCodec.Read(File.ReadAllText(path));
-            _bridgeThickness.Value = recipe.Geometry.BridgeThicknessBiasPixels;
+            SetActiveCategoryFromRecipe(recipe);
+            OpenRecipe(path);
+            if (GodotObject.IsInstanceValid(_bridgeThickness))
+                _bridgeThickness.Value = recipe.Category == AssetCategory.Glasses
+                    ? recipe.Geometry.BridgeThicknessBiasPixels
+                    : 0;
             RefreshBridgeThicknessVisibility();
+            ConfigureActiveCategoryUi();
         }
-        catch
+        catch (Exception exception)
         {
-            // OpenRecipe already reports the user-facing parse/load error.
+            SetStatus("Open recipe failed: " + exception.Message);
         }
     }
 
@@ -125,8 +149,9 @@ public partial class AssetForgeMain
         try
         {
             if (!path.EndsWith(".json", StringComparison.OrdinalIgnoreCase)) path += ".json";
-            File.WriteAllText(path, RecipeCodec.WriteCanonical(ReadRecipeWithBridgeThickness()));
-            SetStatus($"glasses@{_activePresetVersion} recipe saved: {path}");
+            AssetRecipe recipe = ReadRecipeWithBridgeThickness();
+            File.WriteAllText(path, RecipeCodec.WriteCanonical(recipe));
+            SetStatus($"{recipe.PresetId}@{recipe.PresetVersion} recipe saved: {path}");
         }
         catch (Exception exception)
         {

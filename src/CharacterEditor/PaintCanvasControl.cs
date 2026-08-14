@@ -44,6 +44,7 @@ public partial class PaintCanvasControl : Control
     private const float ScreenStepPixels = 1.5f;
     private const int MaxScreenSteps = 512;
     private const int MaxPenSampleSteps = 32;
+    private const int MaxGeneratedReplacementPenSampleSteps = 8;
     private const double MinimumCurveBaselinePixels = 2.0;
     private const double SecondCurveBendSensitivity = 0.35;
 
@@ -330,6 +331,8 @@ public partial class PaintCanvasControl : Control
         float texturePixelSize = VisibleBrushDiameter() / Math.Max(1, Workspace.BrushDiameter);
         float sampleRadius = Math.Max(0f, radius - (texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f));
         int steps = PenSampleSteps(VisibleBrushDiameter(), Workspace.BrushDiameter);
+        if (GodotObject.IsInstanceValid(_host?.PreviewRig) && _host!.PreviewRig.HasGeneratedReplacementPaintParts)
+            steps = Math.Min(steps, MaxGeneratedReplacementPenSampleSteps);
         int sampleDiameter = PenSampleDiameter(VisibleBrushDiameter(), Workspace.BrushDiameter, steps);
         float spacing = steps <= 0 ? 0f : sampleRadius / steps;
         var hits = new List<PaintHit>((steps * 2 + 1) * (steps * 2 + 1));
@@ -640,10 +643,29 @@ public partial class PaintCanvasControl : Control
         else
             hit = TryMapRotated(point, yaw, out PaintHit rotated) ? rotated : null;
 
+        bool generatedReplacementHit = false;
+        if (GodotObject.IsInstanceValid(_host?.PreviewRig) && _host!.PreviewRig.IsInitialized)
+        {
+            // A replaced part must not keep accepting paint through its now-hidden legacy
+            // sphere/capsule. Ask the visible generated triangles for the exact UV instead.
+            if (hit is PaintHit legacy && _host.PreviewRig.IsGeneratedReplacementPaintPart(legacy.Part))
+                hit = null;
+
+            var worldPoint = new Vector2((float)point.X, (float)point.Y);
+            if (_host.PreviewRig.TryMapGeneratedReplacementPaintHit(worldPoint, out PaintHit generated) &&
+                (hit is null || generated.Depth > hit.Value.Depth))
+            {
+                hit = generated;
+                generatedReplacementHit = true;
+            }
+        }
+
         if (hit is null && ExpandedLimbPose && TryMapExpandedConnector(point, yaw, out PaintHit connector))
             hit = connector;
 
-        if (hit is PaintHit limb && PaintUvRegion.IsLimb(limb.Part) && !limb.IsConnector)
+        // Generated foot hits already map their mesh UV into the limb-end half of the persistent
+        // foot paint atlas. Legacy sphere hits still require the historical lane transform here.
+        if (!generatedReplacementHit && hit is PaintHit limb && PaintUvRegion.IsLimb(limb.Part) && !limb.IsConnector)
             hit = limb with { Uv = PaintUvRegion.LimbEnd.MapLocal(limb.Uv) };
 
         return hit is PaintHit valid && IsPartVisible(valid.Part) &&

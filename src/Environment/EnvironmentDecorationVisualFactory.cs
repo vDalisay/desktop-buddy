@@ -1,12 +1,14 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Godot;
 
 namespace DesktopBuddy.Environment;
 
 /// <summary>
-/// Clean-room launch visuals for room decorations. The catalogue stores only trusted semantic
-/// visual kinds; both the room presenter and editor thumbnails consume this same bounded geometry
-/// so a tile, placement ghost and final decoration always describe the same object.
+/// Visual-only factory for trusted Environment definitions. Existing launch content stays on the
+/// bounded semantic/procedural path. Asset Forge content uses imported project-owned GLB/texture
+/// resources and is rejected if it contains scripts, physics, collision or other gameplay nodes.
 /// </summary>
 public static class EnvironmentDecorationVisualFactory
 {
@@ -17,6 +19,12 @@ public static class EnvironmentDecorationVisualFactory
     {
         ArgumentNullException.ThrowIfNull(root);
         ArgumentNullException.ThrowIfNull(definition);
+        if (definition.VisualSource == EnvironmentDecorationVisualSource.GeneratedMesh)
+        {
+            PopulateGenerated3D(root, definition);
+            return;
+        }
+
         Vector2 size = sizeOverride ?? definition.VisualSize;
         int index = 0;
         foreach (Part part in Parts(definition.VisualKind))
@@ -43,9 +51,134 @@ public static class EnvironmentDecorationVisualFactory
         }
     }
 
+    private static void PopulateGenerated3D(Node3D root, EnvironmentDecorationResource definition)
+    {
+        if (!GodotObject.IsInstanceValid(definition.GeneratedMesh) ||
+            !GodotObject.IsInstanceValid(definition.GeneratedAlbedo))
+            throw new InvalidOperationException($"Generated Environment definition '{definition.DefinitionId}' is missing imported visual resources.");
+
+        Node instance = definition.GeneratedMesh!.Instantiate();
+        if (instance is not Node3D generated)
+        {
+            instance.QueueFree();
+            throw new InvalidOperationException($"Generated Environment definition '{definition.DefinitionId}' must instantiate a Node3D root.");
+        }
+        try
+        {
+            ValidateGeneratedVisualTree(generated, definition.DefinitionId);
+            List<MeshInstance3D> meshes = GeneratedMeshes(generated);
+            if (meshes.Count != 1)
+                throw new InvalidOperationException($"Generated Environment definition '{definition.DefinitionId}' must contain exactly one authored mesh; found {meshes.Count}.");
+
+            generated.Name = "GeneratedDecorationMesh";
+            generated.Scale = Vector3.One * definition.DefaultScale;
+            root.AddChild(generated);
+
+            var material = new StandardMaterial3D
+            {
+                ResourceName = $"GeneratedEnvironment_{definition.DefinitionId}",
+                AlbedoColor = Colors.White,
+                AlbedoTexture = definition.GeneratedAlbedo,
+                AlbedoTextureForceSrgb = true,
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
+                DiffuseMode = BaseMaterial3D.DiffuseModeEnum.Burley,
+                SpecularMode = BaseMaterial3D.SpecularModeEnum.SchlickGgx,
+                Roughness = .82f,
+                CullMode = BaseMaterial3D.CullModeEnum.Back,
+            };
+            meshes[0].MaterialOverride = material;
+            meshes[0].CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
+
+            if (GodotObject.IsInstanceValid(definition.LightProfile) && definition.LightProfile!.Enabled)
+                AddLampPresentation(root, definition, material);
+        }
+        catch
+        {
+            if (GodotObject.IsInstanceValid(generated) && generated.GetParent() is null)
+                generated.QueueFree();
+            throw;
+        }
+    }
+
+    private static void AddLampPresentation(
+        Node3D root,
+        EnvironmentDecorationResource definition,
+        StandardMaterial3D bodyMaterial)
+    {
+        DecorationLightProfileResource profile = definition.LightProfile!;
+        Color lightColor = profile.Color;
+        Vector2 size = definition.VisualSize * definition.DefaultScale;
+        Vector3 emitter = new(
+            (profile.EmitterPosition.X - .5f) * size.X,
+            -(1f - profile.EmitterPosition.Y) * size.Y,
+            MathF.Max(1f, MathF.Min(size.X, size.Y) * .08f));
+
+        // Keep emissive bulb presentation separate from the authored body texture so the complete
+        // lamp does not glow uniformly when only the bulb/source region should read as bright.
+        float markerRadius = Math.Clamp(MathF.Min(size.X, size.Y) * .055f, 2f, 16f);
+        var glowMaterial = new StandardMaterial3D
+        {
+            ResourceName = $"GeneratedEnvironmentLampGlow_{definition.DefinitionId}",
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = lightColor,
+            EmissionEnabled = true,
+            Emission = lightColor,
+            EmissionEnergyMultiplier = profile.EmissionStrength,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+        };
+        root.AddChild(new MeshInstance3D
+        {
+            Name = "GeneratedLampEmitterVisual",
+            Mesh = new SphereMesh { Radius = markerRadius, Height = markerRadius * 2f },
+            Position = emitter,
+            MaterialOverride = glowMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+        });
+
+        if (profile.LightEnabled)
+        {
+            root.AddChild(new OmniLight3D
+            {
+                Name = "GeneratedLampLocalLight",
+                Position = emitter,
+                LightColor = lightColor,
+                LightEnergy = profile.Brightness,
+                OmniRange = profile.Range,
+                ShadowEnabled = false,
+            });
+        }
+
+        _ = bodyMaterial;
+    }
+
+    private static void ValidateGeneratedVisualTree(Node root, string id)
+    {
+        if (root.GetScript().Obj is not null)
+            throw new InvalidOperationException($"Generated Environment visual '{id}' may not contain scripts.");
+        if (root is CollisionObject2D or CollisionObject3D or CollisionShape2D or CollisionShape3D or
+            CollisionPolygon2D or CollisionPolygon3D or Joint2D or Joint3D or PhysicsBody2D or PhysicsBody3D)
+            throw new InvalidOperationException($"Generated Environment visual '{id}' may not contain physics or collision nodes.");
+        foreach (Node child in root.GetChildren()) ValidateGeneratedVisualTree(child, id);
+    }
+
+    private static List<MeshInstance3D> GeneratedMeshes(Node3D root)
+    {
+        var meshes = new List<MeshInstance3D>();
+        if (root is MeshInstance3D rootMesh) meshes.Add(rootMesh);
+        meshes.AddRange(root.FindChildren("*", nameof(MeshInstance3D), true, false).OfType<MeshInstance3D>());
+        return meshes;
+    }
+
     public static Texture2D CreatePreview(EnvironmentDecorationResource definition, int pixels = 48)
     {
         ArgumentNullException.ThrowIfNull(definition);
+        if (definition.VisualSource == EnvironmentDecorationVisualSource.GeneratedMesh)
+        {
+            if (!GodotObject.IsInstanceValid(definition.Thumbnail))
+                throw new InvalidOperationException($"Generated Environment definition '{definition.DefinitionId}' has no trusted thumbnail.");
+            return definition.Thumbnail!;
+        }
+
         pixels = Math.Clamp(pixels, 16, 256);
         Image image = Image.CreateEmpty(pixels, pixels, false, Image.Format.Rgba8);
         image.Fill(Colors.Transparent);

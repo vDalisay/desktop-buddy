@@ -3,9 +3,9 @@ using System.Globalization;
 namespace DesktopBuddy.AssetForge.Core;
 
 /// <summary>
-/// Persists the recipe-owned generated-asset lighting value into Asset Forge's typed cosmetic
-/// resource after the transactional exporter has produced the package. This deliberately edits
-/// only the exact generated cosmetic definition for the supplied stable feature ID.
+/// Persists recipe-owned generated-cosmetic metadata after the transactional exporter has produced
+/// the package. This deliberately edits only the exact generated cosmetic definition for the
+/// supplied stable feature ID.
 /// </summary>
 public static class GeneratedCosmeticLightingPersistence
 {
@@ -21,7 +21,7 @@ public static class GeneratedCosmeticLightingPersistence
         string path = Path.GetFullPath(Path.Combine(generatedRoot, recipe.FeatureId + ".tres"));
         string requiredPrefix = generatedRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         if (!path.StartsWith(requiredPrefix, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Generated lighting metadata path escaped the Asset Forge-owned cosmetic directory.");
+            throw new InvalidOperationException("Generated metadata path escaped the Asset Forge-owned cosmetic directory.");
         if (!File.Exists(path))
             throw new FileNotFoundException("Generated cosmetic definition was not produced by Asset Forge.", path);
 
@@ -50,6 +50,7 @@ public static class GeneratedCosmeticLightingPersistence
         }
 
         File.WriteAllText(path, string.Join("\n", lines));
+        GeneratedCosmeticCategoryPersistence.Apply(root, recipe);
         return path;
     }
 

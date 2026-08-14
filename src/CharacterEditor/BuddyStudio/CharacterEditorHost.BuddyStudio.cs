@@ -61,6 +61,7 @@ public partial class CharacterEditorHost
         if (GodotObject.IsInstanceValid(_legacyCharacterEditor))
             _legacyCharacterEditor!.Visible = false;
         _unsavedPanel.Visible = false;
+        ResetPreviewRotationToFront();
         _buddyStudio!.AttachPreview();
         _buddyStudio!.Visible = true;
     }
