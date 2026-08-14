@@ -24,6 +24,10 @@ public partial class BuddyVisualRigView
         {
             EnsurePaintAtlasSamplingGuard();
             RefreshCharacterCompositors();
+            // Generated replacement shells are normalized meshes scaled by the trusted part radius.
+            // Keep outline/paint thickness in world units and bind the existing paint surfaces before
+            // connector fitting inspects the final visible replacement geometry.
+            RefreshGeneratedReplacementVisuals();
             // Pose remains authoritative. This post-pose visual pass only trims/extends connector
             // meshes to the actual rendered bounds of active torso/foot replacements.
             RefreshReplacementConnectorAttachment();
