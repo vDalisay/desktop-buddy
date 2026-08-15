@@ -7,7 +7,10 @@ public sealed record ExportResult(
     string AssetDirectory,
     string CosmeticDefinitionPath,
     string SaleDefinitionPath,
-    string AuthoringDirectory);
+    string AuthoringDirectory)
+{
+    public string CataloguePath => SaleDefinitionPath;
+}
 
 /// <summary>
 /// Developer-only transactional exporter. It can write only the Asset Forge-owned roots and

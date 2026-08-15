@@ -13,6 +13,11 @@ public static class EnvironmentTemplateSpace
     public const int LampShadeBottom = 430;
     public const int LampEmitterX = 512;
     public const int LampEmitterY = 300;
+    public const int SofaSeatY = 650;
+    public const int SofaSeatTop = 560;
+    public const int SofaSeatBottom = 740;
+    public const int SofaBackTop = 300;
+    public const int SofaBackBottom = 590;
 }
 
 public static class EnvironmentTemplateGenerator
@@ -21,12 +26,7 @@ public static class EnvironmentTemplateGenerator
     {
         int size = EnvironmentTemplateSpace.CanvasSize;
         byte[] pixels = new byte[size * size * 4];
-        DrawRect(pixels, size,
-            EnvironmentTemplateSpace.SafeLeft, EnvironmentTemplateSpace.SafeTop,
-            EnvironmentTemplateSpace.SafeRight, EnvironmentTemplateSpace.SafeBottom,
-            2, 84, 112, 128, 58);
-        DashedVertical(pixels, size, EnvironmentTemplateSpace.CenterX, 70, 930, 12, 2, 56, 124, 168, 90);
-        DashedHorizontal(pixels, size, EnvironmentTemplateSpace.FloorY, 100, 924, 12, 2, 66, 116, 72, 120);
+        DrawCommonFloorTemplate(pixels, size);
 
         // Suggested floor/base contact zone.
         DrawRect(pixels, size, 390, 820, 634, EnvironmentTemplateSpace.FloorY, 3, 48, 128, 72, 90);
@@ -36,12 +36,44 @@ public static class EnvironmentTemplateGenerator
             54, 3, 238, 173, 55, 125);
         DrawCross(pixels, size, EnvironmentTemplateSpace.LampEmitterX, EnvironmentTemplateSpace.LampEmitterY,
             18, 2, 238, 173, 55, 145);
+        DrawBuddyScaleReference(pixels, size);
+        return PngCodec.EncodeRgba8(new RgbaImage(size, size, pixels));
+    }
 
+    public static byte[] CreateSofaPng()
+    {
+        int size = EnvironmentTemplateSpace.CanvasSize;
+        byte[] pixels = new byte[size * size * 4];
+        DrawCommonFloorTemplate(pixels, size);
+
+        // Broad contact zone communicates that both feet/base edges should visually meet the floor.
+        DrawRect(pixels, size, 245, 820, 779, EnvironmentTemplateSpace.FloorY, 3, 48, 128, 72, 90);
+        // Seat-height line and seat envelope are distinct so the developer can read the intended
+        // sitting height even when cushions deliberately extend above/below it.
+        DashedHorizontal(pixels, size, EnvironmentTemplateSpace.SofaSeatY, 220, 804, 14, 2, 196, 126, 52, 120);
+        DrawRect(pixels, size, 230, EnvironmentTemplateSpace.SofaSeatTop, 794, EnvironmentTemplateSpace.SofaSeatBottom, 3, 196, 126, 52, 80);
+        // Back-rest envelope.
+        DrawRect(pixels, size, 260, EnvironmentTemplateSpace.SofaBackTop, 764, EnvironmentTemplateSpace.SofaBackBottom, 3, 98, 92, 184, 82);
+        DrawBuddyScaleReference(pixels, size);
+        return PngCodec.EncodeRgba8(new RgbaImage(size, size, pixels));
+    }
+
+    private static void DrawCommonFloorTemplate(byte[] pixels, int size)
+    {
+        DrawRect(pixels, size,
+            EnvironmentTemplateSpace.SafeLeft, EnvironmentTemplateSpace.SafeTop,
+            EnvironmentTemplateSpace.SafeRight, EnvironmentTemplateSpace.SafeBottom,
+            2, 84, 112, 128, 58);
+        DashedVertical(pixels, size, EnvironmentTemplateSpace.CenterX, 70, 930, 12, 2, 56, 124, 168, 90);
+        DashedHorizontal(pixels, size, EnvironmentTemplateSpace.FloorY, 100, 924, 12, 2, 66, 116, 72, 120);
+    }
+
+    private static void DrawBuddyScaleReference(byte[] pixels, int size)
+    {
         // Small translucent Buddy scale reference at lower-left. It is guide-only and must be
         // hidden/removed before importing clean source art.
         DrawReferenceDisc(pixels, size, 250, 700, 70, 104, 184, 235, 30);
         DrawReferenceDisc(pixels, size, 250, 805, 88, 104, 184, 235, 24);
-        return PngCodec.EncodeRgba8(new RgbaImage(size, size, pixels));
     }
 
     private static void DrawReferenceDisc(byte[] pixels, int size, int cx, int cy, int radius, byte r, byte g, byte b, byte a)

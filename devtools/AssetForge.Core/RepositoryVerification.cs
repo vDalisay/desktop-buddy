@@ -163,8 +163,19 @@ public static class RepositoryAssetVerifier
     private static void ValidateThumbnail(string path, List<string> diagnostics)
     {
         if (!File.Exists(path)) { diagnostics.Add("missing generated thumbnail.png"); return; }
-        try { _ = PngCodec.DecodeRgba8(File.ReadAllBytes(path)); }
-        catch (Exception exception) { diagnostics.Add("generated thumbnail.png is invalid: " + exception.Message); }
+        byte[] bytes = File.ReadAllBytes(path);
+        if (!AssetThumbnailCache.IsCanonical(bytes))
+        {
+            try
+            {
+                RgbaImage image = PngCodec.DecodeRgba8(bytes);
+                diagnostics.Add($"generated thumbnail.png must be {EnvironmentThumbnailGenerator.OutputSize}x{EnvironmentThumbnailGenerator.OutputSize}; found {image.Width}x{image.Height}");
+            }
+            catch (Exception exception)
+            {
+                diagnostics.Add("generated thumbnail.png is invalid: " + exception.Message);
+            }
+        }
     }
 
     private static void VerifyTextFile(string path, IReadOnlyList<string> required, string label, List<string> diagnostics)
@@ -244,7 +255,22 @@ public static class RepositoryAssetRegenerator
         byte[] source = File.ReadAllBytes(sourcePath);
         GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
         string thumbnailPath = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId, "thumbnail.png");
-        byte[] thumbnail = File.Exists(thumbnailPath) ? File.ReadAllBytes(thumbnailPath) : generated.AlbedoPng;
+        byte[] thumbnail;
+        if (File.Exists(thumbnailPath) && AssetThumbnailCache.IsCanonical(File.ReadAllBytes(thumbnailPath)))
+        {
+            // Preserve an existing rendered Buddy composition exactly when it already satisfies the
+            // AF-14 contract. Regenerate is not allowed to silently replace a good authored camera.
+            thumbnail = File.ReadAllBytes(thumbnailPath);
+        }
+        else
+        {
+            // Headless maintenance cannot reproduce the Godot Buddy-reference camera. Its repair
+            // fallback is therefore the same deterministic, item-only 256 square used by Environment
+            // content; the next interactive Export can replace it with the cached rendered composition.
+            thumbnail = AssetThumbnailCache.GetOrCreate(
+                generated,
+                () => EnvironmentThumbnailGenerator.Create(generated.AlbedoPng));
+        }
         if (recipe.Category == AssetCategory.Glasses)
             RepositoryExporter.ExportGlasses(root, source, generated, thumbnail);
         else

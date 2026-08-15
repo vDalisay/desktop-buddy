@@ -8,6 +8,7 @@ on:
   pull_request:
     branches:
       - asset-forge
+      - main
 
 env:
   GODOT_VERSION: 4.6.1-stable
@@ -88,6 +89,9 @@ jobs:
 
       - name: Exercise generated Lamp catalogue, transaction, render, and stable-ID persistence
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_lamp --seed=1
+
+      - name: Exercise generated Sofa catalogue, per-instance purchase, render, and stable-ID persistence
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_sofa --seed=1
 
       - name: Import standalone Asset Forge project
         run: |

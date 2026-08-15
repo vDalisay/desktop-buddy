@@ -9,7 +9,7 @@ echo [asset_forge] Building deterministic Core tests...
 call dotnet test "devtools\AssetForge.Core.Tests\DesktopBuddy.AssetForge.Core.Tests.csproj" -c Debug
 if errorlevel 1 goto :fail
 echo [asset_forge] Building Asset Forge executable...
-call dotnet build "devtools\AssetForge\DesktopBuddy.AssetForge.csproj" -c Debug
+call dotnet build "devtools\AssetForge\DesktopBuddy.AssetForge.csproj" -c Debug -m:1
 if errorlevel 1 goto :fail
 popd
 exit /b 0

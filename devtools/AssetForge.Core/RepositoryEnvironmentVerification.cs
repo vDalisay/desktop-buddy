@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 
 namespace DesktopBuddy.AssetForge.Core;
 
@@ -88,10 +89,11 @@ public static class RepositoryEnvironmentVerifier
             EnvironmentGeneratedBounds bounds = EnvironmentGeneratedBounds.Analyze(expected.Mesh);
             string definition = Path.Combine(root, "data", "environment", "generated", recipe.AssetId + ".tres");
             string number(double value) => value.ToString("0.######", CultureInfo.InvariantCulture);
-            VerifyTextFile(definition,
-            [
+            var required = new List<string>
+            {
                 $"DefinitionId = \"{Escape(recipe.AssetId)}\"",
                 $"DisplayNameKey = \"{Escape(recipe.DisplayName)}\"",
+                $"Category = {DecorationCategory(recipe.Category)}",
                 $"PriceCredits = {recipe.PriceCredits}",
                 "VisualSource = 1",
                 $"VisualSize = Vector2({number(bounds.Width)}, {number(bounds.Height)})",
@@ -100,12 +102,34 @@ public static class RepositoryEnvironmentVerifier
                 $"res://assets/generated/environment/{recipe.AssetId}/mesh.glb",
                 $"res://assets/generated/environment/{recipe.AssetId}/albedo.png",
                 $"res://assets/generated/environment/{recipe.AssetId}/thumbnail.png",
-                $"EmissionStrength = {number(recipe.Light.EmissionStrength)}",
-                $"LightEnabled = {(recipe.Light.LightEnabled ? "true" : "false")}",
-                $"Brightness = {number(recipe.Light.Brightness)}",
-                $"Range = {number(recipe.Light.Range)}",
-                $"EmitterPosition = Vector2({number(recipe.Light.EmitterX)}, {number(recipe.Light.EmitterY)})",
-            ], "generated Environment definition", diagnostics);
+            };
+
+            bool hasLightProfile = recipe.Category == AssetCategory.Lamp && recipe.Light.Enabled;
+            if (hasLightProfile)
+            {
+                required.Add($"EmissionStrength = {number(recipe.Light.EmissionStrength)}");
+                required.Add($"LightEnabled = {(recipe.Light.LightEnabled ? "true" : "false")}");
+                required.Add($"Brightness = {number(recipe.Light.Brightness)}");
+                required.Add($"Range = {number(recipe.Light.Range)}");
+                required.Add($"EmitterPosition = Vector2({number(recipe.Light.EmitterX)}, {number(recipe.Light.EmitterY)})");
+                required.Add("LightProfile = SubResource(\"LightProfile\")");
+                if (EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe))
+                {
+                    Vector2 local = EnvironmentTemplateMapping.SourcePixelToWorld(
+                        recipe.Light.EmitterX * EnvironmentTemplateSpace.CanvasSize,
+                        recipe.Light.EmitterY * EnvironmentTemplateSpace.CanvasSize,
+                        recipe);
+                    required.Add("UsesLocalEmitterPosition = true");
+                    required.Add($"LocalEmitterPosition = Vector2({number(local.X)}, {number(local.Y)})");
+                }
+            }
+
+            VerifyTextFile(definition, required, "generated Environment definition", diagnostics);
+            if (!hasLightProfile)
+                VerifyTextFileMissing(definition,
+                    ["LightProfile =", "DecorationLightProfileResource.cs", "GeneratedLamp"],
+                    "non-lighting Environment definition",
+                    diagnostics);
 
             VerifyTextFile(
                 Path.Combine(root, "data", "environment", "generated_decorations.tres"),
@@ -159,7 +183,12 @@ public static class RepositoryEnvironmentVerifier
     private static void ValidateThumbnail(string path, List<string> diagnostics)
     {
         if (!File.Exists(path)) { diagnostics.Add("missing generated Environment thumbnail.png"); return; }
-        try { _ = PngCodec.DecodeRgba8(File.ReadAllBytes(path)); }
+        try
+        {
+            RgbaImage image = PngCodec.DecodeRgba8(File.ReadAllBytes(path));
+            if (image.Width != EnvironmentThumbnailGenerator.OutputSize || image.Height != EnvironmentThumbnailGenerator.OutputSize)
+                diagnostics.Add($"generated Environment thumbnail.png must be {EnvironmentThumbnailGenerator.OutputSize}x{EnvironmentThumbnailGenerator.OutputSize}; found {image.Width}x{image.Height}");
+        }
         catch (Exception exception) { diagnostics.Add("generated Environment thumbnail.png is invalid: " + exception.Message); }
     }
 
@@ -170,6 +199,21 @@ public static class RepositoryEnvironmentVerifier
         foreach (string marker in required)
             if (!text.Contains(marker, StringComparison.Ordinal)) diagnostics.Add($"{label} is stale or missing: {marker}");
     }
+
+    private static void VerifyTextFileMissing(string path, IReadOnlyList<string> forbidden, string label, List<string> diagnostics)
+    {
+        if (!File.Exists(path)) return;
+        string text = File.ReadAllText(path);
+        foreach (string marker in forbidden)
+            if (text.Contains(marker, StringComparison.Ordinal)) diagnostics.Add($"{label} unexpectedly contains: {marker}");
+    }
+
+    private static int DecorationCategory(AssetCategory category) => category switch
+    {
+        AssetCategory.Lamp => 0,
+        AssetCategory.Sofa => 1,
+        _ => throw new InvalidOperationException($"Environment verification is not implemented for {category} yet."),
+    };
 
     private static string Relative(string root, string path) => Path.GetRelativePath(root, path).Replace('\\', '/');
     private static string Escape(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
@@ -199,8 +243,7 @@ public static class RepositoryEnvironmentRegenerator
         if (!File.Exists(sourcePath)) throw new FileNotFoundException("Authored Environment source image is missing.", sourcePath);
         byte[] source = File.ReadAllBytes(sourcePath);
         GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-        string thumbnailPath = Path.Combine(root, "assets", "generated", "environment", recipe.AssetId, "thumbnail.png");
-        byte[] thumbnail = File.Exists(thumbnailPath) ? File.ReadAllBytes(thumbnailPath) : generated.AlbedoPng;
+        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
         RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
         return recipe.AssetId;
     }
