@@ -18,13 +18,15 @@ public static class RepositoryEnvironmentExporter
     {
         AssetRecipe recipe = generated.Recipe;
         if (recipe.AssetFamily != AssetFamily.Environment || !IsSupportedCategory(recipe.Category))
-            throw new ArgumentException("Environment exporter currently accepts Lamp and Sofa recipes only.", nameof(generated));
+            throw new ArgumentException("Environment exporter accepts Lamp, Sofa, Table, Plant and Painting recipes.", nameof(generated));
 
         string root = RepositoryAssetVerifier.ValidateRoot(repositoryRoot);
         RgbaImage source = PngCodec.DecodeRgba8(sourcePng);
         if (source.Width != AssetForgeGenerator.SourceSize || source.Height != AssetForgeGenerator.SourceSize)
             throw new FormatException("Source PNG is not the canonical 1024x1024 image.");
-        _ = PngCodec.DecodeRgba8(thumbnailPng);
+        RgbaImage thumbnail = PngCodec.DecodeRgba8(thumbnailPng);
+        if (thumbnail.Width != EnvironmentThumbnailGenerator.OutputSize || thumbnail.Height != EnvironmentThumbnailGenerator.OutputSize)
+            throw new FormatException($"Environment thumbnail must be {EnvironmentThumbnailGenerator.OutputSize}x{EnvironmentThumbnailGenerator.OutputSize} RGBA PNG.");
         GlbWriter.ValidateSingleMesh(generated.GlbBytes);
 
         string prefix = AssetIdPrefix(recipe.Category);
@@ -72,7 +74,9 @@ public static class RepositoryEnvironmentExporter
 
             GlbWriter.ValidateSingleMesh(File.ReadAllBytes(staged[$"{assetRelative}/mesh.glb"]));
             _ = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/albedo.png"]));
-            _ = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/thumbnail.png"]));
+            RgbaImage stagedThumbnail = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/thumbnail.png"]));
+            if (stagedThumbnail.Width != EnvironmentThumbnailGenerator.OutputSize || stagedThumbnail.Height != EnvironmentThumbnailGenerator.OutputSize)
+                throw new InvalidOperationException("Staged Environment thumbnail is not canonical.");
             Commit(root, backupRoot, staged);
 
             return new ExportResult(
@@ -133,7 +137,7 @@ public static class RepositoryEnvironmentExporter
         text.AppendLine($"DisplayNameKey = \"{Escape(recipe.DisplayName)}\"");
         text.AppendLine($"Category = {DecorationCategory(recipe.Category)}");
         text.AppendLine($"PriceCredits = {recipe.PriceCredits}");
-        text.AppendLine("AnchorKind = 0");
+        text.AppendLine($"AnchorKind = {AnchorKind(recipe.Environment.Anchor)}");
         text.AppendLine($"AllowsRotation = {Bool(recipe.Environment.AllowsRotation)}");
         text.AppendLine($"RotationStepDegrees = {recipe.Environment.RotationStepDegrees}");
         text.AppendLine($"RenderBand = {RenderBand(recipe.Environment.RenderMode)}");
@@ -224,6 +228,9 @@ public static class RepositoryEnvironmentExporter
         string normalized = relative.Replace('\\', '/').TrimStart('/');
         bool owned = normalized.StartsWith("authoring/asset-forge/lamps/", StringComparison.Ordinal) ||
                      normalized.StartsWith("authoring/asset-forge/sofas/", StringComparison.Ordinal) ||
+                     normalized.StartsWith("authoring/asset-forge/tables/", StringComparison.Ordinal) ||
+                     normalized.StartsWith("authoring/asset-forge/plants/", StringComparison.Ordinal) ||
+                     normalized.StartsWith("authoring/asset-forge/paintings/", StringComparison.Ordinal) ||
                      normalized.StartsWith("assets/generated/environment/", StringComparison.Ordinal) ||
                      normalized.StartsWith("data/environment/generated/", StringComparison.Ordinal) ||
                      normalized == "data/environment/generated_decorations.tres";
@@ -232,28 +239,44 @@ public static class RepositoryEnvironmentExporter
             throw new InvalidOperationException("Path traversal is forbidden.");
     }
 
-    private static bool IsSupportedCategory(AssetCategory category) =>
-        category is AssetCategory.Lamp or AssetCategory.Sofa;
+    internal static bool IsSupportedCategory(AssetCategory category) =>
+        category is AssetCategory.Lamp or AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant or AssetCategory.Painting;
 
-    private static string AssetIdPrefix(AssetCategory category) => category switch
+    internal static string AssetIdPrefix(AssetCategory category) => category switch
     {
         AssetCategory.Lamp => "decoration.lamp.",
         AssetCategory.Sofa => "decoration.sofa.",
+        AssetCategory.Table => "decoration.table.",
+        AssetCategory.Plant => "decoration.plant.",
+        AssetCategory.Painting => "decoration.painting.",
         _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
     };
 
-    private static string AuthoringFolder(AssetCategory category) => category switch
+    internal static string AuthoringFolder(AssetCategory category) => category switch
     {
         AssetCategory.Lamp => "lamps",
         AssetCategory.Sofa => "sofas",
+        AssetCategory.Table => "tables",
+        AssetCategory.Plant => "plants",
+        AssetCategory.Painting => "paintings",
         _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
     };
 
-    private static int DecorationCategory(AssetCategory category) => category switch
+    internal static int DecorationCategory(AssetCategory category) => category switch
     {
         AssetCategory.Lamp => 0,
         AssetCategory.Sofa => 1,
+        AssetCategory.Painting => 2,
+        AssetCategory.Plant => 4,
+        AssetCategory.Table => 5,
         _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
+    };
+
+    internal static int AnchorKind(EnvironmentAnchorMode anchor) => anchor switch
+    {
+        EnvironmentAnchorMode.Floor => 0,
+        EnvironmentAnchorMode.Wall => 1,
+        _ => throw new ArgumentOutOfRangeException(nameof(anchor), anchor, null),
     };
 
     private static int RenderBand(EnvironmentRenderMode mode) => mode switch
