@@ -43,7 +43,10 @@ public static class AssetForgeCompiler
 
     private static GeneratedAsset GenerateEnvironmentSilhouette(ReadOnlySpan<byte> sourcePng, AssetRecipe recipe) =>
         GenerateSilhouette(sourcePng, recipe,
-            (mask, _) => EnvironmentSilhouetteGenerator.Generate(mask, recipe),
+            (mask, foreground) => EnvironmentSilhouettePolisher.Apply(
+                EnvironmentSilhouetteGenerator.Generate(mask, recipe),
+                foreground,
+                recipe),
             maximumMaskFraction: .82,
             context: recipe.Category.ToString());
 
