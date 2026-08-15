@@ -1,10 +1,13 @@
-# Asset Forge — Lamp/Sofa continuation closure
+# Asset Forge — Lamp/Sofa v0.1 baseline closure
 
-This branch continues `ASSET_FORGE_IMPLEMENTATION_PLAN.md` from a fresh `main` base. It closes the
-first Environment presets and the cross-category maintenance/thumbnail work without changing the
-runtime authority model: generated content is still trusted visual/resource data only.
+Status: **accepted and merged to `main` as Asset Forge v0.1**.  
+Merge commit: `618df8f41379abafd4e39f97112c99eb04cdec5e`.
 
-## Implemented
+This document is retained as the historical acceptance record for the first Environment presets and
+cross-category maintenance/thumbnail work. `ASSET_FORGE_V1_CLOSURE.md` is authoritative for the
+subsequent v1 implementation and its versioned Lamp/Sofa smoothing contracts.
+
+## Accepted v0.1 implementation
 
 ### Lamp
 
@@ -19,9 +22,12 @@ runtime authority model: generated content is still trusted visual/resource data
 - Runtime verification covers generated mesh, emitter, local light, per-instance purchase, cancel,
   stable-ID restart payload and absence of physics/collision nodes.
 
+`lamp@2` is intentionally frozen as this accepted v0.1 mesh contract. v1 adds the separately versioned
+`lamp@3` preset for Inflated Solid defaults and full-resolution rim smoothing.
+
 ### Sofa
 
-- `sofa@1` is enabled as the second Environment prototype.
+- `sofa@1` is the accepted second Environment prototype.
 - It uses a fixed floor/seat/back authoring template and literal template-space placement.
 - Geometry is intentionally a deterministic front-derived stylized 2.5D volume; side-view/AI
   reconstruction remains outside the v1 contract.
@@ -29,6 +35,9 @@ runtime authority model: generated content is still trusted visual/resource data
 - No Lamp light metadata is emitted for Sofa.
 - Runtime verification covers two paid instances, restart-by-ID, one trusted authored mesh per
   presenter, no physics/light nodes, and sharing of imported mesh/texture resources between copies.
+
+`sofa@1` is likewise frozen as the accepted v0.1 mesh contract. v1 adds `sofa@2` for the shared
+full-resolution Environment silhouette polisher.
 
 ### Shared thumbnails and maintenance
 
@@ -52,14 +61,14 @@ runtime authority model: generated content is still trusted visual/resource data
 - Category generation diagnostics record elapsed milliseconds, vertex/triangle counts and generated
   GLB/albedo byte sizes.
 - Thumbnail cache hit/miss counters are reported in developer logs.
-- Glasses v1/v2 are byte-compared through the new category dispatch against the accepted Glasses
+- Glasses v1/v2 are byte-compared through the category dispatch against the accepted Glasses
   generator to guard compatibility.
 - Opened recipe preset versions and hidden metadata are preserved by the modern category UI instead
   of being rebuilt from today's defaults.
 
-## Automated gates before local verification
+## v0.1 automated gate
 
-The Asset Forge PR workflow targets both `asset-forge` and `main` and runs:
+The accepted PR workflow covered:
 
 1. game solution build;
 2. domain unit tests;
@@ -74,17 +83,5 @@ The Asset Forge PR workflow targets both `asset-forge` and `main` and runs:
 11. generated Sofa runtime scenario;
 12. standalone Asset Forge import and headless boot.
 
-## Remaining local-only acceptance
-
-Do not treat these as implementation gaps. They are intentionally visual/input judgements that the
-headless gates cannot meaningfully decide:
-
-- Lamp floor scale/contact reads correctly beside the Buddy reference.
-- The draggable Lamp emitter feels correctly attached to the frontal preview and its numeric values
-  track the intended point.
-- Lamp glow and optional room light look sensible in the actual Room Decorator.
-- Sofa front-derived depth/rounding looks acceptable for the game's stylized art direction.
-- Sofa floor scale/contact and two-copy room composition read naturally.
-- Generated catalogue thumbnails have aesthetically acceptable crop/padding in the live UI.
-
-No merge should occur until these local visual/input gates are confirmed.
+The v0.1 branch/PR was accepted by the owner and merged. The remaining v1 visual/input acceptance is
+tracked only in `ASSET_FORGE_V1_CLOSURE.md`.
