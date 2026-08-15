@@ -13,8 +13,8 @@ The developer-facing v1 tool has complete authoring slices for:
 - Glasses (`glasses@1` legacy + `glasses@2` literal Buddy-head template)
 - Top / Torso replacement (`torso_shape@1`)
 - Shoes / Foot replacement (`foot_shape@1`, deterministic paired presentation)
-- Lamp (`lamp@1` legacy + `lamp@2` literal floor template)
-- Sofa (`sofa@1`)
+- Lamp (`lamp@1` legacy auto-fit + `lamp@2` accepted v0.1 literal mesh + `lamp@3` smoothed literal floor template)
+- Sofa (`sofa@1` accepted v0.1 literal mesh + `sofa@2` smoothed literal floor template)
 - Table (`table@1`)
 - Plant (`plant@1`)
 - Painting / wall decoration (`painting@1`)
@@ -23,7 +23,7 @@ Hair, Headwear and generic face/head Accessories remain visible as **Planned** t
 
 ## Lamp v1 quality closure
 
-New Lamp authoring now defaults to **Inflated Solid** with full deterministic surface smoothing.
+New Lamp authoring now defaults to **lamp@3 / Inflated Solid** with full deterministic surface smoothing.
 
 Literal Environment silhouettes no longer have to expose the occupancy-grid staircase as their final outline. The generator now:
 
@@ -34,7 +34,7 @@ Literal Environment silhouettes no longer have to expose the occupancy-grid stai
 5. re-pins authored floor-contact vertices after smoothing;
 6. recalculates normals deterministically.
 
-This changes only `lamp@2+` / literal Environment generation. `lamp@1` deliberately bypasses the new polisher so old recipes remain reproducible.
+The smoothing change is explicitly versioned. `lamp@1` keeps legacy visible-bounds auto-fit, `lamp@2` keeps the accepted v0.1 literal-template/pre-polisher geometry path, and `lamp@3` opts into full-resolution rim projection/fairing. Existing `lamp@1` and `lamp@2` recipes therefore remain reproducible from their saved source + recipe rather than silently changing when the tool is upgraded.
 
 Low-opacity coloring-guide pixels remain below the normal alpha threshold and are not treated as generated geometry. Automated coverage models guide pixels beneath authored opaque art and proves they do not alter the Lamp geometry/GLB.
 
@@ -47,7 +47,9 @@ Low-opacity coloring-guide pixels remain below the normal alpha threshold and ar
 - front-derived stylized 2.5D volume;
 - floor pivot;
 - data-driven catalogue/export/runtime path;
-- per-instance economy and stable-ID persistence coverage.
+- per-instance economy and stable-ID persistence coverage;
+- `sofa@1` remains the accepted v0.1 pre-polisher geometry contract;
+- new authoring defaults to `sofa@2`, which adds the shared full-resolution rim projection/fairing without rewriting `sofa@1` recipes.
 
 ### Table
 
@@ -92,8 +94,8 @@ All non-Lamp initial Environment categories are explicitly non-emissive and rema
 | AF-9 | Complete | Torso/foot presentation replacement seam; trusted physics unchanged; paint hide/restore/no-op rules; outline/connector gates. |
 | AF-10 | Complete | Torso and Foot authoring presets/templates and deterministic replacement generation. |
 | AF-11 | Complete | Data-driven generated Environment catalogue/visual seam without changing edit-session transactions; non-physical runtime path. |
-| AF-12 | Complete | Lamp authoring, floor pivot, smoothed volume, emission/local light, emitter gizmo, per-instance economy and persistence. |
-| AF-13 | Complete | Sofa authoring, dedicated template, 2.5D generation, per-instance economy and persistence. |
+| AF-12 | Complete | Lamp authoring, floor pivot, versioned smoothed volume, emission/local light, emitter gizmo, per-instance economy and persistence. |
+| AF-13 | Complete | Sofa authoring, dedicated template, versioned smoothed 2.5D generation, per-instance economy and persistence. |
 | AF-14 | Complete | Shared deterministic 256×256 thumbnail contract/cache and catalogue integration. |
 | AF-15 | Complete | Verify/Verify All/Regenerate/Regenerate All from pure Core, CI fixture regeneration, drift/corruption/identity coverage and combined Buddy+Environment maintenance. |
 
@@ -153,6 +155,7 @@ The Asset Forge CI workflow now covers:
 - source/export exclusion rules;
 - transactional generation/export fixtures;
 - pure-Core Verify All;
+- explicit pre-upgrade `lamp@1`, `lamp@2` and `sofa@1` geometry compatibility gates;
 - game import/boot;
 - generated Glasses commerce/render/persistence;
 - generated Torso/Foot replacement + paint/outline/connector rules;
@@ -167,12 +170,12 @@ The PR should not be considered ready for owner visual acceptance until the late
 
 Once CI is green, the remaining work is deliberately subjective/local rather than missing architecture:
 
-1. Generate the provided Lamp-like art with the Lamp defaults. Confirm rounded shade/stem/base boundaries no longer show the previous grid staircase and that the intended silhouette is not over-smoothed.
+1. Generate the provided Lamp-like art with the Lamp defaults (`lamp@3`, Inflated Solid). Confirm rounded shade/stem/base boundaries no longer show the previous grid staircase and that the intended silhouette is not over-smoothed.
 2. Confirm Lamp emitter dragging in the front view, preview orbit/reset, export, in-room local light origin, per-instance purchase and restart persistence.
-3. Generate one Sofa and confirm the front-derived volume, scale and floor contact fit the game art direction; export/place/restart it.
+3. Generate one Sofa with the new `sofa@2` default and confirm the front-derived volume, scale and floor contact fit the game art direction; export/place/restart it.
 4. Save/import the Table, Plant and Painting templates once each; confirm literal placement and scale. Painting should use a wall anchor; Table/Plant should use the floor.
 5. Inspect generated catalogue thumbnails for Glasses/replacements/Environment at normal UI size.
-6. Open an existing recipe for each family, regenerate/verify it, and confirm hidden metadata/IDs remain intact.
+6. Open an existing `lamp@2` and `sofa@1` recipe, regenerate/verify them, and confirm hidden metadata/IDs remain intact and the old preset remains reproducible.
 7. Exercise Delete Asset… with a disposable generated Environment item and confirm its peer generated items remain in the catalogue.
 
 Any failure in this final pass should be treated as v1 polish on this branch rather than expanding scope into the explicit non-goals/future categories.
