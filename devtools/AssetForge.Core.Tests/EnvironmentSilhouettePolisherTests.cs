@@ -43,7 +43,7 @@ public sealed class EnvironmentSilhouettePolisherTests
     }
 
     [Fact]
-    public void Low_opacity_template_guides_do_not_enter_the_lamp_mask_or_smoothed_contour()
+    public void Low_opacity_template_guides_beneath_art_do_not_enter_the_lamp_mask_or_smoothed_contour()
     {
         AssetRecipe defaults = AssetRecipe.LampDefaults();
         AssetRecipe recipe = defaults with
@@ -59,9 +59,9 @@ public sealed class EnvironmentSilhouettePolisherTests
         byte[] clean = RoundedLampSource();
         RgbaImage decoded = PngCodec.DecodeRgba8(clean);
         byte[] guidedPixels = (byte[])decoded.Pixels.Clone();
-        Fill(guidedPixels, 180, 100, 184, 880, 84, 112, 128, 58);
-        Fill(guidedPixels, 840, 100, 844, 880, 84, 112, 128, 58);
-        Fill(guidedPixels, 100, 878, 924, 882, 66, 116, 72, 120);
+        FillTransparentOnly(guidedPixels, 180, 100, 184, 880, 84, 112, 128, 58);
+        FillTransparentOnly(guidedPixels, 840, 100, 844, 880, 84, 112, 128, 58);
+        FillTransparentOnly(guidedPixels, 100, 878, 924, 882, 66, 116, 72, 120);
         byte[] guided = PngCodec.EncodeRgba8(new RgbaImage(1024, 1024, guidedPixels));
 
         GeneratedAsset withoutGuide = AssetForgeCompiler.Generate(clean, recipe);
@@ -117,6 +117,20 @@ public sealed class EnvironmentSilhouettePolisherTests
     {
         for (int y = y0; y < y1; y++)
         for (int x = x0; x < x1; x++) Pixel(pixels, x, y, r, g, b, a);
+    }
+
+    private static void FillTransparentOnly(byte[] pixels, int x0, int y0, int x1, int y1, byte r, byte g, byte b, byte a)
+    {
+        for (int y = y0; y < y1; y++)
+        for (int x = x0; x < x1; x++)
+        {
+            int i = (y * 1024 + x) * 4;
+            if (pixels[i + 3] != 0) continue;
+            pixels[i] = r;
+            pixels[i + 1] = g;
+            pixels[i + 2] = b;
+            pixels[i + 3] = a;
+        }
     }
 
     private static void Pixel(byte[] pixels, int x, int y, byte r, byte g, byte b, byte a)
