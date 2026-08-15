@@ -3,10 +3,9 @@ using System.Numerics;
 namespace DesktopBuddy.AssetForge.Core;
 
 /// <summary>
-/// Presentation cleanup for literal-template Environment silhouettes. It combines the same two
-/// quality ideas used by Buddy replacements: full-resolution alpha-contour projection and bounded
-/// rim/cap fairing. Legacy Lamp@1 is deliberately excluded so its accepted auto-fit bytes remain
-/// reproducible.
+/// Presentation cleanup for the versioned literal-template Environment presets that opt into the
+/// v1 full-resolution smoothing contract. Older accepted preset versions deliberately bypass this
+/// stage so source + recipe can regenerate their original geometry bytes.
 /// </summary>
 public static class EnvironmentSilhouettePolisher
 {
@@ -16,8 +15,7 @@ public static class EnvironmentSilhouettePolisher
         ArgumentNullException.ThrowIfNull(foreground);
         ArgumentNullException.ThrowIfNull(recipe);
 
-        if (!EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe) ||
-            recipe.Geometry.SurfaceSmoothness <= 0.000001)
+        if (!UsesSmoothedLiteralContract(recipe) || recipe.Geometry.SurfaceSmoothness <= 0.000001)
             return mesh;
 
         mesh = SilhouetteSubpixelProjector.Apply(
@@ -36,6 +34,18 @@ public static class EnvironmentSilhouettePolisher
         mesh.RecalculateNormals();
         return mesh;
     }
+
+    public static bool UsesSmoothedLiteralContract(AssetRecipe recipe) => recipe.Category switch
+    {
+        // lamp@2 and sofa@1 shipped in the accepted v0.1 baseline and must remain reproducible.
+        AssetCategory.Lamp => recipe.PresetId == "lamp" && recipe.PresetVersion >= 3,
+        AssetCategory.Sofa => recipe.PresetId == "sofa" && recipe.PresetVersion >= 2,
+        // These categories enter the tool for the first time with the smoothed v1 contract.
+        AssetCategory.Table => recipe.PresetId == "table" && recipe.PresetVersion >= 1,
+        AssetCategory.Plant => recipe.PresetId == "plant" && recipe.PresetVersion >= 1,
+        AssetCategory.Painting => recipe.PresetId == "painting" && recipe.PresetVersion >= 1,
+        _ => false,
+    };
 
     private static void PinAuthoredFloorContact(CanonicalMesh mesh, AssetRecipe recipe)
     {
