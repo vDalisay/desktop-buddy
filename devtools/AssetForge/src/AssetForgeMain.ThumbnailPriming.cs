@@ -13,6 +13,7 @@ public partial class AssetForgeMain
         _ = delta;
         EnsureModernWorkspaceUi();
         EnsureCombinedMaintenanceUi();
+        EnsureGenerationWarningUi();
         if (_thumbnailPrimeInFlight ||
             _generated is null ||
             _generated.Recipe.AssetFamily != AssetFamily.BuddyStudio ||
