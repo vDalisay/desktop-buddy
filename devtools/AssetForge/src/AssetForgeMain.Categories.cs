@@ -296,9 +296,11 @@ public partial class AssetForgeMain
         {
             AssetCategory.Glasses when _activePresetVersion >= 2 => "Buddy Studio > Glasses / glasses@2 — literal 1024×1024 Buddy-head placement",
             AssetCategory.Glasses => "Buddy Studio > Glasses / glasses@1 — legacy auto-fit placement",
-            AssetCategory.Lamp when _activePresetVersion >= 2 => "Environment > Lamp / lamp@2 — literal floor-template placement with visual light metadata",
+            AssetCategory.Lamp when _activePresetVersion >= 3 => "Environment > Lamp / lamp@3 — smoothed literal floor-template placement with visual light metadata",
+            AssetCategory.Lamp when _activePresetVersion == 2 => "Environment > Lamp / lamp@2 — v0.1 literal floor-template placement (reproducible pre-polisher mesh)",
             AssetCategory.Lamp => "Environment > Lamp / lamp@1 — legacy visible-bounds auto-fit placement",
-            AssetCategory.Sofa => "Environment > Sofa / sofa@1 — front-only stylized 2.5D, literal floor-template placement",
+            AssetCategory.Sofa when _activePresetVersion >= 2 => "Environment > Sofa / sofa@2 — smoothed front-derived 2.5D, literal floor-template placement",
+            AssetCategory.Sofa => "Environment > Sofa / sofa@1 — v0.1 front-derived 2.5D, literal floor-template placement",
             AssetCategory.Table => "Environment > Table / table@1 — front-derived volume, literal floor-template placement",
             AssetCategory.Plant => "Environment > Plant / plant@1 — inflated volume, literal floor-template placement",
             AssetCategory.Painting => "Environment > Painting / painting@1 — thin wall volume, literal wall-template placement",
