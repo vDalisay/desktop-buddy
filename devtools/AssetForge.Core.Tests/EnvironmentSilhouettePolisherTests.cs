@@ -6,17 +6,18 @@ namespace DesktopBuddy.AssetForge.Core.Tests;
 public sealed class EnvironmentSilhouettePolisherTests
 {
     [Fact]
-    public void New_lamps_default_to_inflated_solid_with_full_surface_smoothing()
+    public void New_lamps_default_to_versioned_inflated_solid_with_full_surface_smoothing()
     {
         AssetRecipe recipe = AssetRecipe.LampDefaults();
         Assert.Equal(ShapeMode.InflatedSolid, recipe.Geometry.ShapeMode);
         Assert.Equal(1.0, recipe.Geometry.SurfaceSmoothness, 8);
-        Assert.Equal(2, recipe.PresetVersion);
+        Assert.Equal(3, recipe.PresetVersion);
         Assert.True(EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe));
+        Assert.True(EnvironmentSilhouettePolisher.UsesSmoothedLiteralContract(recipe));
     }
 
     [Fact]
-    public void Literal_lamp_refines_rim_beyond_the_coarse_mask_lattice()
+    public void Lamp_v3_refines_rim_beyond_the_coarse_mask_lattice()
     {
         AssetRecipe defaults = AssetRecipe.LampDefaults();
         AssetRecipe recipe = defaults with
@@ -71,14 +72,16 @@ public sealed class EnvironmentSilhouettePolisherTests
         Assert.Equal(withoutGuide.GlbBytes, withGuide.GlbBytes);
     }
 
-    [Fact]
-    public void Legacy_lamp_v1_keeps_the_pre_polisher_geometry_path()
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Pre_v3_lamps_keep_the_pre_polisher_geometry_path(int presetVersion)
     {
         AssetRecipe defaults = AssetRecipe.LampDefaults();
         AssetRecipe recipe = defaults with
         {
-            PresetVersion = 1,
-            AssetId = "decoration.lamp.legacy_smoothing_test",
+            PresetVersion = presetVersion,
+            AssetId = $"decoration.lamp.compat_v{presetVersion}",
             Geometry = defaults.Geometry with
             {
                 GeometryResolution = 64,
@@ -92,7 +95,9 @@ public sealed class EnvironmentSilhouettePolisherTests
         CanonicalMesh legacy = EnvironmentSilhouetteGenerator.Generate(mask, recipe);
         GeneratedAsset compiled = AssetForgeCompiler.Generate(source, recipe);
 
+        Assert.False(EnvironmentSilhouettePolisher.UsesSmoothedLiteralContract(recipe));
         Assert.Equal(legacy.CanonicalHash(), compiled.GeometryHash);
+        Assert.Equal(GlbWriter.Write(legacy), compiled.GlbBytes);
     }
 
     private static byte[] RoundedLampSource()
