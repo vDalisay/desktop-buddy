@@ -120,7 +120,7 @@ public partial class AssetForgeMain
             bool environment = recipe.AssetFamily == AssetFamily.Environment;
             int budget = replacement ? RecommendedReplacementRuntimeTriangleBudget : RecommendedEnvironmentRuntimeTriangleBudget;
             string performance = (replacement || environment) && _generated.TriangleCount > budget
-                ? $" ⚠ Runtime mesh is above the recommended {budget:N0}-triangle { (replacement ? "Buddy-part" : "Environment") } budget; lower Runtime mesh resolution in Advanced if iteration or runtime rendering is slow."
+                ? $" ⚠ Runtime mesh is above the recommended {budget:N0}-triangle {(replacement ? "Buddy-part" : "Environment")} budget; lower Runtime mesh resolution in Advanced if iteration or runtime rendering is slow."
                 : replacement || environment
                     ? $" Runtime mesh is within the recommended {budget:N0}-triangle budget."
                     : string.Empty;
@@ -140,8 +140,11 @@ public partial class AssetForgeMain
         try
         {
             AssetRecipe recipe = RecipeCodec.Read(File.ReadAllText(path));
-            SetActiveCategoryFromRecipe(recipe);
+            // Let the legacy loader resolve the sibling source first, then re-apply the complete
+            // category recipe. Otherwise ApplyRecipe() would overwrite an Environment AssetId with
+            // its intentionally-empty Buddy FeatureId field after SetActiveCategoryFromRecipe().
             OpenRecipe(path);
+            SetActiveCategoryFromRecipe(recipe);
             if (GodotObject.IsInstanceValid(_bridgeThickness))
                 _bridgeThickness.Value = recipe.Category == AssetCategory.Glasses
                     ? recipe.Geometry.BridgeThicknessBiasPixels
