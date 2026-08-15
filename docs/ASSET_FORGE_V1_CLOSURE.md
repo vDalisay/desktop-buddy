@@ -38,6 +38,17 @@ The smoothing change is explicitly versioned. `lamp@1` keeps legacy visible-boun
 
 Low-opacity coloring-guide pixels remain below the normal alpha threshold and are not treated as generated geometry. Automated coverage models guide pixels beneath authored opaque art and proves they do not alter the Lamp geometry/GLB.
 
+## Explicit preset migration
+
+Backward compatibility and adoption of the improved contracts are separate actions. Opening an older recipe keeps its saved preset version and therefore keeps its historical output path. Asset Forge now exposes an explicit migration action when a newer supported contract exists:
+
+- `glasses@1 -> glasses@2`: switches auto-fit to literal head-template placement and requires source realignment on the current guide;
+- `lamp@1 -> lamp@3`: switches auto-fit to literal floor-template placement, adopts Inflated Solid + full smoothing and requires source realignment;
+- `lamp@2 -> lamp@3`: preserves literal placement while opting into Inflated Solid + full-resolution smoothing;
+- `sofa@1 -> sofa@2`: preserves literal placement while opting into the shared Environment silhouette polisher.
+
+Migration preserves stable identity, economy, light/placement and thumbnail metadata unless the target contract explicitly changes a generation default. The generated preview/export is invalidated after migration and must be regenerated before export. This prevents silent reinterpretation while avoiding JSON hand-editing for developers who do want the newer preset.
+
 ## Initial Environment category closure
 
 ### Sofa
@@ -156,6 +167,7 @@ The Asset Forge CI workflow now covers:
 - transactional generation/export fixtures;
 - pure-Core Verify All;
 - explicit pre-upgrade `lamp@1`, `lamp@2` and `sofa@1` geometry compatibility gates;
+- explicit migration-policy tests for Glasses/Lamp/Sofa;
 - game import/boot;
 - generated Glasses commerce/render/persistence;
 - generated Torso/Foot replacement + paint/outline/connector rules;
@@ -175,7 +187,7 @@ Once CI is green, the remaining work is deliberately subjective/local rather tha
 3. Generate one Sofa with the new `sofa@2` default and confirm the front-derived volume, scale and floor contact fit the game art direction; export/place/restart it.
 4. Save/import the Table, Plant and Painting templates once each; confirm literal placement and scale. Painting should use a wall anchor; Table/Plant should use the floor.
 5. Inspect generated catalogue thumbnails for Glasses/replacements/Environment at normal UI size.
-6. Open an existing `lamp@2` and `sofa@1` recipe, regenerate/verify them, and confirm hidden metadata/IDs remain intact and the old preset remains reproducible.
+6. Open an existing `lamp@2` and `sofa@1` recipe, regenerate/verify them, then use the explicit migration action on disposable copies and confirm the old output stays reproducible until migration is chosen.
 7. Exercise Delete Asset… with a disposable generated Environment item and confirm its peer generated items remain in the catalogue.
 
 Any failure in this final pass should be treated as v1 polish on this branch rather than expanding scope into the explicit non-goals/future categories.
