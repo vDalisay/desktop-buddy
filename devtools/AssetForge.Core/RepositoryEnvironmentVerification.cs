@@ -67,6 +67,8 @@ public static class RepositoryEnvironmentVerifier
             AssetRecipe recipe = RecipeCodec.Read(recipeText);
             if (recipe.AssetFamily != AssetFamily.Environment)
                 throw new InvalidOperationException("Environment verifier received a Buddy recipe.");
+            if (!RepositoryEnvironmentExporter.IsSupportedCategory(recipe.Category))
+                throw new InvalidOperationException($"Environment verification is not implemented for {recipe.Category}.");
             displayId = recipe.AssetId;
             string canonical = RecipeCodec.WriteCanonical(recipe);
             if (!string.Equals(recipeText.Replace("\r\n", "\n", StringComparison.Ordinal), canonical, StringComparison.Ordinal))
@@ -93,10 +95,14 @@ public static class RepositoryEnvironmentVerifier
             {
                 $"DefinitionId = \"{Escape(recipe.AssetId)}\"",
                 $"DisplayNameKey = \"{Escape(recipe.DisplayName)}\"",
-                $"Category = {DecorationCategory(recipe.Category)}",
+                $"Category = {RepositoryEnvironmentExporter.DecorationCategory(recipe.Category)}",
                 $"PriceCredits = {recipe.PriceCredits}",
+                $"AnchorKind = {RepositoryEnvironmentExporter.AnchorKind(recipe.Environment.Anchor)}",
+                $"AllowsRotation = {(recipe.Environment.AllowsRotation ? "true" : "false")}",
+                $"RotationStepDegrees = {recipe.Environment.RotationStepDegrees}",
                 "VisualSource = 1",
                 $"VisualSize = Vector2({number(bounds.Width)}, {number(bounds.Height)})",
+                $"Pivot = Vector2({number(recipe.Environment.PivotX)}, {number(recipe.Environment.PivotY)})",
                 $"GeneratorVersion = {recipe.GeneratorVersion}",
                 $"CanonicalAssetHash = \"{expected.CanonicalAssetHash}\"",
                 $"res://assets/generated/environment/{recipe.AssetId}/mesh.glb",
@@ -207,13 +213,6 @@ public static class RepositoryEnvironmentVerifier
         foreach (string marker in forbidden)
             if (text.Contains(marker, StringComparison.Ordinal)) diagnostics.Add($"{label} unexpectedly contains: {marker}");
     }
-
-    private static int DecorationCategory(AssetCategory category) => category switch
-    {
-        AssetCategory.Lamp => 0,
-        AssetCategory.Sofa => 1,
-        _ => throw new InvalidOperationException($"Environment verification is not implemented for {category} yet."),
-    };
 
     private static string Relative(string root, string path) => Path.GetRelativePath(root, path).Replace('\\', '/');
     private static string Escape(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
