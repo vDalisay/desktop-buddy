@@ -18,6 +18,8 @@ public partial class AssetForgePreview : Control
     private MeshInstance3D _partReference = null!;
     private MeshInstance3D _partReferenceSecondary = null!;
     private Node3D _environmentReference = null!;
+    private MeshInstance3D _environmentFloorLine = null!;
+    private MeshInstance3D _environmentWallPlane = null!;
     private Node3D? _asset;
     private StandardMaterial3D? _generatedMaterial;
     private MeshInstance3D? _lampEmitterGizmo;
@@ -95,13 +97,33 @@ public partial class AssetForgePreview : Control
             AlbedoColor = new Color(.36f, .70f, .42f, .55f),
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
         };
-        _environmentReference.AddChild(new MeshInstance3D
+        _environmentFloorLine = new MeshInstance3D
         {
             Name = "FloorLine",
             Mesh = new BoxMesh { Size = new Vector3(320, 1.5f, 1.5f) },
             MaterialOverride = lineMaterial,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
-        });
+        };
+        _environmentReference.AddChild(_environmentFloorLine);
+
+        var wallMaterial = new StandardMaterial3D
+        {
+            ResourceName = "AssetForgeWallReference",
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            AlbedoColor = new Color(.38f, .52f, .68f, .09f),
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+        };
+        _environmentWallPlane = new MeshInstance3D
+        {
+            Name = "WallPlane",
+            Mesh = new BoxMesh { Size = new Vector3(300, 240, .8f) },
+            Position = new Vector3(0, 0, -8),
+            MaterialOverride = wallMaterial,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+            Visible = false,
+        };
+        _environmentReference.AddChild(_environmentWallPlane);
 
         AddEnvironmentBuddyReference("BuddyTorso", new Vector3(-105, 58, -3), _profile.TorsoRadius, _profile.TorsoColor);
         AddEnvironmentBuddyReference("BuddyHead", new Vector3(-105, 120, -3), _profile.HeadRadius, _profile.HeadColor);
@@ -126,6 +148,9 @@ public partial class AssetForgePreview : Control
         });
     }
 
+    private static bool IsEnvironmentCategory(AssetCategory category) =>
+        category is AssetCategory.Lamp or AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant or AssetCategory.Painting;
+
     public void SetCategory(AssetCategory category)
     {
         _category = category;
@@ -133,8 +158,13 @@ public partial class AssetForgePreview : Control
             !GodotObject.IsInstanceValid(_partReferenceSecondary) ||
             !GodotObject.IsInstanceValid(_headReference.Root)) return;
 
-        bool environment = category is AssetCategory.Lamp or AssetCategory.Sofa;
+        bool environment = IsEnvironmentCategory(category);
         _environmentReference.Visible = environment && _referenceVisible;
+        if (GodotObject.IsInstanceValid(_environmentFloorLine))
+            _environmentFloorLine.Visible = environment && category != AssetCategory.Painting;
+        if (GodotObject.IsInstanceValid(_environmentWallPlane))
+            _environmentWallPlane.Visible = environment && category == AssetCategory.Painting;
+
         if (category == AssetCategory.Glasses)
         {
             _partReference.Visible = false;
@@ -229,13 +259,12 @@ public partial class AssetForgePreview : Control
         {
             AddGeneratedPreviewMesh(_asset, mesh, ReferenceRadius(), Vector3.Zero, mirror: false, outline: true, "Mesh");
         }
-        else if (_category is AssetCategory.Lamp or AssetCategory.Sofa)
+        else if (IsEnvironmentCategory(_category))
         {
             _environmentBounds = EnvironmentGeneratedBounds.Analyze(generated.Mesh);
             _environmentRecipe = generated.Recipe;
             _environmentLogicalHeight = generated.Recipe.Environment.LogicalHeight;
-            AddGeneratedPreviewMesh(_asset, mesh, 1f, Vector3.Zero, mirror: false, outline: false,
-                _category == AssetCategory.Lamp ? "LampMesh" : "SofaMesh");
+            AddGeneratedPreviewMesh(_asset, mesh, 1f, Vector3.Zero, mirror: false, outline: false, _category + "Mesh");
             if (_category == AssetCategory.Lamp)
             {
                 _lampSettings = generated.Recipe.Light;
@@ -367,7 +396,7 @@ public partial class AssetForgePreview : Control
             if (GodotObject.IsInstanceValid(_partReference)) _partReference.Visible = visible;
             if (GodotObject.IsInstanceValid(_partReferenceSecondary)) _partReferenceSecondary.Visible = visible;
         }
-        else if (_category is AssetCategory.Lamp or AssetCategory.Sofa)
+        else if (IsEnvironmentCategory(_category))
         {
             if (GodotObject.IsInstanceValid(_environmentReference)) _environmentReference.Visible = visible;
         }
@@ -389,9 +418,9 @@ public partial class AssetForgePreview : Control
 
     public void ResetView()
     {
-        bool environment = _category is AssetCategory.Lamp or AssetCategory.Sofa;
+        bool environment = IsEnvironmentCategory(_category);
         _orbit.RotationDegrees = Vector3.Zero;
-        _orbit.Position = environment
+        _orbit.Position = environment && _category != AssetCategory.Painting
             ? new Vector3(0, (float)_environmentLogicalHeight * -.5f, 0)
             : Vector3.Zero;
         if (!GodotObject.IsInstanceValid(_camera)) return;
@@ -399,7 +428,8 @@ public partial class AssetForgePreview : Control
         {
             AssetCategory.FootShape => ReferenceRadius() * 5.2f,
             AssetCategory.TorsoShape => ReferenceRadius() * 3.4f,
-            AssetCategory.Lamp or AssetCategory.Sofa => (float)_environmentLogicalHeight * 1.35f,
+            AssetCategory.Lamp or AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant => (float)_environmentLogicalHeight * 1.35f,
+            AssetCategory.Painting => (float)_environmentLogicalHeight * 1.45f,
             _ => ReferenceRadius() * 3.2f,
         };
         if (environment)
@@ -415,7 +445,7 @@ public partial class AssetForgePreview : Control
         _ => _profile.HeadRadius,
     };
 
-    private float PreviewScaleBase() => _category is AssetCategory.Lamp or AssetCategory.Sofa
+    private float PreviewScaleBase() => IsEnvironmentCategory(_category)
         ? MathF.Max(32f, (float)_environmentLogicalHeight)
         : ReferenceRadius();
 
