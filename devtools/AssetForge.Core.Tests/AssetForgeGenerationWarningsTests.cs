@@ -16,7 +16,9 @@ public sealed class AssetForgeGenerationWarningsTests
             Geometry = defaults.Geometry with { GeometryResolution = 64, RuntimeTextureResolution = 64 },
         };
         byte[] pixels = new byte[1024 * 1024 * 4];
-        Fill(pixels, 50, 50, 970, 970);
+        // 55% canvas coverage stays under the replacement source guard while extending far enough
+        // beyond the trusted 300px torso radius to trigger the presentation-only envelope warning.
+        Fill(pixels, 100, 100, 924, 800);
         GeneratedAsset generated = AssetForgeCompiler.Generate(PngCodec.EncodeRgba8(new RgbaImage(1024, 1024, pixels)), recipe);
 
         IReadOnlyList<string> warnings = AssetForgeGenerationWarnings.Analyze(generated);
