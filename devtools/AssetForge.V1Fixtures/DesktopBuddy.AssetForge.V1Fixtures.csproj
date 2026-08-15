@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>DesktopBuddy.AssetForge.V1Fixtures</AssemblyName>
+    <RootNamespace>DesktopBuddy.AssetForge.V1Fixtures</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AssetForge.Core\DesktopBuddy.AssetForge.Core.csproj" />
+  </ItemGroup>
+</Project>
