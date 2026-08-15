@@ -51,6 +51,9 @@ jobs:
       - name: Generate and transactionally export Asset Forge CI fixtures
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --ci-fixture "$PWD"
 
+      - name: Generate remaining Environment v1 CI fixtures
+        run: dotnet run --project devtools/AssetForge.V1Fixtures/DesktopBuddy.AssetForge.V1Fixtures.csproj -c Debug -- "$PWD"
+
       - name: Verify generated fixtures by re-deriving them without Godot
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --verify-all "$PWD"
 
@@ -92,6 +95,9 @@ jobs:
 
       - name: Exercise generated Sofa catalogue, per-instance purchase, render, and stable-ID persistence
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_sofa --seed=1
+
+      - name: Exercise generated Table, Plant and Painting runtime seams
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_environment_v1 --seed=1
 
       - name: Import standalone Asset Forge project
         run: |
