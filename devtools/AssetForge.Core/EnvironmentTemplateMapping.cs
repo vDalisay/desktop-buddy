@@ -30,7 +30,7 @@ public static class EnvironmentTemplateMapping
         float units = UnitsPerPixel(recipe);
         return new Vector2(
             ((float)sourceX - EnvironmentTemplateSpace.CenterX) * units,
-            ((float)sourceY - EnvironmentTemplateSpace.FloorY) * units);
+            (EnvironmentTemplateSpace.FloorY - (float)sourceY) * units);
     }
 
     /// <summary>
@@ -47,7 +47,7 @@ public static class EnvironmentTemplateMapping
             throw new InvalidOperationException("Environment template world scale must be positive and finite.");
         return new Vector2(
             (world.X / units) + EnvironmentTemplateSpace.CenterX,
-            (world.Y / units) + EnvironmentTemplateSpace.FloorY);
+            EnvironmentTemplateSpace.FloorY - (world.Y / units));
     }
 
     public static Vector2 WorldToNormalizedSource(Vector2 world, AssetRecipe recipe)

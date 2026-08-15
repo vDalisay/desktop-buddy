@@ -11,6 +11,8 @@ public partial class AssetForgeMain
     public override void _PhysicsProcess(double delta)
     {
         _ = delta;
+        EnsureModernWorkspaceUi();
+        EnsureCombinedMaintenanceUi();
         if (_thumbnailPrimeInFlight ||
             _generated is null ||
             _generated.Recipe.AssetFamily != AssetFamily.BuddyStudio ||

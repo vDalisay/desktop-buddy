@@ -78,7 +78,7 @@ public sealed class EnvironmentLampTests
 
         Assert.NotEqual(original.GeometryHash, shifted.GeometryHash);
         Assert.InRange(b.X - a.X, (120f * units) - oneMaskCellWorld, (120f * units) + oneMaskCellWorld);
-        Assert.InRange(b.Y - a.Y, (110f * units) - oneMaskCellWorld, (110f * units) + oneMaskCellWorld);
+        Assert.InRange(b.Y - a.Y, (-110f * units) - oneMaskCellWorld, (-110f * units) + oneMaskCellWorld);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class EnvironmentLampTests
         float oneMaskCellWorld = (EnvironmentTemplateSpace.CanvasSize / (float)recipe.Geometry.GeometryResolution) *
                                  EnvironmentTemplateMapping.UnitsPerPixel(recipe);
 
-        Assert.InRange(generated.Mesh.Positions.Max(static p => p.Y), -oneMaskCellWorld, oneMaskCellWorld);
+        Assert.InRange(generated.Mesh.Positions.Min(static p => p.Y), -oneMaskCellWorld, oneMaskCellWorld);
     }
 
     [Fact]

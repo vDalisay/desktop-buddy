@@ -19,7 +19,7 @@ public sealed class EnvironmentTemplateMappingTests
     }
 
     [Fact]
-    public void Template_safe_top_maps_to_negative_logical_height()
+    public void Template_safe_top_maps_to_positive_logical_height()
     {
         AssetRecipe recipe = AssetRecipe.LampDefaults() with
         {
@@ -31,7 +31,7 @@ public sealed class EnvironmentTemplateMappingTests
             recipe);
 
         Assert.Equal(0f, point.X, 5);
-        Assert.Equal(-156f, point.Y, 4);
+        Assert.Equal(156f, point.Y, 4);
     }
 
     [Fact]
@@ -43,7 +43,7 @@ public sealed class EnvironmentTemplateMappingTests
         float units = EnvironmentTemplateMapping.UnitsPerPixel(recipe);
 
         Assert.Equal(100f * units, b.X - a.X, 4);
-        Assert.Equal(-50f * units, b.Y - a.Y, 4);
+        Assert.Equal(50f * units, b.Y - a.Y, 4);
     }
 
     [Theory]

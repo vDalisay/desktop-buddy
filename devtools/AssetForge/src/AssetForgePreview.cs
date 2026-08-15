@@ -103,8 +103,8 @@ public partial class AssetForgePreview : Control
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
         });
 
-        AddEnvironmentBuddyReference("BuddyTorso", new Vector3(-105, -58, -3), _profile.TorsoRadius, _profile.TorsoColor);
-        AddEnvironmentBuddyReference("BuddyHead", new Vector3(-105, -120, -3), _profile.HeadRadius, _profile.HeadColor);
+        AddEnvironmentBuddyReference("BuddyTorso", new Vector3(-105, 58, -3), _profile.TorsoRadius, _profile.TorsoColor);
+        AddEnvironmentBuddyReference("BuddyHead", new Vector3(-105, 120, -3), _profile.HeadRadius, _profile.HeadColor);
     }
 
     private void AddEnvironmentBuddyReference(string name, Vector3 position, float radius, Color color)
@@ -392,7 +392,7 @@ public partial class AssetForgePreview : Control
         bool environment = _category is AssetCategory.Lamp or AssetCategory.Sofa;
         _orbit.RotationDegrees = Vector3.Zero;
         _orbit.Position = environment
-            ? new Vector3(0, (float)_environmentLogicalHeight * .5f, 0)
+            ? new Vector3(0, (float)_environmentLogicalHeight * -.5f, 0)
             : Vector3.Zero;
         if (!GodotObject.IsInstanceValid(_camera)) return;
         _camera.Size = _category switch

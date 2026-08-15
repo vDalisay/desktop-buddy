@@ -283,14 +283,19 @@ public partial class AssetForgeMain
             _ => $"Buddy Studio > {display} / {CategoryDefaults(_activeCategory).PresetId}@{_activePresetVersion} — literal 1024×1024 replacement placement",
         };
         if (GodotObject.IsInstanceValid(_reference))
+        {
             _reference.Text = _activeCategory switch
             {
                 AssetCategory.Glasses => "Reference head",
                 AssetCategory.TorsoShape => "Reference torso",
                 AssetCategory.FootShape => "Reference feet",
-                AssetCategory.Lamp or AssetCategory.Sofa => "Room scale reference",
+                AssetCategory.Lamp or AssetCategory.Sofa => "Buddy + floor guide",
                 _ => "Reference",
             };
+            _reference.TooltipText = _activeCategory is AssetCategory.Lamp or AssetCategory.Sofa
+                ? "The two circles show Buddy's head/body scale; the green line is the floor. Preview only."
+                : string.Empty;
+        }
         if (GodotObject.IsInstanceValid(_preview)) _preview.SetCategory(_activeCategory);
 
         Label? subtitle = FindLabel(this, "Glasses · category settings") ??

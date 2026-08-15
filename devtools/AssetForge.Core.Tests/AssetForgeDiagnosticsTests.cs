@@ -3,6 +3,12 @@ using Xunit;
 
 namespace DesktopBuddy.AssetForge.Core.Tests;
 
+[CollectionDefinition(nameof(AssetForgeDiagnosticsCollection), DisableParallelization = true)]
+public sealed class AssetForgeDiagnosticsCollection
+{
+}
+
+[Collection(nameof(AssetForgeDiagnosticsCollection))]
 public sealed class AssetForgeDiagnosticsTests
 {
     [Fact]

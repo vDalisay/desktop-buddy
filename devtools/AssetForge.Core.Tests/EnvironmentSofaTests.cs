@@ -54,7 +54,7 @@ public sealed class EnvironmentSofaTests
         float units = EnvironmentTemplateMapping.UnitsPerPixel(recipe);
         float oneMaskCellWorld = (EnvironmentTemplateSpace.CanvasSize / (float)recipe.Geometry.GeometryResolution) * units;
         Assert.InRange(b.X - a.X, 80f * units - oneMaskCellWorld, 80f * units + oneMaskCellWorld);
-        Assert.InRange(b.Y - a.Y, 50f * units - oneMaskCellWorld, 50f * units + oneMaskCellWorld);
+        Assert.InRange(b.Y - a.Y, -50f * units - oneMaskCellWorld, -50f * units + oneMaskCellWorld);
         Assert.True(EnvironmentGeneratedBounds.Analyze(first.Mesh).Depth > 1f);
     }
 

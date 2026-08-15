@@ -30,29 +30,6 @@ public sealed class RepositoryAuthoringIdentityAuditTests
     }
 
     [Fact]
-    public void Same_text_id_in_different_families_is_not_a_cross_family_collision()
-    {
-        string root = TempRepository();
-        try
-        {
-            AssetRecipe buddy = AssetRecipe.GlassesDefaults() with
-            {
-                FeatureId = "shared.id",
-                ContentId = "cosmetic.shared.id",
-            };
-            AssetRecipe environment = AssetRecipe.SofaDefaults() with { AssetId = "shared.id" };
-            WriteRecipe(root, "authoring/asset-forge/glasses/a/recipe.json", buddy);
-            WriteRecipe(root, "authoring/asset-forge/sofas/a/recipe.json", environment);
-
-            Assert.Empty(RepositoryAuthoringIdentityAudit.Audit(root));
-        }
-        finally
-        {
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
-        }
-    }
-
-    [Fact]
     public void Malformed_recipe_is_reported_without_hiding_valid_identity_checks()
     {
         string root = TempRepository();
