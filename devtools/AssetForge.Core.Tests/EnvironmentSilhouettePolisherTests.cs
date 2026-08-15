@@ -75,7 +75,7 @@ public sealed class EnvironmentSilhouettePolisherTests
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
-    public void Pre_v3_lamps_keep_the_pre_polisher_geometry_path(int presetVersion)
+    public void Pre_v3_lamps_keep_the_pre_polisher_geometry_path_with_accepted_v0_1_settings(int presetVersion)
     {
         AssetRecipe defaults = AssetRecipe.LampDefaults();
         AssetRecipe recipe = defaults with
@@ -86,7 +86,10 @@ public sealed class EnvironmentSilhouettePolisherTests
             {
                 GeometryResolution = 64,
                 RuntimeTextureResolution = 64,
-                SurfaceSmoothness = .8,
+                Depth = .18,
+                Roundness = .88,
+                SurfaceSmoothness = .82,
+                ShapeMode = ShapeMode.RoundedExtrusion,
             },
         };
         byte[] source = RoundedLampSource();
