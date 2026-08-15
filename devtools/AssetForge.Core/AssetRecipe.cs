@@ -136,14 +136,14 @@ public sealed record AssetRecipe
     };
 
     /// <summary>
-    /// New Lamp recipes use lamp@2. Lamp@1 remains readable/regenerable and intentionally retains
-    /// its legacy visible-bounds auto-fit mapping; lamp@2 adopts the owner-approved literal template
-    /// coordinate contract without silently changing already-authored recipes.
+    /// New Lamp recipes use lamp@3. lamp@1 keeps legacy visible-bounds auto-fit, lamp@2 keeps the
+    /// accepted v0.1 literal-template mesh behavior, and lamp@3 adds full-resolution rim projection
+    /// plus bounded fairing without silently changing already-authored recipes.
     /// </summary>
     public static AssetRecipe LampDefaults() => new()
     {
         PresetId = "lamp",
-        PresetVersion = 2,
+        PresetVersion = 3,
         AssetFamily = AssetFamily.Environment,
         Category = AssetCategory.Lamp,
         AssetId = "decoration.lamp.new_asset",
@@ -170,10 +170,14 @@ public sealed record AssetRecipe
         Thumbnail = new ThumbnailSettings { YawDegrees = 10, PitchDegrees = -6, Padding = .10 },
     };
 
+    /// <summary>
+    /// sofa@1 remains the accepted v0.1 literal-template generator. sofa@2 keeps the same authored
+    /// coordinate contract and adds the shared full-resolution Environment silhouette polisher.
+    /// </summary>
     public static AssetRecipe SofaDefaults() => new()
     {
         PresetId = "sofa",
-        PresetVersion = 1,
+        PresetVersion = 2,
         AssetFamily = AssetFamily.Environment,
         Category = AssetCategory.Sofa,
         AssetId = "decoration.sofa.new_asset",
@@ -338,8 +342,8 @@ public sealed record AssetRecipe
                 break;
 
             case AssetCategory.Lamp:
-                if (PresetId != "lamp" || PresetVersion is not 1 and not 2)
-                    errors.Add("Lamp recipes support lamp@1 legacy auto-fit and lamp@2 literal template placement.");
+                if (PresetId != "lamp" || PresetVersion is not 1 and not 2 and not 3)
+                    errors.Add("Lamp recipes support lamp@1 legacy auto-fit, lamp@2 literal v0.1 generation and lamp@3 smoothed literal generation.");
                 ValidateEnvironmentIdentity(errors, "Lamp", "decoration.lamp.");
                 ValidateRoundedSilhouetteGeometry(errors, "Lamp");
                 ValidateEnvironment(errors);
@@ -347,7 +351,10 @@ public sealed record AssetRecipe
                 break;
 
             case AssetCategory.Sofa:
-                ValidateEnvironmentPreset(errors, "Sofa", "sofa", "decoration.sofa.");
+                if (PresetId != "sofa" || PresetVersion is not 1 and not 2)
+                    errors.Add("Sofa recipes support sofa@1 v0.1 literal generation and sofa@2 smoothed literal generation.");
+                ValidateEnvironmentIdentity(errors, "Sofa", "decoration.sofa.");
+                ValidateEnvironment(errors);
                 ValidateRoundedSilhouetteGeometry(errors, "Sofa");
                 break;
 
@@ -470,7 +477,7 @@ public sealed record AssetRecipe
     private void ValidateNonLightEnvironment(List<string> errors)
     {
         if (Light.Enabled || Light.LightEnabled || Math.Abs(Light.EmissionStrength) > .000001)
-            errors.Add($"{Category}@1 is non-emissive and may not create a local light.");
+            errors.Add($"{PresetId}@{PresetVersion} is non-emissive and may not create a local light.");
     }
 
     private void ValidateLight(List<string> errors)
