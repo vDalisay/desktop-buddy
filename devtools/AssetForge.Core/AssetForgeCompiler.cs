@@ -15,7 +15,8 @@ public static class AssetForgeCompiler
         {
             AssetCategory.Glasses => AssetForgeGenerator.Generate(sourcePng, recipe),
             AssetCategory.TorsoShape or AssetCategory.FootShape => GeneratePartReplacement(sourcePng, recipe),
-            AssetCategory.Lamp or AssetCategory.Sofa => GenerateEnvironmentSilhouette(sourcePng, recipe),
+            AssetCategory.Lamp or AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant or AssetCategory.Painting
+                => GenerateEnvironmentSilhouette(sourcePng, recipe),
             _ => throw new NotSupportedException($"Generation for {recipe.Category} is not implemented yet."),
         };
         timer.Complete(generated);
