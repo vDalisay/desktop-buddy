@@ -97,10 +97,13 @@ public static class SilhouetteSubpixelProjector
         for (int y = 0; y < image.Height - 1; y++)
         for (int x = 0; x < image.Width - 1; x++)
         {
-            float tl = image.Alpha(x, y);
-            float tr = image.Alpha(x + 1, y);
-            float br = image.Alpha(x + 1, y + 1);
-            float bl = image.Alpha(x, y + 1);
+            // The occupancy mask treats every sample below AlphaThreshold as empty. Canonicalize
+            // those samples to zero here as well so low-opacity template/reference pixels cannot
+            // tug the interpolated full-resolution contour toward themselves when left beneath art.
+            float tl = CanonicalContourAlpha(image.Alpha(x, y), threshold);
+            float tr = CanonicalContourAlpha(image.Alpha(x + 1, y), threshold);
+            float br = CanonicalContourAlpha(image.Alpha(x + 1, y + 1), threshold);
+            float bl = CanonicalContourAlpha(image.Alpha(x, y + 1), threshold);
             bool iTl = tl >= threshold;
             bool iTr = tr >= threshold;
             bool iBr = br >= threshold;
@@ -142,6 +145,8 @@ public static class SilhouetteSubpixelProjector
         }
         return segments;
     }
+
+    private static float CanonicalContourAlpha(float alpha, float threshold) => alpha >= threshold ? alpha : 0f;
 
     private static Vector2 Interpolate(Vector2 a, Vector2 b, float valueA, float valueB, float threshold)
     {
