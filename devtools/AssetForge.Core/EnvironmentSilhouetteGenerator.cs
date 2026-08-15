@@ -21,10 +21,9 @@ public readonly record struct EnvironmentGeneratedBounds(float Width, float Heig
 }
 
 /// <summary>
-/// Deterministic front-derived 2.5D generator for floor Environment assets. Legacy Lamp@1 keeps
-/// its accepted visible-bounds auto-fit contract. Lamp@2 and later template-space presets preserve
-/// literal 1024x1024 authoring coordinates through EnvironmentTemplateMapping, so moving/scaling
-/// clean source art produces the documented in-room placement change without silent re-centring.
+/// Deterministic front-derived 2.5D generator for Environment silhouettes. Legacy Lamp@1 keeps its
+/// accepted visible-bounds auto-fit contract. Literal template presets preserve fixed 1024x1024
+/// authoring coordinates through EnvironmentTemplateMapping.
 /// </summary>
 public static class EnvironmentSilhouetteGenerator
 {
@@ -59,12 +58,7 @@ public static class EnvironmentSilhouetteGenerator
             float y;
             if (literalTemplate)
             {
-                Vector2 mapped = EnvironmentTemplateMapping.GridVertexToWorld(
-                    vx,
-                    vy,
-                    grid.Width,
-                    grid.Height,
-                    recipe);
+                Vector2 mapped = EnvironmentTemplateMapping.GridVertexToWorld(vx, vy, grid.Width, grid.Height, recipe);
                 x = mapped.X;
                 y = mapped.Y;
             }
@@ -193,6 +187,7 @@ public static class EnvironmentSilhouetteGenerator
         float roundness = (float)settings.Roundness;
         return settings.ShapeMode switch
         {
+            ShapeMode.FlatExtrusion => halfDepth,
             ShapeMode.RoundedExtrusion => Rounded(inset, halfDepth, roundness),
             ShapeMode.InflatedSolid => halfDepth * ((.18f + (1f - roundness) * .24f) +
                 (1f - (.18f + (1f - roundness) * .24f)) * MathF.Sin(MathF.Pow(normalized, .82f + (1f - roundness) * .55f) * MathF.PI * .5f)),
