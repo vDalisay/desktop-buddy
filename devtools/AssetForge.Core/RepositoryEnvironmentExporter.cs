@@ -239,10 +239,10 @@ public static class RepositoryEnvironmentExporter
             throw new InvalidOperationException("Path traversal is forbidden.");
     }
 
-    internal static bool IsSupportedCategory(AssetCategory category) =>
+    public static bool IsSupportedCategory(AssetCategory category) =>
         category is AssetCategory.Lamp or AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant or AssetCategory.Painting;
 
-    internal static string AssetIdPrefix(AssetCategory category) => category switch
+    public static string AssetIdPrefix(AssetCategory category) => category switch
     {
         AssetCategory.Lamp => "decoration.lamp.",
         AssetCategory.Sofa => "decoration.sofa.",
@@ -252,7 +252,7 @@ public static class RepositoryEnvironmentExporter
         _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
     };
 
-    internal static string AuthoringFolder(AssetCategory category) => category switch
+    public static string AuthoringFolder(AssetCategory category) => category switch
     {
         AssetCategory.Lamp => "lamps",
         AssetCategory.Sofa => "sofas",
@@ -262,7 +262,7 @@ public static class RepositoryEnvironmentExporter
         _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
     };
 
-    internal static int DecorationCategory(AssetCategory category) => category switch
+    public static int DecorationCategory(AssetCategory category) => category switch
     {
         AssetCategory.Lamp => 0,
         AssetCategory.Sofa => 1,
@@ -272,7 +272,7 @@ public static class RepositoryEnvironmentExporter
         _ => throw new ArgumentOutOfRangeException(nameof(category), category, null),
     };
 
-    internal static int AnchorKind(EnvironmentAnchorMode anchor) => anchor switch
+    public static int AnchorKind(EnvironmentAnchorMode anchor) => anchor switch
     {
         EnvironmentAnchorMode.Floor => 0,
         EnvironmentAnchorMode.Wall => 1,
