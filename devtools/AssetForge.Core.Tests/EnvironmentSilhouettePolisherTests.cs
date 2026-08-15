@@ -6,6 +6,16 @@ namespace DesktopBuddy.AssetForge.Core.Tests;
 public sealed class EnvironmentSilhouettePolisherTests
 {
     [Fact]
+    public void New_lamps_default_to_inflated_solid_with_full_surface_smoothing()
+    {
+        AssetRecipe recipe = AssetRecipe.LampDefaults();
+        Assert.Equal(ShapeMode.InflatedSolid, recipe.Geometry.ShapeMode);
+        Assert.Equal(1.0, recipe.Geometry.SurfaceSmoothness, 8);
+        Assert.Equal(2, recipe.PresetVersion);
+        Assert.True(EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe));
+    }
+
+    [Fact]
     public void Literal_lamp_refines_rim_beyond_the_coarse_mask_lattice()
     {
         AssetRecipe defaults = AssetRecipe.LampDefaults();
@@ -30,6 +40,35 @@ public sealed class EnvironmentSilhouettePolisherTests
         });
 
         Assert.True(hasSubGridUv);
+    }
+
+    [Fact]
+    public void Low_opacity_template_guides_do_not_enter_the_lamp_mask_or_smoothed_contour()
+    {
+        AssetRecipe defaults = AssetRecipe.LampDefaults();
+        AssetRecipe recipe = defaults with
+        {
+            AssetId = "decoration.lamp.guide_alpha_test",
+            Geometry = defaults.Geometry with
+            {
+                GeometryResolution = 64,
+                RuntimeTextureResolution = 64,
+                AlphaThreshold = .5,
+            },
+        };
+        byte[] clean = RoundedLampSource();
+        RgbaImage decoded = PngCodec.DecodeRgba8(clean);
+        byte[] guidedPixels = (byte[])decoded.Pixels.Clone();
+        Fill(guidedPixels, 180, 100, 184, 880, 84, 112, 128, 58);
+        Fill(guidedPixels, 840, 100, 844, 880, 84, 112, 128, 58);
+        Fill(guidedPixels, 100, 878, 924, 882, 66, 116, 72, 120);
+        byte[] guided = PngCodec.EncodeRgba8(new RgbaImage(1024, 1024, guidedPixels));
+
+        GeneratedAsset withoutGuide = AssetForgeCompiler.Generate(clean, recipe);
+        GeneratedAsset withGuide = AssetForgeCompiler.Generate(guided, recipe);
+
+        Assert.Equal(withoutGuide.GeometryHash, withGuide.GeometryHash);
+        Assert.Equal(withoutGuide.GlbBytes, withGuide.GlbBytes);
     }
 
     [Fact]
@@ -74,10 +113,10 @@ public sealed class EnvironmentSilhouettePolisherTests
         return PngCodec.EncodeRgba8(new RgbaImage(1024, 1024, pixels));
     }
 
-    private static void Fill(byte[] pixels, int x0, int y0, int x1, int y1, byte r, byte g, byte b)
+    private static void Fill(byte[] pixels, int x0, int y0, int x1, int y1, byte r, byte g, byte b, byte a = 255)
     {
         for (int y = y0; y < y1; y++)
-        for (int x = x0; x < x1; x++) Pixel(pixels, x, y, r, g, b, 255);
+        for (int x = x0; x < x1; x++) Pixel(pixels, x, y, r, g, b, a);
     }
 
     private static void Pixel(byte[] pixels, int x, int y, byte r, byte g, byte b, byte a)
