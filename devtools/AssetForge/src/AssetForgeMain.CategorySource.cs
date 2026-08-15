@@ -32,11 +32,17 @@ public partial class AssetForgeMain
             AssetCategory.FootShape =>
                 "Source selected. foot_shape@1 keeps the fixed single-foot template placement; the paired counterpart is generated deterministically.",
             AssetCategory.Lamp when _activePresetVersion >= 2 =>
-                "Source selected. lamp@2 preserves the fixed floor-template coordinates, so the drawing's position and scale become its in-room placement.",
+                "Source selected. lamp@2 preserves fixed floor-template coordinates and smooths the generated rim against the full-resolution source alpha.",
             AssetCategory.Lamp =>
                 "Source selected. Legacy lamp@1 auto-fits the visible lamp bounds while retaining the authored light metadata.",
             AssetCategory.Sofa =>
-                "Source selected. sofa@1 preserves the fixed floor-template coordinates and generates a front-derived stylized 2.5D volume.",
+                "Source selected. sofa@1 preserves fixed floor-template coordinates and generates a smoothed front-derived stylized volume.",
+            AssetCategory.Table =>
+                "Source selected. table@1 preserves the fixed floor/template coordinates; tabletop and supports remain where they were authored.",
+            AssetCategory.Plant =>
+                "Source selected. plant@1 preserves the fixed floor/template coordinates and generates an inflated smoothed volume from the clean silhouette.",
+            AssetCategory.Painting =>
+                "Source selected. painting@1 preserves fixed wall-template coordinates; the template centre becomes the wall anchor and the artwork is not auto-fitted.",
             _ => $"Source selected for {_activeCategory}.",
         };
         SetStatus(message);
