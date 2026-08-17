@@ -14,9 +14,10 @@ using Godot;
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// Focused CAP-2 regression gate for the short boxing-glove critical-head pause. The probe uses a
-/// real PhysicalTools rigid body and the production contact pipeline; no synthetic damage or direct
-/// hit-lag invocation is allowed. Hard torso hits and sub-threshold head hits are negative controls.
+/// Focused CAP-2/CAP-9 regression gate for the short boxing-glove critical-head pause and its
+/// replacement-ready audio lane. Every probe uses a real PhysicalTools rigid body and production
+/// contact pipeline; no synthetic damage, direct hit-lag invocation, or direct audio playback is
+/// allowed. Hard torso and sub-threshold head strikes are negative controls.
 /// </summary>
 public sealed class GloveCriticalHeadImpactScenario : IScenario
 {
@@ -61,6 +62,10 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
             strongHead.FrozenFrames == SwingHitLagComponent.GloveCriticalHeadHitLagTicks &&
             strongHead.Completed && !strongHead.ActiveAfterCompletion,
             $"frozen={strongHead.FrozenFrames} expected={SwingHitLagComponent.GloveCriticalHeadHitLagTicks} completed={strongHead.Completed} active_after={strongHead.ActiveAfterCompletion}"));
+        checks.Add(new StartupCheck(
+            "critical_head_uses_one_glove_audio_route_and_one_critical_marker",
+            strongHead.GloveAudioCount == 1 && strongHead.CriticalAudioCount == 1,
+            $"glove_audio={strongHead.GloveAudioCount} critical_audio={strongHead.CriticalAudioCount}; critical cue replaces rather than layers over the ordinary glove cue"));
 
         ProbeResult hardTorso = await RunProbe(tree, BuddyPart.Torso, HardStrikeSpeed, HardStrikeMass, awaitCompletion: false);
         checks.Add(new StartupCheck(
@@ -71,6 +76,10 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
             hardTorso.Impact is null
                 ? "No hard torso impact was observed."
                 : $"raw={hardTorso.Impact.Value.RawImpulse:0.0} threshold={SwingHitLagComponent.GloveCriticalHeadImpulse:0.0} started={hardTorso.Started}"));
+        checks.Add(new StartupCheck(
+            "hard_torso_keeps_ordinary_glove_audio_route",
+            hardTorso.GloveAudioCount == 1 && hardTorso.CriticalAudioCount == 0,
+            $"glove_audio={hardTorso.GloveAudioCount} critical_audio={hardTorso.CriticalAudioCount}"));
 
         ProbeResult weakHead = await RunProbe(tree, BuddyPart.Head, WeakStrikeSpeed, WeakStrikeMass, awaitCompletion: false);
         checks.Add(new StartupCheck(
@@ -81,6 +90,10 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
             weakHead.Impact is null
                 ? "No weak head impact was observed."
                 : $"raw={weakHead.Impact.Value.RawImpulse:0.0} threshold={SwingHitLagComponent.GloveCriticalHeadImpulse:0.0} started={weakHead.Started}"));
+        checks.Add(new StartupCheck(
+            "sub_threshold_head_keeps_ordinary_glove_audio_route",
+            weakHead.GloveAudioCount == 1 && weakHead.CriticalAudioCount == 0,
+            $"glove_audio={weakHead.GloveAudioCount} critical_audio={weakHead.CriticalAudioCount}"));
 
         checks.Add(new StartupCheck(
             "critical_glove_pause_is_shorter_than_home_run_maximum",
@@ -90,6 +103,7 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
         bool passed = checks.All(check => check.Passed);
         messages.Add($"seed={seed}");
         messages.Add("critical glove punctuation is contact-driven: boxing glove + Head + shared 1500 raw-impulse anchor only");
+        messages.Add("critical glove audio is replacement-ready and mutually exclusive with the ordinary glove cue for the same accepted impact");
         return new ScenarioResult(passed, checks, messages);
     }
 
@@ -111,6 +125,8 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
         PuppetPartBody target = targetPart == BuddyPart.Head ? lab.Buddy.Rig.Head : lab.Buddy.Rig.Torso;
         int frozenBefore = lab.SwingHitLag.FrozenFrameCount;
         int completionBefore = lab.SwingHitLag.CompletionCount;
+        int gloveAudioBefore = lab.ReactionAudio.GloveImpactCount;
+        int criticalAudioBefore = lab.ReactionAudio.GloveCriticalHeadImpactCount;
         SwingHitLagStarted startedState = default;
         bool started = false;
         void OnStarted(SwingHitLagStarted state)
@@ -135,10 +151,10 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
         int frozenFrames = lab.SwingHitLag.FrozenFrameCount - frozenBefore;
         bool completed = lab.SwingHitLag.CompletionCount > completionBefore;
         bool activeAfter = lab.SwingHitLag.IsActive;
+        int gloveAudioCount = lab.ReactionAudio.GloveImpactCount - gloveAudioBefore;
+        int criticalAudioCount = lab.ReactionAudio.GloveCriticalHeadImpactCount - criticalAudioBefore;
         lab.SwingHitLag.Started -= OnStarted;
 
-        // A queued-free active negative-control lab must run its _ExitTree cancel so the global
-        // PhysicsServer2D state can never leak into the next probe.
         lab.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
@@ -148,7 +164,9 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
             startedState,
             frozenFrames,
             completed,
-            activeAfter);
+            activeAfter,
+            gloveAudioCount,
+            criticalAudioCount);
     }
 
     private static async Task<AcceptedImpact?> Strike(
@@ -194,5 +212,7 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
         SwingHitLagStarted StartedState,
         int FrozenFrames,
         bool Completed,
-        bool ActiveAfterCompletion);
+        bool ActiveAfterCompletion,
+        int GloveAudioCount,
+        int CriticalAudioCount);
 }
