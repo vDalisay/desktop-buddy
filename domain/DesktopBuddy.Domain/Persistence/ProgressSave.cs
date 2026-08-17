@@ -358,6 +358,13 @@ public sealed record LocalSettingsSave
     /// <summary>"remember" (default), "work", or "play": which mode a launch starts in.</summary>
     public string StartupInputMode { get; init; } = "remember";
     public bool MuteInWorkMode { get; init; } = true;
+
+    /// <summary>
+    /// Aesthetic UI preference: keep the Win98 visual language but allow short modern easing for
+    /// preview/category transitions. ReducedMotion always overrides this and removes the motion.
+    /// Missing values in older settings files default to true through the property initializer.
+    /// </summary>
+    public bool ModernUiMotion { get; init; } = true;
     public bool ReducedMotion { get; init; }
     public bool ScreenShake { get; init; } = true;
     public bool ReducedParticles { get; init; }
