@@ -64,11 +64,11 @@ public sealed class PaintPenLimbDabTests
     }
 
     [Fact]
-    public void HeadConnectorReusesConnectorLaneWithoutChangingNormalHeadRegion()
+    public void HeadAndNeckUseSameSeparateEndpointConnectorLanesAsOtherLimbs()
     {
         PaintHit normalHead = new(
             PaintPart.Head,
-            new PaintPoint(0.25, 0.5),
+            PaintUvRegion.LimbEnd.MapLocal(new PaintPoint(0.5, 0.5)),
             0.0);
         PaintHit neck = new(
             PaintPart.Head,
@@ -76,7 +76,7 @@ public sealed class PaintPenLimbDabTests
             0.0,
             IsConnector: true);
 
-        Assert.Equal(PaintUvRegion.Full, PaintUvRegion.For(normalHead));
+        Assert.Equal(PaintUvRegion.LimbEnd, PaintUvRegion.For(normalHead));
         Assert.Equal(PaintUvRegion.LimbConnector, PaintUvRegion.For(neck));
 
         PaintWorkspace workspace = new()
