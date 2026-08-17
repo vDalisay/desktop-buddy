@@ -14,7 +14,14 @@ namespace DesktopBuddy.Presentation3D;
 [GlobalClass]
 public partial class CursorToolVisual3D : Node3D
 {
-    private const float GloveAimTravelThresholdPx = 0.25f;
+    // Reuse the pistol's authored steering feel rather than maintaining another cursor-follow
+    // approximation for the glove. Wheel pitch is intentionally not used by the glove.
+    private static readonly CursorAimConstants GloveAimConstants = new(
+        SmoothingHalfLifeTicks: 14.0f,
+        MinimumAimSpeed: 0.35f,
+        MaxTurnDegreesPerTick: 6.0f,
+        DegreesPerWheelStep: 5.0f,
+        MaximumOffsetDegrees: 60.0f);
     private const float SwingGuideOffsetPx = 28.0f;
 
     private Body2DVisual3D _slot = null!;
@@ -24,6 +31,7 @@ public partial class CursorToolVisual3D : Node3D
     private bool _hasGloveFacing;
     private Vector2 _previousGloveCursor;
     private bool _hasGloveCursorSample;
+    private CursorAimState _gloveAimState = CursorAimState.Initial;
 
     public bool IsInitialized { get; private set; }
     public bool IsAttached => IsInitialized && _slot.IsAttached;
@@ -63,10 +71,7 @@ public partial class CursorToolVisual3D : Node3D
 
         ValidateProfile(profile);
         ActiveKind = profile.Visual3DKind;
-        _hasGloveFacing = false;
-        _hasGloveCursorSample = false;
-        _gloveFacingAngle = 0.0f;
-        _previousGloveCursor = Vector2.Zero;
+        ResetGloveAim();
         _slot.Mesh.Rotation = Vector3.Zero;
         _swingGuide.Visible = false;
 
@@ -88,7 +93,7 @@ public partial class CursorToolVisual3D : Node3D
     public void Attach(RigidBody2D target)
     {
         _slot.Attach(target);
-        _hasGloveCursorSample = false;
+        ResetGloveAim();
         if (ActiveKind == CursorToolVisual3DKind.BoxingGlove &&
             target.GetParent() is CursorToolController controller && controller.HasCursor)
         {
@@ -101,7 +106,7 @@ public partial class CursorToolVisual3D : Node3D
     public void Detach(RigidBody2D target)
     {
         _slot.Detach(target);
-        _hasGloveCursorSample = false;
+        ResetGloveAim();
         _swingGuide.Visible = false;
         Visible = false;
     }
@@ -117,6 +122,38 @@ public partial class CursorToolVisual3D : Node3D
 
     public void CaptureTickSnapshot() => _slot.CaptureTickSnapshot();
 
+    public override void _PhysicsProcess(double delta)
+    {
+        if (!IsInitialized || ActiveKind != CursorToolVisual3DKind.BoxingGlove ||
+            Target is not RigidBody2D target || !GodotObject.IsInstanceValid(target) ||
+            target.GetParent() is not CursorToolController controller || !controller.HasCursor)
+        {
+            return;
+        }
+
+        Vector2 cursor = controller.Cursor;
+        if (!_hasGloveCursorSample)
+        {
+            _previousGloveCursor = cursor;
+            _hasGloveCursorSample = true;
+            return;
+        }
+
+        Vector2 motion = cursor - _previousGloveCursor;
+        _previousGloveCursor = cursor;
+        CursorAimResult aim = CursorAim.Tick(new CursorAimInput(
+            _gloveAimState,
+            new System.Numerics.Vector2(motion.X, motion.Y),
+            WheelSteps: 0,
+            GloveAimConstants));
+        _gloveAimState = aim.State;
+        if (!aim.IsValid)
+            return;
+
+        _gloveFacingAngle = MathF.Atan2(aim.Forward.Y, aim.Forward.X);
+        _hasGloveFacing = true;
+    }
+
     public override void _Process(double delta)
     {
         if (!IsInitialized || Target is not RigidBody2D target ||
@@ -130,38 +167,24 @@ public partial class CursorToolVisual3D : Node3D
 
         UpdateSwingGuide(controller);
 
-        if (ActiveKind != CursorToolVisual3DKind.BoxingGlove)
+        if (ActiveKind != CursorToolVisual3DKind.BoxingGlove || !_hasGloveFacing)
             return;
 
-        // Match the pistol's control convention: facing comes from pointer travel, not from the
-        // lagging physical body's velocity. Moving right faces right, moving left faces left, and
-        // the last deliberate direction is held while the pointer rests. The body/collider remains
-        // free to react to contacts underneath this presentation-only orientation.
-        Vector2 cursor = controller.Cursor;
-        if (!_hasGloveCursorSample)
-        {
-            _previousGloveCursor = cursor;
-            _hasGloveCursorSample = true;
-        }
-        else
-        {
-            Vector2 motion = cursor - _previousGloveCursor;
-            if (motion.LengthSquared() >= GloveAimTravelThresholdPx * GloveAimTravelThresholdPx)
-            {
-                _gloveFacingAngle = motion.Angle();
-                _hasGloveFacing = true;
-            }
-            _previousGloveCursor = cursor;
-        }
-
-        if (!_hasGloveFacing)
-            return;
-
-        // Body2DVisual3D follows the solver body's rotation. Counter-rotate that local frame and
-        // then apply pointer-facing so incidental spin from a punch never turns the glove away.
+        // The desired direction now comes from the same CursorAim state machine the pistol uses.
+        // Counter-rotate the circular solver body's incidental spin so only the presentation faces
+        // along that aim; collision, punch velocity and damage remain untouched.
         float localFacing = _gloveFacingAngle - target.GlobalRotation;
         _slot.Mesh.Rotation = new Vector3(
             0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(localFacing));
+    }
+
+    private void ResetGloveAim()
+    {
+        _gloveFacingAngle = 0.0f;
+        _hasGloveFacing = false;
+        _previousGloveCursor = Vector2.Zero;
+        _hasGloveCursorSample = false;
+        _gloveAimState = CursorAimState.Initial;
     }
 
     private void UpdateSwingGuide(CursorToolController controller)
