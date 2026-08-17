@@ -53,6 +53,11 @@ public partial class BuddyStudioWorkspace
             if (BuddyGeneratedCosmeticRegistry.Current.TryGet(previewId, out GeneratedBuddyCosmeticResource generated))
                 RefreshGeneratedSelectionPane(generated);
         }
+
+        // Run last: both the legacy and generated refresh paths may have just written their
+        // historical ownership copy. CAP-6 then normalizes the visible hierarchy without changing
+        // either path's transaction/session state.
+        CaptureStorePolishProcess();
     }
 
     private int CatalogTileCount()
@@ -68,9 +73,16 @@ public partial class BuddyStudioWorkspace
 
         bool owned = _session.IsCosmeticOwned(definition.Id);
         bool equipped = IsEquipped(definition.Id);
-        bool previewed = _session.PreviewDocument is CharacterDocument preview &&
-            string.Equals(CharacterDocumentEditor.ReadFeatureId(preview, _slot), definition.Id, StringComparison.Ordinal);
-        string secondary = owned ? "Owned" : PriceText(definition);
+        string secondary = owned ? string.Empty : PriceText(definition);
+        Color? priceColor = null;
+        if (!owned && definition.OwnershipContentId is string contentId &&
+            _economy.Catalogue.TryGet(contentId, out CatalogueEntry entry) && entry.HasValidPrice)
+        {
+            priceColor = entry.PriceMilliCredits <= _economy.BalanceMilliCredits
+                ? Color.Color8(0, 128, 0)
+                : Color.Color8(192, 0, 0);
+        }
+
         return new Win98CatalogItemPresentation(
             definition.Id,
             generated.DisplayName,
@@ -79,8 +91,9 @@ public partial class BuddyStudioWorkspace
             Tooltip: equipped ? "Currently equipped."
                 : owned ? "Single-click to preview; double-click to equip."
                 : "Preview only until acquired.",
-            BadgeText: equipped ? "Equipped" : owned ? string.Empty : "Preview",
-            Accented: previewed);
+            BadgeText: equipped ? "Equipped" : owned ? "Owned" : string.Empty,
+            Accented: equipped,
+            SecondaryColor: priceColor);
     }
 
     private void RefreshGeneratedSelectionPane(GeneratedBuddyCosmeticResource generated)
@@ -96,7 +109,7 @@ public partial class BuddyStudioWorkspace
             entry.Kind == CatalogueEntryKind.Cosmetic && entry.HasValidPrice;
         bool affordable = !purchasable || entry.PriceMilliCredits <= _economy.BalanceMilliCredits;
 
-        string status = equipped ? "Equipped" : owned ? "Owned preview" : "Preview";
+        string status = equipped ? "Equipped" : owned ? "Owned" : "Preview";
         _values.SetRows(
         [
             new Win98ValueRowPresentation("status", "Status", status, true),
