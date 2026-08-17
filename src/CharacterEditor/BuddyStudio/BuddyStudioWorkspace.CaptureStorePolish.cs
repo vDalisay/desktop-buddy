@@ -3,6 +3,7 @@ using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Economy;
 using DesktopBuddy.UI;
+using DesktopBuddy.Ui;
 using Godot;
 
 namespace DesktopBuddy.CharacterEditor.BuddyStudio;
