@@ -4,6 +4,12 @@ using Godot;
 
 namespace DesktopBuddy.CharacterEditor;
 
+/// <summary>Replacement-ready paint-audio observation emitted only for accepted, rate-limited paint samples.</summary>
+public readonly record struct PaintAudioSample(
+    Vector2 CanvasPosition,
+    PaintTool Tool,
+    float BrushScale);
+
 /// <summary>
 /// Capture-only paint punctuation plus a narrow input-continuity guard. The canvas remains the
 /// authority for whether pixels changed; this partial exposes presentation observations and keeps
@@ -15,6 +21,12 @@ public partial class PaintCanvasControl
     internal Vector2 PaintPointerForPresentation => _lastPointer;
     internal int PaintBrushDiameterForPresentation => Workspace.BrushDiameter;
     internal float VisibleBrushDiameterForPresentation => VisibleBrushDiameter();
+
+    /// <summary>
+    /// Future owner-authored paint audio subscribes here. This is intentionally the same bounded
+    /// successful-paint sample cadence as the droplet presenter, never raw mouse motion.
+    /// </summary>
+    public event Action<PaintAudioSample>? PaintAudioSampled;
 
     private bool _paintPrimaryPhysicallyHeld;
 
@@ -35,6 +47,9 @@ public partial class PaintCanvasControl
         if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
             _paintPrimaryPhysicallyHeld = button.Pressed;
     }
+
+    internal void EmitPaintAudioSample(Vector2 pointer, float brushScale) =>
+        PaintAudioSampled?.Invoke(new PaintAudioSample(pointer, Workspace.SelectedTool, brushScale));
 
     /// <summary>
     /// Connector painting intentionally commits a bucket-fill as its own undoable operation, which
@@ -143,6 +158,8 @@ internal sealed partial class PaintDropletOverlay : Control
             0.0f,
             1.0f);
         float brushScale = Mathf.Lerp(0.90f, 2.15f, Mathf.Sqrt(brush01));
+        _canvas.EmitPaintAudioSample(pointer, brushScale);
+
         int count = reduced ? 1 : 2 + Mathf.RoundToInt(brush01 * 3.0f);
         float spread = Math.Max(2.0f, _canvas.VisibleBrushDiameterForPresentation * 0.34f);
         Color color = PaintColorToGodot(_canvas.Workspace.SelectedColor);
