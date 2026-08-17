@@ -1,10 +1,10 @@
 # Asset Forge v1 — Implementation Closure
 
-Status: **implementation complete; final owner visual/input pass pending**  
+Status: **v1 implementation complete; owner visual pass accepted with final polish integrated**  
 Branch: `codex/asset-forge-v1-completion`  
 Baseline: Asset Forge v0.1 was accepted and merged to `main` as `618df8f41379abafd4e39f97112c99eb04cdec5e`.
 
-This document records the implemented boundary for `docs/ASSET_FORGE_IMPLEMENTATION_PLAN.md` and the owner-approved category/template addendum. It intentionally distinguishes automated architectural closure from the final subjective visual pass.
+This document records the implemented boundary for `docs/ASSET_FORGE_IMPLEMENTATION_PLAN.md` and the owner-approved category/template addendum. AF-0 through AF-15 are closed for v1; remaining disabled categories are explicit post-v1 expansion seams rather than unfinished v1 work.
 
 ## v1 category set
 
@@ -40,7 +40,7 @@ Low-opacity coloring-guide pixels remain below the normal alpha threshold and ar
 
 ## Explicit preset migration
 
-Backward compatibility and adoption of the improved contracts are separate actions. Opening an older recipe keeps its saved preset version and therefore keeps its historical output path. Asset Forge now exposes an explicit migration action when a newer supported contract exists:
+Backward compatibility and adoption of the improved contracts are separate actions. Opening an older recipe keeps its saved preset version and therefore keeps its historical output path. Asset Forge exposes an explicit migration action when a newer supported contract exists:
 
 - `glasses@1 -> glasses@2`: switches auto-fit to literal head-template placement and requires source realignment on the current guide;
 - `lamp@1 -> lamp@3`: switches auto-fit to literal floor-template placement, adopts Inflated Solid + full smoothing and requires source realignment;
@@ -68,7 +68,8 @@ Migration preserves stable identity, economy, light/placement and thumbnail meta
 - base/leg contact and tabletop height/envelope guides;
 - literal floor placement;
 - rounded front-derived volume;
-- shared generated Environment export/runtime path.
+- shared generated Environment export/runtime path;
+- new-authoring scale calibrated from the owner-exported Lamp/Table GLBs so the representative Table reads at least 1.5× the accepted Lamp height in-room.
 
 ### Plant
 
@@ -89,6 +90,15 @@ Migration preserves stable identity, economy, light/placement and thumbnail meta
 
 All non-Lamp initial Environment categories are explicitly non-emissive and remain non-physical.
 
+## Export and catalogue polish
+
+The final v1 owner pass added two developer-facing export improvements:
+
+- Environment catalogue thumbnails are deterministic orthographic **front renders of the final generated mesh**, using the generated mesh positions, UVs, normals and albedo rather than a flat crop of the source texture. Headless Verify/Regenerate re-derives the same thumbnail bytes.
+- Exported GLBs use readable display-name-derived filenames across Buddy and Environment exports: e.g. `Round Lamp` becomes `RoundLampMesh.glb`. Trusted definitions/verifiers use the same naming policy, and successful re-export removes stale legacy `mesh.glb` files.
+
+The stable feature/asset ID remains the package identity; changing the readable mesh filename does not change player persistence semantics.
+
 ## AF-0 through AF-15 closure matrix
 
 | Phase | v1 status | Primary closure |
@@ -107,7 +117,7 @@ All non-Lamp initial Environment categories are explicitly non-emissive and rema
 | AF-11 | Complete | Data-driven generated Environment catalogue/visual seam without changing edit-session transactions; non-physical runtime path. |
 | AF-12 | Complete | Lamp authoring, floor pivot, versioned smoothed volume, emission/local light, emitter gizmo, per-instance economy and persistence. |
 | AF-13 | Complete | Sofa authoring, dedicated template, versioned smoothed 2.5D generation, per-instance economy and persistence. |
-| AF-14 | Complete | Shared deterministic 256×256 thumbnail contract/cache and catalogue integration. |
+| AF-14 | Complete | Shared deterministic 256×256 thumbnail contract/cache, final-mesh Environment front rendering and catalogue integration. |
 | AF-15 | Complete | Verify/Verify All/Regenerate/Regenerate All from pure Core, CI fixture regeneration, drift/corruption/identity coverage and combined Buddy+Environment maintenance. |
 
 ## Maintenance/destructive tooling
@@ -120,7 +130,7 @@ Repository maintenance is unified across Buddy Studio and Environment assets:
 - Regenerate All
 - Delete Asset…
 
-Delete now lists both asset families. Environment deletion removes the owned authoring source/recipe, generated mesh/texture/thumbnail and trusted definition, then rebuilds the generated Environment aggregate without disturbing peer assets. Git remains the recovery/history mechanism for deliberate destructive authoring changes.
+Delete lists both asset families. Environment deletion removes the owned authoring source/recipe, generated mesh/texture/thumbnail and trusted definition, then rebuilds the generated Environment aggregate without disturbing peer assets. Git remains the recovery/history mechanism for deliberate destructive authoring changes.
 
 ## Warning and performance behavior
 
@@ -157,7 +167,7 @@ Generated packages cannot introduce player scripts, DLLs, arbitrary shaders, arb
 
 ## Automated closure gate
 
-The Asset Forge CI workflow now covers:
+The Asset Forge CI workflow covers:
 
 - game solution build;
 - domain tests;
@@ -174,20 +184,16 @@ The Asset Forge CI workflow now covers:
 - generated Lamp runtime/economy/light/persistence;
 - generated Sofa runtime/economy/persistence;
 - generated Table/Plant/Painting trusted runtime/transaction/persistence seams;
+- deterministic final-model Environment thumbnails;
+- readable generated-mesh filenames and stale legacy-mesh cleanup;
 - standalone Asset Forge import and boot.
 
-The PR should not be considered ready for owner visual acceptance until the latest run is green.
+## Owner acceptance and v1 exit
 
-## Final owner pass
+The owner completed the intended local visual pass with exported Lamp, Table, Plant and Painting meshes and accepted the current generated visual quality as sufficient for v1. The final feedback was incorporated as v1 polish:
 
-Once CI is green, the remaining work is deliberately subjective/local rather than missing architecture:
+1. Table scale was raised for new authoring so the representative exported Table is at least 1.5× the accepted Lamp height rather than appearing miniature.
+2. Room Decorator thumbnails are generated from a canonical front view of the actual final model.
+3. Generated GLB files receive readable model-derived filenames instead of every export being named `mesh.glb`.
 
-1. Generate the provided Lamp-like art with the Lamp defaults (`lamp@3`, Inflated Solid). Confirm rounded shade/stem/base boundaries no longer show the previous grid staircase and that the intended silhouette is not over-smoothed.
-2. Confirm Lamp emitter dragging in the front view, preview orbit/reset, export, in-room local light origin, per-instance purchase and restart persistence.
-3. Generate one Sofa with the new `sofa@2` default and confirm the front-derived volume, scale and floor contact fit the game art direction; export/place/restart it.
-4. Save/import the Table, Plant and Painting templates once each; confirm literal placement and scale. Painting should use a wall anchor; Table/Plant should use the floor.
-5. Inspect generated catalogue thumbnails for Glasses/replacements/Environment at normal UI size.
-6. Open an existing `lamp@2` and `sofa@1` recipe, regenerate/verify them, then use the explicit migration action on disposable copies and confirm the old output stays reproducible until migration is chosen.
-7. Exercise Delete Asset… with a disposable generated Environment item and confirm its peer generated items remain in the catalogue.
-
-Any failure in this final pass should be treated as v1 polish on this branch rather than expanding scope into the explicit non-goals/future categories.
+With those changes covered by the automated gate, the original Asset Forge v1 implementation plan is complete. Further changes should be treated as post-v1 polish or new category scope. Hair, Headwear and generic face/head Accessories remain the explicitly planned next-category seams, not v1 blockers.
