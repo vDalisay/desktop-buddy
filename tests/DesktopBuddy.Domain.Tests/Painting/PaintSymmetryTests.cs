@@ -16,9 +16,9 @@ public sealed class PaintSymmetryTests
             SelectedColor = Ink,
             SelectedTool = PaintTool.Brush,
         };
-        PaintSurface surface = workspace.Surfaces[PaintPart.Head];
+        PaintSurface surface = workspace.Surfaces[PaintPart.Torso];
         string before = surface.ComputeHash();
-        PaintHit hit = new(PaintPart.Head, new PaintPoint(0.2, 0.5), 0);
+        PaintHit hit = new(PaintPart.Torso, new PaintPoint(0.2, 0.5), 0);
 
         workspace.BeginGesture(hit);
         workspace.EndGesture();
@@ -60,12 +60,12 @@ public sealed class PaintSymmetryTests
         PaintWorkspace workspace = new() { SelectedColor = Ink };
         workspace.SetBrushDiameter(24);
 
-        workspace.BeginGesture(new PaintHit(PaintPart.Head, new PaintPoint(0.5, 0.5), 0));
+        workspace.BeginGesture(new PaintHit(PaintPart.Torso, new PaintPoint(0.5, 0.5), 0));
         workspace.EndGesture();
 
-        PaintSurface head = workspace.Surfaces[PaintPart.Head];
-        Assert.True(head.TrySample(new PaintPoint(0.5 + (10.0 / 511.0), 0.5), out _));
-        Assert.False(head.TrySample(new PaintPoint(0.5, 0.5 + (10.0 / 511.0)), out _));
+        PaintSurface torso = workspace.Surfaces[PaintPart.Torso];
+        Assert.True(torso.TrySample(new PaintPoint(0.5 + (10.0 / 511.0), 0.5), out _));
+        Assert.False(torso.TrySample(new PaintPoint(0.5, 0.5 + (10.0 / 511.0)), out _));
     }
 
     [Fact]
@@ -77,8 +77,8 @@ public sealed class PaintSymmetryTests
             SelectedColor = Ink,
             SelectedTool = PaintTool.Brush,
         };
-        PaintSurface surface = workspace.Surfaces[PaintPart.Head];
-        PaintHit hit = new(PaintPart.Head, new PaintPoint(0.2, 0.5), 0);
+        PaintSurface surface = workspace.Surfaces[PaintPart.Torso];
+        PaintHit hit = new(PaintPart.Torso, new PaintPoint(0.2, 0.5), 0);
 
         workspace.BeginGesture(hit);
         workspace.EndGesture();
@@ -97,9 +97,9 @@ public sealed class PaintSymmetryTests
             SelectedColor = Ink,
             SelectedTool = PaintTool.Brush,
         };
-        PaintSurface surface = workspace.Surfaces[PaintPart.Head];
+        PaintSurface surface = workspace.Surfaces[PaintPart.Torso];
         string before = surface.ComputeHash();
-        PaintHit hit = new(PaintPart.Head, new PaintPoint(0.2, 0.5), 0);
+        PaintHit hit = new(PaintPart.Torso, new PaintPoint(0.2, 0.5), 0);
 
         workspace.BeginGesture(hit);
         workspace.EndGesture();
@@ -166,12 +166,12 @@ public sealed class PaintSymmetryTests
             PaintBacksideEnabled = true,
             SelectedColor = Ink,
         };
-        PaintSurface surface = workspace.Surfaces[PaintPart.Head];
+        PaintSurface surface = workspace.Surfaces[PaintPart.Torso];
         string before = surface.ComputeHash();
         PaintHit?[] samples =
         [
-            new(PaintPart.Head, new PaintPoint(0.18, 0.45), 0),
-            new(PaintPart.Head, new PaintPoint(0.22, 0.55), 0),
+            new(PaintPart.Torso, new PaintPoint(0.18, 0.45), 0),
+            new(PaintPart.Torso, new PaintPoint(0.22, 0.55), 0),
         ];
 
         workspace.BeginPreviewTransaction();
