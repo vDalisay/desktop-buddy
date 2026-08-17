@@ -1,5 +1,7 @@
 using System;
+using DesktopBuddy.App;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.CharacterEditor.BuddyStudio;
@@ -16,9 +18,8 @@ public partial class BuddyStudioWorkspace
     private Tween? _previewViewTween;
 
     /// <summary>
-    /// Presentation-only switch for the fast category/zoom interpolation. The shared Win98 motion
-    /// preference wires this property later in the capture-polish pass; disabling it preserves the
-    /// existing rigid/authentic Windows 98 response without changing any view state.
+    /// Presentation-only local kill switch used by focused tests. The persisted Win98 motion
+    /// preference and Reduced Motion policy are evaluated in addition to this switch.
     /// </summary>
     public bool SmoothViewMotionEnabled { get; set; } = true;
 
@@ -155,7 +156,7 @@ public partial class BuddyStudioWorkspace
         float targetSize = Math.Max(0.001f, frame.Size / _viewZoom);
 
         StopPreviewViewTween();
-        if (!animate || !SmoothViewMotionEnabled || !IsInsideTree())
+        if (!animate || !AllowsSmoothPreviewMotion() || !IsInsideTree())
         {
             _previewCamera.Position = targetPosition;
             _previewCamera.Size = targetSize;
@@ -172,6 +173,17 @@ public partial class BuddyStudioWorkspace
         _previewViewTween.TweenProperty(_previewCamera, "size", targetSize, PreviewTransitionSeconds)
             .SetTrans(Tween.TransitionType.Quad)
             .SetEase(Tween.EaseType.Out);
+    }
+
+    private bool AllowsSmoothPreviewMotion()
+    {
+        if (!SmoothViewMotionEnabled || !IsInsideTree())
+            return false;
+
+        SandboxRoot? sandbox = GetTree().Root.FindChild(
+            nameof(SandboxRoot), recursive: true, owned: false) as SandboxRoot;
+        return !GodotObject.IsInstanceValid(sandbox) ||
+               Win98MotionPolicy.Allows(sandbox!.Shell.CurrentLocalSettings);
     }
 
     private void StopPreviewViewTween()
