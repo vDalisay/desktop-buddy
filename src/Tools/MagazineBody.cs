@@ -30,6 +30,7 @@ public partial class MagazineBody : RigidBody2D
     private Color _color = new("1c1f26");
     private int _ticks;
     private int _lingerTicks = 600;
+    private float _sourceVisualLengthPx;
 
     public bool IsLive { get; private set; }
 
@@ -59,6 +60,7 @@ public partial class MagazineBody : RigidBody2D
         ArgumentNullException.ThrowIfNull(profile);
 
         IsCasing = asCasing;
+        _sourceVisualLengthPx = profile.VisualLengthPx;
         _color = asCasing ? profile.CasingColor : profile.AccentColor;
         _size = asCasing
             ? new Vector2(
@@ -81,9 +83,6 @@ public partial class MagazineBody : RigidBody2D
             Friction = 0.75f,
         };
         PhysicsMaterialOverride = material;
-        // The body owns a native reference after assignment. Release this temporary C#
-        // wrapper deterministically so all three pooled magazines cannot survive until
-        // engine shutdown as leaked resource handles.
         material.Dispose();
         ContactMonitor = true;
         MaxContactsReported = 4;
@@ -103,6 +102,23 @@ public partial class MagazineBody : RigidBody2D
         FadeAlpha = 1.0f;
         SawUpwardBounce = false;
         IsLive = true;
+
+        if (!IsCasing)
+        {
+            // CursorGunComponent's established magazine call encodes its aim in the launch
+            // velocity: -forward*40 + worldDown*30. Recover that same forward vector here and
+            // rotate the old world-down grip offset into gun-local down. This keeps the fix in
+            // the cosmetic body and leaves the pistol's shared aim/fire path untouched.
+            Vector2 encodedForward = new(-velocity.X / 40.0f, (30.0f - velocity.Y) / 40.0f);
+            if (encodedForward.LengthSquared() > 0.0001f)
+            {
+                Vector2 forward = encodedForward.Normalized();
+                Vector2 localDown = new(-forward.Y, forward.X);
+                float dropOffset = _sourceVisualLengthPx * 0.28f;
+                position += (localDown - Vector2.Down) * dropOffset;
+                velocity = (-forward * 40.0f) + (localDown * 30.0f);
+            }
+        }
 
         Freeze = false;
         Sleeping = false;
