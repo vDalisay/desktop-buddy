@@ -79,9 +79,10 @@ public sealed class EnvironmentAdditionalCategoryTests
             foreach ((AssetRecipe recipe, byte[] source) in cases)
             {
                 GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-                byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
+                byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated);
                 ExportResult result = RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
                 Assert.Contains(Path.Combine("authoring", "asset-forge", RepositoryEnvironmentExporter.AuthoringFolder(recipe.Category)), result.AuthoringDirectory, StringComparison.OrdinalIgnoreCase);
+                Assert.True(File.Exists(Path.Combine(result.AssetDirectory, AssetFileNaming.MeshFileName(recipe))));
                 string definition = File.ReadAllText(result.CosmeticDefinitionPath);
                 Assert.Contains($"Category = {RepositoryEnvironmentExporter.DecorationCategory(recipe.Category)}", definition, StringComparison.Ordinal);
                 Assert.Contains($"AnchorKind = {RepositoryEnvironmentExporter.AnchorKind(recipe.Environment.Anchor)}", definition, StringComparison.Ordinal);
@@ -110,15 +111,21 @@ public sealed class EnvironmentAdditionalCategoryTests
         yield return [Fast(AssetRecipe.PaintingDefaults(), "decoration.painting.test"), PaintingSource()];
     }
 
-    private static AssetRecipe Fast(AssetRecipe recipe, string id) => recipe with
+    private static AssetRecipe Fast(AssetRecipe recipe, string id)
     {
-        AssetId = id,
-        Geometry = recipe.Geometry with
+        AssetRecipe result = recipe with
         {
-            GeometryResolution = 64,
-            RuntimeTextureResolution = 128,
-        },
-    };
+            AssetId = id,
+            Geometry = recipe.Geometry with
+            {
+                GeometryResolution = 64,
+                RuntimeTextureResolution = 128,
+            },
+        };
+        return recipe.Category == AssetCategory.Table
+            ? result with { Environment = result.Environment with { LogicalHeight = 440 } }
+            : result;
+    }
 
     private static byte[] TableSource()
     {
