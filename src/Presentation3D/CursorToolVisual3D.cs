@@ -190,7 +190,7 @@ public partial class CursorToolVisual3D : Node3D
     private void BuildSwingGuide()
     {
         var surface = new SurfaceTool();
-        surface.Begin(Mesh.PrimitiveType.Triangles);
+        surface.Begin(Godot.Mesh.PrimitiveType.Triangles);
         Color fill = new(1.0f, 0.94f, 0.45f, 0.95f);
         AddGuideTriangle(surface, new Vector3(0.0f, -2.2f, 0.0f), new Vector3(11.0f, -2.2f, 0.0f), new Vector3(11.0f, 2.2f, 0.0f), fill);
         AddGuideTriangle(surface, new Vector3(0.0f, -2.2f, 0.0f), new Vector3(11.0f, 2.2f, 0.0f), new Vector3(0.0f, 2.2f, 0.0f), fill);
