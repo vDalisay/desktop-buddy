@@ -46,4 +46,4 @@ DropsMagazineOnReload = true
 EjectsCasingOnShot = true
 CasingColor = Color(0.784314, 0.647059, 0.278431, 1)
 CasingLengthFraction = 0.08
-MagazineLingerTicks = 240
+MagazineLingerTicks = 600
