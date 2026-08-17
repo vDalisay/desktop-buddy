@@ -49,7 +49,7 @@ public partial class GrenadeComponent : Node2D
     /// </summary>
     public LooseObjectBody? Tracked => PrimaryState()?.Body;
     public int TrackedCount => _tracked.Count;
-    public GrenadeFuseStage Stage => PrimaryState()?.Phase.Stage ?? GrenadeFuseStage.Fresh;
+    public GrenadeFuseStage Stage => PrimaryState()?.Phase.Stage ?? GrenadeFuseStage.Pinned;
     public int FuseTicksRemaining => PrimaryState()?.Phase.TicksRemaining ?? 0;
     public bool PinIsOut => PrimaryState()?.Phase.PinIsOut ?? false;
     public bool IsCountingDown => PrimaryState()?.Phase.IsCountingDown ?? false;
@@ -141,11 +141,7 @@ public partial class GrenadeComponent : Node2D
             }
 
             if (state.Phase.IsCountingDown)
-            {
-                // Every live fuse is independently protected from capacity eviction until it
-                // detonates. The registry remains the single owner of capacity and identity.
                 Registry.SetProtected(body, true);
-            }
 
             TrackGroundContact(state);
 
@@ -180,8 +176,6 @@ public partial class GrenadeComponent : Node2D
 
     private void ReconcileRegistryGrenades()
     {
-        // Registry enumeration is the authoritative inventory. It also lets grenades spawned by
-        // any trusted factory participate; there is no launcher-only hidden lifetime.
         for (int slot = 0; slot < LooseObjectRegistry.Capacity; slot++)
         {
             LooseObjectBody? body = Registry.BodyAt(slot);
@@ -219,7 +213,6 @@ public partial class GrenadeComponent : Node2D
             Body = body,
             Phase = GrenadeFusePhase.Fresh,
             PreviousSpeed = body.LinearVelocity.Length(),
-            // A just-placed grenade starts in the floor state without creating a fake landing cue.
             WasOnFloor = true,
             TicksSinceThud = Profile.ThudMinIntervalTicks,
         });
