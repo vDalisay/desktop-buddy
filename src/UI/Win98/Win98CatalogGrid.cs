@@ -46,8 +46,14 @@ public partial class Win98CatalogGrid : ScrollContainer
 
     public string? SelectedId => _selectedId;
 
-    /// <summary>Persistent caller-authored accent, independent of the current preview selection.</summary>
-    public bool IsAccented(string id) =>
+    /// <summary>
+    /// Historical selection oracle retained for existing focused scenarios. The selected state is
+    /// now rendered as the inset preview outline; persistent caller-owned state has its own oracle.
+    /// </summary>
+    public bool IsAccented(string id) => IsPreviewOutlined(id);
+
+    /// <summary>Persistent caller-authored outer accent, independent of preview selection.</summary>
+    public bool IsPersistentAccented(string id) =>
         _tiles.TryGetValue(id, out TileParts? parts) &&
         new[] { "normal", "hover", "pressed", "hover_pressed", "focus" }.All(
             state => parts.Button.HasThemeStyleboxOverride(state)) &&
