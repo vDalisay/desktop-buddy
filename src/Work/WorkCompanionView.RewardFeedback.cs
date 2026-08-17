@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Work;
@@ -79,9 +80,9 @@ public partial class WorkCompanionView
                 return;
 
             float life = Mathf.Clamp(_pulseRemaining / PulseLifetimeSeconds, 0.0f, 1.0f);
-            bool reducedMotion = GodotObject.IsInstanceValid(_owner._sandbox) &&
-                _owner._sandbox.Shell.CurrentLocalSettings.ReducedMotion;
-            float rise = reducedMotion ? 0.0f : (1.0f - life) * 7.0f;
+            bool allowsMotion = !GodotObject.IsInstanceValid(_owner._sandbox) ||
+                Win98MotionPolicy.Allows(_owner._sandbox.Shell.CurrentLocalSettings);
+            float rise = allowsMotion ? (1.0f - life) * 7.0f : 0.0f;
             string pulse = $"+{FormatCredits(_pulseMilliCredits)} credits";
             ThemeDB.FallbackFont.DrawString(
                 GetCanvasItem(),
