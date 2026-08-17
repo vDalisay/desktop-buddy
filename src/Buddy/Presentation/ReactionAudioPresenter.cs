@@ -34,6 +34,7 @@ public partial class ReactionAudioPresenter : Node
     [Export] public AudioStream? GloveImpact2 { get; set; }
     [Export] public AudioStream? GloveImpact3 { get; set; }
     [Export] public AudioStream? GloveImpact4 { get; set; }
+    [Export] public AudioStream? GloveCriticalHeadImpact { get; set; }
     [Export] public AudioStream? PistolShot1 { get; set; }
     [Export] public AudioStream? PistolShot2 { get; set; }
     [Export] public AudioStream? PistolReload { get; set; }
@@ -42,6 +43,7 @@ public partial class ReactionAudioPresenter : Node
     private AudioStream? _buddyHardImpact;
     private AudioStream? _itemFalling;
     private AudioStream? _gloveImpact;
+    private AudioStream? _gloveCriticalHeadImpact;
     private AudioStream? _pistolShot;
     private AudioStream? _pistolReload;
     private float _hardImpactPain;
@@ -57,6 +59,7 @@ public partial class ReactionAudioPresenter : Node
     public int BuddyHardImpactCount { get; private set; }
     public int ItemFallingCount { get; private set; }
     public int GloveImpactCount { get; private set; }
+    public int GloveCriticalHeadImpactCount { get; private set; }
     public int PistolShotCount { get; private set; }
     public int PistolReloadCount { get; private set; }
     public int WallImpactCount { get; private set; }
@@ -104,13 +107,13 @@ public partial class ReactionAudioPresenter : Node
         _buddyHardImpact = BuildVariations(BuddyHardImpact1, BuddyHardImpact2);
         _itemFalling = IsValid(ItemFalling) ? ItemFalling : null;
         _gloveImpact = BuildVariations(GloveImpact1, GloveImpact2, GloveImpact3, GloveImpact4);
+        _gloveCriticalHeadImpact = BuildRandomized(GloveCriticalHeadImpact, 1.5f);
         _pistolShot = BuildVariations(PistolShot1, PistolShot2);
         _pistolReload = BuildRandomized(PistolReload, 1.5f);
         _hardImpactPain = HardImpactPainFrom(Pipeline.Profile);
         _maximumPain = MaximumPainFrom(Pipeline.Profile);
         _grabbedBoundaryPainThreshold = GrabbedBoundaryPainFrom(Pipeline.Profile);
         _baseVolumeDb = Player.VolumeDb;
-        // Set before the voice pool below copies it.
         Player.Bus = AudioMix.Sfx;
         Player.MaxPolyphony = 1;
         _voices = new AudioStreamPlayer[VoiceCount];
@@ -233,6 +236,19 @@ public partial class ReactionAudioPresenter : Node
         if (impact.ContentId == ContentIds.ToolBoxingGlove)
         {
             GloveImpactCount++;
+            bool criticalHead = impact.Part == BuddyPart.Head &&
+                                impact.RawImpulse >= SwingHitLagComponent.GloveCriticalHeadImpulse;
+            if (criticalHead)
+            {
+                GloveCriticalHeadImpactCount++;
+                PlayImpact(
+                    IsValid(_gloveCriticalHeadImpact)
+                        ? _gloveCriticalHeadImpact
+                        : IsValid(_gloveImpact) ? _gloveImpact : _buddyImpact,
+                    impact);
+                return;
+            }
+
             PlayImpact(IsValid(_gloveImpact) ? _gloveImpact : _buddyImpact, impact);
             return;
         }
@@ -261,8 +277,6 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnGrabReleased(RigidBody2D releasedBody, bool countsAsThrow)
     {
-        // One grabbed point can pull the whole puppet into a multi-part slam, so replay
-        // every recent part candidate rather than only the body that was held.
         for (int index = 0; index < _pendingGrabbedWallImpacts.Length; index++)
         {
             AcceptedImpact? pending = _pendingGrabbedWallImpacts[index];
@@ -270,8 +284,6 @@ public partial class ReactionAudioPresenter : Node
             if (pending is not { } impact)
                 continue;
 
-            // Match the router's episode re-arm window; a held scuff must not become a
-            // delayed sound several seconds after the player lets go.
             if (Pipeline.NowSeconds - impact.TimeSeconds >
                 DesktopBuddy.Domain.Interaction.ImpactRouter.DefaultReArmSeconds)
                 continue;
@@ -317,7 +329,6 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnObjectLanded(LooseObjectLanding landing)
     {
-        // GrenadeComponent owns its distinct, speed-gated metallic landing cue.
         if (landing.ContentId == ContentIds.ToolGrenade || !IsValid(_itemFalling))
             return;
 
@@ -384,8 +395,6 @@ public partial class ReactionAudioPresenter : Node
         if (anchors is null || anchors.Length == 0)
             return 55.0f;
 
-        // The third pain anchor is the existing curve's hard-impact point; no separate SFX
-        // speed threshold is introduced.
         return anchors[Math.Min(2, anchors.Length - 1)];
     }
 
@@ -395,9 +404,6 @@ public partial class ReactionAudioPresenter : Node
         if (anchors is null || anchors.Length < 2)
             return 20.0f;
 
-        // The first positive pain anchor is the existing curve's meaningful-hit point:
-        // below it, a held contact remains a quiet scuff; above it, a grabbed slam is
-        // deferred until release.
         float threshold = anchors[1];
         return float.IsFinite(threshold) && threshold > anchors[0] ? threshold : 20.0f;
     }
