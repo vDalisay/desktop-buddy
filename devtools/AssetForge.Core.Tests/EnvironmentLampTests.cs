@@ -118,10 +118,10 @@ public sealed class EnvironmentLampTests
             AssetRecipe recipe = FastLampV3();
             byte[] source = LampSource();
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
+            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated);
 
             ExportResult result = RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
-            Assert.True(File.Exists(Path.Combine(result.AssetDirectory, "mesh.glb")));
+            Assert.True(File.Exists(Path.Combine(result.AssetDirectory, AssetFileNaming.MeshFileName(recipe))));
             Assert.True(File.Exists(result.CosmeticDefinitionPath));
             Assert.Contains("authoring", result.AuthoringDirectory, StringComparison.OrdinalIgnoreCase);
 
@@ -145,7 +145,7 @@ public sealed class EnvironmentLampTests
             AssetRecipe recipe = FastLampV3();
             byte[] source = LampSource();
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            RepositoryEnvironmentExporter.Export(root, source, generated, EnvironmentThumbnailGenerator.Create(generated.AlbedoPng));
+            RepositoryEnvironmentExporter.Export(root, source, generated, EnvironmentThumbnailGenerator.Create(generated));
             RepositoryVerificationResult buddy = RepositoryAssetVerifier.VerifyAll(root);
             Assert.Empty(buddy.Assets);
             Assert.Empty(buddy.RepositoryDiagnostics);
