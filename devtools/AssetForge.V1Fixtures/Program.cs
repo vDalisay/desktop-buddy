@@ -15,7 +15,11 @@ internal static class Program
             }
 
             string root = Path.GetFullPath(args[0]);
-            Generate(root, Fast(AssetRecipe.TableDefaults(), "decoration.table.ci_simple", "CI Simple Table", 150, 9940), TableSource());
+            AssetRecipe table = Fast(AssetRecipe.TableDefaults(), "decoration.table.ci_simple", "CI Simple Table", 150, 9940) with
+            {
+                Environment = AssetRecipe.TableDefaults().Environment with { LogicalHeight = 440 },
+            };
+            Generate(root, table, TableSource());
             Generate(root, Fast(AssetRecipe.PlantDefaults(), "decoration.plant.ci_leafy", "CI Leafy Plant", 110, 9950), PlantSource());
             Generate(root, Fast(AssetRecipe.PaintingDefaults(), "decoration.painting.ci_frame", "CI Framed Painting", 90, 9960), PaintingSource());
 
