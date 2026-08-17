@@ -14,15 +14,6 @@ public partial class BuddyVisualRigView
     private int _headConnectorPaintIndex = -1;
     private Texture2D? _headConnectorBoundTexture;
 
-    public override void _Process(double delta)
-    {
-        if (!IsInitialized)
-            return;
-
-        EnsureHeadConnectorPaintLayer();
-        SyncHeadConnectorPaintTexture();
-    }
-
     private void EnsureHeadConnectorPaintLayer()
     {
         if (_headConnectorPaintIndex >= 0)
@@ -51,7 +42,6 @@ public partial class BuddyVisualRigView
                 PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Inherit,
             };
 
-            // Exact same guarded right-half atlas lane as the other connectors.
             float halfTexel = 0.5f / PaintPolicy.SurfaceSize;
             float guardedLaneWidth = 0.5f - (1.0f / PaintPolicy.SurfaceSize);
             if (paintLayer.MaterialOverride is StandardMaterial3D material)
