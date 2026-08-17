@@ -9,12 +9,12 @@ public partial class BuddyVisualRigView
     private bool _paintAtlasSamplingGuardApplied;
 
     /// <summary>
-    /// Endpoint parts and their torso connectors share one texture in two half-width atlas lanes.
-    /// Sampling exactly at U=0.5 lets linear filtering read the neighbouring lane, which shows up
-    /// as an unpaintable vertical stripe on an endpoint seam. Keep each rendered lane on texel
-    /// centres instead: [0.5..255.5] for the endpoint and [256.5..511.5] for the connector.
-    /// The CPU paint atlas and persistence format stay unchanged. Head/neck deliberately uses the
-    /// same rule as hand/foot connectors.
+    /// Hand/foot endpoints and their torso connectors share one texture in two half-width atlas
+    /// lanes. Sampling exactly at U=0.5 lets linear filtering read the neighbouring lane, which
+    /// shows up as an unpaintable vertical stripe on an endpoint seam. Keep each rendered lane on
+    /// texel centres instead: [0.5..255.5] for the endpoint and [256.5..511.5] for the connector.
+    /// Head remains a full-width paint surface; its neck connector owns its guarded connector
+    /// sampling separately so established head painting stays unchanged.
     /// </summary>
     private void EnsurePaintAtlasSamplingGuard()
     {
@@ -28,7 +28,6 @@ public partial class BuddyVisualRigView
 
         foreach (BuddyPartId part in new[]
         {
-            BuddyPartId.Head,
             BuddyPartId.LeftHand,
             BuddyPartId.RightHand,
             BuddyPartId.LeftFoot,
