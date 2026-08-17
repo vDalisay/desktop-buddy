@@ -36,17 +36,20 @@ public sealed class PaintPreviewTransactionTests
     public void ReRenderingPreviewRestoresCleanBaselineBeforeDrawingTheReplacement()
     {
         PaintWorkspace workspace = new();
-        PaintSurface head = workspace.Surfaces[PaintPart.Head];
+        // This test is about transaction replacement, not connector-lane semantics. Torso is the
+        // canonical full-width surface now that Head deliberately shares a two-lane atlas with its
+        // neck connector.
+        PaintSurface torso = workspace.Surfaces[PaintPart.Torso];
         PaintPoint oldOnly = new(.2, .2);
         PaintPoint newOnly = new(.8, .8);
 
         workspace.BeginPreviewTransaction();
-        workspace.RenderPreviewPath(new PaintHit?[] { new(PaintPart.Head, oldOnly, 0) });
-        Assert.True(head.TrySample(oldOnly, out _));
+        workspace.RenderPreviewPath(new PaintHit?[] { new(PaintPart.Torso, oldOnly, 0) });
+        Assert.True(torso.TrySample(oldOnly, out _));
 
-        workspace.RenderPreviewPath(new PaintHit?[] { new(PaintPart.Head, newOnly, 0) });
-        Assert.False(head.TrySample(oldOnly, out _));
-        Assert.True(head.TrySample(newOnly, out _));
+        workspace.RenderPreviewPath(new PaintHit?[] { new(PaintPart.Torso, newOnly, 0) });
+        Assert.False(torso.TrySample(oldOnly, out _));
+        Assert.True(torso.TrySample(newOnly, out _));
     }
 
     [Fact]
@@ -87,10 +90,10 @@ public sealed class PaintPreviewTransactionTests
         {
             new(PaintPart.Head, new PaintPoint(.1, .5), 0),
             null,
-            new(PaintPart.Head, new PaintPoint(.9, .5), 0),
+            new(PaintPart.Head, new PaintPoint(.4, .5), 0),
         });
 
-        Assert.False(head.TrySample(new PaintPoint(.5, .5), out _));
+        Assert.False(head.TrySample(new PaintPoint(.25, .5), out _));
         workspace.CancelPreviewTransaction();
     }
 
@@ -102,7 +105,7 @@ public sealed class PaintPreviewTransactionTests
         workspace.BeginPreviewTransaction();
         workspace.RenderPreviewPath(new PaintHit?[]
         {
-            new(PaintPart.Head, new PaintPoint(.5, .5), 0),
+            new(PaintPart.Head, new PaintPoint(.25, .5), 0),
         });
 
         workspace.SelectedTool = PaintTool.Brush;
@@ -120,10 +123,11 @@ public sealed class PaintPreviewTransactionTests
 
         foreach (PaintPart part in Enum.GetValues<PaintPart>())
         {
+            PaintUvRegion region = PaintUvRegion.IsLimb(part) ? PaintUvRegion.LimbEnd : PaintUvRegion.Full;
             workspace.RenderPreviewPath(new PaintHit?[]
             {
-                new(part, new PaintPoint(.01, .01), 0),
-                new(part, new PaintPoint(.99, .99), 0),
+                new(part, region.MapLocal(new PaintPoint(.01, .01)), 0),
+                new(part, region.MapLocal(new PaintPoint(.99, .99)), 0),
             });
         }
 
