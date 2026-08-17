@@ -9,6 +9,7 @@ ContentId = "tool.grenade"
 Consumable = false
 Hazardous = false
 SafeToEvict = true
+SpawnPolicy = 1
 Radius = 10.0
 Mass = 2.0
 LinearDamp = 0.8
