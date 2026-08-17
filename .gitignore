@@ -42,3 +42,6 @@ mcp_interaction_server.gd.uid
 
 # NOTE: per-asset *.import files (e.g. icon.svg.import) are intentionally tracked.
 .mcp/
+
+# Claude Code local state, including agent worktrees holding full repo checkouts.
+/.claude/
