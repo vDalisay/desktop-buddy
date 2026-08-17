@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -14,8 +15,10 @@ namespace DesktopBuddy.Presentation3D;
 public partial class CursorToolVisual3D : Node3D
 {
     private const float GloveAimTravelThresholdPx = 0.25f;
+    private const float SwingGuideOffsetPx = 28.0f;
 
     private Body2DVisual3D _slot = null!;
+    private MeshInstance3D _swingGuide = null!;
     private bool _presentationActive;
     private float _gloveFacingAngle;
     private bool _hasGloveFacing;
@@ -47,6 +50,7 @@ public partial class CursorToolVisual3D : Node3D
             initialProfile.Radius,
             initialProfile.VisualColor,
             initialProfile.VisualDepthOffset);
+        BuildSwingGuide();
         IsInitialized = true;
         SetProfile(initialProfile);
         Visible = false;
@@ -64,6 +68,7 @@ public partial class CursorToolVisual3D : Node3D
         _gloveFacingAngle = 0.0f;
         _previousGloveCursor = Vector2.Zero;
         _slot.Mesh.Rotation = Vector3.Zero;
+        _swingGuide.Visible = false;
 
         CursorToolVisual? visual = CursorToolVisualFactory.Create(profile);
         if (visual is null)
@@ -97,6 +102,7 @@ public partial class CursorToolVisual3D : Node3D
     {
         _slot.Detach(target);
         _hasGloveCursorSample = false;
+        _swingGuide.Visible = false;
         Visible = false;
     }
 
@@ -104,6 +110,8 @@ public partial class CursorToolVisual3D : Node3D
     {
         _presentationActive = active;
         _slot.SetPresentationActive(active);
+        if (!active && GodotObject.IsInstanceValid(_swingGuide))
+            _swingGuide.Visible = false;
         Visible = active && _slot.IsAttached;
     }
 
@@ -111,12 +119,19 @@ public partial class CursorToolVisual3D : Node3D
 
     public override void _Process(double delta)
     {
-        if (!IsInitialized || ActiveKind != CursorToolVisual3DKind.BoxingGlove ||
-            Target is not RigidBody2D target || !GodotObject.IsInstanceValid(target) ||
+        if (!IsInitialized || Target is not RigidBody2D target ||
+            !GodotObject.IsInstanceValid(target) ||
             target.GetParent() is not CursorToolController controller || !controller.HasCursor)
         {
+            if (GodotObject.IsInstanceValid(_swingGuide))
+                _swingGuide.Visible = false;
             return;
         }
+
+        UpdateSwingGuide(controller);
+
+        if (ActiveKind != CursorToolVisual3DKind.BoxingGlove)
+            return;
 
         // Match the pistol's control convention: facing comes from pointer travel, not from the
         // lagging physical body's velocity. Moving right faces right, moving left faces left, and
@@ -147,6 +162,68 @@ public partial class CursorToolVisual3D : Node3D
         float localFacing = _gloveFacingAngle - target.GlobalRotation;
         _slot.Mesh.Rotation = new Vector3(
             0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(localFacing));
+    }
+
+    private void UpdateSwingGuide(CursorToolController controller)
+    {
+        CursorToolProfile? profile = controller.ActiveProfile;
+        bool show = _presentationActive && controller.IsSwingCapable && profile is not null &&
+            controller.SwingState is not (ChargedSwingState.Swinging or ChargedSwingState.Recovery);
+        if (!show)
+        {
+            _swingGuide.Visible = false;
+            return;
+        }
+
+        int sign = controller.SwingDirectionSign < 0 ? -1 : 1;
+        Vector2 anchor = controller.Cursor + new Vector2(sign * SwingGuideOffsetPx, 0.0f);
+        Vector3 position = WorldPlaneMapping.To3D(anchor);
+        position.Z = profile!.VisualDepthOffset + 4.0f;
+        _swingGuide.GlobalPosition = position;
+        _swingGuide.GlobalRotation = new Vector3(
+            0.0f,
+            0.0f,
+            WorldPlaneMapping.To3DRotationZ(sign < 0 ? Mathf.Pi : 0.0f));
+        _swingGuide.Visible = true;
+    }
+
+    private void BuildSwingGuide()
+    {
+        var surface = new SurfaceTool();
+        surface.Begin(Mesh.PrimitiveType.Triangles);
+        Color fill = new(1.0f, 0.94f, 0.45f, 0.95f);
+        AddGuideTriangle(surface, new Vector3(0.0f, -2.2f, 0.0f), new Vector3(11.0f, -2.2f, 0.0f), new Vector3(11.0f, 2.2f, 0.0f), fill);
+        AddGuideTriangle(surface, new Vector3(0.0f, -2.2f, 0.0f), new Vector3(11.0f, 2.2f, 0.0f), new Vector3(0.0f, 2.2f, 0.0f), fill);
+        AddGuideTriangle(surface, new Vector3(9.0f, -6.2f, 0.0f), new Vector3(19.0f, 0.0f, 0.0f), new Vector3(9.0f, 6.2f, 0.0f), fill);
+        ArrayMesh mesh = surface.Commit() ?? throw new InvalidOperationException("Failed to build swing direction guide mesh.");
+        var material = new StandardMaterial3D
+        {
+            ResourceName = "CaptureSwingGuideMaterial",
+            AlbedoColor = Colors.White,
+            VertexColorUseAsAlbedo = true,
+            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
+            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
+        };
+        _swingGuide = new MeshInstance3D
+        {
+            Name = "SwingDirectionGuide",
+            Mesh = mesh,
+            MaterialOverride = material,
+            Visible = false,
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
+        };
+        AddChild(_swingGuide);
+    }
+
+    private static void AddGuideTriangle(SurfaceTool surface, Vector3 a, Vector3 b, Vector3 c, Color color)
+    {
+        surface.SetColor(color);
+        surface.AddVertex(a);
+        surface.SetColor(color);
+        surface.AddVertex(b);
+        surface.SetColor(color);
+        surface.AddVertex(c);
     }
 
     private static void ValidateProfile(CursorToolProfile profile)
