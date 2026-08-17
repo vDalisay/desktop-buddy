@@ -29,6 +29,11 @@ public static class RepositoryEnvironmentExporter
             throw new FormatException($"Environment thumbnail must be {EnvironmentThumbnailGenerator.OutputSize}x{EnvironmentThumbnailGenerator.OutputSize} RGBA PNG.");
         GlbWriter.ValidateSingleMesh(generated.GlbBytes);
 
+        // Keep the thumbnail parameter as a pre-commit validation seam for callers/tests, but make
+        // the actual Room Decorator thumbnail authoritative: it is always a deterministic frontal
+        // render of the final generated model rather than a crop of the source/albedo image.
+        byte[] canonicalThumbnail = EnvironmentThumbnailGenerator.Create(generated);
+
         string prefix = AssetIdPrefix(recipe.Category);
         if (!recipe.AssetId.StartsWith(prefix, StringComparison.Ordinal))
             throw new InvalidOperationException($"Environment AssetId '{recipe.AssetId}' does not match the {recipe.Category} namespace.");
@@ -64,7 +69,7 @@ public static class RepositoryEnvironmentExporter
             StageText($"{authoringRelative}/recipe.json", RecipeCodec.WriteCanonical(recipe));
             StageBytes(meshRelative, generated.GlbBytes);
             StageBytes($"{assetRelative}/albedo.png", generated.AlbedoPng);
-            StageBytes($"{assetRelative}/thumbnail.png", thumbnailPng);
+            StageBytes($"{assetRelative}/thumbnail.png", canonicalThumbnail);
             StageText(definitionRelative, DecorationResource(recipe, generated, assetRelative, meshFileName));
 
             string[] definitions = ExistingDefinitions(root)
