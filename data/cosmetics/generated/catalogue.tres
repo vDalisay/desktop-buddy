@@ -1,7 +1,10 @@
-[gd_resource type="Resource" script_class="GeneratedBuddyCosmeticCatalogueResource" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="GeneratedBuddyCosmeticCatalogueResource" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/CharacterEditor/BuddyStudio/GeneratedBuddyCosmeticCatalogueResource.cs" id="1"]
+[ext_resource type="Resource" path="res://data/cosmetics/generated/glasses.ci_pink_round.tres" id="2"]
+[ext_resource type="Resource" path="res://data/cosmetics/generated/shoes.ci_soft_foot.tres" id="3"]
+[ext_resource type="Resource" path="res://data/cosmetics/generated/top.ci_pear_torso.tres" id="4"]
 
 [resource]
 script = ExtResource("1")
-Entries = Array[Resource]([])
+Entries = Array[Resource]([ExtResource("2"), ExtResource("3"), ExtResource("4")])

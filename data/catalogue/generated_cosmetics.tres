@@ -1,7 +1,10 @@
-[gd_resource type="Resource" script_class="GeneratedCatalogueDefinition" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="GeneratedCatalogueDefinition" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/Content/GeneratedCatalogueDefinition.cs" id="1"]
+[ext_resource type="Resource" path="res://data/catalogue/generated/cosmetic_glasses_ci_pink_round.tres" id="2"]
+[ext_resource type="Resource" path="res://data/catalogue/generated/cosmetic_shoes_ci_soft_foot.tres" id="3"]
+[ext_resource type="Resource" path="res://data/catalogue/generated/cosmetic_top_ci_pear_torso.tres" id="4"]
 
 [resource]
 script = ExtResource("1")
-Entries = Array[Resource]([])
+Entries = Array[Resource]([ExtResource("2"), ExtResource("3"), ExtResource("4")])
