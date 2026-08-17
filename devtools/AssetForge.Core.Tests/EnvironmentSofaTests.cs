@@ -88,7 +88,7 @@ public sealed class EnvironmentSofaTests
             AssetRecipe recipe = FastSofa();
             byte[] source = SofaSource(230, 330);
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
+            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated);
 
             ExportResult result = RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
             Assert.Contains(Path.Combine("authoring", "asset-forge", "sofas"), result.AuthoringDirectory, StringComparison.OrdinalIgnoreCase);
