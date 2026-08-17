@@ -29,6 +29,8 @@ public static class RepositoryBuddyReplacementExporter
         string categoryFolder = recipe.Category == AssetCategory.TorsoShape ? "torso" : "feet";
         string authoringRelative = $"authoring/asset-forge/{categoryFolder}/{slug}";
         string assetRelative = $"assets/generated/cosmetics/{recipe.FeatureId}";
+        string meshFileName = AssetFileNaming.MeshFileName(recipe);
+        string meshRelative = $"{assetRelative}/{meshFileName}";
         string cosmeticRelative = $"data/cosmetics/generated/{recipe.FeatureId}.tres";
         string saleFile = recipe.ContentId.Replace('.', '_') + ".tres";
         string saleRelative = $"data/catalogue/generated/{saleFile}";
@@ -57,10 +59,10 @@ public static class RepositoryBuddyReplacementExporter
         {
             StageBytes($"{authoringRelative}/source.png", sourcePng);
             StageText($"{authoringRelative}/recipe.json", RecipeCodec.WriteCanonical(recipe));
-            StageBytes($"{assetRelative}/mesh.glb", generated.GlbBytes);
+            StageBytes(meshRelative, generated.GlbBytes);
             StageBytes($"{assetRelative}/albedo.png", generated.AlbedoPng);
             StageBytes($"{assetRelative}/thumbnail.png", thumbnailPng);
-            StageText(cosmeticRelative, CosmeticResource(recipe, generated));
+            StageText(cosmeticRelative, CosmeticResource(recipe, generated, meshFileName));
             StageText(saleRelative, SaleResource(recipe, assetRelative));
 
             string[] cosmetics = ExistingDefinitions(root, "data/cosmetics/generated", "catalogue.tres")
@@ -70,11 +72,12 @@ public static class RepositoryBuddyReplacementExporter
             StageText(cosmeticCatalogueRelative, AggregateCosmetics(cosmetics));
             StageText(saleCatalogueRelative, AggregateSales(sales));
 
-            GlbWriter.ValidateSingleMesh(File.ReadAllBytes(staged[$"{assetRelative}/mesh.glb"]));
+            GlbWriter.ValidateSingleMesh(File.ReadAllBytes(staged[meshRelative]));
             _ = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/albedo.png"]));
             _ = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/thumbnail.png"]));
 
             Commit(root, backupRoot, staged, categoryFolder);
+            AssetFileNaming.RemoveStaleMeshes(Path.Combine(root, Native(assetRelative)), meshFileName);
             return new ExportResult(
                 recipe.FeatureId,
                 Path.Combine(root, Native(assetRelative)),
@@ -88,14 +91,14 @@ public static class RepositoryBuddyReplacementExporter
         }
     }
 
-    private static string CosmeticResource(AssetRecipe recipe, GeneratedAsset generated)
+    private static string CosmeticResource(AssetRecipe recipe, GeneratedAsset generated, string meshFileName)
     {
         string asset = $"res://assets/generated/cosmetics/{recipe.FeatureId}";
         var text = new StringBuilder();
         text.AppendLine("[gd_resource type=\"Resource\" script_class=\"GeneratedBuddyCosmeticResource\" load_steps=5 format=3]");
         text.AppendLine();
         text.AppendLine("[ext_resource type=\"Script\" path=\"res://src/CharacterEditor/BuddyStudio/GeneratedBuddyCosmeticResource.cs\" id=\"1\"]");
-        text.AppendLine($"[ext_resource type=\"PackedScene\" path=\"{asset}/mesh.glb\" id=\"2\"]");
+        text.AppendLine($"[ext_resource type=\"PackedScene\" path=\"{asset}/{meshFileName}\" id=\"2\"]");
         text.AppendLine($"[ext_resource type=\"Texture2D\" path=\"{asset}/albedo.png\" id=\"3\"]");
         text.AppendLine($"[ext_resource type=\"Texture2D\" path=\"{asset}/thumbnail.png\" id=\"4\"]");
         text.AppendLine();
