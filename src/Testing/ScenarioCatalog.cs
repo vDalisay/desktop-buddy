@@ -77,6 +77,7 @@ public static class ScenarioCatalog
         ["baseball_pullback"] = () => new BaseballPullbackScenario(),
         ["bat_swing"] = () => new BatSwingScenario(),
         ["homerun_bat_feel"] = () => new HomeRunBatFeelScenario(),
+        ["capture_homerun_bat_fling"] = () => new CaptureHomeRunBatFlingScenario(),
         ["pistol_fire"] = () => new PistolFireScenario(),
         ["nerf_versus_pistol"] = () => new NerfVersusPistolScenario(),
         ["gun_visuals"] = () => new GunVisualsScenario(),
