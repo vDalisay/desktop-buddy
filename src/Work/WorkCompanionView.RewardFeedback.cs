@@ -5,10 +5,13 @@ namespace DesktopBuddy.Work;
 
 public partial class WorkCompanionView
 {
-    private WorkRewardOverlay _rewardOverlay = null!;
+    private WorkRewardOverlay? _rewardOverlay;
 
-    public override void _EnterTree()
+    private void EnsureRewardOverlay()
     {
+        if (GodotObject.IsInstanceValid(_rewardOverlay))
+            return;
+
         _rewardOverlay = new WorkRewardOverlay(this)
         {
             Name = "WorkRewardOverlay",
