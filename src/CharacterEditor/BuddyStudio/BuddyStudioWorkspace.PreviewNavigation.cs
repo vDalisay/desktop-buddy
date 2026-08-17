@@ -7,11 +7,20 @@ namespace DesktopBuddy.CharacterEditor.BuddyStudio;
 public partial class BuddyStudioWorkspace
 {
     private const float AssetForgeShoesDefaultZoom = 0.78f;
+    private const double PreviewTransitionSeconds = 0.14;
     private bool _assetForgeNavigationInstalled;
     private bool _assetForgeStudioPreviewApplied;
     private bool _assetForgePanning;
     private Vector2 _assetForgeViewPan;
     private CharacterFeatureSlot _assetForgeNavigationSlot = (CharacterFeatureSlot)(-1);
+    private Tween? _previewViewTween;
+
+    /// <summary>
+    /// Presentation-only switch for the fast category/zoom interpolation. The shared Win98 motion
+    /// preference wires this property later in the capture-polish pass; disabling it preserves the
+    /// existing rigid/authentic Windows 98 response without changing any view state.
+    /// </summary>
+    public bool SmoothViewMotionEnabled { get; set; } = true;
 
     /// <summary>Called from the existing Asset Forge companion _Process hook.</summary>
     private void AssetForgeProcessNavigation()
@@ -24,7 +33,7 @@ public partial class BuddyStudioWorkspace
             _assetForgeNavigationSlot = _slot;
             _assetForgeViewPan = Vector2.Zero;
             _viewZoom = AssetForgeDefaultViewZoom();
-            ApplyAssetForgeView();
+            ApplyAssetForgeView(animate: _assetForgeStudioPreviewApplied);
         }
 
         if (GodotObject.IsInstanceValid(_previewRig) && _assetForgeStudioPreviewApplied != _previewAttached)
@@ -37,7 +46,11 @@ public partial class BuddyStudioWorkspace
             if (_previewAttached)
             {
                 _viewZoom = AssetForgeDefaultViewZoom();
-                ApplyAssetForgeView();
+                ApplyAssetForgeView(animate: false);
+            }
+            else
+            {
+                StopPreviewViewTween();
             }
         }
     }
@@ -51,6 +64,7 @@ public partial class BuddyStudioWorkspace
         _previewInput.GuiInput += OnAssetForgePreviewNavigationInput;
         TreeExiting += () =>
         {
+            StopPreviewViewTween();
             if (GodotObject.IsInstanceValid(_previewRig)) _previewRig!.SetStudioPreviewMode(false);
         };
         _assetForgeNavigationInstalled = true;
@@ -108,7 +122,9 @@ public partial class BuddyStudioWorkspace
         {
             float worldPerPixel = _previewCamera.Size / Math.Max(1f, _previewInput.Size.Y);
             _assetForgeViewPan += new Vector2(-motion.Relative.X, motion.Relative.Y) * worldPerPixel;
-            ApplyAssetForgeView();
+            // Direct manipulation should stay directly under the pointer; only discrete zoom,
+            // reset and category framing receive the short presentation tween.
+            ApplyAssetForgeView(animate: false);
             _previewInput.AcceptEvent();
         }
     }
@@ -130,12 +146,38 @@ public partial class BuddyStudioWorkspace
     private float AssetForgeDefaultViewZoom() =>
         _slot == CharacterFeatureSlot.Shoes ? AssetForgeShoesDefaultZoom : 1f;
 
-    private void ApplyAssetForgeView()
+    private void ApplyAssetForgeView(bool animate = true)
     {
         if (!_previewAttached || !GodotObject.IsInstanceValid(_previewCamera)) return;
         ViewFrame frame = FrameFor(_slot);
         Vector2 focus = frame.Focus + _assetForgeViewPan;
-        _previewCamera.Position = new Vector3(focus.X, focus.Y, _cameraHomePosition.Z);
-        _previewCamera.Size = Math.Max(0.001f, frame.Size / _viewZoom);
+        Vector3 targetPosition = new(focus.X, focus.Y, _cameraHomePosition.Z);
+        float targetSize = Math.Max(0.001f, frame.Size / _viewZoom);
+
+        StopPreviewViewTween();
+        if (!animate || !SmoothViewMotionEnabled || !IsInsideTree())
+        {
+            _previewCamera.Position = targetPosition;
+            _previewCamera.Size = targetSize;
+            return;
+        }
+
+        // Retarget from the camera's current presentation every time. Rapid wheel input therefore
+        // never queues old animations and remains responsive while still reading smoothly in capture.
+        _previewViewTween = CreateTween();
+        _previewViewTween.SetParallel(true);
+        _previewViewTween.TweenProperty(_previewCamera, "position", targetPosition, PreviewTransitionSeconds)
+            .SetTrans(Tween.TransitionType.Quad)
+            .SetEase(Tween.EaseType.Out);
+        _previewViewTween.TweenProperty(_previewCamera, "size", targetSize, PreviewTransitionSeconds)
+            .SetTrans(Tween.TransitionType.Quad)
+            .SetEase(Tween.EaseType.Out);
+    }
+
+    private void StopPreviewViewTween()
+    {
+        if (_previewViewTween is not null && GodotObject.IsInstanceValid(_previewViewTween))
+            _previewViewTween.Kill();
+        _previewViewTween = null;
     }
 }
