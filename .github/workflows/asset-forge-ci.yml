@@ -82,7 +82,7 @@ jobs:
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=pistol_punctuation --seed=1
 
       - name: Capture gate - charged baseball bat and home-run punctuation
-        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=homerun_bat_feel --seed=1
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=capture_homerun_bat_fling --seed=1
 
       - name: Capture gate - grenade fuse, blast, audio and multi-object lifecycle
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_fuse --seed=1
