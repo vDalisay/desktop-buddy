@@ -211,7 +211,7 @@ internal static class Program
         GeneratedAsset second = AssetForgeCompiler.Generate(sourcePng, recipe);
         if (!first.GlbBytes.SequenceEqual(second.GlbBytes) || first.CanonicalAssetHash != second.CanonicalAssetHash)
             throw new InvalidOperationException($"{recipe.AssetId} regeneration was not deterministic.");
-        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(first.AlbedoPng);
+        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(first);
         RepositoryEnvironmentExporter.Export(repositoryRoot, sourcePng, first, thumbnail);
 
         EnvironmentAssetVerificationResult verified = RepositoryEnvironmentVerifier.Verify(repositoryRoot, recipe.AssetId);
@@ -227,7 +227,7 @@ internal static class Program
         string sale = Path.Combine(repositoryRoot, "data", "catalogue", "generated", recipe.ContentId.Replace('.', '_') + ".tres");
         foreach (string path in new[]
                  {
-                     Path.Combine(assetRoot, "mesh.glb"),
+                     Path.Combine(assetRoot, AssetFileNaming.MeshFileName(recipe)),
                      Path.Combine(assetRoot, "albedo.png"),
                      Path.Combine(assetRoot, "thumbnail.png"),
                      definition,
