@@ -1,8 +1,10 @@
 using System;
+using DesktopBuddy.App;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Economy;
 using DesktopBuddy.UI;
+using DesktopBuddy.UI.Win98;
 using DesktopBuddy.Ui;
 using Godot;
 
@@ -13,6 +15,10 @@ public partial class BuddyStudioWorkspace
     private bool _captureStorePolishInstalled;
     private Label? _captureStoreItemName;
     private Label? _captureStoreColorHeader;
+    private bool _captureStoreStateObserved;
+    private string? _captureStoreLastPreviewId;
+    private bool _captureStoreLastOwned;
+    private bool _captureStoreLastEquipped;
 
     /// <summary>
     /// Presentation-only CAP-6 store hierarchy. The historical workspace still owns all commerce,
@@ -64,6 +70,29 @@ public partial class BuddyStudioWorkspace
         // owns the inset preview outline; this workspace owns which item is actually equipped.
         foreach (CosmeticDefinition candidate in _session.FeatureCatalog.GetDefinitions(_slot))
             _catalog.SetAccent(candidate.Id, IsEquipped(candidate.Id));
+
+        ApplyCaptureStoreAcknowledgement(previewId, owned, equipped);
+    }
+
+    private void ApplyCaptureStoreAcknowledgement(string previewId, bool owned, bool equipped)
+    {
+        bool sameItem = string.Equals(_captureStoreLastPreviewId, previewId, StringComparison.Ordinal);
+        bool committed = _captureStoreStateObserved && sameItem &&
+            ((!_captureStoreLastOwned && owned) || (!_captureStoreLastEquipped && equipped));
+
+        _captureStoreStateObserved = true;
+        _captureStoreLastPreviewId = previewId;
+        _captureStoreLastOwned = owned;
+        _captureStoreLastEquipped = equipped;
+
+        if (!committed || !GodotObject.IsInstanceValid(_buy))
+            return;
+
+        if (GetTree().Root.FindChild(nameof(SandboxRoot), recursive: true, owned: false) is SandboxRoot sandbox &&
+            GodotObject.IsInstanceValid(sandbox) && GodotObject.IsInstanceValid(sandbox.Shell))
+        {
+            Win98Motion.Pulse(_buy, sandbox.Shell.CurrentLocalSettings);
+        }
     }
 
     private void EnsureCaptureStoreHierarchy()
