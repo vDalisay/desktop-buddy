@@ -70,8 +70,8 @@ public sealed class CombinedRepositoryMaintenanceTests
                 sofa,
                 EnvironmentThumbnailGenerator.Create(sofa));
 
-            string torsoMesh = Path.Combine(root, "assets", "generated", "cosmetics", torsoRecipe.FeatureId, "mesh.glb");
-            string sofaMesh = Path.Combine(root, "assets", "generated", "environment", sofaRecipe.AssetId, "mesh.glb");
+            string torsoMesh = Path.Combine(root, "assets", "generated", "cosmetics", torsoRecipe.FeatureId, AssetFileNaming.MeshFileName(torsoRecipe));
+            string sofaMesh = Path.Combine(root, "assets", "generated", "environment", sofaRecipe.AssetId, AssetFileNaming.MeshFileName(sofaRecipe));
             File.WriteAllBytes(torsoMesh, [1, 2, 3]);
             File.WriteAllBytes(sofaMesh, [4, 5, 6]);
             Assert.False(RepositoryAssetForgeMaintenance.VerifyAll(root).Passed);

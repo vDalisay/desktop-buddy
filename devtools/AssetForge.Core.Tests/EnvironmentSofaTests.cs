@@ -20,15 +20,16 @@ public sealed class EnvironmentSofaTests
     }
 
     [Fact]
-    public void Sofa_defaults_are_front_only_literal_floor_content()
+    public void Sofa_defaults_use_v2_smoothed_literal_floor_content()
     {
         AssetRecipe recipe = AssetRecipe.SofaDefaults();
         Assert.Equal(AssetFamily.Environment, recipe.AssetFamily);
         Assert.Equal(AssetCategory.Sofa, recipe.Category);
         Assert.Equal("sofa", recipe.PresetId);
-        Assert.Equal(1, recipe.PresetVersion);
+        Assert.Equal(2, recipe.PresetVersion);
         Assert.Equal(ShapeMode.InflatedSolid, recipe.Geometry.ShapeMode);
         Assert.True(EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe));
+        Assert.True(EnvironmentSilhouettePolisher.UsesSmoothedLiteralContract(recipe));
         Assert.Equal(.5, recipe.Environment.PivotX, 8);
         Assert.Equal(1, recipe.Environment.PivotY, 8);
         Assert.False(recipe.Light.Enabled);
@@ -37,7 +38,27 @@ public sealed class EnvironmentSofaTests
     }
 
     [Fact]
-    public void Sofa_generation_is_deterministic_and_preserves_template_offset()
+    public void Sofa_v1_keeps_the_accepted_pre_polisher_geometry_path()
+    {
+        AssetRecipe defaults = FastSofa();
+        AssetRecipe recipe = defaults with
+        {
+            PresetVersion = 1,
+            AssetId = "decoration.sofa.compat_v1",
+        };
+        byte[] source = SofaSource(260, 350);
+        RgbaImage foreground = ForegroundExtractor.Extract(PngCodec.DecodeRgba8(source)).Image;
+        MaskGrid mask = MaskGrid.FromImage(foreground, recipe.Geometry);
+        CanonicalMesh original = EnvironmentSilhouetteGenerator.Generate(mask, recipe);
+        GeneratedAsset compiled = AssetForgeCompiler.Generate(source, recipe);
+
+        Assert.False(EnvironmentSilhouettePolisher.UsesSmoothedLiteralContract(recipe));
+        Assert.Equal(original.CanonicalHash(), compiled.GeometryHash);
+        Assert.Equal(GlbWriter.Write(original), compiled.GlbBytes);
+    }
+
+    [Fact]
+    public void Sofa_v2_generation_is_deterministic_and_preserves_template_offset()
     {
         AssetRecipe recipe = FastSofa();
         byte[] source = SofaSource(260, 350);
@@ -67,7 +88,7 @@ public sealed class EnvironmentSofaTests
             AssetRecipe recipe = FastSofa();
             byte[] source = SofaSource(230, 330);
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
+            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated);
 
             ExportResult result = RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
             Assert.Contains(Path.Combine("authoring", "asset-forge", "sofas"), result.AuthoringDirectory, StringComparison.OrdinalIgnoreCase);

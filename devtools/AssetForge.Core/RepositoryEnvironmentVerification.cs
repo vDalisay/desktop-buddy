@@ -67,6 +67,8 @@ public static class RepositoryEnvironmentVerifier
             AssetRecipe recipe = RecipeCodec.Read(recipeText);
             if (recipe.AssetFamily != AssetFamily.Environment)
                 throw new InvalidOperationException("Environment verifier received a Buddy recipe.");
+            if (!RepositoryEnvironmentExporter.IsSupportedCategory(recipe.Category))
+                throw new InvalidOperationException($"Environment verification is not implemented for {recipe.Category}.");
             displayId = recipe.AssetId;
             string canonical = RecipeCodec.WriteCanonical(recipe);
             if (!string.Equals(recipeText.Replace("\r\n", "\n", StringComparison.Ordinal), canonical, StringComparison.Ordinal))
@@ -82,8 +84,12 @@ public static class RepositoryEnvironmentVerifier
             byte[] source = File.ReadAllBytes(sourcePath);
             GeneratedAsset expected = AssetForgeCompiler.Generate(source, recipe);
             string assetRoot = Path.Combine(root, "assets", "generated", "environment", recipe.AssetId);
-            CompareBytes(Path.Combine(assetRoot, "mesh.glb"), expected.GlbBytes, "generated Environment mesh.glb differs from source + recipe", diagnostics);
+            string meshFileName = AssetFileNaming.MeshFileName(recipe);
+            CompareBytes(Path.Combine(assetRoot, meshFileName), expected.GlbBytes, $"generated Environment {meshFileName} differs from source + recipe", diagnostics);
+            VerifyOnlyExpectedMesh(assetRoot, meshFileName, diagnostics);
             CompareBytes(Path.Combine(assetRoot, "albedo.png"), expected.AlbedoPng, "generated Environment albedo.png differs from source + recipe", diagnostics);
+            byte[] expectedThumbnail = EnvironmentThumbnailGenerator.Create(expected);
+            CompareBytes(Path.Combine(assetRoot, "thumbnail.png"), expectedThumbnail, "generated Environment thumbnail.png differs from the final-model front view", diagnostics);
             ValidateThumbnail(Path.Combine(assetRoot, "thumbnail.png"), diagnostics);
 
             EnvironmentGeneratedBounds bounds = EnvironmentGeneratedBounds.Analyze(expected.Mesh);
@@ -93,13 +99,17 @@ public static class RepositoryEnvironmentVerifier
             {
                 $"DefinitionId = \"{Escape(recipe.AssetId)}\"",
                 $"DisplayNameKey = \"{Escape(recipe.DisplayName)}\"",
-                $"Category = {DecorationCategory(recipe.Category)}",
+                $"Category = {RepositoryEnvironmentExporter.DecorationCategory(recipe.Category)}",
                 $"PriceCredits = {recipe.PriceCredits}",
+                $"AnchorKind = {RepositoryEnvironmentExporter.AnchorKind(recipe.Environment.Anchor)}",
+                $"AllowsRotation = {(recipe.Environment.AllowsRotation ? "true" : "false")}",
+                $"RotationStepDegrees = {recipe.Environment.RotationStepDegrees}",
                 "VisualSource = 1",
                 $"VisualSize = Vector2({number(bounds.Width)}, {number(bounds.Height)})",
+                $"Pivot = Vector2({number(recipe.Environment.PivotX)}, {number(recipe.Environment.PivotY)})",
                 $"GeneratorVersion = {recipe.GeneratorVersion}",
                 $"CanonicalAssetHash = \"{expected.CanonicalAssetHash}\"",
-                $"res://assets/generated/environment/{recipe.AssetId}/mesh.glb",
+                $"res://assets/generated/environment/{recipe.AssetId}/{meshFileName}",
                 $"res://assets/generated/environment/{recipe.AssetId}/albedo.png",
                 $"res://assets/generated/environment/{recipe.AssetId}/thumbnail.png",
             };
@@ -155,6 +165,15 @@ public static class RepositoryEnvironmentVerifier
         return new EnvironmentAssetVerificationResult(displayId, passed, diagnostics);
     }
 
+    private static void VerifyOnlyExpectedMesh(string assetRoot, string expectedMeshFileName, List<string> diagnostics)
+    {
+        if (!Directory.Exists(assetRoot)) return;
+        string[] meshes = Directory.GetFiles(assetRoot, "*.glb", SearchOption.TopDirectoryOnly);
+        foreach (string mesh in meshes)
+            if (!string.Equals(Path.GetFileName(mesh), expectedMeshFileName, StringComparison.Ordinal))
+                diagnostics.Add($"stale generated Environment mesh file should be removed: {Path.GetFileName(mesh)}");
+    }
+
     private static void VerifyNoOrphans(string root, IReadOnlyList<EnvironmentAssetVerificationResult> assets, List<string> diagnostics)
     {
         HashSet<string> ids = assets.Select(static asset => asset.AssetId).ToHashSet(StringComparer.Ordinal);
@@ -208,13 +227,6 @@ public static class RepositoryEnvironmentVerifier
             if (text.Contains(marker, StringComparison.Ordinal)) diagnostics.Add($"{label} unexpectedly contains: {marker}");
     }
 
-    private static int DecorationCategory(AssetCategory category) => category switch
-    {
-        AssetCategory.Lamp => 0,
-        AssetCategory.Sofa => 1,
-        _ => throw new InvalidOperationException($"Environment verification is not implemented for {category} yet."),
-    };
-
     private static string Relative(string root, string path) => Path.GetRelativePath(root, path).Replace('\\', '/');
     private static string Escape(string value) => value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal);
 }
@@ -243,7 +255,7 @@ public static class RepositoryEnvironmentRegenerator
         if (!File.Exists(sourcePath)) throw new FileNotFoundException("Authored Environment source image is missing.", sourcePath);
         byte[] source = File.ReadAllBytes(sourcePath);
         GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
+        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated);
         RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
         return recipe.AssetId;
     }

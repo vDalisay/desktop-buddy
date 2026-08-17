@@ -9,6 +9,9 @@ public static class AuthoringTemplateCatalog
     public const string FeetId = "buddy.feet";
     public const string LampId = "environment.lamp";
     public const string SofaId = "environment.sofa";
+    public const string TableId = "environment.table";
+    public const string PlantId = "environment.plant";
+    public const string PaintingId = "environment.painting";
 
     public static IReadOnlyList<AuthoringTemplateSpec> All { get; } =
     [
@@ -20,9 +23,9 @@ public static class AuthoringTemplateCatalog
         new(FeetId, AssetFamily.BuddyStudio, "Shoes / Foot replacement", "desktop_buddy_foot_template_1024.png", "Single-foot replacement guide; the paired counterpart is generated deterministically.", ["Default foot silhouette", "Ankle connector", "Forward direction", "Ground line", "Recommended envelope", "Translucent physics envelope"], true),
         new(LampId, AssetFamily.Environment, "Lamp", "desktop_buddy_lamp_template_1024.png", "Floor-anchored lamp guide defining base contact, body envelope and authored light region.", ["Floor line", "Bottom-centre base contact zone", "Vertical centre line", "Object safe bounds", "Shade envelope", "Light-source/emitter region", "Buddy scale reference"], true),
         new(SofaId, AssetFamily.Environment, "Sofa", "desktop_buddy_sofa_template_1024.png", "Floor-anchored furniture guide with seat/back proportions and Buddy scale reference.", ["Floor line", "Base contact zone", "Centre line", "Seat-height guide", "Seat envelope", "Back envelope", "Object safe bounds", "Buddy scale reference"], true),
-        new("environment.table", AssetFamily.Environment, "Table", "desktop_buddy_table_template_1024.png", "Floor-anchored table guide with authored support and tabletop regions.", ["Floor line", "Base/leg contact region", "Centre line", "Tabletop height", "Tabletop envelope", "Object safe bounds", "Buddy scale reference"], false),
-        new("environment.plant", AssetFamily.Environment, "Plant", "desktop_buddy_plant_template_1024.png", "Floor-anchored plant guide separating pot/base contact from foliage volume.", ["Floor line", "Pot/base contact zone", "Centre line", "Pot envelope", "Foliage safe bounds", "Buddy scale reference"], false),
-        new("environment.painting", AssetFamily.Environment, "Painting", "desktop_buddy_painting_template_1024.png", "Wall-anchored guide for framed/decorative wall art.", ["Wall plane", "Wall anchor centre", "Horizontal/vertical centre lines", "Recommended art bounds", "Frame-safe margin", "Buddy scale reference"], false),
+        new(TableId, AssetFamily.Environment, "Table", "desktop_buddy_table_template_1024.png", "Floor-anchored table guide with authored support and tabletop regions.", ["Floor line", "Base/leg contact region", "Centre line", "Tabletop height", "Tabletop envelope", "Object safe bounds", "Buddy scale reference"], true),
+        new(PlantId, AssetFamily.Environment, "Plant", "desktop_buddy_plant_template_1024.png", "Floor-anchored plant guide separating pot/base contact from foliage volume.", ["Floor line", "Pot/base contact zone", "Centre line", "Pot envelope", "Foliage safe bounds", "Buddy scale reference"], true),
+        new(PaintingId, AssetFamily.Environment, "Painting", "desktop_buddy_painting_template_1024.png", "Wall-anchored guide for framed/decorative wall art.", ["Wall plane", "Wall anchor centre", "Horizontal/vertical centre lines", "Recommended art bounds", "Frame-safe margin", "Buddy scale reference"], true),
     ];
 
     public static AuthoringTemplateSpec Glasses => Get(GlassesId);
@@ -39,6 +42,9 @@ public static class AuthoringTemplateCatalog
             FeetId => PartReplacementTemplateGenerator.CreateFootPng(),
             LampId => EnvironmentTemplateGenerator.CreateLampPng(),
             SofaId => EnvironmentTemplateGenerator.CreateSofaPng(),
+            TableId => EnvironmentTemplateGenerator.CreateTablePng(),
+            PlantId => EnvironmentTemplateGenerator.CreatePlantPng(),
+            PaintingId => EnvironmentTemplateGenerator.CreatePaintingPng(),
             _ => throw new NotSupportedException($"No template generator is registered for '{id}'."),
         };
     }

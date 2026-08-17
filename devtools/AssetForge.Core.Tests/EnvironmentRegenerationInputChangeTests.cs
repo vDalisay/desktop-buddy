@@ -44,7 +44,7 @@ public sealed class EnvironmentRegenerationInputChangeTests
             EnvironmentAssetVerificationResult stale = RepositoryEnvironmentVerifier.Verify(root, recipe.AssetId);
             Assert.False(stale.Passed);
             Assert.Contains(stale.Diagnostics, line =>
-                line.Contains("mesh.glb differs", StringComparison.Ordinal) ||
+                line.Contains("differs from source + recipe", StringComparison.Ordinal) ||
                 line.Contains("albedo.png differs", StringComparison.Ordinal));
 
             EnvironmentRepositoryRegenerationResult regenerated =
@@ -52,7 +52,7 @@ public sealed class EnvironmentRegenerationInputChangeTests
             Assert.True(regenerated.Verification.Passed, Diagnostics(regenerated.Verification));
             Assert.Equal(
                 expectedChanged.GlbBytes,
-                File.ReadAllBytes(Path.Combine(root, "assets", "generated", "environment", recipe.AssetId, "mesh.glb")));
+                File.ReadAllBytes(Path.Combine(root, "assets", "generated", "environment", recipe.AssetId, AssetFileNaming.MeshFileName(recipe))));
             Assert.Equal(
                 expectedChanged.AlbedoPng,
                 File.ReadAllBytes(Path.Combine(root, "assets", "generated", "environment", recipe.AssetId, "albedo.png")));

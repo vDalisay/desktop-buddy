@@ -17,12 +17,14 @@ public sealed class EnvironmentLampTests
     }
 
     [Fact]
-    public void New_lamp_recipe_uses_literal_template_contract_and_template_emitter()
+    public void New_lamp_recipe_uses_v3_smoothed_literal_template_contract_and_template_emitter()
     {
         AssetRecipe recipe = AssetRecipe.LampDefaults();
 
-        Assert.Equal(2, recipe.PresetVersion);
+        Assert.Equal(3, recipe.PresetVersion);
         Assert.True(EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe));
+        Assert.True(EnvironmentSilhouettePolisher.UsesSmoothedLiteralContract(recipe));
+        Assert.Equal(ShapeMode.InflatedSolid, recipe.Geometry.ShapeMode);
         Assert.Equal(
             EnvironmentTemplateSpace.LampEmitterX / (double)EnvironmentTemplateSpace.CanvasSize,
             recipe.Light.EmitterX,
@@ -76,6 +78,7 @@ public sealed class EnvironmentLampTests
         float units = EnvironmentTemplateMapping.UnitsPerPixel(recipe);
         float oneMaskCellWorld = (EnvironmentTemplateSpace.CanvasSize / (float)recipe.Geometry.GeometryResolution) * units;
 
+        Assert.False(EnvironmentSilhouettePolisher.UsesSmoothedLiteralContract(recipe));
         Assert.NotEqual(original.GeometryHash, shifted.GeometryHash);
         Assert.InRange(b.X - a.X, (120f * units) - oneMaskCellWorld, (120f * units) + oneMaskCellWorld);
         Assert.InRange(b.Y - a.Y, (-110f * units) - oneMaskCellWorld, (-110f * units) + oneMaskCellWorld);
@@ -95,18 +98,30 @@ public sealed class EnvironmentLampTests
     }
 
     [Fact]
+    public void Lamp_v3_template_floor_contact_stays_pinned_after_smoothing()
+    {
+        AssetRecipe recipe = FastLampV3();
+        GeneratedAsset generated = AssetForgeCompiler.Generate(
+            LampBlockSource(432, EnvironmentTemplateSpace.FloorY - 120),
+            recipe);
+
+        Assert.True(EnvironmentSilhouettePolisher.UsesSmoothedLiteralContract(recipe));
+        Assert.Contains(generated.Mesh.Positions, static p => MathF.Abs(p.Y) <= .0001f);
+    }
+
+    [Fact]
     public void Lamp_export_round_trips_through_environment_verifier()
     {
         string root = TempRepository();
         try
         {
-            AssetRecipe recipe = FastLampV2();
+            AssetRecipe recipe = FastLampV3();
             byte[] source = LampSource();
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated.AlbedoPng);
+            byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated);
 
             ExportResult result = RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
-            Assert.True(File.Exists(Path.Combine(result.AssetDirectory, "mesh.glb")));
+            Assert.True(File.Exists(Path.Combine(result.AssetDirectory, AssetFileNaming.MeshFileName(recipe))));
             Assert.True(File.Exists(result.CosmeticDefinitionPath));
             Assert.Contains("authoring", result.AuthoringDirectory, StringComparison.OrdinalIgnoreCase);
 
@@ -127,10 +142,10 @@ public sealed class EnvironmentLampTests
         string root = TempRepository();
         try
         {
-            AssetRecipe recipe = FastLampV2();
+            AssetRecipe recipe = FastLampV3();
             byte[] source = LampSource();
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
-            RepositoryEnvironmentExporter.Export(root, source, generated, EnvironmentThumbnailGenerator.Create(generated.AlbedoPng));
+            RepositoryEnvironmentExporter.Export(root, source, generated, EnvironmentThumbnailGenerator.Create(generated));
             RepositoryVerificationResult buddy = RepositoryAssetVerifier.VerifyAll(root);
             Assert.Empty(buddy.Assets);
             Assert.Empty(buddy.RepositoryDiagnostics);
@@ -143,6 +158,7 @@ public sealed class EnvironmentLampTests
 
     private static AssetRecipe FastLampV1() => FastLamp(1);
     private static AssetRecipe FastLampV2() => FastLamp(2);
+    private static AssetRecipe FastLampV3() => FastLamp(3);
 
     private static AssetRecipe FastLamp(int presetVersion) => AssetRecipe.LampDefaults() with
     {

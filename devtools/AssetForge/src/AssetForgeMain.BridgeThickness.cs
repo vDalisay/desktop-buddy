@@ -6,6 +6,7 @@ namespace DesktopBuddy.AssetForge;
 public partial class AssetForgeMain
 {
     private const int RecommendedReplacementRuntimeTriangleBudget = 20_000;
+    private const int RecommendedEnvironmentRuntimeTriangleBudget = 45_000;
     private Label _bridgeThicknessLabel = null!;
     private SpinBox _bridgeThickness = null!;
     private bool _bridgeThicknessUiInstalled;
@@ -104,19 +105,26 @@ public partial class AssetForgeMain
                 AssetCategory.Glasses when _generated.UsedGlassesTemplate => $"glasses@{recipe.PresetVersion} rounded template",
                 AssetCategory.Glasses => "silhouette extrusion fallback",
                 AssetCategory.TorsoShape or AssetCategory.FootShape => $"{recipe.PresetId}@{recipe.PresetVersion} literal replacement template",
-                AssetCategory.Lamp when EnvironmentTemplateMapping.UsesLiteralTemplateSpace(recipe) => $"lamp@{recipe.PresetVersion} literal floor-template placement",
+                AssetCategory.Lamp when recipe.PresetVersion >= 3 => $"lamp@{recipe.PresetVersion} smoothed literal floor-template volume",
+                AssetCategory.Lamp when recipe.PresetVersion == 2 => "lamp@2 v0.1 literal floor-template volume (pre-polisher)",
                 AssetCategory.Lamp => $"lamp@{recipe.PresetVersion} legacy visible-bounds auto-fit",
-                AssetCategory.Sofa => $"sofa@{recipe.PresetVersion} front-derived literal floor-template volume",
+                AssetCategory.Sofa when recipe.PresetVersion >= 2 => $"sofa@{recipe.PresetVersion} front-derived smoothed floor-template volume",
+                AssetCategory.Sofa => "sofa@1 v0.1 front-derived literal floor-template volume (pre-polisher)",
+                AssetCategory.Table => $"table@{recipe.PresetVersion} front-derived floor-template volume",
+                AssetCategory.Plant => $"plant@{recipe.PresetVersion} inflated floor-template volume",
+                AssetCategory.Painting => $"painting@{recipe.PresetVersion} thin literal wall-template volume",
                 _ => $"{recipe.PresetId}@{recipe.PresetVersion}",
             };
             string bridge = recipe.Category == AssetCategory.Glasses
                 ? $" Bridge thickness {recipe.Geometry.BridgeThicknessBiasPixels:+0;-0;0}px."
                 : string.Empty;
             bool replacement = recipe.Category is AssetCategory.TorsoShape or AssetCategory.FootShape;
-            string performance = replacement && _generated.TriangleCount > RecommendedReplacementRuntimeTriangleBudget
-                ? $" ⚠ Runtime mesh is above the recommended {RecommendedReplacementRuntimeTriangleBudget:N0}-triangle Buddy-part budget; lower Runtime mesh resolution in Advanced before export if painting or Studio interaction is slow."
-                : replacement
-                    ? $" Runtime mesh is within the recommended {RecommendedReplacementRuntimeTriangleBudget:N0}-triangle Buddy-part budget."
+            bool environment = recipe.AssetFamily == AssetFamily.Environment;
+            int budget = replacement ? RecommendedReplacementRuntimeTriangleBudget : RecommendedEnvironmentRuntimeTriangleBudget;
+            string performance = (replacement || environment) && _generated.TriangleCount > budget
+                ? $" ⚠ Runtime mesh is above the recommended {budget:N0}-triangle {(replacement ? "Buddy-part" : "Environment")} budget; lower Runtime mesh resolution in Advanced if iteration or runtime rendering is slow."
+                : replacement || environment
+                    ? $" Runtime mesh is within the recommended {budget:N0}-triangle budget."
                     : string.Empty;
             SetStatus($"Generated with {generation}: {d.Components} foreground component(s), {d.Holes} interior hole(s), {_generated.VertexCount:N0} vertices, {_generated.TriangleCount:N0} triangles.{bridge} Lighting {recipe.LightingLevel:0.00}. Foreground: {_generated.Foreground.Summary}.{performance}");
             _hashes.Text = $"Input {_generated.InputHash[..12]}  Recipe {_generated.RecipeHash[..12]}  Geometry {_generated.GeometryHash[..12]}  Asset {_generated.CanonicalAssetHash[..12]}  ✓ deterministic output";
@@ -134,8 +142,11 @@ public partial class AssetForgeMain
         try
         {
             AssetRecipe recipe = RecipeCodec.Read(File.ReadAllText(path));
-            SetActiveCategoryFromRecipe(recipe);
+            // Let the legacy loader resolve the sibling source first, then re-apply the complete
+            // category recipe. Otherwise ApplyRecipe() would overwrite an Environment AssetId with
+            // its intentionally-empty Buddy FeatureId field after SetActiveCategoryFromRecipe().
             OpenRecipe(path);
+            SetActiveCategoryFromRecipe(recipe);
             if (GodotObject.IsInstanceValid(_bridgeThickness))
                 _bridgeThickness.Value = recipe.Category == AssetCategory.Glasses
                     ? recipe.Geometry.BridgeThicknessBiasPixels

@@ -61,7 +61,9 @@ public static class RepositoryAssetVerifier
             byte[] source = File.ReadAllBytes(sourcePath);
             GeneratedAsset expected = AssetForgeCompiler.Generate(source, recipe);
             string assetRoot = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId);
-            CompareBytes(Path.Combine(assetRoot, "mesh.glb"), expected.GlbBytes, "generated mesh.glb differs from source + recipe", diagnostics);
+            string meshFileName = AssetFileNaming.MeshFileName(recipe);
+            CompareBytes(Path.Combine(assetRoot, meshFileName), expected.GlbBytes, $"generated {meshFileName} differs from source + recipe", diagnostics);
+            VerifyOnlyExpectedMesh(assetRoot, meshFileName, diagnostics);
             CompareBytes(Path.Combine(assetRoot, "albedo.png"), expected.AlbedoPng, "generated albedo.png differs from source + recipe", diagnostics);
             ValidateThumbnail(Path.Combine(assetRoot, "thumbnail.png"), diagnostics);
 
@@ -77,7 +79,7 @@ public static class RepositoryAssetVerifier
                     GeneratedCosmeticLightingPersistence.ExpectedMarker(recipe),
                     $"GeneratorVersion = {recipe.GeneratorVersion}",
                     $"CanonicalAssetHash = \"{expected.CanonicalAssetHash}\"",
-                    $"res://assets/generated/cosmetics/{recipe.FeatureId}/mesh.glb",
+                    $"res://assets/generated/cosmetics/{recipe.FeatureId}/{meshFileName}",
                     $"res://assets/generated/cosmetics/{recipe.FeatureId}/albedo.png",
                     $"res://assets/generated/cosmetics/{recipe.FeatureId}/thumbnail.png",
                 ],
@@ -126,6 +128,14 @@ public static class RepositoryAssetVerifier
             line.EndsWith(" unchanged", StringComparison.Ordinal) ||
             line.EndsWith(" verified", StringComparison.Ordinal));
         return new AssetVerificationResult(displayId, passed, diagnostics);
+    }
+
+    private static void VerifyOnlyExpectedMesh(string assetRoot, string expectedMeshFileName, List<string> diagnostics)
+    {
+        if (!Directory.Exists(assetRoot)) return;
+        foreach (string mesh in Directory.GetFiles(assetRoot, "*.glb", SearchOption.TopDirectoryOnly))
+            if (!string.Equals(Path.GetFileName(mesh), expectedMeshFileName, StringComparison.Ordinal))
+                diagnostics.Add($"stale generated mesh file should be removed: {Path.GetFileName(mesh)}");
     }
 
     private static void VerifyNoOrphans(string root, IReadOnlyList<AssetVerificationResult> assets, List<string> diagnostics)
@@ -199,7 +209,7 @@ public static class RepositoryAssetVerifier
         .Where(static path =>
         {
             try { return RecipeCodec.Read(File.ReadAllText(path)).AssetFamily == AssetFamily.BuddyStudio; }
-            catch { return true; } // malformed recipes remain visible to the Buddy verifier diagnostic path
+            catch { return true; }
         })
         .ToArray();
 
@@ -258,15 +268,10 @@ public static class RepositoryAssetRegenerator
         byte[] thumbnail;
         if (File.Exists(thumbnailPath) && AssetThumbnailCache.IsCanonical(File.ReadAllBytes(thumbnailPath)))
         {
-            // Preserve an existing rendered Buddy composition exactly when it already satisfies the
-            // AF-14 contract. Regenerate is not allowed to silently replace a good authored camera.
             thumbnail = File.ReadAllBytes(thumbnailPath);
         }
         else
         {
-            // Headless maintenance cannot reproduce the Godot Buddy-reference camera. Its repair
-            // fallback is therefore the same deterministic, item-only 256 square used by Environment
-            // content; the next interactive Export can replace it with the cached rendered composition.
             thumbnail = AssetThumbnailCache.GetOrCreate(
                 generated,
                 () => EnvironmentThumbnailGenerator.Create(generated.AlbedoPng));

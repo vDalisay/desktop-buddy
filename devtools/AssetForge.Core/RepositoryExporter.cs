@@ -52,6 +52,8 @@ public static class RepositoryExporter
         string slug = recipe.FeatureId[(recipe.FeatureId.IndexOf('.') + 1)..];
         string authoringRelative = $"authoring/asset-forge/glasses/{slug}";
         string assetRelative = $"assets/generated/cosmetics/{recipe.FeatureId}";
+        string meshFileName = AssetFileNaming.MeshFileName(recipe);
+        string meshRelative = $"{assetRelative}/{meshFileName}";
         string cosmeticRelative = $"data/cosmetics/generated/{recipe.FeatureId}.tres";
         string saleFile = recipe.ContentId.Replace('.', '_') + ".tres";
         string saleRelative = $"data/catalogue/generated/{saleFile}";
@@ -94,10 +96,10 @@ public static class RepositoryExporter
         {
             StageBytes($"{authoringRelative}/source.png", sourcePng);
             StageText($"{authoringRelative}/recipe.json", RecipeCodec.WriteCanonical(recipe));
-            StageBytes($"{assetRelative}/mesh.glb", generated.GlbBytes);
+            StageBytes(meshRelative, generated.GlbBytes);
             StageBytes($"{assetRelative}/albedo.png", generated.AlbedoPng);
             StageBytes($"{assetRelative}/thumbnail.png", thumbnailPng);
-            StageText(cosmeticRelative, CosmeticResource(recipe, generated));
+            StageText(cosmeticRelative, CosmeticResource(recipe, generated, meshFileName));
             StageText(saleRelative, SaleResource(recipe, assetRelative));
 
             string[] cosmeticDefinitions = ExistingDefinitions(
@@ -119,12 +121,12 @@ public static class RepositoryExporter
             StageText(cosmeticCatalogueRelative, AggregateCosmetics(cosmeticDefinitions));
             StageText(saleCatalogueRelative, AggregateSales(saleDefinitions));
 
-            // Re-read every staged binary and reject malformed output before touching the repo.
-            GlbWriter.ValidateSingleMesh(File.ReadAllBytes(staged[$"{assetRelative}/mesh.glb"]));
+            GlbWriter.ValidateSingleMesh(File.ReadAllBytes(staged[meshRelative]));
             _ = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/albedo.png"]));
             _ = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/thumbnail.png"]));
 
             Commit(repositoryRoot, backupRoot, staged);
+            AssetFileNaming.RemoveStaleMeshes(Path.Combine(repositoryRoot, Native(assetRelative)), meshFileName);
             return new ExportResult(
                 recipe.FeatureId,
                 Path.Combine(repositoryRoot, Native(assetRelative)),
@@ -173,7 +175,6 @@ public static class RepositoryExporter
             AggregateSales(ExistingDefinitions(root, "data/catalogue/generated", excludeName: null).ToArray()));
     }
 
-    // Committed generated content is LF, exactly like the exporter's staged writes.
     private static void WriteLf(string path, string text) =>
         File.WriteAllText(path, text.Replace("\r\n", "\n", StringComparison.Ordinal));
 
@@ -232,14 +233,14 @@ public static class RepositoryExporter
         }
     }
 
-    private static string CosmeticResource(AssetRecipe recipe, GeneratedAsset generated)
+    private static string CosmeticResource(AssetRecipe recipe, GeneratedAsset generated, string meshFileName)
     {
         string asset = $"res://assets/generated/cosmetics/{recipe.FeatureId}";
         var text = new StringBuilder();
         text.AppendLine("[gd_resource type=\"Resource\" script_class=\"GeneratedBuddyCosmeticResource\" load_steps=5 format=3]");
         text.AppendLine();
         text.AppendLine("[ext_resource type=\"Script\" path=\"res://src/CharacterEditor/BuddyStudio/GeneratedBuddyCosmeticResource.cs\" id=\"1\"]");
-        text.AppendLine($"[ext_resource type=\"PackedScene\" path=\"{asset}/mesh.glb\" id=\"2\"]");
+        text.AppendLine($"[ext_resource type=\"PackedScene\" path=\"{asset}/{meshFileName}\" id=\"2\"]");
         text.AppendLine($"[ext_resource type=\"Texture2D\" path=\"{asset}/albedo.png\" id=\"3\"]");
         text.AppendLine($"[ext_resource type=\"Texture2D\" path=\"{asset}/thumbnail.png\" id=\"4\"]");
         text.AppendLine();

@@ -6,6 +6,7 @@ namespace DesktopBuddy.AssetForge;
 public partial class AssetForgeMain
 {
     private bool _combinedMaintenanceInstalled;
+    private IReadOnlyList<ExportedAssetForgeAsset> _combinedDeleteAssets = [];
 
     private void EnsureCombinedMaintenanceUi()
     {
@@ -14,18 +15,24 @@ public partial class AssetForgeMain
         Button? regenerateAll = RepositoryToolButton("Regenerate All");
         Button? verify = RepositoryToolButton("Verify");
         Button? verifyAll = RepositoryToolButton("Verify All");
+        Button? delete = RepositoryToolButton("Delete Asset…");
         if (!GodotObject.IsInstanceValid(regenerate) || !GodotObject.IsInstanceValid(regenerateAll) ||
-            !GodotObject.IsInstanceValid(verify) || !GodotObject.IsInstanceValid(verifyAll)) return;
+            !GodotObject.IsInstanceValid(verify) || !GodotObject.IsInstanceValid(verifyAll) ||
+            !GodotObject.IsInstanceValid(delete)) return;
 
         regenerate!.Pressed -= RegenerateCurrent;
         regenerateAll!.Pressed -= RegenerateAll;
         verify!.Pressed -= VerifyCurrent;
         verifyAll!.Pressed -= VerifyAll;
+        delete!.Pressed -= ShowDeleteDialog;
+        if (GodotObject.IsInstanceValid(_deleteDialog)) _deleteDialog.Confirmed -= DeleteSelected;
 
         regenerate.Pressed += RegenerateActiveAsset;
         regenerateAll.Pressed += RegenerateAllAssets;
         verify.Pressed += VerifyActiveAsset;
         verifyAll.Pressed += VerifyAllAssets;
+        delete.Pressed += ShowCombinedDeleteDialog;
+        if (GodotObject.IsInstanceValid(_deleteDialog)) _deleteDialog.Confirmed += DeleteCombinedSelected;
         _combinedMaintenanceInstalled = true;
     }
 
@@ -37,6 +44,51 @@ public partial class AssetForgeMain
             if (child is Button button && string.Equals(button.Text, text, StringComparison.Ordinal))
                 return button;
         return null;
+    }
+
+    private void ShowCombinedDeleteDialog()
+    {
+        try
+        {
+            _deleteList.Clear();
+            _combinedDeleteAssets = RepositoryAssetForgeDeletion.ListExported(FindRepositoryRoot());
+            foreach (ExportedAssetForgeAsset asset in _combinedDeleteAssets)
+            {
+                string family = asset.Family == AssetFamily.Environment ? "Environment" : "Buddy Studio";
+                _deleteList.AddItem($"{family} / {asset.Category} · {asset.DisplayName}  ({asset.StableId})");
+            }
+            _deleteDialog.GetOkButton().Disabled = _combinedDeleteAssets.Count == 0;
+            if (_combinedDeleteAssets.Count == 0) _deleteList.AddItem("No exported Asset Forge assets.", selectable: false);
+            var size = new Vector2I(DeleteDialogSize.X, Math.Min(DeleteDialogSize.Y, (int)GetViewportRect().Size.Y - 120));
+            _deleteDialog.PopupCentered(size);
+            _deleteDialog.Size = size;
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Could not list exported assets: " + exception.Message);
+        }
+    }
+
+    private void DeleteCombinedSelected()
+    {
+        try
+        {
+            int[] selected = _deleteList.GetSelectedItems();
+            if (selected.Length == 0) throw new InvalidOperationException("Select an asset to delete.");
+            if (selected[0] < 0 || selected[0] >= _combinedDeleteAssets.Count)
+                throw new InvalidOperationException("The selected Asset Forge entry is no longer available.");
+            ExportedAssetForgeAsset asset = _combinedDeleteAssets[selected[0]];
+            AssetForgeRepositoryVerificationResult verification = RepositoryAssetForgeDeletion.Delete(FindRepositoryRoot(), asset.StableId);
+            _hashes.Text = Format(verification);
+            SetStatus(verification.Passed
+                ? $"Deleted {asset.DisplayName} ({asset.StableId}); Verify All passed. It no longer ships with the game."
+                : $"Deleted {asset.DisplayName} ({asset.StableId}), but Verify All reports remaining repository drift.");
+            _combinedDeleteAssets = [];
+        }
+        catch (Exception exception)
+        {
+            SetStatus("Delete failed: " + exception.Message);
+        }
     }
 
     private void VerifyActiveAsset()

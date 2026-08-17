@@ -45,7 +45,7 @@ public sealed record EnvironmentAssetSettings
 {
     /// <summary>
     /// Logical in-room reference height. Legacy Lamp@1 applies it to the visible silhouette;
-    /// literal template-space Environment presets apply it from template SafeTop to the floor.
+    /// literal template-space Environment presets apply it to their category reference envelope.
     /// </summary>
     public double LogicalHeight { get; init; } = 150;
     public EnvironmentAnchorMode Anchor { get; init; } = EnvironmentAnchorMode.Floor;
@@ -136,14 +136,14 @@ public sealed record AssetRecipe
     };
 
     /// <summary>
-    /// New Lamp recipes use lamp@2. Lamp@1 remains readable/regenerable and intentionally retains
-    /// its legacy visible-bounds auto-fit mapping; lamp@2 adopts the owner-approved literal template
-    /// coordinate contract without silently changing already-authored recipes.
+    /// New Lamp recipes use lamp@3. lamp@1 keeps legacy visible-bounds auto-fit, lamp@2 keeps the
+    /// accepted v0.1 literal-template mesh behavior, and lamp@3 adds full-resolution rim projection
+    /// plus bounded fairing without silently changing already-authored recipes.
     /// </summary>
     public static AssetRecipe LampDefaults() => new()
     {
         PresetId = "lamp",
-        PresetVersion = 2,
+        PresetVersion = 3,
         AssetFamily = AssetFamily.Environment,
         Category = AssetCategory.Lamp,
         AssetId = "decoration.lamp.new_asset",
@@ -156,21 +156,12 @@ public sealed record AssetRecipe
             GeometryResolution = 256,
             RuntimeTextureResolution = 512,
             Depth = 0.18,
-            Roundness = 0.88,
-            SurfaceSmoothness = 0.82,
-            ShapeMode = ShapeMode.RoundedExtrusion,
+            Roundness = 0.90,
+            SurfaceSmoothness = 1.0,
+            ShapeMode = ShapeMode.InflatedSolid,
             SymmetryMode = SymmetryMode.Off,
         },
-        Environment = new EnvironmentAssetSettings
-        {
-            LogicalHeight = 150,
-            Anchor = EnvironmentAnchorMode.Floor,
-            RenderMode = EnvironmentRenderMode.BehindBuddyFloor,
-            AllowsRotation = true,
-            RotationStepDegrees = 15,
-            PivotX = 0.5,
-            PivotY = 1.0,
-        },
+        Environment = FloorEnvironment(150),
         Light = new DecorationLightSettings
         {
             EmitterX = EnvironmentTemplateSpace.LampEmitterX / (double)EnvironmentTemplateSpace.CanvasSize,
@@ -179,10 +170,14 @@ public sealed record AssetRecipe
         Thumbnail = new ThumbnailSettings { YawDegrees = 10, PitchDegrees = -6, Padding = .10 },
     };
 
+    /// <summary>
+    /// sofa@1 remains the accepted v0.1 literal-template generator. sofa@2 keeps the same authored
+    /// coordinate contract and adds the shared full-resolution Environment silhouette polisher.
+    /// </summary>
     public static AssetRecipe SofaDefaults() => new()
     {
         PresetId = "sofa",
-        PresetVersion = 1,
+        PresetVersion = 2,
         AssetFamily = AssetFamily.Environment,
         Category = AssetCategory.Sofa,
         AssetId = "decoration.sofa.new_asset",
@@ -200,23 +195,114 @@ public sealed record AssetRecipe
             ShapeMode = ShapeMode.InflatedSolid,
             SymmetryMode = SymmetryMode.Off,
         },
+        Environment = FloorEnvironment(105),
+        Light = DisabledLight(),
+        Thumbnail = new ThumbnailSettings { YawDegrees = 10, PitchDegrees = -8, Padding = .10 },
+    };
+
+    public static AssetRecipe TableDefaults() => new()
+    {
+        PresetId = "table",
+        PresetVersion = 1,
+        AssetFamily = AssetFamily.Environment,
+        Category = AssetCategory.Table,
+        AssetId = "decoration.table.new_asset",
+        FeatureId = string.Empty,
+        ContentId = string.Empty,
+        DisplayName = "New Table",
+        PriceCredits = 150,
+        Geometry = new GeometrySettings
+        {
+            GeometryResolution = 256,
+            RuntimeTextureResolution = 512,
+            Depth = 0.24,
+            Roundness = 0.72,
+            SurfaceSmoothness = 0.90,
+            ShapeMode = ShapeMode.RoundedExtrusion,
+            SymmetryMode = SymmetryMode.Off,
+        },
+        Environment = FloorEnvironment(100),
+        Light = DisabledLight(),
+        Thumbnail = new ThumbnailSettings { YawDegrees = 12, PitchDegrees = -8, Padding = .11 },
+    };
+
+    public static AssetRecipe PlantDefaults() => new()
+    {
+        PresetId = "plant",
+        PresetVersion = 1,
+        AssetFamily = AssetFamily.Environment,
+        Category = AssetCategory.Plant,
+        AssetId = "decoration.plant.new_asset",
+        FeatureId = string.Empty,
+        ContentId = string.Empty,
+        DisplayName = "New Plant",
+        PriceCredits = 110,
+        Geometry = new GeometrySettings
+        {
+            GeometryResolution = 256,
+            RuntimeTextureResolution = 512,
+            Depth = 0.26,
+            Roundness = 0.92,
+            SurfaceSmoothness = 1.0,
+            ShapeMode = ShapeMode.InflatedSolid,
+            SymmetryMode = SymmetryMode.Off,
+        },
+        Environment = FloorEnvironment(120),
+        Light = DisabledLight(),
+        Thumbnail = new ThumbnailSettings { YawDegrees = 10, PitchDegrees = -7, Padding = .11 },
+    };
+
+    public static AssetRecipe PaintingDefaults() => new()
+    {
+        PresetId = "painting",
+        PresetVersion = 1,
+        AssetFamily = AssetFamily.Environment,
+        Category = AssetCategory.Painting,
+        AssetId = "decoration.painting.new_asset",
+        FeatureId = string.Empty,
+        ContentId = string.Empty,
+        DisplayName = "New Painting",
+        PriceCredits = 90,
+        Geometry = new GeometrySettings
+        {
+            GeometryResolution = 256,
+            RuntimeTextureResolution = 1024,
+            Depth = 0.045,
+            Roundness = 0,
+            SurfaceSmoothness = 0.75,
+            ShapeMode = ShapeMode.FlatExtrusion,
+            SymmetryMode = SymmetryMode.Off,
+        },
         Environment = new EnvironmentAssetSettings
         {
-            LogicalHeight = 105,
-            Anchor = EnvironmentAnchorMode.Floor,
-            RenderMode = EnvironmentRenderMode.BehindBuddyFloor,
-            AllowsRotation = true,
-            RotationStepDegrees = 15,
+            LogicalHeight = 95,
+            Anchor = EnvironmentAnchorMode.Wall,
+            RenderMode = EnvironmentRenderMode.WallDecoration,
+            AllowsRotation = false,
+            RotationStepDegrees = 0,
             PivotX = 0.5,
-            PivotY = 1.0,
+            PivotY = 0.5,
         },
-        Light = new DecorationLightSettings
-        {
-            Enabled = false,
-            EmissionStrength = 0,
-            LightEnabled = false,
-        },
-        Thumbnail = new ThumbnailSettings { YawDegrees = 10, PitchDegrees = -8, Padding = .10 },
+        Light = DisabledLight(),
+        Thumbnail = new ThumbnailSettings { YawDegrees = 5, PitchDegrees = 0, Padding = .08 },
+    };
+
+    private static EnvironmentAssetSettings FloorEnvironment(double logicalHeight) => new()
+    {
+        LogicalHeight = logicalHeight,
+        Anchor = EnvironmentAnchorMode.Floor,
+        RenderMode = EnvironmentRenderMode.BehindBuddyFloor,
+        AllowsRotation = true,
+        RotationStepDegrees = 15,
+        PivotX = 0.5,
+        PivotY = 1.0,
+    };
+
+    private static DecorationLightSettings DisabledLight() => new()
+    {
+        Enabled = false,
+        EmissionStrength = 0,
+        LightEnabled = false,
     };
 
     public IReadOnlyList<string> Validate()
@@ -256,8 +342,8 @@ public sealed record AssetRecipe
                 break;
 
             case AssetCategory.Lamp:
-                if (PresetId != "lamp" || PresetVersion is not 1 and not 2)
-                    errors.Add("Lamp recipes support lamp@1 legacy auto-fit and lamp@2 literal template placement.");
+                if (PresetId != "lamp" || PresetVersion is not 1 and not 2 and not 3)
+                    errors.Add("Lamp recipes support lamp@1 legacy auto-fit, lamp@2 literal v0.1 generation and lamp@3 smoothed literal generation.");
                 ValidateEnvironmentIdentity(errors, "Lamp", "decoration.lamp.");
                 ValidateRoundedSilhouetteGeometry(errors, "Lamp");
                 ValidateEnvironment(errors);
@@ -265,19 +351,38 @@ public sealed record AssetRecipe
                 break;
 
             case AssetCategory.Sofa:
-                if (PresetId != "sofa" || PresetVersion != 1)
-                    errors.Add("Sofas currently support sofa@1 only.");
+                if (PresetId != "sofa" || PresetVersion is not 1 and not 2)
+                    errors.Add("Sofa recipes support sofa@1 v0.1 literal generation and sofa@2 smoothed literal generation.");
                 ValidateEnvironmentIdentity(errors, "Sofa", "decoration.sofa.");
-                ValidateRoundedSilhouetteGeometry(errors, "Sofa");
                 ValidateEnvironment(errors);
-                if (Light.Enabled || Light.LightEnabled)
-                    errors.Add("Sofa@1 is non-emissive and may not create a local light.");
+                ValidateRoundedSilhouetteGeometry(errors, "Sofa");
+                break;
+
+            case AssetCategory.Table:
+                ValidateEnvironmentPreset(errors, "Table", "table", "decoration.table.");
+                ValidateRoundedSilhouetteGeometry(errors, "Table");
+                break;
+
+            case AssetCategory.Plant:
+                ValidateEnvironmentPreset(errors, "Plant", "plant", "decoration.plant.");
+                ValidateRoundedSilhouetteGeometry(errors, "Plant");
+                break;
+
+            case AssetCategory.Painting:
+                ValidateEnvironmentPreset(errors, "Painting", "painting", "decoration.painting.");
+                if (Geometry.ShapeMode is not ShapeMode.FlatExtrusion and not ShapeMode.RoundedExtrusion and not ShapeMode.Relief)
+                    errors.Add("Painting presets support FlatExtrusion, RoundedExtrusion or Relief shape modes.");
+                if (Geometry.BridgeThicknessBiasPixels != 0)
+                    errors.Add("BridgeThicknessBiasPixels is glasses-only and must be zero for Painting.");
                 break;
 
             default:
                 errors.Add($"Asset category {Category} has a template contract but its generator is not implemented yet.");
                 break;
         }
+
+        if (Category is AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant or AssetCategory.Painting)
+            ValidateNonLightEnvironment(errors);
 
         if (string.IsNullOrWhiteSpace(DisplayName) || DisplayName.Length > 80) errors.Add("DisplayName must contain 1-80 characters.");
         if (!string.Equals(SourceFile, "source.png", StringComparison.Ordinal)) errors.Add("Recipe source must be source.png.");
@@ -296,6 +401,14 @@ public sealed record AssetRecipe
             errors.Add($"SurfaceSmoothness must be within 0-{smoothnessMaximum:0.#} for {Category}.");
         if (!FiniteRange(Thumbnail.Padding, 0, 0.45)) errors.Add("Thumbnail padding must be within 0-0.45.");
         return errors;
+    }
+
+    private void ValidateEnvironmentPreset(List<string> errors, string label, string presetId, string idPrefix)
+    {
+        if (PresetId != presetId || PresetVersion != 1)
+            errors.Add($"{label} currently supports {presetId}@1 only.");
+        ValidateEnvironmentIdentity(errors, label, idPrefix);
+        ValidateEnvironment(errors);
     }
 
     private void ValidateBuddyIdentity(List<string> errors, AssetFamily family, string featurePrefix, string contentPrefix)
@@ -341,13 +454,30 @@ public sealed record AssetRecipe
         if (Category == AssetCategory.Lamp && PresetVersion == 1 &&
             (Environment.Anchor != EnvironmentAnchorMode.Floor || Math.Abs(Environment.PivotY - 1.0) > .000001))
             errors.Add("Lamp@1 requires a floor anchor and bottom floor pivot.");
-        if ((Category == AssetCategory.Lamp && PresetVersion >= 2) || Category == AssetCategory.Sofa)
+
+        if ((Category == AssetCategory.Lamp && PresetVersion >= 2) ||
+            Category is AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant)
         {
             if (Environment.Anchor != EnvironmentAnchorMode.Floor ||
                 Math.Abs(Environment.PivotX - 0.5) > .000001 ||
                 Math.Abs(Environment.PivotY - 1.0) > .000001)
                 errors.Add($"{PresetId}@{PresetVersion} requires the literal template bottom-centre floor pivot.");
         }
+
+        if (Category == AssetCategory.Painting)
+        {
+            if (Environment.Anchor != EnvironmentAnchorMode.Wall ||
+                Environment.RenderMode != EnvironmentRenderMode.WallDecoration ||
+                Math.Abs(Environment.PivotX - 0.5) > .000001 ||
+                Math.Abs(Environment.PivotY - 0.5) > .000001)
+                errors.Add("painting@1 requires the literal template centre wall pivot and WallDecoration render mode.");
+        }
+    }
+
+    private void ValidateNonLightEnvironment(List<string> errors)
+    {
+        if (Light.Enabled || Light.LightEnabled || Math.Abs(Light.EmissionStrength) > .000001)
+            errors.Add($"{PresetId}@{PresetVersion} is non-emissive and may not create a local light.");
     }
 
     private void ValidateLight(List<string> errors)

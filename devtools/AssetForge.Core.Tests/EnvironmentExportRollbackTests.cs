@@ -20,7 +20,7 @@ public sealed class EnvironmentExportRollbackTests
                 original,
                 EnvironmentThumbnailGenerator.Create(original));
 
-            string meshPath = Path.Combine(first.AssetDirectory, "mesh.glb");
+            string meshPath = Path.Combine(first.AssetDirectory, AssetFileNaming.MeshFileName(recipe));
             string albedoPath = Path.Combine(first.AssetDirectory, "albedo.png");
             string thumbnailPath = Path.Combine(first.AssetDirectory, "thumbnail.png");
             string sourcePath = Path.Combine(first.AuthoringDirectory, "source.png");

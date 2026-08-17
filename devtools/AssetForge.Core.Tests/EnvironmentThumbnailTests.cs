@@ -36,6 +36,29 @@ public sealed class EnvironmentThumbnailTests
     }
 
     [Fact]
+    public void Generated_environment_thumbnail_renders_actual_mesh_from_canonical_front_view()
+    {
+        AssetThumbnailCache.ClearMemoryCache();
+        GeneratedAsset asset = SofaAsset();
+
+        byte[] first = EnvironmentThumbnailGenerator.Create(asset);
+        AssetThumbnailCache.ClearMemoryCache();
+        byte[] second = EnvironmentThumbnailGenerator.Create(asset);
+        byte[] flatCrop = EnvironmentThumbnailGenerator.Create(asset.AlbedoPng);
+
+        Assert.Equal(first, second);
+        Assert.NotEqual(flatCrop, first);
+        RgbaImage rendered = PngCodec.DecodeRgba8(first);
+        Bounds visible = VisibleBounds(rendered);
+        Assert.Equal(256, rendered.Width);
+        Assert.Equal(256, rendered.Height);
+        Assert.True(visible.Width > 20);
+        Assert.True(visible.Height > 20);
+        Assert.True(visible.Width < 256);
+        Assert.True(visible.Height < 256);
+    }
+
+    [Fact]
     public void Shared_thumbnail_cache_reuses_canonical_asset_and_returns_defensive_copies()
     {
         AssetThumbnailCache.ClearMemoryCache();

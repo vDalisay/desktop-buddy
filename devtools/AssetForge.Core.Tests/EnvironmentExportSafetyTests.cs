@@ -16,8 +16,9 @@ public sealed class EnvironmentExportSafetyTests
             GeneratedAsset generated = AssetForgeCompiler.Generate(source, recipe);
             byte[] thumbnail = EnvironmentThumbnailGenerator.Create(generated);
             ExportResult first = RepositoryEnvironmentExporter.Export(root, source, generated, thumbnail);
+            string meshFileName = AssetFileNaming.MeshFileName(recipe);
 
-            byte[] meshBefore = File.ReadAllBytes(Path.Combine(first.AssetDirectory, "mesh.glb"));
+            byte[] meshBefore = File.ReadAllBytes(Path.Combine(first.AssetDirectory, meshFileName));
             byte[] albedoBefore = File.ReadAllBytes(Path.Combine(first.AssetDirectory, "albedo.png"));
             byte[] thumbnailBefore = File.ReadAllBytes(Path.Combine(first.AssetDirectory, "thumbnail.png"));
             string definitionBefore = File.ReadAllText(first.CosmeticDefinitionPath);
@@ -33,7 +34,7 @@ public sealed class EnvironmentExportSafetyTests
                 changed,
                 [1, 2, 3, 4, 5]));
 
-            Assert.Equal(meshBefore, File.ReadAllBytes(Path.Combine(first.AssetDirectory, "mesh.glb")));
+            Assert.Equal(meshBefore, File.ReadAllBytes(Path.Combine(first.AssetDirectory, meshFileName)));
             Assert.Equal(albedoBefore, File.ReadAllBytes(Path.Combine(first.AssetDirectory, "albedo.png")));
             Assert.Equal(thumbnailBefore, File.ReadAllBytes(Path.Combine(first.AssetDirectory, "thumbnail.png")));
             Assert.Equal(definitionBefore, File.ReadAllText(first.CosmeticDefinitionPath));
@@ -103,7 +104,8 @@ public sealed class EnvironmentExportSafetyTests
                 lampSource,
                 lamp,
                 EnvironmentThumbnailGenerator.Create(lamp));
-            byte[] lampMeshBefore = File.ReadAllBytes(Path.Combine(lampExport.AssetDirectory, "mesh.glb"));
+            string lampMeshFileName = AssetFileNaming.MeshFileName(lampRecipe);
+            byte[] lampMeshBefore = File.ReadAllBytes(Path.Combine(lampExport.AssetDirectory, lampMeshFileName));
 
             AssetRecipe sofaRecipe = FastSofa("decoration.sofa.aggregate_safe");
             byte[] sofaSource = SofaSource(250, 345, 176, 121, 193);
@@ -117,7 +119,7 @@ public sealed class EnvironmentExportSafetyTests
             string aggregate = File.ReadAllText(sofaExport.CataloguePath);
             Assert.Equal(1, Count(aggregate, "res://data/environment/generated/decoration.lamp.aggregate_safe.tres"));
             Assert.Equal(1, Count(aggregate, "res://data/environment/generated/decoration.sofa.aggregate_safe.tres"));
-            Assert.Equal(lampMeshBefore, File.ReadAllBytes(Path.Combine(lampExport.AssetDirectory, "mesh.glb")));
+            Assert.Equal(lampMeshBefore, File.ReadAllBytes(Path.Combine(lampExport.AssetDirectory, lampMeshFileName)));
             Assert.True(RepositoryEnvironmentVerifier.VerifyAll(root).Passed);
         }
         finally

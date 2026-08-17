@@ -109,9 +109,6 @@ public sealed class AssetForgeCoreTests
         Assert.True(thin.UsedGlassesTemplate && thick.UsedGlassesTemplate);
         Assert.NotEqual(thin.GeometryHash, thick.GeometryHash);
 
-        // FrameThickness changes the rounded tube radius while source-space placement and the
-        // authored bridge remain stable. Compare corresponding deterministic mesh vertices rather
-        // than the overall Y envelope, which may be dominated by bridge or temple geometry.
         Assert.Equal(thin.Mesh.Positions.Count, thick.Mesh.Positions.Count);
         float maxDisplacement = thin.Mesh.Positions
             .Zip(thick.Mesh.Positions)
@@ -226,14 +223,14 @@ public sealed class AssetForgeCoreTests
             Assert.True(clean.Passed, string.Join("; ", clean.Assets.SelectMany(static asset => asset.Diagnostics).Concat(clean.RepositoryDiagnostics)));
             Assert.Single(clean.Assets);
 
-            string meshPath = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId, "mesh.glb");
+            string meshPath = Path.Combine(root, "assets", "generated", "cosmetics", recipe.FeatureId, AssetFileNaming.MeshFileName(recipe));
             byte[] drifted = File.ReadAllBytes(meshPath);
             drifted[^1] ^= 0x01;
             File.WriteAllBytes(meshPath, drifted);
 
             RepositoryVerificationResult dirty = RepositoryAssetVerifier.VerifyAll(root);
             Assert.False(dirty.Passed);
-            Assert.Contains(dirty.Assets.Single().Diagnostics, static diagnostic => diagnostic.Contains("mesh.glb differs", StringComparison.Ordinal));
+            Assert.Contains(dirty.Assets.Single().Diagnostics, static diagnostic => diagnostic.Contains("differs from source + recipe", StringComparison.Ordinal));
         }
         finally
         {

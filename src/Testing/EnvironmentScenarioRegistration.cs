@@ -49,9 +49,11 @@ internal static class EnvironmentScenarioRegistration
         factories["environment_decorator_room_build"] = () =>
             new EnvironmentDecoratorClosureScenario("environment_decorator_room_build");
 
-        // Asset Forge AF-11/AF-13: generated Environment assets use the same existing edit-session
-        // transaction and presenter seams as hand-authored room content.
+        // Asset Forge generated Environment assets use the same edit-session transaction and
+        // presenter seams as hand-authored room content. Lamp/Sofa retain focused gates; the v1
+        // matrix closes the remaining initial Table/Plant/Painting presets.
         factories["asset_forge_generated_lamp"] = () => new AssetForgeGeneratedLampScenario();
         factories["asset_forge_generated_sofa"] = () => new AssetForgeGeneratedSofaScenario();
+        factories["asset_forge_generated_environment_v1"] = () => new AssetForgeGeneratedEnvironmentV1Scenario();
     }
 }

@@ -18,6 +18,17 @@ public static class EnvironmentTemplateSpace
     public const int SofaSeatBottom = 740;
     public const int SofaBackTop = 300;
     public const int SofaBackBottom = 590;
+    public const int TableTopY = 520;
+    public const int TableTopTop = 455;
+    public const int TableTopBottom = 575;
+    public const int PlantPotTop = 690;
+    public const int PlantFoliageTop = 220;
+    public const int PlantFoliageBottom = 720;
+    public const int PaintingAnchorY = 512;
+    public const int PaintingArtLeft = 280;
+    public const int PaintingArtTop = 260;
+    public const int PaintingArtRight = 744;
+    public const int PaintingArtBottom = 764;
 }
 
 public static class EnvironmentTemplateGenerator
@@ -28,9 +39,7 @@ public static class EnvironmentTemplateGenerator
         byte[] pixels = new byte[size * size * 4];
         DrawCommonFloorTemplate(pixels, size);
 
-        // Suggested floor/base contact zone.
         DrawRect(pixels, size, 390, 820, 634, EnvironmentTemplateSpace.FloorY, 3, 48, 128, 72, 90);
-        // Suggested shade volume; art may extend outside it but the box helps scale consistency.
         DrawRect(pixels, size, 300, EnvironmentTemplateSpace.LampShadeTop, 724, EnvironmentTemplateSpace.LampShadeBottom, 3, 45, 142, 202, 85);
         DrawCircle(pixels, size, EnvironmentTemplateSpace.LampEmitterX, EnvironmentTemplateSpace.LampEmitterY,
             54, 3, 238, 173, 55, 125);
@@ -46,14 +55,61 @@ public static class EnvironmentTemplateGenerator
         byte[] pixels = new byte[size * size * 4];
         DrawCommonFloorTemplate(pixels, size);
 
-        // Broad contact zone communicates that both feet/base edges should visually meet the floor.
         DrawRect(pixels, size, 245, 820, 779, EnvironmentTemplateSpace.FloorY, 3, 48, 128, 72, 90);
-        // Seat-height line and seat envelope are distinct so the developer can read the intended
-        // sitting height even when cushions deliberately extend above/below it.
         DashedHorizontal(pixels, size, EnvironmentTemplateSpace.SofaSeatY, 220, 804, 14, 2, 196, 126, 52, 120);
         DrawRect(pixels, size, 230, EnvironmentTemplateSpace.SofaSeatTop, 794, EnvironmentTemplateSpace.SofaSeatBottom, 3, 196, 126, 52, 80);
-        // Back-rest envelope.
         DrawRect(pixels, size, 260, EnvironmentTemplateSpace.SofaBackTop, 764, EnvironmentTemplateSpace.SofaBackBottom, 3, 98, 92, 184, 82);
+        DrawBuddyScaleReference(pixels, size);
+        return PngCodec.EncodeRgba8(new RgbaImage(size, size, pixels));
+    }
+
+    public static byte[] CreateTablePng()
+    {
+        int size = EnvironmentTemplateSpace.CanvasSize;
+        byte[] pixels = new byte[size * size * 4];
+        DrawCommonFloorTemplate(pixels, size);
+
+        DrawRect(pixels, size, 330, 820, 694, EnvironmentTemplateSpace.FloorY, 3, 48, 128, 72, 90);
+        DashedHorizontal(pixels, size, EnvironmentTemplateSpace.TableTopY, 230, 794, 14, 2, 190, 120, 50, 125);
+        DrawRect(pixels, size, 245, EnvironmentTemplateSpace.TableTopTop, 779, EnvironmentTemplateSpace.TableTopBottom, 3, 190, 120, 50, 82);
+        DrawRect(pixels, size, 350, EnvironmentTemplateSpace.TableTopBottom, 674, EnvironmentTemplateSpace.FloorY, 2, 98, 92, 184, 65);
+        DrawBuddyScaleReference(pixels, size);
+        return PngCodec.EncodeRgba8(new RgbaImage(size, size, pixels));
+    }
+
+    public static byte[] CreatePlantPng()
+    {
+        int size = EnvironmentTemplateSpace.CanvasSize;
+        byte[] pixels = new byte[size * size * 4];
+        DrawCommonFloorTemplate(pixels, size);
+
+        DrawRect(pixels, size, 405, EnvironmentTemplateSpace.PlantPotTop, 619, EnvironmentTemplateSpace.FloorY, 3, 178, 104, 62, 90);
+        DrawRect(pixels, size, 285, EnvironmentTemplateSpace.PlantFoliageTop, 739, EnvironmentTemplateSpace.PlantFoliageBottom, 3, 56, 142, 88, 82);
+        DashedVertical(pixels, size, EnvironmentTemplateSpace.CenterX, EnvironmentTemplateSpace.PlantFoliageTop, EnvironmentTemplateSpace.FloorY, 14, 2, 56, 142, 88, 95);
+        DrawBuddyScaleReference(pixels, size);
+        return PngCodec.EncodeRgba8(new RgbaImage(size, size, pixels));
+    }
+
+    public static byte[] CreatePaintingPng()
+    {
+        int size = EnvironmentTemplateSpace.CanvasSize;
+        byte[] pixels = new byte[size * size * 4];
+        DrawCommonWallTemplate(pixels, size);
+
+        DrawRect(pixels, size,
+            EnvironmentTemplateSpace.PaintingArtLeft,
+            EnvironmentTemplateSpace.PaintingArtTop,
+            EnvironmentTemplateSpace.PaintingArtRight,
+            EnvironmentTemplateSpace.PaintingArtBottom,
+            3, 156, 96, 178, 92);
+        DrawRect(pixels, size,
+            EnvironmentTemplateSpace.PaintingArtLeft - 28,
+            EnvironmentTemplateSpace.PaintingArtTop - 28,
+            EnvironmentTemplateSpace.PaintingArtRight + 28,
+            EnvironmentTemplateSpace.PaintingArtBottom + 28,
+            2, 76, 128, 166, 58);
+        DrawCross(pixels, size, EnvironmentTemplateSpace.CenterX, EnvironmentTemplateSpace.PaintingAnchorY,
+            20, 2, 210, 130, 60, 145);
         DrawBuddyScaleReference(pixels, size);
         return PngCodec.EncodeRgba8(new RgbaImage(size, size, pixels));
     }
@@ -68,10 +124,15 @@ public static class EnvironmentTemplateGenerator
         DashedHorizontal(pixels, size, EnvironmentTemplateSpace.FloorY, 100, 924, 12, 2, 66, 116, 72, 120);
     }
 
+    private static void DrawCommonWallTemplate(byte[] pixels, int size)
+    {
+        DrawRect(pixels, size, 180, 140, 844, 860, 2, 84, 112, 128, 58);
+        DashedVertical(pixels, size, EnvironmentTemplateSpace.CenterX, 100, 910, 12, 2, 56, 124, 168, 90);
+        DashedHorizontal(pixels, size, EnvironmentTemplateSpace.PaintingAnchorY, 140, 884, 12, 2, 56, 124, 168, 90);
+    }
+
     private static void DrawBuddyScaleReference(byte[] pixels, int size)
     {
-        // Small translucent Buddy scale reference at lower-left. It is guide-only and must be
-        // hidden/removed before importing clean source art.
         DrawReferenceDisc(pixels, size, 250, 700, 70, 104, 184, 235, 30);
         DrawReferenceDisc(pixels, size, 250, 805, 88, 104, 184, 235, 24);
     }

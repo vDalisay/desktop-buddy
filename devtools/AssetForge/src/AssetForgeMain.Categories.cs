@@ -18,6 +18,7 @@ public partial class AssetForgeMain
         EnsureReplacementQualityUi();
         EnsureLampUi();
         EnsureSofaUi();
+        EnsureEnvironmentPropUi();
         _categorySelector.ItemSelected += OnAuthoringCategorySelected;
         _templateDialog.FileSelected -= SaveTemplate;
         _templateDialog.FileSelected += SaveCategoryTemplate;
@@ -39,6 +40,9 @@ public partial class AssetForgeMain
             AuthoringTemplateCatalog.FeetId => AssetCategory.FootShape,
             AuthoringTemplateCatalog.LampId => AssetCategory.Lamp,
             AuthoringTemplateCatalog.SofaId => AssetCategory.Sofa,
+            AuthoringTemplateCatalog.TableId => AssetCategory.Table,
+            AuthoringTemplateCatalog.PlantId => AssetCategory.Plant,
+            AuthoringTemplateCatalog.PaintingId => AssetCategory.Painting,
             _ => _activeCategory,
         };
         if (!spec.Implemented || category == _activeCategory) return;
@@ -52,6 +56,7 @@ public partial class AssetForgeMain
         ApplyReplacementQualityRecipe(defaults);
         ApplyLampRecipe(defaults);
         ApplySofaRecipe(defaults);
+        ApplyEnvironmentPropRecipe(defaults);
         _sourcePath = null;
         _source.Text = "Choose a clean 1024×1024 PNG for this category.";
         _generated = null;
@@ -71,6 +76,9 @@ public partial class AssetForgeMain
             AssetCategory.FootShape => AuthoringTemplateCatalog.FeetId,
             AssetCategory.Lamp => AuthoringTemplateCatalog.LampId,
             AssetCategory.Sofa => AuthoringTemplateCatalog.SofaId,
+            AssetCategory.Table => AuthoringTemplateCatalog.TableId,
+            AssetCategory.Plant => AuthoringTemplateCatalog.PlantId,
+            AssetCategory.Painting => AuthoringTemplateCatalog.PaintingId,
             _ => _activeTemplateId,
         };
         if (GodotObject.IsInstanceValid(_categorySelector))
@@ -85,6 +93,7 @@ public partial class AssetForgeMain
         ApplyReplacementQualityRecipe(recipe);
         ApplyLampRecipe(recipe);
         ApplySofaRecipe(recipe);
+        ApplyEnvironmentPropRecipe(recipe);
         ConfigureActiveCategoryUi();
     }
 
@@ -120,9 +129,6 @@ public partial class AssetForgeMain
 
     private AssetRecipe ReadCategoryRecipeFromUi()
     {
-        // Start with the actual opened recipe, not today's defaults. Hidden metadata such as the
-        // thumbnail camera and Lamp colour therefore survives open/edit/save; Lamp@1 also remains
-        // Lamp@1 until an explicit migration changes its version.
         AssetRecipe defaults = CurrentCategoryBase();
         AssetRecipe recipe = defaults with
         {
@@ -146,7 +152,8 @@ public partial class AssetForgeMain
             },
         };
         recipe = ApplyLampUiToRecipe(recipe);
-        return ApplySofaUiToRecipe(recipe);
+        recipe = ApplySofaUiToRecipe(recipe);
+        return ApplyEnvironmentPropUiToRecipe(recipe);
     }
 
     private static AssetRecipe CategoryDefaults(AssetCategory category) => category switch
@@ -156,6 +163,15 @@ public partial class AssetForgeMain
         AssetCategory.FootShape => AssetRecipe.FootShapeDefaults(),
         AssetCategory.Lamp => AssetRecipe.LampDefaults(),
         AssetCategory.Sofa => AssetRecipe.SofaDefaults(),
+        AssetCategory.Table => AssetRecipe.TableDefaults() with
+        {
+            // The first exported table read much too small beside the accepted Lamp. Its authored
+            // template only occupies ~47% of the vertical canvas, so 440 room units makes the
+            // generated visual at least 1.5x the accepted Lamp's measured height.
+            Environment = AssetRecipe.TableDefaults().Environment with { LogicalHeight = 440 },
+        },
+        AssetCategory.Plant => AssetRecipe.PlantDefaults(),
+        AssetCategory.Painting => AssetRecipe.PaintingDefaults(),
         _ => throw new NotSupportedException($"Asset Forge category {category} is not enabled yet."),
     };
 
@@ -180,13 +196,10 @@ public partial class AssetForgeMain
         {
             if (_generated is null || string.IsNullOrWhiteSpace(_sourcePath))
                 throw new InvalidOperationException("Generate the asset before export.");
-            // AF-14: both families share one canonical cache key. Buddy Studio uses a Godot render
-            // producer while Environment uses a pure deterministic crop, but neither category owns
-            // per-item thumbnail drawing code or cache identity.
             byte[] thumbnail = AssetThumbnailCache.GetOrCreate(
                 _generated,
                 () => _generated.Recipe.AssetFamily == AssetFamily.Environment
-                    ? EnvironmentThumbnailGenerator.Create(_generated.AlbedoPng)
+                    ? EnvironmentThumbnailGenerator.Create(_generated)
                     : _preview.CaptureThumbnailPng());
             byte[] source = File.ReadAllBytes(_sourcePath);
             string root = FindRepositoryRoot();
@@ -202,7 +215,8 @@ public partial class AssetForgeMain
                 result = RepositoryBuddyReplacementExporter.Export(root, source, _generated, thumbnail);
                 GeneratedCosmeticLightingPersistence.Apply(root, _generated.Recipe);
             }
-            else if (_generated.Recipe.Category is AssetCategory.Lamp or AssetCategory.Sofa)
+            else if (_generated.Recipe.AssetFamily == AssetFamily.Environment &&
+                     RepositoryEnvironmentExporter.IsSupportedCategory(_generated.Recipe.Category))
             {
                 result = RepositoryEnvironmentExporter.Export(root, source, _generated, thumbnail);
             }
@@ -232,6 +246,9 @@ public partial class AssetForgeMain
                 AssetCategory.FootShape => "Buddy Studio > Shoes",
                 AssetCategory.Lamp => "Room Decorator > Lamps",
                 AssetCategory.Sofa => "Room Decorator > Sofas",
+                AssetCategory.Table => "Room Decorator > Tables",
+                AssetCategory.Plant => "Room Decorator > Plants",
+                AssetCategory.Painting => "Room Decorator > Paintings",
                 _ => _generated.Recipe.Category.ToString(),
             };
             SetStatus($"Exported {_generated.Recipe.DisplayName} to {destination} and verified deterministic package.\nAuthoring: {result.AuthoringDirectory}\nGenerated: {result.AssetDirectory}");
@@ -249,19 +266,24 @@ public partial class AssetForgeMain
         bool replacement = _activeCategory is AssetCategory.TorsoShape or AssetCategory.FootShape;
         bool lamp = _activeCategory == AssetCategory.Lamp;
         bool sofa = _activeCategory == AssetCategory.Sofa;
-        bool environmentSilhouette = lamp || sofa;
+        bool genericEnvironment = IsGenericEnvironmentProp(_activeCategory);
+        bool environmentSilhouette = lamp || sofa || genericEnvironment;
+        bool floorEnvironment = _activeCategory is AssetCategory.Lamp or AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant;
+        bool painting = _activeCategory == AssetCategory.Painting;
         bool silhouette = replacement || environmentSilhouette;
-        ConfigureReplacementQualityUi(replacement || environmentSilhouette);
+
+        ConfigureReplacementQualityUi(silhouette);
         ConfigureLampUi(lamp);
         ConfigureSofaUi(sofa);
+        ConfigureEnvironmentPropUi(_activeCategory);
         SetLabeledVisible(_frameThickness, glasses);
         RefreshBridgeThicknessVisibility();
         if (GodotObject.IsInstanceValid(_templeThickness) && _templeThickness.GetParent()?.GetParent() is Control templeCard) templeCard.Visible = glasses;
         if (GodotObject.IsInstanceValid(_migratePreset)) _migratePreset.Visible = glasses && _activePresetVersion < 2;
 
-        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.FlatExtrusion, silhouette);
+        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.FlatExtrusion, replacement || floorEnvironment);
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.RoundedExtrusion, false);
-        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.InflatedSolid, glasses);
+        _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.InflatedSolid, glasses || painting);
         _shapeMode.GetPopup().SetItemDisabled((int)ShapeMode.Relief, glasses);
 
         string display = _activeCategory switch
@@ -271,15 +293,23 @@ public partial class AssetForgeMain
             AssetCategory.FootShape => "Shoes / Foot replacement",
             AssetCategory.Lamp => "Lamp",
             AssetCategory.Sofa => "Sofa",
+            AssetCategory.Table => "Table",
+            AssetCategory.Plant => "Plant",
+            AssetCategory.Painting => "Painting",
             _ => _activeCategory.ToString(),
         };
         _presetLabel.Text = _activeCategory switch
         {
             AssetCategory.Glasses when _activePresetVersion >= 2 => "Buddy Studio > Glasses / glasses@2 — literal 1024×1024 Buddy-head placement",
             AssetCategory.Glasses => "Buddy Studio > Glasses / glasses@1 — legacy auto-fit placement",
-            AssetCategory.Lamp when _activePresetVersion >= 2 => "Environment > Lamp / lamp@2 — literal floor-template placement with visual light metadata",
+            AssetCategory.Lamp when _activePresetVersion >= 3 => "Environment > Lamp / lamp@3 — smoothed literal floor-template placement with visual light metadata",
+            AssetCategory.Lamp when _activePresetVersion == 2 => "Environment > Lamp / lamp@2 — v0.1 literal floor-template placement (reproducible pre-polisher mesh)",
             AssetCategory.Lamp => "Environment > Lamp / lamp@1 — legacy visible-bounds auto-fit placement",
-            AssetCategory.Sofa => "Environment > Sofa / sofa@1 — front-only stylized 2.5D, literal floor-template placement",
+            AssetCategory.Sofa when _activePresetVersion >= 2 => "Environment > Sofa / sofa@2 — smoothed front-derived 2.5D, literal floor-template placement",
+            AssetCategory.Sofa => "Environment > Sofa / sofa@1 — v0.1 front-derived 2.5D, literal floor-template placement",
+            AssetCategory.Table => "Environment > Table / table@1 — front-derived volume, literal floor-template placement",
+            AssetCategory.Plant => "Environment > Plant / plant@1 — inflated volume, literal floor-template placement",
+            AssetCategory.Painting => "Environment > Painting / painting@1 — thin wall volume, literal wall-template placement",
             _ => $"Buddy Studio > {display} / {CategoryDefaults(_activeCategory).PresetId}@{_activePresetVersion} — literal 1024×1024 replacement placement",
         };
         if (GodotObject.IsInstanceValid(_reference))
@@ -289,20 +319,19 @@ public partial class AssetForgeMain
                 AssetCategory.Glasses => "Reference head",
                 AssetCategory.TorsoShape => "Reference torso",
                 AssetCategory.FootShape => "Reference feet",
-                AssetCategory.Lamp or AssetCategory.Sofa => "Buddy + floor guide",
+                AssetCategory.Lamp or AssetCategory.Sofa or AssetCategory.Table or AssetCategory.Plant => "Buddy + floor guide",
+                AssetCategory.Painting => "Buddy + wall guide",
                 _ => "Reference",
             };
-            _reference.TooltipText = _activeCategory is AssetCategory.Lamp or AssetCategory.Sofa
-                ? "The two circles show Buddy's head/body scale; the green line is the floor. Preview only."
-                : string.Empty;
+            _reference.TooltipText = floorEnvironment
+                ? "The Buddy reference shows room scale; the green line is the floor. Preview only."
+                : painting
+                    ? "The Buddy reference shows room scale; the wall plane and anchor are preview-only guides."
+                    : string.Empty;
         }
         if (GodotObject.IsInstanceValid(_preview)) _preview.SetCategory(_activeCategory);
 
-        Label? subtitle = FindLabel(this, "Glasses · category settings") ??
-                          FindLabel(this, "Top / Torso replacement · category settings") ??
-                          FindLabel(this, "Shoes / Foot replacement · category settings") ??
-                          FindLabel(this, "Lamp · category settings") ??
-                          FindLabel(this, "Sofa · category settings");
+        Label? subtitle = FindCategorySettingsLabel(this);
         if (subtitle is not null) subtitle.Text = $"{display} · category settings";
     }
 
@@ -313,12 +342,12 @@ public partial class AssetForgeMain
         field.Visible = visible;
     }
 
-    private static Label? FindLabel(Node root, string text)
+    private static Label? FindCategorySettingsLabel(Node root)
     {
         foreach (Node child in root.GetChildren())
         {
-            if (child is Label label && label.Text == text) return label;
-            Label? nested = FindLabel(child, text);
+            if (child is Label label && label.Text.EndsWith("· category settings", StringComparison.Ordinal)) return label;
+            Label? nested = FindCategorySettingsLabel(child);
             if (nested is not null) return nested;
         }
         return null;

@@ -13,6 +13,9 @@ public partial class AssetForgeMain
         _ = delta;
         EnsureModernWorkspaceUi();
         EnsureCombinedMaintenanceUi();
+        EnsureGenerationWarningUi();
+        EnsureCategoryPresetMigrationUi();
+        RefreshCategoryPresetMigrationUi();
         if (_thumbnailPrimeInFlight ||
             _generated is null ||
             _generated.Recipe.AssetFamily != AssetFamily.BuddyStudio ||

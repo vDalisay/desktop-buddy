@@ -1,9 +1,12 @@
+using System.Numerics;
+
 namespace DesktopBuddy.AssetForge.Core;
 
 /// <summary>
-/// Canonical CPU thumbnail path for generated Environment catalogue items. It crops transparent
-/// margins from the generated albedo, adds deterministic breathing room, pads to a square without
-/// introducing guide/reference pixels, and outputs exactly 256x256 RGBA PNG.
+/// Canonical thumbnail helpers. Environment exports use a deterministic CPU orthographic front
+/// render of the final generated mesh so Room Decorator thumbnails resemble the actual model.
+/// The raw-albedo overload remains as a maintenance fallback for Buddy content that cannot render
+/// its Godot reference composition headlessly.
 /// </summary>
 public static class EnvironmentThumbnailGenerator
 {
@@ -15,9 +18,104 @@ public static class EnvironmentThumbnailGenerator
         ArgumentNullException.ThrowIfNull(asset);
         if (asset.Recipe.AssetFamily != AssetFamily.Environment)
             throw new ArgumentException("Environment thumbnail generation requires an Environment asset.", nameof(asset));
-        return AssetThumbnailCache.GetOrCreate(asset, () => Create(asset.AlbedoPng));
+        return AssetThumbnailCache.GetOrCreate(asset, () => CreateFrontView(asset));
     }
 
+    /// <summary>
+    /// Software-renders the generated geometry from directly in front of +Z. This deliberately
+    /// avoids a GPU dependency while still using final mesh positions, UVs, normals and albedo.
+    /// </summary>
+    public static byte[] CreateFrontView(GeneratedAsset asset)
+    {
+        ArgumentNullException.ThrowIfNull(asset);
+        CanonicalMesh mesh = asset.Mesh;
+        if (mesh.Positions.Count == 0 || mesh.TriangleCount == 0)
+            throw new InvalidOperationException("Environment thumbnail mesh has no visible geometry.");
+
+        RgbaImage texture = PngCodec.DecodeRgba8(asset.AlbedoPng);
+        float minX = float.PositiveInfinity, minY = float.PositiveInfinity;
+        float maxX = float.NegativeInfinity, maxY = float.NegativeInfinity;
+        foreach (Vector3 p in mesh.Positions)
+        {
+            minX = MathF.Min(minX, p.X); maxX = MathF.Max(maxX, p.X);
+            minY = MathF.Min(minY, p.Y); maxY = MathF.Max(maxY, p.Y);
+        }
+        float width = MathF.Max(.0001f, maxX - minX);
+        float height = MathF.Max(.0001f, maxY - minY);
+        double paddingFraction = Math.Clamp(asset.Recipe.Thumbnail.Padding, 0.04, 0.40);
+        float paddingPixels = (float)(OutputSize * paddingFraction);
+        float available = MathF.Max(8f, OutputSize - (paddingPixels * 2f));
+        float scale = available / MathF.Max(width, height);
+        float centerX = (minX + maxX) * .5f;
+        float centerY = (minY + maxY) * .5f;
+        float targetCenter = (OutputSize - 1) * .5f;
+
+        var projected = new Vector3[mesh.Positions.Count];
+        for (int i = 0; i < mesh.Positions.Count; i++)
+        {
+            Vector3 p = mesh.Positions[i];
+            projected[i] = new Vector3(
+                targetCenter + ((p.X - centerX) * scale),
+                targetCenter - ((p.Y - centerY) * scale),
+                p.Z);
+        }
+
+        byte[] pixels = new byte[OutputSize * OutputSize * 4];
+        float[] depth = Enumerable.Repeat(float.NegativeInfinity, OutputSize * OutputSize).ToArray();
+        Vector3 light = Vector3.Normalize(new Vector3(-.28f, .35f, 1f));
+
+        for (int triangle = 0; triangle < mesh.Indices.Count; triangle += 3)
+        {
+            int ia = checked((int)mesh.Indices[triangle]);
+            int ib = checked((int)mesh.Indices[triangle + 1]);
+            int ic = checked((int)mesh.Indices[triangle + 2]);
+            Vector3 a = projected[ia], b = projected[ib], c = projected[ic];
+            float area = Edge(a, b, c.X, c.Y);
+            if (MathF.Abs(area) <= .00001f) continue;
+
+            int x0 = Math.Clamp((int)MathF.Floor(MathF.Min(a.X, MathF.Min(b.X, c.X))), 0, OutputSize - 1);
+            int y0 = Math.Clamp((int)MathF.Floor(MathF.Min(a.Y, MathF.Min(b.Y, c.Y))), 0, OutputSize - 1);
+            int x1 = Math.Clamp((int)MathF.Ceiling(MathF.Max(a.X, MathF.Max(b.X, c.X))), 0, OutputSize - 1);
+            int y1 = Math.Clamp((int)MathF.Ceiling(MathF.Max(a.Y, MathF.Max(b.Y, c.Y))), 0, OutputSize - 1);
+
+            for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                float px = x + .5f, py = y + .5f;
+                float wa = Edge(b, c, px, py) / area;
+                float wb = Edge(c, a, px, py) / area;
+                float wc = 1f - wa - wb;
+                const float epsilon = -.0005f;
+                if (wa < epsilon || wb < epsilon || wc < epsilon) continue;
+
+                float z = (a.Z * wa) + (b.Z * wb) + (c.Z * wc);
+                int pixelIndex = y * OutputSize + x;
+                if (z <= depth[pixelIndex]) continue;
+
+                Vector2 uv = (mesh.Uvs[ia] * wa) + (mesh.Uvs[ib] * wb) + (mesh.Uvs[ic] * wc);
+                PixelSample sample = SampleBilinear(texture, uv);
+                if (sample.A == 0) continue;
+
+                Vector3 normal = (mesh.Normals[ia] * wa) + (mesh.Normals[ib] * wb) + (mesh.Normals[ic] * wc);
+                float diffuse = normal.LengthSquared() <= .000001f
+                    ? 1f
+                    : MathF.Abs(Vector3.Dot(Vector3.Normalize(normal), light));
+                float shade = .76f + (.24f * diffuse);
+                int output = pixelIndex * 4;
+                pixels[output] = Shade(sample.R, shade);
+                pixels[output + 1] = Shade(sample.G, shade);
+                pixels[output + 2] = Shade(sample.B, shade);
+                pixels[output + 3] = sample.A;
+                depth[pixelIndex] = z;
+            }
+        }
+
+        RgbaImage rendered = new(OutputSize, OutputSize, pixels);
+        _ = FindVisibleBounds(rendered);
+        return PngCodec.EncodeRgba8(rendered);
+    }
+
+    /// <summary>Legacy/item-only alpha crop used only when no generated mesh is available.</summary>
     public static byte[] Create(ReadOnlySpan<byte> albedoPng)
     {
         RgbaImage source = PngCodec.DecodeRgba8(albedoPng);
@@ -45,12 +143,42 @@ public static class EnvironmentThumbnailGenerator
             source.Pixels.AsSpan(sourceOffset, 4).CopyTo(cropPixels.AsSpan(targetOffset, 4));
         }
 
-        // ResizeBox intentionally only supports exact integer-block reductions. Thumbnail crops
-        // have arbitrary alpha-derived dimensions, so use a deterministic bilinear sampler rather
-        // than altering the crop just to make its side divisible by 256.
         RgbaImage resized = ResizeBilinearSquare(new RgbaImage(cropSide, cropSide, cropPixels), OutputSize);
         return PngCodec.EncodeRgba8(resized);
     }
+
+    private static float Edge(Vector3 a, Vector3 b, float x, float y) =>
+        ((x - a.X) * (b.Y - a.Y)) - ((y - a.Y) * (b.X - a.X));
+
+    private static PixelSample SampleBilinear(RgbaImage image, Vector2 uv)
+    {
+        float sx = Math.Clamp(uv.X, 0f, 1f) * (image.Width - 1);
+        float sy = Math.Clamp(uv.Y, 0f, 1f) * (image.Height - 1);
+        int x0 = Math.Clamp((int)MathF.Floor(sx), 0, image.Width - 1);
+        int y0 = Math.Clamp((int)MathF.Floor(sy), 0, image.Height - 1);
+        int x1 = Math.Min(image.Width - 1, x0 + 1);
+        int y1 = Math.Min(image.Height - 1, y0 + 1);
+        float fx = sx - x0, fy = sy - y0;
+        return new PixelSample(
+            Bilinear(image, x0, y0, x1, y1, fx, fy, 0),
+            Bilinear(image, x0, y0, x1, y1, fx, fy, 1),
+            Bilinear(image, x0, y0, x1, y1, fx, fy, 2),
+            Bilinear(image, x0, y0, x1, y1, fx, fy, 3));
+    }
+
+    private static byte Bilinear(RgbaImage image, int x0, int y0, int x1, int y1, float fx, float fy, int channel)
+    {
+        int i00 = ((y0 * image.Width) + x0) * 4 + channel;
+        int i10 = ((y0 * image.Width) + x1) * 4 + channel;
+        int i01 = ((y1 * image.Width) + x0) * 4 + channel;
+        int i11 = ((y1 * image.Width) + x1) * 4 + channel;
+        float top = image.Pixels[i00] + ((image.Pixels[i10] - image.Pixels[i00]) * fx);
+        float bottom = image.Pixels[i01] + ((image.Pixels[i11] - image.Pixels[i01]) * fx);
+        return (byte)Math.Clamp((int)MathF.Round(top + ((bottom - top) * fy)), 0, 255);
+    }
+
+    private static byte Shade(byte value, float shade) =>
+        (byte)Math.Clamp((int)MathF.Round(value * shade), 0, 255);
 
     private static RgbaImage ResizeBilinearSquare(RgbaImage source, int target)
     {
@@ -119,5 +247,6 @@ public static class EnvironmentThumbnailGenerator
         return new Bounds(minX, minY, maxX, maxY);
     }
 
+    private readonly record struct PixelSample(byte R, byte G, byte B, byte A);
     private readonly record struct Bounds(int MinX, int MinY, int MaxX, int MaxY);
 }
