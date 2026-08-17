@@ -27,7 +27,11 @@ public readonly record struct PaintHit(PaintPart Part, PaintPoint Uv, double Dep
         Uv.X >= 0.0 && Uv.X <= 1.0 && Uv.Y >= 0.0 && Uv.Y <= 1.0;
 }
 
-/// <summary>Two atlas lanes share each limb's existing 512x512 surface.</summary>
+/// <summary>
+/// Two atlas lanes share each connector-capable endpoint's existing 512x512 surface:
+/// the visible end itself lives in the left half and its torso connector in the right.
+/// The head uses the exact same convention for the neck that hands and feet already use.
+/// </summary>
 public readonly record struct PaintUvRegion(double Start, double Width)
 {
     public static PaintUvRegion Full { get; } = new(0.0, 1.0);
@@ -38,7 +42,7 @@ public readonly record struct PaintUvRegion(double Start, double Width)
     public int PixelWidth => (int)Math.Round(Width * PaintPolicy.SurfaceSize);
 
     public static bool IsLimb(PaintPart part) => part is
-        PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot;
+        PaintPart.Head or PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot;
 
     public static PaintUvRegion For(PaintHit hit) => IsLimb(hit.Part)
         ? hit.IsConnector ? LimbConnector : LimbEnd
