@@ -195,11 +195,34 @@ public sealed class WorkModeResilienceScenario : IScenario
                 $"savedNormal={sandbox.Shell.CurrentLocalSettings.WindowWidth}x" +
                 $"{sandbox.Shell.CurrentLocalSettings.WindowHeight}"));
 
+            // Anything that re-applies normal-room geometry mid-session used to teleport the
+            // companion to the room rectangle, and the 45s recovery tick below then made the
+            // move permanent. The parked placement must survive both.
+            Rect2I parked = sandbox.Window.WorkCompanionRect;
+            WindowSettings preWork = sandbox.Window.CompactWindowSettings;
+            sandbox.Window.ApplyWindowSettings(preWork with
+            {
+                Rect = new Rect2I(parked.Position + new Vector2I(400, 300), normalRect.Size),
+            });
+            bool layoutRefused = !sandbox.Window.TrySetLayoutMode(
+                DesktopBuddy.Domain.Platform.WindowLayoutMode.FullscreenOverlay);
+            Rect2I afterIntruder = sandbox.Window.WorkCompanionRect;
+            // Applied normal geometry lands on the restore, not on the live companion.
+            sandbox.Window.ApplyWindowSettings(preWork);
+
             source.Emit(WorkActivityKind.KeyboardPress);
             source.Emit(WorkActivityKind.KeyboardPress);
             coordinator._Process(0.0);
             coordinator._PhysicsProcess(45.0);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+
+            checks.Add(new StartupCheck(
+                "work_companion_placement_survives_normal_window_geometry",
+                afterIntruder == parked &&
+                    sandbox.Window.WorkCompanionRect == parked &&
+                    layoutRefused,
+                $"parked={parked} afterIntruder={afterIntruder} " +
+                $"afterTick={sandbox.Window.WorkCompanionRect} layoutRefused={layoutRefused}"));
 
             WorkSessionSave? journal = store.Progress?.Work.ActiveSession;
             checks.Add(new StartupCheck(
