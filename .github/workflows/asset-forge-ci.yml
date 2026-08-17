@@ -82,7 +82,36 @@ jobs:
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=pistol_punctuation --seed=1
 
       - name: Capture - baseball bat fling
-        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=capture_homerun_bat_fling --seed=1
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$PWD/.artifacts/capture-bat"
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- \
+            --scenario=capture_homerun_bat_fling --seed=1 \
+            --artifacts="$PWD/.artifacts/capture-bat"
+          status=$?
+          echo "$status" > "$PWD/.artifacts/capture-bat/exit-code.txt"
+          exit 0
+
+      - name: Preserve baseball bat capture verdict
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-bat-verdict
+          path: .artifacts/capture-bat
+          if-no-files-found: error
+
+      - name: Assert baseball bat capture gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(cat "$PWD/.artifacts/capture-bat/exit-code.txt")"
+          if [ "$status" != "0" ]; then
+            verdict="$PWD/.artifacts/capture-bat/scenario_capture_homerun_bat_fling.verdict.json"
+            if [ -f "$verdict" ]; then
+              cat "$verdict"
+            fi
+            exit "$status"
+          fi
 
       - name: Capture - boxing glove critical head
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=glove_critical_head_impact --seed=1
