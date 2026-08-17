@@ -8,6 +8,12 @@ public partial class WorkCompanionView
 {
     private WorkRewardOverlay? _rewardOverlay;
 
+    /// <summary>
+    /// Replacement-ready presentation cue fired after settled session credits increase. Subscribers
+    /// may play owner-authored UI audio, but the event exposes no economy mutation path.
+    /// </summary>
+    public event Action<long>? RewardPulseRequested;
+
     private void EnsureRewardOverlay()
     {
         if (GodotObject.IsInstanceValid(_rewardOverlay))
@@ -56,6 +62,7 @@ public partial class WorkCompanionView
             {
                 _pulseMilliCredits = settled - _settledMilliCredits;
                 _pulseRemaining = PulseLifetimeSeconds;
+                _owner.RewardPulseRequested?.Invoke(_pulseMilliCredits);
             }
             _settledMilliCredits = settled;
             _pulseRemaining = Math.Max(0.0f, _pulseRemaining - (float)Math.Max(0.0, delta));
