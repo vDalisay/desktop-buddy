@@ -5,13 +5,18 @@ using Godot;
 namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
-/// Capture-only paint punctuation. The canvas remains the authority for whether pixels changed;
-/// this partial exposes only presentation observations and hosts one bounded, non-physical overlay.
+/// Capture-only paint punctuation plus a narrow input-continuity guard. The canvas remains the
+/// authority for whether pixels changed; this partial exposes presentation observations and keeps
+/// a physically-held LMB stroke alive after the connector bucket-fill path commits its own gesture.
 /// </summary>
 public partial class PaintCanvasControl
 {
     internal bool IsPaintingForPresentation => _painting;
     internal Vector2 PaintPointerForPresentation => _lastPointer;
+    internal int PaintBrushDiameterForPresentation => Workspace.BrushDiameter;
+    internal float VisibleBrushDiameterForPresentation => VisibleBrushDiameter();
+
+    private bool _paintPrimaryPhysicallyHeld;
 
     public override void _EnterTree()
     {
@@ -24,19 +29,47 @@ public partial class PaintCanvasControl
         AddChild(droplets);
         droplets.Initialize(this);
     }
+
+    public override void _Input(InputEvent input)
+    {
+        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
+            _paintPrimaryPhysicallyHeld = button.Pressed;
+    }
+
+    /// <summary>
+    /// Connector painting intentionally commits a bucket-fill as its own undoable operation, which
+    /// ends the current domain gesture. That must not masquerade as the user releasing LMB. Resume
+    /// an ordinary stroke on the next frame while the physical button is still down; releasing LMB
+    /// remains the only thing that ends the resumed gesture from the user's perspective.
+    /// </summary>
+    internal void ResumeHeldPaintGestureIfNeeded()
+    {
+        if (!_paintPrimaryPhysicallyHeld || _painting || !Visible ||
+            PanToolActive || EyedropperToolActive || CurvePending ||
+            Workspace.SelectedTool is not (PaintTool.Brush or PaintTool.Pen or PaintTool.Spray))
+        {
+            return;
+        }
+
+        Workspace.BeginGesture(null);
+        _painting = true;
+        _strokePointer = _lastPointer;
+        _sprayPulseAccumulator = 0.0;
+        Input.UseAccumulatedInput = true;
+    }
 }
 
 /// <summary>
-/// Small compatibility-renderer-safe paint droplets. No particles server, rigid bodies, collision,
-/// persistence, or input are involved. A fixed 24-slot array is the complete live-particle budget.
+/// Compatibility-renderer-safe paint droplets. No particle server, rigid bodies, collision,
+/// persistence, or input are involved. A fixed array remains the complete live-particle budget.
 /// </summary>
 internal sealed partial class PaintDropletOverlay : Control
 {
-    private const int MaximumDroplets = 24;
-    private const int ReducedMaximumDroplets = 8;
-    private const float NormalSampleInterval = 1.0f / 30.0f;
+    private const int MaximumDroplets = 64;
+    private const int ReducedMaximumDroplets = 12;
+    private const float NormalSampleInterval = 1.0f / 45.0f;
     private const float ReducedSampleInterval = 0.10f;
-    private const float MinimumSampleDistance = 4.0f;
+    private const float MinimumSampleDistance = 2.5f;
 
     private readonly Droplet[] _droplets = new Droplet[MaximumDroplets];
     private PaintCanvasControl? _canvas;
@@ -70,6 +103,11 @@ internal sealed partial class PaintDropletOverlay : Control
         if (_canvas is null || !GodotObject.IsInstanceValid(_canvas))
             return;
 
+        // A connector fill may have committed and ended the canvas gesture during the preceding
+        // input event. Resume before sampling revisions so crossing an arm/leg/neck never feels
+        // like the mouse button was released for the player.
+        _canvas.ResumeHeldPaintGestureIfNeeded();
+
         float dt = (float)Math.Max(0.0, delta);
         _sampleCooldown = Math.Max(0.0f, _sampleCooldown - dt);
         AdvanceDroplets(dt);
@@ -98,7 +136,21 @@ internal sealed partial class PaintDropletOverlay : Control
         _sampleCooldown = interval;
         _lastSamplePosition = pointer;
         _hasSamplePosition = true;
-        Emit(pointer, PaintColorToGodot(_canvas.Workspace.SelectedColor), reduced);
+
+        float brush01 = Mathf.Clamp(
+            (_canvas.PaintBrushDiameterForPresentation - PaintPolicy.MinBrushDiameter) /
+            (float)(PaintPolicy.MaxBrushDiameter - PaintPolicy.MinBrushDiameter),
+            0.0f,
+            1.0f);
+        float brushScale = Mathf.Lerp(0.90f, 2.15f, Mathf.Sqrt(brush01));
+        int count = reduced ? 1 : 2 + Mathf.RoundToInt(brush01 * 3.0f);
+        float spread = Math.Max(2.0f, _canvas.VisibleBrushDiameterForPresentation * 0.34f);
+        Color color = PaintColorToGodot(_canvas.Workspace.SelectedColor);
+        for (int index = 0; index < count; index++)
+        {
+            Vector2 offset = new Vector2(SignedNoise(), SignedNoise() * 0.55f) * spread;
+            Emit(pointer + offset, color, reduced, brushScale);
+        }
         QueueRedraw();
     }
 
@@ -111,19 +163,19 @@ internal sealed partial class PaintDropletOverlay : Control
                 continue;
 
             float life = 1.0f - Mathf.Clamp(droplet.Age / droplet.Lifetime, 0.0f, 1.0f);
-            Color color = new(droplet.Color.R, droplet.Color.G, droplet.Color.B, life * 0.78f);
-            DrawCircle(droplet.Position, droplet.Radius * (0.65f + life * 0.35f), color);
+            Color color = new(droplet.Color.R, droplet.Color.G, droplet.Color.B, life * 0.80f);
+            DrawCircle(droplet.Position, droplet.Radius * (0.62f + life * 0.38f), color);
         }
     }
 
-    private void Emit(Vector2 origin, Color color, bool reduced)
+    private void Emit(Vector2 origin, Color color, bool reduced, float brushScale)
     {
         int activeBudget = reduced ? ReducedMaximumDroplets : MaximumDroplets;
         int slot = FindReusableSlot(activeBudget);
-        float sideways = SignedNoise() * 34.0f;
-        float upward = -22.0f - (PositiveNoise() * 30.0f);
-        float radius = 2.0f + (PositiveNoise() * 3.0f);
-        float lifetime = 0.22f + (PositiveNoise() * 0.18f);
+        float sideways = SignedNoise() * (36.0f + 16.0f * brushScale);
+        float upward = -24.0f - (PositiveNoise() * 34.0f);
+        float radius = (2.8f + (PositiveNoise() * 3.2f)) * brushScale;
+        float lifetime = 0.48f + (PositiveNoise() * 0.34f);
         _droplets[slot] = new Droplet(
             Live: true,
             Position: origin,
@@ -150,7 +202,7 @@ internal sealed partial class PaintDropletOverlay : Control
                 continue;
             }
 
-            Vector2 velocity = droplet.Velocity + (Vector2.Down * (105.0f * delta));
+            Vector2 velocity = droplet.Velocity + (Vector2.Down * (92.0f * delta));
             _droplets[index] = droplet with
             {
                 Position = droplet.Position + (velocity * delta),
