@@ -21,7 +21,8 @@ public sealed class EnvironmentMaintenanceTests
                 EnvironmentThumbnailGenerator.Create(generated.AlbedoPng));
 
             string assetRoot = Path.Combine(root, "assets", "generated", "environment", recipe.AssetId);
-            File.WriteAllBytes(Path.Combine(assetRoot, "mesh.glb"), [1, 2, 3, 4]);
+            string meshPath = Path.Combine(assetRoot, AssetFileNaming.MeshFileName(recipe));
+            File.WriteAllBytes(meshPath, [1, 2, 3, 4]);
             File.WriteAllBytes(Path.Combine(assetRoot, "thumbnail.png"), [5, 6, 7]);
             Assert.False(RepositoryEnvironmentVerifier.Verify(root, recipe.AssetId).Passed);
 
@@ -31,7 +32,7 @@ public sealed class EnvironmentMaintenanceTests
             RgbaImage thumbnail = PngCodec.DecodeRgba8(File.ReadAllBytes(Path.Combine(assetRoot, "thumbnail.png")));
             Assert.Equal(256, thumbnail.Width);
             Assert.Equal(256, thumbnail.Height);
-            GlbWriter.ValidateSingleMesh(File.ReadAllBytes(Path.Combine(assetRoot, "mesh.glb")));
+            GlbWriter.ValidateSingleMesh(File.ReadAllBytes(meshPath));
         }
         finally
         {
