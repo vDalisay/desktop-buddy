@@ -29,7 +29,7 @@ jobs:
       - name: Build game solution
         run: dotnet build DesktopBuddy.sln -c Debug
 
-      - name: Domain unit tests (excluding known Linux-only ProgressStoreTests)
+      - name: Domain unit tests
         run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
 
       - name: Asset Forge deterministic Core tests
@@ -38,7 +38,7 @@ jobs:
       - name: Build standalone Asset Forge
         run: dotnet build devtools/AssetForge/DesktopBuddy.AssetForge.csproj -c Debug
 
-      - name: Verify developer-only source is excluded from the game project
+      - name: Verify developer-only source exclusions
         shell: bash
         run: |
           set -euo pipefail
@@ -48,16 +48,16 @@ jobs:
           grep -F 'devtools/*' export_presets.cfg
           grep -F 'authoring/*' export_presets.cfg
 
-      - name: Generate and transactionally export Asset Forge CI fixtures
+      - name: Generate Asset Forge CI fixtures
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --ci-fixture "$PWD"
 
-      - name: Generate remaining Environment v1 CI fixtures
+      - name: Generate Environment v1 CI fixtures
         run: dotnet run --project devtools/AssetForge.V1Fixtures/DesktopBuddy.AssetForge.V1Fixtures.csproj -c Debug -- "$PWD"
 
-      - name: Verify generated fixtures by re-deriving them without Godot
+      - name: Verify generated fixtures
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --verify-all "$PWD"
 
-      - name: Download pinned Godot (.NET/mono, Linux)
+      - name: Download pinned Godot
         run: |
           set -euo pipefail
           NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
@@ -69,123 +69,58 @@ jobs:
           chmod +x "$GODOT_BIN"
           echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
 
-      - name: Import game with generated Asset Forge catalogue
+      - name: Import game
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
 
-      - name: Boot smoke with generated Asset Forge catalogue
+      - name: Boot smoke
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
 
-      - name: Capture gate - pistol fire and reload lifecycle
-        id: capture-pistol-fire
-        continue-on-error: true
+      - name: Capture - pistol lifecycle
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=pistol_fire --seed=1
 
-      - name: Capture gate - pistol recoil, flash and reload punctuation
-        id: capture-pistol-punctuation
-        continue-on-error: true
+      - name: Capture - pistol punctuation
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=pistol_punctuation --seed=1
 
-      - name: Capture gate - charged baseball bat and home-run punctuation
-        id: capture-bat
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          mkdir -p "$PWD/.artifacts/capture-bat"
-          xvfb-run -a "$GODOT_BIN" --headless --path . -- \
-            --scenario=capture_homerun_bat_fling --seed=1 \
-            --artifacts="$PWD/.artifacts/capture-bat"
-          status=$?
-          verdict="$PWD/.artifacts/capture-bat/scenario_capture_homerun_bat_fling.verdict.json"
-          if [ -f "$verdict" ]; then
-            echo "===== capture_homerun_bat_fling verdict ====="
-            cat "$verdict"
-          else
-            echo "No bat verdict file was produced."
-          fi
-          exit "$status"
+      - name: Capture - baseball bat fling
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=capture_homerun_bat_fling --seed=1
 
-      - name: Preserve bat capture verdict
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: capture-bat-verdict
-          path: .artifacts/capture-bat
-          if-no-files-found: warn
-
-      - name: Capture gate - boxing glove critical-head pause
-        id: capture-glove
-        continue-on-error: true
+      - name: Capture - boxing glove critical head
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=glove_critical_head_impact --seed=1
 
-      - name: Capture gate - grenade fuse, blast, audio and multi-object lifecycle
-        id: capture-grenade
-        continue-on-error: true
+      - name: Capture - grenade lifecycle
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_fuse --seed=1
 
-      - name: Capture gate - Paint Buddy limb and neck mapping
-        id: capture-paint
-        continue-on-error: true
+      - name: Capture - Paint Buddy limb and neck mapping
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=paint_limb_pose_mapping --seed=1
 
-      - name: Capture gate - Buddy Studio store, preview, purchase and save composition
-        id: capture-studio
-        continue-on-error: true
+      - name: Capture - Buddy Studio composition
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=buddy_studio_ui_composition --seed=1
 
-      - name: Capture gate - Work Mode persistence and resilience
-        id: capture-work
-        continue-on-error: true
+      - name: Capture - Work Mode resilience
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=work_mode_resilience --seed=1
 
-      - name: Assert capture scenario matrix
-        if: always()
-        shell: bash
-        run: |
-          set -euo pipefail
-          failed=0
-          check() {
-            local name="$1"
-            local outcome="$2"
-            if [ "$outcome" != "success" ]; then
-              echo "Capture gate failed: $name ($outcome)"
-              failed=1
-            else
-              echo "Capture gate passed: $name"
-            fi
-          }
-          check pistol_fire '${{ steps.capture-pistol-fire.outcome }}'
-          check pistol_punctuation '${{ steps.capture-pistol-punctuation.outcome }}'
-          check capture_homerun_bat_fling '${{ steps.capture-bat.outcome }}'
-          check glove_critical_head_impact '${{ steps.capture-glove.outcome }}'
-          check grenade_fuse '${{ steps.capture-grenade.outcome }}'
-          check paint_limb_pose_mapping '${{ steps.capture-paint.outcome }}'
-          check buddy_studio_ui_composition '${{ steps.capture-studio.outcome }}'
-          check work_mode_resilience '${{ steps.capture-work.outcome }}'
-          exit "$failed"
-
-      - name: Exercise generated glasses catalogue, purchase, render, and persistence
+      - name: Generated glasses catalogue and persistence
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_glasses --seed=1
 
-      - name: Exercise generated torso and foot visual replacements
+      - name: Generated torso and foot replacements
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_replacements --seed=1
 
-      - name: Gate generated replacement front/back paint UV separation
+      - name: Generated replacement paint UV separation
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_paint_uvs --seed=1
 
-      - name: Gate Buddy Studio owned-preview Use Character persistence
+      - name: Buddy Studio owned-preview persistence
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=buddy_studio_ownership_preview --seed=1
 
-      - name: Gate generated replacement outline, paint mapping, and connector fitting
+      - name: Generated replacement connector fitting
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_replacement_connector_fit --seed=1
 
-      - name: Exercise generated Lamp catalogue, transaction, render, and stable-ID persistence
+      - name: Generated Lamp runtime
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_lamp --seed=1
 
-      - name: Exercise generated Sofa catalogue, per-instance purchase, render, and stable-ID persistence
+      - name: Generated Sofa runtime
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_sofa --seed=1
 
-      - name: Exercise generated Table, Plant and Painting runtime seams
+      - name: Generated Environment v1 runtime
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_environment_v1 --seed=1
 
       - name: Import standalone Asset Forge project
