@@ -13,8 +13,12 @@ namespace DesktopBuddy.Presentation3D;
 [GlobalClass]
 public partial class CursorToolVisual3D : Node3D
 {
+    private const float GloveFacingSpeedThreshold = 24.0f;
+
     private Body2DVisual3D _slot = null!;
     private bool _presentationActive;
+    private float _gloveFacingAngle;
+    private bool _hasGloveFacing;
 
     public bool IsInitialized { get; private set; }
     public bool IsAttached => IsInitialized && _slot.IsAttached;
@@ -57,6 +61,10 @@ public partial class CursorToolVisual3D : Node3D
 
         ValidateProfile(profile);
         ActiveKind = profile.Visual3DKind;
+        _hasGloveFacing = false;
+        _gloveFacingAngle = 0.0f;
+        _slot.Mesh.Rotation = Vector3.Zero;
+
         CursorToolVisual? visual = CursorToolVisualFactory.Create(profile);
         if (visual is null)
         {
@@ -93,6 +101,38 @@ public partial class CursorToolVisual3D : Node3D
 
     public void CaptureTickSnapshot() => _slot.CaptureTickSnapshot();
 
+    public override void _Process(double delta)
+    {
+        if (!IsInitialized || ActiveKind != CursorToolVisual3DKind.BoxingGlove ||
+            Target is not RigidBody2D target || !GodotObject.IsInstanceValid(target))
+        {
+            return;
+        }
+
+        // A round collider has no useful physical rotation, but the glove visual does: its
+        // knuckles should point in the direction the player is moving the mouse. Keep the
+        // last readable direction at low speed so the glove does not chatter at rest. This
+        // is mesh-only; the RigidBody2D transform and circular collision remain untouched.
+        Vector2 velocity = target.LinearVelocity;
+        if (velocity.LengthSquared() >= GloveFacingSpeedThreshold * GloveFacingSpeedThreshold)
+        {
+            _gloveFacingAngle = velocity.Angle();
+            _hasGloveFacing = true;
+        }
+
+        if (!_hasGloveFacing)
+        {
+            return;
+        }
+
+        // Body2DVisual3D follows the body's own solver rotation. Counter-rotate that local
+        // frame, then add the desired world-facing direction so the fist follows cursor
+        // travel instead of whatever incidental spin the circular body received on impact.
+        float localFacing = _gloveFacingAngle - target.GlobalRotation;
+        _slot.Mesh.Rotation = new Vector3(
+            0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(localFacing));
+    }
+
     private static void ValidateProfile(CursorToolProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
@@ -127,7 +167,7 @@ internal static class CursorToolVisualFactory
             AlbedoColor = Colors.White,
             VertexColorUseAsAlbedo = true,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
-            Roughness = profile.Visual3DKind == CursorToolVisual3DKind.BoxingGlove ? 0.86f : 0.7f,
+            Roughness = profile.Visual3DKind == CursorToolVisual3DKind.BoxingGlove ? 0.78f : 0.7f,
             Metallic = 0.0f,
         };
         return new CursorToolVisual(mesh, material);
