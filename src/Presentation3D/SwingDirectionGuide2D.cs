@@ -77,7 +77,7 @@ public partial class SwingDirectionGuide2D : Node2D
         Vector2 headBase = tip - direction * 11.0f;
 
         DrawLine(start + Vector2.One * 1.5f, tip + Vector2.One * 1.5f, Shadow, 5.0f, antialiased: true);
-        DrawColoredPolygon(new PackedVector2Array
+        DrawColoredPolygon(new Vector2[]
         {
             tip + Vector2.One * 1.5f,
             headBase + perpendicular * 7.0f + Vector2.One * 1.5f,
@@ -85,7 +85,7 @@ public partial class SwingDirectionGuide2D : Node2D
         }, Shadow);
 
         DrawLine(start, tip, Fill, 3.0f, antialiased: true);
-        DrawColoredPolygon(new PackedVector2Array
+        DrawColoredPolygon(new Vector2[]
         {
             tip,
             headBase + perpendicular * 6.0f,
