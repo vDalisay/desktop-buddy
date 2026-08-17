@@ -28,10 +28,10 @@ public readonly record struct PaintHit(PaintPart Part, PaintPoint Uv, double Dep
 }
 
 /// <summary>
-/// Hands/feet keep the established two-lane atlas: endpoint on the left, torso connector on the
-/// right. Normal head painting remains the historical full 512x512 surface; only an explicit
-/// Head connector hit maps into the right-half connector lane for the neck. This keeps existing
-/// Head brush/fill/mirror semantics unchanged while reusing the connector paint machinery.
+/// Every endpoint that owns a torso connector uses the same two-lane atlas: the visible endpoint
+/// is on the left half and its connector is on the right. Head/neck deliberately follows the exact
+/// same rule as hands/arms and feet/legs, so painting the neck can never overwrite visible head
+/// pixels and normal head painting can never spill into the neck lane.
 /// </summary>
 public readonly record struct PaintUvRegion(double Start, double Width)
 {
@@ -43,7 +43,7 @@ public readonly record struct PaintUvRegion(double Start, double Width)
     public int PixelWidth => (int)Math.Round(Width * PaintPolicy.SurfaceSize);
 
     public static bool IsLimb(PaintPart part) => part is
-        PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot;
+        PaintPart.Head or PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot;
 
     public static PaintUvRegion For(PaintHit hit)
     {
