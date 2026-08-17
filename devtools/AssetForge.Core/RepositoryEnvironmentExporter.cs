@@ -35,6 +35,8 @@ public static class RepositoryEnvironmentExporter
         string slug = recipe.AssetId[prefix.Length..];
         string authoringRelative = $"authoring/asset-forge/{AuthoringFolder(recipe.Category)}/{slug}";
         string assetRelative = $"assets/generated/environment/{recipe.AssetId}";
+        string meshFileName = AssetFileNaming.MeshFileName(recipe);
+        string meshRelative = $"{assetRelative}/{meshFileName}";
         string definitionRelative = $"data/environment/generated/{recipe.AssetId}.tres";
         string aggregateRelative = "data/environment/generated_decorations.tres";
 
@@ -60,10 +62,10 @@ public static class RepositoryEnvironmentExporter
         {
             StageBytes($"{authoringRelative}/source.png", sourcePng);
             StageText($"{authoringRelative}/recipe.json", RecipeCodec.WriteCanonical(recipe));
-            StageBytes($"{assetRelative}/mesh.glb", generated.GlbBytes);
+            StageBytes(meshRelative, generated.GlbBytes);
             StageBytes($"{assetRelative}/albedo.png", generated.AlbedoPng);
             StageBytes($"{assetRelative}/thumbnail.png", thumbnailPng);
-            StageText(definitionRelative, DecorationResource(recipe, generated, assetRelative));
+            StageText(definitionRelative, DecorationResource(recipe, generated, assetRelative, meshFileName));
 
             string[] definitions = ExistingDefinitions(root)
                 .Append(definitionRelative)
@@ -72,12 +74,13 @@ public static class RepositoryEnvironmentExporter
                 .ToArray();
             StageText(aggregateRelative, Aggregate(definitions));
 
-            GlbWriter.ValidateSingleMesh(File.ReadAllBytes(staged[$"{assetRelative}/mesh.glb"]));
+            GlbWriter.ValidateSingleMesh(File.ReadAllBytes(staged[meshRelative]));
             _ = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/albedo.png"]));
             RgbaImage stagedThumbnail = PngCodec.DecodeRgba8(File.ReadAllBytes(staged[$"{assetRelative}/thumbnail.png"]));
             if (stagedThumbnail.Width != EnvironmentThumbnailGenerator.OutputSize || stagedThumbnail.Height != EnvironmentThumbnailGenerator.OutputSize)
                 throw new InvalidOperationException("Staged Environment thumbnail is not canonical.");
             Commit(root, backupRoot, staged);
+            AssetFileNaming.RemoveStaleMeshes(Path.Combine(root, Native(assetRelative)), meshFileName);
 
             return new ExportResult(
                 recipe.AssetId,
@@ -92,7 +95,7 @@ public static class RepositoryEnvironmentExporter
         }
     }
 
-    private static string DecorationResource(AssetRecipe recipe, GeneratedAsset generated, string assetRelative)
+    private static string DecorationResource(AssetRecipe recipe, GeneratedAsset generated, string assetRelative, string meshFileName)
     {
         EnvironmentGeneratedBounds bounds = EnvironmentGeneratedBounds.Analyze(generated.Mesh);
         bool hasLightProfile = recipe.Category == AssetCategory.Lamp && recipe.Light.Enabled;
@@ -101,7 +104,7 @@ public static class RepositoryEnvironmentExporter
         text.AppendLine($"[gd_resource type=\"Resource\" script_class=\"EnvironmentDecorationResource\" load_steps={(hasLightProfile ? 7 : 5)} format=3]");
         text.AppendLine();
         text.AppendLine("[ext_resource type=\"Script\" path=\"res://src/Environment/EnvironmentDecorationResource.cs\" id=\"1\"]");
-        text.AppendLine($"[ext_resource type=\"PackedScene\" path=\"res://{assetRelative}/mesh.glb\" id=\"2\"]");
+        text.AppendLine($"[ext_resource type=\"PackedScene\" path=\"res://{assetRelative}/{meshFileName}\" id=\"2\"]");
         text.AppendLine($"[ext_resource type=\"Texture2D\" path=\"res://{assetRelative}/albedo.png\" id=\"3\"]");
         text.AppendLine($"[ext_resource type=\"Texture2D\" path=\"res://{assetRelative}/thumbnail.png\" id=\"4\"]");
         if (hasLightProfile)
