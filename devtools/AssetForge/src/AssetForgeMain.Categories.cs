@@ -163,7 +163,13 @@ public partial class AssetForgeMain
         AssetCategory.FootShape => AssetRecipe.FootShapeDefaults(),
         AssetCategory.Lamp => AssetRecipe.LampDefaults(),
         AssetCategory.Sofa => AssetRecipe.SofaDefaults(),
-        AssetCategory.Table => AssetRecipe.TableDefaults(),
+        AssetCategory.Table => AssetRecipe.TableDefaults() with
+        {
+            // The first exported table read much too small beside the accepted Lamp. Its authored
+            // template only occupies ~47% of the vertical canvas, so 440 room units makes the
+            // generated visual at least 1.5x the accepted Lamp's measured height.
+            Environment = AssetRecipe.TableDefaults().Environment with { LogicalHeight = 440 },
+        },
         AssetCategory.Plant => AssetRecipe.PlantDefaults(),
         AssetCategory.Painting => AssetRecipe.PaintingDefaults(),
         _ => throw new NotSupportedException($"Asset Forge category {category} is not enabled yet."),
@@ -193,7 +199,7 @@ public partial class AssetForgeMain
             byte[] thumbnail = AssetThumbnailCache.GetOrCreate(
                 _generated,
                 () => _generated.Recipe.AssetFamily == AssetFamily.Environment
-                    ? EnvironmentThumbnailGenerator.Create(_generated.AlbedoPng)
+                    ? EnvironmentThumbnailGenerator.Create(_generated)
                     : _preview.CaptureThumbnailPng());
             byte[] source = File.ReadAllBytes(_sourcePath);
             string root = FindRepositoryRoot();
