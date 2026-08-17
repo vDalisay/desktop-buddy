@@ -9,6 +9,7 @@ public enum CursorToolVisual3DKind
 {
     Capsule = 0,
     LathedBat = 1,
+    BoxingGlove = 2,
 }
 
 /// <summary>
@@ -228,6 +229,12 @@ public partial class CursorToolProfile : GameResource
         {
             errors.Add(
                 $"{nameof(Visual3DKind)} LathedBat requires an elongated swing-capable profile");
+        }
+
+        if (Visual3DKind == CursorToolVisual3DKind.BoxingGlove && IsElongated)
+        {
+            errors.Add(
+                $"{nameof(Visual3DKind)} BoxingGlove requires the circular cursor-tool collider");
         }
 
         if (Swing is not null && GodotObject.IsInstanceValid(Swing))
