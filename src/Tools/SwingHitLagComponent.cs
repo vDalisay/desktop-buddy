@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using Godot;
@@ -14,14 +15,21 @@ public readonly record struct SwingHitLagStarted(
     bool IsLooseObjectHit);
 
 /// <summary>
-/// Owns the home-run whole-game freeze. The composition root asks this component
-/// whether the current fixed frame is frozen before routing any gameplay work;
-/// disabling the 2D physics server also prevents Godot's solver from advancing
-/// velocities while that routed tick is withheld.
+/// Owns the home-run whole-game freeze plus the shorter capture-polish punctuation for a genuinely
+/// hard boxing-glove hit to the head. The composition root asks this component whether the current
+/// fixed frame is frozen before routing any gameplay work; disabling the 2D physics server also
+/// prevents Godot's solver from advancing velocities while that routed tick is withheld.
 /// </summary>
 [GlobalClass]
 public partial class SwingHitLagComponent : Node
 {
+    // The shared pain curve maps 1500 impulse to roughly 55 pain. Reusing that established anchor
+    // makes a glove "critical" read as a genuinely hard contact rather than an unrelated magic
+    // threshold. Six frames at 120 Hz is deliberately much shorter than the home-run bat maximum.
+    public const float GloveCriticalHeadImpulse = 1500.0f;
+    public const int GloveCriticalHeadHitLagTicks = 6;
+    public const int GloveCriticalPseudoEpoch = -1;
+
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public CursorToolController CursorTools { get; set; } = null!;
 
@@ -110,6 +118,19 @@ public partial class SwingHitLagComponent : Node
 
     private void OnImpactAccepted(AcceptedImpact impact)
     {
+        if (impact.ContentId == ContentIds.ToolBoxingGlove &&
+            impact.Part == BuddyPart.Head &&
+            impact.RawImpulse >= GloveCriticalHeadImpulse)
+        {
+            TryStart(new SwingHitLagStarted(
+                GloveCriticalPseudoEpoch,
+                ReleasedCharge: 0.0f,
+                GloveCriticalHeadHitLagTicks,
+                BuddyPart.Head,
+                IsLooseObjectHit: false));
+            return;
+        }
+
         if (impact.SwingEpoch <= 0)
         {
             return;
