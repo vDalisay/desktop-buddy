@@ -13,6 +13,7 @@ public static class BoxingGloveMeshBuilder
 {
     private const int LongitudeSegments = 20;
     private const int LatitudeSegments = 10;
+    private const float CaptureVisualScale = 1.8f;
 
     public static ArrayMesh Build(CursorToolProfile profile)
     {
@@ -20,7 +21,10 @@ public static class BoxingGloveMeshBuilder
         if (!GodotObject.IsInstanceValid(profile) || profile.IsElongated || profile.Radius <= 0f)
             throw new ArgumentException("A boxing-glove visual requires a live circular cursor-tool profile.", nameof(profile));
 
-        float r = profile.Radius;
+        // Visual-only oversizing: keep the existing circular collider and impact reach unchanged.
+        // The old first-pass mesh fit entirely inside that radius and therefore read much smaller
+        // than the other cursor tools on the three-quarter camera.
+        float r = profile.Radius * CaptureVisualScale;
         Color main = profile.VisualColor;
         Color dark = profile.OutlineColor.Lerp(main, 0.28f);
         Color cuff = profile.OutlineColor.Lerp(main, 0.48f);
@@ -28,7 +32,6 @@ public static class BoxingGloveMeshBuilder
         var surface = new SurfaceTool();
         surface.Begin(Mesh.PrimitiveType.Triangles);
 
-        // The main padded fist stays comfortably inside the existing circular gameplay footprint.
         AddEllipsoid(surface, new Vector3(0f, -r * 0.10f, 0f),
             new Vector3(r * 0.72f, r * 0.77f, r * 0.62f), main);
 
@@ -40,10 +43,15 @@ public static class BoxingGloveMeshBuilder
         AddEllipsoid(surface, new Vector3(r * 0.46f, r * 0.18f, r * 0.10f),
             new Vector3(r * 0.28f, r * 0.43f, r * 0.34f), dark);
 
-        // Short wrist cuff. It deliberately remains visual-only and inside the old cursor-tool scale.
+        // Short wrist cuff. It deliberately remains visual-only; its larger presentation does not
+        // enlarge the authoritative 2D strike circle.
         AddEllipsoid(surface, new Vector3(-r * 0.04f, r * 0.62f, 0f),
             new Vector3(r * 0.50f, r * 0.28f, r * 0.48f), cuff);
 
+        // The capture-polish material is lit. Without vertex normals the mesh falls back to a
+        // nearly flat read even though it is volumetric, which was the exact problem with the
+        // first pass.
+        surface.GenerateNormals();
         return surface.Commit() ?? throw new InvalidOperationException(
             "SurfaceTool failed to build the boxing-glove mesh.");
     }
