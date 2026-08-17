@@ -53,7 +53,7 @@ internal static class Program
         GeneratedAsset second = AssetForgeCompiler.Generate(sourcePng, recipe);
         if (!first.GlbBytes.SequenceEqual(second.GlbBytes) || first.CanonicalAssetHash != second.CanonicalAssetHash)
             throw new InvalidOperationException($"{recipe.AssetId} was not deterministic.");
-        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(first.AlbedoPng);
+        byte[] thumbnail = EnvironmentThumbnailGenerator.Create(first);
         RepositoryEnvironmentExporter.Export(root, sourcePng, first, thumbnail);
         EnvironmentAssetVerificationResult verification = RepositoryEnvironmentVerifier.Verify(root, recipe.AssetId);
         if (!verification.Passed)
