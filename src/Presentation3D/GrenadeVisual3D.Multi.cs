@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Tools;
 using Godot;
@@ -35,6 +36,7 @@ public partial class GrenadeVisual3D
             return;
 
         ResolveMultiGrenadeComponent();
+        EnsureCaptureBurstSubscription();
         if (!GodotObject.IsInstanceValid(_multiGrenadeComponent) ||
             !_multiGrenadeComponent!.IsInitialized ||
             !GodotObject.IsInstanceValid(_multiGrenadeComponent.Registry))
@@ -48,13 +50,19 @@ public partial class GrenadeVisual3D
 
         // Keep the legacy primary slot honest even when an older grenade (not the newest adopted
         // one) is the grenade whose pin was pulled. Per-runtime state, not event order, decides the
-        // mesh shown on screen.
+        // mesh shown on screen. Fuse punctuation is scale-only so photosensitivity-safe mode never
+        // has to police a blinking emissive material.
         if (GodotObject.IsInstanceValid(primary) &&
             _multiGrenadeComponent.TryGetPresentationState(primary!.RuntimeId, out GrenadePresentationState primaryState))
         {
             bool wantsPinned = !primaryState.PinIsOut;
             if (_showingPinnedMesh != wantsPinned)
                 EnsureMesh(primary.Radius, wantsPinned);
+            ApplyFusePulse(_slot, primaryState);
+        }
+        else
+        {
+            _slot.Scale = Vector3.One;
         }
 
         _multiGrenadeStale.Clear();
@@ -79,8 +87,9 @@ public partial class GrenadeVisual3D
                 continue;
             }
 
-            bool pinOut = _multiGrenadeComponent.TryGetPresentationState(
-                body.RuntimeId, out GrenadePresentationState state) && state.PinIsOut;
+            bool hasState = _multiGrenadeComponent.TryGetPresentationState(
+                body.RuntimeId, out GrenadePresentationState state);
+            bool pinOut = hasState && state.PinIsOut;
 
             if (!_multiGrenadeSlots.TryGetValue(body.RuntimeId, out Body2DVisual3D? slot))
             {
@@ -97,6 +106,10 @@ public partial class GrenadeVisual3D
                 _multiGrenadePinOut[body.RuntimeId] = pinOut;
             }
 
+            if (hasState)
+                ApplyFusePulse(slot, state);
+            else
+                slot.Scale = Vector3.One;
             slot.SetPresentationActive(_presentationActive);
         }
     }
@@ -106,6 +119,7 @@ public partial class GrenadeVisual3D
         foreach (Body2DVisual3D slot in _multiGrenadeSlots.Values)
             if (GodotObject.IsInstanceValid(slot) && slot.IsAttached)
                 slot.CaptureTickSnapshot();
+        AdvanceCaptureBursts();
     }
 
     private void ResolveMultiGrenadeComponent()
@@ -160,6 +174,28 @@ public partial class GrenadeVisual3D
         return pinOut ? _pinPulledMesh! : _pinnedMesh!;
     }
 
+    private static void ApplyFusePulse(Body2DVisual3D slot, GrenadePresentationState state)
+    {
+        if (state.Stage != GrenadeFuseStage.Live || state.FuseTicksRemaining <= 0)
+        {
+            slot.Scale = Vector3.One;
+            return;
+        }
+
+        int remaining = state.FuseTicksRemaining;
+        int interval = remaining switch
+        {
+            <= 60 => 8,
+            <= 120 => 12,
+            <= 240 => 24,
+            _ => 40,
+        };
+        float phase = (remaining % interval) / (float)interval;
+        float wave = 0.5f + (0.5f * Mathf.Cos(phase * Mathf.Tau));
+        float scale = 1.0f + (0.055f * wave);
+        slot.Scale = new Vector3(scale, scale, scale);
+    }
+
     private void ReleaseAdditionalGrenade(int runtimeId, LooseObjectRegistry registry)
     {
         if (!_multiGrenadeSlots.Remove(runtimeId, out Body2DVisual3D? slot))
@@ -171,6 +207,7 @@ public partial class GrenadeVisual3D
             slot.Detach(body!);
         else
             slot.DetachAny();
+        slot.Scale = Vector3.One;
         slot.SetPresentationActive(false);
         _multiGrenadeFree.Add(slot);
     }
@@ -185,6 +222,7 @@ public partial class GrenadeVisual3D
             if (_multiGrenadeSlots.Remove(runtimeId, out Body2DVisual3D? slot))
             {
                 slot.DetachAny();
+                slot.Scale = Vector3.One;
                 slot.SetPresentationActive(false);
                 _multiGrenadeFree.Add(slot);
             }
@@ -201,5 +239,7 @@ public partial class GrenadeVisual3D
         public override void _Process(double delta) => _owner.ReconcileAdditionalGrenades();
 
         public override void _PhysicsProcess(double delta) => _owner.CaptureAdditionalGrenadeSnapshots();
+
+        public override void _ExitTree() => _owner.ReleaseCaptureBurstSubscription();
     }
 }
