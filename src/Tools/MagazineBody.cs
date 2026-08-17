@@ -103,21 +103,23 @@ public partial class MagazineBody : RigidBody2D
         SawUpwardBounce = false;
         IsLive = true;
 
-        if (!IsCasing)
+        if (!IsCasing && GetParent() is CursorGunComponent gun && gun.IsActive)
         {
-            // CursorGunComponent's established magazine call encodes its aim in the launch
-            // velocity: -forward*40 + worldDown*30. Recover that same forward vector here and
-            // rotate the old world-down grip offset into gun-local down. This keeps the fix in
-            // the cosmetic body and leaves the pistol's shared aim/fire path untouched.
-            Vector2 encodedForward = new(-velocity.X / 40.0f, (30.0f - velocity.Y) / 40.0f);
-            if (encodedForward.LengthSquared() > 0.0001f)
-            {
-                Vector2 forward = encodedForward.Normalized();
-                Vector2 localDown = new(-forward.Y, forward.X);
-                float dropOffset = _sourceVisualLengthPx * 0.28f;
-                position += (localDown - Vector2.Down) * dropOffset;
-                velocity = (-forward * 40.0f) + (localDown * 30.0f);
-            }
+            // Resolve the magazine from the gun's live pose at the exact reload tick. The earlier
+            // implementation tried to recover the aim from an already-authored drop velocity and
+            // then corrected a world-down offset. That could leave the magazine at one of the old
+            // aim-dependent locations instead of beneath the pistol the player can currently see.
+            //
+            // This uses the same mirrored local-down convention as the pistol silhouette itself,
+            // but the released magazine then falls in WORLD down as requested; aiming upward or
+            // left changes where the grip is, not which way gravity initially takes the magazine.
+            Vector2 forward = gun.AimForward == Vector2.Zero ? Vector2.Right : gun.AimForward.Normalized();
+            Vector2 localDown = new Vector2(-forward.Y, forward.X) * (forward.X < 0.0f ? -1.0f : 1.0f);
+            position = gun.Cursor +
+                       (forward * (_sourceVisualLengthPx * 0.12f)) +
+                       (localDown * (_sourceVisualLengthPx * 0.28f));
+            velocity = Vector2.Down * 52.0f;
+            spin = forward.X >= 0.0f ? 6.0f : -6.0f;
         }
 
         Freeze = false;
