@@ -109,19 +109,25 @@ internal static class CursorToolVisualFactory
 {
     public static CursorToolVisual? Create(CursorToolProfile profile)
     {
-        if (profile.Visual3DKind != CursorToolVisual3DKind.LathedBat)
+        ArrayMesh? mesh = profile.Visual3DKind switch
         {
+            CursorToolVisual3DKind.LathedBat => BatMeshBuilder.Build(profile),
+            CursorToolVisual3DKind.BoxingGlove => BoxingGloveMeshBuilder.Build(profile),
+            _ => null,
+        };
+        if (mesh is null)
             return null;
-        }
 
-        ArrayMesh mesh = BatMeshBuilder.Build(profile);
+        string materialName = profile.Visual3DKind == CursorToolVisual3DKind.BoxingGlove
+            ? "CapturePolishBoxingGloveMaterial"
+            : "ProvisionalLathedBatMaterial";
         var material = new StandardMaterial3D
         {
-            ResourceName = "ProvisionalLathedBatMaterial",
+            ResourceName = materialName,
             AlbedoColor = Colors.White,
             VertexColorUseAsAlbedo = true,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
-            Roughness = 0.7f,
+            Roughness = profile.Visual3DKind == CursorToolVisual3DKind.BoxingGlove ? 0.86f : 0.7f,
             Metallic = 0.0f,
         };
         return new CursorToolVisual(mesh, material);
