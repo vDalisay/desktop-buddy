@@ -178,7 +178,7 @@ internal sealed partial class BulletImpactSmoke2D : Node2D
             : Vector2.Right;
         Vector2 plume = (-incoming + (Vector2.Up * 0.85f)).Normalized();
 
-        var particles = new CPUParticles2D
+        var particles = new CpuParticles2D
         {
             Name = "SmokeParticles",
             Amount = 14,
