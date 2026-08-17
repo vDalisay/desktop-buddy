@@ -114,7 +114,36 @@ jobs:
           fi
 
       - name: Capture - boxing glove critical head
-        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=glove_critical_head_impact --seed=1
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$PWD/.artifacts/capture-glove"
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- \
+            --scenario=glove_critical_head_impact --seed=1 \
+            --artifacts="$PWD/.artifacts/capture-glove"
+          status=$?
+          echo "$status" > "$PWD/.artifacts/capture-glove/exit-code.txt"
+          exit 0
+
+      - name: Preserve boxing glove capture verdict
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-glove-verdict
+          path: .artifacts/capture-glove
+          if-no-files-found: error
+
+      - name: Assert boxing glove capture gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(cat "$PWD/.artifacts/capture-glove/exit-code.txt")"
+          if [ "$status" != "0" ]; then
+            verdict="$PWD/.artifacts/capture-glove/scenario_glove_critical_head_impact.verdict.json"
+            if [ -f "$verdict" ]; then
+              cat "$verdict"
+            fi
+            exit "$status"
+          fi
 
       - name: Capture - grenade lifecycle
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_fuse --seed=1
