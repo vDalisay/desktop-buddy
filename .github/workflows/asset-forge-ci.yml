@@ -75,17 +75,26 @@ jobs:
       - name: Boot smoke with generated Asset Forge catalogue
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
 
-      - name: Capture gate - pistol fire, reload, projectile and presentation
+      - name: Capture gate - pistol fire and reload lifecycle
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=pistol_fire --seed=1
 
+      - name: Capture gate - pistol recoil, flash and reload punctuation
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=pistol_punctuation --seed=1
+
       - name: Capture gate - charged baseball bat and home-run punctuation
-        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=home_run_bat_feel --seed=1
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=homerun_bat_feel --seed=1
 
       - name: Capture gate - grenade fuse, blast, audio and multi-object lifecycle
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_fuse --seed=1
 
+      - name: Capture gate - Paint Buddy limb and neck mapping
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=paint_limb_pose_mapping --seed=1
+
       - name: Capture gate - Buddy Studio store, preview, purchase and save composition
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=buddy_studio_ui_composition --seed=1
+
+      - name: Capture gate - Work Mode persistence and resilience
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=work_mode_resilience --seed=1
 
       - name: Exercise generated glasses catalogue, purchase, render, and persistence
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_glasses --seed=1
