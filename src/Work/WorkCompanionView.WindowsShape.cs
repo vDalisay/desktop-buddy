@@ -28,6 +28,7 @@ public partial class WorkCompanionView
     public override void _EnterTree()
     {
         IsolateNormalShell();
+        EnsureRewardOverlay();
         ApplyNativeWindowShape();
     }
 
