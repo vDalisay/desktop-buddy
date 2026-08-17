@@ -10,9 +10,10 @@ public partial class PaintCanvasControl
     private PaintPoint[]? _limbPoseOriginalCenters;
 
     /// <summary>
-    /// Editor-only accessibility pose used by the Show limbs checkbox. It spreads hands and feet
-    /// while keeping the paint mapper aligned with the visible preview. Gameplay physics and saved
-    /// character data are untouched.
+    /// Editor-only accessibility pose used by the Show limbs checkbox. It spreads the head, hands
+    /// and feet while keeping the paint mapper aligned with the visible preview. Gameplay physics
+    /// and saved character data are untouched. The head offset exists to expose the visual neck
+    /// connector; unlike hand/foot connectors it does not create or reuse a connector paint atlas.
     /// </summary>
     public bool ExpandedLimbPose { get; private set; }
 
@@ -50,6 +51,9 @@ public partial class PaintCanvasControl
 
     public static PaintPoint LimbPoseOffsetFor(PaintPart part) => part switch
     {
+        // Screen/editor Y grows downward. Pulling the head upward creates a deliberate neck gap
+        // while keeping the head's full paint surface aligned with the preview rig.
+        PaintPart.Head => new PaintPoint(0.0, -28.0),
         PaintPart.LeftHand => new PaintPoint(-40.0, 0.0),
         PaintPart.RightHand => new PaintPoint(40.0, 0.0),
         PaintPart.LeftFoot => new PaintPoint(-18.0, 0.0),
@@ -83,6 +87,8 @@ public partial class PaintCanvasControl
         {
             foreach (PaintPartShape limb in _mapper.Shapes)
             {
+                // The persisted connector UV region belongs to the paired hand/foot surfaces only.
+                // The expanded neck is visual presentation; do not repurpose this atlas for Head.
                 if (limb.Part is not (PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot) ||
                     !IsPartVisible(limb.Part))
                     continue;
