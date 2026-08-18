@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+
+[resource]
+resource_name = "SteamDemoDroppedBaseballBat"
+script = ExtResource("1")
+ContentId = "tool.baseball_bat"
+Consumable = false
+Hazardous = false
+SafeToEvict = true
+Radius = 45.0
+Mass = 9.0
+LinearDamp = 0.5
+AngularDamp = 1.0
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(0.752941, 0.541176, 0.290196, 1)
+OutlineColor = Color(0.352941, 0.227451, 0.094118, 1)
+VisualDepthOffset = 144.0
