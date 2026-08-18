@@ -1,4 +1,5 @@
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Persistence;
 using Godot;
 
 namespace DesktopBuddy.Tools;
@@ -6,7 +7,7 @@ namespace DesktopBuddy.Tools;
 /// <summary>
 /// Shipping input bridge for dropped physical tools. It attaches the focused transaction
 /// component only after SandboxRoot has finished composing its existing gameplay services, then
-/// queues D-to-drop and left-double-click re-equip onto a physics boundary.
+/// queues the rebindable Drop Tool action and left-double-click re-equip onto a physics boundary.
 /// </summary>
 public partial class DroppedToolInputBootstrap : Node
 {
@@ -14,6 +15,7 @@ public partial class DroppedToolInputBootstrap : Node
     private DroppedToolInteractionComponent? _droppedTools;
     private bool _dropPending;
     private bool _reequipPending;
+    private bool _bindingApplied;
     private Vector2 _reequipViewportPosition;
 
     public override void _Ready()
@@ -69,6 +71,7 @@ public partial class DroppedToolInputBootstrap : Node
         {
             _sandbox = null;
             _droppedTools = null;
+            _bindingApplied = false;
         }
         if (_droppedTools is not null && GodotObject.IsInstanceValid(_droppedTools) &&
             _droppedTools.IsInitialized)
@@ -82,6 +85,14 @@ public partial class DroppedToolInputBootstrap : Node
             !_sandbox.CursorTools.IsInitialized || !_sandbox.Grab.IsInitialized)
         {
             return false;
+        }
+
+        if (!_bindingApplied)
+        {
+            HotkeyBinding.Apply(
+                InputActions.DropTool,
+                LocalSettingsInputBindings.DropTool(_sandbox.Shell.CurrentLocalSettings));
+            _bindingApplied = true;
         }
 
         _droppedTools = new DroppedToolInteractionComponent
