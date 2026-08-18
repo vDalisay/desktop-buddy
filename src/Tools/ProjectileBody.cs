@@ -59,6 +59,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
 
     private Color _fillColor = new("ffe08a");
     private Color _trailColor = new("ffb347");
+    private bool _emitsImpactSmoke = true;
     private string _contentId = ContentIds.ToolPistol;
     private Vector2 _lastSample;
     private Vector2 _launchVelocity;
@@ -130,6 +131,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         Radius = profile.ProjectileRadius;
         _fillColor = profile.ProjectileColor;
         _trailColor = profile.TrailColor;
+        _emitsImpactSmoke = profile.EmitsImpactSmoke;
         _contentId = profile.ContentId;
         Mass = profile.ProjectileMass;
         GravityScale = profile.ProjectileGravityScale;

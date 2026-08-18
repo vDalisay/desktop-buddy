@@ -53,7 +53,9 @@ public partial class DroppedToolInputBootstrap : Node
         if (_dropPending)
         {
             _dropPending = false;
-            _droppedTools!.TryDropSelected();
+            // Guns drop where the player is pointing; a cursor tool ignores this and uses
+            // the body it is already holding.
+            _droppedTools!.TryDropSelected(_sandbox!.Pointer.WorldCursor);
         }
 
         if (_reequipPending)

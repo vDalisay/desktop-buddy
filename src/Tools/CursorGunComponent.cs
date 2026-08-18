@@ -111,6 +111,12 @@ public partial class CursorGunComponent : Node2D
     public event Action<GunProfile>? ReloadStarted;
 
     /// <summary>
+    /// Raised when a pump-action gun works its slide between shots. Mechanically it is the
+    /// shotgun's per-shot chambering, so presentation treats it as a reload of one shell.
+    /// </summary>
+    public event Action<GunProfile>? PumpStarted;
+
+    /// <summary>
     /// Raised on the routed tick a shot connects with anything at all — the buddy, a loose
     /// object, a wall. Presentation only: what the hit does was already decided by the impact
     /// pipeline before this fires.
@@ -424,7 +430,10 @@ public partial class CursorGunComponent : Node2D
             ReloadCompleteCount++;
 
         if (shot.PumpStarted)
+        {
             PumpStartCount++;
+            PumpStarted?.Invoke(profile);
+        }
 
         if (shot.PumpCompleted)
             PumpCompleteCount++;

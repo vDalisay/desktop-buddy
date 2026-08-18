@@ -252,6 +252,15 @@ public partial class LabPointerGrabComponent : Node2D
     }
 
     /// <summary>
+    /// Tools whose whole interaction is "put one in the room and throw it". Damage tools that
+    /// live on the cursor, care strokes and the grab variants are all excluded: RMB keeps its
+    /// cancel behaviour for those.
+    /// </summary>
+    private static bool IsSpawnableLaunchable(ToolId tool) => tool is
+        ToolId.Grenade or ToolId.Baseball or ToolId.SoccerBall or
+        ToolId.Meal or ToolId.Drink or ToolId.RepairKit;
+
+    /// <summary>
     /// Applies the pointer's pending press/drag/release against the tether. Called
     /// by <see cref="App.BuddyLab"/> from the physics step so the space-state pick
     /// query is valid; safe to call every tick regardless of pause state.
@@ -372,14 +381,15 @@ public partial class LabPointerGrabComponent : Node2D
             {
                 CursorTools!.SetChargeHeld(true);
             }
-            else if (tool == ToolId.Grenade &&
+            else if (IsSpawnableLaunchable(tool) &&
                      LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool) &&
                      !Grab.IsGrabbing && !LauncherTool.IsAiming)
             {
-                // Selected grenade + RMB with empty hands places one grenade at the pointer. It
-                // stays pinned/inert until the player LMB-grabs it and RMB begins the existing
-                // pullback chord. No keybind spawn path remains for grenades.
-                LauncherTool.RequestSpawn(ContentIds.ToolGrenade, cursor);
+                // Selected launchable + RMB with empty hands places one at the pointer. It stays
+                // inert until the player LMB-grabs it and RMB begins the existing pullback chord.
+                // The grenade established this; the soccer ball and the other launchables use it
+                // too rather than each keeping a debug keybind (owner report 2026-08-19).
+                LauncherTool.RequestSpawn(ContentIds.ForTool(tool), cursor);
             }
             else if (LauncherTool is not null &&
                 GodotObject.IsInstanceValid(LauncherTool) &&

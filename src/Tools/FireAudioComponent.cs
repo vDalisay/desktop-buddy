@@ -33,6 +33,15 @@ public partial class FireAudioComponent : Node
 {
     private const int MixRate = 22_050;
 
+    /// <summary>
+    /// How far the loop is faded under its authored level while it starts and stops. The
+    /// takes are mp3, so their own loop seam carries encoder padding; a soft edge hides the
+    /// start and stop of the stream. A properly gapless burn take (wav/ogg with matched loop
+    /// points) would remove the seam itself.
+    /// </summary>
+    private const float LoopFadeDb = 9.0f;
+    private const double LoopFadeSeconds = 0.12;
+
     [Export] public FireSprayerComponent Sprayer { get; set; } = null!;
     [Export] public AudioStreamPlayer Player { get; set; } = null!;
     [Export] public AudioStreamPlayer LoopPlayer { get; set; } = null!;
@@ -45,6 +54,7 @@ public partial class FireAudioComponent : Node
 
     private AudioStream _hiss = null!;
     private AudioStream[] _burnTakes = Array.Empty<AudioStream>();
+    private Tween? _loopFade;
     private AudioStream _ignition = null!;
 
     public bool IsInitialized { get; private set; }
@@ -113,7 +123,6 @@ public partial class FireAudioComponent : Node
         GeneratedStreamCount = 2;
 
         Sprayer.SprayingChanged += OnSprayingChanged;
-        Sprayer.Ignited += OnIgnited;
         IsInitialized = true;
     }
 
@@ -122,7 +131,6 @@ public partial class FireAudioComponent : Node
         if (GodotObject.IsInstanceValid(Sprayer))
         {
             Sprayer.SprayingChanged -= OnSprayingChanged;
-            Sprayer.Ignited -= OnIgnited;
         }
 
         foreach (AudioStreamPlayer player in new[] { Player, LoopPlayer })
@@ -139,13 +147,19 @@ public partial class FireAudioComponent : Node
     {
         if (spraying)
         {
+            // The whumpf belongs to the trigger pull, not to a target catching fire: waiting
+            // for FireSprayerComponent.Ignited meant a spray into empty air was silent apart
+            // from the loop (owner report 2026-08-19).
+            PlayIgnition();
+
             if (_burnTakes.Length > 1)
                 _hiss = _burnTakes[GD.RandRange(0, _burnTakes.Length - 1)];
 
-            LoopPlayer.VolumeDb = Sprayer.Profile.AudioVolumeDb;
+            LoopPlayer.VolumeDb = Sprayer.Profile.AudioVolumeDb - LoopFadeDb;
             LoopPlayer.PitchScale = 1.0f + ((float)GD.RandRange(-4.0, 4.0) * 0.01f);
             LoopPlayer.Stream = _hiss;
             LoopPlayer.Play();
+            FadeLoop(Sprayer.Profile.AudioVolumeDb);
             IsHissing = true;
             HissStartCount++;
             PlayCount++;
@@ -153,13 +167,13 @@ public partial class FireAudioComponent : Node
             return;
         }
 
-        LoopPlayer.Stop();
+        FadeLoop(Sprayer.Profile.AudioVolumeDb - LoopFadeDb, thenStop: true);
         if (IsHissing)
             HissStopCount++;
         IsHissing = false;
     }
 
-    private void OnIgnited(Vector2 _point)
+    private void PlayIgnition()
     {
         Player.VolumeDb = Sprayer.Profile.AudioVolumeDb;
         Player.Stream = _ignition;
@@ -167,6 +181,16 @@ public partial class FireAudioComponent : Node
         IgnitionCueCount++;
         PlayCount++;
         LastCue = FireAudioCue.Ignition;
+    }
+
+    private void FadeLoop(float targetDb, bool thenStop = false)
+    {
+        if (_loopFade is not null && _loopFade.IsValid())
+            _loopFade.Kill();
+        _loopFade = CreateTween();
+        _loopFade.TweenProperty(LoopPlayer, "volume_db", targetDb, LoopFadeSeconds);
+        if (thenStop)
+            _loopFade.TweenCallback(Callable.From(() => LoopPlayer.Stop()));
     }
 
     private static AudioStreamWav Synthesize(

@@ -36,6 +36,7 @@ MuzzleTipFraction = 0.95
 VisualDepthOffset = 144.0
 FireShakeAmplitudePx = 0.0
 FireShakeDecayTicks = 0
+EmitsImpactSmoke = false
 MuzzleFlashTicks = 0
 RecoilKickPx = 0.0
 RecoilTicks = 0

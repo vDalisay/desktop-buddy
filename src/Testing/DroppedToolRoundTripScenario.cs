@@ -110,6 +110,34 @@ public sealed class DroppedToolRoundTripScenario : IScenario
             lab.Objects.FindBody(recalledRuntime) is null,
             $"drop={secondDrop} old_runtime={recalledRuntime} selected={lab.Pipeline.SelectedTool}"));
 
+        // A gun is not a cursor-tethered body, so it drops at the pointer through its authored
+        // drop-only form instead (owner report 2026-08-19: "D does not drop any of the guns").
+        lab.Progress.Adopt(new BuddyProgressState(
+            lab.Progress.CashPerPain,
+            unlockedToolIds: [ContentIds.ToolGrab, ContentIds.ToolPistol],
+            selectedToolId: ContentIds.ToolPistol).Snapshot());
+        lab.Pipeline.SelectTool(ToolId.Pistol);
+        await Frames(tree, 2);
+        var gunDropPoint = new Vector2(240.0f, 130.0f);
+        bool gunDropped = droppedTools.TryDropSelected(gunDropPoint);
+        await Frames(tree, 2);
+        DroppedCursorToolBody? worldPistol = droppedTools.FindDropped(ContentIds.ToolPistol);
+        checks.Add(new StartupCheck(
+            "drop_key_puts_the_selected_gun_on_the_floor_at_the_pointer",
+            gunDropped && worldPistol is not null && worldPistol.RuntimeId != 0 &&
+            lab.Objects.FindBody(worldPistol.RuntimeId) == worldPistol &&
+            lab.Pipeline.SelectedTool == ToolId.Grab,
+            $"dropped={gunDropped} runtime={worldPistol?.RuntimeId} " +
+            $"selected={lab.Pipeline.SelectedTool} position={worldPistol?.GlobalPosition}"));
+
+        bool gunReequip = worldPistol is not null && droppedTools.TryReequip(worldPistol);
+        await Frames(tree, 2);
+        checks.Add(new StartupCheck(
+            "dropped_gun_re_equips_back_into_the_gun_component",
+            gunReequip && lab.Pipeline.SelectedTool == ToolId.Pistol &&
+            droppedTools.FindDropped(ContentIds.ToolPistol) is null,
+            $"reequip={gunReequip} selected={lab.Pipeline.SelectedTool}"));
+
         // Ownership is the final authority. Build a stale/unowned floor body deliberately and
         // prove the re-equip transaction leaves both persistent selection and registry state alone.
         lab.Progress.Adopt(new BuddyProgressState(

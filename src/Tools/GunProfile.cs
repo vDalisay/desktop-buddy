@@ -281,6 +281,12 @@ public partial class GunProfile : GameResource
     /// <summary>Ticks the fire kick takes to decay to nothing.</summary>
     [Export(PropertyHint.Range, "0,60,1,or_greater")] public int FireShakeDecayTicks { get; set; }
 
+    /// <summary>
+    /// Whether a connecting shot kicks up a smoke puff. A toy dart leaves nothing behind,
+    /// so the blaster authors this off (owner instruction 2026-08-19).
+    /// </summary>
+    [Export] public bool EmitsImpactSmoke { get; set; } = true;
+
     /// <summary>Ticks the muzzle flash is drawn for; zero is no flash.</summary>
     [Export(PropertyHint.Range, "0,30,1,or_greater")] public int MuzzleFlashTicks { get; set; }
 

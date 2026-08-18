@@ -112,6 +112,9 @@ public partial class ProjectileBody
 
     private void SpawnImpactSmoke(Vector2 worldPoint)
     {
+        if (!_emitsImpactSmoke)
+            return;
+
         Node? parent = GetParent();
         if (parent is null || !GodotObject.IsInstanceValid(parent))
             return;
@@ -178,23 +181,38 @@ internal sealed partial class BulletImpactSmoke2D : Node2D
             : Vector2.Right;
         Vector2 plume = (-incoming + (Vector2.Up * 0.85f)).Normalized();
 
+        // Every burst rolls its own shape. Without this each hit emitted an identical puff,
+        // which reads as a decal rather than smoke once you shoot the same wall twice.
+        float scale = (float)GD.RandRange(0.78, 1.32);
+        plume = plume.Rotated((float)GD.RandRange(-0.35, 0.35));
+
         var particles = new CpuParticles2D
         {
             Name = "SmokeParticles",
-            Amount = 14,
-            Lifetime = 0.62f,
-            LifetimeRandomness = 0.32f,
+            Amount = GD.RandRange(9, 18),
+            Lifetime = (float)GD.RandRange(0.48, 0.82),
+            LifetimeRandomness = (float)GD.RandRange(0.24, 0.46),
             OneShot = true,
-            Explosiveness = 0.92f,
-            Randomness = 0.72f,
+            Explosiveness = (float)GD.RandRange(0.82, 0.98),
+            Randomness = (float)GD.RandRange(0.6, 0.9),
             Direction = plume,
-            Spread = 58.0f,
-            Gravity = new Vector2(0.0f, -22.0f),
-            InitialVelocityMin = 18.0f,
-            InitialVelocityMax = 58.0f,
-            ScaleAmountMin = 0.55f,
-            ScaleAmountMax = 1.55f,
-            Color = new Color(0.50f, 0.52f, 0.55f, 0.58f),
+            Spread = (float)GD.RandRange(42.0, 78.0),
+            Gravity = new Vector2((float)GD.RandRange(-8.0, 8.0), (float)GD.RandRange(-30.0, -14.0)),
+            InitialVelocityMin = (float)GD.RandRange(12.0, 26.0),
+            InitialVelocityMax = (float)GD.RandRange(44.0, 74.0),
+            ScaleAmountMin = 0.55f * scale,
+            ScaleAmountMax = 1.55f * scale,
+            // Particles start at their own angle and keep turning, so no two puffs present
+            // the same face of the shared texture.
+            AngleMin = -180.0f,
+            AngleMax = 180.0f,
+            AngularVelocityMin = -90.0f,
+            AngularVelocityMax = 90.0f,
+            Color = new Color(
+                (float)GD.RandRange(0.44, 0.56),
+                (float)GD.RandRange(0.46, 0.58),
+                (float)GD.RandRange(0.49, 0.61),
+                (float)GD.RandRange(0.44, 0.66)),
             Texture = SmokeTexture(),
             LocalCoords = false,
             Emitting = true,

@@ -597,8 +597,10 @@ public sealed class BurningStatusScenario : IScenario
             lab.FireAudio.GeneratedStreamCount == 2 &&
             lab.FireAudio.HissStartCount > 0 &&
             lab.FireAudio.HissStopCount > 0 &&
+            // The ignition cue moved onto the trigger pull (owner instruction 2026-08-19),
+            // so it now pairs with spray starts rather than with targets catching fire.
             lab.FireAudio.IgnitionCueCount > 0 &&
-            lab.FireAudio.IgnitionCueCount == sprayer.IgnitionCount &&
+            lab.FireAudio.IgnitionCueCount == lab.FireAudio.HissStartCount &&
             !lab.FireAudio.IsHissing,
             $"streams={lab.FireAudio.GeneratedStreamCount} hiss_start={lab.FireAudio.HissStartCount} " +
             $"hiss_stop={lab.FireAudio.HissStopCount} ignition_cues={lab.FireAudio.IgnitionCueCount} " +

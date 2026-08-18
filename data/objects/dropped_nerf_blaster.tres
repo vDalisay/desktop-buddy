@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+
+[resource]
+resource_name = "SteamDemoDroppedNerfBlaster"
+script = ExtResource("1")
+ContentId = "tool.nerf_blaster"
+Consumable = false
+Hazardous = false
+SafeToEvict = true
+Radius = 24.0
+Mass = 0.9
+LinearDamp = 0.5
+AngularDamp = 1.0
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(1, 0.549020, 0.101961, 1)
+OutlineColor = Color(0.247059, 0.650980, 0.294118, 1)
+VisualDepthOffset = 144.0

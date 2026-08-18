@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/CursorToolProfile.cs" id="1_cursor_tool"]
+[ext_resource type="Resource" path="res://data/objects/dropped_nerf_blaster.tres" id="2_world_drop"]
+
+[resource]
+resource_name = "SteamDemoDropFormNerfBlaster"
+script = ExtResource("1_cursor_tool")
+ContentId = "tool.nerf_blaster"
+Radius = 8.0
+Length = 46.0
+Mass = 0.9
+Stiffness = 4800.0
+Damping = 240.0
+MaximumForce = 120000.0
+LinearDamp = 0.5
+AngularDamp = 1.0
+AlignStiffness = 400000.0
+AlignDamping = 66000.0
+MaximumAlignTorque = 500000.0
+MinimumAlignSpeed = 60.0
+MinimumArmingTravel = 8.0
+WallClearance = 2.0
+VisualColor = Color(1, 0.549020, 0.101961, 1)
+OutlineColor = Color(0.247059, 0.650980, 0.294118, 1)
+VisualDepthOffset = 144.0
+Visual3DKind = 0
+WorldDrop = ExtResource("2_world_drop")

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/CursorToolProfile.cs" id="1_cursor_tool"]
+[ext_resource type="Resource" path="res://data/objects/dropped_shotgun.tres" id="2_world_drop"]
+
+[resource]
+resource_name = "SteamDemoDropFormShotgun"
+script = ExtResource("1_cursor_tool")
+ContentId = "tool.shotgun"
+Radius = 6.5
+Length = 78.0
+Mass = 3.4
+Stiffness = 4800.0
+Damping = 240.0
+MaximumForce = 120000.0
+LinearDamp = 0.5
+AngularDamp = 1.0
+AlignStiffness = 400000.0
+AlignDamping = 66000.0
+MaximumAlignTorque = 500000.0
+MinimumAlignSpeed = 60.0
+MinimumArmingTravel = 8.0
+WallClearance = 2.0
+VisualColor = Color(0.392157, 0.258824, 0.152941, 1)
+OutlineColor = Color(0.180392, 0.117647, 0.070588, 1)
+VisualDepthOffset = 144.0
+Visual3DKind = 0
+WorldDrop = ExtResource("2_world_drop")

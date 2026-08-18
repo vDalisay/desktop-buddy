@@ -57,17 +57,32 @@ public partial class DroppedToolInteractionComponent : Node2D
     }
 
     /// <summary>
-    /// Drops the currently visible compatible cursor tool and selects Grab. Failure leaves the
-    /// equipped tool untouched; the loose body is not allowed to exist without registry identity.
+    /// Drops the currently selected physical tool and selects Grab. Failure leaves the equipped
+    /// tool untouched; the loose body is not allowed to exist without registry identity.
+    ///
+    /// <para>Cursor tools drop from the body the player is holding. Guns and the sprayer are not
+    /// cursor-tethered bodies, so they drop at the pointer instead, using a drop-only profile
+    /// authored purely for their world form (owner report 2026-08-19).</para>
     /// </summary>
-    public bool TryDropSelected()
+    public bool TryDropSelected(Vector2? worldPosition = null)
     {
         RequireInitialized();
         CursorToolProfile? profile = _cursorTools.ActiveProfile;
         CursorToolBody? heldBody = _cursorTools.Body;
-        if (profile is null || heldBody is null ||
-            !GodotObject.IsInstanceValid(profile) || !GodotObject.IsInstanceValid(heldBody) ||
-            profile.WorldDrop is null || !GodotObject.IsInstanceValid(profile.WorldDrop) ||
+        bool cursorHeld =
+            profile is not null && heldBody is not null &&
+            GodotObject.IsInstanceValid(profile) && GodotObject.IsInstanceValid(heldBody) &&
+            _pipeline.SelectedTool == profile.Tool;
+
+        if (!cursorHeld)
+        {
+            profile = FindDropForm(_pipeline.SelectedTool);
+            heldBody = null;
+            if (profile is null || worldPosition is null)
+                return false;
+        }
+
+        if (profile!.WorldDrop is null || !GodotObject.IsInstanceValid(profile.WorldDrop) ||
             !_pipeline.Progress.IsToolUnlocked(profile.ContentId) ||
             _pipeline.SelectedTool != profile.Tool ||
             FindDropped(profile.ContentId) is not null)
@@ -81,10 +96,18 @@ public partial class DroppedToolInteractionComponent : Node2D
         };
         dropped.Configure(profile);
         AddChild(dropped);
-        dropped.GlobalPosition = heldBody.GlobalPosition;
-        dropped.GlobalRotation = heldBody.GlobalRotation;
-        dropped.LinearVelocity = heldBody.LinearVelocity;
-        dropped.AngularVelocity = heldBody.AngularVelocity;
+        if (heldBody is not null)
+        {
+            dropped.GlobalPosition = heldBody.GlobalPosition;
+            dropped.GlobalRotation = heldBody.GlobalRotation;
+            dropped.LinearVelocity = heldBody.LinearVelocity;
+            dropped.AngularVelocity = heldBody.AngularVelocity;
+        }
+        else
+        {
+            dropped.GlobalPosition = worldPosition!.Value;
+        }
+
         dropped.Sleeping = false;
 
         if (!_objects.TryRegister(dropped, profile.WorldDrop!, out _))
@@ -101,6 +124,46 @@ public partial class DroppedToolInteractionComponent : Node2D
         // branch. If selection policy ever changes, no duplicate tool is left behind.
         RemoveDropped(dropped);
         return false;
+    }
+
+    /// <summary>
+    /// World forms for the tools that have no cursor-tethered body of their own. They are
+    /// authored resources like every other tool profile; nothing here spawns them as cursor
+    /// tools, so the gun keeps being drawn and aimed by its own component while equipped.
+    /// </summary>
+    private static readonly string[] DropFormPaths =
+    {
+        "res://data/tools/drop_form_pistol.tres",
+        "res://data/tools/drop_form_shotgun.tres",
+        "res://data/tools/drop_form_nerf_blaster.tres",
+        "res://data/tools/drop_form_fire_sprayer.tres",
+    };
+
+    private CursorToolProfile[]? _dropForms;
+
+    private CursorToolProfile? FindDropForm(ToolId tool)
+    {
+        if (_dropForms is null)
+        {
+            var forms = new System.Collections.Generic.List<CursorToolProfile>(DropFormPaths.Length);
+            foreach (string path in DropFormPaths)
+            {
+                if (GD.Load(path) is CursorToolProfile form && GodotObject.IsInstanceValid(form))
+                    forms.Add(form);
+                else
+                    GD.PushWarning($"Drop form missing or malformed: {path}");
+            }
+
+            _dropForms = forms.ToArray();
+        }
+
+        foreach (CursorToolProfile form in _dropForms)
+        {
+            if (GodotObject.IsInstanceValid(form) && form.Tool == tool)
+                return form;
+        }
+
+        return null;
     }
 
     /// <summary>Finds the nearest eligible dropped tool under one double-click and re-equips it.</summary>

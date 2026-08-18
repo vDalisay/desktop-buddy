@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+
+[resource]
+resource_name = "SteamDemoDroppedFireSprayer"
+script = ExtResource("1")
+ContentId = "tool.fire_sprayer"
+Consumable = false
+Hazardous = false
+SafeToEvict = true
+Radius = 31.0
+Mass = 2.6
+LinearDamp = 0.5
+AngularDamp = 1.0
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(0.850980, 0.298039, 0.180392, 1)
+OutlineColor = Color(0.317647, 0.113725, 0.070588, 1)
+VisualDepthOffset = 144.0

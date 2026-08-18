@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+
+[resource]
+resource_name = "SteamDemoDroppedPistol"
+script = ExtResource("1")
+ContentId = "tool.pistol"
+Consumable = false
+Hazardous = false
+SafeToEvict = true
+Radius = 24.0
+Mass = 1.2
+LinearDamp = 0.5
+AngularDamp = 1.0
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(0.227451, 0.243137, 0.294118, 1)
+OutlineColor = Color(0.109804, 0.121569, 0.149020, 1)
+VisualDepthOffset = 144.0

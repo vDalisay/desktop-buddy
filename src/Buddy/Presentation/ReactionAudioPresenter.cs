@@ -22,6 +22,9 @@ public partial class ReactionAudioPresenter : Node
     private const float ImpactBaseVolumeOffsetDb = -6.0f;
     private const float QuietImpactVolumeDb = -12.0f;
     private const float GrabHoldVolumeOffsetDb = -4.0f;
+
+    /// <summary>Roughly a fifth of full loudness for the acquisition click (owner, 2026-08-19).</summary>
+    private const float GrabInitialVolumeOffsetDb = -14.0f;
     private const double GrabHoldMinimumSeconds = 2.0;
     private const double GrabHoldMaximumSeconds = 5.0;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
@@ -91,6 +94,7 @@ public partial class ReactionAudioPresenter : Node
     private AudioStream? _grabInitial;
     private AudioStream? _grabHold;
     private double _grabHoldCountdown;
+    private AudioStreamPlayer? _grabHoldVoice;
     private float _hardImpactPain;
     private float _maximumPain;
     private float _baseVolumeDb;
@@ -203,7 +207,7 @@ public partial class ReactionAudioPresenter : Node
         Guns.ShotFired += OnGunShotFired;
         Guns.ReloadStarted += OnGunReloadStarted;
         Guns.ProjectileHit += OnProjectileHit;
-        Pipeline.ToolChanged += OnToolChanged;
+        Guns.PumpStarted += OnGunReloadStarted;
         Pipeline.Grab.Released += OnGrabReleased;
         Pipeline.Grab.Grabbed += OnGrabbed;
         if (GodotObject.IsInstanceValid(Interactions))
@@ -236,7 +240,6 @@ public partial class ReactionAudioPresenter : Node
         if (GodotObject.IsInstanceValid(Pipeline))
         {
             Pipeline.ImpactAccepted -= OnImpact;
-            Pipeline.ToolChanged -= OnToolChanged;
             Pipeline.Grab.Released -= OnGrabReleased;
             Pipeline.Grab.Grabbed -= OnGrabbed;
             Pipeline.CareAwarded -= OnCare;
@@ -246,6 +249,7 @@ public partial class ReactionAudioPresenter : Node
             Guns.ShotFired -= OnGunShotFired;
             Guns.ReloadStarted -= OnGunReloadStarted;
             Guns.ProjectileHit -= OnProjectileHit;
+            Guns.PumpStarted -= OnGunReloadStarted;
         }
         foreach (BuddyPartWallImpactDetector detector in _wallImpactDetectors)
         {
@@ -325,23 +329,6 @@ public partial class ReactionAudioPresenter : Node
         PlayStream(_toygunImpact!, _baseVolumeDb);
     }
 
-    /// <summary>
-    /// Putting a gun away. The two real guns and the sprayer share one pool of clatter takes
-    /// (owner decision 2026-08-19); the bat and glove have real world drops instead and are
-    /// heard through <see cref="OnObjectLanded"/>.
-    /// </summary>
-    private void OnToolChanged(ToolId previous, ToolId current)
-    {
-        if (previous == current || !IsValid(_gunDrop))
-            return;
-
-        if (previous is not (ToolId.Pistol or ToolId.Shotgun or ToolId.FireSprayer))
-            return;
-
-        GunDropCount++;
-        PlayStream(_gunDrop!, _baseVolumeDb);
-    }
-
     private void OnGrabbed(RigidBody2D target)
     {
         _grabHoldCountdown = NextGrabHoldSeconds();
@@ -349,7 +336,7 @@ public partial class ReactionAudioPresenter : Node
             return;
 
         GrabInitialCount++;
-        PlayStream(_grabInitial!, _baseVolumeDb);
+        PlayStream(_grabInitial!, _baseVolumeDb + GrabInitialVolumeOffsetDb);
     }
 
     private void OnCleanCatch()
@@ -377,8 +364,16 @@ public partial class ReactionAudioPresenter : Node
     public override void _Process(double delta)
     {
         if (!IsValid(_grabHold) || !GodotObject.IsInstanceValid(Pipeline) ||
-            !GodotObject.IsInstanceValid(Pipeline.Grab) || !Pipeline.Grab.IsGrabbing)
+            !GodotObject.IsInstanceValid(Pipeline.Grab))
             return;
+
+        if (!Pipeline.Grab.IsGrabbing)
+        {
+            // Letting go cuts the strain mid-take rather than letting it ring on over
+            // nothing (owner instruction 2026-08-19).
+            StopGrabHoldVoice();
+            return;
+        }
 
         _grabHoldCountdown -= delta;
         if (_grabHoldCountdown > 0.0)
@@ -386,7 +381,18 @@ public partial class ReactionAudioPresenter : Node
 
         _grabHoldCountdown = NextGrabHoldSeconds();
         GrabHoldCount++;
-        PlayStream(_grabHold!, _baseVolumeDb + GrabHoldVolumeOffsetDb);
+        _grabHoldVoice = PlayStream(_grabHold!, _baseVolumeDb + GrabHoldVolumeOffsetDb);
+    }
+
+    private void StopGrabHoldVoice()
+    {
+        if (_grabHoldVoice is null)
+            return;
+
+        if (GodotObject.IsInstanceValid(_grabHoldVoice) && _grabHoldVoice.Playing)
+            _grabHoldVoice.Stop();
+
+        _grabHoldVoice = null;
     }
 
     private static double NextGrabHoldSeconds() =>
@@ -461,6 +467,7 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnGrabReleased(RigidBody2D releasedBody, bool countsAsThrow)
     {
+        StopGrabHoldVoice();
         for (int index = 0; index < _pendingGrabbedWallImpacts.Length; index++)
         {
             AcceptedImpact? pending = _pendingGrabbedWallImpacts[index];
@@ -522,6 +529,8 @@ public partial class ReactionAudioPresenter : Node
         {
             ContentIds.ToolBaseball or ContentIds.ToolSoccerBall => _ballBounce ?? _itemFalling,
             ContentIds.ToolBaseballBat => _batDrop ?? _itemFalling,
+            ContentIds.ToolPistol or ContentIds.ToolShotgun or ContentIds.ToolNerfBlaster or
+                ContentIds.ToolFireSprayer => _gunDrop ?? _itemFalling,
             _ => _itemFalling,
         };
         if (!IsValid(stream))
@@ -531,6 +540,8 @@ public partial class ReactionAudioPresenter : Node
             BallBounceCount++;
         else if (stream == _batDrop)
             BatDropCount++;
+        else if (stream == _gunDrop)
+            GunDropCount++;
         else
             ItemFallingCount++;
 
@@ -628,17 +639,18 @@ public partial class ReactionAudioPresenter : Node
             Mathf.Lerp(QuietImpactVolumeDb, 0.0f, normalized);
     }
 
-    private void PlayStream(AudioStream stream, float volumeDb)
+    private AudioStreamPlayer? PlayStream(AudioStream stream, float volumeDb)
     {
         AudioStreamPlayer? voice = TakeVoice();
         if (voice is null)
-            return;
+            return null;
 
         voice.VolumeDb = volumeDb;
         voice.Stream = stream;
         voice.Play();
         LastPlayedStream = stream;
         LastPlayedVolumeDb = volumeDb;
+        return voice;
     }
 
     private AudioStreamPlayer? TakeVoice()
