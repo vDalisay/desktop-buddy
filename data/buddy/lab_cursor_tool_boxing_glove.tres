@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/Tools/CursorToolProfile.cs" id="1_cursor_tool"]
+[ext_resource type="Resource" path="res://data/objects/dropped_boxing_glove.tres" id="2_world_drop"]
 
 [resource]
 resource_name = "ProvisionalM3BoxingGlove"
@@ -24,3 +25,4 @@ VisualColor = Color(0.878431, 0.356863, 0.294118, 1)
 OutlineColor = Color(0.360784, 0.101961, 0.101961, 1)
 VisualDepthOffset = 144.0
 Visual3DKind = 2
+WorldDrop = ExtResource("2_world_drop")
