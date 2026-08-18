@@ -34,6 +34,7 @@ public enum GrenadeAudioCue
 public partial class GrenadeAudioComponent : Node
 {
     private const int MixRate = 22_050;
+    private const int PunctuationPolyphony = 8;
 
     [Export] public GrenadeComponent Grenades { get; set; } = null!;
     [Export] public AudioStreamPlayer Player { get; set; } = null!;
@@ -79,7 +80,10 @@ public partial class GrenadeAudioComponent : Node
         }
 
         Player.Bus = AudioMix.Sfx;
-        Player.MaxPolyphony = Math.Max(1, Player.MaxPolyphony);
+        // Pin pulls, thuds and especially staggered detonations are short punctuation cues. The
+        // capture branch allows several to coexist so a second grenade cannot audibly erase the
+        // tail of the first blast. Fuse ambience remains on its own single-loop player below.
+        Player.MaxPolyphony = Math.Max(PunctuationPolyphony, Player.MaxPolyphony);
         _fusePlayer = new AudioStreamPlayer
         {
             Name = "GrenadeFuseLoopPlayer",
