@@ -13,6 +13,7 @@ public static class PhaseACharacterScenarioCatalog
         ["editor_window_monitor_removed"] = () => new EditorWindowMonitorRemovedScenario(),
         ["editor_resize_boundary_isolation"] = () => new EditorResizeBoundaryIsolationScenario(),
         ["shop_panel_purchase"] = () => new ShopPanelScenario(),
+        ["settings_hotkey_capture"] = () => new SettingsHotkeyCaptureScenario(),
     };
 
     public static IReadOnlyCollection<string> Ids => Factories.Keys;
