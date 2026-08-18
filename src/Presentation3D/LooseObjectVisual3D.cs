@@ -1,27 +1,24 @@
 using System;
 using System.Collections.Generic;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Tools;
 using Godot;
 
 namespace DesktopBuddy.Presentation3D;
 
 /// <summary>
-/// Draws the loose objects that ask for a model, in the frontal 3D presentation. The Grenade
-/// has its own presenter because it also owns a pin swap and a blast; this is the general one
-/// for objects whose whole 3D story is "it is a shape rather than a circle".
+/// Draws loose objects that ask for a model, plus dropped cursor tools that reuse their equipped
+/// mesh, in the frontal 3D presentation. The Grenade has its own presenter because it also owns
+/// a pin swap and a blast; this is the general registry-backed presenter.
 ///
 /// <para>Render-only, on the standard <see cref="Body2DVisual3D"/> attach seam. A pool of
 /// slots is reconciled against the registry each routed tick — objects arrive by spawn,
-/// eviction, and consumption, none of which announces itself, so this is polled for the same
-/// reason the grenade presenter polls what it is following.</para>
+/// eviction, consumption, and tool drop, none of which needs a render-specific event.</para>
 ///
-/// <para>Degrades to nothing: an object whose profile authors
-/// <see cref="LooseObjectVisualKind.None"/> is never adopted and keeps its flat circle, and in
-/// legacy presentation every slot is deactivated so <b>every</b> object is flat again. One
-/// silhouette per mode, never both at once.</para>
-///
-/// <para>Meshes are built once per (kind, radius) pair and shared between slots, so a room
-/// filling with balls does not rebuild geometry on a gameplay tick.</para>
+/// <para>Ordinary objects whose profile authors <see cref="LooseObjectVisualKind.None"/> stay
+/// flat. A <see cref="DroppedCursorToolBody"/> is the exception because its recognizable mesh is
+/// authored by the cursor-tool profile rather than by the loose-object policy profile. In legacy
+/// presentation every slot is deactivated so there is still one silhouette per mode.</para>
 /// </summary>
 [GlobalClass]
 public partial class LooseObjectVisual3D : Node3D
@@ -29,6 +26,7 @@ public partial class LooseObjectVisual3D : Node3D
     private readonly Dictionary<int, Body2DVisual3D> _slots = new();
     private readonly List<Body2DVisual3D> _free = new();
     private readonly Dictionary<(LooseObjectVisualKind Kind, int Radius), ArrayMesh> _meshes = new();
+    private readonly Dictionary<string, CursorToolVisual> _toolVisuals = new(StringComparer.Ordinal);
     private readonly List<int> _stale = new();
 
     private LooseObjectRegistry _registry = null!;
@@ -40,7 +38,7 @@ public partial class LooseObjectVisual3D : Node3D
     /// <summary>How many objects are currently drawn as meshes.</summary>
     public int DrawnCount => _slots.Count;
 
-    /// <summary>Distinct meshes built so far, for the allocation-conscious scenarios.</summary>
+    /// <summary>Distinct ordinary loose-object meshes built so far.</summary>
     public int BuiltMeshCount => _meshes.Count;
 
     /// <summary>Whether this object is currently being drawn as a mesh here.</summary>
@@ -130,13 +128,12 @@ public partial class LooseObjectVisual3D : Node3D
                 continue;
 
             LooseObjectProfile? profile = body.Profile;
-            if (!GodotObject.IsInstanceValid(profile) ||
-                profile!.Visual3D == LooseObjectVisualKind.None)
-            {
+            if (!GodotObject.IsInstanceValid(profile))
                 continue;
-            }
+            if (body is not DroppedCursorToolBody && profile!.Visual3D == LooseObjectVisualKind.None)
+                continue;
 
-            Adopt(body, profile);
+            Adopt(body, profile!);
         }
     }
 
@@ -156,10 +153,29 @@ public partial class LooseObjectVisual3D : Node3D
     private void Adopt(LooseObjectBody body, LooseObjectProfile profile)
     {
         Body2DVisual3D slot = Rent(profile);
-        slot.SetVisual(MeshFor(profile), _material, profile.VisualDepthOffset);
+        if (body is DroppedCursorToolBody dropped)
+            SetDroppedToolVisual(slot, dropped.ToolProfile);
+        else
+            slot.SetVisual(MeshFor(profile), _material, profile.VisualDepthOffset);
         slot.Attach(body);
         slot.SetPresentationActive(_presentationActive);
         _slots[body.RuntimeId] = slot;
+    }
+
+    private void SetDroppedToolVisual(Body2DVisual3D slot, CursorToolProfile profile)
+    {
+        if (!_toolVisuals.TryGetValue(profile.ContentId, out CursorToolVisual visual))
+        {
+            CursorToolVisual? built = CursorToolVisualFactory.Create(profile);
+            if (built is null)
+            {
+                slot.SetGeometry(profile.Radius, profile.Length, profile.VisualColor, profile.VisualDepthOffset);
+                return;
+            }
+            visual = built.Value;
+            _toolVisuals[profile.ContentId] = visual;
+        }
+        slot.SetVisual(visual.Mesh, visual.Material, profile.VisualDepthOffset);
     }
 
     private void Release(int runtimeId)
