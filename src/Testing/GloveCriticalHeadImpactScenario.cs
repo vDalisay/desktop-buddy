@@ -179,6 +179,11 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
         const float sourceRadius = 10.0f;
         var source = new ScenarioImpactBody();
         source.Configure(ContentIds.ToolBoxingGlove, sourceRadius, mass);
+        // This focused probe intentionally runs faster than one collider diameter per
+        // 120 Hz tick. Shape casting keeps the negative-control torso strike from
+        // tunnelling through the target while still using Godot's real solver and the
+        // production contact/damage/audio pipeline.
+        source.ContinuousCd = RigidBody2D.CcdMode.CastShape;
 
         Vector2 direction = target == lab.Buddy.Rig.Torso
             ? Vector2.Right
