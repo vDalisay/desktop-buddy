@@ -310,6 +310,7 @@ public partial class WorkCompanionCoordinator : Node
             _session.Record(WorkActivityKind.KeyboardPress, keyboard);
             _work.Record(WorkActivityKind.KeyboardPress, keyboard);
             _view?.NotifyActivity(WorkActivityKind.KeyboardPress, keyboard);
+            _view?.NotifyTyping(keyboard);
         }
         if (mouse > 0)
         {
