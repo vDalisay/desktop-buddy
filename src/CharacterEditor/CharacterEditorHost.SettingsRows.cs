@@ -79,8 +79,8 @@ public partial class CharacterEditorHost
             save,
             SoundGroup);
         _settingsPanel.AddToggle(
-            "Mute While Working",
-            "Silence everything while the buddy is in Work Mode.",
+            "Mute Work Typing",
+            "Mute the buddy's Work Mode typing clicks without muting other sound effects.",
             settings.MuteInWorkMode,
             value => edit(s => s with { MuteInWorkMode = value }),
             SoundGroup);
