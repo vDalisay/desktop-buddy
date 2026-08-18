@@ -180,10 +180,20 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
         var source = new ScenarioImpactBody();
         source.Configure(ContentIds.ToolBoxingGlove, sourceRadius, mass);
         // This focused probe intentionally runs faster than one collider diameter per
-        // 120 Hz tick. Shape casting keeps the negative-control torso strike from
-        // tunnelling through the target while still using Godot's real solver and the
-        // production contact/damage/audio pipeline.
+        // 120 Hz tick. Shape casting prevents tunnelling while the target isolation below
+        // makes the assertion about one exact Buddy part rather than whichever overlapping
+        // limb happens to intercept the probe first.
         source.ContinuousCd = RigidBody2D.CcdMode.CastShape;
+
+        var isolatedLayers = new List<(PuppetPartBody Body, uint Layer)>();
+        foreach (PuppetPartBody part in lab.Buddy.Rig.Parts)
+        {
+            if (ReferenceEquals(part, target))
+                continue;
+
+            isolatedLayers.Add((part, part.CollisionLayer));
+            part.CollisionLayer = 0;
+        }
 
         Vector2 direction = target == lab.Buddy.Rig.Torso
             ? Vector2.Right
@@ -202,12 +212,25 @@ public sealed class GloveCriticalHeadImpactScenario : IScenario
         }
 
         lab.Pipeline.ImpactAccepted += OnAccepted;
-        lab.AddChild(source);
-        for (int tick = 0; tick < ContactTimeoutTicks && accepted is null; tick++)
-            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        try
+        {
+            lab.AddChild(source);
+            for (int tick = 0; tick < ContactTimeoutTicks && accepted is null; tick++)
+                await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+        }
+        finally
+        {
+            lab.Pipeline.ImpactAccepted -= OnAccepted;
+            foreach ((PuppetPartBody body, uint layer) in isolatedLayers)
+            {
+                if (GodotObject.IsInstanceValid(body))
+                    body.CollisionLayer = layer;
+            }
 
-        lab.Pipeline.ImpactAccepted -= OnAccepted;
-        source.QueueFree();
+            if (GodotObject.IsInstanceValid(source))
+                source.QueueFree();
+        }
+
         return accepted;
     }
 
