@@ -1,6 +1,7 @@
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Objects;
 using Godot;
 
 namespace DesktopBuddy.Tools;
@@ -79,6 +80,13 @@ public partial class CursorToolProfile : GameResource
     /// keeps its exact behavior without anything branching on a tool name.
     /// </summary>
     [Export] public SwingToolProfile? Swing { get; set; }
+
+    /// <summary>
+    /// Optional registry-backed physical form used when this owned cursor tool is dropped into
+    /// the room. Null means the tool cannot be dropped. Its content ID must be exactly the tool
+    /// content ID so ownership/re-equip never depends on a second identity vocabulary.
+    /// </summary>
+    [Export] public LooseObjectProfile? WorldDrop { get; set; }
 
     /// <summary>True when this tool's collider is elongated rather than circular.</summary>
     public bool IsElongated => Length > 0.0f;
@@ -247,6 +255,23 @@ public partial class CursorToolProfile : GameResource
             // The arc's feasibility depends on this collider's shape and mass, so
             // the cross-checks live here where both halves are in hand.
             Swing.ValidateAgainstCollider(errors, this);
+        }
+
+        if (WorldDrop is not null)
+        {
+            if (!GodotObject.IsInstanceValid(WorldDrop))
+            {
+                errors.Add($"{nameof(WorldDrop)} must be a live loose-object profile when set");
+            }
+            else
+            {
+                foreach (string error in WorldDrop.Validate())
+                    errors.Add($"{nameof(WorldDrop)}: {error}");
+                if (!string.Equals(WorldDrop.ContentId, ContentId, System.StringComparison.Ordinal))
+                    errors.Add($"{nameof(WorldDrop)} must use the same content ID as the cursor tool");
+                if (WorldDrop.Consumable || WorldDrop.Hazardous)
+                    errors.Add($"{nameof(WorldDrop)} cannot be consumable or hazardous");
+            }
         }
 
         return errors;
