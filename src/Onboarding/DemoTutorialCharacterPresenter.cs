@@ -10,7 +10,7 @@ namespace DesktopBuddy.Onboarding;
 /// the presenter only gives the walkthrough a recognizable character and three contextual poses,
 /// while stable tutorial step IDs and persistence remain owned by FirstSessionGuidanceController.
 /// </summary>
-public sealed class DemoTutorialCharacterPresenter : ITutorialCharacterPresenter
+public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterPresenter
 {
     private readonly FirstSessionGuidanceController _owner;
     private TutorialBuddyCard? _card;
@@ -75,8 +75,6 @@ public sealed class DemoTutorialCharacterPresenter : ITutorialCharacterPresenter
             Color body = customize ? new Color("f2cf68") : work ? new Color("9dc5e8") : new Color("dfb6dc");
             Color outline = new("343434");
 
-            // Simple buddy silhouette: head + body + blob hands. It is deliberately icon-like,
-            // not a candidate final character model.
             DrawCircle(center + new Vector2(0, -20), 23, body);
             DrawArc(center + new Vector2(0, -20), 23, 0, Mathf.Tau, 32, outline, 2, true);
             DrawRect(new Rect2(center.X - 22, center.Y + 2, 44, 39), body, true);
@@ -137,7 +135,6 @@ public sealed class DemoTutorialCharacterPresenter : ITutorialCharacterPresenter
 
         private void DrawWorkProps(Vector2 center, Color outline)
         {
-            // Glasses plus a tiny CRT echo the actual first-entry reward and Work presentation.
             DrawRect(new Rect2(center + new Vector2(-16, -29), new Vector2(12, 8)), new Color(0, 0, 0, 0), false, 2);
             DrawRect(new Rect2(center + new Vector2(4, -29), new Vector2(12, 8)), new Color(0, 0, 0, 0), false, 2);
             DrawLine(center + new Vector2(-4, -25), center + new Vector2(4, -25), outline, 2);
