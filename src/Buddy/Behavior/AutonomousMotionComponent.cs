@@ -16,7 +16,11 @@ namespace DesktopBuddy.Buddy.Behavior;
 [GlobalClass]
 public partial class AutonomousMotionComponent : Node
 {
+    private const float RoomInterestArrivalPixels = 28.0f;
+
     private AutonomousMotionPlanner? _planner;
+    private float _roomInterestTargetX;
+    private int _roomInterestTicksRemaining;
 
     [Export] public StandingDetector Standing { get; set; } = null!;
     [Export] public PuppetRig Rig { get; set; } = null!;
@@ -43,6 +47,13 @@ public partial class AutonomousMotionComponent : Node
     public float RightWallClearance { get; private set; } = float.PositiveInfinity;
     public Rect2 WalkableBounds => _walkableBounds;
     public bool IsInitialized { get; private set; }
+
+    /// <summary>
+    /// True while a presentation/personality layer has an ambient room target queued. This is
+    /// still ordinary AmbientAutonomy: BehaviorArbiter disables this worker whenever any player,
+    /// need, fun, panic, or committed-reaction behavior has priority.
+    /// </summary>
+    public bool HasRoomInterest => _roomInterestTicksRemaining > 0;
 
     public void Initialize(ulong seed)
     {
@@ -75,12 +86,31 @@ public partial class AutonomousMotionComponent : Node
         _hasWalkableBounds = true;
     }
 
+    /// <summary>
+    /// Suggests a temporary low-priority point of interest in room/world X coordinates. The
+    /// normal seeded planner keeps authority over jumps and any walk it has already committed to;
+    /// the suggestion only turns an otherwise-idle ambient tick into a short walk toward target.
+    /// </summary>
+    public void SuggestRoomInterest(float targetWorldX, int durationTicks)
+    {
+        if (!float.IsFinite(targetWorldX))
+            throw new ArgumentOutOfRangeException(nameof(targetWorldX));
+        if (durationTicks <= 0)
+            throw new ArgumentOutOfRangeException(nameof(durationTicks));
+
+        _roomInterestTargetX = targetWorldX;
+        _roomInterestTicksRemaining = durationTicks;
+    }
+
+    public void ClearRoomInterest() => _roomInterestTicksRemaining = 0;
+
     public void Reseed(ulong seed)
     {
         Seed = seed;
         _planner = new AutonomousMotionPlanner(new SeededRandomSource(seed), Profile.ToTuning());
         Intent = default;
         JumpRequestCount = 0;
+        ClearRoomInterest();
     }
 
     public void PhysicsTick(
@@ -101,6 +131,7 @@ public partial class AutonomousMotionComponent : Node
         UpdateWallSensing();
         UpdateObstacleSensing();
         Intent = _planner.Tick(enabled, canWalk, canJump, BlockedLeft, BlockedRight);
+        ApplyRoomInterest(enabled, canWalk);
         if (Intent.JumpRequested)
         {
             JumpRequestCount++;
@@ -113,6 +144,33 @@ public partial class AutonomousMotionComponent : Node
             walkDirection > 0.0f ? RightObstacleCast : null;
         return cast is not null && cast.IsColliding() &&
             cast.GetCollider() is not LooseObjectBody { Profile.SoccerPlay: not null };
+    }
+
+    private void ApplyRoomInterest(bool enabled, bool canWalk)
+    {
+        if (_roomInterestTicksRemaining <= 0)
+            return;
+
+        _roomInterestTicksRemaining--;
+        if (!enabled || !canWalk || Intent.Activity != AutonomyActivity.Idle)
+            return;
+
+        float delta = _roomInterestTargetX - Rig.Torso.GlobalPosition.X;
+        if (Mathf.Abs(delta) <= RoomInterestArrivalPixels)
+        {
+            ClearRoomInterest();
+            return;
+        }
+
+        double direction = Math.Sign(delta);
+        if ((direction < 0.0 && BlockedLeft) || (direction > 0.0 && BlockedRight) ||
+            ObstacleInCommittedPath((float)direction))
+        {
+            ClearRoomInterest();
+            return;
+        }
+
+        Intent = new AutonomousMotionIntent(direction, false, AutonomyActivity.Walk);
     }
 
     private static void ConfigureObstacleCast(RayCast2D cast, float targetX)
