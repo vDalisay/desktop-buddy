@@ -7,15 +7,16 @@ namespace DesktopBuddy.App;
 /// <see cref="StartupValidator"/> assert the map is present.
 ///
 /// Mouse buttons are bound to <see cref="Primary"/>/<see cref="Secondary"/>;
-/// <see cref="Reload"/> is <c>R</c>; <see cref="ToggleInputMode"/> is the
-/// in-app <c>Ctrl+Shift+B</c> equivalent (the OS-global hotkey is owned by the
-/// native Windows adapter, not the Godot input map).
+/// <see cref="Reload"/> is <c>R</c>; <see cref="DropTool"/> is <c>D</c>;
+/// <see cref="ToggleInputMode"/> is the in-app <c>Ctrl+Shift+B</c> equivalent
+/// (the OS-global hotkey is owned by the native Windows adapter, not the Godot input map).
 /// </summary>
 public static class InputActions
 {
     public const string Primary = "buddy_primary";
     public const string Secondary = "buddy_secondary";
     public const string Reload = "buddy_reload";
+    public const string DropTool = "buddy_drop_tool";
     public const string ToggleInputMode = "toggle_input_mode";
 
     /// <summary>
@@ -34,6 +35,7 @@ public static class InputActions
         Primary,
         Secondary,
         Reload,
+        DropTool,
         ToggleInputMode,
         ToggleHideToTray,
         SaveAndQuit,
