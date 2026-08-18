@@ -76,6 +76,7 @@ public static class ScenarioCatalog
         ["hidden_clock_accrual"] = () => new HiddenClockAccrualScenario(),
         ["suspend_no_catchup"] = () => new SuspendNoCatchupScenario(),
         ["baseball_pullback"] = () => new BaseballPullbackScenario(),
+        ["ballistic_trajectory_prediction"] = () => new BallisticTrajectoryPredictionScenario(),
         ["bat_swing"] = () => new BatSwingScenario(),
         ["dropped_tool_round_trip"] = () => new DroppedToolRoundTripScenario(),
         ["homerun_bat_feel"] = () => new HomeRunBatFeelScenario(),
