@@ -263,6 +263,16 @@ public partial class CharacterEditorHost
                     edit(s => s with { GlobalHotkey = chord });
             },
             BehaviourGroup);
+        _settingsPanel.AddHotkey(
+            "Drop Tool Hotkey",
+            "Drop a compatible equipped physical tool into the room. Double-click it to re-equip.",
+            LocalSettingsInputBindings.DropTool(settings),
+            chord =>
+            {
+                if (HotkeyBinding.Apply(InputActions.DropTool, chord))
+                    edit(s => LocalSettingsInputBindings.WithDropTool(s, chord));
+            },
+            BehaviourGroup);
     }
 
     private void ComposeDataRows()
