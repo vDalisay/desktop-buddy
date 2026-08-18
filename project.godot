@@ -50,6 +50,11 @@ buddy_reload={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":82,"key_label":0,"unicode":114,"location":0,"echo":false,"script":null)
 ]
 }
+buddy_drop_tool={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":68,"key_label":0,"unicode":100,"location":0,"echo":false,"script":null)
+]
+}
 toggle_input_mode={
 "deadzone": 0.5,
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":true,"ctrl_pressed":true,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":66,"key_label":0,"unicode":98,"location":0,"echo":false,"script":null)
@@ -89,6 +94,7 @@ renderer/rendering_method.mobile="gl_compatibility"
 [autoload]
 
 UiFeedbackAudioBootstrap="*res://src/UI/UiFeedbackAudioBootstrap.cs"
+DroppedToolInputBootstrap="*res://src/Tools/DroppedToolInputBootstrap.cs"
 Win98ShellBootstrap="*res://src/UI/Win98/Win98ShellBootstrap.cs"
 Win98CommandBarBootstrap="*res://src/UI/Win98/Win98CommandBarBootstrap.cs"
 ; Reserved now so the environment and Buddy Studio branches can compose independently
