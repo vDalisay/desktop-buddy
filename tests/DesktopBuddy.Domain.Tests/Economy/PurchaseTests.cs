@@ -49,6 +49,25 @@ public sealed class PurchaseTests
     }
 
     [Fact]
+    public void DemoEarlyToolsAreOrdinaryPurchasesNotImplicitUnlocks()
+    {
+        var progress = new BuddyProgressState(1.0);
+        progress.Deposit(20_000);
+
+        Assert.False(progress.IsToolUnlocked(ContentIds.ToolPet));
+        Assert.False(progress.IsToolUnlocked(ContentIds.ToolTickle));
+        Assert.False(progress.IsToolUnlocked(ContentIds.ToolBoxingGlove));
+
+        Assert.True(progress.Purchase(ContentIds.ToolPet, Catalogue).Succeeded);
+        Assert.True(progress.Purchase(ContentIds.ToolTickle, Catalogue).Succeeded);
+        Assert.True(progress.Purchase(ContentIds.ToolBoxingGlove, Catalogue).Succeeded);
+
+        Assert.True(progress.IsToolUnlocked(ContentIds.ToolPet));
+        Assert.True(progress.IsToolUnlocked(ContentIds.ToolTickle));
+        Assert.True(progress.IsToolUnlocked(ContentIds.ToolBoxingGlove));
+    }
+
+    [Fact]
     public void Purchase_InsufficientFundsDoesNotPartiallyMutate()
     {
         var progress = new BuddyProgressState(1.0);
@@ -84,9 +103,8 @@ public sealed class PurchaseTests
     // Not in this build's catalogue at all.
     [InlineData("tool.not_known", PurchaseStatus.InvalidContentId)]
     [InlineData("care.lab_food", PurchaseStatus.InvalidContentId)]
-    // Owned from the first save and never sold (FR-013.1).
+    // Grab is the one fresh-save tool and is never sold.
     [InlineData("tool.grab", PurchaseStatus.NotPurchasable)]
-    [InlineData("tool.boxing_glove", PurchaseStatus.NotPurchasable)]
     // Unfinished slices are invisible, and an invisible entry cannot be bought.
     [InlineData("tool.meal", PurchaseStatus.NotAvailable)]
     [InlineData("upgrade.strength", PurchaseStatus.NotAvailable)]
@@ -120,6 +138,9 @@ public sealed class PurchaseTests
     }
 
     [Theory]
+    [InlineData(ToolId.Pet)]
+    [InlineData(ToolId.Tickle)]
+    [InlineData(ToolId.BoxingGlove)]
     [InlineData(ToolId.Baseball)]
     [InlineData(ToolId.Meal)]
     [InlineData(ToolId.BaseballBat)]
@@ -131,6 +152,7 @@ public sealed class PurchaseTests
     [InlineData(ToolId.Drink)]
     [InlineData(ToolId.Shotgun)]
     [InlineData(ToolId.RepairKit)]
+    [InlineData(ToolId.PowerGrab)]
     public void EveryUnownedToolIsRejectedAtTheSelectionBoundary(ToolId tool)
     {
         // One rule for the whole catalogue: selection asks about ownership, not about which
@@ -146,18 +168,18 @@ public sealed class PurchaseTests
     }
 
     [Fact]
-    public void NewSaveOwnsExactlyTheFourStartingTools()
+    public void NewSaveOwnsExactlyGrab()
     {
         var progress = new BuddyProgressState(1.0);
 
         Assert.Equal(0, progress.BalanceMilliCredits);
         Assert.Equal(ToolId.Grab, progress.SelectedTool);
-        foreach (string id in CataloguePolicy.NewSaveUnlockedContentIds)
-            Assert.True(progress.IsToolUnlocked(id), id);
+        Assert.Equal(new[] { ContentIds.ToolGrab }, CataloguePolicy.NewSaveUnlockedContentIds);
+        Assert.True(progress.IsToolUnlocked(ContentIds.ToolGrab));
 
         foreach (string id in CataloguePolicy.LaunchContentIds)
         {
-            if (!CataloguePolicy.NewSaveUnlockedContentIds.Contains(id))
+            if (id != ContentIds.ToolGrab)
                 Assert.False(progress.IsToolUnlocked(id), id);
         }
     }
