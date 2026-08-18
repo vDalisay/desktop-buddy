@@ -68,7 +68,9 @@ If documents conflict, apply the order above. Stop and ask the project owner onl
 
 ## Continuous Integration
 
-CI runs on a single self-hosted Linux runner (Ubuntu 24.04 under WSL2) on the owner's machine. GitHub-hosted minutes are exhausted, so every job is `runs-on: self-hosted`. There is one runner, so all jobs across all branches run one at a time.
+CI runs on GitHub-hosted Linux runners (`ubuntu-latest`). The repository is public, so Actions minutes are free and jobs across branches run in parallel.
+
+A self-hosted runner exists but is stopped and deliberately unused. Do not reintroduce `runs-on: self-hosted`: on a public repository a fork's pull request carries its own workflow file, so a self-hosted label would run untrusted code on the owner's machine.
 
 - **Push, any branch** runs `CI / quick` only: compile, domain unit tests, and the Steam-binary guard.
 - **Pull request to `main`** runs `CI / build-test` (the full scenario and journey sweep) and `Asset Forge CI / verify`.
@@ -79,7 +81,7 @@ CI runs on a single self-hosted Linux runner (Ubuntu 24.04 under WSL2) on the ow
 - The runner is Linux. Any test that feeds a path into code calling `Path.GetFullPath` must build that path per OS, for example `OperatingSystem.IsWindows() ? @"C:\save-test" : "/save-test"`. A hardcoded `C:\...` literal is not absolute on Linux: `GetFullPath` silently prefixes the working directory, so lookups miss instead of throwing. This is exactly what made `ProgressStoreTests` fail on Linux.
 - Do not reintroduce `--filter "FullyQualifiedName!~ProgressStoreTests"`. That bug is fixed and the full domain suite passes on Linux.
 - Allocation tests using `GC.GetAllocatedBytesForCurrentThread()` must retry until the measurement settles. Tiered-JIT promotion is asynchronous, allocates on the measuring thread, and flakes under full-suite load.
-- A queued run is not a failed run. The runner is offline whenever the owner's machine is off, and work waits rather than erroring.
+- The split between the push job and the pull-request jobs exists for fast feedback, not for cost. Keep it.
 
 ## Definition of Done
 
