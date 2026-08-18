@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.App;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
@@ -18,6 +19,9 @@ namespace DesktopBuddy.Tools;
 [GlobalClass]
 public partial class DroppedToolInteractionComponent : Node2D
 {
+    private const float PickRadius = 12.0f;
+    private const int MaxPickResults = 8;
+
     private LooseObjectRegistry _objects = null!;
     private InteractionDamageComponent _pipeline = null!;
     private CursorToolController _cursorTools = null!;
@@ -97,6 +101,44 @@ public partial class DroppedToolInteractionComponent : Node2D
         // branch. If selection policy ever changes, no duplicate tool is left behind.
         RemoveDropped(dropped);
         return false;
+    }
+
+    /// <summary>Finds the nearest eligible dropped tool under one double-click and re-equips it.</summary>
+    public bool TryReequipAt(Vector2 world)
+    {
+        RequireInitialized();
+        PhysicsDirectSpaceState2D? space = GetWorld2D()?.DirectSpaceState;
+        if (space is null)
+            return false;
+
+        var query = new PhysicsShapeQueryParameters2D
+        {
+            Shape = new CircleShape2D { Radius = PickRadius },
+            Transform = new Transform2D(0.0f, world),
+            CollisionMask = CollisionLayers.LooseObjects,
+            CollideWithBodies = true,
+            CollideWithAreas = false,
+        };
+        Godot.Collections.Array<Godot.Collections.Dictionary> hits = space.IntersectShape(query, MaxPickResults);
+        DroppedCursorToolBody? nearest = null;
+        float nearestDistance = float.MaxValue;
+        foreach (Godot.Collections.Dictionary hit in hits)
+        {
+            if (!hit.TryGetValue("collider", out Variant colliderValue) ||
+                colliderValue.AsGodotObject() is not DroppedCursorToolBody candidate ||
+                !GodotObject.IsInstanceValid(candidate) || candidate.RuntimeId == 0)
+            {
+                continue;
+            }
+
+            float distance = candidate.GlobalPosition.DistanceSquaredTo(world);
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = candidate;
+            }
+        }
+        return nearest is not null && TryReequip(nearest);
     }
 
     /// <summary>
