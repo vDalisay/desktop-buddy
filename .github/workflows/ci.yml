@@ -19,7 +19,34 @@ env:
   DOTNET_NOLOGO: "1"
 
 jobs:
+  # Every push, any branch: does it still compile and do the unit tests pass?
+  # Kept deliberately short so agent branches get feedback in a minute or two.
+  quick:
+    if: github.event_name == 'push'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build solution
+        run: dotnet build DesktopBuddy.sln -c Debug
+
+      - name: Domain unit tests
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
+
+      - name: Fail if any Steam SDK binary is present
+        run: |
+          if git ls-files | grep -iE 'steam_api(64)?\.(dll|so|dylib)|steam_appid\.txt'; then
+            echo "Proprietary/dev Steam files must not be committed."; exit 1;
+          fi
+
+  # Pull requests and manual dispatch: the full Godot scenario and journey sweep.
   build-test:
+    if: github.event_name != 'push'
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
