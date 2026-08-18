@@ -6,7 +6,7 @@ namespace DesktopBuddy.Work;
 
 /// <summary>
 /// Work-only typing feedback. The sound is generated in memory so the demo has no placeholder
-/// asset dependency, and it reads the machine-local Work mute preference at playback time so
+/// asset dependency, and it reads the machine-local Work typing preference at playback time so
 /// the setting never suppresses unrelated SFX.
 /// </summary>
 public partial class WorkCompanionView
@@ -29,9 +29,7 @@ public partial class WorkCompanionView
         if (count <= 0 || _sandbox is null || !GodotObject.IsInstanceValid(_sandbox))
             return;
 
-        // MuteInWorkMode is the legacy persisted field name. Its shipping UI now explicitly
-        // defines the value as "Mute Work Typing"; retaining the key keeps old settings valid.
-        if (_sandbox.Shell.CurrentLocalSettings.MuteInWorkMode)
+        if (_sandbox.Shell.CurrentLocalSettings.MuteWorkTyping)
             return;
 
         EnsureTypingAudio();
