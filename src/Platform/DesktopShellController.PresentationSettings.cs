@@ -48,11 +48,12 @@ public partial class DesktopShellController
     }
 
     /// <summary>
-    /// Work Mode silence is a mute of the whole mix rather than a volume change, so the sliders
-    /// keep their positions and come back exactly where the player left them.
+    /// Work Mode no longer uses its local mute preference to silence the whole mixer. The
+    /// setting is scoped to the companion's typing cue so impacts, rewards, menu feedback and
+    /// any future Work-specific SFX remain audible. The legacy persisted field name is kept to
+    /// avoid invalidating existing settings files.
     /// </summary>
-    internal void ApplyAudioSettings() =>
-        AudioMix.Apply(_settings, silenceAll: _settings.MuteInWorkMode && Mode == DomainInputMode.Work);
+    internal void ApplyAudioSettings() => AudioMix.Apply(_settings);
 
     private void ApplyZoom(double zoom)
     {
