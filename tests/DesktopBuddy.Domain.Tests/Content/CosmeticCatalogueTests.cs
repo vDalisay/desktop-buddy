@@ -56,7 +56,8 @@ public sealed class CosmeticCatalogueTests
             CosmeticDefinition[] definitions = CharacterFeatureCatalog.Shipped.GetDefinitions(slot).ToArray();
             string defaultId = CharacterFeatureCatalog.Shipped.GetDefaultId(slot);
             CosmeticDefinition defaultDefinition = Assert.Single(
-                definitions.Where(definition => definition.Id == defaultId));
+                definitions,
+                definition => definition.Id == defaultId);
             Assert.True(defaultDefinition.IsFreeDefault);
             Assert.Null(defaultDefinition.OwnershipContentId);
 
