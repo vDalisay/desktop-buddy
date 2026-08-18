@@ -131,6 +131,9 @@ jobs:
       - name: Grab-throw journey
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_grab_throw --seed=1
 
+      - name: Dropped-tool round-trip scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=dropped_tool_round_trip --seed=1
+
       - name: Walk-jump journey
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=lab_walk_jump --seed=1
 
