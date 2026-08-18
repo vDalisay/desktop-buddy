@@ -148,6 +148,9 @@ jobs:
       - name: Capture - grenade lifecycle
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_fuse --seed=1
 
+      - name: Capture - simultaneous grenade presentation
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_multi_capture --seed=1
+
       - name: Capture - Paint Buddy limb and neck mapping
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=paint_limb_pose_mapping --seed=1
 
