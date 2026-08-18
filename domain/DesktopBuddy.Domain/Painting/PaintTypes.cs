@@ -27,7 +27,12 @@ public readonly record struct PaintHit(PaintPart Part, PaintPoint Uv, double Dep
         Uv.X >= 0.0 && Uv.X <= 1.0 && Uv.Y >= 0.0 && Uv.Y <= 1.0;
 }
 
-/// <summary>Two atlas lanes share each limb's existing 512x512 surface.</summary>
+/// <summary>
+/// Every endpoint that owns a torso connector uses the same two-lane atlas: the visible endpoint
+/// is on the left half and its connector is on the right. Head/neck deliberately follows the exact
+/// same rule as hands/arms and feet/legs, so painting the neck can never overwrite visible head
+/// pixels and normal head painting can never spill into the neck lane.
+/// </summary>
 public readonly record struct PaintUvRegion(double Start, double Width)
 {
     public static PaintUvRegion Full { get; } = new(0.0, 1.0);
@@ -38,11 +43,16 @@ public readonly record struct PaintUvRegion(double Start, double Width)
     public int PixelWidth => (int)Math.Round(Width * PaintPolicy.SurfaceSize);
 
     public static bool IsLimb(PaintPart part) => part is
-        PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot;
+        PaintPart.Head or PaintPart.LeftHand or PaintPart.RightHand or PaintPart.LeftFoot or PaintPart.RightFoot;
 
-    public static PaintUvRegion For(PaintHit hit) => IsLimb(hit.Part)
-        ? hit.IsConnector ? LimbConnector : LimbEnd
-        : Full;
+    public static PaintUvRegion For(PaintHit hit)
+    {
+        if (hit.IsConnector && hit.Part == PaintPart.Head)
+            return LimbConnector;
+        if (IsLimb(hit.Part))
+            return hit.IsConnector ? LimbConnector : LimbEnd;
+        return Full;
+    }
 
     public PaintPoint MapLocal(PaintPoint uv) => new(Start + (Wrap(uv.X) * Width), uv.Y);
     public double LocalU(double atlasU) => (atlasU - Start) / Width;

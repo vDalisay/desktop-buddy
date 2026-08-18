@@ -1,0 +1,247 @@
+using System;
+using DesktopBuddy.App;
+using Godot;
+
+namespace DesktopBuddy.Tools;
+
+/// <summary>
+/// Presentation punctuation and a narrow room-boundary sweep for the existing physical projectile.
+/// Buddy/loose-object contact detection and damage remain owned by ProjectileBody's solver path.
+/// The sweep exists only for the static room bounds, where a very fast capture-polish pistol can
+/// cross a thin wall between discrete solver samples. It makes that wall contact deterministic
+/// without turning engine CCD back on and thereby changing the measured Buddy impact impulse.
+/// </summary>
+public partial class ProjectileBody
+{
+    private ProjectileTrailGlow2D? _trailGlow;
+    private int _smokeSpawnedForInteractionId = -1;
+    private int _sweepInteractionId = -1;
+    private Vector2 _sweepPreviousPosition;
+    private Vector2 _impactFxPoint;
+    private bool _hasImpactFxPoint;
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (State != ProjectileState.Live)
+            return;
+
+        if (_sweepInteractionId != InteractionId)
+        {
+            _sweepInteractionId = InteractionId;
+            _sweepPreviousPosition = LaunchPosition;
+            _impactFxPoint = Vector2.Zero;
+            _hasImpactFxPoint = false;
+        }
+
+        Vector2 current = GlobalPosition;
+        if (!current.IsEqualApprox(_sweepPreviousPosition))
+            SweepRoomBounds(_sweepPreviousPosition, current);
+
+        if (State == ProjectileState.Live)
+            _sweepPreviousPosition = GlobalPosition;
+    }
+
+    public override void _Process(double delta)
+    {
+        EnsurePunctuationVisual();
+
+        if (_trailGlow is not null)
+        {
+            bool live = State == ProjectileState.Live && Visible;
+            _trailGlow.SetTrail(
+                live ? LocalStreakForward() : Vector2.Zero,
+                Radius,
+                _trailColor,
+                live);
+        }
+
+        if (HasHit && _smokeSpawnedForInteractionId != InteractionId)
+        {
+            _smokeSpawnedForInteractionId = InteractionId;
+            SpawnImpactSmoke(_hasImpactFxPoint ? _impactFxPoint : GlobalPosition);
+        }
+    }
+
+    private void SweepRoomBounds(Vector2 from, Vector2 to)
+    {
+        World2D? world = GetWorld2D();
+        if (world is null)
+            return;
+
+        PhysicsDirectSpaceState2D? space = world.DirectSpaceState;
+        if (space is null)
+            return;
+
+        PhysicsRayQueryParameters2D query = PhysicsRayQueryParameters2D.Create(
+            from,
+            to,
+            CollisionLayers.RoomBounds);
+        query.CollideWithBodies = true;
+        query.CollideWithAreas = false;
+        Godot.Collections.Dictionary hit = space.IntersectRay(query);
+        if (hit.Count == 0 || !hit.TryGetValue("position", out Variant positionValue))
+            return;
+
+        Vector2 point = positionValue.AsVector2();
+        _impactFxPoint = point;
+        _hasImpactFxPoint = true;
+        _contactObserved = true;
+        _contactTicks = 0;
+        _hitBodyId = 0;
+
+        // This is a room wall/floor hit, so no gameplay attribution is waiting on the projectile.
+        // Stop it exactly at the swept contact and retire it immediately; Buddy/loose-object hits
+        // continue to use the normal settling window so their solver impulse can still be scored.
+        GlobalPosition = point;
+        LinearVelocity = Vector2.Zero;
+        AngularVelocity = 0.0f;
+        Spend();
+
+        _smokeSpawnedForInteractionId = InteractionId;
+        SpawnImpactSmoke(point);
+    }
+
+    private void EnsurePunctuationVisual()
+    {
+        if (GodotObject.IsInstanceValid(_trailGlow))
+            return;
+
+        _trailGlow = new ProjectileTrailGlow2D { Name = "BrightTracer" };
+        AddChild(_trailGlow);
+    }
+
+    private void SpawnImpactSmoke(Vector2 worldPoint)
+    {
+        Node? parent = GetParent();
+        if (parent is null || !GodotObject.IsInstanceValid(parent))
+            return;
+
+        var smoke = new BulletImpactSmoke2D
+        {
+            Name = "BulletImpactSmoke",
+            GlobalPosition = worldPoint,
+        };
+        parent.AddChild(smoke);
+        smoke.GlobalPosition = worldPoint;
+        smoke.Start(_approachVelocity);
+    }
+}
+
+/// <summary>Layered emissive-looking 2D tracer. It is visual-only and follows the projectile.</summary>
+internal sealed partial class ProjectileTrailGlow2D : Node2D
+{
+    private Vector2 _forward;
+    private float _radius;
+    private Color _color;
+    private bool _live;
+
+    public void SetTrail(Vector2 forward, float radius, Color color, bool live)
+    {
+        _forward = forward;
+        _radius = radius;
+        _color = color;
+        _live = live;
+        Visible = live;
+        QueueRedraw();
+    }
+
+    public override void _Draw()
+    {
+        if (!_live || _forward == Vector2.Zero)
+            return;
+
+        float length = _radius * 8.5f;
+        Vector2 tail = -_forward * length;
+        Color halo = new(_color.R, _color.G, _color.B, 0.38f);
+        Color core = _color.Lightened(0.48f);
+        DrawLine(Vector2.Zero, tail, halo, MathF.Max(2.4f, _radius * 3.5f), true);
+        DrawLine(Vector2.Zero, tail, core, MathF.Max(1.4f, _radius * 1.25f), true);
+    }
+}
+
+/// <summary>
+/// Compatibility-renderer-safe CPU smoke burst. Instead of hand-drawing a few circles, one tiny
+/// procedural soft-noise texture is emitted by an actual particle system with randomized speed,
+/// scale and lifetime. The pool size is naturally bounded by one short-lived node per impact and
+/// each node frees itself after the one-shot has finished.
+/// </summary>
+internal sealed partial class BulletImpactSmoke2D : Node2D
+{
+    private const float NodeLifetimeSeconds = 0.95f;
+    private static ImageTexture? _sharedSmokeTexture;
+    private float _remaining = NodeLifetimeSeconds;
+
+    public void Start(Vector2 approachVelocity)
+    {
+        Vector2 incoming = approachVelocity.LengthSquared() > 0.001f
+            ? approachVelocity.Normalized()
+            : Vector2.Right;
+        Vector2 plume = (-incoming + (Vector2.Up * 0.85f)).Normalized();
+
+        var particles = new CpuParticles2D
+        {
+            Name = "SmokeParticles",
+            Amount = 14,
+            Lifetime = 0.62f,
+            LifetimeRandomness = 0.32f,
+            OneShot = true,
+            Explosiveness = 0.92f,
+            Randomness = 0.72f,
+            Direction = plume,
+            Spread = 58.0f,
+            Gravity = new Vector2(0.0f, -22.0f),
+            InitialVelocityMin = 18.0f,
+            InitialVelocityMax = 58.0f,
+            ScaleAmountMin = 0.55f,
+            ScaleAmountMax = 1.55f,
+            Color = new Color(0.50f, 0.52f, 0.55f, 0.58f),
+            Texture = SmokeTexture(),
+            LocalCoords = false,
+            Emitting = true,
+        };
+        AddChild(particles);
+    }
+
+    public override void _Process(double delta)
+    {
+        _remaining -= (float)Math.Max(0.0, delta);
+        if (_remaining <= 0.0f)
+            QueueFree();
+    }
+
+    private static ImageTexture SmokeTexture()
+    {
+        if (GodotObject.IsInstanceValid(_sharedSmokeTexture))
+            return _sharedSmokeTexture!;
+
+        const int size = 32;
+        Image image = Image.CreateEmpty(size, size, false, Image.Format.Rgba8);
+        image.Fill(Colors.Transparent);
+        float center = (size - 1) * 0.5f;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float nx = (x - center) / center;
+                float ny = (y - center) / center;
+                float distance = Mathf.Sqrt((nx * nx) + (ny * ny));
+                if (distance >= 1.0f)
+                    continue;
+
+                // Cheap deterministic cloud breakup: several smooth trigonometric lobes perturb
+                // a radial falloff so overlapping particles read as smoke rather than grey discs.
+                float noise =
+                    0.74f +
+                    (0.12f * Mathf.Sin((x * 0.73f) + (y * 0.31f))) +
+                    (0.10f * Mathf.Sin((x * 0.21f) - (y * 0.67f))) +
+                    (0.06f * Mathf.Cos((x + y) * 0.91f));
+                float edge = Mathf.Pow(1.0f - distance, 1.75f);
+                float alpha = Mathf.Clamp(edge * noise, 0.0f, 1.0f);
+                image.SetPixel(x, y, new Color(0.86f, 0.88f, 0.90f, alpha));
+            }
+        }
+
+        _sharedSmokeTexture = ImageTexture.CreateFromImage(image);
+        return _sharedSmokeTexture;
+    }
+}

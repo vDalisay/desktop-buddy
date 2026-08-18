@@ -46,12 +46,23 @@ public partial class Win98CatalogGrid : ScrollContainer
 
     public string? SelectedId => _selectedId;
 
-    public bool IsAccented(string id) =>
+    /// <summary>
+    /// Historical selection oracle retained for existing focused scenarios. The selected state is
+    /// now rendered as the inset preview outline; persistent caller-owned state has its own oracle.
+    /// </summary>
+    public bool IsAccented(string id) => IsPreviewOutlined(id);
+
+    /// <summary>Persistent caller-authored outer accent, independent of preview selection.</summary>
+    public bool IsPersistentAccented(string id) =>
         _tiles.TryGetValue(id, out TileParts? parts) &&
         new[] { "normal", "hover", "pressed", "hover_pressed", "focus" }.All(
             state => parts.Button.HasThemeStyleboxOverride(state)) &&
         parts.Button.GetThemeStylebox("normal") is StyleBoxFlat border &&
         border.BorderColor == Win98ThemeFactory.ActiveTitle;
+
+    /// <summary>Inset outline owned by the grid's current selected/preview item.</summary>
+    public bool IsPreviewOutlined(string id) =>
+        _tiles.TryGetValue(id, out TileParts? parts) && parts.SelectionOutline.Visible;
 
     public override void _Ready()
     {
@@ -105,7 +116,11 @@ public partial class Win98CatalogGrid : ScrollContainer
 
         _selectedId = id;
         foreach ((string key, TileParts tile) in _tiles)
-            tile.Button.ButtonPressed = string.Equals(key, id, StringComparison.Ordinal);
+        {
+            bool selected = string.Equals(key, id, StringComparison.Ordinal);
+            tile.Button.ButtonPressed = selected;
+            tile.SelectionOutline.Visible = selected;
+        }
         parts.Button.GrabFocus();
         if (notify)
             SelectionChanged?.Invoke(id);
@@ -256,7 +271,28 @@ public partial class Win98CatalogGrid : ScrollContainer
         badge.AddThemeFontSizeOverride("font_size", 11);
         footer.AddChild(badge);
 
-        return new TileParts(button, preview, name, secondary, badge);
+        // Selection is deliberately a separate inset outline. A caller may use the outer accent
+        // for a persistent state such as Equipped while the player previews a different tile.
+        var selectionOutline = new PanelContainer
+        {
+            Name = "PreviewSelectionOutline",
+            MouseFilter = MouseFilterEnum.Ignore,
+            Visible = false,
+            ZIndex = 4,
+        };
+        selectionOutline.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        selectionOutline.OffsetLeft = 3;
+        selectionOutline.OffsetTop = 3;
+        selectionOutline.OffsetRight = -3;
+        selectionOutline.OffsetBottom = -3;
+        var selectionBox = Win98ThemeFactory.Flat(Colors.Transparent);
+        selectionBox.DrawCenter = false;
+        selectionBox.BorderColor = Win98ThemeFactory.ActiveTitle;
+        selectionBox.SetBorderWidthAll(2);
+        selectionOutline.AddThemeStyleboxOverride("panel", selectionBox);
+        button.AddChild(selectionOutline);
+
+        return new TileParts(button, preview, name, secondary, badge, selectionOutline);
     }
 
     private static void Apply(TileParts parts, Win98CatalogItemPresentation item)
@@ -373,5 +409,6 @@ public partial class Win98CatalogGrid : ScrollContainer
         TextureRect Preview,
         Label Name,
         Label Secondary,
-        Label Badge);
+        Label Badge,
+        PanelContainer SelectionOutline);
 }

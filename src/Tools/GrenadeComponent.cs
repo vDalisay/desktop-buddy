@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
@@ -13,28 +14,14 @@ using Godot;
 namespace DesktopBuddy.Tools;
 
 /// <summary>
-/// Authoritative physics-clock worker for the Grenade's pin, fuse, and blast (M5 Task 6).
-///
-/// <para>The grenade is an ordinary launchable: the spawn key places it, the Grab tether
-/// carries it, and <see cref="PullbackLauncherComponent"/> aims and throws it on the same
-/// chord as the Baseball. This component adds only the three things a ball has no concept
-/// of — the pin comes out on the first secondary press, the fuse runs in routed ticks once
-/// the player lets go, and the detonation puts an impulse through the shared pain
-/// pipeline.</para>
-///
-/// <para><b>Nothing here scales damage.</b> The blast hands
-/// <see cref="InteractionDamageComponent.ApplyBlastImpulse"/> an equivalent impulse shaped
-/// only by distance falloff, and the shared curve turns that into pain exactly as it does
-/// for a bat or a bullet (`DECISIONS.md`, the no-per-tool-multiplier rule).</para>
-///
-/// <para>One grenade at a time, because the launcher's spawn policy already replaces every
-/// loose object when it places a new one. That is a spawn policy rather than a cap, and it
-/// is the Baseball's behaviour unchanged.</para>
+/// Authoritative physics-clock worker for grenade pins, independent fuses and blasts.
+/// Grenades remain ordinary launchable loose objects; this component observes every live grenade
+/// in the registry and owns only grenade-specific state. Multiple grenades therefore share the
+/// existing loose-object capacity/eviction policy without sharing one fuse.
 /// </summary>
 [GlobalClass]
 public partial class GrenadeComponent : Node2D
 {
-    /// <summary>Slack on the floor test, in px — the same tolerance the registry uses.</summary>
     private const float GroundContactTolerance = 2.0f;
 
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
@@ -45,64 +32,42 @@ public partial class GrenadeComponent : Node2D
     [Export] public GrenadeProfile Profile { get; set; } = null!;
 
     private readonly PinBody[] _pins = new PinBody[GrenadeProfile.PinPoolCapacity];
+    private readonly Dictionary<int, TrackedGrenadeState> _tracked = new();
+    private readonly int[] _detonateBuffer = new int[LooseObjectRegistry.Capacity];
 
     private Action<LooseObjectBody>? _despawn;
-    private LooseObjectBody? _tracked;
-    private GrenadeFusePhase _phase = GrenadeFusePhase.Fresh;
     private bool _pendingPinPull;
-    private float _previousSpeed;
-    private bool _wasOnFloor;
-    private int _ticksSinceThud;
+    private int _primaryRuntimeId;
 
     public bool IsInitialized { get; private set; }
+    public IReadOnlyList<PinBody> Pins => _pins;
 
     /// <summary>
-    /// The pooled cosmetic pins, for a presenter that draws them. Exposed read-only: a
-    /// presenter may look at where a pin is and whether it is live, and may not drop,
-    /// park, or move one — those are this component's, on the routed tick.
+    /// Backward-compatible primary grenade view used by the existing presenter/lab telemetry.
+    /// With multiple grenades this is the most recently adopted live grenade; fuse authority is
+    /// still maintained independently for every tracked runtime ID.
     /// </summary>
-    public System.Collections.Generic.IReadOnlyList<PinBody> Pins => _pins;
+    public LooseObjectBody? Tracked => PrimaryState()?.Body;
+    public int TrackedCount => _tracked.Count;
+    public GrenadeFuseStage Stage => PrimaryState()?.Phase.Stage ?? GrenadeFuseStage.Pinned;
+    public int FuseTicksRemaining => PrimaryState()?.Phase.TicksRemaining ?? 0;
+    public bool PinIsOut => PrimaryState()?.Phase.PinIsOut ?? false;
+    public bool IsCountingDown => PrimaryState()?.Phase.IsCountingDown ?? false;
 
-    /// <summary>The grenade this component is following, or <c>null</c>.</summary>
-    public LooseObjectBody? Tracked =>
-        GodotObject.IsInstanceValid(_tracked) && _tracked!.RuntimeId != 0 ? _tracked : null;
-
-    public GrenadeFuseStage Stage => _phase.Stage;
-    public int FuseTicksRemaining => _phase.TicksRemaining;
-    public bool PinIsOut => _phase.PinIsOut;
-    public bool IsCountingDown => _phase.IsCountingDown;
-
-    // Telemetry consumed by scenarios and the laboratory panel.
     public int PinDropCount { get; private set; }
     public int DetonationCount { get; private set; }
     public int ActivePinCount { get; private set; }
     public int ThudCount { get; private set; }
     public float LastThudSpeed { get; private set; }
     public Vector2 LastBlastCenter { get; private set; }
-
-    /// <summary>Buddy parts the last blast scored positive pain on.</summary>
     public int LastBlastScoredParts { get; private set; }
-
-    /// <summary>Total pain the last blast put through the shared curve.</summary>
     public float LastBlastPain { get; private set; }
-
-    /// <summary>Dynamic bodies the last blast shoved, the grenade itself excluded.</summary>
     public int LastBlastShovedBodies { get; private set; }
 
-    /// <summary>Fired on the tick the pin leaves the grenade, at the grenade's position.</summary>
     public event Action<Vector2>? PinPulled;
-
-    /// <summary>Fired on the tick the grenade goes off, at the blast centre.</summary>
     public event Action<Vector2>? Detonated;
-
-    /// <summary>Fired when a falling grenade lands hard enough to be heard.</summary>
     public event Action<float>? GroundContact;
 
-    /// <param name="despawn">
-    /// The root's loose-object removal, injected because taking a detonated grenade out of
-    /// the world also has to release the player's grab and cancel a buddy interaction, and
-    /// those are the composition root's to own — not this component's.
-    /// </param>
     public void Initialize(Action<LooseObjectBody> despawn)
     {
         if (!GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
@@ -128,22 +93,13 @@ public partial class GrenadeComponent : Node2D
         IsInitialized = true;
     }
 
-    /// <summary>
-    /// Queues the secondary-press pin pull. Routed through the same queued-input path as
-    /// every other tool intent — the component never reads a key or a button itself.
-    /// </summary>
     public void RequestPinPull() => _pendingPinPull = true;
 
-    /// <summary>
-    /// Offers a freshly created loose object to the component. A grenade is a grenade
-    /// however it got into the room — the launcher's spawn key is only the usual way — so
-    /// the root's loose-object factory hands every new body over and this decides.
-    /// </summary>
     public void NotifySpawned(LooseObjectBody body)
     {
         RequireInitialized();
-        if (Tracked is not null ||
-            !GodotObject.IsInstanceValid(body) ||
+        if (!GodotObject.IsInstanceValid(body) ||
+            body.RuntimeId == 0 ||
             body.SemanticContentId != ContentIds.ToolGrenade)
         {
             return;
@@ -152,104 +108,149 @@ public partial class GrenadeComponent : Node2D
         Adopt(body);
     }
 
-    /// <summary>Consumes queued intent and advances the fuse on the root's physics clock.</summary>
     public void PhysicsTick()
     {
         RequireInitialized();
         AdvancePins();
-        AdoptNewGrenade();
+        ReconcileRegistryGrenades();
 
-        LooseObjectBody? body = Tracked;
-        if (body is null)
-        {
-            _tracked = null;
-            _phase = GrenadeFusePhase.Fresh;
-            _pendingPinPull = false;
-            return;
-        }
-
-        bool pinPullRequested = _pendingPinPull;
+        LooseObjectBody? pinTarget = _pendingPinPull ? PlayerControlledGrenade() : null;
         _pendingPinPull = false;
 
-        GrenadeFuseResult result = GrenadeFuseMachine.Tick(
-            new GrenadeFuseInput(
-                _phase,
-                pinPullRequested,
-                PlayerControls(body),
-                Profile.ToFuseConstants()));
-        _phase = result.Phase;
-
-        if (result.PinPulled)
+        int detonateCount = 0;
+        for (int slot = 0; slot < LooseObjectRegistry.Capacity; slot++)
         {
-            DropPin(body);
-            PinDropCount++;
-            PinPulled?.Invoke(body.GlobalPosition);
+            LooseObjectBody? body = Registry.BodyAt(slot);
+            if (!IsLiveGrenade(body) || !_tracked.TryGetValue(body!.RuntimeId, out TrackedGrenadeState? state))
+                continue;
+
+            bool pinPullRequested = body == pinTarget;
+            GrenadeFuseResult result = GrenadeFuseMachine.Tick(
+                new GrenadeFuseInput(
+                    state.Phase,
+                    pinPullRequested,
+                    PlayerControls(body),
+                    Profile.ToFuseConstants()));
+            state.Phase = result.Phase;
+
+            if (result.PinPulled)
+            {
+                DropPin(body);
+                PinDropCount++;
+                PinPulled?.Invoke(body.GlobalPosition);
+            }
+
+            if (state.Phase.IsCountingDown)
+                Registry.SetProtected(body, true);
+
+            TrackGroundContact(state);
+
+            if (result.Detonated && detonateCount < _detonateBuffer.Length)
+                _detonateBuffer[detonateCount++] = body.RuntimeId;
         }
 
-        if (_phase.IsCountingDown)
+        // Despawn mutates registry slots, so detonate only after registry enumeration completes.
+        for (int index = 0; index < detonateCount; index++)
         {
-            // A live fuse must never be evicted to make room for something else: the
-            // player is owed the explosion they started. Re-asserted every tick rather
-            // than once, because the launcher clears its own aim protection on the very
-            // tick the throw releases.
-            Registry.SetProtected(body, true);
-        }
-
-        TrackGroundContact(body);
-
-        if (result.Detonated)
-        {
-            Detonate(body);
+            int runtimeId = _detonateBuffer[index];
+            if (_tracked.TryGetValue(runtimeId, out TrackedGrenadeState? state) &&
+                IsLiveGrenade(state.Body))
+            {
+                Detonate(state.Body);
+            }
         }
     }
 
-    /// <summary>Immediate recovery cleanup on the authoritative physics clock.</summary>
     public void CancelImmediately()
     {
         RequireInitialized();
-        _tracked = null;
-        _phase = GrenadeFusePhase.Fresh;
+        foreach (TrackedGrenadeState state in _tracked.Values)
+        {
+            if (IsLiveGrenade(state.Body))
+                Registry.SetProtected(state.Body, false);
+        }
+        _tracked.Clear();
+        _primaryRuntimeId = 0;
         _pendingPinPull = false;
-        _wasOnFloor = false;
-        _previousSpeed = 0.0f;
     }
 
-    /// <summary>
-    /// Picks up a freshly spawned grenade from the launcher. Adoption is a poll rather
-    /// than a spawn callback because the launcher is the one place a launchable can be
-    /// born, and it already publishes what it last placed.
-    /// </summary>
-    private void AdoptNewGrenade()
+    private void ReconcileRegistryGrenades()
     {
-        if (Tracked is not null)
-            return;
-
-        if (Launcher.CurrentLaunchableContentId != ContentIds.ToolGrenade ||
-            Launcher.CurrentLaunchable is not { } candidate)
+        for (int slot = 0; slot < LooseObjectRegistry.Capacity; slot++)
         {
+            LooseObjectBody? body = Registry.BodyAt(slot);
+            if (IsLiveGrenade(body))
+                Adopt(body!);
+        }
+
+        if (_tracked.Count == 0)
+        {
+            _primaryRuntimeId = 0;
             return;
         }
 
-        Adopt(candidate);
+        Span<int> stale = stackalloc int[LooseObjectRegistry.Capacity];
+        int staleCount = 0;
+        foreach ((int runtimeId, TrackedGrenadeState state) in _tracked)
+        {
+            if (!IsLiveGrenade(state.Body) || Registry.FindBody(runtimeId) != state.Body)
+                stale[staleCount++] = runtimeId;
+        }
+        for (int index = 0; index < staleCount; index++)
+            _tracked.Remove(stale[index]);
+
+        if (_primaryRuntimeId != 0 && !_tracked.ContainsKey(_primaryRuntimeId))
+            _primaryRuntimeId = 0;
     }
 
     private void Adopt(LooseObjectBody body)
     {
-        _tracked = body;
-        _phase = GrenadeFusePhase.Fresh;
-        _pendingPinPull = false;
-        _previousSpeed = body.LinearVelocity.Length();
-        // Starts "already on the floor" so the spawn itself is never heard as a landing.
-        _wasOnFloor = true;
-        _ticksSinceThud = Profile.ThudMinIntervalTicks;
+        if (_tracked.ContainsKey(body.RuntimeId))
+            return;
+
+        _tracked.Add(body.RuntimeId, new TrackedGrenadeState
+        {
+            Body = body,
+            Phase = GrenadeFusePhase.Fresh,
+            PreviousSpeed = body.LinearVelocity.Length(),
+            WasOnFloor = true,
+            TicksSinceThud = Profile.ThudMinIntervalTicks,
+        });
+        _primaryRuntimeId = body.RuntimeId;
     }
 
-    /// <summary>
-    /// Whether the player still has hold of this grenade — by the tether or by the
-    /// launcher's aim, which are the same fact to the fuse: control has not been let go.
-    /// A buddy holding it is deliberately <b>not</b> control; a caught live grenade goes
-    /// off in the buddy's hands.
-    /// </summary>
+    private TrackedGrenadeState? PrimaryState()
+    {
+        if (_primaryRuntimeId != 0 && _tracked.TryGetValue(_primaryRuntimeId, out TrackedGrenadeState? primary) &&
+            IsLiveGrenade(primary.Body))
+        {
+            return primary;
+        }
+
+        foreach (TrackedGrenadeState state in _tracked.Values)
+        {
+            if (IsLiveGrenade(state.Body))
+            {
+                _primaryRuntimeId = state.Body.RuntimeId;
+                return state;
+            }
+        }
+
+        _primaryRuntimeId = 0;
+        return null;
+    }
+
+    private LooseObjectBody? PlayerControlledGrenade()
+    {
+        if (Launcher.AimedBody is LooseObjectBody aimed && IsLiveGrenade(aimed))
+            return aimed;
+
+        GrabState grab = Grab.CurrentGrab;
+        return grab.Active && grab.Target is LooseObjectBody body && IsLiveGrenade(body)
+            ? body
+            : null;
+    }
+
     private bool PlayerControls(LooseObjectBody body)
     {
         if (Launcher.AimedBody == body)
@@ -259,36 +260,34 @@ public partial class GrenadeComponent : Node2D
         return grab.Active && grab.Target == body;
     }
 
-    private void TrackGroundContact(LooseObjectBody body)
+    private static bool IsLiveGrenade(LooseObjectBody? body) =>
+        GodotObject.IsInstanceValid(body) &&
+        body!.RuntimeId != 0 &&
+        body.SemanticContentId == ContentIds.ToolGrenade;
+
+    private void TrackGroundContact(TrackedGrenadeState state)
     {
-        if (_ticksSinceThud < int.MaxValue)
-            _ticksSinceThud++;
+        LooseObjectBody body = state.Body;
+        if (state.TicksSinceThud < int.MaxValue)
+            state.TicksSinceThud++;
 
         float floorY = Boundaries.InnerBounds.End.Y;
         bool onFloor = float.IsFinite(floorY) &&
                        body.GlobalPosition.Y + body.Radius >= floorY - GroundContactTolerance;
-        // The impact speed is last tick's: by the time the body is in the floor band the
-        // solver has already taken the fall out of it.
-        if (onFloor && !_wasOnFloor &&
-            _previousSpeed >= Profile.ThudMinImpactSpeed &&
-            _ticksSinceThud >= Profile.ThudMinIntervalTicks)
+        if (onFloor && !state.WasOnFloor &&
+            state.PreviousSpeed >= Profile.ThudMinImpactSpeed &&
+            state.TicksSinceThud >= Profile.ThudMinIntervalTicks)
         {
             ThudCount++;
-            LastThudSpeed = _previousSpeed;
-            _ticksSinceThud = 0;
-            GroundContact?.Invoke(_previousSpeed);
+            LastThudSpeed = state.PreviousSpeed;
+            state.TicksSinceThud = 0;
+            GroundContact?.Invoke(state.PreviousSpeed);
         }
 
-        _wasOnFloor = onFloor;
-        _previousSpeed = body.LinearVelocity.Length();
+        state.WasOnFloor = onFloor;
+        state.PreviousSpeed = body.LinearVelocity.Length();
     }
 
-    /// <summary>
-    /// Puts the blast through the two systems it belongs to and no others: the shared pain
-    /// pipeline for the buddy, and the physics world for everything the shock wave can
-    /// move. Cosmetic bodies — pins, magazines, projectile trails — are excluded by
-    /// construction, because they are on no collision layer the query asks for.
-    /// </summary>
     private void Detonate(LooseObjectBody body)
     {
         Vector2 center = body.GlobalPosition;
@@ -297,8 +296,7 @@ public partial class GrenadeComponent : Node2D
         LastBlastScoredParts = 0;
         LastBlastPain = 0.0f;
 
-        // Pain: one sample per buddy part, at its surface, through the unmodified curve.
-        System.Collections.Generic.IReadOnlyList<PuppetPartBody> parts = Pipeline.Buddy.Rig.Parts;
+        IReadOnlyList<PuppetPartBody> parts = Pipeline.Buddy.Rig.Parts;
         for (int index = 0; index < parts.Count; index++)
         {
             PuppetPartBody part = parts[index];
@@ -325,10 +323,10 @@ public partial class GrenadeComponent : Node2D
         DetonationCount++;
         Detonated?.Invoke(center);
 
-        // "Nothing left to hold": the slot is freed and the body leaves the world. The
-        // root's removal also releases the player's grab and cancels a buddy interaction.
-        _tracked = null;
-        _phase = new GrenadeFusePhase(GrenadeFuseStage.Detonated, 0);
+        int runtimeId = body.RuntimeId;
+        _tracked.Remove(runtimeId);
+        if (_primaryRuntimeId == runtimeId)
+            _primaryRuntimeId = 0;
         _despawn!(body);
     }
 
@@ -372,8 +370,6 @@ public partial class GrenadeComponent : Node2D
             if (falloff <= 0.0f)
                 continue;
 
-            // Straight up for anything sitting exactly on the centre, so a grenade that
-            // goes off underneath something still throws it somewhere.
             Vector2 direction = distance > 0.001f ? away / distance : Vector2.Up;
             target.ApplyCentralImpulse(direction * (Profile.ShoveImpulseAtCenter * falloff));
             shoved++;
@@ -397,8 +393,6 @@ public partial class GrenadeComponent : Node2D
         if (pin is null)
             return;
 
-        // Away from the grenade and a little up, so the pin reads as thrown rather than
-        // dropped. Deterministic: the side follows the grenade's own motion.
         float side = body.LinearVelocity.X >= 0.0f ? -1.0f : 1.0f;
         pin.Drop(
             body.GlobalPosition + new Vector2(side * (body.Radius + 3.0f), -2.0f),
@@ -424,5 +418,14 @@ public partial class GrenadeComponent : Node2D
     {
         if (!IsInitialized)
             throw new InvalidOperationException("GrenadeComponent used before initialization.");
+    }
+
+    private sealed class TrackedGrenadeState
+    {
+        public required LooseObjectBody Body { get; init; }
+        public GrenadeFusePhase Phase { get; set; } = GrenadeFusePhase.Fresh;
+        public float PreviousSpeed { get; set; }
+        public bool WasOnFloor { get; set; }
+        public int TicksSinceThud { get; set; }
     }
 }

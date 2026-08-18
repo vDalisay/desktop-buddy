@@ -1,4 +1,7 @@
 using System;
+using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Objects;
 using DesktopBuddy.Platform;
 using Godot;
 
@@ -13,36 +16,58 @@ public enum GrenadeAudioCue
 
     /// <summary>A grenade landing hard enough to be heard.</summary>
     Thud = 2,
+
+    /// <summary>The small mechanical cue when the pin comes free.</summary>
+    PinPull = 3,
+
+    /// <summary>The continuous fuse layer while at least one grenade is counting down.</summary>
+    Fuse = 4,
 }
 
 /// <summary>
-/// Provisional clean-room audio seam for the Grenade, on exactly the
-/// <see cref="SwingAudioComponent"/> idiom: two short PCM clips synthesized once at startup
-/// and routed through one authored player — no sampled source file, and no audio-server
-/// volume mutation.
-///
-/// <para>The thud's gating lives in <see cref="GrenadeComponent"/> rather than here,
-/// because "did this grenade land hard" is a fact about the physics, not about the sound.
-/// This component plays what it is told and counts what it played, so a scenario can use
-/// the counters as oracles.</para>
+/// Replacement-ready grenade audio. Existing clean-room synthesized Boom/Thud remain the fallback,
+/// while capture polish adds a mechanical pin cue and a quiet fuse loop on a dedicated player so
+/// an explosion can never truncate the countdown layer of another live grenade. Owner-authored
+/// streams can be assigned later without changing event semantics or gameplay.
 /// </summary>
 [GlobalClass]
 public partial class GrenadeAudioComponent : Node
 {
     private const int MixRate = 22_050;
+    private const int PunctuationPolyphony = 8;
 
     [Export] public GrenadeComponent Grenades { get; set; } = null!;
     [Export] public AudioStreamPlayer Player { get; set; } = null!;
 
-    private AudioStreamWav _boom = null!;
-    private AudioStreamWav _thud = null!;
+    // Optional owner-authored replacements. Null preserves the deterministic clean-room fallbacks.
+    [Export] public AudioStream? BoomStream { get; set; }
+    [Export] public AudioStream? ThudStream { get; set; }
+    [Export] public AudioStream? PinPullStream { get; set; }
+    [Export] public AudioStream? FuseLoopStream { get; set; }
+
+    private AudioStream _boom = null!;
+    private AudioStream _thud = null!;
+    private AudioStream _pinPull = null!;
+    private AudioStream _fuseLoop = null!;
+    private AudioStreamPlayer _fusePlayer = null!;
 
     public bool IsInitialized { get; private set; }
+
+    /// <summary>
+    /// Historical oracle retained for the original Boom/Thud fallback pair. Capture additions expose
+    /// their own count so old grenade-feel assertions remain meaningful rather than silently moving.
+    /// </summary>
     public int GeneratedStreamCount { get; private set; }
+    public int CaptureSupplementalGeneratedStreamCount { get; private set; }
+    public int ReplacementReadyCueCount => 4;
     public int PlayCount { get; private set; }
     public int BoomCount { get; private set; }
     public int ThudCount { get; private set; }
+    public int PinPullCount { get; private set; }
+    public int FuseStartCount { get; private set; }
+    public int FuseStopCount { get; private set; }
     public GrenadeAudioCue LastCue { get; private set; }
+    public bool IsFuseLoopPlaying => GodotObject.IsInstanceValid(_fusePlayer) && _fusePlayer.Playing;
     public StringName RoutedBus => Player.Bus;
 
     public void Initialize()
@@ -55,10 +80,22 @@ public partial class GrenadeAudioComponent : Node
         }
 
         Player.Bus = AudioMix.Sfx;
+        // Pin pulls, thuds and especially staggered detonations are short punctuation cues. The
+        // capture branch allows several to coexist so a second grenade cannot audibly erase the
+        // tail of the first blast. Fuse ambience remains on its own single-loop player below.
+        Player.MaxPolyphony = Math.Max(PunctuationPolyphony, Player.MaxPolyphony);
+        _fusePlayer = new AudioStreamPlayer
+        {
+            Name = "GrenadeFuseLoopPlayer",
+            Bus = AudioMix.Sfx,
+            MaxPolyphony = 1,
+            ProcessMode = ProcessModeEnum.Always,
+        };
+        AddChild(_fusePlayer);
 
-        // Low burst with a noise tail: a body thump under a long decaying hiss.
-        _boom = Synthesize(
+        AudioStreamWav fallbackBoom = Synthesize(
             seconds: 0.40,
+            loop: false,
             (sample, progress) =>
             {
                 double sweep = Lerp(120.0, 38.0, Math.Sqrt(progress));
@@ -69,9 +106,9 @@ public partial class GrenadeAudioComponent : Node
                 return ((body * 0.75) + (crack * 0.55 * Math.Pow(1.0 - progress, 3.0))) *
                        attack * decay * 0.42;
             });
-        // Short, dull, and much quieter: a heavy object meeting a floor.
-        _thud = Synthesize(
+        AudioStreamWav fallbackThud = Synthesize(
             seconds: 0.09,
+            loop: false,
             (sample, progress) =>
             {
                 double body = Math.Sin(Math.Tau * 82.0 * sample / MixRate);
@@ -79,11 +116,65 @@ public partial class GrenadeAudioComponent : Node
                 double envelope = Math.Pow(1.0 - progress, 3.0);
                 return (body + grit) * envelope * 0.20;
             });
+        AudioStreamWav fallbackPin = Synthesize(
+            seconds: 0.12,
+            loop: false,
+            (sample, progress) =>
+            {
+                double ping = Math.Sin(Math.Tau * Lerp(1700.0, 760.0, progress) * sample / MixRate);
+                double scrape = DeterministicNoise(sample * 11 + 113) * 0.22;
+                return (ping * 0.72 + scrape) * Math.Pow(1.0 - progress, 3.2) * 0.22;
+            });
+        AudioStreamWav fallbackFuse = Synthesize(
+            seconds: 0.42,
+            loop: true,
+            (sample, progress) =>
+            {
+                double hiss = (
+                    DeterministicNoise(sample * 3 + 19) +
+                    DeterministicNoise(sample * 3 + 18) +
+                    DeterministicNoise(sample * 3 + 17)) / 3.0;
+                double crackleEnvelope = Math.Pow(Math.Max(0.0, Math.Sin(Math.Tau * 7.0 * progress)), 8.0);
+                double crackle = DeterministicNoise(sample * 17 + 331) * crackleEnvelope;
+                return (hiss * 0.12 + crackle * 0.24) * 0.26;
+            });
+
+        _boom = Valid(BoomStream) ? BoomStream! : fallbackBoom;
+        _thud = Valid(ThudStream) ? ThudStream! : fallbackThud;
+        _pinPull = Valid(PinPullStream) ? PinPullStream! : fallbackPin;
+        _fuseLoop = Valid(FuseLoopStream) ? FuseLoopStream! : fallbackFuse;
         GeneratedStreamCount = 2;
+        CaptureSupplementalGeneratedStreamCount = 2;
 
         Grenades.Detonated += OnDetonated;
         Grenades.GroundContact += OnGroundContact;
+        Grenades.PinPulled += OnPinPulled;
         IsInitialized = true;
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!IsInitialized || !GodotObject.IsInstanceValid(_fusePlayer))
+            return;
+
+        bool shouldPlay = HasLiveFuse();
+        if (shouldPlay == _fusePlayer.Playing)
+            return;
+
+        if (shouldPlay)
+        {
+            _fusePlayer.VolumeDb = Grenades.Profile.AudioVolumeDb - 9.0f;
+            _fusePlayer.Stream = _fuseLoop;
+            _fusePlayer.Play();
+            FuseStartCount++;
+            PlayCount++;
+            LastCue = GrenadeAudioCue.Fuse;
+        }
+        else
+        {
+            _fusePlayer.Stop();
+            FuseStopCount++;
+        }
     }
 
     public override void _ExitTree()
@@ -92,12 +183,16 @@ public partial class GrenadeAudioComponent : Node
         {
             Grenades.Detonated -= OnDetonated;
             Grenades.GroundContact -= OnGroundContact;
+            Grenades.PinPulled -= OnPinPulled;
         }
 
-        if (GodotObject.IsInstanceValid(Player))
+        foreach (AudioStreamPlayer player in new[] { Player, _fusePlayer })
         {
-            Player.Stop();
-            Player.Stream = null;
+            if (GodotObject.IsInstanceValid(player))
+            {
+                player.Stop();
+                player.Stream = null;
+            }
         }
     }
 
@@ -113,7 +208,35 @@ public partial class GrenadeAudioComponent : Node
         Play(GrenadeAudioCue.Thud, _thud);
     }
 
-    private void Play(GrenadeAudioCue cue, AudioStreamWav stream)
+    private void OnPinPulled(Vector2 _point)
+    {
+        PinPullCount++;
+        Play(GrenadeAudioCue.PinPull, _pinPull);
+    }
+
+    private bool HasLiveFuse()
+    {
+        if (!GodotObject.IsInstanceValid(Grenades.Registry))
+            return false;
+
+        LooseObjectRegistry registry = Grenades.Registry;
+        for (int index = 0; index < LooseObjectRegistry.Capacity; index++)
+        {
+            LooseObjectBody? body = registry.BodyAt(index);
+            if (!GodotObject.IsInstanceValid(body) || body!.SemanticContentId != ContentIds.ToolGrenade)
+                continue;
+
+            if (Grenades.TryGetPresentationState(body.RuntimeId, out GrenadePresentationState state) &&
+                state.Stage == GrenadeFuseStage.Live && state.FuseTicksRemaining > 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void Play(GrenadeAudioCue cue, AudioStream stream)
     {
         Player.VolumeDb = Grenades.Profile.AudioVolumeDb;
         Player.Stream = stream;
@@ -124,6 +247,7 @@ public partial class GrenadeAudioComponent : Node
 
     private static AudioStreamWav Synthesize(
         double seconds,
+        bool loop,
         Func<int, double, double> sampleAt)
     {
         int samples = Math.Max(1, (int)Math.Round(seconds * MixRate));
@@ -143,8 +267,13 @@ public partial class GrenadeAudioComponent : Node
             MixRate = MixRate,
             Stereo = false,
             Data = data,
+            LoopMode = loop ? AudioStreamWav.LoopModeEnum.Forward : AudioStreamWav.LoopModeEnum.Disabled,
+            LoopBegin = 0,
+            LoopEnd = loop ? samples - 1 : 0,
         };
     }
+
+    private static bool Valid(AudioStream? stream) => stream is not null && GodotObject.IsInstanceValid(stream);
 
     private static double DeterministicNoise(int sample)
     {

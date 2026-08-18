@@ -1,13 +1,13 @@
-[gd_resource type="Resource" script_class="GunProfile" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="FastProjectileGunProfile" load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://src/Tools/GunProfile.cs" id="1_gun"]
+[ext_resource type="Script" path="res://src/Tools/FastProjectileGunProfile.cs" id="1_gun"]
 
 [resource]
 resource_name = "ProvisionalM5Pistol"
 script = ExtResource("1_gun")
 ContentId = "tool.pistol"
 MagazineCapacity = 8
-ShotIntervalTicks = 30
+ShotIntervalTicks = 18
 ReloadTicks = 144
 ProjectilesPerShot = 1
 SpreadHalfAngleDegrees = 0.0
@@ -16,9 +16,9 @@ MinimumAimSpeedPxPerTick = 0.35
 MaxAimTurnDegreesPerTick = 6.0
 WheelDegreesPerStep = 5.0
 MaximumAimOffsetDegrees = 60.0
-MuzzleSpeed = 2400.0
+MuzzleSpeed = 4200.0
 MuzzleOffsetPx = 53.2
-ProjectileRadius = 2.0
+ProjectileRadius = 4.0
 ProjectileMass = 0.3
 ProjectileGravityScale = 0.0
 ProjectileLifetimeTicks = 120
@@ -26,18 +26,24 @@ ProjectileMaxTravelPx = 3000.0
 ContactSettleTicks = 2
 SpentLingerTicks = 3
 PoolCapacity = 24
-ProjectileColor = Color(1, 0.878431, 0.541176, 1)
-TrailColor = Color(1, 0.701961, 0.278431, 1)
+ContactShoveAtPointBlank = 270.0
+ContactShoveFullRangePx = 60.0
+ContactShoveZeroRangePx = 260.0
+ProjectileColor = Color(1, 0.94, 0.72, 1)
+TrailColor = Color(1, 0.84, 0.40, 1)
 MuzzleColor = Color(0.227451, 0.247059, 0.294118, 1)
 AccentColor = Color(0.109804, 0.121569, 0.149020, 1)
 Visual3DKind = 2
 VisualLengthPx = 56.0
 MuzzleTipFraction = 0.95
 VisualDepthOffset = 144.0
-FireShakeAmplitudePx = 1.5
-FireShakeDecayTicks = 8
-MuzzleFlashTicks = 3
-RecoilKickPx = 2.5
-RecoilTicks = 4
+FireShakeAmplitudePx = 2.25
+FireShakeDecayTicks = 10
+MuzzleFlashTicks = 4
+RecoilKickPx = 4.5
+RecoilTicks = 6
 DropsMagazineOnReload = true
+EjectsCasingOnShot = true
+CasingColor = Color(0.784314, 0.647059, 0.278431, 1)
+CasingLengthFraction = 0.08
 MagazineLingerTicks = 600

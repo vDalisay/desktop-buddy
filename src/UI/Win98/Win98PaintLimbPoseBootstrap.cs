@@ -10,9 +10,10 @@ using Godot;
 namespace DesktopBuddy.UI.Win98;
 
 /// <summary>
-/// User-testing Show limbs option. It reveals the connector visuals and spreads the hand/foot
-/// paint targets in the preview. PaintCanvasControl applies the same offsets to its trusted mapper,
-/// so the visible target and painted surface stay aligned at every preview yaw.
+/// User-testing Show limbs option. It reveals the connector visuals and spreads the head, hand and
+/// foot paint targets in the preview. PaintCanvasControl applies the same offsets to its trusted
+/// mapper, so the visible targets and painted body surfaces stay aligned at every preview yaw.
+/// The neck connector is presentation-only; the persisted connector paint atlas remains hand/foot only.
 /// </summary>
 public partial class Win98PaintLimbPoseBootstrap : Node
 {
@@ -64,7 +65,7 @@ public partial class Win98PaintLimbPoseBootstrap : Node
             {
                 Name = "PaintShowLimbsToggle",
                 Text = "Show limbs",
-                TooltipText = "Spread the hands and feet and show connectors so limb paint targets are easier to reach.",
+                TooltipText = "Spread the head, hands and feet and show connectors so the neck and limb targets are easier to inspect.",
                 FocusMode = Control.FocusModeEnum.All,
             };
             _toggle.Toggled += enabled => SetEnabled(enabled, leavingPaintEditor: false);

@@ -91,7 +91,6 @@ public partial class CursorGunVisual3D : Node3D
             ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
             Roughness = 0.7f,
             Metallic = 0.0f,
-            // The silhouettes are intentionally readable from either side of the camera.
             CullMode = BaseMaterial3D.CullModeEnum.Disabled,
         };
         _orientation = new Node3D
@@ -117,8 +116,6 @@ public partial class CursorGunVisual3D : Node3D
         _orientation.AddChild(_pump);
         BuildFlash();
 
-        // Every authored gun's mesh is built once here, on composition, rather than on the
-        // tick a player draws one.
         foreach (GunProfile? profile in gun.Profiles)
         {
             if (GodotObject.IsInstanceValid(profile))
@@ -142,8 +139,6 @@ public partial class CursorGunVisual3D : Node3D
             return;
 
         GunProfile? profile = _gun.ActiveProfile;
-        // No gun drawn, or one with nowhere to point yet: the aim model owns that state,
-        // and a barrel pointing at a direction nobody chose is worse than no barrel.
         if (!_gun.IsActive || profile is null || _gun.AimForward == Vector2.Zero)
         {
             Visible = false;
@@ -166,8 +161,6 @@ public partial class CursorGunVisual3D : Node3D
         }
 
         Vector2 aim = _gun.AimForward;
-        // Recoil is a presentation offset on the drawn gun, never on the aim: a burst may
-        // shove the weapon about, but the next shot still goes where the player pointed.
         Vector3 position = WorldPlaneMapping.To3D(_gun.Cursor + _gun.RecoilOffset2D);
         position.Z = profile.VisualDepthOffset;
         GlobalPosition = position;
@@ -175,8 +168,6 @@ public partial class CursorGunVisual3D : Node3D
             0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(aim.Angle()));
         IsMirrored = aim.X < 0.0f;
         Scale = Vector3.One;
-        // A proper rotation has determinant +1, unlike the old negative-Y reflection.
-        // Local X is the barrel axis, so this roll flips the grip while preserving aim.
         _orientation.Rotation = new Vector3(IsMirrored ? Mathf.Pi : 0.0f, 0.0f, 0.0f);
         _pump.Visible = profile.Visual3DKind == GunVisual3DKind.Shotgun;
         _pump.Position = new Vector3(-_gun.PumpSlideOffsetPx, 0.0f, 0.0f);
@@ -198,10 +189,8 @@ public partial class CursorGunVisual3D : Node3D
             return;
         }
 
-        // Positioned in the gun's own frame, so it sits on the mouth through the roll
-        // and the recoil without a second copy of either.
         _flash.Position = new Vector3(profile.VisualMuzzleTipPx, 0.0f, 0.0f);
-        float size = profile.VisualLengthPx * 0.34f * strength;
+        float size = profile.VisualLengthPx * 0.42f * strength;
         _flash.Scale = new Vector3(size, size, size);
         _flash.Visible = true;
     }
@@ -211,10 +200,10 @@ public partial class CursorGunVisual3D : Node3D
         var material = new StandardMaterial3D
         {
             ResourceName = "ProvisionalMuzzleFlashMaterial",
-            AlbedoColor = new Color(1.0f, 0.93f, 0.62f, 0.9f),
+            AlbedoColor = new Color(1.0f, 0.97f, 0.72f, 1.0f),
             EmissionEnabled = true,
-            Emission = new Color(1.0f, 0.86f, 0.42f),
-            EmissionEnergyMultiplier = 2.0f,
+            Emission = new Color(1.0f, 0.90f, 0.48f),
+            EmissionEnergyMultiplier = 4.0f,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
             Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
             BlendMode = BaseMaterial3D.BlendModeEnum.Add,

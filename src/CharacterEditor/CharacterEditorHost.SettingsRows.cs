@@ -129,6 +129,12 @@ public partial class CharacterEditorHost
             index => edit(s => s with { ZoomPercent = ZoomSteps[index] }),
             DisplayGroup);
         _settingsPanel.AddToggle(
+            "Modern UI Motion",
+            "Keep the Win98 look but allow short smooth menu and preview transitions. Reduced Motion overrides this.",
+            settings.ModernUiMotion,
+            value => edit(s => s with { ModernUiMotion = value }),
+            DisplayGroup);
+        _settingsPanel.AddToggle(
             "Always On Top",
             "Keep the buddy above other windows.",
             settings.AlwaysOnTop,

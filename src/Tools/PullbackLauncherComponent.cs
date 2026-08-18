@@ -49,7 +49,7 @@ public partial class PullbackLauncherComponent : Node2D
 
     public bool IsInitialized { get; private set; }
 
-    /// <summary>A launcher-spawned object is live in the room.</summary>
+    /// <summary>The most recently launcher-spawned object is still live in the room.</summary>
     public bool HasLaunchable =>
         GodotObject.IsInstanceValid(_spawned) && _spawned!.RuntimeId != 0;
     public bool IsAiming =>
@@ -61,17 +61,11 @@ public partial class PullbackLauncherComponent : Node2D
         FindProfile(body.SemanticContentId) is not null;
     public LooseObjectBody? CurrentLaunchable => HasLaunchable ? _spawned : null;
 
-    /// <summary>The content ID of the last object this launcher spawned, or <c>null</c>.</summary>
+    /// <summary>The content ID of the most recently spawned live launchable, or <c>null</c>.</summary>
     public string? CurrentLaunchableContentId =>
         HasLaunchable ? _spawned!.SemanticContentId : null;
     public LooseObjectBody? AimedBody => IsAiming ? _aimedBody : null;
 
-    /// <summary>
-    /// The pullback tuning in force right now: the aimed launchable's own authored preset when
-    /// it has one, otherwise this launcher's shared preset. Every launchable authored before
-    /// the Soccer Ball leaves <see cref="LooseObjectProfile.Launch"/> null and is pulled with
-    /// the shared numbers exactly as before.
-    /// </summary>
     public PullbackLauncherProfile AimTuning
     {
         get
@@ -126,8 +120,6 @@ public partial class PullbackLauncherComponent : Node2D
                 return false;
             }
 
-            // A duplicate ID would make the spawn key ambiguous, and the launcher would
-            // silently pick whichever profile came first.
             for (int other = 0; other < index; other++)
             {
                 if (LaunchableProfiles[other]?.ContentId == profile.ContentId)
@@ -159,9 +151,8 @@ public partial class PullbackLauncherComponent : Node2D
     }
 
     /// <summary>
-    /// Queues replacement of every loose object with one unheld instance of
-    /// <paramref name="contentId"/> at the pointer. The root-injected callback owns the
-    /// room-wide one-object spawn policy.
+    /// Queues placement of one unheld instance of <paramref name="contentId"/> at the pointer.
+    /// The profile owns whether placement first clears existing loose objects or is additive.
     /// </summary>
     public void RequestSpawn(string contentId, Vector2 worldPosition)
     {
@@ -169,19 +160,15 @@ public partial class PullbackLauncherComponent : Node2D
         _pendingSpawnContentId = contentId;
     }
 
-    /// <summary>Queues secondary-button aiming for the launchable held by Grab.</summary>
     public void RequestBegin(Vector2 worldPosition)
     {
         _pointer = worldPosition;
         _pendingBegin = true;
     }
 
-    /// <summary>Queues release of secondary-button aiming.</summary>
     public void RequestRelease() => _pendingRelease = true;
-
     public void RequestCancel() => _pendingCancel = true;
 
-    /// <summary>Immediate recovery cleanup on the authoritative physics clock.</summary>
     public void CancelImmediately()
     {
         RequireInitialized();
@@ -189,10 +176,6 @@ public partial class PullbackLauncherComponent : Node2D
         CancelAim();
     }
 
-    /// <summary>
-    /// Predicts the aimed object's damped ballistic position using the same fixed
-    /// cadence and initial velocity as launch. Drawing never mutates gameplay.
-    /// </summary>
     public Vector2 PredictAimedWorldPosition(float seconds)
     {
         if (!IsAiming || !float.IsFinite(seconds) || seconds <= 0.0f)
@@ -219,7 +202,6 @@ public partial class PullbackLauncherComponent : Node2D
         return position;
     }
 
-    /// <summary>Consumes queued input intent on the root-owned physics clock.</summary>
     public void PhysicsTick()
     {
         RequireInitialized();
@@ -238,10 +220,8 @@ public partial class PullbackLauncherComponent : Node2D
             _pendingBegin = false;
             _pendingRelease = false;
             CancelAim();
-            // Ownership is the shop's answer, not the launcher's: an unowned tool spawns
-            // nothing at all (FR-013.3).
             if (Pipeline.Economy.IsUnlocked(requested) && FindProfile(requested) is { } profile)
-                ReplaceWith(profile);
+                Spawn(profile);
         }
 
         if (_pendingBegin)
@@ -296,10 +276,11 @@ public partial class PullbackLauncherComponent : Node2D
         _clearExistingLooseObjects = null;
     }
 
-    private void ReplaceWith(LooseObjectProfile profile)
+    private void Spawn(LooseObjectProfile profile)
     {
         _spawned = null;
-        _clearExistingLooseObjects!();
+        if (profile.SpawnPolicy == LooseObjectSpawnPolicy.ReplaceExisting)
+            _clearExistingLooseObjects!();
 
         Vector2 spawn = ClampInsideRoom(_pointer, profile.Radius);
         var body = new LooseObjectBody
@@ -365,9 +346,6 @@ public partial class PullbackLauncherComponent : Node2D
         body.Freeze = false;
         body.Sleeping = false;
 
-        // Grab owns the player-held lifetime. Release it first, then establish the throw token
-        // and uncapped launcher velocity authoritatively. Attribution is the launched object's
-        // own ID, so pain, memory, and statistics name the tool that was actually thrown.
         Grab.Release(countsAsThrow: false);
         Registry.MarkPlayerThrown(body, body.SemanticContentId);
         body.LinearVelocity = velocity;

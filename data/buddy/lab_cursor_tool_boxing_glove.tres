@@ -23,3 +23,4 @@ WallClearance = 2.0
 VisualColor = Color(0.878431, 0.356863, 0.294118, 1)
 OutlineColor = Color(0.360784, 0.101961, 0.101961, 1)
 VisualDepthOffset = 144.0
+Visual3DKind = 2

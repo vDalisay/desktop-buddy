@@ -76,10 +76,18 @@ public partial class CursorToolController : Node2D
         for (int index = 0; index < Profiles.Count; index++)
         {
             CursorToolProfile? profile = Profiles[index];
-            if (!GodotObject.IsInstanceValid(profile) || profile!.Validate().Count > 0)
+            if (!GodotObject.IsInstanceValid(profile))
             {
                 throw new InvalidOperationException(
-                    $"CursorToolController requires valid tool profiles (entry {index} is not).");
+                    $"CursorToolController requires valid tool profiles (entry {index} is not live).");
+            }
+
+            Godot.Collections.Array<string> profileErrors = profile!.Validate();
+            if (profileErrors.Count > 0)
+            {
+                throw new InvalidOperationException(
+                    $"CursorToolController requires valid tool profiles (entry {index}, " +
+                    $"'{profile.ContentId}'): {string.Join("; ", profileErrors)}");
             }
 
             // Two profiles claiming one tool would make the active collider depend on

@@ -15,9 +15,9 @@ public enum SwingAudioCue
 }
 
 /// <summary>
-/// Provisional clean-room audio seam for the charged bat. Four short PCM clips
-/// are synthesized once at startup and routed through one authored player; no
-/// sampled source file or audio-server volume mutation is involved.
+/// Replacement-ready charged-bat audio. Four deterministic clean-room PCM cues remain the fallback,
+/// while owner-authored streams can replace any cue independently without changing the charge,
+/// swing, impact events or deterministic counters that tests use as oracles.
 /// </summary>
 [GlobalClass]
 public partial class SwingAudioComponent : Node
@@ -27,14 +27,19 @@ public partial class SwingAudioComponent : Node
     [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public AudioStreamPlayer Player { get; set; } = null!;
+    [Export] public AudioStream? ChargeStartedStream { get; set; }
+    [Export] public AudioStream? ChargeCompletedStream { get; set; }
+    [Export] public AudioStream? SwingReleasedStream { get; set; }
+    [Export] public AudioStream? HomeRunImpactStream { get; set; }
 
-    private AudioStreamWav _chargeStarted = null!;
-    private AudioStreamWav _chargeCompleted = null!;
-    private AudioStreamWav _swingReleased = null!;
-    private AudioStreamWav _homeRunImpact = null!;
+    private AudioStream _chargeStarted = null!;
+    private AudioStream _chargeCompleted = null!;
+    private AudioStream _swingReleased = null!;
+    private AudioStream _homeRunImpact = null!;
 
     public bool IsInitialized { get; private set; }
     public int GeneratedStreamCount { get; private set; }
+    public int ReplacementReadyCueCount => 4;
     public int PlayCount { get; private set; }
     public int ChargeStartedCount { get; private set; }
     public int ChargeCompletedCount { get; private set; }
@@ -55,7 +60,7 @@ public partial class SwingAudioComponent : Node
 
         Player.Bus = AudioMix.Sfx;
 
-        _chargeStarted = Synthesize(
+        AudioStreamWav fallbackChargeStarted = Synthesize(
             seconds: 0.11,
             (sample, progress) =>
             {
@@ -63,7 +68,7 @@ public partial class SwingAudioComponent : Node
                 double envelope = SmoothAttackDecay(progress, attackFraction: 0.12);
                 return Math.Sin(Math.Tau * frequency * sample / MixRate) * envelope * 0.20;
             });
-        _chargeCompleted = Synthesize(
+        AudioStreamWav fallbackChargeCompleted = Synthesize(
             seconds: 0.18,
             (sample, progress) =>
             {
@@ -72,7 +77,7 @@ public partial class SwingAudioComponent : Node
                 double overtone = Math.Sin(Math.Tau * 1_320.0 * sample / MixRate) * 0.35;
                 return (fundamental + overtone) * envelope * 0.18;
             });
-        _swingReleased = Synthesize(
+        AudioStreamWav fallbackSwingReleased = Synthesize(
             seconds: 0.16,
             (sample, progress) =>
             {
@@ -81,7 +86,7 @@ public partial class SwingAudioComponent : Node
                 double noise = DeterministicNoise(sample) * 0.45;
                 return (tone + noise) * Math.Sin(Math.PI * progress) * 0.17;
             });
-        _homeRunImpact = Synthesize(
+        AudioStreamWav fallbackHomeRunImpact = Synthesize(
             seconds: 0.14,
             (sample, progress) =>
             {
@@ -90,6 +95,11 @@ public partial class SwingAudioComponent : Node
                 double envelope = (1.0 - progress) * (1.0 - progress);
                 return (crack * 0.72 + body * 0.45) * envelope * 0.28;
             });
+
+        _chargeStarted = Valid(ChargeStartedStream) ? ChargeStartedStream! : fallbackChargeStarted;
+        _chargeCompleted = Valid(ChargeCompletedStream) ? ChargeCompletedStream! : fallbackChargeCompleted;
+        _swingReleased = Valid(SwingReleasedStream) ? SwingReleasedStream! : fallbackSwingReleased;
+        _homeRunImpact = Valid(HomeRunImpactStream) ? HomeRunImpactStream! : fallbackHomeRunImpact;
         GeneratedStreamCount = 4;
 
         CursorTools.ChargeStarted += OnChargeStarted;
@@ -109,9 +119,7 @@ public partial class SwingAudioComponent : Node
         }
 
         if (GodotObject.IsInstanceValid(Pipeline))
-        {
             Pipeline.ImpactAccepted -= OnImpactAccepted;
-        }
 
         if (GodotObject.IsInstanceValid(Player))
         {
@@ -123,9 +131,7 @@ public partial class SwingAudioComponent : Node
     private void OnChargeStarted()
     {
         if (CursorTools.ActiveProfile?.Swing is not { } profile)
-        {
             return;
-        }
 
         ChargeStartedCount++;
         Play(SwingAudioCue.ChargeStarted, _chargeStarted, profile);
@@ -134,9 +140,7 @@ public partial class SwingAudioComponent : Node
     private void OnChargeCompleted()
     {
         if (CursorTools.ActiveProfile?.Swing is not { } profile)
-        {
             return;
-        }
 
         ChargeCompletedCount++;
         Play(SwingAudioCue.ChargeCompleted, _chargeCompleted, profile);
@@ -145,9 +149,7 @@ public partial class SwingAudioComponent : Node
     private void OnSwingReleased(float releasedCharge, int swingEpoch)
     {
         if (swingEpoch <= 0 || CursorTools.ActiveProfile?.Swing is not { } profile)
-        {
             return;
-        }
 
         SwingReleasedCount++;
         Play(SwingAudioCue.SwingReleased, _swingReleased, profile);
@@ -157,15 +159,13 @@ public partial class SwingAudioComponent : Node
     {
         if (impact.SwingEpoch <= 0 ||
             CursorTools.SwingProfileForContent(impact.ContentId) is not { } profile)
-        {
             return;
-        }
 
         HomeRunImpactCount++;
         Play(SwingAudioCue.HomeRunImpact, _homeRunImpact, profile);
     }
 
-    private void Play(SwingAudioCue cue, AudioStreamWav stream, SwingToolProfile profile)
+    private void Play(SwingAudioCue cue, AudioStream stream, SwingToolProfile profile)
     {
         Player.VolumeDb = profile.AudioVolumeDb;
         Player.Stream = stream;
@@ -197,6 +197,8 @@ public partial class SwingAudioComponent : Node
             Data = data,
         };
     }
+
+    private static bool Valid(AudioStream? stream) => stream is not null && GodotObject.IsInstanceValid(stream);
 
     private static double SmoothAttackDecay(double progress, double attackFraction)
     {

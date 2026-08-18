@@ -7,6 +7,7 @@ using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Buddy.Presentation;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Objects;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -206,13 +207,13 @@ public partial class LabPointerGrabComponent : Node2D
         else if (Pipeline is not null && GodotObject.IsInstanceValid(Pipeline) &&
                  @event is InputEventKey { Pressed: true, Echo: false } key)
         {
-            // One spawn key per launchable, all sharing the confirmed chord: the key only
-            // places the object, Grab picks it up, secondary aims, release launches.
+            // Legacy launchable hotkeys remain for the non-grenade debug content. Grenade moved
+            // to its selected-tool mouse interaction: RMB places one, LMB picks it up, RMB while
+            // held starts the established pullback/pin chord.
             string? launchable = key.PhysicalKeycode switch
             {
                 Key.Key5 => ContentIds.ToolBaseball,
                 Key.Key6 => ContentIds.ToolMeal,
-                Key.Key7 => ContentIds.ToolGrenade,
                 Key.Key8 => ContentIds.ToolSoccerBall,
                 Key.Key9 => ContentIds.ToolDrink,
                 Key.Key0 => ContentIds.ToolRepairKit,
@@ -371,6 +372,15 @@ public partial class LabPointerGrabComponent : Node2D
             {
                 CursorTools!.SetChargeHeld(true);
             }
+            else if (tool == ToolId.Grenade &&
+                     LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool) &&
+                     !Grab.IsGrabbing && !LauncherTool.IsAiming)
+            {
+                // Selected grenade + RMB with empty hands places one grenade at the pointer. It
+                // stays pinned/inert until the player LMB-grabs it and RMB begins the existing
+                // pullback chord. No keybind spawn path remains for grenades.
+                LauncherTool.RequestSpawn(ContentIds.ToolGrenade, cursor);
+            }
             else if (LauncherTool is not null &&
                 GodotObject.IsInstanceValid(LauncherTool) &&
                 LauncherTool.CanAimCurrentGrab)
@@ -385,7 +395,7 @@ public partial class LabPointerGrabComponent : Node2D
             }
             else
             {
-                // Outside the grabbed-Baseball launcher chord, secondary keeps
+                // Outside the grabbed-launchable launcher chord, secondary keeps
                 // its established cancel/drop behavior.
                 _pendingPress = false;
                 _pendingRelease = false;
@@ -423,12 +433,17 @@ public partial class LabPointerGrabComponent : Node2D
         if (_pendingPress)
         {
             _pendingPress = false;
-            // By category, not by enum: Normal and Power Grab acquire identically, and the
-            // only difference between them travels in the profile argument below.
-            if (ToolCatalog.CategoryOf(tool) == ToolCategory.Grab && !Grab.IsGrabbing &&
-                TryPick(cursor, out RigidBody2D? body))
+            bool normalGrab = ToolCatalog.CategoryOf(tool) == ToolCategory.Grab;
+            bool grenadeGrab = tool == ToolId.Grenade;
+            Func<RigidBody2D, bool>? selectedToolFilter = grenadeGrab
+                ? candidate => candidate is LooseObjectBody loose &&
+                               loose.SemanticContentId == ContentIds.ToolGrenade
+                : null;
+
+            if ((normalGrab || grenadeGrab) && !Grab.IsGrabbing &&
+                TryPick(cursor, out RigidBody2D? body, selectedToolFilter))
             {
-                if (Grab.TryGrab(body!, cursor, tool == ToolId.PowerGrab ? PowerProfile : null))
+                if (Grab.TryGrab(body!, cursor, normalGrab && tool == ToolId.PowerGrab ? PowerProfile : null))
                 {
                     _ownsGrab = true;
                     LastPickedPart = body is PuppetPartBody part ? part.PartId : null;
@@ -477,7 +492,10 @@ public partial class LabPointerGrabComponent : Node2D
         _ownsGrab = false;
     }
 
-    private bool TryPick(Vector2 world, out RigidBody2D? body)
+    private bool TryPick(
+        Vector2 world,
+        out RigidBody2D? body,
+        Func<RigidBody2D, bool>? selectedToolFilter = null)
     {
         body = null;
         PhysicsDirectSpaceState2D? space = GetWorld2D()?.DirectSpaceState;
@@ -485,6 +503,10 @@ public partial class LabPointerGrabComponent : Node2D
         {
             return false;
         }
+
+        bool Allowed(RigidBody2D candidate) =>
+            (PickFilter is null || PickFilter(candidate)) &&
+            (selectedToolFilter is null || selectedToolFilter(candidate));
 
         var query = new PhysicsShapeQueryParameters2D
         {
@@ -500,8 +522,7 @@ public partial class LabPointerGrabComponent : Node2D
         foreach (Godot.Collections.Dictionary hit in hits)
         {
             if (hit.TryGetValue("collider", out Variant colliderValue) &&
-                colliderValue.AsGodotObject() is RigidBody2D candidate &&
-                (PickFilter is null || PickFilter(candidate)))
+                colliderValue.AsGodotObject() is RigidBody2D candidate && Allowed(candidate))
             {
                 float distance = candidate.GlobalPosition.DistanceSquaredTo(world);
                 if (distance < bestDistance)
@@ -516,11 +537,13 @@ public partial class LabPointerGrabComponent : Node2D
             return true;
 
         // Some headless physics backends can return no overlap during the first
-        // synchronization frame. Fall back only when the real query found nothing.
+        // synchronization frame. Fall back only when the real query found nothing. This fallback
+        // is intentionally buddy-only; selected launchable-tool filters never make a buddy part
+        // eligible, so a grenade click cannot accidentally grab the ragdoll through this path.
         float nearestDistance = float.MaxValue;
         foreach (Node node in GetTree().GetNodesInGroup("buddy_parts"))
         {
-            if (node is not RigidBody2D candidate || (PickFilter is not null && !PickFilter(candidate)))
+            if (node is not RigidBody2D candidate || !Allowed(candidate))
                 continue;
             float candidateDistance = candidate.GlobalPosition.DistanceSquaredTo(world);
             if (candidateDistance < nearestDistance)

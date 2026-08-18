@@ -696,7 +696,12 @@ public sealed class GrenadeFuseScenario : IScenario
                 ? MouseButtonMask.Left | MouseButtonMask.Right
                 : MouseButtonMask.Left);
 
-    /// <summary>Waits out any knockout window so the next blast starts from a fresh buddy.</summary>
+    /// <summary>
+    /// Waits out any knockout window and lets the ragdoll settle before the next blast fixture.
+    /// The blast oracle must start from a conscious, physically stable buddy with an empty rolling
+    /// pain window; otherwise a post-knockout wall tumble can consume the next knockout before the
+    /// grenade detonates and make a >100-pain blast appear not to trigger one.
+    /// </summary>
     private static async Task RecoverBuddy(SceneTree tree, BuddyLab lab)
     {
         for (int tick = 0; tick < 900; tick++)
@@ -706,6 +711,8 @@ public sealed class GrenadeFuseScenario : IScenario
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         }
 
+        await ScenarioSteps.WaitForStanding(tree, lab, 1800);
+        lab.Pipeline.ClearRollingPain();
         await Idle(tree, 30);
     }
 

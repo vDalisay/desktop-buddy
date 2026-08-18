@@ -62,4 +62,33 @@ public sealed class PaintPenLimbDabTests
         Assert.False(surface.TrySample(new PaintPoint(0.55, 0.1), out _));
         Assert.False(surface.TrySample(new PaintPoint(0.95, 0.9), out _));
     }
+
+    [Fact]
+    public void HeadAndNeckUseSameSeparateEndpointConnectorLanesAsOtherLimbs()
+    {
+        PaintHit normalHead = new(
+            PaintPart.Head,
+            PaintUvRegion.LimbEnd.MapLocal(new PaintPoint(0.5, 0.5)),
+            0.0);
+        PaintHit neck = new(
+            PaintPart.Head,
+            PaintUvRegion.LimbConnector.MapLocal(new PaintPoint(0.5, 0.5)),
+            0.0,
+            IsConnector: true);
+
+        Assert.Equal(PaintUvRegion.LimbEnd, PaintUvRegion.For(normalHead));
+        Assert.Equal(PaintUvRegion.LimbConnector, PaintUvRegion.For(neck));
+
+        PaintWorkspace workspace = new()
+        {
+            SelectedTool = PaintTool.Pen,
+            SelectedColor = new PaintColor(40, 210, 255),
+        };
+        PaintSurface surface = workspace.Surfaces[PaintPart.Head];
+
+        Assert.True(workspace.BucketFill(neck));
+        Assert.True(surface.TrySample(new PaintPoint(0.75, 0.5), out PaintColor connectorColor));
+        Assert.Equal(workspace.SelectedColor, connectorColor);
+        Assert.False(surface.TrySample(new PaintPoint(0.25, 0.5), out _));
+    }
 }

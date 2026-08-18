@@ -22,6 +22,8 @@ public partial class BuddyVisualRigView
     {
         if (IsInitialized)
         {
+            EnsureHeadConnectorPaintLayer();
+            SyncHeadConnectorPaintTexture();
             EnsurePaintAtlasSamplingGuard();
             RefreshCharacterCompositors();
             // Generated replacement shells are normalized meshes scaled by the trusted part radius.

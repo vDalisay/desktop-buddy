@@ -52,10 +52,15 @@ public partial class ScenarioRunner : Node
         }
         catch (Exception e)
         {
-            Log.Error("Scenario", $"Scenario '{id}' threw: {e}");
+            string diagnostic = e.ToString();
+            Log.Error("Scenario", $"Scenario '{id}' threw: {diagnostic}");
+            // Persist the complete managed stack into the verdict artifact as well as the
+            // runner log. GitHub's job-log endpoint can truncate large Godot logs, while the
+            // small per-scenario artifact is intentionally the reliable diagnostic fallback.
             VerdictWriter.Write("scenario", id, seed, false,
-                new[] { new StartupCheck("scenario_threw", false, e.Message) },
-                new[] { e.GetType().Name }, stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
+                new[] { new StartupCheck("scenario_threw", false, diagnostic) },
+                new[] { e.GetType().Name, diagnostic }, stopwatch.ElapsedMilliseconds, _args.ArtifactsDir);
+            ScenarioArtifacts.Directory = null;
             QuitSafely(1);
             return;
         }

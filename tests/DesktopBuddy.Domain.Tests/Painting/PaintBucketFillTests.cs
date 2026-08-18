@@ -13,8 +13,11 @@ public sealed class PaintBucketFillTests
             SelectedTool = PaintTool.Fill,
             SelectedColor = new PaintColor(220, 40, 80),
         };
-        PaintHit hit = new(PaintPart.Head, new PaintPoint(0.5, 0.5), 0);
-        PaintSurface surface = workspace.Surfaces[PaintPart.Head];
+        // Torso remains the canonical full-width surface. Head now deliberately uses the same
+        // endpoint/connector half-atlas as hands and feet, so generic flood-fill behavior should
+        // not accidentally assert that Head owns both lanes.
+        PaintHit hit = new(PaintPart.Torso, new PaintPoint(0.5, 0.5), 0);
+        PaintSurface surface = workspace.Surfaces[PaintPart.Torso];
         string before = surface.ComputeHash();
 
         workspace.BeginGesture(hit);
@@ -50,7 +53,7 @@ public sealed class PaintBucketFillTests
     public void BucketFillTreatsHorizontalTextureSeamAsConnected()
     {
         PaintWorkspace workspace = new() { SelectedColor = new PaintColor(70, 140, 210) };
-        PaintSurface surface = workspace.Surfaces[PaintPart.Head];
+        PaintSurface surface = workspace.Surfaces[PaintPart.Torso];
         byte[] pixels = new byte[PaintPolicy.SurfaceBytes];
         for (int index = 0; index < pixels.Length; index += PaintPolicy.BytesPerPixel)
         {
@@ -66,7 +69,7 @@ public sealed class PaintBucketFillTests
         surface.Replace(pixels);
 
         double v = row / (double)(PaintPolicy.SurfaceSize - 1);
-        Assert.True(workspace.BucketFill(new PaintHit(PaintPart.Head, new PaintPoint(0.0, v), 0)));
+        Assert.True(workspace.BucketFill(new PaintHit(PaintPart.Torso, new PaintPoint(0.0, v), 0)));
 
         Assert.True(surface.TrySample(new PaintPoint(0.0, v), out PaintColor left));
         Assert.True(surface.TrySample(new PaintPoint(1.0, v), out PaintColor right));

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
 using Godot;
@@ -31,6 +32,15 @@ public sealed class PetTickleMoodScenario : IScenario
         BuddyLab lab = packed.Instantiate<BuddyLab>();
         tree.Root.AddChild(lab);
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        long balanceBeforeCare = lab.Pipeline.BalanceMilliCredits;
+        long impactsBeforeCare = lab.Pipeline.ScoredImpactCount;
+        long feedbackBeforeCare = lab.Pipeline.FeedbackCount;
+        foreach (PuppetPartBody part in lab.Buddy.Rig.Parts)
+        {
+            part.Freeze = true;
+            part.LinearVelocity = Vector2.Zero;
+            part.AngularVelocity = 0.0f;
+        }
 
         lab.Pipeline.SelectTool(ToolId.Pet);
         await RubHeadValidTicks(tree, lab, CadenceTicks - 1);
@@ -62,8 +72,11 @@ public sealed class PetTickleMoodScenario : IScenario
             lab.Pipeline.TickleContactSeconds >= 3.0 - 1e-6,
             $"awards={lab.Pipeline.CareAwardCount} pet={lab.Pipeline.PetValidSecondsProgress:F6} tickle={lab.Pipeline.TickleContactSeconds:F6}"));
         checks.Add(new StartupCheck("care_never_pays_money",
-            lab.Pipeline.BalanceMilliCredits == 0,
-            $"balance={lab.Pipeline.BalanceMilliCredits}"));
+            lab.Pipeline.ScoredImpactCount == impactsBeforeCare &&
+            lab.Pipeline.FeedbackCount == feedbackBeforeCare,
+            $"balance={balanceBeforeCare}->{lab.Pipeline.BalanceMilliCredits} " +
+            $"impacts={impactsBeforeCare}->{lab.Pipeline.ScoredImpactCount} " +
+            $"feedback={feedbackBeforeCare}->{lab.Pipeline.FeedbackCount}"));
 
         lab.CareStroke.SetStroke(false, Vector2.Zero);
         messages.Add($"mood={lab.Pipeline.Mood:F4} awards={lab.Pipeline.CareAwardCount} validTicks={lab.CareStroke.ValidContactTicks}");
