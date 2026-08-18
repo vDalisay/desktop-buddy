@@ -157,8 +157,15 @@ public sealed class GrenadeMultiCaptureScenario : IScenario
         Vector2 at,
         int previousRuntimeId)
     {
+        // Drive the actual selected-tool gesture. Key7 is intentionally a legacy isolated-case
+        // seam for GrenadeFuseScenario and clears the room before spawning, so using it here would
+        // make a simultaneous-grenade test delete grenade #1 before grenade #2 even exists.
+        lab.Pipeline.SelectTool(ToolId.Grenade);
         await M4ObjectScenarioSupport.MovePointer(tree, lab, at, 0);
-        await M4ObjectScenarioSupport.SendKey(tree, Key.Key7);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, at, MouseButton.Right, pressed: true, MouseButtonMask.Right);
+        await M4ObjectScenarioSupport.SetButton(
+            tree, lab, at, MouseButton.Right, pressed: false, 0);
         await M4ObjectScenarioSupport.WaitFor(
             tree,
             () => lab.Launcher.CurrentLaunchable is { } body &&
