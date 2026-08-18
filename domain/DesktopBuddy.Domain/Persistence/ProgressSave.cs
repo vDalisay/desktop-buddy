@@ -357,7 +357,12 @@ public sealed record LocalSettingsSave
 
     /// <summary>"remember" (default), "work", or "play": which mode a launch starts in.</summary>
     public string StartupInputMode { get; init; } = "remember";
+
+    /// <summary>Legacy broad Work-mode mute. Kept for existing users who explicitly chose it.</summary>
     public bool MuteInWorkMode { get; init; } = true;
+
+    /// <summary>Mute only Work Mode's mechanical typing feedback; other SFX remain audible.</summary>
+    public bool MuteWorkTyping { get; init; }
 
     /// <summary>
     /// Aesthetic UI preference: keep the Win98 visual language but allow short modern easing for
