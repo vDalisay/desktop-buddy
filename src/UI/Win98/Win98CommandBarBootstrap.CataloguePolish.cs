@@ -7,6 +7,8 @@ public partial class Win98CommandBarBootstrap
     /// <summary>
     /// The Shop panel now owns both purchase and equip actions, so the former Tools command is
     /// deliberately retired rather than leaving two competing ways to choose the active tool.
+    /// This bootstrap waits only until the shared command bar is composed, applies the stable
+    /// chrome once, then disables its physics callback instead of rewriting the same UI at 120 Hz.
     /// </summary>
     public override void _PhysicsProcess(double delta)
     {
@@ -26,7 +28,18 @@ public partial class Win98CommandBarBootstrap
 
         if (ReferenceEquals(_activeSection, _tools))
             CloseFlyout();
-        else if (ReferenceEquals(_activeSection, _shop) && GodotObject.IsInstanceValid(_flyoutTitle))
+        RefreshInventoryFlyoutTitle();
+
+        // OpenSection still receives the legacy internal title "Shop". This handler was added
+        // after the original press handler, so it normalizes the visible title after every open
+        // without keeping an always-on polling loop alive.
+        _shopButton.Pressed += RefreshInventoryFlyoutTitle;
+        SetPhysicsProcess(false);
+    }
+
+    private void RefreshInventoryFlyoutTitle()
+    {
+        if (ReferenceEquals(_activeSection, _shop) && GodotObject.IsInstanceValid(_flyoutTitle))
             _flyoutTitle.Text = "Inventory";
     }
 }

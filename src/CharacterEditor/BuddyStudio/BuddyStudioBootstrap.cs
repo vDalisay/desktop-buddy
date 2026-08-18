@@ -28,7 +28,10 @@ public partial class BuddyStudioBootstrap : Node
     public override void _Process(double delta)
     {
         if (_registration is not null)
+        {
+            SetProcess(false);
             return;
+        }
         CharacterEditorHost? host = GetTree().Root.FindChild(
             nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
         Win98CommandBarBootstrap? commandBar = GetNodeOrNull<Win98CommandBarBootstrap>(
@@ -66,6 +69,7 @@ public partial class BuddyStudioBootstrap : Node
             isEnabled: () => host.IsBuddyStudioReady && !host.IsEditorOpen);
         Log.Info(Category, "Buddy Studio top-level command registered and ready.");
         ScheduleStartupProbeIfRequested();
+        SetProcess(false);
     }
 
     public override void _ExitTree()

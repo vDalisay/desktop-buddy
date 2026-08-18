@@ -25,9 +25,9 @@ public interface ITutorialCharacterPresenter
 
 /// <summary>
 /// Lightweight first-session guidance. It observes real runtime state rather than intercepting
-/// player input: grabbing Buddy, earned credits, the visible Shop, a successful purchase, Paint
-/// Buddy, and Work Mode all advance the durable record. The only mouse-stopping area is the small
-/// hint panel itself; the rest of the overlay is click-through.
+/// player input: grabbing Buddy, earned credits, the visible Inventory, a successful purchase,
+/// Paint Buddy, and Work Mode all advance the durable record. The only mouse-stopping area is the
+/// small hint panel itself; the rest of the overlay is click-through.
 /// </summary>
 public partial class FirstSessionGuidanceController : CanvasLayer
 {
@@ -206,11 +206,21 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         actions.AddThemeConstantOverride("separation", 6);
         column.AddChild(actions);
 
-        _dismiss = new Button { Text = "Dismiss", FocusMode = Control.FocusModeEnum.All };
+        _dismiss = new Button
+        {
+            Text = "Dismiss",
+            FocusMode = Control.FocusModeEnum.All,
+            TooltipText = "Hide this hint. Tutorial progress is not skipped.",
+        };
         _dismiss.Pressed += DismissCurrent;
         actions.AddChild(_dismiss);
 
-        _skip = new Button { Text = "Skip Tutorial", FocusMode = Control.FocusModeEnum.All };
+        _skip = new Button
+        {
+            Text = "Skip Tutorial",
+            FocusMode = Control.FocusModeEnum.All,
+            TooltipText = "Mark the remaining first-session hints complete and stop showing the tutorial.",
+        };
         _skip.Pressed += () => SkipTutorial();
         actions.AddChild(_skip);
     }
@@ -264,9 +274,9 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         TutorialStepIds.EarnCredits =>
             "Playing with Buddy earns credits. Tool impacts, care and other rewarded actions add to the balance in the top bar.",
         TutorialStepIds.OpenShop =>
-            "Open Shop in the top bar when you want a new tool. You can save your credits for whichever purchasable tool you want.",
+            "Open Inventory in the top bar when you want a new tool. You can save your credits for whichever purchasable tool you want.",
         TutorialStepIds.PurchaseContent =>
-            "Buy an item you can afford. Owned tools stay in the same catalogue and change to Equip instead of Buy.",
+            "Buy an item you can afford. Owned tools stay in Inventory and change to Equip instead of Buy.",
         TutorialStepIds.OpenPaintBuddy =>
             "Paint Buddy is free. Open Paint ▸ Buddy to draw directly on your character with the full paint toolset.",
         TutorialStepIds.EnterWorkMode =>

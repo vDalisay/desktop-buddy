@@ -47,6 +47,14 @@ public partial class Win98CatalogGrid : ScrollContainer
     public string? SelectedId => _selectedId;
 
     /// <summary>
+    /// Compatibility seam for a controller that still emits an older subset of an already-composed
+    /// catalogue. When enabled, a strict incoming subset updates its matching tiles but does not
+    /// delete the additional existing items. Default is false; normal callers retain replacement
+    /// semantics. This may be removed when the legacy Buddy Studio shipped-only refresh is retired.
+    /// </summary>
+    public bool PreserveExistingItemsOnSubsetRefresh { get; set; }
+
+    /// <summary>
     /// Historical selection oracle retained for existing focused scenarios. The selected state is
     /// now rendered as the inset preview outline; persistent caller-owned state has its own oracle.
     /// </summary>
@@ -54,11 +62,7 @@ public partial class Win98CatalogGrid : ScrollContainer
 
     /// <summary>Persistent caller-authored outer accent, independent of preview selection.</summary>
     public bool IsPersistentAccented(string id) =>
-        _tiles.TryGetValue(id, out TileParts? parts) &&
-        new[] { "normal", "hover", "pressed", "hover_pressed", "focus" }.All(
-            state => parts.Button.HasThemeStyleboxOverride(state)) &&
-        parts.Button.GetThemeStylebox("normal") is StyleBoxFlat border &&
-        border.BorderColor == Win98ThemeFactory.ActiveTitle;
+        _tiles.TryGetValue(id, out TileParts? parts) && HasAccent(parts.Button);
 
     /// <summary>Inset outline owned by the grid's current selected/preview item.</summary>
     public bool IsPreviewOutlined(string id) =>
@@ -104,9 +108,21 @@ public partial class Win98CatalogGrid : ScrollContainer
                 throw new ArgumentException($"Duplicate catalogue item ID '{item.Id}'.", nameof(items));
         }
 
+        if (_built && PreserveExistingItemsOnSubsetRefresh && TryMergeSubset(frozen, out Win98CatalogItemPresentation[] merged))
+            frozen = merged;
+
+        bool canUpdateExisting = _built && HasSameStructure(frozen);
         _items = frozen;
-        if (_built)
-            Rebuild();
+        if (!_built)
+            return;
+
+        if (canUpdateExisting)
+        {
+            UpdateExistingTiles(frozen);
+            return;
+        }
+
+        Rebuild();
     }
 
     public bool Select(string id, bool notify = true)
@@ -148,6 +164,8 @@ public partial class Win98CatalogGrid : ScrollContainer
         mutable[index] = item;
         _items = mutable;
         Apply(parts, item);
+        if (string.Equals(_selectedId, item.Id, StringComparison.Ordinal) && parts.Button.Disabled)
+            ClearSelection(parts);
         return true;
     }
 
@@ -165,6 +183,68 @@ public partial class Win98CatalogGrid : ScrollContainer
         _grid.AddThemeConstantOverride("v_separation", (int)Gap);
         AddChild(_grid);
         _built = true;
+    }
+
+    private bool TryMergeSubset(
+        IReadOnlyList<Win98CatalogItemPresentation> incoming,
+        out Win98CatalogItemPresentation[] merged)
+    {
+        merged = Array.Empty<Win98CatalogItemPresentation>();
+        if (incoming.Count >= _items.Count || incoming.Count == 0)
+            return false;
+
+        var replacements = new Dictionary<string, Win98CatalogItemPresentation>(incoming.Count, StringComparer.Ordinal);
+        foreach (Win98CatalogItemPresentation item in incoming)
+        {
+            if (!_tiles.ContainsKey(item.Id))
+                return false;
+            replacements[item.Id] = item;
+        }
+
+        merged = new Win98CatalogItemPresentation[_items.Count];
+        for (int index = 0; index < _items.Count; index++)
+        {
+            Win98CatalogItemPresentation current = _items[index];
+            merged[index] = replacements.TryGetValue(current.Id, out Win98CatalogItemPresentation replacement)
+                ? replacement
+                : current;
+        }
+        return true;
+    }
+
+    private bool HasSameStructure(IReadOnlyList<Win98CatalogItemPresentation> incoming)
+    {
+        if (incoming.Count != _items.Count || incoming.Count != _tiles.Count)
+            return false;
+
+        for (int index = 0; index < incoming.Count; index++)
+        {
+            if (!string.Equals(incoming[index].Id, _items[index].Id, StringComparison.Ordinal) ||
+                !_tiles.ContainsKey(incoming[index].Id))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void UpdateExistingTiles(IReadOnlyList<Win98CatalogItemPresentation> items)
+    {
+        for (int index = 0; index < items.Count; index++)
+        {
+            Win98CatalogItemPresentation item = items[index];
+            Apply(_tiles[item.Id], item);
+        }
+
+        if (_selectedId is not null && _tiles.TryGetValue(_selectedId, out TileParts? selected) && selected.Button.Disabled)
+            ClearSelection(selected);
+    }
+
+    private void ClearSelection(TileParts selected)
+    {
+        selected.Button.ButtonPressed = false;
+        selected.SelectionOutline.Visible = false;
+        _selectedId = null;
     }
 
     private void Rebuild()
@@ -371,8 +451,16 @@ public partial class Win98CatalogGrid : ScrollContainer
         return new string(chars);
     }
 
+    private static bool HasAccent(Button button) =>
+        button.HasThemeStyleboxOverride("normal") &&
+        button.GetThemeStylebox("normal") is StyleBoxFlat border &&
+        border.BorderColor == Win98ThemeFactory.ActiveTitle;
+
     private static void ApplyAccent(Button button, bool accented)
     {
+        if (HasAccent(button) == accented)
+            return;
+
         if (!accented)
         {
             button.RemoveThemeStyleboxOverride("normal");

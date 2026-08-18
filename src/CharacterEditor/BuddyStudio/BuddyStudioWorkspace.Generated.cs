@@ -21,15 +21,35 @@ namespace DesktopBuddy.CharacterEditor.BuddyStudio;
 /// </summary>
 public partial class BuddyStudioWorkspace
 {
+    private const double AssetForgeUiSyncSeconds = 0.10;
+
     private int _assetForgeExpectedCatalogCount = -1;
     private CharacterFeatureSlot _assetForgeObservedSlot = (CharacterFeatureSlot)(-1);
     private string? _assetForgeObservedPreviewId;
+    private Node? _assetForgeCatalogTileGrid;
+    private double _assetForgeUiSyncRemaining;
 
     public override void _Process(double delta)
     {
+        // Preview navigation tracks direct manipulation/attachment state and stays frame-responsive.
         AssetForgeProcessNavigation();
         if (!IsConfigured || !IsInsideTree() || !GodotObject.IsInstanceValid(_catalog) || _session.PreviewDocument is null)
             return;
+
+        // Once the generated catalogue has been composed, legacy same-category refreshes carry a
+        // shipped-only subset. Preserve the additional generated tiles instead of destroying and
+        // recreating the full grid on every color/transform/balance change. Category changes still
+        // replace normally because their incoming IDs are not a subset of the current category.
+        _catalog.PreserveExistingItemsOnSubsetRefresh = true;
+
+        // The remaining work is reconciliation for a legacy refresh path. Session/economy changes
+        // are event-driven elsewhere; polling it every rendered frame only repeated tree walks,
+        // catalogue reads and accent updates. A bounded 10 Hz reconciliation keeps late/deferred
+        // composition robust without turning the compatibility shim into a render-loop cost.
+        _assetForgeUiSyncRemaining -= Math.Max(0.0, delta);
+        if (_assetForgeUiSyncRemaining > 0.0)
+            return;
+        _assetForgeUiSyncRemaining = AssetForgeUiSyncSeconds;
 
         IReadOnlyList<CosmeticDefinition> definitions = _session.FeatureCatalog.GetDefinitions(_slot);
         int actualCount = CatalogTileCount();
@@ -45,6 +65,7 @@ public partial class BuddyStudioWorkspace
             _catalog.Select(previewId, notify: false);
             _assetForgeObservedSlot = _slot;
             _assetForgeExpectedCatalogCount = definitions.Count;
+            _assetForgeCatalogTileGrid = null; // SetItems may have rebuilt the tile hierarchy.
         }
 
         if (!string.Equals(_assetForgeObservedPreviewId, previewId, StringComparison.Ordinal) || catalogueNeedsRestore)
@@ -62,8 +83,11 @@ public partial class BuddyStudioWorkspace
 
     private int CatalogTileCount()
     {
-        Node? grid = _catalog.FindChild("CatalogTileGrid", recursive: true, owned: false);
-        return GodotObject.IsInstanceValid(grid) ? grid!.GetChildCount() : -1;
+        if (!GodotObject.IsInstanceValid(_assetForgeCatalogTileGrid))
+            _assetForgeCatalogTileGrid = _catalog.FindChild("CatalogTileGrid", recursive: true, owned: false);
+        return GodotObject.IsInstanceValid(_assetForgeCatalogTileGrid)
+            ? _assetForgeCatalogTileGrid!.GetChildCount()
+            : -1;
     }
 
     private Win98CatalogItemPresentation AssetForgePresentation(CosmeticDefinition definition)
@@ -128,12 +152,19 @@ public partial class BuddyStudioWorkspace
 
         bool hasColor = definition.ColorChannels.Count > 0;
         _color.Disabled = !hasColor;
+        _color.TooltipText = hasColor
+            ? "Choose a color for this cosmetic."
+            : "This cosmetic has no editable color channel.";
         _presets.Visible = hasColor;
         _color.Color = FromRgba(CharacterDocumentEditor.ReadFeatureColor(_session.PreviewDocument!, _slot));
         _move.Disabled = true;
+        _move.TooltipText = "This generated cosmetic does not support repositioning yet.";
         _smaller.Disabled = true;
+        _smaller.TooltipText = "This generated cosmetic does not support resizing yet.";
         _larger.Disabled = true;
+        _larger.TooltipText = "This generated cosmetic does not support resizing yet.";
         _resetTransform.Disabled = true;
+        _resetTransform.TooltipText = "This generated cosmetic has no editable transform to reset.";
         if (_moveMode)
             SetMoveMode(false);
     }

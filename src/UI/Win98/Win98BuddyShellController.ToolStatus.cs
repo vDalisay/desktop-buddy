@@ -1,5 +1,6 @@
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Ui;
 using Godot;
 
@@ -8,7 +9,7 @@ namespace DesktopBuddy.UI.Win98;
 public partial class Win98BuddyShellController
 {
     private SandboxRoot? _toolStatusSandbox;
-    private string _lastToolStatus = string.Empty;
+    private ToolId? _lastToolStatusTool;
 
     public override void _PhysicsProcess(double delta)
     {
@@ -24,13 +25,13 @@ public partial class Win98BuddyShellController
             return;
         }
 
-        string name = ContentDisplayName.For(ContentIds.ForTool(_toolStatusSandbox.Pipeline.SelectedTool));
-        string status = $"Tool: {name}";
-        if (status == _lastToolStatus)
+        ToolId selectedTool = _toolStatusSandbox.Pipeline.SelectedTool;
+        if (_lastToolStatusTool == selectedTool)
             return;
 
-        Frame.ToolStatusText = status;
-        _lastToolStatus = status;
+        string name = ContentDisplayName.For(ContentIds.ForTool(selectedTool));
+        Frame.ToolStatusText = $"Tool: {name}";
+        _lastToolStatusTool = selectedTool;
     }
 
     private static T? FindFirstOfType<T>(Node root) where T : Node

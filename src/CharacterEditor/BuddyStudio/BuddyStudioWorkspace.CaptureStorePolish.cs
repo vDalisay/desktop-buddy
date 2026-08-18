@@ -45,8 +45,11 @@ public partial class BuddyStudioWorkspace
         string displayName = BuddyGeneratedCosmeticRegistry.Current.TryGet(previewId, out GeneratedBuddyCosmeticResource generated)
             ? generated.DisplayName
             : CosmeticName(definition);
-        if (GodotObject.IsInstanceValid(_captureStoreItemName))
-            _captureStoreItemName!.Text = displayName;
+        if (GodotObject.IsInstanceValid(_captureStoreItemName) &&
+            !string.Equals(_captureStoreItemName!.Text, displayName, StringComparison.Ordinal))
+        {
+            _captureStoreItemName.Text = displayName;
+        }
 
         bool owned = _session.IsCosmeticOwned(definition.Id);
         bool equipped = IsEquipped(definition.Id);
@@ -65,6 +68,32 @@ public partial class BuddyStudioWorkspace
         _buy.Text = owned ? (equipped ? "Equipped" : "Equip") :
             purchasable ? "Buy" : "Earn in Work Mode";
         _buy.Disabled = equipped || (!owned && (!purchasable || !affordable));
+        _buy.TooltipText = equipped ? "This cosmetic is currently equipped."
+            : owned ? "Equip this owned cosmetic on the working character."
+            : purchasable && !affordable ? $"Costs {PriceText(definition)}. Earn more credits before buying."
+            : purchasable ? $"Buy this cosmetic permanently for {PriceText(definition)}."
+            : "This cosmetic is earned elsewhere and cannot be bought here.";
+
+        bool hasColor = definition.ColorChannels.Count > 0;
+        _color.TooltipText = hasColor
+            ? "Choose a color for this cosmetic."
+            : "This cosmetic has no editable color channel.";
+        bool transformable = definition.TransformPolicy == CosmeticTransformPolicy.MoveAndUniformScale;
+        _move.TooltipText = transformable
+            ? "Move the selected cosmetic on the preview."
+            : "This cosmetic does not support repositioning.";
+        _smaller.TooltipText = transformable
+            ? "Make the selected cosmetic smaller."
+            : "This cosmetic does not support resizing.";
+        _larger.TooltipText = transformable
+            ? "Make the selected cosmetic larger."
+            : "This cosmetic does not support resizing.";
+        _resetTransform.TooltipText = transformable
+            ? "Reset this cosmetic's position and size."
+            : "This cosmetic has no editable transform to reset.";
+        _save.TooltipText = _save.Disabled
+            ? "There are no unsaved character changes."
+            : "Save this character (Ctrl+S).";
 
         // Persistent equipped accent and current preview selection are separate layers. The grid
         // owns the inset preview outline; this workspace owns which item is actually equipped.

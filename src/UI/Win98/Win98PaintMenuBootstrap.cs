@@ -27,13 +27,23 @@ public partial class Win98PaintMenuBootstrap : Node
 
     public override void _Process(double delta)
     {
+        if (GodotObject.IsInstanceValid(_menuBar) && GodotObject.IsInstanceValid(_canvas))
+        {
+            SetProcess(false);
+            return;
+        }
+
         if (!GodotObject.IsInstanceValid(_host))
             _host = GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
         if (!GodotObject.IsInstanceValid(_canvas))
             _canvas = GetTree().Root.FindChild("CharacterPaintCanvas", true, false) as PaintCanvasControl;
 
         if (GodotObject.IsInstanceValid(_host) && _host!.IsEditorOpen && !GodotObject.IsInstanceValid(_menuBar))
+        {
             TryBuild();
+            if (GodotObject.IsInstanceValid(_menuBar))
+                SetProcess(false);
+        }
     }
 
     public override void _UnhandledKeyInput(InputEvent input)
