@@ -36,6 +36,12 @@ public partial class BuddyStudioWorkspace
         if (!IsConfigured || !IsInsideTree() || !GodotObject.IsInstanceValid(_catalog) || _session.PreviewDocument is null)
             return;
 
+        // Once the generated catalogue has been composed, legacy same-category refreshes carry a
+        // shipped-only subset. Preserve the additional generated tiles instead of destroying and
+        // recreating the full grid on every color/transform/balance change. Category changes still
+        // replace normally because their incoming IDs are not a subset of the current category.
+        _catalog.PreserveExistingItemsOnSubsetRefresh = true;
+
         // The remaining work is reconciliation for a legacy refresh path. Session/economy changes
         // are event-driven elsewhere; polling it every rendered frame only repeated tree walks,
         // catalogue reads and accent updates. A bounded 10 Hz reconciliation keeps late/deferred
