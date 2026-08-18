@@ -84,6 +84,7 @@ public static class ScenarioCatalog
         ["gun_visuals"] = () => new GunVisualsScenario(),
         ["pistol_punctuation"] = () => new PistolPunctuationScenario(),
         ["grenade_fuse"] = () => new GrenadeFuseScenario(),
+        ["grenade_multi_capture"] = () => new GrenadeMultiCaptureScenario(),
         ["soccer_and_drink"] = () => new SoccerAndDrinkScenario(),
         ["burning_status"] = () => new BurningStatusScenario(),
         ["shotgun_spread"] = () => new ShotgunSpreadScenario(),
