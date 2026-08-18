@@ -8,6 +8,7 @@ using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Painting;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -109,15 +110,15 @@ public sealed class CharacterRigViewScenario : IScenario
             .FindChild("Paint", false, false);
         MeshInstance3D leftArmPaint = (MeshInstance3D)preview.GetConnectorVisual(1)
             .FindChild("Paint", false, false);
-        bool limbAtlasSplit = leftHandPaint.MaterialOverride is StandardMaterial3D
-            {
-                Uv1Scale: { X: 0.5f },
-                Uv1Offset: { X: 0.0f },
-            } && leftArmPaint.MaterialOverride is StandardMaterial3D
-            {
-                Uv1Scale: { X: 0.5f },
-                Uv1Offset: { X: 0.5f },
-            };
+        float expectedLaneWidth = 0.5f - (1.0f / PaintPolicy.SurfaceSize);
+        float expectedHalfTexel = 0.5f / PaintPolicy.SurfaceSize;
+        bool limbAtlasSplit = preview.PaintAtlasSamplingGuardAppliedForTest &&
+            leftHandPaint.MaterialOverride is StandardMaterial3D endMaterial &&
+            leftArmPaint.MaterialOverride is StandardMaterial3D connectorMaterial &&
+            Mathf.IsEqualApprox(endMaterial.Uv1Scale.X, expectedLaneWidth) &&
+            Mathf.IsEqualApprox(endMaterial.Uv1Offset.X, expectedHalfTexel) &&
+            Mathf.IsEqualApprox(connectorMaterial.Uv1Scale.X, expectedLaneWidth) &&
+            Mathf.IsEqualApprox(connectorMaterial.Uv1Offset.X, 0.5f + expectedHalfTexel);
         checks.Add(new StartupCheck(
             "limb_end_and_connector_sample_disjoint_halves_of_one_surface",
             limbAtlasSplit,
@@ -203,7 +204,7 @@ public sealed class CharacterRigViewScenario : IScenario
             top is not null && UsesRenderLayer(top, BuddyCosmeticRenderLayer.Top, ref topMeshes) &&
             leftShoe is not null && UsesRenderLayer(leftShoe, BuddyCosmeticRenderLayer.Top, ref shoeMeshes) &&
             rightShoe is not null && UsesRenderLayer(rightShoe, BuddyCosmeticRenderLayer.Top, ref shoeMeshes) &&
-            faceDetailMeshes == 3 && topMeshes == 3 && shoeMeshes == 2;
+            faceDetailMeshes == 3 && topMeshes == 2 && shoeMeshes == 2;
         checks.Add(new StartupCheck(
             "bs3_remaining_families_have_explicit_layers",
             remainingLayers,

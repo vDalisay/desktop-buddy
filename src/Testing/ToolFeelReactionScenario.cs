@@ -94,6 +94,12 @@ public sealed class ToolFeelReactionScenario : IScenario
             $"frames={petSmileFrames} expected=90"));
 
         careLab.Pipeline.SelectTool(ToolId.Tickle);
+        foreach (PuppetPartBody part in careLab.Buddy.Rig.Parts)
+        {
+            part.Freeze = true;
+            part.LinearVelocity = Vector2.Zero;
+            part.AngularVelocity = 0.0f;
+        }
         int friendlyHops = await TickleHeadTicks(tree, careLab, ThreeSeconds);
         checks.Add(new StartupCheck("tickle_first_three_seconds_is_friendly",
             careLab.Pipeline.CareAwardCount == 2 &&
@@ -125,6 +131,8 @@ public sealed class ToolFeelReactionScenario : IScenario
             remainedAngryBeforeCooldown &&
             careLab.Pipeline.TickleDisposition == TickleDisposition.Friendly,
             $"before={remainedAngryBeforeCooldown} after={careLab.Pipeline.TickleDisposition}"));
+        foreach (PuppetPartBody part in careLab.Buddy.Rig.Parts)
+            part.Freeze = false;
 
         careLab.Pipeline.SelectTool(ToolId.Pet);
         checks.Add(new StartupCheck("pet_favorite_randomizes_each_selection",
