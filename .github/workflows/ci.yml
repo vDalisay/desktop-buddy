@@ -23,7 +23,7 @@ jobs:
   # Kept deliberately short so agent branches get feedback in a minute or two.
   quick:
     if: github.event_name == 'push'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -47,7 +47,7 @@ jobs:
   # Pull requests and manual dispatch: the full Godot scenario and journey sweep.
   build-test:
     if: github.event_name != 'push'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -158,7 +158,7 @@ jobs:
   full-soak:
     # Thirty simulated minutes; the scenario itself documents this as nightly/manual.
     if: github.event_name == 'workflow_dispatch'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
