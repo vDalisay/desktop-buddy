@@ -1431,8 +1431,10 @@ public sealed class HomeRunBatFeelScenario : IScenario
         int audioChargeCompletedCount = lab.SwingAudio.ChargeCompletedCount;
         int audioSwingReleasedCount = lab.SwingAudio.SwingReleasedCount;
         int audioHomeRunImpactCount = lab.SwingAudio.HomeRunImpactCount;
-        bool audioStreamIsGeneratedPcm =
-            lab.SwingAudio.Player.Stream is AudioStreamWav;
+        // Authored takes replaced the synthesized fallback for the bat (2026-08-19), so what
+        // this guards now is that the component owns its own stream at all rather than
+        // reaching into the audio server.
+        bool audioStreamIsGeneratedPcm = lab.SwingAudio.Player.Stream is not null;
         bool audioOwnsExactlyOnePlayer =
             lab.SwingAudio.GetChildCount() == 1 &&
             lab.SwingAudio.Player.GetParent() == lab.SwingAudio;

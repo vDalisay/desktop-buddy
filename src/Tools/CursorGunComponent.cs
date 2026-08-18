@@ -110,6 +110,13 @@ public partial class CursorGunComponent : Node2D
     /// <summary>Raised when a gun actually begins its authored reload.</summary>
     public event Action<GunProfile>? ReloadStarted;
 
+    /// <summary>
+    /// Raised on the routed tick a shot connects with anything at all — the buddy, a loose
+    /// object, a wall. Presentation only: what the hit does was already decided by the impact
+    /// pipeline before this fires.
+    /// </summary>
+    public event Action<GunProfile>? ProjectileHit;
+
     /// <summary>Muzzle flash strength, 1 on the firing tick and 0 once it has burned out.</summary>
     public float MuzzleFlashStrength =>
         _flashTicks <= 0 || _flashDuration <= 0 ? 0.0f : (float)_flashTicks / _flashDuration;
@@ -556,7 +563,11 @@ public partial class CursorGunComponent : Node2D
     private void AdvanceProjectiles()
     {
         for (int index = 0; index < _runtimes.Count; index++)
-            _runtimes[index].Advance();
+        {
+            int hits = _runtimes[index].Advance();
+            for (int hit = 0; hit < hits; hit++)
+                ProjectileHit?.Invoke(_runtimes[index].Profile);
+        }
     }
 
     /// <summary>
@@ -946,13 +957,17 @@ public partial class CursorGunComponent : Node2D
             return null;
         }
 
-        public void Advance()
+        /// <returns>How many projectiles connected on this tick.</returns>
+        public int Advance()
         {
+            int hits = 0;
             for (int index = 0; index < _pool.Length; index++)
             {
                 ProjectileBody projectile = _pool[index];
                 if (projectile.State == ProjectileState.Pooled)
                     continue;
+
+                bool wasLive = projectile.State == ProjectileState.Live;
 
                 bool finished = projectile.Advance(
                     Profile.ProjectileLifetimeTicks,
@@ -965,6 +980,10 @@ public partial class CursorGunComponent : Node2D
                 ShoveImpulseDelivered += shove;
                 if (shove > PeakShoveImpulse)
                     PeakShoveImpulse = shove;
+                // Live -> Spent is the tick the shot actually connected; an expiring shot
+                // parks straight from Live and hit nothing.
+                if (wasLive && projectile.State == ProjectileState.Spent)
+                    hits++;
                 if (finished)
                     projectile.Park();
             }
@@ -980,6 +999,8 @@ public partial class CursorGunComponent : Node2D
                 if (_casings[index].Advance())
                     _casings[index].Park();
             }
+
+            return hits;
         }
     }
 }

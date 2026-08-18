@@ -1,4 +1,4 @@
-[gd_scene load_steps=57 format=3]
+[gd_scene load_steps=96 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
@@ -82,6 +82,45 @@
 [ext_resource type="Script" path="res://src/Presentation3D/CursorSprayerVisual3D.cs" id="65_sprayer_visual"]
 [ext_resource type="Script" path="res://src/Tools/ScorchPresenter.cs" id="66_scorch"]
 [ext_resource type="Script" path="res://src/Tools/GrenadeAudioComponent.cs" id="56_grenade_audio"]
+[ext_resource type="AudioStream" path="res://assets/sfx/bat/baseballbat_swing1.mp3" id="83_sfx_bat_swing_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/bat/baseballbat_swing2.mp3" id="84_sfx_bat_swing_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/bat/baseballbat_swing3.mp3" id="85_sfx_bat_swing_3"]
+[ext_resource type="AudioStream" path="res://assets/sfx/bat/baseballbat_hit_soft.mp3" id="86_sfx_bat_hit_soft"]
+[ext_resource type="AudioStream" path="res://assets/sfx/bat/baseballbat_hit_medium.mp3" id="87_sfx_bat_hit_medium"]
+[ext_resource type="AudioStream" path="res://assets/sfx/bat/baseballbat_hit_crit.mp3" id="88_sfx_bat_hit_crit"]
+[ext_resource type="AudioStream" path="res://assets/sfx/bat/baseballbat_drop1.mp3" id="89_sfx_bat_drop_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/bat/baseballbat_drop2.mp3" id="90_sfx_bat_drop_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/shotgun_blast1.mp3" id="91_sfx_shotgun_blast_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/shotgun_blast2.mp3" id="92_sfx_shotgun_blast_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/shotgun_reload1.mp3" id="93_sfx_shotgun_reload_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/shotgun_reload2.mp3" id="94_sfx_shotgun_reload_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/shotgun_reload3.mp3" id="95_sfx_shotgun_reload_3"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/toygun_trigger1.mp3" id="96_sfx_toygun_trigger_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/toygun_trigger2.mp3" id="97_sfx_toygun_trigger_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/toygun_reload.mp3" id="98_sfx_toygun_reload"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/toygun_impact1.mp3" id="99_sfx_toygun_impact_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/toygun_impact2.mp3" id="100_sfx_toygun_impact_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/toygun_impact3.mp3" id="101_sfx_toygun_impact_3"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/gun_drop1.mp3" id="102_sfx_gun_drop_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/gun_drop2.mp3" id="103_sfx_gun_drop_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/gun/gun_drop3.mp3" id="104_sfx_gun_drop_3"]
+[ext_resource type="AudioStream" path="res://assets/sfx/grenade/grenade_explosion1.mp3" id="105_sfx_grenade_boom_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/grenade/grenade_explosion2.mp3" id="106_sfx_grenade_boom_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/grenade/grenade_drop1.mp3" id="107_sfx_grenade_drop_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/grenade/grenade_drop2.mp3" id="108_sfx_grenade_drop_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/fire/flamethrower_start1.mp3" id="109_sfx_fire_start_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/fire/flamethrower_start2.mp3" id="110_sfx_fire_start_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/fire/flamethrower_burn1.mp3" id="111_sfx_fire_burn_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/fire/flamethrower_burn2.mp3" id="112_sfx_fire_burn_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/ball/ball_bounce1.mp3" id="113_sfx_ball_bounce_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/ball/ball_bounce2.mp3" id="114_sfx_ball_bounce_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/ball/baseball_catch1.mp3" id="115_sfx_baseball_catch_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/ball/baseball_catch2.mp3" id="116_sfx_baseball_catch_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/ball/soccerball_kick1.mp3" id="117_sfx_soccer_kick_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/ball/soccerball_kick2.mp3" id="118_sfx_soccer_kick_2"]
+[ext_resource type="AudioStream" path="res://assets/sfx/grab/grab_initial.mp3" id="119_sfx_grab_initial"]
+[ext_resource type="AudioStream" path="res://assets/sfx/grab/grab_hold1.mp3" id="120_sfx_grab_hold_1"]
+[ext_resource type="AudioStream" path="res://assets/sfx/grab/grab_hold2.mp3" id="121_sfx_grab_hold_2"]
 
 [sub_resource type="RectangleShape2D" id="HorizontalBoundary"]
 size = Vector2(480, 16)
@@ -211,6 +250,10 @@ script = ExtResource("64_fire_audio")
 Sprayer = NodePath("../FireSprayerComponent")
 Player = NodePath("AudioStreamPlayer")
 LoopPlayer = NodePath("LoopPlayer")
+IgnitionStream = ExtResource("109_sfx_fire_start_1")
+IgnitionStream2 = ExtResource("110_sfx_fire_start_2")
+BurnLoopStream = ExtResource("111_sfx_fire_burn_1")
+BurnLoopStream2 = ExtResource("112_sfx_fire_burn_2")
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="FireAudioComponent"]
 
@@ -374,6 +417,12 @@ script = ExtResource("46_swing_audio")
 CursorTools = NodePath("../CursorToolController")
 Pipeline = NodePath("../InteractionPipeline")
 Player = NodePath("AudioStreamPlayer")
+SwingReleasedStream = ExtResource("83_sfx_bat_swing_1")
+SwingReleasedStream2 = ExtResource("84_sfx_bat_swing_2")
+SwingReleasedStream3 = ExtResource("85_sfx_bat_swing_3")
+HomeRunImpactStream = ExtResource("86_sfx_bat_hit_soft")
+ImpactMediumStream = ExtResource("87_sfx_bat_hit_medium")
+ImpactCriticalStream = ExtResource("88_sfx_bat_hit_crit")
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="SwingAudioComponent"]
 
@@ -381,6 +430,10 @@ Player = NodePath("AudioStreamPlayer")
 script = ExtResource("56_grenade_audio")
 Grenades = NodePath("../GrenadeComponent")
 Player = NodePath("AudioStreamPlayer")
+BoomStream = ExtResource("105_sfx_grenade_boom_1")
+BoomStream2 = ExtResource("106_sfx_grenade_boom_2")
+ThudStream = ExtResource("107_sfx_grenade_drop_1")
+ThudStream2 = ExtResource("108_sfx_grenade_drop_2")
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="GrenadeAudioComponent"]
 
@@ -415,7 +468,7 @@ Profile = ExtResource("18_reaction_profile")
 CareStroke = NodePath("../CareStrokeComponent")
 ToolReaction = NodePath("../ToolReactionComponent")
 
-[node name="ReactionAudioPresenter" type="Node" parent="." node_paths=PackedStringArray("Pipeline", "Objects", "Guns", "Player")]
+[node name="ReactionAudioPresenter" type="Node" parent="." node_paths=PackedStringArray("Interactions", "Pipeline", "Objects", "Guns", "Player")]
 script = ExtResource("19_audio")
 Pipeline = NodePath("../InteractionPipeline")
 Objects = NodePath("../LooseObjectRegistry")
@@ -434,6 +487,32 @@ PistolShot2 = ExtResource("77_sfx_pistol_shot_2")
 PistolReload = ExtResource("78_sfx_pistol_reload")
 Profile = ExtResource("18_reaction_profile")
 Player = NodePath("AudioStreamPlayer")
+ShotgunBlast1 = ExtResource("91_sfx_shotgun_blast_1")
+ShotgunBlast2 = ExtResource("92_sfx_shotgun_blast_2")
+ShotgunReload1 = ExtResource("93_sfx_shotgun_reload_1")
+ShotgunReload2 = ExtResource("94_sfx_shotgun_reload_2")
+ShotgunReload3 = ExtResource("95_sfx_shotgun_reload_3")
+ToygunTrigger1 = ExtResource("96_sfx_toygun_trigger_1")
+ToygunTrigger2 = ExtResource("97_sfx_toygun_trigger_2")
+ToygunReload = ExtResource("98_sfx_toygun_reload")
+ToygunImpact1 = ExtResource("99_sfx_toygun_impact_1")
+ToygunImpact2 = ExtResource("100_sfx_toygun_impact_2")
+ToygunImpact3 = ExtResource("101_sfx_toygun_impact_3")
+GunDrop1 = ExtResource("102_sfx_gun_drop_1")
+GunDrop2 = ExtResource("103_sfx_gun_drop_2")
+GunDrop3 = ExtResource("104_sfx_gun_drop_3")
+BatDrop1 = ExtResource("89_sfx_bat_drop_1")
+BatDrop2 = ExtResource("90_sfx_bat_drop_2")
+BallBounce1 = ExtResource("113_sfx_ball_bounce_1")
+BallBounce2 = ExtResource("114_sfx_ball_bounce_2")
+BaseballCatch1 = ExtResource("115_sfx_baseball_catch_1")
+BaseballCatch2 = ExtResource("116_sfx_baseball_catch_2")
+SoccerKick1 = ExtResource("117_sfx_soccer_kick_1")
+SoccerKick2 = ExtResource("118_sfx_soccer_kick_2")
+GrabInitial = ExtResource("119_sfx_grab_initial")
+GrabHold1 = ExtResource("120_sfx_grab_hold_1")
+GrabHold2 = ExtResource("121_sfx_grab_hold_2")
+Interactions = NodePath("../Buddy/ObjectInteractionComponent")
 
 [node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="ReactionAudioPresenter"]
 

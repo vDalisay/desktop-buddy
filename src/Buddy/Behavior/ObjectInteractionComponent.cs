@@ -92,6 +92,12 @@ public partial class ObjectInteractionComponent : Area2D
     /// </summary>
     public event Action? FunCatchDelighted;
 
+    /// <summary>Raised on the tick a player-thrown object is caught out of the air.</summary>
+    public event Action? CleanCatch;
+
+    /// <summary>Raised on the tick the buddy's foot actually swings through a ball.</summary>
+    public event Action? SoccerKicked;
+
     public bool IsInitialized { get; private set; }
     public int SensedCount { get; private set; }
     public ObjectPhase Phase => _directLabConsume
@@ -769,6 +775,7 @@ public partial class ObjectInteractionComponent : Area2D
             return;
 
         CleanCatchCount++;
+        CleanCatch?.Invoke();
         FunOutcome outcome = _progress.EngageFun(FunActivityId.Catch);
         LastCatchInterest = outcome.InterestAfter;
         if (!outcome.WasFun)
@@ -1338,9 +1345,12 @@ public partial class ObjectInteractionComponent : Area2D
         SoccerPlayTuning tuning = play.ToDomainTuning();
         SoccerBallReading reading = ReadBall(ball!, roomBounds);
         LastSoccerReading = reading;
+        int kicksBefore = _soccerPlay.KickCount;
         _soccerIntent = _soccerPlay.Tick(tuning, reading, suppressed, conscious);
         if (_soccerIntent.Command == SoccerPlayCommand.Kick && !reading.TrapAllowed)
             _registry.ConsumeSoccerKick(ball!);
+        if (_soccerPlay.KickCount != kicksBefore)
+            SoccerKicked?.Invoke();
 
         // Reserved, not merely trapped: a ball rolling in from across the room already belongs
         // to the foot, so the catch lifecycle must never commit to it and walk out to fetch it.

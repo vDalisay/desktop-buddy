@@ -1,5 +1,6 @@
 using DesktopBuddy.Domain.Content;
 using System;
+using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
@@ -20,10 +21,16 @@ public partial class ReactionAudioPresenter : Node
     private const float ImpactRandomPitchSemitones = 3.5f;
     private const float ImpactBaseVolumeOffsetDb = -6.0f;
     private const float QuietImpactVolumeDb = -12.0f;
+    private const float GrabHoldVolumeOffsetDb = -4.0f;
+    private const double GrabHoldMinimumSeconds = 2.0;
+    private const double GrabHoldMaximumSeconds = 5.0;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public LooseObjectRegistry Objects { get; set; } = null!;
     [Export] public CursorGunComponent Guns { get; set; } = null!;
     [Export] public ReactionProfile Profile { get; set; } = null!;
+
+    /// <summary>The buddy's own object behaviour, for its catch and kick cues. Optional.</summary>
+    [Export] public ObjectInteractionComponent? Interactions { get; set; }
     [Export] public AudioStreamPlayer Player { get; set; } = null!;
     [Export] public AudioStream? BuddyImpact1 { get; set; }
     [Export] public AudioStream? BuddyImpact2 { get; set; }
@@ -38,6 +45,31 @@ public partial class ReactionAudioPresenter : Node
     [Export] public AudioStream? PistolShot1 { get; set; }
     [Export] public AudioStream? PistolShot2 { get; set; }
     [Export] public AudioStream? PistolReload { get; set; }
+    [Export] public AudioStream? ShotgunBlast1 { get; set; }
+    [Export] public AudioStream? ShotgunBlast2 { get; set; }
+    [Export] public AudioStream? ShotgunReload1 { get; set; }
+    [Export] public AudioStream? ShotgunReload2 { get; set; }
+    [Export] public AudioStream? ShotgunReload3 { get; set; }
+    [Export] public AudioStream? ToygunTrigger1 { get; set; }
+    [Export] public AudioStream? ToygunTrigger2 { get; set; }
+    [Export] public AudioStream? ToygunReload { get; set; }
+    [Export] public AudioStream? ToygunImpact1 { get; set; }
+    [Export] public AudioStream? ToygunImpact2 { get; set; }
+    [Export] public AudioStream? ToygunImpact3 { get; set; }
+    [Export] public AudioStream? GunDrop1 { get; set; }
+    [Export] public AudioStream? GunDrop2 { get; set; }
+    [Export] public AudioStream? GunDrop3 { get; set; }
+    [Export] public AudioStream? BatDrop1 { get; set; }
+    [Export] public AudioStream? BatDrop2 { get; set; }
+    [Export] public AudioStream? BallBounce1 { get; set; }
+    [Export] public AudioStream? BallBounce2 { get; set; }
+    [Export] public AudioStream? BaseballCatch1 { get; set; }
+    [Export] public AudioStream? BaseballCatch2 { get; set; }
+    [Export] public AudioStream? SoccerKick1 { get; set; }
+    [Export] public AudioStream? SoccerKick2 { get; set; }
+    [Export] public AudioStream? GrabInitial { get; set; }
+    [Export] public AudioStream? GrabHold1 { get; set; }
+    [Export] public AudioStream? GrabHold2 { get; set; }
 
     private AudioStream? _buddyImpact;
     private AudioStream? _buddyHardImpact;
@@ -46,6 +78,19 @@ public partial class ReactionAudioPresenter : Node
     private AudioStream? _gloveCriticalHeadImpact;
     private AudioStream? _pistolShot;
     private AudioStream? _pistolReload;
+    private AudioStream? _shotgunBlast;
+    private AudioStream? _shotgunReload;
+    private AudioStream? _toygunTrigger;
+    private AudioStream? _toygunReload;
+    private AudioStream? _toygunImpact;
+    private AudioStream? _gunDrop;
+    private AudioStream? _batDrop;
+    private AudioStream? _ballBounce;
+    private AudioStream? _baseballCatch;
+    private AudioStream? _soccerKick;
+    private AudioStream? _grabInitial;
+    private AudioStream? _grabHold;
+    private double _grabHoldCountdown;
     private float _hardImpactPain;
     private float _maximumPain;
     private float _baseVolumeDb;
@@ -62,6 +107,16 @@ public partial class ReactionAudioPresenter : Node
     public int GloveCriticalHeadImpactCount { get; private set; }
     public int PistolShotCount { get; private set; }
     public int PistolReloadCount { get; private set; }
+    public int GunShotCount { get; private set; }
+    public int GunReloadCount { get; private set; }
+    public int ToygunImpactCount { get; private set; }
+    public int GunDropCount { get; private set; }
+    public int BatDropCount { get; private set; }
+    public int BallBounceCount { get; private set; }
+    public int CatchCount { get; private set; }
+    public int SoccerKickCount { get; private set; }
+    public int GrabInitialCount { get; private set; }
+    public int GrabHoldCount { get; private set; }
     public int WallImpactCount { get; private set; }
     public BuddyPart? LastWallImpactPart { get; private set; }
     public AudioStream? LastWallImpactStream { get; private set; }
@@ -110,6 +165,18 @@ public partial class ReactionAudioPresenter : Node
         _gloveCriticalHeadImpact = BuildRandomized(GloveCriticalHeadImpact, 1.5f);
         _pistolShot = BuildVariations(PistolShot1, PistolShot2);
         _pistolReload = BuildRandomized(PistolReload, 1.5f);
+        _shotgunBlast = BuildVariations(ShotgunBlast1, ShotgunBlast2);
+        _shotgunReload = BuildVariations(ShotgunReload1, ShotgunReload2, ShotgunReload3);
+        _toygunTrigger = BuildVariations(ToygunTrigger1, ToygunTrigger2);
+        _toygunReload = BuildRandomized(ToygunReload, 1.5f);
+        _toygunImpact = BuildVariations(ToygunImpact1, ToygunImpact2, ToygunImpact3);
+        _gunDrop = BuildVariations(GunDrop1, GunDrop2, GunDrop3);
+        _batDrop = BuildVariations(BatDrop1, BatDrop2);
+        _ballBounce = BuildVariations(BallBounce1, BallBounce2);
+        _baseballCatch = BuildVariations(BaseballCatch1, BaseballCatch2);
+        _soccerKick = BuildVariations(SoccerKick1, SoccerKick2);
+        _grabInitial = BuildRandomized(GrabInitial, 2.0f);
+        _grabHold = BuildVariations(GrabHold1, GrabHold2);
         _hardImpactPain = HardImpactPainFrom(Pipeline.Profile);
         _maximumPain = MaximumPainFrom(Pipeline.Profile);
         _grabbedBoundaryPainThreshold = GrabbedBoundaryPainFrom(Pipeline.Profile);
@@ -135,7 +202,15 @@ public partial class ReactionAudioPresenter : Node
         Pipeline.ImpactAccepted += OnImpact;
         Guns.ShotFired += OnGunShotFired;
         Guns.ReloadStarted += OnGunReloadStarted;
+        Guns.ProjectileHit += OnProjectileHit;
+        Pipeline.ToolChanged += OnToolChanged;
         Pipeline.Grab.Released += OnGrabReleased;
+        Pipeline.Grab.Grabbed += OnGrabbed;
+        if (GodotObject.IsInstanceValid(Interactions))
+        {
+            Interactions!.CleanCatch += OnCleanCatch;
+            Interactions.SoccerKicked += OnSoccerKicked;
+        }
         _pendingGrabbedWallImpacts = new AcceptedImpact?[Enum.GetValues<BuddyPart>().Length];
         _wallImpactDetectors = new BuddyPartWallImpactDetector[Enum.GetValues<BuddyPart>().Length];
         foreach (BuddyPart part in Enum.GetValues<BuddyPart>())
@@ -161,13 +236,16 @@ public partial class ReactionAudioPresenter : Node
         if (GodotObject.IsInstanceValid(Pipeline))
         {
             Pipeline.ImpactAccepted -= OnImpact;
+            Pipeline.ToolChanged -= OnToolChanged;
             Pipeline.Grab.Released -= OnGrabReleased;
+            Pipeline.Grab.Grabbed -= OnGrabbed;
             Pipeline.CareAwarded -= OnCare;
         }
         if (GodotObject.IsInstanceValid(Guns))
         {
             Guns.ShotFired -= OnGunShotFired;
             Guns.ReloadStarted -= OnGunReloadStarted;
+            Guns.ProjectileHit -= OnProjectileHit;
         }
         foreach (BuddyPartWallImpactDetector detector in _wallImpactDetectors)
         {
@@ -178,6 +256,11 @@ public partial class ReactionAudioPresenter : Node
         _pendingGrabbedWallImpacts = Array.Empty<AcceptedImpact?>();
         if (GodotObject.IsInstanceValid(Objects))
             Objects.Landed -= OnObjectLanded;
+        if (GodotObject.IsInstanceValid(Interactions))
+        {
+            Interactions!.CleanCatch -= OnCleanCatch;
+            Interactions.SoccerKicked -= OnSoccerKicked;
+        }
         foreach (AudioStreamPlayer voice in _voices)
         {
             if (GodotObject.IsInstanceValid(voice))
@@ -192,21 +275,122 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnGunShotFired(GunProfile profile)
     {
-        if (profile.ContentId != ContentIds.ToolPistol || !IsValid(_pistolShot))
+        AudioStream? stream = profile.ContentId switch
+        {
+            ContentIds.ToolPistol => _pistolShot,
+            ContentIds.ToolShotgun => _shotgunBlast,
+            ContentIds.ToolNerfBlaster => _toygunTrigger,
+            _ => null,
+        };
+        if (!IsValid(stream))
             return;
 
-        PistolShotCount++;
-        PlayStream(_pistolShot!, _baseVolumeDb);
+        if (profile.ContentId == ContentIds.ToolPistol)
+            PistolShotCount++;
+
+        GunShotCount++;
+        PlayStream(stream!, _baseVolumeDb);
     }
 
     private void OnGunReloadStarted(GunProfile profile)
     {
-        if (profile.ContentId != ContentIds.ToolPistol || !IsValid(_pistolReload))
+        AudioStream? stream = profile.ContentId switch
+        {
+            ContentIds.ToolPistol => _pistolReload,
+            ContentIds.ToolShotgun => _shotgunReload,
+            ContentIds.ToolNerfBlaster => _toygunReload,
+            _ => null,
+        };
+        if (!IsValid(stream))
             return;
 
-        PistolReloadCount++;
-        PlayStream(_pistolReload!, _baseVolumeDb);
+        if (profile.ContentId == ContentIds.ToolPistol)
+            PistolReloadCount++;
+
+        GunReloadCount++;
+        PlayStream(stream!, _baseVolumeDb);
     }
+
+    /// <summary>
+    /// A dart landing on anything at all - the buddy, a ball, a wall. The pain pipeline only
+    /// reports hits on the buddy, so this rides the gun's own contact event instead (owner
+    /// instruction 2026-08-19).
+    /// </summary>
+    private void OnProjectileHit(GunProfile profile)
+    {
+        if (profile.ContentId != ContentIds.ToolNerfBlaster || !IsValid(_toygunImpact))
+            return;
+
+        ToygunImpactCount++;
+        PlayStream(_toygunImpact!, _baseVolumeDb);
+    }
+
+    /// <summary>
+    /// Putting a gun away. The two real guns and the sprayer share one pool of clatter takes
+    /// (owner decision 2026-08-19); the bat and glove have real world drops instead and are
+    /// heard through <see cref="OnObjectLanded"/>.
+    /// </summary>
+    private void OnToolChanged(ToolId previous, ToolId current)
+    {
+        if (previous == current || !IsValid(_gunDrop))
+            return;
+
+        if (previous is not (ToolId.Pistol or ToolId.Shotgun or ToolId.FireSprayer))
+            return;
+
+        GunDropCount++;
+        PlayStream(_gunDrop!, _baseVolumeDb);
+    }
+
+    private void OnGrabbed(RigidBody2D target)
+    {
+        _grabHoldCountdown = NextGrabHoldSeconds();
+        if (!IsValid(_grabInitial))
+            return;
+
+        GrabInitialCount++;
+        PlayStream(_grabInitial!, _baseVolumeDb);
+    }
+
+    private void OnCleanCatch()
+    {
+        if (!IsValid(_baseballCatch))
+            return;
+
+        CatchCount++;
+        PlayStream(_baseballCatch!, _baseVolumeDb);
+    }
+
+    private void OnSoccerKicked()
+    {
+        if (!IsValid(_soccerKick))
+            return;
+
+        SoccerKickCount++;
+        PlayStream(_soccerKick!, _baseVolumeDb);
+    }
+
+    /// <summary>
+    /// The strain of a held grab: one take every few seconds while something is on the tether,
+    /// never a loop and never on a fixed beat (owner instruction 2026-08-19).
+    /// </summary>
+    public override void _Process(double delta)
+    {
+        if (!IsValid(_grabHold) || !GodotObject.IsInstanceValid(Pipeline) ||
+            !GodotObject.IsInstanceValid(Pipeline.Grab) || !Pipeline.Grab.IsGrabbing)
+            return;
+
+        _grabHoldCountdown -= delta;
+        if (_grabHoldCountdown > 0.0)
+            return;
+
+        _grabHoldCountdown = NextGrabHoldSeconds();
+        GrabHoldCount++;
+        PlayStream(_grabHold!, _baseVolumeDb + GrabHoldVolumeOffsetDb);
+    }
+
+    private static double NextGrabHoldSeconds() =>
+        GD.RandRange(GrabHoldMinimumSeconds, GrabHoldMaximumSeconds);
 
     private void OnImpact(AcceptedImpact impact)
     {
@@ -329,11 +513,28 @@ public partial class ReactionAudioPresenter : Node
 
     private void OnObjectLanded(LooseObjectLanding landing)
     {
-        if (landing.ContentId == ContentIds.ToolGrenade || !IsValid(_itemFalling))
+        // The grenade has its own thud on its own component. Everything else is a ball
+        // (bounce), the dropped bat (clatter), or a generic falling item.
+        if (landing.ContentId == ContentIds.ToolGrenade)
             return;
 
-        ItemFallingCount++;
-        PlayStream(_itemFalling!, _baseVolumeDb);
+        AudioStream? stream = landing.ContentId switch
+        {
+            ContentIds.ToolBaseball or ContentIds.ToolSoccerBall => _ballBounce ?? _itemFalling,
+            ContentIds.ToolBaseballBat => _batDrop ?? _itemFalling,
+            _ => _itemFalling,
+        };
+        if (!IsValid(stream))
+            return;
+
+        if (stream == _ballBounce)
+            BallBounceCount++;
+        else if (stream == _batDrop)
+            BatDropCount++;
+        else
+            ItemFallingCount++;
+
+        PlayStream(stream!, _baseVolumeDb);
     }
 
     private void OnCare(CareKind kind) => PlayChirp(Profile.CareChirpHz, 7_000.0f, _baseVolumeDb);

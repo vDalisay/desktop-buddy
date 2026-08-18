@@ -24,18 +24,28 @@ public partial class SwingAudioComponent : Node
 {
     private const int MixRate = 22_050;
 
+    /// <summary>Raw contact impulse at which a bat hit stops being a graze.</summary>
+    private const float MediumImpactImpulse = 600.0f;
+
     [Export] public CursorToolController CursorTools { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public AudioStreamPlayer Player { get; set; } = null!;
     [Export] public AudioStream? ChargeStartedStream { get; set; }
     [Export] public AudioStream? ChargeCompletedStream { get; set; }
     [Export] public AudioStream? SwingReleasedStream { get; set; }
+    [Export] public AudioStream? SwingReleasedStream2 { get; set; }
+    [Export] public AudioStream? SwingReleasedStream3 { get; set; }
+    /// <summary>Impact take for a glancing hit; also the fallback when no tier is assigned.</summary>
     [Export] public AudioStream? HomeRunImpactStream { get; set; }
+    [Export] public AudioStream? ImpactMediumStream { get; set; }
+    [Export] public AudioStream? ImpactCriticalStream { get; set; }
 
     private AudioStream _chargeStarted = null!;
     private AudioStream _chargeCompleted = null!;
     private AudioStream _swingReleased = null!;
     private AudioStream _homeRunImpact = null!;
+    private AudioStream? _impactMedium;
+    private AudioStream? _impactCritical;
 
     public bool IsInitialized { get; private set; }
     public int GeneratedStreamCount { get; private set; }
@@ -98,8 +108,12 @@ public partial class SwingAudioComponent : Node
 
         _chargeStarted = Valid(ChargeStartedStream) ? ChargeStartedStream! : fallbackChargeStarted;
         _chargeCompleted = Valid(ChargeCompletedStream) ? ChargeCompletedStream! : fallbackChargeCompleted;
-        _swingReleased = Valid(SwingReleasedStream) ? SwingReleasedStream! : fallbackSwingReleased;
-        _homeRunImpact = Valid(HomeRunImpactStream) ? HomeRunImpactStream! : fallbackHomeRunImpact;
+        _swingReleased =
+            SfxRandomizer.Pick(SwingReleasedStream, SwingReleasedStream2, SwingReleasedStream3) ??
+            fallbackSwingReleased;
+        _homeRunImpact = SfxRandomizer.Pick(1.5f, HomeRunImpactStream) ?? fallbackHomeRunImpact;
+        _impactMedium = SfxRandomizer.Pick(1.5f, ImpactMediumStream);
+        _impactCritical = SfxRandomizer.Pick(1.5f, ImpactCriticalStream);
         GeneratedStreamCount = 4;
 
         CursorTools.ChargeStarted += OnChargeStarted;
@@ -162,7 +176,21 @@ public partial class SwingAudioComponent : Node
             return;
 
         HomeRunImpactCount++;
-        Play(SwingAudioCue.HomeRunImpact, _homeRunImpact, profile);
+        Play(SwingAudioCue.HomeRunImpact, ImpactStreamFor(impact.RawImpulse), profile);
+    }
+
+    /// <summary>
+    /// Which authored take a bat hit gets. The critical threshold is the glove's own, so a
+    /// hit that reads as critical anywhere in the game sounds critical here too; the middle
+    /// one is tuning, not physics — move it if medium hits read too soft.
+    /// </summary>
+    private AudioStream ImpactStreamFor(float rawImpulse)
+    {
+        if (rawImpulse >= SwingHitLagComponent.GloveCriticalHeadImpulse && _impactCritical is not null)
+            return _impactCritical;
+        if (rawImpulse >= MediumImpactImpulse && _impactMedium is not null)
+            return _impactMedium;
+        return _homeRunImpact;
     }
 
     private void Play(SwingAudioCue cue, AudioStream stream, SwingToolProfile profile)

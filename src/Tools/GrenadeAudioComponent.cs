@@ -19,16 +19,13 @@ public enum GrenadeAudioCue
 
     /// <summary>The small mechanical cue when the pin comes free.</summary>
     PinPull = 3,
-
-    /// <summary>The continuous fuse layer while at least one grenade is counting down.</summary>
-    Fuse = 4,
 }
 
 /// <summary>
 /// Replacement-ready grenade audio. Existing clean-room synthesized Boom/Thud remain the fallback,
-/// while capture polish adds a mechanical pin cue and a quiet fuse loop on a dedicated player so
-/// an explosion can never truncate the countdown layer of another live grenade. Owner-authored
-/// streams can be assigned later without changing event semantics or gameplay.
+/// while capture polish adds a mechanical pin cue. There is deliberately no countdown/fuse
+/// layer: the owner cut it 2026-08-19 — a live grenade is silent until it lands or goes off.
+/// Owner-authored streams can be assigned without changing event semantics or gameplay.
 /// </summary>
 [GlobalClass]
 public partial class GrenadeAudioComponent : Node
@@ -41,15 +38,14 @@ public partial class GrenadeAudioComponent : Node
 
     // Optional owner-authored replacements. Null preserves the deterministic clean-room fallbacks.
     [Export] public AudioStream? BoomStream { get; set; }
+    [Export] public AudioStream? BoomStream2 { get; set; }
     [Export] public AudioStream? ThudStream { get; set; }
+    [Export] public AudioStream? ThudStream2 { get; set; }
     [Export] public AudioStream? PinPullStream { get; set; }
-    [Export] public AudioStream? FuseLoopStream { get; set; }
 
     private AudioStream _boom = null!;
     private AudioStream _thud = null!;
     private AudioStream _pinPull = null!;
-    private AudioStream _fuseLoop = null!;
-    private AudioStreamPlayer _fusePlayer = null!;
 
     public bool IsInitialized { get; private set; }
 
@@ -59,15 +55,12 @@ public partial class GrenadeAudioComponent : Node
     /// </summary>
     public int GeneratedStreamCount { get; private set; }
     public int CaptureSupplementalGeneratedStreamCount { get; private set; }
-    public int ReplacementReadyCueCount => 4;
+    public int ReplacementReadyCueCount => 3;
     public int PlayCount { get; private set; }
     public int BoomCount { get; private set; }
     public int ThudCount { get; private set; }
     public int PinPullCount { get; private set; }
-    public int FuseStartCount { get; private set; }
-    public int FuseStopCount { get; private set; }
     public GrenadeAudioCue LastCue { get; private set; }
-    public bool IsFuseLoopPlaying => GodotObject.IsInstanceValid(_fusePlayer) && _fusePlayer.Playing;
     public StringName RoutedBus => Player.Bus;
 
     public void Initialize()
@@ -82,16 +75,7 @@ public partial class GrenadeAudioComponent : Node
         Player.Bus = AudioMix.Sfx;
         // Pin pulls, thuds and especially staggered detonations are short punctuation cues. The
         // capture branch allows several to coexist so a second grenade cannot audibly erase the
-        // tail of the first blast. Fuse ambience remains on its own single-loop player below.
         Player.MaxPolyphony = Math.Max(PunctuationPolyphony, Player.MaxPolyphony);
-        _fusePlayer = new AudioStreamPlayer
-        {
-            Name = "GrenadeFuseLoopPlayer",
-            Bus = AudioMix.Sfx,
-            MaxPolyphony = 1,
-            ProcessMode = ProcessModeEnum.Always,
-        };
-        AddChild(_fusePlayer);
 
         AudioStreamWav fallbackBoom = Synthesize(
             seconds: 0.40,
@@ -125,56 +109,16 @@ public partial class GrenadeAudioComponent : Node
                 double scrape = DeterministicNoise(sample * 11 + 113) * 0.22;
                 return (ping * 0.72 + scrape) * Math.Pow(1.0 - progress, 3.2) * 0.22;
             });
-        AudioStreamWav fallbackFuse = Synthesize(
-            seconds: 0.42,
-            loop: true,
-            (sample, progress) =>
-            {
-                double hiss = (
-                    DeterministicNoise(sample * 3 + 19) +
-                    DeterministicNoise(sample * 3 + 18) +
-                    DeterministicNoise(sample * 3 + 17)) / 3.0;
-                double crackleEnvelope = Math.Pow(Math.Max(0.0, Math.Sin(Math.Tau * 7.0 * progress)), 8.0);
-                double crackle = DeterministicNoise(sample * 17 + 331) * crackleEnvelope;
-                return (hiss * 0.12 + crackle * 0.24) * 0.26;
-            });
-
-        _boom = Valid(BoomStream) ? BoomStream! : fallbackBoom;
-        _thud = Valid(ThudStream) ? ThudStream! : fallbackThud;
+        _boom = SfxRandomizer.Pick(2.0f, BoomStream, BoomStream2) ?? fallbackBoom;
+        _thud = SfxRandomizer.Pick(3.0f, ThudStream, ThudStream2) ?? fallbackThud;
         _pinPull = Valid(PinPullStream) ? PinPullStream! : fallbackPin;
-        _fuseLoop = Valid(FuseLoopStream) ? FuseLoopStream! : fallbackFuse;
         GeneratedStreamCount = 2;
-        CaptureSupplementalGeneratedStreamCount = 2;
+        CaptureSupplementalGeneratedStreamCount = 1;
 
         Grenades.Detonated += OnDetonated;
         Grenades.GroundContact += OnGroundContact;
         Grenades.PinPulled += OnPinPulled;
         IsInitialized = true;
-    }
-
-    public override void _Process(double delta)
-    {
-        if (!IsInitialized || !GodotObject.IsInstanceValid(_fusePlayer))
-            return;
-
-        bool shouldPlay = HasLiveFuse();
-        if (shouldPlay == _fusePlayer.Playing)
-            return;
-
-        if (shouldPlay)
-        {
-            _fusePlayer.VolumeDb = Grenades.Profile.AudioVolumeDb - 9.0f;
-            _fusePlayer.Stream = _fuseLoop;
-            _fusePlayer.Play();
-            FuseStartCount++;
-            PlayCount++;
-            LastCue = GrenadeAudioCue.Fuse;
-        }
-        else
-        {
-            _fusePlayer.Stop();
-            FuseStopCount++;
-        }
     }
 
     public override void _ExitTree()
@@ -186,13 +130,10 @@ public partial class GrenadeAudioComponent : Node
             Grenades.PinPulled -= OnPinPulled;
         }
 
-        foreach (AudioStreamPlayer player in new[] { Player, _fusePlayer })
+        if (GodotObject.IsInstanceValid(Player))
         {
-            if (GodotObject.IsInstanceValid(player))
-            {
-                player.Stop();
-                player.Stream = null;
-            }
+            Player.Stop();
+            Player.Stream = null;
         }
     }
 
@@ -212,28 +153,6 @@ public partial class GrenadeAudioComponent : Node
     {
         PinPullCount++;
         Play(GrenadeAudioCue.PinPull, _pinPull);
-    }
-
-    private bool HasLiveFuse()
-    {
-        if (!GodotObject.IsInstanceValid(Grenades.Registry))
-            return false;
-
-        LooseObjectRegistry registry = Grenades.Registry;
-        for (int index = 0; index < LooseObjectRegistry.Capacity; index++)
-        {
-            LooseObjectBody? body = registry.BodyAt(index);
-            if (!GodotObject.IsInstanceValid(body) || body!.SemanticContentId != ContentIds.ToolGrenade)
-                continue;
-
-            if (Grenades.TryGetPresentationState(body.RuntimeId, out GrenadePresentationState state) &&
-                state.Stage == GrenadeFuseStage.Live && state.FuseTicksRemaining > 0)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private void Play(GrenadeAudioCue cue, AudioStream stream)

@@ -30,6 +30,9 @@ public partial class GrabTetherController : Node2D
     /// </summary>
     public event Action<RigidBody2D, bool>? Released;
 
+    /// <summary>Raised when a target is acquired by the tether. Presentation only.</summary>
+    public event Action<RigidBody2D>? Grabbed;
+
     private RigidBody2D? _target;
     private PuppetPartBody? _leashedPart;
     private GrabStretchLimiter _stretch = new();
@@ -144,6 +147,7 @@ public partial class GrabTetherController : Node2D
         _previousCursor = worldPoint;
         CurrentGrab = new GrabState(true, target, worldPoint, worldPoint);
         Telemetry = new GrabTelemetry(true, 0.0f, Vector2.Zero, false, LastReleaseSpeed);
+        Grabbed?.Invoke(target);
         return true;
     }
 

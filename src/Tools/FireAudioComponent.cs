@@ -37,8 +37,15 @@ public partial class FireAudioComponent : Node
     [Export] public AudioStreamPlayer Player { get; set; } = null!;
     [Export] public AudioStreamPlayer LoopPlayer { get; set; } = null!;
 
-    private AudioStreamWav _hiss = null!;
-    private AudioStreamWav _ignition = null!;
+    // Optional owner-authored replacements. Null keeps the clean-room fallback below.
+    [Export] public AudioStream? IgnitionStream { get; set; }
+    [Export] public AudioStream? IgnitionStream2 { get; set; }
+    [Export] public AudioStream? BurnLoopStream { get; set; }
+    [Export] public AudioStream? BurnLoopStream2 { get; set; }
+
+    private AudioStream _hiss = null!;
+    private AudioStream[] _burnTakes = Array.Empty<AudioStream>();
+    private AudioStream _ignition = null!;
 
     public bool IsInitialized { get; private set; }
     public int GeneratedStreamCount { get; private set; }
@@ -64,7 +71,7 @@ public partial class FireAudioComponent : Node
 
         // Band-limited noise with a slow breath under it: a gas flame, not a hi-hat. The
         // clip is authored to loop cleanly by cross-fading its own tail into its head.
-        _hiss = Synthesize(
+        AudioStreamWav fallbackHiss = Synthesize(
             seconds: 0.50,
             loop: true,
             (sample, progress) =>
@@ -77,7 +84,7 @@ public partial class FireAudioComponent : Node
                 return lowPassed * breath * 0.28;
             });
         // A short soft thump with a bright edge: fire catching, never an explosion.
-        _ignition = Synthesize(
+        AudioStreamWav fallbackIgnition = Synthesize(
             seconds: 0.22,
             loop: false,
             (sample, progress) =>
@@ -90,6 +97,19 @@ public partial class FireAudioComponent : Node
                 return ((body * 0.55) + (air * 0.45)) * attack *
                        Math.Pow(1.0 - progress, 1.8) * 0.36;
             });
+        // The burn loop is picked per spray by hand rather than through a randomizer: the
+        // stream has to keep looping while the trigger is held, and a randomizer would both
+        // re-roll the take and re-roll its pitch on every repeat, warbling the flame.
+        var burnTakes = new System.Collections.Generic.List<AudioStream>(2);
+        foreach (AudioStream? take in new[] { BurnLoopStream, BurnLoopStream2 })
+        {
+            if (SfxRandomizer.IsValid(take))
+                burnTakes.Add(take!);
+        }
+
+        _burnTakes = burnTakes.ToArray();
+        _hiss = _burnTakes.Length > 0 ? _burnTakes[0] : fallbackHiss;
+        _ignition = SfxRandomizer.Pick(2.0f, IgnitionStream, IgnitionStream2) ?? fallbackIgnition;
         GeneratedStreamCount = 2;
 
         Sprayer.SprayingChanged += OnSprayingChanged;
@@ -119,7 +139,11 @@ public partial class FireAudioComponent : Node
     {
         if (spraying)
         {
+            if (_burnTakes.Length > 1)
+                _hiss = _burnTakes[GD.RandRange(0, _burnTakes.Length - 1)];
+
             LoopPlayer.VolumeDb = Sprayer.Profile.AudioVolumeDb;
+            LoopPlayer.PitchScale = 1.0f + ((float)GD.RandRange(-4.0, 4.0) * 0.01f);
             LoopPlayer.Stream = _hiss;
             LoopPlayer.Play();
             IsHissing = true;
