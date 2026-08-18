@@ -146,7 +146,36 @@ jobs:
           fi
 
       - name: Capture - grenade lifecycle
-        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_fuse --seed=1
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$PWD/.artifacts/capture-grenade"
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- \
+            --scenario=grenade_fuse --seed=1 \
+            --artifacts="$PWD/.artifacts/capture-grenade"
+          status=$?
+          echo "$status" > "$PWD/.artifacts/capture-grenade/exit-code.txt"
+          exit 0
+
+      - name: Preserve grenade lifecycle verdict
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-grenade-verdict
+          path: .artifacts/capture-grenade
+          if-no-files-found: error
+
+      - name: Assert grenade lifecycle gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(cat "$PWD/.artifacts/capture-grenade/exit-code.txt")"
+          if [ "$status" != "0" ]; then
+            verdict="$PWD/.artifacts/capture-grenade/scenario_grenade_fuse.verdict.json"
+            if [ -f "$verdict" ]; then
+              cat "$verdict"
+            fi
+            exit "$status"
+          fi
 
       - name: Capture - simultaneous grenade presentation
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_multi_capture --seed=1
