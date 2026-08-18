@@ -33,6 +33,39 @@ public sealed class BuddyProgressStateTests
     }
 
     [Fact]
+    public void LoadedLegacyStartingSet_RemainsOwnedAfterDemoDefaultChange()
+    {
+        // Before the Demo progression pass, a fresh save owned Grab/Pet/Tickle/Boxing Glove.
+        // A loaded save is explicit historical state, not a request to reseed today's defaults:
+        // changing the new-save contract must never take already-owned interactions away.
+        var state = new BuddyProgressState(
+            CashPerPain,
+            unlockedToolIds: new[]
+            {
+                ContentIds.ToolGrab,
+                ContentIds.ToolPet,
+                ContentIds.ToolTickle,
+                ContentIds.ToolBoxingGlove,
+            },
+            selectedToolId: ContentIds.ToolBoxingGlove);
+
+        Assert.True(state.IsToolUnlocked(ContentIds.ToolGrab));
+        Assert.True(state.IsToolUnlocked(ContentIds.ToolPet));
+        Assert.True(state.IsToolUnlocked(ContentIds.ToolTickle));
+        Assert.True(state.IsToolUnlocked(ContentIds.ToolBoxingGlove));
+        Assert.Equal(ToolId.BoxingGlove, state.SelectedTool);
+        Assert.Equal(
+            new[]
+            {
+                ContentIds.ToolBoxingGlove,
+                ContentIds.ToolGrab,
+                ContentIds.ToolPet,
+                ContentIds.ToolTickle,
+            },
+            state.Snapshot().UnlockedToolIds);
+    }
+
+    [Fact]
     public void AcceptDamage_PaysHarmsAndCounts()
     {
         BuddyProgressState state = NewSave();
