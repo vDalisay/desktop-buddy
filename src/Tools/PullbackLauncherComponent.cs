@@ -23,6 +23,9 @@ namespace DesktopBuddy.Tools;
 [GlobalClass]
 public partial class PullbackLauncherComponent : Node2D
 {
+    private const int TrajectoryDashPeriod = 3;
+    private const float LandingMarkerRadius = 5.0f;
+
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public GrabTetherController Grab { get; set; } = null!;
     [Export] public LooseObjectRegistry Registry { get; set; } = null!;
@@ -65,6 +68,23 @@ public partial class PullbackLauncherComponent : Node2D
     public string? CurrentLaunchableContentId =>
         HasLaunchable ? _spawned!.SemanticContentId : null;
     public LooseObjectBody? AimedBody => IsAiming ? _aimedBody : null;
+
+    /// <summary>
+    /// Current pullback strength, normalized 0..1. This is presentation telemetry only: launch
+    /// velocity still comes from the authored pull distance and speed caps below.
+    /// </summary>
+    public float PullStrength => IsAiming
+        ? Mathf.Clamp(
+            (_bodyAnchor - _aimedBody!.GlobalPosition).Length() /
+            Mathf.Max(1.0f, AimTuning.MaxPullDistance),
+            0.0f,
+            1.0f)
+        : 0.0f;
+
+    /// <summary>The end of the currently drawn prediction horizon in world coordinates.</summary>
+    public Vector2 PredictedLandingWorldPosition => IsAiming
+        ? PredictAimedWorldPosition(AimTuning.PredictionSeconds)
+        : Vector2.Zero;
 
     public PullbackLauncherProfile AimTuning
     {
@@ -257,16 +277,42 @@ public partial class PullbackLauncherComponent : Node2D
         Vector2 start = ToLocal(_aimedBody!.GlobalPosition);
         Vector2 anchor = ToLocal(_bodyAnchor);
         PullbackLauncherProfile tuning = AimTuning;
-        DrawLine(start, anchor, tuning.PullLineColor, 2.0f, true);
 
+        // The pull line is the physical relationship: object in the hand, original anchor at
+        // the other end. Slightly thicken it with charge so a strong throw reads before release.
+        float strength = PullStrength;
+        DrawLine(start, anchor, tuning.PullLineColor, Mathf.Lerp(1.5f, 2.75f, strength), true);
+
+        // Modernized Win98-style trajectory: still plain geometry, but segmented and fading so
+        // it reads as a prediction rather than another piece of room art. Dashes also keep a
+        // dense 24-segment arc legible over painted backgrounds.
         Vector2 previous = start;
+        Vector2 current = start;
         for (int segment = 1; segment <= tuning.PredictionSegments; segment++)
         {
             float time = tuning.PredictionSeconds * segment / tuning.PredictionSegments;
-            Vector2 current = ToLocal(PredictAimedWorldPosition(time));
-            DrawLine(previous, current, tuning.TrajectoryColor, 1.5f, true);
+            current = ToLocal(PredictAimedWorldPosition(time));
+            float progress = segment / (float)tuning.PredictionSegments;
+            if ((segment - 1) % TrajectoryDashPeriod != TrajectoryDashPeriod - 1)
+            {
+                Color segmentColor = tuning.TrajectoryColor;
+                segmentColor.A *= Mathf.Lerp(0.95f, 0.28f, progress);
+                float width = Mathf.Lerp(2.15f, 1.15f, progress);
+                DrawLine(previous, current, segmentColor, width, true);
+            }
             previous = current;
         }
+
+        // The end of the prediction horizon gets a small target marker. It deliberately does
+        // not promise collision-aware landing; it says "the object will be around here after
+        // the authored preview time", matching PredictAimedWorldPosition exactly.
+        Color marker = tuning.TrajectoryColor;
+        marker.A *= 0.78f;
+        float radius = Mathf.Lerp(LandingMarkerRadius * 0.72f, LandingMarkerRadius * 1.18f, strength);
+        DrawArc(current, radius, 0.0f, Mathf.Tau, 16, marker, 1.5f, true);
+        float cross = radius * 0.62f;
+        DrawLine(current + Vector2.Left * cross, current + Vector2.Right * cross, marker, 1.0f, true);
+        DrawLine(current + Vector2.Up * cross, current + Vector2.Down * cross, marker, 1.0f, true);
     }
 
     public override void _ExitTree()
