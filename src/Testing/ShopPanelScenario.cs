@@ -62,15 +62,17 @@ public sealed class ShopPanelScenario : IScenario
             CatalogueEntry grab = offered.First(static e => e.ContentId == ContentIds.ToolGrab);
             Button grabAction = shop.BuyButtonFor(grab.ContentId)!;
             bool startingToolIsOwned = progress.SelectedTool == ToolId.Grab &&
-                grabAction is { Disabled: true, Text: "Equipped" };
+                grabAction is { Disabled: true, Text: "Equipped" } &&
+                grabAction.TooltipText.Contains("currently equipped", System.StringComparison.OrdinalIgnoreCase);
             checks.Add(new StartupCheck("catalogue_includes_starting_tools_as_owned", startingToolIsOwned,
-                $"selected={progress.SelectedTool} grab={grabAction.Text}/{grabAction.Disabled}"));
+                $"selected={progress.SelectedTool} grab={grabAction.Text}/{grabAction.Disabled} tip={grabAction.TooltipText}"));
 
             IReadOnlyList<CatalogueEntry> purchasable = offered
                 .Where(static e => !e.IsStarting)
                 .ToArray();
             bool brokeDisablesUnownedBuys = progress.BalanceMilliCredits == 0 &&
-                purchasable.All(entry => shop.BuyButtonFor(entry.ContentId) is { Disabled: true, Text: "Buy" });
+                purchasable.All(entry => shop.BuyButtonFor(entry.ContentId) is { Disabled: true, Text: "Buy" } button &&
+                    button.TooltipText.Contains("Earn more credits", System.StringComparison.OrdinalIgnoreCase));
             checks.Add(new StartupCheck("catalogue_refuses_purchases_while_broke", brokeDisablesUnownedBuys,
                 $"balance={progress.BalanceMilliCredits}"));
 
@@ -84,7 +86,8 @@ public sealed class ShopPanelScenario : IScenario
             long balanceBefore = progress.BalanceMilliCredits;
 
             Button action = shop.BuyButtonFor(cheapest.ContentId)!;
-            bool becameBuyable = !action.Disabled && action.Text == "Buy";
+            bool becameBuyable = !action.Disabled && action.Text == "Buy" &&
+                action.TooltipText.Contains("permanently", System.StringComparison.OrdinalIgnoreCase);
             action.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
@@ -92,10 +95,11 @@ public sealed class ShopPanelScenario : IScenario
                 progress.IsToolUnlocked(cheapest.ContentId) &&
                 progress.BalanceMilliCredits == balanceBefore - cheapest.PriceMilliCredits &&
                 shop.PurchaseCount == 1 &&
-                action is { Disabled: false, Text: "Equip" };
+                action is { Disabled: false, Text: "Equip" } &&
+                action.TooltipText.StartsWith("Equip ", System.StringComparison.Ordinal);
             checks.Add(new StartupCheck("catalogue_purchase_charges_authored_price_once", bought,
                 $"id={cheapest.ContentId} price={cheapest.PriceMilliCredits} " +
-                $"balance={balanceBefore}->{progress.BalanceMilliCredits} action={action.Text}"));
+                $"balance={balanceBefore}->{progress.BalanceMilliCredits} action={action.Text} tip={action.TooltipText}"));
 
             long afterPurchase = progress.BalanceMilliCredits;
             action.EmitSignal(BaseButton.SignalName.Pressed);
@@ -105,11 +109,12 @@ public sealed class ShopPanelScenario : IScenario
                 progress.SelectedTool == boughtTool &&
                 sandbox.Pipeline.SelectedTool == boughtTool &&
                 action is { Disabled: true, Text: "Equipped" } &&
+                action.TooltipText.Contains("currently equipped", System.StringComparison.OrdinalIgnoreCase) &&
                 shop.PurchaseCount == 1 &&
                 shop.EquipCount == 1;
             checks.Add(new StartupCheck("catalogue_equips_owned_tool_without_second_charge", equipped,
                 $"selected={progress.SelectedTool} purchases={shop.PurchaseCount} " +
-                $"equips={shop.EquipCount} balance={progress.BalanceMilliCredits}"));
+                $"equips={shop.EquipCount} balance={progress.BalanceMilliCredits} tip={action.TooltipText}"));
         }
         finally
         {
