@@ -1,7 +1,8 @@
-[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://src/Tools/CursorToolProfile.cs" id="1_cursor_tool"]
 [ext_resource type="Script" path="res://src/Tools/SwingToolProfile.cs" id="2_swing_tool"]
+[ext_resource type="Resource" path="res://data/objects/dropped_baseball_bat.tres" id="3_world_drop"]
 
 [sub_resource type="Resource" id="Resource_swing_bat"]
 resource_name = "ProvisionalM5HomeRunSwing"
@@ -67,3 +68,4 @@ OutlineColor = Color(0.352941, 0.227451, 0.094118, 1)
 VisualDepthOffset = 144.0
 Visual3DKind = 1
 Swing = SubResource("Resource_swing_bat")
+WorldDrop = ExtResource("3_world_drop")
