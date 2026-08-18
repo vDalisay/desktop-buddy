@@ -27,6 +27,8 @@ public partial class CharacterSlotUiBootstrap : Node
     private double _untilRefresh;
     private double _untilDiskScan;
     private int _cachedDiskOccupied;
+    private Guid? _observedWorkingCharacterId;
+    private bool _observedWorkingDirty;
     private bool _purchaseBusy;
     private string? _transientStatus;
     private double _statusSeconds;
@@ -79,6 +81,9 @@ public partial class CharacterSlotUiBootstrap : Node
             _newButton = null;
             _buyButton = null;
             _slotLabel = null;
+            _observedWorkingCharacterId = null;
+            _observedWorkingDirty = false;
+            _untilDiskScan = 0.0;
         }
         if (_slots is null && GodotObject.IsInstanceValid(_sandbox) &&
             _sandbox!.Progress is not null && _sandbox.Economy is not null)
@@ -175,6 +180,18 @@ public partial class CharacterSlotUiBootstrap : Node
     private int CountOccupiedSlots()
     {
         string root = ProjectSettings.GlobalizePath("user://characters");
+        var working = _host?.Session.WorkingDocument;
+        Guid? workingId = working?.Id;
+        bool workingDirty = _host?.Session.IsDirty ?? false;
+
+        // Character creation/selection/deletion changes the working ID; saving a new character
+        // changes dirty -> clean and creates character.json. Both transitions invalidate the
+        // cached disk count immediately so capacity can never be undercounted between scans.
+        if (_observedWorkingCharacterId != workingId || (_observedWorkingDirty && !workingDirty))
+            _untilDiskScan = 0.0;
+        _observedWorkingCharacterId = workingId;
+        _observedWorkingDirty = workingDirty;
+
         if (_untilDiskScan <= 0.0)
         {
             _cachedDiskOccupied = ScanOccupiedSlots(root);
@@ -184,7 +201,7 @@ public partial class CharacterSlotUiBootstrap : Node
         int count = _cachedDiskOccupied;
         // A freshly-created/duplicated working copy has not reached disk yet but already reserves
         // the next available slot for this editor session.
-        if (_host?.Session.WorkingDocument is { } working && _host.Session.IsDirty)
+        if (working is not null && workingDirty)
         {
             string expected = Path.Combine(root, working.Id.ToString("N"), "character.json");
             if (!File.Exists(expected))
