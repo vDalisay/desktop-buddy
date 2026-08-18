@@ -33,8 +33,18 @@ public readonly record struct TutorialProgressSnapshot(
     IReadOnlyList<string> CompletedStepIds,
     bool Skipped)
 {
-    public bool IsComplete =>
-        Skipped || TutorialStepIds.Ordered.All(id => CompletedStepIds.Contains(id, StringComparer.Ordinal));
+    public bool IsComplete
+    {
+        get
+        {
+            if (Skipped)
+                return true;
+            foreach (string id in TutorialStepIds.Ordered)
+                if (!CompletedStepIds.Contains(id, StringComparer.Ordinal))
+                    return false;
+            return true;
+        }
+    }
 }
 
 /// <summary>
