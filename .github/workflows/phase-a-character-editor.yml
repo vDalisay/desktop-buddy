@@ -24,8 +24,8 @@ jobs:
           global-json-file: global.json
       - name: Build solution
         run: dotnet build DesktopBuddy.sln -c Debug
-      - name: Domain tests excluding documented Linux path baseline
-        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
+      - name: Domain unit tests
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
       - name: Download pinned Godot
         run: |
           set -euo pipefail

@@ -34,8 +34,8 @@ jobs:
       - name: Build game solution
         run: dotnet build DesktopBuddy.sln -c Debug
 
-      - name: Domain unit tests (excluding known Linux-only ProgressStoreTests)
-        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
+      - name: Domain unit tests
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
 
       - name: Asset Forge deterministic Core tests
         run: dotnet test devtools/AssetForge.Core.Tests/DesktopBuddy.AssetForge.Core.Tests.csproj -c Debug
