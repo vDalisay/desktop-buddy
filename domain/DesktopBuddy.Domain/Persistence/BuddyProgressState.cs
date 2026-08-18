@@ -124,8 +124,8 @@ public sealed class BuddyProgressState
     /// <param name="initialMood">Persisted mood, or <c>0</c> for a new save.</param>
     /// <param name="harmfulContentIds">Persisted harmful history, or <c>null</c> for a new save.</param>
     /// <param name="unlockedToolIds">
-    /// Persisted unlocks. <c>null</c> seeds the FR-013.1 new-save set: Grab, Pet, Tickle,
-    /// and Boxing Glove available immediately.
+    /// Persisted unlocks. <c>null</c> seeds the current new-save set declared by
+    /// <see cref="CataloguePolicy.NewSaveUnlockedContentIds"/>.
     /// </param>
     public BuddyProgressState(
         double cashPerPain,
@@ -200,8 +200,6 @@ public sealed class BuddyProgressState
 
         if (unlockedToolIds is null)
         {
-            // FR-013.1: a new save has all four launch-subset tools available. The set is
-            // declared once in CataloguePolicy so seeding and the catalogue cannot drift.
             foreach (string id in CataloguePolicy.NewSaveUnlockedContentIds)
             {
                 _unlockedTools.Add(id);
@@ -335,6 +333,36 @@ public sealed class BuddyProgressState
     public BuddyTraits Traits { get; private set; }
     public CumulativeTimes Times { get; private set; }
     public ProgressExtensionData? Extensions { get; private set; }
+
+    /// <summary>
+    /// Mutates one namespaced semantic extension without rebuilding the progress state. This
+    /// is for small versioned feature records that must survive save/load while remaining
+    /// independent of volatile UI state. It deliberately emits no <see cref="Changed"/> event;
+    /// the owning feature requests an immediate flush when durability matters.
+    /// </summary>
+    public bool SetExtensionValue(string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+            throw new ArgumentException("An extension value requires a stable key.", nameof(key));
+        ArgumentNullException.ThrowIfNull(value);
+
+        var values = Extensions?.Values is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(Extensions.Values, StringComparer.Ordinal);
+        if (values.TryGetValue(key, out string? existing) &&
+            string.Equals(existing, value, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        values[key] = value;
+        Extensions = new ProgressExtensionData(
+            Extensions?.UnknownSelectedToolId,
+            Extensions?.UnknownContentIds,
+            values);
+        Touch();
+        return true;
+    }
 
     public ProgressStatistics Statistics => new(
         _scoredImpacts,
