@@ -104,9 +104,18 @@ public partial class Win98CatalogGrid : ScrollContainer
                 throw new ArgumentException($"Duplicate catalogue item ID '{item.Id}'.", nameof(items));
         }
 
+        bool canUpdateExisting = _built && HasSameStructure(frozen);
         _items = frozen;
-        if (_built)
-            Rebuild();
+        if (!_built)
+            return;
+
+        if (canUpdateExisting)
+        {
+            UpdateExistingTiles(frozen);
+            return;
+        }
+
+        Rebuild();
     }
 
     public bool Select(string id, bool notify = true)
@@ -148,6 +157,8 @@ public partial class Win98CatalogGrid : ScrollContainer
         mutable[index] = item;
         _items = mutable;
         Apply(parts, item);
+        if (string.Equals(_selectedId, item.Id, StringComparison.Ordinal) && parts.Button.Disabled)
+            ClearSelection(parts);
         return true;
     }
 
@@ -165,6 +176,41 @@ public partial class Win98CatalogGrid : ScrollContainer
         _grid.AddThemeConstantOverride("v_separation", (int)Gap);
         AddChild(_grid);
         _built = true;
+    }
+
+    private bool HasSameStructure(IReadOnlyList<Win98CatalogItemPresentation> incoming)
+    {
+        if (incoming.Count != _items.Count || incoming.Count != _tiles.Count)
+            return false;
+
+        for (int index = 0; index < incoming.Count; index++)
+        {
+            if (!string.Equals(incoming[index].Id, _items[index].Id, StringComparison.Ordinal) ||
+                !_tiles.ContainsKey(incoming[index].Id))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void UpdateExistingTiles(IReadOnlyList<Win98CatalogItemPresentation> items)
+    {
+        for (int index = 0; index < items.Count; index++)
+        {
+            Win98CatalogItemPresentation item = items[index];
+            Apply(_tiles[item.Id], item);
+        }
+
+        if (_selectedId is not null && _tiles.TryGetValue(_selectedId, out TileParts? selected) && selected.Button.Disabled)
+            ClearSelection(selected);
+    }
+
+    private void ClearSelection(TileParts selected)
+    {
+        selected.Button.ButtonPressed = false;
+        selected.SelectionOutline.Visible = false;
+        _selectedId = null;
     }
 
     private void Rebuild()
