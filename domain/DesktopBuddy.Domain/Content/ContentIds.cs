@@ -37,8 +37,17 @@ public static class ContentIds
     /// </summary>
     public const string CosmeticWorkGlasses = "cosmetic.glasses.work_classic";
     public const string CosmeticHairShortSweep = "cosmetic.hair.short_sweep";
+    public const string CosmeticBrowsStraight = "cosmetic.brows.straight";
+    public const string CosmeticBrowsSegmented = "cosmetic.brows.segmented";
+    public const string CosmeticEyesRoundDot = "cosmetic.eyes.round_dot";
+    public const string CosmeticEyesHorizontalLed = "cosmetic.eyes.horizontal_led";
     public const string CosmeticNoseButton = "cosmetic.nose.button";
+    public const string CosmeticMouthPixel = "cosmetic.mouth.pixel";
+    public const string CosmeticMouthLine = "cosmetic.mouth.line";
     public const string CosmeticEarsRoundTabs = "cosmetic.ears.round_tabs";
+    public const string CosmeticAccentPanel = "cosmetic.accessories.panel";
+    public const string CosmeticAccentChevron = "cosmetic.accessories.chevron";
+    public const string CosmeticAccentBolts = "cosmetic.accessories.bolts";
     public const string CosmeticHeadwearSoftCap = "cosmetic.headwear.soft_cap";
     public const string CosmeticTopUtilityBib = "cosmetic.tops.utility_bib";
     public const string CosmeticShoesSoftSteps = "cosmetic.shoes.soft_steps";
