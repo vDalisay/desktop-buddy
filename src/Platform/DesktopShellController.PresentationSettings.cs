@@ -48,12 +48,12 @@ public partial class DesktopShellController
     }
 
     /// <summary>
-    /// Work Mode no longer uses its local mute preference to silence the whole mixer. The
-    /// setting is scoped to the companion's typing cue so impacts, rewards, menu feedback and
-    /// any future Work-specific SFX remain audible. The legacy persisted field name is kept to
-    /// avoid invalidating existing settings files.
+    /// The legacy broad Work Mode mute remains available independently from the narrower
+    /// MuteWorkTyping preference. It mutes the whole mix without changing slider positions,
+    /// while Work typing itself reads its dedicated setting at playback time.
     /// </summary>
-    internal void ApplyAudioSettings() => AudioMix.Apply(_settings);
+    internal void ApplyAudioSettings() =>
+        AudioMix.Apply(_settings, silenceAll: _settings.MuteInWorkMode && Mode == DomainInputMode.Work);
 
     private void ApplyZoom(double zoom)
     {
