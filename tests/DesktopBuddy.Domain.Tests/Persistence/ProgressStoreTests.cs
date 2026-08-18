@@ -181,6 +181,7 @@ public sealed class ProgressStoreTests
             HideForFullscreenApps = false,
             StartupInputMode = "play",
             MuteInWorkMode = false,
+            MuteWorkTyping = true,
             ZoomPercent = 150,
         };
 
@@ -192,6 +193,7 @@ public sealed class ProgressStoreTests
         Assert.False(loaded.Value.HideForFullscreenApps);
         Assert.Equal("play", loaded.Value.StartupInputMode);
         Assert.False(loaded.Value.MuteInWorkMode);
+        Assert.True(loaded.Value.MuteWorkTyping);
         Assert.Equal(150, loaded.Value.ZoomPercent);
 
         await Assert.ThrowsAsync<ArgumentException>(() =>
