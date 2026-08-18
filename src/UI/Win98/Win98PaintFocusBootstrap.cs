@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using DesktopBuddy.CharacterEditor;
 using Godot;
@@ -11,9 +12,13 @@ namespace DesktopBuddy.UI.Win98;
 /// </summary>
 public partial class Win98PaintFocusBootstrap : Node
 {
+    private const double RefreshIntervalSeconds = 0.10;
+
     private PaintCanvasControl? _canvas;
     private Control? _editorRoot;
     private readonly List<ulong> _wiredInstanceIds = new();
+    private readonly List<Control> _focusableControls = new();
+    private double _refreshRemaining;
 
     public override void _Ready()
     {
@@ -24,20 +29,27 @@ public partial class Win98PaintFocusBootstrap : Node
 
     public override void _Process(double delta)
     {
+        _refreshRemaining -= Math.Max(0.0, delta);
+        if (_refreshRemaining > 0.0)
+            return;
+        _refreshRemaining = RefreshIntervalSeconds;
+
         ResolveRoots();
         if (!GodotObject.IsInstanceValid(_canvas) ||
             !GodotObject.IsInstanceValid(_editorRoot) ||
             !_canvas!.IsVisibleInTree())
         {
             _wiredInstanceIds.Clear();
+            _focusableControls.Clear();
             return;
         }
 
-        List<Control> controls = CollectFocusableControls(_editorRoot!);
-        if (MatchesCurrentGraph(controls))
+        _focusableControls.Clear();
+        Collect(_editorRoot!, _focusableControls);
+        if (MatchesCurrentGraph(_focusableControls))
             return;
 
-        WireTraversal(controls);
+        WireTraversal(_focusableControls);
     }
 
     private void ResolveRoots()
@@ -49,13 +61,6 @@ public partial class Win98PaintFocusBootstrap : Node
         if (!GodotObject.IsInstanceValid(_editorRoot))
             _editorRoot = GetTree().Root.FindChild(
                 "CharacterEditorPanel", recursive: true, owned: false) as Control;
-    }
-
-    private static List<Control> CollectFocusableControls(Control root)
-    {
-        var result = new List<Control>();
-        Collect(root, result);
-        return result;
     }
 
     private static void Collect(Node node, List<Control> result)
