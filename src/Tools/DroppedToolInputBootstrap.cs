@@ -21,6 +21,8 @@ public partial class DroppedToolInputBootstrap : Node
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
+        // Wake until the shipping sandbox is attached once. Afterwards input wakes the bridge
+        // only for the next transaction boundary instead of paying a 120 Hz idle callback.
         SetPhysicsProcess(true);
         SetProcessUnhandledInput(true);
     }
@@ -30,6 +32,7 @@ public partial class DroppedToolInputBootstrap : Node
         if (@event.IsActionPressed(InputActions.DropTool))
         {
             _dropPending = true;
+            SetPhysicsProcess(true);
             return;
         }
 
@@ -42,6 +45,7 @@ public partial class DroppedToolInputBootstrap : Node
         {
             _reequipPending = true;
             _reequipViewportPosition = mouse.Position;
+            SetPhysicsProcess(true);
         }
     }
 
@@ -63,6 +67,9 @@ public partial class DroppedToolInputBootstrap : Node
                             _reequipViewportPosition;
             _droppedTools!.TryReequipAt(world);
         }
+
+        if (!_dropPending && !_reequipPending)
+            SetPhysicsProcess(false);
     }
 
     private bool EnsureAttached()
