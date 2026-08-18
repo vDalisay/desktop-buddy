@@ -10,6 +10,7 @@ using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
+using DesktopBuddy.Onboarding;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
@@ -237,6 +238,13 @@ public partial class Bootstrap : Node
         // bridge is added afterwards so its initial Work-mode application cannot be undone
         // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
+
+        var guidance = new FirstSessionGuidanceController
+        {
+            Name = nameof(FirstSessionGuidanceController),
+        };
+        guidance.Configure(sandbox, context);
+        AddChild(guidance);
 
         var inputBridge = new GameplayInputModeBridge
         {
