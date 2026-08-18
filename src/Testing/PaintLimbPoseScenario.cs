@@ -8,8 +8,9 @@ using Godot;
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// User-testing Show limbs gate: the editor-only pose must move the trusted hand/foot paint
-/// targets to their visible spread positions and restore the original mapper exactly when disabled.
+/// User-testing Show limbs gate: the editor-only pose must move the trusted head/hand/foot paint
+/// targets to their visible spread positions, expose the torso-to-head neck connector, and restore
+/// the original mapper exactly when disabled.
 /// </summary>
 public sealed class PaintLimbPoseScenario : IScenario
 {
@@ -28,47 +29,63 @@ public sealed class PaintLimbPoseScenario : IScenario
 
         try
         {
+            Vector2 headHome = CanvasPoint(0, -50);
+            Vector2 headSpread = CanvasPoint(0, -78);
+            Vector2 neckConnector = CanvasPoint(0, -41);
             Vector2 rightHandHome = CanvasPoint(38, -5);
             Vector2 rightHandHomeProbe = CanvasPoint(38, -15);
             Vector2 rightHandSpread = CanvasPoint(78, -5);
             Vector2 leftFootHome = CanvasPoint(-22, 55);
             Vector2 leftFootSpread = CanvasPoint(-40, 55);
 
-            bool authoredHome = canvas.PartAt(rightHandHome) == PaintPart.RightHand &&
+            PaintHit? headHomeHit = canvas.HitAt(headHome);
+            bool authoredHome = headHomeHit is { Part: PaintPart.Head, IsConnector: false } &&
+                canvas.PartAt(rightHandHome) == PaintPart.RightHand &&
                 canvas.PartAt(leftFootHome) == PaintPart.LeftFoot;
             checks.Add(new StartupCheck(
                 "paint_limb_pose_starts_at_authored_mapper_centers",
                 authoredHome,
-                $"right={canvas.PartAt(rightHandHome)} leftFoot={canvas.PartAt(leftFootHome)}"));
+                $"head={headHomeHit?.Part}/{headHomeHit?.IsConnector} right={canvas.PartAt(rightHandHome)} leftFoot={canvas.PartAt(leftFootHome)}"));
 
             canvas.SetExpandedLimbPose(true);
             Vector2 rightArmConnector = CanvasPoint(58, -4);
             Vector2 leftLegConnector = CanvasPoint(-27, 37);
+            PaintHit? headEndHit = canvas.HitAt(headSpread);
+            PaintHit? neckHit = canvas.HitAt(neckConnector);
             PaintHit? rightEndHit = canvas.HitAt(rightHandSpread);
             PaintHit? rightConnectorHit = canvas.HitAt(rightArmConnector);
             bool spread = canvas.ExpandedLimbPose &&
+                headEndHit is { Part: PaintPart.Head, IsConnector: false } &&
+                neckHit is { Part: PaintPart.Head, IsConnector: true } &&
                 rightEndHit is { Part: PaintPart.RightHand, IsConnector: false } && rightEndHit.Value.Uv.X < 0.5 &&
                 canvas.PartAt(leftFootSpread) == PaintPart.LeftFoot &&
                 canvas.PartAt(rightHandHomeProbe) != PaintPart.RightHand &&
                 rightConnectorHit is { Part: PaintPart.RightHand, IsConnector: true } && rightConnectorHit.Value.Uv.X >= 0.5 &&
                 canvas.PartAt(leftLegConnector) == PaintPart.LeftFoot;
             checks.Add(new StartupCheck(
-                "paint_limb_pose_moves_trusted_targets_to_spread_pose",
+                "paint_limb_pose_moves_trusted_targets_and_exposes_neck_connector",
                 spread,
+                $"headSpread={headEndHit?.Part}/{headEndHit?.IsConnector} neck={neckHit?.Part}/{neckHit?.IsConnector} " +
                 $"rightSpread={canvas.PartAt(rightHandSpread)} leftFootSpread={canvas.PartAt(leftFootSpread)} " +
                 $"arm={canvas.PartAt(rightArmConnector)} leg={canvas.PartAt(leftLegConnector)}"));
 
             canvas.SetExpandedLimbPose(false);
+            PaintHit? restoredNeckPoint = canvas.HitAt(neckConnector);
             bool restored = !canvas.ExpandedLimbPose &&
+                canvas.HitAt(headHome) is { Part: PaintPart.Head, IsConnector: false } &&
                 canvas.PartAt(rightHandHome) == PaintPart.RightHand &&
                 canvas.PartAt(rightHandHomeProbe) == PaintPart.RightHand &&
                 canvas.PartAt(leftFootHome) == PaintPart.LeftFoot &&
+                canvas.PartAt(headSpread) != PaintPart.Head &&
+                restoredNeckPoint is { Part: PaintPart.Head, IsConnector: false } &&
                 canvas.PartAt(rightHandSpread) != PaintPart.RightHand &&
                 canvas.PartAt(rightArmConnector) is null &&
                 canvas.PartAt(leftLegConnector) is null;
             checks.Add(new StartupCheck(
-                "paint_limb_pose_restores_authored_mapping_exactly",
+                "paint_limb_pose_restores_authored_head_limb_mapping_exactly",
                 restored,
+                $"headHome={canvas.HitAt(headHome)?.Part}/{canvas.HitAt(headHome)?.IsConnector} " +
+                $"headSpread={canvas.PartAt(headSpread)} neckPoint={restoredNeckPoint?.Part}/{restoredNeckPoint?.IsConnector} " +
                 $"rightHome={canvas.PartAt(rightHandHome)} leftFootHome={canvas.PartAt(leftFootHome)} rightSpread={canvas.PartAt(rightHandSpread)}"));
 
             canvas.SelectPaintTool(PaintTool.Pen);
