@@ -16,6 +16,7 @@ namespace DesktopBuddy.CharacterEditor;
 public partial class CharacterSlotUiBootstrap : Node
 {
     private const double RefreshSeconds = 0.15;
+    private const double DiskScanSeconds = 0.75;
 
     private SandboxRoot? _sandbox;
     private CharacterEditorHost? _host;
@@ -24,6 +25,8 @@ public partial class CharacterSlotUiBootstrap : Node
     private Label? _slotLabel;
     private CharacterSlotEntitlementState? _slots;
     private double _untilRefresh;
+    private double _untilDiskScan;
+    private int _cachedDiskOccupied;
     private bool _purchaseBusy;
     private string? _transientStatus;
     private double _statusSeconds;
@@ -36,10 +39,12 @@ public partial class CharacterSlotUiBootstrap : Node
 
     public override void _Process(double delta)
     {
-        _untilRefresh -= Math.Max(0.0, delta);
+        double elapsed = Math.Max(0.0, delta);
+        _untilRefresh -= elapsed;
+        _untilDiskScan = Math.Max(0.0, _untilDiskScan - elapsed);
         if (_statusSeconds > 0.0)
         {
-            _statusSeconds = Math.Max(0.0, _statusSeconds - Math.Max(0.0, delta));
+            _statusSeconds = Math.Max(0.0, _statusSeconds - elapsed);
             if (_statusSeconds == 0.0)
                 _transientStatus = null;
         }
@@ -52,7 +57,8 @@ public partial class CharacterSlotUiBootstrap : Node
             !_host!.IsInitialized || !_host.IsEditorOpen)
             return;
 
-        _newButton = GetTree().Root.FindChild("Win98NewCharacterButton", true, false) as Button;
+        if (!GodotObject.IsInstanceValid(_newButton))
+            _newButton = GetTree().Root.FindChild("Win98NewCharacterButton", true, false) as Button;
         if (!GodotObject.IsInstanceValid(_newButton) || _newButton!.GetParent() is not Control parent)
             return;
 
@@ -68,7 +74,12 @@ public partial class CharacterSlotUiBootstrap : Node
             _slots = null;
         }
         if (!GodotObject.IsInstanceValid(_host))
+        {
             _host = GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
+            _newButton = null;
+            _buyButton = null;
+            _slotLabel = null;
+        }
         if (_slots is null && GodotObject.IsInstanceValid(_sandbox) &&
             _sandbox!.Progress is not null && _sandbox.Economy is not null)
             _slots = new CharacterSlotEntitlementState(_sandbox.Progress, _sandbox.Economy);
@@ -76,7 +87,8 @@ public partial class CharacterSlotUiBootstrap : Node
 
     private void EnsureControls(Control parent, Button newButton)
     {
-        _slotLabel = parent.FindChild("CharacterSlotStatus", false, false) as Label;
+        if (!GodotObject.IsInstanceValid(_slotLabel))
+            _slotLabel = parent.FindChild("CharacterSlotStatus", false, false) as Label;
         if (!GodotObject.IsInstanceValid(_slotLabel))
         {
             _slotLabel = new Label
@@ -89,7 +101,8 @@ public partial class CharacterSlotUiBootstrap : Node
             parent.AddChild(_slotLabel);
         }
 
-        _buyButton = parent.FindChild("BuyCharacterSlotButton", false, false) as Button;
+        if (!GodotObject.IsInstanceValid(_buyButton))
+            _buyButton = parent.FindChild("BuyCharacterSlotButton", false, false) as Button;
         if (!GodotObject.IsInstanceValid(_buyButton))
         {
             _buyButton = new Button
@@ -120,25 +133,39 @@ public partial class CharacterSlotUiBootstrap : Node
         int occupied = CountOccupiedSlots();
         int remaining = _slots.Remaining(occupied);
         long nextCredits = _slots.NextPriceMilliCredits / 1000;
+        long balanceCredits = _sandbox!.Economy.BalanceMilliCredits / 1000;
         bool full = remaining <= 0;
+        bool hasWorkingCharacter = _host!.Session.WorkingDocument is not null;
+        bool canAffordSlot = _sandbox.Economy.BalanceMilliCredits >= _slots.NextPriceMilliCredits;
 
         _newButton!.Disabled = full || _purchaseBusy;
         _newButton.Text = full ? "+ New Character (full)" : $"+ New Character ({remaining} free)";
-        _newButton.TooltipText = full
-            ? "Buy another permanent character slot to create a new buddy."
-            : $"Create a new buddy. {remaining} character slot{(remaining == 1 ? string.Empty : "s")} available.";
+        _newButton.TooltipText = _purchaseBusy
+            ? "Finish the current slot purchase before creating another buddy."
+            : full
+                ? "Buy another permanent character slot to create a new buddy."
+                : $"Create a new buddy. {remaining} character slot{(remaining == 1 ? string.Empty : "s")} available.";
 
-        if (GodotObject.IsInstanceValid(_host!.DuplicateButton))
+        if (GodotObject.IsInstanceValid(_host.DuplicateButton))
         {
-            _host.DuplicateButton.Disabled = full || _purchaseBusy || _host.Session.WorkingDocument is null;
-            _host.DuplicateButton.TooltipText = full
-                ? "Buy another character slot before duplicating this buddy."
-                : "Duplicate the selected character into a new slot.";
+            _host.DuplicateButton.Disabled = full || _purchaseBusy || !hasWorkingCharacter;
+            _host.DuplicateButton.TooltipText = _purchaseBusy
+                ? "Finish the current slot purchase before duplicating a buddy."
+                : full
+                    ? "Buy another character slot before duplicating this buddy."
+                    : !hasWorkingCharacter
+                        ? "Select a character before duplicating it."
+                        : "Duplicate the selected character into a new slot.";
         }
 
         _buyButton!.Visible = full;
-        _buyButton.Disabled = _purchaseBusy || _sandbox!.Economy.BalanceMilliCredits < _slots.NextPriceMilliCredits;
+        _buyButton.Disabled = _purchaseBusy || !canAffordSlot;
         _buyButton.Text = _purchaseBusy ? "Buying slot..." : $"Buy permanent slot — {nextCredits} cr";
+        _buyButton.TooltipText = _purchaseBusy
+            ? "Saving the permanent slot purchase."
+            : canAffordSlot
+                ? $"Permanently add one character slot for {nextCredits} credits."
+                : $"Another slot costs {nextCredits} credits; you have {balanceCredits}. Earn more credits to buy it.";
 
         _slotLabel!.Text = _transientStatus ?? (full
             ? $"{occupied}/{_slots.Capacity} slots used"
@@ -148,24 +175,35 @@ public partial class CharacterSlotUiBootstrap : Node
     private int CountOccupiedSlots()
     {
         string root = ProjectSettings.GlobalizePath("user://characters");
-        int count = 0;
-        if (Directory.Exists(root))
+        if (_untilDiskScan <= 0.0)
         {
-            foreach (string directory in Directory.EnumerateDirectories(root))
-            {
-                string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(directory));
-                if (name.Length == 32 && Guid.TryParseExact(name, "N", out _) &&
-                    File.Exists(Path.Combine(directory, "character.json")))
-                    count++;
-            }
+            _cachedDiskOccupied = ScanOccupiedSlots(root);
+            _untilDiskScan = DiskScanSeconds;
         }
 
+        int count = _cachedDiskOccupied;
         // A freshly-created/duplicated working copy has not reached disk yet but already reserves
         // the next available slot for this editor session.
         if (_host?.Session.WorkingDocument is { } working && _host.Session.IsDirty)
         {
             string expected = Path.Combine(root, working.Id.ToString("N"), "character.json");
             if (!File.Exists(expected))
+                count++;
+        }
+        return count;
+    }
+
+    private static int ScanOccupiedSlots(string root)
+    {
+        if (!Directory.Exists(root))
+            return 0;
+
+        int count = 0;
+        foreach (string directory in Directory.EnumerateDirectories(root))
+        {
+            string name = Path.GetFileName(Path.TrimEndingDirectorySeparator(directory));
+            if (name.Length == 32 && Guid.TryParseExact(name, "N", out _) &&
+                File.Exists(Path.Combine(directory, "character.json")))
                 count++;
         }
         return count;
