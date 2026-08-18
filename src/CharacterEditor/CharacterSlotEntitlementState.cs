@@ -71,17 +71,7 @@ public sealed class CharacterSlotEntitlementState
                 DescriptionKey: "Permanent additional character slot"),
         ]);
 
-        PurchaseResult result = _economy.Purchase(contentId);
-        if (result.Status == PurchaseStatus.InvalidContentId)
-        {
-            // EconomyService intentionally owns its shipping catalogue. Slot expansions are
-            // dynamic/unbounded, so use the same progress purchase boundary with a one-entry
-            // authoritative catalogue rather than teaching the global catalogue infinite IDs.
-            result = _progress.Purchase(contentId, oneShotCatalogue);
-            if (result.Succeeded)
-                _economy.NotifyBalanceChanged();
-        }
-
+        PurchaseResult result = _economy.PurchaseFrom(contentId, oneShotCatalogue);
         if (result.Succeeded || result.Status == PurchaseStatus.AlreadyOwned)
             _progress.SetExtensionValue(ExtensionKey, nextIndex.ToString(CultureInfo.InvariantCulture));
         return result;
