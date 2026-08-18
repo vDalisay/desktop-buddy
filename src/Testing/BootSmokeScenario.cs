@@ -28,10 +28,15 @@ public sealed class BootSmokeScenario : IScenario
         var messages = new List<string> { $"seed={seed}" };
 
         ToolCatalogue catalogue = CatalogueLoader.Catalogue;
+        int launchToolEntries = 0;
+        foreach (CatalogueEntry entry in catalogue.Entries)
+            launchToolEntries += ContentIds.IsTool(entry.ContentId) ? 1 : 0;
+        bool holdsLaunchSet = launchToolEntries == CataloguePolicy.LaunchContentIds.Count;
         checks.Add(new StartupCheck(
             "catalogue_holds_the_launch_set",
-            catalogue.Count == CataloguePolicy.LaunchContentIds.Count,
-            $"entries={catalogue.Count} expected={CataloguePolicy.LaunchContentIds.Count}"));
+            holdsLaunchSet,
+            $"tool_entries={launchToolEntries} expected={CataloguePolicy.LaunchContentIds.Count} " +
+            $"total_entries={catalogue.Count}"));
 
         IReadOnlyList<CatalogueEntry> shop = CataloguePolicy.ShopEntries(catalogue);
         int shopEntries = shop.Count;
@@ -139,7 +144,7 @@ public sealed class BootSmokeScenario : IScenario
             checks.Add(new StartupCheck("sandbox_composed", false, "scene not loaded"));
         }
 
-        bool passed = report.Ok && acceptedBatShopVisible && loaded && composed &&
+        bool passed = report.Ok && holdsLaunchSet && acceptedBatShopVisible && loaded && composed &&
             catalogueErrors.Count == 0 && missingProfile.Count == 0;
         return new ScenarioResult(passed, checks, messages);
     }
