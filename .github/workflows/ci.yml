@@ -1,9 +1,16 @@
 name: CI
 
-# Temporarily manual-only while the Linux workflow failures are investigated.
-# Restore push/pull_request triggers when CI is ready to be re-enabled.
+# Runs on the self-hosted runner (see docs); GitHub-hosted minutes are exhausted.
 on:
+  push:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+# One runner, so a burst of pushes must not queue a full run each.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   # Pinned engine version. Must match README.md and the editor/export templates.
@@ -12,13 +19,8 @@ env:
   DOTNET_NOLOGO: "1"
 
 jobs:
-  pick-runner:
-    uses: ./.github/workflows/pick-runner.yml
-    secrets: inherit
-
   build-test:
-    needs: pick-runner
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -127,8 +129,9 @@ jobs:
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --journey=m3_tool_feel --seed=1
 
   full-soak:
-    needs: pick-runner
-    runs-on: ${{ needs.pick-runner.outputs.runner }}
+    # Thirty simulated minutes; the scenario itself documents this as nightly/manual.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

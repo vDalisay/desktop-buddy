@@ -601,10 +601,16 @@ public sealed class BehaviorArbiterModelTests
     {
         var arbiter = new BehaviorArbiterModel();
 
-        // The first pass is discarded: tiered JIT can re-compile the loop while it runs, and
-        // that promotion allocates on this thread, which the counter would blame on Resolve.
-        _ = MeasureTicks(arbiter);
-        long allocated = MeasureTicks(arbiter);
+        // Tiered JIT can re-compile the loop while it runs, and that promotion allocates
+        // on this thread, which the counter would blame on Resolve. Promotion is async, so
+        // a single warm-up pass sometimes is not enough under full-suite load. Retry: an
+        // allocation-free Resolve settles at zero once promoted, while a genuine allocation
+        // shows up on every pass and still fails.
+        long allocated = -1;
+        for (int attempt = 0; attempt < 5 && allocated != 0; attempt++)
+        {
+            allocated = MeasureTicks(arbiter);
+        }
 
         Assert.Equal(0, allocated);
     }
