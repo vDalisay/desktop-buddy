@@ -35,6 +35,7 @@
     <Compile Include="..\..\src\Persistence\Characters\CharacterSelectionState.cs" Link="RuntimePersistence\CharacterSelectionState.cs" />
     <Compile Include="..\..\src\App\GameClock.cs" Link="RuntimeLifecycle\GameClock.cs" />
     <Compile Include="..\..\src\Economy\EconomyService.cs" Link="RuntimeEconomy\EconomyService.cs" />
+    <Compile Include="..\..\src\CharacterEditor\CharacterSlotEntitlementState.cs" Link="RuntimeCharacterEditor\CharacterSlotEntitlementState.cs" />
     <Compile Include="..\..\src\Persistence\EnvironmentPaintStore.cs" Link="RuntimePersistence\EnvironmentPaintStore.cs" />
     <Compile Include="..\..\src\Persistence\Characters\ICharacterFileSystem.cs" Link="RuntimePersistence\ICharacterFileSystem.cs" />
     <Compile Include="..\..\src\Persistence\Characters\PaintPngCodec.cs" Link="RuntimePersistence\PaintPngCodec.cs" />
