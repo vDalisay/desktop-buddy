@@ -91,9 +91,17 @@ public sealed class EconomyService
     /// otherwise non-purchasable entries. Failed attempts never spend, unlock, or emit a
     /// balance event.
     /// </summary>
-    public PurchaseResult Purchase(string contentId)
+    public PurchaseResult Purchase(string contentId) => PurchaseFrom(contentId, _catalogue);
+
+    /// <summary>
+    /// Same single-ledger purchase boundary for a feature-owned immutable catalogue. This is
+    /// internal deliberately: dynamic entitlement policies may author an unbounded next entry,
+    /// but UI/gameplay callers still cannot supply a price directly.
+    /// </summary>
+    internal PurchaseResult PurchaseFrom(string contentId, ToolCatalogue authoritativeCatalogue)
     {
-        PurchaseResult result = _progress.Purchase(contentId, _catalogue);
+        ArgumentNullException.ThrowIfNull(authoritativeCatalogue);
+        PurchaseResult result = _progress.Purchase(contentId, authoritativeCatalogue);
         if (result.Succeeded)
         {
             BalanceChanged?.Invoke(result.BalanceMilliCredits);
