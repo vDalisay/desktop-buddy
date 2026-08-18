@@ -1,0 +1,31 @@
+name: Pick runner
+
+# Chooses GitHub-hosted while Actions minutes remain, otherwise this repo's
+# self-hosted runner. Called by the other workflows via `uses:`.
+on:
+  workflow_call:
+    outputs:
+      runner:
+        description: "ubuntu-latest while minutes remain, otherwise self-hosted"
+        value: ${{ jobs.pick.outputs.runner }}
+
+jobs:
+  pick:
+    # Must be self-hosted: once the quota is gone a hosted job cannot start at
+    # all, so a hosted picker could never report the exhausted case.
+    runs-on: self-hosted
+    outputs:
+      runner: ${{ steps.pick.outputs.runner }}
+    steps:
+      - id: pick
+        env:
+          TOKEN: ${{ secrets.ACTIONS_BILLING_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          left=$(curl -fsSL -H "Authorization: Bearer $TOKEN" \
+                   "https://api.github.com/users/$OWNER/settings/billing/actions" \
+                 | jq '.included_minutes - .total_minutes_used')
+          # Missing secret, API error, or thin quota all fall through to self-hosted.
+          if [ "${left%%.*}" -ge 30 ] 2>/dev/null; then r=ubuntu-latest; else r=self-hosted; fi
+          echo "minutes left: ${left:-unknown} -> $r"
+          echo "runner=$r" >> "$GITHUB_OUTPUT"
