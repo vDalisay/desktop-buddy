@@ -10,6 +10,9 @@ namespace DesktopBuddy.Domain.Tests.Content;
 /// </summary>
 internal static class TestCatalogues
 {
+    public const long PetPrice = 1_000;
+    public const long TicklePrice = 2_000;
+    public const long BoxingGlovePrice = 3_000;
     public const long BaseballPrice = 3_000;
     public const long MealPrice = 6_000;
 
@@ -28,19 +31,20 @@ internal static class TestCatalogues
         $"shop.{contentId}.description");
 
     /// <summary>
-    /// A catalogue shaped like the shipped one: the four starting tools, one finished
-    /// purchasable tool (Baseball), one unfinished purchasable tool (Meal), and a hidden
-    /// passive upgrade. Nothing ships as a passive upgrade since Power Grab replaced the
-    /// Strength Upgrade, but the entry kind still exists and its rules still hold.
+    /// A partial catalogue shaped like the Demo progression contract: Grab is the only
+    /// starting tool; Pet, Tickle, Boxing Glove, and Baseball are finished purchasables;
+    /// Meal is an unfinished purchasable; and the retired passive upgrade stays hidden.
+    /// Nothing ships as a passive upgrade since Power Grab replaced Strength Upgrade, but
+    /// the entry kind still exists and its rules still hold.
     /// </summary>
     public static ToolCatalogue Standard() => new(StandardEntries());
 
     public static List<CatalogueEntry> StandardEntries() =>
     [
         Entry(ContentIds.ToolGrab, CatalogueEntryKind.StartingTool, 0, 0),
-        Entry(ContentIds.ToolPet, CatalogueEntryKind.StartingTool, 0, 1),
-        Entry(ContentIds.ToolTickle, CatalogueEntryKind.StartingTool, 0, 2),
-        Entry(ContentIds.ToolBoxingGlove, CatalogueEntryKind.StartingTool, 0, 3),
+        Entry(ContentIds.ToolPet, CatalogueEntryKind.PurchasableTool, PetPrice, 1),
+        Entry(ContentIds.ToolTickle, CatalogueEntryKind.PurchasableTool, TicklePrice, 2),
+        Entry(ContentIds.ToolBoxingGlove, CatalogueEntryKind.PurchasableTool, BoxingGlovePrice, 3),
         Entry(ContentIds.ToolBaseball, CatalogueEntryKind.PurchasableTool, BaseballPrice, 4),
         Entry(
             ContentIds.ToolMeal,
@@ -56,7 +60,7 @@ internal static class TestCatalogues
             visible: false),
     ];
 
-    /// <summary>The full FR-013.2 launch set, every entry finished and priced.</summary>
+    /// <summary>The full launch set, every entry finished and priced.</summary>
     public static ToolCatalogue AllVisible()
     {
         var entries = new List<CatalogueEntry>(CataloguePolicy.LaunchContentIds.Count);
