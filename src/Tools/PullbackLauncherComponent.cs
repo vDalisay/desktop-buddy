@@ -52,7 +52,6 @@ public partial class PullbackLauncherComponent : Node2D
 
     public bool IsInitialized { get; private set; }
 
-    /// <summary>The most recently launcher-spawned object is still live in the room.</summary>
     public bool HasLaunchable =>
         GodotObject.IsInstanceValid(_spawned) && _spawned!.RuntimeId != 0;
     public bool IsAiming =>
@@ -63,16 +62,10 @@ public partial class PullbackLauncherComponent : Node2D
         body.RuntimeId != 0 &&
         FindProfile(body.SemanticContentId) is not null;
     public LooseObjectBody? CurrentLaunchable => HasLaunchable ? _spawned : null;
-
-    /// <summary>The content ID of the most recently spawned live launchable, or <c>null</c>.</summary>
     public string? CurrentLaunchableContentId =>
         HasLaunchable ? _spawned!.SemanticContentId : null;
     public LooseObjectBody? AimedBody => IsAiming ? _aimedBody : null;
 
-    /// <summary>
-    /// Current pullback strength, normalized 0..1. This is presentation telemetry only: launch
-    /// velocity still comes from the authored pull distance and speed caps below.
-    /// </summary>
     public float PullStrength => IsAiming
         ? Mathf.Clamp(
             (_bodyAnchor - _aimedBody!.GlobalPosition).Length() /
@@ -81,7 +74,6 @@ public partial class PullbackLauncherComponent : Node2D
             1.0f)
         : 0.0f;
 
-    /// <summary>The end of the currently drawn prediction horizon in world coordinates.</summary>
     public Vector2 PredictedLandingWorldPosition => IsAiming
         ? PredictAimedWorldPosition(AimTuning.PredictionSeconds)
         : Vector2.Zero;
@@ -170,10 +162,6 @@ public partial class PullbackLauncherComponent : Node2D
         QueueRedraw();
     }
 
-    /// <summary>
-    /// Queues placement of one unheld instance of <paramref name="contentId"/> at the pointer.
-    /// The profile owns whether placement first clears existing loose objects or is additive.
-    /// </summary>
     public void RequestSpawn(string contentId, Vector2 worldPosition)
     {
         _pointer = worldPosition;
@@ -198,28 +186,10 @@ public partial class PullbackLauncherComponent : Node2D
 
     public Vector2 PredictAimedWorldPosition(float seconds)
     {
-        if (!IsAiming || !float.IsFinite(seconds) || seconds <= 0.0f)
-            return IsAiming ? _aimedBody!.GlobalPosition : Vector2.Zero;
+        if (!IsAiming)
+            return Vector2.Zero;
 
-        float physicsHz = Mathf.Max(1.0f, Engine.PhysicsTicksPerSecond);
-        float fixedStep = 1.0f / physicsHz;
-        float remaining = seconds;
-        Vector2 position = _aimedBody!.GlobalPosition;
-        Vector2 velocity = CalculateLaunchVelocity();
-        float gravity = ProjectSettings
-            .GetSetting("physics/2d/default_gravity", 980.0f)
-            .AsSingle() * _aimedBody.GravityScale;
-        float damp = Mathf.Max(0.0f, _aimedBody.LinearDamp);
-        while (remaining > 0.0f)
-        {
-            float step = Mathf.Min(fixedStep, remaining);
-            velocity.Y += gravity * step;
-            velocity *= 1.0f / (1.0f + damp * step);
-            position += velocity * step;
-            remaining -= step;
-        }
-
-        return position;
+        return BallisticTrajectoryPredictor.Predict(CreatePredictionInput(), seconds);
     }
 
     public void PhysicsTick()
@@ -278,21 +248,22 @@ public partial class PullbackLauncherComponent : Node2D
         Vector2 anchor = ToLocal(_bodyAnchor);
         PullbackLauncherProfile tuning = AimTuning;
 
-        // The pull line is the physical relationship: object in the hand, original anchor at
-        // the other end. Slightly thicken it with charge so a strong throw reads before release.
         float strength = PullStrength;
         DrawLine(start, anchor, tuning.PullLineColor, Mathf.Lerp(1.5f, 2.75f, strength), true);
 
-        // Modernized Win98-style trajectory: still plain geometry, but segmented and fading so
-        // it reads as a prediction rather than another piece of room art. Dashes also keep a
-        // dense 24-segment arc legible over painted backgrounds.
+        int sampleCount = Math.Clamp(tuning.PredictionSegments, 2, 32);
+        Span<Vector2> samples = stackalloc Vector2[sampleCount];
+        BallisticTrajectoryPredictor.Sample(
+            CreatePredictionInput(),
+            tuning.PredictionSeconds,
+            samples);
+
         Vector2 previous = start;
         Vector2 current = start;
-        for (int segment = 1; segment <= tuning.PredictionSegments; segment++)
+        for (int segment = 1; segment <= sampleCount; segment++)
         {
-            float time = tuning.PredictionSeconds * segment / tuning.PredictionSegments;
-            current = ToLocal(PredictAimedWorldPosition(time));
-            float progress = segment / (float)tuning.PredictionSegments;
+            current = ToLocal(samples[segment - 1]);
+            float progress = segment / (float)sampleCount;
             if ((segment - 1) % TrajectoryDashPeriod != TrajectoryDashPeriod - 1)
             {
                 Color segmentColor = tuning.TrajectoryColor;
@@ -303,9 +274,6 @@ public partial class PullbackLauncherComponent : Node2D
             previous = current;
         }
 
-        // The end of the prediction horizon gets a small target marker. It deliberately does
-        // not promise collision-aware landing; it says "the object will be around here after
-        // the authored preview time", matching PredictAimedWorldPosition exactly.
         Color marker = tuning.TrajectoryColor;
         marker.A *= 0.78f;
         float radius = Mathf.Lerp(LandingMarkerRadius * 0.72f, LandingMarkerRadius * 1.18f, strength);
@@ -434,6 +402,20 @@ public partial class PullbackLauncherComponent : Node2D
         Vector2 velocity = (_bodyAnchor - _aimedBody!.GlobalPosition) *
                            tuning.VelocityPerPullPixel;
         return velocity.LimitLength(tuning.MaxLaunchSpeed);
+    }
+
+    private BallisticTrajectoryPredictor.Input CreatePredictionInput()
+    {
+        float physicsHz = Mathf.Max(1.0f, Engine.PhysicsTicksPerSecond);
+        float gravity = ProjectSettings
+            .GetSetting("physics/2d/default_gravity", 980.0f)
+            .AsSingle() * _aimedBody!.GravityScale;
+        return new BallisticTrajectoryPredictor.Input(
+            _aimedBody.GlobalPosition,
+            CalculateLaunchVelocity(),
+            gravity,
+            Mathf.Max(0.0f, _aimedBody.LinearDamp),
+            1.0f / physicsHz);
     }
 
     private Vector2 ClampInsideRoom(Vector2 position, float radius)
