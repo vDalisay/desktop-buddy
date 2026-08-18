@@ -76,9 +76,16 @@ public sealed class GrenadeMultiCaptureScenario : IScenario
             lab.Mode != PresentationMode.Mii3D || lab.GrenadeVisual.AdditionalGrenadeVisualCount == 1,
             $"mode={lab.Mode} additional={lab.GrenadeVisual.AdditionalGrenadeVisualCount} expected_additional={(lab.Mode == PresentationMode.Mii3D ? 1 : 0)}"));
 
+        checks.Add(new StartupCheck(
+            "grenade_punctuation_audio_is_polyphonic_and_fuse_has_its_own_lane",
+            lab.GrenadeAudio.Player.MaxPolyphony >= 8 && lab.GrenadeAudio.IsFuseLoopPlaying,
+            $"polyphony={lab.GrenadeAudio.Player.MaxPolyphony} fuse_playing={lab.GrenadeAudio.IsFuseLoopPlaying} " +
+            $"fuse_starts={lab.GrenadeAudio.FuseStartCount}"));
+
         int maxCaptureBursts = lab.GrenadeVisual.ActiveCaptureBurstCount;
         bool firstDetonated = false;
         bool secondSurvivedFirstBlast = false;
+        bool fuseContinuedAfterFirstBlast = false;
         GrenadePresentationState secondAfterFirst = default;
         int firstBlastTick = -1;
         int secondBlastTick = -1;
@@ -98,6 +105,7 @@ public sealed class GrenadeMultiCaptureScenario : IScenario
                     secondAfterFirst.Stage == GrenadeFuseStage.Live &&
                     secondAfterFirst.FuseTicksRemaining > 0 &&
                     grenades.TrackedCount == 1;
+                fuseContinuedAfterFirstBlast = lab.GrenadeAudio.IsFuseLoopPlaying;
             }
 
             if (grenades.DetonationCount >= detonationsBefore + 2)
@@ -112,9 +120,10 @@ public sealed class GrenadeMultiCaptureScenario : IScenario
 
         checks.Add(new StartupCheck(
             "first_detonation_leaves_second_grenade_fuse_alive",
-            firstDetonated && secondSurvivedFirstBlast,
+            firstDetonated && secondSurvivedFirstBlast && fuseContinuedAfterFirstBlast,
             $"first_tick={firstBlastTick} tracked_after_first={(secondSurvivedFirstBlast ? 1 : grenades.TrackedCount)} " +
-            $"second_stage={secondAfterFirst.Stage} second_remaining={secondAfterFirst.FuseTicksRemaining}"));
+            $"second_stage={secondAfterFirst.Stage} second_remaining={secondAfterFirst.FuseTicksRemaining} " +
+            $"fuse_audio_continued={fuseContinuedAfterFirstBlast}"));
 
         checks.Add(new StartupCheck(
             "staggered_grenades_both_detonate_without_singleton_clobber",
@@ -136,6 +145,7 @@ public sealed class GrenadeMultiCaptureScenario : IScenario
 
         messages.Add($"runtime_ids=({firstRuntimeId},{secondRuntimeId}) fuse_stagger={stagger}");
         messages.Add($"detonation_ticks=({firstBlastTick},{secondBlastTick}) max_capture_bursts={maxCaptureBursts}");
+        messages.Add($"grenade_audio_polyphony={lab.GrenadeAudio.Player.MaxPolyphony} fuse_continued={fuseContinuedAfterFirstBlast}");
         lab.QueueFree();
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         return new ScenarioResult(passed, checks, messages);
