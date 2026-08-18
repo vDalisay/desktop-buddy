@@ -6,8 +6,8 @@
 resource_name = "CataloguePet"
 script = ExtResource("1")
 ContentId = "tool.pet"
-Kind = 0
-PriceCredits = 0
+Kind = 1
+PriceCredits = 3
 ProgressionOrder = 1
 Visible = true
 NameKey = "shop.tool.pet.name"
