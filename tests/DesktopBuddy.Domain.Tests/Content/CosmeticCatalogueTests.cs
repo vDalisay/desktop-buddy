@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
@@ -48,13 +49,43 @@ public sealed class CosmeticCatalogueTests
     }
 
     [Fact]
+    public void ShippedStudioSlotsHaveExactlyOneFreeDefaultAndPaidAlternatives()
+    {
+        foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>().Distinct())
+        {
+            CosmeticDefinition[] definitions = CharacterFeatureCatalog.Shipped.GetDefinitions(slot).ToArray();
+            string defaultId = CharacterFeatureCatalog.Shipped.GetDefaultId(slot);
+            CosmeticDefinition defaultDefinition = Assert.Single(
+                definitions.Where(definition => definition.Id == defaultId));
+            Assert.True(defaultDefinition.IsFreeDefault);
+            Assert.Null(defaultDefinition.OwnershipContentId);
+
+            Assert.All(definitions.Where(definition => definition.Id != defaultId), definition =>
+            {
+                Assert.False(definition.IsFreeDefault);
+                Assert.False(string.IsNullOrWhiteSpace(definition.OwnershipContentId));
+                Assert.True(ContentIds.IsCosmetic(definition.OwnershipContentId));
+            });
+        }
+    }
+
+    [Fact]
     public void SaleDefinitionsUseTheirExactAuthoredOwnershipIds()
     {
         (string FeatureId, string ContentId)[] mappings =
         [
             (CharacterFeatureIds.HairShortSweep, ContentIds.CosmeticHairShortSweep),
+            (CharacterFeatureIds.BrowsStraight, ContentIds.CosmeticBrowsStraight),
+            (CharacterFeatureIds.BrowsSegmented, ContentIds.CosmeticBrowsSegmented),
+            (CharacterFeatureIds.EyesRoundDot, ContentIds.CosmeticEyesRoundDot),
+            (CharacterFeatureIds.EyesHorizontalLed, ContentIds.CosmeticEyesHorizontalLed),
             (CharacterFeatureIds.NoseButton, ContentIds.CosmeticNoseButton),
+            (CharacterFeatureIds.MouthPixel, ContentIds.CosmeticMouthPixel),
+            (CharacterFeatureIds.MouthLine, ContentIds.CosmeticMouthLine),
             (CharacterFeatureIds.EarsRoundTabs, ContentIds.CosmeticEarsRoundTabs),
+            (CharacterFeatureIds.AccentPanel, ContentIds.CosmeticAccentPanel),
+            (CharacterFeatureIds.AccentChevron, ContentIds.CosmeticAccentChevron),
+            (CharacterFeatureIds.AccentBolts, ContentIds.CosmeticAccentBolts),
             (CharacterFeatureIds.HeadwearSoftCap, ContentIds.CosmeticHeadwearSoftCap),
             (CharacterFeatureIds.TopUtilityBib, ContentIds.CosmeticTopUtilityBib),
             (CharacterFeatureIds.ShoesSoftSteps, ContentIds.CosmeticShoesSoftSteps),
