@@ -7,8 +7,9 @@ using Godot;
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// Exercises the Settings hotkey capture state directly. Escape, bare modifiers, switching rows,
-/// and closing the panel must never leak one shortcut into another or leave a row listening.
+/// Exercises the Settings hotkey capture state through Godot's real input dispatch. Escape, bare
+/// modifiers, switching rows, and closing the panel must never leak one shortcut into another or
+/// leave a row listening.
 /// </summary>
 public sealed class SettingsHotkeyCaptureScenario : IScenario
 {
@@ -30,14 +31,9 @@ public sealed class SettingsHotkeyCaptureScenario : IScenario
         try
         {
             work.EmitSignal(BaseButton.SignalName.Pressed);
-            panel._Input(new InputEventKey
-            {
-                Pressed = true,
-                Keycode = Key.Ctrl,
-                PhysicalKeycode = Key.Ctrl,
-            });
+            await SendKey(tree, Key.Ctrl);
             bool modifierKeepsListening = work.Text == "Press keys..." && workChanged is null;
-            panel._Input(new InputEventKey { Pressed = true, Keycode = Key.Escape, PhysicalKeycode = Key.Escape });
+            await SendKey(tree, Key.Escape);
             bool firstCancelRestoresOwnChord = work.Text == "Ctrl+Shift+B" && workChanged is null;
             checks.Add(new StartupCheck(
                 "settings_hotkey_modifier_waits_and_escape_restores_original",
@@ -45,17 +41,11 @@ public sealed class SettingsHotkeyCaptureScenario : IScenario
                 $"modifier={modifierKeepsListening} restored={work.Text}"));
 
             work.EmitSignal(BaseButton.SignalName.Pressed);
-            panel._Input(new InputEventKey
-            {
-                Pressed = true,
-                CtrlPressed = true,
-                Keycode = Key.K,
-                PhysicalKeycode = Key.K,
-            });
+            await SendKey(tree, Key.K, ctrl: true);
             bool workRebound = work.Text == "Ctrl+K" && workChanged == "Ctrl+K";
 
             drop.EmitSignal(BaseButton.SignalName.Pressed);
-            panel._Input(new InputEventKey { Pressed = true, Keycode = Key.Escape, PhysicalKeycode = Key.Escape });
+            await SendKey(tree, Key.Escape);
             bool secondCancelDoesNotLeakFirstChord = drop.Text == "D" && dropChanged is null && work.Text == "Ctrl+K";
             checks.Add(new StartupCheck(
                 "settings_hotkey_cancel_is_isolated_per_row",
@@ -82,5 +72,27 @@ public sealed class SettingsHotkeyCaptureScenario : IScenario
             checks.All(static check => check.Passed),
             checks,
             [$"seed={seed}"]);
+    }
+
+    private static async Task SendKey(SceneTree tree, Key keycode, bool ctrl = false)
+    {
+        Input.ParseInputEvent(new InputEventKey
+        {
+            Pressed = true,
+            Echo = false,
+            Keycode = keycode,
+            PhysicalKeycode = keycode,
+            CtrlPressed = ctrl,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        Input.ParseInputEvent(new InputEventKey
+        {
+            Pressed = false,
+            Echo = false,
+            Keycode = keycode,
+            PhysicalKeycode = keycode,
+            CtrlPressed = false,
+        });
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
     }
 }
