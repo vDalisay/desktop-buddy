@@ -1,7 +1,9 @@
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Physics;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Objects;
 using Godot;
 
@@ -228,6 +230,35 @@ internal static class M4ObjectScenarioSupport
 
     public static async Task SendKey(SceneTree tree, Key key)
     {
+        // Grenade no longer has a production/debug numeric spawn key: its real interaction is
+        // selected Grenade + RMB. The long-standing grenade lifecycle scenario still calls
+        // SendKey(Key7) as its "start a fresh isolated case" seam, so translate that one legacy
+        // test gesture here instead of resurrecting Key7 in gameplay. This also clears earlier
+        // loose objects because the lifecycle scenario predates additive multi-grenade placement;
+        // simultaneous-grenade behavior has its own dedicated capture scenario.
+        if (key == Key.Key7 && tree.Root.FindChild(nameof(BuddyLab), true, false) is BuddyLab grenadeLab)
+        {
+            if (grenadeLab.Grab.IsGrabbing)
+                grenadeLab.Grab.Release(countsAsThrow: false);
+            grenadeLab.Launcher.CancelImmediately();
+            grenadeLab.Grenades.CancelImmediately();
+            for (int slot = 0; slot < LooseObjectRegistry.Capacity; slot++)
+            {
+                LooseObjectBody? body = grenadeLab.Objects.BodyAt(slot);
+                if (body is null)
+                    continue;
+                grenadeLab.Objects.Unregister(body);
+                if (GodotObject.IsInstanceValid(body))
+                    body.QueueFree();
+            }
+
+            grenadeLab.Pipeline.SelectTool(ToolId.Grenade);
+            grenadeLab.Launcher.RequestSpawn(ContentIds.ToolGrenade, grenadeLab.Pointer.WorldCursor);
+            await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            return;
+        }
+
         Input.ParseInputEvent(new InputEventKey
         {
             PhysicalKeycode = key,
