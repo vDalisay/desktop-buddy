@@ -16,7 +16,7 @@ public sealed class BuddyProgressStateTests
     private static BuddyProgressState NewSave() => new(CashPerPain);
 
     [Fact]
-    public void NewSave_MatchesFr0131Defaults()
+    public void NewSave_MatchesDemoDefaults()
     {
         BuddyProgressState state = NewSave();
 
@@ -24,9 +24,9 @@ public sealed class BuddyProgressStateTests
         Assert.Equal(ToolId.Grab, state.SelectedTool);
         Assert.Equal(ContentIds.ToolGrab, state.SelectedToolId);
         Assert.True(state.IsToolUnlocked(ContentIds.ToolGrab));
-        Assert.True(state.IsToolUnlocked(ContentIds.ToolPet));
-        Assert.True(state.IsToolUnlocked(ContentIds.ToolTickle));
-        Assert.True(state.IsToolUnlocked(ContentIds.ToolBoxingGlove));
+        Assert.False(state.IsToolUnlocked(ContentIds.ToolPet));
+        Assert.False(state.IsToolUnlocked(ContentIds.ToolTickle));
+        Assert.False(state.IsToolUnlocked(ContentIds.ToolBoxingGlove));
         Assert.False(state.IsToolUnlocked(ContentIds.ToolBaseball));
         Assert.Equal(0.0f, state.Mood);
         Assert.Empty(state.HarmfulContentIds);
@@ -137,20 +137,25 @@ public sealed class BuddyProgressStateTests
         long start = state.Revision;
 
         Assert.False(state.SelectTool(ToolId.Grab)); // already selected
-        Assert.False(state.Unlock(ContentIds.ToolPet)); // already unlocked
         state.Deposit(0);
         state.DriftMood(0.0);
         state.AccrueTime(0.0, 0.0, 0.0);
         Assert.Equal(start, state.Revision);
 
-        Assert.True(state.SelectTool(ToolId.BoxingGlove));
-        Assert.True(state.Revision > start);
+        Assert.True(state.Unlock(ContentIds.ToolPet));
+        long unlockedRevision = state.Revision;
+        Assert.False(state.Unlock(ContentIds.ToolPet));
+        Assert.Equal(unlockedRevision, state.Revision);
+
+        Assert.True(state.SelectTool(ToolId.Pet));
+        Assert.True(state.Revision > unlockedRevision);
     }
 
     [Fact]
     public void SelectTool_RaisesOneSemanticEvent()
     {
         BuddyProgressState state = NewSave();
+        Assert.True(state.Unlock(ContentIds.ToolPet));
         var seen = new List<ProgressChange>();
         state.Changed += seen.Add;
 
