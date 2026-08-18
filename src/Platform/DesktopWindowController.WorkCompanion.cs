@@ -112,6 +112,24 @@ public partial class DesktopWindowController
         ClientBoundsChanged?.Invoke(recovered);
     }
 
+    /// <summary>
+    /// Takes an OS-driven size change without taking its position. Windows re-places the
+    /// window behind our back — SW_RESTORE out of the hide-for-full-screen-app path, DPI and
+    /// monitor-topology changes, session unlock — usually back to the pre-Work room rectangle.
+    /// That used to be adopted here and then persisted as the player's Work position; now the
+    /// placement the player chose wins and is pushed back onto the window.
+    /// </summary>
+    private void AdoptWorkCompanionSize(Vector2I size)
+    {
+        Rect2I recovered = RecoverWorkCompanionRect(new Rect2I(_lastAppliedRect.Position, size));
+        _lastAppliedRect = recovered;
+        _lastAppliedSettings = _lastAppliedSettings with { Rect = recovered };
+        if (!_headless && GetWindow().Position != recovered.Position)
+            GetWindow().Position = recovered.Position;
+        if (!_suppressClientBoundsChanged)
+            ClientBoundsChanged?.Invoke(recovered);
+    }
+
     public void StartWorkCompanionResize()
     {
         if (WorkCompanionActive && !_headless)

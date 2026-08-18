@@ -1,13 +1,13 @@
 name: Phase A Character Editor
 
-# Temporarily manual-only while the Linux workflow failures are investigated.
-# Restore push/pull_request triggers when CI is ready to be re-enabled.
+# Milestone gate, not per-push CI: run it by hand when Phase A work needs re-checking.
+# (The old "Linux workflow failures" note is obsolete - that bug is fixed.)
 on:
   workflow_dispatch:
 
 jobs:
   phase-a:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     env:
       GODOT_VERSION: 4.6.1-stable
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -19,8 +19,8 @@ jobs:
           global-json-file: global.json
       - name: Build solution
         run: dotnet build DesktopBuddy.sln -c Debug
-      - name: Domain tests excluding documented Linux path baseline
-        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
+      - name: Domain unit tests
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
       - name: Download pinned Godot
         run: |
           set -euo pipefail

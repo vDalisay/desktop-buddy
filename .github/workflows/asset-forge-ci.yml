@@ -10,6 +10,10 @@ on:
       - asset-forge
       - main
 
+concurrency:
+  group: asset-forge-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   GODOT_VERSION: 4.6.1-stable
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
@@ -17,7 +21,7 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -30,7 +34,7 @@ jobs:
         run: dotnet build DesktopBuddy.sln -c Debug
 
       - name: Domain unit tests
-        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build --filter "FullyQualifiedName!~ProgressStoreTests"
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
 
       - name: Asset Forge deterministic Core tests
         run: dotnet test devtools/AssetForge.Core.Tests/DesktopBuddy.AssetForge.Core.Tests.csproj -c Debug

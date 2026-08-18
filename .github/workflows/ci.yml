@@ -1,9 +1,16 @@
 name: CI
 
-# Temporarily manual-only while the Linux workflow failures are investigated.
-# Restore push/pull_request triggers when CI is ready to be re-enabled.
+# Runs on the self-hosted runner (see docs); GitHub-hosted minutes are exhausted.
 on:
+  push:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+# One runner, so a burst of pushes must not queue a full run each.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   # Pinned engine version. Must match README.md and the editor/export templates.
@@ -12,8 +19,35 @@ env:
   DOTNET_NOLOGO: "1"
 
 jobs:
+  # Every push, any branch: does it still compile and do the unit tests pass?
+  # Kept deliberately short so agent branches get feedback in a minute or two.
+  quick:
+    if: github.event_name == 'push'
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build solution
+        run: dotnet build DesktopBuddy.sln -c Debug
+
+      - name: Domain unit tests
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
+
+      - name: Fail if any Steam SDK binary is present
+        run: |
+          if git ls-files | grep -iE 'steam_api(64)?\.(dll|so|dylib)|steam_appid\.txt'; then
+            echo "Proprietary/dev Steam files must not be committed."; exit 1;
+          fi
+
+  # Pull requests and manual dispatch: the full Godot scenario and journey sweep.
   build-test:
-    runs-on: ubuntu-latest
+    if: github.event_name != 'push'
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -122,7 +156,9 @@ jobs:
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --journey=m3_tool_feel --seed=1
 
   full-soak:
-    runs-on: ubuntu-latest
+    # Thirty simulated minutes; the scenario itself documents this as nightly/manual.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4

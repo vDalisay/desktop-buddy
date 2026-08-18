@@ -79,6 +79,18 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     public void ApplyWindowSettings(WindowSettings settings)
     {
         bool wantTransparent = settings.Transparent && _adapter.TransparencyAvailable;
+        if (WorkCompanionActive)
+        {
+            // The companion owns the native window. Compact geometry applied now would
+            // teleport it back to the normal room's rectangle, so it is recorded as the
+            // rect ExitWorkCompanionWindow will restore instead.
+            _preWorkCompanionSettings = settings with { Transparent = wantTransparent };
+            AppliedSettingsCount++;
+            if (!_headless)
+                ApplyRenderSettings(settings);
+            return;
+        }
+
         TransparencyActive = wantTransparent;
         _lastAppliedRect = settings.Rect;
         _lastAppliedSettings = settings with { Transparent = wantTransparent };
@@ -147,6 +159,13 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
 
     public bool TrySetLayoutMode(WindowLayoutMode mode, int monitorIndex = 0)
     {
+        // F11 and the maximize box still reach their handlers while the shell layer is hidden
+        // behind the companion. Honouring them mid-session resized the companion to the whole
+        // monitor, and the deferred FinishLayoutTransition then overwrote the companion rect
+        // with the compact one.
+        if (WorkCompanionActive)
+            return false;
+
         int resolvedMonitor = ResolveMonitorIndex(monitorIndex);
         if (mode == WindowLayoutMode.FullscreenOverlay && !_adapter.TransparencyAvailable)
         {
@@ -271,6 +290,15 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     {
         Rect2I rect = _pendingTransitionRect ?? CurrentWindowRect();
         _pendingTransitionRect = null;
+        // Entering Work from the full-screen overlay drops to Compact first, and this deferred
+        // finish lands a frame later — after the companion rect was applied. Adopting the
+        // compact rect here made WorkCompanionRect stale, which the next drag or the 45s
+        // recovery tick then pushed to the real window.
+        if (WorkCompanionActive)
+        {
+            _suppressClientBoundsChanged = false;
+            return;
+        }
         _lastAppliedRect = rect;
         _lastAppliedSettings = _lastAppliedSettings with { Rect = rect };
         _suppressClientBoundsChanged = false;
@@ -363,6 +391,12 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
 
     private void MoveTo(PixelRect rect)
     {
+        if (WorkCompanionActive)
+        {
+            MoveWorkCompanion(new Vector2I(rect.X, rect.Y));
+            return;
+        }
+
         _lastAppliedRect = ToRect2I(rect);
         _lastAppliedSettings = _lastAppliedSettings with { Rect = _lastAppliedRect };
         if (LayoutMode == WindowLayoutMode.Compact)
@@ -404,6 +438,12 @@ public partial class DesktopWindowController : Node, IDesktopWindowService
     private void OnSizeChanged()
     {
         Rect2I rect = CurrentWindowRect();
+        if (WorkCompanionActive)
+        {
+            AdoptWorkCompanionSize(rect.Size);
+            return;
+        }
+
         _lastAppliedRect = rect;
         _lastAppliedSettings = CaptureWindowSettings();
         // Only record a compact rect from a settled compact window. TrySetLayoutMode flips
