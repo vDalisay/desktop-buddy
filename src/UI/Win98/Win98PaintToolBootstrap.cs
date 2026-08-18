@@ -34,6 +34,7 @@ public partial class Win98PaintToolBootstrap : Node
             GodotObject.IsInstanceValid(_curve) &&
             GodotObject.IsInstanceValid(_pan))
         {
+            SetProcess(false);
             return;
         }
 
@@ -120,6 +121,7 @@ public partial class Win98PaintToolBootstrap : Node
         _pan.Pressed += SelectPan;
         _canvas!.ColorSampled += ApplySampledColor;
         SelectBrush();
+        SetProcess(false);
     }
 
     public override void _UnhandledKeyInput(InputEvent input)
@@ -231,8 +233,8 @@ public partial class Win98PaintToolBootstrap : Node
 
     private bool ReadyForSelection() =>
         GodotObject.IsInstanceValid(_canvas) &&
-            GodotObject.IsInstanceValid(_brush) &&
-            GodotObject.IsInstanceValid(_pen) &&
+        GodotObject.IsInstanceValid(_brush) &&
+        GodotObject.IsInstanceValid(_pen) &&
         GodotObject.IsInstanceValid(_eraser) &&
         GodotObject.IsInstanceValid(_spray) &&
         GodotObject.IsInstanceValid(_fill) &&
