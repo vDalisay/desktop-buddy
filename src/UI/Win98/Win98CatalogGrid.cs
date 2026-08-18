@@ -54,11 +54,7 @@ public partial class Win98CatalogGrid : ScrollContainer
 
     /// <summary>Persistent caller-authored outer accent, independent of preview selection.</summary>
     public bool IsPersistentAccented(string id) =>
-        _tiles.TryGetValue(id, out TileParts? parts) &&
-        new[] { "normal", "hover", "pressed", "hover_pressed", "focus" }.All(
-            state => parts.Button.HasThemeStyleboxOverride(state)) &&
-        parts.Button.GetThemeStylebox("normal") is StyleBoxFlat border &&
-        border.BorderColor == Win98ThemeFactory.ActiveTitle;
+        _tiles.TryGetValue(id, out TileParts? parts) && HasAccent(parts.Button);
 
     /// <summary>Inset outline owned by the grid's current selected/preview item.</summary>
     public bool IsPreviewOutlined(string id) =>
@@ -417,8 +413,16 @@ public partial class Win98CatalogGrid : ScrollContainer
         return new string(chars);
     }
 
+    private static bool HasAccent(Button button) =>
+        button.HasThemeStyleboxOverride("normal") &&
+        button.GetThemeStylebox("normal") is StyleBoxFlat border &&
+        border.BorderColor == Win98ThemeFactory.ActiveTitle;
+
     private static void ApplyAccent(Button button, bool accented)
     {
+        if (HasAccent(button) == accented)
+            return;
+
         if (!accented)
         {
             button.RemoveThemeStyleboxOverride("normal");
