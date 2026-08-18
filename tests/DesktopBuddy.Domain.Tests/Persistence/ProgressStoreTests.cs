@@ -198,8 +198,14 @@ public sealed class ProgressStoreTests
             store.SaveSettingsAsync(wanted with { StartupInputMode = "sideways" }, default));
     }
 
-    private const string ProgressPath = "C:\\save-test\\progress.json";
-    private const string SettingsPath = "C:\\save-test\\settings.json";
+    // JsonProgressStore normalises these with Path.GetFullPath, so they must already
+    // be absolute for the running OS. A hardcoded Windows path is not absolute on
+    // Linux, where GetFullPath prefixes the cwd and the MemoryFiles keys stop matching.
+    private static readonly string SaveDir =
+        OperatingSystem.IsWindows() ? @"C:\save-test" : "/save-test";
+
+    private static readonly string ProgressPath = Path.Combine(SaveDir, "progress.json");
+    private static readonly string SettingsPath = Path.Combine(SaveDir, "settings.json");
 
     private static JsonProgressStore Store(MemoryFiles files) =>
         new(
