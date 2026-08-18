@@ -77,6 +77,7 @@ public static class ScenarioCatalog
         ["suspend_no_catchup"] = () => new SuspendNoCatchupScenario(),
         ["baseball_pullback"] = () => new BaseballPullbackScenario(),
         ["bat_swing"] = () => new BatSwingScenario(),
+        ["dropped_tool_round_trip"] = () => new DroppedToolRoundTripScenario(),
         ["homerun_bat_feel"] = () => new HomeRunBatFeelScenario(),
         ["capture_homerun_bat_fling"] = () => new CaptureHomeRunBatFlingScenario(),
         ["pistol_fire"] = () => new PistolFireScenario(),
