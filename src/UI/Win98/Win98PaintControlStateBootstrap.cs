@@ -41,16 +41,36 @@ public partial class Win98PaintControlStateBootstrap : Node
             return;
 
         PaintWorkspace workspace = _canvas!.Workspace;
-        SetDisabled(_sizeDecrease, workspace.BrushDiameter <= PaintPolicy.MinBrushDiameter);
-        SetDisabled(_sizeIncrease, workspace.BrushDiameter >= PaintPolicy.MaxBrushDiameter);
-        SetDisabled(_zoomOut, _canvas.View.Zoom <= PaintViewState.MinimumZoom + Epsilon);
-        SetDisabled(_zoomIn, _canvas.View.Zoom >= PaintViewState.MaximumZoom - Epsilon);
+        bool minimumBrush = workspace.BrushDiameter <= PaintPolicy.MinBrushDiameter;
+        bool maximumBrush = workspace.BrushDiameter >= PaintPolicy.MaxBrushDiameter;
+        bool minimumZoom = _canvas.View.Zoom <= PaintViewState.MinimumZoom + Epsilon;
+        bool maximumZoom = _canvas.View.Zoom >= PaintViewState.MaximumZoom - Epsilon;
+
+        SetState(
+            _sizeDecrease,
+            minimumBrush,
+            minimumBrush ? "Brush size is already at the minimum." : "Decrease brush size.");
+        SetState(
+            _sizeIncrease,
+            maximumBrush,
+            maximumBrush ? "Brush size is already at the maximum." : "Increase brush size.");
+        SetState(
+            _zoomOut,
+            minimumZoom,
+            minimumZoom ? "The canvas is already at minimum zoom." : "Zoom out of the buddy canvas.");
+        SetState(
+            _zoomIn,
+            maximumZoom,
+            maximumZoom ? "The canvas is already at maximum zoom." : "Zoom in on the buddy canvas.");
 
         PaintPoint pan = _canvas.View.Pan;
-        bool defaultView = _canvas.View.Zoom <= PaintViewState.MinimumZoom + Epsilon &&
+        bool defaultView = minimumZoom &&
             Math.Abs(pan.X) <= Epsilon &&
             Math.Abs(pan.Y) <= Epsilon;
-        SetDisabled(_resetView, defaultView);
+        SetState(
+            _resetView,
+            defaultView,
+            defaultView ? "The canvas view is already at its default position and zoom." : "Reset canvas zoom and pan.");
     }
 
     private void ResolveNodes()
@@ -75,9 +95,13 @@ public partial class Win98PaintControlStateBootstrap : Node
     private T? Find<T>(string name) where T : Node =>
         GetTree().Root.FindChild(name, recursive: true, owned: false) as T;
 
-    private static void SetDisabled(Button? button, bool disabled)
+    private static void SetState(Button? button, bool disabled, string tooltip)
     {
-        if (!GodotObject.IsInstanceValid(button) || button!.Disabled == disabled)
+        if (!GodotObject.IsInstanceValid(button))
+            return;
+
+        button!.TooltipText = tooltip;
+        if (button.Disabled == disabled)
             return;
 
         button.Disabled = disabled;
