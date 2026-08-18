@@ -66,6 +66,23 @@ If documents conflict, apply the order above. Stop and ask the project owner onl
 - Store comparison notes and public URLs only in development documentation.
 - Character packages, import/export, and user-generated Workshop distribution are not authorized in Phase B.
 
+## Continuous Integration
+
+CI runs on GitHub-hosted Linux runners (`ubuntu-latest`). The repository is public, so Actions minutes are free and jobs across branches run in parallel.
+
+A self-hosted runner exists but is stopped and deliberately unused. Do not reintroduce `runs-on: self-hosted`: on a public repository a fork's pull request carries its own workflow file, so a self-hosted label would run untrusted code on the owner's machine.
+
+- **Push, any branch** runs `CI / quick` only: compile, domain unit tests, and the Steam-binary guard.
+- **Pull request to `main`** runs `CI / build-test` (the full scenario and journey sweep) and `Asset Forge CI / verify`.
+- **Manual dispatch only** runs `CI / full-soak` and `Phase A Character Editor`.
+
+- Never add slow steps to `CI / quick`. It is the per-commit feedback loop and must stay under roughly a minute. New scenarios, journeys, capture gates, and soaks belong in `CI / build-test` or `Asset Forge CI`, both of which are pull-request only.
+- Do not add `push:` triggers to `Asset Forge CI` or `Phase A Character Editor`. They are pull-request and manual by design.
+- The runner is Linux. Any test that feeds a path into code calling `Path.GetFullPath` must build that path per OS, for example `OperatingSystem.IsWindows() ? @"C:\save-test" : "/save-test"`. A hardcoded `C:\...` literal is not absolute on Linux: `GetFullPath` silently prefixes the working directory, so lookups miss instead of throwing. This is exactly what made `ProgressStoreTests` fail on Linux.
+- Do not reintroduce `--filter "FullyQualifiedName!~ProgressStoreTests"`. That bug is fixed and the full domain suite passes on Linux.
+- Allocation tests using `GC.GetAllocatedBytesForCurrentThread()` must retry until the measurement settles. Tiered-JIT promotion is asynchronous, allocates on the measuring thread, and flakes under full-suite load.
+- The split between the push job and the pull-request jobs exists for fast feedback, not for cost. Keep it.
+
 ## Definition of Done
 
 A task is done only when:
