@@ -19,21 +19,20 @@ namespace DesktopBuddy.Domain.Content;
 public static class CataloguePolicy
 {
     /// <summary>
-    /// The four tools a new save owns (FR-013.1). Declared once here so the save seeding
-    /// and the shipped catalogue cannot drift apart.
+    /// The single tool a fresh Demo save owns. Declared once here so save seeding and the
+    /// shipped catalogue cannot drift apart. Pet, Tickle, and Boxing Glove became normal
+    /// purchasables for the Demo progression pass on 2026-08-18.
     /// </summary>
     public static readonly IReadOnlyList<string> NewSaveUnlockedContentIds = new[]
     {
         ContentIds.ToolGrab,
-        ContentIds.ToolPet,
-        ContentIds.ToolTickle,
-        ContentIds.ToolBoxingGlove,
     };
 
     /// <summary>
-    /// The complete FR-013.2 launch catalogue: sixteen selectable interactions, no passive
-    /// upgrade. Listed in the confirmed progression order of the M5 Tasks 11–13 §1.1
-    /// schedule, with the four starting tools first and the twelve purchasables after.
+    /// The complete launch catalogue: sixteen selectable interactions, no passive upgrade.
+    /// The order is also the free-choice shop/progression order: Grab is the only starting
+    /// tool and the remaining fifteen entries are purchasable. This is an ordering contract,
+    /// not a prerequisite graph — a player may save toward any affordable visible item.
     ///
     /// <para>FR-013.2 confirmed fourteen interactions; the Nerf Blaster is the fifteenth,
     /// added when M5 split the toy gun from the real one so the guns arrive as a
@@ -145,9 +144,9 @@ public static class CataloguePolicy
     }
 
     /// <summary>
-    /// Milestone-content rules for the <b>shipped</b> catalogue: every FR-013.2 entry is
-    /// present and the FR-013.1 starting set is exactly the four launch tools. Test
-    /// catalogues are deliberately allowed to be partial, so this is a separate check from
+    /// Milestone-content rules for the <b>shipped</b> catalogue: every launch entry is
+    /// present and the fresh-save starting set is exactly Normal Grab. Test catalogues are
+    /// deliberately allowed to be partial, so this is a separate check from
     /// <see cref="ToolCatalogue.Validate"/>.
     /// </summary>
     public static IReadOnlyList<string> ValidateLaunchCatalogue(ToolCatalogue catalogue)
@@ -215,7 +214,7 @@ public static class CataloguePolicy
         foreach (string id in NewSaveUnlockedContentIds)
         {
             if (!starting.Remove(id))
-                errors.Add($"'{id}' must be a starting entry on a new save (FR-013.1)");
+                errors.Add($"'{id}' must be a starting entry on a new save");
         }
 
         foreach (string extra in starting)
@@ -225,8 +224,8 @@ public static class CataloguePolicy
 
         // Progression-order uniqueness is already ToolCatalogue.Validate's job, and the
         // catalogue is sorted by it, so the sequence check below is the ordering assert.
-        // The purchasable sequence is the calibration schedule: Task 12 prices each slot by
-        // its position, so an entry silently moving would re-price the wrong item.
+        // The purchasable sequence is also the benchmark schedule: an entry silently moving
+        // must not cause a different item to inherit another item's tuning slot.
         var expected = new List<string>(LaunchContentIds.Count);
         foreach (string id in LaunchContentIds)
         {
