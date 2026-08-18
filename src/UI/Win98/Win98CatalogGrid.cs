@@ -47,6 +47,14 @@ public partial class Win98CatalogGrid : ScrollContainer
     public string? SelectedId => _selectedId;
 
     /// <summary>
+    /// Compatibility seam for a controller that still emits an older subset of an already-composed
+    /// catalogue. When enabled, a strict incoming subset updates its matching tiles but does not
+    /// delete the additional existing items. Default is false; normal callers retain replacement
+    /// semantics. This may be removed when the legacy Buddy Studio shipped-only refresh is retired.
+    /// </summary>
+    public bool PreserveExistingItemsOnSubsetRefresh { get; set; }
+
+    /// <summary>
     /// Historical selection oracle retained for existing focused scenarios. The selected state is
     /// now rendered as the inset preview outline; persistent caller-owned state has its own oracle.
     /// </summary>
@@ -99,6 +107,9 @@ public partial class Win98CatalogGrid : ScrollContainer
             if (!ids.Add(item.Id))
                 throw new ArgumentException($"Duplicate catalogue item ID '{item.Id}'.", nameof(items));
         }
+
+        if (_built && PreserveExistingItemsOnSubsetRefresh && TryMergeSubset(frozen, out Win98CatalogItemPresentation[] merged))
+            frozen = merged;
 
         bool canUpdateExisting = _built && HasSameStructure(frozen);
         _items = frozen;
@@ -172,6 +183,33 @@ public partial class Win98CatalogGrid : ScrollContainer
         _grid.AddThemeConstantOverride("v_separation", (int)Gap);
         AddChild(_grid);
         _built = true;
+    }
+
+    private bool TryMergeSubset(
+        IReadOnlyList<Win98CatalogItemPresentation> incoming,
+        out Win98CatalogItemPresentation[] merged)
+    {
+        merged = Array.Empty<Win98CatalogItemPresentation>();
+        if (incoming.Count >= _items.Count || incoming.Count == 0)
+            return false;
+
+        var replacements = new Dictionary<string, Win98CatalogItemPresentation>(incoming.Count, StringComparer.Ordinal);
+        foreach (Win98CatalogItemPresentation item in incoming)
+        {
+            if (!_tiles.ContainsKey(item.Id))
+                return false;
+            replacements[item.Id] = item;
+        }
+
+        merged = new Win98CatalogItemPresentation[_items.Count];
+        for (int index = 0; index < _items.Count; index++)
+        {
+            Win98CatalogItemPresentation current = _items[index];
+            merged[index] = replacements.TryGetValue(current.Id, out Win98CatalogItemPresentation replacement)
+                ? replacement
+                : current;
+        }
+        return true;
     }
 
     private bool HasSameStructure(IReadOnlyList<Win98CatalogItemPresentation> incoming)
