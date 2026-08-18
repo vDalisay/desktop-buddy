@@ -21,7 +21,7 @@ env:
 
 jobs:
   verify:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +42,7 @@ jobs:
       - name: Build standalone Asset Forge
         run: dotnet build devtools/AssetForge/DesktopBuddy.AssetForge.csproj -c Debug
 
-      - name: Verify developer-only source is excluded from the game project
+      - name: Verify developer-only source exclusions
         shell: bash
         run: |
           set -euo pipefail
@@ -52,16 +52,16 @@ jobs:
           grep -F 'devtools/*' export_presets.cfg
           grep -F 'authoring/*' export_presets.cfg
 
-      - name: Generate and transactionally export Asset Forge CI fixtures
+      - name: Generate Asset Forge CI fixtures
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --ci-fixture "$PWD"
 
-      - name: Generate remaining Environment v1 CI fixtures
+      - name: Generate Environment v1 CI fixtures
         run: dotnet run --project devtools/AssetForge.V1Fixtures/DesktopBuddy.AssetForge.V1Fixtures.csproj -c Debug -- "$PWD"
 
-      - name: Verify generated fixtures by re-deriving them without Godot
+      - name: Verify generated fixtures
         run: dotnet run --project devtools/AssetForge.Cli/DesktopBuddy.AssetForge.Cli.csproj -c Debug -- --verify-all "$PWD"
 
-      - name: Download pinned Godot (.NET/mono, Linux)
+      - name: Download pinned Godot
         run: |
           set -euo pipefail
           NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
@@ -73,34 +73,148 @@ jobs:
           chmod +x "$GODOT_BIN"
           echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
 
-      - name: Import game with generated Asset Forge catalogue
+      - name: Import game
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
 
-      - name: Boot smoke with generated Asset Forge catalogue
+      - name: Boot smoke
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
 
-      - name: Exercise generated glasses catalogue, purchase, render, and persistence
+      - name: Capture - pistol lifecycle
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=pistol_fire --seed=1
+
+      - name: Capture - pistol punctuation
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=pistol_punctuation --seed=1
+
+      - name: Capture - baseball bat fling
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$PWD/.artifacts/capture-bat"
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- \
+            --scenario=capture_homerun_bat_fling --seed=1 \
+            --artifacts="$PWD/.artifacts/capture-bat"
+          status=$?
+          echo "$status" > "$PWD/.artifacts/capture-bat/exit-code.txt"
+          exit 0
+
+      - name: Preserve baseball bat capture verdict
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-bat-verdict
+          path: .artifacts/capture-bat
+          if-no-files-found: error
+
+      - name: Assert baseball bat capture gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(cat "$PWD/.artifacts/capture-bat/exit-code.txt")"
+          if [ "$status" != "0" ]; then
+            verdict="$PWD/.artifacts/capture-bat/scenario_capture_homerun_bat_fling.verdict.json"
+            if [ -f "$verdict" ]; then
+              cat "$verdict"
+            fi
+            exit "$status"
+          fi
+
+      - name: Capture - boxing glove critical head
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$PWD/.artifacts/capture-glove"
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- \
+            --scenario=glove_critical_head_impact --seed=1 \
+            --artifacts="$PWD/.artifacts/capture-glove"
+          status=$?
+          echo "$status" > "$PWD/.artifacts/capture-glove/exit-code.txt"
+          exit 0
+
+      - name: Preserve boxing glove capture verdict
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-glove-verdict
+          path: .artifacts/capture-glove
+          if-no-files-found: error
+
+      - name: Assert boxing glove capture gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(cat "$PWD/.artifacts/capture-glove/exit-code.txt")"
+          if [ "$status" != "0" ]; then
+            verdict="$PWD/.artifacts/capture-glove/scenario_glove_critical_head_impact.verdict.json"
+            if [ -f "$verdict" ]; then
+              cat "$verdict"
+            fi
+            exit "$status"
+          fi
+
+      - name: Capture - grenade lifecycle
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$PWD/.artifacts/capture-grenade"
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- \
+            --scenario=grenade_fuse --seed=1 \
+            --artifacts="$PWD/.artifacts/capture-grenade"
+          status=$?
+          echo "$status" > "$PWD/.artifacts/capture-grenade/exit-code.txt"
+          exit 0
+
+      - name: Preserve grenade lifecycle verdict
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-grenade-verdict
+          path: .artifacts/capture-grenade
+          if-no-files-found: error
+
+      - name: Assert grenade lifecycle gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(cat "$PWD/.artifacts/capture-grenade/exit-code.txt")"
+          if [ "$status" != "0" ]; then
+            verdict="$PWD/.artifacts/capture-grenade/scenario_grenade_fuse.verdict.json"
+            if [ -f "$verdict" ]; then
+              cat "$verdict"
+            fi
+            exit "$status"
+          fi
+
+      - name: Capture - simultaneous grenade presentation
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=grenade_multi_capture --seed=1
+
+      - name: Capture - Paint Buddy limb and neck mapping
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=paint_limb_pose_mapping --seed=1
+
+      - name: Capture - Buddy Studio composition
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=buddy_studio_ui_composition --seed=1
+
+      - name: Capture - Work Mode resilience
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=work_mode_resilience --seed=1
+
+      - name: Generated glasses catalogue and persistence
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_glasses --seed=1
 
-      - name: Exercise generated torso and foot visual replacements
+      - name: Generated torso and foot replacements
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_replacements --seed=1
 
-      - name: Gate generated replacement front/back paint UV separation
+      - name: Generated replacement paint UV separation
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_paint_uvs --seed=1
 
-      - name: Gate Buddy Studio owned-preview Use Character persistence
+      - name: Buddy Studio owned-preview persistence
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=buddy_studio_ownership_preview --seed=1
 
-      - name: Gate generated replacement outline, paint mapping, and connector fitting
+      - name: Generated replacement connector fitting
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_replacement_connector_fit --seed=1
 
-      - name: Exercise generated Lamp catalogue, transaction, render, and stable-ID persistence
+      - name: Generated Lamp runtime
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_lamp --seed=1
 
-      - name: Exercise generated Sofa catalogue, per-instance purchase, render, and stable-ID persistence
+      - name: Generated Sofa runtime
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_sofa --seed=1
 
-      - name: Exercise generated Table, Plant and Painting runtime seams
+      - name: Generated Environment v1 runtime
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=asset_forge_generated_environment_v1 --seed=1
 
       - name: Import standalone Asset Forge project

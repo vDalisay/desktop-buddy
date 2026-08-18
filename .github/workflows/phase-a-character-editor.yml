@@ -7,7 +7,7 @@ on:
 
 jobs:
   phase-a:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
       GODOT_VERSION: 4.6.1-stable
       DOTNET_CLI_TELEMETRY_OPTOUT: "1"
