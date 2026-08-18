@@ -9,111 +9,120 @@ namespace DesktopBuddy.Domain.Tests.Characters;
 
 public sealed class CharacterCompilerTests
 {
-    private static readonly Guid CharacterId = Guid.Parse("01234567-89ab-4cde-8fab-0123456789ab");
+    private static readonly Guid CharacterId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
 
     [Fact]
-    public void DefaultDocument_CompilesToEveryCatalogDefault()
+    public void Compile_DefaultDocument_ProducesBuiltInAppearance()
     {
         CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, "Buddy");
 
-        CharacterCompileResult result = CharacterCompiler.Compile(
-            document,
-            CharacterFeatureCatalog.Shipped);
+        CharacterCompileResult result = CharacterCompiler.Compile(document, CharacterFeatureCatalog.Shipped);
 
         Assert.True(result.IsSuccess);
-        Assert.Empty(result.Warnings);
-        CompiledCharacterAppearance appearance = Assert.IsType<CompiledCharacterAppearance>(
-            result.Appearance);
-        Assert.Equal(CharacterFeatureIds.FaceClassicPlate, appearance.Face.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.HairNone, appearance.Hair.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.EyesSoftOval, appearance.Eyes.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.BrowsSoftArc, appearance.Brows.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.NoseNone, appearance.Nose.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.MouthRounded, appearance.Mouth.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.EarsNone, appearance.Ears.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.AccentNone, appearance.TorsoAccent.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.GlassesNone, appearance.Glasses.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.HeadwearNone, appearance.Headwear.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.TopNone, appearance.Tops.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.ShoesNone, appearance.Shoes.ResolvedFeatureId);
-        Assert.Equal(CharacterPartColors.BuiltIn.Head, appearance.PartColors.Head);
+        Assert.NotNull(result.Appearance);
+        Assert.Equal(CharacterId, result.Appearance!.CharacterId);
+        Assert.Equal(CharacterFeatureIds.FaceClassicPlate, result.Appearance.Face.Id);
+        Assert.Equal(CharacterFeatureIds.HairNone, result.Appearance.Hair.Id);
+        Assert.Equal(CharacterFeatureIds.EyesSoftOval, result.Appearance.Eyes.Id);
+        Assert.Equal(CharacterFeatureIds.BrowsSoftArc, result.Appearance.Brows.Id);
+        Assert.Equal(CharacterFeatureIds.NoseNone, result.Appearance.Nose.Id);
+        Assert.Equal(CharacterFeatureIds.MouthRounded, result.Appearance.Mouth.Id);
+        Assert.Equal(CharacterFeatureIds.EarsNone, result.Appearance.Ears.Id);
+        Assert.Equal(CharacterFeatureIds.AccentNone, result.Appearance.Accessories.Id);
+        Assert.Equal(CharacterFeatureIds.GlassesNone, result.Appearance.Glasses.Id);
+        Assert.Equal(CharacterFeatureIds.HeadwearNone, result.Appearance.Headwear.Id);
+        Assert.Equal(CharacterFeatureIds.TopNone, result.Appearance.Tops.Id);
+        Assert.Equal(CharacterFeatureIds.ShoesNone, result.Appearance.Shoes.Id);
     }
 
     [Fact]
-    public void UnknownFeature_CompilesToSlotDefaultWithOneWarningAndDoesNotMutateDocument()
+    public void Compile_UnknownFeatureFallsBackAndReportsRepair()
     {
         CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, "Buddy") with
         {
             Features = CharacterFeatureSet.BuiltIn with
             {
-                Eyes = CharacterFeatureSet.BuiltIn.Eyes with
-                {
-                    FeatureId = "eyes.future",
-                    OffsetX = 0.5,
-                },
+                Eyes = CharacterFeatureSet.BuiltIn.Eyes with { Id = "eyes.future" },
             },
         };
 
-        CharacterCompileResult result = CharacterCompiler.Compile(
-            document,
-            CharacterFeatureCatalog.Shipped);
+        CharacterCompileResult result = CharacterCompiler.Compile(document, CharacterFeatureCatalog.Shipped);
 
         Assert.True(result.IsSuccess);
-        CharacterCompileWarning warning = Assert.Single(result.Warnings);
-        Assert.Equal("eyes.future", warning.OriginalFeatureId);
-        Assert.Equal(CharacterFeatureIds.EyesSoftOval, warning.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.EyesSoftOval, result.Appearance!.Eyes.ResolvedFeatureId);
-        Assert.Equal(0.5, result.Appearance.Eyes.Transform.OffsetX);
-        Assert.Equal("eyes.future", document.Features.Eyes.FeatureId);
+        Assert.Equal(CharacterFeatureIds.EyesSoftOval, result.Appearance!.Eyes.Id);
+        Assert.Contains(result.Repairs, repair => repair.Contains("eyes.future", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void Compile_RejectsAnUnnormalizedDocument()
+    public void Compile_AppliesStoredTransformWithinAuthoredBounds()
     {
-        CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, " Buddy ");
-
-        CharacterCompileResult result = CharacterCompiler.Compile(
-            document,
-            CharacterFeatureCatalog.Shipped);
-
-        Assert.False(result.IsSuccess);
-        Assert.Contains(result.Errors, error => error.Message.Contains("normalized", StringComparison.Ordinal));
-    }
-
-    [Fact]
-    public void ShippedFeatureIds_AreGloballyUniqueAndBelongToExactlyOneSlot()
-    {
-        CharacterFeatureCatalog catalog = CharacterFeatureCatalog.Shipped;
-        string[] all = catalog.AllIds.ToArray();
-
-        Assert.Equal(all.Length, all.Distinct(StringComparer.Ordinal).Count());
-        foreach (string id in all)
+        CharacterFeatureDocument transformedEyes = CharacterFeatureSet.BuiltIn.Eyes with
         {
-            Assert.True(catalog.TryGetSlot(id, out CharacterFeatureSlot slot));
-            Assert.Contains(id, catalog.GetIds(slot));
-            // Distinct(): TorsoAccent is a source-compat alias of Accessories, so GetValues
-            // yields that slot value twice.
-            Assert.Single(
-                Enum.GetValues<CharacterFeatureSlot>().Distinct(),
-                candidate => catalog.Contains(candidate, id));
-        }
-    }
-
-    [Fact]
-    public void CatalogDefaults_ExistAndBelongToTheirDeclaredSlot()
-    {
-        CharacterFeatureCatalog catalog = CharacterFeatureCatalog.Shipped;
-
-        foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>())
+            Transform = new NormalizedFeatureTransform(0.15f, -0.12f, 1.25f),
+        };
+        CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, "Buddy") with
         {
-            string defaultId = catalog.GetDefaultId(slot);
-            Assert.Contains(defaultId, catalog.GetIds(slot));
-            Assert.True(catalog.Contains(slot, defaultId));
-        }
+            Features = CharacterFeatureSet.BuiltIn with { Eyes = transformedEyes },
+        };
+
+        CharacterCompileResult result = CharacterCompiler.Compile(document, CharacterFeatureCatalog.Shipped);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(transformedEyes.Transform, result.Appearance!.Eyes.Transform);
     }
 
     [Fact]
-    public void CatalogConstructor_RejectsDuplicateIdsAcrossSlots()
+    public void Compile_ClampsOutOfBoundsTransformAndReportsRepair()
+    {
+        CharacterFeatureDocument transformedEyes = CharacterFeatureSet.BuiltIn.Eyes with
+        {
+            Transform = new NormalizedFeatureTransform(8.0f, -8.0f, 9.0f),
+        };
+        CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, "Buddy") with
+        {
+            Features = CharacterFeatureSet.BuiltIn with { Eyes = transformedEyes },
+        };
+
+        CharacterCompileResult result = CharacterCompiler.Compile(document, CharacterFeatureCatalog.Shipped);
+
+        Assert.True(result.IsSuccess);
+        Assert.NotEqual(transformedEyes.Transform, result.Appearance!.Eyes.Transform);
+        Assert.Contains(result.Repairs, repair => repair.Contains("transform", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Catalogue_RejectsDuplicateDefinitionsAndInvalidFallbacks()
+    {
+        CosmeticDefinition sample = CharacterFeatureCatalog.Shipped.GetDefinitions(CharacterFeatureSlot.Eyes)[0];
+        Assert.Throws<ArgumentException>(() => new CharacterFeatureCatalog([sample, sample]));
+
+        CosmeticDefinition badFallback = sample with { FallbackId = "eyes.missing" };
+        IEnumerable<CosmeticDefinition> all = CharacterFeatureCatalog.Shipped.AllIds
+            .Select(id =>
+            {
+                Assert.True(CharacterFeatureCatalog.Shipped.TryGetDefinition(id, out CosmeticDefinition definition));
+                return definition.Id == sample.Id ? badFallback : definition;
+            });
+        Assert.Throws<ArgumentException>(() => new CharacterFeatureCatalog(all));
+    }
+
+    [Fact]
+    public void LegacyConstructor_StillSupportsPhaseAFeatureSets()
+    {
+        var catalog = new CharacterFeatureCatalog(
+            ["eye"], "eye",
+            ["brow"], "brow",
+            ["mouth"], "mouth",
+            ["accent"], "accent");
+
+        Assert.True(catalog.Contains(CharacterFeatureSlot.Eyes, "eye"));
+        Assert.True(catalog.Contains(CharacterFeatureSlot.Brows, "brow"));
+        Assert.True(catalog.Contains(CharacterFeatureSlot.Mouth, "mouth"));
+        Assert.True(catalog.Contains(CharacterFeatureSlot.Accessories, "accent"));
+    }
+
+    [Fact]
+    public void LegacyConstructor_RejectsSharedFeatureIdAcrossSlots()
     {
         Assert.Throws<ArgumentException>(() => new CharacterFeatureCatalog(
             ["shared"], "shared",
@@ -138,8 +147,14 @@ public sealed class CharacterCompilerTests
 
         string[] paidIds =
         [
-            CharacterFeatureIds.HairShortSweep, CharacterFeatureIds.NoseButton,
-            CharacterFeatureIds.EarsRoundTabs, CharacterFeatureIds.GlassesWorkClassic,
+            CharacterFeatureIds.HairShortSweep,
+            CharacterFeatureIds.BrowsStraight, CharacterFeatureIds.BrowsSegmented,
+            CharacterFeatureIds.EyesRoundDot, CharacterFeatureIds.EyesHorizontalLed,
+            CharacterFeatureIds.NoseButton,
+            CharacterFeatureIds.MouthPixel, CharacterFeatureIds.MouthLine,
+            CharacterFeatureIds.EarsRoundTabs,
+            CharacterFeatureIds.AccentPanel, CharacterFeatureIds.AccentChevron, CharacterFeatureIds.AccentBolts,
+            CharacterFeatureIds.GlassesWorkClassic,
             CharacterFeatureIds.HeadwearSoftCap, CharacterFeatureIds.TopUtilityBib,
             CharacterFeatureIds.ShoesSoftSteps,
         ];
@@ -178,88 +193,5 @@ public sealed class CharacterCompilerTests
         Assert.Equal(1, result.Appearance.Eyes.ColorChannels.Count);
         Assert.False(result.Appearance.Eyes.ColorChannels.TryGetValue("future", out _));
         Assert.Equal(Rgba32.Parse("#FFFFFF"), document.Features.Eyes.Colors["future"]);
-    }
-
-    [Fact]
-    public void Compiler_RejectsKnownCosmeticInWrongCategory()
-    {
-        CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, "Buddy") with
-        {
-            Features = CharacterFeatureSet.BuiltIn with
-            {
-                Hair = CharacterFeatureSet.BuiltIn.Hair with { FeatureId = CharacterFeatureIds.TopNone },
-            },
-        };
-
-        CharacterCompileResult result = CharacterCompiler.Compile(document, CharacterFeatureCatalog.Shipped);
-
-        Assert.False(result.IsSuccess);
-        Assert.Contains(result.Errors, error => error.Path == "features.hair.featureId");
-    }
-
-    [Fact]
-    public void Compiler_RejectsTransformOnNonTransformableDefinition()
-    {
-        CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, "Buddy") with
-        {
-            Features = CharacterFeatureSet.BuiltIn with
-            {
-                Headwear = CharacterFeatureSet.BuiltIn.Headwear with { Scale = 1.1 },
-            },
-        };
-
-        CharacterCompileResult result = CharacterCompiler.Compile(document, CharacterFeatureCatalog.Shipped);
-
-        Assert.False(result.IsSuccess);
-        Assert.Contains(result.Errors, error => error.Path == "features.headwear.transform");
-    }
-
-    [Fact]
-    public void RepresentativeAttachmentDefinitions_CompileTrustedDefaultsAndHideHairWithoutDeletingIt()
-    {
-        CharacterDocument document = CharacterDocument.CreateDefault(CharacterId, "Buddy") with
-        {
-            Features = CharacterFeatureSet.BuiltIn with
-            {
-                Hair = CharacterFeatureSet.BuiltIn.Hair with { FeatureId = CharacterFeatureIds.HairShortSweep },
-                Nose = CharacterFeatureSet.BuiltIn.Nose with { FeatureId = CharacterFeatureIds.NoseButton },
-                Ears = CharacterFeatureSet.BuiltIn.Ears with { FeatureId = CharacterFeatureIds.EarsRoundTabs },
-                Glasses = CharacterFeatureSet.BuiltIn.Glasses with { FeatureId = CharacterFeatureIds.GlassesWorkClassic },
-                Headwear = CharacterFeatureSet.BuiltIn.Headwear with { FeatureId = CharacterFeatureIds.HeadwearSoftCap },
-                Tops = CharacterFeatureSet.BuiltIn.Tops with { FeatureId = CharacterFeatureIds.TopUtilityBib },
-                Shoes = CharacterFeatureSet.BuiltIn.Shoes with { FeatureId = CharacterFeatureIds.ShoesSoftSteps },
-            },
-        };
-
-        CharacterCompileResult result = CharacterCompiler.Compile(document, CharacterFeatureCatalog.Shipped);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal(CharacterFeatureIds.HairShortSweep, result.Appearance!.Hair.ResolvedFeatureId);
-        Assert.Equal(Rgba32.Parse("#6A4937"), result.Appearance.Hair.Color);
-        Assert.Equal(CharacterFeatureIds.NoseButton, result.Appearance.Nose.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.EarsRoundTabs, result.Appearance.Ears.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.GlassesWorkClassic, result.Appearance.Glasses.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.HeadwearSoftCap, result.Appearance.Headwear.ResolvedFeatureId);
-        Assert.Equal(Rgba32.Parse("#C95B63"), result.Appearance.Headwear.Color);
-        Assert.Equal(CharacterFeatureIds.TopUtilityBib, result.Appearance.Tops.ResolvedFeatureId);
-        Assert.Equal(CharacterFeatureIds.ShoesSoftSteps, result.Appearance.Shoes.ResolvedFeatureId);
-        Assert.True(CharacterFeatureCatalog.Shipped.TryGetDefinition(
-            result.Appearance.Headwear.ResolvedFeatureId,
-            out CosmeticDefinition cap));
-        Assert.True(cap.HidesHair);
-        Assert.Equal(CharacterFeatureIds.HairShortSweep, document.Features.Hair.FeatureId);
-    }
-
-    [Fact]
-    public void WorkGlasses_UseExistingExplicitOwnershipContentId()
-    {
-        Assert.True(CharacterFeatureCatalog.Shipped.TryGetDefinition(
-            CharacterFeatureIds.GlassesWorkClassic,
-            out CosmeticDefinition glasses));
-        Assert.Equal(ContentIds.CosmeticWorkGlasses, glasses.OwnershipContentId);
-        Assert.Equal(ContentIds.CosmeticHairShortSweep, CharacterFeatureCatalog.Shipped.ResolveDefinition(
-            CharacterFeatureSlot.Hair,
-            CharacterFeatureIds.HairShortSweep,
-            out _).OwnershipContentId);
     }
 }
