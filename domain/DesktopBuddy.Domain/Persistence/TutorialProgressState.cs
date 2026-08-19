@@ -4,25 +4,58 @@ using System.Linq;
 
 namespace DesktopBuddy.Domain.Persistence;
 
-/// <summary>Stable IDs for the lightweight Steam Demo first-session guidance.</summary>
+/// <summary>Stable semantic IDs for the concise Steam Demo first-session walkthrough.</summary>
 public static class TutorialStepIds
 {
     public const string GrabBuddy = "demo.onboarding.grab_buddy";
     public const string EarnCredits = "demo.onboarding.earn_credits";
-    public const string OpenShop = "demo.onboarding.open_shop";
-    public const string PurchaseContent = "demo.onboarding.purchase_content";
+
+    public const string OpenInventory = "demo.onboarding.open_inventory";
+    public const string PurchaseBaseballBat = "demo.onboarding.purchase_baseball_bat";
+    public const string EquipBaseballBat = "demo.onboarding.equip_baseball_bat";
+
     public const string OpenPaintBuddy = "demo.onboarding.open_paint_buddy";
+    public const string PaintBuddy = "demo.onboarding.paint_buddy";
+    public const string SavePaintBuddy = "demo.onboarding.save_paint_buddy";
+    public const string UsePaintedBuddy = "demo.onboarding.use_painted_buddy";
+
+    public const string OpenPaintBackground = "demo.onboarding.open_paint_background";
+    public const string PaintBackground = "demo.onboarding.paint_background";
+    public const string SaveAndExitPaintBackground = "demo.onboarding.save_exit_paint_background";
+
+    public const string OpenBuddyStudio = "demo.onboarding.open_buddy_studio";
+    public const string BuyAndEquipStudioItem = "demo.onboarding.buy_equip_studio_item";
+    public const string UnequipStudioItem = "demo.onboarding.unequip_studio_item";
+    public const string SaveBuddyStudio = "demo.onboarding.save_buddy_studio";
+    public const string ExitBuddyStudio = "demo.onboarding.exit_buddy_studio";
+
     public const string EnterWorkMode = "demo.onboarding.enter_work_mode";
+    public const string DragWorkCompanion = "demo.onboarding.drag_work_companion";
+    public const string ResizeWorkCompanion = "demo.onboarding.resize_work_companion";
     public const string ExitWorkMode = "demo.onboarding.exit_work_mode";
 
     public static readonly IReadOnlyList<string> Ordered =
     [
         GrabBuddy,
         EarnCredits,
-        OpenShop,
-        PurchaseContent,
+        OpenInventory,
+        PurchaseBaseballBat,
+        EquipBaseballBat,
         OpenPaintBuddy,
+        PaintBuddy,
+        SavePaintBuddy,
+        UsePaintedBuddy,
+        OpenPaintBackground,
+        PaintBackground,
+        SaveAndExitPaintBackground,
+        OpenBuddyStudio,
+        BuyAndEquipStudioItem,
+        UnequipStudioItem,
+        SaveBuddyStudio,
+        ExitBuddyStudio,
         EnterWorkMode,
+        DragWorkCompanion,
+        ResizeWorkCompanion,
         ExitWorkMode,
     ];
 
@@ -49,12 +82,14 @@ public readonly record struct TutorialProgressSnapshot(
 
 /// <summary>
 /// Semantic onboarding progress backed by the existing cloud-eligible progress extension map.
-/// The compact v1 payload keeps tutorial state independent from volatile UI state without a
-/// progress-schema bump. A future schema can promote this record without changing the stable IDs.
+/// V2 deliberately does not reinterpret the old broad v1 hints: an existing loaded player with no
+/// v2 record is still auto-skipped by the runtime controller, while fresh/reset progress starts the
+/// action-driven sequence from Grab Buddy.
 /// </summary>
 public sealed class TutorialProgressState
 {
-    public const string ExtensionKey = "demo.onboarding.v1";
+    public const string ExtensionKey = "demo.onboarding.v2";
+    public const string LegacyExtensionKey = "demo.onboarding.v1";
     private const string SkippedToken = "skip";
 
     private readonly BuddyProgressState _progress;
@@ -77,13 +112,16 @@ public sealed class TutorialProgressState
             .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Where(TutorialStepIds.IsKnown)
             .Distinct(StringComparer.Ordinal)
-            .OrderBy(id => IndexOf(id))
+            .OrderBy(IndexOf)
             .ToArray();
         return new TutorialProgressSnapshot(completed, false);
     }
 
     public bool HasPersistedRecord =>
         _progress.Extensions?.Values?.ContainsKey(ExtensionKey) == true;
+
+    public bool HasLegacyRecord =>
+        _progress.Extensions?.Values?.ContainsKey(LegacyExtensionKey) == true;
 
     public bool IsComplete => Snapshot().IsComplete;
 
