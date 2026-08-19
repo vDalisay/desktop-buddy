@@ -171,17 +171,18 @@ public sealed class TutorialClosureScenario : IScenario
                 afterEquip == TutorialStepIds.OpenPaintBuddy,
                 $"tool={sandbox.Pipeline.SelectedTool} next={afterEquip}"));
 
+            int workStart = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.EnterWorkMode);
+            int paintBuddy = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.OpenPaintBuddy);
+            int paintBackground = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.OpenPaintBackground);
+            int buddyStudio = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.OpenBuddyStudio);
             checks.Add(new StartupCheck(
                 "work_remains_terminal_after_customization_screens",
                 TutorialStepIds.Ordered[^4] == TutorialStepIds.EnterWorkMode &&
                 TutorialStepIds.Ordered[^1] == TutorialStepIds.ExitWorkMode &&
-                TutorialStepIds.Ordered.IndexOf(TutorialStepIds.OpenPaintBuddy) <
-                    TutorialStepIds.Ordered.IndexOf(TutorialStepIds.EnterWorkMode) &&
-                TutorialStepIds.Ordered.IndexOf(TutorialStepIds.OpenPaintBackground) <
-                    TutorialStepIds.Ordered.IndexOf(TutorialStepIds.EnterWorkMode) &&
-                TutorialStepIds.Ordered.IndexOf(TutorialStepIds.OpenBuddyStudio) <
-                    TutorialStepIds.Ordered.IndexOf(TutorialStepIds.EnterWorkMode),
-                $"afterEquip={afterEquip}"));
+                paintBuddy >= 0 && paintBuddy < workStart &&
+                paintBackground >= 0 && paintBackground < workStart &&
+                buddyStudio >= 0 && buddyStudio < workStart,
+                $"paintBuddy={paintBuddy} background={paintBackground} studio={buddyStudio} work={workStart}"));
         }
         finally
         {
