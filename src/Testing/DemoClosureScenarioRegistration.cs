@@ -18,5 +18,6 @@ internal static class DemoClosureScenarioRegistration
         var factories = (Dictionary<string, Func<IScenario>>?)field.GetValue(null)
             ?? throw new InvalidOperationException("Scenario registry was not initialized.");
         factories["demo_meal_visual"] = () => new DemoMealVisualScenario();
+        factories["demo_care_tool_presentation"] = () => new DemoCareToolPresentationScenario();
     }
 }
