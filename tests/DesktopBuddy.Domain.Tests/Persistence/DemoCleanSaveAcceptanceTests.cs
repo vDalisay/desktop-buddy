@@ -1,10 +1,15 @@
+using System;
+using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tests.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Economy;
+using DesktopBuddy.Persistence;
 using Xunit;
 
 namespace DesktopBuddy.Domain.Tests.Persistence;
@@ -119,5 +124,78 @@ public sealed class DemoCleanSaveAcceptanceTests
         long revisionBefore = restoredProgress.Revision;
         Assert.False(restoredTutorial.MarkCompleted(TutorialStepIds.GrabBuddy));
         Assert.Equal(revisionBefore, restoredProgress.Revision);
+    }
+
+    [Fact]
+    public async Task DemoExtensionsAndSelectedTool_RoundTripThroughProductionJsonStore()
+    {
+        const double cashPerPain = 10.0;
+        string root = Path.Combine(Path.GetTempPath(), $"desktop-buddy-demo-save-{Guid.NewGuid():N}");
+        string progressPath = Path.Combine(root, "progress.json");
+        string settingsPath = Path.Combine(root, "settings.json");
+        ToolCatalogue catalogue = TestCatalogues.Standard();
+
+        try
+        {
+            var progress = new BuddyProgressState(
+                cashPerPain,
+                initialBalanceMilliCredits: 2_000_000);
+            var economy = new EconomyService(progress, catalogue);
+            var tutorial = new TutorialProgressState(progress);
+            var slots = new CharacterSlotEntitlementState(progress, economy);
+
+            foreach (string stepId in TutorialStepIds.Ordered)
+                Assert.True(tutorial.MarkCompleted(stepId));
+            Assert.True(economy.Purchase(ContentIds.ToolPet).Succeeded);
+            Assert.True(progress.SelectTool(ToolId.Pet));
+            Assert.True(slots.PurchaseNext().Succeeded);
+
+            var store = new JsonProgressStore(progressPath, settingsPath);
+            await store.SaveProgressAsync(
+                ProgressSave.FromSnapshot(progress.Snapshot()),
+                CancellationToken.None);
+
+            LoadResult<ProgressSave> loaded = await store.LoadProgressAsync(CancellationToken.None);
+            Assert.Equal(SaveLoadStatus.Loaded, loaded.Status);
+            ProgressSave disk = Assert.IsType<ProgressSave>(loaded.Value);
+            Assert.Equal(ContentIds.ToolPet, disk.SelectedToolId);
+            Assert.Contains(ContentIds.ToolPet, disk.UnlockedToolIds);
+            Assert.NotEmpty(disk.Extensions.Values);
+
+            var extensionData = new ProgressExtensionData(
+                disk.Extensions.UnknownSelectedToolId,
+                disk.Extensions.UnknownContentIds,
+                disk.Extensions.Values);
+            var restored = new BuddyProgressState(
+                cashPerPain,
+                initialMood: disk.Mood,
+                harmfulContentIds: disk.HarmfulContentIds,
+                unlockedToolIds: disk.UnlockedToolIds,
+                revision: disk.Revision,
+                initialBalanceMilliCredits: disk.BalanceMilliCredits,
+                selectedToolId: disk.SelectedToolId,
+                extensions: extensionData,
+                initialFullness: disk.Fullness);
+            var restoredEconomy = new EconomyService(restored, catalogue);
+            var restoredTutorial = new TutorialProgressState(restored);
+            var restoredSlots = new CharacterSlotEntitlementState(restored, restoredEconomy);
+
+            Assert.Equal(ToolId.Pet, restored.SelectedTool);
+            Assert.True(restoredTutorial.IsComplete);
+            Assert.Null(restoredTutorial.NextIncompleteStepId);
+            Assert.Equal(4, restoredSlots.Capacity);
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
+            catch (IOException)
+            {
+                // Temp cleanup must not hide the persistence assertion result on Windows CI.
+            }
+        }
     }
 }
