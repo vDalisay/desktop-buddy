@@ -6,8 +6,8 @@
 resource_name = "ProvisionalM3ToolReaction"
 script = ExtResource("1_reaction")
 AngryFleeScale = 1.5
-FriendlyJumpScale = 1.15
-AngryJumpScale = 1.35
+FriendlyJumpScale = 0.6
+AngryJumpScale = 0.75
 TickleJumpHorizontalRatio = 0.45
 DefenseRange = 180.0
 DefenseReleaseRange = 220.0
