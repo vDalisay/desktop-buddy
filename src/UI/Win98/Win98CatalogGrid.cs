@@ -253,7 +253,12 @@ public partial class Win98CatalogGrid : ScrollContainer
             return;
 
         foreach (Node child in _grid.GetChildren())
+        {
+            // Detach first: a queued-free child still owns its name, so a rebuilt tile with the
+            // same id would be renamed to @Catalog_<id>@N and stop resolving by name.
+            _grid.RemoveChild(child);
             child.QueueFree();
+        }
         _tiles.Clear();
 
         for (int index = 0; index < _items.Count; index++)
