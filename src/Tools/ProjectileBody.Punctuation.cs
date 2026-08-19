@@ -126,7 +126,7 @@ public partial class ProjectileBody
         };
         parent.AddChild(smoke);
         smoke.GlobalPosition = worldPoint;
-        smoke.Start(_approachVelocity);
+        smoke.Start(_approachVelocity, _impactSmokeColor);
     }
 }
 
@@ -180,7 +180,7 @@ internal sealed partial class BulletImpactSmoke2D : Node2D
     private static readonly ImageTexture?[] SharedSmokeTextures = new ImageTexture?[TextureVariants];
     private float _remaining = NodeLifetimeSeconds;
 
-    public void Start(Vector2 approachVelocity)
+    public void Start(Vector2 approachVelocity, Color tint)
     {
         Vector2 incoming = approachVelocity.LengthSquared() > 0.001f
             ? approachVelocity.Normalized()
@@ -214,8 +214,12 @@ internal sealed partial class BulletImpactSmoke2D : Node2D
             AngleMax = 180.0f,
             AngularVelocityMin = -90.0f,
             AngularVelocityMax = 90.0f,
-            // Smoke is soot: always black, only its density varies.
-            Color = new Color(0.05f, 0.05f, 0.06f, (float)GD.RandRange(0.46, 0.66)),
+            // The tint is the gun's, so only how thick this particular puff reads varies.
+            Color = new Color(
+                tint.R,
+                tint.G,
+                tint.B,
+                Mathf.Clamp(tint.A * (float)GD.RandRange(0.78, 1.22), 0.0f, 1.0f)),
             Texture = SmokeTexture(GD.RandRange(0, TextureVariants - 1)),
             LocalCoords = false,
             Emitting = true,

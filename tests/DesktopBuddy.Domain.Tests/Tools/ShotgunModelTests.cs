@@ -25,6 +25,9 @@ public sealed class ShotgunModelTests
     private const int Pellets = 6;
     private const int PumpTicks = 24;
 
+    /// <summary>Long enough to cover a stroke and the cadence window behind it.</summary>
+    private const int BufferTicks = 140;
+
     private static readonly GunConstants Shotgun =
         new(Capacity, IntervalTicks, ReloadTicks, Pellets, true, PumpTicks);
 
@@ -249,6 +252,84 @@ public sealed class ShotgunModelTests
     /// player actions rather than as phase plumbing. Deliberately the same shape as
     /// <see cref="GunModelTests"/>'s: two guns, one machine.
     /// </summary>
+    [Fact]
+    public void APressDuringThePumpIsRememberedAndFiresAsSoonAsTheGunIsReady()
+    {
+        // The reported jam: mashing primary on a pump gun spends most presses into a
+        // stroke or an interval that is still running, and the gun looks stuck.
+        var buffered = new GunConstants(
+            Capacity, IntervalTicks, ReloadTicks, Pellets, true, PumpTicks, PressBufferTicks: BufferTicks);
+        var gun = new Gun(buffered);
+
+        gun.Tick(triggerHeld: true);
+        gun.Tick(triggerHeld: false);
+        gun.PullAfter(1);            // works the action
+        Assert.True(gun.Phase.IsPumping);
+
+        gun.Tick(triggerHeld: false);
+        gun.Tick(triggerHeld: true); // mashed while the stroke runs: remembered, not lost
+        Assert.True(gun.Phase.BufferedPressTicks > 0);
+
+        bool fired = false;
+        for (int tick = 0; tick < IntervalTicks + PumpTicks; tick++)
+        {
+            GunResult result = gun.Tick(triggerHeld: false);
+            if (!result.Fired)
+                continue;
+
+            fired = true;
+            Assert.Equal(Pellets, result.Projectiles);
+            break;
+        }
+
+        Assert.True(fired);
+        Assert.Equal(0, gun.Phase.BufferedPressTicks);
+    }
+
+    [Fact]
+    public void OneBufferedPressIsOneShellAndNeverABurst()
+    {
+        var buffered = new GunConstants(
+            Capacity, IntervalTicks, ReloadTicks, Pellets, true, PumpTicks, PressBufferTicks: BufferTicks);
+        var gun = new Gun(buffered);
+
+        gun.Tick(triggerHeld: true);
+        gun.Tick(triggerHeld: false);
+        gun.PullAfter(1);
+        gun.Tick(triggerHeld: false);
+        gun.Tick(triggerHeld: true);
+
+        int shots = 0;
+        for (int tick = 0; tick < (IntervalTicks * 3) + PumpTicks; tick++)
+        {
+            if (gun.Tick(triggerHeld: false).Fired)
+                shots++;
+        }
+
+        Assert.Equal(1, shots);
+    }
+
+    [Fact]
+    public void WithoutAnAuthoredBufferAnEarlyPressIsStillDropped()
+    {
+        var gun = new Gun(Shotgun);
+
+        gun.Tick(triggerHeld: true);
+        gun.Tick(triggerHeld: false);
+        gun.PullAfter(1);
+        gun.Tick(triggerHeld: false);
+        gun.Tick(triggerHeld: true);
+
+        int shots = 0;
+        for (int tick = 0; tick < (IntervalTicks * 2) + PumpTicks; tick++)
+        {
+            if (gun.Tick(triggerHeld: false).Fired)
+                shots++;
+        }
+
+        Assert.Equal(0, shots);
+    }
+
     private sealed class Gun
     {
         private readonly GunConstants _constants;

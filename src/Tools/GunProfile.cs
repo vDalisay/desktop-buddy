@@ -287,6 +287,18 @@ public partial class GunProfile : GameResource
     /// </summary>
     [Export] public bool EmitsImpactSmoke { get; set; } = true;
 
+    /// <summary>
+    /// The puff's tint and, in its alpha, how thick it reads. Light grey by default; the
+    /// shotgun authors sooty black because a shell throws more than a bullet does.
+    /// </summary>
+    [Export] public Color ImpactSmokeColor { get; set; } = new(0.50f, 0.52f, 0.55f, 0.42f);
+
+    /// <summary>
+    /// Multiplies the drawn muzzle flare. One is the size the flash has always been; a
+    /// heavier gun authors more.
+    /// </summary>
+    [Export(PropertyHint.Range, "0.1,6,0.05,or_greater")] public float MuzzleFlashScale { get; set; } = 1.0f;
+
     /// <summary>Ticks the muzzle flash is drawn for; zero is no flash.</summary>
     [Export(PropertyHint.Range, "0,30,1,or_greater")] public int MuzzleFlashTicks { get; set; }
 
@@ -331,6 +343,13 @@ public partial class GunProfile : GameResource
     [Export(PropertyHint.Range, "1,120,1,or_greater")] public int PumpTicks { get; set; } = 24;
 
     /// <summary>
+    /// How long a too-early primary press is remembered for, in ticks. Zero drops it, which
+    /// is what every gun did before; a pump gun authors enough to cover its stroke so
+    /// mashing primary reads as a fast gun rather than a stuck one.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,240,1,or_greater")] public int PressBufferTicks { get; set; }
+
+    /// <summary>
     /// How far the forend slides back along the barrel at the top of the stroke, as a
     /// fraction of <see cref="VisualLengthPx"/>. Presentation only — the stroke's gameplay
     /// cost is <see cref="PumpTicks"/>, and the mesh must never be what a rule reads.
@@ -370,7 +389,8 @@ public partial class GunProfile : GameResource
         ReloadTicks,
         ProjectilesPerShot,
         RequiresPumpBetweenShots,
-        PumpTicks);
+        PumpTicks,
+        PressBufferTicks);
 
     /// <summary>The engine-free aim constants this profile authors.</summary>
     public CursorAimConstants ToAimConstants() => new(

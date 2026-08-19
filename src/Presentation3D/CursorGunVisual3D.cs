@@ -190,7 +190,7 @@ public partial class CursorGunVisual3D : Node3D
         }
 
         _flash.Position = new Vector3(profile.VisualMuzzleTipPx, 0.0f, 0.0f);
-        float size = profile.VisualLengthPx * 0.42f * strength;
+        float size = profile.VisualLengthPx * 0.42f * strength * profile.MuzzleFlashScale;
         _flash.Scale = new Vector3(size, size, size);
         _flash.Visible = true;
     }

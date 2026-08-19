@@ -30,7 +30,15 @@ public readonly record struct GunConstants(
     /// Ticks the pump stroke takes. The gun ignores the trigger while it runs, so this is
     /// the real cost of the action — <c>24</c> is a fifth of a second at 120 Hz.
     /// </summary>
-    int PumpTicks = 0)
+    int PumpTicks = 0,
+
+    /// <summary>
+    /// How long a press that arrived too early is remembered for. Zero — the default, and
+    /// what every gun did before pumps — drops such a press on the floor. A pump gun wants
+    /// a buffer: its stroke plus its interval is long enough that a player mashing primary
+    /// spends most presses into a dead gun and reads it as the gun jamming.
+    /// </summary>
+    int PressBufferTicks = 0)
 {
     public bool IsWellFormed() =>
         MagazineCapacity > 0 &&
@@ -71,7 +79,13 @@ public readonly record struct GunPhase(
     bool ChamberEmpty = false,
 
     /// <summary>Ticks left in the running pump stroke, or <c>0</c> when none is running.</summary>
-    int PumpTicksRemaining = 0)
+    int PumpTicksRemaining = 0,
+
+    /// <summary>
+    /// Ticks left on a remembered press that could not act when it arrived. It is consumed
+    /// by the first tick that can act on it, so it produces one shot, never a burst.
+    /// </summary>
+    int BufferedPressTicks = 0)
 {
     public bool IsReloading => ReloadTicksRemaining > 0;
 
@@ -86,7 +100,8 @@ public readonly record struct GunPhase(
         TriggerHeld: false,
         ShotEpoch: 0,
         ChamberEmpty: false,
-        PumpTicksRemaining: 0);
+        PumpTicksRemaining: 0,
+        BufferedPressTicks: 0);
 }
 
 /// <summary>External facts for one gun tick.</summary>
@@ -144,7 +159,11 @@ public readonly record struct GunResult(
 ///   is why the model tracks the previous trigger state rather than taking an edge
 ///   from the caller.</item>
 ///   <item>A press inside the shot interval is simply spent — no shot, no dry fire,
-///   and no queued shot waiting to escape later.</item>
+///   and no queued shot waiting to escape later — unless the gun authors
+///   <see cref="GunConstants.PressBufferTicks"/>, in which case that one press is
+///   remembered for that many ticks and acts on the first tick the gun can act. It is
+///   still one press for one action: the buffer holds a single press, is cleared the
+///   moment it is used, and a held trigger never refills it.</item>
 ///   <item>A press on an empty magazine is a dry fire and starts the automatic
 ///   reload. Emptying the magazine does <b>not</b>: the eighth shot leaves the gun
 ///   empty and ready, and it is the ninth pull that reloads it.</item>
@@ -169,6 +188,11 @@ public static class GunMachine
         }
 
         GunPhase phase = input.Phase with { TicksSinceShot = Advance(input.Phase.TicksSinceShot) };
+        bool pressEdge = input.TriggerHeld && !phase.TriggerHeld;
+        // The remembered press ages every tick whether or not the gun can act on it, so a
+        // press made a long way ahead of readiness dies rather than firing out of nowhere.
+        int buffered = Math.Max(0, phase.BufferedPressTicks - 1);
+        bool wantsAction = pressEdge || buffered > 0;
         bool fired = false;
         bool dryFired = false;
         bool reloadStarted = false;
@@ -176,6 +200,12 @@ public static class GunMachine
         bool pumpStarted = false;
         bool pumpCompleted = false;
         int projectiles = 0;
+
+        if (pressEdge && constants.PressBufferTicks > 0 &&
+            (phase.IsReloading || phase.IsPumping))
+        {
+            buffered = constants.PressBufferTicks;
+        }
 
         if (phase.IsReloading)
         {
@@ -216,10 +246,12 @@ public static class GunMachine
             phase = phase with { ReloadTicksRemaining = constants.ReloadTicks };
             reloadStarted = true;
         }
-        else if (input.TriggerHeld && !phase.TriggerHeld)
+        else if (wantsAction)
         {
             if (phase.ChamberEmpty)
             {
+                // A press is spent by whatever it does — here, working the action.
+                buffered = 0;
                 // The press the player owes the action. Charged ahead of the cadence check
                 // on purpose — see the class rules — so cycling early is rewarded rather
                 // than swallowed by the interval that is still running.
@@ -228,12 +260,17 @@ public static class GunMachine
             }
             else if (phase.TicksSinceShot < constants.ShotIntervalTicks)
             {
-                // Inside the cadence window: the press is consumed and nothing else
-                // happens. It must not linger, or a player mashing the button would
-                // get a burst the moment the interval elapsed.
+                // Inside the cadence window. Without an authored buffer the press is
+                // consumed and nothing else happens — it must not linger, or a player
+                // mashing the button would get a burst the moment the interval elapsed.
+                // With one, this single press is remembered for its authored window — and a
+                // press already in the buffer keeps ageing rather than being cleared here,
+                // which is the whole point of it surviving the window.
+                buffered = pressEdge ? constants.PressBufferTicks : buffered;
             }
             else if (phase.Rounds > 0)
             {
+                buffered = 0;
                 fired = true;
                 projectiles = constants.ProjectilesPerShot;
                 phase = phase with
@@ -246,13 +283,14 @@ public static class GunMachine
             }
             else
             {
+                buffered = 0;
                 dryFired = true;
                 reloadStarted = true;
                 phase = phase with { ReloadTicksRemaining = constants.ReloadTicks };
             }
         }
 
-        phase = phase with { TriggerHeld = input.TriggerHeld };
+        phase = phase with { TriggerHeld = input.TriggerHeld, BufferedPressTicks = buffered };
         return new GunResult(
             phase,
             fired,

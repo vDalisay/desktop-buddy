@@ -775,7 +775,7 @@ public partial class CursorGunComponent : Node2D
             return;
 
         Vector2 mouth = ToLocal(MuzzleFlashPoint);
-        float reach = length * 0.30f * flash;
+        float reach = length * 0.30f * flash * profile.MuzzleFlashScale;
         var glow = new Color(1.0f, 0.93f, 0.62f, Mathf.Clamp(flash, 0.0f, 1.0f));
         DrawLine(mouth, mouth + (forward * reach), glow, 3.0f, true);
         DrawLine(mouth, mouth + (down * (reach * 0.55f)), glow, 2.0f, true);

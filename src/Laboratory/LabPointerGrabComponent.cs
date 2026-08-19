@@ -444,13 +444,18 @@ public partial class LabPointerGrabComponent : Node2D
         {
             _pendingPress = false;
             bool normalGrab = ToolCatalog.CategoryOf(tool) == ToolCategory.Grab;
-            bool grenadeGrab = tool == ToolId.Grenade;
-            Func<RigidBody2D, bool>? selectedToolFilter = grenadeGrab
+            // A launchable you just placed is picked up with primary without going back to
+            // Grab first — the grenade always worked this way and the rest now match
+            // (owner instruction 2026-08-19). The filter keeps it honest: the ball tool
+            // picks up balls, not the buddy's arm.
+            bool launchableGrab = IsSpawnableLaunchable(tool);
+            string launchableContentId = launchableGrab ? ContentIds.ForTool(tool) : string.Empty;
+            Func<RigidBody2D, bool>? selectedToolFilter = launchableGrab
                 ? candidate => candidate is LooseObjectBody loose &&
-                               loose.SemanticContentId == ContentIds.ToolGrenade
+                               loose.SemanticContentId == launchableContentId
                 : null;
 
-            if ((normalGrab || grenadeGrab) && !Grab.IsGrabbing &&
+            if ((normalGrab || launchableGrab) && !Grab.IsGrabbing &&
                 TryPick(cursor, out RigidBody2D? body, selectedToolFilter))
             {
                 if (Grab.TryGrab(body!, cursor, normalGrab && tool == ToolId.PowerGrab ? PowerProfile : null))
