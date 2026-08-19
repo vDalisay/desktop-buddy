@@ -68,7 +68,10 @@ public static class CharacterCompiler
             glasses,
             headwear,
             tops,
-            shoes);
+            shoes)
+        {
+            FavoriteColor = normalizedDocument.FavoriteColor ?? colors.Torso,
+        };
 
         return new CharacterCompileResult(
             appearance,

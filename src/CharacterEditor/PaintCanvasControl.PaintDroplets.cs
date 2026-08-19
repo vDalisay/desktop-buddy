@@ -42,11 +42,21 @@ public partial class PaintCanvasControl
         droplets.Initialize(this);
     }
 
+    /// <summary>
+    /// Only the release is watched globally, so letting go anywhere ends the held state. The
+    /// press is latched in <see cref="_GuiInput"/> instead: this used to latch on any left press
+    /// in the whole app, so clicking a colour in the palette convinced the canvas a stroke was
+    /// still being held and it painted wherever the cursor then hovered (owner report
+    /// 2026-08-19).
+    /// </summary>
     public override void _Input(InputEvent input)
     {
-        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } button)
-            _paintPrimaryPhysicallyHeld = button.Pressed;
+        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
+            _paintPrimaryPhysicallyHeld = false;
     }
+
+    /// <summary>Latched by the canvas's own GUI handler, which only sees presses that land on it.</summary>
+    internal void LatchPaintPrimaryHeld() => _paintPrimaryPhysicallyHeld = true;
 
     internal void EmitPaintAudioSample(Vector2 pointer, float brushScale) =>
         PaintAudioSampled?.Invoke(new PaintAudioSample(pointer, Workspace.SelectedTool, brushScale));
@@ -160,7 +170,9 @@ internal sealed partial class PaintDropletOverlay : Control
         float brushScale = Mathf.Lerp(0.90f, 2.15f, Mathf.Sqrt(brush01));
         _canvas.EmitPaintAudioSample(pointer, brushScale);
 
-        int count = reduced ? 1 : 2 + Mathf.RoundToInt(brush01 * 3.0f);
+        // Halved emission and halved starting radius: the full-density spray buried the strokes
+        // it was meant to punctuate (owner feedback 2026-08-19).
+        int count = reduced ? 1 : 1 + Mathf.RoundToInt(brush01 * 1.5f);
         float spread = Math.Max(2.0f, _canvas.VisibleBrushDiameterForPresentation * 0.34f);
         Color color = PaintColorToGodot(_canvas.Workspace.SelectedColor);
         for (int index = 0; index < count; index++)
@@ -191,7 +203,7 @@ internal sealed partial class PaintDropletOverlay : Control
         int slot = FindReusableSlot(activeBudget);
         float sideways = SignedNoise() * (36.0f + 16.0f * brushScale);
         float upward = -24.0f - (PositiveNoise() * 34.0f);
-        float radius = (2.8f + (PositiveNoise() * 3.2f)) * brushScale;
+        float radius = (1.4f + (PositiveNoise() * 1.6f)) * brushScale;
         float lifetime = 0.48f + (PositiveNoise() * 0.34f);
         _droplets[slot] = new Droplet(
             Live: true,

@@ -94,13 +94,43 @@ public sealed class PaintUndoHistory
 public sealed class PaintWorkspace
 {
     public const double BrushVerticalScale = 0.5;
+    /// <summary>
+    /// The gesture's undo "before" image. The union rectangle grows as the gesture wanders, but
+    /// the pre-gesture pixels are snapshotted exactly once: re-capturing the whole growing union
+    /// on every stroke step made a big brush allocate and memcpy the surface hundreds of times
+    /// per stroke, which is what the editor's paint lag actually was (owner report 2026-08-19).
+    /// The cropped patch is produced on demand, and only the callers that need bytes pay for it.
+    /// </summary>
     private sealed class GesturePatchBuilder
     {
         private const int GrowthBlock = 32;
-        public PaintRect Rectangle { get; private set; }
-        public byte[] Before { get; private set; } = Array.Empty<byte>();
+        private static readonly PaintRect FullSurface =
+            new(0, 0, PaintPolicy.SurfaceSize, PaintPolicy.SurfaceSize);
 
-        public void Expand(PaintSurface surface, PaintRect candidate)
+        private byte[]? _snapshot;
+        private byte[]? _cropped;
+        private PaintRect _croppedRectangle;
+
+        public PaintRect Rectangle { get; private set; }
+
+        public byte[] Before
+        {
+            get
+            {
+                if (Rectangle.IsEmpty || _snapshot is null)
+                    return Array.Empty<byte>();
+                if (_cropped is not null && _croppedRectangle == Rectangle)
+                    return _cropped;
+
+                byte[] cropped = new byte[Rectangle.ByteCount];
+                CopyPatch(_snapshot, FullSurface, cropped, Rectangle);
+                _cropped = cropped;
+                _croppedRectangle = Rectangle;
+                return cropped;
+            }
+        }
+
+        public void Expand(PaintSurface surface, PaintRect candidate, byte[] snapshotScratch)
         {
             if (candidate.IsEmpty) return;
             int x = Math.Max(0, candidate.X / GrowthBlock * GrowthBlock);
@@ -112,15 +142,22 @@ public sealed class PaintWorkspace
                 PaintPolicy.SurfaceSize,
                 (candidate.Y + candidate.Height + GrowthBlock - 1) / GrowthBlock * GrowthBlock);
             PaintRect union = PaintRect.Union(Rectangle, new PaintRect(x, y, right - x, bottom - y));
-            if (union == Rectangle) return;
 
-            byte[] expanded = surface.Capture(union);
-            if (!Rectangle.IsEmpty)
-                CopyPatch(Before, Rectangle, expanded, union);
+            // The snapshot must predate every mutation of this gesture, so it is taken on the
+            // first expansion and never refreshed. It writes into a workspace-owned buffer:
+            // a fresh megabyte per stroke is a large-object-heap allocation, and those are
+            // what drove the gen2 collections behind the worst paint frame spikes.
+            if (_snapshot is null)
+            {
+                surface.CopyPixelsTo(snapshotScratch);
+                _snapshot = snapshotScratch;
+            }
+            if (union == Rectangle) return;
             Rectangle = union;
-            Before = expanded;
         }
 
+        /// <summary>Copies the sub-rectangle <paramref name="destinationRect"/> out of a source
+        /// image covering <paramref name="sourceRect"/>, or a source patch into a larger one.</summary>
         private static void CopyPatch(
             ReadOnlySpan<byte> source,
             PaintRect sourceRect,
@@ -129,12 +166,12 @@ public sealed class PaintWorkspace
         {
             int sourceStride = sourceRect.Width * PaintPolicy.BytesPerPixel;
             int destinationStride = destinationRect.Width * PaintPolicy.BytesPerPixel;
-            int destinationX = (sourceRect.X - destinationRect.X) * PaintPolicy.BytesPerPixel;
-            int destinationY = sourceRect.Y - destinationRect.Y;
-            for (int row = 0; row < sourceRect.Height; row++)
+            int sourceX = (destinationRect.X - sourceRect.X) * PaintPolicy.BytesPerPixel;
+            int sourceY = destinationRect.Y - sourceRect.Y;
+            for (int row = 0; row < destinationRect.Height; row++)
             {
-                source.Slice(row * sourceStride, sourceStride).CopyTo(
-                    destination.Slice(((destinationY + row) * destinationStride) + destinationX, sourceStride));
+                source.Slice(((sourceY + row) * sourceStride) + sourceX, destinationStride)
+                    .CopyTo(destination.Slice(row * destinationStride, destinationStride));
             }
         }
     }
@@ -144,6 +181,7 @@ public sealed class PaintWorkspace
     private readonly PaintUndoHistory _history = new();
     private readonly Dictionary<PaintPart, GesturePatchBuilder> _gestureBefore = new();
     private readonly Dictionary<PaintPart, GesturePatchBuilder> _previewBefore = new();
+    private readonly Dictionary<PaintPart, byte[]> _snapshotScratch = new();
     private PaintHit? _lastHit;
     private bool _gestureActive;
     private bool _previewActive;
@@ -324,10 +362,26 @@ public sealed class PaintWorkspace
 
     public void StampPenDab(
         IReadOnlyList<PaintHit> hits,
-        int sampleDiameter = PaintPolicy.MinBrushDiameter)
+        int sampleDiameter = PaintPolicy.MinBrushDiameter) =>
+        StampScreenDab(hits, sampleDiameter, PaintTool.Pen);
+
+    /// <summary>
+    /// Stamps one small dab per supplied hit. The caller chooses the hits in SCREEN space and
+    /// maps each one, so the footprint they form lands as exactly the shape the cursor outline
+    /// draws — however the surface is stretched, rotated or wrapped underneath it. Stamping a
+    /// single big footprint onto the surface cannot do that: the distortion across a wide brush
+    /// both varies and rotates, which is what made a sprayed circle come out as a tilted ellipse
+    /// over the middle of the buddy (owner report 2026-08-19).
+    /// </summary>
+    public void StampScreenDab(
+        IReadOnlyList<PaintHit> hits,
+        int sampleDiameter,
+        PaintTool mutation)
     {
         ArgumentNullException.ThrowIfNull(hits);
-        if (!_gestureActive || _selectedTool != PaintTool.Pen || hits.Count == 0)
+        if (!_gestureActive || hits.Count == 0)
+            return;
+        if (_selectedTool is not (PaintTool.Pen or PaintTool.Eraser or PaintTool.Spray))
             return;
         sampleDiameter = Math.Clamp(
             sampleDiameter,
@@ -361,11 +415,15 @@ public sealed class PaintWorkspace
             _surfaces[sample.Part].Stamp(
                 sample.Uv,
                 sampleDiameter,
-                PaintTool.Pen,
+                mutation,
                 SelectedColor,
                 region: region);
         }
     }
+
+    /// <summary>The next spray pulse's seed, stepped exactly as the internal pulse does.</summary>
+    public ulong NextSprayPulseSeed() =>
+        _sprayGestureSeed + (_sprayPulseOrdinal++ * 0x9E3779B97F4A7C15UL);
 
     public void EndGesture()
     {
@@ -443,7 +501,7 @@ public sealed class PaintWorkspace
         ulong seed = _sprayGestureSeed + (_sprayPulseOrdinal++ * 0x9E3779B97F4A7C15UL);
         ApplyToVariants(hit, variant =>
         {
-            const double aspect = BrushVerticalScale;
+            const double aspect = 1.0;
             PaintUvRegion region = PaintUvRegion.For(variant);
             PaintRect bounds = PaintSurface.StampBounds(variant.Uv, BrushDiameter, aspect, region);
             CaptureBefore(_gestureBefore, variant.Part, bounds);
@@ -456,7 +514,7 @@ public sealed class PaintWorkspace
         PaintTool mutation,
         Dictionary<PaintPart, GesturePatchBuilder> builders)
     {
-        double aspect = mutation == PaintTool.Pen ? 1.0 : BrushVerticalScale;
+        double aspect = FootprintAspect(mutation);
         PaintUvRegion region = PaintUvRegion.For(hit);
         CaptureBefore(builders, hit.Part, PaintSurface.StampBounds(hit.Uv, BrushDiameter, aspect, region));
         _surfaces[hit.Part].Stamp(hit.Uv, BrushDiameter, mutation, SelectedColor, aspect, region);
@@ -468,7 +526,7 @@ public sealed class PaintWorkspace
         PaintTool mutation,
         Dictionary<PaintPart, GesturePatchBuilder> builders)
     {
-        double aspect = mutation == PaintTool.Pen ? 1.0 : BrushVerticalScale;
+        double aspect = FootprintAspect(mutation);
         PaintUvRegion region = PaintUvRegion.For(to);
         CaptureBefore(builders, to.Part, PaintSurface.StrokeBounds(from.Uv, to.Uv, BrushDiameter, aspect, region));
         _surfaces[to.Part].Stroke(from.Uv, to.Uv, BrushDiameter, mutation, SelectedColor, aspect, region);
@@ -484,6 +542,16 @@ public sealed class PaintWorkspace
         if (_mirrorEnabled && _paintBacksideEnabled)
             action(TransformHit(hit, mirror: true, backside: true));
     }
+
+    /// <summary>
+    /// The footprint's height as a fraction of its width, in surface pixels, for the tools that
+    /// stamp directly onto the surface. Only the brush is squashed — the owner wants the brush
+    /// to stay an ellipse (2026-08-19). The pen, the eraser and the spray build their footprint
+    /// from screen-space samples instead, so this is only their fallback when a caller drives
+    /// the workspace directly rather than through the canvas.
+    /// </summary>
+    private static double FootprintAspect(PaintTool mutation) =>
+        mutation is PaintTool.Pen or PaintTool.Eraser ? 1.0 : BrushVerticalScale;
 
     private PaintTool GestureMutation() => _selectedTool switch
     {
@@ -647,7 +715,22 @@ public sealed class PaintWorkspace
             builder = new GesturePatchBuilder();
             builders.Add(part, builder);
         }
-        builder.Expand(_surfaces[part], rectangle);
+        builder.Expand(_surfaces[part], rectangle, SnapshotScratch(part));
+    }
+
+    /// <summary>
+    /// One reusable pre-gesture snapshot buffer per part. Gesture and preview transactions are
+    /// mutually exclusive by construction (each begins by ending the other), so a single buffer
+    /// per part is enough for both.
+    /// </summary>
+    private byte[] SnapshotScratch(PaintPart part)
+    {
+        if (!_snapshotScratch.TryGetValue(part, out byte[]? buffer))
+        {
+            buffer = new byte[PaintPolicy.SurfaceBytes];
+            _snapshotScratch.Add(part, buffer);
+        }
+        return buffer;
     }
 
     private static bool FloodFillPixels(

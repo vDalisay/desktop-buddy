@@ -62,6 +62,13 @@ public sealed class CharacterSelectionCoordinator
         _catalog = catalog ?? CharacterFeatureCatalog.Shipped;
     }
 
+    /// <summary>
+    /// The character the save file says is active, which is what the world goes back to
+    /// wearing. Not the same as <see cref="AppliedCharacterId"/> while an activation is
+    /// queued but not yet swapped in on the fixed tick.
+    /// </summary>
+    public Guid? ActiveCharacterId => _selection.ActiveCharacterId;
+
     public long AppliedSequence { get; private set; }
     public Guid? AppliedCharacterId { get; private set; }
     public CharacterActivationStatus? LastFallbackStatus { get; private set; }

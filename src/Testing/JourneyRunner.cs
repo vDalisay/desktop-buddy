@@ -389,6 +389,15 @@ public partial class JourneyRunner : Node
         if (exercise == "care_persistence_write")
         {
             progress = new BuddyProgressState(cashPerPain, traits: expectedTraits);
+            // This journey is about care, damage, harm memory and persistence, not about the
+            // shop. A fresh save has owned nothing but Grab since the demo starting inventory
+            // was cut back, so the tools it drives are granted outright rather than bought;
+            // otherwise the tool keys are silently refused and every downstream assertion fails
+            // for a reason that has nothing to do with persistence (owner instruction
+            // 2026-08-19).
+            progress.Unlock(ContentIds.ToolBoxingGlove);
+            progress.Unlock(ContentIds.ToolTickle);
+            progress.Unlock(ContentIds.ToolPet);
             loadStatus = SaveLoadStatus.NewSave;
             savedRevision = -1;
         }
@@ -1595,13 +1604,24 @@ public partial class JourneyRunner : Node
             lab.Pipeline.SelectedTool == toolBefore &&
             !lab.Grab.IsGrabbing;
 
-        float moodBefore = lab.Progress.Mood;
-        bool drank = await M4ObjectScenarioSupport.WaitFor(
-            tree, () => lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1, 3600);
+        // Sampled on the tick the consume lands, not before the fetch. Walking to the can takes
+        // seconds, and anything the buddy bumps on the way is a legitimate mood change of its
+        // own; measuring across the whole fetch made this assert "nothing else happened"
+        // instead of "the drink paid its authored mood" (owner instruction 2026-08-19).
+        float moodBeforeConsume = lab.Progress.Mood;
+        bool drank = false;
+        for (int tick = 0; tick < 3600 && !drank; tick++)
+        {
+            moodBeforeConsume = lab.Progress.Mood;
+            await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            drank = lab.Buddy.ObjectInteraction.ConsumeSuccessCount == 1;
+        }
+
         state["the_full_buddy_fetches_and_drinks_it"] =
             drank && lab.Buddy.ObjectInteraction.RefusalCount == 0;
         state["the_drink_pays_its_authored_mood"] =
-            drank && Mathf.Abs(lab.Progress.Mood - (moodBefore + 5.0f)) < 0.01f;
+            drank && M4ObjectScenarioSupport.PaidAuthoredMood(
+                lab.Progress.Mood - moodBeforeConsume, 5.0f, 1);
         state["the_drink_fills_no_stomach"] =
             drank && lab.Progress.Fullness <= fullnessWhenOffered + 0.01f;
 
@@ -1610,6 +1630,7 @@ public partial class JourneyRunner : Node
 
         // --- A second can inside the minute ---
         float moodBeforeRefusal = lab.Progress.Mood;
+        long ticksBeforeRefusal = lab.Buddy.RoutedTicks;
         Vector2 second = PlaceOnTheFloorBesideTheBuddy(lab, room);
         await M4ObjectScenarioSupport.MovePointer(tree, lab, second, 0);
         await M4ObjectScenarioSupport.SendKey(tree, Key.Key9);
@@ -1630,7 +1651,8 @@ public partial class JourneyRunner : Node
         // restart the wait it was refused for.
         state["the_refused_drink_is_not_punished"] =
             refusedForTheTimer &&
-            Mathf.Abs(lab.Progress.Mood - moodBeforeRefusal) < 0.01f &&
+            M4ObjectScenarioSupport.PaidAuthoredMood(
+                lab.Progress.Mood - moodBeforeRefusal, 0.0f, lab.Buddy.RoutedTicks - ticksBeforeRefusal) &&
             cooldownAfterRefusal > 0 &&
             cooldownAfterRefusal < cooldownAfterSuccess;
 
@@ -1638,7 +1660,7 @@ public partial class JourneyRunner : Node
             "Journey",
             $"M5 drink sold={soldDrink} drank={drank} " +
             $"successes={lab.Buddy.ObjectInteraction.ConsumeSuccessCount} " +
-            $"mood={moodBefore:F1}->{lab.Progress.Mood:F1} " +
+            $"mood={moodBeforeConsume:F1}->{lab.Progress.Mood:F1} " +
             $"fullness={fullnessWhenOffered:F1}->{lab.Progress.Fullness:F1} " +
             $"cooldown={cooldownAfterSuccess}->{cooldownAfterRefusal} " +
             $"rejection={lab.Buddy.ObjectInteraction.LastConsumeRejection}");
@@ -1687,6 +1709,7 @@ public partial class JourneyRunner : Node
 
         // --- The miss. A kit flung at the far wall applies nothing and stays a loose object ---
         float moodBeforeMiss = lab.Progress.Mood;
+        long careAwardsBeforeMiss = lab.Progress.Statistics.CareAwards;
         Vector2 away = new(
             lab.Buddy.Rig.Torso.GlobalPosition.X <= room.GetCenter().X
                 ? room.End.X - 24.0f
@@ -1696,10 +1719,16 @@ public partial class JourneyRunner : Node
         for (int tick = 0; tick < 180; tick++)
             await ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
 
+        // "Heals nobody" is a statement about care, so it is asserted against the care counters
+        // rather than against mood standing perfectly still. A kit flung the width of the room
+        // can clip the buddy on the way past, and that knock is a legitimate pain event that
+        // used to fail this gate for the wrong reason (owner instruction 2026-08-19). Mood is
+        // still checked one-sidedly: it must not RISE, because only a heal could do that.
         state["a_missed_kit_heals_nobody_and_waits"] =
             flungWide &&
             lab.Buddy.ObjectInteraction.ContactCareCount == 0 &&
-            Mathf.Abs(lab.Progress.Mood - moodBeforeMiss) < 0.01f &&
+            lab.Progress.Statistics.CareAwards == careAwardsBeforeMiss &&
+            lab.Progress.Mood <= moodBeforeMiss + 0.01f &&
             GodotObject.IsInstanceValid(kit) &&
             lab.Objects.TryGetSnapshot(kit!.RuntimeId, out _);
 
@@ -1863,19 +1892,24 @@ public partial class JourneyRunner : Node
         state["lab_composed"] = lab.IsInsideTree() && lab.Buddy.IsInitialized;
 
         // --- Step 1: a first run owns the four starters and nothing else ---
-        state["a_new_save_owns_only_the_four_starters"] =
+        state["a_new_save_owns_only_the_starting_tools"] =
             OwnedCount(progress, catalogue) == CataloguePolicy.NewSaveUnlockedContentIds.Count &&
             AllOwned(progress, CataloguePolicy.NewSaveUnlockedContentIds) &&
             progress.BalanceMilliCredits == 0 &&
             progress.SelectedTool == ToolId.Grab;
 
         // --- Steps 2-14: buy the twelve in schedule order, earning through the ledger ---
+        // Derived from the policy rather than a hard-coded count: the shop was twelve entries
+        // when this journey was written and every tool added since silently made the check a
+        // lie instead of a failure (owner instruction 2026-08-19, modernize the stale gates).
         IReadOnlyList<CatalogueEntry> shop = CataloguePolicy.ShopEntries(catalogue);
-        bool boughtInOrder = shop.Count == 12;
+        int expectedShopCount =
+            CataloguePolicy.LaunchContentIds.Count - CataloguePolicy.NewSaveUnlockedContentIds.Count;
+        bool boughtInOrder = shop.Count == expectedShopCount;
         bool doubleChargeRefused = true;
         bool checkpointsReload = true;
         long earnedThroughLedger = 0;
-        int owned = OwnedCount(progress, catalogue);
+        int owned = OwnedToolCount(progress, catalogue);
         foreach (CatalogueEntry entry in shop)
         {
             earnedThroughLedger += EarnUpTo(economy, progress, entry.PriceMilliCredits);
@@ -1887,7 +1921,7 @@ public partial class JourneyRunner : Node
                 sale.PriceMilliCredits == entry.PriceMilliCredits &&
                 progress.BalanceMilliCredits == balanceBefore - entry.PriceMilliCredits &&
                 progress.IsToolUnlocked(entry.ContentId) &&
-                OwnedCount(progress, catalogue) == owned;
+                OwnedToolCount(progress, catalogue) == owned;
 
             long afterSale = progress.BalanceMilliCredits;
             PurchaseResult again = economy.Purchase(entry.ContentId);
@@ -1901,7 +1935,7 @@ public partial class JourneyRunner : Node
                 checkpointsReload &= await ReloadMatchesAsync(saves, store, progress, cashPerPain);
         }
 
-        state["the_twelve_are_bought_in_schedule_order_at_their_authored_prices"] = boughtInOrder;
+        state["every_shop_tool_is_bought_in_schedule_order_at_its_authored_price"] = boughtInOrder;
         state["a_second_purchase_of_an_owned_tool_charges_nothing"] = doubleChargeRefused;
         state["the_balance_only_ever_moved_through_the_ledger"] =
             progress.Statistics.EarnedMilliCredits == earnedThroughLedger;
@@ -1912,8 +1946,10 @@ public partial class JourneyRunner : Node
         foreach (ToolId tool in Enum.GetValues<ToolId>())
             allSelectable &= progress.IsToolUnlocked(ContentIds.ForTool(tool)) &&
                 SelectAndConfirm(lab, tool);
-        state["all_sixteen_are_owned_and_selectable"] =
-            allSelectable && OwnedCount(progress, catalogue) == catalogue.Count;
+        // Tools, not the whole catalogue: Buddy Studio's cosmetics ship in the same launch
+        // catalogue and are bought in the studio, not in this progression.
+        state["every_tool_is_owned_and_selectable"] =
+            allSelectable && OwnedToolCount(progress, catalogue) == CataloguePolicy.LaunchContentIds.Count;
 
         // --- Step 16: switching grab variants mid-hold drops, never flings ---
         PuppetPartBody torso = lab.Buddy.Rig.Torso;
@@ -1940,7 +1976,7 @@ public partial class JourneyRunner : Node
         // --- Step 17: the catalogue is still the shipped one at the end of the run ---
         state["the_completed_catalogue_still_validates"] =
             CataloguePolicy.ValidateLaunchCatalogue(catalogue).Count == 0 &&
-            OwnedCount(progress, catalogue) == catalogue.Count;
+            OwnedToolCount(progress, catalogue) == CataloguePolicy.LaunchContentIds.Count;
 
         // --- 13C-3: no prerequisite graph — an expensive tool needs money, not neighbours ---
         var skipper = ProgressReset.CreateNewProgress(cashPerPain);
@@ -2023,6 +2059,20 @@ public partial class JourneyRunner : Node
         await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         GodotInteropShutdown.PrepareForQuit();
         await ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+    }
+
+    /// <summary>Owned entries that are tools, so Buddy Studio cosmetics never inflate a
+    /// tool-progression count.</summary>
+    private static int OwnedToolCount(BuddyProgressState progress, ToolCatalogue catalogue)
+    {
+        int owned = 0;
+        foreach (CatalogueEntry entry in catalogue.Entries)
+        {
+            if (entry.Kind != CatalogueEntryKind.Cosmetic && progress.IsToolUnlocked(entry.ContentId))
+                owned++;
+        }
+
+        return owned;
     }
 
     private static int OwnedCount(BuddyProgressState progress, ToolCatalogue catalogue)

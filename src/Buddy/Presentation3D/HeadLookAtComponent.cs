@@ -171,10 +171,17 @@ public partial class HeadLookAtComponent : Node
         bool watchingObject = !eatingItem &&
             GodotObject.IsInstanceValid(Buddy.ObjectInteraction) &&
             Buddy.ObjectInteraction.HasWatchTarget;
-        bool itemValid = eatingItem || watchingObject;
+        // The room-interest gaze rides the same lane, last: having just walked across the room
+        // to something in its favourite colour, the buddy looks at it. Anything the buddy is
+        // eating or chasing is a better claim on the head and still wins.
+        bool admiringColour = !eatingItem && !watchingObject &&
+            GodotObject.IsInstanceValid(Buddy.AutonomousMotion) &&
+            Buddy.AutonomousMotion.HasRoomGaze;
+        bool itemValid = eatingItem || watchingObject || admiringColour;
         Vector2 item = eatingItem
             ? WorldPlaneMapping.To2D(Activities.ItemSocket.GlobalPosition)
-            : watchingObject ? Buddy.ObjectInteraction.WatchTargetPosition : Vector2.Zero;
+            : watchingObject ? Buddy.ObjectInteraction.WatchTargetPosition
+            : admiringColour ? Buddy.AutonomousMotion.RoomGazePoint : Vector2.Zero;
 
         long ticksSinceImpact = _lastImpactTick == long.MinValue
             ? long.MaxValue

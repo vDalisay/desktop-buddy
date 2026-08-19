@@ -164,6 +164,36 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
                 "b6_journey_restart_restores_selection_pixels_and_rig",
                 restartExact,
                 $"startup={startup.Status} active={restartCoordinator.AppliedCharacterId}"));
+            // --- the eraser's footprint, measured in SCREEN space through the real mapping ---
+            // A footprint stamped as one shape onto the surface comes out stretched and rotated
+            // by whatever the surface is doing underneath it; the tools that promise a shape
+            // build it out of screen-space samples instead (owner report 2026-08-19).
+            var covered = new byte[PaintPolicy.SurfaceBytes];
+            System.Array.Fill(covered, byte.MaxValue);
+            foreach (PaintPart part in System.Enum.GetValues<PaintPart>())
+                workspace.Load(part, covered);
+
+            var target = new Vector2(210, 180);
+            workspace.SelectedTool = PaintTool.Eraser;
+            workspace.SetBrushDiameter(64);
+            await Stroke(tree, target, target);
+            float reach = canvas.VisibleBrushDiameterForPresentation * 0.5f;
+
+            bool squareOnScreen = reach > 2f &&
+                canvas.HitAt(target) is not null &&
+                ErasedAt(canvas, workspace, target) &&
+                ErasedAt(canvas, workspace, target + new Vector2(reach * 0.75f, 0)) &&
+                ErasedAt(canvas, workspace, target + new Vector2(0, reach * 0.75f)) &&
+                // The corner: inside a square, well outside the inscribed circle at 1.2 radii.
+                ErasedAt(canvas, workspace, target + new Vector2(reach * 0.85f, reach * 0.85f)) &&
+                !ErasedAt(canvas, workspace, target + new Vector2(reach * 1.6f, 0)) &&
+                !ErasedAt(canvas, workspace, target + new Vector2(0, reach * 1.6f));
+            checks.Add(new StartupCheck(
+                "b6_journey_eraser_footprint_is_square_in_screen_space",
+                squareOnScreen,
+                $"reach={reach:F1} centre={ErasedAt(canvas, workspace, target)} " +
+                $"corner={ErasedAt(canvas, workspace, target + new Vector2(reach * 0.85f, reach * 0.85f))} " +
+                $"outside={ErasedAt(canvas, workspace, target + new Vector2(reach * 1.6f, 0))}"));
         }
         finally
         {
@@ -191,6 +221,28 @@ public sealed class CharacterPaintSaveUseRestartScenario : IScenario
     /// cursor, so letting _Process run mid-stroke would paint towards (0, 0) and make the
     /// stroke unreproducible; a real drag can legitimately arrive within one frame.
     /// </summary>
+    /// <summary>
+    /// Whether the surface pixel under a canvas point has been erased, resolved through the same
+    /// hit mapping the stroke itself uses — which is what makes this a screen-space measurement
+    /// rather than a surface-space one.
+    /// </summary>
+    private static bool ErasedAt(PaintCanvasControl canvas, PaintWorkspace workspace, Vector2 point)
+    {
+        if (canvas.HitAt(point) is not PaintHit hit || !hit.IsValid)
+            return false;
+        PaintUvRegion region = PaintUvRegion.For(hit);
+        int x = Math.Clamp(
+            (int)Math.Round(region.PixelX(hit.Uv.X)),
+            0,
+            PaintPolicy.SurfaceSize - 1);
+        int y = Math.Clamp(
+            (int)Math.Round(hit.Uv.Y * (PaintPolicy.SurfaceSize - 1)),
+            0,
+            PaintPolicy.SurfaceSize - 1);
+        byte[] pixels = workspace.Surfaces[hit.Part].Capture(new PaintRect(x, y, 1, 1));
+        return pixels.Length == PaintPolicy.BytesPerPixel && pixels[3] == 0;
+    }
+
     private static async Task Stroke(SceneTree tree, Vector2 from, Vector2 to)
     {
         SendMouse(tree, new InputEventMouseMotion

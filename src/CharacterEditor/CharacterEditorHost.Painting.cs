@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Painting;
@@ -64,7 +65,13 @@ public partial class CharacterEditorHost
             if (!_paintAttachStarted) TryAttachPaintingWorkspace();
             return;
         }
+
+        // Timed into the diagnostics: uploading a dirty part is a full 512x512 surface copy plus
+        // a texture update, and it is the one paint cost that cannot be measured outside the
+        // engine. The rest of the paint pipeline is domain code with its own benchmarks.
+        long start = Stopwatch.GetTimestamp();
         _paintTextures.FlushFrame(_paintCanvas.Workspace.Surfaces);
+        _paintFlushTicks += Stopwatch.GetTimestamp() - start;
     }
 
     private void TryAttachPaintingWorkspace()

@@ -38,15 +38,23 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 ContentIds.CosmeticTopUtilityBib, ContentIds.CosmeticShoesSoftSteps,
             ];
             ToolCatalogue production = CatalogueLoader.Catalogue;
+            IReadOnlyList<CatalogueEntry> cosmetics = CataloguePolicy.CosmeticEntries(production);
+            // The point of this gate is that cosmetics are sold in Buddy Studio and never leak
+            // into the tool shop's schedule, so it is asserted structurally. It used to pin the
+            // exact released cosmetic list and a hard-coded shop count of twelve, both of which
+            // simply went stale as content shipped (owner instruction 2026-08-19).
             bool catalogueClosed = releasedCosmetics.All(id =>
                     production.TryGet(id, out CatalogueEntry entry) &&
                     entry.Kind == CatalogueEntryKind.Cosmetic && entry.Visible && entry.HasValidPrice) &&
-                CataloguePolicy.CosmeticEntries(production).Select(entry => entry.ContentId).SequenceEqual(releasedCosmetics) &&
+                cosmetics.All(entry => entry.Visible && entry.HasValidPrice) &&
+                releasedCosmetics.All(id => cosmetics.Any(entry => entry.ContentId == id)) &&
                 !production.Contains(ContentIds.CosmeticWorkGlasses) &&
-                CataloguePolicy.ShopEntries(production).Count == 12 &&
-                CataloguePolicy.SelectableEntries(production).Count == 16;
+                CataloguePolicy.ShopEntries(production).All(entry => entry.Kind != CatalogueEntryKind.Cosmetic) &&
+                CataloguePolicy.ShopEntries(production).Count ==
+                    CataloguePolicy.LaunchContentIds.Count - CataloguePolicy.NewSaveUnlockedContentIds.Count &&
+                CataloguePolicy.SelectableEntries(production).Count == CataloguePolicy.LaunchContentIds.Count;
             checks.Add(new StartupCheck(
-                "bs7_authored_sales_are_studio_only_and_keep_sixteen_tool_schedule",
+                "bs7_authored_sales_are_studio_only_and_never_enter_the_tool_schedule",
                 catalogueClosed,
                 $"cosmetics={CataloguePolicy.CosmeticEntries(production).Count} shop={CataloguePolicy.ShopEntries(production).Count} tools={CataloguePolicy.SelectableEntries(production).Count}"));
 

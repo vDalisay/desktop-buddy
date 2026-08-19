@@ -1091,6 +1091,7 @@ public sealed class SoccerAndDrinkScenario : IScenario
         // --- The spawn key, and a buddy with no room left at all ---
         lab.Progress.FillHunger(lab.Progress.Appetite);
         float fullnessWhenFull = lab.Progress.Fullness;
+        long ticksBeforeCancel = lab.Buddy.RoutedTicks;
         float moodBeforeCancel = lab.Progress.Mood;
         int refusalsBefore = buddy.RefusalCount;
         bool placedFirst = await Place(tree, lab, ContentIds.ToolDrink);
@@ -1142,7 +1143,8 @@ public sealed class SoccerAndDrinkScenario : IScenario
             buddy.ConsumeCancelCount == cancelsBefore + 1 &&
             buddy.ConsumeSuccessCount == 0 &&
             cooldownAfterCancel == 0 &&
-            Mathf.Abs(lab.Progress.Mood - moodBeforeCancel) < 0.01f,
+            M4ObjectScenarioSupport.PaidAuthoredMood(
+                lab.Progress.Mood - moodBeforeCancel, 0.0f, lab.Buddy.RoutedTicks - ticksBeforeCancel),
             $"cancels={cancelsBefore}->{buddy.ConsumeCancelCount} " +
             $"successes={buddy.ConsumeSuccessCount} cooldown={cooldownAfterCancel} " +
             $"mood={lab.Progress.Mood:F1} was={moodBeforeCancel:F1}"));
@@ -1157,23 +1159,30 @@ public sealed class SoccerAndDrinkScenario : IScenario
         // --- Meal, then Drink, with nothing in between ---
         float moodBeforeMeal = lab.Progress.Mood;
         float fullnessBeforeMeal = lab.Progress.Fullness;
+        long ticksBeforeMeal = lab.Buddy.RoutedTicks;
         bool ateMeal = await Consume(tree, lab, ContentIds.ToolMeal);
         float moodAfterMeal = lab.Progress.Mood;
         float fullnessAfterMeal = lab.Progress.Fullness;
+        long ticksAfterMeal = lab.Buddy.RoutedTicks;
         int raiseCount = 0;
         int holdTicks = 0;
         bool drankAfterMeal = ateMeal &&
             await ConsumeDrinkMeasured(tree, lab, out_raises: r => raiseCount = r,
                 out_hold: h => holdTicks = h);
         float fullnessAfterDrink = lab.Progress.Fullness;
+        long ticksAfterDrink = lab.Buddy.RoutedTicks;
         int drinkCooldown = buddy.CooldownTicksRemaining(ContentIds.ToolDrink);
         int mealCooldown = buddy.CooldownTicksRemaining(ContentIds.ToolMeal);
 
         checks.Add(new StartupCheck(
             "meal_then_drink_both_succeed",
             ateMeal && drankAfterMeal &&
-            Mathf.Abs(moodAfterMeal - (moodBeforeMeal + MealMoodGain)) < 0.01f &&
-            Mathf.Abs(lab.Progress.Mood - (moodAfterMeal + DrinkMoodGain)) < 0.01f &&
+            // Mood drifts toward neutral in real time the whole while the buddy walks over and
+            // takes its five bites, exactly as the fullness bound below already allows for. The
+            // gain is asserted against the authored value less that drift rather than exactly,
+            // which is what made this gate rot (owner instruction 2026-08-19).
+            M4ObjectScenarioSupport.PaidAuthoredMood(moodAfterMeal - moodBeforeMeal, MealMoodGain, ticksAfterMeal - ticksBeforeMeal) &&
+            M4ObjectScenarioSupport.PaidAuthoredMood(lab.Progress.Mood - moodAfterMeal, DrinkMoodGain, ticksAfterDrink - ticksAfterMeal) &&
             // The meal fills the bar by its portion; the Drink adds nothing to it at all. The
             // lower bound is loose by a point because appetite keeps draining in real time
             // while the buddy walks over and drinks.
@@ -1201,18 +1210,23 @@ public sealed class SoccerAndDrinkScenario : IScenario
 
         // --- The Drink's running cooldown is its own; the Meal never sees it ---
         float moodBeforeSecondMeal = lab.Progress.Mood;
+        long ticksBeforeSecondMeal = lab.Buddy.RoutedTicks;
         bool ateAgain = drankAfterMeal && await Consume(tree, lab, ContentIds.ToolMeal);
         checks.Add(new StartupCheck(
             "the_drinks_cooldown_does_not_gate_the_meal",
             ateAgain &&
             buddy.CooldownTicksRemaining(ContentIds.ToolDrink) > 0 &&
-            Mathf.Abs(lab.Progress.Mood - (moodBeforeSecondMeal + MealMoodGain)) < 0.01f,
+            M4ObjectScenarioSupport.PaidAuthoredMood(
+                lab.Progress.Mood - moodBeforeSecondMeal,
+                MealMoodGain,
+                lab.Buddy.RoutedTicks - ticksBeforeSecondMeal),
             $"ate_again={ateAgain} " +
             $"drink_cooldown={buddy.CooldownTicksRemaining(ContentIds.ToolDrink)} " +
             $"mood={moodBeforeSecondMeal:F1}->{lab.Progress.Mood:F1}"));
 
         // --- A second Drink inside the minute ---
         float moodBeforeRefusal = lab.Progress.Mood;
+        long ticksBeforeRefusal = lab.Buddy.RoutedTicks;
         int successesBefore = buddy.ConsumeSuccessCount;
         bool placedSecond = await Place(tree, lab, ContentIds.ToolDrink);
         LooseObjectBody? secondDrink = lab.Launcher.CurrentLaunchable;
@@ -1225,7 +1239,8 @@ public sealed class SoccerAndDrinkScenario : IScenario
             "a_second_drink_inside_the_minute_is_refused_on_cooldown",
             refusedOnCooldown &&
             buddy.ConsumeSuccessCount == successesBefore &&
-            Mathf.Abs(lab.Progress.Mood - moodBeforeRefusal) < 0.01f &&
+            M4ObjectScenarioSupport.PaidAuthoredMood(
+                lab.Progress.Mood - moodBeforeRefusal, 0.0f, lab.Buddy.RoutedTicks - ticksBeforeRefusal) &&
             buddy.CooldownTicksRemaining(ContentIds.ToolDrink) > 0,
             $"placed={placedSecond} rejection={buddy.LastConsumeRejection} " +
             $"successes={successesBefore}->{buddy.ConsumeSuccessCount} " +

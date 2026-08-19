@@ -11,16 +11,17 @@ namespace DesktopBuddy.Presentation3D;
 /// <see cref="SurfaceTool.GenerateNormals"/> gives one normal per face, and a stated envelope
 /// verification can check the result against.
 ///
-/// <para>Three shapes so far. The <b>soccer ball</b> is a white sphere with twelve raised dark
+/// <para>Four shapes so far. The <b>soccer ball</b> is a white sphere with twelve raised dark
 /// pentagons in the topology of an icosahedron — the traditional read without importing art
-/// or building a full truncated-icosahedron collider. The <b>can</b>
+/// or building a full truncated-icosahedron collider. The <b>baseball</b> is the same
+/// sphere with one raised two-lobed seam. The <b>can</b>
 /// is a straight cylinder with rolled rims and a wide band around its belly. The
 /// <b>repair kit</b> is a two-tone case with a proud cross and an arched carry handle.</para>
 ///
-/// <para>Clean-room: the ball carries no crest or maker's mark, the can is a generic
+/// <para>Clean-room: neither ball carries a crest or maker's mark, the can is a generic
 /// red-and-white drink container with no wordmark, script, or trade dress of any real
 /// product, and the case carries a plain cross rather than any real organisation's emblem.
-/// All three are placeholders until the M7 art pass.</para>
+/// All four are placeholders until the M7 art pass.</para>
 /// </summary>
 public static class LooseObjectMeshBuilder
 {
@@ -33,6 +34,19 @@ public static class LooseObjectMeshBuilder
     private const int BallRadialSegments = 24;
     private const float PentagonAngularRadius = 0.20f;
     private const float PentagonSurfaceScale = 1.025f;
+
+    /// <summary>
+    /// Seam shape for the baseball, on the standard two-lobed closed spherical curve
+    /// <c>(a cos t + b cos 3t, a sin t - b sin 3t, c sin 2t)</c> projected onto the sphere.
+    /// The seam is drawn as a ribbon sitting just proud of the surface, the same trick the
+    /// soccer ball's pentagons use, so the ball stays one convex sphere for the collider.
+    /// </summary>
+    private const int SeamSegments = 96;
+    private const float SeamLobeMajor = 0.70f;
+    private const float SeamLobeMinor = 0.30f;
+    private const float SeamLobeRise = 0.75f;
+    private const float SeamHalfWidth = 0.055f;
+    private const float SeamSurfaceScale = 1.02f;
 
     /// <summary>
     /// How far past the collider radius a built mesh may reach. The ball is a sphere and sits
@@ -80,29 +94,7 @@ public static class LooseObjectMeshBuilder
         var tool = new SurfaceTool();
         tool.Begin(Mesh.PrimitiveType.Triangles);
 
-        for (int ring = 0; ring < BallRings; ring++)
-        {
-            float lowerAngle = Mathf.Pi * ring / BallRings;
-            float upperAngle = Mathf.Pi * (ring + 1) / BallRings;
-            float lowerY = Mathf.Cos(lowerAngle) * radius;
-            float upperY = Mathf.Cos(upperAngle) * radius;
-            float lowerRadius = Mathf.Sin(lowerAngle) * radius;
-            float upperRadius = Mathf.Sin(upperAngle) * radius;
-
-            for (int segment = 0; segment < BallRadialSegments; segment++)
-            {
-                float startAngle = Mathf.Tau * segment / BallRadialSegments;
-                float endAngle = Mathf.Tau * (segment + 1) / BallRadialSegments;
-
-                Vector3 a = OnSphere(lowerRadius, lowerY, startAngle);
-                Vector3 b = OnSphere(lowerRadius, lowerY, endAngle);
-                Vector3 c = OnSphere(upperRadius, upperY, endAngle);
-                Vector3 d = OnSphere(upperRadius, upperY, startAngle);
-
-                AddTriangle(tool, a, b, c, fill);
-                AddTriangle(tool, a, c, d, fill);
-            }
-        }
+        AddSphere(tool, radius, fill);
 
         AddPentagon(tool, Vector3.Forward, radius, panel);
         AddPentagon(tool, Vector3.Back, radius, panel);
@@ -122,6 +114,22 @@ public static class LooseObjectMeshBuilder
                 -ringZ), radius, panel);
         }
 
+        tool.GenerateNormals();
+        return tool.Commit();
+    }
+
+    /// <summary>
+    /// A stitched ball. <paramref name="fill"/> is the leather colour and
+    /// <paramref name="seam"/> the stitching, both authored on the object's profile. Clean-room:
+    /// a plain sphere and one seam, with no maker's mark, league emblem, or wordmark.
+    /// </summary>
+    public static ArrayMesh Baseball(float radius, Color fill, Color seam)
+    {
+        RequireRadius(radius);
+        var tool = new SurfaceTool();
+        tool.Begin(Mesh.PrimitiveType.Triangles);
+        AddSphere(tool, radius, fill);
+        AddSeam(tool, radius, seam);
         tool.GenerateNormals();
         return tool.Commit();
     }
@@ -360,6 +368,67 @@ public static class LooseObjectMeshBuilder
 
     /// <summary>The bound every built mesh stays inside, in world pixels.</summary>
     public static float EnvelopeRadius(float radius) => radius * EnvelopeRadiusFactor;
+
+    private static void AddSphere(SurfaceTool tool, float radius, Color tint)
+    {
+        for (int ring = 0; ring < BallRings; ring++)
+        {
+            float lowerAngle = Mathf.Pi * ring / BallRings;
+            float upperAngle = Mathf.Pi * (ring + 1) / BallRings;
+            float lowerY = Mathf.Cos(lowerAngle) * radius;
+            float upperY = Mathf.Cos(upperAngle) * radius;
+            float lowerRadius = Mathf.Sin(lowerAngle) * radius;
+            float upperRadius = Mathf.Sin(upperAngle) * radius;
+
+            for (int segment = 0; segment < BallRadialSegments; segment++)
+            {
+                float startAngle = Mathf.Tau * segment / BallRadialSegments;
+                float endAngle = Mathf.Tau * (segment + 1) / BallRadialSegments;
+
+                Vector3 a = OnSphere(lowerRadius, lowerY, startAngle);
+                Vector3 b = OnSphere(lowerRadius, lowerY, endAngle);
+                Vector3 c = OnSphere(upperRadius, upperY, endAngle);
+                Vector3 d = OnSphere(upperRadius, upperY, startAngle);
+
+                AddTriangle(tool, a, b, c, tint);
+                AddTriangle(tool, a, c, d, tint);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The closed two-lobed seam, as a ribbon of quads whose width is measured along the
+    /// surface normal's tangent plane so the band keeps an even thickness all the way round.
+    /// </summary>
+    private static void AddSeam(SurfaceTool tool, float radius, Color tint)
+    {
+        float scaled = radius * SeamSurfaceScale;
+        Vector3 previousLeft = Vector3.Zero;
+        Vector3 previousRight = Vector3.Zero;
+        for (int index = 0; index <= SeamSegments; index++)
+        {
+            float t = Mathf.Tau * index / SeamSegments;
+            Vector3 point = SeamPoint(t);
+            Vector3 forward = (SeamPoint(t + (Mathf.Tau / SeamSegments)) - point).Normalized();
+            Vector3 side = point.Cross(forward).Normalized() * SeamHalfWidth;
+            Vector3 left = (point + side).Normalized() * scaled;
+            Vector3 right = (point - side).Normalized() * scaled;
+
+            if (index > 0)
+            {
+                AddTriangle(tool, previousLeft, previousRight, right, tint);
+                AddTriangle(tool, previousLeft, right, left, tint);
+            }
+
+            previousLeft = left;
+            previousRight = right;
+        }
+    }
+
+    private static Vector3 SeamPoint(float t) => new Vector3(
+        (SeamLobeMajor * Mathf.Cos(t)) + (SeamLobeMinor * Mathf.Cos(3.0f * t)),
+        SeamLobeRise * Mathf.Sin(2.0f * t),
+        (SeamLobeMajor * Mathf.Sin(t)) - (SeamLobeMinor * Mathf.Sin(3.0f * t))).Normalized();
 
     private static Vector3 OnSphere(float ringRadius, float y, float angle) =>
         new(Mathf.Cos(angle) * ringRadius, y, Mathf.Sin(angle) * ringRadius);

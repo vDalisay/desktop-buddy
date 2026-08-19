@@ -582,9 +582,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         Rect2 background = BackgroundRect();
         float width = Canvas.BrushDiameter * background.Size.X / EnvironmentCanvasPolicy.Size;
         float height = Canvas.BrushDiameter * background.Size.Y / EnvironmentCanvasPolicy.Size;
-        _cursor.Diameter = Canvas.Tool == EnvironmentPaintTool.Brush
-            ? new Vector2(width, height)
-            : new Vector2(width, width);
+        _cursor.Diameter = new Vector2(width, height);
+        _cursor.Shape = PaintCursorGizmos.ShapeFor(Canvas.Tool);
         _cursor.ShowBrush = IsOpen && Canvas.Tool != EnvironmentPaintTool.PickColor;
         _cursor.ShowSample = _painting && Canvas.Tool == EnvironmentPaintTool.PickColor;
         _cursor.QueueRedraw();
@@ -709,13 +708,14 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private sealed partial class EnvironmentPaintCursor : Control
     {
         public Vector2 Diameter { get; set; }
+        public PaintCursorShape Shape { get; set; } = PaintCursorShape.Circle;
         public bool ShowBrush { get; set; }
         public bool ShowSample { get; set; }
         public Color SampleColor { get; set; } = Colors.White;
 
         public override void _Draw()
         {
-            if (ShowBrush) PaintCursorGizmos.DrawBrushRing(this, Vector2.Zero, Diameter, 0f);
+            if (ShowBrush) PaintCursorGizmos.DrawBrushCursor(this, Vector2.Zero, Diameter, Shape);
             if (ShowSample) PaintCursorGizmos.DrawPickPreview(this, Vector2.Zero, SampleColor);
         }
     }

@@ -2,6 +2,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Objects;
@@ -11,6 +12,21 @@ namespace DesktopBuddy.Testing;
 
 internal static class M4ObjectScenarioSupport
 {
+    /// <summary>
+    /// Whether a consume paid its authored mood. Mood drifts toward neutral in real time for
+    /// the whole while the buddy walks over and consumes, so asserting the gain exactly made
+    /// these gates rot as soon as a fetch got slower; and pass "authoredGain: 0" to assert that
+    /// no award happened at all. Drift only ever reduces a positive mood, so the band is
+    /// one-sided: the gain may fall short by the drift, but never exceed the authored value
+    /// (owner instruction 2026-08-19, modernize the stale gates).
+    /// </summary>
+    public static bool PaidAuthoredMood(float observedGain, float authoredGain, long elapsedTicks)
+    {
+        double seconds = System.Math.Max(0L, elapsedTicks) / (double)Engine.PhysicsTicksPerSecond;
+        float allowance = (float)(MoodModel.DriftPointsPerMinute / 60.0 * seconds) + 0.01f;
+        return observedGain <= authoredGain + 0.01f && observedGain >= authoredGain - allowance;
+    }
+
     public static async Task<BuddyLab?> LoadLab(SceneTree tree, ulong seed)
     {
         PackedScene? packed = GD.Load<PackedScene>("res://scenes/buddy_lab.tscn");

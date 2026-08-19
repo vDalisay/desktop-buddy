@@ -64,6 +64,7 @@ public partial class UiFeedbackAudioBootstrap : Node
     private const int MixRate = 22_050;
     /// <summary>Scale, not a range: each press lands between 1/1.04 and 1.04 — about ±4%.</summary>
     private const float UiPitchScale = 1.04f;
+    private const float PurchasePitchScale = 1.015f;
     private const int VoiceCount = 8;
     private const int LayerVoiceCount = 4;
 
@@ -126,7 +127,9 @@ public partial class UiFeedbackAudioBootstrap : Node
         _menuExit = LoadUiClip("ExitClick_HorizontalMenuClick.mp3");
         _confirmLayer = LoadUiClip("Confirmation_equip_Save.mp3");
         _equipLayer = LoadUiClip("inventory_equip.mp3");
-        _purchaseLayer = LoadUiClip("Money_purchase.mp3");
+        // The money layer is longer and more tonal than the other UI clips, so the shared
+        // wobble reads as an out-of-tune note rather than variation (owner feedback 2026-08-19).
+        _purchaseLayer = LoadUiClip("Money_purchase.mp3", PurchasePitchScale);
         _sliderTick = LoadUiVariations("slider_tick", 6);
 
         GetTree().NodeAdded += OnNodeAdded;
@@ -468,7 +471,7 @@ public partial class UiFeedbackAudioBootstrap : Node
     /// presses are not bit-identical. The pitch scale is deliberately tiny — a UI click that
     /// audibly wobbles reads as broken, not alive.
     /// </summary>
-    private static AudioStream? LoadUiClip(string fileName)
+    private static AudioStream? LoadUiClip(string fileName, float pitchScale = UiPitchScale)
     {
         if (LoadStream(fileName) is not { } stream)
             return null;
@@ -476,7 +479,7 @@ public partial class UiFeedbackAudioBootstrap : Node
         var randomizer = new AudioStreamRandomizer
         {
             PlaybackMode = AudioStreamRandomizer.PlaybackModeEnum.RandomNoRepeats,
-            RandomPitch = UiPitchScale,
+            RandomPitch = pitchScale,
             RandomVolumeOffsetDb = 0.6f,
         };
         randomizer.AddStream(-1, stream);

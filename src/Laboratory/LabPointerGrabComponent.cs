@@ -252,15 +252,6 @@ public partial class LabPointerGrabComponent : Node2D
     }
 
     /// <summary>
-    /// Tools whose whole interaction is "put one in the room and throw it". Damage tools that
-    /// live on the cursor, care strokes and the grab variants are all excluded: RMB keeps its
-    /// cancel behaviour for those.
-    /// </summary>
-    private static bool IsSpawnableLaunchable(ToolId tool) => tool is
-        ToolId.Grenade or ToolId.Baseball or ToolId.SoccerBall or
-        ToolId.Meal or ToolId.Drink or ToolId.RepairKit;
-
-    /// <summary>
     /// Applies the pointer's pending press/drag/release against the tether. Called
     /// by <see cref="App.BuddyLab"/> from the physics step so the space-state pick
     /// query is valid; safe to call every tick regardless of pause state.
@@ -381,14 +372,15 @@ public partial class LabPointerGrabComponent : Node2D
             {
                 CursorTools!.SetChargeHeld(true);
             }
-            else if (IsSpawnableLaunchable(tool) &&
-                     LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool) &&
-                     !Grab.IsGrabbing && !LauncherTool.IsAiming)
+            else if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool) &&
+                     !Grab.IsGrabbing && !LauncherTool.IsAiming &&
+                     LauncherTool.CanSpawn(ContentIds.ForTool(tool)))
             {
-                // Selected launchable + RMB with empty hands places one at the pointer. It stays
-                // inert until the player LMB-grabs it and RMB begins the existing pullback chord.
-                // The grenade established this; the soccer ball and the other launchables use it
-                // too rather than each keeping a debug keybind (owner report 2026-08-19).
+                // Any selected launchable + RMB with empty hands places one at the pointer: the
+                // grenade's chord was never grenade-specific, and the Baseball reaching for a
+                // number key while every other tool used the mouse was the bug (owner feedback
+                // 2026-08-19). The placed object stays inert until the player LMB-grabs it and
+                // RMB begins the existing pullback chord.
                 LauncherTool.RequestSpawn(ContentIds.ForTool(tool), cursor);
             }
             else if (LauncherTool is not null &&
@@ -444,18 +436,23 @@ public partial class LabPointerGrabComponent : Node2D
         {
             _pendingPress = false;
             bool normalGrab = ToolCatalog.CategoryOf(tool) == ToolCategory.Grab;
-            // A launchable you just placed is picked up with primary without going back to
-            // Grab first — the grenade always worked this way and the rest now match
-            // (owner instruction 2026-08-19). The filter keeps it honest: the ball tool
-            // picks up balls, not the buddy's arm.
-            bool launchableGrab = IsSpawnableLaunchable(tool);
-            string launchableContentId = launchableGrab ? ContentIds.ForTool(tool) : string.Empty;
-            Func<RigidBody2D, bool>? selectedToolFilter = launchableGrab
-                ? candidate => candidate is LooseObjectBody loose &&
-                               loose.SemanticContentId == launchableContentId
-                : null;
 
-            if ((normalGrab || launchableGrab) && !Grab.IsGrabbing &&
+            // A selected launchable picks up its own object with LMB, so placing one with RMB
+            // and immediately grabbing it never needs a trip back to the Grab tool (owner
+            // feedback 2026-08-19). This was already the grenade's behaviour; nothing about it
+            // was grenade-specific. The filter keeps it to the tool's own object, so a selected
+            // Baseball still cannot pick the buddy up by accident.
+            string? launchableId = LauncherTool is not null &&
+                GodotObject.IsInstanceValid(LauncherTool) &&
+                LauncherTool.CanSpawn(ContentIds.ForTool(tool))
+                    ? ContentIds.ForTool(tool)
+                    : null;
+            Func<RigidBody2D, bool>? selectedToolFilter = launchableId is null
+                ? null
+                : candidate => candidate is LooseObjectBody loose &&
+                               loose.SemanticContentId == launchableId;
+
+            if ((normalGrab || launchableId is not null) && !Grab.IsGrabbing &&
                 TryPick(cursor, out RigidBody2D? body, selectedToolFilter))
             {
                 if (Grab.TryGrab(body!, cursor, normalGrab && tool == ToolId.PowerGrab ? PowerProfile : null))
