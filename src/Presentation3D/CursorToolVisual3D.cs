@@ -263,12 +263,20 @@ internal static class CursorToolVisualFactory
 {
     public static CursorToolVisual? Create(CursorToolProfile profile)
     {
-        ArrayMesh? mesh = profile.Visual3DKind switch
-        {
-            CursorToolVisual3DKind.LathedBat => BatMeshBuilder.Build(profile),
-            CursorToolVisual3DKind.BoxingGlove => BoxingGloveMeshBuilder.Build(profile),
-            _ => null,
-        };
+        // A dropped gun/sprayer borrows the very mesh it was drawn with while equipped, so
+        // putting one down changes where it is, not what it looks like.
+        ArrayMesh? mesh = profile.WorldDropGunVisual is not null &&
+                          GodotObject.IsInstanceValid(profile.WorldDropGunVisual)
+            ? GunMeshBuilder.Build(profile.WorldDropGunVisual)
+            : profile.WorldDropSprayerVisual is not null &&
+              GodotObject.IsInstanceValid(profile.WorldDropSprayerVisual)
+                ? SprayerMeshBuilder.Build(profile.WorldDropSprayerVisual)
+                : profile.Visual3DKind switch
+                {
+                    CursorToolVisual3DKind.LathedBat => BatMeshBuilder.Build(profile),
+                    CursorToolVisual3DKind.BoxingGlove => BoxingGloveMeshBuilder.Build(profile),
+                    _ => null,
+                };
         if (mesh is null)
             return null;
 

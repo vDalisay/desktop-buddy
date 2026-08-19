@@ -171,7 +171,13 @@ internal sealed partial class ProjectileTrailGlow2D : Node2D
 internal sealed partial class BulletImpactSmoke2D : Node2D
 {
     private const float NodeLifetimeSeconds = 0.95f;
-    private static ImageTexture? _sharedSmokeTexture;
+
+    /// <summary>
+    /// How many differently-shaped soot puffs exist. They are built once and shared; a burst
+    /// picks one, so two hits on the same wall do not stamp the same cloud.
+    /// </summary>
+    private const int TextureVariants = 4;
+    private static readonly ImageTexture?[] SharedSmokeTextures = new ImageTexture?[TextureVariants];
     private float _remaining = NodeLifetimeSeconds;
 
     public void Start(Vector2 approachVelocity)
@@ -208,12 +214,9 @@ internal sealed partial class BulletImpactSmoke2D : Node2D
             AngleMax = 180.0f,
             AngularVelocityMin = -90.0f,
             AngularVelocityMax = 90.0f,
-            Color = new Color(
-                (float)GD.RandRange(0.44, 0.56),
-                (float)GD.RandRange(0.46, 0.58),
-                (float)GD.RandRange(0.49, 0.61),
-                (float)GD.RandRange(0.44, 0.66)),
-            Texture = SmokeTexture(),
+            // Smoke is soot: always black, only its density varies.
+            Color = new Color(0.05f, 0.05f, 0.06f, (float)GD.RandRange(0.46, 0.66)),
+            Texture = SmokeTexture(GD.RandRange(0, TextureVariants - 1)),
             LocalCoords = false,
             Emitting = true,
         };
@@ -227,10 +230,11 @@ internal sealed partial class BulletImpactSmoke2D : Node2D
             QueueFree();
     }
 
-    private static ImageTexture SmokeTexture()
+    private static ImageTexture SmokeTexture(int variant)
     {
-        if (GodotObject.IsInstanceValid(_sharedSmokeTexture))
-            return _sharedSmokeTexture!;
+        variant = Math.Clamp(variant, 0, TextureVariants - 1);
+        if (GodotObject.IsInstanceValid(SharedSmokeTextures[variant]))
+            return SharedSmokeTextures[variant]!;
 
         const int size = 32;
         Image image = Image.CreateEmpty(size, size, false, Image.Format.Rgba8);
@@ -247,19 +251,23 @@ internal sealed partial class BulletImpactSmoke2D : Node2D
                     continue;
 
                 // Cheap deterministic cloud breakup: several smooth trigonometric lobes perturb
-                // a radial falloff so overlapping particles read as smoke rather than grey discs.
+                // a radial falloff so overlapping particles read as smoke rather than discs.
+                // The variant index detunes every lobe, which is what makes the four puffs
+                // different clouds rather than the same cloud at four rotations.
+                float detune = 1.0f + (variant * 0.37f);
+                float phase = variant * 1.9f;
                 float noise =
                     0.74f +
-                    (0.12f * Mathf.Sin((x * 0.73f) + (y * 0.31f))) +
-                    (0.10f * Mathf.Sin((x * 0.21f) - (y * 0.67f))) +
-                    (0.06f * Mathf.Cos((x + y) * 0.91f));
-                float edge = Mathf.Pow(1.0f - distance, 1.75f);
+                    (0.14f * Mathf.Sin((x * 0.73f * detune) + (y * 0.31f) + phase)) +
+                    (0.12f * Mathf.Sin((x * 0.21f) - (y * 0.67f * detune) - phase)) +
+                    (0.08f * Mathf.Cos(((x + y) * 0.91f) + (phase * 0.5f)));
+                float edge = Mathf.Pow(1.0f - distance, 1.55f + (variant * 0.16f));
                 float alpha = Mathf.Clamp(edge * noise, 0.0f, 1.0f);
-                image.SetPixel(x, y, new Color(0.86f, 0.88f, 0.90f, alpha));
+                image.SetPixel(x, y, new Color(1.0f, 1.0f, 1.0f, alpha));
             }
         }
 
-        _sharedSmokeTexture = ImageTexture.CreateFromImage(image);
-        return _sharedSmokeTexture;
+        SharedSmokeTextures[variant] = ImageTexture.CreateFromImage(image);
+        return SharedSmokeTextures[variant]!;
     }
 }

@@ -12,7 +12,7 @@ dest_files=["res://.godot/imported/flamethrower_burn1.mp3-fe0849f2b4713b34c627d8
 
 [params]
 
-loop=true
+loop=false
 loop_offset=0
 bpm=0
 beat_count=0

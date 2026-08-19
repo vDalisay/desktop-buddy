@@ -83,7 +83,10 @@ public sealed class SoccerAndDrinkScenario : IScenario
             "both_new_launchables_are_authored",
             lab.Progress.IsToolUnlocked(ContentIds.ToolSoccerBall) &&
             lab.Progress.IsToolUnlocked(ContentIds.ToolDrink) &&
-            Mathf.IsEqualApprox(soccer.Bounce, 0.65f) &&
+            // A band rather than the exact authored number: bounce is feel tuning the owner
+            // moves (0.65 -> 0.85 on 2026-08-19), and pinning it turned a tuning pass into a
+            // failing gate. What must hold is that the ball is authored lively.
+            soccer.Bounce >= 0.6f && soccer.Bounce <= 0.95f &&
             Mathf.IsZeroApprox(baseball.Bounce) &&
             drink.Consumable &&
             Mathf.IsEqualApprox(drink.ConsumeMoodGain, DrinkMoodGain) &&

@@ -22,6 +22,7 @@ public partial class ReactionAudioPresenter : Node
     private const float ImpactBaseVolumeOffsetDb = -6.0f;
     private const float QuietImpactVolumeDb = -12.0f;
     private const float GrabHoldVolumeOffsetDb = -4.0f;
+    private const float QuietBounceVolumeDb = -22.0f;
 
     /// <summary>Roughly a fifth of full loudness for the acquisition click (owner, 2026-08-19).</summary>
     private const float GrabInitialVolumeOffsetDb = -14.0f;
@@ -395,6 +396,19 @@ public partial class ReactionAudioPresenter : Node
         _grabHoldVoice = null;
     }
 
+    /// <summary>
+    /// How far under its authored level a bounce plays, from the speed the ball met the floor
+    /// with. A hard slam is full level; anything at or below the settle speed is inaudible.
+    /// </summary>
+    private static float BounceVolumeOffsetDb(float impactSpeed)
+    {
+        const float quietSpeed = 60.0f;
+        const float loudSpeed = 700.0f;
+        float normalized = Mathf.Clamp(
+            (impactSpeed - quietSpeed) / (loudSpeed - quietSpeed), 0.0f, 1.0f);
+        return Mathf.Lerp(QuietBounceVolumeDb, 0.0f, normalized);
+    }
+
     private static double NextGrabHoldSeconds() =>
         GD.RandRange(GrabHoldMinimumSeconds, GrabHoldMaximumSeconds);
 
@@ -537,8 +551,16 @@ public partial class ReactionAudioPresenter : Node
             return;
 
         if (stream == _ballBounce)
+        {
+            // A ball that barely tapped the floor should barely be heard; the same take at
+            // full level on every bounce is what made a settling ball sound like a drum
+            // (owner instruction 2026-08-19).
             BallBounceCount++;
-        else if (stream == _batDrop)
+            PlayStream(stream!, _baseVolumeDb + BounceVolumeOffsetDb(landing.ImpactSpeed));
+            return;
+        }
+
+        if (stream == _batDrop)
             BatDropCount++;
         else if (stream == _gunDrop)
             GunDropCount++;

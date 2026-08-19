@@ -88,6 +88,16 @@ public partial class CursorToolProfile : GameResource
     /// </summary>
     [Export] public LooseObjectProfile? WorldDrop { get; set; }
 
+    /// <summary>
+    /// For a tool that is not cursor-tethered — a gun — the profile whose authored mesh the
+    /// dropped world form borrows, so a pistol on the floor still looks like a pistol rather
+    /// than a capsule (owner report 2026-08-19). Null for every ordinary cursor tool.
+    /// </summary>
+    [Export] public GunProfile? WorldDropGunVisual { get; set; }
+
+    /// <summary>As <see cref="WorldDropGunVisual"/>, for the Fire Sprayer.</summary>
+    [Export] public FireSprayerProfile? WorldDropSprayerVisual { get; set; }
+
     /// <summary>True when this tool's collider is elongated rather than circular.</summary>
     public bool IsElongated => Length > 0.0f;
 
