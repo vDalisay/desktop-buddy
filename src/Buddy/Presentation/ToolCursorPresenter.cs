@@ -6,7 +6,7 @@ using Godot;
 namespace DesktopBuddy.Buddy.Presentation;
 
 /// <summary>
-/// Original vector Pet/Tickle hands rendered beneath the visible OS cursor.
+/// Original vector Pet hand and Tickle feather rendered beneath the visible OS cursor.
 /// This is presentation-only: it follows the routed pointer position instantly
 /// and never participates in collision, care progress, or physics.
 /// </summary>
@@ -18,6 +18,9 @@ public partial class ToolCursorPresenter : Node2D
     private const double SparkleLifetimeSeconds = 0.28;
     private static readonly Color Fill = new("f4d8b5");
     private static readonly Color Outline = new("553a33");
+    private static readonly Color FeatherFill = new("f5f1df");
+    private static readonly Color FeatherShade = new("d9cfae");
+    private static readonly Color FeatherShaft = new("8a6544");
     private static readonly Color SparkleCore = new("fff4a8");
     private static readonly Color SparkleEdge = new("f6a623");
 
@@ -31,7 +34,9 @@ public partial class ToolCursorPresenter : Node2D
     private int _nextSparkle;
 
     public ToolId Tool => _tool;
+    /// <summary>Legacy test oracle: true for either care-tool cursor while held.</summary>
     public bool IsHandVisible => Visible;
+    public bool IsTickleFeatherVisible => Visible && _held && _tool == ToolId.Tickle;
     public bool IsInitialized { get; private set; }
     public bool IsFavoriteSparkleActive { get; private set; }
     public int ActiveSparkleCount { get; private set; }
@@ -81,7 +86,7 @@ public partial class ToolCursorPresenter : Node2D
         if (_tool == ToolId.Pet)
             DrawPetHand();
         else if (_tool == ToolId.Tickle)
-            DrawTickleHand();
+            DrawTickleFeather();
 
         DrawSparkles();
     }
@@ -102,23 +107,50 @@ public partial class ToolCursorPresenter : Node2D
         DrawLine(new Vector2(6.0f, 6.0f), new Vector2(16.0f, 13.0f), Fill, 3.0f, true);
     }
 
-    private void DrawTickleHand()
+    /// <summary>
+    /// A small clean-room feather silhouette. The motion is deliberately presentation-only:
+    /// Tickle contact still comes from CareStrokeComponent's cursor/part geometry.
+    /// </summary>
+    private void DrawTickleFeather()
     {
-        float wiggle = Mathf.Sin((float)_phase * 28.0f) * 0.22f;
-        DrawSetTransform(new Vector2(10.0f, 12.0f), 0.15f, Vector2.One);
-        DrawCircle(Vector2.Zero, 8.0f, Fill, true, -1.0f, true);
-        DrawArc(Vector2.Zero, 8.0f, 0, Mathf.Tau, 24, Outline, 2.0f, true);
-        for (int finger = 0; finger < 4; finger++)
+        float wiggle = Mathf.Sin((float)_phase * 24.0f) * 0.16f;
+        DrawSetTransform(new Vector2(9.0f, 13.0f), -0.48f + wiggle, Vector2.One);
+
+        // Quill/shaft. The cursor sits near the quill end so the soft feather body reaches toward
+        // Buddy instead of obscuring the exact contact point.
+        Vector2 quill = new(12.0f, 14.0f);
+        Vector2 tip = new(-19.0f, -17.0f);
+        DrawLine(quill, tip, Outline, 4.5f, true);
+        DrawLine(quill, tip, FeatherShaft, 2.2f, true);
+
+        Vector2 shaft = tip - quill;
+        Vector2 direction = shaft.Normalized();
+        Vector2 normal = new(-direction.Y, direction.X);
+
+        // Paired barbs taper toward both ends. Drawing individual strokes avoids a filled blob and
+        // keeps the feather readable at the small cursor scale used by the Demo.
+        const int barbCount = 7;
+        for (int index = 0; index < barbCount; index++)
         {
-            float angle = -2.65f + finger * 0.35f + (finger % 2 == 0 ? wiggle : -wiggle);
-            Vector2 start = Vector2.FromAngle(angle) * 5.0f;
-            Vector2 bend = start + Vector2.FromAngle(angle - 0.35f) * 8.0f;
-            Vector2 end = bend + Vector2.FromAngle(angle + 0.2f) * 8.0f;
-            DrawPolyline(new[] { start, bend, end }, Outline, 5.0f, true);
-            DrawPolyline(new[] { start, bend, end }, Fill, 2.5f, true);
+            float t = (index + 1.0f) / (barbCount + 1.0f);
+            Vector2 root = quill.Lerp(tip, t);
+            float middle = 1.0f - Mathf.Abs((t * 2.0f) - 1.0f);
+            float length = 5.0f + middle * 8.5f;
+            float sweep = 2.0f + (1.0f - t) * 4.0f;
+
+            Vector2 left = root + normal * length - direction * sweep;
+            Vector2 right = root - normal * length - direction * sweep;
+            DrawLine(root, left, Outline, 3.6f, true);
+            DrawLine(root, left, index % 2 == 0 ? FeatherFill : FeatherShade, 2.0f, true);
+            DrawLine(root, right, Outline, 3.6f, true);
+            DrawLine(root, right, index % 2 == 0 ? FeatherShade : FeatherFill, 2.0f, true);
         }
-        DrawLine(new Vector2(5.0f, 5.0f), new Vector2(15.0f, 12.0f), Outline, 5.0f, true);
-        DrawLine(new Vector2(5.0f, 5.0f), new Vector2(15.0f, 12.0f), Fill, 3.0f, true);
+
+        // Soft pointed crown and exposed quill end make the object read as a feather rather than
+        // a branch when stationary.
+        DrawCircle(tip, 2.8f, FeatherFill, true, -1.0f, true);
+        DrawArc(tip, 2.8f, 0, Mathf.Tau, 16, Outline, 1.5f, true);
+        DrawCircle(quill, 2.2f, FeatherShaft, true, -1.0f, true);
     }
 
     private void UpdateSparkles(double delta)
