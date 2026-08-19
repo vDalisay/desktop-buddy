@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using Godot;
@@ -20,6 +21,7 @@ public partial class CharacterEditorHost
     private long _previousPaintBvhNodes;
     private long _previousPaintTriangleTests;
     private int _previousPaintTextureUploads;
+    private long _paintFlushTicks;
 
     public override void _PhysicsProcess(double delta)
     {
@@ -46,6 +48,8 @@ public partial class CharacterEditorHost
             ? _paintTextures.UploadCount
             : 0;
         int uploadDelta = Math.Max(0, textureUploads - _previousPaintTextureUploads);
+        double flushMs = _paintFlushTicks * 1000.0 / Stopwatch.Frequency;
+        _paintFlushTicks = 0;
         _previousPaintRaycasts = replacement.Raycasts;
         _previousPaintBvhNodes = replacement.BvhNodeVisits;
         _previousPaintTriangleTests = replacement.TriangleTests;
@@ -84,7 +88,8 @@ public partial class CharacterEditorHost
             F(raycasts / elapsed),
             F(bvhNodes / elapsed),
             F(triangleTests / elapsed),
-            uploadDelta.ToString(CultureInfo.InvariantCulture));
+            uploadDelta.ToString(CultureInfo.InvariantCulture),
+            F(flushMs));
 
         try
         {
@@ -116,7 +121,7 @@ public partial class CharacterEditorHost
                 "timestamp,fps,process_ms,physics_ms,objects,nodes,render_objects,render_primitives,draw_calls," +
                 "static_memory_mb,managed_memory_mb,gc0,gc1,gc2,replacement_parts,replacement_vertices," +
                 "replacement_triangles,paint_cache_meshes,paint_raycasts_per_s,bvh_nodes_per_s," +
-                "triangle_tests_per_s,paint_texture_uploads_per_sample" + System.Environment.NewLine);
+                "triangle_tests_per_s,paint_texture_uploads_per_sample,paint_flush_ms_per_sample" + System.Environment.NewLine);
             GD.Print($"[PaintPerf] Writing Paint Buddy diagnostics to: {absolutePath}");
         }
         catch (IOException exception)

@@ -53,7 +53,11 @@ public sealed class PaintUndoMemoryTests
         long allocated = System.GC.GetAllocatedBytesForCurrentThread() - allocationStart;
 
         Assert.NotEqual(before, workspace.Surfaces[PaintPart.Torso].ComputeHash());
-        Assert.InRange(allocated, 1, 8 * 1024 * 1024);
+        // One snapshot per touched part for the whole gesture. The bound used to be 8 MiB
+        // because the builder re-captured its whole growing union on every step, which cost
+        // 2.5 MiB on this stroke alone and is what the editor's big-brush paint lag was
+        // (owner report 2026-08-19).
+        Assert.InRange(allocated, 1, (3 * 1024 * 1024) / 2);
         Assert.True(workspace.Undo());
         Assert.Equal(before, workspace.Surfaces[PaintPart.Torso].ComputeHash());
     }

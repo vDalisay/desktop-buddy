@@ -7,6 +7,13 @@ namespace DesktopBuddy.Domain.Environment;
 public enum EnvironmentPaintTool { Brush, Spray, Eraser, Fill, PickColor, Square, Circle, Line, CurvedLine, Pen }
 public enum EnvironmentCurvePhase { Idle, BaselineDragging, AwaitFirstBend, FirstBendDragging, AwaitSecondBend, SecondBendDragging }
 
+/// <summary>
+/// The shape a tool stamps. <see cref="Flat"/> takes the canvas footprint as-is and so lands
+/// stretched on the room; the other two are corrected by <see cref="EnvironmentCanvas.PixelAspect"/>
+/// and land as a true circle or a true square on screen.
+/// </summary>
+public enum EnvironmentBrushFootprint { Flat, Round, Square }
+
 public static class EnvironmentCanvasPolicy
 {
     public const int Size = 512;
@@ -103,8 +110,9 @@ public sealed class EnvironmentCanvas
     private double _pixelAspect = 1.0;
 
     /// <summary>
-    /// Canvas pixels per screen pixel ratio (room width / room height). Round tools (Pen, Eraser,
-    /// Spray) stretch their canvas-space footprint by it so they land as circles on the stretched room.
+    /// Canvas pixels per screen pixel ratio (room width / room height). Corrected tools (Pen,
+    /// Spray, Eraser) stretch their canvas-space footprint by it so they land on the stretched
+    /// room as the shape their cursor outline promises -- circles, and a square for the eraser.
     /// </summary>
     public double PixelAspect
     {
@@ -144,7 +152,7 @@ public sealed class EnvironmentCanvas
                 Stamp(px, py, Color);
                 break;
             case EnvironmentPaintTool.Pen:
-                Stamp(px, py, Color, round: true);
+                Stamp(px, py, Color, EnvironmentBrushFootprint.Round);
                 break;
             case EnvironmentPaintTool.Spray:
                 _sprayGestureSeed += 0x9E3779B97F4A7C15UL;
@@ -152,7 +160,7 @@ public sealed class EnvironmentCanvas
                 Spray(px, py, Color, NextSpraySeed());
                 break;
             case EnvironmentPaintTool.Eraser:
-                Stamp(px, py, EnvironmentCanvasPolicy.Blank, round: true);
+                Stamp(px, py, EnvironmentCanvasPolicy.Blank, EnvironmentBrushFootprint.Square);
                 break;
             case EnvironmentPaintTool.Fill:
                 Fill(px, py, Color);
@@ -181,13 +189,13 @@ public sealed class EnvironmentCanvas
                 Line(_lastX, _lastY, px, py, Color);
                 break;
             case EnvironmentPaintTool.Pen:
-                Line(_lastX, _lastY, px, py, Color, round: true);
+                Line(_lastX, _lastY, px, py, Color, EnvironmentBrushFootprint.Round);
                 break;
             case EnvironmentPaintTool.Spray:
                 Spray(px, py, Color, NextSpraySeed());
                 break;
             case EnvironmentPaintTool.Eraser:
-                Line(_lastX, _lastY, px, py, EnvironmentCanvasPolicy.Blank, round: true);
+                Line(_lastX, _lastY, px, py, EnvironmentCanvasPolicy.Blank, EnvironmentBrushFootprint.Square);
                 break;
             case EnvironmentPaintTool.Square:
             case EnvironmentPaintTool.Circle:
@@ -459,7 +467,10 @@ public sealed class EnvironmentCanvas
         }
     }
 
-    private void Line(int x0, int y0, int x1, int y1, EnvironmentColor color, bool round = false)
+    private void Line(
+        int x0, int y0, int x1, int y1,
+        EnvironmentColor color,
+        EnvironmentBrushFootprint footprint = EnvironmentBrushFootprint.Flat)
     {
         int dx = Math.Abs(x1 - x0);
         int dy = Math.Abs(y1 - y0);
@@ -467,14 +478,20 @@ public sealed class EnvironmentCanvas
         for (int step = 0; step <= steps; step++)
         {
             double t = step / (double)steps;
-            Stamp((int)Math.Round(x0 + ((x1 - x0) * t)), (int)Math.Round(y0 + ((y1 - y0) * t)), color, round);
+            Stamp((int)Math.Round(x0 + ((x1 - x0) * t)), (int)Math.Round(y0 + ((y1 - y0) * t)), color, footprint);
         }
     }
 
-    private void Stamp(int centerX, int centerY, EnvironmentColor color, bool round = false)
+    private void Stamp(
+        int centerX, int centerY,
+        EnvironmentColor color,
+        EnvironmentBrushFootprint footprint = EnvironmentBrushFootprint.Flat)
     {
         double radiusX = BrushDiameter / 2.0;
-        double radiusY = round ? radiusX * PixelAspect : radiusX;
+        double radiusY = footprint == EnvironmentBrushFootprint.Flat
+            ? radiusX
+            : radiusX * PixelAspect;
+        bool square = footprint == EnvironmentBrushFootprint.Square;
         int minX = Math.Max(0, (int)Math.Floor(centerX - radiusX));
         int maxX = Math.Min(EnvironmentCanvasPolicy.Size - 1, (int)Math.Ceiling(centerX + radiusX));
         int minY = Math.Max(0, (int)Math.Floor(centerY - radiusY));
@@ -485,7 +502,12 @@ public sealed class EnvironmentCanvas
         {
             double offsetX = (x - centerX) / radiusX;
             double offsetY = (y - centerY) / radiusY;
-            if ((offsetX * offsetX) + (offsetY * offsetY) > 1.0) continue;
+            if (square
+                ? Math.Abs(offsetX) > 1.0 || Math.Abs(offsetY) > 1.0
+                : (offsetX * offsetX) + (offsetY * offsetY) > 1.0)
+            {
+                continue;
+            }
             changed |= Write(x, y, color);
         }
         if (changed) Revision++;

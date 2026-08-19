@@ -17,6 +17,8 @@ public sealed class PaintTextureBridge : IDisposable
     private readonly Dictionary<PaintPart, ImageTexture> _textures = new();
     private readonly Dictionary<PaintPart, long> _uploadedRevisions = new();
     private readonly HashSet<PaintPart> _queued = new();
+    private readonly Dictionary<PaintPart, Image> _images = new();
+    private readonly byte[] _scratch = new byte[PaintPolicy.SurfaceBytes];
     private bool _disposed;
 
     public PaintTextureBridge(BuddyVisualRigView rig)
@@ -48,13 +50,28 @@ public sealed class PaintTextureBridge : IDisposable
             if (_uploadedRevisions.TryGetValue(part, out long uploaded) && uploaded == surface.Revision)
                 continue;
 
-            byte[] pixels = surface.ClonePixels();
-            Image image = Image.CreateFromData(
-                PaintPolicy.SurfaceSize,
-                PaintPolicy.SurfaceSize,
-                false,
-                Image.Format.Rgba8,
-                pixels);
+            // The scratch buffer and the per-part Image are reused: a fresh megabyte plus a
+            // fresh Image on every painted frame was pure GC churn (owner report 2026-08-19).
+            surface.CopyPixelsTo(_scratch);
+            if (!_images.TryGetValue(part, out Image? image))
+            {
+                image = Image.CreateFromData(
+                    PaintPolicy.SurfaceSize,
+                    PaintPolicy.SurfaceSize,
+                    false,
+                    Image.Format.Rgba8,
+                    _scratch);
+                _images.Add(part, image);
+            }
+            else
+            {
+                image.SetData(
+                    PaintPolicy.SurfaceSize,
+                    PaintPolicy.SurfaceSize,
+                    false,
+                    Image.Format.Rgba8,
+                    _scratch);
+            }
 
             if (!_textures.TryGetValue(part, out ImageTexture? texture))
             {
@@ -83,6 +100,9 @@ public sealed class PaintTextureBridge : IDisposable
         foreach (ImageTexture texture in _textures.Values)
             texture.Dispose();
         _textures.Clear();
+        foreach (Image image in _images.Values)
+            image.Dispose();
+        _images.Clear();
         _uploadedRevisions.Clear();
         _queued.Clear();
     }

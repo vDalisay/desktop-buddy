@@ -20,6 +20,47 @@ public sealed class PaintSprayTests
         Assert.True(CountOpaque(large) > CountOpaque(small));
     }
 
+    /// <summary>
+    /// The spray envelope is a true circle, unlike the brush's vertically squashed footprint,
+    /// and its cursor outline is drawn round to match (owner feedback 2026-08-19).
+    /// </summary>
+    [Fact]
+    public void SprayThroughTheWorkspace_CoversAnEnvelopeAsTallAsItIsWide()
+    {
+        PaintWorkspace workspace = new() { SelectedTool = PaintTool.Spray };
+        workspace.SetBrushDiameter(PaintPolicy.MaxBrushDiameter);
+
+        // Many pulses at one point, so the sparse dot pattern fills its envelope out.
+        workspace.BeginGesture(new PaintHit(PaintPart.Torso, new PaintPoint(0.5, 0.5), 0));
+        for (int pulse = 0; pulse < 60; pulse++)
+            workspace.ContinueGesture(new PaintHit(PaintPart.Torso, new PaintPoint(0.5, 0.5), 0));
+        workspace.EndGesture();
+
+        (int width, int height) = OpaqueExtent(workspace.Surfaces[PaintPart.Torso]);
+        Assert.True(width > 0 && height > 0, "the spray painted nothing");
+        Assert.InRange(height / (double)width, 0.85, 1.15);
+    }
+
+    private static (int Width, int Height) OpaqueExtent(PaintSurface surface)
+    {
+        byte[] pixels = surface.Capture(
+            new PaintRect(0, 0, PaintPolicy.SurfaceSize, PaintPolicy.SurfaceSize));
+        int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+        for (int y = 0; y < PaintPolicy.SurfaceSize; y++)
+        {
+            for (int x = 0; x < PaintPolicy.SurfaceSize; x++)
+            {
+                if (pixels[(((y * PaintPolicy.SurfaceSize) + x) * PaintPolicy.BytesPerPixel) + 3] == 0)
+                    continue;
+                minX = Math.Min(minX, x);
+                maxX = Math.Max(maxX, x);
+                minY = Math.Min(minY, y);
+                maxY = Math.Max(maxY, y);
+            }
+        }
+        return minX > maxX ? (0, 0) : (maxX - minX + 1, maxY - minY + 1);
+    }
+
     [Fact]
     public void SprayWrapsAcrossUSeamButNeverAcrossVerticalEdge()
     {

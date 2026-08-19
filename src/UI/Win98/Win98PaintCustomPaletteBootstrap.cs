@@ -28,6 +28,7 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
     ];
 
     private readonly List<PaintColor> _colors = [];
+    private int _selectedIndex = -1;
     private CharacterEditorHost? _host;
     private PaintCanvasControl? _canvas;
     private GridContainer? _palette;
@@ -64,6 +65,30 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
         if (_rebuildQueued)
             RebuildSwatches();
         UpdateGridColumns();
+        RefreshSelection();
+    }
+
+    /// <summary>
+    /// Exactly one block carries the selection ring. The blocks are toggle buttons, so a click
+    /// latches one pressed and nothing un-latches the rest on its own; every colour ever picked
+    /// stayed ringed until this ran (owner report 2026-08-19). Index-based rather than
+    /// colour-based so two blocks holding the same colour do not both light up.
+    /// </summary>
+    private void RefreshSelection()
+    {
+        if (!GodotObject.IsInstanceValid(_canvas) || !GodotObject.IsInstanceValid(_palette))
+            return;
+
+        PaintColor selected = _canvas!.Workspace.SelectedColor;
+        if (_selectedIndex < 0 || _selectedIndex >= _colors.Count || _colors[_selectedIndex] != selected)
+            _selectedIndex = _colors.IndexOf(selected);
+
+        foreach (Node child in _palette!.GetChildren())
+        {
+            if (child is not Button block || block == _addButton)
+                continue;
+            block.SetPressedNoSignal(block.GetIndex() == _selectedIndex);
+        }
     }
 
     /// <summary>Delete removes the focused color block.</summary>
@@ -162,7 +187,11 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
         };
         ApplySwatchColor(button, color);
         int captured = index;
-        button.Pressed += () => ApplyColor(_colors[Math.Clamp(captured, 0, _colors.Count - 1)]);
+        button.Pressed += () =>
+        {
+            _selectedIndex = Math.Clamp(captured, 0, _colors.Count - 1);
+            ApplyColor(_colors[_selectedIndex]);
+        };
         button.GuiInput += input =>
         {
             if (input is InputEventMouseButton { DoubleClick: true, ButtonIndex: MouseButton.Left })
@@ -197,6 +226,7 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
             ? _canvas!.Workspace.SelectedColor
             : new PaintColor(255, 255, 255);
         _colors.Add(color);
+        _selectedIndex = _colors.Count - 1;
         _rebuildQueued = true;
         Persist();
         ApplyColor(color);
@@ -345,7 +375,7 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
         button.AddThemeStyleboxOverride("hover", normal);
         button.AddThemeStyleboxOverride("pressed", selected);
         button.AddThemeStyleboxOverride("hover_pressed", selected);
-        button.AddThemeStyleboxOverride("focus", selected);
+        button.AddThemeStyleboxOverride("focus", normal);
     }
 
     private static PaintColor FromGodot(Color value) => new(

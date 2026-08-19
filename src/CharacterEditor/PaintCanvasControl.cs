@@ -45,6 +45,9 @@ public partial class PaintCanvasControl : Control
     private const int MaxScreenSteps = 512;
     private const int MaxPenSampleSteps = 32;
     private const int MaxGeneratedReplacementPenSampleSteps = 8;
+    /// <summary>Generated replacement parts map through real triangles, so the dot budget
+    /// per pulse is capped there the way the pen's grid already is.</summary>
+    private const int MaxGeneratedReplacementSprayDots = 192;
     private const double MinimumCurveBaselinePixels = 2.0;
     private const double SecondCurveBendSensitivity = 0.35;
 
@@ -142,7 +145,7 @@ public partial class PaintCanvasControl : Control
                     }
                     else if (Workspace.SelectedTool == PaintTool.Curve)
                         ContinueCurve(motion.Position);
-                    else if (Workspace.SelectedTool != PaintTool.Pen)
+                    else if (!UsesScreenDabs(Workspace.SelectedTool))
                         PaintAlongTo(motion.Position);
                 }
             }
@@ -177,6 +180,7 @@ public partial class PaintCanvasControl : Control
             {
                 if (button.Pressed)
                 {
+                    LatchPaintPrimaryHeld();
                     PaintHit? hit = Map(button.Position);
                     if (EyedropperToolActive)
                     {
@@ -209,9 +213,15 @@ public partial class PaintCanvasControl : Control
                         return;
                     }
 
-                    Workspace.BeginGesture(Workspace.SelectedTool == PaintTool.Pen ? null : hit);
-                    if (Workspace.SelectedTool == PaintTool.Pen)
-                        PaintPenDab(button.Position);
+                    // Screen-dab tools and the spray open the gesture without a hit: their marks
+                    // are placed from screen-space samples below, not stamped from this one.
+                    bool screenPlaced = UsesScreenDabs(Workspace.SelectedTool) ||
+                        Workspace.SelectedTool == PaintTool.Spray;
+                    Workspace.BeginGesture(screenPlaced ? null : hit);
+                    if (UsesScreenDabs(Workspace.SelectedTool))
+                        PaintScreenDab(button.Position, Workspace.SelectedTool == PaintTool.Eraser);
+                    else if (Workspace.SelectedTool == PaintTool.Spray)
+                        PaintSprayDab(button.Position);
                     _painting = true;
                     _sprayPulseAccumulator = 0;
                     _strokePointer = button.Position;
@@ -225,7 +235,7 @@ public partial class PaintCanvasControl : Control
                 }
                 else if (_painting)
                 {
-                    if (Workspace.SelectedTool == PaintTool.Pen)
+                    if (UsesScreenDabs(Workspace.SelectedTool))
                         PaintAlongTo(button.Position);
                     Workspace.EndGesture();
                     _painting = false;
@@ -278,10 +288,10 @@ public partial class PaintCanvasControl : Control
         while (_sprayPulseAccumulator >= SprayPulseSeconds && pulses++ < MaximumSprayCatchUpPulses)
         {
             _sprayPulseAccumulator -= SprayPulseSeconds;
-            PaintHit? hit = Map(GetLocalMousePosition());
-            if (TryBucketFillConnector(hit))
+            Vector2 sprayPointer = GetLocalMousePosition();
+            if (TryBucketFillConnector(Map(sprayPointer)))
                 return;
-            Workspace.ContinueGesture(hit);
+            PaintSprayDab(sprayPointer);
             WorkspaceChanged?.Invoke();
         }
         if (pulses >= MaximumSprayCatchUpPulses)
@@ -293,8 +303,9 @@ public partial class PaintCanvasControl : Control
         Vector2 from = _strokePointer;
         if (from.IsEqualApprox(canvas))
             return;
-        if (Workspace.SelectedTool == PaintTool.Pen)
+        if (UsesScreenDabs(Workspace.SelectedTool))
         {
+            bool square = Workspace.SelectedTool == PaintTool.Eraser;
             float distance = from.DistanceTo(canvas);
             float penSpacing = Math.Max(2f, VisibleBrushDiameter() * 0.35f);
             int penSteps = Math.Clamp((int)Math.Floor(distance / penSpacing), 0, MaxScreenSteps);
@@ -305,7 +316,7 @@ public partial class PaintCanvasControl : Control
                 PaintHit? hit = Map(point);
                 if (TryBucketFillConnector(hit))
                     return;
-                PaintPenDab(point);
+                PaintScreenDab(point, square);
             }
             _strokePointer = from.Lerp(canvas, Math.Min(1f, penSteps * penSpacing / distance));
             WorkspaceChanged?.Invoke();
@@ -315,7 +326,8 @@ public partial class PaintCanvasControl : Control
         int steps = Math.Clamp((int)Math.Ceiling(from.DistanceTo(canvas) / spacing), 1, MaxScreenSteps);
         for (int step = 1; step <= steps; step++)
         {
-            PaintHit? hit = Map(from.Lerp(canvas, step / (float)steps));
+            Vector2 point = from.Lerp(canvas, step / (float)steps);
+            PaintHit? hit = Map(point);
             if (TryBucketFillConnector(hit))
                 return;
             Workspace.ContinueGesture(hit);
@@ -325,7 +337,22 @@ public partial class PaintCanvasControl : Control
         WorkspaceChanged?.Invoke();
     }
 
-    private void PaintPenDab(Vector2 center)
+    /// <summary>
+    /// Whether the tool builds its footprint from screen-space samples rather than stamping one
+    /// shape onto the surface. Those tools land as exactly the outline their cursor draws; the
+    /// brush deliberately does not, and stays the ellipse the owner wants (2026-08-19).
+    /// </summary>
+    internal static bool UsesScreenDabs(PaintTool tool) => tool is PaintTool.Pen or PaintTool.Eraser;
+
+    private void PaintPenDab(Vector2 center) =>
+        PaintScreenDab(center, Workspace.SelectedTool == PaintTool.Eraser);
+
+    /// <summary>
+    /// Lays the footprint down as a grid of small dabs placed in screen space, each mapped to
+    /// the surface on its own. <paramref name="square"/> selects the eraser's square block over
+    /// the pen's round nib.
+    /// </summary>
+    private void PaintScreenDab(Vector2 center, bool square)
     {
         float radius = VisibleBrushDiameter() * 0.5f;
         float texturePixelSize = VisibleBrushDiameter() / Math.Max(1, Workspace.BrushDiameter);
@@ -341,13 +368,48 @@ public partial class PaintCanvasControl : Control
             for (int x = -steps; x <= steps; x++)
             {
                 Vector2 offset = new(x * spacing, y * spacing);
-                if (offset.LengthSquared() > sampleRadius * sampleRadius)
+                if (square
+                    ? Math.Abs(offset.X) > sampleRadius || Math.Abs(offset.Y) > sampleRadius
+                    : offset.LengthSquared() > sampleRadius * sampleRadius)
+                {
                     continue;
+                }
                 if (Map(center + offset) is PaintHit hit)
                     hits.Add(hit);
             }
         }
-        Workspace.StampPenDab(hits, sampleDiameter);
+        Workspace.StampScreenDab(
+            hits,
+            sampleDiameter,
+            square ? PaintTool.Eraser : PaintTool.Pen);
+    }
+
+    /// <summary>
+    /// One spray pulse, scattered across the cursor's screen-space disk and mapped dot by dot,
+    /// so the dusted envelope is the circle the outline promises wherever it lands. Density is
+    /// defined against the on-screen envelope, which is where the player judges it.
+    /// </summary>
+    private void PaintSprayDab(Vector2 center)
+    {
+        float radius = VisibleBrushDiameter() * 0.5f;
+        if (radius <= 0f)
+            return;
+
+        int count = SprayPattern.PointCountForDiameter(Mathf.RoundToInt(VisibleBrushDiameter()));
+        if (GodotObject.IsInstanceValid(_host?.PreviewRig) && _host!.PreviewRig.HasGeneratedReplacementPaintParts)
+            count = Math.Min(count, MaxGeneratedReplacementSprayDots);
+
+        PaintPoint[] offsets = SprayPattern.SampleUnitDisk(Workspace.NextSprayPulseSeed(), count);
+        var hits = new List<PaintHit>(offsets.Length);
+        foreach (PaintPoint offset in offsets)
+        {
+            var point = new Vector2(
+                center.X + ((float)offset.X * radius),
+                center.Y + ((float)offset.Y * radius));
+            if (Map(point) is PaintHit hit)
+                hits.Add(hit);
+        }
+        Workspace.StampScreenDab(hits, PaintPolicy.MinBrushDiameter, PaintTool.Brush);
     }
 
     private bool TryBucketFillConnector(PaintHit? hit)
@@ -574,10 +636,12 @@ public partial class PaintCanvasControl : Control
         }
         if (PanToolActive) return;
         float diameter = VisibleBrushDiameter();
-        Vector2 footprint = Workspace.SelectedTool == PaintTool.Pen
-            ? new Vector2(diameter, diameter)
-            : new Vector2(diameter, diameter * (float)PaintWorkspace.BrushVerticalScale);
-        PaintCursorGizmos.DrawBrushRing(this, _lastPointer, footprint, 0f);
+        var footprint = new Vector2(diameter, diameter * (float)PaintWorkspace.BrushVerticalScale);
+        PaintCursorGizmos.DrawBrushCursor(
+            this,
+            _lastPointer,
+            footprint,
+            PaintCursorGizmos.ShapeFor(Workspace.SelectedTool));
     }
 
     private float VisibleBrushDiameter() => (float)(Workspace.BrushDiameter * View.Zoom * Math.Min(Size.X, Size.Y) /

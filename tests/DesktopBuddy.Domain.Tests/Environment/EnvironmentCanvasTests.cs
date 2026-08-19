@@ -49,8 +49,14 @@ public sealed class EnvironmentCanvasTests
         Assert.Equal(before, canvas.ClonePixels());
     }
 
+    /// <summary>
+    /// The eraser is a square block on screen (owner instruction 2026-08-19), which means a
+    /// rectangle in canvas space stretched by the room's aspect. The corner sample is what
+    /// tells a square from a circle: the axis samples alone pass for either shape, which is
+    /// why this gate did not notice when the footprint was round.
+    /// </summary>
     [Fact]
-    public void EraserStaysCircularInScreenSpaceWhenTheRoomIsStretched()
+    public void EraserStaysSquareInScreenSpaceWhenTheRoomIsStretched()
     {
         var canvas = new EnvironmentCanvas
         {
@@ -62,8 +68,9 @@ public sealed class EnvironmentCanvasTests
         canvas.End(.5, .5);
         canvas.MarkSaved();
 
-        // A room twice as wide as tall uses twice the canvas-space Y radius so the erased
-        // footprint reads as a circle after the 512x512 paint texture is stretched to screen.
+        // A room twice as wide as tall uses twice the canvas-space Y radius, so the erased
+        // footprint reads as a regular square once the 512x512 paint texture is stretched to
+        // screen. Radii are therefore 20 across and 40 down.
         canvas.PixelAspect = 2.0;
         canvas.Tool = EnvironmentPaintTool.Eraser;
         canvas.Begin(.5, .5);
@@ -73,6 +80,12 @@ public sealed class EnvironmentCanvasTests
         Assert.Equal(EnvironmentCanvasPolicy.Blank, Sample(canvas, .5, .5 + 36.0 / 511.0));
         Assert.Equal(Ink, Sample(canvas, .5 + 24.0 / 511.0, .5));
         Assert.Equal(Ink, Sample(canvas, .5, .5 + 44.0 / 511.0));
+
+        // The corner: inside the square, and well outside the circle that used to be erased
+        // here ((18/20)^2 + (36/40)^2 = 1.62).
+        Assert.Equal(
+            EnvironmentCanvasPolicy.Blank,
+            Sample(canvas, .5 + 18.0 / 511.0, .5 + 36.0 / 511.0));
     }
 
     [Fact]

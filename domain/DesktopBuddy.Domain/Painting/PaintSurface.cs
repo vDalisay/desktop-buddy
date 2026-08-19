@@ -27,7 +27,16 @@ public sealed class PaintSurface
     public long Revision { get; private set; }
     public ReadOnlyMemory<byte> Pixels => _pixels;
 
-    public const double StampSpacingFactor = 0.08;
+    /// <summary>
+    /// Spacing between stamps along a stroke, as a fraction of the brush diameter. Work per
+    /// unit of cursor travel is proportional to diameter/spacing, so this is the one constant
+    /// that decides how much a big brush costs. At 0.08 consecutive stamps overlapped by 92%
+    /// and a single 400px max-brush mirrored stroke cost 12.9ms of stamping, which is the
+    /// big-brush paint lag the owner reported (2026-08-19). At 0.25 the same stroke costs
+    /// 4.7ms and consecutive stamps still overlap by 75%, so an opaque round brush leaves a
+    /// solid stroke with no scalloping. Covered by PaintStrokeContinuityTests.
+    /// </summary>
+    public const double StampSpacingFactor = 0.25;
 
     public static PaintRect StampBounds(
         PaintPoint uv,
@@ -98,13 +107,16 @@ public sealed class PaintSurface
         int maxY = Math.Clamp((int)Math.Ceiling(centerY + radiusY), 0, PaintPolicy.SurfaceSize - 1);
         bool changed = false;
 
+        // The eraser is a square block, the way a Win98 eraser is; every other tool lays down
+        // a round footprint (owner instruction 2026-08-19).
+        bool square = tool == PaintTool.Eraser;
         for (int y = minY; y <= maxY; y++)
         {
             for (int x = minX; x <= maxX; x++)
             {
                 double dx = ((x + 0.5) - centerX) / radiusX;
                 double dy = ((y + 0.5) - centerY) / radiusY;
-                if ((dx * dx) + (dy * dy) > 1.0)
+                if (square ? Math.Abs(dx) > 1.0 || Math.Abs(dy) > 1.0 : (dx * dx) + (dy * dy) > 1.0)
                     continue;
 
                 int wrappedX = region.WrapPixelX(x);
@@ -232,6 +244,15 @@ public sealed class PaintSurface
     }
 
     public byte[] ClonePixels() => (byte[])_pixels.Clone();
+
+    /// <summary>Copies the whole surface into a caller-owned buffer, so a per-frame uploader
+    /// does not have to allocate a megabyte to hand the same bytes to the renderer.</summary>
+    public void CopyPixelsTo(Span<byte> destination)
+    {
+        if (destination.Length != PaintPolicy.SurfaceBytes)
+            throw new ArgumentException("Paint surface copies must be exactly 512x512 RGBA8.", nameof(destination));
+        _pixels.AsSpan().CopyTo(destination);
+    }
 
     public void Replace(ReadOnlySpan<byte> pixels)
     {
