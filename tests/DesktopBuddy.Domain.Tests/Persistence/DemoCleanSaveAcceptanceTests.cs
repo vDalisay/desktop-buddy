@@ -15,14 +15,13 @@ using Xunit;
 namespace DesktopBuddy.Domain.Tests.Persistence;
 
 /// <summary>
-/// DEMO-9 semantic clean-save gate. Godot scenarios cover the presentation/physics half of the
-/// journey; this test proves the cloud-eligible state survives the important first-session
-/// transitions without inventing a second persistence model.
+/// Demo clean-save semantic gate. Runtime scenarios own presentation/physics actions; these tests
+/// prove the durable tutorial/tool/slot state survives relaunch without a second persistence model.
 /// </summary>
 public sealed class DemoCleanSaveAcceptanceTests
 {
     [Fact]
-    public void FreshSave_PurchaseTutorialAndSlotEntitlementsSurviveRelaunch()
+    public void FreshSave_BaseballBatTutorialAndSlotEntitlementsSurviveRelaunch()
     {
         const long startingBalance = 2_000_000;
         ToolCatalogue catalogue = TestCatalogues.Standard();
@@ -42,17 +41,17 @@ public sealed class DemoCleanSaveAcceptanceTests
 
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.GrabBuddy));
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.EarnCredits));
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.OpenShop));
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.OpenInventory));
 
-        Assert.True(economy.Purchase(ContentIds.ToolPet).Succeeded);
-        Assert.True(progress.SelectTool(ToolId.Pet));
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.PurchaseContent));
-        Assert.True(progress.IsToolUnlocked(ContentIds.ToolPet));
-        Assert.Equal(ContentIds.ToolPet, progress.SelectedToolId);
+        Assert.True(economy.Purchase(ContentIds.ToolBaseballBat).Succeeded);
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.PurchaseBaseballBat));
+        Assert.True(progress.SelectTool(ToolId.BaseballBat));
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.EquipBaseballBat));
+        Assert.True(progress.IsToolUnlocked(ContentIds.ToolBaseballBat));
+        Assert.Equal(ContentIds.ToolBaseballBat, progress.SelectedToolId);
 
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.OpenPaintBuddy));
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.EnterWorkMode));
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.ExitWorkMode));
+        foreach (string stepId in TutorialStepIds.Ordered.Skip(5))
+            Assert.True(tutorial.MarkCompleted(stepId));
         Assert.True(tutorial.IsComplete);
         Assert.Null(tutorial.NextIncompleteStepId);
 
@@ -74,8 +73,8 @@ public sealed class DemoCleanSaveAcceptanceTests
         var restoredTutorial = new TutorialProgressState(restoredProgress);
         var restoredSlots = new CharacterSlotEntitlementState(restoredProgress, restoredEconomy);
 
-        Assert.True(restoredProgress.IsToolUnlocked(ContentIds.ToolPet));
-        Assert.Equal(ContentIds.ToolPet, restoredProgress.SelectedToolId);
+        Assert.True(restoredProgress.IsToolUnlocked(ContentIds.ToolBaseballBat));
+        Assert.Equal(ContentIds.ToolBaseballBat, restoredProgress.SelectedToolId);
         foreach (string stepId in TutorialStepIds.Ordered)
             Assert.True(restoredTutorial.IsCompleted(stepId));
         Assert.True(restoredTutorial.IsComplete);
@@ -84,14 +83,69 @@ public sealed class DemoCleanSaveAcceptanceTests
         Assert.Equal(4, restoredSlots.Capacity);
         Assert.Equal(economy.BalanceMilliCredits, restoredEconomy.BalanceMilliCredits);
 
-        // Duplicate completion/purchase attempts and repeated hydration are idempotent: no second
-        // tutorial mutation, tool or phantom slot is minted simply because the game is relaunched.
         long revisionBeforeRepeatedCompletion = restoredProgress.Revision;
         Assert.False(restoredTutorial.MarkCompleted(TutorialStepIds.ExitWorkMode));
         Assert.Equal(revisionBeforeRepeatedCompletion, restoredProgress.Revision);
-        Assert.False(restoredEconomy.Purchase(ContentIds.ToolPet).Succeeded);
-        Assert.Single(restoredProgress.Snapshot().UnlockedToolIds, id => id == ContentIds.ToolPet);
+        Assert.False(restoredEconomy.Purchase(ContentIds.ToolBaseballBat).Succeeded);
+        Assert.Single(restoredProgress.Snapshot().UnlockedToolIds, id => id == ContentIds.ToolBaseballBat);
         Assert.Equal(4, restoredSlots.Capacity);
+    }
+
+    [Fact]
+    public void TutorialV2_HasExactConciseWorkspaceOrder()
+    {
+        Assert.Equal(
+        [
+            TutorialStepIds.GrabBuddy,
+            TutorialStepIds.EarnCredits,
+            TutorialStepIds.OpenInventory,
+            TutorialStepIds.PurchaseBaseballBat,
+            TutorialStepIds.EquipBaseballBat,
+            TutorialStepIds.OpenPaintBuddy,
+            TutorialStepIds.PaintBuddy,
+            TutorialStepIds.SavePaintBuddy,
+            TutorialStepIds.UsePaintedBuddy,
+            TutorialStepIds.OpenPaintBackground,
+            TutorialStepIds.PaintBackground,
+            TutorialStepIds.SaveAndExitPaintBackground,
+            TutorialStepIds.OpenBuddyStudio,
+            TutorialStepIds.BuyAndEquipStudioItem,
+            TutorialStepIds.UnequipStudioItem,
+            TutorialStepIds.SaveBuddyStudio,
+            TutorialStepIds.ExitBuddyStudio,
+            TutorialStepIds.EnterWorkMode,
+            TutorialStepIds.DragWorkCompanion,
+            TutorialStepIds.ResizeWorkCompanion,
+            TutorialStepIds.ExitWorkMode,
+        ], TutorialStepIds.Ordered);
+        Assert.Equal(TutorialStepIds.EnterWorkMode, TutorialStepIds.Ordered[^4]);
+        Assert.Equal(TutorialStepIds.ExitWorkMode, TutorialStepIds.Ordered[^1]);
+    }
+
+    [Fact]
+    public void LegacyV1Record_DoesNotMasqueradeAsV2Progress()
+    {
+        var progress = new BuddyProgressState(cashPerPain: 10.0);
+        Assert.True(progress.SetExtensionValue(TutorialProgressState.LegacyExtensionKey, "demo.onboarding.grab_buddy"));
+
+        var tutorial = new TutorialProgressState(progress);
+        Assert.True(tutorial.HasLegacyRecord);
+        Assert.False(tutorial.HasPersistedRecord);
+        Assert.Equal(TutorialStepIds.GrabBuddy, tutorial.NextIncompleteStepId);
+    }
+
+    [Fact]
+    public void V2Snapshot_FiltersUnknownAndDuplicateStepTokens()
+    {
+        var progress = new BuddyProgressState(cashPerPain: 10.0);
+        Assert.True(progress.SetExtensionValue(
+            TutorialProgressState.ExtensionKey,
+            $"future.step|{TutorialStepIds.GrabBuddy}|{TutorialStepIds.GrabBuddy}|{TutorialStepIds.EarnCredits}"));
+
+        var tutorial = new TutorialProgressState(progress);
+        TutorialProgressSnapshot snapshot = tutorial.Snapshot();
+        Assert.Equal([TutorialStepIds.GrabBuddy, TutorialStepIds.EarnCredits], snapshot.CompletedStepIds);
+        Assert.Equal(TutorialStepIds.OpenInventory, tutorial.NextIncompleteStepId);
     }
 
     [Fact]
@@ -146,8 +200,8 @@ public sealed class DemoCleanSaveAcceptanceTests
 
             foreach (string stepId in TutorialStepIds.Ordered)
                 Assert.True(tutorial.MarkCompleted(stepId));
-            Assert.True(economy.Purchase(ContentIds.ToolPet).Succeeded);
-            Assert.True(progress.SelectTool(ToolId.Pet));
+            Assert.True(economy.Purchase(ContentIds.ToolBaseballBat).Succeeded);
+            Assert.True(progress.SelectTool(ToolId.BaseballBat));
             Assert.True(slots.PurchaseNext().Succeeded);
 
             var store = new JsonProgressStore(progressPath, settingsPath);
@@ -158,8 +212,8 @@ public sealed class DemoCleanSaveAcceptanceTests
             LoadResult<ProgressSave> loaded = await store.LoadProgressAsync(CancellationToken.None);
             Assert.Equal(SaveLoadStatus.Loaded, loaded.Status);
             ProgressSave disk = Assert.IsType<ProgressSave>(loaded.Value);
-            Assert.Equal(ContentIds.ToolPet, disk.SelectedToolId);
-            Assert.Contains(ContentIds.ToolPet, disk.UnlockedToolIds);
+            Assert.Equal(ContentIds.ToolBaseballBat, disk.SelectedToolId);
+            Assert.Contains(ContentIds.ToolBaseballBat, disk.UnlockedToolIds);
             Assert.NotEmpty(disk.Extensions.Values);
 
             var extensionData = new ProgressExtensionData(
@@ -180,7 +234,7 @@ public sealed class DemoCleanSaveAcceptanceTests
             var restoredTutorial = new TutorialProgressState(restored);
             var restoredSlots = new CharacterSlotEntitlementState(restored, restoredEconomy);
 
-            Assert.Equal(ToolId.Pet, restored.SelectedTool);
+            Assert.Equal(ToolId.BaseballBat, restored.SelectedTool);
             Assert.True(restoredTutorial.IsComplete);
             Assert.Null(restoredTutorial.NextIncompleteStepId);
             Assert.Equal(4, restoredSlots.Capacity);
