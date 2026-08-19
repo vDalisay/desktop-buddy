@@ -114,12 +114,13 @@ public partial class ToolCursorPresenter : Node2D
     private void DrawTickleFeather()
     {
         float wiggle = Mathf.Sin((float)_phase * 24.0f) * 0.16f;
-        DrawSetTransform(new Vector2(9.0f, 13.0f), -0.48f + wiggle, Vector2.One);
+        // The pointer is the player's grip. Keep the exposed quill endpoint directly under it
+        // and let the feather extend away from the hand instead of putting the fluffy body
+        // under the cursor.
+        DrawSetTransform(new Vector2(2.0f, 2.0f), -0.48f + wiggle, Vector2.One);
 
-        // Quill/shaft. The cursor sits near the quill end so the soft feather body reaches toward
-        // Buddy instead of obscuring the exact contact point.
-        Vector2 quill = new(12.0f, 14.0f);
-        Vector2 tip = new(-19.0f, -17.0f);
+        Vector2 quill = Vector2.Zero;
+        Vector2 tip = new(-31.0f, -31.0f);
         DrawLine(quill, tip, Outline, 4.5f, true);
         DrawLine(quill, tip, FeatherShaft, 2.2f, true);
 
@@ -147,7 +148,7 @@ public partial class ToolCursorPresenter : Node2D
         }
 
         // Soft pointed crown and exposed quill end make the object read as a feather rather than
-        // a branch when stationary.
+        // a branch when stationary. The small quill cap is the exact player grip point.
         DrawCircle(tip, 2.8f, FeatherFill, true, -1.0f, true);
         DrawArc(tip, 2.8f, 0, Mathf.Tau, 16, Outline, 1.5f, true);
         DrawCircle(quill, 2.2f, FeatherShaft, true, -1.0f, true);
