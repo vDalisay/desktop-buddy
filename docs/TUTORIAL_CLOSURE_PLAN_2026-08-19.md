@@ -17,8 +17,9 @@ The walkthrough is ordered and durable. A step completes only when its real game
 3. **Inventory** — open the Shop/Inventory, buy the Baseball Bat, then equip the Baseball Bat.
 4. **Paint Buddy** — open Paint Buddy, make one paint change, save the character, then choose **Use Character** to apply it and return to Play.
 5. **Paint Background** — open Paint Background, make one paint change, then **Save and Exit**.
-6. **Buddy Studio** — open Buddy Studio, buy/equip one non-default cosmetic, switch back to the free/default item in that same slot to demonstrate unequip, save, then exit.
-7. **Work Mode (last)** — enter Work Mode, drag the companion, resize it, then exit Work Mode.
+6. **Buddy Studio, equip visit** — open Buddy Studio, buy/equip one non-default cosmetic (glasses are the suggested quick option), save, then exit.
+7. **Buddy Studio, unequip visit** — reopen Buddy Studio, switch that same slot back to its free/default item, save, then exit again.
+8. **Work Mode (last)** — enter Work Mode, drag the companion, resize it, then exit Work Mode.
 
 The tutorial does not enumerate every tool, paint function, cosmetic control, room-decorator operation, setting, or shortcut. The permanent Help system owns those explanations.
 
@@ -57,6 +58,7 @@ Initial explicit region coverage:
 - Existing loaded players without a v2 record remain auto-skipped, matching the current first-session policy.
 - Fresh/reset progress starts the v2 tutorial.
 - Skip/completion remains idempotent and cloud-eligible through the existing progress extension map.
+- The first Buddy Studio save/exit persists separate semantic v2 steps while reusing the same proven runtime Save/Exit actions as the second visit; this avoids duplicate UI authority.
 
 ## Engineering gates
 
@@ -64,7 +66,7 @@ Initial explicit region coverage:
 2. Runtime test: Baseball Bat purchase/equip cannot be satisfied by another purchase/tool selection.
 3. Runtime test: Paint Buddy requires an actual paint mutation plus successful save/use.
 4. Runtime test: Paint Background requires an actual mutation plus save-and-exit.
-5. Runtime test: Buddy Studio requires buy/equip, return to default, save, exit.
+5. Runtime test: Buddy Studio requires buy/equip + save/exit, then a second visit with return-to-default + save/exit.
 6. Runtime test: Work requires entry, drag, resize, exit and remains the terminal tutorial stage.
 7. Runtime/presentation test: Win98 tutorial chrome and Help activation/region resolution.
 8. Full CI plus owner local walkthrough.
