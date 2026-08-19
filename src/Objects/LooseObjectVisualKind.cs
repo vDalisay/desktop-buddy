@@ -18,4 +18,7 @@ public enum LooseObjectVisualKind
 
     /// <summary>A first-aid case: white lid, coloured base, a cross, and a carry handle.</summary>
     RepairKit,
+
+    /// <summary>A stitched ball: off-white sphere with the traditional two-lobed seam.</summary>
+    Baseball,
 }

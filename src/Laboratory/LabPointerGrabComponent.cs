@@ -372,14 +372,16 @@ public partial class LabPointerGrabComponent : Node2D
             {
                 CursorTools!.SetChargeHeld(true);
             }
-            else if (tool == ToolId.Grenade &&
-                     LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool) &&
-                     !Grab.IsGrabbing && !LauncherTool.IsAiming)
+            else if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool) &&
+                     !Grab.IsGrabbing && !LauncherTool.IsAiming &&
+                     LauncherTool.CanSpawn(ContentIds.ForTool(tool)))
             {
-                // Selected grenade + RMB with empty hands places one grenade at the pointer. It
-                // stays pinned/inert until the player LMB-grabs it and RMB begins the existing
-                // pullback chord. No keybind spawn path remains for grenades.
-                LauncherTool.RequestSpawn(ContentIds.ToolGrenade, cursor);
+                // Any selected launchable + RMB with empty hands places one at the pointer: the
+                // grenade's chord was never grenade-specific, and the Baseball reaching for a
+                // number key while every other tool used the mouse was the bug (owner feedback
+                // 2026-08-19). The placed object stays inert until the player LMB-grabs it and
+                // RMB begins the existing pullback chord.
+                LauncherTool.RequestSpawn(ContentIds.ForTool(tool), cursor);
             }
             else if (LauncherTool is not null &&
                 GodotObject.IsInstanceValid(LauncherTool) &&
@@ -434,13 +436,23 @@ public partial class LabPointerGrabComponent : Node2D
         {
             _pendingPress = false;
             bool normalGrab = ToolCatalog.CategoryOf(tool) == ToolCategory.Grab;
-            bool grenadeGrab = tool == ToolId.Grenade;
-            Func<RigidBody2D, bool>? selectedToolFilter = grenadeGrab
-                ? candidate => candidate is LooseObjectBody loose &&
-                               loose.SemanticContentId == ContentIds.ToolGrenade
-                : null;
 
-            if ((normalGrab || grenadeGrab) && !Grab.IsGrabbing &&
+            // A selected launchable picks up its own object with LMB, so placing one with RMB
+            // and immediately grabbing it never needs a trip back to the Grab tool (owner
+            // feedback 2026-08-19). This was already the grenade's behaviour; nothing about it
+            // was grenade-specific. The filter keeps it to the tool's own object, so a selected
+            // Baseball still cannot pick the buddy up by accident.
+            string? launchableId = LauncherTool is not null &&
+                GodotObject.IsInstanceValid(LauncherTool) &&
+                LauncherTool.CanSpawn(ContentIds.ForTool(tool))
+                    ? ContentIds.ForTool(tool)
+                    : null;
+            Func<RigidBody2D, bool>? selectedToolFilter = launchableId is null
+                ? null
+                : candidate => candidate is LooseObjectBody loose &&
+                               loose.SemanticContentId == launchableId;
+
+            if ((normalGrab || launchableId is not null) && !Grab.IsGrabbing &&
                 TryPick(cursor, out RigidBody2D? body, selectedToolFilter))
             {
                 if (Grab.TryGrab(body!, cursor, normalGrab && tool == ToolId.PowerGrab ? PowerProfile : null))

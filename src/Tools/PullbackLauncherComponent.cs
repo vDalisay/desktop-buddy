@@ -142,6 +142,13 @@ public partial class PullbackLauncherComponent : Node2D
         return true;
     }
 
+    /// <summary>
+    /// Whether the selected tool's own content ID names one of this launcher's authored
+    /// launchables. The spawn chord is shared by every launchable, so this is the whole
+    /// eligibility rule (see the type remarks).
+    /// </summary>
+    public bool CanSpawn(string? contentId) => FindProfile(contentId) is not null;
+
     private LooseObjectProfile? FindProfile(string? contentId)
     {
         if (string.IsNullOrEmpty(contentId))
