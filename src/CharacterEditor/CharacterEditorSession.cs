@@ -411,6 +411,15 @@ public sealed class CharacterEditorSession
         CaptureSavedPaint();
         _paintWorkspace?.MarkSaved();
         SetWorking(saved.Document, saved.Document, clearPreviews: true);
+
+        // Saving the character the world is currently wearing has to reach the world. Nothing
+        // else re-reads it: the runtime activates a character's document and paint once, so
+        // painting a buddy, saving it and then leaving without pressing Use Character left the
+        // live buddy on the pixels it loaded at startup (owner report 2026-08-19). Re-activating
+        // is a no-op for any other character being edited.
+        if (_selection.ActiveCharacterId == saved.Document.Id)
+            await _selection.QueueUseCharacterAsync(saved.Document.Id, token);
+
         await RefreshPageAsync(PageOffset, PageSize, token);
         return new CharacterEditorActionResult(true);
     }
