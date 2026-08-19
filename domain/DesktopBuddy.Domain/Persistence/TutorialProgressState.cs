@@ -25,6 +25,9 @@ public static class TutorialStepIds
 
     public const string OpenBuddyStudio = "demo.onboarding.open_buddy_studio";
     public const string BuyAndEquipStudioItem = "demo.onboarding.buy_equip_studio_item";
+    public const string SaveEquippedStudioItem = "demo.onboarding.save_equipped_studio_item";
+    public const string ExitEquippedBuddyStudio = "demo.onboarding.exit_equipped_buddy_studio";
+    public const string ReopenBuddyStudio = "demo.onboarding.reopen_buddy_studio";
     public const string UnequipStudioItem = "demo.onboarding.unequip_studio_item";
     public const string SaveBuddyStudio = "demo.onboarding.save_buddy_studio";
     public const string ExitBuddyStudio = "demo.onboarding.exit_buddy_studio";
@@ -50,6 +53,9 @@ public static class TutorialStepIds
         SaveAndExitPaintBackground,
         OpenBuddyStudio,
         BuyAndEquipStudioItem,
+        SaveEquippedStudioItem,
+        ExitEquippedBuddyStudio,
+        ReopenBuddyStudio,
         UnequipStudioItem,
         SaveBuddyStudio,
         ExitBuddyStudio,
