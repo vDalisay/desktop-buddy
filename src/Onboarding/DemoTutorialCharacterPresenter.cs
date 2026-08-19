@@ -40,6 +40,13 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
             _owner.AddChild(_card);
         }
 
+        // After the first Studio save/exit, the durable v2 flow intentionally reuses the
+        // established Unequip runtime action. Make the required re-entry explicit so this never
+        // repeats the old Paint->Work mistake of asking for an action that is inaccessible from
+        // the screen the player is currently on.
+        if (stepId == TutorialStepIds.UnequipStudioItem)
+            ReplaceVisibleHint(text, "Reopen Buddy Studio, then switch that category back to its free/default style.");
+
         _card!.SetStep(stepId);
         _card.Visible = true;
     }
@@ -48,6 +55,21 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
     {
         if (GodotObject.IsInstanceValid(_card))
             _card!.Visible = false;
+    }
+
+    private void ReplaceVisibleHint(string original, string replacement)
+    {
+        Node? panel = _owner.FindChild("FirstSessionGuidancePanel", true, false);
+        if (!GodotObject.IsInstanceValid(panel))
+            return;
+        foreach (Node node in panel!.FindChildren("*", "Label", true, false))
+        {
+            if (node is Label label && string.Equals(label.Text, original, StringComparison.Ordinal))
+            {
+                label.Text = replacement;
+                return;
+            }
+        }
     }
 
     private sealed partial class TutorialBuddyCard : Control
