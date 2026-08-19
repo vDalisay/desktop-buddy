@@ -4,6 +4,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Tools;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -112,7 +113,8 @@ public sealed class PetTickleMoodScenario : IScenario
              iteration < timeout && lab.CareStroke.ValidContactTicks < target;
              iteration++)
         {
-            lab.CareStroke.SetStroke(true, lab.Buddy.Rig.Head.GlobalPosition);
+            lab.CareStroke.SetStroke(
+                true, lab.CareStroke.PointerForContactAt(lab.Buddy.Rig.Head.GlobalPosition));
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         }
 
@@ -128,4 +130,5 @@ public sealed class PetTickleMoodScenario : IScenario
 
         return true;
     }
+
 }

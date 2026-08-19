@@ -87,6 +87,7 @@ public partial class SandboxRoot : Node2D
     [Export] public CareStrokeComponent CareStroke { get; set; } = null!;
     [Export] public ToolReactionComponent ToolReactions { get; set; } = null!;
     [Export] public ToolCursorPresenter CareCursor { get; set; } = null!;
+    [Export] public CareToolVisual3D CareCursorVisual { get; set; } = null!;
     [Export] public BuddyReactionComponent Reactions { get; set; } = null!;
     [Export] public ReactionAudioPresenter ReactionAudio { get; set; } = null!;
     [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
@@ -144,7 +145,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(Scorch) ||
             !GodotObject.IsInstanceValid(CameraKick) ||
             !GodotObject.IsInstanceValid(CareStroke) ||
-            !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) ||
+            !GodotObject.IsInstanceValid(ToolReactions) || !GodotObject.IsInstanceValid(CareCursor) || !GodotObject.IsInstanceValid(CareCursorVisual) ||
             !GodotObject.IsInstanceValid(Reactions) || !GodotObject.IsInstanceValid(ReactionAudio) ||
             !GodotObject.IsInstanceValid(ImpactFeedback) ||
             !GodotObject.IsInstanceValid(SwingHitLag) ||
@@ -208,6 +209,7 @@ public partial class SandboxRoot : Node2D
         Grenades.Detonated += OnGrenadeDetonated;
         CareStroke.Initialize();
         CareCursor.Initialize();
+        CareCursorVisual.Initialize(CareStroke);
         ToolReactions.Initialize();
         Reactions.Initialize();
         ReactionAudio.Initialize();
@@ -789,6 +791,8 @@ public partial class SandboxRoot : Node2D
 
         VisualPresenter.Visible = show3D;
         CursorToolVisual.SetPresentationActive(show3D);
+        CareCursorVisual.SetPresentationActive(show3D);
+        CareCursor.SetLegacyVisualEnabled(!show3D);
         // One gun per cursor: the 3D presenter and the legacy 2D drawing are the same
         // weapon seen two ways, never both at once.
         CursorGunVisual.SetPresentationActive(show3D);

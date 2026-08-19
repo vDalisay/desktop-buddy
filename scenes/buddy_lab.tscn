@@ -43,6 +43,7 @@
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyVisualPresenter.cs" id="27_visual_presenter"]
 [ext_resource type="Resource" path="res://data/buddy/lab_buddy_visual.tres" id="28_visual_profile"]
 [ext_resource type="Script" path="res://src/Presentation3D/CursorToolVisual3D.cs" id="29_body_visual"]
+[ext_resource type="Script" path="res://src/Presentation3D/CareToolVisual3D.cs" id="60_care_visual"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyLookLightingRig.cs" id="30_lighting"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation3D/BuddyPosePipeline.cs" id="32_pose_pipeline"]
 [ext_resource type="Resource" path="res://data/buddy/lab_buddy_expression.tres" id="33_expression"]
@@ -154,7 +155,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="BuddyLab" type="Node2D" node_paths=PackedStringArray("Buddy", "Controls", "Grab", "Pointer", "Boundaries", "Containment", "TelemetryPanel", "BoundaryVisualizer", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "CareCursorVisual", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_lab")
 Buddy = NodePath("Buddy")
 Controls = NodePath("LaboratoryControlComponent")
@@ -188,6 +189,7 @@ CameraKick = NodePath("CameraKickComponent")
 CareStroke = NodePath("CareStrokeComponent")
 ToolReactions = NodePath("ToolReactionComponent")
 CareCursor = NodePath("ToolCursorPresenter")
+CareCursorVisual = NodePath("CareToolVisual3D")
 Reactions = NodePath("BuddyReactionComponent")
 ReactionAudio = NodePath("ReactionAudioPresenter")
 ImpactFeedback = NodePath("ImpactFeedbackPresenter")
@@ -232,6 +234,10 @@ ImpactVisualOffset = NodePath("../ImpactVisualOffsetComponent")
 [node name="CursorToolVisual3D" type="Node3D" parent="."]
 visible = false
 script = ExtResource("29_body_visual")
+
+[node name="CareToolVisual3D" type="Node3D" parent="."]
+visible = false
+script = ExtResource("60_care_visual")
 
 [node name="CameraKickComponent" type="Node" parent="." node_paths=PackedStringArray("WorldCamera", "WorldCamera3D")]
 script = ExtResource("52_camera_kick")
@@ -377,7 +383,7 @@ Facing = NodePath("../FacingController")
 script = ExtResource("4_grab")
 Profile = ExtResource("5_grab_profile")
 
-[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "CursorTools", "CareTool", "CareCursor", "LauncherTool", "GrenadeTool", "GunTool", "SprayerTool")]
+[node name="LabPointerGrab" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "CursorTools", "CareTool", "CareCursor", "CareCursorVisual", "LauncherTool", "GrenadeTool", "GunTool", "SprayerTool")]
 script = ExtResource("6_pointer")
 PowerProfile = ExtResource("90_power_grab_profile")
 Grab = NodePath("../GrabTetherController")
@@ -385,6 +391,7 @@ Pipeline = NodePath("../InteractionPipeline")
 CursorTools = NodePath("../CursorToolController")
 CareTool = NodePath("../CareStrokeComponent")
 CareCursor = NodePath("../ToolCursorPresenter")
+CareCursorVisual = NodePath("../CareToolVisual3D")
 LauncherTool = NodePath("../PullbackLauncherComponent")
 GrenadeTool = NodePath("../GrenadeComponent")
 GunTool = NodePath("../CursorGunComponent")

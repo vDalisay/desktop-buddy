@@ -45,11 +45,20 @@ public partial class ToolReactionComponent : Node
     private Vector2 _guardAimPoint;
     private bool _guardAimInitialized;
     private bool _gloveDefenseLatched;
+    private bool _tickleReachLatched;
 
     public ToolReactionIntent Intent { get; private set; }
     public bool IsInitialized { get; private set; }
-    public bool IsDefending => Intent.GuardActive;
-    public bool IsTickleFleeing => Intent.Active && !Intent.GuardActive && Intent.WalkDirection != 0.0f;
+    /// <summary>
+    /// Guarding specifically against the glove. The tickle feather now uses the same reach
+    /// (owner instruction 2026-08-19), so the tool — not the raw guard flag — is what separates
+    /// "defending myself" from "reaching for the feather"; the angry face keys off this.
+    /// </summary>
+    public bool IsDefending => Intent.GuardActive && Pipeline.SelectedTool == ToolId.BoxingGlove;
+    public bool IsTickleFleeing =>
+        Intent.Active && Pipeline.SelectedTool == ToolId.Tickle && Intent.WalkDirection != 0.0f;
+    /// <summary>True while the buddy is reaching its hands toward the tickle feather.</summary>
+    public bool IsReachingForFeather => Intent.GuardActive && Pipeline.SelectedTool == ToolId.Tickle;
     /// <summary>
     /// True while a learned-harm glove is an immediate on-screen threat. Persistent
     /// harmful memory remains owned by the damage/mood pipeline; presentation uses
@@ -94,6 +103,8 @@ public partial class ToolReactionComponent : Node
         bool canReact = Buddy.CurrentConsciousness == Consciousness.Conscious;
         if (!canReact || Pipeline.SelectedTool != ToolId.BoxingGlove)
             _gloveDefenseLatched = false;
+        if (!canReact || Pipeline.SelectedTool != ToolId.Tickle)
+            _tickleReachLatched = false;
 
         Intent = canReact ? ResolveIntent(delta) : default;
         if (!Intent.GuardActive)
@@ -104,20 +115,42 @@ public partial class ToolReactionComponent : Node
     private ToolReactionIntent ResolveIntent(double delta)
     {
         if (Pipeline.SelectedTool == ToolId.Tickle)
-            return ResolveTickle();
+            return ResolveTickle(delta);
         if (Pipeline.SelectedTool == ToolId.BoxingGlove)
             return ResolveGloveDefense(delta);
         return default;
     }
 
-    private ToolReactionIntent ResolveTickle()
+    private ToolReactionIntent ResolveTickle(double delta)
     {
         bool angry = CareStroke.TickleDisposition == TickleDisposition.Angry;
-        bool active = angry || CareStroke.TickleHopRequested;
-        if (!active)
+        bool hopping = angry || CareStroke.TickleHopRequested;
+
+        // The feather gets the same hands-out reach the glove gets: same targeting, same lag,
+        // same spring (owner instruction 2026-08-19). Only the reason differs — the buddy is
+        // fending off a tickle, not a punch.
+        Vector2 leftTarget = Vector2.Zero;
+        Vector2 rightTarget = Vector2.Zero;
+        bool reaching = false;
+        if (CareStroke.IsHeld)
+        {
+            reaching = TryResolveReach(
+                CareStroke.ContactPoint,
+                CareStroke.ContactPoint,
+                delta,
+                ref _tickleReachLatched,
+                out leftTarget,
+                out rightTarget);
+        }
+        else
+        {
+            _tickleReachLatched = false;
+        }
+
+        if (!hopping && !reaching)
             return default;
 
-        float away = AwayFrom(CareStroke.Cursor);
+        float away = AwayFrom(CareStroke.ContactPoint);
         return new ToolReactionIntent(
             true,
             angry ? away : 0.0f,
@@ -126,13 +159,74 @@ public partial class ToolReactionComponent : Node
             away,
             angry ? Profile.AngryJumpScale : Profile.FriendlyJumpScale,
             Profile.TickleJumpHorizontalRatio,
-            false,
-            Vector2.Zero,
-            Vector2.Zero,
-            0.0f,
-            0.0f,
-            0.0f,
-            1.0f);
+            reaching,
+            leftTarget,
+            rightTarget,
+            reaching ? Profile.GuardStiffness : 0.0f,
+            reaching ? Profile.GuardDamping : 0.0f,
+            reaching ? Profile.GuardMaximumForce : 0.0f,
+            reaching ? Profile.GuardAbsorption : 1.0f);
+    }
+
+    /// <summary>
+    /// Range-latched, lag-aimed hand targets pointed at <paramref name="aimPoint"/>. Shared by the
+    /// glove guard and the tickle reach so both feel identical; returns false when the threat body
+    /// is out of range, which also drops the latch.
+    /// </summary>
+    private bool TryResolveReach(
+        Vector2 bodyPoint,
+        Vector2 aimPoint,
+        double delta,
+        ref bool latched,
+        out Vector2 leftTarget,
+        out Vector2 rightTarget)
+    {
+        leftTarget = Vector2.Zero;
+        rightTarget = Vector2.Zero;
+
+        Vector2 protectedCenter = (Buddy.Rig.Head.GlobalPosition + Buddy.Rig.Torso.GlobalPosition) * 0.5f;
+        Vector2 towardBody = bodyPoint - protectedCenter;
+        float distance = towardBody.Length();
+        if (latched)
+        {
+            if (distance > Profile.DefenseReleaseRange)
+            {
+                latched = false;
+                return false;
+            }
+        }
+        else
+        {
+            if (distance > Profile.DefenseRange)
+                return false;
+            latched = true;
+        }
+
+        if (!_guardAimInitialized)
+        {
+            _guardAimPoint = aimPoint;
+            _guardAimInitialized = true;
+        }
+        else
+        {
+            float lag = Mathf.Max(0.01f, Profile.GuardAimLagSeconds);
+            float alpha = 1.0f - Mathf.Exp(-(float)delta / lag);
+            _guardAimPoint = _guardAimPoint.Lerp(aimPoint, alpha);
+        }
+
+        Vector2 laggedDirection = _guardAimPoint - protectedCenter;
+        if (laggedDirection.IsZeroApprox())
+            laggedDirection = distance > 0.001f ? towardBody : Vector2.Right;
+        _guardDirection = laggedDirection.Normalized();
+
+        Vector2 perpendicular = new(-_guardDirection.Y, _guardDirection.X);
+        // Targets stay at a fixed reach from the buddy. They rotate toward the
+        // pointer with lag but never become anchors on the physical tool body.
+        Vector2 guardCenter = protectedCenter + _guardDirection * Profile.GuardReach;
+        Vector2 halfSeparation = perpendicular * (Profile.GuardHandSeparation * 0.5f);
+        leftTarget = guardCenter + halfSeparation;
+        rightTarget = guardCenter - halfSeparation;
+        return true;
     }
 
     private ToolReactionIntent ResolveGloveDefense(double delta)
@@ -144,60 +238,27 @@ public partial class ToolReactionComponent : Node
             return default;
         }
 
-        Vector2 protectedCenter = (Buddy.Rig.Head.GlobalPosition + Buddy.Rig.Torso.GlobalPosition) * 0.5f;
-        Vector2 towardGlove = glove.GlobalPosition - protectedCenter;
-        float distance = towardGlove.Length();
-        if (_gloveDefenseLatched)
-        {
-            if (distance > Profile.DefenseReleaseRange)
-            {
-                _gloveDefenseLatched = false;
-                return default;
-            }
-        }
-        else
-        {
-            if (distance > Profile.DefenseRange)
-                return default;
-            _gloveDefenseLatched = true;
-        }
-
         Vector2 threatPoint = CursorTools.HasCursor ? CursorTools.Cursor : glove.GlobalPosition;
-        if (!_guardAimInitialized)
-        {
-            _guardAimPoint = threatPoint;
-            _guardAimInitialized = true;
-        }
-        else
-        {
-            float lag = Mathf.Max(0.01f, Profile.GuardAimLagSeconds);
-            float alpha = 1.0f - Mathf.Exp(-(float)delta / lag);
-            _guardAimPoint = _guardAimPoint.Lerp(threatPoint, alpha);
-        }
-
-        Vector2 laggedDirection = _guardAimPoint - protectedCenter;
-        if (laggedDirection.IsZeroApprox())
-            laggedDirection = distance > 0.001f ? towardGlove : Vector2.Right;
-        _guardDirection = laggedDirection.Normalized();
-
-        Vector2 perpendicular = new(-_guardDirection.Y, _guardDirection.X);
-        // Targets stay at a fixed reach from the buddy. They rotate toward the
-        // pointer with lag but never become anchors on the physical glove body.
-        Vector2 guardCenter = protectedCenter + _guardDirection * Profile.GuardReach;
-        Vector2 halfSeparation = perpendicular * (Profile.GuardHandSeparation * 0.5f);
-        float away = AwayFrom(threatPoint);
+        if (!TryResolveReach(
+                glove.GlobalPosition,
+                threatPoint,
+                delta,
+                ref _gloveDefenseLatched,
+                out Vector2 leftTarget,
+                out Vector2 rightTarget))
+            return default;
 
         return new ToolReactionIntent(
             true,
-            away,
+            AwayFrom(threatPoint),
             Profile.DefenseFleeScale,
             false,
             0.0f,
             1.0f,
             0.0f,
             true,
-            guardCenter + halfSeparation,
-            guardCenter - halfSeparation,
+            leftTarget,
+            rightTarget,
             Profile.GuardStiffness,
             Profile.GuardDamping,
             Profile.GuardMaximumForce,

@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="LooseObjectProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Objects/LooseObjectProfile.cs" id="1"]
+
+[resource]
+resource_name = "SteamDemoDroppedTickle"
+script = ExtResource("1")
+ContentId = "tool.tickle"
+Consumable = false
+Hazardous = false
+SafeToEvict = true
+Radius = 24.0
+Mass = 0.5
+LinearDamp = 0.9
+AngularDamp = 1.4
+RestSpeedThreshold = 5.0
+RestTicksRequired = 60
+FillColor = Color(0.839216, 0.662745, 0.290196, 1)
+OutlineColor = Color(0.333333, 0.227451, 0.200000, 1)
+VisualDepthOffset = 144.0

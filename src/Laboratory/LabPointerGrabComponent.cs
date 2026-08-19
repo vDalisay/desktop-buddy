@@ -52,6 +52,7 @@ public partial class LabPointerGrabComponent : Node2D
     [Export] public CursorToolController? CursorTools { get; set; }
     [Export] public CareStrokeComponent? CareTool { get; set; }
     [Export] public ToolCursorPresenter? CareCursor { get; set; }
+    [Export] public CareToolVisual3D? CareCursorVisual { get; set; }
     [Export] public PullbackLauncherComponent? LauncherTool { get; set; }
     [Export] public GrenadeComponent? GrenadeTool { get; set; }
     [Export] public CursorGunComponent? GunTool { get; set; }
@@ -74,6 +75,7 @@ public partial class LabPointerGrabComponent : Node2D
     public bool IsActive => _active;
     public bool HasPointerInput => _sawPointerInput;
     public bool IsPrimaryHeld { get; private set; }
+    public bool IsSecondaryHeld { get; private set; }
     public Vector2 WorldCursor { get; private set; }
     public int ReceivedInputCount { get; private set; }
     public BuddyPartId? LastPickedPart { get; private set; }
@@ -120,6 +122,7 @@ public partial class LabPointerGrabComponent : Node2D
     {
         _sawPointerInput = false;
         IsPrimaryHeld = false;
+        IsSecondaryHeld = false;
         _pendingPress = false;
         _pendingRelease = false;
         _pendingSecondaryPress = false;
@@ -153,16 +156,30 @@ public partial class LabPointerGrabComponent : Node2D
         }
         if (CareTool is not null && GodotObject.IsInstanceValid(CareTool))
             CareTool.SetStroke(false, WorldCursor);
-        if (CareCursor is not null && GodotObject.IsInstanceValid(CareCursor))
         {
             ToolId tool = Pipeline is not null && GodotObject.IsInstanceValid(Pipeline)
                 ? Pipeline.SelectedTool
                 : ToolId.Grab;
-            CareCursor.SetPointerState(tool, WorldCursor, false);
+            if (CareCursorVisual is not null && GodotObject.IsInstanceValid(CareCursorVisual))
+                CareCursorVisual.SetPointerState(tool, WorldCursor, false);
+            if (CareCursor is not null && GodotObject.IsInstanceValid(CareCursor))
+                CareCursor.SetPointerState(tool, WorldCursor, false);
         }
         if (LauncherTool is not null && GodotObject.IsInstanceValid(LauncherTool))
             LauncherTool.RequestCancel();
     }
+
+    /// <summary>
+    /// Whether the care-tool cursor is drawn. The feather rides the pointer the whole time it is
+    /// equipped, like every other tool the player holds; the brush is still a gesture the player
+    /// makes with the button down (owner instruction 2026-08-19).
+    /// </summary>
+    private bool CareToolShown(ToolId tool) => tool switch
+    {
+        ToolId.Tickle => true,
+        ToolId.Pet => _sawPointerInput && IsPrimaryHeld,
+        _ => false,
+    };
 
     public override void _UnhandledInput(InputEvent @event)
     {
@@ -181,14 +198,17 @@ public partial class LabPointerGrabComponent : Node2D
         {
             _pendingRelease = true;
             IsPrimaryHeld = false;
+        IsSecondaryHeld = false;
         }
         else if (@event.IsActionPressed(InputActions.Secondary))
         {
             _pendingSecondaryPress = true;
+            IsSecondaryHeld = true;
         }
         else if (@event.IsActionReleased(InputActions.Secondary))
         {
             _pendingSecondaryRelease = true;
+            IsSecondaryHeld = false;
         }
         else if (@event.IsActionPressed(InputActions.Reload))
         {
@@ -284,8 +304,10 @@ public partial class LabPointerGrabComponent : Node2D
             }
         }
 
+        if (CareCursorVisual is not null && GodotObject.IsInstanceValid(CareCursorVisual))
+            CareCursorVisual.SetPointerState(tool, cursor, CareToolShown(tool));
         if (CareCursor is not null && GodotObject.IsInstanceValid(CareCursor))
-            CareCursor.SetPointerState(tool, cursor, _sawPointerInput && IsPrimaryHeld);
+            CareCursor.SetPointerState(tool, cursor, CareToolShown(tool));
 
         // Forward pointer state to the non-grab tools only after real pointer
         // input has been seen; scenarios drive the tool APIs directly instead.
@@ -299,7 +321,12 @@ public partial class LabPointerGrabComponent : Node2D
 
             if (CareTool is not null && GodotObject.IsInstanceValid(CareTool))
             {
-                CareTool.SetStroke(IsPrimaryHeld && ToolCatalog.CareKindOf(tool) is not null, cursor);
+                CareTool.SetWiggle(tool == ToolId.Tickle && IsSecondaryHeld);
+                // Dragging the feather across the buddy tickles as before; shaking it in place
+                // with secondary does too, so a stationary hand is not a dead hand.
+                bool careHeld = ToolCatalog.CareKindOf(tool) is not null &&
+                    (IsPrimaryHeld || (tool == ToolId.Tickle && IsSecondaryHeld));
+                CareTool.SetStroke(careHeld, cursor);
             }
 
             if (GunTool is not null && GodotObject.IsInstanceValid(GunTool) &&

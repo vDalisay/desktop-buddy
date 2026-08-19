@@ -137,6 +137,7 @@ public partial class DroppedToolInteractionComponent : Node2D
         "res://data/tools/drop_form_shotgun.tres",
         "res://data/tools/drop_form_nerf_blaster.tres",
         "res://data/tools/drop_form_fire_sprayer.tres",
+        "res://data/tools/drop_form_tickle.tres",
     };
 
     private CursorToolProfile[]? _dropForms;
