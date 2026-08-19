@@ -10,6 +10,9 @@ namespace DesktopBuddy.Presentation3D;
 /// </summary>
 public static class MealMeshBuilder
 {
+    /// <summary>Maximum distance from origin in collider-radius units, with test headroom.</summary>
+    public const float EnvelopeRadiusFactor = 1.50f;
+
     private static readonly Color PlateColor = new(0.90f, 0.91f, 0.88f, 1.0f);
 
     public static ArrayMesh PlatedSandwich(float radius, Color bread, Color filling)
