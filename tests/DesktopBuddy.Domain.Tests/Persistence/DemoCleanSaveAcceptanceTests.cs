@@ -3,6 +3,7 @@ using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tests.Content;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Economy;
 using Xunit;
 
@@ -31,6 +32,7 @@ public sealed class DemoCleanSaveAcceptanceTests
         Assert.Equal([ContentIds.ToolGrab], fresh.UnlockedToolIds.OrderBy(id => id));
         Assert.Equal(ContentIds.ToolGrab, fresh.SelectedToolId);
         Assert.False(tutorial.HasPersistedRecord);
+        Assert.Equal(TutorialStepIds.GrabBuddy, tutorial.NextIncompleteStepId);
         Assert.Equal(3, slots.Capacity);
 
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.GrabBuddy));
@@ -38,8 +40,16 @@ public sealed class DemoCleanSaveAcceptanceTests
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.OpenShop));
 
         Assert.True(economy.Purchase(ContentIds.ToolPet).Succeeded);
+        Assert.True(progress.SelectTool(ToolId.Pet));
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.PurchaseContent));
         Assert.True(progress.IsToolUnlocked(ContentIds.ToolPet));
+        Assert.Equal(ContentIds.ToolPet, progress.SelectedToolId);
+
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.OpenPaintBuddy));
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.EnterWorkMode));
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.ExitWorkMode));
+        Assert.True(tutorial.IsComplete);
+        Assert.Null(tutorial.NextIncompleteStepId);
 
         long beforeSlot = economy.BalanceMilliCredits;
         long slotPrice = slots.NextPriceMilliCredits;
@@ -60,17 +70,54 @@ public sealed class DemoCleanSaveAcceptanceTests
         var restoredSlots = new CharacterSlotEntitlementState(restoredProgress, restoredEconomy);
 
         Assert.True(restoredProgress.IsToolUnlocked(ContentIds.ToolPet));
-        Assert.True(restoredTutorial.IsCompleted(TutorialStepIds.GrabBuddy));
-        Assert.True(restoredTutorial.IsCompleted(TutorialStepIds.PurchaseContent));
-        Assert.Equal(TutorialStepIds.OpenPaintBuddy, restoredTutorial.NextIncompleteStepId);
+        Assert.Equal(ContentIds.ToolPet, restoredProgress.SelectedToolId);
+        foreach (string stepId in TutorialStepIds.Ordered)
+            Assert.True(restoredTutorial.IsCompleted(stepId));
+        Assert.True(restoredTutorial.IsComplete);
+        Assert.Null(restoredTutorial.NextIncompleteStepId);
         Assert.Equal(1, restoredSlots.PurchasedSlotCount);
         Assert.Equal(4, restoredSlots.Capacity);
         Assert.Equal(economy.BalanceMilliCredits, restoredEconomy.BalanceMilliCredits);
 
-        // Duplicate purchase attempts and repeated hydration are idempotent: no second tool or
-        // phantom slot is minted simply because the game is relaunched.
+        // Duplicate completion/purchase attempts and repeated hydration are idempotent: no second
+        // tutorial mutation, tool or phantom slot is minted simply because the game is relaunched.
+        long revisionBeforeRepeatedCompletion = restoredProgress.Revision;
+        Assert.False(restoredTutorial.MarkCompleted(TutorialStepIds.ExitWorkMode));
+        Assert.Equal(revisionBeforeRepeatedCompletion, restoredProgress.Revision);
         Assert.False(restoredEconomy.Purchase(ContentIds.ToolPet).Succeeded);
         Assert.Single(restoredProgress.Snapshot().UnlockedToolIds, id => id == ContentIds.ToolPet);
         Assert.Equal(4, restoredSlots.Capacity);
+    }
+
+    [Fact]
+    public void SkippedTutorial_SurvivesRelaunchAndRemainsTerminal()
+    {
+        var progress = new BuddyProgressState(cashPerPain: 10.0);
+        var tutorial = new TutorialProgressState(progress);
+
+        Assert.True(tutorial.Skip());
+        Assert.True(tutorial.Snapshot().Skipped);
+        Assert.True(tutorial.IsComplete);
+        Assert.Null(tutorial.NextIncompleteStepId);
+
+        ProgressSnapshot saved = progress.Snapshot();
+        var restoredProgress = new BuddyProgressState(
+            cashPerPain: 10.0,
+            unlockedToolIds: saved.UnlockedToolIds,
+            revision: saved.Revision,
+            initialBalanceMilliCredits: saved.BalanceMilliCredits,
+            selectedToolId: saved.SelectedToolId,
+            extensions: saved.Extensions);
+        var restoredTutorial = new TutorialProgressState(restoredProgress);
+
+        Assert.True(restoredTutorial.Snapshot().Skipped);
+        Assert.True(restoredTutorial.IsComplete);
+        Assert.Null(restoredTutorial.NextIncompleteStepId);
+        foreach (string stepId in TutorialStepIds.Ordered)
+            Assert.True(restoredTutorial.IsCompleted(stepId));
+
+        long revisionBefore = restoredProgress.Revision;
+        Assert.False(restoredTutorial.MarkCompleted(TutorialStepIds.GrabBuddy));
+        Assert.Equal(revisionBefore, restoredProgress.Revision);
     }
 }
