@@ -92,6 +92,26 @@ jobs:
       - name: Win98 catalogue update scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=win98_catalog_grid_update --seed=1
 
+      # DEMO-9 closure sweep: these are the implementation-plan acceptance paths that were
+      # previously covered only by local/manual testing or narrower milestone jobs.
+      - name: Demo shop progression journey
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=m5_shop_progression --seed=1
+
+      - name: Demo character paint save/restart scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=character_paint_save_use_restart --seed=1
+
+      - name: Demo Work window lifecycle scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=work_play_window_behavior --seed=1
+
+      - name: Demo Work resilience scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=work_mode_resilience --seed=1
+
+      - name: Demo multi-grenade scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=grenade_multi_capture --seed=1
+
+      - name: Demo economy calibration scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=economy_calibration --seed=1
+
       - name: Boot smoke scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
 
