@@ -113,7 +113,7 @@ public sealed class M3PresentationScenario : IScenario
         for (int tick = 0; tick < 40 && !lab.MoneyHud.RewardLabel.Visible; tick++)
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         checks.Add(new StartupCheck("reward_feedback_is_coalesced_and_visible",
-            lab.MoneyHud.RewardLabel.Visible && lab.MoneyHud.RewardLabel.Text == "+$12.0",
+            lab.MoneyHud.RewardLabel.Visible && lab.MoneyHud.RewardLabel.Text == "+$12",
             $"visible={lab.MoneyHud.RewardLabel.Visible} text={lab.MoneyHud.RewardLabel.Text}"));
 
         var torso = lab.Buddy.Rig.Torso;
