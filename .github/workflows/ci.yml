@@ -44,6 +44,9 @@ jobs:
             echo "Proprietary/dev Steam files must not be committed."; exit 1;
           fi
 
+      - name: Verify authored SFX import sidecars
+        run: bash devtools/verify_sfx_imports.sh
+
   # Pull requests and manual dispatch: the full Godot scenario and journey sweep.
   build-test:
     if: github.event_name != 'push'
@@ -67,6 +70,9 @@ jobs:
           if git ls-files | grep -iE 'steam_api(64)?\.(dll|so|dylib)|steam_appid\.txt'; then
             echo "Proprietary/dev Steam files must not be committed."; exit 1;
           fi
+
+      - name: Verify authored SFX import sidecars
+        run: bash devtools/verify_sfx_imports.sh
 
       - name: Download pinned Godot (.NET/mono, Linux)
         run: |
