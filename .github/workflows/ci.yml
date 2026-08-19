@@ -121,6 +121,9 @@ jobs:
       - name: Demo Meal presentation scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=demo_meal_visual --seed=1
 
+      - name: Demo care-tool presentation scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --scenario=demo_care_tool_presentation --seed=1
+
       - name: Boot smoke scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
 
