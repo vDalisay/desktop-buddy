@@ -21,4 +21,7 @@ public enum LooseObjectVisualKind
 
     /// <summary>A stitched ball: off-white sphere with the traditional two-lobed seam.</summary>
     Baseball,
+
+    /// <summary>A clean-room plated sandwich: simple food silhouette with no brand/trade dress.</summary>
+    Meal,
 }
