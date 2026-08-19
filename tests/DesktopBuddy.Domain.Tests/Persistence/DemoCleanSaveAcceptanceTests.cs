@@ -110,6 +110,8 @@ public sealed class DemoCleanSaveAcceptanceTests
             TutorialStepIds.SaveAndExitPaintBackground,
             TutorialStepIds.OpenBuddyStudio,
             TutorialStepIds.BuyAndEquipStudioItem,
+            TutorialStepIds.SaveEquippedStudioItem,
+            TutorialStepIds.ExitEquippedBuddyStudio,
             TutorialStepIds.UnequipStudioItem,
             TutorialStepIds.SaveBuddyStudio,
             TutorialStepIds.ExitBuddyStudio,
@@ -120,6 +122,33 @@ public sealed class DemoCleanSaveAcceptanceTests
         ], TutorialStepIds.Ordered);
         Assert.Equal(TutorialStepIds.EnterWorkMode, TutorialStepIds.Ordered[^4]);
         Assert.Equal(TutorialStepIds.ExitWorkMode, TutorialStepIds.Ordered[^1]);
+    }
+
+    [Fact]
+    public void StudioFirstVisit_ReusesSaveExitRuntimeActionsWithoutSkippingSecondVisit()
+    {
+        var progress = new BuddyProgressState(cashPerPain: 10.0);
+        var tutorial = new TutorialProgressState(progress);
+        foreach (string stepId in TutorialStepIds.Ordered.TakeWhile(id => id != TutorialStepIds.SaveEquippedStudioItem))
+            Assert.True(tutorial.MarkCompleted(stepId));
+
+        Assert.Equal(TutorialStepIds.SaveEquippedStudioItem, tutorial.NextSemanticStepId);
+        Assert.Equal(TutorialStepIds.SaveBuddyStudio, tutorial.NextIncompleteStepId);
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.SaveBuddyStudio));
+        Assert.True(tutorial.IsCompleted(TutorialStepIds.SaveEquippedStudioItem));
+        Assert.False(tutorial.IsCompleted(TutorialStepIds.SaveBuddyStudio));
+
+        Assert.Equal(TutorialStepIds.ExitEquippedBuddyStudio, tutorial.NextSemanticStepId);
+        Assert.Equal(TutorialStepIds.ExitBuddyStudio, tutorial.NextIncompleteStepId);
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.ExitBuddyStudio));
+        Assert.True(tutorial.IsCompleted(TutorialStepIds.ExitEquippedBuddyStudio));
+        Assert.False(tutorial.IsCompleted(TutorialStepIds.ExitBuddyStudio));
+
+        Assert.Equal(TutorialStepIds.UnequipStudioItem, tutorial.NextIncompleteStepId);
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.UnequipStudioItem));
+        Assert.Equal(TutorialStepIds.SaveBuddyStudio, tutorial.NextIncompleteStepId);
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.SaveBuddyStudio));
+        Assert.Equal(TutorialStepIds.ExitBuddyStudio, tutorial.NextIncompleteStepId);
     }
 
     [Fact]
