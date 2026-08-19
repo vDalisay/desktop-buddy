@@ -24,7 +24,7 @@ public sealed class DemoCleanSaveAcceptanceTests
     public void FreshSave_BaseballBatTutorialAndSlotEntitlementsSurviveRelaunch()
     {
         const long startingBalance = 2_000_000;
-        ToolCatalogue catalogue = TestCatalogues.Standard();
+        ToolCatalogue catalogue = TestCatalogues.AllVisible();
         var progress = new BuddyProgressState(
             cashPerPain: 10.0,
             initialBalanceMilliCredits: startingBalance);
@@ -187,7 +187,7 @@ public sealed class DemoCleanSaveAcceptanceTests
         string root = Path.Combine(Path.GetTempPath(), $"desktop-buddy-demo-save-{Guid.NewGuid():N}");
         string progressPath = Path.Combine(root, "progress.json");
         string settingsPath = Path.Combine(root, "settings.json");
-        ToolCatalogue catalogue = TestCatalogues.Standard();
+        ToolCatalogue catalogue = TestCatalogues.AllVisible();
 
         try
         {
