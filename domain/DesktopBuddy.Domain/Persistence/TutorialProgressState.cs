@@ -27,7 +27,6 @@ public static class TutorialStepIds
     public const string BuyAndEquipStudioItem = "demo.onboarding.buy_equip_studio_item";
     public const string SaveEquippedStudioItem = "demo.onboarding.save_equipped_studio_item";
     public const string ExitEquippedBuddyStudio = "demo.onboarding.exit_equipped_buddy_studio";
-    public const string ReopenBuddyStudio = "demo.onboarding.reopen_buddy_studio";
     public const string UnequipStudioItem = "demo.onboarding.unequip_studio_item";
     public const string SaveBuddyStudio = "demo.onboarding.save_buddy_studio";
     public const string ExitBuddyStudio = "demo.onboarding.exit_buddy_studio";
@@ -55,7 +54,6 @@ public static class TutorialStepIds
         BuyAndEquipStudioItem,
         SaveEquippedStudioItem,
         ExitEquippedBuddyStudio,
-        ReopenBuddyStudio,
         UnequipStudioItem,
         SaveBuddyStudio,
         ExitBuddyStudio,
@@ -139,7 +137,27 @@ public sealed class TutorialProgressState
         return snapshot.Skipped || snapshot.CompletedStepIds.Contains(stepId, StringComparer.Ordinal);
     }
 
+    /// <summary>
+    /// The next runtime action the existing guidance controller should observe. The first Studio
+    /// visit deliberately reuses the already-proven Save/Exit runtime actions while persisting
+    /// distinct semantic IDs, so the second visit can still require unequip + save + exit.
+    /// </summary>
     public string? NextIncompleteStepId
+    {
+        get
+        {
+            string? semantic = NextSemanticStepId;
+            return semantic switch
+            {
+                TutorialStepIds.SaveEquippedStudioItem => TutorialStepIds.SaveBuddyStudio,
+                TutorialStepIds.ExitEquippedBuddyStudio => TutorialStepIds.ExitBuddyStudio,
+                _ => semantic,
+            };
+        }
+    }
+
+    /// <summary>The exact durable v2 step, before runtime-action aliasing.</summary>
+    public string? NextSemanticStepId
     {
         get
         {
@@ -159,12 +177,23 @@ public sealed class TutorialProgressState
             throw new ArgumentException("Unknown tutorial step ID.", nameof(stepId));
 
         TutorialProgressSnapshot snapshot = Snapshot();
-        if (snapshot.Skipped || snapshot.CompletedStepIds.Contains(stepId, StringComparer.Ordinal))
+        if (snapshot.Skipped)
+            return false;
+
+        string target = (NextSemanticStepId, stepId) switch
+        {
+            (TutorialStepIds.SaveEquippedStudioItem, TutorialStepIds.SaveBuddyStudio) =>
+                TutorialStepIds.SaveEquippedStudioItem,
+            (TutorialStepIds.ExitEquippedBuddyStudio, TutorialStepIds.ExitBuddyStudio) =>
+                TutorialStepIds.ExitEquippedBuddyStudio,
+            _ => stepId,
+        };
+        if (snapshot.CompletedStepIds.Contains(target, StringComparer.Ordinal))
             return false;
 
         var completed = new HashSet<string>(snapshot.CompletedStepIds, StringComparer.Ordinal)
         {
-            stepId,
+            target,
         };
         string encoded = string.Join(
             '|',
