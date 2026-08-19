@@ -68,14 +68,18 @@ like an equip, because buying flips "Buy" to "Equip" before the audio handler ev
 
 ## 1. Buddy
 
+The buddy's synthesized chirps were deleted 2026-08-19 (owner: placeholder beeps out of the
+build). Care, tickle and enjoyment reactions are **silent** until real clips land; impacts play
+the authored `Buddy_Impact*` files.
+
 | id | when it fires | trigger | kind | status |
 |---|---|---|---|---|
-| `buddy/hurt_light` | small impact accepted (low pain) | `InteractionDamageComponent.ImpactAccepted` | one-shot, 3 variations | SYNTH (pain chirp) |
+| `buddy/hurt_light` | small impact accepted (low pain) | `InteractionDamageComponent.ImpactAccepted` | one-shot, 3 variations | LIVE (`buddy/Buddy_Impact1/2`) |
 | `buddy/hurt_heavy` | big impact accepted (high pain) | same, pain ≥ threshold | one-shot, 3 variations | SYNTH |
 | `buddy/hurt_glove` | boxing-glove hit specifically | `ContentIds.ToolBoxingGlove` | one-shot, 4 var | LIVE |
-| `buddy/enjoy` | impact the buddy *likes* | `ImpactMoodEffectKind.Enjoyment` | one-shot, 2 var | SYNTH (care chirp) |
-| `buddy/pet` | pet reward tick | `CareAwarded(CareKind.Pet)` | one-shot, 3 var | SYNTH |
-| `buddy/tickle_laugh` | tickle reward tick, friendly | `CareAwarded(CareKind.Tickle)` | one-shot, 3 var | SYNTH |
+| `buddy/enjoy` | impact the buddy *likes* | `ImpactMoodEffectKind.Enjoyment` | one-shot, 2 var | NEW (silent) |
+| `buddy/pet` | pet reward tick | `CareAwarded(CareKind.Pet)` | one-shot, 3 var | NEW (silent) |
+| `buddy/tickle_laugh` | tickle reward tick, friendly | `CareAwarded(CareKind.Tickle)` | one-shot, 3 var | NEW (silent) |
 | `buddy/tickle_annoyed` | tickle past the friendly window | `TickleDisposition.Angry` | one-shot, 2 var | NEW |
 | `buddy/knockout` | buddy goes down | `KnockoutStarted` | one-shot | NEW |
 | `buddy/wake_up` | buddy gets back up | `KnockoutEnded` | one-shot | NEW |

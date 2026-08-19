@@ -8,4 +8,3 @@ script = ExtResource("1_reaction")
 PetCompletionFaceSeconds = 0.75
 PistolSadFaceSeconds = 1.5
 LearnedThreatFaceTailSeconds = 5.0
-GloveImpactAmplitude = 12000.0

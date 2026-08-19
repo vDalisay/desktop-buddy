@@ -420,11 +420,10 @@ public partial class ReactionAudioPresenter : Node
             return;
         }
 
+        // An impact the buddy enjoys has no authored clip yet, so it stays silent rather than
+        // beeping a placeholder tone (owner instruction 2026-08-19).
         if (impact.MoodEffect == ImpactMoodEffectKind.Enjoyment)
-        {
-            PlayChirp(Profile.CareChirpHz, 7_000.0f, _baseVolumeDb);
             return;
-        }
 
         if (impact.ContentId == ContentIds.RoomBoundary)
         {
@@ -512,24 +511,13 @@ public partial class ReactionAudioPresenter : Node
 
     private void PlayImpact(AudioStream? stream, AcceptedImpact impact)
     {
-        PlayImpact(stream, impact.Pain, impact.ContentId == ContentIds.ToolBoxingGlove);
+        PlayImpact(stream, impact.Pain);
     }
 
-    private void PlayImpact(AudioStream? stream, float pain, bool glove = false)
+    private void PlayImpact(AudioStream? stream, float pain)
     {
         if (IsValid(stream))
-        {
             PlayStream(stream!, VolumeDbForPain(pain));
-            return;
-        }
-
-        float normalized = _maximumPain <= 0.0f
-            ? 1.0f
-            : Mathf.Clamp(pain / _maximumPain, 0.0f, 1.0f);
-        PlayChirp(
-            Profile.PainChirpHz * Mathf.Lerp(1.15f, 0.72f, normalized),
-            glove ? Profile.GloveImpactAmplitude : 7_000.0f,
-            VolumeDbForPain(pain));
     }
 
     private void OnObjectLanded(LooseObjectLanding landing)
@@ -570,7 +558,10 @@ public partial class ReactionAudioPresenter : Node
         PlayStream(stream!, _baseVolumeDb);
     }
 
-    private void OnCare(CareKind kind) => PlayChirp(Profile.CareChirpHz, 7_000.0f, _baseVolumeDb);
+    /// <summary>Pet and tickle rewards have no authored clip yet; they stay silent.</summary>
+    private void OnCare(CareKind kind)
+    {
+    }
 
     private static AudioStream? BuildVariations(params AudioStream?[] streams)
     {
@@ -691,31 +682,4 @@ public partial class ReactionAudioPresenter : Node
         return null;
     }
 
-    private void PlayChirp(float frequency, float amplitude, float volumeDb)
-    {
-        AudioStreamPlayer? voice = TakeVoice();
-        if (voice is null)
-            return;
-
-        int samples = Math.Max(1, (int)(MixRate * Profile.ChirpSeconds));
-        var bytes = new byte[samples * 2];
-        for (int i = 0; i < samples; i++)
-        {
-            double envelope = 1.0 - (double)i / samples;
-            short value = (short)(Math.Sin(Math.Tau * frequency * i / MixRate) * envelope * amplitude);
-            bytes[i * 2] = (byte)(value & 0xff);
-            bytes[i * 2 + 1] = (byte)((value >> 8) & 0xff);
-        }
-        voice.VolumeDb = volumeDb;
-        voice.Stream = new AudioStreamWav
-        {
-            Format = AudioStreamWav.FormatEnum.Format16Bits,
-            MixRate = MixRate,
-            Stereo = false,
-            Data = bytes,
-        };
-        voice.Play();
-        LastPlayedStream = voice.Stream;
-        LastPlayedVolumeDb = volumeDb;
-    }
 }
