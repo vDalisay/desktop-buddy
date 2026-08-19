@@ -31,6 +31,7 @@ public sealed class TutorialClosureScenario : IScenario
         var messages = new List<string> { $"seed={seed}" };
         SandboxRoot? sandbox = null;
         FirstSessionGuidanceController? guidance = null;
+        ShopPanel? shop = null;
 
         try
         {
@@ -58,6 +59,19 @@ public sealed class TutorialClosureScenario : IScenario
             sandbox.Configure(context);
             tree.Root.AddChild(sandbox);
             await Frames(tree, 3);
+
+            // This scenario intentionally loads the isolated sandbox scene rather than the full
+            // application composition, so CharacterEditorHost/Win98CommandBarBootstrap are absent.
+            // Mount the production ShopPanel directly: command-bar navigation already has its own
+            // Win98 scenario, while this test needs the real visibility + purchase/equip authority
+            // that FirstSessionGuidanceController observes.
+            shop = new ShopPanel
+            {
+                Visible = false,
+            };
+            tree.Root.AddChild(shop);
+            shop.Configure(progress, economy, CatalogueLoader.Catalogue, sandbox.Pipeline);
+            await Frames(tree, 1);
 
             guidance = new FirstSessionGuidanceController
             {
@@ -132,22 +146,17 @@ public sealed class TutorialClosureScenario : IScenario
             // Give the deterministic journey enough money for the authored bat price without
             // bypassing the Shop purchase path that the tutorial is supposed to observe.
             progress.Deposit(1_000_000);
-            await Frames(tree, 4);
+            shop.Refresh();
+            shop.Visible = true;
+            await Frames(tree, 2);
 
-            Button? shopCommand = FindVisibleButton(tree.Root, "Shop");
-            if (GodotObject.IsInstanceValid(shopCommand))
-            {
-                shopCommand!.EmitSignal(BaseButton.SignalName.Pressed);
-                await Frames(tree, 2);
-            }
             string? afterInventory = guidance.Progress.NextIncompleteStepId;
             checks.Add(new StartupCheck(
-                "opening_real_shop_advances_to_baseball_bat_purchase",
-                GodotObject.IsInstanceValid(shopCommand) && afterInventory == TutorialStepIds.PurchaseBaseballBat,
-                $"shop={GodotObject.IsInstanceValid(shopCommand)} next={afterInventory}"));
+                "showing_real_shop_panel_advances_to_baseball_bat_purchase",
+                shop.IsVisibleInTree() && afterInventory == TutorialStepIds.PurchaseBaseballBat,
+                $"visible={shop.IsVisibleInTree()} next={afterInventory}"));
 
-            ShopPanel? shop = tree.Root.FindChild("ShopPanel", true, false) as ShopPanel;
-            Button? batAction = shop?.BuyButtonFor(ContentIds.ToolBaseballBat);
+            Button? batAction = shop.BuyButtonFor(ContentIds.ToolBaseballBat);
             if (GodotObject.IsInstanceValid(batAction))
             {
                 batAction!.EmitSignal(BaseButton.SignalName.Pressed);
@@ -157,7 +166,7 @@ public sealed class TutorialClosureScenario : IScenario
             checks.Add(new StartupCheck(
                 "buying_real_baseball_bat_advances_to_equip",
                 progress.IsToolUnlocked(ContentIds.ToolBaseballBat) && afterBuy == TutorialStepIds.EquipBaseballBat,
-                $"owned={progress.IsToolUnlocked(ContentIds.ToolBaseballBat)} next={afterBuy}"));
+                $"action={batAction?.Text} owned={progress.IsToolUnlocked(ContentIds.ToolBaseballBat)} next={afterBuy}"));
 
             if (GodotObject.IsInstanceValid(batAction))
             {
@@ -188,6 +197,8 @@ public sealed class TutorialClosureScenario : IScenario
         {
             if (GodotObject.IsInstanceValid(guidance))
                 guidance!.QueueFree();
+            if (GodotObject.IsInstanceValid(shop))
+                shop!.QueueFree();
             if (GodotObject.IsInstanceValid(sandbox))
                 sandbox!.QueueFree();
             await Frames(tree, 2);
@@ -201,18 +212,5 @@ public sealed class TutorialClosureScenario : IScenario
     {
         for (int index = 0; index < count; index++)
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-    }
-
-    private static Button? FindVisibleButton(Node root, string text)
-    {
-        foreach (Node child in root.FindChildren("*", "Button", true, false))
-        {
-            if (child is Button button && button.IsVisibleInTree() &&
-                string.Equals(button.Text, text, StringComparison.Ordinal))
-            {
-                return button;
-            }
-        }
-        return null;
     }
 }
