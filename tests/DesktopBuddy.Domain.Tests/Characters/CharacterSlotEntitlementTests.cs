@@ -11,7 +11,7 @@ public sealed class CharacterSlotEntitlementTests
     [Fact]
     public void ThreeFreeSlots_ExpandPermanentlyWithoutAFiniteSlotList()
     {
-        const long startingBalance = 1_000_000;
+        const long startingBalance = 5_000_000;
         var progress = new BuddyProgressState(
             cashPerPain: 10.0,
             initialBalanceMilliCredits: startingBalance);

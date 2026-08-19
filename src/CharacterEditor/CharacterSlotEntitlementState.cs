@@ -18,8 +18,8 @@ public sealed class CharacterSlotEntitlementState
     public const int FreeSlots = 3;
     public const string ExtensionKey = "demo.character_slots.v1";
 
-    private const long FirstPaidSlotMilliCredits = 100_000;
-    private const long PaidSlotStepMilliCredits = 50_000;
+    private const long FirstPaidSlotMilliCredits = 500_000;
+    private const long PaidSlotStepMilliCredits = 500_000;
     private const string OwnershipPrefix = "cosmetic.character_slot_entitlement.";
 
     private readonly BuddyProgressState _progress;
@@ -48,7 +48,7 @@ public sealed class CharacterSlotEntitlementState
     /// <summary>
     /// Price for the next expansion. The exact numbers are intentionally isolated here because
     /// final slot pacing is an owner gate; the rule itself is deterministic and survives UI
-    /// refactors. First paid slot is 100 credits, then +50 credits per additional expansion.
+    /// refactors. First paid slot is 500 credits, then +500 credits per additional expansion.
     /// </summary>
     public long NextPriceMilliCredits => PriceForPurchasedIndex(PurchasedSlotCount + 1);
 
