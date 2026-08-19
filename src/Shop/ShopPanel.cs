@@ -159,12 +159,19 @@ public partial class ShopPanel : PanelContainer
             bool owned = row.Entry.IsStarting || _progress.IsToolUnlocked(row.Entry.ContentId);
             bool active = _progress.SelectedTool == row.Tool;
             bool affordable = _progress.BalanceMilliCredits >= row.Entry.PriceMilliCredits;
+            string name = ContentDisplayName.For(row.Entry.ContentId);
+            string price = ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
 
-            row.Price.Text = owned
-                ? string.Empty
-                : ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
+            row.Price.Text = owned ? string.Empty : price;
             row.Action.Text = active ? "Equipped" : owned ? "Equip" : "Buy";
             row.Action.Disabled = active || (!owned && !affordable);
+            row.Action.TooltipText = active
+                ? $"{name} is currently equipped."
+                : owned
+                    ? $"Equip {name}."
+                    : affordable
+                        ? $"Buy {name} permanently for {price}."
+                        : $"{name} costs {price}; you have {ContentDisplayName.Credits(_progress.BalanceMilliCredits)}. Earn more credits to buy it.";
             // No layer tag: Purchase and Equip sound themselves, so a press that fails — too
             // expensive, pipeline gone — stays honestly silent.
             UiFeedbackAudioBootstrap.Tag(row.Action, layer: UiSfx.NoLayer);

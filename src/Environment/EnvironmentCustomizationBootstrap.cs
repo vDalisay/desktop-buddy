@@ -18,6 +18,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
     private const string LogCategory = "EnvironmentCustomization";
     private IDisposable? _registration;
     private IDisposable? _decoratorRegistration;
+    private SandboxRoot? _sandbox;
     private EnvironmentBackgroundEditor? _backgroundEditor;
     private EnvironmentBackgroundPresenter? _backgroundPresenter;
     private EnvironmentPaintStore? _paintStore;
@@ -43,18 +44,21 @@ public partial class EnvironmentCustomizationBootstrap : Node
     public override void _Process(double delta)
     {
         if (DisplayServer.GetName() == "headless") return;
+        if (!GodotObject.IsInstanceValid(_sandbox))
+            _sandbox = FindFirst<SandboxRoot>(GetTree().Root);
+
         if (_registration is not null)
         {
-            if (FindFirst<SandboxRoot>(GetTree().Root) is SandboxRoot activeSandbox)
-                _presentationVisibility.SetWorkCompanionActive(activeSandbox.Window.WorkCompanionActive);
+            if (GodotObject.IsInstanceValid(_sandbox))
+                _presentationVisibility.SetWorkCompanionActive(_sandbox!.Window.WorkCompanionActive);
             return;
         }
-        var sandbox = FindFirst<SandboxRoot>(GetTree().Root);
-        var commandBar = FindFirst<Win98CommandBarBootstrap>(GetTree().Root);
-        EnvironmentProgressState? state = sandbox?.Saves.EnvironmentProgress;
-        if (!GodotObject.IsInstanceValid(sandbox) || !GodotObject.IsInstanceValid(commandBar) || state is null) return;
 
-        Compose(state, sandbox!.Saves, commandBar!);
+        var commandBar = FindFirst<Win98CommandBarBootstrap>(GetTree().Root);
+        EnvironmentProgressState? state = _sandbox?.Saves.EnvironmentProgress;
+        if (!GodotObject.IsInstanceValid(_sandbox) || !GodotObject.IsInstanceValid(commandBar) || state is null) return;
+
+        Compose(state, _sandbox!.Saves, commandBar!);
     }
 
     internal void ComposeForStartupTest(
@@ -69,8 +73,9 @@ public partial class EnvironmentCustomizationBootstrap : Node
     {
         if (_registration is not null) return;
         _backgroundPresenter = new EnvironmentBackgroundPresenter { Name = nameof(EnvironmentBackgroundPresenter) };
-        SandboxRoot? sandbox = FindFirst<SandboxRoot>(GetTree().Root);
-        if (sandbox is not null) _backgroundPresenter.Configure(sandbox.Boundaries);
+        if (!GodotObject.IsInstanceValid(_sandbox))
+            _sandbox = FindFirst<SandboxRoot>(GetTree().Root);
+        if (GodotObject.IsInstanceValid(_sandbox)) _backgroundPresenter.Configure(_sandbox!.Boundaries);
         GetTree().Root.AddChild(_backgroundPresenter);
 
         // The stored room painting is a local PNG asset; a missing or unreadable one simply leaves
@@ -83,16 +88,16 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _paintIconBootstrap = new EnvironmentPaintToolIconBootstrap { Name = nameof(EnvironmentPaintToolIconBootstrap) };
         GetTree().Root.AddChild(_paintIconBootstrap);
 
-        if (sandbox is not null)
+        if (GodotObject.IsInstanceValid(_sandbox))
         {
             _decorationLayer = new EnvironmentDecorationLayer { Name = nameof(EnvironmentDecorationLayer) };
-            _decorationLayer.Configure(state, sandbox.Boundaries);
+            _decorationLayer.Configure(state, _sandbox!.Boundaries);
             GetTree().Root.AddChild(_decorationLayer);
             _presentationVisibility.Configure(_backgroundPresenter, _decorationLayer);
             _decorator = new EnvironmentDecorator { Name = nameof(EnvironmentDecorator) };
-            _decorator.Configure(sandbox.Progress, sandbox.Economy, sandbox.Pointer, sandbox.Buddy,
-                sandbox.VisualPresenter, state, saves, _decorationLayer);
-            _decorator.ConfigurePreferences(sandbox.Shell);
+            _decorator.Configure(_sandbox.Progress, _sandbox.Economy, _sandbox.Pointer, _sandbox.Buddy,
+                _sandbox.VisualPresenter, state, saves, _decorationLayer);
+            _decorator.ConfigurePreferences(_sandbox.Shell);
             GetTree().Root.AddChild(_decorator);
             RegisterDecorator(commandBar, _decorator);
         }
@@ -133,6 +138,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
         if (GodotObject.IsInstanceValid(_decorationLayer)) _decorationLayer!.QueueFree();
         if (GodotObject.IsInstanceValid(_decorator)) _decorator!.QueueFree();
         _presentationVisibility.SetWorkCompanionActive(false);
+        _sandbox = null;
         _paintIconBootstrap = null;
         _backgroundEditor = null;
         _backgroundPresenter = null;

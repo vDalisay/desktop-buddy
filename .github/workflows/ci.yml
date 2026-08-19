@@ -83,6 +83,15 @@ jobs:
       - name: Headless editor import
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
 
+      - name: Inventory purchase scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=shop_panel_purchase --seed=1
+
+      - name: Settings hotkey capture scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=settings_hotkey_capture --seed=1
+
+      - name: Win98 catalogue update scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=win98_catalog_grid_update --seed=1
+
       - name: Boot smoke scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=boot_smoke --seed=1
 

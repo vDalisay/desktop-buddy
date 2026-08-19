@@ -53,7 +53,7 @@ public partial class ToolSelectionPanel : PanelContainer
 
     private Row BuildRow(VBoxContainer list, CatalogueEntry entry, ToolId tool)
     {
-        var select = new Button { Text = "Select" };
+        var select = new Button { Text = "Equip" };
         select.Pressed += () => Select(entry.ContentId, tool);
         UiFeedbackAudioBootstrap.Tag(select, layer: UiSfx.NoLayer);
         var price = new Label();
@@ -104,11 +104,17 @@ public partial class ToolSelectionPanel : PanelContainer
             bool owned = row.Entry.IsStarting ||
                 _progress.IsToolUnlocked(row.Entry.ContentId);
             bool active = _progress.SelectedTool == row.Tool;
-            row.Price.Text = owned
-                ? string.Empty
-                : ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
-            row.Select.Text = active ? "Equipped" : "Select";
+            string name = ContentDisplayName.For(row.Entry.ContentId);
+            string price = ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
+
+            row.Price.Text = owned ? string.Empty : price;
+            row.Select.Text = active ? "Equipped" : "Equip";
             row.Select.Disabled = !owned || active;
+            row.Select.TooltipText = active
+                ? $"{name} is currently equipped."
+                : owned
+                    ? $"Equip {name}."
+                    : $"Buy {name} in the Shop for {price} before equipping it.";
         }
     }
 

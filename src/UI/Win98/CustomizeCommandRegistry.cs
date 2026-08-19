@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace DesktopBuddy.UI.Win98;
 
@@ -38,6 +37,7 @@ public readonly record struct CustomizeCommandSnapshot(
 public sealed class CustomizeCommandRegistry
 {
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+    private readonly List<Entry> _orderedEntries = [];
 
     public event Action? Changed;
 
@@ -56,21 +56,31 @@ public sealed class CustomizeCommandRegistry
             throw new InvalidOperationException(
                 $"Customize command '{definition.Id}' is already registered. Each route has one owner.");
 
-        _entries.Add(definition.Id, new Entry(definition, invoke, isVisible, isEnabled));
+        var entry = new Entry(definition, invoke, isVisible, isEnabled);
+        _entries.Add(definition.Id, entry);
+        _orderedEntries.Add(entry);
+        _orderedEntries.Sort(CompareEntries);
         Changed?.Invoke();
         return new Registration(this, definition.Id);
     }
 
+    /// <summary>
+    /// Returns the stable authored order while evaluating visibility/enabled policy at read time.
+    /// Registration is rare; snapshots may be requested every frame, so sorting belongs on the
+    /// mutation path rather than the presentation hot path.
+    /// </summary>
     public IReadOnlyList<CustomizeCommandSnapshot> Snapshot()
     {
-        return _entries.Values
-            .OrderBy(entry => entry.Definition.Order)
-            .ThenBy(entry => entry.Definition.Id, StringComparer.Ordinal)
-            .Select(entry => new CustomizeCommandSnapshot(
+        var snapshots = new CustomizeCommandSnapshot[_orderedEntries.Count];
+        for (int index = 0; index < _orderedEntries.Count; index++)
+        {
+            Entry entry = _orderedEntries[index];
+            snapshots[index] = new CustomizeCommandSnapshot(
                 entry.Definition,
                 entry.IsVisible?.Invoke() ?? true,
-                entry.IsEnabled?.Invoke() ?? true))
-            .ToArray();
+                entry.IsEnabled?.Invoke() ?? true);
+        }
+        return snapshots;
     }
 
     public bool TryInvoke(string id)
@@ -86,9 +96,18 @@ public sealed class CustomizeCommandRegistry
 
     private void Unregister(string id)
     {
-        if (!_entries.Remove(id))
+        if (!_entries.Remove(id, out Entry? entry))
             return;
+        _orderedEntries.Remove(entry);
         Changed?.Invoke();
+    }
+
+    private static int CompareEntries(Entry left, Entry right)
+    {
+        int byOrder = left.Definition.Order.CompareTo(right.Definition.Order);
+        return byOrder != 0
+            ? byOrder
+            : StringComparer.Ordinal.Compare(left.Definition.Id, right.Definition.Id);
     }
 
     private sealed record Entry(

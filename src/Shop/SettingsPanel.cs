@@ -27,6 +27,7 @@ public partial class SettingsPanel : PanelContainer
         _list = parts.List;
         _status = parts.Status;
         _status.Text = "Changes apply immediately.";
+        VisibilityChanged += OnVisibilityChanged;
         IsInitialized = true;
     }
 
@@ -154,8 +155,9 @@ public partial class SettingsPanel : PanelContainer
     }
 
     /// <summary>
-    /// A rebind row: pressing the button listens for the next chord and reports it. Escape
-    /// abandons the capture, so a listening row can never trap the player.
+    /// A rebind row: pressing the button listens for a complete chord. Bare modifiers keep the
+    /// capture active and Escape restores this row's own previous chord, so switching between
+    /// multiple hotkey rows can never leak one shortcut into another.
     /// </summary>
     public Button AddHotkey(
         string label,
@@ -166,12 +168,7 @@ public partial class SettingsPanel : PanelContainer
     {
         ArgumentNullException.ThrowIfNull(changed);
         var button = new Button { Name = ControlName(label), Text = chord, TooltipText = description };
-        button.Pressed += () =>
-        {
-            _capturing = button;
-            _captureCallback = changed;
-            button.Text = "Press keys...";
-        };
+        button.Pressed += () => BeginHotkeyCapture(button, label, changed);
         PanelChrome.Row(Group(group), label, new Label(), button);
         _controls.Add(label, button);
         return button;
@@ -182,22 +179,28 @@ public partial class SettingsPanel : PanelContainer
         if (_capturing is null || @event is not InputEventKey { Pressed: true, Echo: false } key)
             return;
 
-        Button button = _capturing;
-        _capturing = null;
-        Action<string>? callback = _captureCallback;
-        _captureCallback = null;
         GetViewport().SetInputAsHandled();
-
-        if (key.Keycode == Key.Escape || !HotkeyBinding.IsCompleteChord(key))
+        if (key.Keycode == Key.Escape)
         {
-            button.Text = _lastChord ?? button.Text;
+            CancelHotkeyCapture("Shortcut change cancelled.");
             return;
         }
 
+        // Pressing Ctrl/Shift/Alt is part of entering a chord, not a failed binding attempt.
+        if (!HotkeyBinding.IsCompleteChord(key))
+        {
+            _status.Text = $"Press the main key for {_captureLabel}; Escape cancels.";
+            return;
+        }
+
+        Button button = _capturing;
+        Action<string>? callback = _captureCallback;
+        string label = _captureLabel ?? "shortcut";
         string chord = HotkeyBinding.Format(key);
-        _lastChord = chord;
+        ClearHotkeyCapture();
         button.Text = chord;
         callback?.Invoke(chord);
+        _status.Text = $"{label}: {chord}.";
     }
 
     /// <summary>The action button for one row (test observability).</summary>
@@ -207,6 +210,42 @@ public partial class SettingsPanel : PanelContainer
     /// <summary>The slider, toggle, or choice control for one row (test observability).</summary>
     public Control? ControlFor(string label) =>
         _controls.TryGetValue(label, out Control? control) ? control : null;
+
+    private void BeginHotkeyCapture(Button button, string label, Action<string> changed)
+    {
+        if (_capturing is not null)
+            CancelHotkeyCapture();
+        _capturing = button;
+        _captureCallback = changed;
+        _captureOriginalChord = button.Text;
+        _captureLabel = label;
+        button.Text = "Press keys...";
+        button.GrabFocus();
+        _status.Text = $"Press a shortcut for {label}; Escape cancels.";
+    }
+
+    private void CancelHotkeyCapture(string? status = null)
+    {
+        if (_capturing is not null && _captureOriginalChord is not null)
+            _capturing.Text = _captureOriginalChord;
+        ClearHotkeyCapture();
+        if (status is not null && GodotObject.IsInstanceValid(_status))
+            _status.Text = status;
+    }
+
+    private void ClearHotkeyCapture()
+    {
+        _capturing = null;
+        _captureCallback = null;
+        _captureOriginalChord = null;
+        _captureLabel = null;
+    }
+
+    private void OnVisibilityChanged()
+    {
+        if (!IsVisibleInTree())
+            CancelHotkeyCapture();
+    }
 
     private static string ControlName(string label) =>
         $"Settings{label.Replace(" ", string.Empty, StringComparison.Ordinal)}Control";
@@ -218,5 +257,6 @@ public partial class SettingsPanel : PanelContainer
     private readonly Dictionary<string, Win98GroupBox> _groups = new(StringComparer.Ordinal);
     private Button? _capturing;
     private Action<string>? _captureCallback;
-    private string? _lastChord;
+    private string? _captureOriginalChord;
+    private string? _captureLabel;
 }
