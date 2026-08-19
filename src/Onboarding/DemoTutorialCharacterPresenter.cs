@@ -6,12 +6,14 @@ using Godot;
 namespace DesktopBuddy.Onboarding;
 
 /// <summary>
-/// Small code-drawn tutorial helper set for the Demo. It intentionally avoids a final art asset:
-/// the presenter only gives the walkthrough a recognizable character and three contextual poses,
-/// while stable tutorial step IDs and persistence remain owned by FirstSessionGuidanceController.
+/// Temporary tutorial helper art. Dropping the owner's final image at
+/// res://assets/ui/tutorial/tutorial_guide.png automatically replaces the procedural placeholder;
+/// tutorial authority and persistence never depend on the art asset.
 /// </summary>
 public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterPresenter
 {
+    public const string OptionalArtPath = "res://assets/ui/tutorial/tutorial_guide.png";
+
     private readonly FirstSessionGuidanceController _owner;
     private TutorialBuddyCard? _card;
 
@@ -31,9 +33,9 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
                 MouseFilter = Control.MouseFilterEnum.Ignore,
             };
             _card.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
-            _card.OffsetLeft = 360;
-            _card.OffsetTop = -150;
-            _card.OffsetRight = 468;
+            _card.OffsetLeft = 380;
+            _card.OffsetTop = -174;
+            _card.OffsetRight = 500;
             _card.OffsetBottom = -16;
             _owner.AddChild(_card);
         }
@@ -51,10 +53,13 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
     private sealed partial class TutorialBuddyCard : Control
     {
         private string _stepId = TutorialStepIds.GrabBuddy;
+        private Texture2D? _ownerArt;
+        private bool _artChecked;
 
         public void SetStep(string stepId)
         {
             _stepId = stepId;
+            EnsureOptionalArt();
             QueueRedraw();
         }
 
@@ -67,11 +72,53 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
             DrawLine(new Vector2(0, Size.Y - 1), new Vector2(Size.X, Size.Y - 1), new Color("404040"), 2);
             DrawLine(new Vector2(Size.X - 1, 0), new Vector2(Size.X - 1, Size.Y), new Color("404040"), 2);
 
-            bool customize = _stepId == TutorialStepIds.OpenPaintBuddy;
-            bool work = _stepId is TutorialStepIds.EnterWorkMode or TutorialStepIds.ExitWorkMode;
-            bool shop = _stepId is TutorialStepIds.OpenShop or TutorialStepIds.PurchaseContent;
+            // Match the other Win98 submenus instead of presenting the helper as an unframed card.
+            DrawRect(new Rect2(3, 3, Math.Max(0, Size.X - 6), 20), Win98ThemeFactory.ActiveTitle, true);
+            DrawString(
+                ThemeDB.FallbackFont,
+                new Vector2(8, 18),
+                "Guide",
+                HorizontalAlignment.Left,
+                -1,
+                12,
+                Colors.White);
 
-            Vector2 center = new(Size.X * 0.5f, 57);
+            Rect2 artRect = new(8, 28, Math.Max(0, Size.X - 16), Math.Max(0, Size.Y - 36));
+            if (GodotObject.IsInstanceValid(_ownerArt))
+            {
+                DrawTextureRect(_ownerArt!, artRect, false);
+                return;
+            }
+
+            DrawProceduralPlaceholder(artRect);
+        }
+
+        private void EnsureOptionalArt()
+        {
+            if (_artChecked)
+                return;
+            _artChecked = true;
+            if (ResourceLoader.Exists(OptionalArtPath))
+                _ownerArt = GD.Load<Texture2D>(OptionalArtPath);
+        }
+
+        private void DrawProceduralPlaceholder(Rect2 artRect)
+        {
+            bool customize = _stepId is
+                TutorialStepIds.OpenPaintBuddy or TutorialStepIds.PaintBuddy or
+                TutorialStepIds.SavePaintBuddy or TutorialStepIds.UsePaintedBuddy or
+                TutorialStepIds.OpenPaintBackground or TutorialStepIds.PaintBackground or
+                TutorialStepIds.SaveAndExitPaintBackground or TutorialStepIds.OpenBuddyStudio or
+                TutorialStepIds.BuyAndEquipStudioItem or TutorialStepIds.UnequipStudioItem or
+                TutorialStepIds.SaveBuddyStudio or TutorialStepIds.ExitBuddyStudio;
+            bool work = _stepId is
+                TutorialStepIds.EnterWorkMode or TutorialStepIds.DragWorkCompanion or
+                TutorialStepIds.ResizeWorkCompanion or TutorialStepIds.ExitWorkMode;
+            bool shop = _stepId is
+                TutorialStepIds.OpenInventory or TutorialStepIds.PurchaseBaseballBat or
+                TutorialStepIds.EquipBaseballBat;
+
+            Vector2 center = artRect.GetCenter() + new Vector2(0, -2);
             Color body = customize ? new Color("f2cf68") : work ? new Color("9dc5e8") : new Color("dfb6dc");
             Color outline = new("343434");
 
