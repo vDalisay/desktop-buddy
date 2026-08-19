@@ -48,6 +48,22 @@ public partial class BuddyReactionComponent : Node
     /// <summary>Lifetime laughs, so a scenario can assert the reaction actually fired.</summary>
     public int LaughCount { get; private set; }
 
+    /// <summary>Lifetime favourite-colour smiles, so a scenario can assert the reaction fired.</summary>
+    public int ColourSmileCount { get; private set; }
+
+    /// <summary>
+    /// The buddy reached something in its favourite colour and is pleased about it. Same face
+    /// and same duration as the completed-pet smile: it is the same quiet contentment, and a
+    /// second smile vocabulary for one more trigger would be noise.
+    /// </summary>
+    public void PlayColourSmile()
+    {
+        if (!IsInitialized)
+            return;
+        _petSmileTicks = SecondsToTicks(Profile.PetCompletionFaceSeconds);
+        ColourSmileCount++;
+    }
+
     /// <summary>
     /// Development/scenario seam for measuring resistance independently of mood.
     /// Production leaves this null so mood, acute fear, and harmful history own fear.

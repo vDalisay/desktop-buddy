@@ -195,8 +195,20 @@ public sealed record CompiledCharacterAppearance
         Shoes = shoes;
     }
 
+    private readonly Rgba32? _favoriteColor;
+
     public Guid CharacterId { get; init; }
     public PartColorSet PartColors { get; init; }
+
+    /// <summary>
+    /// The character's fixed favourite colour. Falls back to the torso colour for any
+    /// appearance compiled without one, so every existing construction site stays valid.
+    /// </summary>
+    public Rgba32 FavoriteColor
+    {
+        get => _favoriteColor ?? PartColors.Torso;
+        init => _favoriteColor = value;
+    }
     public CompiledFeatureAppearance Face { get; init; }
     public CompiledFeatureAppearance Hair { get; init; }
     public CompiledFeatureAppearance Brows { get; init; }

@@ -14,6 +14,13 @@ public sealed record CharacterDocument
     public CharacterFeatureSet Features { get; init; } = CharacterFeatureSet.BuiltIn;
     public CharacterPaintManifest Paint { get; init; } = CharacterPaintManifest.Empty;
 
+    /// <summary>
+    /// The buddy's one fixed favourite colour. Frozen by the normalizer the first time the
+    /// document is seen — that is, when the character is created — so that later repaints of
+    /// the torso never move it. Null only in a document that has not been normalized yet.
+    /// </summary>
+    public Rgba32? FavoriteColor { get; init; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; init; } = new(StringComparer.Ordinal);
 
@@ -21,6 +28,7 @@ public sealed record CharacterDocument
     {
         Id = id,
         DisplayName = displayName,
+        FavoriteColor = CharacterPartColors.BuiltInTorso,
     };
 }
 

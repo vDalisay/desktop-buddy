@@ -35,11 +35,20 @@ public static class CharacterDocumentNormalizer
         foreach ((string key, JsonElement value) in document.ExtensionData)
             extensionData.Add(key, value.Clone());
 
+        // Frozen once, at creation, and never recomputed: a favourite colour that tracked the
+        // current torso colour would change every time the player repainted, which is exactly
+        // the behaviour the owner rejected (2026-08-19).
+        // Filling it is not reported as a change: normalization has to leave a default document
+        // already-normalized, which the compiler relies on, and the value is carried forward on
+        // the next save regardless.
+        Rgba32 favorite = document.FavoriteColor ?? document.PartColors.Torso;
+
         CharacterDocument normalized = document with
         {
             DisplayName = normalizedName,
             PartColors = document.PartColors with { },
             Features = features,
+            FavoriteColor = favorite,
             ExtensionData = extensionData,
         };
 

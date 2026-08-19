@@ -19,8 +19,10 @@ public partial class AutonomousMotionComponent : Node
     private const float RoomInterestArrivalPixels = 28.0f;
 
     private AutonomousMotionPlanner? _planner;
-    private float _roomInterestTargetX;
+    private Vector2 _roomInterestTarget;
     private int _roomInterestTicksRemaining;
+    private int _roomGazeTicksRemaining;
+    private int _roomInterestGazeTicks;
 
     [Export] public StandingDetector Standing { get; set; } = null!;
     [Export] public PuppetRig Rig { get; set; } = null!;
@@ -55,6 +57,17 @@ public partial class AutonomousMotionComponent : Node
     /// </summary>
     public bool HasRoomInterest => _roomInterestTicksRemaining > 0;
 
+    /// <summary>
+    /// How many times a suggested point of interest has been walked all the way to. The
+    /// room-interest owner watches this rather than polling positions, so "arrived" means
+    /// exactly what the walk itself decided.
+    /// </summary>
+    public int RoomInterestArrivals { get; private set; }
+
+    /// <summary>Whether the arrival gaze is still holding, and where it points.</summary>
+    public bool HasRoomGaze => _roomGazeTicksRemaining > 0;
+    public Vector2 RoomGazePoint { get; private set; }
+
     public void Initialize(ulong seed)
     {
         if (!GodotObject.IsInstanceValid(Standing) || !Standing.IsInitialized ||
@@ -87,22 +100,31 @@ public partial class AutonomousMotionComponent : Node
     }
 
     /// <summary>
-    /// Suggests a temporary low-priority point of interest in room/world X coordinates. The
+    /// Suggests a temporary low-priority point of interest in room/world coordinates. The
     /// normal seeded planner keeps authority over jumps and any walk it has already committed to;
     /// the suggestion only turns an otherwise-idle ambient tick into a short walk toward target.
+    /// Only X steers the walk; the full point is kept so the arrival gaze has something to
+    /// look at that is not necessarily at foot height.
     /// </summary>
-    public void SuggestRoomInterest(float targetWorldX, int durationTicks)
+    public void SuggestRoomInterest(Vector2 targetWorld, int durationTicks, int gazeTicks = 0)
     {
-        if (!float.IsFinite(targetWorldX))
-            throw new ArgumentOutOfRangeException(nameof(targetWorldX));
+        if (!targetWorld.IsFinite())
+            throw new ArgumentOutOfRangeException(nameof(targetWorld));
         if (durationTicks <= 0)
             throw new ArgumentOutOfRangeException(nameof(durationTicks));
+        if (gazeTicks < 0)
+            throw new ArgumentOutOfRangeException(nameof(gazeTicks));
 
-        _roomInterestTargetX = targetWorldX;
+        _roomInterestTarget = targetWorld;
         _roomInterestTicksRemaining = durationTicks;
+        _roomInterestGazeTicks = gazeTicks;
     }
 
-    public void ClearRoomInterest() => _roomInterestTicksRemaining = 0;
+    public void ClearRoomInterest()
+    {
+        _roomInterestTicksRemaining = 0;
+        _roomGazeTicksRemaining = 0;
+    }
 
     public void Reseed(ulong seed)
     {
@@ -148,29 +170,38 @@ public partial class AutonomousMotionComponent : Node
 
     private void ApplyRoomInterest(bool enabled, bool canWalk)
     {
+        if (_roomGazeTicksRemaining > 0)
+            _roomGazeTicksRemaining--;
         if (_roomInterestTicksRemaining <= 0)
             return;
 
         _roomInterestTicksRemaining--;
-        if (!enabled || !canWalk || Intent.Activity != AutonomyActivity.Idle)
+        if (!enabled || !canWalk || Intent.Goal != AutonomousMotionGoal.Idle)
             return;
 
-        float delta = _roomInterestTargetX - Rig.Torso.GlobalPosition.X;
+        float delta = _roomInterestTarget.X - Rig.Torso.GlobalPosition.X;
         if (Mathf.Abs(delta) <= RoomInterestArrivalPixels)
         {
+            RoomInterestArrivals++;
+            RoomGazePoint = _roomInterestTarget;
+            _roomGazeTicksRemaining = _roomInterestGazeTicks;
             ClearRoomInterest();
             return;
         }
 
-        double direction = Math.Sign(delta);
+        float direction = Math.Sign(delta);
         if ((direction < 0.0 && BlockedLeft) || (direction > 0.0 && BlockedRight) ||
-            ObstacleInCommittedPath((float)direction))
+            ObstacleInCommittedPath(direction))
         {
             ClearRoomInterest();
             return;
         }
 
-        Intent = new AutonomousMotionIntent(direction, false, AutonomyActivity.Walk);
+        Intent = new AutonomousMotionIntent(
+            direction < 0.0f ? AutonomousMotionGoal.WalkLeft : AutonomousMotionGoal.WalkRight,
+            direction,
+            false,
+            false);
     }
 
     private static void ConfigureObstacleCast(RayCast2D cast, float targetX)

@@ -324,6 +324,9 @@ public static class CharacterDocumentPolicy
                 Shoes = CreateFeature(features?.Shoes, featureDefaults.Shoes),
             },
             Paint = manifest,
+            // Absent in documents written before the favourite colour existed; the normalizer
+            // freezes it from the torso colour on the way in.
+            FavoriteColor = raw.FavoriteColor,
             ExtensionData = extensionData,
         };
     }
@@ -351,6 +354,7 @@ public static class CharacterDocumentPolicy
         public RawPartColors? PartColors { get; init; }
         public RawFeatureSet? Features { get; init; }
         public RawPaintManifest? Paint { get; init; }
+        public Rgba32? FavoriteColor { get; init; }
         [JsonExtensionData] public Dictionary<string, JsonElement>? ExtensionData { get; init; }
     }
 
