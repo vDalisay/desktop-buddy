@@ -57,7 +57,13 @@ public partial class MoneyHudPresenter : PanelContainer
 
     private void OnFeedback(RewardFeedback feedback)
     {
-        RewardLabel.Text = "+$" + (feedback.MilliCredits / 1000.0).ToString("0.0", CultureInfo.InvariantCulture);
+        // Keep sub-credit precision in the ledger so economy pacing does not change, but never
+        // expose a decimal damage reward to the player. The visible burst is the ceiling of the
+        // coalesced reward: +$0.01..+$1.00 reads +$1, +$1.01..+$2.00 reads +$2, etc.
+        long wholeCredits = feedback.MilliCredits <= 0
+            ? 0
+            : (long)Math.Ceiling(feedback.MilliCredits / 1000.0);
+        RewardLabel.Text = "+$" + wholeCredits.ToString(CultureInfo.InvariantCulture);
         RewardLabel.Visible = true;
         _remaining = FeedbackSeconds;
     }
