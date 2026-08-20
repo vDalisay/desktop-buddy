@@ -41,16 +41,7 @@ public static class PanelChrome
         column.AddThemeConstantOverride("separation", Win98ThemeFactory.Px(8));
         margin.AddChild(column);
 
-        var scroll = new ScrollContainer
-        {
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            // A half-scrolled row was painting its checkbox and dropdown straight over the
-            // window frame below the list (owner report 2026-08-20). Controls draw after the
-            // panel that contains them, so nothing but a clip rect will hold them in.
-            ClipContents = true,
-        };
-        column.AddChild(scroll);
+        ScrollContainer scroll = FramedScroll(column, expand: true);
         var list = new VBoxContainer { Name = listName };
         list.AddThemeConstantOverride("separation", Win98ThemeFactory.Px(4));
         list.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
@@ -65,15 +56,10 @@ public static class PanelChrome
         // between a one-line tool and a three-line one, and it scrolls rather than clips when a
         // larger UI scale or a longer sentence overflows it. Px() carries the scale, so the
         // reserved height tracks the font instead of being pinned to one resolution.
-        var descriptionScroll = new ScrollContainer
-        {
-            Name = "PanelDescriptionScroll",
-            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
-            VerticalScrollMode = ScrollContainer.ScrollMode.Auto,
-            ClipContents = true,
-            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(DescriptionLines * DescriptionLineHeight)),
-        };
-        column.AddChild(descriptionScroll);
+        ScrollContainer descriptionScroll = FramedScroll(column, expand: false);
+        descriptionScroll.Name = "PanelDescriptionScroll";
+        descriptionScroll.GetParent<Control>().CustomMinimumSize =
+            new Vector2(0, Win98ThemeFactory.Px(DescriptionLines * DescriptionLineHeight));
         var description = new Label
         {
             Name = "PanelDescription",
@@ -99,6 +85,40 @@ public static class PanelChrome
         footer.AddChild(value);
 
         return new Parts(value, list, status, description);
+    }
+
+    /// <summary>
+    /// A scrolling area inside its own recessed frame.
+    ///
+    /// <para>The Win98 theme gives <c>ScrollContainer</c> a two-pixel recessed border, but a
+    /// ScrollContainer does not inset its content by its own stylebox — so a row scrolled to
+    /// either edge painted its checkbox or dropdown straight over that border, top and bottom
+    /// (owner report 2026-08-20). A PanelContainer does inset by its stylebox, so moving the
+    /// frame out to a wrapper puts the scrolling content strictly inside it. Both clip, so
+    /// nothing can reach the frame from within.</para>
+    /// </summary>
+    private static ScrollContainer FramedScroll(VBoxContainer column, bool expand)
+    {
+        var frame = new PanelContainer
+        {
+            Name = "PanelScrollFrame",
+            ClipContents = true,
+            SizeFlagsVertical = expand ? Control.SizeFlags.ExpandFill : Control.SizeFlags.Fill,
+        };
+        frame.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Light, 2));
+        column.AddChild(frame);
+
+        var scroll = new ScrollContainer
+        {
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            ClipContents = true,
+        };
+        // The frame owns the border now; a second one inside it would double the bevel.
+        scroll.AddThemeStyleboxOverride("panel", new StyleBoxEmpty());
+        frame.AddChild(scroll);
+        return scroll;
     }
 
     /// <summary>One list row: a name that takes the slack, a right-aligned value, an action.</summary>
