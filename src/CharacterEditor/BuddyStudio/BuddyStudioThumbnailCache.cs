@@ -89,6 +89,19 @@ internal static class BuddyStudioThumbnailCache
                 Ellipse(image, 66, 20, 12, 6, accent);
                 Line(image, 25, 22, 71, 22, ink, 2);
                 break;
+            case CharacterFeatureIds.HairBobBangs:
+                // Cap, straight fringe band and the two ear-length side curtains with a flick.
+                Ellipse(image, 48, 20, 26, 15, accent);
+                Rect(image, 27, 20, 42, 7, accent);
+                Ellipse(image, 25, 33, 6, 16, accent);
+                Ellipse(image, 71, 33, 6, 16, accent);
+                Ellipse(image, 22, 46, 6, 4, accent);
+                Ellipse(image, 74, 46, 6, 4, accent);
+                break;
+            case CharacterFeatureIds.HairBuzzCut:
+                Ellipse(image, 48, 22, 25, 13, accent);
+                Line(image, 25, 26, 71, 26, ink, 2);
+                break;
 
             case CharacterFeatureIds.EyesSoftOval:
                 Ellipse(image, 38, 34, 6, 8, accent);
@@ -108,6 +121,16 @@ internal static class BuddyStudioThumbnailCache
                 OutlineRect(image, 30, 31, 16, 6, ink, 2);
                 OutlineRect(image, 50, 31, 16, 6, ink, 2);
                 break;
+            case CharacterFeatureIds.EyesLashedOval:
+                Ellipse(image, 38, 34, 6, 8, accent);
+                Ellipse(image, 58, 34, 6, 8, accent);
+                EllipseRing(image, 38, 34, 6, 8, ink, 2);
+                EllipseRing(image, 58, 34, 6, 8, ink, 2);
+                Line(image, 32, 28, 27, 25, ink, 2);
+                Line(image, 33, 31, 27, 30, ink, 2);
+                Line(image, 64, 28, 69, 25, ink, 2);
+                Line(image, 63, 31, 69, 30, ink, 2);
+                break;
 
             case CharacterFeatureIds.BrowsSoftArc:
                 Arc(image, 38, 29, 9, 5, 200, 340, accent, 3);
@@ -123,10 +146,21 @@ internal static class BuddyStudioThumbnailCache
                 Line(image, 52, 28, 56, 27, accent, 3);
                 Line(image, 60, 27, 66, 28, accent, 3);
                 break;
+            case CharacterFeatureIds.BrowsBushy:
+                Arc(image, 38, 29, 10, 5, 200, 340, accent, 6);
+                Arc(image, 58, 29, 10, 5, 200, 340, accent, 6);
+                break;
 
             case CharacterFeatureIds.NoseButton:
                 Ellipse(image, 48, 39, 6, 5, accent);
                 EllipseRing(image, 48, 39, 6, 5, ink, 2);
+                break;
+            case CharacterFeatureIds.NoseTriangle:
+                Triangle(image, 48, 44, 8, 9, accent);
+                break;
+            case CharacterFeatureIds.NoseBroadOval:
+                Ellipse(image, 48, 40, 11, 4, accent);
+                EllipseRing(image, 48, 40, 11, 4, ink, 2);
                 break;
 
             case CharacterFeatureIds.MouthRounded:
@@ -141,12 +175,25 @@ internal static class BuddyStudioThumbnailCache
             case CharacterFeatureIds.MouthLine:
                 Line(image, 34, 47, 62, 47, accent, 3);
                 break;
+            case CharacterFeatureIds.MouthOval:
+                EllipseRing(image, 48, 47, 8, 7, accent, 3);
+                break;
 
             case CharacterFeatureIds.EarsRoundTabs:
                 Ellipse(image, 21, 36, 6, 11, accent);
                 Ellipse(image, 75, 36, 6, 11, accent);
                 EllipseRing(image, 21, 36, 6, 11, ink, 2);
                 EllipseRing(image, 75, 36, 6, 11, ink, 2);
+                break;
+            case CharacterFeatureIds.EarsPointedTips:
+                Triangle(image, 17, 36, 8, 10, accent, pointsLeft: true);
+                Triangle(image, 79, 36, 8, 10, accent, pointsLeft: false);
+                break;
+            case CharacterFeatureIds.EarsFlatDiscs:
+                Circle(image, 21, 36, 9, accent);
+                Circle(image, 75, 36, 9, accent);
+                Ring(image, 21, 36, 9, ink, 2);
+                Ring(image, 75, 36, 9, ink, 2);
                 break;
 
             case CharacterFeatureIds.AccentPanel:
@@ -170,11 +217,30 @@ internal static class BuddyStudioThumbnailCache
                 OutlineRect(image, 50, 29, 18, 13, accent, 3);
                 Rect(image, 45, 34, 6, 3, accent);
                 break;
+            case CharacterFeatureIds.GlassesRoundWire:
+                Ring(image, 37, 35, 9, accent, 2);
+                Ring(image, 59, 35, 9, accent, 2);
+                Rect(image, 46, 34, 4, 2, accent);
+                break;
+            case CharacterFeatureIds.GlassesShades:
+                Rect(image, 28, 30, 18, 11, accent);
+                Rect(image, 50, 30, 18, 11, accent);
+                Rect(image, 28, 27, 40, 3, accent);
+                break;
 
             case CharacterFeatureIds.HeadwearSoftCap:
                 Ellipse(image, 48, 17, 24, 10, accent);
                 Rect(image, 48, 20, 21, 5, accent);
                 Line(image, 25, 22, 69, 22, ink, 2);
+                break;
+            case CharacterFeatureIds.HeadwearKnitBeanie:
+                Ellipse(image, 48, 19, 25, 12, accent);
+                Rect(image, 22, 24, 52, 6, accent);
+                Circle(image, 48, 8, 5, accent);
+                break;
+            case CharacterFeatureIds.HeadwearWideBrim:
+                Ellipse(image, 48, 18, 19, 10, accent);
+                Ellipse(image, 48, 26, 34, 5, accent);
                 break;
 
             case CharacterFeatureIds.TopUtilityBib:
@@ -197,6 +263,22 @@ internal static class BuddyStudioThumbnailCache
                 Line(image, 36, 25, 60, 49, ink, 3);
                 Line(image, 60, 25, 36, 49, ink, 3);
                 break;
+        }
+    }
+
+    /// <summary>Filled isosceles triangle: apex down by default, or sideways for ear tips.</summary>
+    private static void Triangle(Image image, int cx, int cy, int halfWidth, int height, Color color, bool? pointsLeft = null)
+    {
+        for (int step = 0; step < height; step++)
+        {
+            double shrink = step / (double)Math.Max(1, height);
+            int span = (int)Math.Round(halfWidth * (1.0 - shrink));
+            if (pointsLeft is null)
+                Rect(image, cx - span, cy - height + step, Math.Max(1, span * 2), 1, color);
+            else if (pointsLeft.Value)
+                Rect(image, cx + step, cy - span, 1, Math.Max(1, span * 2), color);
+            else
+                Rect(image, cx - step, cy - span, 1, Math.Max(1, span * 2), color);
         }
     }
 

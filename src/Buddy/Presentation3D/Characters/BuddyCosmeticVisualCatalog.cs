@@ -8,7 +8,7 @@ namespace DesktopBuddy.Buddy.Presentation3D.Characters;
 
 public enum BuddyCosmeticAnchorId { HeadFront, HeadCrown, LeftEar, RightEar, EyeGroup, TorsoBody, TorsoFront, TorsoAttachment, LeftFoot, RightFoot }
 public enum BuddyCosmeticRenderLayer { Top = 10, FaceDetail = 20, Hair = 30, Glasses = 40, Accessory = 50, Headwear = 60 }
-public enum BuddyCosmeticVisualKind { None, HairShortSweep, NoseButton, EarsRoundTabs, WorkClassicGlasses, HeadwearSoftCap, TopUtilityBib, ShoesSoftSteps, GeneratedAsset }
+public enum BuddyCosmeticVisualKind { None, HairShortSweep, HairBobBangs, HairBuzzCut, NoseButton, NoseTriangle, NoseBroadOval, EarsRoundTabs, EarsPointedTips, EarsFlatDiscs, WorkClassicGlasses, GlassesRoundWire, GlassesShades, HeadwearSoftCap, HeadwearKnitBeanie, HeadwearWideBrim, TopUtilityBib, ShoesSoftSteps, GeneratedAsset }
 public enum BuddyCosmeticApplicationMode { Attachment, PartReplacement, PairedPartReplacement }
 
 public sealed record BuddyCosmeticVisualDefinition(string CosmeticId, CharacterFeatureSlot Slot, BuddyCosmeticAnchorId Anchor, BuddyCosmeticRenderLayer Layer, BuddyCosmeticVisualKind Kind, BuddyCosmeticAnchorId? SecondaryAnchor = null, GeneratedBuddyCosmeticResource? GeneratedResource = null, BuddyCosmeticApplicationMode ApplicationMode = BuddyCosmeticApplicationMode.Attachment);
@@ -26,14 +26,24 @@ public sealed class BuddyCosmeticVisualCatalog
         Add(definitions, CharacterFeatureIds.FaceClassicPlate, CharacterFeatureSlot.Face, BuddyCosmeticAnchorId.HeadFront, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.None);
         Add(definitions, CharacterFeatureIds.HairNone, CharacterFeatureSlot.Hair, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Hair, BuddyCosmeticVisualKind.None);
         Add(definitions, CharacterFeatureIds.HairShortSweep, CharacterFeatureSlot.Hair, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Hair, BuddyCosmeticVisualKind.HairShortSweep);
+        Add(definitions, CharacterFeatureIds.HairBobBangs, CharacterFeatureSlot.Hair, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Hair, BuddyCosmeticVisualKind.HairBobBangs);
+        Add(definitions, CharacterFeatureIds.HairBuzzCut, CharacterFeatureSlot.Hair, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Hair, BuddyCosmeticVisualKind.HairBuzzCut);
         Add(definitions, CharacterFeatureIds.NoseNone, CharacterFeatureSlot.Nose, BuddyCosmeticAnchorId.HeadFront, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.None);
         Add(definitions, CharacterFeatureIds.NoseButton, CharacterFeatureSlot.Nose, BuddyCosmeticAnchorId.HeadFront, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.NoseButton);
+        Add(definitions, CharacterFeatureIds.NoseTriangle, CharacterFeatureSlot.Nose, BuddyCosmeticAnchorId.HeadFront, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.NoseTriangle);
+        Add(definitions, CharacterFeatureIds.NoseBroadOval, CharacterFeatureSlot.Nose, BuddyCosmeticAnchorId.HeadFront, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.NoseBroadOval);
         Add(definitions, CharacterFeatureIds.EarsNone, CharacterFeatureSlot.Ears, BuddyCosmeticAnchorId.LeftEar, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.None, BuddyCosmeticAnchorId.RightEar);
         Add(definitions, CharacterFeatureIds.EarsRoundTabs, CharacterFeatureSlot.Ears, BuddyCosmeticAnchorId.LeftEar, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.EarsRoundTabs, BuddyCosmeticAnchorId.RightEar);
+        Add(definitions, CharacterFeatureIds.EarsPointedTips, CharacterFeatureSlot.Ears, BuddyCosmeticAnchorId.LeftEar, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.EarsPointedTips, BuddyCosmeticAnchorId.RightEar);
+        Add(definitions, CharacterFeatureIds.EarsFlatDiscs, CharacterFeatureSlot.Ears, BuddyCosmeticAnchorId.LeftEar, BuddyCosmeticRenderLayer.FaceDetail, BuddyCosmeticVisualKind.EarsFlatDiscs, BuddyCosmeticAnchorId.RightEar);
         Add(definitions, CharacterFeatureIds.GlassesNone, CharacterFeatureSlot.Glasses, BuddyCosmeticAnchorId.EyeGroup, BuddyCosmeticRenderLayer.Glasses, BuddyCosmeticVisualKind.None);
         Add(definitions, CharacterFeatureIds.GlassesWorkClassic, CharacterFeatureSlot.Glasses, BuddyCosmeticAnchorId.EyeGroup, BuddyCosmeticRenderLayer.Glasses, BuddyCosmeticVisualKind.WorkClassicGlasses);
+        Add(definitions, CharacterFeatureIds.GlassesRoundWire, CharacterFeatureSlot.Glasses, BuddyCosmeticAnchorId.EyeGroup, BuddyCosmeticRenderLayer.Glasses, BuddyCosmeticVisualKind.GlassesRoundWire);
+        Add(definitions, CharacterFeatureIds.GlassesShades, CharacterFeatureSlot.Glasses, BuddyCosmeticAnchorId.EyeGroup, BuddyCosmeticRenderLayer.Glasses, BuddyCosmeticVisualKind.GlassesShades);
         Add(definitions, CharacterFeatureIds.HeadwearNone, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.None);
         Add(definitions, CharacterFeatureIds.HeadwearSoftCap, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.HeadwearSoftCap);
+        Add(definitions, CharacterFeatureIds.HeadwearKnitBeanie, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.HeadwearKnitBeanie);
+        Add(definitions, CharacterFeatureIds.HeadwearWideBrim, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.HeadwearWideBrim);
         Add(definitions, CharacterFeatureIds.TopNone, CharacterFeatureSlot.Tops, BuddyCosmeticAnchorId.TorsoBody, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.None);
         Add(definitions, CharacterFeatureIds.TopUtilityBib, CharacterFeatureSlot.Tops, BuddyCosmeticAnchorId.TorsoBody, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.TopUtilityBib, applicationMode: BuddyCosmeticApplicationMode.PartReplacement);
         Add(definitions, CharacterFeatureIds.ShoesNone, CharacterFeatureSlot.Shoes, BuddyCosmeticAnchorId.LeftFoot, BuddyCosmeticRenderLayer.Top, BuddyCosmeticVisualKind.None, BuddyCosmeticAnchorId.RightFoot);

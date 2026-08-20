@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticGlassesShades"
+script = ExtResource("1")
+ContentId = "cosmetic.glasses.shades"
+Kind = 4
+PriceCredits = 200
+ProgressionOrder = 41
+Visible = true
+NameKey = "buddy_studio.cosmetic.glasses.shades.name"
+DescriptionKey = "buddy_studio.cosmetic.glasses.shades.description"
+RequiresLaunchScene = false
+RequiresIcon = false

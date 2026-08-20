@@ -11,6 +11,7 @@ internal enum EyeVariant
     SoftOval,
     RoundDot,
     HorizontalLed,
+    LashedOval,
 }
 
 internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
@@ -105,6 +106,16 @@ internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
                 AddPolygon(commands, CharacterGeometry.Rectangle(center,
                     new Vector2(0.14f, Mathf.Max(0.045f, height * 0.42f))), fill, outline, transform);
                 break;
+            case EyeVariant.LashedOval:
+                AddPolygon(commands, CharacterGeometry.Ellipse(center, 0.105f, height), fill, outline, transform);
+                // Two short lashes off the outer corner; the sign of the eye centre is the side.
+                float lashSide = center.X < 0.0f ? -1.0f : 1.0f;
+                Vector2 corner = center + new Vector2(lashSide * 0.09f, height * 0.5f);
+                AddStroke(commands, [corner, corner + new Vector2(lashSide * 0.15f, 0.08f)],
+                    0.026f, fill, outline, transform);
+                AddStroke(commands, [corner + new Vector2(lashSide * 0.02f, -0.06f), corner + new Vector2(lashSide * 0.17f, -0.02f)],
+                    0.026f, fill, outline, transform);
+                break;
             default:
                 throw new ArgumentOutOfRangeException();
         }
@@ -175,6 +186,7 @@ internal enum BrowVariant
     SoftArc,
     Straight,
     Segmented,
+    Bushy,
 }
 
 internal sealed class ProceduralBrowRenderer : ICharacterBrowRenderer
@@ -238,6 +250,13 @@ internal sealed class ProceduralBrowRenderer : ICharacterBrowRenderer
                 ProceduralEyeRenderer.AddStroke(commands, [outer, inner],
                     0.03f, fill, outline, transform);
                 break;
+            case BrowVariant.Bushy:
+                // Same arc family as SoftArc but heavy and wider, so it reads at tile size.
+                ProceduralEyeRenderer.AddStroke(commands,
+                    CharacterGeometry.Arc(new Vector2(x, y - 0.03f), 0.17f, 0.06f,
+                        0.08f * Mathf.Pi, 0.92f * Mathf.Pi),
+                    0.062f, fill, outline, transform);
+                break;
             case BrowVariant.Segmented:
                 Vector2 midpoint = outer.Lerp(inner, 0.5f);
                 ProceduralEyeRenderer.AddStroke(commands, [outer, midpoint - new Vector2(innerSign * 0.025f, 0.0f)],
@@ -256,6 +275,7 @@ internal enum MouthVariant
     Rounded,
     Pixel,
     Line,
+    Oval,
 }
 
 internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
@@ -355,6 +375,11 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
                     [center + new Vector2(-0.16f, 0.0f), center + new Vector2(0.16f, 0.0f)],
                     fill, outline, transform);
                 break;
+            case MouthVariant.Oval:
+                // Open "o" silhouette: a closed ellipse outline rather than a filled shape.
+                AddPath(commands, Closed(CharacterGeometry.Ellipse(center, 0.10f, 0.12f)),
+                    fill, outline, transform);
+                break;
             default:
                 throw new ArgumentOutOfRangeException();
         }
@@ -376,6 +401,14 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
 
         float width = _variant == MouthVariant.Line ? 0.025f : 0.04f;
         ProceduralEyeRenderer.AddStroke(commands, path, width, fill, outline, transform);
+    }
+
+    private static Vector2[] Closed(Vector2[] path)
+    {
+        var closed = new Vector2[path.Length + 1];
+        Array.Copy(path, closed, path.Length);
+        closed[^1] = path[0];
+        return closed;
     }
 
     private static Vector2[] Pixelate(Vector2[] path)

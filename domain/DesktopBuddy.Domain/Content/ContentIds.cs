@@ -37,18 +37,31 @@ public static class ContentIds
     /// </summary>
     public const string CosmeticWorkGlasses = "cosmetic.glasses.work_classic";
     public const string CosmeticHairShortSweep = "cosmetic.hair.short_sweep";
+    public const string CosmeticHairBobBangs = "cosmetic.hair.bob_bangs";
+    public const string CosmeticHairBuzzCut = "cosmetic.hair.buzz_cut";
     public const string CosmeticBrowsStraight = "cosmetic.brows.straight";
     public const string CosmeticBrowsSegmented = "cosmetic.brows.segmented";
+    public const string CosmeticBrowsBushy = "cosmetic.brows.bushy";
     public const string CosmeticEyesRoundDot = "cosmetic.eyes.round_dot";
     public const string CosmeticEyesHorizontalLed = "cosmetic.eyes.horizontal_led";
+    public const string CosmeticEyesLashedOval = "cosmetic.eyes.lashed_oval";
     public const string CosmeticNoseButton = "cosmetic.nose.button";
+    public const string CosmeticNoseTriangle = "cosmetic.nose.triangle";
+    public const string CosmeticNoseBroadOval = "cosmetic.nose.broad_oval";
     public const string CosmeticMouthPixel = "cosmetic.mouth.pixel";
     public const string CosmeticMouthLine = "cosmetic.mouth.line";
+    public const string CosmeticMouthOval = "cosmetic.mouth.oval";
     public const string CosmeticEarsRoundTabs = "cosmetic.ears.round_tabs";
+    public const string CosmeticEarsPointedTips = "cosmetic.ears.pointed_tips";
+    public const string CosmeticEarsFlatDiscs = "cosmetic.ears.flat_discs";
     public const string CosmeticAccentPanel = "cosmetic.accessories.panel";
     public const string CosmeticAccentChevron = "cosmetic.accessories.chevron";
     public const string CosmeticAccentBolts = "cosmetic.accessories.bolts";
+    public const string CosmeticGlassesRoundWire = "cosmetic.glasses.round_wire";
+    public const string CosmeticGlassesShades = "cosmetic.glasses.shades";
     public const string CosmeticHeadwearSoftCap = "cosmetic.headwear.soft_cap";
+    public const string CosmeticHeadwearKnitBeanie = "cosmetic.headwear.knit_beanie";
+    public const string CosmeticHeadwearWideBrim = "cosmetic.headwear.wide_brim";
     public const string CosmeticTopUtilityBib = "cosmetic.tops.utility_bib";
     public const string CosmeticShoesSoftSteps = "cosmetic.shoes.soft_steps";
 
