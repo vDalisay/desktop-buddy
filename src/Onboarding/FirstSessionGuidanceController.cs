@@ -69,7 +69,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             [TutorialStepIds.OpenInventory] = new(SpotlightScope.Shell, "Win98ShopCommand"),
             [TutorialStepIds.OpenPaintBuddy] = new(SpotlightScope.Shell, "Win98PaintCommand"),
-            [TutorialStepIds.NameBuddy] = new(SpotlightScope.PaintBuddy, "CharacterName"),
             [TutorialStepIds.SelectPaintBrush] = new(SpotlightScope.PaintBuddy, "PaintBrushButton"),
             [TutorialStepIds.SelectPaintColor] = new(SpotlightScope.PaintBuddy, "PaintPresetPalette"),
             [TutorialStepIds.PaintBuddy] = new(SpotlightScope.PaintBuddy, "Win98PaintViewportFrame"),
@@ -77,7 +76,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             [TutorialStepIds.SelectBackgroundSpray] = new(SpotlightScope.Background, "PaintSprayButton"),
             [TutorialStepIds.SelectBackgroundColor] = new(SpotlightScope.Background, "PaintSwatches"),
             [TutorialStepIds.PaintBackground] = new(SpotlightScope.Background, "EnvironmentBackgroundInputBlocker"),
-            [TutorialStepIds.FloatPaintBackgroundPanel] = new(SpotlightScope.Background, "PaintBackgroundPanel"),
             [TutorialStepIds.SaveAndExitPaintBackground] = new(SpotlightScope.Background, "PaintSaveButton"),
             // Name is minted from TopLevelCommandIds.BuddyStudio ("command.buddy_studio").
             [TutorialStepIds.OpenBuddyStudio] = new(SpotlightScope.Shell, "TopLevelCommand_command_buddy_studio"),
@@ -85,7 +83,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             [TutorialStepIds.SelectNoseButtonStyle] = new(SpotlightScope.Studio, "BuddyStudioCatalog"),
             [TutorialStepIds.BuyStudioItem] = new(SpotlightScope.Studio, "BuddyStudioBuy"),
             [TutorialStepIds.EquipStudioItem] = new(SpotlightScope.Studio, "BuddyStudioBuy"),
-            [TutorialStepIds.ExitBuddyStudio] = new(SpotlightScope.Studio, "BuddyStudioActions"),
+            [TutorialStepIds.ExitBuddyStudio] = new(SpotlightScope.Studio, "BuddyStudioCancel"),
             [TutorialStepIds.EnterWorkMode] = new(SpotlightScope.Shell, "Win98WorkCommand"),
         };
 
@@ -217,7 +215,11 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// player actually pressed New rather than inheriting whatever was already loaded.</summary>
     private Guid? _createOriginCharacterId;
     private bool _hasCreateOrigin;
-    private string? _createdCharacterName;
+    private bool _characterListClicked;
+    private bool _characterListBound;
+
+    /// <summary>Set when the Studio save step was satisfied by there being nothing to save.</summary>
+    private bool _studioNothingToSave;
     private PaintColor? _paintColorOrigin;
     private bool _brushButtonPressed;
     private EnvironmentColor? _backgroundColorOrigin;
@@ -463,8 +465,22 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             save.Pressed -= OnBackgroundSavePressed;
     }
 
+    /// <summary>
+    /// A click on the library counts as choosing a character even when it re-picks the one
+    /// already loaded, which changes no id. Bound lazily: the list is built with the editor.
+    /// </summary>
+    private void BindCharacterListSignal()
+    {
+        if (_characterListBound || FindInEditor("CharacterLibraryList") is not ItemList list)
+            return;
+
+        list.ItemSelected += _ => _characterListClicked = true;
+        _characterListBound = true;
+    }
+
     private void AdvanceCurrentStep()
     {
+        BindCharacterListSignal();
         string? step = _tutorial.NextIncompleteStepId;
         if (step is null)
             return;
@@ -509,23 +525,18 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 _paintSaveRequested = false;
                 _paintUseRequested = false;
                 _hasCreateOrigin = false;
-                _createdCharacterName = null;
+                _characterListClicked = false;
                 _torsoRevisionOrigin = null;
                 _paintColorOrigin = null;
                 _brushButtonPressed = false;
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.CreateBuddy when HasCreatedCharacter():
-                _createdCharacterName = CurrentCharacterName();
-                CompleteCurrent(step);
-                break;
-
-            // Any rename off the minted default counts. The default itself never does, so the
-            // step cannot be satisfied by the character the previous step just created.
-            case TutorialStepIds.NameBuddy when IsPaintBuddyOpen() &&
-                                                  CurrentCharacterName() is { Length: > 0 } named &&
-                                                  !string.Equals(named, _createdCharacterName, StringComparison.Ordinal):
+            // Creating already asks for the name in the same dialog, so this is one lesson, not
+            // two. Picking an existing character from the list satisfies it as well: a player
+            // who is out of slots, or replaying, has nothing to create.
+            case TutorialStepIds.CreateBuddy when HasChosenCharacter():
+                _characterListClicked = false;
                 CompleteCurrent(step);
                 break;
 
@@ -613,8 +624,17 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
+            // Buddy already wearing the nose leaves nothing to save, so Save is disabled and the
+            // walkthrough used to stop dead here (owner feedback 2026-08-20). Nothing to save is
+            // a completed save; the Exit prompt explains why no button was pressed.
+            case TutorialStepIds.SaveBuddyStudio when IsStudioOpen() && StudioHasNothingToSave():
+                _studioNothingToSave = true;
+                CompleteCurrent(step);
+                break;
+
             case TutorialStepIds.SaveBuddyStudio when IsStudioOpen() && _studioSaveRequested && !_editor!.Session.IsDirty:
                 _studioSaveRequested = false;
+                _studioNothingToSave = false;
                 CompleteCurrent(step);
                 break;
 
@@ -723,10 +743,12 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private static bool IsPrimaryMouseHeld() => Input.IsMouseButtonPressed(MouseButton.Left);
 
     /// <summary>
-    /// True once the player has pressed New. The id the editor was showing when the step opened
-    /// is the baseline, so an existing character already loaded does not satisfy the lesson.
+    /// True once the player has settled on a character to paint — a new one, or a deliberate
+    /// pick from the library. The id showing when the step opened is the baseline, so whatever
+    /// happened to be loaded does not satisfy the lesson on its own; but a click on the list
+    /// does, because re-picking the character you already had is a real choice and changes no id.
     /// </summary>
-    private bool HasCreatedCharacter()
+    private bool HasChosenCharacter()
     {
         if (!IsPaintBuddyOpen())
             return false;
@@ -739,13 +761,35 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             return false;
         }
 
+        if (_characterListClicked && current is not null)
+            return true;
+
         return current is not null && current != _createOriginCharacterId;
     }
 
-    private string? CurrentCharacterName() =>
-        IsPaintBuddyOpen() && _editor!.Session.WorkingDocument is { } document
-            ? document.DisplayName?.Trim()
+    /// <summary>
+    /// The Studio save step has nothing to do: the character is not dirty and Save is disabled.
+    /// Both are checked because "not dirty" alone is momentarily true while the workspace is
+    /// still settling after the equip.
+    /// </summary>
+    private bool StudioHasNothingToSave() =>
+        GodotObject.IsInstanceValid(_studio) &&
+        GodotObject.IsInstanceValid(_studio!.SaveAction) &&
+        _studio.SaveAction.Disabled &&
+        GodotObject.IsInstanceValid(_editor) &&
+        !_editor!.Session.IsDirty;
+
+    private Control? FindInEditor(string nodeName) =>
+        GodotObject.IsInstanceValid(_editor)
+            ? _editor!.FindChild(nodeName, true, false) as Control
             : null;
+
+    /// <summary>
+    /// Whether a fresh slot is still available. Read off the button the slot bootstrap already
+    /// disables when the player is full, rather than recomputing the entitlement maths here.
+    /// </summary>
+    private bool CanCreateCharacter() =>
+        FindInEditor("Win98NewCharacterButton") is Button create && !create.Disabled;
 
     private bool IsStudioPreviewing(string contentId) =>
         IsStudioOpen() && GodotObject.IsInstanceValid(_studio!.CatalogGrid) &&
@@ -1120,7 +1164,11 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         TutorialStepIds.ResizeWorkCompanion or TutorialStepIds.ToggleWorkCounter or
         TutorialStepIds.ExitWorkMode;
 
-    private static string TextFor(string stepId) => stepId switch
+    /// <summary>
+    /// Instance, not static: two prompts read live state — whether a character slot is still
+    /// free, and whether the Studio save step found anything to save.
+    /// </summary>
+    private string TextFor(string stepId) => stepId switch
     {
         TutorialStepIds.GrabBuddy =>
             "Say hello. Press and hold the left mouse button on Buddy to pick him up, then fling " +
@@ -1142,11 +1190,11 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             "up again, just double-click the dropped tool.",
         TutorialStepIds.OpenPaintBuddy =>
             "Buddy is looking a little plain. Open Paint ▸ Buddy and let us fix that.",
-        TutorialStepIds.CreateBuddy =>
-            "First, a buddy of your own to work on. Press New to mint a fresh character — the " +
-            "one you paint from here on.",
-        TutorialStepIds.NameBuddy =>
-            "Give him a name. Type it in the name box and press Enter.",
+        TutorialStepIds.CreateBuddy => CanCreateCharacter()
+            ? "First, a buddy of your own to work on. Press + New Character, give him a name, " +
+              "and he is the one you paint from here on."
+            : "No free character slots left — so pick the buddy you want to work on from the " +
+              "Characters list instead. Everything after this works exactly the same.",
         TutorialStepIds.SelectPaintBrush => "Pick up the Brush — it is the one you will use most.",
         TutorialStepIds.SelectPaintColor => "Now pick any colour that takes your fancy.",
         TutorialStepIds.PaintBuddy => "Go on, paint something across Buddy's torso.",
@@ -1180,7 +1228,11 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             "Now equip it. You can come back here any time to equip something else, or switch a " +
             "slot back to its free default to take it off again.",
         TutorialStepIds.SaveBuddyStudio => "Save it, or Buddy loses his brand-new nose.",
-        TutorialStepIds.ExitBuddyStudio => "That is Buddy Studio. Exit when you are ready.",
+        TutorialStepIds.ExitBuddyStudio => _studioNothingToSave
+            ? "Turns out he was already wearing that nose, so there was nothing to save — Save " +
+              "stays greyed out until something actually changes. That is Buddy Studio. Exit " +
+              "when you are ready."
+            : "That is Buddy Studio. Exit when you are ready.",
         TutorialStepIds.AdmireStudioBuddy =>
             "Now that is a nose. Painted, kitted out, and frankly better dressed than most of us " +
             "— Buddy is looking sharp.",
@@ -1621,8 +1673,24 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             case TutorialStepIds.PurchaseBaseballBat when GodotObject.IsInstanceValid(_shop):
                 return _shop!.BuyButtonFor(ContentIds.ToolBaseballBat);
+            // The host's own NewButton is hidden in the Win98 paint layout and replaced by
+            // Win98NewCharacterButton, so pointing at it resolved to an invisible control and the
+            // step drew no highlight at all (owner feedback 2026-08-20).
             case TutorialStepIds.CreateBuddy when IsPaintBuddyOpen():
-                return _editor!.NewButton;
+                return FindInEditor("Win98NewCharacterPrompt") is { } prompt && prompt.IsVisibleInTree()
+                    ? prompt
+                    : CanCreateCharacter()
+                        ? FindInEditor("Win98NewCharacterButton")
+                        : FindInEditor("CharacterLibraryList");
+
+            // Only the blue bar: that is the part the player has to drag, and ringing the whole
+            // panel said nothing about where to grab it.
+            case TutorialStepIds.FloatPaintBackgroundPanel when IsBackgroundOpen():
+                return GodotObject.IsInstanceValid(_backgroundEditor) &&
+                       _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is Control panel
+                    ? panel.FindChild("TitleBar", true, false) as Control
+                    : null;
+
             case TutorialStepIds.SavePaintBuddy when IsPaintBuddyOpen():
                 return _editor!.SaveButton;
             case TutorialStepIds.UsePaintedBuddy when IsPaintBuddyOpen():
@@ -1808,8 +1876,18 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
         private Color Dim => new(0, 0, 0, DimAlpha);
 
-        private float PulseGrow => PulseCenterPixels + (PulseAmplitudePixels *
-            Mathf.Sin((float)(_pulseSeconds * Mathf.Tau / PulseSeconds)));
+        private float PulseGrow
+        {
+            get
+            {
+                // Smoothstep over a ping-pong ramp: the same period as a sine but with a gentler
+                // crossing through the middle, where a moving sub-pixel edge shows up most.
+                float phase = (float)Mathf.PosMod(_pulseSeconds / PulseSeconds, 1.0);
+                float ramp = phase < 0.5f ? phase * 2.0f : (1.0f - phase) * 2.0f;
+                float eased = ramp * ramp * (3.0f - (2.0f * ramp));
+                return PulseCenterPixels + (PulseAmplitudePixels * ((eased * 2.0f) - 1.0f));
+            }
+        }
 
         public override void _Process(double delta)
         {
@@ -1891,15 +1969,17 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 foreach (Rect2 span in spans)
                 {
                     if (span.Position.X > cursor)
-                        DrawRect(new Rect2(cursor, top, span.Position.X - cursor, bottom - top), Dim, true);
+                        DrawRect(new Rect2(cursor, top, span.Position.X - cursor, bottom - top), Dim, true,
+                            width: -1.0f, antialiased: true);
                     cursor = Math.Max(cursor, span.End.X);
                 }
                 if (cursor < Size.X)
-                    DrawRect(new Rect2(cursor, top, Size.X - cursor, bottom - top), Dim, true);
+                    DrawRect(new Rect2(cursor, top, Size.X - cursor, bottom - top), Dim, true,
+                        width: -1.0f, antialiased: true);
             }
 
             foreach (Rect2 rect in visible)
-                DrawRect(rect, Win98ThemeFactory.Highlight, false, 3);
+                DrawRect(rect, Win98ThemeFactory.Highlight, false, 3, antialiased: true);
         }
     }
 }

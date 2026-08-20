@@ -22,7 +22,6 @@ public static class TutorialStepIds
     /// Save (owner feedback 2026-08-20).
     /// </summary>
     public const string CreateBuddy = "demo.onboarding.create_buddy";
-    public const string NameBuddy = "demo.onboarding.name_buddy";
 
     public const string SelectPaintBrush = "demo.onboarding.select_paint_brush";
     public const string SelectPaintColor = "demo.onboarding.select_paint_color";
@@ -65,7 +64,6 @@ public static class TutorialStepIds
         UnequipTool,
         OpenPaintBuddy,
         CreateBuddy,
-        NameBuddy,
         SelectPaintBrush,
         SelectPaintColor,
         PaintBuddy,

@@ -102,7 +102,6 @@ public sealed class DemoCleanSaveAcceptanceTests
             TutorialStepIds.UnequipTool,
             TutorialStepIds.OpenPaintBuddy,
             TutorialStepIds.CreateBuddy,
-            TutorialStepIds.NameBuddy,
             TutorialStepIds.SelectPaintBrush,
             TutorialStepIds.SelectPaintColor,
             TutorialStepIds.PaintBuddy,

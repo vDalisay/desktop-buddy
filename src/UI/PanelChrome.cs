@@ -18,6 +18,10 @@ public static class PanelChrome
     /// <summary>Win98's own money green, matching the shell's balance readout.</summary>
     private static readonly Color ValueGreen = Color.Color8(0, 112, 0);
 
+    /// <summary>Three lines fits the longest authored usage sentence at the default scale.</summary>
+    private const int DescriptionLines = 3;
+    private const int DescriptionLineHeight = 18;
+
     public readonly record struct Parts(
         Label HeaderValue,
         VBoxContainer List,
@@ -52,12 +56,26 @@ public static class PanelChrome
 
         // How the highlighted row is actually used. It reads far better here than in a tooltip
         // the player has to hover and wait for (owner feedback 2026-08-20).
+        //
+        // The box is a fixed three lines tall so the footer does not jump as the player moves
+        // between a one-line tool and a three-line one, and it scrolls rather than clips when a
+        // larger UI scale or a longer sentence overflows it. Px() carries the scale, so the
+        // reserved height tracks the font instead of being pinned to one resolution.
+        var descriptionScroll = new ScrollContainer
+        {
+            Name = "PanelDescriptionScroll",
+            HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
+            VerticalScrollMode = ScrollContainer.ScrollMode.Auto,
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(DescriptionLines * DescriptionLineHeight)),
+        };
+        column.AddChild(descriptionScroll);
         var description = new Label
         {
             Name = "PanelDescription",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        column.AddChild(description);
+        descriptionScroll.AddChild(description);
 
         var footer = new HBoxContainer();
         column.AddChild(footer);

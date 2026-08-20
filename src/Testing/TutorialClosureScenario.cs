@@ -276,16 +276,14 @@ public sealed class TutorialClosureScenario : IScenario
             int workStart = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.EnterWorkMode);
             int paintBuddy = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.OpenPaintBuddy);
             int createBuddy = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.CreateBuddy);
-            int nameBuddy = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.NameBuddy);
             int selectBrush = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.SelectPaintBrush);
             int paintBackground = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.OpenPaintBackground);
             // Paint needs something to paint on: create and name have to land after the editor
             // opens and before the first brush lesson, or the player meets a disabled Save.
             checks.Add(new StartupCheck(
                 "character_is_created_and_named_before_painting",
-                paintBuddy >= 0 && createBuddy == paintBuddy + 1 && nameBuddy == createBuddy + 1 &&
-                selectBrush == nameBuddy + 1,
-                $"openPaintBuddy={paintBuddy} create={createBuddy} name={nameBuddy} brush={selectBrush}"));
+                paintBuddy >= 0 && createBuddy == paintBuddy + 1 && selectBrush == createBuddy + 1,
+                $"openPaintBuddy={paintBuddy} create={createBuddy} brush={selectBrush}"));
             int buddyStudio = TutorialStepIds.Ordered.ToList().IndexOf(TutorialStepIds.OpenBuddyStudio);
             checks.Add(new StartupCheck(
                 "work_remains_terminal_after_customization_screens",

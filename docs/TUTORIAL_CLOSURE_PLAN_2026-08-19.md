@@ -160,3 +160,30 @@ pain conversion). This is presentation on top of those, not new economy rules.
 - final tutorial-character art from the owner;
 - adding Room Decorator to the public Demo without the existing owner decision;
 - Workshop/UGC, Steamworks, or other explicitly deferred post-Demo work.
+
+## Owner feedback, 2026-08-20 (third pass)
+
+- **Create-or-choose a character** is one step, not two: the `+ New Character` button already
+  opens a dialog that requires a name, so creating and naming are the same action. The step also
+  accepts a pick from the Characters list, which is the only route left for a player who is out
+  of slots or replaying — the prompt switches to say so, and the highlight moves to the list.
+- **The missing highlight** was a wiring bug: `CharacterEditorHost.NewButton` is hidden by the
+  Win98 paint layout and replaced by `Win98NewCharacterButton`, so the step pointed at an
+  invisible control and the spotlight cleared itself. Slot availability is now read off that
+  replacement button's `Disabled` state rather than recomputing the entitlement maths.
+- **Buddy Studio no longer strands** a player whose buddy already wears the nose. Save is
+  disabled because nothing changed, so the save step treats "nothing to save" as satisfied and
+  the Exit prompt explains why no button was pressed. Exit's spotlight narrowed from the whole
+  action row to the Exit button.
+- **The floating-panel step** rings only the Paint Background title bar — the part you drag —
+  instead of the whole panel.
+- **Panel description** is a fixed three lines tall and scrolls when it overflows, so the footer
+  no longer jumps between a one-line and a three-line tool. The reserved height goes through
+  `Win98ThemeFactory.Px`, so it tracks UI scale.
+- **Spotlight pulse** eased and antialiased. The jitter was a sub-pixel hole edge snapping to a
+  different pixel each frame; `DrawRect` now antialiases and the ramp is smoothstepped so the
+  fastest part of the travel is no longer where the stepping shows.
+- **Arrow charge fills by area, not by length.** The head is a triangle whose area fills fastest
+  at its base, so a linear frontier looked maxed out about a second before the third charge
+  glint. Solving the frontier for area makes the visual fill track the charge, and full now
+  coincides with the glint. At full charge the arrow shakes on two unequal frequencies.
