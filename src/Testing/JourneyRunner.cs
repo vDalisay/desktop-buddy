@@ -3204,7 +3204,8 @@ public partial class JourneyRunner : Node
         int tickleStartAwards = (int)lab.Pipeline.CareAwardCount;
         for (int tick = 0; tick < 740 && lab.Pipeline.TickleDisposition != DesktopBuddy.Domain.Mood.TickleDisposition.Angry; tick++)
         {
-            Vector2 next = lab.Buddy.Rig.Head.GlobalPosition;
+            // The tickle zone is the vane, a stick length along the aim.
+            Vector2 next = lab.CareStroke.PointerForContactAt(lab.Buddy.Rig.Head.GlobalPosition);
             await MovePointerAsync(next, next - pointer, true);
             pointer = next;
             fled |= lab.ToolReactions.IsTickleFleeing;
@@ -3212,7 +3213,7 @@ public partial class JourneyRunner : Node
         fled |= lab.ToolReactions.IsTickleFleeing;
         state["tickle_two_friendly_rewards"] = lab.Pipeline.CareAwardCount == tickleStartAwards + 2;
         state["tickle_became_angry"] = lab.Pipeline.TickleDisposition == DesktopBuddy.Domain.Mood.TickleDisposition.Angry &&
-                                         lab.Reactions.CurrentFace == ">:(";
+                                         lab.Reactions.IsTickleAnnoyed;
         state["tickle_fled"] = fled;
         await SetPrimaryAsync(pointer, false);
         for (int tick = 0; tick < 8 * Engine.PhysicsTicksPerSecond + 2; tick++)

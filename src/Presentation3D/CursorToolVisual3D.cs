@@ -275,6 +275,10 @@ internal static class CursorToolVisualFactory
                 {
                     CursorToolVisual3DKind.LathedBat => BatMeshBuilder.Build(profile),
                     CursorToolVisual3DKind.BoxingGlove => BoxingGloveMeshBuilder.Build(profile),
+                    // Only ever reached for the copy on the floor, which is why it is the
+                    // world form: the held feather is drawn by CareToolVisual3D.
+                    CursorToolVisual3DKind.FeatherDuster =>
+                        CareToolMeshBuilder.BuildFeatherDuster(worldForm: true),
                     _ => null,
                 };
         if (mesh is null)

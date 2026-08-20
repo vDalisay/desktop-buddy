@@ -5,6 +5,7 @@ using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Tools;
+using DesktopBuddy.Presentation3D;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -137,6 +138,55 @@ public sealed class DroppedToolRoundTripScenario : IScenario
             gunReequip && lab.Pipeline.SelectedTool == ToolId.Pistol &&
             droppedTools.FindDropped(ContentIds.ToolPistol) is null,
             $"reequip={gunReequip} selected={lab.Pipeline.SelectedTool}"));
+
+        // The feather is not cursor-tethered either, and the owner reported it could be dropped
+        // but never picked back up.
+        lab.Progress.Adopt(new BuddyProgressState(
+            lab.Progress.CashPerPain,
+            unlockedToolIds: [ContentIds.ToolGrab, ContentIds.ToolTickle],
+            selectedToolId: ContentIds.ToolTickle).Snapshot());
+        lab.Pipeline.SelectTool(ToolId.Tickle);
+        await Frames(tree, 2);
+        var featherDropPoint = new Vector2(200.0f, 130.0f);
+        bool featherDropped = droppedTools.TryDropSelected(featherDropPoint);
+        await Frames(tree, 2);
+        DroppedCursorToolBody? worldFeather = droppedTools.FindDropped(ContentIds.ToolTickle);
+        checks.Add(new StartupCheck(
+            "drop_key_puts_the_feather_on_the_floor_at_the_pointer",
+            featherDropped && worldFeather is not null && worldFeather.RuntimeId != 0 &&
+            lab.Objects.FindBody(worldFeather.RuntimeId) == worldFeather &&
+            lab.Pipeline.SelectedTool == ToolId.Grab,
+            $"dropped={featherDropped} runtime={worldFeather?.RuntimeId} " +
+            $"selected={lab.Pipeline.SelectedTool} position={worldFeather?.GlobalPosition}"));
+
+        // Pick where the feather is *drawn*, not at its origin. The vane end is half a tool length
+        // up the capsule, and the bug was that the mesh sat a whole stick away from the collider,
+        // so a click on what the player could see hit nothing.
+        Vector2 featherPickPoint = worldFeather is not null
+            ? worldFeather.GlobalPosition + (Vector2.Up.Rotated(worldFeather.GlobalRotation) *
+                (CareToolMeshBuilder.FeatherLength * 0.4f))
+            : featherDropPoint;
+        bool featherReequip = droppedTools.TryReequipAt(featherPickPoint);
+        await Frames(tree, 2);
+        checks.Add(new StartupCheck(
+            "double_click_picks_the_dropped_feather_back_up",
+            featherReequip && lab.Pipeline.SelectedTool == ToolId.Tickle &&
+            droppedTools.FindDropped(ContentIds.ToolTickle) is null,
+            $"reequip={featherReequip} selected={lab.Pipeline.SelectedTool} " +
+            $"pick={featherPickPoint} still_down={droppedTools.FindDropped(ContentIds.ToolTickle) is not null}"));
+
+        // The bug itself, asserted directly: the dropped feather is drawn on its own collider.
+        // The held mesh runs +X from the grip, so a world form built that way is offset by a
+        // whole tool length and every click on the visible feather misses.
+        Aabb worldFeatherBounds = CareToolMeshBuilder.BuildFeatherDuster(worldForm: true).GetAabb();
+        Vector3 worldFeatherCentre = worldFeatherBounds.Position + (worldFeatherBounds.Size * 0.5f);
+        checks.Add(new StartupCheck(
+            "dropped_feather_mesh_is_seated_on_its_collider",
+            Mathf.Abs(worldFeatherCentre.X) < 2.0f && Mathf.Abs(worldFeatherCentre.Y) < 2.0f &&
+            worldFeatherBounds.Size.Y > worldFeatherBounds.Size.X &&
+            Mathf.Abs(worldFeatherBounds.Size.Y - CareToolMeshBuilder.FeatherLength) < 4.0f,
+            $"centre={worldFeatherCentre} size={worldFeatherBounds.Size} " +
+            $"length={CareToolMeshBuilder.FeatherLength}"));
 
         // Ownership is the final authority. Build a stale/unowned floor body deliberately and
         // prove the re-equip transaction leaves both persistent selection and registry state alone.

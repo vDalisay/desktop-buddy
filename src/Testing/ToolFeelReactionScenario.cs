@@ -111,7 +111,7 @@ public sealed class ToolFeelReactionScenario : IScenario
         checks.Add(new StartupCheck("tickle_turns_angry_after_six_seconds",
             careLab.Pipeline.CareAwardCount == 3 &&
             careLab.Pipeline.TickleDisposition == TickleDisposition.Angry &&
-            careLab.Reactions.CurrentFace == ">:(" &&
+            careLab.Reactions.IsTickleAnnoyed &&
             careLab.ToolReactions.IsTickleFleeing,
             $"awards={careLab.Pipeline.CareAwardCount} face={careLab.Reactions.CurrentFace} fleeing={careLab.ToolReactions.IsTickleFleeing} hops={secondFriendlyHops}"));
 
@@ -538,7 +538,8 @@ public sealed class ToolFeelReactionScenario : IScenario
         long target = lab.CareStroke.ValidContactTicks + ticks;
         for (int iteration = 0; iteration < ticks + 8 && lab.CareStroke.ValidContactTicks < target; iteration++)
         {
-            lab.CareStroke.SetStroke(true, lab.Buddy.Rig.Head.GlobalPosition);
+            lab.CareStroke.SetStroke(
+                true, lab.CareStroke.PointerForContactAt(lab.Buddy.Rig.Head.GlobalPosition));
             await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
             if (lab.CareStroke.TickleHopRequested) hops++;
         }
@@ -563,4 +564,5 @@ public sealed class ToolFeelReactionScenario : IScenario
         BuddyPart.RightFoot => lab.Buddy.Rig.RightFoot,
         _ => throw new ArgumentOutOfRangeException(nameof(part), part, null),
     };
+
 }

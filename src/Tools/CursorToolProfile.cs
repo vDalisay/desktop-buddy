@@ -11,6 +11,10 @@ public enum CursorToolVisual3DKind
     Capsule = 0,
     LathedBat = 1,
     BoxingGlove = 2,
+
+    /// <summary>The tickle feather. Only ever seen on its dropped world form; the equipped
+    /// feather rides the pointer through CareToolVisual3D instead.</summary>
+    FeatherDuster = 3,
 }
 
 /// <summary>

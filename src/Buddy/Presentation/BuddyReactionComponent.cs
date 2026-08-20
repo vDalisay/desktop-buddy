@@ -31,6 +31,13 @@ public partial class BuddyReactionComponent : Node
     private int _petSmileTicks;
     private int _learnedThreatFaceTicks;
     private int _laughTicks;
+    private int _annoyedTickleTicks;
+
+    /// <summary>
+    /// How long each half of the annoyed-tickle face holds. Short enough to read as a squirm,
+    /// long enough not to strobe (owner instruction 2026-08-19).
+    /// </summary>
+    private const double AnnoyedTickleFaceSwapSeconds = 0.35;
 
     public event Action<string>? FaceChanged;
 
@@ -41,6 +48,13 @@ public partial class BuddyReactionComponent : Node
     public int LearnedThreatFaceTicksRemaining => _learnedThreatFaceTicks;
     public int PistolSadFaceTicksRemaining => _pistolSadTicks;
     public int PistolSadReactionCount { get; private set; }
+
+    /// <summary>
+    /// True while the buddy is past its tickle patience. The face alternates between the scowl
+    /// and a laugh while this holds, so observers must watch this rather than sample one frame's
+    /// emoticon.
+    /// </summary>
+    public bool IsTickleAnnoyed { get; private set; }
 
     /// <summary>Ticks left on the clean-catch laugh; non-zero means the buddy is laughing.</summary>
     public int LaughTicksRemaining => _laughTicks;
@@ -166,11 +180,14 @@ public partial class BuddyReactionComponent : Node
         CurrentFear = Mathf.Clamp(FearOverride ?? resolvedFear, 0.0f, 1.0f);
         Buddy.GrabResistance.FearLevel = CurrentFear;
 
+        IsTickleAnnoyed = Pipeline.SelectedTool == ToolId.Tickle &&
+            CareStroke.TickleDisposition == TickleDisposition.Angry;
+        _annoyedTickleTicks = IsTickleAnnoyed ? _annoyedTickleTicks + 1 : 0;
+
         string resolvedFace = Buddy.CurrentConsciousness == Consciousness.Unconscious ? "x_x" :
             _painTicks > 0 ? ">_<" :
             _pistolSadTicks > 0 ? ":(" :
-            Pipeline.SelectedTool == ToolId.Tickle &&
-            CareStroke.TickleDisposition == TickleDisposition.Angry ? ">:(" :
+            IsTickleAnnoyed ? AnnoyedTickleFace() :
             ToolReaction.IsDefending ? ">:(" :
             _fearTicks > 0 || _learnedThreatFaceTicks > 0 ? "o_o" :
             // Above the quieter positives but below pain, anger, and fear: a buddy that gets
@@ -200,6 +217,16 @@ public partial class BuddyReactionComponent : Node
         }
 
         Buddy.Rig.Head.SetFace(CurrentFace);
+    }
+
+    /// <summary>
+    /// Past its patience the buddy is annoyed but still ticklish, so it flickers between the
+    /// scowl and a laugh instead of holding one glare while it runs.
+    /// </summary>
+    private string AnnoyedTickleFace()
+    {
+        int half = Math.Max(1, SecondsToTicks(AnnoyedTickleFaceSwapSeconds));
+        return (_annoyedTickleTicks / half) % 2 == 0 ? ">:(" : "^_^";
     }
 
     private static int SecondsToTicks(double seconds) => seconds <= 0.0

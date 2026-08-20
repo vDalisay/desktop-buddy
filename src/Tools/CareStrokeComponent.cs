@@ -25,9 +25,15 @@ public partial class CareStrokeComponent : Node
 
     private IRandomSource? _favoriteRandom;
     private bool _held;
+    private bool _wiggling;
     private bool _hadPetContact;
     private Vector2 _cursor;
+    private Vector2 _contactPoint;
     private Vector2 _previousPetCursor;
+    private Vector2 _previousAimCursor;
+    private bool _hasAimSample;
+    private CursorAimState _featherAim = CursorAimState.Initial;
+    private float _featherAngle = CareToolGeometry.RestAngle;
 
     public bool IsInitialized { get; private set; }
     public bool LastContactValid { get; private set; }
@@ -41,7 +47,31 @@ public partial class CareStrokeComponent : Node
     public BuddyPart FavoritePart { get; private set; } = BuddyPart.Head;
     public BuddyPart? ContactPart { get; private set; }
     public Vector2 Cursor => _cursor;
+
+    /// <summary>
+    /// Where the tool actually touches the buddy. For Tickle that is the feather's vane, a
+    /// stick's length along the aim; every other care tool touches at the pointer.
+    /// </summary>
+    public Vector2 ContactPoint => _contactPoint;
+
+    /// <summary>
+    /// Which way the feather stick currently points, in 2D world radians. Steered by pointer
+    /// travel through the same aim model the cursor weapons use, and owned here rather than in a
+    /// presenter because the tickle contact point hangs off the far end of it.
+    /// </summary>
+    public float FeatherAngle => _featherAngle;
+
+    /// <summary>Pointer position that puts the feather's vane on <paramref name="target"/>.</summary>
+    public Vector2 PointerForContactAt(Vector2 target) =>
+        target - CareToolGeometry.TickleContactOffset(_featherAngle);
     public bool IsHeld => _held;
+
+    /// <summary>
+    /// True while the player holds secondary with the feather out: the feather shakes where it
+    /// is, which tickles without needing the pointer dragged across the buddy
+    /// (owner instruction 2026-08-19).
+    /// </summary>
+    public bool IsWiggling => _wiggling;
     public long ValidContactTicks { get; private set; }
     public int FavoriteSelectionCount { get; private set; }
 
@@ -65,11 +95,41 @@ public partial class CareStrokeComponent : Node
             Pipeline.ToolChanged -= OnToolChanged;
     }
 
+    /// <summary>Secondary held, which shakes the feather in place.</summary>
+    public void SetWiggle(bool wiggling) => _wiggling = wiggling;
+
     /// <summary>Latest pointer state in sandbox coordinates; held until replaced.</summary>
     public void SetStroke(bool held, Vector2 worldPoint)
     {
         _held = held;
         _cursor = worldPoint;
+        _contactPoint = ContactPointFor(Pipeline.SelectedTool, worldPoint);
+    }
+
+    private Vector2 ContactPointFor(ToolId tool, Vector2 pointer) =>
+        tool == ToolId.Tickle
+            ? pointer + CareToolGeometry.TickleContactOffset(_featherAngle)
+            : pointer;
+
+    /// <summary>
+    /// Steers the feather toward the direction the pointer has lately been travelling. Same
+    /// model, and the same reasons, as the pistol and glove: raw per-tick deltas would snap the
+    /// stick between a handful of angles.
+    /// </summary>
+    private void TickFeatherAim()
+    {
+        Vector2 motion = _hasAimSample ? _cursor - _previousAimCursor : Vector2.Zero;
+        _previousAimCursor = _cursor;
+        _hasAimSample = true;
+
+        CursorAimResult aim = CursorAim.Tick(new CursorAimInput(
+            _featherAim,
+            new System.Numerics.Vector2(motion.X, motion.Y),
+            WheelSteps: 0,
+            CareToolGeometry.FeatherAim));
+        _featherAim = aim.State;
+        if (aim.IsValid)
+            _featherAngle = Mathf.Atan2(aim.Forward.Y, aim.Forward.X);
     }
 
     /// <summary>Called only from the owning root's routed fixed tick.</summary>
@@ -86,8 +146,12 @@ public partial class CareStrokeComponent : Node
         ContactPart = null;
 
         ToolId selected = Pipeline.SelectedTool;
+        TickFeatherAim();
+        // The tool can be reselected between strokes, so re-derive rather than trusting the
+        // point stamped by the last SetStroke.
+        _contactPoint = ContactPointFor(selected, _cursor);
         PuppetPartBody? part = null;
-        bool valid = _held && TryFindContactPart(_cursor, out part);
+        bool valid = _held && TryFindContactPart(_contactPoint, out part);
         if (valid)
         {
             LastContactValid = true;
@@ -99,12 +163,12 @@ public partial class CareStrokeComponent : Node
         {
             IsPetRubbing = true;
             double distance = _hadPetContact
-                ? Math.Min(_cursor.DistanceTo(_previousPetCursor), Profile.MaximumStrokeDistancePerTick)
+                ? Math.Min(_contactPoint.DistanceTo(_previousPetCursor), Profile.MaximumStrokeDistancePerTick)
                 : 0.0;
             bool favorite = ContactPart == FavoritePart;
             PetCareResult result = Pipeline.AccumulatePet(distance, favorite, delta);
             PetCompletedThisTick = result.Completed;
-            _previousPetCursor = _cursor;
+            _previousPetCursor = _contactPoint;
             _hadPetContact = true;
         }
         else
@@ -123,6 +187,10 @@ public partial class CareStrokeComponent : Node
     private void OnToolChanged(ToolId previous, ToolId selected)
     {
         _hadPetContact = false;
+        // A freshly drawn feather has not been aimed yet; it hangs at rest until the hand moves.
+        _featherAim = CursorAimState.Initial;
+        _featherAngle = CareToolGeometry.RestAngle;
+        _hasAimSample = false;
         if (selected != ToolId.Pet || _favoriteRandom is null)
             return;
 

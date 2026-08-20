@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/CursorToolProfile.cs" id="1_cursor_tool"]
+[ext_resource type="Resource" path="res://data/objects/dropped_tickle.tres" id="2_world_drop"]
+
+[resource]
+resource_name = "SteamDemoDropFormTickle"
+script = ExtResource("1_cursor_tool")
+ContentId = "tool.tickle"
+Radius = 6.0
+Length = 83.0
+Mass = 0.5
+Stiffness = 4800.0
+Damping = 240.0
+MaximumForce = 120000.0
+LinearDamp = 0.9
+AngularDamp = 1.4
+AlignStiffness = 0.0
+AlignDamping = 0.0
+MaximumAlignTorque = 500000.0
+MinimumAlignSpeed = 60.0
+MinimumArmingTravel = 8.0
+WallClearance = 2.0
+VisualColor = Color(0.839216, 0.662745, 0.290196, 1)
+OutlineColor = Color(0.333333, 0.227451, 0.200000, 1)
+VisualDepthOffset = 144.0
+Visual3DKind = 3
+WorldDrop = ExtResource("2_world_drop")

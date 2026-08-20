@@ -61,8 +61,8 @@ Shown in the footer of the Inventory and Tools panels when a row is hovered.
 | --- | --- |
 | Grab | Hold left mouse on Buddy to drag him, and let go while moving to fling him. |
 | Power Grab | The same left-mouse drag as Grab, with a far stronger pull and a much harder throw. |
-| Pet | Hold left mouse and stroke slowly over Buddy — he has a favourite spot. |
-| Tickle | Hold left mouse and wiggle over Buddy; keep it up too long and he turns grumpy. |
+| Brush | Hold left mouse and stroke slowly over Buddy — he has a favourite spot. |
+| Feather | Hold left mouse and wiggle over Buddy; keep it up too long and he turns grumpy. |
 | Baseball Bat | Hold right mouse to wind up through three charge stages, then let go to swing. |
 | Boxing Glove | Swing the cursor into Buddy — the faster the glove moves, the harder it lands. |
 | Baseball | Right mouse drops a ball at the cursor; grab it with left mouse, then hold right mouse and pull back to hurl it. |
