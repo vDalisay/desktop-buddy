@@ -154,6 +154,13 @@ reads as a number quietly changing in the corner; it should read as a payoff.
 All four share one seam: an existing reward event already fires for each (Work tick, purchase,
 pain conversion). This is presentation on top of those, not new economy rules.
 
+## Player-facing copy
+
+`docs/PLAYER_TEXT.md` collects every line the player reads — the 32 tutorial prompts (with
+their conditional variants), the 16 tool descriptions, the 25 settings descriptions, and the 35
+Help-mode entries — in one sheet for the owner's copy pass. It replaces the earlier
+tutorial-only `TUTORIAL_TEXT.md`.
+
 ## Out of scope
 
 - final tutorial copy polish from the owner;
