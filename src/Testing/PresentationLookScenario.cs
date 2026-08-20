@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
@@ -184,19 +185,33 @@ public sealed class PresentationLookScenario : IScenario
             }
         }
 
-        // Connectors carry no outline shell (leaf mesh instances, no children).
+        // Connectors carry no outline shell. They stopped being leaf nodes when painting landed
+        // — limb and head connectors now parent a "Paint" layer — so this asserts the contract
+        // itself, that nothing on a connector wears the shared outline material, rather than the
+        // child count that used to stand in for it.
         bool connectorsUnoutlined = true;
+        int connectorChildren = 0;
         for (int index = 0; index < lab.Buddy.VisualProfile.Connectors.Count; index++)
         {
             var connector = presenter.GetConnectorVisual(index) as MeshInstance3D;
-            connectorsUnoutlined &= connector is not null && connector.GetChildCount() == 0;
+            if (connector is null)
+            {
+                connectorsUnoutlined = false;
+                continue;
+            }
+
+            connectorChildren += connector.GetChildCount();
+            connectorsUnoutlined &=
+                !ReferenceEquals(connector.MaterialOverride, outlineMaterial) &&
+                connector.GetChildren().OfType<MeshInstance3D>().All(child =>
+                    !ReferenceEquals(child.MaterialOverride, outlineMaterial));
         }
 
         bool passed = shells == PuppetRigProfile.RequiredPartCount && allShared &&
             materialOk && connectorsUnoutlined;
         return new StartupCheck("outline_contract", passed,
             $"shells={shells} shared={allShared} material_ok={materialOk} " +
-            $"connectors_unoutlined={connectorsUnoutlined}");
+            $"connectors_unoutlined={connectorsUnoutlined} connector_children={connectorChildren}");
     }
 
     private static async Task<StartupCheck> CheckCameraSpaceDepthLane(
