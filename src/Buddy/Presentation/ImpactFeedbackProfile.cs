@@ -7,8 +7,8 @@ namespace DesktopBuddy.Buddy.Presentation;
 [GlobalClass]
 public partial class ImpactFeedbackProfile : GameResource
 {
-    [Export(PropertyHint.Range, "0.01,1,0.01")] public float HitStopScale { get; set; } = 0.15f;
-    [Export(PropertyHint.Range, "0.01,0.5,0.01")] public double HitStopSeconds { get; set; } = 0.12;
+    [Export(PropertyHint.Range, "0.01,1,0.01")] public float HitStopScale { get; set; } = 0.06f;
+    [Export(PropertyHint.Range, "0.01,0.5,0.01")] public double HitStopSeconds { get; set; } = 0.16;
     [Export(PropertyHint.Range, "1,1000,1")] public float MaximumPain { get; set; } = 100.0f;
     [Export(PropertyHint.Range, "0.01,0.5,0.01")] public double RingSeconds { get; set; } = 0.22;
     [Export(PropertyHint.Range, "0.01,0.5,0.01")] public double GloveSquashSeconds { get; set; } = 0.16;
