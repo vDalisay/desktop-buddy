@@ -137,6 +137,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private TutorialProgressState _tutorial = null!;
     private ITutorialCharacterPresenter? _characterPresenter;
 
+    /// <summary>What the prompt is currently showing, so a step whose text depends on live
+    /// state can be re-rendered without churning the whole panel every frame.</summary>
+    private string? _lastRenderedText;
+
     private Control _root = null!;
     private PanelContainer _panel = null!;
     private Label _body = null!;
@@ -278,7 +282,18 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
         string? next = _tutorial.NextIncompleteStepId;
         if (!string.Equals(next, _displayedStepId, StringComparison.Ordinal))
+        {
             RefreshHint();
+        }
+        else if (next is not null && !string.Equals(TextFor(next), _lastRenderedText, StringComparison.Ordinal))
+        {
+            // Two prompts read live state — whether a character slot is free, and whether the
+            // Studio save step found anything to save — and the slot bootstrap settles a frame
+            // or two after the editor opens. Rendering once when the step opened therefore
+            // showed the wrong half: a player with every slot full was still told to press
+            // "+ New Character", which was greyed out (owner report 2026-08-20).
+            RefreshHint();
+        }
 
         if (_helpActive)
             RefreshContextHelp();
@@ -393,7 +408,22 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private void DiscoverRuntimeNodes()
     {
         _editor ??= GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
-        _workView ??= GetTree().Root.FindChild(nameof(WorkCompanionView), true, false) as WorkCompanionView;
+        // Not ??=: the Work companion is destroyed on exit and rebuilt on the next entry, and a
+        // freed Godot object is invalid but not null. The stale reference then failed every
+        // IsInstanceValid check, so the counter step could never complete and the walkthrough
+        // stopped dead on the second visit to Work Mode (owner report 2026-08-20).
+        if (!GodotObject.IsInstanceValid(_workView))
+        {
+            var rediscovered = GetTree().Root.FindChild(nameof(WorkCompanionView), true, false) as WorkCompanionView;
+            if (!ReferenceEquals(rediscovered, _workView))
+            {
+                _workView = rediscovered;
+                // A fresh companion starts the counter lesson over: the baseline belonged to the
+                // instance that just went away.
+                _workCounterOrigin = null;
+                _workHelpLayer = null;
+            }
+        }
         _shop ??= GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel;
         _work ??= GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
         _backgroundEditor ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) as EnvironmentBackgroundEditor;
@@ -1128,6 +1158,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         }
 
         string text = TextFor(stepId);
+        _lastRenderedText = text;
         bool farewell = string.Equals(stepId, TutorialStepIds.Farewell, StringComparison.Ordinal);
         _dismiss.Visible = IsAcknowledgeStep(stepId);
         _dismiss.Text = farewell ? "Goodbye" : "Continue";
@@ -1899,6 +1930,14 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             QueueRedraw();
         }
 
+        /// <summary>Whole-pixel rect, so every dim band edge lands exactly on a pixel.</summary>
+        private static Rect2 RoundToPixels(Rect2 rect)
+        {
+            Vector2 topLeft = rect.Position.Round();
+            Vector2 bottomRight = rect.End.Round();
+            return new Rect2(topLeft, bottomRight - topLeft);
+        }
+
         public void SetTarget(Rect2 rect) => SetTargets(rect);
 
         public void SetTargets(params Rect2[] rects)
@@ -1932,10 +1971,14 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
             var visible = new List<Rect2>(_targets.Count);
             var edges = new SortedSet<float> { 0f, Size.Y };
-            float grow = PulseGrow;
+            // Whole pixels. The dim is painted as bands around the hole, and a band whose edges
+            // land mid-pixel leaves a sub-pixel sliver that rasterises as a full-width hairline
+            // across the screen — the streaks the pulse appeared to emit (owner report
+            // 2026-08-20). Rounding the hole makes every band edge exact.
+            float grow = Mathf.Round(PulseGrow);
             foreach (Rect2 candidate in _targets)
             {
-                Rect2 clipped = candidate.Grow(grow).Intersection(viewport);
+                Rect2 clipped = RoundToPixels(candidate.Grow(grow)).Intersection(viewport);
                 if (clipped.Size.X <= 0 || clipped.Size.Y <= 0)
                     continue;
                 visible.Add(clipped);
@@ -1954,7 +1997,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             {
                 float top = rows[index];
                 float bottom = rows[index + 1];
-                if (bottom - top <= 0)
+                if (bottom - top < 1.0f)
                     continue;
 
                 var spans = new List<Rect2>();
@@ -1969,13 +2012,11 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 foreach (Rect2 span in spans)
                 {
                     if (span.Position.X > cursor)
-                        DrawRect(new Rect2(cursor, top, span.Position.X - cursor, bottom - top), Dim, true,
-                            width: -1.0f, antialiased: true);
+                        DrawRect(new Rect2(cursor, top, span.Position.X - cursor, bottom - top), Dim, true);
                     cursor = Math.Max(cursor, span.End.X);
                 }
                 if (cursor < Size.X)
-                    DrawRect(new Rect2(cursor, top, Size.X - cursor, bottom - top), Dim, true,
-                        width: -1.0f, antialiased: true);
+                    DrawRect(new Rect2(cursor, top, Size.X - cursor, bottom - top), Dim, true);
             }
 
             foreach (Rect2 rect in visible)
