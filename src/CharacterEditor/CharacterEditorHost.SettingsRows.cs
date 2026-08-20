@@ -59,34 +59,34 @@ public partial class CharacterEditorHost
     {
         _settingsPanel.AddSlider(
             "Master Volume",
-            "Every sound in the game at once. Turn this down and everything below it follows.",
+            "Controls every sound in the game. The volume sliders below are all relative to this one.",
             settings.MasterVolume,
             value => _sandbox.Shell.EditSettings(s => s with { MasterVolume = value }),
             save,
             SoundGroup);
         _settingsPanel.AddSlider(
             "Sound Effects",
-            "Bat hits, gunfire, explosions, footsteps and the buddy's own yelps and laughs.",
+            "Controls gameplay sounds, think of hits, gunfire and explosions.",
             settings.SfxVolume,
             value => _sandbox.Shell.EditSettings(s => s with { SfxVolume = value }),
             save,
             SoundGroup);
         _settingsPanel.AddSlider(
             "Interface Sounds",
-            "Menu clicks, button presses, purchase chimes and save confirmations.",
+            "Controls menu clicks, button presses, purchase chimes and save confirmations.",
             settings.UiVolume,
             value => _sandbox.Shell.EditSettings(s => s with { UiVolume = value }),
             save,
             SoundGroup);
         _settingsPanel.AddToggle(
             "Mute While Working",
-            "Silence the game completely while the companion is on your desktop, so it never interrupts you.",
+            "Mutes the game so your Buddy will not interrupt your work or calls.",
             settings.MuteInWorkMode,
             value => edit(s => s with { MuteInWorkMode = value }),
             SoundGroup);
         _settingsPanel.AddToggle(
             "Mute Work Typing",
-            "Silence just the keyboard clatter the companion makes while it types. Everything else stays audible.",
+            "Mutes only Buddy's keyboard sounds in Work Mode. Everything else stays audible.",
             settings.MuteWorkTyping,
             value => edit(s => s with { MuteWorkTyping = value }),
             SoundGroup);
@@ -98,20 +98,20 @@ public partial class CharacterEditorHost
     {
         _settingsPanel.AddToggle(
             "V-Sync",
-            "Match your monitor's refresh rate. Off can show tearing but shaves a little input lag.",
+            "Matches the frame rate to your monitor's refresh rate. Turning it off can reduce input lag, but may cause screen tearing.",
             settings.VSync,
             value => edit(s => s with { VSync = value }),
             DisplayGroup);
         _settingsPanel.AddChoice(
             "Frame Limit",
-            "Upper limit on frames per second while you are using the game. Lower caps mean less heat and battery drain.",
+            "Sets the maximum frame rate of your game.",
             FrameLimitLabels,
             Math.Max(0, Array.IndexOf(FrameLimits, settings.MaxFps)),
             index => edit(s => s with { MaxFps = FrameLimits[index] }),
             DisplayGroup);
         _settingsPanel.AddChoice(
             "Background Frame Limit",
-            "Frame cap that applies once the window is hidden or in the background, so a minimised buddy costs almost nothing.",
+            "Sets the frame limit while the game is hidden or in the background.",
             BackgroundFrameLimitLabels,
             Math.Max(0, Array.IndexOf(BackgroundFrameLimits, settings.BackgroundMaxFps)),
             index => edit(s =>
@@ -122,27 +122,27 @@ public partial class CharacterEditorHost
             DisplayGroup);
         _settingsPanel.AddChoice(
             "UI Scale",
-            "Size of every menu, button and label. Open panels reopen at the new size.",
+            "Changes the size of menus, buttons and text.",
             UiScaleLabels,
             Math.Max(0, Array.IndexOf(UiScaleSteps, settings.UiScalePercent)),
             index => edit(s => s with { UiScalePercent = UiScaleSteps[index] }),
             DisplayGroup);
         _settingsPanel.AddChoice(
             "Buddy Size",
-            "How large the buddy and his room are drawn inside the window. The window itself does not change.",
+            "Changes how large your Buddy and the room appear inside the window. It does not resize the window itself.",
             ZoomLabels,
             Math.Max(0, Array.IndexOf(ZoomSteps, settings.ZoomPercent)),
             index => edit(s => s with { ZoomPercent = ZoomSteps[index] }),
             DisplayGroup);
         _settingsPanel.AddToggle(
             "Modern UI Motion",
-            "Keep the Win98 look but allow short smooth menu and preview transitions. Reduced Motion overrides this.",
+            "Adds short, smooth transitions to menus and previews.",
             settings.ModernUiMotion,
             value => edit(s => s with { ModernUiMotion = value }),
             DisplayGroup);
         _settingsPanel.AddToggle(
             "Always On Top",
-            "Keep the buddy's window above everything else, so he never disappears behind your work.",
+            "Keeps Buddy's window above your other windows.",
             settings.AlwaysOnTop,
             value => edit(s => s with { AlwaysOnTop = value }),
             DisplayGroup);
@@ -155,7 +155,7 @@ public partial class CharacterEditorHost
                 labels[index] = $"Monitor {index + 1}";
             _settingsPanel.AddChoice(
                 "Monitor",
-                "Which display the buddy lives on.",
+                "Chooses which display Buddy appears on.",
                 labels,
                 Math.Clamp(settings.Monitor, 0, monitors - 1),
                 index =>
@@ -177,7 +177,7 @@ public partial class CharacterEditorHost
 
         _settingsPanel.AddToggle(
             "Reduced Motion",
-            "Damp or remove big movements: camera kicks, launches, and sweeping menu transitions.",
+            "Reduces or removes camera kicks, launches and sweeping menu transitions.",
             settings.ReducedMotion,
             value =>
             {
@@ -187,7 +187,7 @@ public partial class CharacterEditorHost
             EffectsGroup);
         _settingsPanel.AddToggle(
             "Screen Shake",
-            "Let heavy hits and explosions jolt the camera. Turn off for a completely steady view.",
+            "Lets heavy hits and explosions shake the camera. Turn this off for a steady view.",
             settings.ScreenShake,
             value =>
             {
@@ -197,7 +197,7 @@ public partial class CharacterEditorHost
             EffectsGroup);
         _settingsPanel.AddToggle(
             "Reduced Particles",
-            "Emit far fewer sparks, smoke puffs and debris. Helps on slower machines.",
+            "Shows fewer sparks, smoke puffs and pieces of debris.",
             settings.ReducedParticles,
             value =>
             {
@@ -207,7 +207,7 @@ public partial class CharacterEditorHost
             EffectsGroup);
         _settingsPanel.AddToggle(
             "Photosensitivity Safe",
-            "Cap rapid flashing and strobing from fire, explosions and muzzle flare.",
+            "Limits rapid flashes and strobing from fire, explosions and muzzle flashes.",
             settings.PhotosensitivitySafe,
             value =>
             {
@@ -223,14 +223,14 @@ public partial class CharacterEditorHost
     {
         _settingsPanel.AddChoice(
             "Start In",
-            "Which interaction mode a launch begins in.",
+            "Chooses whether the game starts in Work Mode or Play Mode.",
             StartupModeLabels,
             Math.Max(0, Array.IndexOf(StartupModes, settings.StartupInputMode)),
             index => edit(s => s with { StartupInputMode = StartupModes[index] }),
             BehaviourGroup);
         _settingsPanel.AddToggle(
             "Hide For Full-Screen Apps",
-            "Step aside while a game, video, or presentation owns the screen.",
+            "Hides Buddy while a game, video or presentation is full-screen.",
             settings.HideForFullscreenApps,
             value => edit(s =>
             {
@@ -243,7 +243,7 @@ public partial class CharacterEditorHost
         {
             _settingsPanel.AddToggle(
                 "Start With Windows",
-                "Launch the buddy when you log in.",
+                "Launches Desktop Buddy when you sign in to Windows.",
                 settings.LaunchWithWindows && WindowsAutostart.IsEnabled(),
                 value =>
                 {
@@ -255,7 +255,7 @@ public partial class CharacterEditorHost
 
         _settingsPanel.AddHotkey(
             "Work/Play Hotkey",
-            "The keyboard shortcut that switches between Work and Play.",
+            "Sets the keyboard shortcut for switching between Work Mode and Play Mode.",
             string.IsNullOrWhiteSpace(settings.GlobalHotkey) ? HotkeyBinding.Default : settings.GlobalHotkey,
             chord =>
             {
@@ -265,7 +265,7 @@ public partial class CharacterEditorHost
             BehaviourGroup);
         _settingsPanel.AddHotkey(
             "Drop Tool Hotkey",
-            "Drop a compatible equipped physical tool into the room. Double-click it to re-equip.",
+            "Sets the shortcut for dropping an equipped tool into the room. Double-click the tool to equip it again.",
             LocalSettingsInputBindings.DropTool(settings),
             chord =>
             {
@@ -279,19 +279,19 @@ public partial class CharacterEditorHost
     {
         _settingsPanel.AddAction(
             "Save Folder",
-            "Open the folder holding progress, settings, and characters.",
+            "Opens the folder containing your progress, settings and saved characters.",
             () => OS.ShellShowInFileManager(ProjectSettings.GlobalizePath("user://")),
             DataGroup,
             buttonText: "Open");
         _settingsPanel.AddAction(
             "Reset Progress",
-            "Return gameplay to a first run. Settings and saved characters are kept.",
+            "Starts your gameplay progress over from the beginning. Your settings and saved characters are kept.",
             RequestProgressReset,
             DataGroup,
             buttonText: "Reset...");
         _settingsPanel.AddAction(
             "Show Tutorial Again",
-            "Replay the first-session walkthrough from the beginning. Nothing else is reset.",
+            "Restarts the first-session tutorial. Nothing else is reset.",
             RestartTutorial,
             DataGroup,
             buttonText: "Show");

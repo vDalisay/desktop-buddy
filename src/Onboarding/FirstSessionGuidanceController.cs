@@ -90,46 +90,46 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private static readonly Dictionary<string, HelpDefinition> ExplicitHelp =
         new(StringComparer.Ordinal)
         {
-            ["Win98CommandBar"] = new("Top bar", "Open Inventory, Tools, Paint, Buddy Studio, Work and the other main workspaces here."),
-            ["Win98BalanceLabel"] = new("Credits", "Your current credits. Earn them by playing with Buddy — rough play pays the most — and in Work Mode, then spend them on tools and customization."),
-            ["Win98ShopCommand"] = new("Inventory", "Buy tools and toys. Anything you buy is equipped straight away."),
-            ["Win98ToolsCommand"] = new("Tools", "Switch between the tools you already own."),
-            ["Win98PaintCommand"] = new("Paint", "Paint Buddy or paint the room background."),
-            ["Win98WorkCommand"] = new("Work", "Shrink Buddy into a small always-on-top companion that earns while you work."),
-            ["ContextHelpButton"] = new("Help", "Turn on Help mode, then hover anything on screen to have it explained. Press it again to leave."),
+            ["Win98CommandBar"] = new("Top bar", "Use this bar to open Inventory, Tools, Paint, Buddy Studio, Work and the other main areas."),
+            ["Win98BalanceLabel"] = new("Credits", "Shows your current money count. Earn them by playing with your Buddy or using Work Mode. You can spend them on tools and customisation. Rough play pays the most."),
+            ["Win98ShopCommand"] = new("Inventory", "Buy new tools and toys here. Anything you buy is equipped straight away."),
+            ["Win98ToolsCommand"] = new("Tools", "Equip any tool you already own."),
+            ["Win98PaintCommand"] = new("Paint", "Open the workshops for painting Buddy or the room background."),
+            ["Win98WorkCommand"] = new("Work", "Enter Work Mode, where Buddy becomes a small always-on-top companion and keeps earning while you work."),
+            ["ContextHelpButton"] = new("Help", "Select ? to turn Help mode on, then hover over anything on screen to learn what it does. Select ? again to leave."),
 
-            ["Win98StatusBar"] = new("Status bar", "The left side reports what just happened; the right side always shows the tool you have equipped."),
-            ["StatusText"] = new("Status message", "The most recent message from the game — purchases, saves, and other confirmations appear here."),
-            ["ActiveToolStatusText"] = new("Equipped tool", "The tool currently on your cursor. Change it from Inventory or the Tools menu."),
+            ["Win98StatusBar"] = new("Status bar", "The left side shows some extra details when needed. The right side shows your equipped tool."),
+            ["StatusText"] = new("Status message", "Shows the latest message from the game, including purchases, saves and other confirmations."),
+            ["ActiveToolStatusText"] = new("Equipped tool", "Shows the tool currently on your cursor. Equip a different one from Inventory or Tools."),
 
-            ["Win98CharacterColumn"] = new("Characters", "Choose which local character you are editing. The layer panel below controls which body part receives paint."),
-            ["Win98PaintLayerPanel"] = new("Layers", "Choose which body-part layer receives paint. Hidden layers cannot receive paint and return when you leave the editor."),
-            ["Win98PaintToolColumn"] = new("Paint tools", "Choose a brush or eraser, change brush size, rotate the preview, undo/redo, and adjust the view."),
-            ["Win98PaintViewportFrame"] = new("Paint canvas", "Draw directly on Buddy here. Your brush follows the visible 3D surface and the selected layer filter."),
-            ["CharacterPaintCanvas"] = new("Paint canvas", "Draw directly on Buddy. Drag to paint; the current brush, color, size and layer determine the result."),
-            ["Win98PaintColorFooter"] = new("Colors and actions", "Choose paint colors here. Save stores the character; Use Character applies it to the live Buddy; Exit leaves the editor."),
-            ["PaintPresetPalette"] = new("Palette", "Pick a saved color quickly. The color-wheel button opens the full picker."),
-            ["PaintPrimaryActions"] = new("Character actions", "Save stores changes, Use Character applies this character, Reset restores the saved version, and Exit leaves Paint Buddy."),
+            ["Win98CharacterColumn"] = new("Characters", "Choose the Buddy you want to edit."),
+            ["Win98PaintLayerPanel"] = new("Layers", "Choose or hide which body-part layer becomes paintable. Hidden layers cannot be painted on and will reappear when you leave the editor."),
+            ["Win98PaintToolColumn"] = new("Paint tools", "Choose the Brush or Eraser, change its size, rotate the preview, Undo or Redo, and adjust the view."),
+            ["Win98PaintViewportFrame"] = new("Paint canvas", "Paint directly onto Buddy here. The brush follows the surface and only affects the selected layer."),
+            ["CharacterPaintCanvas"] = new("Paint canvas", "Click and drag to paint Buddy. The selected tool, colour, size and layer control the result."),
+            ["Win98PaintColorFooter"] = new("Colours and actions", "Choose a paint colour here. Save keeps your changes, Use Character applies them in Play Mode, and Exit leaves the editor."),
+            ["PaintPresetPalette"] = new("Palette", "Select a swatch to use a saved colour, or open the colour wheel for the full picker."),
+            ["PaintPrimaryActions"] = new("Character actions", "Save keeps your changes. Use Character applies them in Play Mode. Reset restores the saved version, and Exit leaves Paint Buddy."),
 
-            ["PaintBackgroundPanel"] = new("Paint Background", "Paint the room backdrop with the same simple paint workflow. Save and Exit keeps the result."),
-            ["PaintToolGrid"] = new("Background tools", "Choose Brush, Pen, Spray, Fill, Eraser, Pick Color, shapes, or Undo."),
-            ["PaintBrushSizeRow"] = new("Brush size", "Change how large the active background brush is."),
-            ["PaintBackgroundPalettePanel"] = new("Background palette", "Choose the active background color, add a custom swatch, or open the full color picker."),
-            ["EnvironmentBackgroundInputBlocker"] = new("Background canvas", "Paint directly on the visible room. The tool panel hides while you drag so it does not cover the canvas."),
+            ["PaintBackgroundPanel"] = new("Paint Background", "Paint the room backdrop here. Select Save and Exit when you want to keep the result."),
+            ["PaintToolGrid"] = new("Background tools", "Choose Brush, Pen, Spray, Fill, Eraser, Pick Colour, a shape tool or Undo."),
+            ["PaintBrushSizeRow"] = new("Brush size", "Changes the size of the active background brush. You can also use your scroll wheel."),
+            ["PaintBackgroundPalettePanel"] = new("Background palette", "Choose the active colour, add a custom swatch or open the full colour picker. You can also delete them by pressing the 'delete' button."),
+            ["EnvironmentBackgroundInputBlocker"] = new("Background canvas", "Paint directly onto the visible room. The tool panel hides while you drag so it does not cover your work."),
 
-            ["BuddyStudioCategories"] = new("Categories", "Choose which part of Buddy you want to customize, such as eyes, glasses, headwear, tops, or shoes."),
-            ["BuddyStudioPreviewPane"] = new("Preview", "Preview the selected cosmetic here. Supported cosmetics can be moved or resized before saving."),
-            ["BuddyStudioCatalogPane"] = new("Styles", "Single-click a style to preview it. Owned styles can be equipped; unowned styles show their price."),
-            ["BuddyStudioInspectorPane"] = new("Color and ownership", "Change supported colors and see whether the previewed style is owned, equipped, or available to buy."),
-            ["BuddyStudioBuy"] = new("Buy / Equip", "Buy an unowned style permanently, or equip a style you already own."),
-            ["BuddyStudioActions"] = new("Studio actions", "Save applies the current character changes. Exit leaves Buddy Studio and asks about unsaved changes when needed."),
+            ["BuddyStudioCategories"] = new("Categories", "Choose the part of Buddy you want to customise, such as his eyes, glasses, headwear, top or shoes."),
+            ["BuddyStudioPreviewPane"] = new("Preview", "Preview the selected style here. Bought items can be moved or resized in this preview pane before you save."),
+            ["BuddyStudioCatalogPane"] = new("Styles", "Select an item once to preview it for free. Owned items can be equipped while unowned styles show their price."),
+            ["BuddyStudioInspectorPane"] = new("Colour and ownership", "Change available colours and check whether the selected style is owned, equipped or available to buy."),
+            ["BuddyStudioBuy"] = new("Buy / Equip", "Buy the selected style permanently, or equip it if you already own it."),
+            ["BuddyStudioActions"] = new("Studio actions", "Save applies your character changes. Exit leaves Buddy Studio and warns you if anything is unsaved."),
 
-            ["WorkCompanionRoot"] = new("Work companion", "Hold the left mouse button on Buddy or the computer to drag the companion anywhere. Double-click Buddy to return to Play Mode."),
-            ["WorkControlCluster"] = new("Companion controls", "Resize, pause and exit. They appear whenever the pointer is over the companion and stay the same size however large or small you make it."),
-            ["WorkCrtCounter"] = new("Work counter", "Shows how much you have done. Click the screen to switch between this session and your lifetime total."),
-            ["WorkResizeButton"] = new("Resize", "Hold the left mouse button on this control and move the mouse to resize the Work companion. The controls themselves keep their size."),
-            ["WorkMotionToggle"] = new("Motion", "Pause or resume Buddy's Work animations. Counters and rewards continue either way."),
-            ["WorkExitButton"] = new("Exit Work Mode", "Return to normal Play Mode. Double-clicking Buddy does the same thing."),
+            ["WorkCompanionRoot"] = new("Work companion", "Click and hold Buddy or the computer with the left mouse button, then drag the companion anywhere. Double-click Buddy to return to Play Mode."),
+            ["WorkControlCluster"] = new("Companion controls", "Use these controls to resize, pause or exit."),
+            ["WorkCrtCounter"] = new("Work counter", "Shows how much work you have done. The number increments per action, keyboard press or mouse click. Click on the screen to switch between this session count and your lifetime total count."),
+            ["WorkResizeButton"] = new("Resize", "Click and hold this button with the left mouse button, then drag to resize the Work companion. The controls themselves stay the same size."),
+            ["WorkMotionToggle"] = new("Motion", "Pauses or resumes Buddy's Work animations. Counters and rewards continue either way."),
+            ["WorkExitButton"] = new("Exit Work Mode", "Return to Play Mode. You can also double-click Buddy."),
         };
 
     private SandboxRoot _sandbox = null!;
@@ -1210,89 +1210,95 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private string TextFor(string stepId) => stepId switch
     {
         TutorialStepIds.GrabBuddy =>
-            "Say hello. Press and hold the left mouse button on Buddy to pick him up, then fling " +
-            "him around the room. Let go when you have had your fun.",
+            "Hi! Let me introduce you to your buddy. Click and hold your left mouse button on " +
+            "your Buddy to grab him.",
         TutorialStepIds.OpenInventory =>
-            "Time to go shopping. Open Inventory, up in the top-left corner — that is where every " +
-            "tool you own lives.",
+            "Now open the Inventory in the top-left corner. This is where you can buy and equip " +
+            "all sorts of different tools so you and your Buddy can play together.",
         TutorialStepIds.PurchaseBaseballBat =>
-            "This is the Inventory: everything you can buy and equip, all in one list. Your credits " +
-            "are counted up in the top-right corner, and playing with Buddy is what earns them — " +
-            "the rougher the play, the bigger the payout. Grab the Baseball Bat: buy it for 1 " +
-            "credit, or equip it if you already own it. Anything you buy is equipped straight away.",
+            "You can use your Credits in the top-right to buy all kinds of things. You earn more " +
+            "by playing with your Buddy. For now, let's buy and equip the Baseball Bat.",
         TutorialStepIds.ChargedBatHit =>
-            "Batter up. The bat is already in your hands. Hold right mouse to wind up, then let " +
-            "go and swing. Any amount of charge is enough for this lesson; a full charge hurts a " +
-            "lot more — and pays a lot more.",
+            "Nice stuff! You can hold the right mouse button to charge your bat up for a big " +
+            "swing. Some other tools have some extra interaction by clicking or holding the " +
+            "right mouse button. Try them out yourself later, but for now try hitting the buddy " +
+            "with a charged swing.",
         TutorialStepIds.UnequipTool =>
-            "Done with a tool? Press D to drop it. You are back to bare hands — and to pick it " +
-            "up again, just double-click the dropped tool.",
+            "To unequip a tool you can switch in the Inventory or press the 'D' button to drop " +
+            "it. You can re-equip dropped tools by double-clicking it. Try to drop it now.",
         TutorialStepIds.OpenPaintBuddy =>
-            "Buddy is looking a little plain. Open Paint ▸ Buddy and let us fix that.",
+            "Your Buddy could use a little colour. Open Paint ▸ Buddy in the menu above to give " +
+            "it a new look.",
         TutorialStepIds.CreateBuddy => CanCreateCharacter()
-            ? "First, a buddy of your own to work on. Press + New Character, give him a name, " +
-              "and he is the one you paint from here on."
-            : "No free character slots left — so pick the buddy you want to work on from the " +
-              "Characters list instead. Everything after this works exactly the same.",
-        TutorialStepIds.SelectPaintBrush => "Pick up the Brush — it is the one you will use most.",
-        TutorialStepIds.SelectPaintColor => "Now pick any colour that takes your fancy.",
+            ? "Does this look familiar? First, let's create a new Buddy for you. Click on " +
+              "'+ New Character', give it a name, and you are ready to paint."
+            : "Hmm, you've been here before so choose a Buddy from the Characters list instead.",
+        TutorialStepIds.SelectPaintBrush =>
+            "There are many tools to choose from. Let's start with my favourite which is the " +
+            "Brush tool to start painting.",
+        TutorialStepIds.SelectPaintColor =>
+            "Here you can choose any colour you like. The big button to the right opens up the " +
+            "advanced color pallette. Let's just choose one of these for now.",
         TutorialStepIds.PaintBuddy =>
-            "Paint away — anywhere across Buddy's torso will do. Press Save when you are happy " +
-            "with it.",
+            "Paint away! When you are happy, click on the 'Save' button below.",
         TutorialStepIds.UsePaintedBuddy =>
-            "Saving keeps it; Use Character puts it on the real Buddy. Choose Use Character to " +
-            "apply it and head back.",
+            "Click on the 'Use Character' to start playing with your new Buddy!",
         TutorialStepIds.AdmirePaintedBuddy =>
-            "Look at that. Genuine artistry — Buddy has never looked better. Wear it with pride.",
+            "Beautiful! Buddy has never looked better.",
         TutorialStepIds.OpenPaintBackground =>
-            "Buddy has a new look — the room deserves one too. Open Paint ▸ Background.",
-        TutorialStepIds.SelectBackgroundSpray => "Grab the Spray can this time.",
-        TutorialStepIds.SelectBackgroundColor => "Pick any colour you like from the palette.",
-        TutorialStepIds.PaintBackground => "Now spray somewhere on the room behind Buddy.",
+            "Your Buddy deserves a better room that matches its new style. Open Paint ▸ " +
+            "Background to start painting the room.",
+        TutorialStepIds.SelectBackgroundSpray =>
+            "Let's go with something new but nostalgic, the Spray tool!",
+        TutorialStepIds.SelectBackgroundColor => "Choose a nice matching colour from the Palette.",
+        TutorialStepIds.PaintBackground =>
+            "Click and drag anywhere on the room behind your Buddy to spray it.",
         TutorialStepIds.FloatPaintBackgroundPanel =>
-            "The tool panel is in the way. Drag it by its title bar right out of the game window " +
-            "and park it off to the side — the 📌 button does the same. It becomes its own " +
-            "desktop window, and you get the whole background to admire.",
-        TutorialStepIds.SaveAndExitPaintBackground => "Lovely. Choose Save and Exit to keep it.",
+            "We need to admire your drawing more. Drag any panel by its title bar and move it " +
+            "outside of the game window. You can also click the red pin button.",
+        TutorialStepIds.SaveAndExitPaintBackground =>
+            "Looks good! Click Save and Exit to keep it.",
         TutorialStepIds.OpenBuddyStudio =>
-            "One more workshop to show you. Open Buddy Studio — this is where Buddy gets his " +
-            "hair, glasses, hats and everything else.",
-        TutorialStepIds.SelectNoseCategory => "Start with the Nose category.",
+            "Now let's bring your buddy more up to style. Open Buddy Studio so we can customise " +
+            "your Buddy with lots of apparel.",
+        TutorialStepIds.SelectNoseCategory =>
+            "Let's see, your buddy could use a new nose. Click on the Nose category to see what " +
+            "we've got.",
         TutorialStepIds.SelectNoseButtonStyle =>
-            "Click the Button nose once. A single click only previews it — watch it appear on " +
-            "Buddy in the preview window.",
+            "This 'Button nose' could be fun! Click on it once to preview it without buying it.",
         TutorialStepIds.BuyStudioItem =>
-            "Like it? Buy it with the button on the right. Double-clicking the style itself does " +
-            "the same thing.",
+            "It looks great! Let's click on the 'Buy' button. Alternatively, you can double-click " +
+            "on an item to buy it.",
         TutorialStepIds.EquipStudioItem =>
-            "Now equip it. You can come back here any time to equip something else, or switch a " +
-            "slot back to its free default to take it off again.",
-        TutorialStepIds.SaveBuddyStudio => "Save it, or Buddy loses his brand-new nose.",
+            "Let's equip it for now. You can swap it later, or choose the default style to " +
+            "remove it.",
+        TutorialStepIds.SaveBuddyStudio =>
+            "Click on the 'Save' button to keep this beautiful nose.",
         TutorialStepIds.ExitBuddyStudio => _studioNothingToSave
-            ? "Turns out he was already wearing that nose, so there was nothing to save — Save " +
-              "stays greyed out until something actually changes. That is Buddy Studio. Exit " +
-              "when you are ready."
-            : "That is Buddy Studio. Exit when you are ready.",
+            ? "Your Buddy was already wearing that nose, so there is no need to save. Let's exit " +
+              "to the play screen."
+            : "Let's exit to the play screen.",
         TutorialStepIds.AdmireStudioBuddy =>
-            "Now that is a nose. Painted, kitted out, and frankly better dressed than most of us " +
-            "— Buddy is looking sharp.",
+            "Now that is what I call a nose. Now your buddy is looking mighty fine!",
         TutorialStepIds.EnterWorkMode =>
-            "Last stop. Work Mode shrinks Buddy into a tiny companion that sits on top of your " +
-            "real desktop and keeps earning while you get on with things. Open Work.",
+            "Last but not least: Work Mode. Enter work mode for when you need to concentrate and " +
+            "want to let your buddy sit beside you.",
         TutorialStepIds.DragWorkCompanion =>
-            "Hold the left mouse button on Buddy or on the computer, then move the mouse to drag " +
-            "the companion wherever you want it.",
+            "Click and hold on the Buddy with the left mouse button to drag your companion " +
+            "wherever you want it.",
         TutorialStepIds.ResizeWorkCompanion =>
-            "Hold the left mouse button on the ↘ resize button and move the mouse to make the " +
-            "companion bigger or smaller.",
+            "Click and hold the resize button ↘ with the left mouse button, then drag to make " +
+            "your companion bigger or smaller.",
         TutorialStepIds.ToggleWorkCounter =>
-            "That little screen counts what you have done. Click it to switch between this " +
-            "session and your lifetime total.",
-        TutorialStepIds.ExitWorkMode => "Done working? Double-click Buddy, or press X, to come back.",
+            "Your Buddy will earn money while you work. Click on the screen to switch between " +
+            "this session's total count and your lifetime total count.",
+        TutorialStepIds.ExitWorkMode =>
+            "Ready to head back to play mode? Double-click on your Buddy or click on the 'X' " +
+            "button to return.",
         TutorialStepIds.Farewell =>
-            "And that is everything. If you ever forget what something does, hit the ? button in " +
-            "the title bar and hover over it — Help mode will explain anything on screen. " +
-            "Go have fun with him. Goodbye!",
+            "Well that was it, I hope you'll become the best of buds! If you ever need help, " +
+            "click on the '?' in the title bar and hover over anything on screen for context, " +
+            "or restart the tutorial from the settings screen. Have fun with your Buddy!",
         _ => string.Empty,
     };
 

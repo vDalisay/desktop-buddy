@@ -46,44 +46,45 @@ public static class ContentDisplayName
     public static string Usage(string contentId) => contentId switch
     {
         ContentIds.ToolGrab =>
-            "Hold left mouse on Buddy to drag him, and let go while moving to fling him.",
+            "Click and hold Buddy with the left mouse button to drag him. Release while moving " +
+            "to fling him.",
         ContentIds.ToolPowerGrab =>
-            "The same left-mouse drag as Grab, with a far stronger pull and a much harder throw.",
+            "Drag Buddy with the left mouse button, just like Grab, but with much more pull and " +
+            "a harder throw.",
         ContentIds.ToolPet =>
-            "Hold left mouse and stroke slowly over Buddy — he has a favourite spot.",
+            "Click and hold the left mouse button, then brush your Buddy slowly. It should have " +
+            "a favourite spot...",
         ContentIds.ToolTickle =>
-            "Hold left mouse and wiggle over Buddy; keep it up too long and he turns grumpy.",
+            "Click and hold the left mouse button to wiggle the Feather over Buddy. Keep going " +
+            "too long and it will get grumpy.",
         ContentIds.ToolBaseballBat =>
-            "Hold right mouse to wind up through three charge stages, then let go to swing.",
+            "Hold the right mouse button to charge it, then release to swing.",
         ContentIds.ToolBoxingGlove =>
-            "Swing the cursor into Buddy — the faster the glove moves, the harder it lands.",
+            "Swing the glove into your Buddy.",
         ContentIds.ToolBaseball =>
-            "Right mouse drops a ball at the cursor; grab it with left mouse, then hold right " +
-            "mouse and pull back to hurl it.",
+            "Right-click to drop a baseball. Grab it with the left mouse button, then hold the " +
+            "right mouse button and pull back to throw.",
         ContentIds.ToolSoccerBall =>
-            "Right mouse drops the ball; grab it with left mouse, then hold right mouse and " +
-            "pull back to boot it across the room.",
+            "Right-click to drop the ball. Grab it with the left mouse button, then hold the " +
+            "right mouse button and pull back to kick it across the room.",
         ContentIds.ToolMeal =>
-            "Right mouse drops a meal at the cursor; Buddy eats it where it lands, or grab it " +
-            "and pull back with right mouse to throw it at him.",
+            "Right-click to drop a treat, though I'm not sure what it's made of...",
         ContentIds.ToolDrink =>
-            "Right mouse drops a drink at the cursor; Buddy takes it from there, or grab it " +
-            "and pull back with right mouse to throw it.",
+            "Right-click to drop a drink. It also makes for a good projectile.",
         ContentIds.ToolRepairKit =>
-            "Right mouse drops a kit; grab it with left mouse and throw it into Buddy to patch " +
-            "him back up.",
+            "Right-click to drop a kit, then grab it with the left mouse button and throw it at " +
+            "your Buddy to patch it up.",
         ContentIds.ToolGrenade =>
-            "Right mouse drops a grenade; grab it with left mouse, then hold right mouse and " +
-            "pull back to lob it in an arc — pulling back also pulls the pin.",
+            "Right-click to drop a grenade. Grab it with the left mouse button, then hold the " +
+            "right mouse button and pull back to lob it. Pulling back also pulls the pin.",
         ContentIds.ToolNerfBlaster =>
-            "Left mouse fires darts wherever the cursor points; press R to reload.",
+            "Left-click to have some friendly fire.",
         ContentIds.ToolPistol =>
-            "Left mouse fires at the cursor; press R to reload when the magazine runs dry.",
+            "Left-click to have some less friendly fire.",
         ContentIds.ToolShotgun =>
-            "Left mouse fires a spread of pellets — brutal up close; press R to chamber the " +
-            "next shell.",
+            "Left-click to fire a spread of pellets with some hefty knockback.",
         ContentIds.ToolFireSprayer =>
-            "Hold left mouse to spray burning fuel; whatever it touches catches alight.",
+            "Hold the left mouse button to spray burning fuel. Anything it touches catches fire.",
         _ => string.Empty,
     };
 
