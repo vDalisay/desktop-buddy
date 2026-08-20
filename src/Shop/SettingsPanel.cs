@@ -23,7 +23,7 @@ public partial class SettingsPanel : PanelContainer
     public void Configure()
     {
         Name = "SettingsPanel";
-        PanelChrome.Parts parts = PanelChrome.Build(this, "Settings", "SettingsActionList");
+        PanelChrome.Parts parts = PanelChrome.Build(this, "SettingsActionList");
         _list = parts.List;
         _status = parts.Status;
         _status.Text = "Changes apply immediately.";

@@ -15,6 +15,15 @@ public static class TutorialStepIds
     public const string UnequipTool = "demo.onboarding.unequip_tool";
 
     public const string OpenPaintBuddy = "demo.onboarding.open_paint_buddy";
+
+    /// <summary>
+    /// Paint needs a character to paint on. The walkthrough used to assume one already existed,
+    /// which left a fresh player staring at "Create or select a local character" with a disabled
+    /// Save (owner feedback 2026-08-20).
+    /// </summary>
+    public const string CreateBuddy = "demo.onboarding.create_buddy";
+    public const string NameBuddy = "demo.onboarding.name_buddy";
+
     public const string SelectPaintBrush = "demo.onboarding.select_paint_brush";
     public const string SelectPaintColor = "demo.onboarding.select_paint_color";
     public const string PaintBuddy = "demo.onboarding.paint_buddy";
@@ -55,6 +64,8 @@ public static class TutorialStepIds
         ChargedBatHit,
         UnequipTool,
         OpenPaintBuddy,
+        CreateBuddy,
+        NameBuddy,
         SelectPaintBrush,
         SelectPaintColor,
         PaintBuddy,

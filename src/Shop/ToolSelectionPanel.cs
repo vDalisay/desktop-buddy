@@ -37,9 +37,10 @@ public partial class ToolSelectionPanel : PanelContainer
         ArgumentNullException.ThrowIfNull(catalogue);
 
         Name = "ToolSelectionPanel";
-        PanelChrome.Parts parts = PanelChrome.Build(this, "Tools", "ToolSelectionList");
+        PanelChrome.Parts parts = PanelChrome.Build(this, "ToolSelectionList");
         _selected = parts.HeaderValue;
         _status = parts.Status;
+        _description = parts.Description;
 
         foreach (CatalogueEntry entry in CataloguePolicy.SelectableEntries(catalogue))
         {
@@ -51,13 +52,17 @@ public partial class ToolSelectionPanel : PanelContainer
         Refresh();
     }
 
+    private Label _description = null!;
+
     private Row BuildRow(VBoxContainer list, CatalogueEntry entry, ToolId tool)
     {
         var select = new Button { Text = "Equip" };
         select.Pressed += () => Select(entry.ContentId, tool);
         UiFeedbackAudioBootstrap.Tag(select, layer: UiSfx.NoLayer);
         var price = new Label();
-        PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, select);
+        HBoxContainer line = PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, select);
+        line.MouseEntered += () => ShowDescription(entry.ContentId);
+        select.MouseEntered += () => ShowDescription(entry.ContentId);
         return new Row(entry, tool, select, price);
     }
 
@@ -99,6 +104,8 @@ public partial class ToolSelectionPanel : PanelContainer
             return;
 
         _selected.Text = ContentDisplayName.For(ContentIds.ForTool(_progress.SelectedTool));
+        if (_description.Text.Length == 0)
+            ShowDescription(ContentIds.ForTool(_progress.SelectedTool));
         foreach (Row row in _rows)
         {
             bool owned = row.Entry.IsStarting ||
@@ -115,9 +122,14 @@ public partial class ToolSelectionPanel : PanelContainer
                 : owned
                     ? $"Equip {name}."
                     : $"Buy {name} in the Shop for {price} before equipping it.";
-            row.Select.TooltipText = ContentDisplayName.WithUsage(
-                row.Select.TooltipText, row.Entry.ContentId);
         }
+    }
+
+    private void ShowDescription(string contentId)
+    {
+        string usage = ContentDisplayName.Usage(contentId);
+        if (usage.Length > 0)
+            _description.Text = usage;
     }
 
     private readonly record struct Row(

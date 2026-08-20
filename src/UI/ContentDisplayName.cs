@@ -80,13 +80,6 @@ public static class ContentDisplayName
         _ => string.Empty,
     };
 
-    /// <summary>Usage sentence first, then the row's own buy/equip line, when one exists.</summary>
-    public static string WithUsage(string tooltip, string contentId)
-    {
-        string usage = Usage(contentId);
-        return usage.Length == 0 ? tooltip : usage + "\n\n" + tooltip;
-    }
-
     /// <summary>
     /// Milli-credits as the player sees them: 7000 → "$7". Whole credits only, floored the same
     /// way <see cref="RewardLedger.BalanceCredits"/> floors — the shell's corner readout and every

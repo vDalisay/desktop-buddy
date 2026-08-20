@@ -16,7 +16,7 @@ The walkthrough is ordered and durable. A step completes only when its real game
 2. **Inventory** — open Inventory, then buy the Baseball Bat. Buying auto-equips, so there is no separate equip step. On tutorial replay, ownership is preserved and this step remains visible, highlighting the same row's Equip action instead of silently skipping it. The reward loop is taught *here* rather than as a step of its own: the purchase prompt says where credits are counted and that rough play earns them, and the spotlight lights the credit counter alongside the Buy or Equip button.
 3. **Charged bat swing** — equipping a swing tool grips it (owner feedback 2026-08-20): the bat stands upright in hand for as long as it is selected, with no left button to hold. Hold right mouse to charge, then release to swing. Any amount of right-button charge advances this lesson; full charge is stronger but is not required, and the swing does not need to hit Buddy.
 4. **Unequip** — press **D** to drop the tool, teaching that tools come off as easily as they go on.
-5. **Paint Buddy** — open Paint Buddy, pick the Brush, pick any colour, paint the **torso** and **let go**, save, then **Use Character**. Both paint steps follow the same let-go rule as Grab: the first dab already mutates the surface, so completing on the press lit the next prompt mid-stroke. Back in Play, the guide compliments the result before moving on.
+5. **Paint Buddy** — open Paint Buddy, **create a character with New and give it a name**, pick the Brush, pick any colour, paint the **torso** and **let go**, save, then **Use Character**. Both paint steps follow the same let-go rule as Grab: the first dab already mutates the surface, so completing on the press lit the next prompt mid-stroke. Back in Play, the guide compliments the result before moving on.
 6. **Paint Background** — open Paint Background, pick Spray, pick any colour, spray the background, drag the tool panel out into its own floating window, then **Save and Exit**.
 7. **Buddy Studio** — one visit: Nose category, the Button nose, Buy, Equip, Save, Exit, then a second compliment on the finished Buddy. Unequipping is *explained* in the prompt, never demanded as a second visit.
 8. **Work Mode** — enter Work Mode, drag the companion, resize it, switch the counter between session and lifetime, then exit Work Mode.
@@ -103,10 +103,37 @@ Initial explicit region coverage:
 8. Runtime/presentation test: Win98 tutorial chrome and Help activation/region resolution.
 9. Full CI plus owner local walkthrough.
 
+## Owner feedback, 2026-08-20 (second pass)
+
+- **Swing tools grip on equip.** Covered in step 3 above.
+- **Paint completes on let-go.** Covered in step 5 above.
+- **Create and name a character first.** Paint needs something to paint on. Without it a fresh
+  player met "Create or select a local character" and a disabled Save.
+- **Save/Reset stuck disabled** — the real defect behind that report, and independent of the
+  tutorial. Both buttons derive from `Session.IsDirty`, which folds in the paint workspace, but
+  the host only recomputed them on the session's `Changed` event. A stroke moves pixels, not the
+  document, so it raised nothing and the buttons stayed down until some unrelated change
+  refreshed the UI. `PaintWorkspace.DirtyChanged` now fires on every transition of the flag and
+  the host subscribes. Guarded by `PaintDirtyNotificationTests`.
+- **Bat aim arrow.** `DirectionTravelThreshold` was 6 px of cursor travel *per tick* — 720 px/s
+  at 120 Hz — so a slow drag never flipped the arrow. Now 0.5 px/tick (60 px/s), still well
+  above hand jitter. The arrow is white with a black outline and fills with the Win98 title blue
+  along the aim axis as the charge builds.
+- **Spotlights breathe.** The hole pulses ±4 px around a 5 px inset on a 3.2 s cycle.
+
+## Panel chrome
+
+The Inventory and Tools panels lost their large heading — the Win98 frame's blue title bar
+already names them, and the duplicate cost the list a band at the top. The balance moved to the
+footer, right-aligned and in the shell's money green, and a description line above it carries the
+hovered row's usage sentence. Hover is hooked on both the row and its action button: a
+Stop-filtered button takes the pick from its own parent, so hooking only the row blanked the
+description the moment the cursor reached Buy.
+
 ## Tool usage lines
 
 Every selectable tool carries a one-sentence "how you actually drive it" line (owner feedback
-2026-08-20), shown above the buy/equip text in both the Inventory and Tools rows. It lives in
+2026-08-20), shown in the description line in the footer of both the Inventory and Tools panels. It lives in
 `ContentDisplayName.Usage` beside the display names, for the same reason the names do: the
 authored `DescriptionKey` points at a string table that does not exist until localisation (M7).
 Move both at once.

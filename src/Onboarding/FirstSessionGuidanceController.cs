@@ -69,6 +69,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             [TutorialStepIds.OpenInventory] = new(SpotlightScope.Shell, "Win98ShopCommand"),
             [TutorialStepIds.OpenPaintBuddy] = new(SpotlightScope.Shell, "Win98PaintCommand"),
+            [TutorialStepIds.NameBuddy] = new(SpotlightScope.PaintBuddy, "CharacterName"),
             [TutorialStepIds.SelectPaintBrush] = new(SpotlightScope.PaintBuddy, "PaintBrushButton"),
             [TutorialStepIds.SelectPaintColor] = new(SpotlightScope.PaintBuddy, "PaintPresetPalette"),
             [TutorialStepIds.PaintBuddy] = new(SpotlightScope.PaintBuddy, "Win98PaintViewportFrame"),
@@ -211,6 +212,12 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _swingReleaseSignalBound;
     private bool _hasGrabbedBuddy;
     private long? _torsoRevisionOrigin;
+
+    /// <summary>The document on show when the create step began; a different one means the
+    /// player actually pressed New rather than inheriting whatever was already loaded.</summary>
+    private Guid? _createOriginCharacterId;
+    private bool _hasCreateOrigin;
+    private string? _createdCharacterName;
     private PaintColor? _paintColorOrigin;
     private bool _brushButtonPressed;
     private EnvironmentColor? _backgroundColorOrigin;
@@ -501,9 +508,24 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             case TutorialStepIds.OpenPaintBuddy when IsPaintBuddyOpen():
                 _paintSaveRequested = false;
                 _paintUseRequested = false;
+                _hasCreateOrigin = false;
+                _createdCharacterName = null;
                 _torsoRevisionOrigin = null;
                 _paintColorOrigin = null;
                 _brushButtonPressed = false;
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.CreateBuddy when HasCreatedCharacter():
+                _createdCharacterName = CurrentCharacterName();
+                CompleteCurrent(step);
+                break;
+
+            // Any rename off the minted default counts. The default itself never does, so the
+            // step cannot be satisfied by the character the previous step just created.
+            case TutorialStepIds.NameBuddy when IsPaintBuddyOpen() &&
+                                                  CurrentCharacterName() is { Length: > 0 } named &&
+                                                  !string.Equals(named, _createdCharacterName, StringComparison.Ordinal):
                 CompleteCurrent(step);
                 break;
 
@@ -699,6 +721,31 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// always read false.
     /// </summary>
     private static bool IsPrimaryMouseHeld() => Input.IsMouseButtonPressed(MouseButton.Left);
+
+    /// <summary>
+    /// True once the player has pressed New. The id the editor was showing when the step opened
+    /// is the baseline, so an existing character already loaded does not satisfy the lesson.
+    /// </summary>
+    private bool HasCreatedCharacter()
+    {
+        if (!IsPaintBuddyOpen())
+            return false;
+
+        Guid? current = _editor!.Session.SelectedCharacterId;
+        if (!_hasCreateOrigin)
+        {
+            _createOriginCharacterId = current;
+            _hasCreateOrigin = true;
+            return false;
+        }
+
+        return current is not null && current != _createOriginCharacterId;
+    }
+
+    private string? CurrentCharacterName() =>
+        IsPaintBuddyOpen() && _editor!.Session.WorkingDocument is { } document
+            ? document.DisplayName?.Trim()
+            : null;
 
     private bool IsStudioPreviewing(string contentId) =>
         IsStudioOpen() && GodotObject.IsInstanceValid(_studio!.CatalogGrid) &&
@@ -1095,6 +1142,11 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             "up again, just double-click the dropped tool.",
         TutorialStepIds.OpenPaintBuddy =>
             "Buddy is looking a little plain. Open Paint ▸ Buddy and let us fix that.",
+        TutorialStepIds.CreateBuddy =>
+            "First, a buddy of your own to work on. Press New to mint a fresh character — the " +
+            "one you paint from here on.",
+        TutorialStepIds.NameBuddy =>
+            "Give him a name. Type it in the name box and press Enter.",
         TutorialStepIds.SelectPaintBrush => "Pick up the Brush — it is the one you will use most.",
         TutorialStepIds.SelectPaintColor => "Now pick any colour that takes your fancy.",
         TutorialStepIds.PaintBuddy => "Go on, paint something across Buddy's torso.",
@@ -1569,6 +1621,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             case TutorialStepIds.PurchaseBaseballBat when GodotObject.IsInstanceValid(_shop):
                 return _shop!.BuyButtonFor(ContentIds.ToolBaseballBat);
+            case TutorialStepIds.CreateBuddy when IsPaintBuddyOpen():
+                return _editor!.NewButton;
             case TutorialStepIds.SavePaintBuddy when IsPaintBuddyOpen():
                 return _editor!.SaveButton;
             case TutorialStepIds.UsePaintedBuddy when IsPaintBuddyOpen():
@@ -1734,12 +1788,38 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private sealed partial class HelpSpotlightOverlay : Control
     {
+        // The character editor pauses the tree; the pulse has to keep running there too.
+        public HelpSpotlightOverlay() => ProcessMode = ProcessModeEnum.Always;
+
         private readonly List<Rect2> _targets = new();
 
         /// <summary>Help mode dims hard to force focus; the tutorial only nudges the eye.</summary>
         public float DimAlpha { get; init; } = 0.70f;
 
+        /// <summary>
+        /// The hole breathes rather than sitting still, so the eye is drawn to it without a
+        /// flash. Slow on purpose: a fast pulse reads as an error state.
+        /// </summary>
+        private const float PulseCenterPixels = 5.0f;
+        private const float PulseAmplitudePixels = 4.0f;
+        private const float PulseSeconds = 3.2f;
+
+        private double _pulseSeconds;
+
         private Color Dim => new(0, 0, 0, DimAlpha);
+
+        private float PulseGrow => PulseCenterPixels + (PulseAmplitudePixels *
+            Mathf.Sin((float)(_pulseSeconds * Mathf.Tau / PulseSeconds)));
+
+        public override void _Process(double delta)
+        {
+            // Nothing to breathe when the whole surface is dimmed flat.
+            if (_targets.Count == 0 || !IsVisibleInTree())
+                return;
+
+            _pulseSeconds += delta;
+            QueueRedraw();
+        }
 
         public void SetTarget(Rect2 rect) => SetTargets(rect);
 
@@ -1747,7 +1827,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             _targets.Clear();
             foreach (Rect2 rect in rects)
-                _targets.Add(rect.Grow(3));
+                _targets.Add(rect);
             QueueRedraw();
         }
 
@@ -1774,9 +1854,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
             var visible = new List<Rect2>(_targets.Count);
             var edges = new SortedSet<float> { 0f, Size.Y };
+            float grow = PulseGrow;
             foreach (Rect2 candidate in _targets)
             {
-                Rect2 clipped = candidate.Intersection(viewport);
+                Rect2 clipped = candidate.Grow(grow).Intersection(viewport);
                 if (clipped.Size.X <= 0 || clipped.Size.Y <= 0)
                     continue;
                 visible.Add(clipped);

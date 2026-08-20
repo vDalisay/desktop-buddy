@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using Godot;
@@ -11,10 +12,21 @@ namespace DesktopBuddy.Tools;
 /// </summary>
 public partial class CursorToolController
 {
-    private static readonly Color SwingGuideShadow = new(0.05f, 0.05f, 0.05f, 0.78f);
-    private static readonly Color SwingGuideFill = new(1.0f, 0.82f, 0.20f, 0.96f);
+    /// <summary>The Win98 active title bar, so a charging bat fills with the shell's own blue.</summary>
+    private static readonly Color SwingGuideCharge = new(0.0f, 0.0f, 0.502f, 1.0f);
+    private static readonly Color SwingGuideOutline = new(0.0f, 0.0f, 0.0f, 1.0f);
+    private static readonly Color SwingGuideFill = new(1.0f, 1.0f, 1.0f, 1.0f);
+
+    /// <summary>Arrow geometry, measured along the aim direction from the cursor.</summary>
+    private const float SwingGuideStart = 24.0f;
+    private const float SwingGuideTip = 48.0f;
+    private const float SwingGuideHead = 11.0f;
+    private const float SwingGuideHalfWidth = 3.0f;
+    private const float SwingGuideHalfHead = 8.0f;
+
     private bool _swingGuideWasVisible;
     private int _swingGuideDirection = 1;
+    private float _swingGuideCharge;
     private Vector2 _swingGuideCursor = new(float.NaN, float.NaN);
 
     public override void _Process(double delta)
@@ -26,13 +38,18 @@ public partial class CursorToolController
             ActiveContentId == ContentIds.ToolBaseballBat &&
             SwingState is ChargedSwingState.Follow or ChargedSwingState.Gripped or ChargedSwingState.Charging;
         int direction = SwingDirectionSign < 0 ? -1 : 1;
+        float charge = SwingState == ChargedSwingState.Charging
+            ? Mathf.Clamp(SwingCharge, 0.0f, 1.0f)
+            : 0.0f;
 
         if (shouldShow != _swingGuideWasVisible ||
             direction != _swingGuideDirection ||
+            !Mathf.IsEqualApprox(charge, _swingGuideCharge) ||
             !_swingGuideCursor.IsEqualApprox(Cursor))
         {
             _swingGuideWasVisible = shouldShow;
             _swingGuideDirection = direction;
+            _swingGuideCharge = charge;
             _swingGuideCursor = Cursor;
             QueueRedraw();
         }
@@ -45,25 +62,72 @@ public partial class CursorToolController
 
         Vector2 direction = Vector2.Right * _swingGuideDirection;
         Vector2 perpendicular = new(-direction.Y, direction.X);
-        Vector2 start = _swingGuideCursor + direction * 24.0f;
-        Vector2 tip = _swingGuideCursor + direction * 48.0f;
-        Vector2 headBase = tip - direction * 11.0f;
-        Vector2 shadowOffset = Vector2.One * 1.5f;
+        Vector2 start = _swingGuideCursor + direction * SwingGuideStart;
+        Vector2 tip = _swingGuideCursor + direction * SwingGuideTip;
+        Vector2 headBase = tip - direction * SwingGuideHead;
 
-        DrawLine(start + shadowOffset, tip + shadowOffset, SwingGuideShadow, 5.0f, antialiased: true);
-        DrawColoredPolygon(new Vector2[]
-        {
-            tip + shadowOffset,
-            headBase + perpendicular * 7.0f + shadowOffset,
-            headBase - perpendicular * 7.0f + shadowOffset,
-        }, SwingGuideShadow);
-
-        DrawLine(start, tip, SwingGuideFill, 3.0f, antialiased: true);
-        DrawColoredPolygon(new Vector2[]
-        {
+        // One closed outline for the whole arrow, so the black edge wraps the silhouette
+        // instead of tracing a rectangle and a triangle that overlap down the middle.
+        Vector2[] body =
+        [
+            start + perpendicular * SwingGuideHalfWidth,
+            headBase + perpendicular * SwingGuideHalfWidth,
+            headBase + perpendicular * SwingGuideHalfHead,
             tip,
-            headBase + perpendicular * 6.0f,
-            headBase - perpendicular * 6.0f,
-        }, SwingGuideFill);
+            headBase - perpendicular * SwingGuideHalfHead,
+            headBase - perpendicular * SwingGuideHalfWidth,
+            start - perpendicular * SwingGuideHalfWidth,
+        ];
+
+        DrawColoredPolygon(body, SwingGuideFill);
+
+        // The charge fills along the aim axis, from the flat tail toward the point, by
+        // clipping the same silhouette against a moving plane rather than drawing a second
+        // arrow: the fill then follows the head's taper for free.
+        if (_swingGuideCharge > 0.0f)
+        {
+            float span = SwingGuideTip - SwingGuideStart;
+            float frontier = SwingGuideStart + (span * _swingGuideCharge);
+            Vector2[] filled = ClipToFrontier(body, _swingGuideCursor, direction, frontier);
+            if (filled.Length >= 3)
+                DrawColoredPolygon(filled, SwingGuideCharge);
+        }
+
+        DrawPolyline([.. body, body[0]], SwingGuideOutline, 1.5f, antialiased: true);
+    }
+
+    /// <summary>
+    /// Sutherland–Hodgman against the single half-plane "distance along <paramref name="axis"/>
+    /// from <paramref name="origin"/> is at most <paramref name="frontier"/>". Convexity is not
+    /// required for one clip plane, which is why the concave arrow silhouette survives it.
+    /// </summary>
+    private static Vector2[] ClipToFrontier(
+        Vector2[] polygon,
+        Vector2 origin,
+        Vector2 axis,
+        float frontier)
+    {
+        var clipped = new List<Vector2>(polygon.Length + 2);
+        for (int index = 0; index < polygon.Length; index++)
+        {
+            Vector2 current = polygon[index];
+            Vector2 next = polygon[(index + 1) % polygon.Length];
+            float currentDepth = (current - origin).Dot(axis);
+            float nextDepth = (next - origin).Dot(axis);
+            bool currentInside = currentDepth <= frontier;
+            bool nextInside = nextDepth <= frontier;
+
+            if (currentInside)
+                clipped.Add(current);
+
+            if (currentInside != nextInside &&
+                !Mathf.IsZeroApprox(nextDepth - currentDepth))
+            {
+                float t = (frontier - currentDepth) / (nextDepth - currentDepth);
+                clipped.Add(current.Lerp(next, t));
+            }
+        }
+
+        return [.. clipped];
     }
 }

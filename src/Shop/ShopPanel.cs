@@ -27,6 +27,7 @@ public partial class ShopPanel : PanelContainer
     private InteractionDamageComponent? _pipeline;
     private Label _balance = null!;
     private Label _status = null!;
+    private Label _description = null!;
 
     /// <summary>Raised when a purchase changes ownership, so legacy consumers can refresh.</summary>
     public event Action? Purchased;
@@ -47,9 +48,10 @@ public partial class ShopPanel : PanelContainer
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
 
         Name = "ShopPanel";
-        PanelChrome.Parts parts = PanelChrome.Build(this, "Inventory", "ShopItemList");
+        PanelChrome.Parts parts = PanelChrome.Build(this, "ShopItemList");
         _balance = parts.HeaderValue;
         _status = parts.Status;
+        _description = parts.Description;
         foreach (CatalogueEntry entry in CataloguePolicy.SelectableEntries(_catalogue))
         {
             if (ContentIds.TryParseTool(entry.ContentId, out ToolId tool))
@@ -65,8 +67,21 @@ public partial class ShopPanel : PanelContainer
         var action = new Button { Text = "Buy" };
         var price = new Label();
         action.Pressed += () => Activate(entry, tool);
-        PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, action);
+        HBoxContainer line = PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, action);
+        // Both the row and its button: a Stop-filtered button takes the pick from its own parent,
+        // so hooking only the row would blank the description the moment the cursor reached Buy.
+        line.MouseEntered += () => ShowDescription(entry.ContentId);
+        action.MouseEntered += () => ShowDescription(entry.ContentId);
         return new Row(entry, tool, action, price);
+    }
+
+    /// <summary>Last row hovered wins, and it stays put on the way out — a description that
+    /// blanked between rows flickered more than it informed.</summary>
+    private void ShowDescription(string contentId)
+    {
+        string usage = ContentDisplayName.Usage(contentId);
+        if (usage.Length > 0)
+            _description.Text = usage;
     }
 
     private void Activate(CatalogueEntry entry, ToolId tool)
@@ -164,6 +179,8 @@ public partial class ShopPanel : PanelContainer
             return;
 
         _balance.Text = ContentDisplayName.Credits(_progress.BalanceMilliCredits);
+        if (_description.Text.Length == 0)
+            ShowDescription(ContentIds.ForTool(_progress.SelectedTool));
         foreach (Row row in _rows)
         {
             bool owned = row.Entry.IsStarting || _progress.IsToolUnlocked(row.Entry.ContentId);
@@ -182,10 +199,6 @@ public partial class ShopPanel : PanelContainer
                     : affordable
                         ? $"Buy {name} permanently for {price}."
                         : $"{name} costs {price}; you have {ContentDisplayName.Credits(_progress.BalanceMilliCredits)}. Earn more credits to buy it.";
-            // How the thing is actually used comes first: that is what a player hovering an
-            // unowned row wants, and the buy/equip line repeats what the button already says.
-            row.Action.TooltipText = ContentDisplayName.WithUsage(
-                row.Action.TooltipText, row.Entry.ContentId);
             // No layer tag: Purchase and Equip sound themselves, so a press that fails — too
             // expensive, pipeline gone — stays honestly silent.
             UiFeedbackAudioBootstrap.Tag(row.Action, layer: UiSfx.NoLayer);
