@@ -124,10 +124,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             ["BuddyStudioBuy"] = new("Buy / Equip", "Buy an unowned style permanently, or equip a style you already own."),
             ["BuddyStudioActions"] = new("Studio actions", "Save applies the current character changes. Exit leaves Buddy Studio and asks about unsaved changes when needed."),
 
-            ["WorkCompanionRoot"] = new("Work companion", "Hold the left mouse button on Buddy, the computer, or the blue bar to drag the companion anywhere. Double-click Buddy to return to Play Mode."),
-            ["WorkControlTitleBar"] = new("Companion title bar", "Hold the left mouse button on this blue bar and drag to reposition the Work companion."),
+            ["WorkCompanionRoot"] = new("Work companion", "Hold the left mouse button on Buddy or the computer to drag the companion anywhere. Double-click Buddy to return to Play Mode."),
+            ["WorkControlCluster"] = new("Companion controls", "Resize, pause and exit. They appear whenever the pointer is over the companion and stay the same size however large or small you make it."),
             ["WorkCrtCounter"] = new("Work counter", "Shows how much you have done. Click the screen to switch between this session and your lifetime total."),
-            ["WorkResizeButton"] = new("Resize", "Hold the left mouse button on this control and move the mouse to resize the Work companion."),
+            ["WorkResizeButton"] = new("Resize", "Hold the left mouse button on this control and move the mouse to resize the Work companion. The controls themselves keep their size."),
             ["WorkMotionToggle"] = new("Motion", "Pause or resume Buddy's Work animations. Counters and rewards continue either way."),
             ["WorkExitButton"] = new("Exit Work Mode", "Return to normal Play Mode. Double-clicking Buddy does the same thing."),
         };
@@ -1240,8 +1240,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             "Last stop. Work Mode shrinks Buddy into a tiny companion that sits on top of your " +
             "real desktop and keeps earning while you get on with things. Open Work.",
         TutorialStepIds.DragWorkCompanion =>
-            "Hold the left mouse button on Buddy, on the computer, or on the blue bar, then move " +
-            "the mouse to drag the companion wherever you want it.",
+            "Hold the left mouse button on Buddy or on the computer, then move the mouse to drag " +
+            "the companion wherever you want it.",
         TutorialStepIds.ResizeWorkCompanion =>
             "Hold the left mouse button on the ↘ resize button and move the mouse to make the " +
             "companion bigger or smaller.",

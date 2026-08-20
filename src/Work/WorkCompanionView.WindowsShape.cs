@@ -111,33 +111,21 @@ public partial class WorkCompanionView
         // for tiny hand excursions while empty corners stay outside the HWND and click through.
         Rect2I[] regions =
         [
-            new Rect2I(0, 4, 720, 38),       // full-width Win98 title bar and controls
             new Rect2I(228, 78, 152, 228),   // sideways buddy + alternating typing hands
             new Rect2I(385, 68, 240, 270),   // smaller supplied monitor and PC chassis
         ];
 
-        bool built = true;
+        // The hover controls are not part of the composition and do not scale with it, so their
+        // slice of the HWND is measured in window pixels and added on its own. Leaving it out
+        // would clip the buttons straight out of the clickable window.
+        bool built = AddNativeRegion(combined, ControlClusterWindowRect());
         foreach (Rect2I unscaled in regions)
         {
-            Rect2I region = ScaleCompositionRect(unscaled);
-            nint part = CreateRectRgn(
-                region.Position.X,
-                region.Position.Y,
-                region.End.X,
-                region.End.Y);
-            if (part == 0)
-            {
-                built = false;
+            if (!built)
                 break;
-            }
 
-            int result = CombineRgn(combined, combined, part, RgnOr);
-            DeleteObject(part);
-            if (result == 0)
-            {
-                built = false;
-                break;
-            }
+            Rect2I region = ScaleCompositionRect(unscaled);
+            built = AddNativeRegion(combined, region);
         }
 
         if (!built || SetWindowRgn(_ownedWorkWindowHandle, combined, true) == 0)
@@ -149,6 +137,21 @@ public partial class WorkCompanionView
 
         // After a successful SetWindowRgn Windows owns the HRGN handle.
         _nativeShapeApplied = true;
+    }
+
+    private static bool AddNativeRegion(nint combined, Rect2I region)
+    {
+        nint part = CreateRectRgn(
+            region.Position.X,
+            region.Position.Y,
+            region.End.X,
+            region.End.Y);
+        if (part == 0)
+            return false;
+
+        int result = CombineRgn(combined, combined, part, RgnOr);
+        DeleteObject(part);
+        return result != 0;
     }
 
     private void ScheduleNativeWindowShapeRefresh()
