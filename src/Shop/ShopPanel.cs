@@ -119,6 +119,12 @@ public partial class ShopPanel : PanelContainer
         {
             PurchaseCount++;
             UiFeedbackAudioBootstrap.TryPlayLayer(this, UiSfx.Money);
+            RewardPopup.Show(
+                this,
+                RewardIconProvider.ForContent(entry.ContentId),
+                name,
+                $"Bought for {ContentDisplayName.Credits(result.PriceMilliCredits)} — equipped and ready.",
+                amountMilliCredits: 0);
             Purchased?.Invoke();
             // Buying is the player saying "I want this now": a second click to equip was pure
             // ceremony, and the tutorial no longer has to teach it as its own step.

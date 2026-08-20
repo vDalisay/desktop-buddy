@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
@@ -11,6 +12,7 @@ using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Persistence.Characters;
+using DesktopBuddy.UI;
 using DesktopBuddy.UI.Win98;
 using Godot;
 
@@ -329,13 +331,60 @@ public partial class WorkCompanionCoordinator : Node
         {
             long rewardMilli = 0;
             foreach (WorkMilestoneEarned earned in newlyEarned)
+            {
                 rewardMilli = WorkCounterSnapshot.SaturatingAdd(rewardMilli, earned.RewardMilliCredits);
+                AnnounceMilestone(earned);
+            }
             if (rewardMilli > 0)
                 _context.Economy.DepositPassive(rewardMilli);
             _sessionSettledMilliCredits = WorkCounterSnapshot.SaturatingAdd(
                 _sessionSettledMilliCredits, rewardMilli);
             _ = FlushMilestoneObservedAsync();
         }
+    }
+
+    /// <summary>
+    /// Until now these paid out in complete silence — the owner had never seen one fire. One
+    /// popup per milestone; the popup itself queues them if a long burst crosses two at once.
+    /// </summary>
+    private void AnnounceMilestone(WorkMilestoneEarned earned)
+    {
+        WorkMilestoneDefinition definition = default;
+        foreach (WorkMilestoneDefinition candidate in _milestones.Definitions)
+        {
+            if (string.Equals(candidate.Id, earned.MilestoneId, StringComparison.Ordinal))
+            {
+                definition = candidate;
+                break;
+            }
+        }
+
+        (string title, string subtitle, string icon) = DescribeMilestone(definition);
+        UiFeedbackAudioBootstrap.TryPlay(this, UiFeedbackCue.Reward);
+        RewardPopup.Show(this, RewardIconProvider.For(icon), title, subtitle, earned.RewardMilliCredits);
+    }
+
+    /// <summary>What the player reads on the popup. Lifetime milestones are the achievements.</summary>
+    internal static (string Title, string Subtitle, string IconId) DescribeMilestone(
+        WorkMilestoneDefinition definition)
+    {
+        bool lifetime = definition.Scope == WorkMilestoneScope.Lifetime;
+        string counted = definition.CounterKind switch
+        {
+            WorkCounterKind.KeyboardPresses => "keystrokes",
+            WorkCounterKind.MouseClicks => "clicks",
+            _ => "actions",
+        };
+        return (
+            lifetime ? "Achievement" : "Work Milestone",
+            definition.Threshold > 0
+                // Invariant: the shell's copy is English and the machine's locale must not turn
+                // "1,000,000 actions" into "1.000.000 actions", the way ContentDisplayName.Credits
+                // already pins its own formatting.
+                ? $"{definition.Threshold.ToString("N0", CultureInfo.InvariantCulture)} {counted} " +
+                  $"{(lifetime ? "all time" : "this session")}."
+                : string.Empty,
+            lifetime ? RewardIconProvider.Trophy : RewardIconProvider.Milestone);
     }
 
     private async Task<CompiledCharacterAppearance?> ResolveAppearanceAsync(CancellationToken token)
