@@ -45,6 +45,10 @@ public static class PanelChrome
         {
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            // A half-scrolled row was painting its checkbox and dropdown straight over the
+            // window frame below the list (owner report 2026-08-20). Controls draw after the
+            // panel that contains them, so nothing but a clip rect will hold them in.
+            ClipContents = true,
         };
         column.AddChild(scroll);
         var list = new VBoxContainer { Name = listName };
@@ -66,6 +70,7 @@ public static class PanelChrome
             Name = "PanelDescriptionScroll",
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
             VerticalScrollMode = ScrollContainer.ScrollMode.Auto,
+            ClipContents = true,
             CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(DescriptionLines * DescriptionLineHeight)),
         };
         column.AddChild(descriptionScroll);

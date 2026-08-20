@@ -222,7 +222,11 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _characterListClicked;
     private bool _characterListBound;
 
-    /// <summary>Set when the Studio save step was satisfied by there being nothing to save.</summary>
+    /// <summary>
+    /// Whether Buddy was already wearing the Button nose when this Studio visit began. Sampled
+    /// on entry and not re-read: it decides both whether the save step can be satisfied by
+    /// there being nothing to save, and whether the Exit prompt remarks on it.
+    /// </summary>
     private bool _studioNothingToSave;
     private PaintColor? _paintColorOrigin;
     private bool _brushButtonPressed;
@@ -630,6 +634,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
             case TutorialStepIds.OpenBuddyStudio when IsStudioOpen():
                 _studioSaveRequested = false;
+                // Decided once, on entry. Asking again at the save step made the "he already had
+                // that nose" remark fire for a player who had just equipped it a moment earlier
+                // (owner report 2026-08-20).
+                _studioNothingToSave = IsStudioEquipped(CharacterFeatureIds.NoseButton);
                 CompleteCurrent(step);
                 break;
 
@@ -653,11 +661,12 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
-            // Buddy already wearing the nose leaves nothing to save, so Save is disabled and the
-            // walkthrough used to stop dead here (owner feedback 2026-08-20). Nothing to save is
-            // a completed save; the Exit prompt explains why no button was pressed.
-            case TutorialStepIds.SaveBuddyStudio when IsStudioOpen() && StudioHasNothingToSave():
-                _studioNothingToSave = true;
+            // A buddy who already wore the nose on entry leaves nothing to save, so Save is
+            // disabled and the walkthrough used to stop dead here. Nothing to save is a
+            // completed save; the Exit prompt explains why no button was pressed. Gated on the
+            // entry snapshot, so equipping the nose during this visit takes the normal path.
+            case TutorialStepIds.SaveBuddyStudio when IsStudioOpen() && _studioNothingToSave &&
+                                                        StudioHasNothingToSave():
                 CompleteCurrent(step);
                 break;
 
