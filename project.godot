@@ -94,6 +94,7 @@ renderer/rendering_method.mobile="gl_compatibility"
 [autoload]
 
 UiFeedbackAudioBootstrap="*res://src/UI/UiFeedbackAudioBootstrap.cs"
+RewardPopup="*res://src/UI/RewardPopup.cs"
 DroppedToolInputBootstrap="*res://src/Tools/DroppedToolInputBootstrap.cs"
 WorkMilestoneProgressBootstrap="*res://src/Work/WorkMilestoneProgressBootstrap.cs"
 CharacterSlotUiBootstrap="*res://src/CharacterEditor/CharacterSlotUiBootstrap.cs"
