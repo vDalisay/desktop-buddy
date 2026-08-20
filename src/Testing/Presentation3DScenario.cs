@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
@@ -341,9 +342,14 @@ public sealed class Presentation3DScenario : IScenario
             lab.LightingRig.GetChildCount() == 2 &&
             !lab.LightingRig.KeyLight.ShadowEnabled &&
             !lab.LightingRig.FillLight.ShadowEnabled;
+        // What this protects is that no per-tool visual node is ever parented to the cursor-tool
+        // root: every tool's mesh goes through the one generic slot. The swing aim guide is the
+        // one legitimate sibling — shared by every swing tool, and deliberately outside the slot
+        // so it inherits neither the impact squash nor the aim rotation.
         bool genericSlotOnly =
-            lab.CursorToolVisual.GetChildCount() == 1 &&
             lab.CursorToolVisual.Slot.Name == "DynamicBodyVisualSlot" &&
+            lab.CursorToolVisual.GetChildren().All(child =>
+                child == lab.CursorToolVisual.Slot || child.Name == "SwingDirectionGuide") &&
             lab.CursorToolVisual.FindChild("*Bat*", recursive: true, owned: false) is null;
 
         return new BatVisualProbe(
@@ -383,10 +389,14 @@ public sealed class Presentation3DScenario : IScenario
         await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
         CursorToolBody? glove = lab.CursorTools.Body;
+        // The glove stopped being a placeholder sphere when it got its own authored mesh; what
+        // the lifecycle check owns is attach/detach and squash parity, not which primitive the
+        // mesh happens to be.
         bool attached = glove is not null && lab.CursorToolVisual.Target == glove &&
             lab.CursorToolVisual.Visible && !glove.Visible &&
-            lab.CursorToolVisual.ActiveKind == CursorToolVisual3DKind.Capsule &&
-            lab.CursorToolVisual.Mesh.Mesh is SphereMesh;
+            lab.CursorToolVisual.ActiveKind == CursorToolVisual3DKind.BoxingGlove &&
+            lab.CursorToolVisual.Mesh.Mesh is ArrayMesh gloveMesh &&
+            gloveMesh.GetSurfaceCount() > 0;
         if (glove is null)
         {
             return false;
@@ -407,6 +417,7 @@ public sealed class Presentation3DScenario : IScenario
         await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
         bool detached = !lab.CursorToolVisual.IsAttached && !lab.CursorToolVisual.Visible;
         messages.Add($"glove_attached={attached} detached={detached} " +
+            $"kind={lab.CursorToolVisual.ActiveKind} mesh={lab.CursorToolVisual.Mesh.Mesh?.GetType().Name} " +
             $"scale_error={scaleError:F4} angle_error={angleError:F4}");
         return attached && scaleError < 0.01f && angleError < 0.01f && detached;
     }
