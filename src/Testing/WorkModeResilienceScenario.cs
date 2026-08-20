@@ -167,20 +167,28 @@ public sealed class WorkModeResilienceScenario : IScenario
                 Button resize = (Button)workView.FindChild("WorkResizeButton", true, false);
                 Button motion = (Button)workView.FindChild("WorkMotionToggle", true, false);
                 Button exit = (Button)workView.FindChild("WorkExitButton", true, false);
-                PanelContainer titleBar = (PanelContainer)workView.FindChild("WorkControlTitleBar", true, false);
-                bool win98TitleBar = titleBar.GetThemeStylebox("panel") is StyleBoxFlat bar &&
-                    bar.BgColor == Win98ThemeFactory.ActiveTitle &&
-                    bar.GetBorderWidth(Side.Left) == 2 &&
-                    Mathf.IsEqualApprox(titleBar.Size.X, WorkCompanionView.PreferredSize.X) &&
+                // The title strip is gone (owner instruction 2026-08-20). What replaces it must
+                // stay a fixed size in window pixels: the cluster sits outside the scaled
+                // composition root precisely so shrinking the companion cannot shrink its own
+                // controls into something unhittable.
+                Control cluster = (Control)workView.FindChild("WorkControlCluster", true, false);
+                bool unscaledControls =
+                    Mathf.IsEqualApprox(cluster.Scale.X, 1.0f) &&
+                    Mathf.IsEqualApprox(cluster.Scale.Y, 1.0f) &&
+                    Mathf.IsEqualApprox(resize.Size.X, exit.Size.X) &&
+                    Mathf.IsEqualApprox(resize.Size.Y, exit.Size.Y) &&
+                    resize.Size.X >= 40.0f &&
+                    workView.FindChild("WorkControlTitleBar", true, false) is null &&
                     resize.GetThemeStylebox("hover") is StyleBoxFlat hover &&
                     hover.BgColor == Win98ThemeFactory.Highlight &&
                     resize.GetThemeColor("font_hover_color") == Win98ThemeFactory.Dark;
                 checks.Add(new StartupCheck(
-                    "work_crt_drag_moves_click_toggles_and_controls_sit_on_win98_title_bar",
+                    "work_crt_drag_moves_click_toggles_and_controls_are_fixed_size",
                     afterDrag.Position != beforeDrag.Position && workView.ShowLifetime != counterBefore &&
                         resize.HasThemeStyleboxOverride("normal") && motion.HasThemeStyleboxOverride("normal") &&
-                        exit.HasThemeStyleboxOverride("normal") && win98TitleBar,
-                    $"position={beforeDrag.Position}->{afterDrag.Position} counter={counterBefore}->{workView.ShowLifetime}"));
+                        exit.HasThemeStyleboxOverride("normal") && unscaledControls,
+                    $"position={beforeDrag.Position}->{afterDrag.Position} counter={counterBefore}->{workView.ShowLifetime} " +
+                    $"button={resize.Size} cluster_scale={cluster.Scale}"));
             }
 
             var requestedWorkSize = new Vector2I(600, 358);

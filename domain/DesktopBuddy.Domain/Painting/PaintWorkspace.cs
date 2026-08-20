@@ -245,7 +245,28 @@ public sealed class PaintWorkspace
     public bool CanUndo => _history.CanUndo;
     public bool CanRedo => _history.CanRedo;
     public long UndoMemoryBytes => _history.MemoryBytes;
-    public bool IsDirty { get; private set; }
+    /// <summary>
+    /// Raised whenever <see cref="IsDirty"/> flips. The editor's Save and Reset buttons are
+    /// derived from it, and a paint stroke reaches them through no other route: the session's
+    /// own Changed event covers the document, not the pixels, so without this a stroke left
+    /// both buttons stuck disabled until some unrelated change refreshed the UI.
+    /// </summary>
+    public event Action? DirtyChanged;
+
+    private bool _isDirty;
+
+    public bool IsDirty
+    {
+        get => _isDirty;
+        private set
+        {
+            if (_isDirty == value)
+                return;
+
+            _isDirty = value;
+            DirtyChanged?.Invoke();
+        }
+    }
     public bool GestureActive => _gestureActive;
     public bool PreviewActive => _previewActive;
     public IReadOnlyDictionary<PaintPart, PaintSurface> Surfaces => _surfaces;

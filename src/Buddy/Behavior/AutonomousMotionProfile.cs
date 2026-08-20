@@ -45,6 +45,20 @@ public partial class AutonomousMotionProfile : GameResource
     /// tool-reaction hops and future behaviour-driven jumps are unaffected.</summary>
     [Export] public bool AmbientJumpsEnabled { get; set; } = true;
 
+    /// <summary>
+    /// How long a committed walk may stay blocked by a loose object before that direction is
+    /// treated as a wall and the planner picks somewhere else. Two seconds: long enough that
+    /// a buddy who can hop always clears the thing first, short enough that one who cannot
+    /// never looks stuck.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,7200,1")] public int ObstacleGiveUpTicks { get; set; } = 240;
+
+    /// <summary>
+    /// How long the path must read clear before the give-up clock rewinds. Both obstacle
+    /// sources flicker, so this is a debounce, not a sample.
+    /// </summary>
+    [Export(PropertyHint.Range, "1,1200,1")] public int ObstacleClearTicks { get; set; } = 60;
+
     public AutonomousMotionTuning ToTuning() => new(
         MinimumIdleTicks,
         MaximumIdleTicks,

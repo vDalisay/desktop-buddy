@@ -40,7 +40,7 @@ public partial class WorkCompanionView : CanvasLayer
     private SandboxRoot _sandbox = null!;
     private Control _root = null!;
     private WorkCrtDisplay _counter = null!;
-    private PanelContainer _controlBar = null!;
+    private Control _controlLayer = null!;
     private Button _resizeButton = null!;
     private Button _motionToggle = null!;
     private Button _exitButton = null!;
@@ -63,9 +63,20 @@ public partial class WorkCompanionView : CanvasLayer
     private static readonly Rect2 BuddyHitRect = new(228, 78, 152, 228);
     private static readonly Rect2 CrtHitRect = new(418, 102, 121, 92);
     private static readonly Rect2 ComputerHitRect = new(385, 68, 240, 270);
-    private static readonly Rect2 ResizeButtonRect = new(601, 10, 31, 25);
-    private static readonly Rect2 MotionToggleRect = new(638, 10, 31, 25);
-    private static readonly Rect2 ExitButtonRect = new(675, 10, 31, 25);
+    /// <summary>
+    /// The hover controls are measured in window pixels, never composition pixels, and they
+    /// live outside the scaled composition root. Shrinking the companion must not shrink its
+    /// own controls into something unclickable (owner instruction 2026-08-20), so these are the
+    /// same size at every window size.
+    /// </summary>
+    private const int ControlButtonSize = 52;
+    private const int ControlButtonGap = 6;
+    private const int ControlClusterInset = 6;
+    private const int ControlButtonCount = 3;
+
+    private static readonly Vector2I ControlClusterSize = new(
+        (ControlButtonSize * ControlButtonCount) + (ControlButtonGap * (ControlButtonCount - 1)),
+        ControlButtonSize);
 
     public event Action? ExitRequested;
     public event Action? CounterModeToggleRequested;
@@ -242,63 +253,44 @@ public partial class WorkCompanionView : CanvasLayer
         };
         _root.AddChild(_counter);
 
-        // Controls sit in the top-right corner above the monitor, clear of the buddy and
-        // the CRT, and only appear while the pointer is over the companion.
-        _controlBar = new PanelContainer
+        // Controls live outside the scaled composition root, in plain window pixels, and only
+        // appear while the pointer is over the companion. The Win98 title strip they used to sit
+        // on is gone: it was chrome the companion did not need, and the buttons on it shrank
+        // with the window until they were too small to hit (owner instruction 2026-08-20).
+        _controlLayer = new Control
         {
-            Name = "WorkControlTitleBar",
-            Position = new Vector2(0, 4),
-            Size = new Vector2(720, 38),
+            Name = "WorkControlCluster",
+            Size = ControlClusterSize,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        _controlBar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.ActiveTitle, 2));
-        _root.AddChild(_controlBar);
+        AddChild(_controlLayer);
 
-        _resizeButton = new Button
-        {
-            Name = "WorkResizeButton",
-            Position = ResizeButtonRect.Position,
-            Size = ResizeButtonRect.Size,
-            Text = "↘",
-            TooltipText = "Resize the Work companion.",
-            FocusMode = Control.FocusModeEnum.All,
-            MouseDefaultCursorShape = Control.CursorShape.Fdiagsize,
-        };
-        _resizeButton.AddThemeFontSizeOverride("font_size", 13);
-        ApplyWin98ButtonStyle(_resizeButton);
+        _resizeButton = BuildControlButton(
+            "WorkResizeButton",
+            slot: 0,
+            "⤡",
+            "Resize the Work companion.",
+            Control.CursorShape.Fdiagsize);
         _resizeButton.ButtonDown += () => ResizeRequested?.Invoke();
-        _root.AddChild(_resizeButton);
 
-        _motionToggle = new Button
-        {
-            Name = "WorkMotionToggle",
-            Position = MotionToggleRect.Position,
-            Size = MotionToggleRect.Size,
-            ToggleMode = true,
-            FocusMode = Control.FocusModeEnum.All,
-            MouseDefaultCursorShape = Control.CursorShape.PointingHand,
-        };
-        _motionToggle.AddThemeFontSizeOverride("font_size", 11);
-        ApplyWin98ButtonStyle(_motionToggle);
+        _motionToggle = BuildControlButton(
+            "WorkMotionToggle",
+            slot: 1,
+            string.Empty,
+            string.Empty,
+            Control.CursorShape.PointingHand);
+        _motionToggle.ToggleMode = true;
         _motionToggle.Toggled += enabled => SetAnimationsEnabled(enabled);
-        _root.AddChild(_motionToggle);
 
-        _exitButton = new Button
-        {
-            Name = "WorkExitButton",
-            Position = ExitButtonRect.Position,
-            Size = ExitButtonRect.Size,
-            Text = "X",
-            TooltipText = "Leave Work Mode (same as double-clicking the buddy).",
-            FocusMode = Control.FocusModeEnum.All,
-            MouseDefaultCursorShape = Control.CursorShape.PointingHand,
-        };
-        _exitButton.AddThemeFontSizeOverride("font_size", 11);
-        ApplyWin98ButtonStyle(_exitButton);
+        _exitButton = BuildControlButton(
+            "WorkExitButton",
+            slot: 2,
+            "✕",
+            "Leave Work Mode (same as double-clicking the buddy).",
+            Control.CursorShape.PointingHand);
         _exitButton.Pressed += () => ExitRequested?.Invoke();
         // The coordinator sounds the exit for both routes out of Work Mode; see HookWork.
         UiFeedbackAudioBootstrap.Tag(_exitButton, UiSfx.Silent);
-        _root.AddChild(_exitButton);
 
         // Hover tracking lives on the Window, not on _root: Godot emits mouse_exited on a
         // parent Control as soon as the pointer enters a child that accepts mouse input, so
@@ -317,14 +309,73 @@ public partial class WorkCompanionView : CanvasLayer
         };
     }
 
+    /// <summary>One fixed-size control in the hover cluster, laid out left to right.</summary>
+    private Button BuildControlButton(
+        string name,
+        int slot,
+        string text,
+        string tooltip,
+        Control.CursorShape cursor)
+    {
+        var button = new Button
+        {
+            Name = name,
+            Position = new Vector2(slot * (ControlButtonSize + ControlButtonGap), 0),
+            Size = new Vector2(ControlButtonSize, ControlButtonSize),
+            Text = text,
+            TooltipText = tooltip,
+            FocusMode = Control.FocusModeEnum.All,
+            MouseDefaultCursorShape = cursor,
+        };
+        button.AddThemeFontSizeOverride("font_size", 22);
+        ApplyWin98ButtonStyle(button);
+        _controlLayer.AddChild(button);
+        return button;
+    }
+
+    /// <summary>
+    /// The cluster is pinned to the top-right of the drawn composition rather than the raw
+    /// window, so it tracks the art through the letterboxing that keeps the companion's aspect.
+    /// </summary>
+    private void PositionControlCluster()
+    {
+        if (!GodotObject.IsInstanceValid(_controlLayer))
+            return;
+
+        _controlLayer.Position = ControlClusterOrigin();
+    }
+
+    /// <summary>
+    /// Top-right of the drawn composition, so the cluster tracks the art through the
+    /// letterboxing that keeps the companion's aspect — but never left of the window itself.
+    /// The cluster does not scale, so on a companion narrower than the cluster the unclamped
+    /// origin goes negative and the buttons walk off the left edge.
+    /// </summary>
+    private Vector2 ControlClusterOrigin()
+    {
+        Vector2 drawn = (Vector2)PreferredSize * _compositionScale;
+        return new Vector2(
+            Math.Max(0.0f, _compositionOffset.X + drawn.X - ControlClusterSize.X - ControlClusterInset),
+            Math.Max(0.0f, _compositionOffset.Y + ControlClusterInset));
+    }
+
+    /// <summary>The cluster in window pixels, for the native window region.</summary>
+    private Rect2I ControlClusterWindowRect()
+    {
+        Vector2 origin = ControlClusterOrigin();
+        return new Rect2I(
+            new Vector2I(Mathf.RoundToInt(origin.X), Mathf.RoundToInt(origin.Y)),
+            ControlClusterSize);
+    }
+
     private void ShowHoverControls() => SetHoverControlsVisible(true);
 
     private void HideHoverControls() => SetHoverControlsVisible(false);
 
     private void SetHoverControlsVisible(bool visible)
     {
-        if (GodotObject.IsInstanceValid(_controlBar))
-            _controlBar.Visible = visible;
+        if (GodotObject.IsInstanceValid(_controlLayer))
+            _controlLayer.Visible = visible;
         if (GodotObject.IsInstanceValid(_resizeButton))
             _resizeButton.Visible = visible;
         if (GodotObject.IsInstanceValid(_motionToggle))
@@ -349,16 +400,32 @@ public partial class WorkCompanionView : CanvasLayer
             _root.Position = _compositionOffset;
             _root.Scale = Vector2.One * _compositionScale;
         }
+
+        PositionControlCluster();
         ScheduleNativeWindowShapeRefresh();
     }
 
+    // Buddy and the computer are the whole companion now that the title strip is gone; the
+    // control buttons over them are excluded separately by IsOverControlButton.
     private static bool IsDragSurface(Vector2 compositionPosition) =>
-        BuddyHitRect.HasPoint(compositionPosition) || ComputerHitRect.HasPoint(compositionPosition);
+        BuddyHitRect.HasPoint(compositionPosition) ||
+        ComputerHitRect.HasPoint(compositionPosition);
 
+    /// <summary>
+    /// Whether the pointer is over one of the hover controls, and so must not start a drag or a
+    /// wheel resize.
+    ///
+    /// <para>The visibility test is load-bearing, not a shortcut. The cluster is a fixed 168 px
+    /// wide while the composition scales with the window, so on a small companion it is wider
+    /// than the art it sits on — and an unconditional hit test then vetoed every click anywhere
+    /// on the companion, killing drag and wheel resize outright. Controls nobody can see are
+    /// controls nobody can click.</para>
+    /// </summary>
     private bool IsOverControlButton(Vector2 windowPosition) =>
-        _resizeButton.GetGlobalRect().HasPoint(windowPosition) ||
-        _motionToggle.GetGlobalRect().HasPoint(windowPosition) ||
-        _exitButton.GetGlobalRect().HasPoint(windowPosition);
+        GodotObject.IsInstanceValid(_controlLayer) && _controlLayer.Visible &&
+        (_resizeButton.GetGlobalRect().HasPoint(windowPosition) ||
+         _motionToggle.GetGlobalRect().HasPoint(windowPosition) ||
+         _exitButton.GetGlobalRect().HasPoint(windowPosition));
 
     private static void ApplyWin98ButtonStyle(Button button)
     {

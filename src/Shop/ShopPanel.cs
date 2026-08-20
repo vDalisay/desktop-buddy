@@ -27,6 +27,7 @@ public partial class ShopPanel : PanelContainer
     private InteractionDamageComponent? _pipeline;
     private Label _balance = null!;
     private Label _status = null!;
+    private Label _description = null!;
 
     /// <summary>Raised when a purchase changes ownership, so legacy consumers can refresh.</summary>
     public event Action? Purchased;
@@ -47,9 +48,10 @@ public partial class ShopPanel : PanelContainer
         _pipeline = pipeline ?? throw new ArgumentNullException(nameof(pipeline));
 
         Name = "ShopPanel";
-        PanelChrome.Parts parts = PanelChrome.Build(this, "Inventory", "ShopItemList");
+        PanelChrome.Parts parts = PanelChrome.Build(this, "ShopItemList");
         _balance = parts.HeaderValue;
         _status = parts.Status;
+        _description = parts.Description;
         foreach (CatalogueEntry entry in CataloguePolicy.SelectableEntries(_catalogue))
         {
             if (ContentIds.TryParseTool(entry.ContentId, out ToolId tool))
@@ -65,8 +67,21 @@ public partial class ShopPanel : PanelContainer
         var action = new Button { Text = "Buy" };
         var price = new Label();
         action.Pressed += () => Activate(entry, tool);
-        PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, action);
+        HBoxContainer line = PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, action);
+        // Both the row and its button: a Stop-filtered button takes the pick from its own parent,
+        // so hooking only the row would blank the description the moment the cursor reached Buy.
+        line.MouseEntered += () => ShowDescription(entry.ContentId);
+        action.MouseEntered += () => ShowDescription(entry.ContentId);
         return new Row(entry, tool, action, price);
+    }
+
+    /// <summary>Last row hovered wins, and it stays put on the way out — a description that
+    /// blanked between rows flickered more than it informed.</summary>
+    private void ShowDescription(string contentId)
+    {
+        string usage = ContentDisplayName.Usage(contentId);
+        if (usage.Length > 0)
+            _description.Text = usage;
     }
 
     private void Activate(CatalogueEntry entry, ToolId tool)
@@ -74,21 +89,25 @@ public partial class ShopPanel : PanelContainer
         bool owned = entry.IsStarting || _progress.IsToolUnlocked(entry.ContentId);
         if (!owned)
         {
-            Purchase(entry);
+            Purchase(entry, tool);
             return;
         }
+
+        // The settled row is already disabled; re-firing it must not re-count an equip.
+        if (_progress.SelectedTool == tool)
+            return;
 
         Equip(entry.ContentId, tool);
     }
 
-    private void Purchase(CatalogueEntry entry)
+    private void Purchase(CatalogueEntry entry, ToolId tool)
     {
         PurchaseResult result = _economy.Purchase(entry.ContentId);
         string name = ContentDisplayName.For(entry.ContentId);
         _status.Text = result.Status switch
         {
             PurchaseStatus.Purchased =>
-                $"Bought {name} for {ContentDisplayName.Credits(result.PriceMilliCredits)}. Select Equip to use it.",
+                $"Bought {name} for {ContentDisplayName.Credits(result.PriceMilliCredits)}.",
             PurchaseStatus.InsufficientFunds =>
                 $"{name} costs {ContentDisplayName.Credits(result.PriceMilliCredits)} — " +
                 $"you have {ContentDisplayName.Credits(result.BalanceMilliCredits)}.",
@@ -101,6 +120,12 @@ public partial class ShopPanel : PanelContainer
             PurchaseCount++;
             UiFeedbackAudioBootstrap.TryPlayLayer(this, UiSfx.Money);
             Purchased?.Invoke();
+            // Buying is the player saying "I want this now": a second click to equip was pure
+            // ceremony, and the tutorial no longer has to teach it as its own step.
+            string bought = _status.Text;
+            Equip(entry.ContentId, tool);
+            _status.Text = $"{bought} {_status.Text}";
+            return;
         }
 
         Refresh();
@@ -154,6 +179,8 @@ public partial class ShopPanel : PanelContainer
             return;
 
         _balance.Text = ContentDisplayName.Credits(_progress.BalanceMilliCredits);
+        if (_description.Text.Length == 0)
+            ShowDescription(ContentIds.ForTool(_progress.SelectedTool));
         foreach (Row row in _rows)
         {
             bool owned = row.Entry.IsStarting || _progress.IsToolUnlocked(row.Entry.ContentId);

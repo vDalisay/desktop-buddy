@@ -219,7 +219,15 @@ public readonly record struct BehaviorSnapshot(
     /// </summary>
     bool WallContactLeft = false,
     /// <summary>The same, against the right wall.</summary>
-    bool WallContactRight = false);
+    bool WallContactRight = false,
+    /// <summary>
+    /// An obstacle that is simply in the way and cannot be played with — a dropped tool, not a
+    /// ball. Hopping one is not a personality flourish, it is the only way past, so it ignores
+    /// <see cref="BuddyTraits.ObstacleHopPropensity"/> entirely. Balls are deliberately excluded:
+    /// a buddy who hopped over them instead of walking into them would never kick or catch
+    /// anything (owner instruction 2026-08-20).
+    /// </summary>
+    bool BlockingObstacleInPath = false);
 
 /// <summary>One resolved actuation decision.</summary>
 public readonly record struct ActuationIntent(
@@ -600,11 +608,16 @@ public sealed class BehaviorArbiterModel
         // Obstacle hop: propensity AND obstacle evidence AND stable support AND a committed
         // walk direction must all agree. Any one missing means no hop — this is what keeps
         // jumping from reading as "too random" (DECISIONS 2026-07-20).
-        bool hop =
-            snapshot.ObstacleInCommittedPath &&
-            snapshot.HasStableSupport &&
-            snapshot.AmbientWalkDirection != 0.0f &&
-            traits.ObstacleHopPropensity >= _tuning.HopPropensityThreshold;
+        // Two hops, one gate. The discretionary hop over anything in the path stays
+        // trait-gated so ambient jumping does not read as random (DECISIONS 2026-07-20). The
+        // hop over something that merely blocks the way is not discretionary: without it a
+        // buddy below the threshold — about a third of them, on a uniform roll against 35 —
+        // walks into a dropped bat forever (owner report 2026-08-20).
+        bool canHop = snapshot.HasStableSupport && snapshot.AmbientWalkDirection != 0.0f;
+        bool hop = canHop &&
+            (snapshot.BlockingObstacleInPath ||
+             (snapshot.ObstacleInCommittedPath &&
+              traits.ObstacleHopPropensity >= _tuning.HopPropensityThreshold));
 
         return new ActuationIntent(
             BehaviorPriority.Ambient,

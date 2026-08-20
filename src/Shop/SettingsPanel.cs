@@ -17,16 +17,47 @@ public partial class SettingsPanel : PanelContainer
 {
     private VBoxContainer _list = null!;
     private Label _status = null!;
+    private Label _description = null!;
+
+    private const string DefaultDescription =
+        "Hover any setting to see what it does.";
 
     public bool IsInitialized { get; private set; }
+
+    /// <summary>
+    /// One row, wired so its authored description reaches the footer. Hover is hooked on both
+    /// the row and its control: a Stop-filtered control takes the pick from its own parent, so
+    /// hooking only the row would blank the text the moment the cursor reached the checkbox.
+    /// </summary>
+    private HBoxContainer DescribedRow(
+        string? group,
+        string label,
+        Label value,
+        Control control,
+        string description)
+    {
+        HBoxContainer line = PanelChrome.Row(Group(group), label, value, control);
+        line.MouseEntered += () => ShowDescription(description);
+        control.MouseEntered += () => ShowDescription(description);
+        return line;
+    }
+
+    /// <summary>Last row hovered wins, and it stays put on the way out.</summary>
+    private void ShowDescription(string description)
+    {
+        if (!string.IsNullOrWhiteSpace(description))
+            _description.Text = description;
+    }
 
     public void Configure()
     {
         Name = "SettingsPanel";
-        PanelChrome.Parts parts = PanelChrome.Build(this, "Settings", "SettingsActionList");
+        PanelChrome.Parts parts = PanelChrome.Build(this, "SettingsActionList");
         _list = parts.List;
         _status = parts.Status;
         _status.Text = "Changes apply immediately.";
+        _description = parts.Description;
+        _description.Text = DefaultDescription;
         VisibilityChanged += OnVisibilityChanged;
         IsInitialized = true;
     }
@@ -60,7 +91,7 @@ public partial class SettingsPanel : PanelContainer
         ArgumentNullException.ThrowIfNull(pressed);
         var button = new Button { Text = buttonText };
         button.Pressed += pressed;
-        PanelChrome.Row(Group(group), label, new Label(), button);
+        DescribedRow(group, label, new Label(), button, description);
         button.TooltipText = description;
         _actions.Add(label, button);
         return button;
@@ -101,7 +132,7 @@ public partial class SettingsPanel : PanelContainer
         if (committed is not null)
             slider.DragEnded += _ => committed();
 
-        PanelChrome.Row(Group(group), label, readout, slider);
+        DescribedRow(group, label, readout, slider, description);
         slider.CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(140), 0);
         _controls.Add(label, slider);
         return slider;
@@ -123,7 +154,7 @@ public partial class SettingsPanel : PanelContainer
             TooltipText = description,
         };
         toggle.Toggled += pressed => changed(pressed);
-        PanelChrome.Row(Group(group), label, new Label(), toggle);
+        DescribedRow(group, label, new Label(), toggle, description);
         _controls.Add(label, toggle);
         return toggle;
     }
@@ -149,7 +180,7 @@ public partial class SettingsPanel : PanelContainer
         choice.Selected = Math.Clamp(selected, 0, options.Count - 1);
         choice.ItemSelected += index => changed((int)index);
         Win98MenuStyle.Apply(choice.GetPopup());
-        PanelChrome.Row(Group(group), label, new Label(), choice);
+        DescribedRow(group, label, new Label(), choice, description);
         _controls.Add(label, choice);
         return choice;
     }
@@ -169,7 +200,7 @@ public partial class SettingsPanel : PanelContainer
         ArgumentNullException.ThrowIfNull(changed);
         var button = new Button { Name = ControlName(label), Text = chord, TooltipText = description };
         button.Pressed += () => BeginHotkeyCapture(button, label, changed);
-        PanelChrome.Row(Group(group), label, new Label(), button);
+        DescribedRow(group, label, new Label(), button, description);
         _controls.Add(label, button);
         return button;
     }

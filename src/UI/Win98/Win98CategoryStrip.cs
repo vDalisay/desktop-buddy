@@ -33,6 +33,10 @@ public partial class Win98CategoryStrip : HBoxContainer
 
     public string? SelectedId => _selectedId;
 
+    /// <summary>The button for one category, so callers can point at it rather than the strip.</summary>
+    public Button? ButtonFor(string id) =>
+        _buttons.TryGetValue(id, out Button? button) ? button : null;
+
     public override void _Ready()
     {
         Theme = Win98ThemeFactory.Create();

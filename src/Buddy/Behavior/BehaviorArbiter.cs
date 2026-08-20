@@ -153,13 +153,13 @@ public partial class BehaviorArbiter : Node
             AmbientLocomotionScale: 1.0f,
             // Two independent sources on purpose: the layer-3 ray, and the registry's own
             // view of resting objects in the path. The ray alone was intermittent.
-            ObstacleInCommittedPath:
-                AutonomousMotion.ObstacleInCommittedPath(ambient.WalkDirection) ||
-                ObjectInteraction.RestingObstacleInPath(ambient.WalkDirection),
+            ObstacleInCommittedPath: NoteObstacle(ambient.WalkDirection),
             HasSupportContact: supportContact,
             SocialReactionPresent: socialReaction,
             WallContactLeft: AutonomousMotion.ContactLeft,
-            WallContactRight: AutonomousMotion.ContactRight);
+            WallContactRight: AutonomousMotion.ContactRight,
+            BlockingObstacleInPath:
+                AutonomousMotion.BlockingObstacleInCommittedPath(ambient.WalkDirection));
 
         ObjectInteraction.PhysicsTick(
             BehaviorArbiterModel.SuppressesVoluntaryAction(snapshot),
@@ -244,6 +244,21 @@ public partial class BehaviorArbiter : Node
         _model.Reset();
         Intent = default;
         DriveIntent = default;
+    }
+
+    /// <summary>
+    /// The two independent obstacle sources, combined once. The layer-3 ray alone was
+    /// intermittent; the registry's own view of resting objects fills the gaps. The verdict is
+    /// handed back to the motion component, which needs the same evidence to decide when an
+    /// obstacle it cannot hop should turn the buddy around.
+    /// </summary>
+    private bool NoteObstacle(float walkDirection)
+    {
+        bool obstructed =
+            AutonomousMotion.ObstacleInCommittedPath(walkDirection) ||
+            ObjectInteraction.RestingObstacleInPath(walkDirection);
+        AutonomousMotion.NoteObstacleEvidence(walkDirection, obstructed);
+        return obstructed;
     }
 
     private DriveIntent BuildDriveIntent(

@@ -60,7 +60,9 @@ public static class StartupValidator
 
         int viewportWidth = (int)ProjectSettings.GetSetting("display/window/size/viewport_width", 0);
         int viewportHeight = (int)ProjectSettings.GetSetting("display/window/size/viewport_height", 0);
-        report.Expect("window_default_size_480x360", viewportWidth == 480 && viewportHeight == 360,
+        // A first run opens at a comfortable working size; the old 480x360 default left the
+        // Win98 shell, its menus and the tutorial window unreadable.
+        report.Expect("window_default_size_1280x940", viewportWidth == 1280 && viewportHeight == 940,
             $"viewport={viewportWidth}x{viewportHeight}");
 
         var stretch = ProjectSettings.GetSetting("display/window/stretch/mode", "").AsString();

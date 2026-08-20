@@ -43,11 +43,14 @@ public static class CataloguePolicy
     public static readonly IReadOnlyList<string> LaunchContentIds = new[]
     {
         ContentIds.ToolGrab,
+
+        // The bat is the tutorial's first purchase, so it sits directly under Grab at a
+        // token price. It is deliberately no longer in its old mid-progression slot.
+        ContentIds.ToolBaseballBat,
         ContentIds.ToolPet,
         ContentIds.ToolTickle,
         ContentIds.ToolBoxingGlove,
         ContentIds.ToolBaseball,
-        ContentIds.ToolBaseballBat,
         ContentIds.ToolMeal,
         ContentIds.ToolNerfBlaster,
         ContentIds.ToolPistol,

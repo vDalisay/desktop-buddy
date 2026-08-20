@@ -25,17 +25,18 @@ public static class BenchmarkSchedule
 
     private static readonly double[] TargetMinutes =
     {
-        3.0, 7.0, 13.0, 21.0, 41.0, 52.0, 76.0, 104.0, 120.0, 138.0, 184.0, 209.0,
+        3.0, 13.0, 21.0, 41.0, 52.0, 76.0, 104.0, 120.0, 138.0, 184.0, 209.0,
     };
 
     /// <summary>
-    /// The twelve entries covered by the accepted M5 schedule. Pet, Tickle, and Boxing Glove
-    /// are now paid Demo entries but are not folded into this schedule until DEMO-9 pacing.
+    /// The entries covered by the accepted M5 schedule. Pet, Tickle, and Boxing Glove are paid
+    /// Demo entries held outside this schedule until DEMO-9 pacing, and the Baseball Bat joined
+    /// them when it became the tutorial's token-priced first purchase: a 1-credit item cannot
+    /// meaningfully hold a 7-minute progression target. The remaining targets are unchanged.
     /// </summary>
     public static readonly IReadOnlyList<string> PurchasableOrder = new[]
     {
         ContentIds.ToolBaseball,
-        ContentIds.ToolBaseballBat,
         ContentIds.ToolMeal,
         ContentIds.ToolNerfBlaster,
         ContentIds.ToolPistol,

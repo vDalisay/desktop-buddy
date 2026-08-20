@@ -19,5 +19,6 @@ internal static class DemoClosureScenarioRegistration
             ?? throw new InvalidOperationException("Scenario registry was not initialized.");
         factories["demo_meal_visual"] = () => new DemoMealVisualScenario();
         factories["demo_care_tool_presentation"] = () => new DemoCareToolPresentationScenario();
+        factories["tutorial_closure"] = () => new TutorialClosureScenario();
     }
 }

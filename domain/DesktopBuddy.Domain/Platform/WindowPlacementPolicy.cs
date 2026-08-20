@@ -45,8 +45,11 @@ public readonly record struct WindowPlacement(PixelRect Rect, int MonitorIndex);
 /// </summary>
 public static class WindowPlacementPolicy
 {
-    public const int DefaultWidth = 480;
-    public const int DefaultHeight = 360;
+    // A first run opens at a comfortable working size. The old 480x360 default left the Win98
+    // shell, its menus and the tutorial window cramped to the point of being unreadable; the
+    // size is still clamped to the usable monitor, so small displays are unaffected.
+    public const int DefaultWidth = 1280;
+    public const int DefaultHeight = 940;
     public const int MinimumWidth = 360;
     public const int MinimumHeight = 270;
     public const int FirstLaunchMargin = 16;

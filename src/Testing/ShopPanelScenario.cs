@@ -91,13 +91,17 @@ public sealed class ShopPanelScenario : IScenario
             action.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
+            // Buying equips in the same press: the second click was ceremony, and the tutorial
+            // no longer teaches equipping as its own step.
             bool bought = becameBuyable &&
                 progress.IsToolUnlocked(cheapest.ContentId) &&
                 progress.BalanceMilliCredits == balanceBefore - cheapest.PriceMilliCredits &&
                 shop.PurchaseCount == 1 &&
-                action is { Disabled: false, Text: "Equip" } &&
-                action.TooltipText.StartsWith("Equip ", System.StringComparison.Ordinal);
-            checks.Add(new StartupCheck("catalogue_purchase_charges_authored_price_once", bought,
+                shop.EquipCount == 1 &&
+                progress.SelectedTool == boughtTool &&
+                sandbox.Pipeline.SelectedTool == boughtTool &&
+                action is { Disabled: true, Text: "Equipped" };
+            checks.Add(new StartupCheck("catalogue_purchase_charges_authored_price_once_and_auto_equips", bought,
                 $"id={cheapest.ContentId} price={cheapest.PriceMilliCredits} " +
                 $"balance={balanceBefore}->{progress.BalanceMilliCredits} action={action.Text} tip={action.TooltipText}"));
 
@@ -105,6 +109,7 @@ public sealed class ShopPanelScenario : IScenario
             action.EmitSignal(BaseButton.SignalName.Pressed);
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
+            // Pressing the settled row again must never re-charge or double-count.
             bool equipped = progress.BalanceMilliCredits == afterPurchase &&
                 progress.SelectedTool == boughtTool &&
                 sandbox.Pipeline.SelectedTool == boughtTool &&

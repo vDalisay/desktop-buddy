@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.App;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Interaction;
@@ -60,6 +61,22 @@ public partial class BoundaryController : StaticBody2D, IImpactSource
         CollisionMask = CollisionLayers.MaskRoomBounds;
         IsInitialized = true;
         ApplyLayout(initialLayout);
+    }
+
+    /// <summary>
+    /// Re-announce the layout that is already in force. The shell initializes this controller
+    /// from its own <c>_Ready</c>, which Godot runs before the owning root's — so the first
+    /// <see cref="LayoutApplied"/> fires before the root has attached its handlers, and anything
+    /// that mirrors the room (containment bounds, walkable bounds, camera-driven visuals) is left
+    /// holding its construction-time defaults. That used to be hidden by the boot resize from the
+    /// project's 480x360 viewport, which queued a second layout; a window that opens at its final
+    /// size queues nothing, and the buddy stayed clamped inside a 480x360 ghost room.
+    /// </summary>
+    public void RepublishLayout()
+    {
+        if (!IsInitialized)
+            throw new InvalidOperationException("BoundaryController must be initialized before republishing.");
+        LayoutApplied?.Invoke(CurrentLayout, InnerBounds);
     }
 
     public void RequestLayout(Vector2I clientSize, double storedZoom)
@@ -166,6 +183,12 @@ public partial class BoundaryController : StaticBody2D, IImpactSource
             width - thickness * 2.0f,
             height - thickness);
         AppliedLayoutCount++;
+        // Layout changes are rare and every "the buddy is floating" report is really a question
+        // about which room the physics is using, so record it rather than guessing later.
+        Log.Info(
+            "Boundary",
+            $"Room layout applied: client={layout.ClientWidth}x{layout.ClientHeight} " +
+            $"zoom={layout.EffectiveZoom:F2} room={width:F0}x{height:F0} inner={InnerBounds}.");
         LayoutApplied?.Invoke(layout, InnerBounds);
     }
 

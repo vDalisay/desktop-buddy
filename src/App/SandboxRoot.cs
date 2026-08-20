@@ -240,6 +240,10 @@ public partial class SandboxRoot : Node2D
         Boundaries.LayoutApplied += Containment.ApplyLayout;
         Boundaries.LayoutApplied += OnBoundaryLayoutApplied;
         Boundaries.LayoutApplied += OnLayoutMovedTheCameras;
+        // The shell already applied the opening layout from its own _Ready, before these
+        // handlers existed. Replay it so nothing is left mirroring a room that is not the
+        // room the physics is using.
+        Boundaries.RepublishLayout();
         Buddy.AutonomousMotion.SetWalkableBounds(Boundaries.InnerBounds);
         RefreshWorkModeHitRegions();
         Buddy.Recovery.HardRecovered += OnHardRecovered;
