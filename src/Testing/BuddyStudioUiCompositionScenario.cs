@@ -43,6 +43,8 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
             // into the tool shop's schedule, so it is asserted structurally. It used to pin the
             // exact released cosmetic list and a hard-coded shop count of twelve, both of which
             // simply went stale as content shipped (owner instruction 2026-08-19).
+            // Demo-scoped content is invisible by design; assert only what this build ships.
+            releasedCosmetics = releasedCosmetics.Where(DesktopBuddy.App.DemoScope.Includes).ToArray();
             bool catalogueClosed = releasedCosmetics.All(id =>
                     production.TryGet(id, out CatalogueEntry entry) &&
                     entry.Kind == CatalogueEntryKind.Cosmetic && entry.Visible && entry.HasValidPrice) &&
@@ -138,12 +140,17 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
 
             ((Button)workspace.FindChild("BuddyStudioZoomIn", true, false)).EmitSignal(BaseButton.SignalName.Pressed);
             bool zoomed = workspace.ViewZoom > 1.0f && workspace.PreviewCameraSize < 105;
+            // Tops and Shoes are Demo-scoped out of the default build, but their preview framing
+            // still has to be covered for the full release. The catalogue checks above stay on
+            // this build's real scope: the catalogue itself is loaded once at startup.
+            DesktopBuddy.App.DemoScope.FullReleaseOverride = true;
             workspace.SelectCategory(CharacterFeatureSlot.Tops);
             bool torsoFrame = workspace.PreviewFocus.IsEqualApprox(Vector2.Zero) &&
                 Mathf.IsEqualApprox(workspace.PreviewCameraSize, 135);
             workspace.SelectCategory(CharacterFeatureSlot.Shoes);
             bool feetFrame = workspace.PreviewFocus.IsEqualApprox(new Vector2(0, -55)) &&
                 Mathf.IsEqualApprox(workspace.PreviewCameraSize, 105);
+            DesktopBuddy.App.DemoScope.FullReleaseOverride = null;
             ((Button)workspace.FindChild("BuddyStudioResetView", true, false)).EmitSignal(BaseButton.SignalName.Pressed);
             bool resetFeet = workspace.ViewZoom == 1.0f && Mathf.IsEqualApprox(workspace.PreviewCameraSize, 105);
             checks.Add(new StartupCheck(
@@ -153,7 +160,9 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
 
             int categories = workspace.CategoryStrip.FindChildren("Category_*", "Button", true, false).Count;
             bool accessoriesHidden = workspace.CategoryStrip.FindChild("Category_accessories", true, false) is null;
-            bool composed = categories == 11 && accessoriesHidden &&
+            // Eleven authored categories, less the two the Demo scope holds back.
+            int expectedCategories = DesktopBuddy.App.DemoScope.IsFullRelease ? 11 : 9;
+            bool composed = categories == expectedCategories && accessoriesHidden &&
                 workspace.FindChild("BuddyStudioPreviewPane", true, false) is Control &&
                 workspace.FindChild("BuddyStudioCatalogPane", true, false) is Control &&
                 workspace.FindChild("BuddyStudioInspectorPane", true, false) is Control &&
@@ -423,6 +432,7 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
         }
         finally
         {
+            DesktopBuddy.App.DemoScope.FullReleaseOverride = null;
             if (GodotObject.IsInstanceValid(root))
                 root.QueueFree();
             await CharacterEditorScenarioSupport.Cleanup(tree, context);

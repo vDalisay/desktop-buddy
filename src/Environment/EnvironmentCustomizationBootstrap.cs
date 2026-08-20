@@ -111,10 +111,25 @@ public partial class EnvironmentCustomizationBootstrap : Node
         Log.Info(LogCategory, "Paint Background registered in the Paint menu.");
     }
 
+    /// <summary>
+    /// Registers the command whatever this build's scope is. The scenario that proves the
+    /// decorator's own wiring must keep running in a Demo-scoped build, or hiding the feature
+    /// would quietly stop testing it.
+    /// </summary>
     internal void RegisterDecoratorForStartupTest(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator) =>
-        RegisterDecorator(commandBar, decorator);
+        RegisterDecoratorCommand(commandBar, decorator);
 
     private void RegisterDecorator(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator)
+    {
+        // The Demo ships without the Room Decorator (owner decision 2026-08-20); the workspace
+        // itself stays built and tested, it simply has no way in.
+        if (!DemoScope.IncludesRoomDecorator)
+            return;
+
+        RegisterDecoratorCommand(commandBar, decorator);
+    }
+
+    private void RegisterDecoratorCommand(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator)
     {
         _decoratorRegistration = commandBar.RegisterTopLevelCommand(
             new TopLevelCommandDefinition(

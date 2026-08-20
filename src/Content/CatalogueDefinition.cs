@@ -22,8 +22,16 @@ public partial class CatalogueDefinition : GameResource
         var entries = new List<CatalogueEntry>(Entries.Count);
         foreach (ToolDefinition definition in Entries)
         {
-            if (GodotObject.IsInstanceValid(definition))
-                entries.Add(definition.ToEntry());
+            if (!GodotObject.IsInstanceValid(definition))
+                continue;
+
+            CatalogueEntry entry = definition.ToEntry();
+            // Held-back content stays in the catalogue but goes invisible, which the domain
+            // already treats as unbuyable — dropping the row instead would turn a scoped-out
+            // purchase into an unknown-content error.
+            if (!DemoScope.Includes(entry.ContentId))
+                entry = entry with { Visible = false };
+            entries.Add(entry);
         }
 
         return new ToolCatalogue(entries);

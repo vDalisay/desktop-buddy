@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
@@ -21,13 +22,18 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private const float MinimumViewZoom = 0.75f;
     private const float MaximumViewZoom = 2.0f;
     private const float ViewZoomStep = 0.2f;
-    private static readonly CharacterFeatureSlot[] CategoryOrder =
+    private static readonly CharacterFeatureSlot[] AllCategories =
     [
         CharacterFeatureSlot.Face, CharacterFeatureSlot.Hair, CharacterFeatureSlot.Brows,
         CharacterFeatureSlot.Eyes, CharacterFeatureSlot.Nose, CharacterFeatureSlot.Mouth,
         CharacterFeatureSlot.Ears, CharacterFeatureSlot.Glasses, CharacterFeatureSlot.Headwear,
         CharacterFeatureSlot.Tops, CharacterFeatureSlot.Shoes,
     ];
+
+    /// <summary>The categories this build ships; the Demo holds Tops and Shoes back. Read
+    /// rather than cached so a scenario can widen the scope and see the difference.</summary>
+    private static CharacterFeatureSlot[] CategoryOrder =>
+        AllCategories.Where(slot => DemoScope.Includes(slot)).ToArray();
 
     private static readonly (string Name, Rgba32 Color)[] Palette =
     [
