@@ -27,14 +27,17 @@ public sealed class CharacterFeatureRendererRegistry
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesSoftOval, EyeVariant.SoftOval));
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesRoundDot, EyeVariant.RoundDot));
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesHorizontalLed, EyeVariant.HorizontalLed));
+        Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesLashedOval, EyeVariant.LashedOval));
 
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsSoftArc, BrowVariant.SoftArc));
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsStraight, BrowVariant.Straight));
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsSegmented, BrowVariant.Segmented));
+        Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsBushy, BrowVariant.Bushy));
 
         Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthRounded, MouthVariant.Rounded));
         Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthPixel, MouthVariant.Pixel));
         Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthLine, MouthVariant.Line));
+        Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthOval, MouthVariant.Oval));
 
         Add(new ProceduralAccentRenderer(CharacterFeatureIds.AccentNone, AccentVariant.None));
         Add(new ProceduralAccentRenderer(CharacterFeatureIds.AccentPanel, AccentVariant.Panel));

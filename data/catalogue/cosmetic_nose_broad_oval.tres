@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticNoseBroadOval"
+script = ExtResource("1")
+ContentId = "cosmetic.nose.broad_oval"
+Kind = 4
+PriceCredits = 50
+ProgressionOrder = 36
+Visible = true
+NameKey = "buddy_studio.cosmetic.nose.broad_oval.name"
+DescriptionKey = "buddy_studio.cosmetic.nose.broad_oval.description"
+RequiresLaunchScene = false
+RequiresIcon = false

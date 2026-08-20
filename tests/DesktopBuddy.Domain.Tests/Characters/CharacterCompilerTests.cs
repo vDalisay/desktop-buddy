@@ -138,15 +138,16 @@ public sealed class CharacterCompilerTests
 
         string[] paidIds =
         [
-            CharacterFeatureIds.HairShortSweep,
-            CharacterFeatureIds.BrowsStraight, CharacterFeatureIds.BrowsSegmented,
-            CharacterFeatureIds.EyesRoundDot, CharacterFeatureIds.EyesHorizontalLed,
-            CharacterFeatureIds.NoseButton,
-            CharacterFeatureIds.MouthPixel, CharacterFeatureIds.MouthLine,
-            CharacterFeatureIds.EarsRoundTabs,
+            CharacterFeatureIds.HairShortSweep, CharacterFeatureIds.HairBobBangs, CharacterFeatureIds.HairBuzzCut,
+            CharacterFeatureIds.BrowsStraight, CharacterFeatureIds.BrowsSegmented, CharacterFeatureIds.BrowsBushy,
+            CharacterFeatureIds.EyesRoundDot, CharacterFeatureIds.EyesHorizontalLed, CharacterFeatureIds.EyesLashedOval,
+            CharacterFeatureIds.NoseButton, CharacterFeatureIds.NoseTriangle, CharacterFeatureIds.NoseBroadOval,
+            CharacterFeatureIds.MouthPixel, CharacterFeatureIds.MouthLine, CharacterFeatureIds.MouthOval,
+            CharacterFeatureIds.EarsRoundTabs, CharacterFeatureIds.EarsPointedTips, CharacterFeatureIds.EarsFlatDiscs,
             CharacterFeatureIds.AccentPanel, CharacterFeatureIds.AccentChevron, CharacterFeatureIds.AccentBolts,
-            CharacterFeatureIds.GlassesWorkClassic,
-            CharacterFeatureIds.HeadwearSoftCap, CharacterFeatureIds.TopUtilityBib,
+            CharacterFeatureIds.GlassesWorkClassic, CharacterFeatureIds.GlassesRoundWire, CharacterFeatureIds.GlassesShades,
+            CharacterFeatureIds.HeadwearSoftCap, CharacterFeatureIds.HeadwearKnitBeanie, CharacterFeatureIds.HeadwearWideBrim,
+            CharacterFeatureIds.TopUtilityBib,
             CharacterFeatureIds.ShoesSoftSteps,
         ];
         Assert.All(paidIds, id =>
