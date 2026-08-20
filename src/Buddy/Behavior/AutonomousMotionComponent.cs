@@ -45,6 +45,29 @@ public partial class AutonomousMotionComponent : Node
     public bool IsWallStopping { get; private set; }
     public bool ObstacleLeft { get; private set; }
     public bool ObstacleRight { get; private set; }
+
+    /// <summary>Consecutive ticks the committed walk has been blocked by a loose object.</summary>
+    public int ObstructedTicks { get; private set; }
+
+    /// <summary>How many times an unpassable obstacle has turned the buddy around.</summary>
+    public int ObstacleTurnAroundCount { get; private set; }
+
+    private AutonomousMotionGoal _lastPlannedGoal;
+    private float _notedObstacleDirection;
+    private bool _notedObstacle;
+    private int _obstacleClearTicks;
+
+    /// <summary>
+    /// The arbiter's combined obstacle verdict, fed back for the next tick. The layer-3 ray on
+    /// its own is intermittent — which is exactly why the arbiter ORs it with the registry's
+    /// view of resting objects — and an accumulator driven by the flickering half never
+    /// reached the give-up threshold. One tick of lag at 120 Hz is invisible.
+    /// </summary>
+    public void NoteObstacleEvidence(float walkDirection, bool obstructed)
+    {
+        _notedObstacleDirection = walkDirection;
+        _notedObstacle = obstructed;
+    }
     public float LeftWallClearance { get; private set; } = float.PositiveInfinity;
     public float RightWallClearance { get; private set; } = float.PositiveInfinity;
     public Rect2 WalkableBounds => _walkableBounds;
@@ -152,7 +175,68 @@ public partial class AutonomousMotionComponent : Node
         bool canJump = standing.IsStable;
         UpdateWallSensing();
         UpdateObstacleSensing();
-        Intent = _planner.Tick(enabled, canWalk, canJump, BlockedLeft, BlockedRight);
+
+        // Hopping an obstacle is trait-gated on purpose (DECISIONS 2026-07-20, "too random"),
+        // and the threshold is 35 out of a uniform 0-100 — so roughly a third of buddies can
+        // never hop anything. Those buddies had no other move: obstacles fed the hop gate but
+        // never the walk planner, so a bat left lying in the path pinned them against it
+        // forever (owner report 2026-08-20). After a fair while spent getting nowhere, the
+        // obstacle counts as a wall and the planner turns them around. A buddy who *can* hop
+        // is unaffected: he clears it long before this expires.
+        float goalDirection = _planner.Goal switch
+        {
+            AutonomousMotionGoal.WalkLeft => -1.0f,
+            AutonomousMotionGoal.WalkRight => 1.0f,
+            _ => 0.0f,
+        };
+        bool notedForThisGoal = _notedObstacle &&
+                                Mathf.Sign(_notedObstacleDirection) == Mathf.Sign(goalDirection);
+        bool obstructed = enabled && canWalk && goalDirection != 0.0f &&
+                          (ObstacleInCommittedPath(goalDirection) || notedForThisGoal);
+        // Debounced, not sampled. Both obstacle sources flicker — the ray intermittently, and
+        // the whole test drops out whenever a shove costs the buddy his footing for a few ticks
+        // (canWalk goes false). A plain reset-on-clear never got past ~48 ticks of a 360-tick
+        // budget, so the stuck buddy stayed stuck. The clock only rewinds once the path has
+        // been genuinely clear for a while.
+        if (obstructed)
+        {
+            ObstructedTicks++;
+            _obstacleClearTicks = 0;
+        }
+        else if (ObstructedTicks > 0)
+        {
+            _obstacleClearTicks++;
+            if (_obstacleClearTicks >= Profile.ObstacleClearTicks)
+            {
+                ObstructedTicks = 0;
+                _obstacleClearTicks = 0;
+            }
+            else
+            {
+                ObstructedTicks++;
+            }
+        }
+
+        bool giveUp = ObstructedTicks >= Profile.ObstacleGiveUpTicks;
+
+        Intent = _planner.Tick(
+            enabled,
+            canWalk,
+            canJump,
+            BlockedLeft || (giveUp && goalDirection < 0.0f),
+            BlockedRight || (giveUp && goalDirection > 0.0f));
+
+        if (giveUp)
+            ObstacleTurnAroundCount++;
+
+        // A fresh goal gets a fresh budget, however it was chosen.
+        if (_planner.Goal != _lastPlannedGoal)
+        {
+            _lastPlannedGoal = _planner.Goal;
+            ObstructedTicks = 0;
+            _obstacleClearTicks = 0;
+        }
+
         ApplyRoomInterest(enabled, canWalk);
         if (Intent.JumpRequested)
         {
