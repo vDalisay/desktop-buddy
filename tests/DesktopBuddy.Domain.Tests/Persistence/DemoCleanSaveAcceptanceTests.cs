@@ -40,17 +40,16 @@ public sealed class DemoCleanSaveAcceptanceTests
         Assert.Equal(3, slots.Capacity);
 
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.GrabBuddy));
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.EarnCredits));
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.OpenInventory));
 
         Assert.True(economy.Purchase(ContentIds.ToolBaseballBat).Succeeded);
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.PurchaseBaseballBat));
         Assert.True(progress.SelectTool(ToolId.BaseballBat));
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.EquipBaseballBat));
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.ChargedBatHit));
         Assert.True(progress.IsToolUnlocked(ContentIds.ToolBaseballBat));
         Assert.Equal(ContentIds.ToolBaseballBat, progress.SelectedToolId);
 
-        foreach (string stepId in TutorialStepIds.Ordered.Skip(5))
+        foreach (string stepId in TutorialStepIds.Ordered.Skip(4))
             Assert.True(tutorial.MarkCompleted(stepId));
         Assert.True(tutorial.IsComplete);
         Assert.Null(tutorial.NextIncompleteStepId);
@@ -97,58 +96,98 @@ public sealed class DemoCleanSaveAcceptanceTests
         Assert.Equal(
         [
             TutorialStepIds.GrabBuddy,
-            TutorialStepIds.EarnCredits,
             TutorialStepIds.OpenInventory,
             TutorialStepIds.PurchaseBaseballBat,
-            TutorialStepIds.EquipBaseballBat,
+            TutorialStepIds.ChargedBatHit,
+            TutorialStepIds.UnequipTool,
             TutorialStepIds.OpenPaintBuddy,
+            TutorialStepIds.SelectPaintBrush,
+            TutorialStepIds.SelectPaintColor,
             TutorialStepIds.PaintBuddy,
             TutorialStepIds.SavePaintBuddy,
             TutorialStepIds.UsePaintedBuddy,
+            TutorialStepIds.AdmirePaintedBuddy,
             TutorialStepIds.OpenPaintBackground,
+            TutorialStepIds.SelectBackgroundSpray,
+            TutorialStepIds.SelectBackgroundColor,
             TutorialStepIds.PaintBackground,
+            TutorialStepIds.FloatPaintBackgroundPanel,
             TutorialStepIds.SaveAndExitPaintBackground,
             TutorialStepIds.OpenBuddyStudio,
-            TutorialStepIds.BuyAndEquipStudioItem,
-            TutorialStepIds.SaveEquippedStudioItem,
-            TutorialStepIds.ExitEquippedBuddyStudio,
-            TutorialStepIds.UnequipStudioItem,
+            TutorialStepIds.SelectNoseCategory,
+            TutorialStepIds.SelectNoseButtonStyle,
+            TutorialStepIds.BuyStudioItem,
+            TutorialStepIds.EquipStudioItem,
             TutorialStepIds.SaveBuddyStudio,
             TutorialStepIds.ExitBuddyStudio,
+            TutorialStepIds.AdmireStudioBuddy,
             TutorialStepIds.EnterWorkMode,
             TutorialStepIds.DragWorkCompanion,
             TutorialStepIds.ResizeWorkCompanion,
+            TutorialStepIds.ToggleWorkCounter,
             TutorialStepIds.ExitWorkMode,
+            TutorialStepIds.Farewell,
         ], TutorialStepIds.Ordered);
-        Assert.Equal(TutorialStepIds.EnterWorkMode, TutorialStepIds.Ordered[^4]);
-        Assert.Equal(TutorialStepIds.ExitWorkMode, TutorialStepIds.Ordered[^1]);
+        Assert.Equal(TutorialStepIds.EnterWorkMode, TutorialStepIds.Ordered[^6]);
+        Assert.Equal(TutorialStepIds.ExitWorkMode, TutorialStepIds.Ordered[^2]);
+        Assert.Equal(TutorialStepIds.Farewell, TutorialStepIds.Ordered[^1]);
     }
 
+    /// <summary>
+    /// Buddy Studio is taught in one visit: category, style, buy, equip, save, exit. Unequipping
+    /// is explained in the prompt instead of being demanded, so no step repeats a round trip.
+    /// </summary>
     [Fact]
-    public void StudioFirstVisit_ReusesSaveExitRuntimeActionsWithoutSkippingSecondVisit()
+    public void BuddyStudio_IsASingleVisitWithoutARequiredUnequipReturn()
     {
         var progress = new BuddyProgressState(cashPerPain: 10.0);
         var tutorial = new TutorialProgressState(progress);
-        foreach (string stepId in TutorialStepIds.Ordered.TakeWhile(id => id != TutorialStepIds.SaveEquippedStudioItem))
+        foreach (string stepId in TutorialStepIds.Ordered.TakeWhile(id => id != TutorialStepIds.SaveBuddyStudio))
             Assert.True(tutorial.MarkCompleted(stepId));
 
-        Assert.Equal(TutorialStepIds.SaveEquippedStudioItem, tutorial.NextSemanticStepId);
         Assert.Equal(TutorialStepIds.SaveBuddyStudio, tutorial.NextIncompleteStepId);
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.SaveBuddyStudio));
-        Assert.True(tutorial.IsCompleted(TutorialStepIds.SaveEquippedStudioItem));
-        Assert.False(tutorial.IsCompleted(TutorialStepIds.SaveBuddyStudio));
-
-        Assert.Equal(TutorialStepIds.ExitEquippedBuddyStudio, tutorial.NextSemanticStepId);
         Assert.Equal(TutorialStepIds.ExitBuddyStudio, tutorial.NextIncompleteStepId);
         Assert.True(tutorial.MarkCompleted(TutorialStepIds.ExitBuddyStudio));
-        Assert.True(tutorial.IsCompleted(TutorialStepIds.ExitEquippedBuddyStudio));
-        Assert.False(tutorial.IsCompleted(TutorialStepIds.ExitBuddyStudio));
+        Assert.Equal(TutorialStepIds.AdmireStudioBuddy, tutorial.NextIncompleteStepId);
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.AdmireStudioBuddy));
+        Assert.Equal(TutorialStepIds.EnterWorkMode, tutorial.NextIncompleteStepId);
+    }
 
-        Assert.Equal(TutorialStepIds.UnequipStudioItem, tutorial.NextIncompleteStepId);
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.UnequipStudioItem));
-        Assert.Equal(TutorialStepIds.SaveBuddyStudio, tutorial.NextIncompleteStepId);
-        Assert.True(tutorial.MarkCompleted(TutorialStepIds.SaveBuddyStudio));
-        Assert.Equal(TutorialStepIds.ExitBuddyStudio, tutorial.NextIncompleteStepId);
+    /// <summary>
+    /// "Show Tutorial Again" replays from the first step, and must leave a record behind: a
+    /// removed key would read as an existing player and be auto-skipped on the next launch.
+    /// </summary>
+    [Fact]
+    public void Restart_ReplaysFromTheFirstStepAndKeepsAPersistedRecord()
+    {
+        var progress = new BuddyProgressState(cashPerPain: 10.0);
+        var tutorial = new TutorialProgressState(progress);
+        Assert.True(tutorial.Skip());
+        Assert.True(tutorial.IsComplete);
+
+        Assert.True(tutorial.Restart());
+        Assert.True(tutorial.HasPersistedRecord);
+        Assert.False(tutorial.IsComplete);
+        Assert.Equal(TutorialStepIds.GrabBuddy, tutorial.NextIncompleteStepId);
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.GrabBuddy));
+    }
+
+    /// <summary>The walkthrough says goodbye; it never vanishes the instant Work Mode closes.</summary>
+    [Fact]
+    public void Farewell_IsTheTerminalStepAfterWorkMode()
+    {
+        var progress = new BuddyProgressState(cashPerPain: 10.0);
+        var tutorial = new TutorialProgressState(progress);
+        foreach (string stepId in TutorialStepIds.Ordered.TakeWhile(id => id != TutorialStepIds.ExitWorkMode))
+            Assert.True(tutorial.MarkCompleted(stepId));
+
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.ExitWorkMode));
+        Assert.False(tutorial.IsComplete);
+        Assert.Equal(TutorialStepIds.Farewell, tutorial.NextIncompleteStepId);
+        Assert.True(tutorial.MarkCompleted(TutorialStepIds.Farewell));
+        Assert.True(tutorial.IsComplete);
+        Assert.Null(tutorial.NextIncompleteStepId);
     }
 
     [Fact]
@@ -169,12 +208,12 @@ public sealed class DemoCleanSaveAcceptanceTests
         var progress = new BuddyProgressState(cashPerPain: 10.0);
         Assert.True(progress.SetExtensionValue(
             TutorialProgressState.ExtensionKey,
-            $"future.step|{TutorialStepIds.GrabBuddy}|{TutorialStepIds.GrabBuddy}|{TutorialStepIds.EarnCredits}"));
+            $"future.step|{TutorialStepIds.GrabBuddy}|{TutorialStepIds.GrabBuddy}|{TutorialStepIds.OpenInventory}"));
 
         var tutorial = new TutorialProgressState(progress);
         TutorialProgressSnapshot snapshot = tutorial.Snapshot();
-        Assert.Equal([TutorialStepIds.GrabBuddy, TutorialStepIds.EarnCredits], snapshot.CompletedStepIds);
-        Assert.Equal(TutorialStepIds.OpenInventory, tutorial.NextIncompleteStepId);
+        Assert.Equal([TutorialStepIds.GrabBuddy, TutorialStepIds.OpenInventory], snapshot.CompletedStepIds);
+        Assert.Equal(TutorialStepIds.PurchaseBaseballBat, tutorial.NextIncompleteStepId);
     }
 
     [Fact]

@@ -63,6 +63,7 @@ public partial class WorkCompanionView : CanvasLayer
     private static readonly Rect2 BuddyHitRect = new(228, 78, 152, 228);
     private static readonly Rect2 CrtHitRect = new(418, 102, 121, 92);
     private static readonly Rect2 ComputerHitRect = new(385, 68, 240, 270);
+    private static readonly Rect2 ControlBarHitRect = new(0, 4, 720, 38);
     private static readonly Rect2 ResizeButtonRect = new(601, 10, 31, 25);
     private static readonly Rect2 MotionToggleRect = new(638, 10, 31, 25);
     private static readonly Rect2 ExitButtonRect = new(675, 10, 31, 25);
@@ -352,8 +353,12 @@ public partial class WorkCompanionView : CanvasLayer
         ScheduleNativeWindowShapeRefresh();
     }
 
+    // The blue strip reads as a Win98 title bar, so it drags the companion like one. The
+    // buttons living on it are excluded separately by IsOverControlButton.
     private static bool IsDragSurface(Vector2 compositionPosition) =>
-        BuddyHitRect.HasPoint(compositionPosition) || ComputerHitRect.HasPoint(compositionPosition);
+        BuddyHitRect.HasPoint(compositionPosition) ||
+        ComputerHitRect.HasPoint(compositionPosition) ||
+        ControlBarHitRect.HasPoint(compositionPosition);
 
     private bool IsOverControlButton(Vector2 windowPosition) =>
         _resizeButton.GetGlobalRect().HasPoint(windowPosition) ||

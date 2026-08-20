@@ -222,6 +222,14 @@ public partial class Win98CommandBarBootstrap : Node
             OpenEditor);
 
         _modeButton = AddMenuCommand(_commandRow, "Work", "Switch between Play and Work input modes.", ToggleMode);
+
+        // Stable node names so contextual Help and the tutorial spotlight can address the strip.
+        _shopButton.Name = "Win98ShopCommand";
+        _toolsButton.Name = "Win98ToolsCommand";
+        _settingsButton.Name = "Win98SettingsCommand";
+        _customizeButton.Name = "Win98PaintCommand";
+        _modeButton.Name = "Win98WorkCommand";
+
         RebuildTopLevelCommands();
 
         // The balance lives at the far right of the strip; the old floating HUD panel is retired.

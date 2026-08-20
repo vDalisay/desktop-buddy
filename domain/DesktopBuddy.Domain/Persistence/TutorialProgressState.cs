@@ -8,59 +8,79 @@ namespace DesktopBuddy.Domain.Persistence;
 public static class TutorialStepIds
 {
     public const string GrabBuddy = "demo.onboarding.grab_buddy";
-    public const string EarnCredits = "demo.onboarding.earn_credits";
 
     public const string OpenInventory = "demo.onboarding.open_inventory";
     public const string PurchaseBaseballBat = "demo.onboarding.purchase_baseball_bat";
-    public const string EquipBaseballBat = "demo.onboarding.equip_baseball_bat";
+    public const string ChargedBatHit = "demo.onboarding.charged_bat_hit";
+    public const string UnequipTool = "demo.onboarding.unequip_tool";
 
     public const string OpenPaintBuddy = "demo.onboarding.open_paint_buddy";
+    public const string SelectPaintBrush = "demo.onboarding.select_paint_brush";
+    public const string SelectPaintColor = "demo.onboarding.select_paint_color";
     public const string PaintBuddy = "demo.onboarding.paint_buddy";
     public const string SavePaintBuddy = "demo.onboarding.save_paint_buddy";
     public const string UsePaintedBuddy = "demo.onboarding.use_painted_buddy";
+    public const string AdmirePaintedBuddy = "demo.onboarding.admire_painted_buddy";
 
     public const string OpenPaintBackground = "demo.onboarding.open_paint_background";
+    public const string SelectBackgroundSpray = "demo.onboarding.select_background_spray";
+    public const string SelectBackgroundColor = "demo.onboarding.select_background_color";
     public const string PaintBackground = "demo.onboarding.paint_background";
+    public const string FloatPaintBackgroundPanel = "demo.onboarding.float_paint_background_panel";
     public const string SaveAndExitPaintBackground = "demo.onboarding.save_exit_paint_background";
 
     public const string OpenBuddyStudio = "demo.onboarding.open_buddy_studio";
-    public const string BuyAndEquipStudioItem = "demo.onboarding.buy_equip_studio_item";
-    public const string SaveEquippedStudioItem = "demo.onboarding.save_equipped_studio_item";
-    public const string ExitEquippedBuddyStudio = "demo.onboarding.exit_equipped_buddy_studio";
-    public const string UnequipStudioItem = "demo.onboarding.unequip_studio_item";
+    public const string SelectNoseCategory = "demo.onboarding.select_nose_category";
+    public const string SelectNoseButtonStyle = "demo.onboarding.select_nose_button_style";
+    public const string BuyStudioItem = "demo.onboarding.buy_studio_item";
+    public const string EquipStudioItem = "demo.onboarding.equip_studio_item";
     public const string SaveBuddyStudio = "demo.onboarding.save_buddy_studio";
     public const string ExitBuddyStudio = "demo.onboarding.exit_buddy_studio";
+    public const string AdmireStudioBuddy = "demo.onboarding.admire_studio_buddy";
 
     public const string EnterWorkMode = "demo.onboarding.enter_work_mode";
     public const string DragWorkCompanion = "demo.onboarding.drag_work_companion";
     public const string ResizeWorkCompanion = "demo.onboarding.resize_work_companion";
+    public const string ToggleWorkCounter = "demo.onboarding.toggle_work_counter";
     public const string ExitWorkMode = "demo.onboarding.exit_work_mode";
+
+    /// <summary>Terminal sign-off. The walkthrough says goodbye instead of vanishing.</summary>
+    public const string Farewell = "demo.onboarding.farewell";
 
     public static readonly IReadOnlyList<string> Ordered =
     [
         GrabBuddy,
-        EarnCredits,
         OpenInventory,
         PurchaseBaseballBat,
-        EquipBaseballBat,
+        ChargedBatHit,
+        UnequipTool,
         OpenPaintBuddy,
+        SelectPaintBrush,
+        SelectPaintColor,
         PaintBuddy,
         SavePaintBuddy,
         UsePaintedBuddy,
+        AdmirePaintedBuddy,
         OpenPaintBackground,
+        SelectBackgroundSpray,
+        SelectBackgroundColor,
         PaintBackground,
+        FloatPaintBackgroundPanel,
         SaveAndExitPaintBackground,
         OpenBuddyStudio,
-        BuyAndEquipStudioItem,
-        SaveEquippedStudioItem,
-        ExitEquippedBuddyStudio,
-        UnequipStudioItem,
+        SelectNoseCategory,
+        SelectNoseButtonStyle,
+        BuyStudioItem,
+        EquipStudioItem,
         SaveBuddyStudio,
         ExitBuddyStudio,
+        AdmireStudioBuddy,
         EnterWorkMode,
         DragWorkCompanion,
         ResizeWorkCompanion,
+        ToggleWorkCounter,
         ExitWorkMode,
+        Farewell,
     ];
 
     public static bool IsKnown(string value) => Ordered.Contains(value, StringComparer.Ordinal);
@@ -137,27 +157,8 @@ public sealed class TutorialProgressState
         return snapshot.Skipped || snapshot.CompletedStepIds.Contains(stepId, StringComparer.Ordinal);
     }
 
-    /// <summary>
-    /// The next runtime action the existing guidance controller should observe. The first Studio
-    /// visit deliberately reuses the already-proven Save/Exit runtime actions while persisting
-    /// distinct semantic IDs, so the second visit can still require unequip + save + exit.
-    /// </summary>
+    /// <summary>The next runtime action the guidance controller should observe.</summary>
     public string? NextIncompleteStepId
-    {
-        get
-        {
-            string? semantic = NextSemanticStepId;
-            return semantic switch
-            {
-                TutorialStepIds.SaveEquippedStudioItem => TutorialStepIds.SaveBuddyStudio,
-                TutorialStepIds.ExitEquippedBuddyStudio => TutorialStepIds.ExitBuddyStudio,
-                _ => semantic,
-            };
-        }
-    }
-
-    /// <summary>The exact durable v2 step, before runtime-action aliasing.</summary>
-    public string? NextSemanticStepId
     {
         get
         {
@@ -177,23 +178,12 @@ public sealed class TutorialProgressState
             throw new ArgumentException("Unknown tutorial step ID.", nameof(stepId));
 
         TutorialProgressSnapshot snapshot = Snapshot();
-        if (snapshot.Skipped)
-            return false;
-
-        string target = (NextSemanticStepId, stepId) switch
-        {
-            (TutorialStepIds.SaveEquippedStudioItem, TutorialStepIds.SaveBuddyStudio) =>
-                TutorialStepIds.SaveEquippedStudioItem,
-            (TutorialStepIds.ExitEquippedBuddyStudio, TutorialStepIds.ExitBuddyStudio) =>
-                TutorialStepIds.ExitEquippedBuddyStudio,
-            _ => stepId,
-        };
-        if (snapshot.CompletedStepIds.Contains(target, StringComparer.Ordinal))
+        if (snapshot.Skipped || snapshot.CompletedStepIds.Contains(stepId, StringComparer.Ordinal))
             return false;
 
         var completed = new HashSet<string>(snapshot.CompletedStepIds, StringComparer.Ordinal)
         {
-            target,
+            stepId,
         };
         string encoded = string.Join(
             '|',
@@ -202,6 +192,12 @@ public sealed class TutorialProgressState
     }
 
     public bool Skip() => _progress.SetExtensionValue(ExtensionKey, SkippedToken);
+
+    /// <summary>
+    /// Replay from the first step. This writes an empty record rather than removing the key, so a
+    /// replay is never mistaken for the "existing player, no v2 record" auto-skip case.
+    /// </summary>
+    public bool Restart() => _progress.SetExtensionValue(ExtensionKey, string.Empty);
 
     private static int IndexOf(string id)
     {

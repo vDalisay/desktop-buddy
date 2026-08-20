@@ -425,11 +425,12 @@ public partial class LabPointerGrabComponent : Node2D
             }
         }
 
-        // Primary grips a swing-capable tool by the handle. Nothing is displaced:
-        // with a cursor tool selected, primary does nothing today.
+        // A swing-capable tool is gripped for as long as it is equipped (owner feedback
+        // 2026-08-20). Holding primary just to keep the bat upright was pure ceremony: the
+        // player equips the bat, the bat is in hand, and right mouse is the only chord.
         if (swingTool)
         {
-            CursorTools!.SetGrip(IsPrimaryHeld);
+            CursorTools!.SetGrip(true);
         }
 
         if (_pendingPress)

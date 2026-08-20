@@ -27,25 +27,17 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
 
         if (!GodotObject.IsInstanceValid(_card))
         {
+            // The guide is a square inside the tutorial window, not a second window trailing it.
+            if (!GodotObject.IsInstanceValid(_owner.GuideSlot))
+                return;
             _card = new TutorialBuddyCard
             {
                 Name = "DemoTutorialBuddy",
                 MouseFilter = Control.MouseFilterEnum.Ignore,
             };
-            _card.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
-            _card.OffsetLeft = 380;
-            _card.OffsetTop = -174;
-            _card.OffsetRight = 500;
-            _card.OffsetBottom = -16;
-            _owner.AddChild(_card);
+            _card.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+            _owner.GuideSlot.AddChild(_card);
         }
-
-        // After the first Studio save/exit, the durable v2 flow intentionally reuses the
-        // established Unequip runtime action. Make the required re-entry explicit so this never
-        // repeats the old Paint->Work mistake of asking for an action that is inaccessible from
-        // the screen the player is currently on.
-        if (stepId == TutorialStepIds.UnequipStudioItem)
-            ReplaceVisibleHint(text, "Reopen Buddy Studio, then switch that category back to its free/default style.");
 
         _card!.SetStep(stepId);
         _card.Visible = true;
@@ -55,21 +47,6 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
     {
         if (GodotObject.IsInstanceValid(_card))
             _card!.Visible = false;
-    }
-
-    private void ReplaceVisibleHint(string original, string replacement)
-    {
-        Node? panel = _owner.FindChild("FirstSessionGuidancePanel", true, false);
-        if (!GodotObject.IsInstanceValid(panel))
-            return;
-        foreach (Node node in panel!.FindChildren("*", "Label", true, false))
-        {
-            if (node is Label label && string.Equals(label.Text, original, StringComparison.Ordinal))
-            {
-                label.Text = replacement;
-                return;
-            }
-        }
     }
 
     private sealed partial class TutorialBuddyCard : Control
@@ -127,18 +104,24 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
         private void DrawProceduralPlaceholder(Rect2 artRect)
         {
             bool customize = _stepId is
-                TutorialStepIds.OpenPaintBuddy or TutorialStepIds.PaintBuddy or
+                TutorialStepIds.OpenPaintBuddy or TutorialStepIds.SelectPaintBrush or
+                TutorialStepIds.SelectPaintColor or TutorialStepIds.PaintBuddy or
                 TutorialStepIds.SavePaintBuddy or TutorialStepIds.UsePaintedBuddy or
-                TutorialStepIds.OpenPaintBackground or TutorialStepIds.PaintBackground or
+                TutorialStepIds.AdmirePaintedBuddy or TutorialStepIds.OpenPaintBackground or
+                TutorialStepIds.SelectBackgroundSpray or TutorialStepIds.SelectBackgroundColor or
+                TutorialStepIds.PaintBackground or TutorialStepIds.FloatPaintBackgroundPanel or
                 TutorialStepIds.SaveAndExitPaintBackground or TutorialStepIds.OpenBuddyStudio or
-                TutorialStepIds.BuyAndEquipStudioItem or TutorialStepIds.UnequipStudioItem or
-                TutorialStepIds.SaveBuddyStudio or TutorialStepIds.ExitBuddyStudio;
+                TutorialStepIds.SelectNoseCategory or TutorialStepIds.SelectNoseButtonStyle or
+                TutorialStepIds.BuyStudioItem or TutorialStepIds.EquipStudioItem or
+                TutorialStepIds.SaveBuddyStudio or TutorialStepIds.ExitBuddyStudio or
+                TutorialStepIds.AdmireStudioBuddy;
             bool work = _stepId is
                 TutorialStepIds.EnterWorkMode or TutorialStepIds.DragWorkCompanion or
-                TutorialStepIds.ResizeWorkCompanion or TutorialStepIds.ExitWorkMode;
+                TutorialStepIds.ResizeWorkCompanion or TutorialStepIds.ToggleWorkCounter or
+                TutorialStepIds.ExitWorkMode;
             bool shop = _stepId is
                 TutorialStepIds.OpenInventory or TutorialStepIds.PurchaseBaseballBat or
-                TutorialStepIds.EquipBaseballBat;
+                TutorialStepIds.ChargedBatHit or TutorialStepIds.UnequipTool;
 
             Vector2 center = artRect.GetCenter() + new Vector2(0, -2);
             Color body = customize ? new Color("f2cf68") : work ? new Color("9dc5e8") : new Color("dfb6dc");

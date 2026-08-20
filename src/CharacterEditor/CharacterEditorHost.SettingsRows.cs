@@ -289,6 +289,24 @@ public partial class CharacterEditorHost
             RequestProgressReset,
             DataGroup,
             buttonText: "Reset...");
+        _settingsPanel.AddAction(
+            "Show Tutorial Again",
+            "Replay the first-session walkthrough from the beginning. Nothing else is reset.",
+            RestartTutorial,
+            DataGroup,
+            buttonText: "Show");
+    }
+
+    /// <summary>
+    /// Clears the durable v2 record so the existing guidance controller starts over at Grab
+    /// Buddy on its next frame. Owned tools, credits and characters are untouched.
+    /// </summary>
+    private void RestartTutorial()
+    {
+        Node? guidance = GetTree().Root.FindChild(
+            nameof(Onboarding.FirstSessionGuidanceController), true, false);
+        if (guidance is Onboarding.FirstSessionGuidanceController controller)
+            controller.RestartTutorial();
     }
 
     /// <summary>

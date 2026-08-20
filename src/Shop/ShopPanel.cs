@@ -74,21 +74,25 @@ public partial class ShopPanel : PanelContainer
         bool owned = entry.IsStarting || _progress.IsToolUnlocked(entry.ContentId);
         if (!owned)
         {
-            Purchase(entry);
+            Purchase(entry, tool);
             return;
         }
+
+        // The settled row is already disabled; re-firing it must not re-count an equip.
+        if (_progress.SelectedTool == tool)
+            return;
 
         Equip(entry.ContentId, tool);
     }
 
-    private void Purchase(CatalogueEntry entry)
+    private void Purchase(CatalogueEntry entry, ToolId tool)
     {
         PurchaseResult result = _economy.Purchase(entry.ContentId);
         string name = ContentDisplayName.For(entry.ContentId);
         _status.Text = result.Status switch
         {
             PurchaseStatus.Purchased =>
-                $"Bought {name} for {ContentDisplayName.Credits(result.PriceMilliCredits)}. Select Equip to use it.",
+                $"Bought {name} for {ContentDisplayName.Credits(result.PriceMilliCredits)}.",
             PurchaseStatus.InsufficientFunds =>
                 $"{name} costs {ContentDisplayName.Credits(result.PriceMilliCredits)} — " +
                 $"you have {ContentDisplayName.Credits(result.BalanceMilliCredits)}.",
@@ -101,6 +105,12 @@ public partial class ShopPanel : PanelContainer
             PurchaseCount++;
             UiFeedbackAudioBootstrap.TryPlayLayer(this, UiSfx.Money);
             Purchased?.Invoke();
+            // Buying is the player saying "I want this now": a second click to equip was pure
+            // ceremony, and the tutorial no longer has to teach it as its own step.
+            string bought = _status.Text;
+            Equip(entry.ContentId, tool);
+            _status.Text = $"{bought} {_status.Text}";
+            return;
         }
 
         Refresh();
@@ -172,6 +182,10 @@ public partial class ShopPanel : PanelContainer
                     : affordable
                         ? $"Buy {name} permanently for {price}."
                         : $"{name} costs {price}; you have {ContentDisplayName.Credits(_progress.BalanceMilliCredits)}. Earn more credits to buy it.";
+            // How the thing is actually used comes first: that is what a player hovering an
+            // unowned row wants, and the buy/equip line repeats what the button already says.
+            row.Action.TooltipText = ContentDisplayName.WithUsage(
+                row.Action.TooltipText, row.Entry.ContentId);
             // No layer tag: Purchase and Equip sound themselves, so a press that fails — too
             // expensive, pipeline gone — stays honestly silent.
             UiFeedbackAudioBootstrap.Tag(row.Action, layer: UiSfx.NoLayer);

@@ -115,6 +115,8 @@ public partial class ToolSelectionPanel : PanelContainer
                 : owned
                     ? $"Equip {name}."
                     : $"Buy {name} in the Shop for {price} before equipping it.";
+            row.Select.TooltipText = ContentDisplayName.WithUsage(
+                row.Select.TooltipText, row.Entry.ContentId);
         }
     }
 

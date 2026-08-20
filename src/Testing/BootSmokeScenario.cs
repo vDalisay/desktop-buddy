@@ -137,6 +137,19 @@ public sealed class BootSmokeScenario : IScenario
                 $"shared={sameCatalogue}"));
             composed &= sameCatalogue;
 
+            // The shell applies the opening room layout from its own _Ready, before the root has
+            // attached the handlers that mirror it. Anything still holding construction-time
+            // defaults clamps the buddy inside a ghost room the size of the old 480x360 window.
+            bool roomMirrored = instance is SandboxRoot mirrored &&
+                mirrored.Buddy.Recovery.SafeBounds == mirrored.Boundaries.InnerBounds;
+            checks.Add(new StartupCheck(
+                "containment_mirrors_the_opening_room_layout",
+                roomMirrored,
+                instance is SandboxRoot probe
+                    ? $"safeBounds={probe.Buddy.Recovery.SafeBounds} inner={probe.Boundaries.InnerBounds}"
+                    : "sandbox not composed"));
+            composed &= roomMirrored;
+
             instance.QueueFree();
         }
         else

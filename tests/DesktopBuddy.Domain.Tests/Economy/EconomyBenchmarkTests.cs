@@ -162,13 +162,18 @@ public sealed class EconomyBenchmarkTests
     }
 
     [Fact]
-    public void Schedule_PairsTheTwelvePurchasablesWithTheOwnerLockedTargets()
+    public void Schedule_PairsTheBenchmarkedPurchasablesWithTheOwnerLockedTargets()
     {
-        Assert.Equal(12, BenchmarkSchedule.Targets.Count);
+        Assert.Equal(11, BenchmarkSchedule.Targets.Count);
         Assert.Equal(ContentIds.ToolBaseball, BenchmarkSchedule.Targets[0].ContentId);
         Assert.Equal(3.0, BenchmarkSchedule.Targets[0].TargetMinutes);
         Assert.Equal(ContentIds.ToolDrink, BenchmarkSchedule.Targets[^1].ContentId);
         Assert.Equal(209.0, BenchmarkSchedule.Targets[^1].TargetMinutes);
+
+        // The bat became the tutorial's 1-credit first purchase and left the progression
+        // schedule; the surviving targets keep their accepted minute values.
+        Assert.DoesNotContain(ContentIds.ToolBaseballBat, BenchmarkSchedule.PurchasableOrder);
+        Assert.Equal(13.0, BenchmarkSchedule.Targets[1].TargetMinutes);
     }
 
     [Fact]

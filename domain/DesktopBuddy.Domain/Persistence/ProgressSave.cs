@@ -334,8 +334,10 @@ public sealed record LocalSettingsSave
     public long Revision { get; init; }
     public int WindowX { get; init; }
     public int WindowY { get; init; }
-    public int WindowWidth { get; init; } = 480;
-    public int WindowHeight { get; init; } = 360;
+    // A first run opens at a comfortable working size rather than the old 480x360 postage stamp:
+    // the Win98 shell, its menus and the tutorial window all need room to be legible.
+    public int WindowWidth { get; init; } = 1280;
+    public int WindowHeight { get; init; } = 940;
     public int Monitor { get; init; }
     public int Dpi { get; init; } = 96;
     public int ZoomPercent { get; init; } = 100;

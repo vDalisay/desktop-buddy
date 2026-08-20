@@ -9,6 +9,9 @@ using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Economy;
+using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Environment;
@@ -38,15 +41,67 @@ public interface ITutorialCharacterPresenter
 public partial class FirstSessionGuidanceController : CanvasLayer
 {
     private const string Category = "Onboarding";
-    private const int TutorialWidth = 360;
+    private const int TutorialTextWidth = 340;
+    private const int TutorialGuideWidth = 124;
+    private const int TutorialWidth = TutorialTextWidth + TutorialGuideWidth;
+    private const int TutorialHeight = 220;
     private const int WorkGuideWidth = 380;
-    private const int WorkGuideHeight = 170;
+    private const int WorkGuideHeight = 190;
+
+    /// <summary>Buddy Studio mints category IDs as the lower-cased slot name.</summary>
+    private const string StudioNoseCategoryId = "nose";
+
+    /// <summary>
+    /// Which subtree a spotlight name is resolved inside. This is not decoration: the character
+    /// editor and the background editor both own a control named <c>PaintBrushButton</c>, so a
+    /// tree-wide search silently rings whichever one happens to come first.
+    /// </summary>
+    private enum SpotlightScope { Shell, PaintBuddy, Background, Studio }
+
+    private readonly record struct SpotlightTarget(SpotlightScope Scope, string NodeName);
+
+    /// <summary>
+    /// Controls the tutorial spotlight points at, by step. Steps that teach a world action
+    /// (grabbing, swinging) or that live in the separate Work window are deliberately absent.
+    /// </summary>
+    private static readonly Dictionary<string, SpotlightTarget> StepSpotlights =
+        new(StringComparer.Ordinal)
+        {
+            [TutorialStepIds.OpenInventory] = new(SpotlightScope.Shell, "Win98ShopCommand"),
+            [TutorialStepIds.OpenPaintBuddy] = new(SpotlightScope.Shell, "Win98PaintCommand"),
+            [TutorialStepIds.SelectPaintBrush] = new(SpotlightScope.PaintBuddy, "PaintBrushButton"),
+            [TutorialStepIds.SelectPaintColor] = new(SpotlightScope.PaintBuddy, "PaintPresetPalette"),
+            [TutorialStepIds.PaintBuddy] = new(SpotlightScope.PaintBuddy, "Win98PaintViewportFrame"),
+            [TutorialStepIds.OpenPaintBackground] = new(SpotlightScope.Shell, "Win98PaintCommand"),
+            [TutorialStepIds.SelectBackgroundSpray] = new(SpotlightScope.Background, "PaintSprayButton"),
+            [TutorialStepIds.SelectBackgroundColor] = new(SpotlightScope.Background, "PaintSwatches"),
+            [TutorialStepIds.PaintBackground] = new(SpotlightScope.Background, "EnvironmentBackgroundInputBlocker"),
+            [TutorialStepIds.FloatPaintBackgroundPanel] = new(SpotlightScope.Background, "PaintBackgroundPanel"),
+            [TutorialStepIds.SaveAndExitPaintBackground] = new(SpotlightScope.Background, "PaintSaveButton"),
+            // Name is minted from TopLevelCommandIds.BuddyStudio ("command.buddy_studio").
+            [TutorialStepIds.OpenBuddyStudio] = new(SpotlightScope.Shell, "TopLevelCommand_command_buddy_studio"),
+            [TutorialStepIds.SelectNoseCategory] = new(SpotlightScope.Studio, "BuddyStudioCategories"),
+            [TutorialStepIds.SelectNoseButtonStyle] = new(SpotlightScope.Studio, "BuddyStudioCatalog"),
+            [TutorialStepIds.BuyStudioItem] = new(SpotlightScope.Studio, "BuddyStudioBuy"),
+            [TutorialStepIds.EquipStudioItem] = new(SpotlightScope.Studio, "BuddyStudioBuy"),
+            [TutorialStepIds.ExitBuddyStudio] = new(SpotlightScope.Studio, "BuddyStudioActions"),
+            [TutorialStepIds.EnterWorkMode] = new(SpotlightScope.Shell, "Win98WorkCommand"),
+        };
 
     private static readonly Dictionary<string, HelpDefinition> ExplicitHelp =
         new(StringComparer.Ordinal)
         {
-            ["Win98CommandBar"] = new("Top bar", "Open Shop, Tools, Paint, Work and other main game workspaces here."),
-            ["Win98BalanceLabel"] = new("Credits", "Your current credits. Earn them by playing with Buddy and in Work Mode, then spend them on tools and customization."),
+            ["Win98CommandBar"] = new("Top bar", "Open Inventory, Tools, Paint, Buddy Studio, Work and the other main workspaces here."),
+            ["Win98BalanceLabel"] = new("Credits", "Your current credits. Earn them by playing with Buddy — rough play pays the most — and in Work Mode, then spend them on tools and customization."),
+            ["Win98ShopCommand"] = new("Inventory", "Buy tools and toys. Anything you buy is equipped straight away."),
+            ["Win98ToolsCommand"] = new("Tools", "Switch between the tools you already own."),
+            ["Win98PaintCommand"] = new("Paint", "Paint Buddy or paint the room background."),
+            ["Win98WorkCommand"] = new("Work", "Shrink Buddy into a small always-on-top companion that earns while you work."),
+            ["ContextHelpButton"] = new("Help", "Turn on Help mode, then hover anything on screen to have it explained. Press it again to leave."),
+
+            ["Win98StatusBar"] = new("Status bar", "The left side reports what just happened; the right side always shows the tool you have equipped."),
+            ["StatusText"] = new("Status message", "The most recent message from the game — purchases, saves, and other confirmations appear here."),
+            ["ActiveToolStatusText"] = new("Equipped tool", "The tool currently on your cursor. Change it from Inventory or the Tools menu."),
 
             ["Win98CharacterColumn"] = new("Characters", "Choose which local character you are editing. The layer panel below controls which body part receives paint."),
             ["Win98PaintLayerPanel"] = new("Layers", "Choose which body-part layer receives paint. Hidden layers cannot receive paint and return when you leave the editor."),
@@ -70,9 +125,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             ["BuddyStudioBuy"] = new("Buy / Equip", "Buy an unowned style permanently, or equip a style you already own."),
             ["BuddyStudioActions"] = new("Studio actions", "Save applies the current character changes. Exit leaves Buddy Studio and asks about unsaved changes when needed."),
 
-            ["WorkCompanionRoot"] = new("Work companion", "Drag Buddy or the computer to move the companion. Double-click Buddy to return to Play Mode."),
-            ["WorkCrtCounter"] = new("Work counter", "Shows current-session or lifetime actions. Click the CRT to switch which counter is shown."),
-            ["WorkResizeButton"] = new("Resize", "Drag this control to resize the Work companion window."),
+            ["WorkCompanionRoot"] = new("Work companion", "Hold the left mouse button on Buddy, the computer, or the blue bar to drag the companion anywhere. Double-click Buddy to return to Play Mode."),
+            ["WorkControlTitleBar"] = new("Companion title bar", "Hold the left mouse button on this blue bar and drag to reposition the Work companion."),
+            ["WorkCrtCounter"] = new("Work counter", "Shows how much you have done. Click the screen to switch between this session and your lifetime total."),
+            ["WorkResizeButton"] = new("Resize", "Hold the left mouse button on this control and move the mouse to resize the Work companion."),
             ["WorkMotionToggle"] = new("Motion", "Pause or resume Buddy's Work animations. Counters and rewards continue either way."),
             ["WorkExitButton"] = new("Exit Work Mode", "Return to normal Play Mode. Double-clicking Buddy does the same thing."),
         };
@@ -88,8 +144,40 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private Button _dismiss = null!;
     private Button _skip = null!;
     private Button _help = null!;
+    private bool _helpDocked;
+    private bool _panelPlaced;
+    private bool _panelInLowerLeft;
+    private bool _panelUserMoved;
+    private bool _panelDragging;
+    private Vector2 _panelDragOffset;
 
+    /// <summary>The only clickable region while a prompt points somewhere; empty means no lock.</summary>
+    private Rect2 _lockedTargetRect;
+    private Rect2 _lockedAlternateRect;
+
+    /// <summary>Set while the highlighted control lives in another window: the shell is dimmed
+    /// whole and accepts nothing, so the player's only live surface is that other window.</summary>
+    private bool _lockMainViewport;
+    private HelpSpotlightOverlay? _activeForeignSpotlight;
+    private readonly Dictionary<ulong, HelpSpotlightOverlay> _foreignSpotlights = new();
+    private readonly HashSet<string> _unresolvedSpotlights = new(StringComparer.Ordinal);
+
+    /// <summary>Host for the tutorial guide art, inside the single tutorial window.</summary>
+    public Control GuideSlot { get; private set; } = null!;
+
+    private Button _exitHelp = null!;
+    private HelpSpotlightOverlay _tutorialSpotlight = null!;
     private HelpSpotlightOverlay _helpSpotlight = null!;
+
+    // Work Mode hides the whole shell, so Help gets a second surface inside the companion's own
+    // window: its own dim, popup and exit button, driven by the same region metadata.
+    private CanvasLayer? _workHelpLayer;
+    private Control? _workHelpRoot;
+    private HelpSpotlightOverlay? _workHelpSpotlight;
+    private PanelContainer? _workHelpPopup;
+    private Label? _workHelpTitle;
+    private Label? _workHelpBody;
+    private Button? _workHelpToggle;
     private PanelContainer _helpPopup = null!;
     private Label _helpTitle = null!;
     private Label _helpBody = null!;
@@ -100,12 +188,14 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private CharacterEditorHost? _editor;
     private ShopPanel? _shop;
+    private Button? _baseballBatAction;
     private WorkCompanionCoordinator? _work;
     private EnvironmentBackgroundEditor? _backgroundEditor;
     private EnvironmentBackgroundPresenter? _backgroundPresenter;
     private BuddyStudioWorkspace? _studio;
 
     private bool _editorSignalsBound;
+    private bool _brushSignalBound;
     private bool _studioSignalsBound;
     private bool _backgroundSignalsBound;
     private bool _wasGrabbing;
@@ -115,15 +205,21 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _paintSaveRequested;
     private bool _paintUseRequested;
     private bool _backgroundSaveRequested;
-    private bool _studioPurchaseObserved;
     private bool _studioSaveRequested;
-    private CharacterFeatureSlot? _studioPurchasedSlot;
-    private string? _studioDefaultCosmeticId;
+    private bool _baseballBatActionObserved;
+    private bool _chargedBatSwingObserved;
+    private bool _swingReleaseSignalBound;
+    private bool _hasGrabbedBuddy;
+    private long? _torsoRevisionOrigin;
+    private PaintColor? _paintColorOrigin;
+    private bool _brushButtonPressed;
+    private EnvironmentColor? _backgroundColorOrigin;
     private Rect2I _workDragOrigin;
     private Rect2I _workResizeOrigin;
+    private WorkCompanionView? _workView;
+    private bool? _workCounterOrigin;
 
     private string? _displayedStepId;
-    private string? _dismissedStepId;
 
     public TutorialProgressState Progress => _tutorial;
     public string? DisplayedStepId => _displayedStepId;
@@ -149,7 +245,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         BuildUi();
         BuildContextHelpUi();
         BuildWorkGuideWindow();
-        _context.Progress.Changed += OnProgressChanged;
 
         // Existing players should not suddenly receive a first-session walkthrough because the
         // Demo learned a more precise v2 sequence. Reset Progress removes the extension record and
@@ -168,17 +263,19 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     {
         DiscoverRuntimeNodes();
         BindActionSignals();
+        TryDockHelpButton();
+        EnsureWorkHelpSurface();
         AdvanceCurrentStep();
+
+        string? next = _tutorial.NextIncompleteStepId;
+        if (!string.Equals(next, _displayedStepId, StringComparison.Ordinal))
+            RefreshHint();
 
         if (_helpActive)
             RefreshContextHelp();
-
-        string? next = _tutorial.NextIncompleteStepId;
-        if (!string.Equals(next, _displayedStepId, StringComparison.Ordinal) &&
-            !string.Equals(next, _dismissedStepId, StringComparison.Ordinal))
-        {
-            RefreshHint();
-        }
+        RefreshTutorialSpotlight();
+        RefreshPaintMenuGate();
+        PositionPanelForStep();
 
         _wasEditorOpen = GodotObject.IsInstanceValid(_editor) && _editor!.IsEditorOpen;
         _wasStudioOpen = IsStudioOpen();
@@ -186,11 +283,63 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     public override void _Input(InputEvent input)
     {
-        if (!_helpActive || input is not InputEventMouseButton mouse)
+        // Escape is the reflex for "get me out of this mode"; honour it before anything else.
+        if (_helpActive && input is InputEventKey { Pressed: true, Keycode: Key.Escape })
+        {
+            ExitContextHelp();
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        if (input is not InputEventMouseButton mouse)
             return;
 
         // Help mode is observational: hovering is allowed, clicking underlying gameplay/UI is not.
         // The Help button itself remains clickable so the mode can always be closed.
+        if (_helpActive)
+        {
+            // Everything that can leave Help mode stays clickable, or the mode traps the player.
+            if (GodotObject.IsInstanceValid(_help) && _help.GetGlobalRect().HasPoint(mouse.Position))
+                return;
+            if (_exitHelp.Visible && _exitHelp.GetGlobalRect().HasPoint(mouse.Position))
+                return;
+            if (GodotObject.IsInstanceValid(_workHelpToggle) &&
+                _workHelpToggle!.GetGlobalRect().HasPoint(mouse.Position))
+            {
+                return;
+            }
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
+        // Nothing below this line applies once the walkthrough is finished or skipped: the lock
+        // exists to keep a prompt honest, and a game with no prompt must accept every click.
+        if (_displayedStepId is null || !_panel.Visible)
+            return;
+
+        // While a prompt points at one control, that control and the tutorial window are the only
+        // clickable things. Steps with no on-screen target (grabbing, swinging, painting the
+        // canvas) lock nothing, and Skip Tutorial is always reachable inside the window.
+        if (!_lockMainViewport)
+        {
+            // Steps whose action is out in the world (grab, swing, drop) highlight nothing, so
+            // they cannot lock to a rectangle — but the top bar must still be off limits, or the
+            // player can wander into Paint or Work in the middle of learning to swing a bat.
+            if (!_lockedTargetRect.HasArea())
+            {
+                if (!IsOverCommandBar(mouse.Position))
+                    return;
+            }
+            else
+            {
+                if (_lockedTargetRect.HasPoint(mouse.Position))
+                    return;
+                if (_lockedAlternateRect.HasArea() && _lockedAlternateRect.HasPoint(mouse.Position))
+                    return;
+            }
+        }
+        if (_panel.Visible && _panel.GetGlobalRect().HasPoint(mouse.Position))
+            return;
         if (GodotObject.IsInstanceValid(_help) && _help.GetGlobalRect().HasPoint(mouse.Position))
             return;
         GetViewport().SetInputAsHandled();
@@ -198,12 +347,29 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     public override void _ExitTree()
     {
-        if (_context?.Progress is not null)
-            _context.Progress.Changed -= OnProgressChanged;
         UnbindActionSignals();
         _characterPresenter?.Dismiss();
         if (GodotObject.IsInstanceValid(_workGuideWindow))
             _workGuideWindow!.QueueFree();
+    }
+
+    /// <summary>
+    /// Replay the walkthrough from Grab Buddy. Clearing the durable record is the whole job:
+    /// the controller already re-derives the prompt, spotlight and lock from it every frame.
+    /// </summary>
+    public void RestartTutorial()
+    {
+        _tutorial.Restart();
+        _sandbox.Pipeline.SelectTool(ToolId.Grab);
+        _hasGrabbedBuddy = false;
+        _wasGrabbing = false;
+        _baseballBatActionObserved = false;
+        _chargedBatSwingObserved = false;
+        _torsoRevisionOrigin = null;
+        _hasSeenWorkActive = false;
+        _workCounterOrigin = null;
+        RequestImmediateFlush();
+        RefreshHint();
     }
 
     public bool SkipTutorial()
@@ -211,7 +377,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         bool changed = _tutorial.Skip();
         if (changed)
             RequestImmediateFlush();
-        _dismissedStepId = null;
         RefreshHint();
         return changed;
     }
@@ -219,6 +384,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private void DiscoverRuntimeNodes()
     {
         _editor ??= GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
+        _workView ??= GetTree().Root.FindChild(nameof(WorkCompanionView), true, false) as WorkCompanionView;
         _shop ??= GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel;
         _work ??= GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
         _backgroundEditor ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) as EnvironmentBackgroundEditor;
@@ -228,11 +394,32 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private void BindActionSignals()
     {
+        if (!GodotObject.IsInstanceValid(_baseballBatAction) &&
+            GodotObject.IsInstanceValid(_shop) &&
+            _shop!.BuyButtonFor(ContentIds.ToolBaseballBat) is Button baseballBatAction)
+        {
+            _baseballBatAction = baseballBatAction;
+            _baseballBatAction.Pressed += OnBaseballBatActionPressed;
+        }
+
+        if (!_swingReleaseSignalBound && GodotObject.IsInstanceValid(_sandbox.CursorTools))
+        {
+            _sandbox.CursorTools.SwingReleased += OnSwingReleased;
+            _swingReleaseSignalBound = true;
+        }
+
         if (!_editorSignalsBound && GodotObject.IsInstanceValid(_editor) && _editor!.IsInitialized)
         {
             _editor.SaveButton.Pressed += OnPaintSavePressed;
             _editor.UseButton.Pressed += OnPaintUsePressed;
             _editorSignalsBound = true;
+        }
+
+        if (!_brushSignalBound && GodotObject.IsInstanceValid(_editor) &&
+            _editor!.FindChild("PaintBrushButton", true, false) is Button brush)
+        {
+            brush.Pressed += OnPaintBrushPressed;
+            _brushSignalBound = true;
         }
 
         if (!_studioSignalsBound && GodotObject.IsInstanceValid(_studio) && _studio!.IsInsideTree())
@@ -251,6 +438,12 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private void UnbindActionSignals()
     {
+        if (GodotObject.IsInstanceValid(_baseballBatAction))
+            _baseballBatAction!.Pressed -= OnBaseballBatActionPressed;
+
+        if (_swingReleaseSignalBound && GodotObject.IsInstanceValid(_sandbox?.CursorTools))
+            _sandbox!.CursorTools.SwingReleased -= OnSwingReleased;
+
         if (_editorSignalsBound && GodotObject.IsInstanceValid(_editor))
         {
             _editor!.SaveButton.Pressed -= OnPaintSavePressed;
@@ -270,12 +463,17 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             return;
 
         bool grabbing = _sandbox.Grab.IsGrabbing;
-        bool grabbedBuddy = grabbing && !_wasGrabbing && _sandbox.Grab.CurrentGrab.Target is PuppetPartBody;
+        if (grabbing && _sandbox.Grab.CurrentGrab.Target is PuppetPartBody)
+            _hasGrabbedBuddy = true;
+        // Complete on let-go, not on pick-up: advancing mid-hold spotlighted the next step
+        // while the player was still dragging Buddy around.
+        bool releasedBuddy = !grabbing && _wasGrabbing && _hasGrabbedBuddy;
         _wasGrabbing = grabbing;
 
         switch (step)
         {
-            case TutorialStepIds.GrabBuddy when grabbedBuddy:
+            case TutorialStepIds.GrabBuddy when releasedBuddy:
+                GrantFirstCredit();
                 CompleteCurrent(step);
                 break;
 
@@ -283,21 +481,47 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.PurchaseBaseballBat when _context.Progress.IsToolUnlocked(ContentIds.ToolBaseballBat):
+            case TutorialStepIds.PurchaseBaseballBat when
+                _baseballBatActionObserved &&
+                _context.Progress.IsToolUnlocked(ContentIds.ToolBaseballBat) &&
+                _sandbox.Pipeline.SelectedTool == ToolId.BaseballBat:
+                _baseballBatActionObserved = false;
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.EquipBaseballBat when _sandbox.Pipeline.SelectedTool == ToolId.BaseballBat:
+            case TutorialStepIds.ChargedBatHit when _chargedBatSwingObserved:
+                _chargedBatSwingObserved = false;
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.UnequipTool when _sandbox.Pipeline.SelectedTool != ToolId.BaseballBat:
                 CompleteCurrent(step);
                 break;
 
             case TutorialStepIds.OpenPaintBuddy when IsPaintBuddyOpen():
                 _paintSaveRequested = false;
                 _paintUseRequested = false;
+                _torsoRevisionOrigin = null;
+                _paintColorOrigin = null;
+                _brushButtonPressed = false;
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() && _editor!.PaintWorkspace.IsDirty:
+            // Brush is already the default tool, so state alone would complete this instantly and
+            // the player would never see the lesson. Require the actual button press.
+            case TutorialStepIds.SelectPaintBrush when IsPaintBuddyOpen() && _brushButtonPressed &&
+                                                         _editor!.PaintWorkspace.SelectedTool == PaintTool.Brush:
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.SelectPaintColor when HasChosenPaintColor():
+                CompleteCurrent(step);
+                break;
+
+            // Same let-go rule the grab step follows: the first dab already bumps the surface
+            // revision, so completing on the press spotlighted the next step while the player
+            // was still dragging the brush. Wait for the button.
+            case TutorialStepIds.PaintBuddy when HasPaintedTorso() && !IsPrimaryMouseHeld():
                 CompleteCurrent(step);
                 break;
 
@@ -312,13 +536,26 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.OpenPaintBackground when GodotObject.IsInstanceValid(_backgroundEditor) && _backgroundEditor!.IsOpen:
+            case TutorialStepIds.OpenPaintBackground when IsBackgroundOpen():
                 _backgroundSaveRequested = false;
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.PaintBackground when GodotObject.IsInstanceValid(_backgroundEditor) && _backgroundEditor!.IsOpen &&
-                                                        GodotObject.IsInstanceValid(_backgroundPresenter) && _backgroundPresenter!.Canvas.IsDirty:
+            case TutorialStepIds.SelectBackgroundSpray when IsBackgroundOpen() &&
+                                                              _backgroundPresenter!.Canvas.Tool == EnvironmentPaintTool.Spray:
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.SelectBackgroundColor when HasChosenBackgroundColor():
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.PaintBackground when IsBackgroundOpen() &&
+                                                        _backgroundPresenter!.Canvas.IsDirty && !IsPrimaryMouseHeld():
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.FloatPaintBackgroundPanel when IsBackgroundOpen() && IsBackgroundPanelFloating():
                 CompleteCurrent(step);
                 break;
 
@@ -330,18 +567,27 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 break;
 
             case TutorialStepIds.OpenBuddyStudio when IsStudioOpen():
-                _studioPurchaseObserved = false;
                 _studioSaveRequested = false;
-                _studioPurchasedSlot = null;
-                _studioDefaultCosmeticId = null;
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.BuyAndEquipStudioItem when TryCaptureStudioPurchase():
+            case TutorialStepIds.SelectNoseCategory when IsStudioOpen() &&
+                                                           _studio!.SelectedSlot == CharacterFeatureSlot.Nose:
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.UnequipStudioItem when HasReturnedStudioSlotToDefault():
+            // Catalogue tiles and the document are keyed by feature ID ("nose.button"), while
+            // ownership is keyed by content ID ("cosmetic.nose.button"). Mixing them up is what
+            // left the preview step stuck with no way forward.
+            case TutorialStepIds.SelectNoseButtonStyle when IsStudioPreviewing(CharacterFeatureIds.NoseButton):
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.BuyStudioItem when _context.Progress.IsToolUnlocked(ContentIds.CosmeticNoseButton):
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.EquipStudioItem when IsStudioEquipped(CharacterFeatureIds.NoseButton):
                 CompleteCurrent(step);
                 break;
 
@@ -357,6 +603,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             case TutorialStepIds.EnterWorkMode when IsWorkActive():
                 _hasSeenWorkActive = true;
                 _workDragOrigin = _sandbox.Window.WorkCompanionRect;
+                _workCounterOrigin = null;
                 CompleteCurrent(step);
                 break;
 
@@ -368,6 +615,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
             case TutorialStepIds.ResizeWorkCompanion when IsWorkActive() &&
                                                            _sandbox.Window.WorkCompanionRect.Size != _workResizeOrigin.Size:
+                CompleteCurrent(step);
+                break;
+
+            case TutorialStepIds.ToggleWorkCounter when HasSwitchedWorkCounter():
                 CompleteCurrent(step);
                 break;
 
@@ -386,56 +637,126 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool IsWorkActive() =>
         GodotObject.IsInstanceValid(_work) && _work!.IsActive;
 
-    private bool TryCaptureStudioPurchase()
+    private bool IsBackgroundOpen() =>
+        GodotObject.IsInstanceValid(_backgroundEditor) && _backgroundEditor!.IsOpen &&
+        GodotObject.IsInstanceValid(_backgroundPresenter);
+
+    private bool IsBackgroundPanelFloating() =>
+        GetTree().Root.FindChild("PaintBackgroundPinController", true, false) is Win98PinnablePanel pin &&
+        pin.IsFloating;
+
+    /// <summary>Any colour will do — the lesson is the palette, not a particular hue.</summary>
+    private bool HasChosenPaintColor()
     {
-        if (!_studioPurchaseObserved || !IsStudioOpen() || !GodotObject.IsInstanceValid(_editor) ||
-            _editor!.Session.WorkingDocument is not CharacterDocument document)
+        if (!IsPaintBuddyOpen())
+            return false;
+        PaintColor colour = _editor!.PaintWorkspace.SelectedColor;
+        if (_paintColorOrigin is not PaintColor origin)
         {
+            _paintColorOrigin = colour;
             return false;
         }
-
-        CharacterFeatureSlot slot = _studio!.SelectedSlot;
-        CosmeticDefinition? defaultDefinition = _editor.Session.FeatureCatalog
-            .GetDefinitions(slot)
-            .FirstOrDefault(static definition => definition.IsFreeDefault);
-        if (defaultDefinition is null)
-            return false;
-
-        string equipped = CharacterDocumentEditor.ReadFeatureId(document, slot);
-        if (string.Equals(equipped, defaultDefinition.Id, StringComparison.Ordinal))
-            return false;
-
-        _studioPurchasedSlot = slot;
-        _studioDefaultCosmeticId = defaultDefinition.Id;
-        _studioPurchaseObserved = false;
-        return true;
+        return colour != origin;
     }
 
-    private bool HasReturnedStudioSlotToDefault()
+    /// <summary>Any colour will do here — the lesson is the palette, not a particular hue.</summary>
+    private bool HasChosenBackgroundColor()
     {
-        if (!IsStudioOpen() || _studioPurchasedSlot is not CharacterFeatureSlot slot ||
-            string.IsNullOrWhiteSpace(_studioDefaultCosmeticId) ||
-            _editor!.Session.WorkingDocument is not CharacterDocument document)
+        if (!IsBackgroundOpen())
+            return false;
+        EnvironmentColor colour = _backgroundPresenter!.Canvas.Color;
+        if (_backgroundColorOrigin is not EnvironmentColor origin)
+        {
+            _backgroundColorOrigin = colour;
+            return false;
+        }
+        return colour != origin;
+    }
+
+    /// <summary>
+    /// The torso surface bumps its revision on any accepted stroke, so the tutorial can require
+    /// paint <em>on the torso</em> without cloning a megabyte of pixels every frame.
+    /// </summary>
+    private bool HasPaintedTorso()
+    {
+        if (!IsPaintBuddyOpen() ||
+            !_editor!.PaintWorkspace.Surfaces.TryGetValue(PaintPart.Torso, out PaintSurface? torso))
         {
             return false;
         }
-        string equipped = CharacterDocumentEditor.ReadFeatureId(document, slot);
-        return string.Equals(equipped, _studioDefaultCosmeticId, StringComparison.Ordinal);
+        if (_torsoRevisionOrigin is not long origin)
+        {
+            _torsoRevisionOrigin = torso.Revision;
+            return false;
+        }
+        return torso.Revision > origin;
     }
 
-    private void OnProgressChanged(ProgressChange change)
+    /// <summary>
+    /// True while the player is still holding the paint stroke down. Read from the device
+    /// rather than a per-canvas flag so the Buddy and Background editors — which share no
+    /// stroke state — obey the same rule; headless scenarios drive the model directly and
+    /// always read false.
+    /// </summary>
+    private static bool IsPrimaryMouseHeld() => Input.IsMouseButtonPressed(MouseButton.Left);
+
+    private bool IsStudioPreviewing(string contentId) =>
+        IsStudioOpen() && GodotObject.IsInstanceValid(_studio!.CatalogGrid) &&
+        string.Equals(_studio.CatalogGrid.SelectedId, contentId, StringComparison.Ordinal);
+
+    private bool IsStudioEquipped(string contentId) =>
+        IsStudioOpen() && GodotObject.IsInstanceValid(_editor) &&
+        _editor!.Session.WorkingDocument is CharacterDocument document &&
+        string.Equals(
+            CharacterDocumentEditor.ReadFeatureId(document, CharacterFeatureSlot.Nose),
+            contentId,
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// True once the player has flipped the Work CRT between session and lifetime totals. The
+    /// baseline is captured on the first frame the counter is observable rather than at Work
+    /// entry, because the view is built asynchronously with the companion window.
+    /// </summary>
+    private bool HasSwitchedWorkCounter()
     {
-        if (change == ProgressChange.BalanceChanged &&
-            string.Equals(_tutorial.NextIncompleteStepId, TutorialStepIds.EarnCredits, StringComparison.Ordinal))
+        if (!IsWorkActive() || !GodotObject.IsInstanceValid(_workView))
+            return false;
+        bool showLifetime = _workView!.ShowLifetime;
+        if (_workCounterOrigin is not bool origin)
         {
-            CompleteCurrent(TutorialStepIds.EarnCredits);
+            _workCounterOrigin = showLifetime;
+            return false;
         }
-        else if (change == ProgressChange.ContentPurchased && IsStudioOpen())
-        {
-            _studioPurchaseObserved = true;
-        }
+        return showLifetime != origin;
     }
 
+    private void OnSwingReleased(float releasedCharge, int swingEpoch)
+    {
+        _ = releasedCharge;
+        if (swingEpoch > 0 && _sandbox.CursorTools.ActiveContentId == ContentIds.ToolBaseballBat)
+            _chargedBatSwingObserved = true;
+    }
+
+    private void OnBaseballBatActionPressed()
+    {
+        if (_tutorial.NextIncompleteStepId == TutorialStepIds.PurchaseBaseballBat)
+            _baseballBatActionObserved = true;
+    }
+
+    /// <summary>
+    /// The very next thing the walkthrough asks for is a 1-credit purchase, so that first handful
+    /// of Buddy is worth exactly that. Manhandling a buddy pays fractions of a credit, which
+    /// would leave the player staring at a bat they cannot afford. Tops up to one whole credit
+    /// rather than adding one, so a player who already earned some is not handed extra.
+    /// </summary>
+    private void GrantFirstCredit()
+    {
+        long shortfall = RewardLedger.MilliCreditsPerCredit - _context.Progress.BalanceMilliCredits;
+        if (shortfall > 0)
+            _context.Progress.Deposit(shortfall);
+    }
+
+    private void OnPaintBrushPressed() => _brushButtonPressed = true;
     private void OnPaintSavePressed() => _paintSaveRequested = IsPaintBuddyOpen();
     private void OnPaintUsePressed() => _paintUseRequested = IsPaintBuddyOpen();
     private void OnBackgroundSavePressed() =>
@@ -449,7 +770,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             return;
         }
-        _dismissedStepId = null;
         RequestImmediateFlush();
         RefreshHint();
     }
@@ -464,28 +784,22 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         AddChild(_root);
 
-        var margin = new MarginContainer
-        {
-            Name = "FirstSessionGuidanceMargin",
-            MouseFilter = Control.MouseFilterEnum.Ignore,
-        };
-        margin.SetAnchorsPreset(Control.LayoutPreset.BottomLeft);
-        margin.OffsetLeft = 12;
-        margin.OffsetTop = -178;
-        margin.OffsetRight = 12 + TutorialWidth;
-        margin.OffsetBottom = -12;
-        _root.AddChild(margin);
-
         _panel = CreateWin98MessagePanel(
             "FirstSessionGuidancePanel",
             "Desktop Buddy Help",
             out _body,
-            out HBoxContainer actions);
-        _panel.CustomMinimumSize = new Vector2(TutorialWidth, 142);
-        margin.AddChild(_panel);
+            out HBoxContainer actions,
+            out Control? guideSlot,
+            draggable: true);
+        GuideSlot = guideSlot!;
+        _panel.CustomMinimumSize = new Vector2(TutorialWidth, TutorialHeight);
+        _panel.Size = new Vector2(TutorialWidth, TutorialHeight);
+        _root.AddChild(_panel);
 
-        _dismiss = Win98Dialog.Action(actions, "Dismiss", DismissCurrent);
-        _dismiss.TooltipText = "Hide this hint. Tutorial progress is not skipped.";
+        // No Dismiss: the walkthrough gates real actions now, so hiding a prompt would only
+        // strand the player behind an input lock they cannot see the reason for.
+        _dismiss = Win98Dialog.Action(actions, "Continue", AcknowledgeCurrent);
+        _dismiss.TooltipText = "Continue the walkthrough.";
         _skip = Win98Dialog.Action(actions, "Skip Tutorial", () => SkipTutorial());
         _skip.TooltipText = "Stop the first-session walkthrough. The Help button remains available.";
     }
@@ -494,7 +808,20 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         string name,
         string title,
         out Label bodyLabel,
-        out HBoxContainer actions)
+        out HBoxContainer actions) =>
+        CreateWin98MessagePanel(name, title, out bodyLabel, out actions, out _, draggable: false);
+
+    /// <summary>
+    /// One Win98 message window. When a guide slot is requested the helper art lives inside this
+    /// same frame as a square on the right, instead of trailing the prompt as a second window.
+    /// </summary>
+    private PanelContainer CreateWin98MessagePanel(
+        string name,
+        string title,
+        out Label bodyLabel,
+        out HBoxContainer actions,
+        out Control? guideSlot,
+        bool draggable)
     {
         var panel = new PanelContainer
         {
@@ -512,10 +839,13 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             Name = $"{name}TitleBar",
             CustomMinimumSize = new Vector2(0, Win98ThemeFactory.TitleBarHeight),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
+            MouseFilter = draggable ? Control.MouseFilterEnum.Stop : Control.MouseFilterEnum.Ignore,
+            MouseDefaultCursorShape = draggable ? Control.CursorShape.Move : Control.CursorShape.Arrow,
         };
         titleBar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.ActiveTitle));
         column.AddChild(titleBar);
+        if (draggable)
+            titleBar.GuiInput += OnPanelTitleInput;
         var titleLabel = new Label
         {
             Text = title,
@@ -525,13 +855,33 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         titleLabel.AddThemeColorOverride("font_color", Colors.White);
         titleBar.AddChild(titleLabel);
 
+        var split = new HBoxContainer
+        {
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        split.AddThemeConstantOverride("separation", 8);
+        column.AddChild(split);
+
+        var textColumn = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        textColumn.AddThemeConstantOverride("separation", 6);
+        split.AddChild(textColumn);
+
         bodyLabel = new Label
         {
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             MouseFilter = Control.MouseFilterEnum.Ignore,
+            // Pin the wrap width so the panel's minimum height is computed against the width it
+            // will actually have, not against whatever width it happens to hold this frame.
+            CustomMinimumSize = new Vector2(draggable ? TutorialTextWidth : 0, 0),
         };
-        column.AddChild(bodyLabel);
+        textColumn.AddChild(bodyLabel);
 
         actions = new HBoxContainer
         {
@@ -539,8 +889,75 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             MouseFilter = Control.MouseFilterEnum.Pass,
         };
         actions.AddThemeConstantOverride("separation", 6);
-        column.AddChild(actions);
+        textColumn.AddChild(actions);
+
+        guideSlot = null;
+        if (draggable)
+        {
+            guideSlot = new Control
+            {
+                Name = "TutorialGuideSlot",
+                CustomMinimumSize = new Vector2(TutorialGuideWidth, 0),
+                SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+            };
+            split.AddChild(guideSlot);
+        }
         return panel;
+    }
+
+    private void OnPanelTitleInput(InputEvent inputEvent)
+    {
+        switch (inputEvent)
+        {
+            case InputEventMouseButton { ButtonIndex: MouseButton.Left } button:
+                _panelDragging = button.Pressed;
+                if (button.Pressed)
+                    _panelDragOffset = _panel.GetGlobalRect().Position - button.GlobalPosition;
+                break;
+            case InputEventMouseMotion motion when _panelDragging:
+                Vector2 viewport = GetViewport().GetVisibleRect().Size;
+                Vector2 wanted = motion.GlobalPosition + _panelDragOffset;
+                _panel.Position = new Vector2(
+                    Math.Clamp(wanted.X, 0, Math.Max(0, viewport.X - _panel.Size.X)),
+                    Math.Clamp(wanted.Y, 0, Math.Max(0, viewport.Y - _panel.Size.Y)));
+                _panelUserMoved = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Home is the middle of the right edge. Paint Buddy is the exception: its canvas and action
+    /// row live on the right, so the window steps down to the lower left while that workspace is
+    /// open. The player can always drag it; a move only happens when the zone actually changes.
+    /// </summary>
+    private void PositionPanelForStep()
+    {
+        bool lowerLeft = _displayedStepId is
+            TutorialStepIds.OpenPaintBuddy or TutorialStepIds.SelectPaintBrush or
+            TutorialStepIds.SelectPaintColor or TutorialStepIds.PaintBuddy or
+            TutorialStepIds.SavePaintBuddy or TutorialStepIds.UsePaintedBuddy;
+
+        // A drag wins until the workspace changes under it, so the window never fights the player.
+        if (_panelDragging || (_panelUserMoved && lowerLeft == _panelInLowerLeft))
+            return;
+
+        Vector2 viewport = GetViewport().GetVisibleRect().Size;
+        if (viewport.X <= 0 || viewport.Y <= 0)
+            return;
+
+        // Clamp rather than bail: a viewport briefly smaller than the window during boot used to
+        // leave the panel parked at the top-left default forever.
+        const float margin = 16;
+        Vector2 size = _panel.Size;
+        float x = lowerLeft ? margin : viewport.X - size.X - margin;
+        float y = lowerLeft ? viewport.Y - size.Y - margin : (viewport.Y - size.Y) * 0.5f;
+        _panel.Position = new Vector2(
+            Math.Clamp(x, 0, Math.Max(0, viewport.X - size.X)),
+            Math.Clamp(y, 0, Math.Max(0, viewport.Y - size.Y)));
+        _panelInLowerLeft = lowerLeft;
+        _panelUserMoved = false;
+        _panelPlaced = true;
     }
 
     private void BuildWorkGuideWindow()
@@ -569,9 +986,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _workGuideBody = body;
         _workGuideWindow.AddChild(panel);
         panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        Win98Dialog.Action(actions, "Dismiss", DismissCurrent);
         Win98Dialog.Action(actions, "Skip Tutorial", () => SkipTutorial());
-        _workGuideWindow.CloseRequested += DismissCurrent;
     }
 
     private void PositionWorkGuideWindow()
@@ -591,20 +1006,29 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _workGuideWindow!.Position = new Vector2I(x, y);
     }
 
-    private void DismissCurrent()
+    /// <summary>
+    /// Two prompts have nothing in the world to observe — the sign-off and the compliment after
+    /// Paint Buddy. Pressing Continue <em>is</em> their action.
+    /// </summary>
+    /// <summary>
+    /// Steps the player dismisses with the button: the two compliments and the sign-off, which
+    /// have nothing in the world to observe.
+    /// </summary>
+    private static bool IsAcknowledgeStep(string? stepId) => stepId is
+        TutorialStepIds.AdmirePaintedBuddy or TutorialStepIds.AdmireStudioBuddy or
+        TutorialStepIds.Farewell;
+
+    private void AcknowledgeCurrent()
     {
-        _dismissedStepId = _displayedStepId;
-        _displayedStepId = null;
-        _panel.Visible = false;
-        HideWorkGuide();
-        _characterPresenter?.Dismiss();
+        if (IsAcknowledgeStep(_displayedStepId))
+            CompleteCurrent(_displayedStepId!);
     }
 
     private void RefreshHint()
     {
         string? stepId = _tutorial.NextIncompleteStepId;
         _displayedStepId = stepId;
-        if (_helpActive || stepId is null || string.Equals(stepId, _dismissedStepId, StringComparison.Ordinal))
+        if (_helpActive || stepId is null)
         {
             _panel.Visible = false;
             HideWorkGuide();
@@ -613,6 +1037,11 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         }
 
         string text = TextFor(stepId);
+        bool farewell = string.Equals(stepId, TutorialStepIds.Farewell, StringComparison.Ordinal);
+        _dismiss.Visible = IsAcknowledgeStep(stepId);
+        _dismiss.Text = farewell ? "Goodbye" : "Continue";
+        _skip.Visible = !farewell;
+
         if (IsWorkTutorialStep(stepId) && IsWorkActive() && GodotObject.IsInstanceValid(_workGuideWindow))
         {
             _panel.Visible = false;
@@ -626,6 +1055,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         HideWorkGuide();
         _body.Text = text;
         _panel.Visible = true;
+        // Prompts vary from four words to four lines; grow rather than clip the longer lessons.
+        _panel.Size = new Vector2(
+            TutorialWidth,
+            Math.Max(TutorialHeight, _panel.GetCombinedMinimumSize().Y));
         _characterPresenter?.Present(stepId, text);
     }
 
@@ -637,31 +1070,85 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private static bool IsWorkTutorialStep(string stepId) => stepId is
         TutorialStepIds.EnterWorkMode or TutorialStepIds.DragWorkCompanion or
-        TutorialStepIds.ResizeWorkCompanion or TutorialStepIds.ExitWorkMode;
+        TutorialStepIds.ResizeWorkCompanion or TutorialStepIds.ToggleWorkCounter or
+        TutorialStepIds.ExitWorkMode;
 
     private static string TextFor(string stepId) => stepId switch
     {
-        TutorialStepIds.GrabBuddy => "Grab Buddy and move them once.",
-        TutorialStepIds.EarnCredits => "Earn some credits by interacting with Buddy.",
-        TutorialStepIds.OpenInventory => "Open Shop in the top bar.",
-        TutorialStepIds.PurchaseBaseballBat => "Buy the Baseball Bat.",
-        TutorialStepIds.EquipBaseballBat => "Equip the Baseball Bat.",
-        TutorialStepIds.OpenPaintBuddy => "Open Paint ▸ Buddy.",
-        TutorialStepIds.PaintBuddy => "Paint one mark on Buddy.",
-        TutorialStepIds.SavePaintBuddy => "Save your character.",
-        TutorialStepIds.UsePaintedBuddy => "Choose Use Character to apply it and return.",
-        TutorialStepIds.OpenPaintBackground => "Open Paint ▸ Background.",
-        TutorialStepIds.PaintBackground => "Paint one mark on the background.",
-        TutorialStepIds.SaveAndExitPaintBackground => "Choose Save and Exit.",
-        TutorialStepIds.OpenBuddyStudio => "Open Buddy Studio.",
-        TutorialStepIds.BuyAndEquipStudioItem => "Buy and equip one style. Glasses are a quick option.",
-        TutorialStepIds.UnequipStudioItem => "Switch that category back to its free/default style and equip it.",
-        TutorialStepIds.SaveBuddyStudio => "Save your Buddy Studio changes.",
-        TutorialStepIds.ExitBuddyStudio => "Exit Buddy Studio.",
-        TutorialStepIds.EnterWorkMode => "Enter Work Mode from the top bar.",
-        TutorialStepIds.DragWorkCompanion => "Drag the Work companion to a new position.",
-        TutorialStepIds.ResizeWorkCompanion => "Resize the Work companion once.",
-        TutorialStepIds.ExitWorkMode => "Double-click Buddy or press X to return to Play Mode.",
+        TutorialStepIds.GrabBuddy =>
+            "Say hello. Press and hold the left mouse button on Buddy to pick him up, then fling " +
+            "him around the room. Let go when you have had your fun.",
+        TutorialStepIds.OpenInventory =>
+            "Time to go shopping. Open Inventory, up in the top-left corner — that is where every " +
+            "tool you own lives.",
+        TutorialStepIds.PurchaseBaseballBat =>
+            "This is the Inventory: everything you can buy and equip, all in one list. Your credits " +
+            "are counted up in the top-right corner, and playing with Buddy is what earns them — " +
+            "the rougher the play, the bigger the payout. Grab the Baseball Bat: buy it for 1 " +
+            "credit, or equip it if you already own it. Anything you buy is equipped straight away.",
+        TutorialStepIds.ChargedBatHit =>
+            "Batter up. The bat is already in your hands. Hold right mouse to wind up, then let " +
+            "go and swing. Any amount of charge is enough for this lesson; a full charge hurts a " +
+            "lot more — and pays a lot more.",
+        TutorialStepIds.UnequipTool =>
+            "Done with a tool? Press D to drop it. You are back to bare hands — and to pick it " +
+            "up again, just double-click the dropped tool.",
+        TutorialStepIds.OpenPaintBuddy =>
+            "Buddy is looking a little plain. Open Paint ▸ Buddy and let us fix that.",
+        TutorialStepIds.SelectPaintBrush => "Pick up the Brush — it is the one you will use most.",
+        TutorialStepIds.SelectPaintColor => "Now pick any colour that takes your fancy.",
+        TutorialStepIds.PaintBuddy => "Go on, paint something across Buddy's torso.",
+        TutorialStepIds.SavePaintBuddy => "Happy with it? Save the character to keep your work.",
+        TutorialStepIds.UsePaintedBuddy =>
+            "Saving keeps it; Use Character puts it on the real Buddy. Choose Use Character to " +
+            "apply it and head back.",
+        TutorialStepIds.AdmirePaintedBuddy =>
+            "Look at that. Genuine artistry — Buddy has never looked better. Wear it with pride.",
+        TutorialStepIds.OpenPaintBackground =>
+            "Buddy has a new look — the room deserves one too. Open Paint ▸ Background.",
+        TutorialStepIds.SelectBackgroundSpray => "Grab the Spray can this time.",
+        TutorialStepIds.SelectBackgroundColor => "Pick any colour you like from the palette.",
+        TutorialStepIds.PaintBackground => "Now spray somewhere on the room behind Buddy.",
+        TutorialStepIds.FloatPaintBackgroundPanel =>
+            "The tool panel is in the way. Drag it by its title bar right out of the game window " +
+            "and park it off to the side — the 📌 button does the same. It becomes its own " +
+            "desktop window, and you get the whole background to admire.",
+        TutorialStepIds.SaveAndExitPaintBackground => "Lovely. Choose Save and Exit to keep it.",
+        TutorialStepIds.OpenBuddyStudio =>
+            "One more workshop to show you. Open Buddy Studio — this is where Buddy gets his " +
+            "hair, glasses, hats and everything else.",
+        TutorialStepIds.SelectNoseCategory => "Start with the Nose category.",
+        TutorialStepIds.SelectNoseButtonStyle =>
+            "Click the Button nose once. A single click only previews it — watch it appear on " +
+            "Buddy in the preview window.",
+        TutorialStepIds.BuyStudioItem =>
+            "Like it? Buy it with the button on the right. Double-clicking the style itself does " +
+            "the same thing.",
+        TutorialStepIds.EquipStudioItem =>
+            "Now equip it. You can come back here any time to equip something else, or switch a " +
+            "slot back to its free default to take it off again.",
+        TutorialStepIds.SaveBuddyStudio => "Save it, or Buddy loses his brand-new nose.",
+        TutorialStepIds.ExitBuddyStudio => "That is Buddy Studio. Exit when you are ready.",
+        TutorialStepIds.AdmireStudioBuddy =>
+            "Now that is a nose. Painted, kitted out, and frankly better dressed than most of us " +
+            "— Buddy is looking sharp.",
+        TutorialStepIds.EnterWorkMode =>
+            "Last stop. Work Mode shrinks Buddy into a tiny companion that sits on top of your " +
+            "real desktop and keeps earning while you get on with things. Open Work.",
+        TutorialStepIds.DragWorkCompanion =>
+            "Hold the left mouse button on Buddy, on the computer, or on the blue bar, then move " +
+            "the mouse to drag the companion wherever you want it.",
+        TutorialStepIds.ResizeWorkCompanion =>
+            "Hold the left mouse button on the ↘ resize button and move the mouse to make the " +
+            "companion bigger or smaller.",
+        TutorialStepIds.ToggleWorkCounter =>
+            "That little screen counts what you have done. Click it to switch between this " +
+            "session and your lifetime total.",
+        TutorialStepIds.ExitWorkMode => "Done working? Double-click Buddy, or press X, to come back.",
+        TutorialStepIds.Farewell =>
+            "And that is everything. If you ever forget what something does, hit the ? button in " +
+            "the title bar and hover over it — Help mode will explain anything on screen. " +
+            "Go have fun with him. Goodbye!",
         _ => string.Empty,
     };
 
@@ -685,6 +1172,17 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _help.Pressed += ToggleContextHelp;
         _root.AddChild(_help);
 
+        // Faint by design: the tutorial points, it does not black the game out.
+        _tutorialSpotlight = new HelpSpotlightOverlay
+        {
+            Name = "TutorialSpotlight",
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            DimAlpha = 0.41f,
+        };
+        _tutorialSpotlight.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _root.AddChild(_tutorialSpotlight);
+
         _helpSpotlight = new HelpSpotlightOverlay
         {
             Name = "ContextHelpSpotlight",
@@ -693,7 +1191,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         };
         _helpSpotlight.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         _root.AddChild(_helpSpotlight);
-        _root.MoveChild(_helpSpotlight, Math.Max(0, _help.GetIndex()));
 
         _helpPopup = CreateWin98MessagePanel(
             "ContextHelpPopup",
@@ -710,15 +1207,163 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _helpTitle = _helpPopup.FindChild("ContextHelpPopupTitleBar", true, false)?.GetChildOrNull<Label>(0)
             ?? throw new InvalidOperationException("Context Help title bar was not composed.");
         popupActions.Visible = false;
+
+        _exitHelp = BuildExitHelpButton();
+        _root.AddChild(_exitHelp);
+
         _root.MoveChild(_help, _root.GetChildCount() - 1);
+        // The tutorial window must stay readable above its own dim.
+        _root.MoveChild(_panel, _root.GetChildCount() - 1);
+    }
+
+    /// <summary>
+    /// A plainly labelled way out of Help mode, anchored bottom-right. The `?` in the title bar
+    /// toggles too, but it is a small icon in a corner the player may not have looked at, and
+    /// Work Mode hides that title bar entirely.
+    /// </summary>
+    private Button BuildExitHelpButton()
+    {
+        var button = new Button
+        {
+            Name = "ExitHelpModeButton",
+            Text = "Exit Help Mode",
+            TooltipText = "Leave Help mode. Escape does the same.",
+            Visible = false,
+            FocusMode = Control.FocusModeEnum.All,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            CustomMinimumSize = new Vector2(132, 26),
+            Theme = Win98ThemeFactory.Create(),
+        };
+        button.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
+        button.OffsetLeft = -148;
+        button.OffsetTop = -42;
+        button.OffsetRight = -16;
+        button.OffsetBottom = -16;
+        button.Pressed += ExitContextHelp;
+        return button;
+    }
+
+    private void ExitContextHelp()
+    {
+        if (_helpActive)
+            ToggleContextHelp();
+    }
+
+    /// <summary>
+    /// Compose the Work Mode help surface inside the companion window the first time Work is
+    /// entered. It cannot live in the main viewport: that window is hidden while Work is active.
+    /// </summary>
+    private void EnsureWorkHelpSurface()
+    {
+        if (_workHelpLayer is not null || !GodotObject.IsInstanceValid(_workView))
+            return;
+        Window window = _workView!.GetWindow();
+        // Before Work Mode is entered the companion view still hangs off the main window, so
+        // GetWindow() returns the shell. Building here would drop a second `?` on the shell's
+        // own title bar, on top of the close box. Wait for the real companion window.
+        if (!GodotObject.IsInstanceValid(window) || window == GetWindow())
+            return;
+
+        _workHelpLayer = new CanvasLayer { Name = "WorkContextHelpLayer", Layer = 250 };
+        window.AddChild(_workHelpLayer);
+
+        _workHelpRoot = new Control
+        {
+            Name = "WorkContextHelpRoot",
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _workHelpRoot.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _workHelpLayer.AddChild(_workHelpRoot);
+
+        _workHelpSpotlight = new HelpSpotlightOverlay
+        {
+            Name = "WorkContextHelpSpotlight",
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _workHelpSpotlight.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _workHelpRoot.AddChild(_workHelpSpotlight);
+
+        _workHelpPopup = CreateWin98MessagePanel(
+            "WorkContextHelpPopup",
+            "Help",
+            out Label body,
+            out HBoxContainer actions);
+        _workHelpBody = body;
+        _workHelpPopup.Visible = false;
+        _workHelpPopup.CustomMinimumSize = new Vector2(300, 116);
+        _workHelpPopup.MouseFilter = Control.MouseFilterEnum.Ignore;
+        _workHelpRoot.AddChild(_workHelpPopup);
+        actions.Visible = false;
+        _workHelpTitle = _workHelpPopup.FindChild("WorkContextHelpPopupTitleBar", true, false)?
+            .GetChildOrNull<Label>(0);
+
+        _workHelpToggle = new Button
+        {
+            Name = "WorkContextHelpButton",
+            Text = "?",
+            TooltipText = "Explain the part of the Work companion you hover over.",
+            FocusMode = Control.FocusModeEnum.All,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            CustomMinimumSize = new Vector2(26, 22),
+            Theme = Win98ThemeFactory.Create(),
+        };
+        _workHelpToggle.SetAnchorsPreset(Control.LayoutPreset.TopRight);
+        _workHelpToggle.OffsetLeft = -36;
+        _workHelpToggle.OffsetTop = 6;
+        _workHelpToggle.OffsetRight = -10;
+        _workHelpToggle.OffsetBottom = 28;
+        _workHelpToggle.Pressed += ToggleContextHelp;
+        _workHelpRoot.AddChild(_workHelpToggle);
+    }
+
+    /// <summary>True while Help should be presented inside the Work companion window.</summary>
+    private bool UseWorkHelpSurface() => IsWorkActive() && _workHelpRoot is not null;
+
+    /// <summary>
+    /// Move the Help command into the Win98 title bar, left of Minimize, once the shell frame
+    /// exists. The isolated sandbox scenario has no frame, so the overlay placement remains the
+    /// fallback rather than a hard requirement.
+    /// </summary>
+    private void TryDockHelpButton()
+    {
+        if (_helpDocked || !GodotObject.IsInstanceValid(_help))
+            return;
+        if (GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) is not Win98WindowFrame frame ||
+            !GodotObject.IsInstanceValid(frame.TitleBarCommands))
+        {
+            return;
+        }
+
+        HBoxContainer row = frame.TitleBarCommands;
+        _help.GetParent()?.RemoveChild(_help);
+        _help.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+        _help.OffsetLeft = _help.OffsetTop = _help.OffsetRight = _help.OffsetBottom = 0;
+        _help.CustomMinimumSize = new Vector2(20, 18);
+        _help.Text = "?";
+        row.AddChild(_help);
+        // Minimize, Maximize and Close are the last three commands; Help sits just before them.
+        row.MoveChild(_help, Math.Max(0, row.GetChildCount() - 4));
+        _helpDocked = true;
     }
 
     private void ToggleContextHelp()
     {
         _helpActive = !_helpActive;
-        _help.Text = _helpActive ? "Close Help" : "Help";
-        _help.CustomMinimumSize = new Vector2(_helpActive ? 88 : 58, 24);
-        _helpSpotlight.Visible = _helpActive;
+        if (!_helpDocked)
+        {
+            _help.Text = _helpActive ? "Close Help" : "Help";
+            _help.CustomMinimumSize = new Vector2(_helpActive ? 88 : 58, 24);
+        }
+        _help.TooltipText = _helpActive
+            ? "Leave Help mode."
+            : "Explain the part of the current screen you hover over.";
+        bool work = UseWorkHelpSurface();
+        _helpSpotlight.Visible = _helpActive && !work;
+        _exitHelp.Visible = _helpActive && !work;
+        if (_workHelpSpotlight is not null)
+            _workHelpSpotlight.Visible = _helpActive && work;
+
         if (_helpActive)
         {
             _panel.Visible = false;
@@ -730,33 +1375,286 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             _helpSpotlight.ClearTarget();
             _helpPopup.Visible = false;
+            _workHelpSpotlight?.ClearTarget();
+            if (_workHelpPopup is not null)
+                _workHelpPopup.Visible = false;
             RefreshHint();
         }
     }
 
-    private void RefreshContextHelp()
+    /// <summary>
+    /// Dim the workspace and ring the control the current prompt is talking about. Steps whose
+    /// action lives in the world or in the separate Work window resolve to nothing and the
+    /// overlay stays off, so the game is never dimmed for a hint that points at no control.
+    /// </summary>
+    private bool IsOverCommandBar(Vector2 position) =>
+        GetTree().Root.FindChild("Win98CommandBar", true, false) is Control bar &&
+        bar.IsVisibleInTree() &&
+        bar.GetGlobalRect().HasPoint(position);
+
+    private void ClearTutorialSpotlight()
     {
-        Control? hovered = GetViewport().GuiGetHoveredControl();
-        if (!TryResolveHelp(hovered, out Control? target, out HelpDefinition definition))
+        _tutorialSpotlight.Visible = false;
+        HideForeignSpotlight();
+        _lockMainViewport = false;
+        _lockedTargetRect = new Rect2();
+        _lockedAlternateRect = new Rect2();
+    }
+
+    private void HideForeignSpotlight()
+    {
+        if (_activeForeignSpotlight is null)
+            return;
+        if (GodotObject.IsInstanceValid(_activeForeignSpotlight))
         {
-            _helpSpotlight.ClearTarget();
-            _helpPopup.Visible = false;
+            _activeForeignSpotlight.ClearTarget();
+            _activeForeignSpotlight.Visible = false;
+        }
+        _activeForeignSpotlight = null;
+    }
+
+    /// <summary>
+    /// Get or build a dim/highlight overlay inside another window — the detached Paint
+    /// Background panel is the case that needs it. One overlay per window, kept for reuse.
+    /// </summary>
+    private HelpSpotlightOverlay? ForeignSpotlightFor(Window window)
+    {
+        if (_foreignSpotlights.TryGetValue(window.GetInstanceId(), out HelpSpotlightOverlay? existing) &&
+            GodotObject.IsInstanceValid(existing))
+        {
+            return existing;
+        }
+
+        var layer = new CanvasLayer { Name = "TutorialForeignSpotlightLayer", Layer = 250 };
+        window.AddChild(layer);
+        var overlay = new HelpSpotlightOverlay
+        {
+            Name = "TutorialForeignSpotlight",
+            Visible = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            DimAlpha = 0.41f,
+        };
+        overlay.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        layer.AddChild(overlay);
+        _foreignSpotlights[window.GetInstanceId()] = overlay;
+        return overlay;
+    }
+
+    private void RefreshTutorialSpotlight()
+    {
+        Control? target = _helpActive || _displayedStepId is null || !_panel.Visible
+            ? null
+            : ResolveStepTarget(_displayedStepId);
+
+        if (!GodotObject.IsInstanceValid(target) || !target!.IsVisibleInTree())
+        {
+            ClearTutorialSpotlight();
             return;
         }
 
-        Rect2 rect = target!.GetGlobalRect().Intersection(GetViewport().GetVisibleRect());
+        // A panel the player has floated onto the desktop lives in its own Window. Its rect means
+        // nothing in this viewport, so the highlight has to be drawn over there: dim the shell
+        // whole, dim the floating window too, and cut the hole around the control in the window
+        // that actually contains it.
+        if (target.GetViewport() is Window foreign && foreign != GetWindow())
+        {
+            HelpSpotlightOverlay? overlay = ForeignSpotlightFor(foreign);
+            if (overlay is null)
+            {
+                ClearTutorialSpotlight();
+                return;
+            }
+
+            Rect2 foreignRect = target.GetGlobalRect().Intersection(foreign.GetVisibleRect());
+            if (foreignRect.Size.X <= 1 || foreignRect.Size.Y <= 1)
+            {
+                ClearTutorialSpotlight();
+                return;
+            }
+
+            overlay.SetTarget(foreignRect);
+            overlay.Visible = true;
+            _activeForeignSpotlight = overlay;
+            _tutorialSpotlight.ClearTarget();
+            _tutorialSpotlight.Visible = true;
+            _lockMainViewport = true;
+            _lockedTargetRect = new Rect2();
+            _lockedAlternateRect = new Rect2();
+            return;
+        }
+
+        HideForeignSpotlight();
+        _lockMainViewport = false;
+        Rect2 viewportRect = GetViewport().GetVisibleRect();
+        Rect2 rect = target.GetGlobalRect().Intersection(viewportRect);
         if (rect.Size.X <= 1 || rect.Size.Y <= 1)
         {
-            _helpSpotlight.ClearTarget();
-            _helpPopup.Visible = false;
+            ClearTutorialSpotlight();
             return;
         }
 
-        _helpSpotlight.SetTarget(rect);
-        _helpTitle.Text = definition.Title;
-        _helpBody.Text = definition.Body;
-        PositionHelpPopup(rect);
-        _helpPopup.Visible = true;
+        // A step may point at a second place the prompt mentions but does not ask you to click —
+        // the credit counter, while the action is the Buy button.
+        Control? aside = ResolveStepAside(_displayedStepId!);
+        Rect2 asideRect = GodotObject.IsInstanceValid(aside) && aside!.IsVisibleInTree()
+            ? aside.GetGlobalRect().Intersection(viewportRect)
+            : new Rect2();
+        _tutorialSpotlight.SetTargets(asideRect.HasArea() ? [rect, asideRect] : [rect]);
+        _tutorialSpotlight.Visible = true;
+        _lockedTargetRect = rect;
+
+        Control? alternate = ResolveStepAlternate(_displayedStepId!);
+        _lockedAlternateRect = GodotObject.IsInstanceValid(alternate) && alternate!.IsVisibleInTree()
+            ? alternate.GetGlobalRect()
+            : new Rect2();
+    }
+
+    /// <summary>
+    /// A control the step's prompt mentions as an alternative route, clickable but not ringed.
+    /// Buying in Buddy Studio is the case: the prompt points at Buy and also says a double-click
+    /// on the style does the same, so the lock must not swallow that double-click.
+    /// </summary>
+    /// <summary>
+    /// The Paint menu opens as a PopupMenu in its own window, which the viewport-level input lock
+    /// cannot reach — so the player could ignore a highlighted "Buddy" and pick "Background"
+    /// instead. Grey out whichever entry the current step is not asking for, and restore both as
+    /// soon as the walkthrough moves on. The menu rebuilds itself on every popup, so this is
+    /// re-applied each frame rather than wired once.
+    /// </summary>
+    private void RefreshPaintMenuGate()
+    {
+        if (GetTree().Root.FindChild("Win98PaintCommand", true, false) is not MenuButton paint)
+            return;
+        PopupMenu popup = paint.GetPopup();
+        if (!popup.Visible)
+            return;
+
+        string? required = _displayedStepId switch
+        {
+            TutorialStepIds.OpenPaintBuddy => "Buddy",
+            TutorialStepIds.OpenPaintBackground => "Background",
+            _ => null,
+        };
+
+        for (int index = 0; index < popup.ItemCount; index++)
+        {
+            // Re-enable rather than skip: leaving a step must hand the menu back intact, not
+            // rely on the command bar happening to rebuild the popup later.
+            bool gated = required is not null &&
+                !string.Equals(popup.GetItemText(index), required, StringComparison.Ordinal);
+            popup.SetItemDisabled(index, gated);
+        }
+    }
+
+    /// <summary>
+    /// A second control the prompt draws attention to without asking the player to click it.
+    /// The purchase step points at the Buy button and, alongside it, at the credit counter.
+    /// </summary>
+    private Control? ResolveStepAside(string stepId) => stepId switch
+    {
+        TutorialStepIds.PurchaseBaseballBat =>
+            GetTree().Root.FindChild("Win98BalanceLabel", true, false) as Control,
+        _ => null,
+    };
+
+    private Control? ResolveStepAlternate(string stepId) => stepId switch
+    {
+        TutorialStepIds.BuyStudioItem when IsStudioOpen() => _studio!.CatalogGrid,
+        _ => null,
+    };
+
+    private Control? ResolveStepTarget(string stepId)
+    {
+        switch (stepId)
+        {
+            case TutorialStepIds.PurchaseBaseballBat when GodotObject.IsInstanceValid(_shop):
+                return _shop!.BuyButtonFor(ContentIds.ToolBaseballBat);
+            case TutorialStepIds.SavePaintBuddy when IsPaintBuddyOpen():
+                return _editor!.SaveButton;
+            case TutorialStepIds.UsePaintedBuddy when IsPaintBuddyOpen():
+                return _editor!.UseButton;
+            case TutorialStepIds.SaveBuddyStudio when IsStudioOpen():
+                return _studio!.SaveAction;
+
+            // Point at the one category button and the one tile, not the whole strip or grid.
+            case TutorialStepIds.SelectNoseCategory when IsStudioOpen():
+                return _studio!.CategoryStrip.ButtonFor(StudioNoseCategoryId);
+            case TutorialStepIds.SelectNoseButtonStyle when IsStudioOpen():
+                return _studio!.CatalogGrid.TileFor(CharacterFeatureIds.NoseButton);
+            case TutorialStepIds.Farewell:
+                return GodotObject.IsInstanceValid(_help) ? _help : null;
+        }
+
+        if (!StepSpotlights.TryGetValue(stepId, out SpotlightTarget spotlight))
+            return null;
+
+        Node? scope = spotlight.Scope switch
+        {
+            SpotlightScope.PaintBuddy => _editor,
+            SpotlightScope.Background => _backgroundEditor,
+            SpotlightScope.Studio => _studio,
+            _ => GetTree().Root,
+        };
+        if (!GodotObject.IsInstanceValid(scope))
+            return null;
+
+        var resolved = scope!.FindChild(spotlight.NodeName, true, false) as Control;
+        // A step that names a control its own workspace cannot produce is a wiring bug, not a
+        // quiet no-op: without this the prompt just silently loses its highlight.
+        if (!GodotObject.IsInstanceValid(resolved) && _unresolvedSpotlights.Add(stepId))
+        {
+            Log.Warn(
+                Category,
+                $"Tutorial step '{stepId}' found no '{spotlight.NodeName}' under {spotlight.Scope}.");
+        }
+        return resolved;
+    }
+
+    private void RefreshContextHelp()
+    {
+        // Work Mode hides the shell, so Help runs against the companion's own window instead.
+        bool work = UseWorkHelpSurface();
+        Viewport viewport = work ? _workView!.GetWindow() : GetViewport();
+        HelpSpotlightOverlay spotlight = work ? _workHelpSpotlight! : _helpSpotlight;
+        PanelContainer popup = work ? _workHelpPopup! : _helpPopup;
+        Label? title = work ? _workHelpTitle : _helpTitle;
+        Label body = work ? _workHelpBody! : _helpBody;
+
+        _exitHelp.Visible = !work;
+        spotlight.Visible = true;
+        if (work)
+        {
+            _helpSpotlight.Visible = false;
+            _helpPopup.Visible = false;
+        }
+        else if (_workHelpSpotlight is not null)
+        {
+            _workHelpSpotlight.Visible = false;
+            _workHelpPopup!.Visible = false;
+        }
+
+        Control? hovered = viewport.GuiGetHoveredControl();
+        if (!TryResolveHelp(hovered, out Control? target, out HelpDefinition definition))
+        {
+            spotlight.ClearTarget();
+            popup.Visible = false;
+            return;
+        }
+
+        Rect2 rect = target!.GetGlobalRect().Intersection(viewport.GetVisibleRect());
+        if (rect.Size.X <= 1 || rect.Size.Y <= 1)
+        {
+            spotlight.ClearTarget();
+            popup.Visible = false;
+            return;
+        }
+
+        spotlight.SetTarget(rect);
+        if (title is not null)
+            title.Text = definition.Title;
+        body.Text = definition.Body;
+        PositionHelpPopup(popup, rect, viewport.GetVisibleRect().Size);
+        popup.Visible = true;
     }
 
     private bool TryResolveHelp(Control? hovered, out Control? target, out HelpDefinition definition)
@@ -802,18 +1700,20 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         return string.IsNullOrWhiteSpace(name) ? "Help" : name;
     }
 
-    private void PositionHelpPopup(Rect2 target)
+    private static void PositionHelpPopup(PanelContainer popup, Rect2 target, Vector2 viewport)
     {
-        Vector2 viewport = GetViewport().GetVisibleRect().Size;
         const float gap = 10;
-        const float width = 340;
-        const float height = 150;
+        // The Work companion window is far smaller than the shell, so the popup shrinks to fit
+        // rather than hanging off its own window.
+        float width = Math.Min(340, Math.Max(180, viewport.X - (gap * 2)));
+        float height = Math.Min(150, Math.Max(90, viewport.Y - (gap * 2)));
         float x = target.End.X + gap;
         if (x + width > viewport.X)
             x = Math.Max(gap, target.Position.X - width - gap);
+        x = Math.Clamp(x, gap, Math.Max(gap, viewport.X - width - gap));
         float y = Math.Clamp(target.Position.Y, gap, Math.Max(gap, viewport.Y - height - gap));
-        _helpPopup.Position = new Vector2(x, y);
-        _helpPopup.Size = new Vector2(width, height);
+        popup.Position = new Vector2(x, y);
+        popup.Size = new Vector2(width, height);
     }
 
     private void RequestImmediateFlush() => _ = FlushObservedAsync();
@@ -834,36 +1734,91 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private sealed partial class HelpSpotlightOverlay : Control
     {
-        private Rect2? _target;
-        private static readonly Color Dim = new(0, 0, 0, 0.58f);
+        private readonly List<Rect2> _targets = new();
 
-        public void SetTarget(Rect2 rect)
+        /// <summary>Help mode dims hard to force focus; the tutorial only nudges the eye.</summary>
+        public float DimAlpha { get; init; } = 0.70f;
+
+        private Color Dim => new(0, 0, 0, DimAlpha);
+
+        public void SetTarget(Rect2 rect) => SetTargets(rect);
+
+        public void SetTargets(params Rect2[] rects)
         {
-            _target = rect.Grow(3);
+            _targets.Clear();
+            foreach (Rect2 rect in rects)
+                _targets.Add(rect.Grow(3));
             QueueRedraw();
         }
 
         public void ClearTarget()
         {
-            _target = null;
+            _targets.Clear();
             QueueRedraw();
         }
 
+        /// <summary>
+        /// Dim everything except the target rectangles. Painting the complement of one rectangle
+        /// is four bands, but a step can point at two places at once (buy this, and here is where
+        /// the money lands), so the dim is laid down band by band: split on every target edge,
+        /// then within each band fill only the gaps between the targets that span it.
+        /// </summary>
         public override void _Draw()
         {
             Rect2 viewport = new(Vector2.Zero, Size);
-            if (_target is not Rect2 target)
+            if (_targets.Count == 0)
             {
                 DrawRect(viewport, Dim, true);
                 return;
             }
 
-            target = target.Intersection(viewport);
-            DrawRect(new Rect2(0, 0, Size.X, Math.Max(0, target.Position.Y)), Dim, true);
-            DrawRect(new Rect2(0, target.End.Y, Size.X, Math.Max(0, Size.Y - target.End.Y)), Dim, true);
-            DrawRect(new Rect2(0, target.Position.Y, Math.Max(0, target.Position.X), target.Size.Y), Dim, true);
-            DrawRect(new Rect2(target.End.X, target.Position.Y, Math.Max(0, Size.X - target.End.X), target.Size.Y), Dim, true);
-            DrawRect(target, Win98ThemeFactory.Highlight, false, 3);
+            var visible = new List<Rect2>(_targets.Count);
+            var edges = new SortedSet<float> { 0f, Size.Y };
+            foreach (Rect2 candidate in _targets)
+            {
+                Rect2 clipped = candidate.Intersection(viewport);
+                if (clipped.Size.X <= 0 || clipped.Size.Y <= 0)
+                    continue;
+                visible.Add(clipped);
+                edges.Add(clipped.Position.Y);
+                edges.Add(clipped.End.Y);
+            }
+
+            if (visible.Count == 0)
+            {
+                DrawRect(viewport, Dim, true);
+                return;
+            }
+
+            float[] rows = edges.ToArray();
+            for (int index = 0; index + 1 < rows.Length; index++)
+            {
+                float top = rows[index];
+                float bottom = rows[index + 1];
+                if (bottom - top <= 0)
+                    continue;
+
+                var spans = new List<Rect2>();
+                foreach (Rect2 rect in visible)
+                {
+                    if (rect.Position.Y <= top && rect.End.Y >= bottom)
+                        spans.Add(rect);
+                }
+                spans.Sort(static (left, right) => left.Position.X.CompareTo(right.Position.X));
+
+                float cursor = 0f;
+                foreach (Rect2 span in spans)
+                {
+                    if (span.Position.X > cursor)
+                        DrawRect(new Rect2(cursor, top, span.Position.X - cursor, bottom - top), Dim, true);
+                    cursor = Math.Max(cursor, span.End.X);
+                }
+                if (cursor < Size.X)
+                    DrawRect(new Rect2(cursor, top, Size.X - cursor, bottom - top), Dim, true);
+            }
+
+            foreach (Rect2 rect in visible)
+                DrawRect(rect, Win98ThemeFactory.Highlight, false, 3);
         }
     }
 }

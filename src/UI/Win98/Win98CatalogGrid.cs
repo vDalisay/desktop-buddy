@@ -46,6 +46,10 @@ public partial class Win98CatalogGrid : ScrollContainer
 
     public string? SelectedId => _selectedId;
 
+    /// <summary>The tile button for one item, so callers can point at it rather than the grid.</summary>
+    public Button? TileFor(string id) =>
+        _tiles.TryGetValue(id, out TileParts? parts) ? parts.Button : null;
+
     /// <summary>
     /// Compatibility seam for a controller that still emits an older subset of an already-composed
     /// catalogue. When enabled, a strict incoming subset updates its matching tiles but does not

@@ -32,6 +32,12 @@ public partial class Win98WindowFrame : PanelContainer
     private int _resizeCorner = -1;
 
     public Control ContentHost { get; private set; } = null!;
+
+    /// <summary>
+    /// Title-bar command strip. The minimize/maximize/close boxes are its last three children, so
+    /// a docked extra command (Help) inserts at <c>GetChildCount() - 3</c>.
+    /// </summary>
+    public HBoxContainer TitleBarCommands { get; private set; } = null!;
     /// <summary>Window-body tint in Compact; FullscreenOverlay uses <see cref="FullscreenOpacity"/>.</summary>
     public const float CompactOpacity = 1f;
     public const float FullscreenOpacity = 1f;
@@ -159,6 +165,7 @@ public partial class Win98WindowFrame : PanelContainer
 
         var status = new PanelContainer
         {
+            Name = "Win98StatusBar",
             CustomMinimumSize = new Vector2(0, Win98ThemeFactory.StatusBarHeight),
             MouseFilter = MouseFilterEnum.Stop,
         };
@@ -203,10 +210,12 @@ public partial class Win98WindowFrame : PanelContainer
 
         var row = new HBoxContainer
         {
+            Name = "TitleBarRow",
             MouseFilter = MouseFilterEnum.Pass,
         };
         row.AddThemeConstantOverride("separation", 2);
         bar.AddChild(row);
+        TitleBarCommands = row;
 
         var icon = new Label
         {
