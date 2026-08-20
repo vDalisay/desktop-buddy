@@ -342,20 +342,29 @@ public partial class WorkCompanionView : CanvasLayer
         if (!GodotObject.IsInstanceValid(_controlLayer))
             return;
 
+        _controlLayer.Position = ControlClusterOrigin();
+    }
+
+    /// <summary>
+    /// Top-right of the drawn composition, so the cluster tracks the art through the
+    /// letterboxing that keeps the companion's aspect — but never left of the window itself.
+    /// The cluster does not scale, so on a companion narrower than the cluster the unclamped
+    /// origin goes negative and the buttons walk off the left edge.
+    /// </summary>
+    private Vector2 ControlClusterOrigin()
+    {
         Vector2 drawn = (Vector2)PreferredSize * _compositionScale;
-        _controlLayer.Position = new Vector2(
-            _compositionOffset.X + drawn.X - ControlClusterSize.X - ControlClusterInset,
-            _compositionOffset.Y + ControlClusterInset);
+        return new Vector2(
+            Math.Max(0.0f, _compositionOffset.X + drawn.X - ControlClusterSize.X - ControlClusterInset),
+            Math.Max(0.0f, _compositionOffset.Y + ControlClusterInset));
     }
 
     /// <summary>The cluster in window pixels, for the native window region.</summary>
     private Rect2I ControlClusterWindowRect()
     {
-        Vector2 drawn = (Vector2)PreferredSize * _compositionScale;
+        Vector2 origin = ControlClusterOrigin();
         return new Rect2I(
-            new Vector2I(
-                Mathf.RoundToInt(_compositionOffset.X + drawn.X - ControlClusterSize.X - ControlClusterInset),
-                Mathf.RoundToInt(_compositionOffset.Y + ControlClusterInset)),
+            new Vector2I(Mathf.RoundToInt(origin.X), Mathf.RoundToInt(origin.Y)),
             ControlClusterSize);
     }
 
@@ -402,10 +411,21 @@ public partial class WorkCompanionView : CanvasLayer
         BuddyHitRect.HasPoint(compositionPosition) ||
         ComputerHitRect.HasPoint(compositionPosition);
 
+    /// <summary>
+    /// Whether the pointer is over one of the hover controls, and so must not start a drag or a
+    /// wheel resize.
+    ///
+    /// <para>The visibility test is load-bearing, not a shortcut. The cluster is a fixed 168 px
+    /// wide while the composition scales with the window, so on a small companion it is wider
+    /// than the art it sits on — and an unconditional hit test then vetoed every click anywhere
+    /// on the companion, killing drag and wheel resize outright. Controls nobody can see are
+    /// controls nobody can click.</para>
+    /// </summary>
     private bool IsOverControlButton(Vector2 windowPosition) =>
-        _resizeButton.GetGlobalRect().HasPoint(windowPosition) ||
-        _motionToggle.GetGlobalRect().HasPoint(windowPosition) ||
-        _exitButton.GetGlobalRect().HasPoint(windowPosition);
+        GodotObject.IsInstanceValid(_controlLayer) && _controlLayer.Visible &&
+        (_resizeButton.GetGlobalRect().HasPoint(windowPosition) ||
+         _motionToggle.GetGlobalRect().HasPoint(windowPosition) ||
+         _exitButton.GetGlobalRect().HasPoint(windowPosition));
 
     private static void ApplyWin98ButtonStyle(Button button)
     {

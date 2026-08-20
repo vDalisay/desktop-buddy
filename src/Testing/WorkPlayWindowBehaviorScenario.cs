@@ -246,13 +246,30 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
             bool exitRaised = false;
             workView.ExitRequested += () => exitRaised = true;
             exitButton?.EmitSignal(BaseButton.SignalName.Pressed);
+            // The buttons moved out of the scaled composition and into a fixed-size cluster
+            // (owner instruction 2026-08-20), so their own X is now a slot offset inside that
+            // cluster rather than a composition coordinate — the old "past 600" test was
+            // measuring a frame that no longer exists. The contract that actually matters is
+            // unchanged: same fixed size whatever the companion is scaled to, in order, with
+            // Exit last against the cluster's right edge.
+            var controlCluster = workView.FindChild("WorkControlCluster", true, false) as Control;
+            bool clusterIsUnscaled = GodotObject.IsInstanceValid(controlCluster) &&
+                Mathf.IsEqualApprox(controlCluster!.Scale.X, 1.0f) &&
+                Mathf.IsEqualApprox(controlCluster.Scale.Y, 1.0f);
+            bool sameFixedSize = GodotObject.IsInstanceValid(motionToggle) &&
+                GodotObject.IsInstanceValid(exitButton) &&
+                motionToggle!.Size == exitButton!.Size &&
+                exitButton.Size.X >= 40.0f;
+            bool exitIsLast = sameFixedSize &&
+                exitButton!.Position.X > motionToggle!.Position.X &&
+                clusterIsUnscaled &&
+                Mathf.IsEqualApprox(exitButton.GetGlobalRect().End.X, controlCluster!.GetGlobalRect().End.X);
             checks.Add(new StartupCheck(
                 "work_corner_controls_expose_motion_and_exit",
-                exitRaised &&
-                    GodotObject.IsInstanceValid(motionToggle) &&
-                    motionToggle!.Position.X > 600.0f &&
-                    exitButton!.Position.X > motionToggle.Position.X,
-                $"exitRaised={exitRaised} motion={motionToggle?.GetRect()} exit={exitButton?.GetRect()}"));
+                exitRaised && clusterIsUnscaled && sameFixedSize && exitIsLast,
+                $"exitRaised={exitRaised} unscaled={clusterIsUnscaled} fixed={sameFixedSize} " +
+                $"last={exitIsLast} motion={motionToggle?.GetRect()} exit={exitButton?.GetRect()} " +
+                $"cluster={controlCluster?.GetGlobalRect()}"));
 
             workView.QueueFree();
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
