@@ -34,6 +34,7 @@ public static class ScenarioCatalog
         ["activity_clips"] = () => new ActivityClipsScenario(),
         ["head_rights_after_disturbance"] = () => new HeadRightingScenario(),
         ["owner_feedback_visual"] = () => new OwnerFeedbackVisualScenario(),
+        ["glove_impact_visual"] = () => new GloveImpactVisualScenario(),
         ["lookat_priority_and_cone"] = () => new LookAtScenario(),
         ["face_composition"] = () => new FaceCompositionScenario(),
         ["repeat_envelope"] = () => new RepeatEnvelopeScenario(),

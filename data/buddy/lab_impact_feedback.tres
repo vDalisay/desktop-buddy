@@ -5,8 +5,8 @@
 [resource]
 resource_name = "ConfirmedM3ImpactFeedback"
 script = ExtResource("1_feedback")
-HitStopScale = 0.15
-HitStopSeconds = 0.12
+HitStopScale = 0.06
+HitStopSeconds = 0.16
 MaximumPain = 100.0
 RingSeconds = 0.22
 GloveSquashSeconds = 0.16

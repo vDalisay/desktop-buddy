@@ -571,6 +571,7 @@ public partial class SandboxRoot : Node2D
         SprayerVisual.ApplyEffectsSettings(settings);
         FireVisualLegacy.ApplyEffectsSettings(settings);
         CameraKick.ApplyEffectsSettings(settings);
+        ImpactFeedback.ApplyEffectsSettings(settings);
     }
 
     /// <summary>The effect settings currently in force.</summary>
