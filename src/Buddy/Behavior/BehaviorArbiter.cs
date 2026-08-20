@@ -157,7 +157,9 @@ public partial class BehaviorArbiter : Node
             HasSupportContact: supportContact,
             SocialReactionPresent: socialReaction,
             WallContactLeft: AutonomousMotion.ContactLeft,
-            WallContactRight: AutonomousMotion.ContactRight);
+            WallContactRight: AutonomousMotion.ContactRight,
+            BlockingObstacleInPath:
+                AutonomousMotion.BlockingObstacleInCommittedPath(ambient.WalkDirection));
 
         ObjectInteraction.PhysicsTick(
             BehaviorArbiterModel.SuppressesVoluntaryAction(snapshot),

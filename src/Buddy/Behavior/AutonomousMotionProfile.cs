@@ -47,11 +47,11 @@ public partial class AutonomousMotionProfile : GameResource
 
     /// <summary>
     /// How long a committed walk may stay blocked by a loose object before that direction is
-    /// treated as a wall and the planner picks somewhere else. Three seconds: long enough that
+    /// treated as a wall and the planner picks somewhere else. Two seconds: long enough that
     /// a buddy who can hop always clears the thing first, short enough that one who cannot
     /// never looks stuck.
     /// </summary>
-    [Export(PropertyHint.Range, "1,7200,1")] public int ObstacleGiveUpTicks { get; set; } = 360;
+    [Export(PropertyHint.Range, "1,7200,1")] public int ObstacleGiveUpTicks { get; set; } = 240;
 
     /// <summary>
     /// How long the path must read clear before the give-up clock rewinds. Both obstacle

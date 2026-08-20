@@ -5,6 +5,7 @@ using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Tools;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Behavior;
@@ -250,6 +251,20 @@ public partial class AutonomousMotionComponent : Node
             walkDirection > 0.0f ? RightObstacleCast : null;
         return cast is not null && cast.IsColliding() &&
             cast.GetCollider() is not LooseObjectBody { Profile.SoccerPlay: not null };
+    }
+
+    /// <summary>
+    /// An obstacle the buddy has no use for and must simply get past: a dropped tool. Balls are
+    /// excluded here for the same reason they are excluded from
+    /// <see cref="ObstacleInCommittedPath"/> — walking into them is the point — and so are
+    /// consumables, which he is walking over to eat.
+    /// </summary>
+    public bool BlockingObstacleInCommittedPath(float walkDirection)
+    {
+        RayCast2D? cast = walkDirection < 0.0f ? LeftObstacleCast :
+            walkDirection > 0.0f ? RightObstacleCast : null;
+        return cast is not null && cast.IsColliding() &&
+            cast.GetCollider() is DroppedCursorToolBody;
     }
 
     private void ApplyRoomInterest(bool enabled, bool canWalk)
