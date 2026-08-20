@@ -25,8 +25,13 @@ public static class TutorialStepIds
 
     public const string SelectPaintBrush = "demo.onboarding.select_paint_brush";
     public const string SelectPaintColor = "demo.onboarding.select_paint_color";
+    /// <summary>
+    /// Painting and saving are one lesson: the prompt rings the canvas and Save together and
+    /// completes on the save (owner instruction 2026-08-20). The old separate
+    /// <c>save_paint_buddy</c> step is retired; unknown ids are filtered on load, so a record
+    /// written before this still resumes.
+    /// </summary>
     public const string PaintBuddy = "demo.onboarding.paint_buddy";
-    public const string SavePaintBuddy = "demo.onboarding.save_paint_buddy";
     public const string UsePaintedBuddy = "demo.onboarding.use_painted_buddy";
     public const string AdmirePaintedBuddy = "demo.onboarding.admire_painted_buddy";
 
@@ -67,7 +72,6 @@ public static class TutorialStepIds
         SelectPaintBrush,
         SelectPaintColor,
         PaintBuddy,
-        SavePaintBuddy,
         UsePaintedBuddy,
         AdmirePaintedBuddy,
         OpenPaintBackground,

@@ -584,11 +584,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             // Same let-go rule the grab step follows: the first dab already bumps the surface
             // revision, so completing on the press spotlighted the next step while the player
             // was still dragging the brush. Wait for the button.
-            case TutorialStepIds.PaintBuddy when HasPaintedTorso() && !IsPrimaryMouseHeld():
-                CompleteCurrent(step);
-                break;
-
-            case TutorialStepIds.SavePaintBuddy when IsPaintBuddyOpen() && _paintSaveRequested && !_editor!.Session.IsDirty:
+            // Paint and save are one step. The let-go rule the paint half used to need is gone
+            // with it: the save click is the gate now, so there is no way to advance mid-stroke.
+            case TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() && HasPaintedTorso() &&
+                                                   _paintSaveRequested && !_editor!.Session.IsDirty:
                 _paintSaveRequested = false;
                 CompleteCurrent(step);
                 break;
@@ -1057,7 +1056,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         bool lowerLeft = _displayedStepId is
             TutorialStepIds.OpenPaintBuddy or TutorialStepIds.SelectPaintBrush or
             TutorialStepIds.SelectPaintColor or TutorialStepIds.PaintBuddy or
-            TutorialStepIds.SavePaintBuddy or TutorialStepIds.UsePaintedBuddy;
+            TutorialStepIds.PaintBuddy or TutorialStepIds.UsePaintedBuddy;
 
         // A drag wins until the workspace changes under it, so the window never fights the player.
         if (_panelDragging || (_panelUserMoved && lowerLeft == _panelInLowerLeft))
@@ -1228,8 +1227,9 @@ public partial class FirstSessionGuidanceController : CanvasLayer
               "Characters list instead. Everything after this works exactly the same.",
         TutorialStepIds.SelectPaintBrush => "Pick up the Brush — it is the one you will use most.",
         TutorialStepIds.SelectPaintColor => "Now pick any colour that takes your fancy.",
-        TutorialStepIds.PaintBuddy => "Go on, paint something across Buddy's torso.",
-        TutorialStepIds.SavePaintBuddy => "Happy with it? Save the character to keep your work.",
+        TutorialStepIds.PaintBuddy =>
+            "Paint away — anywhere across Buddy's torso will do. Press Save when you are happy " +
+            "with it.",
         TutorialStepIds.UsePaintedBuddy =>
             "Saving keeps it; Use Character puts it on the real Buddy. Choose Use Character to " +
             "apply it and head back.",
@@ -1689,12 +1689,18 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     {
         TutorialStepIds.PurchaseBaseballBat =>
             GetTree().Root.FindChild("Win98BalanceLabel", true, false) as Control,
+        // Paint and Save are one lesson, so both are ringed. Save also needs to be clickable,
+        // which the aside alone does not grant — see ResolveStepAlternate.
+        TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() => _editor!.SaveButton,
         _ => null,
     };
 
     private Control? ResolveStepAlternate(string stepId) => stepId switch
     {
         TutorialStepIds.BuyStudioItem when IsStudioOpen() => _studio!.CatalogGrid,
+        // The step's own target is the canvas; the lock would otherwise swallow the Save click
+        // that ends the step.
+        TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() => _editor!.SaveButton,
         _ => null,
     };
 
@@ -1722,8 +1728,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                     ? panel.FindChild("TitleBar", true, false) as Control
                     : null;
 
-            case TutorialStepIds.SavePaintBuddy when IsPaintBuddyOpen():
-                return _editor!.SaveButton;
             case TutorialStepIds.UsePaintedBuddy when IsPaintBuddyOpen():
                 return _editor!.UseButton;
             case TutorialStepIds.SaveBuddyStudio when IsStudioOpen():

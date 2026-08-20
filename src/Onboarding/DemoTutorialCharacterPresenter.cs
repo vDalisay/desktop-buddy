@@ -106,7 +106,7 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
             bool customize = _stepId is
                 TutorialStepIds.OpenPaintBuddy or TutorialStepIds.SelectPaintBrush or
                 TutorialStepIds.SelectPaintColor or TutorialStepIds.PaintBuddy or
-                TutorialStepIds.SavePaintBuddy or TutorialStepIds.UsePaintedBuddy or
+                TutorialStepIds.UsePaintedBuddy or
                 TutorialStepIds.AdmirePaintedBuddy or TutorialStepIds.OpenPaintBackground or
                 TutorialStepIds.SelectBackgroundSpray or TutorialStepIds.SelectBackgroundColor or
                 TutorialStepIds.PaintBackground or TutorialStepIds.FloatPaintBackgroundPanel or

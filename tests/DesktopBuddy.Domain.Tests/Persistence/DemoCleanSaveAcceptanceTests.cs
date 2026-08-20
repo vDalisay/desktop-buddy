@@ -105,7 +105,6 @@ public sealed class DemoCleanSaveAcceptanceTests
             TutorialStepIds.SelectPaintBrush,
             TutorialStepIds.SelectPaintColor,
             TutorialStepIds.PaintBuddy,
-            TutorialStepIds.SavePaintBuddy,
             TutorialStepIds.UsePaintedBuddy,
             TutorialStepIds.AdmirePaintedBuddy,
             TutorialStepIds.OpenPaintBackground,
