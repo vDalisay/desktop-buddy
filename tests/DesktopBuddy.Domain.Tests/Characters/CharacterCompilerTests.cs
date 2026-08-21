@@ -158,7 +158,7 @@ public sealed class CharacterCompilerTests
             CharacterFeatureIds.MouthWideGrin, CharacterFeatureIds.MouthFrown, CharacterFeatureIds.MouthSmirk, CharacterFeatureIds.MouthOpenSmile, CharacterFeatureIds.MouthPucker,
             CharacterFeatureIds.EarsElf,
             CharacterFeatureIds.GlassesSquareFrames, CharacterFeatureIds.GlassesCatEye, CharacterFeatureIds.GlassesAviators, CharacterFeatureIds.GlassesHalfMoon, CharacterFeatureIds.GlassesVisor,
-            CharacterFeatureIds.HeadwearBallCap, CharacterFeatureIds.HeadwearSunflowerHat, CharacterFeatureIds.HeadwearFedora,
+            CharacterFeatureIds.HeadwearBallCap, CharacterFeatureIds.HeadwearSunHat, CharacterFeatureIds.HeadwearFedora,
         ];
         Assert.All(paidIds, id =>
         {

@@ -69,7 +69,20 @@ public readonly record struct GrenadeFuseInput(
     /// launcher's aim, which are the same thing to the fuse: control has not been let go.
     /// </summary>
     bool PlayerControlled,
-    GrenadeFuseConstants Constants);
+    GrenadeFuseConstants Constants,
+
+    /// <summary>
+    /// Something hit the grenade hard enough to knock the pin out — a bat, a glove, a Nerf
+    /// dart. Unlike <see cref="PinPullRequested"/> this does not need the player to be
+    /// holding it: that is the whole point of knocking the pin out of one lying on the floor.
+    /// </summary>
+    bool StruckPinPull = false,
+
+    /// <summary>
+    /// Something set it off outright rather than starting the countdown — a shotgun shell,
+    /// three pistol rounds, another grenade's blast, three seconds under the flame.
+    /// </summary>
+    bool ForcedDetonation = false);
 
 /// <summary>Allocation-free result for one fuse tick.</summary>
 public readonly record struct GrenadeFuseResult(
@@ -130,11 +143,22 @@ public static class GrenadeFuseMachine
             return new GrenadeFuseResult(phase, false, false, false, IsValid: true);
         }
 
+        // Set off outright. It skips the countdown entirely, so a grenade that never had its
+        // pin pulled still goes off — a shotgun shell does not care about the pin.
+        if (input.ForcedDetonation)
+        {
+            return new GrenadeFuseResult(
+                new GrenadeFusePhase(GrenadeFuseStage.Detonated, 0),
+                PinPulled: false,
+                FuseStarted: false,
+                Detonated: true,
+                IsValid: true);
+        }
+
         // The pin can only be pulled out of a grenade somebody is holding. A pull request
         // arriving for an airborne grenade is not a way to arm it in flight.
         if (phase.Stage == GrenadeFuseStage.Pinned &&
-            input.PinPullRequested &&
-            input.PlayerControlled)
+            ((input.PinPullRequested && input.PlayerControlled) || input.StruckPinPull))
         {
             phase = phase with { Stage = GrenadeFuseStage.PinPulled };
             pinPulled = true;

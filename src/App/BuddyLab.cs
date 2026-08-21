@@ -227,6 +227,12 @@ public partial class BuddyLab : Node2D
         ApplyEffectsSettings(EffectsSettings.FromSave(null));
         Grenades.PinPulled += OnGrenadePinPulled;
         Grenades.Detonated += OnGrenadeDetonated;
+        // Everything the rest of the sandbox can do to a grenade meets it here: a swung tool,
+        // a round from any gun, and the sprayer's flame (owner instruction 2026-08-21). The
+        // grenade owns the rules; the tools only report that they connected.
+        Grenades.Flame = FireSprayer;
+        CursorTools.LooseObjectStruck += OnToolStruckLooseObject;
+        CursorGuns.LooseObjectStruck += OnShotStruckLooseObject;
         CareStroke.Initialize();
         CareCursor.Initialize();
         CareCursorVisual.Initialize(CareStroke);
@@ -442,11 +448,23 @@ public partial class BuddyLab : Node2D
         TelemetryRecorder.Initialize(Buddy, Grab, artifactsDirectory, id);
     }
 
+    private void OnToolStruckLooseObject(LooseObjectStrike strike) =>
+        Grenades.NotifyStruck(strike.Body, strike.ContentId);
+
+    private void OnShotStruckLooseObject(ProjectileStrike strike) =>
+        Grenades.NotifyStruck(strike.Body, strike.ContentId);
+
     public override void _ExitTree()
     {
         if (GodotObject.IsInstanceValid(CursorGuns))
         {
             CursorGuns.ShotFired -= OnGunShotFired;
+            CursorGuns.LooseObjectStruck -= OnShotStruckLooseObject;
+        }
+
+        if (GodotObject.IsInstanceValid(CursorTools))
+        {
+            CursorTools.LooseObjectStruck -= OnToolStruckLooseObject;
         }
 
         if (GodotObject.IsInstanceValid(Grenades))

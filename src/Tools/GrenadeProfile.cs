@@ -108,6 +108,31 @@ public partial class GrenadeProfile : GameResource
     /// <summary>Minimum routed ticks between two thuds, for the same reason.</summary>
     [Export(PropertyHint.Range, "1,600,1,or_greater")] public int ThudMinIntervalTicks { get; set; } = 12;
 
+    /// <summary>
+    /// How long a grenade must sit in the fire sprayer's flame before it cooks off — 3.0 s at
+    /// 120 Hz (owner instruction 2026-08-21). Only time under actual flame counts.
+    /// </summary>
+    [Export(PropertyHint.Range, "30,3600,1,or_greater")] public int FlameCookTicks { get; set; } = 360;
+
+    /// <summary>
+    /// How fast it cools once the flame comes off, as a fraction of the heating rate. Below 1
+    /// so letting go is a reprieve rather than an undo: keep playing the flame on and off and
+    /// the grenade still creeps towards going off.
+    /// </summary>
+    [Export(PropertyHint.Range, "0.05,1,0.05")] public float FlameCoolFactor { get; set; } = 0.5f;
+
+    /// <summary>
+    /// Pistol rounds a grenade takes before it goes off. The shotgun does it in one shell, and
+    /// a Nerf dart only knocks the pin out (owner instruction 2026-08-21).
+    /// </summary>
+    [Export(PropertyHint.Range, "1,12,1")] public int PistolHitsToDetonate { get; set; } = 3;
+
+    /// <summary>
+    /// How close another grenade has to be to be set off by this one's blast. Defaults to the
+    /// blast's own outer reach: if the shock wave reaches it at all, it goes.
+    /// </summary>
+    [Export(PropertyHint.Range, "0,1024,1,or_greater")] public float ChainRadiusPx { get; set; } = 180.0f;
+
     [Export(PropertyHint.Range, "-60,6,0.5")] public float AudioVolumeDb { get; set; } = -6.0f;
 
     // --- Colours (the mesh and the 2D fallback read the same three) ---

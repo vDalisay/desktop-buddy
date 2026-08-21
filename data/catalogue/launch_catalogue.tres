@@ -73,7 +73,7 @@
 [ext_resource type="Resource" path="res://data/catalogue/cosmetic_glasses_half_moon.tres" id="71"]
 [ext_resource type="Resource" path="res://data/catalogue/cosmetic_glasses_visor.tres" id="72"]
 [ext_resource type="Resource" path="res://data/catalogue/cosmetic_headwear_ball_cap.tres" id="73"]
-[ext_resource type="Resource" path="res://data/catalogue/cosmetic_headwear_sunflower_hat.tres" id="74"]
+[ext_resource type="Resource" path="res://data/catalogue/cosmetic_headwear_sun_hat.tres" id="74"]
 [ext_resource type="Resource" path="res://data/catalogue/cosmetic_headwear_fedora.tres" id="75"]
 
 [resource]

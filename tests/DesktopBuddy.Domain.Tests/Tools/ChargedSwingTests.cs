@@ -54,14 +54,17 @@ public sealed class ChargedSwingTests
     }
 
     [Fact]
-    public void GrippingLeavesTheFreeSwingAndScoresNothing()
+    public void GrippingEntersTheHoldButStillSwings()
     {
         ChargedSwingPhase phase = ChargedSwingPhase.Initial;
 
         ChargedSwingResult result = Tick(ref phase, grip: true, charge: false);
 
         Assert.Equal(ChargedSwingState.Gripped, phase.State);
-        Assert.Equal(SwingImpactMode.None, result.ImpactMode);
+        // A swing-capable tool is gripped for as long as it is equipped (owner feedback
+        // 2026-08-20), so refusing gripped contacts would mean the bat could only ever hurt
+        // anything mid-charge. Holding it still is kept harmless by the pain curve's floor.
+        Assert.Equal(SwingImpactMode.WeakFreeSwing, result.ImpactMode);
     }
 
     [Fact]
@@ -796,7 +799,8 @@ public sealed class ChargedSwingTests
 
     [Theory]
     [InlineData(ChargedSwingState.Follow, SwingImpactMode.WeakFreeSwing)]
-    [InlineData(ChargedSwingState.Gripped, SwingImpactMode.None)]
+    // Gripped is the carrying state since auto-grip, so it swings like Follow does.
+    [InlineData(ChargedSwingState.Gripped, SwingImpactMode.WeakFreeSwing)]
     [InlineData(ChargedSwingState.Charging, SwingImpactMode.None)]
     [InlineData(ChargedSwingState.Swinging, SwingImpactMode.HomeRun)]
     [InlineData(ChargedSwingState.Recovery, SwingImpactMode.None)]

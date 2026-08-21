@@ -59,6 +59,7 @@ public partial class GrenadeVisual3D
             if (_showingPinnedMesh != wantsPinned)
                 EnsureMesh(primary.Radius, wantsPinned);
             ApplyFusePulse(_slot, primaryState);
+            ApplyHeatTint(_slot, _multiGrenadeComponent.HeatOf(primary.RuntimeId));
         }
         else
         {
@@ -110,6 +111,7 @@ public partial class GrenadeVisual3D
                 ApplyFusePulse(slot, state);
             else
                 slot.Scale = Vector3.One;
+            ApplyHeatTint(slot, _multiGrenadeComponent.HeatOf(body.RuntimeId));
             slot.SetPresentationActive(_presentationActive);
         }
     }
@@ -172,6 +174,40 @@ public partial class GrenadeVisual3D
         }
 
         return pinOut ? _pinPulledMesh! : _pinnedMesh!;
+    }
+
+    /// <summary>
+    /// A grenade cooking in the sprayer's flame glows towards red over the three seconds it
+    /// takes to go off (owner instruction 2026-08-21), and cools back down when the flame
+    /// comes off — so the tint is the readout for how close the player is.
+    ///
+    /// <para>Per-slot, so one grenade in the fire never reddens the rest: the first tint
+    /// swaps the shared body material for this slot's own copy. A mesh swap (the pin coming
+    /// out) puts the shared material back, and the next tick simply copies it again.</para>
+    /// </summary>
+    private void ApplyHeatTint(Body2DVisual3D slot, float heat)
+    {
+        if (!GodotObject.IsInstanceValid(slot) || slot.Mesh is not MeshInstance3D mesh)
+            return;
+
+        if (mesh.MaterialOverride is not StandardMaterial3D material)
+            return;
+
+        if (heat <= 0.001f && ReferenceEquals(material, _bodyMaterial))
+            return;
+
+        if (ReferenceEquals(material, _bodyMaterial))
+        {
+            material = (StandardMaterial3D)_bodyMaterial.Duplicate();
+            material.ResourceName = "GrenadeHeatMaterial";
+            mesh.MaterialOverride = material;
+        }
+
+        var glow = new Color(1.0f, 0.22f, 0.10f);
+        material.AlbedoColor = Colors.White.Lerp(glow, heat);
+        material.EmissionEnabled = heat > 0.02f;
+        material.Emission = glow;
+        material.EmissionEnergyMultiplier = heat * 1.8f;
     }
 
     private static void ApplyFusePulse(Body2DVisual3D slot, GrenadePresentationState state)

@@ -4,11 +4,15 @@ using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Objects;
 using DesktopBuddy.Sandbox;
 using Godot;
 using NumericsVector2 = System.Numerics.Vector2;
 
 namespace DesktopBuddy.Tools;
+
+/// <summary>One projectile flight that ended in a loose object.</summary>
+public readonly record struct ProjectileStrike(string ContentId, LooseObjectBody Body);
 
 /// <summary>
 /// Driver for every cursor gun (RAGDOLL §9.1/§9.2). It is deliberately thin: the aim
@@ -122,6 +126,9 @@ public partial class CursorGunComponent : Node2D
     /// pipeline before this fires.
     /// </summary>
     public event Action<GunProfile>? ProjectileHit;
+
+    /// <summary>One round connecting with a loose object, once per flight.</summary>
+    public event Action<ProjectileStrike>? LooseObjectStruck;
 
     /// <summary>Muzzle flash strength, 1 on the firing tick and 0 once it has burned out.</summary>
     public float MuzzleFlashStrength =>
@@ -689,7 +696,10 @@ public partial class CursorGunComponent : Node2D
                 return _runtimes[index];
         }
 
-        var runtime = new GunRuntime(profile);
+        var runtime = new GunRuntime(profile)
+        {
+            LooseObjectStruck = strike => LooseObjectStruck?.Invoke(strike),
+        };
         runtime.BuildPool(this);
         _runtimes.Add(runtime);
         return runtime;
@@ -826,6 +836,12 @@ public partial class CursorGunComponent : Node2D
         private ProjectileBody[] _pool = Array.Empty<ProjectileBody>();
         private MagazineBody[] _magazines = Array.Empty<MagazineBody>();
         private MagazineBody[] _casings = Array.Empty<MagazineBody>();
+
+        /// <summary>
+        /// Raised for a round that connected with a loose object. Set by the owning component
+        /// once, so the pool can report a hit without holding a reference back to it.
+        /// </summary>
+        public Action<ProjectileStrike>? LooseObjectStruck { get; set; }
 
         public GunRuntime(GunProfile profile)
         {
@@ -986,6 +1002,10 @@ public partial class CursorGunComponent : Node2D
                 // After the advance, so the travel the falloff reads includes the step the
                 // shot took into its target rather than the one before it.
                 float shove = projectile.TryApplyContactShove(Profile);
+                // What the shot hit, once per flight, so the sandbox can route the round at
+                // whatever answers to being shot (owner instruction 2026-08-21).
+                if (projectile.TryConsumeHitBody() is LooseObjectBody struck)
+                    LooseObjectStruck?.Invoke(new ProjectileStrike(Profile.ContentId, struck));
                 ShoveImpulseDelivered += shove;
                 if (shove > PeakShoveImpulse)
                     PeakShoveImpulse = shove;

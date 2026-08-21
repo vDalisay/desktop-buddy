@@ -97,6 +97,12 @@ public readonly record struct AcceptedContactEpisode(
 [GlobalClass]
 public partial class InteractionDamageComponent : Node
 {
+    /// <summary>Sideways shove at the head that starts the fire knockout's fall.</summary>
+    private const float FireTopplePushImpulse = 900.0f;
+
+    /// <summary>A little lift with it, so he tips over rather than being scuffed sideways.</summary>
+    private const float FireToppleLiftImpulse = 260.0f;
+
     private readonly Dictionary<ulong, (int InteractionId, string ContentId)> _untaggedSources = new();
 
     private ImpactRouter _router = null!;
@@ -351,9 +357,36 @@ public partial class InteractionDamageComponent : Node
 
         _fireDrivenUnconscious = active;
         if (active)
+        {
             Buddy.SetConsciousness(Consciousness.Unconscious);
+            ToppleFromFire();
+        }
         else if (!_knockoutDrivenUnconscious)
+        {
             Buddy.SetConsciousness(Consciousness.Conscious);
+        }
+    }
+
+    /// <summary>
+    /// Tips the buddy over when the fire finally takes him. Going limp is not enough on its
+    /// own: the ragdoll is balanced, so cutting the upright drive leaves him standing there
+    /// unconscious (owner report 2026-08-21). One shove at the head, away from his feet and
+    /// in the direction he was already going, gives the fall somewhere to start.
+    /// </summary>
+    private void ToppleFromFire()
+    {
+        PuppetRig rig = Buddy.Rig;
+        if (!GodotObject.IsInstanceValid(rig?.Head) || !GodotObject.IsInstanceValid(rig!.Torso))
+            return;
+
+        // Whichever way he was already leaning or walking; a coin flip on the sign would make
+        // the same burn fall two ways from the same state.
+        float drift = rig.Torso.LinearVelocity.X;
+        float side = Mathf.Abs(drift) > 1.0f ? Mathf.Sign(drift)
+            : (rig.Head.GlobalPosition.X >= rig.Torso.GlobalPosition.X ? 1.0f : -1.0f);
+
+        rig.Head.ApplyCentralImpulse(new Vector2(side * FireTopplePushImpulse, -FireToppleLiftImpulse));
+        rig.Torso.ApplyCentralImpulse(new Vector2(side * FireTopplePushImpulse * 0.25f, 0.0f));
     }
 
     /// <summary>

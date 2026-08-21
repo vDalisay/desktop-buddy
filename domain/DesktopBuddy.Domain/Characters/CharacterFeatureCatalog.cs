@@ -98,7 +98,7 @@ public static class CharacterFeatureIds
     public const string GlassesHalfMoon = "glasses.half_moon";
     public const string GlassesVisor = "glasses.visor";
     public const string HeadwearBallCap = "headwear.ball_cap";
-    public const string HeadwearSunflowerHat = "headwear.sunflower_hat";
+    public const string HeadwearSunHat = "headwear.sun_hat";
     public const string HeadwearFedora = "headwear.fedora";
 }
 
@@ -316,7 +316,7 @@ public sealed class CharacterFeatureCatalog
         yield return Definition(CharacterFeatureIds.GlassesHalfMoon, CharacterFeatureSlot.Glasses, 70, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticGlassesHalfMoon);
         yield return Definition(CharacterFeatureIds.GlassesVisor, CharacterFeatureSlot.Glasses, 80, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticGlassesVisor);
         yield return Definition(CharacterFeatureIds.HeadwearBallCap, CharacterFeatureSlot.Headwear, 40, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#C95B63"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearBallCap);
-        yield return Definition(CharacterFeatureIds.HeadwearSunflowerHat, CharacterFeatureSlot.Headwear, 50, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#E3A33A"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearSunflowerHat);
+        yield return Definition(CharacterFeatureIds.HeadwearSunHat, CharacterFeatureSlot.Headwear, 50, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#E3A33A"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearSunHat);
         yield return Definition(CharacterFeatureIds.HeadwearFedora, CharacterFeatureSlot.Headwear, 60, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#183042"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearFedora);
     }
 

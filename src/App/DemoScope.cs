@@ -35,9 +35,16 @@ public static class DemoScope
         IsFullRelease || contentId is null ||
         Array.IndexOf(FullReleaseOnlyContent, contentId) < 0;
 
-    /// <summary>False for Buddy Studio categories this build holds back.</summary>
+    /// <summary>
+    /// False for Buddy Studio categories this build holds back. Accessories is on the list
+    /// alongside Tops and Shoes (owner instruction 2026-08-21): the torso accents exist in the
+    /// catalogue and render, but the Demo's Studio never offers the category, so nothing in it
+    /// can be bought, equipped or randomised into.
+    /// </summary>
     public static bool Includes(CharacterFeatureSlot slot) =>
-        IsFullRelease || slot is not (CharacterFeatureSlot.Tops or CharacterFeatureSlot.Shoes);
+        IsFullRelease ||
+        slot is not (CharacterFeatureSlot.Tops or CharacterFeatureSlot.Shoes or
+            CharacterFeatureSlot.Accessories);
 
     /// <summary>Whether the Room Decorator command is offered at all.</summary>
     public static bool IncludesRoomDecorator => IsFullRelease;

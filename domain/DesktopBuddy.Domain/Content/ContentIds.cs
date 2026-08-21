@@ -95,7 +95,7 @@ public static class ContentIds
     public const string CosmeticGlassesHalfMoon = "cosmetic.glasses.half_moon";
     public const string CosmeticGlassesVisor = "cosmetic.glasses.visor";
     public const string CosmeticHeadwearBallCap = "cosmetic.headwear.ball_cap";
-    public const string CosmeticHeadwearSunflowerHat = "cosmetic.headwear.sunflower_hat";
+    public const string CosmeticHeadwearSunHat = "cosmetic.headwear.sun_hat";
     public const string CosmeticHeadwearFedora = "cosmetic.headwear.fedora";
 
     public const string LooseObject = "object.loose";

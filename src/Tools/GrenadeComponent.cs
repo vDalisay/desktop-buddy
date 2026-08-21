@@ -125,12 +125,16 @@ public partial class GrenadeComponent : Node2D
                 continue;
 
             bool pinPullRequested = body == pinTarget;
+            TickFlameCook(state);
+            (bool struckPinPull, bool forcedDetonation) = ConsumeStrikeFlags(state);
             GrenadeFuseResult result = GrenadeFuseMachine.Tick(
                 new GrenadeFuseInput(
                     state.Phase,
                     pinPullRequested,
                     PlayerControls(body),
-                    Profile.ToFuseConstants()));
+                    Profile.ToFuseConstants(),
+                    struckPinPull,
+                    forcedDetonation));
             state.Phase = result.Phase;
 
             if (result.PinPulled)
@@ -320,6 +324,8 @@ public partial class GrenadeComponent : Node2D
         }
 
         LastBlastShovedBodies = ApplyRadialShove(center, body);
+        // Before the tracking entry goes away, so the source cannot re-arm itself.
+        ChainNeighbours(body, center);
         DetonationCount++;
         Detonated?.Invoke(center);
 
@@ -427,5 +433,12 @@ public partial class GrenadeComponent : Node2D
         public float PreviousSpeed { get; set; }
         public bool WasOnFloor { get; set; }
         public int TicksSinceThud { get; set; }
+
+        /// <summary>Outside-the-fuse state; see <see cref="GrenadeComponent.NotifyStruck"/>.</summary>
+        public bool StruckPinPull { get; set; }
+        public bool ForcedDetonation { get; set; }
+        public bool ChainedByBlast { get; set; }
+        public int PistolHits { get; set; }
+        public float HeatTicks { get; set; }
     }
 }

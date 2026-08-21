@@ -204,10 +204,17 @@ public sealed class CharacterEditorRandomizationScenario : IScenario
         checks.Add(new StartupCheck("a8_randomization_seed_deterministic", deterministic && varied,
             $"deterministic={deterministic} varied={varied}"));
 
+        // Randomize can only reach what the build ships. The Demo holds Accessories back
+        // entirely (owner instruction 2026-08-21), which leaves accent.none the one eligible
+        // definition — so "never rolls the empty accent" is a full-release rule, and asking it
+        // of a Demo build asserts something the Demo has deliberately made impossible.
         string accent = CharacterDocumentEditor.ReadFeatureId(first, CharacterFeatureSlot.TorsoAccent);
+        bool accentScoped = DemoScope.Includes(CharacterFeatureSlot.Accessories);
         bool accentPresent = !string.Equals(accent, CharacterFeatureIds.AccentNone, StringComparison.Ordinal);
-        checks.Add(new StartupCheck("a8_randomization_excludes_no_accent", accentPresent,
-            $"accent={accent}"));
+        checks.Add(new StartupCheck(
+            "a8_randomization_excludes_no_accent",
+            !accentScoped || accentPresent,
+            $"accent={accent} accessories_in_build={accentScoped}"));
 
         bool bounded = true;
         foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>())

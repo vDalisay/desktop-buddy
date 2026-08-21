@@ -85,23 +85,75 @@ internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
             Vector2 boundedPupil = new(
                 Mathf.Clamp(pupilOffset.X, -1.0f, 1.0f) * 0.035f,
                 Mathf.Clamp(pupilOffset.Y, -1.0f, 1.0f) * 0.035f);
-            AddCircle(commands, left + boundedPupil, 0.035f, trustedOutlineColor,
-                trustedOutlineColor, transform, outlineExpansion: 0.012f);
-            AddCircle(commands, right + boundedPupil, 0.035f, trustedOutlineColor,
-                trustedOutlineColor, transform, outlineExpansion: 0.012f);
+            if (HasSclera)
+            {
+                AddIris(commands, left, height, boundedPupil, fill, trustedOutlineColor, transform);
+                AddIris(commands, right, height, boundedPupil, fill, trustedOutlineColor, transform);
+            }
+            else
+            {
+                AddCircle(commands, left + boundedPupil, 0.035f, trustedOutlineColor,
+                    trustedOutlineColor, transform, outlineExpansion: 0.012f);
+                AddCircle(commands, right + boundedPupil, 0.035f, trustedOutlineColor,
+                    trustedOutlineColor, transform, outlineExpansion: 0.012f);
+            }
         }
 
         return commands;
+    }
+
+    /// <summary>
+    /// The white of the eye. Deliberately not pure white: a Mii's sclera is a warm off-white
+    /// that sits against the face rather than punching a hole in it.
+    /// </summary>
+    private static readonly Color Sclera = new("fbf7f0");
+
+    /// <summary>
+    /// Which styles read as an eye you can see into and which are flat marks. An eye with a
+    /// white, an iris and a catchlight is what makes a Mii's face read as a face rather than
+    /// as two dark blobs (owner instruction 2026-08-21); a LED bar, a slit and a dot are
+    /// deliberately solid and must stay that way or they stop being those styles.
+    /// </summary>
+    private bool HasSclera => _variant is
+        EyeVariant.SoftOval or EyeVariant.LashedOval or EyeVariant.WideSparkle or
+        EyeVariant.BigRound or EyeVariant.SleepyHalf or EyeVariant.AngrySlant;
+
+    /// <summary>
+    /// Iris, pupil and catchlight, in that order. The iris fills most of the eye the way a
+    /// Mii's does — the white shows around it, not behind a small dot — and the catchlight is
+    /// what makes it read as wet rather than printed.
+    /// </summary>
+    private static void AddIris(
+        List<CharacterDrawCommand> commands,
+        Vector2 center,
+        float height,
+        Vector2 look,
+        Color fill,
+        Color outline,
+        in NormalizedFeatureTransform transform)
+    {
+        float radius = Mathf.Max(0.048f, height * 0.62f);
+        Vector2 iris = center + look;
+        AddCircle(commands, iris, radius, fill, fill, transform, outlineExpansion: 0.0f);
+        AddCircle(commands, iris, radius * 0.52f, outline, outline, transform, outlineExpansion: 0.0f);
+        AddCircle(commands, iris + new Vector2(-radius * 0.32f, radius * 0.34f), radius * 0.28f,
+            Sclera, Sclera, transform, outlineExpansion: 0.0f);
     }
 
     private void AddOpenEye(
         List<CharacterDrawCommand> commands,
         Vector2 center,
         float height,
-        Color fill,
+        Color eyeColor,
         Color outline,
         in NormalizedFeatureTransform transform)
     {
+        // For the styles that have a white, the authored colour becomes the lid and lash line
+        // around a pale sclera; for the flat styles it stays the fill it always was.
+        Color fill = HasSclera ? Sclera : eyeColor;
+        if (HasSclera)
+            outline = eyeColor;
+
         switch (_variant)
         {
             case EyeVariant.SoftOval:
@@ -120,16 +172,16 @@ internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
                 float lashSide = center.X < 0.0f ? -1.0f : 1.0f;
                 Vector2 corner = center + new Vector2(lashSide * 0.09f, height * 0.5f);
                 AddStroke(commands, [corner, corner + new Vector2(lashSide * 0.15f, 0.08f)],
-                    0.026f, fill, outline, transform);
+                    0.026f, eyeColor, outline, transform);
                 AddStroke(commands, [corner + new Vector2(lashSide * 0.02f, -0.06f), corner + new Vector2(lashSide * 0.17f, -0.02f)],
-                    0.026f, fill, outline, transform);
+                    0.026f, eyeColor, outline, transform);
                 break;
             case EyeVariant.SleepyHalf:
                 // Lower half of an oval, capped by a heavy lid line across the top.
                 AddPolygon(commands, CharacterGeometry.Ellipse(center - new Vector2(0.0f, height * 0.22f), 0.105f, height * 0.55f),
                     fill, outline, transform);
                 AddStroke(commands, [center + new Vector2(-0.12f, height * 0.28f), center + new Vector2(0.12f, height * 0.28f)],
-                    0.032f, fill, outline, transform);
+                    0.032f, eyeColor, outline, transform);
                 break;
             case EyeVariant.AngrySlant:
                 // A wedge: the inner corner drops, so the pair reads as a scowl. The sign of the
@@ -145,8 +197,6 @@ internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
                 break;
             case EyeVariant.WideSparkle:
                 AddPolygon(commands, CharacterGeometry.Ellipse(center, 0.12f, height * 1.25f), fill, outline, transform);
-                AddCircle(commands, center + new Vector2(0.045f, height * 0.55f), 0.028f,
-                    Colors.White, Colors.White, transform, outlineExpansion: 0.0f);
                 break;
             case EyeVariant.NarrowSlit:
                 AddPolygon(commands, CharacterGeometry.Rectangle(center, new Vector2(0.20f, 0.038f)),

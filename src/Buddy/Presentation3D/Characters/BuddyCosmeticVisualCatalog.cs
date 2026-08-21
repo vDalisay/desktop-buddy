@@ -8,7 +8,7 @@ namespace DesktopBuddy.Buddy.Presentation3D.Characters;
 
 public enum BuddyCosmeticAnchorId { HeadFront, HeadCrown, LeftEar, RightEar, EyeGroup, TorsoBody, TorsoFront, TorsoAttachment, LeftFoot, RightFoot }
 public enum BuddyCosmeticRenderLayer { Top = 10, FaceDetail = 20, Hair = 30, Glasses = 40, Accessory = 50, Headwear = 60 }
-public enum BuddyCosmeticVisualKind { None, HairShortSweep, HairBobBangs, HairBuzzCut, NoseButton, NoseTriangle, NoseBroadOval, EarsRoundTabs, EarsPointedTips, EarsFlatDiscs, WorkClassicGlasses, GlassesRoundWire, GlassesShades, HeadwearSoftCap, HeadwearKnitBeanie, HeadwearWideBrim, TopUtilityBib, ShoesSoftSteps, FaceWrinkles, FaceChiseledCheeks, FaceFreckles, FaceRosyCheeks, FaceStubble, HairElderTufts, NosePointedBeak, NoseWideFlat, NoseUpturned, NoseHooked, NoseTinyDot, EarsElf, GlassesSquareFrames, GlassesCatEye, GlassesAviators, GlassesHalfMoon, GlassesVisor, HeadwearBallCap, HeadwearSunflowerHat, HeadwearFedora, GeneratedAsset }
+public enum BuddyCosmeticVisualKind { None, HairShortSweep, HairBobBangs, HairBuzzCut, NoseButton, NoseTriangle, NoseBroadOval, EarsRoundTabs, EarsPointedTips, EarsFlatDiscs, WorkClassicGlasses, GlassesRoundWire, GlassesShades, HeadwearSoftCap, HeadwearKnitBeanie, HeadwearWideBrim, TopUtilityBib, ShoesSoftSteps, FaceWrinkles, FaceChiseledCheeks, FaceFreckles, FaceRosyCheeks, FaceStubble, HairElderTufts, NosePointedBeak, NoseWideFlat, NoseUpturned, NoseHooked, NoseTinyDot, EarsElf, GlassesSquareFrames, GlassesCatEye, GlassesAviators, GlassesHalfMoon, GlassesVisor, HeadwearBallCap, HeadwearSunHat, HeadwearFedora, GeneratedAsset }
 public enum BuddyCosmeticApplicationMode { Attachment, PartReplacement, PairedPartReplacement }
 
 public sealed record BuddyCosmeticVisualDefinition(string CosmeticId, CharacterFeatureSlot Slot, BuddyCosmeticAnchorId Anchor, BuddyCosmeticRenderLayer Layer, BuddyCosmeticVisualKind Kind, BuddyCosmeticAnchorId? SecondaryAnchor = null, GeneratedBuddyCosmeticResource? GeneratedResource = null, BuddyCosmeticApplicationMode ApplicationMode = BuddyCosmeticApplicationMode.Attachment);
@@ -66,7 +66,7 @@ public sealed class BuddyCosmeticVisualCatalog
         Add(definitions, CharacterFeatureIds.GlassesHalfMoon, CharacterFeatureSlot.Glasses, BuddyCosmeticAnchorId.EyeGroup, BuddyCosmeticRenderLayer.Glasses, BuddyCosmeticVisualKind.GlassesHalfMoon);
         Add(definitions, CharacterFeatureIds.GlassesVisor, CharacterFeatureSlot.Glasses, BuddyCosmeticAnchorId.EyeGroup, BuddyCosmeticRenderLayer.Glasses, BuddyCosmeticVisualKind.GlassesVisor);
         Add(definitions, CharacterFeatureIds.HeadwearBallCap, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.HeadwearBallCap);
-        Add(definitions, CharacterFeatureIds.HeadwearSunflowerHat, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.HeadwearSunflowerHat);
+        Add(definitions, CharacterFeatureIds.HeadwearSunHat, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.HeadwearSunHat);
         Add(definitions, CharacterFeatureIds.HeadwearFedora, CharacterFeatureSlot.Headwear, BuddyCosmeticAnchorId.HeadCrown, BuddyCosmeticRenderLayer.Headwear, BuddyCosmeticVisualKind.HeadwearFedora);
         if (generated is not null)
             foreach (GeneratedBuddyCosmeticResource resource in generated.Entries) AddGenerated(definitions, resource);

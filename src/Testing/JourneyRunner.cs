@@ -964,9 +964,16 @@ public partial class JourneyRunner : Node
         float step = 20.0f;
         for (int tick = 0; tick < 60 && batImpact is null; tick++)
         {
+            // Follow the torso's height as the swing crosses it. The buddy is live and
+            // autonomous: sampling his Y once at the start swings through empty air the
+            // moment he sits, drops or is knocked down mid-arc, which is a flaw in the
+            // aim rather than a fact about the bat.
             swing = new Vector2(
                 Mathf.Clamp(swing.X + (side * step), room.Position.X + 20.0f, room.End.X - 20.0f),
-                swing.Y);
+                Mathf.Clamp(
+                    lab.Buddy.Rig.Torso.GlobalPosition.Y,
+                    room.Position.Y + 60.0f,
+                    room.End.Y - 60.0f));
             await M4ObjectScenarioSupport.MovePointer(tree, lab, swing, 0);
         }
 

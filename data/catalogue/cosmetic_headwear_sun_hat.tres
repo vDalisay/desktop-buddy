@@ -3,14 +3,14 @@
 [ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
 
 [resource]
-resource_name = "CosmeticHeadwearSunflowerHat"
+resource_name = "CosmeticHeadwearSunHat"
 script = ExtResource("1")
-ContentId = "cosmetic.headwear.sunflower_hat"
+ContentId = "cosmetic.headwear.sun_hat"
 Kind = 4
 PriceCredits = 300
 ProgressionOrder = 74
 Visible = true
-NameKey = "buddy_studio.cosmetic.headwear.sunflower_hat.name"
-DescriptionKey = "buddy_studio.cosmetic.headwear.sunflower_hat.description"
+NameKey = "buddy_studio.cosmetic.headwear.sun_hat.name"
+DescriptionKey = "buddy_studio.cosmetic.headwear.sun_hat.description"
 RequiresLaunchScene = false
 RequiresIcon = false

@@ -328,6 +328,9 @@ public partial class CursorToolController : Node2D
             ApplyAlignment(body, profile, cursorVelocity);
         }
 
+        // After the forces, so the sweep walks the step the solver is about to integrate.
+        SweepStrikes(body, profile);
+
         _previousCursor = _cursor;
     }
 
@@ -416,6 +419,7 @@ public partial class CursorToolController : Node2D
         _alignTarget = 0.0f;
         _body = body;
         _activeProfile = profile;
+        ResetStrikeSweep();
         BodySpawned?.Invoke(body);
     }
 
@@ -435,6 +439,7 @@ public partial class CursorToolController : Node2D
         _activeProfile = null;
         _armingTravel = 0.0f;
         _hasAlignTarget = false;
+        ResetStrikeSweep();
         // Losing the collider abandons any grip, charge, or swing with it. The
         // worker keeps its epoch counter so a respawned tool cannot reuse a
         // swing identity the pain pipeline has already spent.

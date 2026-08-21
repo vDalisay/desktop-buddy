@@ -147,10 +147,11 @@ public sealed class HomeRunBatFeelScenario : IScenario
             $"charge={freeSwing?.SwingCharge:F2} " +
             $"(curve tops out at {CurveMaximumPain:F2} / {CurveMaximumImpulse:F0} impulse)"));
 
-        // ---- picking the bat up is not an attack ----
-        // Creep into contact while following, then grip and drag hard. In Follow
-        // the same motion scores; gripped it must score nothing at all, even
-        // though the collider is still fully physical and still in contact.
+        // ---- a gripped bat still swings, but resting on him is not an attack ----
+        // Auto-grip means the bat is gripped for as long as it is equipped, so "gripped"
+        // is no longer a promise that the player is standing still: dragging it across the
+        // buddy has to score exactly as it does in Follow. What must stay silent is a
+        // gripped bat parked in contact, which the curve floor and the re-arm window own.
         Vector2 contactAnchor = torso + new Vector2(-40.0f, 0.0f);
         await CreepCursor(tree, lab, contactAnchor, 120);
         lab.CursorTools.SetGrip(true);
@@ -173,6 +174,24 @@ public sealed class HomeRunBatFeelScenario : IScenario
 
         lab.Pipeline.ImpactAccepted += OnGrippedImpact;
         lab.Pipeline.EpisodeAccepted += OnGrippedEpisode;
+
+        // Parked against him, gripped, for a full second: the contact is real and the
+        // collider is fully physical, and none of it may score.
+        long restingScored = 0;
+        void OnRestingImpact(AcceptedImpact impact)
+        {
+            if (impact.ContentId == ContentIds.ToolBaseballBat)
+                restingScored++;
+        }
+
+        lab.Pipeline.ImpactAccepted += OnRestingImpact;
+        for (int tick = 0; tick < 120; tick++)
+        {
+            lab.CursorTools.MoveCursor(contactAnchor);
+            await Ticks(tree, 1);
+        }
+        lab.Pipeline.ImpactAccepted -= OnRestingImpact;
+
         for (int pass = 0; pass < 3; pass++)
         {
             Vector2 across = lab.Buddy.Rig.Torso.GlobalPosition + new Vector2(-40.0f, 0.0f);
@@ -198,15 +217,16 @@ public sealed class HomeRunBatFeelScenario : IScenario
         lab.Pipeline.EpisodeAccepted -= OnGrippedEpisode;
 
         checks.Add(new StartupCheck(
-            "gripping_in_contact_scores_no_pain",
+            "a_gripped_bat_swings_but_resting_on_him_scores_nothing",
             grippedInTime &&
             releasedAcrossObservationBoundary &&
-            grippedScored == 0L &&
+            restingScored == 0L &&
+            grippedScored > 0L &&
             lab.CursorTools.SwingState == ChargedSwingState.Gripped,
             $"gripped={grippedInTime} state={lab.CursorTools.SwingState} " +
             $"release_boundary={releasedAcrossObservationBoundary} " +
-            $"scored={grippedScored} episodes={grippedEpisodes} " +
-            "(episodes may be non-zero; scoring may not)"));
+            $"resting_scored={restingScored} dragged_scored={grippedScored} " +
+            $"episodes={grippedEpisodes}"));
 
         // ---- held by the handle, barrel up ----
         Vector2 hold = openSpace + new Vector2(-120.0f, 0.0f);

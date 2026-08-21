@@ -299,21 +299,21 @@ public partial class BuddyVisualRigView
             // marks on the face rather than lumps stuck to the head.
             case BuddyCosmeticVisualKind.FaceWrinkles:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
-                AddBox(root, "BrowLineHigh", new Vector3(0, 0.50f * headRadius, 0), new Vector3(0.62f * headRadius, 0.035f * headRadius, 0.04f * headRadius), color, visual.Layer);
-                AddBox(root, "BrowLineLow", new Vector3(0, 0.40f * headRadius, 0), new Vector3(0.72f * headRadius, 0.035f * headRadius, 0.04f * headRadius), color, visual.Layer);
+                AddBox(root, "BrowLineHigh", new Vector3(0, 0.50f * headRadius, 0), new Vector3(0.54f * headRadius, 0.026f * headRadius, 0.03f * headRadius), color, visual.Layer);
+                AddBox(root, "BrowLineLow", new Vector3(0, 0.40f * headRadius, 0), new Vector3(0.64f * headRadius, 0.026f * headRadius, 0.03f * headRadius), color, visual.Layer);
                 foreach (float wrinkleSide in new[] { -1.0f, 1.0f })
                 {
-                    AddBox(root, $"CrowHigh{wrinkleSide}", new Vector3(wrinkleSide * 0.50f * headRadius, 0.18f * headRadius, 0), new Vector3(0.18f * headRadius, 0.03f * headRadius, 0.04f * headRadius), color, visual.Layer, wrinkleSide * -14f);
-                    AddBox(root, $"CrowLow{wrinkleSide}", new Vector3(wrinkleSide * 0.50f * headRadius, 0.09f * headRadius, 0), new Vector3(0.18f * headRadius, 0.03f * headRadius, 0.04f * headRadius), color, visual.Layer, wrinkleSide * 14f);
-                    AddBox(root, $"Laugh{wrinkleSide}", new Vector3(wrinkleSide * 0.30f * headRadius, -0.26f * headRadius, 0), new Vector3(0.04f * headRadius, 0.30f * headRadius, 0.04f * headRadius), color, visual.Layer, wrinkleSide * 16f);
+                    AddBox(root, $"CrowHigh{wrinkleSide}", new Vector3(wrinkleSide * 0.50f * headRadius, 0.18f * headRadius, 0), new Vector3(0.16f * headRadius, 0.022f * headRadius, 0.03f * headRadius), color, visual.Layer, wrinkleSide * -14f);
+                    AddBox(root, $"CrowLow{wrinkleSide}", new Vector3(wrinkleSide * 0.50f * headRadius, 0.09f * headRadius, 0), new Vector3(0.16f * headRadius, 0.022f * headRadius, 0.03f * headRadius), color, visual.Layer, wrinkleSide * 14f);
+                    AddBox(root, $"Laugh{wrinkleSide}", new Vector3(wrinkleSide * 0.30f * headRadius, -0.26f * headRadius, 0), new Vector3(0.028f * headRadius, 0.28f * headRadius, 0.03f * headRadius), color, visual.Layer, wrinkleSide * 16f);
                 }
                 break;
             case BuddyCosmeticVisualKind.FaceChiseledCheeks:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
                 foreach (float cheekSide in new[] { -1.0f, 1.0f })
                 {
-                    AddBox(root, $"CheekLine{cheekSide}", new Vector3(cheekSide * 0.44f * headRadius, -0.10f * headRadius, 0), new Vector3(0.07f * headRadius, 0.48f * headRadius, 0.05f * headRadius), color, visual.Layer, cheekSide * -16f);
-                    AddBox(root, $"JawLine{cheekSide}", new Vector3(cheekSide * 0.34f * headRadius, -0.44f * headRadius, 0), new Vector3(0.30f * headRadius, 0.05f * headRadius, 0.05f * headRadius), color, visual.Layer, cheekSide * 22f);
+                    AddBox(root, $"CheekLine{cheekSide}", new Vector3(cheekSide * 0.44f * headRadius, -0.10f * headRadius, 0), new Vector3(0.045f * headRadius, 0.46f * headRadius, 0.03f * headRadius), color, visual.Layer, cheekSide * -16f);
+                    AddBox(root, $"JawLine{cheekSide}", new Vector3(cheekSide * 0.34f * headRadius, -0.44f * headRadius, 0), new Vector3(0.26f * headRadius, 0.04f * headRadius, 0.03f * headRadius), color, visual.Layer, cheekSide * 22f);
                 }
                 break;
             case BuddyCosmeticVisualKind.FaceFreckles:
@@ -430,15 +430,16 @@ public partial class BuddyVisualRigView
                 AddBox(root, "CapBrim", new Vector3(0, -0.10f * headRadius, 0.62f * headRadius), new Vector3(0.92f * headRadius, 0.10f * headRadius, 0.62f * headRadius), color.Darkened(0.12f), visual.Layer);
                 AddEllipsoid(root, "CapButton", new Vector3(0, 0.44f, 0), new Vector3(0.12f, 0.12f, 0.12f), headRadius, color.Darkened(0.12f), visual.Layer);
                 break;
-            case BuddyCosmeticVisualKind.HeadwearSunflowerHat:
-                AddEllipsoid(root, "SunCrown", new Vector3(0, 0.04f, 0), new Vector3(0.78f, 0.40f, 0.52f), headRadius, color, visual.Layer);
-                AddCylinder(root, "SunBrim", new Vector3(0, -0.20f * headRadius, 0), 1.34f * headRadius, 0.08f * headRadius, 0f, color, visual.Layer, topRadius: 1.34f * headRadius);
-                // Eight petals round the brim: the hat is the flower.
-                for (int petal = 0; petal < 8; petal++)
-                {
-                    float petalAngle = Mathf.Tau * petal / 8.0f;
-                    AddEllipsoid(root, $"SunPetal{petal}", new Vector3(Mathf.Cos(petalAngle) * 1.44f, -0.20f, Mathf.Sin(petalAngle) * 1.44f), new Vector3(0.32f, 0.06f, 0.32f), headRadius, color.Lightened(0.22f), visual.Layer);
-                }
+            case BuddyCosmeticVisualKind.HeadwearSunHat:
+                // A straw sun hat: rounded crown, ribbon band, and a soft brim that droops
+                // rather than sticking out flat — three stacked discs of falling radius do the
+                // droop without needing a mesh of its own.
+                AddEllipsoid(root, "SunCrown", new Vector3(0, 0.06f, 0), new Vector3(0.80f, 0.46f, 0.58f), headRadius, color, visual.Layer, hemisphere: true);
+                AddEllipsoid(root, "SunCrownTop", new Vector3(0, 0.30f, 0), new Vector3(0.74f, 0.22f, 0.54f), headRadius, color, visual.Layer);
+                AddCylinder(root, "SunBand", new Vector3(0, -0.06f * headRadius, 0), 0.84f * headRadius, 0.20f * headRadius, 0f, color.Darkened(0.28f), visual.Layer, topRadius: 0.84f * headRadius);
+                AddCylinder(root, "SunBrimInner", new Vector3(0, -0.17f * headRadius, 0), 1.42f * headRadius, 0.08f * headRadius, 0f, color, visual.Layer, topRadius: 1.42f * headRadius);
+                AddCylinder(root, "SunBrimMid", new Vector3(0, -0.24f * headRadius, 0), 1.30f * headRadius, 0.07f * headRadius, 0f, color, visual.Layer, topRadius: 1.44f * headRadius);
+                AddCylinder(root, "SunBrimEdge", new Vector3(0, -0.30f * headRadius, 0), 1.10f * headRadius, 0.06f * headRadius, 0f, color.Darkened(0.08f), visual.Layer, topRadius: 1.32f * headRadius);
                 break;
             case BuddyCosmeticVisualKind.HeadwearFedora:
                 AddEllipsoid(root, "FedoraCrown", new Vector3(0, 0.14f, 0), new Vector3(0.80f, 0.62f, 0.66f), headRadius, color, visual.Layer);

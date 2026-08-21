@@ -312,13 +312,23 @@ public static class ChargedSwingMachine
     }
 
     /// <summary>
-    /// What a contact in <paramref name="state"/> may become. Grip, charge, and
-    /// recovery move the collider for reasons the player did not aim, so they
-    /// admit nothing at all.
+    /// What a contact in <paramref name="state"/> may become. Charge and recovery move the
+    /// collider for reasons the player did not aim — the windup pose and the follow-through
+    /// are authored motion — so they admit nothing at all.
+    ///
+    /// <para><b>Gripped admits a free swing</b>, the same as Follow. It did not always: grip
+    /// used to mean the player was holding primary to keep the bat still, and a contact made
+    /// while doing that was ceremony rather than an attack. Auto-grip (owner feedback
+    /// 2026-08-20) made a swing-capable tool gripped for as long as it is equipped, which
+    /// turned that exemption into "the bat can never hurt anything except mid-charge" — the
+    /// bat felt like it swung straight through the buddy. Holding a bat and dragging it
+    /// through someone is a swing; a gripped bat resting against them still scores nothing,
+    /// because the pain curve's floor and the episode re-arm window say so, not because of
+    /// the state it is in.</para>
     /// </summary>
     public static SwingImpactMode ModeFor(ChargedSwingState state) => state switch
     {
-        ChargedSwingState.Follow => SwingImpactMode.WeakFreeSwing,
+        ChargedSwingState.Follow or ChargedSwingState.Gripped => SwingImpactMode.WeakFreeSwing,
         ChargedSwingState.Swinging => SwingImpactMode.HomeRun,
         _ => SwingImpactMode.None,
     };

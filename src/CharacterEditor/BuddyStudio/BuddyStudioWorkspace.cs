@@ -872,6 +872,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         CharacterFeatureSlot.Accessories or CharacterFeatureSlot.Tops =>
             new ViewFrame(new Vector2(0, 0), 135),
         CharacterFeatureSlot.Shoes => new ViewFrame(new Vector2(0, -55), 105),
+        // The ears sit at the widest part of the head and the default head framing cropped
+        // them off the sides (owner report 2026-08-21): two zoom-out steps' worth of room.
+        CharacterFeatureSlot.Ears => new ViewFrame(new Vector2(0, 50), 164),
         _ => new ViewFrame(new Vector2(0, 50), 105),
     };
 

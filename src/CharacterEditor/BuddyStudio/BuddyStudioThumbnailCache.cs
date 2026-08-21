@@ -104,10 +104,9 @@ internal static class BuddyStudioThumbnailCache
                 break;
 
             case CharacterFeatureIds.EyesSoftOval:
-                Ellipse(image, 38, 34, 6, 8, accent);
-                Ellipse(image, 58, 34, 6, 8, accent);
-                EllipseRing(image, 38, 34, 6, 8, ink, 2);
-                EllipseRing(image, 58, 34, 6, 8, ink, 2);
+                // White, iris, pupil, catchlight — the same four parts the runtime draws.
+                MiiEye(image, 38, 34, 6, 8, accent, ink);
+                MiiEye(image, 58, 34, 6, 8, accent, ink);
                 break;
             case CharacterFeatureIds.EyesRoundDot:
                 Circle(image, 38, 34, 7, accent);
@@ -122,14 +121,12 @@ internal static class BuddyStudioThumbnailCache
                 OutlineRect(image, 50, 31, 16, 6, ink, 2);
                 break;
             case CharacterFeatureIds.EyesLashedOval:
-                Ellipse(image, 38, 34, 6, 8, accent);
-                Ellipse(image, 58, 34, 6, 8, accent);
-                EllipseRing(image, 38, 34, 6, 8, ink, 2);
-                EllipseRing(image, 58, 34, 6, 8, ink, 2);
-                Line(image, 32, 28, 27, 25, ink, 2);
-                Line(image, 33, 31, 27, 30, ink, 2);
-                Line(image, 64, 28, 69, 25, ink, 2);
-                Line(image, 63, 31, 69, 30, ink, 2);
+                MiiEye(image, 38, 34, 6, 8, accent, ink);
+                MiiEye(image, 58, 34, 6, 8, accent, ink);
+                Line(image, 32, 28, 27, 25, accent, 2);
+                Line(image, 33, 31, 27, 30, accent, 2);
+                Line(image, 64, 28, 69, 25, accent, 2);
+                Line(image, 63, 31, 69, 30, accent, 2);
                 break;
 
             case CharacterFeatureIds.BrowsSoftArc:
@@ -299,34 +296,28 @@ internal static class BuddyStudioThumbnailCache
                 break;
 
             case CharacterFeatureIds.EyesSleepyHalf:
-                Ellipse(image, 38, 36, 6, 4, accent);
-                Ellipse(image, 58, 36, 6, 4, accent);
-                Line(image, 31, 31, 45, 31, ink, 3);
-                Line(image, 51, 31, 65, 31, ink, 3);
+                MiiEye(image, 38, 36, 6, 5, accent, ink);
+                MiiEye(image, 58, 36, 6, 5, accent, ink);
+                Line(image, 31, 31, 45, 31, accent, 3);
+                Line(image, 51, 31, 65, 31, accent, 3);
                 break;
             case CharacterFeatureIds.EyesAngrySlant:
-                Triangle(image, 38, 39, 7, 9, accent);
-                Triangle(image, 58, 39, 7, 9, accent);
-                Line(image, 30, 26, 45, 31, accent, 3);
-                Line(image, 66, 26, 51, 31, accent, 3);
+                MiiEye(image, 38, 35, 6, 7, accent, ink);
+                MiiEye(image, 58, 35, 6, 7, accent, ink);
+                Line(image, 30, 25, 45, 31, accent, 4);
+                Line(image, 66, 25, 51, 31, accent, 4);
                 break;
             case CharacterFeatureIds.EyesWideSparkle:
-                Ellipse(image, 38, 34, 8, 10, accent);
-                Ellipse(image, 58, 34, 8, 10, accent);
-                EllipseRing(image, 38, 34, 8, 10, ink, 2);
-                EllipseRing(image, 58, 34, 8, 10, ink, 2);
-                Circle(image, 41, 31, 2, new Color("f4f1e8"));
-                Circle(image, 61, 31, 2, new Color("f4f1e8"));
+                MiiEye(image, 38, 34, 8, 11, accent, ink);
+                MiiEye(image, 58, 34, 8, 11, accent, ink);
                 break;
             case CharacterFeatureIds.EyesNarrowSlit:
                 Rect(image, 29, 33, 18, 3, accent);
                 Rect(image, 49, 33, 18, 3, accent);
                 break;
             case CharacterFeatureIds.EyesBigRound:
-                Circle(image, 37, 34, 10, accent);
-                Circle(image, 59, 34, 10, accent);
-                Ring(image, 37, 34, 10, ink, 2);
-                Ring(image, 59, 34, 10, ink, 2);
+                MiiEye(image, 37, 34, 10, 10, accent, ink);
+                MiiEye(image, 59, 34, 10, 10, accent, ink);
                 break;
 
             case CharacterFeatureIds.NosePointedBeak:
@@ -408,17 +399,12 @@ internal static class BuddyStudioThumbnailCache
                 Rect(image, 48, 22, 26, 5, accent);
                 Circle(image, 48, 9, 3, accent);
                 break;
-            case CharacterFeatureIds.HeadwearSunflowerHat:
-                Ellipse(image, 48, 24, 32, 7, accent);
-                Ellipse(image, 48, 17, 17, 9, accent);
-                for (int petal = 0; petal < 8; petal++)
-                {
-                    double petalAngle = petal * Math.PI / 4.0;
-                    Ellipse(image,
-                        48 + (int)Math.Round(Math.Cos(petalAngle) * 34.0),
-                        24 + (int)Math.Round(Math.Sin(petalAngle) * 8.0),
-                        5, 3, accent);
-                }
+            case CharacterFeatureIds.HeadwearSunHat:
+                // Wide drooping straw brim, rounded crown, dark ribbon.
+                Ellipse(image, 48, 26, 34, 7, accent);
+                Arc(image, 48, 26, 34, 9, 0, 180, accent, 3);
+                Ellipse(image, 48, 17, 17, 10, accent);
+                Rect(image, 31, 21, 34, 4, ink);
                 break;
             case CharacterFeatureIds.HeadwearFedora:
                 Ellipse(image, 48, 24, 30, 6, accent);
@@ -433,6 +419,22 @@ internal static class BuddyStudioThumbnailCache
                 Line(image, 60, 25, 36, 49, ink, 3);
                 break;
         }
+    }
+
+    /// <summary>
+    /// One eye the way the runtime renderer draws it: a pale white bounded by the authored
+    /// colour, an iris filling most of it, a dark pupil, and a catchlight. Kept beside the
+    /// tile art so a Studio tile never promises a different eye from the one that appears.
+    /// </summary>
+    private static void MiiEye(Image image, int cx, int cy, int rx, int ry, Color accent, Color ink)
+    {
+        var sclera = new Color("fbf7f0");
+        int iris = Math.Max(2, (int)Math.Round(Math.Min(rx, ry) * 0.68));
+        Ellipse(image, cx, cy, rx, ry, sclera);
+        EllipseRing(image, cx, cy, rx, ry, accent, 2);
+        Circle(image, cx, cy, iris, accent);
+        Circle(image, cx, cy, Math.Max(1, iris / 2), ink);
+        Circle(image, cx - (iris / 3), cy - (iris / 3), Math.Max(1, iris / 4), sclera);
     }
 
     /// <summary>Filled isosceles triangle: apex down by default, or sideways for ear tips.</summary>

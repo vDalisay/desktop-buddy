@@ -13,6 +13,8 @@ public partial class BuddyStudioWorkspace
     private bool _assetForgeNavigationInstalled;
     private bool _assetForgeStudioPreviewApplied;
     private bool _assetForgePanning;
+    private bool _previewSpinning;
+    private float _previewSpinDegrees;
     private Vector2 _assetForgeViewPan;
     private CharacterFeatureSlot _assetForgeNavigationSlot = (CharacterFeatureSlot)(-1);
     private Tween? _previewViewTween;
@@ -29,10 +31,13 @@ public partial class BuddyStudioWorkspace
         if (!_assetForgeNavigationInstalled && IsInsideTree() && GodotObject.IsInstanceValid(_previewInput))
             InstallAssetForgePreviewNavigation();
 
+        ApplyPreviewSpin();
+
         if (_assetForgeNavigationSlot != _slot)
         {
             _assetForgeNavigationSlot = _slot;
             _assetForgeViewPan = Vector2.Zero;
+            _previewSpinDegrees = 0f;
             _viewZoom = AssetForgeDefaultViewZoom();
             ApplyAssetForgeView(animate: _assetForgeStudioPreviewApplied);
         }
@@ -41,6 +46,8 @@ public partial class BuddyStudioWorkspace
         {
             _assetForgeViewPan = Vector2.Zero;
             _assetForgePanning = false;
+            _previewSpinning = false;
+            _previewSpinDegrees = 0f;
             _previewInput.MouseDefaultCursorShape = CursorShape.Arrow;
             _previewRig!.SetStudioPreviewMode(_previewAttached);
             _assetForgeStudioPreviewApplied = _previewAttached;
@@ -117,6 +124,23 @@ public partial class BuddyStudioWorkspace
                 _previewInput.AcceptEvent();
                 return;
             }
+            if (button.ButtonIndex is MouseButton.Left or MouseButton.Right)
+            {
+                _previewSpinning = button.Pressed;
+                _previewInput.MouseDefaultCursorShape =
+                    _previewSpinning ? CursorShape.Hsize : CursorShape.Arrow;
+                _previewInput.AcceptEvent();
+                return;
+            }
+        }
+
+        if (_previewSpinning && input is InputEventMouseMotion spin)
+        {
+            _previewSpinDegrees = Mathf.Wrap(
+                _previewSpinDegrees + (spin.Relative.X * SpinDegreesPerPixel), -180f, 180f);
+            ApplyPreviewSpin();
+            _previewInput.AcceptEvent();
+            return;
         }
 
         if (_assetForgePanning && input is InputEventMouseMotion motion)
@@ -141,7 +165,28 @@ public partial class BuddyStudioWorkspace
     {
         _viewZoom = AssetForgeDefaultViewZoom();
         _assetForgeViewPan = Vector2.Zero;
+        _previewSpinDegrees = 0f;
+        ApplyPreviewSpin();
         ApplyAssetForgeView();
+    }
+
+    /// <summary>How far a rotisserie drag turns the buddy per pixel of pointer travel.</summary>
+    private const float SpinDegreesPerPixel = 0.55f;
+
+    /// <summary>
+    /// Turns the previewed buddy on the spot so the player can look at the back of a hat or the
+    /// side of an ear (owner instruction 2026-08-21). Written every frame rather than once on
+    /// release: the rig rebuilds its own transform whenever the appearance changes, and a spin
+    /// that silently snapped back on the next equip would read as a bug.
+    /// </summary>
+    private void ApplyPreviewSpin()
+    {
+        if (!_previewAttached || !GodotObject.IsInstanceValid(_previewRig))
+            return;
+
+        Vector3 rotation = _previewRig!.RotationDegrees;
+        if (!Mathf.IsEqualApprox(rotation.Y, _previewSpinDegrees))
+            _previewRig.RotationDegrees = new Vector3(rotation.X, _previewSpinDegrees, rotation.Z);
     }
 
     private float AssetForgeDefaultViewZoom() =>

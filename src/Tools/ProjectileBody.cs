@@ -70,6 +70,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
     private float _deliveredImpulse;
     private ulong _hitBodyId;
     private bool _shoveDelivered;
+    private bool _hitReported;
 
     public float Radius { get; private set; } = 2.0f;
 
@@ -185,6 +186,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         _deliveredImpulse = 0.0f;
         _hitBodyId = 0;
         _shoveDelivered = false;
+        _hitReported = false;
         LastShoveImpulse = 0.0f;
         TravelledPx = 0.0f;
         TicksInState = 0;
@@ -285,6 +287,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         _deliveredImpulse = 0.0f;
         _hitBodyId = 0;
         _shoveDelivered = false;
+        _hitReported = false;
         _launchVelocity = Vector2.Zero;
         _approachVelocity = Vector2.Zero;
         CollisionLayer = 0;
@@ -377,6 +380,24 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
 
     /// <summary>The extra knockback this flight delivered, for test readouts and telemetry.</summary>
     public float LastShoveImpulse { get; private set; }
+
+    /// <summary>
+    /// The body this flight connected with, handed out once. The owning component drains it on
+    /// its routed tick so a shot can be routed at whatever it hit — a grenade, in particular,
+    /// answers to being shot (owner instruction 2026-08-21). Resolved from the instance ID for
+    /// the same reason the shove is: a pooled projectile outlives its own contacts.
+    /// </summary>
+    public RigidBody2D? TryConsumeHitBody()
+    {
+        if (_hitReported || !_contactObserved || _hitBodyId == 0)
+            return null;
+
+        _hitReported = true;
+        return GodotObject.InstanceFromId(_hitBodyId) is RigidBody2D target &&
+            GodotObject.IsInstanceValid(target)
+            ? target
+            : null;
+    }
 
     public override void _Draw()
     {
