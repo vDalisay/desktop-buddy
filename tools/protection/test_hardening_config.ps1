@@ -12,7 +12,7 @@ $ObfuscatorPath = Join-Path $PSScriptRoot "obfuscate_export.ps1"
 
 function Require-Text {
     param([string]$Text, [string]$Needle, [string]$Description)
-    if (-not $Text.Contains($Needle, [System.StringComparison]::Ordinal)) {
+    if ($Text.IndexOf($Needle, [System.StringComparison]::Ordinal) -lt 0) {
         throw "Protected-demo hardening guard failed: $Description (missing '$Needle')."
     }
 }
