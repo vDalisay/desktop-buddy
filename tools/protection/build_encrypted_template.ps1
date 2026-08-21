@@ -47,8 +47,13 @@ function Resolve-GodotPath {
 function Get-KeyFingerprint {
     param([string]$Key)
     $Bytes = [System.Text.Encoding]::UTF8.GetBytes($Key.ToLowerInvariant())
-    $Hash = [System.Security.Cryptography.SHA256]::HashData($Bytes)
-    return [Convert]::ToHexString($Hash).ToLowerInvariant()
+    $Hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $Hash = $Hasher.ComputeHash($Bytes)
+        return ([System.BitConverter]::ToString($Hash)).Replace("-", "").ToLowerInvariant()
+    } finally {
+        $Hasher.Dispose()
+    }
 }
 
 if ($EncryptionKey -notmatch '^[0-9a-fA-F]{64}$') {
@@ -76,7 +81,7 @@ if (-not $Force -and (Test-Path -LiteralPath $TemplatePath) -and (Test-Path -Lit
     $ExistingFingerprint = (Get-Content -LiteralPath $FingerprintPath -Raw).Trim()
     if ($ExistingFingerprint -eq $Fingerprint) {
         Write-Host "Encrypted Godot template already matches this key: $TemplatePath"
-        exit 0
+        return
     }
 }
 
