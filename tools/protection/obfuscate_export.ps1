@@ -81,7 +81,7 @@ foreach ($Name in $AssemblyNames) {
 $SafetyRuleLines = New-Object System.Collections.Generic.List[string]
 $SafetyRuleKeys = @{}
 $SourceRoot = Join-Path $ProjectRoot "src"
-foreach ($SourceFile in Get-ChildItem -LiteralPath $SourceRoot -Recurse -File -Filter "*.cs") {
+foreach ($SourceFile in (Get-ChildItem -LiteralPath $SourceRoot -Recurse -File -Filter "*.cs")) {
     $SourceText = Get-Content -LiteralPath $SourceFile.FullName -Raw
     $NamespaceMatch = [System.Text.RegularExpressions.Regex]::Match(
         $SourceText,
@@ -91,18 +91,18 @@ foreach ($SourceFile in Get-ChildItem -LiteralPath $SourceRoot -Recurse -File -F
     }
     $NamespacePattern = $NamespaceMatch.Groups[1].Value + ".*"
     $DynamicNames = New-Object System.Collections.Generic.List[string]
-    foreach ($Match in [System.Text.RegularExpressions.Regex]::Matches(
+    foreach ($Match in ([System.Text.RegularExpressions.Regex]::Matches(
         $SourceText,
-        '\bnameof\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)')) {
+        '\bnameof\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)'))) {
         $DynamicNames.Add($Match.Groups[1].Value)
     }
-    foreach ($Match in [System.Text.RegularExpressions.Regex]::Matches(
+    foreach ($Match in ([System.Text.RegularExpressions.Regex]::Matches(
         $SourceText,
-        '\b(?:CallDeferred|Call|HasMethod)\s*\(\s*"([A-Za-z_][A-Za-z0-9_]*)"')) {
+        '\b(?:CallDeferred|Call|HasMethod)\s*\(\s*"([A-Za-z_][A-Za-z0-9_]*)"'))) {
         $DynamicNames.Add($Match.Groups[1].Value)
     }
 
-    foreach ($DynamicName in $DynamicNames | Select-Object -Unique) {
+    foreach ($DynamicName in @($DynamicNames | Select-Object -Unique)) {
         foreach ($Element in @("SkipMethod", "SkipField", "SkipProperty", "SkipEvent")) {
             $Key = "$Element|$NamespacePattern|$DynamicName"
             if ($SafetyRuleKeys.ContainsKey($Key)) {
