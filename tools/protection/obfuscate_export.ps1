@@ -74,6 +74,51 @@ foreach ($Name in $AssemblyNames) {
 # Public API names are intentionally retained. Godot's generated bindings and the JSON save contract
 # depend on stable externally visible names. We only rename implementation details; string hiding and
 # method-body optimization are disabled so obfuscation adds effectively no runtime work.
+#
+# `nameof(...)` becomes a literal string in IL. Godot APIs such as CallDeferred may use that string for
+# dynamic member lookup, so preserve matching private members automatically. This lets the default mode
+# keep strong private-name obfuscation without silently invalidating a C# -> Godot callback boundary.
+$SafetyRuleLines = New-Object System.Collections.Generic.List[string]
+$SafetyRuleKeys = @{}
+$SourceRoot = Join-Path $ProjectRoot "src"
+foreach ($SourceFile in Get-ChildItem -LiteralPath $SourceRoot -Recurse -File -Filter "*.cs") {
+    $SourceText = Get-Content -LiteralPath $SourceFile.FullName -Raw
+    $NamespaceMatch = [System.Text.RegularExpressions.Regex]::Match(
+        $SourceText,
+        '(?m)^\s*namespace\s+([A-Za-z_][A-Za-z0-9_.]*)\s*;')
+    if (-not $NamespaceMatch.Success) {
+        continue
+    }
+    $NamespacePattern = $NamespaceMatch.Groups[1].Value + ".*"
+    $DynamicNames = New-Object System.Collections.Generic.List[string]
+    foreach ($Match in [System.Text.RegularExpressions.Regex]::Matches(
+        $SourceText,
+        '\bnameof\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)')) {
+        $DynamicNames.Add($Match.Groups[1].Value)
+    }
+    foreach ($Match in [System.Text.RegularExpressions.Regex]::Matches(
+        $SourceText,
+        '\b(?:CallDeferred|Call|HasMethod)\s*\(\s*"([A-Za-z_][A-Za-z0-9_]*)"')) {
+        $DynamicNames.Add($Match.Groups[1].Value)
+    }
+
+    foreach ($DynamicName in $DynamicNames | Select-Object -Unique) {
+        foreach ($Element in @("SkipMethod", "SkipField", "SkipProperty", "SkipEvent")) {
+            $Key = "$Element|$NamespacePattern|$DynamicName"
+            if ($SafetyRuleKeys.ContainsKey($Key)) {
+                continue
+            }
+            $SafetyRuleKeys[$Key] = $true
+            $SafetyRuleLines.Add("    <$Element type=`"$(Xml-Escape $NamespacePattern)`" name=`"$(Xml-Escape $DynamicName)`" />")
+        }
+    }
+}
+$NameofSafetyRules = if ($SafetyRuleLines.Count -gt 0) {
+    ($SafetyRuleLines -join [Environment]::NewLine) + [Environment]::NewLine
+} else {
+    ""
+}
+
 $MainSafetyRules = ""
 if ($ConservativeMainAssembly) {
     $MainSafetyRules = @"
@@ -106,14 +151,14 @@ $Config = @"
   <Var name="OptimizeMethods" value="false" />
   <Var name="SuppressIldasm" value="true" />
   <Module file="$MainXml">
-$MainSafetyRules  </Module>
+$NameofSafetyRules$MainSafetyRules  </Module>
   <Module file="$DomainXml" />
   <Module file="$VisualsXml" />
 </Obfuscator>
 "@
 Set-Content -LiteralPath $ConfigPath -Value $Config -Encoding utf8
 
-Write-Host "Obfuscating Desktop Buddy managed implementation names (public contracts preserved; string hiding disabled)..."
+Write-Host "Obfuscating Desktop Buddy managed implementation names (public contracts and dynamic Godot member names preserved; string hiding disabled)..."
 Invoke-Checked $Obfuscar.FullName @($ConfigPath)
 
 $Changed = 0
@@ -135,4 +180,4 @@ if ($Changed -eq 0) {
 
 $Mode = if ($ConservativeMainAssembly) { "conservative-main" } else { "private-api" }
 Set-Content -LiteralPath (Join-Path $WorkDirectory "last-mode.txt") -Value $Mode -NoNewline -Encoding ascii
-Write-Host "Managed obfuscation complete ($Changed/$($AssemblyNames.Count) assemblies changed, mode=$Mode)."
+Write-Host "Managed obfuscation complete ($Changed/$($AssemblyNames.Count) assemblies changed, mode=$Mode, protected-dynamic-names=$($SafetyRuleKeys.Count))."
