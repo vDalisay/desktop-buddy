@@ -52,7 +52,9 @@ public partial class SettingsPanel : PanelContainer
     public void Configure()
     {
         Name = "SettingsPanel";
-        PanelChrome.Parts parts = PanelChrome.Build(this, "SettingsActionList");
+        // No balance readout here, so the description takes the space the other panels give
+        // to the money (owner instruction 2026-08-21).
+        PanelChrome.Parts parts = PanelChrome.Build(this, "SettingsActionList", descriptionLines: 10);
         _list = parts.List;
         _status = parts.Status;
         _description = parts.Description;

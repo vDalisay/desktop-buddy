@@ -120,6 +120,25 @@ public sealed class EditorInvalidQuarantineScenario : IScenario
                 !File.Exists(store.Paths.Backup(id));
             checks.Add(new StartupCheck("a5_invalid_primary_and_backup_quarantined", quarantinedBoth,
                 $"status={loaded.Status} quarantines={quarantines.Length}"));
+
+            // A character's first save writes no backup, so an unreadable primary is the only
+            // copy there is. Renaming it aside made the next load report NotFound and cost the
+            // owner a character (2026-08-21): keep it, and keep calling the failure Invalid.
+            Guid lonely = Guid.Parse("20000000-0000-4000-8000-000000000003");
+            Directory.CreateDirectory(store.Paths.Directory(lonely));
+            File.WriteAllText(store.Paths.Primary(lonely), "not-json");
+
+            CharacterLoadResult only = await store.LoadAsync(lonely, CancellationToken.None);
+            CharacterLoadResult again = await store.LoadAsync(lonely, CancellationToken.None);
+            bool keptTheOnlyCopy = only.Status == CharacterLoadStatus.Invalid &&
+                only.QuarantinedPrimary is null &&
+                File.Exists(store.Paths.Primary(lonely)) &&
+                Directory.GetFiles(store.Paths.Directory(lonely), "*.invalid-*").Length == 0 &&
+                again.Status == CharacterLoadStatus.Invalid;
+            checks.Add(new StartupCheck("a5_unreadable_only_copy_is_kept_not_quarantined",
+                keptTheOnlyCopy,
+                $"first={only.Status} quarantined={only.QuarantinedPrimary is not null} " +
+                $"second={again.Status} exists={File.Exists(store.Paths.Primary(lonely))}"));
         }
         finally
         {

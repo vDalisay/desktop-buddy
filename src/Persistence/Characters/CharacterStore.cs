@@ -84,10 +84,18 @@ public sealed class CharacterStore
                     null,
                     primary.Detail);
             }
-            if (primary.Status == AttemptStatus.Invalid)
+            LoadAttempt backup = TryLoadFile(_paths.Backup(id), id, token);
+
+            // Never rename away the only copy. A character's first save writes no backup — the
+            // backup appears on the second save — so quarantining the primary turned one bad
+            // read into permanent loss: the next load found nothing at all and reported
+            // NotFound, which reads as "you never had this character" rather than "this file
+            // would not parse" (owner report 2026-08-21). With a backup present, quarantine is
+            // still right: it clears the way for the copy that can be recovered, or for two
+            // junk files to be swept aside together.
+            if (primary.Status == AttemptStatus.Invalid && backup.Status != AttemptStatus.Missing)
                 quarantinedPrimary = Quarantine(_paths.Primary(id));
 
-            LoadAttempt backup = TryLoadFile(_paths.Backup(id), id, token);
             if (backup.Status == AttemptStatus.Valid)
             {
                 FullDocumentLoadCount++;

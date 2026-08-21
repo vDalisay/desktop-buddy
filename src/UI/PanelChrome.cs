@@ -21,7 +21,7 @@ public static class PanelChrome
     /// <summary>
     /// Six lines: three fitted the longest authored sentence but left every shorter one
     /// crowded against the footer, and the box is fixed-height so it never jumps (owner
-    /// instruction 2026-08-21).
+    /// instruction 2026-08-21). Panels with room to spare pass their own count.
     /// </summary>
     private const int DescriptionLines = 6;
     private const int DescriptionLineHeight = 18;
@@ -32,7 +32,7 @@ public static class PanelChrome
         Label Status,
         Label Description);
 
-    public static Parts Build(PanelContainer panel, string listName)
+    public static Parts Build(PanelContainer panel, string listName, int descriptionLines = DescriptionLines)
     {
         var margin = new MarginContainer();
         margin.AddThemeConstantOverride("margin_left", Win98ThemeFactory.Px(12));
@@ -44,6 +44,18 @@ public static class PanelChrome
         var column = new VBoxContainer();
         column.AddThemeConstantOverride("separation", Win98ThemeFactory.Px(8));
         margin.AddChild(column);
+
+        // The balance sits above the list, where the player looks for it, rather than in the
+        // footer beside the description (owner instruction 2026-08-21).
+        var header = new HBoxContainer { Name = "PanelHeader" };
+        column.AddChild(header);
+        var value = new Label { Name = "PanelHeaderValue" };
+        value.AddThemeFontSizeOverride("font_size", Win98ThemeFactory.Px(20));
+        value.HorizontalAlignment = HorizontalAlignment.Right;
+        value.VerticalAlignment = VerticalAlignment.Center;
+        value.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+        value.AddThemeColorOverride("font_color", ValueGreen);
+        header.AddChild(value);
 
         ScrollContainer scroll = FramedScroll(column, expand: true);
         var list = new VBoxContainer { Name = listName };
@@ -63,7 +75,7 @@ public static class PanelChrome
         ScrollContainer descriptionScroll = FramedScroll(column, expand: false);
         descriptionScroll.Name = "PanelDescriptionScroll";
         descriptionScroll.GetParent<Control>().CustomMinimumSize =
-            new Vector2(0, Win98ThemeFactory.Px(DescriptionLines * DescriptionLineHeight));
+            new Vector2(0, Win98ThemeFactory.Px(descriptionLines * DescriptionLineHeight));
         var description = new Label
         {
             Name = "PanelDescription",
@@ -81,12 +93,6 @@ public static class PanelChrome
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         footer.AddChild(status);
-        var value = new Label { Name = "PanelHeaderValue" };
-        value.AddThemeFontSizeOverride("font_size", Win98ThemeFactory.Px(20));
-        value.HorizontalAlignment = HorizontalAlignment.Right;
-        value.VerticalAlignment = VerticalAlignment.Center;
-        value.AddThemeColorOverride("font_color", ValueGreen);
-        footer.AddChild(value);
 
         return new Parts(value, list, status, description);
     }

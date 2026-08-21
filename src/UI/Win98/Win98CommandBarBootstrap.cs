@@ -187,7 +187,9 @@ public partial class Win98CommandBarBootstrap : Node
             MouseFilter = Control.MouseFilterEnum.Stop,
         };
         _bar.Theme = Win98ThemeFactory.Create();
-        _bar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.Face));
+        // Raised, not flat: the menu strip is a Win98 toolbar and read as a bare grey gap
+        // between the title bar and the sandbox without its own edge (owner report 2026-08-21).
+        _bar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 1));
         Node overlay = _frame.GetParent();
         overlay.AddChild(_bar);
 
