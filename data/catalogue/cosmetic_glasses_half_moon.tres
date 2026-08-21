@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticGlassesHalfMoon"
+script = ExtResource("1")
+ContentId = "cosmetic.glasses.half_moon"
+Kind = 4
+PriceCredits = 200
+ProgressionOrder = 71
+Visible = true
+NameKey = "buddy_studio.cosmetic.glasses.half_moon.name"
+DescriptionKey = "buddy_studio.cosmetic.glasses.half_moon.description"
+RequiresLaunchScene = false
+RequiresIcon = false

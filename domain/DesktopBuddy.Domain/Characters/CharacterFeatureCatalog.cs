@@ -68,6 +68,38 @@ public static class CharacterFeatureIds
     public const string TopUtilityBib = "top.utility_bib";
     public const string ShoesNone = "shoes.none";
     public const string ShoesSoftSteps = "shoes.soft_steps";
+
+    // Second cosmetic wave (owner instruction 2026-08-21).
+    public const string FaceWrinkles = "face.wrinkles";
+    public const string FaceChiseledCheeks = "face.chiseled_cheeks";
+    public const string FaceFreckles = "face.freckles";
+    public const string FaceRosyCheeks = "face.rosy_cheeks";
+    public const string FaceStubble = "face.stubble";
+    public const string HairElderTufts = "hair.elder_tufts";
+    public const string EyesSleepyHalf = "eyes.sleepy_half";
+    public const string EyesAngrySlant = "eyes.angry_slant";
+    public const string EyesWideSparkle = "eyes.wide_sparkle";
+    public const string EyesNarrowSlit = "eyes.narrow_slit";
+    public const string EyesBigRound = "eyes.big_round";
+    public const string NosePointedBeak = "nose.pointed_beak";
+    public const string NoseWideFlat = "nose.wide_flat";
+    public const string NoseUpturned = "nose.upturned";
+    public const string NoseHooked = "nose.hooked";
+    public const string NoseTinyDot = "nose.tiny_dot";
+    public const string MouthWideGrin = "mouth.wide_grin";
+    public const string MouthFrown = "mouth.frown";
+    public const string MouthSmirk = "mouth.smirk";
+    public const string MouthOpenSmile = "mouth.open_smile";
+    public const string MouthPucker = "mouth.pucker";
+    public const string EarsElf = "ears.elf";
+    public const string GlassesSquareFrames = "glasses.square_frames";
+    public const string GlassesCatEye = "glasses.cat_eye";
+    public const string GlassesAviators = "glasses.aviators";
+    public const string GlassesHalfMoon = "glasses.half_moon";
+    public const string GlassesVisor = "glasses.visor";
+    public const string HeadwearBallCap = "headwear.ball_cap";
+    public const string HeadwearSunflowerHat = "headwear.sunflower_hat";
+    public const string HeadwearFedora = "headwear.fedora";
 }
 
 public sealed class CharacterFeatureCatalog
@@ -256,6 +288,36 @@ public sealed class CharacterFeatureCatalog
         yield return Definition(CharacterFeatureIds.TopUtilityBib, CharacterFeatureSlot.Tops, 10, false, CosmeticTransformPolicy.None, CharacterFeatureIds.TopNone, Rgba32.Parse("#E3A33A"), ownershipContentId: ContentIds.CosmeticTopUtilityBib);
         yield return Definition(CharacterFeatureIds.ShoesNone, CharacterFeatureSlot.Shoes, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.ShoesNone);
         yield return Definition(CharacterFeatureIds.ShoesSoftSteps, CharacterFeatureSlot.Shoes, 10, false, CosmeticTransformPolicy.None, CharacterFeatureIds.ShoesNone, Rgba32.Parse("#5A6575"), ownershipContentId: ContentIds.CosmeticShoesSoftSteps);
+        yield return Definition(CharacterFeatureIds.FaceWrinkles, CharacterFeatureSlot.Face, 10, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticFaceWrinkles);
+        yield return Definition(CharacterFeatureIds.FaceChiseledCheeks, CharacterFeatureSlot.Face, 20, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticFaceChiseledCheeks);
+        yield return Definition(CharacterFeatureIds.FaceFreckles, CharacterFeatureSlot.Face, 30, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#6A4937"), ownershipContentId: ContentIds.CosmeticFaceFreckles);
+        yield return Definition(CharacterFeatureIds.FaceRosyCheeks, CharacterFeatureSlot.Face, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#C95B63"), ownershipContentId: ContentIds.CosmeticFaceRosyCheeks);
+        yield return Definition(CharacterFeatureIds.FaceStubble, CharacterFeatureSlot.Face, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#5A6575"), ownershipContentId: ContentIds.CosmeticFaceStubble);
+        yield return Definition(CharacterFeatureIds.HairElderTufts, CharacterFeatureSlot.Hair, 40, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HairNone, Rgba32.Parse("#9AA0A6"), ownershipContentId: ContentIds.CosmeticHairElderTufts);
+        yield return Definition(CharacterFeatureIds.EyesSleepyHalf, CharacterFeatureSlot.Eyes, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesSleepyHalf);
+        yield return Definition(CharacterFeatureIds.EyesAngrySlant, CharacterFeatureSlot.Eyes, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesAngrySlant);
+        yield return Definition(CharacterFeatureIds.EyesWideSparkle, CharacterFeatureSlot.Eyes, 60, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesWideSparkle);
+        yield return Definition(CharacterFeatureIds.EyesNarrowSlit, CharacterFeatureSlot.Eyes, 70, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesNarrowSlit);
+        yield return Definition(CharacterFeatureIds.EyesBigRound, CharacterFeatureSlot.Eyes, 80, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesBigRound);
+        yield return Definition(CharacterFeatureIds.NosePointedBeak, CharacterFeatureSlot.Nose, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.NoseNone, Rgba32.Parse("#F0A06B"), ownershipContentId: ContentIds.CosmeticNosePointedBeak);
+        yield return Definition(CharacterFeatureIds.NoseWideFlat, CharacterFeatureSlot.Nose, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.NoseNone, Rgba32.Parse("#F0A06B"), ownershipContentId: ContentIds.CosmeticNoseWideFlat);
+        yield return Definition(CharacterFeatureIds.NoseUpturned, CharacterFeatureSlot.Nose, 60, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.NoseNone, Rgba32.Parse("#F0A06B"), ownershipContentId: ContentIds.CosmeticNoseUpturned);
+        yield return Definition(CharacterFeatureIds.NoseHooked, CharacterFeatureSlot.Nose, 70, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.NoseNone, Rgba32.Parse("#F0A06B"), ownershipContentId: ContentIds.CosmeticNoseHooked);
+        yield return Definition(CharacterFeatureIds.NoseTinyDot, CharacterFeatureSlot.Nose, 80, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.NoseNone, Rgba32.Parse("#F0A06B"), ownershipContentId: ContentIds.CosmeticNoseTinyDot);
+        yield return Definition(CharacterFeatureIds.MouthWideGrin, CharacterFeatureSlot.Mouth, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.MouthRounded, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticMouthWideGrin);
+        yield return Definition(CharacterFeatureIds.MouthFrown, CharacterFeatureSlot.Mouth, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.MouthRounded, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticMouthFrown);
+        yield return Definition(CharacterFeatureIds.MouthSmirk, CharacterFeatureSlot.Mouth, 60, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.MouthRounded, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticMouthSmirk);
+        yield return Definition(CharacterFeatureIds.MouthOpenSmile, CharacterFeatureSlot.Mouth, 70, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.MouthRounded, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticMouthOpenSmile);
+        yield return Definition(CharacterFeatureIds.MouthPucker, CharacterFeatureSlot.Mouth, 80, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.MouthRounded, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticMouthPucker);
+        yield return Definition(CharacterFeatureIds.EarsElf, CharacterFeatureSlot.Ears, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EarsNone, Rgba32.Parse("#74B9E8"), ownershipContentId: ContentIds.CosmeticEarsElf);
+        yield return Definition(CharacterFeatureIds.GlassesSquareFrames, CharacterFeatureSlot.Glasses, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticGlassesSquareFrames);
+        yield return Definition(CharacterFeatureIds.GlassesCatEye, CharacterFeatureSlot.Glasses, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticGlassesCatEye);
+        yield return Definition(CharacterFeatureIds.GlassesAviators, CharacterFeatureSlot.Glasses, 60, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticGlassesAviators);
+        yield return Definition(CharacterFeatureIds.GlassesHalfMoon, CharacterFeatureSlot.Glasses, 70, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticGlassesHalfMoon);
+        yield return Definition(CharacterFeatureIds.GlassesVisor, CharacterFeatureSlot.Glasses, 80, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.GlassesNone, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticGlassesVisor);
+        yield return Definition(CharacterFeatureIds.HeadwearBallCap, CharacterFeatureSlot.Headwear, 40, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#C95B63"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearBallCap);
+        yield return Definition(CharacterFeatureIds.HeadwearSunflowerHat, CharacterFeatureSlot.Headwear, 50, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#E3A33A"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearSunflowerHat);
+        yield return Definition(CharacterFeatureIds.HeadwearFedora, CharacterFeatureSlot.Headwear, 60, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#183042"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearFedora);
     }
 
     private static CosmeticDefinition Definition(

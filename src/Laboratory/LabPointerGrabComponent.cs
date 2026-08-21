@@ -224,7 +224,8 @@ public partial class LabPointerGrabComponent : Node2D
         {
             _pendingWheelSteps += wheel.ButtonIndex == MouseButton.WheelUp ? 1 : -1;
         }
-        else if (Pipeline is not null && GodotObject.IsInstanceValid(Pipeline) &&
+        else if (LabDevKeys.Enabled &&
+                 Pipeline is not null && GodotObject.IsInstanceValid(Pipeline) &&
                  @event is InputEventKey { Pressed: true, Echo: false } key)
         {
             // Legacy launchable hotkeys remain for the non-grenade debug content. Grenade moved

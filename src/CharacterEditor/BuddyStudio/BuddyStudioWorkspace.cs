@@ -330,7 +330,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         body.AddChild(pane);
         var column = Column(pane);
         column.AddChild(new Label { Text = "Styles" });
-        _catalog = new Win98CatalogGrid { Name = "BuddyStudioCatalog" };
+        // Squares of artwork: the category strip already names the category, and the tile
+        // name repeated it (owner instruction 2026-08-21). Price and badges stay.
+        _catalog = new Win98CatalogGrid { Name = "BuddyStudioCatalog", ShowItemNames = false };
         _catalog.ConfigureTileSize(122, 142);
         _catalog.SelectionChanged += SelectCosmetic;
         _catalog.ItemActivated += cosmeticId => _ = ActivateCosmeticAsync(cosmeticId);
@@ -931,8 +933,13 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private static string Friendly(CharacterFeatureSlot slot) => slot == CharacterFeatureSlot.Accessories
         ? "Accessories"
         : string.Concat(slot.ToString().Select((c, i) => i > 0 && char.IsUpper(c) ? $" {c}" : c.ToString()));
+    /// <summary>
+    /// The style's own name without its category: inside the Nose strip every tile already
+    /// says Nose, so the tile says Button, Triangle, Broad Oval (owner instruction 2026-08-21).
+    /// The feature ID keeps its category prefix — only the label loses it.
+    /// </summary>
     private static string CosmeticName(CosmeticDefinition definition) =>
-        ContentDisplayName.For(definition.Id.Replace('.', '_'));
+        ContentDisplayName.For(definition.Id);
     private static Rgba32 ToRgba(Color color) => new(
         (byte)Math.Clamp((int)Math.Round(color.R * 255), 0, 255),
         (byte)Math.Clamp((int)Math.Round(color.G * 255), 0, 255),

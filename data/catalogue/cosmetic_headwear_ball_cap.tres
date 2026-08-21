@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticHeadwearBallCap"
+script = ExtResource("1")
+ContentId = "cosmetic.headwear.ball_cap"
+Kind = 4
+PriceCredits = 300
+ProgressionOrder = 73
+Visible = true
+NameKey = "buddy_studio.cosmetic.headwear.ball_cap.name"
+DescriptionKey = "buddy_studio.cosmetic.headwear.ball_cap.description"
+RequiresLaunchScene = false
+RequiresIcon = false

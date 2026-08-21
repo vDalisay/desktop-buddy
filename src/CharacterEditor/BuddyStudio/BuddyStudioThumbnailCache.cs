@@ -257,6 +257,175 @@ internal static class BuddyStudioThumbnailCache
                 EllipseRing(image, 62, 49, 16, 10, ink, 2);
                 break;
 
+            // ---- Second cosmetic wave (owner instruction 2026-08-21) --------------------
+            case CharacterFeatureIds.FaceWrinkles:
+                Line(image, 34, 20, 62, 20, accent, 2);
+                Line(image, 32, 25, 64, 25, accent, 2);
+                Line(image, 24, 33, 30, 31, accent, 2);
+                Line(image, 24, 37, 30, 38, accent, 2);
+                Line(image, 72, 33, 66, 31, accent, 2);
+                Line(image, 72, 37, 66, 38, accent, 2);
+                Line(image, 38, 42, 34, 52, accent, 2);
+                Line(image, 58, 42, 62, 52, accent, 2);
+                break;
+            case CharacterFeatureIds.FaceChiseledCheeks:
+                Line(image, 34, 33, 30, 48, accent, 3);
+                Line(image, 62, 33, 66, 48, accent, 3);
+                Line(image, 30, 48, 40, 55, accent, 3);
+                Line(image, 66, 48, 56, 55, accent, 3);
+                break;
+            case CharacterFeatureIds.FaceFreckles:
+                Circle(image, 33, 38, 2, accent);
+                Circle(image, 38, 43, 2, accent);
+                Circle(image, 29, 44, 2, accent);
+                Circle(image, 63, 38, 2, accent);
+                Circle(image, 58, 43, 2, accent);
+                Circle(image, 67, 44, 2, accent);
+                break;
+            case CharacterFeatureIds.FaceRosyCheeks:
+                Ellipse(image, 32, 42, 9, 6, accent);
+                Ellipse(image, 64, 42, 9, 6, accent);
+                break;
+            case CharacterFeatureIds.FaceStubble:
+                Ellipse(image, 48, 51, 20, 7, accent);
+                Ellipse(image, 48, 42, 8, 3, accent);
+                break;
+
+            case CharacterFeatureIds.HairElderTufts:
+                // Bald crown, side tufts, band round the back.
+                Ellipse(image, 24, 32, 7, 11, accent);
+                Ellipse(image, 72, 32, 7, 11, accent);
+                Arc(image, 48, 30, 25, 22, 200, 340, accent, 4);
+                break;
+
+            case CharacterFeatureIds.EyesSleepyHalf:
+                Ellipse(image, 38, 36, 6, 4, accent);
+                Ellipse(image, 58, 36, 6, 4, accent);
+                Line(image, 31, 31, 45, 31, ink, 3);
+                Line(image, 51, 31, 65, 31, ink, 3);
+                break;
+            case CharacterFeatureIds.EyesAngrySlant:
+                Triangle(image, 38, 39, 7, 9, accent);
+                Triangle(image, 58, 39, 7, 9, accent);
+                Line(image, 30, 26, 45, 31, accent, 3);
+                Line(image, 66, 26, 51, 31, accent, 3);
+                break;
+            case CharacterFeatureIds.EyesWideSparkle:
+                Ellipse(image, 38, 34, 8, 10, accent);
+                Ellipse(image, 58, 34, 8, 10, accent);
+                EllipseRing(image, 38, 34, 8, 10, ink, 2);
+                EllipseRing(image, 58, 34, 8, 10, ink, 2);
+                Circle(image, 41, 31, 2, new Color("f4f1e8"));
+                Circle(image, 61, 31, 2, new Color("f4f1e8"));
+                break;
+            case CharacterFeatureIds.EyesNarrowSlit:
+                Rect(image, 29, 33, 18, 3, accent);
+                Rect(image, 49, 33, 18, 3, accent);
+                break;
+            case CharacterFeatureIds.EyesBigRound:
+                Circle(image, 37, 34, 10, accent);
+                Circle(image, 59, 34, 10, accent);
+                Ring(image, 37, 34, 10, ink, 2);
+                Ring(image, 59, 34, 10, ink, 2);
+                break;
+
+            case CharacterFeatureIds.NosePointedBeak:
+                Triangle(image, 48, 48, 6, 13, accent);
+                break;
+            case CharacterFeatureIds.NoseWideFlat:
+                Rect(image, 36, 38, 24, 5, accent);
+                OutlineRect(image, 36, 38, 24, 5, ink, 1);
+                break;
+            case CharacterFeatureIds.NoseUpturned:
+                Ellipse(image, 48, 40, 7, 6, accent);
+                Ellipse(image, 48, 35, 5, 4, accent);
+                break;
+            case CharacterFeatureIds.NoseHooked:
+                Ellipse(image, 47, 33, 4, 6, accent);
+                Ellipse(image, 48, 39, 5, 6, accent);
+                Ellipse(image, 49, 45, 6, 4, accent);
+                break;
+            case CharacterFeatureIds.NoseTinyDot:
+                Circle(image, 48, 39, 3, accent);
+                Ring(image, 48, 39, 3, ink, 1);
+                break;
+
+            case CharacterFeatureIds.MouthWideGrin:
+                Arc(image, 48, 45, 16, 9, 190, 350, accent, 3);
+                break;
+            case CharacterFeatureIds.MouthFrown:
+                Arc(image, 48, 52, 13, 8, 10, 170, accent, 3);
+                break;
+            case CharacterFeatureIds.MouthSmirk:
+                Line(image, 36, 48, 52, 48, accent, 3);
+                Line(image, 52, 48, 60, 43, accent, 3);
+                break;
+            case CharacterFeatureIds.MouthOpenSmile:
+                Ellipse(image, 48, 47, 12, 8, accent);
+                EllipseRing(image, 48, 47, 12, 8, ink, 2);
+                break;
+            case CharacterFeatureIds.MouthPucker:
+                EllipseRing(image, 48, 47, 5, 6, accent, 3);
+                break;
+
+            case CharacterFeatureIds.EarsElf:
+                Triangle(image, 14, 30, 6, 16, accent, pointsLeft: true);
+                Triangle(image, 82, 30, 6, 16, accent, pointsLeft: false);
+                Ellipse(image, 22, 38, 5, 8, accent);
+                Ellipse(image, 74, 38, 5, 8, accent);
+                break;
+
+            case CharacterFeatureIds.GlassesSquareFrames:
+                OutlineRect(image, 26, 27, 20, 17, accent, 3);
+                OutlineRect(image, 50, 27, 20, 17, accent, 3);
+                Rect(image, 45, 34, 6, 3, accent);
+                break;
+            case CharacterFeatureIds.GlassesCatEye:
+                OutlineRect(image, 28, 30, 18, 11, accent, 3);
+                OutlineRect(image, 50, 30, 18, 11, accent, 3);
+                Line(image, 28, 30, 21, 24, accent, 3);
+                Line(image, 68, 30, 75, 24, accent, 3);
+                Rect(image, 46, 34, 4, 2, accent);
+                break;
+            case CharacterFeatureIds.GlassesAviators:
+                Ellipse(image, 36, 36, 10, 9, accent);
+                Ellipse(image, 60, 36, 10, 9, accent);
+                Rect(image, 26, 26, 44, 3, accent);
+                break;
+            case CharacterFeatureIds.GlassesHalfMoon:
+                Rect(image, 28, 36, 18, 6, accent);
+                Rect(image, 50, 36, 18, 6, accent);
+                Rect(image, 46, 37, 4, 2, accent);
+                break;
+            case CharacterFeatureIds.GlassesVisor:
+                Rect(image, 24, 29, 48, 12, accent);
+                Rect(image, 24, 25, 48, 4, accent);
+                break;
+
+            case CharacterFeatureIds.HeadwearBallCap:
+                Ellipse(image, 48, 19, 24, 12, accent);
+                Rect(image, 24, 22, 48, 4, accent);
+                Rect(image, 48, 22, 26, 5, accent);
+                Circle(image, 48, 9, 3, accent);
+                break;
+            case CharacterFeatureIds.HeadwearSunflowerHat:
+                Ellipse(image, 48, 24, 32, 7, accent);
+                Ellipse(image, 48, 17, 17, 9, accent);
+                for (int petal = 0; petal < 8; petal++)
+                {
+                    double petalAngle = petal * Math.PI / 4.0;
+                    Ellipse(image,
+                        48 + (int)Math.Round(Math.Cos(petalAngle) * 34.0),
+                        24 + (int)Math.Round(Math.Sin(petalAngle) * 8.0),
+                        5, 3, accent);
+                }
+                break;
+            case CharacterFeatureIds.HeadwearFedora:
+                Ellipse(image, 48, 24, 30, 6, accent);
+                Ellipse(image, 48, 15, 16, 11, accent);
+                Rect(image, 32, 19, 32, 4, ink);
+                break;
+
             default:
                 // Closed shipped catalogue: unknown IDs should never reach this cache. A visible
                 // fallback keeps a future mismatch obvious rather than silently inventing art.

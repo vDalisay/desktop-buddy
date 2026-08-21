@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticEyesSleepyHalf"
+script = ExtResource("1")
+ContentId = "cosmetic.eyes.sleepy_half"
+Kind = 4
+PriceCredits = 100
+ProgressionOrder = 52
+Visible = true
+NameKey = "buddy_studio.cosmetic.eyes.sleepy_half.name"
+DescriptionKey = "buddy_studio.cosmetic.eyes.sleepy_half.description"
+RequiresLaunchScene = false
+RequiresIcon = false

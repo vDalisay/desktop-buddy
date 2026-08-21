@@ -59,6 +59,13 @@ public partial class Win98CatalogGrid : ScrollContainer
     public bool PreserveExistingItemsOnSubsetRefresh { get; set; }
 
     /// <summary>
+    /// Whether a tile shows its display name under the preview. Buddy Studio turns it off so
+    /// its strip reads as squares of artwork (owner instruction 2026-08-21); the name is still
+    /// carried for tooltips and callers that show it elsewhere. Set before the grid is built.
+    /// </summary>
+    public bool ShowItemNames { get; set; } = true;
+
+    /// <summary>
     /// Historical selection oracle retained for existing focused scenarios. The selected state is
     /// now rendered as the inset preview outline; persistent caller-owned state has its own oracle.
     /// </summary>
@@ -332,6 +339,7 @@ public partial class Win98CatalogGrid : ScrollContainer
         var name = new Label
         {
             Text = item.DisplayName,
+            Visible = ShowItemNames,
             HorizontalAlignment = HorizontalAlignment.Center,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             MouseFilter = MouseFilterEnum.Ignore,
@@ -384,12 +392,13 @@ public partial class Win98CatalogGrid : ScrollContainer
         return new TileParts(button, preview, name, secondary, badge, selectionOutline);
     }
 
-    private static void Apply(TileParts parts, Win98CatalogItemPresentation item)
+    private void Apply(TileParts parts, Win98CatalogItemPresentation item)
     {
         parts.Button.Disabled = !item.Selectable;
         parts.Button.TooltipText = item.Tooltip;
         parts.Preview.Texture = item.Preview;
         parts.Name.Text = item.DisplayName;
+        parts.Name.Visible = ShowItemNames;
         parts.Secondary.Text = item.SecondaryText;
         ApplySecondaryColor(parts.Secondary, item.SecondaryColor);
         parts.Badge.Text = item.BadgeText;

@@ -294,6 +294,158 @@ public partial class BuddyVisualRigView
                 AddEllipsoid(root, "LeftStep", shoePosition / footRadius, shoeScale, footRadius, color, visual.Layer);
                 AddEllipsoid(pairedRoot, "RightStep", shoePosition / footRadius, shoeScale, footRadius, color, visual.Layer);
                 break;
+            // ---- Second cosmetic wave (owner instruction 2026-08-21) --------------------
+            // Face styles sit on the same flat plane as the drawn face plate, so they read as
+            // marks on the face rather than lumps stuck to the head.
+            case BuddyCosmeticVisualKind.FaceWrinkles:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddBox(root, "BrowLineHigh", new Vector3(0, 0.50f * headRadius, 0), new Vector3(0.62f * headRadius, 0.035f * headRadius, 0.04f * headRadius), color, visual.Layer);
+                AddBox(root, "BrowLineLow", new Vector3(0, 0.40f * headRadius, 0), new Vector3(0.72f * headRadius, 0.035f * headRadius, 0.04f * headRadius), color, visual.Layer);
+                foreach (float wrinkleSide in new[] { -1.0f, 1.0f })
+                {
+                    AddBox(root, $"CrowHigh{wrinkleSide}", new Vector3(wrinkleSide * 0.50f * headRadius, 0.18f * headRadius, 0), new Vector3(0.18f * headRadius, 0.03f * headRadius, 0.04f * headRadius), color, visual.Layer, wrinkleSide * -14f);
+                    AddBox(root, $"CrowLow{wrinkleSide}", new Vector3(wrinkleSide * 0.50f * headRadius, 0.09f * headRadius, 0), new Vector3(0.18f * headRadius, 0.03f * headRadius, 0.04f * headRadius), color, visual.Layer, wrinkleSide * 14f);
+                    AddBox(root, $"Laugh{wrinkleSide}", new Vector3(wrinkleSide * 0.30f * headRadius, -0.26f * headRadius, 0), new Vector3(0.04f * headRadius, 0.30f * headRadius, 0.04f * headRadius), color, visual.Layer, wrinkleSide * 16f);
+                }
+                break;
+            case BuddyCosmeticVisualKind.FaceChiseledCheeks:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                foreach (float cheekSide in new[] { -1.0f, 1.0f })
+                {
+                    AddBox(root, $"CheekLine{cheekSide}", new Vector3(cheekSide * 0.44f * headRadius, -0.10f * headRadius, 0), new Vector3(0.07f * headRadius, 0.48f * headRadius, 0.05f * headRadius), color, visual.Layer, cheekSide * -16f);
+                    AddBox(root, $"JawLine{cheekSide}", new Vector3(cheekSide * 0.34f * headRadius, -0.44f * headRadius, 0), new Vector3(0.30f * headRadius, 0.05f * headRadius, 0.05f * headRadius), color, visual.Layer, cheekSide * 22f);
+                }
+                break;
+            case BuddyCosmeticVisualKind.FaceFreckles:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                foreach (float freckleSide in new[] { -1.0f, 1.0f })
+                {
+                    AddEllipsoid(root, $"FreckleA{freckleSide}", new Vector3(freckleSide * 0.30f, -0.16f, 0), new Vector3(0.05f, 0.05f, 0.02f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"FreckleB{freckleSide}", new Vector3(freckleSide * 0.42f, -0.08f, 0), new Vector3(0.05f, 0.05f, 0.02f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"FreckleC{freckleSide}", new Vector3(freckleSide * 0.38f, -0.24f, 0), new Vector3(0.04f, 0.04f, 0.02f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"FreckleD{freckleSide}", new Vector3(freckleSide * 0.14f, -0.20f, 0), new Vector3(0.04f, 0.04f, 0.02f), headRadius, color, visual.Layer);
+                }
+                break;
+            case BuddyCosmeticVisualKind.FaceRosyCheeks:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                foreach (float rosySide in new[] { -1.0f, 1.0f })
+                    AddEllipsoid(root, $"Rosy{rosySide}", new Vector3(rosySide * 0.42f, -0.14f, 0), new Vector3(0.30f, 0.22f, 0.03f), headRadius, color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.FaceStubble:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddEllipsoid(root, "StubbleJaw", new Vector3(0, -0.48f, 0), new Vector3(0.74f, 0.26f, 0.03f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "StubbleLip", new Vector3(0, -0.22f, 0), new Vector3(0.30f, 0.09f, 0.03f), headRadius, color, visual.Layer);
+                break;
+
+            case BuddyCosmeticVisualKind.HairElderTufts:
+                // Bald on top on purpose: two side tufts and a band round the back, the classic
+                // horseshoe. Nothing covers the crown, so the head shows through.
+                foreach (float tuftSide in new[] { -1.0f, 1.0f })
+                {
+                    AddEllipsoid(root, $"ElderTuft{tuftSide}", new Vector3(tuftSide * 0.86f, -0.62f, -0.46f), new Vector3(0.26f, 0.34f, 0.58f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"ElderFlick{tuftSide}", new Vector3(tuftSide * 1.00f, -0.86f, -0.42f), new Vector3(0.20f, 0.16f, 0.36f), headRadius, color, visual.Layer);
+                }
+                AddEllipsoid(root, "ElderBack", new Vector3(0, -0.70f, -0.94f), new Vector3(0.74f, 0.30f, 0.34f), headRadius, color, visual.Layer);
+                break;
+
+            case BuddyCosmeticVisualKind.NosePointedBeak:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddCylinder(root, "Beak", new Vector3(0, -0.06f * headRadius, 0), 0.16f * headRadius, 0.50f * headRadius, 180f, color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.NoseWideFlat:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddEllipsoid(root, "WideFlat", Vector3.Zero, new Vector3(0.54f, 0.12f, 0.09f), headRadius, color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.NoseUpturned:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddEllipsoid(root, "UpturnedBridge", new Vector3(0, -0.02f, 0), new Vector3(0.26f, 0.20f, 0.14f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "UpturnedTip", new Vector3(0, 0.11f, 0.05f), new Vector3(0.19f, 0.12f, 0.12f), headRadius, color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.NoseHooked:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddEllipsoid(root, "HookBridge", new Vector3(0, 0.20f, 0), new Vector3(0.14f, 0.26f, 0.10f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "HookMid", new Vector3(0, 0.02f, 0.03f), new Vector3(0.18f, 0.24f, 0.14f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "HookTip", new Vector3(0, -0.16f, 0.02f), new Vector3(0.21f, 0.15f, 0.13f), headRadius, color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.NoseTinyDot:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddEllipsoid(root, "TinyDot", Vector3.Zero, new Vector3(0.12f, 0.12f, 0.10f), headRadius, color, visual.Layer);
+                break;
+
+            case BuddyCosmeticVisualKind.EarsElf:
+                if (pairedRoot is null) throw new InvalidOperationException("Ear visuals require both trusted ear anchors.");
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                ApplyFeatureTransform(pairedRoot, appearance.Transform, headRadius);
+                AddEllipsoid(root, "LeftElfLobe", new Vector3(-0.04f, -0.10f, 0), new Vector3(0.22f, 0.32f, 0.20f), headRadius, color, visual.Layer);
+                AddEllipsoid(pairedRoot, "RightElfLobe", new Vector3(0.04f, -0.10f, 0), new Vector3(0.22f, 0.32f, 0.20f), headRadius, color, visual.Layer);
+                AddCylinder(root, "LeftElfTip", new Vector3(-0.12f * headRadius, 0.16f * headRadius, 0), 0.19f * headRadius, 0.72f * headRadius, 32f, color, visual.Layer);
+                AddCylinder(pairedRoot, "RightElfTip", new Vector3(0.12f * headRadius, 0.16f * headRadius, 0), 0.19f * headRadius, 0.72f * headRadius, -32f, color, visual.Layer);
+                break;
+
+            case BuddyCosmeticVisualKind.GlassesSquareFrames:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                foreach (float squareSide in new[] { -1.0f, 1.0f })
+                {
+                    float squareX = squareSide * 0.40f * headRadius;
+                    AddBox(root, $"SquareTop{squareSide}", new Vector3(squareX, 0.28f * headRadius, 0), new Vector3(0.60f * headRadius, 0.09f * headRadius, 0.09f * headRadius), color, visual.Layer);
+                    AddBox(root, $"SquareBottom{squareSide}", new Vector3(squareX, -0.24f * headRadius, 0), new Vector3(0.60f * headRadius, 0.09f * headRadius, 0.09f * headRadius), color, visual.Layer);
+                    AddBox(root, $"SquareOuter{squareSide}", new Vector3(squareX + squareSide * 0.26f * headRadius, 0.02f * headRadius, 0), new Vector3(0.09f * headRadius, 0.60f * headRadius, 0.09f * headRadius), color, visual.Layer);
+                    AddBox(root, $"SquareInner{squareSide}", new Vector3(squareX - squareSide * 0.26f * headRadius, 0.02f * headRadius, 0), new Vector3(0.09f * headRadius, 0.60f * headRadius, 0.09f * headRadius), color, visual.Layer);
+                }
+                AddBox(root, "SquareBridge", new Vector3(0, 0.02f * headRadius, 0), new Vector3(0.28f * headRadius, 0.08f * headRadius, 0.08f * headRadius), color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.GlassesCatEye:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                foreach (float catSide in new[] { -1.0f, 1.0f })
+                {
+                    AddBox(root, $"CatLens{catSide}", new Vector3(catSide * 0.38f * headRadius, 0.06f * headRadius, 0), new Vector3(0.58f * headRadius, 0.34f * headRadius, 0.07f * headRadius), color, visual.Layer, catSide * -10f);
+                    AddPrism(root, $"CatFlick{catSide}", new Vector3(catSide * 0.68f * headRadius, 0.24f * headRadius, 0), new Vector3(0.30f * headRadius, 0.26f * headRadius, 0.07f * headRadius), catSide * -55f, color, visual.Layer);
+                }
+                AddBox(root, "CatBridge", new Vector3(0, 0.10f * headRadius, 0), new Vector3(0.24f * headRadius, 0.07f * headRadius, 0.07f * headRadius), color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.GlassesAviators:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                foreach (float aviatorSide in new[] { -1.0f, 1.0f })
+                    AddEllipsoid(root, $"AviatorLens{aviatorSide}", new Vector3(aviatorSide * 0.38f, 0.02f, 0), new Vector3(0.34f, 0.30f, 0.05f), headRadius, color, visual.Layer);
+                AddBox(root, "AviatorBar", new Vector3(0, 0.22f * headRadius, 0), new Vector3(1.16f * headRadius, 0.07f * headRadius, 0.07f * headRadius), color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.GlassesHalfMoon:
+                // Reading glasses: rims below the eye line only, so the eyes look over the top.
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                foreach (float moonSide in new[] { -1.0f, 1.0f })
+                {
+                    AddBox(root, $"MoonRim{moonSide}", new Vector3(moonSide * 0.38f * headRadius, -0.10f * headRadius, 0), new Vector3(0.56f * headRadius, 0.20f * headRadius, 0.07f * headRadius), color, visual.Layer);
+                    AddBox(root, $"MoonArm{moonSide}", new Vector3(moonSide * 0.66f * headRadius, 0.04f * headRadius, 0), new Vector3(0.07f * headRadius, 0.24f * headRadius, 0.07f * headRadius), color, visual.Layer);
+                }
+                AddBox(root, "MoonBridge", new Vector3(0, -0.02f * headRadius, 0), new Vector3(0.26f * headRadius, 0.07f * headRadius, 0.07f * headRadius), color, visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.GlassesVisor:
+                ApplyFeatureTransform(root, appearance.Transform, headRadius);
+                AddBox(root, "VisorLens", new Vector3(0, 0.06f * headRadius, 0), new Vector3(1.46f * headRadius, 0.42f * headRadius, 0.08f * headRadius), color, visual.Layer);
+                AddBox(root, "VisorStrap", new Vector3(0, 0.32f * headRadius, 0), new Vector3(1.52f * headRadius, 0.10f * headRadius, 0.08f * headRadius), color.Lightened(0.18f), visual.Layer);
+                break;
+
+            case BuddyCosmeticVisualKind.HeadwearBallCap:
+                AddEllipsoid(root, "CapCrown", Vector3.Zero, new Vector3(1.02f, 0.52f, 0.62f), headRadius, color, visual.Layer, hemisphere: true);
+                AddBox(root, "CapBrim", new Vector3(0, -0.10f * headRadius, 0.62f * headRadius), new Vector3(0.92f * headRadius, 0.10f * headRadius, 0.62f * headRadius), color.Darkened(0.12f), visual.Layer);
+                AddEllipsoid(root, "CapButton", new Vector3(0, 0.44f, 0), new Vector3(0.12f, 0.12f, 0.12f), headRadius, color.Darkened(0.12f), visual.Layer);
+                break;
+            case BuddyCosmeticVisualKind.HeadwearSunflowerHat:
+                AddEllipsoid(root, "SunCrown", new Vector3(0, 0.04f, 0), new Vector3(0.78f, 0.40f, 0.52f), headRadius, color, visual.Layer);
+                AddCylinder(root, "SunBrim", new Vector3(0, -0.20f * headRadius, 0), 1.34f * headRadius, 0.08f * headRadius, 0f, color, visual.Layer, topRadius: 1.34f * headRadius);
+                // Eight petals round the brim: the hat is the flower.
+                for (int petal = 0; petal < 8; petal++)
+                {
+                    float petalAngle = Mathf.Tau * petal / 8.0f;
+                    AddEllipsoid(root, $"SunPetal{petal}", new Vector3(Mathf.Cos(petalAngle) * 1.44f, -0.20f, Mathf.Sin(petalAngle) * 1.44f), new Vector3(0.32f, 0.06f, 0.32f), headRadius, color.Lightened(0.22f), visual.Layer);
+                }
+                break;
+            case BuddyCosmeticVisualKind.HeadwearFedora:
+                AddEllipsoid(root, "FedoraCrown", new Vector3(0, 0.14f, 0), new Vector3(0.80f, 0.62f, 0.66f), headRadius, color, visual.Layer);
+                AddBox(root, "FedoraPinch", new Vector3(0, 0.50f * headRadius, 0), new Vector3(0.16f * headRadius, 0.30f * headRadius, 0.60f * headRadius), color.Darkened(0.18f), visual.Layer);
+                AddCylinder(root, "FedoraBand", new Vector3(0, -0.12f * headRadius, 0), 0.84f * headRadius, 0.20f * headRadius, 0f, color.Lightened(0.30f), visual.Layer, topRadius: 0.84f * headRadius);
+                AddCylinder(root, "FedoraBrim", new Vector3(0, -0.24f * headRadius, 0), 1.22f * headRadius, 0.09f * headRadius, 0f, color, visual.Layer, topRadius: 1.22f * headRadius);
+                break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(visual), visual.Kind, "Unsupported trusted cosmetic visual kind.");
         }
@@ -402,10 +554,11 @@ public partial class BuddyVisualRigView
         root.AddChild(instance);
     }
 
-    private void AddBox(Node3D root, string name, Vector3 position, Vector3 size, Color color, BuddyCosmeticRenderLayer layer)
+    private void AddBox(Node3D root, string name, Vector3 position, Vector3 size, Color color, BuddyCosmeticRenderLayer layer, float rollDegrees = 0.0f)
     {
         var instance = CosmeticMesh(name, new BoxMesh { Size = size }, color, layer);
         instance.Position = position;
+        instance.RotationDegrees = new Vector3(0, 0, rollDegrees);
         root.AddChild(instance);
     }
     /// <summary>Triangular prism, rolled about Z so the apex can point up or down.</summary>

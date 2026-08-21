@@ -21,6 +21,9 @@ public partial class TestRunner : Node
 
     public override void _Ready()
     {
+        // Scenarios and journeys press the debug keys the shipped game no longer listens to.
+        Laboratory.LabDevKeys.Enabled = true;
+
         switch (_args.Mode)
         {
             case RunnerMode.Scenario:

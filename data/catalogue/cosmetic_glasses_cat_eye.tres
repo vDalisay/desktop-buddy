@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticGlassesCatEye"
+script = ExtResource("1")
+ContentId = "cosmetic.glasses.cat_eye"
+Kind = 4
+PriceCredits = 200
+ProgressionOrder = 69
+Visible = true
+NameKey = "buddy_studio.cosmetic.glasses.cat_eye.name"
+DescriptionKey = "buddy_studio.cosmetic.glasses.cat_eye.description"
+RequiresLaunchScene = false
+RequiresIcon = false

@@ -179,7 +179,9 @@ public partial class LaboratoryControlComponent : Node
 
     public override void _Input(InputEvent @event)
     {
-        if (!IsInitialized || @event is not InputEventKey { Pressed: true, Echo: false } key)
+        if (!LabDevKeys.Enabled ||
+            !IsInitialized ||
+            @event is not InputEventKey { Pressed: true, Echo: false } key)
         {
             return;
         }

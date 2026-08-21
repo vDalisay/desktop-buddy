@@ -31,7 +31,7 @@ public partial class ToolDefinition : GameResource
     [Export(PropertyHint.Range, "0,100000,1")] public int PriceCredits { get; set; }
 
     /// <summary>Position in the FR-013.4 progression order; unique across the catalogue.</summary>
-    [Export(PropertyHint.Range, "0,64,1")] public int ProgressionOrder { get; set; }
+    [Export(PropertyHint.Range, "0,256,1")] public int ProgressionOrder { get; set; }
 
     /// <summary>
     /// Whether the shop and tool grid may show this entry at all. Stays false until the

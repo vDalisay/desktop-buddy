@@ -28,6 +28,11 @@ public sealed class CharacterFeatureRendererRegistry
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesRoundDot, EyeVariant.RoundDot));
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesHorizontalLed, EyeVariant.HorizontalLed));
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesLashedOval, EyeVariant.LashedOval));
+        Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesSleepyHalf, EyeVariant.SleepyHalf));
+        Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesAngrySlant, EyeVariant.AngrySlant));
+        Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesWideSparkle, EyeVariant.WideSparkle));
+        Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesNarrowSlit, EyeVariant.NarrowSlit));
+        Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesBigRound, EyeVariant.BigRound));
 
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsSoftArc, BrowVariant.SoftArc));
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsStraight, BrowVariant.Straight));
@@ -38,6 +43,11 @@ public sealed class CharacterFeatureRendererRegistry
         Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthPixel, MouthVariant.Pixel));
         Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthLine, MouthVariant.Line));
         Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthOval, MouthVariant.Oval));
+        Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthWideGrin, MouthVariant.WideGrin));
+        Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthFrown, MouthVariant.Frown));
+        Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthSmirk, MouthVariant.Smirk));
+        Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthOpenSmile, MouthVariant.OpenSmile));
+        Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthPucker, MouthVariant.Pucker));
 
         Add(new ProceduralAccentRenderer(CharacterFeatureIds.AccentNone, AccentVariant.None));
         Add(new ProceduralAccentRenderer(CharacterFeatureIds.AccentPanel, AccentVariant.Panel));

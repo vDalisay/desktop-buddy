@@ -12,6 +12,14 @@ internal enum EyeVariant
     RoundDot,
     HorizontalLed,
     LashedOval,
+
+    // Second wave (owner instruction 2026-08-21): the Mii-style expression set. Each one
+    // changes only the open-eye silhouette; every reaction pose stays shared.
+    SleepyHalf,
+    AngrySlant,
+    WideSparkle,
+    NarrowSlit,
+    BigRound,
 }
 
 internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
@@ -115,6 +123,37 @@ internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
                     0.026f, fill, outline, transform);
                 AddStroke(commands, [corner + new Vector2(lashSide * 0.02f, -0.06f), corner + new Vector2(lashSide * 0.17f, -0.02f)],
                     0.026f, fill, outline, transform);
+                break;
+            case EyeVariant.SleepyHalf:
+                // Lower half of an oval, capped by a heavy lid line across the top.
+                AddPolygon(commands, CharacterGeometry.Ellipse(center - new Vector2(0.0f, height * 0.22f), 0.105f, height * 0.55f),
+                    fill, outline, transform);
+                AddStroke(commands, [center + new Vector2(-0.12f, height * 0.28f), center + new Vector2(0.12f, height * 0.28f)],
+                    0.032f, fill, outline, transform);
+                break;
+            case EyeVariant.AngrySlant:
+                // A wedge: the inner corner drops, so the pair reads as a scowl. The sign of the
+                // eye centre picks the side, exactly as the lashes do.
+                float slantSide = center.X < 0.0f ? -1.0f : 1.0f;
+                AddPolygon(commands,
+                [
+                    center + new Vector2(slantSide * -0.11f, height * 0.75f),
+                    center + new Vector2(slantSide * 0.11f, height * 0.15f),
+                    center + new Vector2(slantSide * 0.11f, -height * 0.85f),
+                    center + new Vector2(slantSide * -0.11f, -height * 0.85f),
+                ], fill, outline, transform);
+                break;
+            case EyeVariant.WideSparkle:
+                AddPolygon(commands, CharacterGeometry.Ellipse(center, 0.12f, height * 1.25f), fill, outline, transform);
+                AddCircle(commands, center + new Vector2(0.045f, height * 0.55f), 0.028f,
+                    Colors.White, Colors.White, transform, outlineExpansion: 0.0f);
+                break;
+            case EyeVariant.NarrowSlit:
+                AddPolygon(commands, CharacterGeometry.Rectangle(center, new Vector2(0.20f, 0.038f)),
+                    fill, outline, transform);
+                break;
+            case EyeVariant.BigRound:
+                AddCircle(commands, center, Mathf.Max(0.10f, height * 1.05f), fill, outline, transform);
                 break;
             default:
                 throw new ArgumentOutOfRangeException();
@@ -276,6 +315,14 @@ internal enum MouthVariant
     Pixel,
     Line,
     Oval,
+
+    // Second wave (owner instruction 2026-08-21). Like the shipped four, these change only the
+    // neutral/closed silhouette; reaction poses stay driven by FaceMouthPose.
+    WideGrin,
+    Frown,
+    Smirk,
+    OpenSmile,
+    Pucker,
 }
 
 internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
@@ -378,6 +425,28 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
             case MouthVariant.Oval:
                 // Open "o" silhouette: a closed ellipse outline rather than a filled shape.
                 AddPath(commands, Closed(CharacterGeometry.Ellipse(center, 0.10f, 0.12f)),
+                    fill, outline, transform);
+                break;
+            case MouthVariant.WideGrin:
+                AddPath(commands, CharacterGeometry.Arc(center + new Vector2(0.0f, 0.07f), 0.21f, 0.13f, Mathf.Pi, Mathf.Tau),
+                    fill, outline, transform);
+                break;
+            case MouthVariant.Frown:
+                AddPath(commands, CharacterGeometry.Arc(center - new Vector2(0.0f, 0.06f), 0.16f, 0.10f, 0.0f, Mathf.Pi),
+                    fill, outline, transform);
+                break;
+            case MouthVariant.Smirk:
+                // Lopsided on purpose: flat on the left, lifted on the right.
+                AddPath(commands,
+                    [center + new Vector2(-0.15f, -0.015f), center + new Vector2(0.05f, 0.0f), center + new Vector2(0.15f, 0.075f)],
+                    fill, outline, transform);
+                break;
+            case MouthVariant.OpenSmile:
+                ProceduralEyeRenderer.AddPolygon(commands, CharacterGeometry.Ellipse(center, 0.15f, 0.11f),
+                    fill, outline, transform);
+                break;
+            case MouthVariant.Pucker:
+                AddPath(commands, Closed(CharacterGeometry.Ellipse(center, 0.065f, 0.085f)),
                     fill, outline, transform);
                 break;
             default:

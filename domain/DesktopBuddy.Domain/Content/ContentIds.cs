@@ -65,6 +65,39 @@ public static class ContentIds
     public const string CosmeticTopUtilityBib = "cosmetic.tops.utility_bib";
     public const string CosmeticShoesSoftSteps = "cosmetic.shoes.soft_steps";
 
+    // Second cosmetic wave (owner instruction 2026-08-21): a Mii-sized set of face,
+    // eye, nose, mouth, glasses and hat styles, plus elf ears and an elder hairstyle.
+    public const string CosmeticFaceWrinkles = "cosmetic.face.wrinkles";
+    public const string CosmeticFaceChiseledCheeks = "cosmetic.face.chiseled_cheeks";
+    public const string CosmeticFaceFreckles = "cosmetic.face.freckles";
+    public const string CosmeticFaceRosyCheeks = "cosmetic.face.rosy_cheeks";
+    public const string CosmeticFaceStubble = "cosmetic.face.stubble";
+    public const string CosmeticHairElderTufts = "cosmetic.hair.elder_tufts";
+    public const string CosmeticEyesSleepyHalf = "cosmetic.eyes.sleepy_half";
+    public const string CosmeticEyesAngrySlant = "cosmetic.eyes.angry_slant";
+    public const string CosmeticEyesWideSparkle = "cosmetic.eyes.wide_sparkle";
+    public const string CosmeticEyesNarrowSlit = "cosmetic.eyes.narrow_slit";
+    public const string CosmeticEyesBigRound = "cosmetic.eyes.big_round";
+    public const string CosmeticNosePointedBeak = "cosmetic.nose.pointed_beak";
+    public const string CosmeticNoseWideFlat = "cosmetic.nose.wide_flat";
+    public const string CosmeticNoseUpturned = "cosmetic.nose.upturned";
+    public const string CosmeticNoseHooked = "cosmetic.nose.hooked";
+    public const string CosmeticNoseTinyDot = "cosmetic.nose.tiny_dot";
+    public const string CosmeticMouthWideGrin = "cosmetic.mouth.wide_grin";
+    public const string CosmeticMouthFrown = "cosmetic.mouth.frown";
+    public const string CosmeticMouthSmirk = "cosmetic.mouth.smirk";
+    public const string CosmeticMouthOpenSmile = "cosmetic.mouth.open_smile";
+    public const string CosmeticMouthPucker = "cosmetic.mouth.pucker";
+    public const string CosmeticEarsElf = "cosmetic.ears.elf";
+    public const string CosmeticGlassesSquareFrames = "cosmetic.glasses.square_frames";
+    public const string CosmeticGlassesCatEye = "cosmetic.glasses.cat_eye";
+    public const string CosmeticGlassesAviators = "cosmetic.glasses.aviators";
+    public const string CosmeticGlassesHalfMoon = "cosmetic.glasses.half_moon";
+    public const string CosmeticGlassesVisor = "cosmetic.glasses.visor";
+    public const string CosmeticHeadwearBallCap = "cosmetic.headwear.ball_cap";
+    public const string CosmeticHeadwearSunflowerHat = "cosmetic.headwear.sunflower_hat";
+    public const string CosmeticHeadwearFedora = "cosmetic.headwear.fedora";
+
     public const string LooseObject = "object.loose";
     public const string RoomBoundary = "boundary.room";
     public const string CareLabFood = "care.lab_food";
