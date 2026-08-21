@@ -16,7 +16,18 @@ public partial class ImpactVisualOffsetComponent : Node
     private const float MaximumAmplitudePixels = 2.0f;
     private const float ShakeFrequencyHz = 40.0f;
 
+    /// <summary>How far the buddy squirms under the feather, and how fast.</summary>
+    private const float TickleAmplitudePixels = 1.1f;
+    private const float TickleFrequencyHz = 17.0f;
+
     [Export] public SwingHitLagComponent HitLag { get; set; } = null!;
+
+    /// <summary>
+    /// The care stroke whose tickle contact makes him squirm (owner instruction 2026-08-21).
+    /// Wired by the sandbox root rather than exported, so no scene has to be re-saved and a
+    /// composition without care tools simply leaves it null.
+    /// </summary>
+    public Tools.CareStrokeComponent? Care { get; set; }
 
     public bool IsInitialized { get; private set; }
 
@@ -33,12 +44,27 @@ public partial class ImpactVisualOffsetComponent : Node
 
     public Vector3 OffsetFor(BuddyPartId partId)
     {
+        // Being tickled is the whole buddy wriggling, not one struck part, so it is applied
+        // everywhere and on two frequencies — a single sine reads as a buzz rather than a
+        // squirm. A hit-lag freeze outranks it: that shake is the one being read.
+        Vector3 tickle = Vector3.Zero;
+        if (IsInitialized && Care is { IsInitialized: true, IsTickleContact: true })
+        {
+            double seconds = Time.GetTicksUsec() / 1_000_000.0;
+            float lateral = Mathf.Sin((float)(seconds * Mathf.Tau * TickleFrequencyHz));
+            float vertical = Mathf.Sin((float)(seconds * Mathf.Tau * TickleFrequencyHz * 0.62f));
+            tickle = new Vector3(
+                TickleAmplitudePixels * lateral,
+                TickleAmplitudePixels * 0.45f * vertical,
+                0.0f);
+        }
+
         if (!IsInitialized || !HitLag.IsActive ||
             HitLag.Current.StruckPart is not BuddyPart struck ||
             (int)struck != (int)partId ||
             HitLag.TotalTicks <= 0)
         {
-            return Vector3.Zero;
+            return tickle;
         }
 
         float remaining = HitLag.RemainingTicks / (float)HitLag.TotalTicks;

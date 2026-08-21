@@ -110,6 +110,14 @@ public sealed class CharacterSelectionCoordinator
         return result;
     }
 
+    /// <summary>
+    /// Drops back to the built-in buddy without touching storage. Reset Progress deletes every
+    /// character document, so the rig must stop showing one that no longer exists — otherwise
+    /// the reset looks like it did nothing at all (owner report 2026-08-21).
+    /// </summary>
+    public void RevertToBuiltIn() =>
+        Queue(BuiltIn(Interlocked.Increment(ref _nextSequence), persistSelection: true));
+
     /// <summary>Call exactly once from the authoritative fixed-tick route.</summary>
     public void PhysicsTick()
     {

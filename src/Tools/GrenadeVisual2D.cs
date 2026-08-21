@@ -71,7 +71,7 @@ public partial class GrenadeVisual2D : Node2D
         if (!GodotObject.IsInstanceValid(_body) || _body != body)
             return;
 
-        if (GodotObject.IsInstanceValid(body))
+        if (_presentationActive && GodotObject.IsInstanceValid(body))
             body.Visible = true;
         _body = null;
         QueueRedraw();
@@ -277,10 +277,17 @@ public partial class GrenadeVisual2D : Node2D
     /// While this presenter is drawing the grenade, the body must not also draw itself —
     /// the same handover the 3D slot performs.
     /// </summary>
+    /// <summary>
+    /// Only the presenter that is actually drawing the grenade may speak for the collider's
+    /// own flat circle. This one used to claim it whichever way round it was switched, so in
+    /// the frontal presentation — where it draws nothing — it un-hid the very circle the 3D
+    /// model had just hidden, and that circle sat below the lifted model as a green ball on
+    /// its underside (owner report 2026-08-21).
+    /// </summary>
     private void ApplyBodyVisibility()
     {
-        if (GodotObject.IsInstanceValid(_body))
-            _body!.Visible = !_presentationActive;
+        if (_presentationActive && GodotObject.IsInstanceValid(_body))
+            _body!.Visible = false;
     }
 
     private void RequireInitialized()

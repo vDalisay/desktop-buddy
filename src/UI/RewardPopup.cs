@@ -149,7 +149,6 @@ public partial class RewardPopup : CanvasLayer
         _glow.GlowAlpha = effects.PhotosensitivitySafe || !animate
             ? GlowAlphaCenter
             : GlowAlphaCenter + (GlowAlphaSwing * ((PingPong(_elapsed) * 2.0f) - 1.0f));
-        _glow.ShowGlints = !effects.ReducedParticles;
         _glow.QueueRedraw();
 
         _panel!.PivotOffset = _panel.Size * 0.5f;
@@ -267,20 +266,18 @@ public partial class RewardPopup : CanvasLayer
     }
 
     /// <summary>
-    /// The glowy plate: a generated radial halo, the 16×16 icon at 4× nearest so it stays
-    /// pixel-crisp, and four hard-pixel glints standing in for a modern rarity shine.
+    /// The glowy plate: a generated radial halo and the 16×16 icon at 4× nearest so it stays
+    /// pixel-crisp. It used to throw four hard-pixel glints around the icon as well; the owner
+    /// cut them (instruction 2026-08-21) — the halo alone is the shine.
     /// </summary>
     private sealed partial class GlowIcon : Control
     {
         private const int IconPixels = 96;
         private const int HaloPixels = 160;
-        private static readonly Vector2[] GlintOffsets =
-            [new(-62, -48), new(58, -44), new(-54, 46), new(64, 42)];
         private static ImageTexture? _halo;
 
         public Texture2D? Icon { get; set; }
         public float GlowAlpha { get; set; } = GlowAlphaCenter;
-        public bool ShowGlints { get; set; } = true;
 
         public override void _Draw()
         {
@@ -290,18 +287,6 @@ public partial class RewardPopup : CanvasLayer
                 (center - new Vector2(HaloPixels / 2, HaloPixels / 2)).Round(),
                 new Vector2(HaloPixels, HaloPixels));
             DrawTextureRect(halo, haloRect, false, new Color(1.0f, 0.94f, 0.62f, GlowAlpha));
-
-            if (ShowGlints)
-            {
-                Color glint = new(1, 1, 1, Math.Min(1.0f, GlowAlpha + 0.35f));
-                foreach (Vector2 offset in GlintOffsets)
-                {
-                    Vector2 at = (center + offset).Round();
-                    DrawRect(new Rect2(at.X - 5, at.Y, 11, 1), glint, true);
-                    DrawRect(new Rect2(at.X, at.Y - 5, 1, 11), glint, true);
-                    DrawRect(new Rect2(at.X - 1, at.Y - 1, 3, 3), glint, true);
-                }
-            }
 
             if (Icon is not null)
             {

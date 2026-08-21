@@ -58,9 +58,22 @@ public partial class ShopPanel : PanelContainer
                 _rows.Add(BuildRow(parts.List, entry, tool));
         }
 
+        // The balance moves while this panel is open — every hit pays out — and the panel used
+        // to show whatever it happened to say when it was last acted on (owner report
+        // 2026-08-21). Same event the corner readout listens to, so the two never disagree.
+        _economy.BalanceChanged += OnBalanceChanged;
         IsInitialized = true;
         Refresh();
     }
+
+    public override void _ExitTree()
+    {
+        // The economy service outlives every node, so the unsubscribe is unconditional.
+        if (_economy is not null)
+            _economy.BalanceChanged -= OnBalanceChanged;
+    }
+
+    private void OnBalanceChanged(long _) => Refresh();
 
     private Row BuildRow(VBoxContainer list, CatalogueEntry entry, ToolId tool)
     {

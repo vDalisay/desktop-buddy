@@ -56,6 +56,33 @@ public sealed class CharacterStore
     public Task<CharacterDeleteResult> DeleteAsync(Guid id, CancellationToken token) =>
         Task.Run(() => DeleteCore(id, token), CancellationToken.None);
 
+    /// <summary>
+    /// Removes every stored character. Reset Progress means a first run, and a first run has
+    /// no buddy the player made earlier (owner instruction 2026-08-21) — leaving the documents
+    /// behind made the reset look like it had done nothing at all.
+    /// </summary>
+    /// <returns>How many character directories were removed.</returns>
+    public Task<int> DeleteAllAsync(CancellationToken token) => Task.Run(
+        () =>
+        {
+            if (!_fileSystem.DirectoryExists(_paths.Root))
+                return 0;
+
+            int removed = 0;
+            foreach (string directory in _fileSystem.EnumerateDirectories(_paths.Root))
+            {
+                token.ThrowIfCancellationRequested();
+                // Anything that is not a character directory is not ours to delete.
+                if (!Guid.TryParse(Path.GetFileName(directory), out Guid id) || id == Guid.Empty)
+                    continue;
+                if (DeleteCore(id, token).Status == CharacterDeleteStatus.Deleted)
+                    removed++;
+            }
+
+            return removed;
+        },
+        CancellationToken.None);
+
     private CharacterLoadResult LoadCore(Guid id, CancellationToken token)
     {
         if (id == Guid.Empty)

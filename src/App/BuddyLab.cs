@@ -236,6 +236,8 @@ public partial class BuddyLab : Node2D
         CareStroke.Initialize();
         CareCursor.Initialize();
         CareCursorVisual.Initialize(CareStroke);
+        // The squirm under the feather reads off the same contact the burn does.
+        ImpactVisualOffset.Care = CareStroke;
         ToolReactions.Initialize();
         Reactions.Initialize();
         ReactionAudio.Initialize();
@@ -614,6 +616,7 @@ public partial class BuddyLab : Node2D
     {
         Effects = settings;
         FireSprayer.ApplyEffectsSettings(settings);
+        CareCursorVisual.ApplyEffectsSettings(settings.ReducedParticles);
         FireVisual.ApplyEffectsSettings(settings);
         SprayerVisual.ApplyEffectsSettings(settings);
         FireVisualLegacy.ApplyEffectsSettings(settings);

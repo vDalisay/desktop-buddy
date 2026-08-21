@@ -183,17 +183,25 @@ public partial class BuddyVisualRigView
         // hair hangs from and hair is built with matching negative offsets. Hats were built at
         // the anchor itself, so every one of them rode forward onto the buddy's face with its
         // brim across his eyes (owner report 2026-08-21). Undo the anchor's lean here, once,
-        // and lift them onto the crown: the hats then sit centred on the head by construction
-        // rather than each one carrying its own correction.
+        // so the hats sit centred on the head by construction rather than each one carrying
+        // its own correction — and let the player nudge and resize from there.
         if (visual.Slot == CharacterFeatureSlot.Headwear)
-            root.Position = new Vector3(0.0f, 0.14f * headRadius, -0.48f * headRadius);
+        {
+            ApplyFeatureTransform(root, appearance.Transform, headRadius);
+            root.Position += new Vector3(0.0f, 0.14f * headRadius, -0.48f * headRadius);
+        }
 
         switch (visual.Kind)
         {
             case BuddyCosmeticVisualKind.HairShortSweep:
-                AddEllipsoid(root, "SweepLeft", new Vector3(-0.28f, 0.10f, 0), new Vector3(0.78f, 0.30f, 0.34f), headRadius, color, visual.Layer);
-                AddEllipsoid(root, "SweepCenter", new Vector3(0.10f, 0.22f, 0.02f), new Vector3(0.92f, 0.34f, 0.38f), headRadius, color, visual.Layer);
-                AddEllipsoid(root, "SweepTip", new Vector3(0.48f, 0.02f, 0.01f), new Vector3(0.52f, 0.22f, 0.30f), headRadius, color, visual.Layer);
+                // It used to be three ellipsoids built at the anchor itself, which leans 0.48
+                // radii forward — so the whole style hung off the front of the face with a
+                // bare crown and nothing behind (owner report 2026-08-21). Same negative-Z
+                // offsets the bob uses: a cap over the top, a back, then the sweep and flick.
+                AddEllipsoid(root, "SweepCap", new Vector3(0, -0.22f, -0.48f), new Vector3(0.94f, 0.60f, 0.94f), headRadius, color, visual.Layer, hemisphere: true);
+                AddEllipsoid(root, "SweepBack", new Vector3(0, -0.54f, -0.86f), new Vector3(0.84f, 0.54f, 0.48f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "SweepFront", new Vector3(-0.16f, -0.14f, -0.08f), new Vector3(0.88f, 0.30f, 0.44f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "SweepTip", new Vector3(0.54f, -0.26f, -0.16f), new Vector3(0.40f, 0.22f, 0.36f), headRadius, color, visual.Layer);
                 break;
             case BuddyCosmeticVisualKind.HairBobBangs:
                 // Symmetrical ear-length bob: skull cap, a straight fringe band across the
@@ -284,17 +292,17 @@ public partial class BuddyVisualRigView
             // height is chosen so the hat comes down the sides past the widest part of the
             // skull instead of perching on the very top; headwear_fit measures both.
             case BuddyCosmeticVisualKind.HeadwearSoftCap:
-                AddEllipsoid(root, "Crown", new Vector3(0, -0.66f, 0), new Vector3(1.00f, 1.00f, 1.00f), headRadius, color, visual.Layer, hemisphere: true);
-                AddBox(root, "Brim", new Vector3(0, -0.62f * headRadius, 0.78f * headRadius), new Vector3(1.00f * headRadius, 0.10f * headRadius, 0.90f * headRadius), color, visual.Layer);
+                AddEllipsoid(root, "Crown", new Vector3(0, -0.48f, 0), new Vector3(0.97f, 0.97f, 0.97f), headRadius, color, visual.Layer, hemisphere: true);
+                AddBox(root, "Brim", new Vector3(0, -0.44f * headRadius, 0.78f * headRadius), new Vector3(1.00f * headRadius, 0.10f * headRadius, 0.90f * headRadius), color, visual.Layer);
                 break;
             case BuddyCosmeticVisualKind.HeadwearKnitBeanie:
-                AddEllipsoid(root, "BeanieCrown", new Vector3(0, -0.81f, 0), new Vector3(1.06f, 1.06f, 1.06f), headRadius, color, visual.Layer, hemisphere: true);
-                AddCylinder(root, "BeanieCuff", new Vector3(0, -0.74f * headRadius, 0), 1.10f * headRadius, 0.22f * headRadius, 0f, color.Lightened(0.10f), visual.Layer, topRadius: 1.10f * headRadius);
-                AddEllipsoid(root, "BeaniePom", new Vector3(0, 0.32f, 0), new Vector3(0.16f, 0.16f, 0.16f), headRadius, color.Lightened(0.10f), visual.Layer);
+                AddEllipsoid(root, "BeanieCrown", new Vector3(0, -0.52f, 0), new Vector3(0.96f, 0.96f, 0.96f), headRadius, color, visual.Layer, hemisphere: true);
+                AddCylinder(root, "BeanieCuff", new Vector3(0, -0.45f * headRadius, 0), 1.00f * headRadius, 0.22f * headRadius, 0f, color.Lightened(0.10f), visual.Layer, topRadius: 1.00f * headRadius);
+                AddEllipsoid(root, "BeaniePom", new Vector3(0, 0.42f, 0), new Vector3(0.16f, 0.16f, 0.16f), headRadius, color.Lightened(0.10f), visual.Layer);
                 break;
             case BuddyCosmeticVisualKind.HeadwearWideBrim:
-                AddEllipsoid(root, "BrimCrown", new Vector3(0, -0.68f, 0), new Vector3(0.99f, 0.99f, 0.99f), headRadius, color, visual.Layer, hemisphere: true);
-                AddCylinder(root, "WideBrim", new Vector3(0, -0.68f * headRadius, 0), 1.30f * headRadius, 0.09f * headRadius, 0f, color, visual.Layer, topRadius: 1.30f * headRadius);
+                AddEllipsoid(root, "BrimCrown", new Vector3(0, -0.48f, 0), new Vector3(0.93f, 0.93f, 0.93f), headRadius, color, visual.Layer, hemisphere: true);
+                AddCylinder(root, "WideBrim", new Vector3(0, -0.48f * headRadius, 0), 1.30f * headRadius, 0.09f * headRadius, 0f, color, visual.Layer, topRadius: 1.30f * headRadius);
                 break;
             case BuddyCosmeticVisualKind.TopUtilityBib:
                 float torsoRadius = PartMeshRadius(BuddyPartId.Torso);
@@ -423,27 +431,27 @@ public partial class BuddyVisualRigView
                 break;
 
             case BuddyCosmeticVisualKind.HeadwearBallCap:
-                AddEllipsoid(root, "CapCrown", new Vector3(0, -0.71f, 0), new Vector3(1.02f, 1.02f, 1.02f), headRadius, color, visual.Layer, hemisphere: true);
+                AddEllipsoid(root, "CapCrown", new Vector3(0, -0.48f, 0), new Vector3(0.98f, 0.98f, 0.98f), headRadius, color, visual.Layer, hemisphere: true);
                 // A long peak, out past the front of the head where a cap's actually shades
                 // the eyes (owner instruction 2026-08-21); the old one stopped short of it.
-                AddBox(root, "CapBrim", new Vector3(0, -0.66f * headRadius, 0.85f * headRadius), new Vector3(1.00f * headRadius, 0.10f * headRadius, 1.10f * headRadius), color.Darkened(0.12f), visual.Layer);
-                AddEllipsoid(root, "CapButton", new Vector3(0, 0.33f, 0), new Vector3(0.10f, 0.10f, 0.10f), headRadius, color.Darkened(0.12f), visual.Layer);
+                AddBox(root, "CapBrim", new Vector3(0, -0.44f * headRadius, 0.85f * headRadius), new Vector3(1.00f * headRadius, 0.10f * headRadius, 1.10f * headRadius), color.Darkened(0.12f), visual.Layer);
+                AddEllipsoid(root, "CapButton", new Vector3(0, 0.44f, 0), new Vector3(0.10f, 0.10f, 0.10f), headRadius, color.Darkened(0.12f), visual.Layer);
                 break;
             case BuddyCosmeticVisualKind.HeadwearSunHat:
                 // A straw sun hat: round crown, ribbon band, and a soft brim that droops rather
                 // than sticking out flat — three stacked discs of falling radius do the droop
                 // without needing a mesh of its own.
-                AddEllipsoid(root, "SunCrown", new Vector3(0, -0.66f, 0), new Vector3(0.95f, 0.95f, 0.95f), headRadius, color, visual.Layer, hemisphere: true);
-                AddCylinder(root, "SunBand", new Vector3(0, -0.58f * headRadius, 0), 1.00f * headRadius, 0.20f * headRadius, 0f, color.Darkened(0.28f), visual.Layer, topRadius: 1.00f * headRadius);
-                AddCylinder(root, "SunBrimInner", new Vector3(0, -0.68f * headRadius, 0), 1.42f * headRadius, 0.08f * headRadius, 0f, color, visual.Layer, topRadius: 1.42f * headRadius);
-                AddCylinder(root, "SunBrimMid", new Vector3(0, -0.75f * headRadius, 0), 1.30f * headRadius, 0.07f * headRadius, 0f, color, visual.Layer, topRadius: 1.44f * headRadius);
-                AddCylinder(root, "SunBrimEdge", new Vector3(0, -0.81f * headRadius, 0), 1.10f * headRadius, 0.06f * headRadius, 0f, color.Darkened(0.08f), visual.Layer, topRadius: 1.32f * headRadius);
+                AddEllipsoid(root, "SunCrown", new Vector3(0, -0.44f, 0), new Vector3(0.92f, 0.92f, 0.92f), headRadius, color, visual.Layer, hemisphere: true);
+                AddCylinder(root, "SunBand", new Vector3(0, -0.34f * headRadius, 0), 0.97f * headRadius, 0.20f * headRadius, 0f, color.Darkened(0.28f), visual.Layer, topRadius: 0.97f * headRadius);
+                AddCylinder(root, "SunBrimInner", new Vector3(0, -0.40f * headRadius, 0), 1.42f * headRadius, 0.08f * headRadius, 0f, color, visual.Layer, topRadius: 1.42f * headRadius);
+                AddCylinder(root, "SunBrimMid", new Vector3(0, -0.45f * headRadius, 0), 1.30f * headRadius, 0.07f * headRadius, 0f, color, visual.Layer, topRadius: 1.44f * headRadius);
+                AddCylinder(root, "SunBrimEdge", new Vector3(0, -0.50f * headRadius, 0), 1.10f * headRadius, 0.06f * headRadius, 0f, color.Darkened(0.08f), visual.Layer, topRadius: 1.32f * headRadius);
                 break;
             case BuddyCosmeticVisualKind.HeadwearFedora:
-                AddEllipsoid(root, "FedoraCrown", new Vector3(0, -0.71f, 0), new Vector3(0.96f, 0.96f, 0.96f), headRadius, color, visual.Layer, hemisphere: true);
-                AddBox(root, "FedoraPinch", new Vector3(0, 0.22f * headRadius, 0), new Vector3(0.14f * headRadius, 0.22f * headRadius, 0.70f * headRadius), color.Darkened(0.18f), visual.Layer);
-                AddCylinder(root, "FedoraBand", new Vector3(0, -0.62f * headRadius, 0), 1.00f * headRadius, 0.20f * headRadius, 0f, color.Lightened(0.30f), visual.Layer, topRadius: 1.00f * headRadius);
-                AddCylinder(root, "FedoraBrim", new Vector3(0, -0.71f * headRadius, 0), 1.28f * headRadius, 0.09f * headRadius, 0f, color, visual.Layer, topRadius: 1.28f * headRadius);
+                AddEllipsoid(root, "FedoraCrown", new Vector3(0, -0.48f, 0), new Vector3(0.93f, 0.93f, 0.93f), headRadius, color, visual.Layer, hemisphere: true);
+                AddBox(root, "FedoraPinch", new Vector3(0, 0.42f * headRadius, 0), new Vector3(0.14f * headRadius, 0.22f * headRadius, 0.70f * headRadius), color.Darkened(0.18f), visual.Layer);
+                AddCylinder(root, "FedoraBand", new Vector3(0, -0.40f * headRadius, 0), 0.97f * headRadius, 0.20f * headRadius, 0f, color.Lightened(0.30f), visual.Layer, topRadius: 1.00f * headRadius);
+                AddCylinder(root, "FedoraBrim", new Vector3(0, -0.48f * headRadius, 0), 1.28f * headRadius, 0.09f * headRadius, 0f, color, visual.Layer, topRadius: 1.28f * headRadius);
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(visual), visual.Kind, "Unsupported trusted cosmetic visual kind.");

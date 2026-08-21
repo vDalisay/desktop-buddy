@@ -25,6 +25,7 @@ public partial class CareToolVisual3D : Node3D
     private MeshInstance3D _brush = null!;
     private CareToolSway _sway;
     private bool _presentationActive;
+    private bool _reducedParticles;
     private ToolId _tool;
     private bool _held;
     private Vector2 _pointer;
@@ -47,6 +48,7 @@ public partial class CareToolVisual3D : Node3D
 
         _feather = BuildInstance("FeatherDusterVisual", CareToolMeshBuilder.BuildFeatherDuster());
         _brush = BuildInstance("BrushVisual", CareToolMeshBuilder.BuildBrush());
+        BuildFluff();
         IsInitialized = true;
         Visible = false;
     }
@@ -55,7 +57,10 @@ public partial class CareToolVisual3D : Node3D
     {
         _presentationActive = active;
         if (!active)
+        {
             _sway.Reset();
+            ClearFluff();
+        }
         ApplyVisibility();
     }
 
@@ -74,7 +79,13 @@ public partial class CareToolVisual3D : Node3D
 
     public override void _Process(double delta)
     {
-        if (!IsInitialized || !Visible)
+        if (!IsInitialized)
+            return;
+
+        // The barbs outlive the feather being put away, so they are ticked before the early
+        // return that parks everything else.
+        TickFluff(delta);
+        if (!Visible)
         {
             _sway.Reset();
             return;
@@ -85,6 +96,14 @@ public partial class CareToolVisual3D : Node3D
         ApplyTransforms();
     }
 
+    /// <summary>Honours the Reduced Particles effects setting for the tickle barbs.</summary>
+    public void ApplyEffectsSettings(bool reducedParticles)
+    {
+        _reducedParticles = reducedParticles;
+        if (reducedParticles)
+            ClearFluff();
+    }
+
     private void ApplyVisibility()
     {
         if (!IsInitialized)
@@ -93,7 +112,7 @@ public partial class CareToolVisual3D : Node3D
         bool show = _presentationActive && _held;
         _feather.Visible = show && _tool == ToolId.Tickle;
         _brush.Visible = show && _tool == ToolId.Pet;
-        Visible = _feather.Visible || _brush.Visible;
+        Visible = _feather.Visible || _brush.Visible || ActiveFluffCount > 0;
     }
 
     private void ApplyTransforms()

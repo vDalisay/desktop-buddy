@@ -13,12 +13,16 @@ using DesktopBuddy.Persistence.Characters;
 namespace DesktopBuddy.App;
 
 /// <summary>
-/// "Reset Progress": the whole gameplay save goes back to a first run, and nothing else
-/// moves. Settings and local character files are preserved; active character selection is
-/// cloud progress and therefore resets to built-in.
+/// "Reset Progress": everything the player has built goes back to a first run — the gameplay
+/// save, Work progression, the decorated room, and the characters they made (owner instruction
+/// 2026-08-21). Machine-local settings are the one thing kept, because they are preferences
+/// rather than progress.
 /// </summary>
 public static class ProgressReset
 {
+    /// <summary>How many character documents the last reset removed, for logs and scenarios.</summary>
+    public static int DeletedCharacterCount { get; private set; }
+
     public static BuddyProgressState CreateNewProgress(double cashPerPain)
     {
         ulong traitSeed = BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(sizeof(ulong)));
@@ -29,13 +33,15 @@ public static class ProgressReset
     /// <summary>
     /// Resets gameplay, Work progression and optional character selection in place. One explicit
     /// durable write owns the transaction; a failed write restores all exact prior snapshots and
-    /// never touches machine-local settings or local character documents.
+    /// never touches machine-local settings. Character documents are deleted only after that
+    /// write lands, because a deletion is the one step a rollback could not undo.
     /// </summary>
     public static async Task<bool> ResetAsync(
         BuddyProgressState progress,
         SaveCoordinator saves,
         EconomyService? economy = null,
         CharacterSelectionState? characterSelection = null,
+        Func<CancellationToken, Task<int>>? deleteCharacters = null,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(progress);
@@ -85,6 +91,13 @@ public static class ProgressReset
                 environmentProgress.Adopt(environmentBefore.Value);
             return false;
         }
+
+        // Only after the durable write has succeeded: a failed reset restores every snapshot,
+        // and there would be no restoring a character document that had already been deleted.
+        // A delegate rather than the store itself, so this file stays engine-free for the
+        // domain tests that compile it.
+        if (deleteCharacters is not null)
+            DeletedCharacterCount = await deleteCharacters(token).ConfigureAwait(false);
 
         economy?.NotifyBalanceChanged();
         return true;

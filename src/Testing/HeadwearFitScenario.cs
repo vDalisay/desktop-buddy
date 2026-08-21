@@ -81,9 +81,10 @@ public sealed class HeadwearFitScenario : IScenario
             bool centredDepth = Mathf.Abs(centre.Z) <= 0.35f;
             // Wide enough to cover the skull rather than perching on it.
             bool coversTheSkull = halfWidth >= 0.95f;
-            // Sitting on the head: the crown clears it without towering, and the hat comes
-            // down past the widest part of the skull rather than balancing on the very top.
-            bool restsOnTheHead = top >= 1.05f && top <= 1.40f && bottom <= 0.30f;
+            // Sitting on the head: the crown clears it without towering, and the hat stops
+            // above the brow line at 0.23 radii rather than coming down over his face
+            // (owner report 2026-08-21).
+            bool restsOnTheHead = top >= 1.05f && top <= 1.45f && bottom >= 0.30f && bottom <= 0.55f;
 
             checks.Add(new StartupCheck(
                 $"{Slug(hat)}_sits_on_the_head",

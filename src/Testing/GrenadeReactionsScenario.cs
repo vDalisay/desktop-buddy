@@ -4,6 +4,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -36,6 +37,19 @@ public sealed class GrenadeReactionsScenario : IScenario
         }
 
         GrenadeComponent grenades = lab.Grenades;
+
+        // The frontal presentation owns the grenade's look; the flat collider drawing under it
+        // is what the owner saw as "a green ball on the underside" (report 2026-08-21).
+        lab.SetPresentationMode(PresentationMode.Mii3D);
+        ClearField(lab);
+        LooseObjectBody? drawn = await PlaceGrenade(tree, lab);
+        await Ticks(tree, 4);
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        checks.Add(new StartupCheck(
+            "the_flat_collider_drawing_is_hidden_behind_the_model",
+            drawn is not null && !drawn.Visible,
+            $"placed={drawn is not null} body_visible={drawn?.Visible}"));
+        ClearField(lab);
 
         checks.Add(new StartupCheck(
             "flame_source_is_wired",

@@ -20,6 +20,7 @@ using DesktopBuddy.Laboratory;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Sandbox;
@@ -217,6 +218,8 @@ public partial class SandboxRoot : Node2D
         CareStroke.Initialize();
         CareCursor.Initialize();
         CareCursorVisual.Initialize(CareStroke);
+        // The squirm under the feather reads off the same contact the burn does.
+        ImpactVisualOffset.Care = CareStroke;
         ToolReactions.Initialize();
         Reactions.Initialize();
         ReactionAudio.Initialize();
@@ -486,7 +489,14 @@ public partial class SandboxRoot : Node2D
     /// </summary>
     private async void OnResetProgressConfirmed()
     {
-        bool reset = await ProgressReset.ResetAsync(Progress, Saves, Economy);
+        CharacterStore? characters = _runContext?.Characters;
+        bool reset = await ProgressReset.ResetAsync(
+            Progress,
+            Saves,
+            Economy,
+            deleteCharacters: characters is null
+                ? null
+                : token => characters.DeleteAllAsync(token));
         if (!reset)
         {
             Log.Error("Persistence", "Reset Progress failed to write; progress is unchanged.");
@@ -498,9 +508,19 @@ public partial class SandboxRoot : Node2D
         {
             environment.ClearPaintedBackground();
         }
+        // The characters are gone, so the rig must stop wearing one.
+        if (GetTree().Root.FindChild(nameof(CharacterSelectionRuntime), true, false)
+            is CharacterSelectionRuntime runtime && runtime.Coordinator is not null)
+        {
+            runtime.Coordinator.RevertToBuiltIn();
+        }
+
         OnSessionResumed();
         Buddy.Recovery.ResetForSessionResume();
-        Log.Info("Persistence", "Progress reset to a first run; settings untouched.");
+        Log.Info(
+            "Persistence",
+            $"Progress reset to a first run; {ProgressReset.DeletedCharacterCount} character(s) " +
+            "removed, settings untouched.");
     }
 
     private void OnSystemSuspending() => Lifecycle.NotifySuspended();
@@ -576,6 +596,7 @@ public partial class SandboxRoot : Node2D
     {
         Effects = settings;
         FireSprayer.ApplyEffectsSettings(settings);
+        CareCursorVisual.ApplyEffectsSettings(settings.ReducedParticles);
         FireVisual.ApplyEffectsSettings(settings);
         SprayerVisual.ApplyEffectsSettings(settings);
         FireVisualLegacy.ApplyEffectsSettings(settings);
