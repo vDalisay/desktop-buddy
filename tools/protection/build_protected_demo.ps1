@@ -12,7 +12,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if (-not $IsWindows) {
+if ($env:OS -ne "Windows_NT") {
     throw "The protected Steam-demo exporter targets Windows and must be run on Windows."
 }
 
@@ -56,11 +56,16 @@ function Resolve-GodotPath {
 
 function New-Aes256HexKey {
     $Bytes = New-Object byte[] 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($Bytes)
-    return [Convert]::ToHexString($Bytes).ToLowerInvariant()
+    $Rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $Rng.GetBytes($Bytes)
+        return ([System.BitConverter]::ToString($Bytes)).Replace("-", "").ToLowerInvariant()
+    } finally {
+        $Rng.Dispose()
+    }
 }
 
-Invoke-Checked "pwsh" @("-NoProfile", "-File", (Join-Path $PSScriptRoot "test_hardening_config.ps1"))
+& (Join-Path $PSScriptRoot "test_hardening_config.ps1")
 
 New-Item -ItemType Directory -Force -Path $ProtectedRoot | Out-Null
 if ([string]::IsNullOrWhiteSpace($EncryptionKey)) {
@@ -85,19 +90,17 @@ if ($LASTEXITCODE -ne 0 -or $VersionOutput -notmatch '^4\.6\.1') {
     throw "Protected exports require the pinned Godot 4.6.1 .NET editor. Found: $VersionOutput"
 }
 
-$TemplateArguments = @(
-    "-NoProfile",
-    "-File", (Join-Path $PSScriptRoot "build_encrypted_template.ps1"),
-    "-GodotPath", $GodotPath,
-    "-EncryptionKey", $EncryptionKey
-)
+$TemplateParams = @{
+    GodotPath = $GodotPath
+    EncryptionKey = $EncryptionKey
+}
 if (-not [string]::IsNullOrWhiteSpace($GodotSourcePath)) {
-    $TemplateArguments += @("-GodotSourcePath", $GodotSourcePath)
+    $TemplateParams.GodotSourcePath = $GodotSourcePath
 }
 if ($RebuildTemplate) {
-    $TemplateArguments += "-Force"
+    $TemplateParams.Force = $true
 }
-Invoke-Checked "pwsh" $TemplateArguments
+& (Join-Path $PSScriptRoot "build_encrypted_template.ps1") @TemplateParams
 
 if (Test-Path -LiteralPath $OutputDirectory) {
     Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
@@ -117,15 +120,11 @@ try {
     $env:GODOT_SCRIPT_ENCRYPTION_KEY = $PreviousExportKey
 }
 
-$ObfuscationArguments = @(
-    "-NoProfile",
-    "-File", (Join-Path $PSScriptRoot "obfuscate_export.ps1"),
-    "-ExportDirectory", $OutputDirectory
-)
+$ObfuscationParams = @{ ExportDirectory = $OutputDirectory }
 if ($ConservativeMainAssembly) {
-    $ObfuscationArguments += "-ConservativeMainAssembly"
+    $ObfuscationParams.ConservativeMainAssembly = $true
 }
-Invoke-Checked "pwsh" $ObfuscationArguments
+& (Join-Path $PSScriptRoot "obfuscate_export.ps1") @ObfuscationParams
 
 # The export preset already disables debug symbols. Delete any accidental leftovers before the
 # package gate so an editor/plugin regression cannot silently ship symbols.
@@ -135,11 +134,7 @@ Get-ChildItem -LiteralPath $OutputDirectory -Recurse -File -ErrorAction Silently
     Where-Object { $_.Name -like "DesktopBuddy*.xml" } |
     Remove-Item -Force
 
-Invoke-Checked "pwsh" @(
-    "-NoProfile",
-    "-File", (Join-Path $PSScriptRoot "validate_protected_demo.ps1"),
-    "-ExportDirectory", $OutputDirectory
-)
+& (Join-Path $PSScriptRoot "validate_protected_demo.ps1") -ExportDirectory $OutputDirectory
 
 if (-not $SkipSmokeTest) {
     Write-Host "Launching protected executable for a short startup smoke test..."
