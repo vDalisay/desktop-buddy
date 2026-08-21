@@ -24,6 +24,16 @@ public static class Win98ThemeFactory
     /// <summary>Centered world inset that places its floor on the status bar's top edge.</summary>
     public const int ChromeHeight = 58;
     public const int ControlHeight = 24;
+
+    /// <summary>
+    /// Title-bar commands are square, not oblong: Win98 draws minimise, maximise, close and the
+    /// rest as equal boxes, and 20x18 read as stretched (owner report 2026-08-21). Every title
+    /// bar builds its buttons from these two so they cannot drift apart again.
+    /// </summary>
+    public const int TitleButtonSize = 18;
+
+    /// <summary>Gap between title-bar commands, and between the last one and the frame edge.</summary>
+    public const int TitleButtonGap = 3;
     public const int Gap = 4;
     public const int BaseFontSize = 14;
 
@@ -289,6 +299,40 @@ public static class Win98ThemeFactory
     {
         var box = Flat(fill);
         ConfigureBorder(box, width, Dark, Shadow, new Vector2(1, 1));
+        return box;
+    }
+
+    /// <summary>
+    /// The square, compact look every title-bar command shares. The ordinary Button stylebox
+    /// carries content margins and the shell font size, which together give a minimum height
+    /// well over <see cref="TitleButtonSize"/> — so a button asked to be 18x18 still rendered
+    /// as an upright oblong (owner report 2026-08-21). Margins go, the glyph shrinks, and the
+    /// row is told not to stretch it.
+    /// </summary>
+    public static void StyleTitleButton(Button button)
+    {
+        button.CustomMinimumSize = new Vector2(TitleButtonSize, TitleButtonSize);
+        button.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
+        button.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
+        button.ClipText = true;
+        button.AddThemeFontSizeOverride("font_size", Px(11));
+        button.AddThemeStyleboxOverride("normal", Compact(Raised(Face, 2)));
+        button.AddThemeStyleboxOverride("hover", Compact(Raised(Highlight, 2)));
+        button.AddThemeStyleboxOverride("pressed", Compact(Recessed(Face, 2)));
+        button.AddThemeStyleboxOverride("hover_pressed", Compact(Recessed(Highlight, 2)));
+        button.AddThemeStyleboxOverride("disabled", Compact(Raised(Face, 2)));
+        button.AddThemeColorOverride("font_color", Dark);
+        button.AddThemeColorOverride("font_hover_color", Dark);
+        button.AddThemeColorOverride("font_pressed_color", Dark);
+    }
+
+    /// <summary>The same box with its content margins removed, so it can be square.</summary>
+    private static StyleBoxFlat Compact(StyleBoxFlat box)
+    {
+        box.ContentMarginLeft = 0;
+        box.ContentMarginTop = 0;
+        box.ContentMarginRight = 0;
+        box.ContentMarginBottom = 0;
         return box;
     }
 

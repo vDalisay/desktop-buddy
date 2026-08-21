@@ -213,7 +213,7 @@ public partial class Win98WindowFrame : PanelContainer
             Name = "TitleBarRow",
             MouseFilter = MouseFilterEnum.Pass,
         };
-        row.AddThemeConstantOverride("separation", 2);
+        row.AddThemeConstantOverride("separation", Win98ThemeFactory.TitleButtonGap);
         bar.AddChild(row);
         TitleBarCommands = row;
 
@@ -240,11 +240,20 @@ public partial class Win98WindowFrame : PanelContainer
         _titleLabel.AddThemeFontSizeOverride("font_size", 14);
         row.AddChild(_titleLabel);
 
-        row.AddChild(CommandButton("_", "Minimize", () => EmitSignal(SignalName.MinimizeRequested)));
+        Button minimize = CommandButton("_", "Minimize", () => EmitSignal(SignalName.MinimizeRequested));
+        minimize.Name = "MinimizeBox";
+        row.AddChild(minimize);
         row.AddChild(CommandButton("□", "Maximize or restore", () => EmitSignal(SignalName.MaximizeRestoreRequested)));
         Button close = CommandButton("×", "Close", () => EmitSignal(SignalName.CloseRequested));
         UiFeedbackAudioBootstrap.Tag(close, UiSfx.Exit);
         row.AddChild(close);
+        // The close button used to sit flush against the window border.
+        row.AddChild(new Control
+        {
+            Name = "TitleBarEdgeGap",
+            CustomMinimumSize = new Vector2(Win98ThemeFactory.TitleButtonGap, 0),
+            MouseFilter = MouseFilterEnum.Ignore,
+        });
         return bar;
     }
 
@@ -254,10 +263,10 @@ public partial class Win98WindowFrame : PanelContainer
         {
             Text = text,
             TooltipText = tooltip,
-            CustomMinimumSize = new Vector2(20, 18),
             FocusMode = FocusModeEnum.All,
             MouseFilter = MouseFilterEnum.Stop,
         };
+        Win98ThemeFactory.StyleTitleButton(button);
         button.Pressed += action;
         return button;
     }

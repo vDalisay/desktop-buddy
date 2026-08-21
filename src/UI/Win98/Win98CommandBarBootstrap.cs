@@ -287,7 +287,7 @@ public partial class Win98CommandBarBootstrap : Node
         column.AddChild(titleBar);
 
         var titleRow = new HBoxContainer();
-        titleRow.AddThemeConstantOverride("separation", 2);
+        titleRow.AddThemeConstantOverride("separation", Win98ThemeFactory.TitleButtonGap);
         titleBar.AddChild(titleRow);
         _flyoutTitle = new Label
         {
@@ -300,14 +300,7 @@ public partial class Win98CommandBarBootstrap : Node
         titleRow.AddChild(_flyoutTitle);
         var close = AddMenuCommand(titleRow, "×", "Close this menu.", CloseFlyout);
         close.Name = "CloseBox";
-        close.CustomMinimumSize = new Vector2(22, 18);
-        close.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
-        close.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Highlight, 2));
-        close.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 2));
-        close.AddThemeStyleboxOverride("hover_pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Highlight, 2));
-        close.AddThemeColorOverride("font_color", Win98ThemeFactory.Dark);
-        close.AddThemeColorOverride("font_hover_color", Win98ThemeFactory.Dark);
-        close.AddThemeColorOverride("font_pressed_color", Win98ThemeFactory.Dark);
+        Win98ThemeFactory.StyleTitleButton(close);
 
         _flyoutBody = new PanelContainer
         {

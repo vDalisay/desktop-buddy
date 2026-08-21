@@ -61,9 +61,9 @@ public static class Win98Dialog
                 Name = "CloseBox",
                 Text = "✕",
                 TooltipText = "Close this window.",
-                CustomMinimumSize = new Vector2(20, 18),
                 FocusMode = Control.FocusModeEnum.All,
             };
+            Win98ThemeFactory.StyleTitleButton(close);
             close.Pressed += onClose;
             UiFeedbackAudioBootstrap.Tag(close, UiSfx.Exit);
             titleRow.AddChild(close);

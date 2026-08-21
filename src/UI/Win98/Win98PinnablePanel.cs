@@ -60,7 +60,6 @@ public partial class Win98PinnablePanel : Node
             Name = "PinBox",
             Text = "📌",
             TooltipText = "Detach this panel into a desktop window. Press again to return it.",
-            CustomMinimumSize = new Vector2(24, 18),
             FocusMode = Control.FocusModeEnum.All,
         };
         _pin.Pressed += Toggle;
@@ -176,13 +175,5 @@ public partial class Win98PinnablePanel : Node
         }
     }
 
-    private static void StyleTitleButton(Button button)
-    {
-        button.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
-        button.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(Win98ThemeFactory.Highlight, 2));
-        button.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 2));
-        button.AddThemeColorOverride("font_color", Win98ThemeFactory.Dark);
-        button.AddThemeColorOverride("font_hover_color", Win98ThemeFactory.Dark);
-        button.AddThemeColorOverride("font_pressed_color", Win98ThemeFactory.Dark);
-    }
+    private static void StyleTitleButton(Button button) => Win98ThemeFactory.StyleTitleButton(button);
 }

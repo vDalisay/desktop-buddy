@@ -1528,11 +1528,15 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _help.GetParent()?.RemoveChild(_help);
         _help.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         _help.OffsetLeft = _help.OffsetTop = _help.OffsetRight = _help.OffsetBottom = 0;
-        _help.CustomMinimumSize = new Vector2(20, 18);
+        Win98ThemeFactory.StyleTitleButton(_help);
         _help.Text = "?";
         row.AddChild(_help);
-        // Minimize, Maximize and Close are the last three commands; Help sits just before them.
-        row.MoveChild(_help, Math.Max(0, row.GetChildCount() - 4));
+        // Anchored to Minimize by name rather than counted back from the end: the count broke
+        // the moment the row grew an edge spacer, and Help landed between _ and □.
+        int minimize = row.FindChild("MinimizeBox", false, false) is Control box
+            ? box.GetIndex()
+            : Math.Max(0, row.GetChildCount() - 4);
+        row.MoveChild(_help, minimize);
         _helpDocked = true;
     }
 
