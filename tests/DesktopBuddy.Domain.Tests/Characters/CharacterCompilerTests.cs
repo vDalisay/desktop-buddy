@@ -153,7 +153,7 @@ public sealed class CharacterCompilerTests
             // Second cosmetic wave (owner instruction 2026-08-21).
             CharacterFeatureIds.FaceWrinkles, CharacterFeatureIds.FaceChiseledCheeks, CharacterFeatureIds.FaceFreckles, CharacterFeatureIds.FaceRosyCheeks, CharacterFeatureIds.FaceStubble,
             CharacterFeatureIds.HairElderTufts,
-            CharacterFeatureIds.EyesSleepyHalf, CharacterFeatureIds.EyesAngrySlant, CharacterFeatureIds.EyesWideSparkle, CharacterFeatureIds.EyesNarrowSlit, CharacterFeatureIds.EyesBigRound,
+            CharacterFeatureIds.EyesSleepyHalf, CharacterFeatureIds.EyesAngrySlant, CharacterFeatureIds.EyesWideSparkle, CharacterFeatureIds.EyesNarrowSlit, CharacterFeatureIds.EyesBigRound, CharacterFeatureIds.EyesGlossyOval,
             CharacterFeatureIds.NosePointedBeak, CharacterFeatureIds.NoseWideFlat, CharacterFeatureIds.NoseUpturned, CharacterFeatureIds.NoseHooked, CharacterFeatureIds.NoseTinyDot,
             CharacterFeatureIds.MouthWideGrin, CharacterFeatureIds.MouthFrown, CharacterFeatureIds.MouthSmirk, CharacterFeatureIds.MouthOpenSmile, CharacterFeatureIds.MouthPucker,
             CharacterFeatureIds.EarsElf,

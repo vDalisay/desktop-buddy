@@ -104,6 +104,12 @@ internal static class BuddyStudioThumbnailCache
                 break;
 
             case CharacterFeatureIds.EyesSoftOval:
+                Ellipse(image, 38, 34, 6, 8, accent);
+                Ellipse(image, 58, 34, 6, 8, accent);
+                EllipseRing(image, 38, 34, 6, 8, ink, 2);
+                EllipseRing(image, 58, 34, 6, 8, ink, 2);
+                break;
+            case CharacterFeatureIds.EyesGlossyOval:
                 // White, iris, pupil, catchlight — the same four parts the runtime draws.
                 MiiEye(image, 38, 34, 6, 8, accent, ink);
                 MiiEye(image, 58, 34, 6, 8, accent, ink);
@@ -121,12 +127,14 @@ internal static class BuddyStudioThumbnailCache
                 OutlineRect(image, 50, 31, 16, 6, ink, 2);
                 break;
             case CharacterFeatureIds.EyesLashedOval:
-                MiiEye(image, 38, 34, 6, 8, accent, ink);
-                MiiEye(image, 58, 34, 6, 8, accent, ink);
-                Line(image, 32, 28, 27, 25, accent, 2);
-                Line(image, 33, 31, 27, 30, accent, 2);
-                Line(image, 64, 28, 69, 25, accent, 2);
-                Line(image, 63, 31, 69, 30, accent, 2);
+                Ellipse(image, 38, 34, 6, 8, accent);
+                Ellipse(image, 58, 34, 6, 8, accent);
+                EllipseRing(image, 38, 34, 6, 8, ink, 2);
+                EllipseRing(image, 58, 34, 6, 8, ink, 2);
+                Line(image, 32, 28, 27, 25, ink, 2);
+                Line(image, 33, 31, 27, 30, ink, 2);
+                Line(image, 64, 28, 69, 25, ink, 2);
+                Line(image, 63, 31, 69, 30, ink, 2);
                 break;
 
             case CharacterFeatureIds.BrowsSoftArc:
@@ -256,36 +264,51 @@ internal static class BuddyStudioThumbnailCache
 
             // ---- Second cosmetic wave (owner instruction 2026-08-21) --------------------
             case CharacterFeatureIds.FaceWrinkles:
-                Line(image, 34, 20, 62, 20, accent, 2);
-                Line(image, 32, 25, 64, 25, accent, 2);
-                Line(image, 24, 33, 30, 31, accent, 2);
-                Line(image, 24, 37, 30, 38, accent, 2);
-                Line(image, 72, 33, 66, 31, accent, 2);
-                Line(image, 72, 37, 66, 38, accent, 2);
-                Line(image, 38, 42, 34, 52, accent, 2);
-                Line(image, 58, 42, 62, 52, accent, 2);
+                // Two brow furrows, crow's feet fanning from each eye, nasolabial folds.
+                Arc(image, 48, 27, 14, 5, 190, 350, accent, 2);
+                Arc(image, 48, 22, 11, 4, 190, 350, accent, 2);
+                Line(image, 30, 33, 24, 31, accent, 2);
+                Line(image, 30, 36, 23, 36, accent, 2);
+                Line(image, 30, 39, 24, 41, accent, 2);
+                Line(image, 66, 33, 72, 31, accent, 2);
+                Line(image, 66, 36, 73, 36, accent, 2);
+                Line(image, 66, 39, 72, 41, accent, 2);
+                Arc(image, 40, 45, 8, 9, 250, 340, accent, 2);
+                Arc(image, 56, 45, 8, 9, 200, 290, accent, 2);
                 break;
             case CharacterFeatureIds.FaceChiseledCheeks:
-                Line(image, 34, 33, 30, 48, accent, 3);
-                Line(image, 62, 33, 66, 48, accent, 3);
-                Line(image, 30, 48, 40, 55, accent, 3);
-                Line(image, 66, 48, 56, 55, accent, 3);
+                Arc(image, 40, 38, 10, 13, 250, 350, accent, 3);
+                Arc(image, 56, 38, 10, 13, 190, 290, accent, 3);
+                Arc(image, 42, 48, 9, 7, 280, 350, accent, 2);
+                Arc(image, 54, 48, 9, 7, 190, 260, accent, 2);
                 break;
             case CharacterFeatureIds.FaceFreckles:
-                Circle(image, 33, 38, 2, accent);
-                Circle(image, 38, 43, 2, accent);
-                Circle(image, 29, 44, 2, accent);
-                Circle(image, 63, 38, 2, accent);
-                Circle(image, 58, 43, 2, accent);
-                Circle(image, 67, 44, 2, accent);
+                Circle(image, 34, 38, 2, accent);
+                Circle(image, 39, 43, 2, accent);
+                Circle(image, 30, 44, 2, accent);
+                Circle(image, 27, 41, 1, accent);
+                Circle(image, 45, 41, 1, accent);
+                Circle(image, 62, 38, 2, accent);
+                Circle(image, 57, 43, 2, accent);
+                Circle(image, 66, 44, 2, accent);
+                Circle(image, 69, 41, 1, accent);
+                Circle(image, 51, 41, 1, accent);
                 break;
             case CharacterFeatureIds.FaceRosyCheeks:
-                Ellipse(image, 32, 42, 9, 6, accent);
-                Ellipse(image, 64, 42, 9, 6, accent);
+                Ellipse(image, 33, 41, 8, 5, accent);
+                Ellipse(image, 63, 41, 8, 5, accent);
+                Line(image, 30, 44, 32, 38, accent, 1);
+                Line(image, 34, 44, 36, 38, accent, 1);
+                Line(image, 60, 44, 62, 38, accent, 1);
+                Line(image, 64, 44, 66, 38, accent, 1);
                 break;
             case CharacterFeatureIds.FaceStubble:
-                Ellipse(image, 48, 51, 20, 7, accent);
-                Ellipse(image, 48, 42, 8, 3, accent);
+                // A jaw-hugging crescent and a moustache, not a slab across the mouth.
+                Arc(image, 48, 35, 22, 21, 20, 160, accent, 5);
+                Arc(image, 48, 35, 17, 16, 30, 150, accent, 4);
+                Ellipse(image, 48, 51, 6, 4, accent);
+                Arc(image, 43, 43, 5, 3, 190, 350, accent, 3);
+                Arc(image, 53, 43, 5, 3, 190, 350, accent, 3);
                 break;
 
             case CharacterFeatureIds.HairElderTufts:

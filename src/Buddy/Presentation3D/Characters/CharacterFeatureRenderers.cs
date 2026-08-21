@@ -20,6 +20,13 @@ internal enum EyeVariant
     WideSparkle,
     NarrowSlit,
     BigRound,
+
+    /// <summary>
+    /// The soft oval with a Mii's anatomy behind it: a white, an iris and a catchlight. It is
+    /// a style of its own rather than a change to <see cref="SoftOval"/>, which the owner keeps
+    /// as the default look (owner instruction 2026-08-21).
+    /// </summary>
+    GlossyOval,
 }
 
 internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
@@ -115,7 +122,7 @@ internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
     /// deliberately solid and must stay that way or they stop being those styles.
     /// </summary>
     private bool HasSclera => _variant is
-        EyeVariant.SoftOval or EyeVariant.LashedOval or EyeVariant.WideSparkle or
+        EyeVariant.GlossyOval or EyeVariant.WideSparkle or
         EyeVariant.BigRound or EyeVariant.SleepyHalf or EyeVariant.AngrySlant;
 
     /// <summary>
@@ -157,6 +164,7 @@ internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
         switch (_variant)
         {
             case EyeVariant.SoftOval:
+            case EyeVariant.GlossyOval:
                 AddPolygon(commands, CharacterGeometry.Ellipse(center, 0.105f, height), fill, outline, transform);
                 break;
             case EyeVariant.RoundDot:
@@ -172,9 +180,9 @@ internal sealed class ProceduralEyeRenderer : ICharacterEyeRenderer
                 float lashSide = center.X < 0.0f ? -1.0f : 1.0f;
                 Vector2 corner = center + new Vector2(lashSide * 0.09f, height * 0.5f);
                 AddStroke(commands, [corner, corner + new Vector2(lashSide * 0.15f, 0.08f)],
-                    0.026f, eyeColor, outline, transform);
+                    0.026f, fill, outline, transform);
                 AddStroke(commands, [corner + new Vector2(lashSide * 0.02f, -0.06f), corner + new Vector2(lashSide * 0.17f, -0.02f)],
-                    0.026f, eyeColor, outline, transform);
+                    0.026f, fill, outline, transform);
                 break;
             case EyeVariant.SleepyHalf:
                 // Lower half of an oval, capped by a heavy lid line across the top.

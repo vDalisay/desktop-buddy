@@ -178,6 +178,16 @@ public partial class BuddyVisualRigView
     {
         Color color = ToGodotColor(appearance.Color);
         float headRadius = PartMeshRadius(BuddyPartId.Head);
+
+        // The crown anchor sits 0.48 radii in FRONT of the head centre, because it is where
+        // hair hangs from and hair is built with matching negative offsets. Hats were built at
+        // the anchor itself, so every one of them rode forward onto the buddy's face with its
+        // brim across his eyes (owner report 2026-08-21). Undo the anchor's lean here, once,
+        // and lift them onto the crown: the hats then sit centred on the head by construction
+        // rather than each one carrying its own correction.
+        if (visual.Slot == CharacterFeatureSlot.Headwear)
+            root.Position = new Vector3(0.0f, 0.14f * headRadius, -0.48f * headRadius);
+
         switch (visual.Kind)
         {
             case BuddyCosmeticVisualKind.HairShortSweep:
@@ -295,46 +305,84 @@ public partial class BuddyVisualRigView
                 AddEllipsoid(pairedRoot, "RightStep", shoePosition / footRadius, shoeScale, footRadius, color, visual.Layer);
                 break;
             // ---- Second cosmetic wave (owner instruction 2026-08-21) --------------------
-            // Face styles sit on the same flat plane as the drawn face plate, so they read as
-            // marks on the face rather than lumps stuck to the head.
+            // Face styles are marks on the skin, so they are laid out in the same normalized
+            // space the drawn face uses and bent back onto the head's curve. The first pass
+            // built them from straight boxes and one wide slab, which read as stickers stuck
+            // on the face rather than as a crease or a beard (owner report 2026-08-21).
             case BuddyCosmeticVisualKind.FaceWrinkles:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
-                AddBox(root, "BrowLineHigh", new Vector3(0, 0.50f * headRadius, 0), new Vector3(0.54f * headRadius, 0.026f * headRadius, 0.03f * headRadius), color, visual.Layer);
-                AddBox(root, "BrowLineLow", new Vector3(0, 0.40f * headRadius, 0), new Vector3(0.64f * headRadius, 0.026f * headRadius, 0.03f * headRadius), color, visual.Layer);
+                // Two shallow bows across the forehead, the upper one shorter, the way a brow
+                // furrow actually stacks.
+                AddFaceArc(root, "BrowLow", new Vector2(0.0f, 0.30f), 0.30f, 0.10f, 18.0f, 162.0f, 0.040f, 11, headRadius, color, visual.Layer, taper: 0.55f);
+                AddFaceArc(root, "BrowHigh", new Vector2(0.0f, 0.43f), 0.24f, 0.08f, 22.0f, 158.0f, 0.036f, 9, headRadius, color, visual.Layer, taper: 0.6f);
                 foreach (float wrinkleSide in new[] { -1.0f, 1.0f })
                 {
-                    AddBox(root, $"CrowHigh{wrinkleSide}", new Vector3(wrinkleSide * 0.50f * headRadius, 0.18f * headRadius, 0), new Vector3(0.16f * headRadius, 0.022f * headRadius, 0.03f * headRadius), color, visual.Layer, wrinkleSide * -14f);
-                    AddBox(root, $"CrowLow{wrinkleSide}", new Vector3(wrinkleSide * 0.50f * headRadius, 0.09f * headRadius, 0), new Vector3(0.16f * headRadius, 0.022f * headRadius, 0.03f * headRadius), color, visual.Layer, wrinkleSide * 14f);
-                    AddBox(root, $"Laugh{wrinkleSide}", new Vector3(wrinkleSide * 0.30f * headRadius, -0.26f * headRadius, 0), new Vector3(0.028f * headRadius, 0.28f * headRadius, 0.03f * headRadius), color, visual.Layer, wrinkleSide * 16f);
+                    // Crow's feet fan from the outer eye corner; the middle one is the longest.
+                    for (int ray = -1; ray <= 1; ray++)
+                    {
+                        float spread = ray * 0.075f;
+                        float length = ray == 0 ? 0.15f : 0.11f;
+                        AddFaceLine(root, $"Crow{wrinkleSide}_{ray}",
+                            new Vector2(wrinkleSide * 0.38f, 0.13f + spread),
+                            new Vector2(wrinkleSide * (0.38f + length), 0.13f + (spread * 1.9f)),
+                            0.034f, 5, headRadius, color, visual.Layer, taper: 0.6f);
+                    }
+
+                    // The nasolabial fold: nose wing down past the mouth corner.
+                    AddFaceArc(root, $"Fold{wrinkleSide}", new Vector2(wrinkleSide * 0.02f, -0.12f), wrinkleSide * 0.26f, 0.24f, 70.0f, -40.0f, 0.038f, 8, headRadius, color, visual.Layer, taper: 0.5f);
                 }
                 break;
             case BuddyCosmeticVisualKind.FaceChiseledCheeks:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
                 foreach (float cheekSide in new[] { -1.0f, 1.0f })
                 {
-                    AddBox(root, $"CheekLine{cheekSide}", new Vector3(cheekSide * 0.44f * headRadius, -0.10f * headRadius, 0), new Vector3(0.045f * headRadius, 0.46f * headRadius, 0.03f * headRadius), color, visual.Layer, cheekSide * -16f);
-                    AddBox(root, $"JawLine{cheekSide}", new Vector3(cheekSide * 0.34f * headRadius, -0.44f * headRadius, 0), new Vector3(0.26f * headRadius, 0.04f * headRadius, 0.03f * headRadius), color, visual.Layer, cheekSide * 22f);
+                    // One long hollow curving in under the cheekbone, and a short jaw accent
+                    // below it. Together they read as bone rather than as two straight sticks.
+                    AddFaceArc(root, $"Hollow{cheekSide}", new Vector2(cheekSide * 0.14f, -0.02f), cheekSide * 0.34f, 0.32f, 62.0f, -52.0f, 0.046f, 10, headRadius, color, visual.Layer, taper: 0.45f);
+                    AddFaceArc(root, $"Jaw{cheekSide}", new Vector2(cheekSide * 0.10f, -0.30f), cheekSide * 0.30f, 0.22f, 8.0f, -62.0f, 0.040f, 7, headRadius, color, visual.Layer, taper: 0.55f);
                 }
                 break;
             case BuddyCosmeticVisualKind.FaceFreckles:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
                 foreach (float freckleSide in new[] { -1.0f, 1.0f })
                 {
-                    AddEllipsoid(root, $"FreckleA{freckleSide}", new Vector3(freckleSide * 0.30f, -0.16f, 0), new Vector3(0.05f, 0.05f, 0.02f), headRadius, color, visual.Layer);
-                    AddEllipsoid(root, $"FreckleB{freckleSide}", new Vector3(freckleSide * 0.42f, -0.08f, 0), new Vector3(0.05f, 0.05f, 0.02f), headRadius, color, visual.Layer);
-                    AddEllipsoid(root, $"FreckleC{freckleSide}", new Vector3(freckleSide * 0.38f, -0.24f, 0), new Vector3(0.04f, 0.04f, 0.02f), headRadius, color, visual.Layer);
-                    AddEllipsoid(root, $"FreckleD{freckleSide}", new Vector3(freckleSide * 0.14f, -0.20f, 0), new Vector3(0.04f, 0.04f, 0.02f), headRadius, color, visual.Layer);
+                    // Scattered across the cheek and over the bridge, in two loose rows.
+                    AddFaceDot(root, $"FreckleA{freckleSide}", new Vector2(freckleSide * 0.30f, -0.13f), 0.045f, headRadius, color, visual.Layer);
+                    AddFaceDot(root, $"FreckleB{freckleSide}", new Vector2(freckleSide * 0.43f, -0.05f), 0.042f, headRadius, color, visual.Layer);
+                    AddFaceDot(root, $"FreckleC{freckleSide}", new Vector2(freckleSide * 0.38f, -0.22f), 0.036f, headRadius, color, visual.Layer);
+                    AddFaceDot(root, $"FreckleD{freckleSide}", new Vector2(freckleSide * 0.52f, -0.16f), 0.033f, headRadius, color, visual.Layer);
+                    AddFaceDot(root, $"FreckleE{freckleSide}", new Vector2(freckleSide * 0.13f, -0.09f), 0.030f, headRadius, color, visual.Layer);
                 }
                 break;
             case BuddyCosmeticVisualKind.FaceRosyCheeks:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
                 foreach (float rosySide in new[] { -1.0f, 1.0f })
-                    AddEllipsoid(root, $"Rosy{rosySide}", new Vector3(rosySide * 0.42f, -0.14f, 0), new Vector3(0.30f, 0.22f, 0.03f), headRadius, color, visual.Layer);
+                {
+                    AddFaceBlob(root, $"Rosy{rosySide}", new Vector2(rosySide * 0.38f, -0.11f), new Vector2(0.25f, 0.17f), headRadius, color, visual.Layer);
+                    // Three little hatch strokes over the blush, the way a Mii's cheeks are drawn.
+                    for (int hatch = -1; hatch <= 1; hatch++)
+                    {
+                        AddFaceLine(root, $"RosyHatch{rosySide}_{hatch}",
+                            new Vector2((rosySide * 0.38f) + (hatch * 0.10f), -0.20f),
+                            new Vector2((rosySide * 0.38f) + (hatch * 0.10f) + (rosySide * 0.05f), -0.02f),
+                            0.026f, 4, headRadius, color.Lightened(0.35f), visual.Layer, taper: 0.5f);
+                    }
+                }
                 break;
             case BuddyCosmeticVisualKind.FaceStubble:
                 ApplyFeatureTransform(root, appearance.Transform, headRadius);
-                AddEllipsoid(root, "StubbleJaw", new Vector3(0, -0.48f, 0), new Vector3(0.74f, 0.26f, 0.03f), headRadius, color, visual.Layer);
-                AddEllipsoid(root, "StubbleLip", new Vector3(0, -0.22f, 0), new Vector3(0.30f, 0.09f, 0.03f), headRadius, color, visual.Layer);
+                // A beard follows the jaw. The first pass was one flat slab across the middle
+                // of the face, which buried the mouth; this is three arcs hugging the lower
+                // head outline, tapering up towards the ears, plus a chin patch and a
+                // moustache clear of the mouth.
+                AddFaceArc(root, "BeardOuter", Vector2.Zero, 0.74f, 0.70f, 202.0f, 338.0f, 0.115f, 15, headRadius, color, visual.Layer, taper: 0.55f);
+                AddFaceArc(root, "BeardMid", Vector2.Zero, 0.60f, 0.58f, 210.0f, 330.0f, 0.105f, 13, headRadius, color, visual.Layer, taper: 0.5f);
+                AddFaceArc(root, "BeardInner", Vector2.Zero, 0.44f, 0.46f, 224.0f, 316.0f, 0.090f, 9, headRadius, color, visual.Layer, taper: 0.45f);
+                AddFaceBlob(root, "BeardChin", new Vector2(0.0f, -0.50f), new Vector2(0.20f, 0.13f), headRadius, color, visual.Layer);
+                foreach (float lipSide in new[] { -1.0f, 1.0f })
+                {
+                    AddFaceArc(root, $"Moustache{lipSide}", new Vector2(lipSide * 0.09f, -0.15f), lipSide * 0.11f, 0.07f, 120.0f, -20.0f, 0.055f, 5, headRadius, color, visual.Layer, taper: 0.4f);
+                }
                 break;
 
             case BuddyCosmeticVisualKind.HairElderTufts:
@@ -544,6 +592,65 @@ public partial class BuddyVisualRigView
             AddBox(root, $"LensRight{sign}", new Vector3(x + lensWidth * 0.5f, 0, 0), new Vector3(frame, lensHeight, frame), color, layer);
         }
         AddBox(root, "Bridge", Vector3.Zero, new Vector3(radius * 0.22f, frame, frame), color, layer);
+    }
+
+    /// <summary>
+    /// How far back a point at normalized distance <paramref name="nx"/>,<paramref name="ny"/>
+    /// from the face's centre has to sit to lie on the head instead of floating in front of
+    /// it. The drawn face is a flat plate, which is fine for a decal seen head-on, but Buddy
+    /// Studio now turns the preview — so face marks are wrapped onto the sphere.
+    /// </summary>
+    private static float FaceSurfaceZ(float nx, float ny)
+    {
+        float squared = (nx * nx) + (ny * ny);
+        return Mathf.Sqrt(Mathf.Max(0.0f, 1.0f - squared)) - 1.0f;
+    }
+
+    /// <summary>One soft mark on the face, wrapped onto the head's curve.</summary>
+    private void AddFaceDot(Node3D root, string name, Vector2 at, float size, float headRadius, Color color, BuddyCosmeticRenderLayer layer) =>
+        AddEllipsoid(root, name, new Vector3(at.X, at.Y, FaceSurfaceZ(at.X, at.Y)), new Vector3(size, size, 0.02f), headRadius, color, layer);
+
+    /// <summary>An oval patch — a blush, a chin patch — wrapped onto the head's curve.</summary>
+    private void AddFaceBlob(Node3D root, string name, Vector2 at, Vector2 size, float headRadius, Color color, BuddyCosmeticRenderLayer layer) =>
+        AddEllipsoid(root, name, new Vector3(at.X, at.Y, FaceSurfaceZ(at.X, at.Y)), new Vector3(size.X, size.Y, 0.02f), headRadius, color, layer);
+
+    /// <summary>
+    /// A curved crease, drawn as a run of beads along an elliptical arc and tapered towards
+    /// both ends so it fades out rather than stopping dead. Straight boxes gave hard-cornered
+    /// bars that read as stickers; a real crease bends and thins.
+    /// </summary>
+    private void AddFaceArc(Node3D root, string name, Vector2 center, float radiusX, float radiusY, float startDegrees, float endDegrees, float thickness, int beads, float headRadius, Color color, BuddyCosmeticRenderLayer layer, float taper = 0.0f)
+    {
+        for (int index = 0; index < beads; index++)
+        {
+            float t = beads <= 1 ? 0.5f : index / (float)(beads - 1);
+            float angle = Mathf.DegToRad(Mathf.Lerp(startDegrees, endDegrees, t));
+            AddFaceDot(
+                root,
+                $"{name}_{index}",
+                center + new Vector2(Mathf.Cos(angle) * radiusX, Mathf.Sin(angle) * radiusY),
+                thickness * Mathf.Lerp(1.0f, 1.0f - taper, Mathf.Abs((t * 2.0f) - 1.0f)),
+                headRadius,
+                color,
+                layer);
+        }
+    }
+
+    /// <summary>The straight-line form of <see cref="AddFaceArc"/>, for short rays.</summary>
+    private void AddFaceLine(Node3D root, string name, Vector2 from, Vector2 to, float thickness, int beads, float headRadius, Color color, BuddyCosmeticRenderLayer layer, float taper = 0.0f)
+    {
+        for (int index = 0; index < beads; index++)
+        {
+            float t = beads <= 1 ? 0.5f : index / (float)(beads - 1);
+            AddFaceDot(
+                root,
+                $"{name}_{index}",
+                from.Lerp(to, t),
+                thickness * Mathf.Lerp(1.0f, 1.0f - taper, Mathf.Abs((t * 2.0f) - 1.0f)),
+                headRadius,
+                color,
+                layer);
+        }
     }
 
     private void AddEllipsoid(Node3D root, string name, Vector3 normalizedPosition, Vector3 normalizedScale, float radius, Color color, BuddyCosmeticRenderLayer layer, bool hemisphere = false)

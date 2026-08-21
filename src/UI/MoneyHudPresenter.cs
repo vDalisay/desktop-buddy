@@ -20,6 +20,18 @@ public partial class MoneyHudPresenter : PanelContainer
     private EconomyService _economy = null!;
     public bool IsInitialized { get; private set; }
 
+    /// <summary>
+    /// Whether an editor owns the screen. The balance and the reward burst belong to the play
+    /// screen; Buddy Studio and Paint Buddy have their own money readouts, and a "+$1" from a
+    /// hit landed before the window opened was still floating over the Studio afterwards
+    /// (owner report 2026-08-21).
+    ///
+    /// <para>A flag the presenter itself honours, rather than the host reaching in and setting
+    /// <c>Visible</c>: that lookup ran by node name from the scene root and quietly did nothing
+    /// when it missed, and a feedback burst arriving later turned its label back on regardless.</para>
+    /// </summary>
+    public static bool SuppressedByEditor { get; set; }
+
     public void Initialize(EconomyService economy)
     {
         if (!GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
@@ -36,6 +48,7 @@ public partial class MoneyHudPresenter : PanelContainer
 
     public override void _Process(double delta)
     {
+        Visible = !SuppressedByEditor;
         if (_remaining <= 0) return;
         _remaining -= delta;
         if (_remaining <= 0) RewardLabel.Visible = false;
@@ -57,6 +70,9 @@ public partial class MoneyHudPresenter : PanelContainer
 
     private void OnFeedback(RewardFeedback feedback)
     {
+        if (SuppressedByEditor)
+            return;
+
         // Keep sub-credit precision in the ledger so economy pacing does not change, but never
         // expose a decimal damage reward to the player. The visible burst is the ceiling of the
         // coalesced reward: +$0.01..+$1.00 reads +$1, +$1.01..+$2.00 reads +$2, etc.

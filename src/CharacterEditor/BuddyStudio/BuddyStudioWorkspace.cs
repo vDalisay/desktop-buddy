@@ -589,11 +589,24 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             entry.Kind == CatalogueEntryKind.Cosmetic && entry.HasValidPrice;
         bool affordable = !purchasable || entry.PriceMilliCredits <= _economy.BalanceMilliCredits;
         string status = equipped ? "Equipped" : owned ? "Owned preview" : "UNOWNED PREVIEW";
+        // Money is coloured the way the Inventory panel colours it (owner instruction
+        // 2026-08-21): the balance is always money-green, and the price answers the only
+        // question the player is asking — can I afford this right now.
+        Color moneyGreen = Color.Color8(0, 112, 0);
+        Color unaffordableRed = Color.Color8(192, 0, 0);
         _values.SetRows(
         [
             new Win98ValueRowPresentation("status", "Status", status, true),
-            new Win98ValueRowPresentation("price", "Price", owned ? "—" : PriceText(definition)),
-            new Win98ValueRowPresentation("balance", "Balance", ContentDisplayName.Credits(_economy.BalanceMilliCredits)),
+            new Win98ValueRowPresentation(
+                "price",
+                "Price",
+                owned ? "—" : PriceText(definition),
+                ValueColor: owned ? null : affordable ? moneyGreen : unaffordableRed),
+            new Win98ValueRowPresentation(
+                "balance",
+                "Balance",
+                ContentDisplayName.Credits(_economy.BalanceMilliCredits),
+                ValueColor: moneyGreen),
         ]);
         _buy.Text = owned ? (equipped ? "Equipped" : "Equip") :
             purchasable ? $"Buy • {PriceText(definition)}" : "Earn in Work Mode";

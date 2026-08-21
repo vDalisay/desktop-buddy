@@ -207,6 +207,13 @@ public partial class SandboxRoot : Node2D
         ApplyEffectsSettings(EffectsSettings.FromSave(Settings));
         Grenades.PinPulled += OnGrenadePinPulled;
         Grenades.Detonated += OnGrenadeDetonated;
+        // Everything the rest of the sandbox can do to a grenade meets it here: a swung tool,
+        // a round from any gun, and the sprayer's flame (owner instruction 2026-08-21). The
+        // grenade owns the rules; the tools only report that they connected. BuddyLab wires
+        // the same three lines — this is the root the shipped game actually runs.
+        Grenades.Flame = FireSprayer;
+        CursorTools.LooseObjectStruck += OnToolStruckLooseObject;
+        CursorGuns.LooseObjectStruck += OnShotStruckLooseObject;
         CareStroke.Initialize();
         CareCursor.Initialize();
         CareCursorVisual.Initialize(CareStroke);
@@ -362,6 +369,7 @@ public partial class SandboxRoot : Node2D
         if (GodotObject.IsInstanceValid(CursorGuns))
         {
             CursorGuns.ShotFired -= OnGunShotFired;
+            CursorGuns.LooseObjectStruck -= OnShotStruckLooseObject;
         }
 
         if (GodotObject.IsInstanceValid(Grenades))
@@ -397,6 +405,7 @@ public partial class SandboxRoot : Node2D
         {
             CursorTools.BodySpawned -= OnCursorToolSpawned;
             CursorTools.BodyDespawned -= OnCursorToolDespawned;
+            CursorTools.LooseObjectStruck -= OnToolStruckLooseObject;
         }
         if (GodotObject.IsInstanceValid(Window))
         {
@@ -742,6 +751,12 @@ public partial class SandboxRoot : Node2D
         Objects.Unregister(body);
         body.QueueFree();
     }
+
+    private void OnToolStruckLooseObject(LooseObjectStrike strike) =>
+        Grenades.NotifyStruck(strike.Body, strike.ContentId);
+
+    private void OnShotStruckLooseObject(ProjectileStrike strike) =>
+        Grenades.NotifyStruck(strike.Body, strike.ContentId);
 
     private void OnGrenadePinPulled(Vector2 _position)
     {

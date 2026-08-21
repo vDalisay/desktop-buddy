@@ -33,6 +33,7 @@ public sealed class CharacterFeatureRendererRegistry
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesWideSparkle, EyeVariant.WideSparkle));
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesNarrowSlit, EyeVariant.NarrowSlit));
         Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesBigRound, EyeVariant.BigRound));
+        Add(new ProceduralEyeRenderer(CharacterFeatureIds.EyesGlossyOval, EyeVariant.GlossyOval));
 
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsSoftArc, BrowVariant.SoftArc));
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsStraight, BrowVariant.Straight));

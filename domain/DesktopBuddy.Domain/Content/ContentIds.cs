@@ -78,6 +78,7 @@ public static class ContentIds
     public const string CosmeticEyesWideSparkle = "cosmetic.eyes.wide_sparkle";
     public const string CosmeticEyesNarrowSlit = "cosmetic.eyes.narrow_slit";
     public const string CosmeticEyesBigRound = "cosmetic.eyes.big_round";
+    public const string CosmeticEyesGlossyOval = "cosmetic.eyes.glossy_oval";
     public const string CosmeticNosePointedBeak = "cosmetic.nose.pointed_beak";
     public const string CosmeticNoseWideFlat = "cosmetic.nose.wide_flat";
     public const string CosmeticNoseUpturned = "cosmetic.nose.upturned";

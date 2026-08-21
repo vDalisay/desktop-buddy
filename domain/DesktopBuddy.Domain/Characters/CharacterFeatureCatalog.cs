@@ -81,6 +81,7 @@ public static class CharacterFeatureIds
     public const string EyesWideSparkle = "eyes.wide_sparkle";
     public const string EyesNarrowSlit = "eyes.narrow_slit";
     public const string EyesBigRound = "eyes.big_round";
+    public const string EyesGlossyOval = "eyes.glossy_oval";
     public const string NosePointedBeak = "nose.pointed_beak";
     public const string NoseWideFlat = "nose.wide_flat";
     public const string NoseUpturned = "nose.upturned";
@@ -299,6 +300,7 @@ public sealed class CharacterFeatureCatalog
         yield return Definition(CharacterFeatureIds.EyesWideSparkle, CharacterFeatureSlot.Eyes, 60, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesWideSparkle);
         yield return Definition(CharacterFeatureIds.EyesNarrowSlit, CharacterFeatureSlot.Eyes, 70, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesNarrowSlit);
         yield return Definition(CharacterFeatureIds.EyesBigRound, CharacterFeatureSlot.Eyes, 80, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesBigRound);
+        yield return Definition(CharacterFeatureIds.EyesGlossyOval, CharacterFeatureSlot.Eyes, 90, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesGlossyOval);
         yield return Definition(CharacterFeatureIds.NosePointedBeak, CharacterFeatureSlot.Nose, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.NoseNone, Rgba32.Parse("#F0A06B"), ownershipContentId: ContentIds.CosmeticNosePointedBeak);
         yield return Definition(CharacterFeatureIds.NoseWideFlat, CharacterFeatureSlot.Nose, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.NoseNone, Rgba32.Parse("#F0A06B"), ownershipContentId: ContentIds.CosmeticNoseWideFlat);
         yield return Definition(CharacterFeatureIds.NoseUpturned, CharacterFeatureSlot.Nose, 60, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.NoseNone, Rgba32.Parse("#F0A06B"), ownershipContentId: ContentIds.CosmeticNoseUpturned);

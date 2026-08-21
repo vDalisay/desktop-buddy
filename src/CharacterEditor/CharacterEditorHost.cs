@@ -287,6 +287,7 @@ public partial class CharacterEditorHost : CanvasLayer
     /// <summary>The credit balance belongs to gameplay: it has no meaning while painting.</summary>
     private void SetMoneyHudVisible(bool visible)
     {
+        UI.MoneyHudPresenter.SuppressedByEditor = !visible;
         if (GetTree()?.Root.FindChild("MoneyHud", true, false) is Control hud)
             hud.Visible = visible;
     }
