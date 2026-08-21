@@ -79,7 +79,7 @@ After Godot exports its .NET assemblies, the pipeline installs the stable `Obfus
 - `DesktopBuddy.Domain.dll`
 - `DesktopBuddy.Visuals.dll`
 
-The default profile follows the conservative .NET-library boundary: public APIs remain stable while private/internal implementation names are renamed. This is important because Godot bindings and `System.Text.Json` persistence depend on externally visible names remaining compatible.
+The default profile follows the conservative .NET-library boundary: public APIs remain stable while private/internal implementation names are renamed. Fields in the Godot-facing main assembly and Godot-generated bootstrap entry points are retained because the .NET runtime consumes that metadata during startup. This is important because Godot bindings and `System.Text.Json` persistence depend on externally visible names remaining compatible.
 
 The profile deliberately disables string hiding and method optimization:
 
@@ -90,13 +90,13 @@ OptimizeMethods=false
 
 Those transformations provide relatively little additional protection for this project while adding runtime work or compatibility risk. Unicode-name tricks, runtime anti-debug loops, packers and control-flow virtualization are also intentionally absent.
 
-If a future Godot callback proves incompatible with private-member renaming, a fallback package can be built with:
+If a future Godot callback proves incompatible with additional private-member renaming, a fallback package can be built with:
 
 ```bat
 tools\build_protected_demo.bat -ConservativeMainAssembly
 ```
 
-That preserves members inside the Godot-facing main assembly while still obfuscating the less engine-coupled assemblies. Treat this as a compatibility fallback, not the preferred release mode.
+That preserves all members inside the Godot-facing main assembly while still obfuscating the less engine-coupled assemblies. Treat this as a compatibility fallback, not the preferred release mode.
 
 ### 4. Symbol/source stripping
 

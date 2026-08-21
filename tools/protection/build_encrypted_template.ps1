@@ -19,7 +19,7 @@ function Invoke-Checked {
     param([Parameter(Mandatory = $true)][string]$FilePath, [Parameter(Mandatory = $true)][string[]]$Arguments)
     & $FilePath @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code $LASTEXITCODE: $FilePath $($Arguments -join ' ')"
+        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
     }
 }
 
@@ -122,20 +122,19 @@ try {
             "target=template_release",
             "arch=x86_64",
             "module_mono_enabled=yes",
-            "production=yes"
+            "production=yes",
+            "d3d12=no"
         )
     } finally {
         Pop-Location
     }
 
-    $Candidates = Get-ChildItem -LiteralPath (Join-Path $GodotSourcePath "bin") -File -Filter "*.exe" |
-        Where-Object { $_.Name -match 'windows.*template_release.*x86_64.*mono|windows.*template_release.*mono.*x86_64' } |
-        Sort-Object LastWriteTimeUtc -Descending
-    if (-not $Candidates) {
-        throw "Godot template compilation completed but no Windows x86_64 .NET template was found under '$GodotSourcePath\bin'."
+    $TemplateCandidate = Join-Path $GodotSourcePath "bin/godot.windows.template_release.x86_64.mono.exe"
+    if (-not (Test-Path -LiteralPath $TemplateCandidate -PathType Leaf)) {
+        throw "Godot template compilation completed but the GUI Windows x86_64 .NET template was not found: $TemplateCandidate"
     }
 
-    Copy-Item -LiteralPath $Candidates[0].FullName -Destination $TemplatePath -Force
+    Copy-Item -LiteralPath $TemplateCandidate -Destination $TemplatePath -Force
     Set-Content -LiteralPath $FingerprintPath -Value $Fingerprint -NoNewline -Encoding ascii
 
     Write-Host "Protected custom template ready: $TemplatePath"

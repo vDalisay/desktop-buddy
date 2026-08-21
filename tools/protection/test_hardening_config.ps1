@@ -62,6 +62,9 @@ Require-Text $Obfuscator '<Var name="KeepPublicApi" value="true" />' "public God
 Require-Text $Obfuscator '<Var name="HidePrivateApi" value="true" />' "private implementation renaming"
 Require-Text $Obfuscator '<Var name="HideStrings" value="false" />' "zero-overhead string policy"
 Require-Text $Obfuscator '<Var name="OptimizeMethods" value="false" />' "no obfuscator method rewriting"
+Require-Text $Obfuscator '<SkipField type="*" name="*" />' "Godot .NET bootstrap field compatibility"
+Require-Text $Obfuscator '<Module file="$VisualsXml">' "Godot-facing visuals module bootstrap guard"
+Require-Text $Obfuscator 'GodotPlugins.Game.Main' "Godot-generated bootstrap name compatibility"
 
 if (Get-Command git -ErrorAction SilentlyContinue) {
     $TrackedProtected = @(& git -C $ProjectRoot ls-files -- .protected)

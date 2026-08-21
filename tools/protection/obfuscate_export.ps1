@@ -19,7 +19,7 @@ function Invoke-Checked {
     param([Parameter(Mandatory = $true)][string]$FilePath, [Parameter(Mandatory = $true)][string[]]$Arguments)
     & $FilePath @Arguments
     if ($LASTEXITCODE -ne 0) {
-        throw "Command failed with exit code $LASTEXITCODE: $FilePath $($Arguments -join ' ')"
+        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
     }
 }
 
@@ -72,8 +72,10 @@ foreach ($Name in $AssemblyNames) {
 }
 
 # Public API names are intentionally retained. Godot's generated bindings and the JSON save contract
-# depend on stable externally visible names. We only rename implementation details; string hiding and
-# method-body optimization are disabled so obfuscation adds effectively no runtime work.
+# depend on stable externally visible names. Godot's generated .NET bootstrap also needs field metadata
+# in the main assembly intact, so fields are preserved there while implementation members elsewhere are
+# renamed. String hiding and method-body optimization are disabled so obfuscation adds effectively no
+# runtime work.
 #
 # `nameof(...)` becomes a literal string in IL. Godot APIs such as CallDeferred may use that string for
 # dynamic member lookup, so preserve matching private members automatically. This lets the default mode
@@ -119,11 +121,17 @@ $NameofSafetyRules = if ($SafetyRuleLines.Count -gt 0) {
     ""
 }
 
-$MainSafetyRules = ""
-if ($ConservativeMainAssembly) {
-    $MainSafetyRules = @"
-    <SkipMethod type="*" name="*" />
+$GodotBootstrapSafetyRules = @"
+    <SkipType name="GodotPlugins.Game.Main" />
+    <SkipMethod type="GodotPlugins.Game.Main" name="InitializeFromGameProject" />
+"@
+$MainSafetyRules = @"
     <SkipField type="*" name="*" />
+$GodotBootstrapSafetyRules
+"@
+if ($ConservativeMainAssembly) {
+    $MainSafetyRules += @"
+    <SkipMethod type="*" name="*" />
     <SkipProperty type="*" name="*" />
     <SkipEvent type="*" name="*" />
 "@
@@ -153,7 +161,8 @@ $Config = @"
   <Module file="$MainXml">
 $NameofSafetyRules$MainSafetyRules  </Module>
   <Module file="$DomainXml" />
-  <Module file="$VisualsXml" />
+  <Module file="$VisualsXml">
+$GodotBootstrapSafetyRules  </Module>
 </Obfuscator>
 "@
 Set-Content -LiteralPath $ConfigPath -Value $Config -Encoding utf8
