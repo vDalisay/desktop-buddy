@@ -32,8 +32,13 @@ if ($LoosePcks.Count -gt 0) {
 
 $ForbiddenSegments = @("tests", "docs", "devtools", "authoring", "tools", "artifacts", "mcp", ".github", ".codex", ".mcp", ".protected")
 $LeakedPaths = @()
+$RootPrefix = $ExportDirectory.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
 foreach ($File in $Files) {
-    $Relative = [System.IO.Path]::GetRelativePath($ExportDirectory, $File.FullName)
+    $Relative = if ($File.FullName.StartsWith($RootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $File.FullName.Substring($RootPrefix.Length)
+    } else {
+        $File.Name
+    }
     $Segments = $Relative -split '[\\/]'
     if ($Segments | Where-Object { $ForbiddenSegments -contains $_.ToLowerInvariant() }) {
         $LeakedPaths += $Relative
@@ -65,7 +70,7 @@ foreach ($Required in @(
     'dotnet/include_debug_symbols=false',
     'debug/export_console_wrapper=0'
 )) {
-    if (-not $ProtectedPreset.Contains($Required, [System.StringComparison]::Ordinal)) {
+    if ($ProtectedPreset.IndexOf($Required, [System.StringComparison]::Ordinal) -lt 0) {
         throw "Protected-demo validation failed: protected preset no longer contains '$Required'."
     }
 }
