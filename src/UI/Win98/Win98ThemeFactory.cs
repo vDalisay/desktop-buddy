@@ -32,8 +32,13 @@ public static class Win98ThemeFactory
     /// </summary>
     public const int TitleButtonSize = 18;
 
-    /// <summary>Gap between title-bar commands, and between the last one and the frame edge.</summary>
-    public const int TitleButtonGap = 3;
+    /// <summary>
+    /// Gap between title-bar commands. The gap to the right of the last one comes from the
+    /// title bar's own stylebox margin, which is the same width — an extra spacer child on the
+    /// end of the row stacked with the separation and left the close button adrift (owner
+    /// report 2026-08-21).
+    /// </summary>
+    public const int TitleButtonGap = 4;
     public const int Gap = 4;
     public const int BaseFontSize = 14;
 

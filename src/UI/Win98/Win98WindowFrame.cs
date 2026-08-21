@@ -247,13 +247,6 @@ public partial class Win98WindowFrame : PanelContainer
         Button close = CommandButton("×", "Close", () => EmitSignal(SignalName.CloseRequested));
         UiFeedbackAudioBootstrap.Tag(close, UiSfx.Exit);
         row.AddChild(close);
-        // The close button used to sit flush against the window border.
-        row.AddChild(new Control
-        {
-            Name = "TitleBarEdgeGap",
-            CustomMinimumSize = new Vector2(Win98ThemeFactory.TitleButtonGap, 0),
-            MouseFilter = MouseFilterEnum.Ignore,
-        });
         return bar;
     }
 
