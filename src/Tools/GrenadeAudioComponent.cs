@@ -152,6 +152,16 @@ public partial class GrenadeAudioComponent : Node
     private void OnPinPulled(Vector2 _point)
     {
         PinPullCount++;
+        // Knocked out by a bat or a dart rather than drawn by hand: what the player hears is
+        // the grenade's own metal, the same take its landings use, over the tool's impact
+        // (owner instruction 2026-08-21). The drawn-ring cue is for the deliberate pull.
+        if (Grenades.LastPinPullWasStruck)
+        {
+            ThudCount++;
+            Play(GrenadeAudioCue.Thud, _thud);
+            return;
+        }
+
         Play(GrenadeAudioCue.PinPull, _pinPull);
     }
 

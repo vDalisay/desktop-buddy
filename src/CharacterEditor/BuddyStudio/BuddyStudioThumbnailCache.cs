@@ -263,25 +263,6 @@ internal static class BuddyStudioThumbnailCache
                 break;
 
             // ---- Second cosmetic wave (owner instruction 2026-08-21) --------------------
-            case CharacterFeatureIds.FaceWrinkles:
-                // Two brow furrows, crow's feet fanning from each eye, nasolabial folds.
-                Arc(image, 48, 27, 14, 5, 190, 350, accent, 2);
-                Arc(image, 48, 22, 11, 4, 190, 350, accent, 2);
-                Line(image, 30, 33, 24, 31, accent, 2);
-                Line(image, 30, 36, 23, 36, accent, 2);
-                Line(image, 30, 39, 24, 41, accent, 2);
-                Line(image, 66, 33, 72, 31, accent, 2);
-                Line(image, 66, 36, 73, 36, accent, 2);
-                Line(image, 66, 39, 72, 41, accent, 2);
-                Arc(image, 40, 45, 8, 9, 250, 340, accent, 2);
-                Arc(image, 56, 45, 8, 9, 200, 290, accent, 2);
-                break;
-            case CharacterFeatureIds.FaceChiseledCheeks:
-                Arc(image, 40, 38, 10, 13, 250, 350, accent, 3);
-                Arc(image, 56, 38, 10, 13, 190, 290, accent, 3);
-                Arc(image, 42, 48, 9, 7, 280, 350, accent, 2);
-                Arc(image, 54, 48, 9, 7, 190, 260, accent, 2);
-                break;
             case CharacterFeatureIds.FaceFreckles:
                 Circle(image, 34, 38, 2, accent);
                 Circle(image, 39, 43, 2, accent);
@@ -295,20 +276,8 @@ internal static class BuddyStudioThumbnailCache
                 Circle(image, 51, 41, 1, accent);
                 break;
             case CharacterFeatureIds.FaceRosyCheeks:
-                Ellipse(image, 33, 41, 8, 5, accent);
-                Ellipse(image, 63, 41, 8, 5, accent);
-                Line(image, 30, 44, 32, 38, accent, 1);
-                Line(image, 34, 44, 36, 38, accent, 1);
-                Line(image, 60, 44, 62, 38, accent, 1);
-                Line(image, 64, 44, 66, 38, accent, 1);
-                break;
-            case CharacterFeatureIds.FaceStubble:
-                // A jaw-hugging crescent and a moustache, not a slab across the mouth.
-                Arc(image, 48, 35, 22, 21, 20, 160, accent, 5);
-                Arc(image, 48, 35, 17, 16, 30, 150, accent, 4);
-                Ellipse(image, 48, 51, 6, 4, accent);
-                Arc(image, 43, 43, 5, 3, 190, 350, accent, 3);
-                Arc(image, 53, 43, 5, 3, 190, 350, accent, 3);
+                Ellipse(image, 32, 42, 9, 6, accent);
+                Ellipse(image, 64, 42, 9, 6, accent);
                 break;
 
             case CharacterFeatureIds.HairElderTufts:

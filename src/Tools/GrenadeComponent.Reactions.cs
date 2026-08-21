@@ -43,6 +43,14 @@ public partial class GrenadeComponent
     public int StruckPinPullCount { get; private set; }
 
     /// <summary>
+    /// Whether the pin that came out on the most recent <see cref="PinPulled"/> was knocked
+    /// out rather than pulled. A struck grenade should sound like a bat meeting metal, not
+    /// like a ring being drawn (owner instruction 2026-08-21); presentation reads this
+    /// alongside the event rather than needing a second event of its own.
+    /// </summary>
+    public bool LastPinPullWasStruck { get; private set; }
+
+    /// <summary>
     /// How cooked one grenade is, 0 to 1, for the presenter's heat tint. Unknown or untracked
     /// runtime IDs read as stone cold.
     /// </summary>
@@ -163,6 +171,7 @@ public partial class GrenadeComponent
         }
         if (struck)
             StruckPinPullCount++;
+        LastPinPullWasStruck = struck;
         return (struck, forced);
     }
 }

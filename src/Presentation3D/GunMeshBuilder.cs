@@ -108,8 +108,11 @@ public static class GunMeshBuilder
     }
 
     /// <summary>
-    /// The toy: a fat rounded body, an oversized barrel, and the wide orange tip that
-    /// makes a toy gun legible as one at a glance.
+    /// The toy: a chunky shell with a raised rail, a fat barrel under a bright muzzle ring,
+    /// a dart drum slung underneath and a trigger you can see. It used to be five plain
+    /// boxes and read as a brick with a stick on it (owner instruction 2026-08-21); every
+    /// part added here is one a generic foam blaster actually has, so the silhouette says
+    /// "toy" from across the room without any of the pistol's hard edges.
     /// </summary>
     private static List<Block> NerfBlaster(GunProfile profile)
     {
@@ -117,33 +120,59 @@ public static class GunMeshBuilder
         float tip = profile.VisualMuzzleTipPx;
         Color body = profile.MuzzleColor;
         Color accent = profile.AccentColor;
-        float barrelBore = length * 0.20f;
+        Color shade = body.Darkened(0.18f);
+        float barrelBore = length * 0.18f;
 
         return new List<Block>
         {
-            // Body: deliberately bulky, which is the whole point of the silhouette.
+            // Shell: bulky on purpose, and the widest thing on the gun.
             new(
-                new Vector3(length * 0.34f, -length * 0.02f, 0.0f),
-                new Vector3(length * 0.52f, length * 0.34f, length * 0.26f),
+                new Vector3(length * 0.36f, 0.0f, 0.0f),
+                new Vector3(length * 0.56f, length * 0.36f, length * 0.28f),
                 body),
-            // Barrel, centred on the bore line — the axis rounds are really born on.
+            // The raised rail along the top, and the front sight post standing off it.
             new(
-                new Vector3(length * 0.72f, 0.0f, 0.0f),
-                new Vector3(length * 0.36f, barrelBore, barrelBore),
+                new Vector3(length * 0.42f, length * 0.20f, 0.0f),
+                new Vector3(length * 0.46f, length * 0.07f, length * 0.11f),
+                accent),
+            new(
+                new Vector3(length * 0.60f, length * 0.25f, 0.0f),
+                new Vector3(length * 0.05f, length * 0.08f, length * 0.06f),
+                shade),
+            // Barrel on the bore line, capped by the wide bright ring every foam blaster has.
+            new(
+                new Vector3(length * 0.76f, 0.0f, 0.0f),
+                new Vector3(length * 0.34f, barrelBore, barrelBore),
                 body),
-            // The orange tip ring, wider than the barrel it caps.
             new(
                 new Vector3(tip - (length * 0.04f), 0.0f, 0.0f),
-                new Vector3(length * 0.10f, barrelBore * 1.45f, barrelBore * 1.45f),
+                new Vector3(length * 0.09f, barrelBore * 1.5f, barrelBore * 1.5f),
                 accent),
-            // Grip, tucked under the body and hanging below the cursor.
+            // The dart drum slung under the barrel.
             new(
-                new Vector3(length * 0.16f, -length * 0.30f, 0.0f),
-                new Vector3(length * 0.20f, length * 0.34f, length * 0.20f),
+                new Vector3(length * 0.62f, -length * 0.16f, 0.0f),
+                new Vector3(length * 0.26f, length * 0.17f, length * 0.23f),
+                accent),
+            // Trigger guard and the trigger inside it.
+            new(
+                new Vector3(length * 0.21f, -length * 0.18f, 0.0f),
+                new Vector3(length * 0.17f, length * 0.05f, length * 0.11f),
                 body),
-            // A splash of accent at the butt so the toy palette reads from both ends.
             new(
-                new Vector3(length * 0.16f, -length * 0.45f, 0.0f),
+                new Vector3(length * 0.21f, -length * 0.12f, 0.0f),
+                new Vector3(length * 0.04f, length * 0.08f, length * 0.05f),
+                shade),
+            // Grip, its colour band, and the butt cap.
+            new(
+                new Vector3(length * 0.14f, -length * 0.34f, 0.0f),
+                new Vector3(length * 0.20f, length * 0.36f, length * 0.20f),
+                body),
+            new(
+                new Vector3(length * 0.14f, -length * 0.30f, 0.0f),
+                new Vector3(length * 0.21f, length * 0.06f, length * 0.21f),
+                accent),
+            new(
+                new Vector3(length * 0.14f, -length * 0.50f, 0.0f),
                 new Vector3(length * 0.21f, length * 0.07f, length * 0.21f),
                 accent),
         };

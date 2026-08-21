@@ -70,11 +70,8 @@ public static class CharacterFeatureIds
     public const string ShoesSoftSteps = "shoes.soft_steps";
 
     // Second cosmetic wave (owner instruction 2026-08-21).
-    public const string FaceWrinkles = "face.wrinkles";
-    public const string FaceChiseledCheeks = "face.chiseled_cheeks";
     public const string FaceFreckles = "face.freckles";
     public const string FaceRosyCheeks = "face.rosy_cheeks";
-    public const string FaceStubble = "face.stubble";
     public const string HairElderTufts = "hair.elder_tufts";
     public const string EyesSleepyHalf = "eyes.sleepy_half";
     public const string EyesAngrySlant = "eyes.angry_slant";
@@ -289,11 +286,8 @@ public sealed class CharacterFeatureCatalog
         yield return Definition(CharacterFeatureIds.TopUtilityBib, CharacterFeatureSlot.Tops, 10, false, CosmeticTransformPolicy.None, CharacterFeatureIds.TopNone, Rgba32.Parse("#E3A33A"), ownershipContentId: ContentIds.CosmeticTopUtilityBib);
         yield return Definition(CharacterFeatureIds.ShoesNone, CharacterFeatureSlot.Shoes, 0, true, CosmeticTransformPolicy.None, CharacterFeatureIds.ShoesNone);
         yield return Definition(CharacterFeatureIds.ShoesSoftSteps, CharacterFeatureSlot.Shoes, 10, false, CosmeticTransformPolicy.None, CharacterFeatureIds.ShoesNone, Rgba32.Parse("#5A6575"), ownershipContentId: ContentIds.CosmeticShoesSoftSteps);
-        yield return Definition(CharacterFeatureIds.FaceWrinkles, CharacterFeatureSlot.Face, 10, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticFaceWrinkles);
-        yield return Definition(CharacterFeatureIds.FaceChiseledCheeks, CharacterFeatureSlot.Face, 20, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticFaceChiseledCheeks);
         yield return Definition(CharacterFeatureIds.FaceFreckles, CharacterFeatureSlot.Face, 30, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#6A4937"), ownershipContentId: ContentIds.CosmeticFaceFreckles);
         yield return Definition(CharacterFeatureIds.FaceRosyCheeks, CharacterFeatureSlot.Face, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#C95B63"), ownershipContentId: ContentIds.CosmeticFaceRosyCheeks);
-        yield return Definition(CharacterFeatureIds.FaceStubble, CharacterFeatureSlot.Face, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.FaceClassicPlate, Rgba32.Parse("#5A6575"), ownershipContentId: ContentIds.CosmeticFaceStubble);
         yield return Definition(CharacterFeatureIds.HairElderTufts, CharacterFeatureSlot.Hair, 40, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HairNone, Rgba32.Parse("#9AA0A6"), ownershipContentId: ContentIds.CosmeticHairElderTufts);
         yield return Definition(CharacterFeatureIds.EyesSleepyHalf, CharacterFeatureSlot.Eyes, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesSleepyHalf);
         yield return Definition(CharacterFeatureIds.EyesAngrySlant, CharacterFeatureSlot.Eyes, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.EyesSoftOval, Rgba32.Parse("#183042"), ownershipContentId: ContentIds.CosmeticEyesAngrySlant);

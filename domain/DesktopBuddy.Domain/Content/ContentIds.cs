@@ -67,11 +67,8 @@ public static class ContentIds
 
     // Second cosmetic wave (owner instruction 2026-08-21): a Mii-sized set of face,
     // eye, nose, mouth, glasses and hat styles, plus elf ears and an elder hairstyle.
-    public const string CosmeticFaceWrinkles = "cosmetic.face.wrinkles";
-    public const string CosmeticFaceChiseledCheeks = "cosmetic.face.chiseled_cheeks";
     public const string CosmeticFaceFreckles = "cosmetic.face.freckles";
     public const string CosmeticFaceRosyCheeks = "cosmetic.face.rosy_cheeks";
-    public const string CosmeticFaceStubble = "cosmetic.face.stubble";
     public const string CosmeticHairElderTufts = "cosmetic.hair.elder_tufts";
     public const string CosmeticEyesSleepyHalf = "cosmetic.eyes.sleepy_half";
     public const string CosmeticEyesAngrySlant = "cosmetic.eyes.angry_slant";

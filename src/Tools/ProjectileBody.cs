@@ -369,6 +369,9 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
             return 0.0f;
         }
 
+        if (profile.ShovesLooseObjectsOnly && target is not Objects.LooseObjectBody)
+            return 0.0f;
+
         Vector2 heading = _approachVelocity != Vector2.Zero ? _approachVelocity : _launchVelocity;
         if (heading == Vector2.Zero)
             return 0.0f;

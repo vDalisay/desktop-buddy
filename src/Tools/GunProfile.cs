@@ -216,6 +216,14 @@ public partial class GunProfile : GameResource
     [Export(PropertyHint.Range, "1,4000,1,or_greater")] public float ContactShoveZeroRangePx { get; set; } = 260.0f;
 
     /// <summary>
+    /// Whether the extra knockback above lands on loose objects only. The Nerf dart is foam:
+    /// it can send a grenade skidding across the floor (owner instruction 2026-08-21) without
+    /// becoming something that shoves the buddy around, which is the one thing the toy gun is
+    /// defined by not doing — it raises his mood and is never remembered as harmful.
+    /// </summary>
+    [Export] public bool ShovesLooseObjectsOnly { get; set; }
+
+    /// <summary>
     /// The extra shove a projectile that has flown <paramref name="travelledPx"/> delivers.
     /// Full inside the near radius, linear to nothing at the far one — the same two-radius
     /// shape the grenade's blast falloff uses, so the two read as one idea.

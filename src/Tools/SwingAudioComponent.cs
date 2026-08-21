@@ -120,6 +120,10 @@ public partial class SwingAudioComponent : Node
         CursorTools.ChargeCompleted += OnChargeCompleted;
         CursorTools.SwingReleased += OnSwingReleased;
         Pipeline.ImpactAccepted += OnImpactAccepted;
+        // A bat meeting a grenade or a ball never reached the pain pipeline, so it was silent
+        // (owner report 2026-08-21). The strike carries its own speed, so the same three
+        // authored takes tier it without inventing a second sound bank.
+        CursorTools.LooseObjectStruck += OnLooseObjectStruck;
         IsInitialized = true;
     }
 
@@ -130,6 +134,7 @@ public partial class SwingAudioComponent : Node
             CursorTools.ChargeStarted -= OnChargeStarted;
             CursorTools.ChargeCompleted -= OnChargeCompleted;
             CursorTools.SwingReleased -= OnSwingReleased;
+            CursorTools.LooseObjectStruck -= OnLooseObjectStruck;
         }
 
         if (GodotObject.IsInstanceValid(Pipeline))
@@ -177,6 +182,21 @@ public partial class SwingAudioComponent : Node
 
         HomeRunImpactCount++;
         Play(SwingAudioCue.HomeRunImpact, ImpactStreamFor(impact.RawImpulse), profile);
+    }
+
+    /// <summary>
+    /// How a strike's surface speed maps onto the impulse tiers above. A loudness choice, not
+    /// physics: the tool's own mass is already in how hard the object leaves.
+    /// </summary>
+    private const float StrikeSpeedToImpulse = 2.0f;
+
+    private void OnLooseObjectStruck(LooseObjectStrike strike)
+    {
+        if (CursorTools.SwingProfileForContent(strike.ContentId) is not { } profile)
+            return;
+
+        HomeRunImpactCount++;
+        Play(SwingAudioCue.HomeRunImpact, ImpactStreamFor(strike.Speed * StrikeSpeedToImpulse), profile);
     }
 
     /// <summary>
