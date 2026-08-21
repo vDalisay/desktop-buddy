@@ -6,6 +6,7 @@ using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Work;
+using DesktopBuddy.Onboarding;
 using DesktopBuddy.Presentation3D;
 using DesktopBuddy.UI;
 using DesktopBuddy.UI.Win98;
@@ -118,10 +119,26 @@ public partial class WorkCompanionView : CanvasLayer
     {
         SyncCompositionToWindow();
         TickNativeWindowShape(delta);
+        RefreshTutorialGates();
         if (_reactionRemaining <= 0.0)
             return;
         _reactionRemaining = Math.Max(0.0, _reactionRemaining - delta);
         ApplyWorkPose();
+    }
+
+    /// <summary>
+    /// Greys out whichever controls the current Work step is not asking for. Re-derived every
+    /// frame rather than toggled on entry and exit, so the buttons come back on their own when
+    /// the walkthrough finishes or is skipped — no unlock step to forget.
+    /// </summary>
+    private void RefreshTutorialGates()
+    {
+        if (GodotObject.IsInstanceValid(_resizeButton))
+            _resizeButton.Disabled = !TutorialInputGate.Allows(TutorialWorkControl.Resize);
+        if (GodotObject.IsInstanceValid(_motionToggle))
+            _motionToggle.Disabled = !TutorialInputGate.Allows(TutorialWorkControl.Motion);
+        if (GodotObject.IsInstanceValid(_exitButton))
+            _exitButton.Disabled = !TutorialInputGate.Allows(TutorialWorkControl.Exit);
     }
 
     public void SetCounter(long sessionTotal, long lifetimeTotal)
@@ -178,8 +195,13 @@ public partial class WorkCompanionView : CanvasLayer
             Vector2 position = ToCompositionPosition(button.Position);
             if (button.Pressed)
             {
+                // While a Work step asks for one control, the others go quiet. Leaving them live
+                // let the player exit Work Mode mid-lesson, which stranded the guidance window
+                // on screen with nothing behind it (owner report 2026-08-21).
                 if (button.DoubleClick && BuddyHitRect.HasPoint(position))
                 {
+                    if (!TutorialInputGate.Allows(TutorialWorkControl.Exit))
+                        return;
                     ExitRequested?.Invoke();
                     GetViewport().SetInputAsHandled();
                     return;
@@ -202,7 +224,7 @@ public partial class WorkCompanionView : CanvasLayer
                 _pressedCrt = false;
                 if (wasDragging)
                     DragFinished?.Invoke();
-                else if (toggleCounter)
+                else if (toggleCounter && TutorialInputGate.Allows(TutorialWorkControl.Counter))
                     CounterModeToggleRequested?.Invoke();
             }
         }
@@ -211,7 +233,7 @@ public partial class WorkCompanionView : CanvasLayer
             Vector2 delta = motion.Position - _dragOrigin;
             if (!_dragging && delta.Length() >= DragThreshold)
                 _dragging = true;
-            if (_dragging)
+            if (_dragging && TutorialInputGate.Allows(TutorialWorkControl.Drag))
             {
                 Vector2 rounded = motion.Relative.Round();
                 var step = new Vector2I((int)rounded.X, (int)rounded.Y);

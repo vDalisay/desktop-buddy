@@ -13,9 +13,13 @@ namespace DesktopBuddy.Presentation3D;
 /// <para>An earlier version blended the whole glove — cuff, mitt and thumb — into one lathed
 /// surface with the thumb as a Gaussian bulge. That reads as a blob at cursor size, because a
 /// boxing glove is recognised by its <b>separations</b>: a fat rounded mitt, a distinctly
-/// stepped and darker wrist cuff, a small thumb pod sitting proud of the lower front, and the
-/// pale lace ridge over the crown. Each of those is its own form here, so the silhouette and
-/// the flat-shaded colour blocks both say "boxing glove" at a dozen pixels.</para>
+/// stepped and darker wrist cuff, and a small thumb pod sitting proud of the lower front. Each
+/// of those is its own form here, so the silhouette and the flat-shaded colour blocks both say
+/// "boxing glove" at a dozen pixels.</para>
+///
+/// <para>There is no lace ridge. Three pale bars over the crown read at cursor size as three
+/// stray marks floating above the glove rather than as stitching, so they were removed on owner
+/// review (2026-08-20).</para>
 ///
 /// <para>Local space follows the shared cursor-aim convention: forward is <b>+X</b>, and the
 /// mesh sits on the 3D presentation plane where <b>+Y is screen up</b>
@@ -43,7 +47,6 @@ public static class BoxingGloveMeshBuilder
         Color mitt = profile.VisualColor;
         Color cuff = profile.OutlineColor;
         Color wrap = mitt.Lerp(Colors.White, 0.55f);
-        Color lace = mitt.Lerp(Colors.White, 0.88f);
         Color thumb = mitt.Darkened(0.12f);
 
         var surface = new SurfaceTool();
@@ -91,18 +94,6 @@ public static class BoxingGloveMeshBuilder
         }, r, new Transform3D(
             new Basis(Vector3.Back, -0.20f),
             new Vector3(0.12f, -0.70f, 0.0f) * r));
-
-        // Three pale lace ridges over the crown, straddling the mitt surface so they read as
-        // raised stitching rather than as a decal.
-        foreach (Block bar in new[]
-        {
-            new Block(new Vector3(0.10f, 0.96f, 0.0f), new Vector3(0.16f, 0.20f, 0.58f), lace),
-            new Block(new Vector3(0.34f, 0.99f, 0.0f), new Vector3(0.16f, 0.20f, 0.62f), lace),
-            new Block(new Vector3(0.58f, 0.95f, 0.0f), new Vector3(0.16f, 0.20f, 0.58f), lace),
-        })
-        {
-            AddBox(surface, bar, r);
-        }
 
         surface.GenerateNormals();
         return surface.Commit() ?? throw new InvalidOperationException(

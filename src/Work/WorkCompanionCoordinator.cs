@@ -359,13 +359,17 @@ public partial class WorkCompanionCoordinator : Node
             }
         }
 
-        (string title, string subtitle, string icon) = DescribeMilestone(definition);
+        (string title, string icon) = DescribeMilestone(definition);
         UiFeedbackAudioBootstrap.TryPlay(this, UiFeedbackCue.Reward);
-        RewardPopup.Show(this, RewardIconProvider.For(icon), title, subtitle, earned.RewardMilliCredits);
+        RewardPopup.Show(this, RewardIconProvider.For(icon), title, earned.RewardMilliCredits);
     }
 
-    /// <summary>What the player reads on the popup. Lifetime milestones are the achievements.</summary>
-    internal static (string Title, string Subtitle, string IconId) DescribeMilestone(
+    /// <summary>
+    /// What the player reads on the popup. Lifetime milestones are the achievements. The popup
+    /// carries one line, so the threshold is the title: "Achievement" on its own says nothing
+    /// about which one was earned.
+    /// </summary>
+    internal static (string Title, string IconId) DescribeMilestone(
         WorkMilestoneDefinition definition)
     {
         bool lifetime = definition.Scope == WorkMilestoneScope.Lifetime;
@@ -376,14 +380,13 @@ public partial class WorkCompanionCoordinator : Node
             _ => "actions",
         };
         return (
-            lifetime ? "Achievement" : "Work Milestone",
             definition.Threshold > 0
                 // Invariant: the shell's copy is English and the machine's locale must not turn
                 // "1,000,000 actions" into "1.000.000 actions", the way ContentDisplayName.Credits
                 // already pins its own formatting.
                 ? $"{definition.Threshold.ToString("N0", CultureInfo.InvariantCulture)} {counted} " +
-                  $"{(lifetime ? "all time" : "this session")}."
-                : string.Empty,
+                  $"{(lifetime ? "all time" : "this session")}"
+                : lifetime ? "Achievement" : "Work Milestone",
             lifetime ? RewardIconProvider.Trophy : RewardIconProvider.Milestone);
     }
 

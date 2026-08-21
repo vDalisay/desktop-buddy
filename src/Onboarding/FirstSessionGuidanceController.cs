@@ -87,6 +87,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             [TutorialStepIds.EnterWorkMode] = new(SpotlightScope.Shell, "Win98WorkCommand"),
         };
 
+    private static readonly string[] TitleBarButtonNames = ["PinBox", "CloseBox"];
+
     private static readonly Dictionary<string, HelpDefinition> ExplicitHelp =
         new(StringComparer.Ordinal)
         {
@@ -215,6 +217,9 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _hasGrabbedBuddy;
     private long? _torsoRevisionOrigin;
 
+    /// <summary>Set when a colour step's palette is clicked; cleared as each step opens.</summary>
+    private bool _paletteClicked;
+
     /// <summary>The document on show when the create step began; a different one means the
     /// player actually pressed New rather than inheriting whatever was already loaded.</summary>
     private Guid? _createOriginCharacterId;
@@ -303,6 +308,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             RefreshContextHelp();
         RefreshTutorialSpotlight();
         RefreshPaintMenuGate();
+        RefreshFloatingPanelGate();
+        // Republished every frame, never latched: whatever the walkthrough holds shut reopens
+        // by itself the moment the prompt goes away.
+        TutorialInputGate.Publish(_displayedStepId);
         PositionPanelForStep();
 
         _wasEditorOpen = GodotObject.IsInstanceValid(_editor) && _editor!.IsEditorOpen;
@@ -345,6 +354,17 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         if (_displayedStepId is null || !_panel.Visible)
             return;
 
+        // The colour steps complete on the click, not on the colour: white is preselected, so
+        // "pick a colour" could be satisfied by picking any swatch except the one already
+        // showing (owner report 2026-08-21). The palette is this step's spotlighted target, so
+        // its own rect is the test.
+        if (mouse is { Pressed: true, ButtonIndex: MouseButton.Left } &&
+            _displayedStepId is TutorialStepIds.SelectPaintColor or TutorialStepIds.SelectBackgroundColor &&
+            _lockedTargetRect.HasArea() && _lockedTargetRect.HasPoint(mouse.Position))
+        {
+            _paletteClicked = true;
+        }
+
         // While a prompt points at one control, that control and the tutorial window are the only
         // clickable things. Steps with no on-screen target (grabbing, swinging, painting the
         // canvas) lock nothing, and Skip Tutorial is always reachable inside the window.
@@ -375,6 +395,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     public override void _ExitTree()
     {
+        // The gate outlives this node, so a teardown that forgot this would leave the palette
+        // and the Work controls locked for the rest of the session.
+        TutorialInputGate.Publish(null);
+        RestoreFloatingPanelButtons();
         UnbindActionSignals();
         _characterPresenter?.Dismiss();
         if (GodotObject.IsInstanceValid(_workGuideWindow))
@@ -581,7 +605,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.SelectPaintColor when HasChosenPaintColor():
+            case TutorialStepIds.SelectPaintColor when _paletteClicked || HasChosenPaintColor():
                 CompleteCurrent(step);
                 break;
 
@@ -612,7 +636,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.SelectBackgroundColor when HasChosenBackgroundColor():
+            case TutorialStepIds.SelectBackgroundColor when _paletteClicked || HasChosenBackgroundColor():
                 CompleteCurrent(step);
                 break;
 
@@ -1060,6 +1084,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// row live on the right, so the window steps down to the lower left while that workspace is
     /// open. The player can always drag it; a move only happens when the zone actually changes.
     /// </summary>
+    /// <summary>Whether the modal "Create New Character" dialog is on screen.</summary>
+    private bool IsNewCharacterPromptOpen() =>
+        GetTree().Root.FindChild("Win98NewCharacterPrompt", true, false) is Control { Visible: true };
+
     private void PositionPanelForStep()
     {
         bool lowerLeft = _displayedStepId is
@@ -1067,8 +1095,13 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             TutorialStepIds.SelectPaintColor or TutorialStepIds.PaintBuddy or
             TutorialStepIds.PaintBuddy or TutorialStepIds.UsePaintedBuddy;
 
+        // The naming dialog opens centred, and the prompt's usual mid-right berth put it right
+        // against the name field the player is being asked to type into (owner report
+        // 2026-08-21). Out of the way, up in the corner, until the dialog closes.
+        bool upperRight = IsNewCharacterPromptOpen();
+
         // A drag wins until the workspace changes under it, so the window never fights the player.
-        if (_panelDragging || (_panelUserMoved && lowerLeft == _panelInLowerLeft))
+        if (_panelDragging || (_panelUserMoved && lowerLeft == _panelInLowerLeft && !upperRight))
             return;
 
         Vector2 viewport = GetViewport().GetVisibleRect().Size;
@@ -1079,8 +1112,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         // leave the panel parked at the top-left default forever.
         const float margin = 16;
         Vector2 size = _panel.Size;
-        float x = lowerLeft ? margin : viewport.X - size.X - margin;
-        float y = lowerLeft ? viewport.Y - size.Y - margin : (viewport.Y - size.Y) * 0.5f;
+        float x = lowerLeft && !upperRight ? margin : viewport.X - size.X - margin;
+        float y = upperRight
+            ? margin
+            : lowerLeft ? viewport.Y - size.Y - margin : (viewport.Y - size.Y) * 0.5f;
         _panel.Position = new Vector2(
             Math.Clamp(x, 0, Math.Max(0, viewport.X - size.X)),
             Math.Clamp(y, 0, Math.Max(0, viewport.Y - size.Y)));
@@ -1156,6 +1191,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private void RefreshHint()
     {
         string? stepId = _tutorial.NextIncompleteStepId;
+        // A click belongs to the step that was on screen when it happened; the next colour step
+        // must not inherit it and complete itself the instant it opens.
+        if (!string.Equals(stepId, _displayedStepId, StringComparison.Ordinal))
+            _paletteClicked = false;
         _displayedStepId = stepId;
         if (_helpActive || stepId is null)
         {
@@ -1671,6 +1710,47 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// soon as the walkthrough moves on. The menu rebuilds itself on every popup, so this is
     /// re-applied each frame rather than wired once.
     /// </summary>
+    /// <summary>
+    /// The float step teaches one gesture — drag the title bar out — and the two buttons sitting
+    /// on that same title bar both end the step in ways that never teach it: the pin detaches
+    /// the panel without a drag, and the close button dismisses the panel entirely.
+    ///
+    /// <para>Re-derived every frame like the Paint menu gate, and it re-enables rather than
+    /// skipping, so leaving the step (or the walkthrough) hands the buttons straight back.</para>
+    /// </summary>
+    private void RefreshFloatingPanelGate()
+    {
+        if (!IsBackgroundOpen() ||
+            _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is not Control panel)
+        {
+            return;
+        }
+
+        bool gated = string.Equals(
+            _displayedStepId, TutorialStepIds.FloatPaintBackgroundPanel, StringComparison.Ordinal);
+        foreach (string name in TitleBarButtonNames)
+        {
+            if (panel.FindChild(name, true, false) is Button button)
+                button.Disabled = gated;
+        }
+    }
+
+    /// <summary>Teardown safety net for the gate above; the per-frame pass owns the normal case.</summary>
+    private void RestoreFloatingPanelButtons()
+    {
+        if (!GodotObject.IsInstanceValid(_backgroundEditor) ||
+            _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is not Control panel)
+        {
+            return;
+        }
+
+        foreach (string name in TitleBarButtonNames)
+        {
+            if (panel.FindChild(name, true, false) is Button button)
+                button.Disabled = false;
+        }
+    }
+
     private void RefreshPaintMenuGate()
     {
         if (GetTree().Root.FindChild("Win98PaintCommand", true, false) is not MenuButton paint)

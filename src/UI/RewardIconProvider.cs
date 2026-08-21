@@ -49,10 +49,21 @@ public static class RewardIconProvider
         if (Cache.TryGetValue(slug, out Texture2D? cached))
             return cached;
 
-        string path = $"res://assets/ui/reward_icons/{slug}.svg";
-        Texture2D texture = ResourceLoader.Exists(path)
-            ? GD.Load<Texture2D>(path) ?? Generate(slug)
-            : Generate(slug);
+        // Authored art wins over the drawn fallback. The .png set is the one the capture
+        // scenario renders from each tool's own shipped mesh, which is what the player
+        // recognises; .svg stays ahead of it as the hand-authored override.
+        Texture2D? authored = null;
+        foreach (string extension in new[] { "svg", "png" })
+        {
+            string path = $"res://assets/ui/reward_icons/{slug}.{extension}";
+            if (!ResourceLoader.Exists(path))
+                continue;
+            authored = GD.Load<Texture2D>(path);
+            if (authored is not null)
+                break;
+        }
+
+        Texture2D texture = authored ?? Generate(slug);
         Cache[slug] = texture;
         return texture;
     }

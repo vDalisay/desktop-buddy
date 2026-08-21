@@ -55,7 +55,6 @@ public partial class SettingsPanel : PanelContainer
         PanelChrome.Parts parts = PanelChrome.Build(this, "SettingsActionList");
         _list = parts.List;
         _status = parts.Status;
-        _status.Text = "Changes apply immediately.";
         _description = parts.Description;
         _description.Text = DefaultDescription;
         VisibilityChanged += OnVisibilityChanged;

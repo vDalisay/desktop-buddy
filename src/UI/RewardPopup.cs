@@ -45,7 +45,6 @@ public partial class RewardPopup : CanvasLayer
     private PanelContainer? _panel;
     private GlowIcon _glow = null!;
     private Label _title = null!;
-    private Label _subtitle = null!;
     private Label _amount = null!;
 
     private double _elapsed;
@@ -61,24 +60,24 @@ public partial class RewardPopup : CanvasLayer
 
     private enum Phase { Idle, In, Dwell, Out }
 
-    private readonly record struct Request(Texture2D Icon, string Title, string Subtitle, long AmountMilliCredits);
+    private readonly record struct Request(Texture2D Icon, string Title, long AmountMilliCredits);
 
     /// <summary>
     /// Queues one reward. <paramref name="amountMilliCredits"/> of zero hides the money line.
     /// Safe to call from any node in the tree; does nothing if the autoload is absent.
     /// </summary>
-    public static void Show(Node context, Texture2D icon, string title, string subtitle, long amountMilliCredits)
+    public static void Show(Node context, Texture2D icon, string title, long amountMilliCredits)
     {
         if (!GodotObject.IsInstanceValid(context) || !context.IsInsideTree())
             return;
         if (context.GetTree().Root.GetNodeOrNull<RewardPopup>(nameof(RewardPopup)) is { } popup)
-            popup.Enqueue(icon, title, subtitle, amountMilliCredits);
+            popup.Enqueue(icon, title, amountMilliCredits);
     }
 
-    public void Enqueue(Texture2D icon, string title, string subtitle, long amountMilliCredits)
+    public void Enqueue(Texture2D icon, string title, long amountMilliCredits)
     {
         // Two milestones can cross on one Work drain, so rewards queue and play in order.
-        _queue.Enqueue(new Request(icon, title ?? string.Empty, subtitle ?? string.Empty, amountMilliCredits));
+        _queue.Enqueue(new Request(icon, title ?? string.Empty, amountMilliCredits));
         if (_phase == Phase.Idle)
             Begin();
     }
@@ -195,8 +194,6 @@ public partial class RewardPopup : CanvasLayer
         Request request = _queue.Dequeue();
         _glow.Icon = request.Icon;
         _title.Text = request.Title;
-        _subtitle.Text = request.Subtitle;
-        _subtitle.Visible = request.Subtitle.Length > 0;
         _amount.Text = "+" + ContentDisplayName.Credits(request.AmountMilliCredits);
         _amount.Visible = request.AmountMilliCredits > 0;
 
@@ -252,9 +249,6 @@ public partial class RewardPopup : CanvasLayer
 
         _title = CenteredLabel("RewardTitle", 16, Win98ThemeFactory.Dark);
         body.AddChild(_title);
-        _subtitle = CenteredLabel("RewardSubtitle", 12, Win98ThemeFactory.Shadow);
-        _subtitle.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        body.AddChild(_subtitle);
         _amount = CenteredLabel("RewardAmount", 22, MoneyGreen);
         body.AddChild(_amount);
     }

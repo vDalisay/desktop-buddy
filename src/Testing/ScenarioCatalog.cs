@@ -35,6 +35,7 @@ public static class ScenarioCatalog
         ["head_rights_after_disturbance"] = () => new HeadRightingScenario(),
         ["owner_feedback_visual"] = () => new OwnerFeedbackVisualScenario(),
         ["glove_impact_visual"] = () => new GloveImpactVisualScenario(),
+        ["reward_icon_capture"] = () => new RewardIconCaptureScenario(),
         ["lookat_priority_and_cone"] = () => new LookAtScenario(),
         ["face_composition"] = () => new FaceCompositionScenario(),
         ["repeat_envelope"] = () => new RepeatEnvelopeScenario(),

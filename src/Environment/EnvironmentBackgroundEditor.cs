@@ -1,3 +1,4 @@
+using DesktopBuddy.Onboarding;
 using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Environment;
@@ -95,7 +96,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     public override void _UnhandledInput(InputEvent input)
     {
         if (!IsOpen || input is not InputEventKey { Pressed: true, Echo: false } key) return;
-        if (key.Keycode == Key.Delete && _selectedSwatch >= 0)
+        if (key.Keycode == Key.Delete && _selectedSwatch >= 0 && TutorialInputGate.AllowsPaletteEditing)
         {
             RemoveSwatch(_selectedSwatch);
             GetViewport().SetInputAsHandled();
@@ -320,7 +321,13 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             cell.Pressed += () => SelectSwatch(captured);
             cell.GuiInput += input =>
             {
-                if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true }) RemoveSwatch(captured);
+                // Same rule as the character palette: while a prompt is asking for a colour,
+                // the swatches can be picked but not edited away.
+                if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true } &&
+                    TutorialInputGate.AllowsPaletteEditing)
+                {
+                    RemoveSwatch(captured);
+                }
             };
             _swatchGrid.AddChild(cell);
         }

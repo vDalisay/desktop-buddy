@@ -85,18 +85,21 @@ public sealed class RewardPopupScenario : IScenario
             RewardPopup.Show(
                 shop,
                 RewardIconProvider.For(RewardIconProvider.Milestone),
-                "Work Milestone",
-                "10,000 keystrokes this session.",
+                "10,000 keystrokes this session",
                 50 * RewardLedger.MilliCreditsPerCredit);
             RewardPopup.Show(
                 shop,
                 RewardIconProvider.For(RewardIconProvider.Trophy),
-                "Achievement",
-                "1,000,000 actions all time.",
+                "1,000,000 actions all time",
                 1_000 * RewardLedger.MilliCreditsPerCredit);
 
             string[] labels = ["purchase", "milestone", "achievement"];
-            string[] titles = [ContentDisplayName.For(bought.ContentId), "Work Milestone", "Achievement"];
+            string[] titles =
+            [
+                ContentDisplayName.For(bought.ContentId),
+                "10,000 keystrokes this session",
+                "1,000,000 actions all time",
+            ];
             var captured = new List<string>();
             var titlesSeen = new List<string>();
 
@@ -138,13 +141,13 @@ public sealed class RewardPopupScenario : IScenario
             var described = new List<string>();
             foreach (WorkMilestoneDefinition definition in WorkMilestoneDefaults.Create().Definitions)
             {
-                (string title, string subtitle, string icon) = WorkCompanionCoordinator.DescribeMilestone(definition);
-                described.Add($"{definition.Id}={icon}:{title}:{subtitle}");
+                (string title, string icon) = WorkCompanionCoordinator.DescribeMilestone(definition);
+                described.Add($"{definition.Id}={icon}:{title}");
             }
 
             bool copyReads =
-                described.Contains("work.session.keyboard.10000=milestone:Work Milestone:10,000 keystrokes this session.") &&
-                described.Contains("work.lifetime.actions.1000000=trophy:Achievement:1,000,000 actions all time.");
+                described.Contains("work.session.keyboard.10000=milestone:10,000 keystrokes this session") &&
+                described.Contains("work.lifetime.actions.1000000=trophy:1,000,000 actions all time");
             checks.Add(new StartupCheck("work_milestone_popup_copy_names_the_threshold", copyReads,
                 string.Join(" | ", described)));
 

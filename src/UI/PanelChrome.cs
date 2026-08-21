@@ -18,8 +18,12 @@ public static class PanelChrome
     /// <summary>Win98's own money green, matching the shell's balance readout.</summary>
     private static readonly Color ValueGreen = Color.Color8(0, 112, 0);
 
-    /// <summary>Three lines fits the longest authored usage sentence at the default scale.</summary>
-    private const int DescriptionLines = 3;
+    /// <summary>
+    /// Six lines: three fitted the longest authored sentence but left every shorter one
+    /// crowded against the footer, and the box is fixed-height so it never jumps (owner
+    /// instruction 2026-08-21).
+    /// </summary>
+    private const int DescriptionLines = 6;
     private const int DescriptionLineHeight = 18;
 
     public readonly record struct Parts(

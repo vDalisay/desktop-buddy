@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using DesktopBuddy.CharacterEditor;
+using DesktopBuddy.Onboarding;
 using DesktopBuddy.Domain.Painting;
 using Godot;
 
@@ -194,8 +195,14 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
         };
         button.GuiInput += input =>
         {
-            if (input is InputEventMouseButton { DoubleClick: true, ButtonIndex: MouseButton.Left })
+            // The colour step wants one single click on a swatch; a double-click on that same
+            // swatch used to open the block editor over the prompt. Blocked for the length of
+            // the walkthrough only — TutorialInputGate reopens it when the prompt goes away.
+            if (input is InputEventMouseButton { DoubleClick: true, ButtonIndex: MouseButton.Left } &&
+                TutorialInputGate.AllowsPaletteEditing)
+            {
                 OpenEditor(captured);
+            }
         };
         _palette!.AddChild(button);
         _palette.MoveChild(button, index);
