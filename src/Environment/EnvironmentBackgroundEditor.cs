@@ -28,6 +28,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     private EnvironmentBackgroundPresenter _presenter = null!;
     private EnvironmentPaintStore _store = null!;
+    private DesktopBuddy.Economy.EconomyService? _economy;
     private readonly List<Color> _swatches = [.. DefaultSwatches];
     private readonly Dictionary<EnvironmentPaintTool, Button> _toolButtons = [];
     private Control _blocker = null!;
@@ -58,10 +59,18 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private EnvironmentCanvas Canvas => _presenter.Canvas;
     internal bool PanelVisibleForTest => _panel.Visible;
 
-    public void Configure(EnvironmentBackgroundPresenter presenter, EnvironmentPaintStore store)
+    /// <param name="economy">
+    /// Optional: when the composition has an economy, a finished session pays for what was
+    /// painted. Scenarios that compose the editor alone simply leave it out.
+    /// </param>
+    public void Configure(
+        EnvironmentBackgroundPresenter presenter,
+        EnvironmentPaintStore store,
+        DesktopBuddy.Economy.EconomyService? economy = null)
     {
         _presenter = presenter ?? throw new ArgumentNullException(nameof(presenter));
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _economy = economy;
     }
 
     public override void _Ready()
@@ -679,6 +688,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     private void Close()
     {
+        PayForPaintedRoom();
         _panelPin.Dock();
         Canvas.CancelPendingCurve();
         ClearCurveGuide();
@@ -688,6 +698,31 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _painting = false;
         _sprayPulseAccumulator = 0;
     }
+
+    /// <summary>
+    /// Pays for what this session left on the walls, up to the one-session ceiling. The
+    /// baseline the editor already snapshots on Open is what it is measured against, so a
+    /// discarded session pays nothing and no session can be collected twice.
+    /// </summary>
+    private void PayForPaintedRoom()
+    {
+        if (_economy is null || _baseline is null)
+            return;
+
+        long changed = DesktopBuddy.Domain.Painting.PaintSessionPayout.ChangedPixels(
+            _baseline, Canvas.Pixels.Span);
+        long milli = DesktopBuddy.Domain.Painting.PaintSessionPayout.MilliCredits(changed);
+        _baseline = Canvas.ClonePixels();
+        LastPaintSessionMilliCredits = milli;
+        if (milli <= 0)
+            return;
+
+        _economy.DepositPassive(milli);
+        SetStatus($"Paid {DesktopBuddy.Ui.ContentDisplayName.Credits(milli)} for this painting.");
+    }
+
+    /// <summary>What the last finished room painting paid — the scenario oracle.</summary>
+    public long LastPaintSessionMilliCredits { get; private set; }
 
     /// <summary>The one way the status line is written, so it can hide itself when empty.</summary>
     private void SetStatus(string text)

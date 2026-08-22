@@ -8,6 +8,7 @@ using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Economy;
 using DesktopBuddy.UI;
 using DesktopBuddy.UI.Win98;
@@ -23,6 +24,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private const float MaximumViewZoom = 2.0f;
     private const float ViewZoomStep = 0.2f;
     private const int RecentColorCount = 3;
+    private const double LikeReactionSeconds = 1.1;
+    private const double LikeCheckSeconds = 2.5;
+    private const float LikeReactionChance = 0.35f;
     private static readonly CharacterFeatureSlot[] AllCategories =
     [
         CharacterFeatureSlot.Face, CharacterFeatureSlot.Hair, CharacterFeatureSlot.Brows,
@@ -90,6 +94,11 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private int _previewHomeZIndex;
     private CursorShape _previewHomeCursor;
     private float _viewZoom = 1.0f;
+    private BuddyStyleTastes _tastes = BuddyStyleTastes.None;
+    private double _likeCheckSeconds;
+    private double _likeReactionSeconds;
+    private string _likeReactionStyleId = string.Empty;
+    private OmniLight3D? _likeGlow;
 
     public bool IsConfigured { get; private set; }
     public bool MoveMode => _moveMode;
@@ -99,6 +108,10 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     public Win98CategoryStrip CategoryStrip => _categories;
     public Win98CatalogGrid CatalogGrid => _catalog;
     public float ViewZoom => _viewZoom;
+    /// <summary>What the buddy is fond of this visit — rolled fresh on every open.</summary>
+    public BuddyStyleTastes Tastes => _tastes;
+    /// <summary>The bonus the last closed Studio visit paid — the scenario oracle.</summary>
+    public long LastLikedStyleBonusMilliCredits { get; private set; }
     public float PreviewCameraSize => _previewCamera.Size;
     public Vector2 PreviewFocus => new(_previewCamera.Position.X, _previewCamera.Position.Y);
 
@@ -128,6 +141,13 @@ public partial class BuddyStudioWorkspace : VBoxContainer
                 .OfType<BuddyVisualRigView>()
                 .FirstOrDefault();
         _previewRig?.SetPreviewFaceState(BuiltInCharacterAppearance.NeutralFaceState);
+        // A fresh set of tastes every visit, so what he is fond of is worth looking for again.
+        _tastes = BuddyStyleTastes.Roll(
+            CharacterFeatureCatalog.Shipped,
+            unchecked((ulong)DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+        _likeCheckSeconds = 0.0;
+        _likeReactionSeconds = 0.0;
+        _likeReactionStyleId = string.Empty;
         ResetView();
     }
 
@@ -146,11 +166,136 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             _previewCamera.Size = _cameraHomeSize;
         }
         _cameraStateCaptured = false;
+        PayLikedStyleBonus();
+        EndLikeReaction();
         _previewRig?.ClearPreviewFaceState();
         SetMoveMode(false);
         _previewAttached = false;
         if (GodotObject.IsInstanceValid(_frame))
             _frame!.StatusText = "Ready";
+    }
+
+    /// <summary>
+    /// Pays for every liked style still on the character as the Studio closes. The working
+    /// document is what counts, not a preview: the bonus is for what he leaves wearing.
+    /// </summary>
+    private void PayLikedStyleBonus()
+    {
+        LastLikedStyleBonusMilliCredits = 0;
+        if (!IsConfigured || _session.WorkingDocument is not CharacterDocument worn)
+            return;
+
+        int liked = _tastes.WornCount(worn);
+        if (liked <= 0)
+            return;
+
+        long milli = liked * BuddyStyleTastes.CreditsPerLikedStyle;
+        _economy.DepositPassive(milli);
+        LastLikedStyleBonusMilliCredits = milli;
+        SetStatus(liked == 1
+            ? $"He likes that one — {ContentDisplayName.Credits(milli)} bonus."
+            : $"He likes {liked} of those — {ContentDisplayName.Credits(milli)} bonus.");
+    }
+
+    /// <summary>
+    /// The buddy noticing what he is wearing: a smile and a soft glow for a moment, then back
+    /// to his ordinary face. Fires when a liked style goes on and now and then while it stays
+    /// on, so it reads as him being pleased rather than a status light.
+    /// </summary>
+    private void ProcessLikeReaction(double delta)
+    {
+        if (!_previewAttached || !GodotObject.IsInstanceValid(_previewRig))
+            return;
+
+        if (_likeReactionSeconds > 0.0)
+        {
+            _likeReactionSeconds -= delta;
+            if (GodotObject.IsInstanceValid(_likeGlow))
+            {
+                // Up and back down across the window, so the glow swells rather than switches.
+                float progress = (float)Math.Clamp(_likeReactionSeconds / LikeReactionSeconds, 0.0, 1.0);
+                _likeGlow!.LightEnergy = Mathf.Sin(progress * Mathf.Pi) * 1.6f;
+            }
+            if (_likeReactionSeconds <= 0.0)
+                EndLikeReaction();
+            return;
+        }
+
+        string worn = LikedStyleWorn();
+        if (worn.Length == 0)
+        {
+            _likeReactionStyleId = string.Empty;
+            return;
+        }
+
+        bool justPutOn = !string.Equals(worn, _likeReactionStyleId, StringComparison.Ordinal);
+        _likeCheckSeconds -= delta;
+        if (!justPutOn && _likeCheckSeconds > 0.0)
+            return;
+
+        _likeCheckSeconds = LikeCheckSeconds;
+        _likeReactionStyleId = worn;
+        // Random chance while it stays on; certain the moment it goes on, because that is the
+        // player asking him what he thinks.
+        if (!justPutOn && GD.Randf() > LikeReactionChance)
+            return;
+
+        BeginLikeReaction();
+    }
+
+    private string LikedStyleWorn()
+    {
+        if (_session.PreviewDocument is not CharacterDocument preview)
+            return string.Empty;
+        foreach (CharacterFeatureSlot slot in CategoryOrder)
+        {
+            string id = CharacterDocumentEditor.ReadFeatureId(preview, slot);
+            if (_tastes.Likes(id))
+                return id;
+        }
+
+        return string.Empty;
+    }
+
+    private void BeginLikeReaction()
+    {
+        _likeReactionSeconds = LikeReactionSeconds;
+        _previewRig!.SetPreviewFaceState(FaceComposer.Compose(
+            FaceExpressionCatalog.Resolve(":)"),
+            blinkClosed: false,
+            chewActive: false,
+            chewFrame: 0,
+            faceSuppressed: false,
+            pupilX: 0.0f,
+            pupilY: 0.0f));
+        if (!GodotObject.IsInstanceValid(_likeGlow))
+        {
+            _likeGlow = new OmniLight3D
+            {
+                Name = "BuddyStudioLikeGlow",
+                LightColor = new Color("FFE7A8"),
+                OmniRange = 320.0f,
+                LightEnergy = 0.0f,
+                ShadowEnabled = false,
+            };
+            _previewRig!.AddChild(_likeGlow);
+            _likeGlow.Position = new Vector3(0.0f, 40.0f, 90.0f);
+        }
+
+        _likeGlow!.Visible = true;
+    }
+
+    private void EndLikeReaction()
+    {
+        _likeReactionSeconds = 0.0;
+        if (GodotObject.IsInstanceValid(_likeGlow))
+        {
+            _likeGlow!.LightEnergy = 0.0f;
+            _likeGlow.Visible = false;
+        }
+
+        if (GodotObject.IsInstanceValid(_previewRig) && _previewAttached)
+            _previewRig!.SetPreviewFaceState(BuiltInCharacterAppearance.NeutralFaceState);
     }
 
     private void FloatViewCluster()

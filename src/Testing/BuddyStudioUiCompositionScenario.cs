@@ -430,6 +430,26 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 forbiddenTransformDisabled,
                 $"smaller={smaller.Disabled} larger={larger.Disabled} move={move.Disabled} reset={reset.Disabled}"));
 
+            // A visit rolls its own tastes, and every liked style still worn on the way out pays
+            // its bonus (owner instruction 2026-08-22).
+            string likedId = workspace.Tastes.LikedIds.FirstOrDefault() ?? string.Empty;
+            bool rolled = workspace.Tastes.LikedIds.Count > 0;
+            bool resolvedLiked = CharacterFeatureCatalog.Shipped
+                .TryGetSlot(likedId, out CharacterFeatureSlot likedSlot);
+            long balanceBeforeBonus = economy.BalanceMilliCredits;
+            if (resolvedLiked)
+                session.SetFeatureId(likedSlot, likedId);
+            workspace.DetachPreview();
+            long bonus = workspace.LastLikedStyleBonusMilliCredits;
+            bool paid = rolled && resolvedLiked &&
+                bonus == BuddyStyleTastes.CreditsPerLikedStyle &&
+                economy.BalanceMilliCredits == balanceBeforeBonus + bonus;
+            workspace.AttachPreview();
+            checks.Add(new StartupCheck(
+                "user_test_liked_styles_are_rolled_per_visit_and_pay_on_the_way_out",
+                paid,
+                $"liked={workspace.Tastes.LikedIds.Count} style={likedId} bonus={bonus}"));
+
             workspace.SelectCategory(CharacterFeatureSlot.Eyes);
             smaller.EmitSignal(BaseButton.SignalName.Pressed);
             long savesBeforeClose = context.Store.SaveCount;

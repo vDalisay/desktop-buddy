@@ -83,7 +83,10 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _paintStore = new EnvironmentPaintStore(new CharacterFileSystem(), ProjectSettings.GlobalizePath("user://"));
         if (_paintStore.Load() is byte[] painted) _backgroundPresenter.Canvas.Replace(painted);
         _backgroundEditor = new EnvironmentBackgroundEditor { Name = nameof(EnvironmentBackgroundEditor) };
-        _backgroundEditor.Configure(_backgroundPresenter, _paintStore);
+        _backgroundEditor.Configure(
+            _backgroundPresenter,
+            _paintStore,
+            GodotObject.IsInstanceValid(_sandbox) ? _sandbox!.Economy : null);
         GetTree().Root.AddChild(_backgroundEditor);
         _paintIconBootstrap = new EnvironmentPaintToolIconBootstrap { Name = nameof(EnvironmentPaintToolIconBootstrap) };
         GetTree().Root.AddChild(_paintIconBootstrap);

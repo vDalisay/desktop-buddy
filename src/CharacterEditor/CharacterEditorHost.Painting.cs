@@ -25,6 +25,13 @@ public partial class CharacterEditorHost
     private PanelContainer _eraseAllConfirmation = null!;
     private bool _paintAttachStarted;
 
+    /// <summary>
+    /// Every surface as it looked when this painting session opened. The session pays for what
+    /// the player leaves behind, so the payout compares against this rather than counting
+    /// strokes — scribbling over one spot cannot be farmed (owner instruction 2026-08-22).
+    /// </summary>
+    private readonly System.Collections.Generic.Dictionary<PaintPart, byte[]> _paintSessionBaseline = [];
+
     public bool IsPaintMode => _paintControls is not null && _paintControls.Visible;
     public PaintWorkspace PaintWorkspace => _paintCanvas.Workspace;
 
@@ -352,11 +359,53 @@ public partial class CharacterEditorHost
         _paintCanvas.ResetView();
         if (enabled)
         {
+            CapturePaintSessionBaseline();
             QueueAllPaintTextures();
             _paintCanvas.GrabFocus();
         }
+        else
+        {
+            PayForPaintSession();
+        }
+
         RefreshPaintStatus();
     }
+
+    private void CapturePaintSessionBaseline()
+    {
+        _paintSessionBaseline.Clear();
+        foreach ((PaintPart part, PaintSurface surface) in _paintCanvas.Workspace.Surfaces)
+            _paintSessionBaseline[part] = surface.Pixels.ToArray();
+    }
+
+    /// <summary>
+    /// Pays the player for the session's painting, up to the one-session ceiling, and clears
+    /// the baseline so a payout can never be collected twice for the same work.
+    /// </summary>
+    private void PayForPaintSession()
+    {
+        if (_paintSessionBaseline.Count == 0 || _context.Economy is null)
+            return;
+
+        long changed = 0;
+        foreach ((PaintPart part, PaintSurface surface) in _paintCanvas.Workspace.Surfaces)
+        {
+            if (_paintSessionBaseline.TryGetValue(part, out byte[]? before))
+                changed += PaintSessionPayout.ChangedPixels(before, surface.Pixels.Span);
+        }
+
+        _paintSessionBaseline.Clear();
+        long milli = PaintSessionPayout.MilliCredits(changed);
+        if (milli <= 0)
+            return;
+
+        _context.Economy.DepositPassive(milli);
+        LastPaintSessionMilliCredits = milli;
+        _status.Text = $"Paid {DesktopBuddy.Ui.ContentDisplayName.Credits(milli)} for this painting.";
+    }
+
+    /// <summary>What the last finished painting session paid — the scenario oracle.</summary>
+    public long LastPaintSessionMilliCredits { get; private set; }
 
     private void QueueAllPaintTextures()
     {

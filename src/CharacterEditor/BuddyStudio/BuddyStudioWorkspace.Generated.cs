@@ -33,6 +33,7 @@ public partial class BuddyStudioWorkspace
     {
         // Preview navigation tracks direct manipulation/attachment state and stays frame-responsive.
         AssetForgeProcessNavigation();
+        ProcessLikeReaction(delta);
         if (!IsConfigured || !IsInsideTree() || !GodotObject.IsInstanceValid(_catalog) || _session.PreviewDocument is null)
             return;
 
