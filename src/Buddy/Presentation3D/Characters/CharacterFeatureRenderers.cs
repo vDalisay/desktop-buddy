@@ -284,6 +284,14 @@ internal enum BrowVariant
     Straight,
     Segmented,
     Bushy,
+
+    // Third wave (owner instruction 2026-08-22). Same two-brow layout and poses as the
+    // shipped four; only the stroke shape changes.
+    ThinLine,
+    AngledSharp,
+    RoundedHigh,
+    ThickFlat,
+    TaperedCurve,
 }
 
 internal sealed class ProceduralBrowRenderer : ICharacterBrowRenderer
@@ -360,6 +368,38 @@ internal sealed class ProceduralBrowRenderer : ICharacterBrowRenderer
                     0.035f, fill, outline, transform);
                 ProceduralEyeRenderer.AddStroke(commands, [midpoint + new Vector2(innerSign * 0.025f, 0.0f), inner],
                     0.035f, fill, outline, transform);
+                break;
+            case BrowVariant.ThinLine:
+                ProceduralEyeRenderer.AddStroke(commands, [outer, inner], 0.016f, fill, outline, transform);
+                break;
+            case BrowVariant.AngledSharp:
+                // A hard peak instead of a curve: up from the outer end, then down to the inner.
+                Vector2 peak = outer.Lerp(inner, 0.62f) + new Vector2(0.0f, 0.055f);
+                ProceduralEyeRenderer.AddStroke(commands, [outer, peak, inner + new Vector2(0.0f, -0.02f)],
+                    0.032f, fill, outline, transform);
+                break;
+            case BrowVariant.RoundedHigh:
+                ProceduralEyeRenderer.AddStroke(commands,
+                    CharacterGeometry.Arc(new Vector2(x, y + 0.03f), 0.16f, 0.10f,
+                        0.10f * Mathf.Pi, 0.90f * Mathf.Pi),
+                    0.030f, fill, outline, transform);
+                break;
+            case BrowVariant.ThickFlat:
+                ProceduralEyeRenderer.AddStroke(commands,
+                    [new Vector2(x - innerSign * 0.17f, y), new Vector2(x + innerSign * 0.17f, y)],
+                    0.055f, fill, outline, transform);
+                break;
+            case BrowVariant.TaperedCurve:
+                // Thin at the outer end, heavy at the inner: two arc halves at two widths.
+                Vector2[] taper = CharacterGeometry.Arc(new Vector2(x, y - 0.02f), 0.16f, 0.07f,
+                    0.10f * Mathf.Pi, 0.90f * Mathf.Pi);
+                int half = taper.Length / 2;
+                Vector2[] first = taper[..(half + 1)];
+                Vector2[] second = taper[half..];
+                ProceduralEyeRenderer.AddStroke(commands, isLeft ? first : second,
+                    0.018f, fill, outline, transform);
+                ProceduralEyeRenderer.AddStroke(commands, isLeft ? second : first,
+                    0.042f, fill, outline, transform);
                 break;
             default:
                 throw new ArgumentOutOfRangeException();

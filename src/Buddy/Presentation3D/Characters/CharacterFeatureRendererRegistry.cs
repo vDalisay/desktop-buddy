@@ -39,6 +39,11 @@ public sealed class CharacterFeatureRendererRegistry
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsStraight, BrowVariant.Straight));
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsSegmented, BrowVariant.Segmented));
         Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsBushy, BrowVariant.Bushy));
+        Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsThinLine, BrowVariant.ThinLine));
+        Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsAngledSharp, BrowVariant.AngledSharp));
+        Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsRoundedHigh, BrowVariant.RoundedHigh));
+        Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsThickFlat, BrowVariant.ThickFlat));
+        Add(new ProceduralBrowRenderer(CharacterFeatureIds.BrowsTaperedCurve, BrowVariant.TaperedCurve));
 
         Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthRounded, MouthVariant.Rounded));
         Add(new ProceduralMouthRenderer(CharacterFeatureIds.MouthPixel, MouthVariant.Pixel));

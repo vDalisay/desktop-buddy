@@ -125,10 +125,11 @@ public partial class SprayDropletBody : RigidBody2D
         Rotation = 0.0f;
         LinearVelocity = velocity;
         AngularVelocity = 0.0f;
-        CollisionLayer = CollisionLayers.Projectiles;
+        CollisionLayer = CollisionLayers.Flame;
         // Buddy parts and the room only. A droplet must never disturb a loose object or
-        // another droplet: the stream pushes nothing.
-        CollisionMask = CollisionLayers.RoomBounds | CollisionLayers.BuddyParts;
+        // another droplet: the stream pushes nothing. Its own layer is what makes that true —
+        // on the Projectiles layer the loose objects collided with IT (see CollisionLayers).
+        CollisionMask = CollisionLayers.MaskFlame;
         Visible = DrawEnabled;
         ResetPhysicsInterpolation();
         QueueRedraw();

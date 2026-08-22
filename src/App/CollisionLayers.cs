@@ -19,6 +19,7 @@ public static class CollisionLayers
     public const uint Projectiles = 1u << 3; // layer 4
     public const uint PhysicalTools = 1u << 4; // layer 5
     public const uint InteractionSense = 1u << 5; // layer 6
+    public const uint Flame = 1u << 6; // layer 7
 
     // Contractual collision masks (what each body type collides with).
     public const uint MaskRoomBounds = BuddyParts | LooseObjects | Projectiles | PhysicalTools;
@@ -35,4 +36,11 @@ public static class CollisionLayers
 
     // Detection-only sensor areas scan loose objects.
     public const uint MaskInteractionSense = LooseObjects;
+
+    // Flame droplets touch the buddy and the room and nothing else. They have their own
+    // layer rather than riding the Projectiles one because a body collides when EITHER side's
+    // mask names the other's layer: a droplet that excluded loose objects was still being
+    // collided with by every loose object's own Projectiles bit, which is what kept shoving
+    // grenades across the room (owner report 2026-08-22).
+    public const uint MaskFlame = RoomBounds | BuddyParts;
 }

@@ -16,12 +16,13 @@ public struct CareToolSway
     private const float Limit = 0.85f;
 
     /// <summary>
-    /// The wave the feather is swept through while the player holds secondary. Slow and broad
-    /// rather than a fast buzz (owner instruction 2026-08-19): a second harmonic at a third of
-    /// the amplitude keeps the sweep from reading as a metronome without speeding it up.
+    /// The wave the feather is swept through while the player holds secondary. Broad rather
+    /// than a buzz, with a second harmonic at a third of the amplitude so the sweep does not
+    /// read as a metronome. The rate was doubled after the original sweep played as sluggish
+    /// (owner instruction 2026-08-22).
     /// </summary>
     private const float WiggleRadians = 0.62f;
-    private const float WiggleHz = 1.15f;
+    private const float WiggleHz = 2.4f;
 
     private Vector2 _lastPointer;
     private bool _hasLastPointer;

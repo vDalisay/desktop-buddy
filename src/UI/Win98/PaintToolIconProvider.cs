@@ -28,6 +28,8 @@ public static class PaintToolIconProvider
     public const string ResetView = "reset_view";
     public const string RotateLeft = "rotate_left";
     public const string RotateRight = "rotate_right";
+    public const string Enlarge = "enlarge";
+    public const string Shrink = "shrink";
 
     private const int Size = 16;
     private static readonly Dictionary<string, Texture2D> Cache = new(StringComparer.Ordinal);
@@ -127,6 +129,20 @@ public static class PaintToolIconProvider
                 Magnifier(image, ink); Rect(image, 4, 6, 9, 7, accent); break;
             case ResetView:
                 OutlineRect(image, 3, 3, 12, 12, ink); Rect(image, 7, 2, 8, 13, shade); Rect(image, 2, 7, 13, 8, shade); break;
+            case Enlarge:
+                // A small square growing into a large one, with the arrow pointing out.
+                OutlineRect(image, 1, 1, 14, 14, ink);
+                Rect(image, 5, 5, 11, 11, accent);
+                Diagonal(image, 3, 12, 12, 3, ink, 1);
+                Rect(image, 10, 2, 14, 4, ink); Rect(image, 12, 2, 14, 6, ink);
+                break;
+            case Shrink:
+                // The same pair with the arrow pointing back in at the small square.
+                OutlineRect(image, 1, 1, 14, 14, ink);
+                Rect(image, 5, 5, 11, 11, accent);
+                Diagonal(image, 12, 3, 3, 12, ink, 1);
+                Rect(image, 5, 9, 7, 11, ink); Rect(image, 5, 5, 7, 11, ink);
+                break;
             case RotateLeft:
                 Rotate(image, left: true, ink); break;
             case RotateRight:

@@ -383,16 +383,24 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 focusedMove && moveRestored,
                 $"focused={focusedMove} restored={moveRestored} transform={beforeMove}->{afterMove}"));
 
-            Control transformActions = (Control)workspace.FindChild("BuddyStudioTransformActions", true, false);
-            bool fillsWidth = transformActions.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&
-                smaller.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&
-                larger.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&
+            // View and size controls float in the preview's lower-left corner; Move, Reset and
+            // Randomize keep the foot of the pane (owner instruction 2026-08-22).
+            Control cluster = (Control)workspace.FindChild("BuddyStudioViewCluster", true, false);
+            Control previewActions = (Control)workspace.FindChild("BuddyStudioPreviewActions", true, false);
+            Button resetView = (Button)workspace.FindChild("BuddyStudioResetView", true, false);
+            bool clustered = cluster.GetParent() == preview &&
+                resetView.GetParent()?.GetParent()?.GetParent() == cluster &&
+                smaller.Icon is not null && larger.Icon is not null &&
+                smaller.CustomMinimumSize == larger.CustomMinimumSize &&
+                Mathf.IsEqualApprox(smaller.CustomMinimumSize.X, 30.0f) &&
                 move.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&
-                reset.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill);
+                reset.SizeFlagsHorizontal.HasFlag(Control.SizeFlags.ExpandFill) &&
+                preview.GetIndex() < previewActions.GetIndex();
             checks.Add(new StartupCheck(
-                "bs6_transform_actions_evenly_fill_section_width",
-                fillsWidth,
-                $"grid={transformActions.SizeFlagsHorizontal} buttons={smaller.SizeFlagsHorizontal}"));
+                "user_test_view_cluster_floats_in_preview_and_actions_keep_the_foot",
+                clustered,
+                $"clusterParent={cluster.GetParent()?.Name} size={smaller.CustomMinimumSize} " +
+                $"preview={preview.GetIndex()} actions={previewActions.GetIndex()}"));
 
             workspace.SelectCategory(CharacterFeatureSlot.Hair);
             bool forbiddenTransformDisabled = smaller.Disabled && larger.Disabled && move.Disabled && reset.Disabled;

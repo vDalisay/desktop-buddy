@@ -79,6 +79,7 @@ save_and_quit={
 2d_physics/layer_4="Projectiles"
 2d_physics/layer_5="PhysicalTools"
 2d_physics/layer_6="InteractionSense"
+2d_physics/layer_7="Flame"
 
 [physics]
 

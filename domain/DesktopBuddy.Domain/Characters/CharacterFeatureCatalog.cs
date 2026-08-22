@@ -98,6 +98,15 @@ public static class CharacterFeatureIds
     public const string HeadwearBallCap = "headwear.ball_cap";
     public const string HeadwearSunHat = "headwear.sun_hat";
     public const string HeadwearFedora = "headwear.fedora";
+
+    // Third wave (owner instruction 2026-08-22).
+    public const string HairTwinBraids = "hair.twin_braids";
+    public const string HairLongWaves = "hair.long_waves";
+    public const string BrowsThinLine = "brows.thin_line";
+    public const string BrowsAngledSharp = "brows.angled_sharp";
+    public const string BrowsRoundedHigh = "brows.rounded_high";
+    public const string BrowsThickFlat = "brows.thick_flat";
+    public const string BrowsTaperedCurve = "brows.tapered_curve";
 }
 
 public sealed class CharacterFeatureCatalog
@@ -314,6 +323,13 @@ public sealed class CharacterFeatureCatalog
         yield return Definition(CharacterFeatureIds.HeadwearBallCap, CharacterFeatureSlot.Headwear, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#C95B63"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearBallCap);
         yield return Definition(CharacterFeatureIds.HeadwearSunHat, CharacterFeatureSlot.Headwear, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#E3A33A"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearSunHat);
         yield return Definition(CharacterFeatureIds.HeadwearFedora, CharacterFeatureSlot.Headwear, 60, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.HeadwearNone, Rgba32.Parse("#183042"), hidesHair: true, ownershipContentId: ContentIds.CosmeticHeadwearFedora);
+        yield return Definition(CharacterFeatureIds.HairTwinBraids, CharacterFeatureSlot.Hair, 50, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HairNone, Rgba32.Parse("#6A4937"), ownershipContentId: ContentIds.CosmeticHairTwinBraids);
+        yield return Definition(CharacterFeatureIds.HairLongWaves, CharacterFeatureSlot.Hair, 60, false, CosmeticTransformPolicy.None, CharacterFeatureIds.HairNone, Rgba32.Parse("#6A4937"), ownershipContentId: ContentIds.CosmeticHairLongWaves);
+        yield return Definition(CharacterFeatureIds.BrowsThinLine, CharacterFeatureSlot.Brows, 40, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.BrowsSoftArc, ink, ownershipContentId: ContentIds.CosmeticBrowsThinLine);
+        yield return Definition(CharacterFeatureIds.BrowsAngledSharp, CharacterFeatureSlot.Brows, 50, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.BrowsSoftArc, ink, ownershipContentId: ContentIds.CosmeticBrowsAngledSharp);
+        yield return Definition(CharacterFeatureIds.BrowsRoundedHigh, CharacterFeatureSlot.Brows, 60, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.BrowsSoftArc, ink, ownershipContentId: ContentIds.CosmeticBrowsRoundedHigh);
+        yield return Definition(CharacterFeatureIds.BrowsThickFlat, CharacterFeatureSlot.Brows, 70, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.BrowsSoftArc, ink, ownershipContentId: ContentIds.CosmeticBrowsThickFlat);
+        yield return Definition(CharacterFeatureIds.BrowsTaperedCurve, CharacterFeatureSlot.Brows, 80, false, CosmeticTransformPolicy.MoveAndUniformScale, CharacterFeatureIds.BrowsSoftArc, ink, ownershipContentId: ContentIds.CosmeticBrowsTaperedCurve);
     }
 
     private static CosmeticDefinition Definition(

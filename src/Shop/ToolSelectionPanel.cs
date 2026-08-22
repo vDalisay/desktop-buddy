@@ -22,7 +22,6 @@ public partial class ToolSelectionPanel : PanelContainer
     private BuddyProgressState _progress = null!;
     private InteractionDamageComponent _pipeline = null!;
     private Label _selected = null!;
-    private Label _status = null!;
 
     public bool IsInitialized { get; private set; }
     public int SelectionCount { get; private set; }
@@ -37,10 +36,10 @@ public partial class ToolSelectionPanel : PanelContainer
         ArgumentNullException.ThrowIfNull(catalogue);
 
         Name = "ToolSelectionPanel";
-        PanelChrome.Parts parts = PanelChrome.Build(this, "ToolSelectionList");
+        PanelChrome.Parts parts = PanelChrome.Build(this, "ToolSelectionList", status: false);
         _selected = parts.HeaderValue;
-        _status = parts.Status;
         _description = parts.Description;
+        _selection = new PanelChrome.RowSelection(_description, ContentDisplayName.Usage);
 
         foreach (CatalogueEntry entry in CataloguePolicy.SelectableEntries(catalogue))
         {
@@ -53,6 +52,7 @@ public partial class ToolSelectionPanel : PanelContainer
     }
 
     private Label _description = null!;
+    private PanelChrome.RowSelection _selection = null!;
 
     private Row BuildRow(VBoxContainer list, CatalogueEntry entry, ToolId tool)
     {
@@ -61,19 +61,15 @@ public partial class ToolSelectionPanel : PanelContainer
         UiFeedbackAudioBootstrap.Tag(select, layer: UiSfx.NoLayer);
         var price = new Label();
         HBoxContainer line = PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, select);
-        line.MouseEntered += () => ShowDescription(entry.ContentId);
-        select.MouseEntered += () => ShowDescription(entry.ContentId);
+        _selection.Add(entry.ContentId, line);
+        select.MouseEntered += () => _selection.Hover(entry.ContentId);
         return new Row(entry, tool, select, price);
     }
 
     private void Select(string contentId, ToolId tool)
     {
         _pipeline.SelectTool(tool);
-        string name = ContentDisplayName.For(contentId);
         bool applied = _progress.SelectedTool == tool;
-        _status.Text = applied
-            ? $"{name} equipped."
-            : $"{name} could not be equipped — buy it in the shop first.";
         if (applied)
         {
             SelectionCount++;
@@ -105,7 +101,7 @@ public partial class ToolSelectionPanel : PanelContainer
 
         _selected.Text = ContentDisplayName.For(ContentIds.ForTool(_progress.SelectedTool));
         if (_description.Text.Length == 0)
-            ShowDescription(ContentIds.ForTool(_progress.SelectedTool));
+            _selection.Hover(ContentIds.ForTool(_progress.SelectedTool));
         foreach (Row row in _rows)
         {
             bool owned = row.Entry.IsStarting ||
@@ -123,13 +119,6 @@ public partial class ToolSelectionPanel : PanelContainer
                     ? $"Equip {name}."
                     : $"Buy {name} in the Shop for {price} before equipping it.";
         }
-    }
-
-    private void ShowDescription(string contentId)
-    {
-        string usage = ContentDisplayName.Usage(contentId);
-        if (usage.Length > 0)
-            _description.Text = usage;
     }
 
     private readonly record struct Row(

@@ -1,11 +1,10 @@
-[gd_scene load_steps=96 format=3]
+[gd_scene load_steps=95 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
 [ext_resource type="Script" path="res://src/Platform/DesktopShellController.cs" id="3_shell"]
 [ext_resource type="Script" path="res://src/Sandbox/BoundaryController.cs" id="4_boundary"]
 [ext_resource type="Resource" path="res://data/buddy/lab_boundary.tres" id="5_boundary_profile"]
-[ext_resource type="Script" path="res://src/Sandbox/SandboxBorder.cs" id="6_border"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="7_buddy"]
 [ext_resource type="Script" path="res://src/Grab/GrabTetherController.cs" id="8_grab"]
 [ext_resource type="Resource" path="res://data/buddy/lab_grab_tether.tres" id="9_grab_profile"]
@@ -351,11 +350,6 @@ shape = SubResource("VerticalBoundary")
 [node name="RightWall" type="CollisionShape2D" parent="RoomBounds"]
 position = Vector2(472, 180)
 shape = SubResource("VerticalBoundary")
-
-[node name="SandboxBorder" type="Node2D" parent="." node_paths=PackedStringArray("Boundaries")]
-z_index = -10
-script = ExtResource("6_border")
-Boundaries = NodePath("../RoomBounds")
 
 [node name="GrabTetherController" type="Node2D" parent="."]
 script = ExtResource("8_grab")

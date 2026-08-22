@@ -22,6 +22,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private const float MinimumViewZoom = 0.75f;
     private const float MaximumViewZoom = 2.0f;
     private const float ViewZoomStep = 0.2f;
+    private const int RecentColorCount = 3;
     private static readonly CharacterFeatureSlot[] AllCategories =
     [
         CharacterFeatureSlot.Face, CharacterFeatureSlot.Hair, CharacterFeatureSlot.Brows,
@@ -40,6 +41,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         ("Ink", Rgba32.Parse("#183042")), ("Cocoa", Rgba32.Parse("#6A4937")),
         ("Berry", Rgba32.Parse("#C95B63")), ("Gold", Rgba32.Parse("#E3A33A")),
         ("Sky", Rgba32.Parse("#74B9E8")), ("Slate", Rgba32.Parse("#5A6575")),
+        ("Moss", Rgba32.Parse("#5E8C4A")), ("Plum", Rgba32.Parse("#7A4E8C")),
+        ("Cream", Rgba32.Parse("#F2E2C4")),
     ];
 
     private CharacterEditorSession _session = null!;
@@ -51,6 +54,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private Win98ValuePanel _values = null!;
     private ColorPickerButton _color = null!;
     private Control _presets = null!;
+    private GridContainer _recentColors = null!;
+    private readonly List<Rgba32> _recent = [];
     private Button _buy = null!;
     private Button _save = null!;
     private Button _move = null!;
@@ -59,9 +64,11 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private Button _resetTransform = null!;
     private Label _name = null!;
     private Label _status = null!;
+    private Label? _selectedItemName;
     private Control _previewInput = null!;
     private Camera3D _previewCamera = null!;
     private VBoxContainer _previewColumn = null!;
+    private PanelContainer _viewCluster = null!;
     private Node? _previewHome;
     private int _previewHomeIndex;
     private Win98WindowFrame? _frame;
@@ -111,6 +118,10 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             _paintCanvas.Visible = false;
         }
         _previewInput.Reparent(_previewColumn);
+        // Straight under the name, so the portrait is anchored to the top of the pane and the
+        // remaining actions keep the foot of it.
+        _previewColumn.MoveChild(_previewInput, Math.Min(2, _previewColumn.GetChildCount() - 1));
+        FloatViewCluster();
         _previewAttached = true;
         if (!GodotObject.IsInstanceValid(_previewRig))
             _previewRig = _previewInput.FindChildren("*", nameof(BuddyVisualRigView), true, false)
@@ -126,6 +137,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             return;
         _previewInput.Reparent(_previewHome!);
         _previewHome!.MoveChild(_previewInput, Math.Min(_previewHomeIndex, _previewHome.GetChildCount() - 1));
+        DockViewCluster();
         if (GodotObject.IsInstanceValid(_paintCanvas))
             _paintCanvas!.Visible = _paintCanvasWasVisible;
         if (_cameraStateCaptured && GodotObject.IsInstanceValid(_previewCamera))
@@ -139,6 +151,28 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _previewAttached = false;
         if (GodotObject.IsInstanceValid(_frame))
             _frame!.StatusText = "Ready";
+    }
+
+    private void FloatViewCluster()
+    {
+        if (!GodotObject.IsInstanceValid(_viewCluster) || _viewCluster.GetParent() == _previewInput)
+            return;
+        _viewCluster.Reparent(_previewInput, false);
+        _viewCluster.SetAnchorsPreset(LayoutPreset.BottomLeft);
+        _viewCluster.OffsetLeft = 8;
+        _viewCluster.OffsetTop = -74;
+        _viewCluster.OffsetRight = 116;
+        _viewCluster.OffsetBottom = -8;
+        _viewCluster.MoveToFront();
+    }
+
+    private void DockViewCluster()
+    {
+        if (!GodotObject.IsInstanceValid(_viewCluster) || _viewCluster.GetParent() != _previewInput)
+            return;
+        _viewCluster.Reparent(_previewColumn, false);
+        _viewCluster.SetAnchorsPreset(LayoutPreset.TopLeft);
+        _viewCluster.OffsetLeft = _viewCluster.OffsetTop = _viewCluster.OffsetRight = _viewCluster.OffsetBottom = 0;
     }
 
     public void Configure(
@@ -261,8 +295,11 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         };
         body.AddThemeConstantOverride("separation", 8);
         bodyScroll.AddChild(body);
-        BuildPreviewPane(body);
+        // Styles first, then the preview: the buddy is what the player is looking at, so it
+        // takes the middle, and the style strip is the tall scrolling column beside it
+        // (owner instruction 2026-08-22).
         BuildCatalogPane(body);
+        BuildPreviewPane(body);
         BuildInspectorPane(body);
 
         BuildDirtyDialog();
@@ -272,61 +309,100 @@ public partial class BuddyStudioWorkspace : VBoxContainer
 
     private void BuildPreviewPane(HBoxContainer body)
     {
-        var pane = Pane("BuddyStudioPreviewPane", 280);
+        var pane = Pane("BuddyStudioPreviewPane", 420);
+        pane.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         body.AddChild(pane);
         _previewColumn = Column(pane);
         _previewColumn.AddChild(new Label { Text = "Preview" });
         _name = new Label { Name = "BuddyStudioCharacterName", HorizontalAlignment = HorizontalAlignment.Center };
         _previewColumn.AddChild(_name);
-        _previewInput.CustomMinimumSize = new Vector2(270, 300);
+        _previewInput.CustomMinimumSize = new Vector2(400, 380);
         _previewInput.SizeFlagsVertical = SizeFlags.ExpandFill;
         _previewInput.MouseFilter = MouseFilterEnum.Stop;
 
-        var view = new HBoxContainer
+        // View and size controls ride in the preview's lower-left corner, the same cluster
+        // Paint Buddy puts its turn/zoom controls in (owner instruction 2026-08-22). It is
+        // built docked in the column and floats over the preview once that is attached, so
+        // every control exists and keeps its node name whether the preview is here or not.
+        _viewCluster = new PanelContainer
         {
-            Name = "BuddyStudioViewActions",
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            Name = "BuddyStudioViewCluster",
+            MouseFilter = MouseFilterEnum.Pass,
+            ZIndex = 100,
         };
-        view.AddThemeConstantOverride("separation", 4);
-        _previewColumn.AddChild(view);
-        Button zoomOut = ViewAction(view, "Zoom −", () => SetViewZoom(_viewZoom - ViewZoomStep));
-        zoomOut.Name = "BuddyStudioZoomOut";
-        zoomOut.TooltipText = "Show more of the buddy portrait.";
-        Button zoomIn = ViewAction(view, "Zoom +", () => SetViewZoom(_viewZoom + ViewZoomStep));
-        zoomIn.Name = "BuddyStudioZoomIn";
-        zoomIn.TooltipText = "Move closer to the selected area.";
-        Button resetView = ViewAction(view, "Reset View", ResetView);
-        resetView.Name = "BuddyStudioResetView";
-        resetView.TooltipText = "Restore the selected category's default portrait framing.";
+        _viewCluster.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
+        _previewColumn.AddChild(_viewCluster);
+        var clusterRows = new VBoxContainer
+        {
+            Name = "BuddyStudioViewClusterRows",
+            MouseFilter = MouseFilterEnum.Pass,
+        };
+        clusterRows.AddThemeConstantOverride("separation", 2);
+        _viewCluster.AddChild(clusterRows);
 
-        var transform = new GridContainer
+        var view = new HBoxContainer { Name = "BuddyStudioViewActions" };
+        view.AddThemeConstantOverride("separation", 2);
+        clusterRows.AddChild(view);
+        Button zoomOut = ClusterAction(view, PaintToolIconProvider.ZoomOut,
+            "Show more of the buddy portrait.", () => SetViewZoom(_viewZoom - ViewZoomStep));
+        zoomOut.Name = "BuddyStudioZoomOut";
+        Button zoomIn = ClusterAction(view, PaintToolIconProvider.ZoomIn,
+            "Move closer to the selected area.", () => SetViewZoom(_viewZoom + ViewZoomStep));
+        zoomIn.Name = "BuddyStudioZoomIn";
+        Button resetView = ClusterAction(view, PaintToolIconProvider.ResetView,
+            "Restore the selected category's default portrait framing.", ResetView);
+        resetView.Name = "BuddyStudioResetView";
+
+        var transform = new HBoxContainer { Name = "BuddyStudioTransformActions" };
+        transform.AddThemeConstantOverride("separation", 2);
+        clusterRows.AddChild(transform);
+        _smaller = ClusterAction(transform, PaintToolIconProvider.Shrink,
+            "Make the selected cosmetic smaller.", () => ScaleBy(-0.05));
+        _smaller.Name = "BuddyStudioSmaller";
+        _larger = ClusterAction(transform, PaintToolIconProvider.Enlarge,
+            "Make the selected cosmetic larger.", () => ScaleBy(0.05));
+        _larger.Name = "BuddyStudioLarger";
+
+        // What is left over sits under the preview, along the foot of the pane.
+        var actions = new HBoxContainer
         {
-            Name = "BuddyStudioTransformActions",
-            Columns = 2,
+            Name = "BuddyStudioPreviewActions",
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
         };
-        _previewColumn.AddChild(transform);
-        _smaller = Action(transform, "Smaller", () => ScaleBy(-0.05));
-        _smaller.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _smaller.Name = "BuddyStudioSmaller";
-        _larger = Action(transform, "Larger", () => ScaleBy(0.05));
-        _larger.SizeFlagsHorizontal = SizeFlags.ExpandFill;
-        _larger.Name = "BuddyStudioLarger";
-        _move = Action(transform, "Move", () => SetMoveMode(!_moveMode));
+        actions.AddThemeConstantOverride("separation", 4);
+        _previewColumn.AddChild(actions);
+        _move = Action(actions, "Move", () => SetMoveMode(!_moveMode));
         _move.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _move.Name = "BuddyStudioMove";
-        _resetTransform = Action(transform, "Reset", ResetTransform);
+        _resetTransform = Action(actions, "Reset", ResetTransform);
         _resetTransform.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         _resetTransform.Name = "BuddyStudioReset";
-        Button random = Action(_previewColumn, "Randomize", Randomize);
+        Button random = Action(actions, "Randomize", Randomize);
+        random.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         random.Name = "BuddyStudioRandomize";
         random.TooltipText = "Choose from free and owned cosmetics only.";
     }
 
+    /// <summary>One square icon button of the floating view cluster.</summary>
+    private static Button ClusterAction(Control parent, string icon, string tooltip, Action pressed)
+    {
+        var button = new Button
+        {
+            FocusMode = FocusModeEnum.All,
+            CustomMinimumSize = new Vector2(30, 28),
+            SizeFlagsHorizontal = SizeFlags.ShrinkCenter,
+        };
+        PaintToolIconProvider.Apply(button, icon, string.Empty, tooltip);
+        button.Pressed += pressed;
+        parent.AddChild(button);
+        return button;
+    }
+
     private void BuildCatalogPane(HBoxContainer body)
     {
-        var pane = Pane("BuddyStudioCatalogPane", 330);
-        pane.SizeFlagsHorizontal = SizeFlags.ExpandFill;
+        // Two tiles wide (owner instruction 2026-08-22): 122 per tile, the grid gap, the
+        // column margins and room for the scrollbar.
+        var pane = Pane("BuddyStudioCatalogPane", 288);
         body.AddChild(pane);
         var column = Column(pane);
         column.AddChild(new Label { Text = "Styles" });
@@ -344,19 +420,38 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         var pane = Pane("BuddyStudioInspectorPane", 250);
         body.AddChild(pane);
         var column = Column(pane);
-        column.AddChild(new Label { Text = "Color and Ownership" });
+        _selectedItemName = new Label
+        {
+            Name = "BuddyStudioSelectedItemName",
+            Text = "Style",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+        };
+        _selectedItemName.AddThemeFontSizeOverride("font_size", 16);
+        column.AddChild(_selectedItemName);
+
+        // Colour is its own section at the top: a header row carrying the custom-colour
+        // picker, then the swatches. The picker is the paint bucket the Paint Buddy and Paint
+        // Room windows use, not a full-width colour bar (owner instruction 2026-08-22).
+        var colorHeader = new HBoxContainer { Name = "BuddyStudioColorHeader" };
+        column.AddChild(colorHeader);
+        colorHeader.AddChild(new Label { Text = "Color", SizeFlagsHorizontal = SizeFlags.ExpandFill });
         _color = new ColorPickerButton
         {
             Name = "BuddyStudioColor",
-            Text = "Choose color",
-            CustomMinimumSize = new Vector2(0, 34),
+            CustomMinimumSize = new Vector2(34, 30),
         };
         _color.ColorChanged += color =>
         {
-            if (!_refreshing)
-                Handle(_session.SetFeatureColor(_slot, ToRgba(color)));
+            if (_refreshing)
+                return;
+            Rgba32 chosen = ToRgba(color);
+            Handle(_session.SetFeatureColor(_slot, chosen));
+            RememberColor(chosen);
         };
-        column.AddChild(_color);
+        colorHeader.AddChild(_color);
+        PaintBucketIcon(_color);
+
         _presets = new GridContainer
         {
             Name = "BuddyStudioColorPresets",
@@ -378,15 +473,35 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             preset.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Raised(swatch, 2));
             preset.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(swatch.Lightened(0.18f), 2));
             preset.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(swatch, 2));
-            preset.Pressed += () => Handle(_session.SetFeatureColor(_slot, captured));
+            preset.Pressed += () =>
+            {
+                Handle(_session.SetFeatureColor(_slot, captured));
+                RememberColor(captured);
+            };
             _presets.AddChild(preset);
         }
+
+        // The last three colours the player actually applied, so a mixed colour can be reused
+        // on another feature without opening the picker again (owner instruction 2026-08-22).
+        column.AddChild(new Label { Text = "Recently used" });
+        _recentColors = new GridContainer
+        {
+            Name = "BuddyStudioRecentColors",
+            Columns = RecentColorCount,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+        };
+        column.AddChild(_recentColors);
+        RefreshRecentColors();
+
+        // Everything about the transaction sits together at the foot of the pane, directly
+        // above Save and Exit.
+        column.AddChild(new Control { SizeFlagsVertical = SizeFlags.ExpandFill });
         _values = new Win98ValuePanel { Name = "BuddyStudioValues" };
         column.AddChild(_values);
         _buy = Action(column, "Buy", () => _ = PurchaseOrEquipAsync());
         _buy.Name = "BuddyStudioBuy";
+        _buy.CustomMinimumSize = new Vector2(0, 34);
 
-        column.AddChild(new Control { SizeFlagsVertical = SizeFlags.ExpandFill });
         var actions = new HBoxContainer
         {
             Name = "BuddyStudioActions",
@@ -401,6 +516,81 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         Button exit = Action(actions, "Exit", () => _ = CancelAsync());
         exit.Name = "BuddyStudioCancel";
         exit.CustomMinimumSize = new Vector2(96, 30);
+    }
+
+    /// <summary>Newest first, three deep, no duplicates.</summary>
+    private void RememberColor(Rgba32 color)
+    {
+        _recent.RemoveAll(existing => existing == color);
+        _recent.Insert(0, color);
+        if (_recent.Count > RecentColorCount)
+            _recent.RemoveRange(RecentColorCount, _recent.Count - RecentColorCount);
+        RefreshRecentColors();
+    }
+
+    private void RefreshRecentColors()
+    {
+        if (!GodotObject.IsInstanceValid(_recentColors))
+            return;
+        foreach (Node child in _recentColors.GetChildren())
+        {
+            _recentColors.RemoveChild(child);
+            child.QueueFree();
+        }
+        for (int index = 0; index < RecentColorCount; index++)
+        {
+            var swatch = new Button
+            {
+                Name = $"BuddyStudioRecentColor{index + 1}",
+                FocusMode = FocusModeEnum.All,
+                CustomMinimumSize = new Vector2(68, 28),
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+                Disabled = index >= _recent.Count,
+            };
+            if (index >= _recent.Count)
+            {
+                swatch.TooltipText = "No colour used yet.";
+                _recentColors.AddChild(swatch);
+                continue;
+            }
+
+            Rgba32 captured = _recent[index];
+            Color color = FromRgba(captured);
+            swatch.TooltipText = $"Use {captured.ToHex()} again.";
+            swatch.AddThemeStyleboxOverride("normal", Win98ThemeFactory.Raised(color, 2));
+            swatch.AddThemeStyleboxOverride("hover", Win98ThemeFactory.Raised(color.Lightened(0.18f), 2));
+            swatch.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(color, 2));
+            swatch.Pressed += () =>
+            {
+                Handle(_session.SetFeatureColor(_slot, captured));
+                RememberColor(captured);
+            };
+            _recentColors.AddChild(swatch);
+        }
+    }
+
+    /// <summary>
+    /// The same overlay the Paint windows put on their colour wheel: a ColorPickerButton paints
+    /// its swatch over the whole button after the button draws, so the glyph has to be a child.
+    /// </summary>
+    private static void PaintBucketIcon(ColorPickerButton picker)
+    {
+        var face = new PanelContainer { Name = "BuddyStudioColorFace", MouseFilter = MouseFilterEnum.Ignore };
+        face.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
+        picker.AddChild(face);
+        face.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        var icon = new TextureRect
+        {
+            Name = "BuddyStudioColorIcon",
+            Texture = GD.Load<Texture2D>("res://assets/ui/win98/paint_bucket_brushes.svg"),
+            MouseFilter = MouseFilterEnum.Ignore,
+            ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
+            StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+        };
+        picker.AddChild(icon);
+        icon.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        icon.OffsetLeft = icon.OffsetTop = 4;
+        icon.OffsetRight = icon.OffsetBottom = -4;
     }
 
     private void BuildDirtyDialog()
@@ -931,14 +1121,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         };
         button.Pressed += pressed;
         parent.AddChild(button);
-        return button;
-    }
-
-    private static Button ViewAction(Control parent, string text, Action pressed)
-    {
-        Button button = Action(parent, text, pressed);
-        button.CustomMinimumSize = new Vector2(0, 30);
-        button.SizeFlagsHorizontal = SizeFlags.ExpandFill;
         return button;
     }
 

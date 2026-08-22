@@ -96,6 +96,15 @@ public static class ContentIds
     public const string CosmeticHeadwearSunHat = "cosmetic.headwear.sun_hat";
     public const string CosmeticHeadwearFedora = "cosmetic.headwear.fedora";
 
+    // Third wave (owner instruction 2026-08-22): two long girls' hairstyles and five brows.
+    public const string CosmeticHairTwinBraids = "cosmetic.hair.twin_braids";
+    public const string CosmeticHairLongWaves = "cosmetic.hair.long_waves";
+    public const string CosmeticBrowsThinLine = "cosmetic.brows.thin_line";
+    public const string CosmeticBrowsAngledSharp = "cosmetic.brows.angled_sharp";
+    public const string CosmeticBrowsRoundedHigh = "cosmetic.brows.rounded_high";
+    public const string CosmeticBrowsThickFlat = "cosmetic.brows.thick_flat";
+    public const string CosmeticBrowsTaperedCurve = "cosmetic.brows.tapered_curve";
+
     public const string LooseObject = "object.loose";
     public const string RoomBoundary = "boundary.room";
     public const string CareLabFood = "care.lab_food";

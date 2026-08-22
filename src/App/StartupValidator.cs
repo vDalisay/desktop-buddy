@@ -24,6 +24,7 @@ public static class StartupValidator
         ("layer_names/2d_physics/layer_4", "Projectiles"),
         ("layer_names/2d_physics/layer_5", "PhysicalTools"),
         ("layer_names/2d_physics/layer_6", "InteractionSense"),
+        ("layer_names/2d_physics/layer_7", "Flame"),
     };
 
     /// <param name="resources">

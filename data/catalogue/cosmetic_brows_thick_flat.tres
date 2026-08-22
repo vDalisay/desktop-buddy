@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticBrowsThickFlat"
+script = ExtResource("1")
+ContentId = "cosmetic.brows.thick_flat"
+Kind = 4
+PriceCredits = 100
+ProgressionOrder = 82
+Visible = true
+NameKey = "buddy_studio.cosmetic.brows.thick_flat.name"
+DescriptionKey = "buddy_studio.cosmetic.brows.thick_flat.description"
+RequiresLaunchScene = false
+RequiresIcon = false

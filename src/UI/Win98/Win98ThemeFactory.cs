@@ -19,18 +19,20 @@ public static class Win98ThemeFactory
     public static readonly Color HoverSelection = Color.Color8(72, 132, 208);
 
     public const int Border = 2;
-    public const int TitleBarHeight = 22;
-    public const int StatusBarHeight = 22;
+    public const int TitleBarHeight = 32;
+    public const int StatusBarHeight = 26;
     /// <summary>Centered world inset that places its floor on the status bar's top edge.</summary>
-    public const int ChromeHeight = 58;
+    public const int ChromeHeight = 72;
     public const int ControlHeight = 24;
 
     /// <summary>
     /// Title-bar commands are square, not oblong: Win98 draws minimise, maximise, close and the
     /// rest as equal boxes, and 20x18 read as stretched (owner report 2026-08-21). Every title
-    /// bar builds its buttons from these two so they cannot drift apart again.
+    /// bar builds its buttons from these two so they cannot drift apart again. 18x18 was a
+    /// period-accurate size on a period-accurate screen and a stamp on a modern one; the size
+    /// now matches what a browser puts in its own chrome (owner report 2026-08-22).
     /// </summary>
-    public const int TitleButtonSize = 18;
+    public const int TitleButtonSize = 26;
 
     /// <summary>
     /// Gap between title-bar commands. The gap to the right of the last one comes from the
@@ -316,11 +318,11 @@ public static class Win98ThemeFactory
     /// </summary>
     public static void StyleTitleButton(Button button)
     {
-        button.CustomMinimumSize = new Vector2(TitleButtonSize, TitleButtonSize);
+        button.CustomMinimumSize = new Vector2(Px(TitleButtonSize), Px(TitleButtonSize));
         button.SizeFlagsVertical = Control.SizeFlags.ShrinkCenter;
         button.SizeFlagsHorizontal = Control.SizeFlags.ShrinkCenter;
         button.ClipText = true;
-        button.AddThemeFontSizeOverride("font_size", Px(11));
+        button.AddThemeFontSizeOverride("font_size", Px(16));
         button.AddThemeStyleboxOverride("normal", Compact(Raised(Face, 2)));
         button.AddThemeStyleboxOverride("hover", Compact(Raised(Highlight, 2)));
         button.AddThemeStyleboxOverride("pressed", Compact(Recessed(Face, 2)));

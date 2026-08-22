@@ -16,9 +16,13 @@ public partial class ImpactVisualOffsetComponent : Node
     private const float MaximumAmplitudePixels = 2.0f;
     private const float ShakeFrequencyHz = 40.0f;
 
-    /// <summary>How far the buddy squirms under the feather, and how fast.</summary>
-    private const float TickleAmplitudePixels = 1.1f;
-    private const float TickleFrequencyHz = 17.0f;
+    /// <summary>
+    /// How far the buddy squirms under the feather, and how fast. 17 Hz read as a buzzing
+    /// vibration rather than a squirm, so the rate is down by ~90% and the throw with it
+    /// (owner instruction 2026-08-22).
+    /// </summary>
+    private const float TickleAmplitudePixels = 0.55f;
+    private const float TickleFrequencyHz = 1.8f;
 
     [Export] public SwingHitLagComponent HitLag { get; set; } = null!;
 
@@ -44,11 +48,13 @@ public partial class ImpactVisualOffsetComponent : Node
 
     public Vector3 OffsetFor(BuddyPartId partId)
     {
-        // Being tickled is the whole buddy wriggling, not one struck part, so it is applied
-        // everywhere and on two frequencies — a single sine reads as a buzz rather than a
-        // squirm. A hit-lag freeze outranks it: that shake is the one being read.
+        // Only the part the feather is actually on squirms: shaking the whole buddy made a
+        // touch on one foot look like a full-body seizure (owner instruction 2026-08-22). Two
+        // frequencies, because a single sine reads as a vibration rather than a squirm. A
+        // hit-lag freeze outranks it: that shake is the one being read.
         Vector3 tickle = Vector3.Zero;
-        if (IsInitialized && Care is { IsInitialized: true, IsTickleContact: true })
+        if (IsInitialized && Care is { IsInitialized: true, IsTickleContact: true } &&
+            Care.ContactPart is BuddyPart tickled && (int)tickled == (int)partId)
         {
             double seconds = Time.GetTicksUsec() / 1_000_000.0;
             float lateral = Mathf.Sin((float)(seconds * Mathf.Tau * TickleFrequencyHz));

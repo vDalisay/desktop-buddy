@@ -159,6 +159,10 @@ public sealed class CharacterCompilerTests
             CharacterFeatureIds.EarsElf,
             CharacterFeatureIds.GlassesSquareFrames, CharacterFeatureIds.GlassesCatEye, CharacterFeatureIds.GlassesAviators, CharacterFeatureIds.GlassesHalfMoon, CharacterFeatureIds.GlassesVisor,
             CharacterFeatureIds.HeadwearBallCap, CharacterFeatureIds.HeadwearSunHat, CharacterFeatureIds.HeadwearFedora,
+
+            // Third wave (owner instruction 2026-08-22).
+            CharacterFeatureIds.HairTwinBraids, CharacterFeatureIds.HairLongWaves,
+            CharacterFeatureIds.BrowsThinLine, CharacterFeatureIds.BrowsAngledSharp, CharacterFeatureIds.BrowsRoundedHigh, CharacterFeatureIds.BrowsThickFlat, CharacterFeatureIds.BrowsTaperedCurve,
         ];
         Assert.All(paidIds, id =>
         {

@@ -98,6 +98,29 @@ internal static class BuddyStudioThumbnailCache
                 Ellipse(image, 22, 46, 6, 4, accent);
                 Ellipse(image, 74, 46, 6, 4, accent);
                 break;
+            case CharacterFeatureIds.HairTwinBraids:
+                // Cap, centre-parted fringe and a beaded braid hanging on each side.
+                Ellipse(image, 48, 20, 26, 15, accent);
+                Ellipse(image, 38, 24, 11, 6, accent);
+                Ellipse(image, 58, 24, 11, 6, accent);
+                Circle(image, 22, 34, 5, accent);
+                Circle(image, 21, 44, 5, accent);
+                Circle(image, 21, 53, 4, accent);
+                Circle(image, 74, 34, 5, accent);
+                Circle(image, 75, 44, 5, accent);
+                Circle(image, 75, 53, 4, accent);
+                break;
+            case CharacterFeatureIds.HairLongWaves:
+                // One sheet of hair past the shoulders, swept fringe, waved hem.
+                Ellipse(image, 48, 20, 27, 16, accent);
+                Rect(image, 22, 20, 12, 38, accent);
+                Rect(image, 62, 20, 12, 38, accent);
+                Rect(image, 26, 44, 44, 14, accent);
+                Ellipse(image, 33, 58, 8, 5, accent);
+                Ellipse(image, 48, 60, 8, 5, accent);
+                Ellipse(image, 63, 58, 8, 5, accent);
+                Ellipse(image, 42, 24, 20, 7, accent);
+                break;
             case CharacterFeatureIds.HairBuzzCut:
                 Ellipse(image, 48, 22, 25, 13, accent);
                 Line(image, 25, 26, 71, 26, ink, 2);
@@ -154,6 +177,30 @@ internal static class BuddyStudioThumbnailCache
             case CharacterFeatureIds.BrowsBushy:
                 Arc(image, 38, 29, 10, 5, 200, 340, accent, 6);
                 Arc(image, 58, 29, 10, 5, 200, 340, accent, 6);
+                break;
+            case CharacterFeatureIds.BrowsThinLine:
+                Line(image, 30, 28, 44, 27, accent, 1);
+                Line(image, 52, 27, 66, 28, accent, 1);
+                break;
+            case CharacterFeatureIds.BrowsAngledSharp:
+                Line(image, 30, 30, 40, 25, accent, 3);
+                Line(image, 40, 25, 44, 28, accent, 3);
+                Line(image, 66, 30, 56, 25, accent, 3);
+                Line(image, 56, 25, 52, 28, accent, 3);
+                break;
+            case CharacterFeatureIds.BrowsRoundedHigh:
+                Arc(image, 38, 27, 10, 8, 200, 340, accent, 3);
+                Arc(image, 58, 27, 10, 8, 200, 340, accent, 3);
+                break;
+            case CharacterFeatureIds.BrowsThickFlat:
+                Rect(image, 29, 26, 16, 5, accent);
+                Rect(image, 51, 26, 16, 5, accent);
+                break;
+            case CharacterFeatureIds.BrowsTaperedCurve:
+                Arc(image, 38, 29, 10, 5, 200, 270, accent, 2);
+                Arc(image, 38, 29, 10, 5, 270, 340, accent, 5);
+                Arc(image, 58, 29, 10, 5, 270, 340, accent, 2);
+                Arc(image, 58, 29, 10, 5, 200, 270, accent, 5);
                 break;
 
             case CharacterFeatureIds.NoseButton:

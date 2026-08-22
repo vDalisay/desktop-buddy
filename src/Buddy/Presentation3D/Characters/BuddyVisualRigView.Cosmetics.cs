@@ -206,14 +206,44 @@ public partial class BuddyVisualRigView
             case BuddyCosmeticVisualKind.HairBobBangs:
                 // Symmetrical ear-length bob: skull cap, a straight fringe band across the
                 // forehead, side curtains down to the ear line and a small outward flick.
-                AddEllipsoid(root, "BobCap", new Vector3(0, -0.17f, -0.48f), new Vector3(0.92f, 0.62f, 0.95f), headRadius, color, visual.Layer, hemisphere: true);
-                AddEllipsoid(root, "BobBack", new Vector3(0, -0.62f, -0.80f), new Vector3(0.92f, 0.80f, 0.55f), headRadius, color, visual.Layer);
-                AddEllipsoid(root, "BobFringe", new Vector3(0, -0.17f, 0.30f), new Vector3(0.82f, 0.22f, 0.30f), headRadius, color, visual.Layer);
+                // The cap is a hemisphere, so everything below its flat underside had to be
+                // covered by something else — and it was not: the back showed a bare band and
+                // the sides a gap (owner report 2026-08-22). The back is now one full ellipsoid
+                // that starts above the cap's rim and reaches past the jaw, and each side
+                // curtain overlaps both it and the cap instead of hanging between them.
+                AddEllipsoid(root, "BobCap", new Vector3(0, -0.22f, -0.48f), new Vector3(1.02f, 0.84f, 1.04f), headRadius, color, visual.Layer, hemisphere: true);
+                AddEllipsoid(root, "BobBack", new Vector3(0, -0.30f, -0.72f), new Vector3(1.00f, 0.98f, 0.86f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "BobFringe", new Vector3(0, -0.17f, 0.30f), new Vector3(0.86f, 0.24f, 0.32f), headRadius, color, visual.Layer);
                 foreach (float bobSide in new[] { -1.0f, 1.0f })
                 {
-                    AddEllipsoid(root, $"BobSide{bobSide}", new Vector3(bobSide * 0.80f, -0.80f, -0.28f), new Vector3(0.34f, 0.62f, 0.74f), headRadius, color, visual.Layer);
-                    AddEllipsoid(root, $"BobFlick{bobSide}", new Vector3(bobSide * 0.96f, -1.16f, -0.28f), new Vector3(0.30f, 0.22f, 0.46f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"BobSide{bobSide}", new Vector3(bobSide * 0.78f, -0.72f, -0.34f), new Vector3(0.40f, 0.80f, 0.86f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"BobFlick{bobSide}", new Vector3(bobSide * 0.92f, -1.24f, -0.34f), new Vector3(0.34f, 0.26f, 0.52f), headRadius, color, visual.Layer);
                 }
+                break;
+            case BuddyCosmeticVisualKind.HairTwinBraids:
+                // Moulded toy pigtails: one solid cap and back, a centre-parted fringe, and a
+                // braid on each side built as three shrinking beads so it reads as plaited.
+                AddEllipsoid(root, "BraidCap", new Vector3(0, -0.22f, -0.48f), new Vector3(1.02f, 0.86f, 1.04f), headRadius, color, visual.Layer, hemisphere: true);
+                AddEllipsoid(root, "BraidBack", new Vector3(0, -0.34f, -0.70f), new Vector3(0.98f, 0.92f, 0.84f), headRadius, color, visual.Layer);
+                foreach (float braidSide in new[] { -1.0f, 1.0f })
+                {
+                    AddEllipsoid(root, $"BraidFringe{braidSide}", new Vector3(braidSide * 0.34f, -0.14f, 0.22f), new Vector3(0.52f, 0.26f, 0.34f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"BraidTie{braidSide}", new Vector3(braidSide * 0.92f, -0.62f, -0.30f), new Vector3(0.34f, 0.34f, 0.40f), headRadius, color.Darkened(0.15f), visual.Layer);
+                    AddEllipsoid(root, $"BraidTop{braidSide}", new Vector3(braidSide * 1.02f, -1.02f, -0.30f), new Vector3(0.34f, 0.34f, 0.36f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"BraidMid{braidSide}", new Vector3(braidSide * 1.06f, -1.42f, -0.30f), new Vector3(0.30f, 0.30f, 0.32f), headRadius, color, visual.Layer);
+                    AddEllipsoid(root, $"BraidTip{braidSide}", new Vector3(braidSide * 1.08f, -1.76f, -0.30f), new Vector3(0.22f, 0.24f, 0.24f), headRadius, color, visual.Layer);
+                }
+                break;
+            case BuddyCosmeticVisualKind.HairLongWaves:
+                // The other toy silhouette: one continuous sheet of hair falling past the
+                // shoulders, with a soft wave at the hem and a swept fringe over one brow.
+                AddEllipsoid(root, "WaveCap", new Vector3(0, -0.24f, -0.48f), new Vector3(1.04f, 0.88f, 1.06f), headRadius, color, visual.Layer, hemisphere: true);
+                AddEllipsoid(root, "WaveBack", new Vector3(0, -0.46f, -0.66f), new Vector3(1.02f, 1.10f, 0.90f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "WaveFall", new Vector3(0, -1.50f, -0.62f), new Vector3(0.96f, 0.90f, 0.66f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "WaveHem", new Vector3(0, -2.20f, -0.58f), new Vector3(0.86f, 0.44f, 0.60f), headRadius, color, visual.Layer);
+                AddEllipsoid(root, "WaveFringe", new Vector3(-0.18f, -0.16f, 0.22f), new Vector3(0.84f, 0.28f, 0.38f), headRadius, color, visual.Layer);
+                foreach (float waveSide in new[] { -1.0f, 1.0f })
+                    AddEllipsoid(root, $"WaveSide{waveSide}", new Vector3(waveSide * 0.82f, -1.10f, -0.34f), new Vector3(0.40f, 1.20f, 0.80f), headRadius, color, visual.Layer);
                 break;
             case BuddyCosmeticVisualKind.HairBuzzCut:
                 AddEllipsoid(root, "BuzzCap", new Vector3(0, -0.14f, -0.48f), new Vector3(0.88f, 0.52f, 0.88f), headRadius, color, visual.Layer, hemisphere: true);

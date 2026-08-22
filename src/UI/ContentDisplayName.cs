@@ -19,12 +19,15 @@ public static class ContentDisplayName
         if (string.IsNullOrWhiteSpace(contentId))
             return string.Empty;
 
-        // Pet and Tickle ship as the Brush and the Feather (owner renames 2026-08-19). Their
-        // content ids are persisted in save files and economy fixtures, so only the labels move.
+        // Pet and Tickle ship as the Brush and the Feather (owner renames 2026-08-19), and the
+        // Fire Sprayer as the Flamethrower (2026-08-22). Their content ids are persisted in save
+        // files and economy fixtures, so only the labels move.
         if (string.Equals(contentId, ContentIds.ToolPet, StringComparison.Ordinal))
             return "Brush";
         if (string.Equals(contentId, ContentIds.ToolTickle, StringComparison.Ordinal))
             return "Feather";
+        if (string.Equals(contentId, ContentIds.ToolFireSprayer, StringComparison.Ordinal))
+            return "Flamethrower";
 
         int lastDot = contentId.LastIndexOf('.');
         string slug = lastDot >= 0 && lastDot < contentId.Length - 1

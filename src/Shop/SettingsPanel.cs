@@ -56,7 +56,7 @@ public partial class SettingsPanel : PanelContainer
         // to the money (owner instruction 2026-08-21).
         PanelChrome.Parts parts = PanelChrome.Build(this, "SettingsActionList", descriptionLines: 10);
         _list = parts.List;
-        _status = parts.Status;
+        _status = parts.Status!;
         _description = parts.Description;
         _description.Text = DefaultDescription;
         VisibilityChanged += OnVisibilityChanged;

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CosmeticHairLongWaves"
+script = ExtResource("1")
+ContentId = "cosmetic.hair.long_waves"
+Kind = 4
+PriceCredits = 100
+ProgressionOrder = 78
+Visible = true
+NameKey = "buddy_studio.cosmetic.hair.long_waves.name"
+DescriptionKey = "buddy_studio.cosmetic.hair.long_waves.description"
+RequiresLaunchScene = false
+RequiresIcon = false

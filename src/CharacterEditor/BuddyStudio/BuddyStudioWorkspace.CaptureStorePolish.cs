@@ -12,9 +12,6 @@ namespace DesktopBuddy.CharacterEditor.BuddyStudio;
 
 public partial class BuddyStudioWorkspace
 {
-    private bool _captureStorePolishInstalled;
-    private Label? _captureStoreItemName;
-    private Label? _captureStoreColorHeader;
     private bool _captureStoreStateObserved;
     private string? _captureStoreLastPreviewId;
     private bool _captureStoreLastOwned;
@@ -33,7 +30,6 @@ public partial class BuddyStudioWorkspace
             return;
         }
 
-        EnsureCaptureStoreHierarchy();
         CharacterDocument? preview = _session.PreviewDocument;
         if (preview is null)
             return;
@@ -45,10 +41,10 @@ public partial class BuddyStudioWorkspace
         string displayName = BuddyGeneratedCosmeticRegistry.Current.TryGet(previewId, out GeneratedBuddyCosmeticResource generated)
             ? generated.DisplayName
             : CosmeticName(definition);
-        if (GodotObject.IsInstanceValid(_captureStoreItemName) &&
-            !string.Equals(_captureStoreItemName!.Text, displayName, StringComparison.Ordinal))
+        if (GodotObject.IsInstanceValid(_selectedItemName) &&
+            !string.Equals(_selectedItemName!.Text, displayName, StringComparison.Ordinal))
         {
-            _captureStoreItemName.Text = displayName;
+            _selectedItemName.Text = displayName;
         }
 
         bool owned = _session.IsCosmeticOwned(definition.Id);
@@ -124,83 +120,4 @@ public partial class BuddyStudioWorkspace
         }
     }
 
-    private void EnsureCaptureStoreHierarchy()
-    {
-        if (_captureStorePolishInstalled)
-            return;
-
-        PanelContainer? pane = FindChild("BuddyStudioInspectorPane", recursive: true, owned: false) as PanelContainer;
-        VBoxContainer? column = pane?.FindChild("*", recursive: false, owned: false) as VBoxContainer;
-        if (!GodotObject.IsInstanceValid(column))
-        {
-            // Pane() wraps one VBoxContainer but does not promise its generated name. Fall back to
-            // the direct child scan rather than depending on a scene-tree string.
-            if (pane is not null)
-            {
-                foreach (Node child in pane.GetChildren())
-                {
-                    if (child is VBoxContainer candidate)
-                    {
-                        column = candidate;
-                        break;
-                    }
-                    if (child is MarginContainer margin)
-                    {
-                        foreach (Node nested in margin.GetChildren())
-                            if (nested is VBoxContainer nestedColumn)
-                            {
-                                column = nestedColumn;
-                                break;
-                            }
-                    }
-                    if (column is not null)
-                        break;
-                }
-            }
-        }
-        if (!GodotObject.IsInstanceValid(column))
-            return;
-
-        Label? oldHeader = null;
-        foreach (Node child in column!.GetChildren())
-        {
-            if (child is Label label)
-            {
-                oldHeader = label;
-                break;
-            }
-        }
-        if (oldHeader is not null)
-            oldHeader.Text = "Style Store";
-
-        _captureStoreItemName = new Label
-        {
-            Name = "BuddyStudioSelectedItemName",
-            Text = "Style",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
-        _captureStoreItemName.AddThemeFontSizeOverride("font_size", 16);
-        column.AddChild(_captureStoreItemName);
-
-        _captureStoreColorHeader = new Label
-        {
-            Name = "BuddyStudioColorHeader",
-            Text = "Color",
-        };
-        column.AddChild(_captureStoreColorHeader);
-
-        // Store card first: item name -> state/price/balance -> primary action. Customization then
-        // follows underneath, while the existing spacer keeps Save/Exit anchored to the bottom.
-        int headerIndex = oldHeader?.GetIndex() ?? 0;
-        column.MoveChild(_captureStoreItemName, Math.Min(headerIndex + 1, column.GetChildCount() - 1));
-        column.MoveChild(_values, Math.Min(headerIndex + 2, column.GetChildCount() - 1));
-        column.MoveChild(_buy, Math.Min(headerIndex + 3, column.GetChildCount() - 1));
-        column.MoveChild(_captureStoreColorHeader, Math.Min(headerIndex + 4, column.GetChildCount() - 1));
-        column.MoveChild(_color, Math.Min(headerIndex + 5, column.GetChildCount() - 1));
-        column.MoveChild(_presets, Math.Min(headerIndex + 6, column.GetChildCount() - 1));
-
-        _buy.CustomMinimumSize = new Vector2(0, 34);
-        _captureStorePolishInstalled = true;
-    }
 }
