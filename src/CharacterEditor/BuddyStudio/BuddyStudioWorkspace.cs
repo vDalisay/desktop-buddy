@@ -629,7 +629,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _moveBlocker = Win98Dialog.Blocker((Control)GetParent(), "BuddyStudioMoveBlocker");
         _moveBlocker.ZIndex = 100;
         _moveBlocker.FocusMode = FocusModeEnum.All;
-        _moveBlocker.TooltipText = "Drag the portrait to move it; click outside it or press Escape to finish.";
+        _moveBlocker.TooltipText =
+            "Drag the portrait to move it, scroll to resize it; click outside it or press Escape to finish.";
         _moveBlocker.GuiInput += OnMoveBlockerInput;
     }
 
@@ -646,6 +647,16 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         _moveBlocker.MouseDefaultCursorShape = overPreview ? CursorShape.Move : CursorShape.Arrow;
         if (mouse is InputEventMouseButton button)
         {
+            // The wheel resizes what is being moved, so a cosmetic can be placed and sized in
+            // one gesture instead of reaching back out to the buttons (owner instruction
+            // 2026-08-22). Same step and the same bounded seam the size buttons use.
+            if (overPreview && button.Pressed && button.ButtonIndex is
+                MouseButton.WheelUp or MouseButton.WheelDown)
+            {
+                ScaleBy(button.ButtonIndex == MouseButton.WheelUp ? 0.05 : -0.05);
+                _moveBlocker.AcceptEvent();
+                return;
+            }
             if (!overPreview)
             {
                 if (button.Pressed)

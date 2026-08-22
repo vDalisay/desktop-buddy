@@ -6,8 +6,11 @@ using DesktopBuddy.Domain.Characters;
 namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
-/// Deterministic twelve-category Studio randomization. Eligibility comes only from trusted
-/// free definitions and the caller's existing permanent cosmetic ownership set.
+/// Deterministic Studio randomization across every category the catalogue carries. It reads the
+/// categories and their styles from the catalogue itself, so a style added to the catalogue is
+/// rollable the moment it ships without this class being touched. Eligibility comes only from
+/// trusted free definitions and the caller's existing permanent cosmetic ownership set, so a
+/// roll can never equip something the player has not bought.
 /// </summary>
 public static class CharacterRandomizer
 {
@@ -55,13 +58,12 @@ public static class CharacterRandomizer
             if (eligible.Length == 0)
                 throw new InvalidOperationException($"No owned or free cosmetic definition exists for {slot}.");
 
+            // Style only. Position and size stay where the style was authored to sit: a rolled
+            // offset and scale made half the results look broken rather than different, and the
+            // player can move and resize whatever the roll gave them (owner instruction
+            // 2026-08-22).
             CosmeticDefinition selected = eligible[random.NextInt(eligible.Length)];
-            NormalizedFeatureTransform transform = selected.TransformPolicy == CosmeticTransformPolicy.None
-                ? selected.DefaultTransform
-                : new NormalizedFeatureTransform(
-                    NextRange(ref random, selected.TransformBounds.MinimumOffsetX, selected.TransformBounds.MaximumOffsetX),
-                    NextRange(ref random, selected.TransformBounds.MinimumOffsetY, selected.TransformBounds.MaximumOffsetY),
-                    NextRange(ref random, selected.TransformBounds.MinimumScale, selected.TransformBounds.MaximumScale));
+            NormalizedFeatureTransform transform = selected.DefaultTransform;
             var colors = selected.ColorChannels.ToDictionary(
                 channel => channel.Id,
                 _ => NextColor(ref random),
@@ -95,13 +97,6 @@ public static class CharacterRandomizer
 
     private static Rgba32 NextColor(ref XorShift64 random) =>
         SafeColors[random.NextInt(SafeColors.Length)];
-
-    private static double NextRange(ref XorShift64 random, double minimum, double maximum)
-    {
-        double unit = random.NextUInt64() / (double)ulong.MaxValue;
-        double value = minimum + ((maximum - minimum) * unit);
-        return Math.Round(value, 4, MidpointRounding.AwayFromZero);
-    }
 
     private struct XorShift64
     {

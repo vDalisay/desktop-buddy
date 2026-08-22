@@ -10,6 +10,7 @@ using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
@@ -216,15 +217,25 @@ public sealed class CharacterEditorRandomizationScenario : IScenario
             !accentScoped || accentPresent,
             $"accent={accent} accessories_in_build={accentScoped}"));
 
-        bool bounded = true;
-        foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>())
+        // Every category the catalogue carries is rolled, only ever to a free or owned style,
+        // and always at the style's authored placement and size (owner instruction 2026-08-22).
+        bool defaults = true;
+        bool eligibleOnly = true;
+        var owned = new HashSet<string>(StringComparer.Ordinal) { ContentIds.CosmeticHairTwinBraids };
+        CharacterDocument withOwned = CharacterRandomizer.Randomize(
+            source, CharacterFeatureCatalog.Shipped, owned, 91);
+        foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>().Distinct())
         {
-            NormalizedFeatureTransform transform = CharacterDocumentEditor.ReadFeatureTransform(first, slot);
-            bounded &= transform.OffsetX is >= NormalizedFeatureTransform.MinimumOffset and <= NormalizedFeatureTransform.MaximumOffset &&
-                transform.OffsetY is >= NormalizedFeatureTransform.MinimumOffset and <= NormalizedFeatureTransform.MaximumOffset &&
-                transform.Scale is >= NormalizedFeatureTransform.MinimumScale and <= NormalizedFeatureTransform.MaximumScale;
+            string rolled = CharacterDocumentEditor.ReadFeatureId(withOwned, slot);
+            CosmeticDefinition definition = CharacterFeatureCatalog.Shipped.ResolveDefinition(slot, rolled, out _);
+            eligibleOnly &= definition.IsFreeDefault ||
+                (definition.OwnershipContentId is string contentId && owned.Contains(contentId));
+            defaults &= CharacterDocumentEditor.ReadFeatureTransform(withOwned, slot) == definition.DefaultTransform;
         }
-        checks.Add(new StartupCheck("a8_randomization_respects_bounds", bounded, "four feature transforms"));
+        checks.Add(new StartupCheck(
+            "user_test_randomize_rolls_owned_styles_only_at_authored_placement",
+            defaults && eligibleOnly,
+            $"authored_transforms={defaults} owned_or_free={eligibleOnly}"));
         return Task.FromResult(CharacterEditorScenarioSupport.Result(checks, seed));
     }
 }
