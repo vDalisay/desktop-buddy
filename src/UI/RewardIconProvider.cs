@@ -190,6 +190,14 @@ public static class RewardIconProvider
                 break;
             }
 
+            case "rope_suspender":
+                // A hook with an orange rope hanging from it.
+                Line(image, 3, 2, 13, 2, Grey, 2);
+                Line(image, 8, 3, 8, 13, Color.Color8(232, 140, 40), 2);
+                Pixel(image, 7, 14, Color.Color8(232, 140, 40));
+                Pixel(image, 9, 14, Color.Color8(232, 140, 40));
+                break;
+
             case "shotgun":
                 Rect(image, 5, 5, 15, 7, Grey);
                 Outline(image, 5, 5, 15, 7, Ink);

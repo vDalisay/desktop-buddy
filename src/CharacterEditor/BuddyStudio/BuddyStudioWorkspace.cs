@@ -23,9 +23,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private const float MaximumViewZoom = 2.0f;
     private const float ViewZoomStep = 0.2f;
     private const int RecentColorCount = 3;
-    /// <summary>The body colourings category. It is not a cosmetic slot: what it sets are
-    /// the document's own part colours, which every character already carries.</summary>
-    private const string BodyCategoryId = "body";
     private static readonly CharacterFeatureSlot[] AllCategories =
     [
         CharacterFeatureSlot.Face, CharacterFeatureSlot.Hair, CharacterFeatureSlot.Brows,
@@ -86,7 +83,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private PanelContainer _dirtyDialog = null!;
     private Control _moveBlocker = null!;
     private CharacterFeatureSlot _slot = CharacterFeatureSlot.Face;
-    private bool _bodyMode;
     private bool _refreshing;
     private bool _moveMode;
     private bool _dragging;
@@ -97,8 +93,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
 
     public bool IsConfigured { get; private set; }
     public bool MoveMode => _moveMode;
-    /// <summary>Whether the body colourings category owns the panes.</summary>
-    public bool BodyMode => _bodyMode;
     public CharacterFeatureSlot SelectedSlot => _slot;
     public Button SaveAction => _save;
     public Button BuyAction => _buy;
@@ -263,24 +257,11 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         }
     }
 
-    /// <summary>Switches the panes to the body colourings, which are styles without a price.</summary>
-    public void SelectBodyCategory()
-    {
-        _session.CancelCosmeticPreviews();
-        _bodyMode = true;
-        _categories.Select(BodyCategoryId, notify: false);
-        SetMoveMode(false);
-        ResetView();
-        RefreshCatalog();
-        RefreshSelectionPane();
-    }
-
     public void SelectCategory(CharacterFeatureSlot slot)
     {
         if (!CategoryOrder.Contains(slot))
             throw new ArgumentOutOfRangeException(nameof(slot));
         _session.CancelCosmeticPreviews();
-        _bodyMode = false;
         _slot = slot;
         _categories.Select(SlotId(slot), notify: false);
         SetMoveMode(false);
@@ -292,18 +273,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     private void BuildUi()
     {
         _categories = new Win98CategoryStrip { Name = "BuddyStudioCategories" };
-        _categories.SetItems(CategoryOrder
-            .Select(slot => new Win98CategoryPresentation(
-                SlotId(slot), Friendly(slot), null, true, $"Edit {Friendly(slot).ToLowerInvariant()}."))
-            .Append(new Win98CategoryPresentation(
-                BodyCategoryId, "Body", null, true, "Choose the buddy's body colouring.")));
-        _categories.SelectionChanged += id =>
-        {
-            if (string.Equals(id, BodyCategoryId, StringComparison.Ordinal))
-                SelectBodyCategory();
-            else
-                SelectCategory(ParseSlot(id));
-        };
+        _categories.SetItems(CategoryOrder.Select(slot => new Win98CategoryPresentation(
+            SlotId(slot), Friendly(slot), null, true, $"Edit {Friendly(slot).ToLowerInvariant()}.")));
+        _categories.SelectionChanged += id => SelectCategory(ParseSlot(id));
         AddChild(_categories);
 
         var bodyScroll = new ScrollContainer
@@ -474,7 +446,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             if (_refreshing)
                 return;
             Rgba32 chosen = ToRgba(color);
-            ApplyColor(chosen);
+            Handle(_session.SetFeatureColor(_slot, chosen));
             RememberColor(chosen);
         };
         colorHeader.AddChild(_color);
@@ -503,7 +475,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             preset.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(swatch, 2));
             preset.Pressed += () =>
             {
-                ApplyColor(captured);
+                Handle(_session.SetFeatureColor(_slot, captured));
                 RememberColor(captured);
             };
             _presets.AddChild(preset);
@@ -544,15 +516,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         Button exit = Action(actions, "Exit", () => _ = CancelAsync());
         exit.Name = "BuddyStudioCancel";
         exit.CustomMinimumSize = new Vector2(96, 30);
-    }
-
-    /// <summary>The colour goes to whatever the open category is: one cosmetic, or the body.</summary>
-    private void ApplyColor(Rgba32 color)
-    {
-        if (_bodyMode)
-            ApplyBodyScheme(BodyColorSchemes.Derive(color));
-        else
-            Handle(_session.SetFeatureColor(_slot, color));
     }
 
     /// <summary>Newest first, three deep, no duplicates.</summary>
@@ -599,7 +562,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             swatch.AddThemeStyleboxOverride("pressed", Win98ThemeFactory.Recessed(color, 2));
             swatch.Pressed += () =>
             {
-                ApplyColor(captured);
+                Handle(_session.SetFeatureColor(_slot, captured));
                 RememberColor(captured);
             };
             _recentColors.AddChild(swatch);
@@ -779,13 +742,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
 
     private void RefreshCatalog()
     {
-        if (_bodyMode)
-        {
-            _catalog.SetItems(BodyColorSchemes.All.Select(BodyPresentation));
-            _catalog.Select(CurrentBodySchemeId(), notify: false);
-            return;
-        }
-
         IReadOnlyList<CosmeticDefinition> definitions = CharacterFeatureCatalog.Shipped.GetDefinitions(_slot);
         _catalog.SetItems(definitions.Select(Presentation));
         CharacterDocument? preview = _session.PreviewDocument;
@@ -799,7 +755,9 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         bool equipped = IsEquipped(definition.Id);
         bool previewed = _session.PreviewDocument is CharacterDocument preview &&
             string.Equals(CharacterDocumentEditor.ReadFeatureId(preview, _slot), definition.Id, StringComparison.Ordinal);
-        string secondary = owned ? string.Empty : PriceText(definition);
+        // A free default read as an unlabelled tile next to priced ones, so the one style that
+        // puts the plain buddy back was easy to miss entirely (owner report 2026-08-22).
+        string secondary = definition.IsFreeDefault ? "Free" : owned ? string.Empty : PriceText(definition);
         Color? priceColor = null;
         if (!owned && definition.OwnershipContentId is string contentId &&
             _economy.Catalogue.TryGet(contentId, out CatalogueEntry entry) && entry.HasValidPrice)
@@ -814,7 +772,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             secondary,
             BuddyStudioThumbnailCache.For(definition),
             Tooltip: equipped ? "Currently equipped." : owned ? "Single-click to preview; double-click to equip." : "Single-click to preview; double-click to buy and equip.",
-            BadgeText: equipped ? "Equipped" : owned ? "Owned" : string.Empty,
+            BadgeText: equipped ? "Equipped" : definition.IsFreeDefault ? "Default" : owned ? "Owned" : string.Empty,
             Accented: previewed,
             SecondaryColor: priceColor);
     }
@@ -824,12 +782,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         CharacterDocument? preview = _session.PreviewDocument;
         if (preview is null)
             return;
-        if (_bodyMode)
-        {
-            RefreshBodyPane(preview);
-            return;
-        }
-
         string id = CharacterDocumentEditor.ReadFeatureId(preview, _slot);
         CosmeticDefinition definition = CharacterFeatureCatalog.Shipped.ResolveDefinition(_slot, id, out _);
         bool owned = _session.IsCosmeticOwned(definition.Id);
@@ -912,90 +864,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
 
     private void SelectCosmetic(string cosmeticId)
     {
-        if (_bodyMode)
-        {
-            ApplyBodyScheme(cosmeticId);
-            return;
-        }
-
         Handle(_session.PreviewCosmetic(_slot, cosmeticId));
-    }
-
-    /// <summary>
-    /// Body colourings behave like the rest of the Studio from the player's side, but there is
-    /// nothing to buy and nothing to preview: the colours land on the working character, and
-    /// Save or Exit still decides whether they are kept.
-    /// </summary>
-    private void ApplyBodyScheme(in BodyColorScheme scheme)
-    {
-        foreach (CharacterPartSlot part in Enum.GetValues<CharacterPartSlot>())
-        {
-            CharacterEditorActionResult result =
-                _session.SetPartColor(part, BodyColorSchemes.ColorFor(scheme, part));
-            if (!result.Completed)
-            {
-                Handle(result);
-                return;
-            }
-        }
-
-        Refresh();
-    }
-
-    private void ApplyBodyScheme(string schemeId)
-    {
-        if (BodyColorSchemes.TryGet(schemeId, out BodyColorScheme scheme))
-            ApplyBodyScheme(scheme);
-    }
-
-    private string CurrentBodySchemeId()
-    {
-        CharacterDocument? preview = _session.PreviewDocument;
-        BodyColorScheme? worn = preview is null ? null : BodyColorSchemes.Match(preview.PartColors);
-        return worn?.Id ?? string.Empty;
-    }
-
-    private Win98CatalogItemPresentation BodyPresentation(BodyColorScheme scheme)
-    {
-        bool worn = string.Equals(CurrentBodySchemeId(), scheme.Id, StringComparison.Ordinal);
-        return new Win98CatalogItemPresentation(
-            scheme.Id,
-            scheme.Name,
-            worn ? string.Empty : "Free",
-            BuddyStudioThumbnailCache.ForBody(scheme),
-            Tooltip: worn ? "This is the current body colouring." : $"Colour the body {scheme.Name}.",
-            BadgeText: worn ? "Equipped" : string.Empty,
-            Accented: worn);
-    }
-
-    private void RefreshBodyPane(CharacterDocument preview)
-    {
-        BodyColorScheme? worn = BodyColorSchemes.Match(preview.PartColors);
-        Color moneyGreen = Color.Color8(0, 112, 0);
-        if (GodotObject.IsInstanceValid(_selectedItemName))
-            _selectedItemName!.Text = worn?.Name ?? "Custom Body";
-        _values.SetRows(
-        [
-            new Win98ValueRowPresentation("status", "Status", worn is null ? "Custom" : "Equipped", true),
-            new Win98ValueRowPresentation("price", "Price", "Free", ValueColor: moneyGreen),
-            new Win98ValueRowPresentation(
-                "balance",
-                "Balance",
-                ContentDisplayName.Credits(_economy.BalanceMilliCredits),
-                ValueColor: moneyGreen),
-        ]);
-        _buy.Text = "Included";
-        _buy.Disabled = true;
-        _buy.TooltipText = "Every body colouring is free - pick one from the styles.";
-        // The swatches recolour the whole body from one tint while this category is open.
-        _color.Disabled = false;
-        _presets.Visible = true;
-        _color.Color = FromRgba(preview.PartColors.Torso);
-        _move.Disabled = true;
-        _smaller.Disabled = true;
-        _larger.Disabled = true;
-        _resetTransform.Disabled = true;
-        SetMoveMode(false);
     }
 
     private async Task ActivateCosmeticAsync(string cosmeticId)

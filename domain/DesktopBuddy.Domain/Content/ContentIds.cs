@@ -28,6 +28,7 @@ public static class ContentIds
     public const string ToolShotgun = "tool.shotgun";
     public const string ToolRepairKit = "tool.repair_kit";
     public const string ToolPowerGrab = "tool.power_grab";
+    public const string ToolRopeSuspender = "tool.rope_suspender";
 
     public const string UpgradeStrength = "upgrade.strength";
 
@@ -131,6 +132,7 @@ public static class ContentIds
         ToolId.Shotgun => ToolShotgun,
         ToolId.RepairKit => ToolRepairKit,
         ToolId.PowerGrab => ToolPowerGrab,
+        ToolId.RopeSuspender => ToolRopeSuspender,
         _ => throw new ArgumentOutOfRangeException(
             nameof(tool),
             tool,
@@ -157,6 +159,7 @@ public static class ContentIds
             case ToolShotgun: tool = ToolId.Shotgun; return true;
             case ToolRepairKit: tool = ToolId.RepairKit; return true;
             case ToolPowerGrab: tool = ToolId.PowerGrab; return true;
+            case ToolRopeSuspender: tool = ToolId.RopeSuspender; return true;
             default:
                 tool = ToolSelection.DefaultTool;
                 return false;

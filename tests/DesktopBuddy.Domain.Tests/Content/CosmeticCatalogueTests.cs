@@ -35,7 +35,8 @@ public sealed class CosmeticCatalogueTests
             ContentIds.CosmeticHairShortSweep,
             CatalogueEntryKind.Cosmetic,
             4_000,
-            16,
+            // Above every tool slot, the way the shipped cosmetics are ordered.
+            64,
             true,
             "cosmetic.hair.short_sweep.name",
             "cosmetic.hair.short_sweep.description");

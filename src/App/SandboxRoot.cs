@@ -53,6 +53,7 @@ public partial class SandboxRoot : Node2D
     [Export] public BoundaryController Boundaries { get; set; } = null!;
     [Export] public BuddyRoot Buddy { get; set; } = null!;
     [Export] public GrabTetherController Grab { get; set; } = null!;
+    [Export] public RopeSuspensionComponent Ropes { get; set; } = null!;
     [Export] public LabPointerGrabComponent Pointer { get; set; } = null!;
     [Export] public PuppetRoomContainmentComponent Containment { get; set; } = null!;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
@@ -127,7 +128,8 @@ public partial class SandboxRoot : Node2D
         if (!GodotObject.IsInstanceValid(Window) ||
             !GodotObject.IsInstanceValid(Shell) ||
             !GodotObject.IsInstanceValid(Boundaries) || !GodotObject.IsInstanceValid(Buddy) ||
-            !GodotObject.IsInstanceValid(Grab) || !GodotObject.IsInstanceValid(Pointer) ||
+            !GodotObject.IsInstanceValid(Grab) ||
+            !GodotObject.IsInstanceValid(Ropes) || !GodotObject.IsInstanceValid(Pointer) ||
             !GodotObject.IsInstanceValid(Containment) || !GodotObject.IsInstanceValid(Pipeline) ||
             !GodotObject.IsInstanceValid(Objects) ||
             !GodotObject.IsInstanceValid(Launcher) ||
@@ -170,6 +172,7 @@ public partial class SandboxRoot : Node2D
         }
 
         Grab.Initialize();
+        Ropes.Initialize();
         Pointer.Initialize(developmentOnly: false);
         // Direct scene runs and scenario fixtures deliberately stay saveless.
         // Normal boot injects a disk-backed context from Bootstrap.
@@ -333,6 +336,7 @@ public partial class SandboxRoot : Node2D
         Shell.PhysicsTick();
         Boundaries.PhysicsTick();
         Grab.PhysicsTick(delta);
+        Ropes.PhysicsTick(delta);
         Launcher.PhysicsTick();
         GrabState grab = Grab.CurrentGrab;
         Objects.PhysicsTick(grab, Boundaries.InnerBounds);

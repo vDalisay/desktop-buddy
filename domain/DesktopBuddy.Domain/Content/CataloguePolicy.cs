@@ -44,23 +44,25 @@ public static class CataloguePolicy
     {
         ContentIds.ToolGrab,
 
-        // The bat is the tutorial's first purchase, so it sits directly under Grab at a
-        // token price. It is deliberately no longer in its old mid-progression slot.
+        // Price order, low to high (owner schema 2026-08-22): the shop reads as a ladder, and
+        // the bat stays the tutorial's first purchase at a token price. Ties keep the order the
+        // owner listed them in.
         ContentIds.ToolBaseballBat,
         ContentIds.ToolPet,
-        ContentIds.ToolTickle,
         ContentIds.ToolBoxingGlove,
+        ContentIds.ToolTickle,
         ContentIds.ToolBaseball,
         ContentIds.ToolMeal,
+        ContentIds.ToolDrink,
         ContentIds.ToolNerfBlaster,
+        ContentIds.ToolRepairKit,
         ContentIds.ToolPistol,
         ContentIds.ToolSoccerBall,
-        ContentIds.ToolGrenade,
-        ContentIds.ToolFireSprayer,
         ContentIds.ToolPowerGrab,
-        ContentIds.ToolRepairKit,
+        ContentIds.ToolRopeSuspender,
+        ContentIds.ToolGrenade,
         ContentIds.ToolShotgun,
-        ContentIds.ToolDrink,
+        ContentIds.ToolFireSprayer,
     };
 
     /// <summary>Tool entries the general shop may offer: visible, not starting, in order.</summary>

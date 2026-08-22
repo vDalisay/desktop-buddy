@@ -1,4 +1,4 @@
-[gd_scene load_steps=96 format=3]
+[gd_scene load_steps=97 format=3]
 
 [ext_resource type="Script" path="res://src/App/SandboxRoot.cs" id="1_sandbox"]
 [ext_resource type="Script" path="res://src/Platform/DesktopWindowController.cs" id="2_window"]
@@ -7,6 +7,7 @@
 [ext_resource type="Resource" path="res://data/buddy/lab_boundary.tres" id="5_boundary_profile"]
 [ext_resource type="PackedScene" path="res://scenes/buddy/puppet.tscn" id="7_buddy"]
 [ext_resource type="Script" path="res://src/Grab/GrabTetherController.cs" id="8_grab"]
+[ext_resource type="Script" path="res://src/Grab/RopeSuspensionComponent.cs" id="8_rope"]
 [ext_resource type="Resource" path="res://data/buddy/lab_grab_tether.tres" id="9_grab_profile"]
 [ext_resource type="Resource" path="res://data/buddy/power_grab_profile.tres" id="90_power_grab_profile"]
 [ext_resource type="Script" path="res://src/Laboratory/LabPointerGrabComponent.cs" id="10_pointer"]
@@ -141,13 +142,14 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "KnockoutStars", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "CareCursorVisual", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Ropes", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "KnockoutStars", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "CareCursorVisual", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_sandbox")
 Window = NodePath("DesktopWindowController")
 Shell = NodePath("DesktopShellController")
 Boundaries = NodePath("RoomBounds")
 Buddy = NodePath("Buddy")
 Grab = NodePath("GrabTetherController")
+Ropes = NodePath("RopeSuspensionComponent")
 Pointer = NodePath("PointerToolInput")
 Containment = NodePath("PuppetRoomContainmentComponent")
 Pipeline = NodePath("InteractionPipeline")
@@ -360,10 +362,14 @@ shape = SubResource("VerticalBoundary")
 script = ExtResource("8_grab")
 Profile = ExtResource("9_grab_profile")
 
-[node name="PointerToolInput" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "Pipeline", "CursorTools", "CareTool", "CareCursor", "CareCursorVisual", "LauncherTool", "GrenadeTool", "GunTool", "SprayerTool")]
+[node name="RopeSuspensionComponent" type="Node2D" parent="."]
+script = ExtResource("8_rope")
+
+[node name="PointerToolInput" type="Node2D" parent="." node_paths=PackedStringArray("Grab", "RopeTool", "Pipeline", "CursorTools", "CareTool", "CareCursor", "CareCursorVisual", "LauncherTool", "GrenadeTool", "GunTool", "SprayerTool")]
 script = ExtResource("10_pointer")
 PowerProfile = ExtResource("90_power_grab_profile")
 Grab = NodePath("../GrabTetherController")
+RopeTool = NodePath("../RopeSuspensionComponent")
 Pipeline = NodePath("../InteractionPipeline")
 CursorTools = NodePath("../CursorToolController")
 CareTool = NodePath("../CareStrokeComponent")

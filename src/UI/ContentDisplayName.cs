@@ -86,6 +86,8 @@ public static class ContentDisplayName
             "Left-click to have some less friendly fire.",
         ContentIds.ToolShotgun =>
             "Left-click to fire a spread of pellets with some hefty knockback.",
+        ContentIds.ToolRopeSuspender =>
+            "Grab something using left-click and use the right mouse button to suspend it at that location.",
         ContentIds.ToolFireSprayer =>
             "Hold the left mouse button to spray burning fuel. Anything it touches catches fire.",
         _ => string.Empty,

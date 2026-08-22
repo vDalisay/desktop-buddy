@@ -3,14 +3,14 @@
 [ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
 
 [resource]
-resource_name = "CosmeticFaceRosyCheeks"
+resource_name = "CatalogueRopeSuspender"
 script = ExtResource("1")
-ContentId = "cosmetic.face.rosy_cheeks"
-Kind = 4
-PriceCredits = 100
-ProgressionOrder = 50
+ContentId = "tool.rope_suspender"
+Kind = 1
+PriceCredits = 1500
+ProgressionOrder = 13
 Visible = true
-NameKey = "buddy_studio.cosmetic.face.rosy_cheeks.name"
-DescriptionKey = "buddy_studio.cosmetic.face.rosy_cheeks.description"
+NameKey = "shop.tool.rope_suspender.name"
+DescriptionKey = "shop.tool.rope_suspender.description"
 RequiresLaunchScene = false
 RequiresIcon = false

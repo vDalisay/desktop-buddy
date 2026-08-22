@@ -36,6 +36,8 @@ public partial class LabPointerGrabComponent : Node2D
     private static readonly Color TetherColor = new("ff6b6b");
 
     [Export] public GrabTetherController Grab { get; set; } = null!;
+    /// <summary>The Rope Suspender's ropes, when the composition has any.</summary>
+    [Export] public RopeSuspensionComponent? RopeTool { get; set; }
 
     /// <summary>
     /// Tuning for the purchased Power Grab. Null leaves every grab Normal, which is what a
@@ -396,6 +398,33 @@ public partial class LabPointerGrabComponent : Node2D
         if (_pendingSecondaryPress)
         {
             _pendingSecondaryPress = false;
+            // The Rope Suspender's whole chord: holding something, secondary ties it where the
+            // pointer is and frees the hand; holding nothing, secondary cuts the rope under the
+            // pointer. It grabs and throws exactly like Grab otherwise.
+            if (tool == ToolId.RopeSuspender && RopeTool is not null &&
+                GodotObject.IsInstanceValid(RopeTool))
+            {
+                if (_ownsGrab && Grab.IsGrabbing)
+                {
+                    GrabState held = Grab.CurrentGrab;
+                    if (held.Target is RigidBody2D target &&
+                        RopeTool!.Attach(target, held.GrabPoint, cursor))
+                    {
+                        // Dropped, not thrown: the rope is now what holds it.
+                        _pendingPress = false;
+                        _pendingRelease = false;
+                        ReleaseIfGrabbing(countsAsThrow: false);
+                        QueueRedraw();
+                        return;
+                    }
+                }
+                else if (RopeTool!.TryCutAt(cursor))
+                {
+                    QueueRedraw();
+                    return;
+                }
+            }
+
             if (swingOwnsSecondary)
             {
                 CursorTools!.SetChargeHeld(true);

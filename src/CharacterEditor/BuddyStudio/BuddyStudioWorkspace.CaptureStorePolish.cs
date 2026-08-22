@@ -30,11 +30,6 @@ public partial class BuddyStudioWorkspace
             return;
         }
 
-        // Body colourings have no definition, price or ownership; their pane is written whole
-        // by RefreshBodyPane.
-        if (_bodyMode)
-            return;
-
         CharacterDocument? preview = _session.PreviewDocument;
         if (preview is null)
             return;

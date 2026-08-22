@@ -35,6 +35,13 @@ public enum ToolId
     /// <see cref="Grab"/>: ordinals are persisted.
     /// </summary>
     PowerGrab = 15,
+
+    /// <summary>
+    /// Grab with a rope: the same pick-up, plus secondary to tie what is held to the spot
+    /// under the pointer and let go of it. Appended rather than inserted next to
+    /// <see cref="Grab"/>: ordinals are persisted.
+    /// </summary>
+    RopeSuspender = 16,
 }
 
 /// <summary>How a tool physically acts on the buddy (RAGDOLL §9).</summary>
@@ -51,7 +58,7 @@ public static class ToolCatalog
 {
     public static ToolCategory CategoryOf(ToolId tool) => tool switch
     {
-        ToolId.Grab or ToolId.PowerGrab => ToolCategory.Grab,
+        ToolId.Grab or ToolId.PowerGrab or ToolId.RopeSuspender => ToolCategory.Grab,
         ToolId.Pet or ToolId.Tickle => ToolCategory.Care,
         // Consumables act through the care/consume machinery, not the damage pipeline;
         // their pain, when a launch hurts, still arrives as an ordinary physical impact.

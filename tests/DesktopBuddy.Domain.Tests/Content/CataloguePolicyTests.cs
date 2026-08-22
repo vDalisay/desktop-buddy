@@ -147,10 +147,11 @@ public sealed class CataloguePolicyTests
     }
 
     [Fact]
-    public void TheLaunchCatalogueIsTheSixteenConfirmedEntries()
+    public void TheLaunchCatalogueIsTheSeventeenConfirmedEntries()
     {
         // FR-013.2 by count and by ID, so an entry cannot be quietly added or dropped.
-        Assert.Equal(16, CataloguePolicy.LaunchContentIds.Count);
+        // Seventeen since the Rope Suspender joined them (owner instruction 2026-08-22).
+        Assert.Equal(17, CataloguePolicy.LaunchContentIds.Count);
         Assert.Equal(
             CataloguePolicy.LaunchContentIds.Count,
             CataloguePolicy.LaunchContentIds.Distinct().Count());

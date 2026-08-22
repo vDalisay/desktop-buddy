@@ -160,9 +160,8 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
 
             int categories = workspace.CategoryStrip.FindChildren("Category_*", "Button", true, false).Count;
             bool accessoriesHidden = workspace.CategoryStrip.FindChild("Category_accessories", true, false) is null;
-            // Eleven authored cosmetic categories, less the two the Demo scope holds back, plus
-            // the body colourings (owner instruction 2026-08-22).
-            int expectedCategories = (DesktopBuddy.App.DemoScope.IsFullRelease ? 11 : 9) + 1;
+            // Eleven authored categories, less the two the Demo scope holds back.
+            int expectedCategories = DesktopBuddy.App.DemoScope.IsFullRelease ? 11 : 9;
             bool composed = categories == expectedCategories && accessoriesHidden &&
                 workspace.FindChild("BuddyStudioPreviewPane", true, false) is Control &&
                 workspace.FindChild("BuddyStudioCatalogPane", true, false) is Control &&
@@ -190,25 +189,26 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 studioLayoutFollowup,
                 $"slot={workspace.SelectedSlot} swatches={presets.SizeFlagsHorizontal} exit={exitAction.Text}"));
 
-            // The body the built-in buddy ships with is a style like any other: free, equipped
-            // when it is worn, and applied straight to the working character.
-            workspace.SelectBodyCategory();
-            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            bool bodyTile = workspace.CatalogGrid.TileFor(BodyColorSchemes.Default.Id) is not null;
-            bool bodyTilesShown = workspace.BodyMode && bodyTile;
-            workspace.CatalogGrid.Select("body.mint");
-            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            CharacterPartColors afterScheme = session.PreviewDocument!.PartColors;
-            bool bodyApplied = BodyColorSchemes.Match(afterScheme)?.Id == "body.mint";
-            workspace.CatalogGrid.Select(BodyColorSchemes.Default.Id);
-            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
-            bool builtInRestored =
-                BodyColorSchemes.Match(session.PreviewDocument!.PartColors)?.Id == BodyColorSchemes.Default.Id &&
-                session.PreviewDocument!.PartColors.Head == CharacterPartColors.BuiltInHead;
+            // Every category must offer the style the built-in buddy is wearing, or there is no
+            // way back to the plain buddy once a paid style is equipped (owner report 2026-08-22).
+            var missingDefaults = new List<string>();
+            foreach (CharacterFeatureSlot everySlot in new[]
+            {
+                CharacterFeatureSlot.Face, CharacterFeatureSlot.Hair, CharacterFeatureSlot.Brows,
+                CharacterFeatureSlot.Eyes, CharacterFeatureSlot.Nose, CharacterFeatureSlot.Mouth,
+                CharacterFeatureSlot.Ears, CharacterFeatureSlot.Glasses, CharacterFeatureSlot.Headwear,
+            })
+            {
+                workspace.SelectCategory(everySlot);
+                await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+                string defaultId = CharacterFeatureCatalog.Shipped.GetDefaultId(everySlot);
+                if (workspace.CatalogGrid.TileFor(defaultId) is null)
+                    missingDefaults.Add(defaultId);
+            }
             checks.Add(new StartupCheck(
-                "user_test_body_colourings_are_free_styles_including_the_built_in_blue",
-                bodyTilesShown && bodyApplied && builtInRestored,
-                $"mode={workspace.BodyMode} tile={bodyTile} applied={bodyApplied} builtIn={builtInRestored}"));
+                "user_test_every_category_offers_the_built_in_default_style",
+                missingDefaults.Count == 0,
+                missingDefaults.Count == 0 ? "all defaults tiled" : $"missing={string.Join(",", missingDefaults)}"));
 
             workspace.SelectCategory(CharacterFeatureSlot.Glasses);
             workspace.CatalogGrid.Select(CharacterFeatureIds.GlassesWorkClassic);
