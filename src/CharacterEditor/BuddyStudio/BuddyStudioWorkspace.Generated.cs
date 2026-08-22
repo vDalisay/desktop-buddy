@@ -36,6 +36,11 @@ public partial class BuddyStudioWorkspace
         if (!IsConfigured || !IsInsideTree() || !GodotObject.IsInstanceValid(_catalog) || _session.PreviewDocument is null)
             return;
 
+        // The body colourings are not cosmetics; this shim would repaint their grid with the
+        // last cosmetic category's tiles every tenth of a second.
+        if (_bodyMode)
+            return;
+
         // Once the generated catalogue has been composed, legacy same-category refreshes carry a
         // shipped-only subset. Preserve the additional generated tiles instead of destroying and
         // recreating the full grid on every color/transform/balance change. Category changes still

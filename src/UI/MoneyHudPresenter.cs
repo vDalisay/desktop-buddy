@@ -32,6 +32,15 @@ public partial class MoneyHudPresenter : PanelContainer
     /// </summary>
     public static bool SuppressedByEditor { get; set; }
 
+    /// <summary>
+    /// Whether the Win98 shell has taken the readout over. Its command bar mirrors this
+    /// presenter's balance and reward into the menu strip and hides this panel — but this
+    /// presenter set its own <c>Visible</c> every frame and turned itself straight back on, so
+    /// the old floating counter kept showing under the menu bar (owner report 2026-08-22).
+    /// The value still lives here; only the panel is retired.
+    /// </summary>
+    public static bool SuppressedByShell { get; set; }
+
     public void Initialize(EconomyService economy)
     {
         if (!GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
@@ -48,7 +57,7 @@ public partial class MoneyHudPresenter : PanelContainer
 
     public override void _Process(double delta)
     {
-        Visible = !SuppressedByEditor;
+        Visible = !SuppressedByEditor && !SuppressedByShell;
         if (_remaining <= 0) return;
         _remaining -= delta;
         if (_remaining <= 0) RewardLabel.Visible = false;

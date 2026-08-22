@@ -81,6 +81,7 @@ public partial class SandboxRoot : Node2D
     [Export] public FireSprayerComponent FireSprayer { get; set; } = null!;
     [Export] public FireVisual2D FireVisualLegacy { get; set; } = null!;
     [Export] public FireVisual3D FireVisual { get; set; } = null!;
+    [Export] public KnockoutStarsVisual3D KnockoutStars { get; set; } = null!;
     [Export] public FireAudioComponent FireAudio { get; set; } = null!;
     [Export] public CursorSprayerVisual3D SprayerVisual { get; set; } = null!;
     [Export] public ScorchPresenter Scorch { get; set; } = null!;
@@ -141,6 +142,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(FireSprayer) ||
             !GodotObject.IsInstanceValid(FireVisualLegacy) ||
             !GodotObject.IsInstanceValid(FireVisual) ||
+            !GodotObject.IsInstanceValid(KnockoutStars) ||
             !GodotObject.IsInstanceValid(FireAudio) ||
             !GodotObject.IsInstanceValid(SprayerVisual) ||
             !GodotObject.IsInstanceValid(Scorch) ||
@@ -202,6 +204,7 @@ public partial class SandboxRoot : Node2D
         FireSprayer.Initialize();
         FireVisualLegacy.Initialize(FireSprayer, FireSprayer.Profile);
         FireVisual.Initialize(FireSprayer, FireSprayer.Profile);
+        KnockoutStars.Initialize(Buddy, FireSprayer.Profile.VisualDepthOffset + 2.0f);
         FireAudio.Initialize();
         SprayerVisual.Initialize(FireSprayer, FireSprayer.Profile);
         // The shipped sandbox has real machine-local settings, so the seam is fed from them.
@@ -598,6 +601,7 @@ public partial class SandboxRoot : Node2D
         FireSprayer.ApplyEffectsSettings(settings);
         CareCursorVisual.ApplyEffectsSettings(settings.ReducedParticles);
         FireVisual.ApplyEffectsSettings(settings);
+        KnockoutStars.ApplyEffectsSettings(settings);
         SprayerVisual.ApplyEffectsSettings(settings);
         FireVisualLegacy.ApplyEffectsSettings(settings);
         CameraKick.ApplyEffectsSettings(settings);
@@ -845,6 +849,7 @@ public partial class SandboxRoot : Node2D
         // One fire per burning buddy: the frontal flame and the flat one are the same
         // fire seen two ways, never both at once.
         FireVisual.SetPresentationActive(show3D);
+        KnockoutStars.SetPresentationActive(show3D);
         FireVisualLegacy.SetPresentationActive(!show3D);
         // One flamethrower per cursor: the frontal model and the flat silhouette are the
         // same weapon seen two ways, never both at once.

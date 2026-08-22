@@ -488,7 +488,10 @@ public partial class Win98CommandBarBootstrap : Node
     private void MirrorBalance()
     {
         if (GodotObject.IsInstanceValid(_legacyMoneyHud))
+        {
+            MoneyHudPresenter.SuppressedByShell = true;
             _legacyMoneyHud!.Visible = false;
+        }
         if (GodotObject.IsInstanceValid(_legacyBalanceLabel))
             _balance.Text = _legacyBalanceLabel!.Text;
 

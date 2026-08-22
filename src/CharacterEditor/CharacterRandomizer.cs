@@ -45,8 +45,12 @@ public static class CharacterRandomizer
         var random = new XorShift64(seed == 0 ? 0x9E3779B97F4A7C15UL : seed);
         CharacterDocument result = document;
 
+        // One authored body colouring, not six independent tints: the head, hands and feet are
+        // meant to be shades of the torso, and rolling them apart produced a patchwork rather
+        // than a buddy (owner instruction 2026-08-22).
+        BodyColorScheme body = BodyColorSchemes.All[random.NextInt(BodyColorSchemes.All.Count)];
         foreach (CharacterPartSlot part in Enum.GetValues<CharacterPartSlot>())
-            result = CharacterDocumentEditor.SetPartColor(result, part, NextColor(ref random));
+            result = CharacterDocumentEditor.SetPartColor(result, part, BodyColorSchemes.ColorFor(body, part));
 
         foreach (CharacterFeatureSlot slot in Enum.GetValues<CharacterFeatureSlot>().Distinct())
         {

@@ -40,6 +40,38 @@ internal static class BuddyStudioThumbnailCache
         return texture;
     }
 
+    /// <summary>
+    /// One body colouring as the buddy's own silhouette: head, torso, hands and feet in the
+    /// four tints the scheme paints them with, so the tile shows the body it will give you.
+    /// </summary>
+    public static Texture2D ForBody(in BodyColorScheme scheme)
+    {
+        string key = $"body:{scheme.Id}:{scheme.Torso.ToHex()}";
+        if (Cache.TryGetValue(key, out Texture2D? cached))
+            return cached;
+
+        Image image = Image.CreateEmpty(Width, Height, false, Image.Format.Rgba8);
+        image.Fill(new Color("d8d4c8"));
+        Color ink = new("183042");
+        Color head = ToColor(scheme.Head);
+        Color torso = ToColor(scheme.Torso);
+        Color hand = ToColor(scheme.Hand);
+        Color foot = ToColor(scheme.Foot);
+
+        Circle(image, 30, 52, 8, foot);
+        Circle(image, 66, 52, 8, foot);
+        Ellipse(image, 48, 46, 19, 15, torso);
+        EllipseRing(image, 48, 46, 19, 15, ink, 2);
+        Circle(image, 22, 40, 8, hand);
+        Circle(image, 74, 40, 8, hand);
+        Circle(image, 48, 24, 17, head);
+        Ring(image, 48, 24, 17, ink, 2);
+
+        Texture2D texture = ImageTexture.CreateFromImage(image);
+        Cache.Add(key, texture);
+        return texture;
+    }
+
     private static void DrawTrustedBase(Image image, CharacterFeatureSlot slot, Color ink, Color paper)
     {
         switch (slot)
