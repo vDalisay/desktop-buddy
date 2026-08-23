@@ -408,6 +408,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     public override void _Draw() =>
         DrawRect(new Rect2(Vector2.Zero, Size), Win98ThemeFactory.Face);
 
+    public override void _EnterTree() => Win98ThemeFactory.RepaintOnPaletteChange(this);
+
     public void SelectCategory(CharacterFeatureSlot slot)
     {
         if (!CategoryOrder.Contains(slot))

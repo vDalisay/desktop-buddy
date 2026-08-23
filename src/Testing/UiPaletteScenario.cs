@@ -132,6 +132,21 @@ public sealed class UiPaletteScenario : IScenario
                 $"face={Win98ThemeFactory.Face.ToHtml(false)} light={Win98ThemeFactory.Light.ToHtml(false)} " +
                 $"hover={Win98ThemeFactory.HoverSelection.ToHtml(false)} saves={saved.Count}"));
 
+            // Re-skinning has to stay cheap enough to be instant: the theme is shared, so a
+            // careless rewrite walks the whole control tree once per style box it touches. This
+            // stands in for a real interface - a few hundred themed controls - and would catch
+            // that regression as a stopwatch reading, not as a vague "it feels slow".
+            Control crowd = ThemedCrowd(host);
+            await Frame(tree);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Win98ThemeFactory.ApplyPalette(new Win98Palette(Pink, Green, Cocoa));
+            clock.Stop();
+            crowd.QueueFree();
+            checks.Add(new StartupCheck(
+                "re_skinning_a_full_interface_stays_under_a_frame_budget",
+                clock.ElapsedMilliseconds < 250,
+                $"elapsed={clock.ElapsedMilliseconds}ms controls=600"));
+
             Win98Palette recovered = Win98Palette.Parse("not a color", null, "#ff8800");
             checks.Add(new StartupCheck(
                 "a_corrupt_stored_color_falls_back_instead_of_breaking_the_ui",
@@ -151,6 +166,23 @@ public sealed class UiPaletteScenario : IScenario
             checks.All(static check => check.Passed),
             checks,
             [$"seed={seed}"]);
+    }
+
+    /// <summary>Six hundred themed controls, standing in for the real interface.</summary>
+    private static Control ThemedCrowd(Control host)
+    {
+        var crowd = new Control { Name = "UiPaletteCrowd" };
+        host.AddChild(crowd);
+        for (int index = 0; index < 200; index++)
+        {
+            var panel = new PanelContainer { Theme = Win98ThemeFactory.Create() };
+            crowd.AddChild(panel);
+            var column = new VBoxContainer();
+            panel.AddChild(column);
+            column.AddChild(new Button { Text = "Button" });
+            column.AddChild(new Label { Text = "Label" });
+        }
+        return crowd;
     }
 
     /// <summary>Puts three colours in the pickers the way a player's clicks would.</summary>

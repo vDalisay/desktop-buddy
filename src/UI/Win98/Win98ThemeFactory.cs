@@ -37,6 +37,8 @@ public static class Win98ThemeFactory
     /// <summary>The three colours currently in force.</summary>
     public static Win98Palette Palette { get; private set; } = Win98Palette.Default;
 
+    private static readonly string[] ScrollBarTypes = ["VScrollBar", "HScrollBar"];
+
     public const int Border = 2;
     public const int TitleBarHeight = 32;
     public const int StatusBarHeight = 26;
@@ -90,7 +92,7 @@ public static class Win98ThemeFactory
             return;
 
         Scale = clamped;
-        Populate(Create());
+        Repopulate(Create());
     }
 
     /// <summary>
@@ -100,6 +102,12 @@ public static class Win98ThemeFactory
     /// </summary>
     public static void ApplyPalette(Win98Palette palette)
     {
+        // Every settings edit re-applies the whole presentation, so this is called far more
+        // often than the palette actually changes. Repainting the interface each time a volume
+        // slider ticks is what made changing anything feel expensive.
+        if (palette == Palette && _shared is not null)
+            return;
+
         Palette = palette;
         Face = palette.Face;
         Light = Win98Palette.Scaled(palette.Face, LightFactor);
@@ -118,7 +126,32 @@ public static class Win98ThemeFactory
 
         RetintRegisteredBoxes();
         RecolorTrackedTitleLabels();
-        Populate(Create());
+        RepaintTrackedPainters();
+        Repopulate(Create());
+        PaletteChanged?.Invoke();
+    }
+
+    /// <summary>Raised once per real palette change, after the theme has been rebuilt.</summary>
+    public static event Action? PaletteChanged;
+
+    /// <summary>
+    /// Rewrites the shared theme as one change instead of a hundred. Every SetStylebox on a
+    /// live theme walks the whole control tree — re-reading fonts, re-measuring minimum sizes —
+    /// so a hundred of them is a hundred full-tree passes and a visible freeze. Blocking the
+    /// resource's own signal while it is rewritten collapses that into a single pass.
+    /// </summary>
+    private static void Repopulate(Theme theme)
+    {
+        theme.SetBlockSignals(true);
+        try
+        {
+            Populate(theme);
+        }
+        finally
+        {
+            theme.SetBlockSignals(false);
+        }
+        theme.EmitChanged();
     }
 
     /// <summary>A base-scale pixel count in current interface pixels.</summary>
@@ -159,6 +192,24 @@ public static class Win98ThemeFactory
         theme.SetStylebox("hovered", "ItemList", Flat(HoverSelection));
         theme.SetStylebox("hovered_selected", "ItemList", Flat(HoverSelection));
         theme.SetStylebox("hovered_selected_focus", "ItemList", Flat(HoverSelection));
+
+        // Scroll bars were the one common control the theme never claimed, so every scrolling
+        // list kept Godot's default grey rails down its side - including after the player
+        // repainted everything else (owner report 2026-08-23). A sunken light trough with a
+        // raised face-coloured grabber is both the period look and palette-driven.
+        foreach (string bar in ScrollBarTypes)
+        {
+            StyleBoxFlat trough = Recessed(Highlight, 1);
+            trough.ContentMarginLeft = Px(6);
+            trough.ContentMarginRight = Px(6);
+            trough.ContentMarginTop = Px(6);
+            trough.ContentMarginBottom = Px(6);
+            theme.SetStylebox("scroll", bar, trough);
+            theme.SetStylebox("scroll_focus", bar, trough);
+            theme.SetStylebox("grabber", bar, Raised(Face, 2));
+            theme.SetStylebox("grabber_highlight", bar, Raised(Highlight, 2));
+            theme.SetStylebox("grabber_pressed", bar, Raised(Face, 2));
+        }
 
         // Trackbar: a thin sunken channel with a raised rectangular grabber and no filled
         // portion, which is what the period control looks like.
@@ -446,7 +497,9 @@ public static class Win98ThemeFactory
     private sealed record TintedBox(WeakReference<StyleBoxFlat> Box, BoxKind Kind, Shade Fill, int Width);
 
     private static readonly List<TintedBox> Tinted = new();
+    private static int _tintedPruneAt = 512;
     private static readonly List<WeakReference<Label>> TitleLabels = new();
+    private static readonly List<WeakReference<CanvasItem>> Painters = new();
 
     /// <summary>
     /// A label drawn on a title bar. Registered rather than merely coloured, so a palette
@@ -462,6 +515,31 @@ public static class Win98ThemeFactory
         return label;
     }
 
+    /// <summary>
+    /// A control that paints palette colours itself in <c>_Draw</c>. Godot only repaints a
+    /// control when something invalidates it, and a static colour changing is not something it
+    /// can see, so those surfaces have to be asked (owner report 2026-08-23).
+    /// </summary>
+    public static T RepaintOnPaletteChange<T>(T item)
+        where T : CanvasItem
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        Painters.Add(new WeakReference<CanvasItem>(item));
+        if (Painters.Count > 128)
+            Painters.RemoveAll(entry => !entry.TryGetTarget(out _));
+        return item;
+    }
+
+    private static void RepaintTrackedPainters()
+    {
+        Painters.RemoveAll(entry => !entry.TryGetTarget(out _));
+        foreach (WeakReference<CanvasItem> entry in Painters)
+        {
+            if (entry.TryGetTarget(out CanvasItem? item) && GodotObject.IsInstanceValid(item))
+                item.QueueRedraw();
+        }
+    }
+
     private static StyleBoxFlat Register(StyleBoxFlat box, BoxKind kind, Color fill, int width)
     {
         Shade shade = ShadeOf(fill);
@@ -469,8 +547,14 @@ public static class Win98ThemeFactory
             return box;
 
         Tinted.Add(new TintedBox(new WeakReference<StyleBoxFlat>(box), kind, shade, width));
-        if (Tinted.Count > 512)
+        if (Tinted.Count > _tintedPruneAt)
+        {
+            // Prune dead references, then take the next sweep at twice what survived. Sweeping
+            // on every registration past a fixed cap would make building a big panel quadratic,
+            // and this list is appended to by every control the interface builds.
             Tinted.RemoveAll(entry => !entry.Box.TryGetTarget(out _));
+            _tintedPruneAt = Math.Max(512, Tinted.Count * 2);
+        }
         return box;
     }
 
@@ -517,16 +601,27 @@ public static class Win98ThemeFactory
 
             // Only the colours are rebuilt. Owners that adjusted a box after taking it - a
             // squared-off title button, an outline with no centre - keep those adjustments.
-            box.BgColor = ColorOf(entry.Fill);
-            switch (entry.Kind)
+            // Signals are blocked across the rewrite for the same reason the theme's are: each
+            // property assignment would otherwise repaint every control holding this box.
+            box.SetBlockSignals(true);
+            try
             {
-                case BoxKind.Raised:
-                    ConfigureBorder(box, entry.Width, Shadow, Light, new Vector2(-1, -1));
-                    break;
-                case BoxKind.Recessed:
-                    ConfigureBorder(box, entry.Width, Dark, Shadow, new Vector2(1, 1));
-                    break;
+                box.BgColor = ColorOf(entry.Fill);
+                switch (entry.Kind)
+                {
+                    case BoxKind.Raised:
+                        ConfigureBorder(box, entry.Width, Shadow, Light, new Vector2(-1, -1));
+                        break;
+                    case BoxKind.Recessed:
+                        ConfigureBorder(box, entry.Width, Dark, Shadow, new Vector2(1, 1));
+                        break;
+                }
             }
+            finally
+            {
+                box.SetBlockSignals(false);
+            }
+            box.EmitChanged();
         }
     }
 

@@ -178,11 +178,14 @@ public partial class SettingsPanel : PanelContainer
             Color = value,
             TooltipText = description,
             EditAlpha = false,
-            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(64), Win98ThemeFactory.Px(20)),
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
         };
         swatch.ColorChanged += picked => changed(picked);
         DescribedRow(group, label, new Label(), swatch, description);
+        // After the row, not before: PanelChrome.Row stamps its own minimum width on whatever
+        // control it is given, which left the swatch a sliver too thin to read a colour off
+        // (owner report 2026-08-23). The sliders set their width the same way.
+        swatch.CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(96), Win98ThemeFactory.Px(26));
         _controls.Add(label, swatch);
         return swatch;
     }
