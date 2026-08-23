@@ -25,6 +25,7 @@ public partial class WorkCompanionView : CanvasLayer
     public static readonly Vector2I PreferredSize = new(720, 430);
 
     private const string ComputerTexturePath = "res://assets/work/retro_pc.png";
+    private const string RetroShaderPath = "res://shaders/work_retro_filter.gdshader";
     private const double ReactionSeconds = 0.11;
     private const float DragThreshold = 5.0f;
 
@@ -50,6 +51,9 @@ public partial class WorkCompanionView : CanvasLayer
     private CompiledCharacterAppearance? _appearanceOverride;
     private bool _showLifetime;
     private bool _animationsEnabled = true;
+    private bool _retroFilter = true;
+    private TextureRect _computerArt = null!;
+    private SubViewportContainer _buddyPreview = null!;
     private bool _dragCandidate;
     private bool _dragging;
     private bool _pressedCrt;
@@ -62,8 +66,12 @@ public partial class WorkCompanionView : CanvasLayer
     private float _compositionScale = 1.0f;
 
     private static readonly Rect2 BuddyHitRect = new(228, 78, 152, 228);
-    private static readonly Rect2 CrtHitRect = new(418, 102, 121, 92);
-    private static readonly Rect2 ComputerHitRect = new(385, 68, 240, 270);
+    // Remapped onto the pixel-art PC (owner instruction 2026-08-23). The sprite is the 32x32
+    // icon scaled 18x into the same 1024 canvas the retired illustration used, dropped on the
+    // same footprint, so the composition around it is unchanged: only the glass and the sprite
+    // bounds moved. CrtHitRect is exactly the icon's screen hole.
+    private static readonly Rect2 CrtHitRect = new(442, 111, 145, 105);
+    private static readonly Rect2 ComputerHitRect = new(393, 71, 259, 259);
     /// <summary>
     /// The hover controls are measured in window pixels, never composition pixels, and they
     /// live outside the scaled composition root. Shrinking the companion must not shrink its
@@ -93,7 +101,8 @@ public partial class WorkCompanionView : CanvasLayer
         SandboxRoot sandbox,
         bool showLifetime,
         bool animationsEnabled,
-        CompiledCharacterAppearance? appearanceOverride = null)
+        CompiledCharacterAppearance? appearanceOverride = null,
+        bool retroFilter = true)
     {
         if (IsInsideTree())
             throw new InvalidOperationException("WorkCompanionView must be configured before entering the tree.");
@@ -101,6 +110,7 @@ public partial class WorkCompanionView : CanvasLayer
         _showLifetime = showLifetime;
         _animationsEnabled = animationsEnabled;
         _appearanceOverride = appearanceOverride;
+        _retroFilter = retroFilter;
         ProcessMode = ProcessModeEnum.Always;
         Layer = 200;
     }
@@ -112,6 +122,7 @@ public partial class WorkCompanionView : CanvasLayer
         ApplyWorkPose();
         SetCounterMode(_showLifetime);
         SetAnimationsEnabled(_animationsEnabled, notify: false);
+        SetRetroFilterEnabled(_retroFilter);
         SyncCompositionToWindow();
     }
 
@@ -139,6 +150,30 @@ public partial class WorkCompanionView : CanvasLayer
             _motionToggle.Disabled = !TutorialInputGate.Allows(TutorialWorkControl.Motion);
         if (GodotObject.IsInstanceValid(_exitButton))
             _exitButton.Disabled = !TutorialInputGate.Allows(TutorialWorkControl.Exit);
+    }
+
+    /// <summary>
+    /// Whether the CRT pass runs over the companion. One material is shared by the PC art and
+    /// the buddy's viewport, so both wear the same look and neither can drift from the other;
+    /// off simply clears it (owner instruction 2026-08-23).
+    /// </summary>
+    public void SetRetroFilterEnabled(bool enabled)
+    {
+        _retroFilter = enabled;
+        ShaderMaterial? material = enabled ? LoadRetroMaterial() : null;
+        if (GodotObject.IsInstanceValid(_computerArt))
+            _computerArt.Material = material;
+        if (GodotObject.IsInstanceValid(_buddyPreview))
+            _buddyPreview.Material = material;
+    }
+
+    public bool RetroFilterEnabled => _retroFilter;
+
+    private static ShaderMaterial LoadRetroMaterial()
+    {
+        Shader shader = GD.Load<Shader>(RetroShaderPath) ??
+            throw new InvalidOperationException($"Missing Work Mode retro shader: {RetroShaderPath}");
+        return new ShaderMaterial { Shader = shader };
     }
 
     public void SetCounter(long sessionTotal, long lifetimeTotal)
@@ -255,7 +290,7 @@ public partial class WorkCompanionView : CanvasLayer
 
         Texture2D computerTexture = GD.Load<Texture2D>(ComputerTexturePath) ??
             throw new InvalidOperationException($"Missing Work Mode computer art: {ComputerTexturePath}");
-        _root.AddChild(new TextureRect
+        _computerArt = new TextureRect
         {
             Name = "WorkComputerArt",
             Position = new Vector2(245, -40),
@@ -263,8 +298,12 @@ public partial class WorkCompanionView : CanvasLayer
             Texture = computerTexture,
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.Scale,
+            // Pixel art: the composition scales it by well under 1, and the default filter
+            // turned every hard edge to mush.
+            TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
             MouseFilter = Control.MouseFilterEnum.Ignore,
-        });
+        };
+        _root.AddChild(_computerArt);
 
         _counter = new WorkCrtDisplay
         {
@@ -474,7 +513,7 @@ public partial class WorkCompanionView : CanvasLayer
 
     private void BuildBuddyPreview()
     {
-        var container = new SubViewportContainer
+        _buddyPreview = new SubViewportContainer
         {
             Name = "WorkBuddyPreview",
             Position = new Vector2(18, 28),
@@ -482,6 +521,7 @@ public partial class WorkCompanionView : CanvasLayer
             Stretch = true,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
+        SubViewportContainer container = _buddyPreview;
         _root.AddChild(container);
 
         var viewport = new SubViewport

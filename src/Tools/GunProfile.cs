@@ -1,3 +1,4 @@
+using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
@@ -347,6 +348,14 @@ public partial class GunProfile : GameResource
     /// </summary>
     [Export] public bool RequiresPumpBetweenShots { get; set; }
 
+    /// <summary>
+    /// A gun that never runs out of ammunition: it never dry-fires and never reloads, so its
+    /// whole cadence is the interval and the pump. Authored for the Shotgun (owner
+    /// instruction 2026-08-22); <see cref="MagazineCapacity"/> still has to be positive and
+    /// still seeds the round counter, it simply never comes down.
+    /// </summary>
+    [Export] public bool InfiniteMagazine { get; set; }
+
     /// <summary>Ticks one pump stroke takes; the trigger is dead for the duration.</summary>
     [Export(PropertyHint.Range, "1,120,1,or_greater")] public int PumpTicks { get; set; } = 24;
 
@@ -374,8 +383,10 @@ public partial class GunProfile : GameResource
     /// Spent cases an ejecting gun preallocates. Larger than the magazine pool because a
     /// case comes out on every shot rather than every reload: at the Shotgun's cadence a
     /// whole magazine can be on the floor before the first case has finished lingering.
+    /// Sized for the Shotgun's twelve-shell magazine with room to spare — at eight, its
+    /// re-authored cadence (owner 2026-08-22) simply stopped ejecting part way through.
     /// </summary>
-    public const int CasingPoolCapacity = 8;
+    public const int CasingPoolCapacity = 16;
 
     /// <summary>Where the barrel mouth is, in pixels ahead of the cursor.</summary>
     public float VisualMuzzleTipPx => VisualLengthPx * MuzzleTipFraction;
@@ -398,7 +409,8 @@ public partial class GunProfile : GameResource
         ProjectilesPerShot,
         RequiresPumpBetweenShots,
         PumpTicks,
-        PressBufferTicks);
+        PressBufferTicks,
+        InfiniteMagazine);
 
     /// <summary>The engine-free aim constants this profile authors.</summary>
     public CursorAimConstants ToAimConstants() => new(
@@ -590,12 +602,17 @@ public partial class GunProfile : GameResource
         }
 
         // The pool must cover a full magazine in flight, or a legitimate fast burst
-        // would silently drop shots the player paid rounds for.
-        if (PoolCapacity < MagazineCapacity * ProjectilesPerShot)
+        // would silently drop shots the player paid rounds for. A gun that never reloads has
+        // no magazine to bound it, so the bound is what its own cadence can keep alive at
+        // once: every shot that can still be in the air before the first one expires.
+        int mustCover = InfiniteMagazine
+            ? ProjectilesPerShot * ((ProjectileLifetimeTicks / Math.Max(1, ShotIntervalTicks)) + 2)
+            : MagazineCapacity * ProjectilesPerShot;
+        if (PoolCapacity < mustCover)
         {
             errors.Add(
                 $"{nameof(PoolCapacity)} must cover a whole magazine in flight " +
-                $"({MagazineCapacity * ProjectilesPerShot} projectiles)");
+                $"({mustCover} projectiles)");
         }
 
         return errors;

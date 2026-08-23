@@ -181,12 +181,12 @@ public static class RewardIconProvider
             case "nerf_blaster":
             case "pistol":
             {
-                Color body = slug == "pistol" ? Grey : Color.Color8(255, 128, 0);
+                Color body = slug == "pistol" ? Grey : Color.Color8(40, 164, 71);
                 Rect(image, 2, 5, 12, 8, body);
                 Outline(image, 2, 5, 12, 8, Ink);
                 Rect(image, 3, 9, 6, 13, body);
                 Outline(image, 3, 9, 6, 13, Ink);
-                Rect(image, 12, 6, 14, 7, slug == "pistol" ? Ink : Blue);
+                Rect(image, 12, 6, 14, 7, slug == "pistol" ? Ink : Red);
                 break;
             }
 

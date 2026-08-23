@@ -499,14 +499,17 @@ public partial class InteractionDamageComponent : Node
 
         ImpactMoodEffect moodEffect = ImpactMoodEffect.Harm;
         int nerfHitNumber = 0;
-        if (accepted.ContentId == ContentIds.ToolNerfBlaster)
+        bool toyGun = accepted.ContentId == ContentIds.ToolNerfBlaster;
+        if (toyGun)
         {
             NerfMoodHit nerfHit = _nerfMood.RegisterHit(now);
             moodEffect = nerfHit.MoodEffect;
             nerfHitNumber = nerfHit.HitNumber;
         }
 
-        PainAcceptance acceptance = _knockout.RegisterPain(pain, now);
+        // Darts sting and pay, but a toy may not put anyone under (owner instruction
+        // 2026-08-22), so their pain never reaches the knockout window.
+        PainAcceptance acceptance = _knockout.RegisterPain(pain, now, countsTowardKnockout: !toyGun);
         // Payout, harmful memory, and statistics move together through the economy service
         // so the balance has exactly one mutator (ARCHITECTURE §11).
         long milli = _economy.AcceptDamage(

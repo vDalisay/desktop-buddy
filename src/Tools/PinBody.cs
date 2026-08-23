@@ -92,15 +92,11 @@ public partial class PinBody : RigidBody2D
 
         Freeze = false;
         Sleeping = false;
-        GlobalPosition = position;
-        Rotation = 0.0f;
-        LinearVelocity = velocity;
-        AngularVelocity = spin;
+        PooledBodyPlacement.Launch(this, position, 0.0f, velocity, spin);
         // Nothing may hit it; it may only hit the floor.
         CollisionLayer = 0u;
         CollisionMask = CollisionLayers.RoomBounds;
         Visible = _legacyDrawEnabled;
-        ResetPhysicsInterpolation();
         QueueRedraw();
     }
 

@@ -6,6 +6,7 @@ using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Objects;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -31,6 +32,7 @@ public partial class BuddyReactionComponent : Node
     private int _petSmileTicks;
     private int _learnedThreatFaceTicks;
     private int _laughTicks;
+    private int _treatTicks;
     private int _annoyedTickleTicks;
 
     /// <summary>
@@ -66,6 +68,16 @@ public partial class BuddyReactionComponent : Node
     public int ColourSmileCount { get; private set; }
 
     /// <summary>
+    /// True while the buddy is still pleased about a meal or a drink. The sparkle visual reads
+    /// this rather than keeping its own timer, so the smile and the glisten can never disagree
+    /// about how long being pleased lasts (owner instruction 2026-08-22).
+    /// </summary>
+    public bool IsTreatDelighted => _treatTicks > 0;
+
+    /// <summary>Lifetime treats enjoyed, so a scenario can assert the reaction fired.</summary>
+    public int TreatDelightCount { get; private set; }
+
+    /// <summary>
     /// The buddy reached something in its favourite colour and is pleased about it. Same face
     /// and same duration as the completed-pet smile: it is the same quiet contentment, and a
     /// second smile vocabulary for one more trigger would be noise.
@@ -95,6 +107,7 @@ public partial class BuddyReactionComponent : Node
         Pipeline.ImpactAccepted += OnImpact;
         Pipeline.CareAwarded += OnCare;
         Buddy.ObjectInteraction.FunCatchDelighted += OnFunCatch;
+        Buddy.ObjectInteraction.ConsumeSucceeded += OnTreatTaken;
         IsInitialized = true;
         Resolve();
     }
@@ -108,6 +121,7 @@ public partial class BuddyReactionComponent : Node
         if (_fearTicks > 0) _fearTicks--;
         if (_petSmileTicks > 0) _petSmileTicks--;
         if (_laughTicks > 0) _laughTicks--;
+        if (_treatTicks > 0) _treatTicks--;
         if (ToolReaction.IsLearnedGloveThreatActive)
             _learnedThreatFaceTicks = SecondsToTicks(Profile.LearnedThreatFaceTailSeconds);
         else if (_learnedThreatFaceTicks > 0)
@@ -127,6 +141,7 @@ public partial class BuddyReactionComponent : Node
             GodotObject.IsInstanceValid(Buddy.ObjectInteraction))
         {
             Buddy.ObjectInteraction.FunCatchDelighted -= OnFunCatch;
+            Buddy.ObjectInteraction.ConsumeSucceeded -= OnTreatTaken;
         }
     }
 
@@ -153,6 +168,27 @@ public partial class BuddyReactionComponent : Node
             _petSmileTicks = SecondsToTicks(Profile.PetCompletionFaceSeconds);
         else
             _delightTicks = SecondsToTicks(Profile.DelightFaceSeconds);
+    }
+
+    /// <summary>
+    /// A meal or a drink went down: the buddy smiles about it and glistens for a moment. The
+    /// Repair Kit is swallowed the same way but is deliberately not a treat — being patched
+    /// up is relief, not something to be pleased about.
+    /// </summary>
+    private void OnTreatTaken(LooseObjectBody item)
+    {
+        if (!GodotObject.IsInstanceValid(item) ||
+            !GodotObject.IsInstanceValid(item.Profile) ||
+            !item.Profile!.Consumable ||
+            item.Profile.ClearsHarmfulStatuses)
+        {
+            return;
+        }
+
+        // The completed-pet smile's own duration: it is the same quiet contentment, and the
+        // comment on PlayColourSmile already argues against a second vocabulary for it.
+        _treatTicks = SecondsToTicks(Profile.PetCompletionFaceSeconds);
+        TreatDelightCount++;
     }
 
     /// <summary>
@@ -193,7 +229,7 @@ public partial class BuddyReactionComponent : Node
             // Above the quieter positives but below pain, anger, and fear: a buddy that gets
             // punched mid-laugh shows the punch.
             _laughTicks > 0 ? "^_^" :
-            _petSmileTicks > 0 ? ":)" :
+            _petSmileTicks > 0 || _treatTicks > 0 ? ":)" :
             CareStroke.IsPetRubbing ? ":3" :
             CareStroke.IsTickleContact ? "^_^" :
             _delightTicks > 0 ? "^_^" :

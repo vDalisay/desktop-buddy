@@ -26,6 +26,9 @@ public partial class ReactionAudioPresenter : Node
 
     /// <summary>Roughly a fifth of full loudness for the acquisition click (owner, 2026-08-19).</summary>
     private const float GrabInitialVolumeOffsetDb = -14.0f;
+
+    /// <summary>How far under a landing dart the same knock plays when the toy gun itself lands.</summary>
+    private const float ToygunDropVolumeOffsetDb = -7.0f;
     private const double GrabHoldMinimumSeconds = 2.0;
     private const double GrabHoldMaximumSeconds = 5.0;
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
@@ -531,7 +534,11 @@ public partial class ReactionAudioPresenter : Node
         {
             ContentIds.ToolBaseball or ContentIds.ToolSoccerBall => _ballBounce ?? _itemFalling,
             ContentIds.ToolBaseballBat => _batDrop ?? _itemFalling,
-            ContentIds.ToolPistol or ContentIds.ToolShotgun or ContentIds.ToolNerfBlaster or
+            // The toy gun is plastic, so it lands with the same knock its darts do rather than
+            // the real guns' metal clatter — quieter than a dart, since nobody fired it
+            // (owner instruction 2026-08-22).
+            ContentIds.ToolNerfBlaster => _toygunImpact ?? _itemFalling,
+            ContentIds.ToolPistol or ContentIds.ToolShotgun or
                 ContentIds.ToolFireSprayer => _gunDrop ?? _itemFalling,
             _ => _itemFalling,
         };
@@ -545,6 +552,13 @@ public partial class ReactionAudioPresenter : Node
             // (owner instruction 2026-08-19).
             BallBounceCount++;
             PlayStream(stream!, _baseVolumeDb + BounceVolumeOffsetDb(landing.ImpactSpeed));
+            return;
+        }
+
+        if (stream == _toygunImpact)
+        {
+            GunDropCount++;
+            PlayStream(stream!, _baseVolumeDb + ToygunDropVolumeOffsetDb);
             return;
         }
 

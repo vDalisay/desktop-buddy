@@ -113,6 +113,15 @@ public sealed class MealConsumeScenario : IScenario
             $"fullness={lab.Progress.Fullness:F1} was={fullnessBeforeMeal:F1}"));
 
         checks.Add(new StartupCheck(
+            "a_finished_meal_leaves_the_buddy_smiling_and_glistening",
+            consumed &&
+            lab.Reactions.TreatDelightCount > 0 &&
+            lab.Reactions.IsTreatDelighted &&
+            lab.Reactions.CurrentFace == ":)",
+            $"treats={lab.Reactions.TreatDelightCount} " +
+            $"delighted={lab.Reactions.IsTreatDelighted} face={lab.Reactions.CurrentFace}"));
+
+        checks.Add(new StartupCheck(
             "eating_a_meal_is_still_a_treat",
             consumed && treatInterestAfter < treatInterestBefore,
             $"interest_before={treatInterestBefore:F1} after={treatInterestAfter:F1}"));

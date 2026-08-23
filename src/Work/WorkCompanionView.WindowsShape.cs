@@ -112,7 +112,7 @@ public partial class WorkCompanionView
         Rect2I[] regions =
         [
             new Rect2I(228, 78, 152, 228),   // sideways buddy + alternating typing hands
-            new Rect2I(385, 68, 240, 270),   // smaller supplied monitor and PC chassis
+            new Rect2I(393, 71, 259, 259),   // pixel-art monitor, chassis and its drop shadow
         ];
 
         // The hover controls are not part of the composition and do not scale with it, so their

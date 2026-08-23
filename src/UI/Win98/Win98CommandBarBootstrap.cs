@@ -498,7 +498,9 @@ public partial class Win98CommandBarBootstrap : Node
         if (!GodotObject.IsInstanceValid(_legacyRewardLabel))
             return;
         _reward.Text = _legacyRewardLabel!.Text;
-        _reward.Visible = _legacyRewardLabel.Visible;
+        // The pop floats outside the strip, so hiding the strip for an editor left it drifting
+        // over the Studio's top-right corner (owner report 2026-08-23).
+        _reward.Visible = _legacyRewardLabel.Visible && _bar.Visible;
         Rect2 balanceRect = _balance.GetGlobalRect();
         _reward.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
         _reward.Size = new Vector2(balanceRect.Size.X, 0);

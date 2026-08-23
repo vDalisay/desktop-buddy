@@ -16,10 +16,9 @@ namespace DesktopBuddy.Presentation3D;
 /// presenter rotates that whole frame to the aim, so nothing here knows which way the
 /// player is pointing.</para>
 ///
-/// <para>The silhouettes are deliberately different shapes rather than recolours of one:
-/// the Nerf Blaster is chunky, rounded-off and oversized with a wide orange tip ring, the
-/// Pistol is a compact slide-and-frame with a raked grip, and the Shotgun is a long pump
-/// with a walnut forend and stock. None carries any real-world model's trade dress.</para>
+/// <para>The Pistol is a compact slide-and-frame with a raked grip; the Nerf Blaster is that
+/// same frame in one toy colour with a red muzzle tip; the Shotgun is a long pump with a
+/// walnut forend and stock. None carries any real-world model's trade dress.</para>
 /// </summary>
 public static class GunMeshBuilder
 {
@@ -32,13 +31,42 @@ public static class GunMeshBuilder
     /// <summary>One axis-aligned block of the gun, in local pixels.</summary>
     private readonly record struct Block(Vector3 Centre, Vector3 Size, Color Tint);
 
-    public static ArrayMesh Build(GunProfile profile)
+    public static ArrayMesh Build(GunProfile profile) => Build(BlocksFor(profile));
+
+    /// <summary>
+    /// The same gun, moved so its own bounding box is centred on the origin. A dropped gun is
+    /// a circle collider centred on the body, and a mesh that runs forward from the grip hangs
+    /// most of its length outside that circle — which is why a dropped gun could only be
+    /// picked up by its handle (owner bug 2026-08-22). Held guns keep the grip-at-origin form:
+    /// that origin is the cursor.
+    /// </summary>
+    public static ArrayMesh BuildCentred(GunProfile profile)
+    {
+        IReadOnlyList<Block> blocks = BlocksFor(profile);
+        Vector3 min = Vector3.Inf;
+        Vector3 max = -Vector3.Inf;
+        foreach (Block block in blocks)
+        {
+            Vector3 half = block.Size * 0.5f;
+            min = min.Min(block.Centre - half);
+            max = max.Max(block.Centre + half);
+        }
+
+        Vector3 shift = -(min + max) * 0.5f;
+        var centred = new List<Block>(blocks.Count);
+        foreach (Block block in blocks)
+            centred.Add(block with { Centre = block.Centre + shift });
+
+        return Build(centred);
+    }
+
+    private static IReadOnlyList<Block> BlocksFor(GunProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
         if (!GodotObject.IsInstanceValid(profile))
             throw new ArgumentException("A gun mesh requires a live profile.", nameof(profile));
 
-        IReadOnlyList<Block> blocks = profile.Visual3DKind switch
+        return profile.Visual3DKind switch
         {
             GunVisual3DKind.NerfBlaster => NerfBlaster(profile),
             GunVisual3DKind.RealPistol => RealPistol(profile),
@@ -46,8 +74,6 @@ public static class GunMeshBuilder
             _ => throw new ArgumentException(
                 $"'{profile.ContentId}' has no authored gun silhouette.", nameof(profile)),
         };
-
-        return Build(blocks);
     }
 
     /// <summary>The Shotgun's separately animated wooden forend.</summary>
@@ -108,86 +134,51 @@ public static class GunMeshBuilder
     }
 
     /// <summary>
-    /// The toy: a chunky shell with a raised rail, a fat barrel under a bright muzzle ring,
-    /// a dart drum slung underneath and a trigger you can see. It used to be five plain
-    /// boxes and read as a brick with a stick on it (owner instruction 2026-08-21); every
-    /// part added here is one a generic foam blaster actually has, so the silhouette says
-    /// "toy" from across the room without any of the pistol's hard edges.
+    /// The toy: the pistol's own silhouette in one flat colour with a red muzzle section, which
+    /// is what tells a foam blaster apart from a real gun at a glance (owner instruction
+    /// 2026-08-22, replacing the chunky shell-and-drum shape). Body and grip both take the
+    /// profile's <see cref="GunProfile.MuzzleColor"/>; the accent is the muzzle alone.
     /// </summary>
     private static List<Block> NerfBlaster(GunProfile profile)
     {
         float length = profile.VisualLengthPx;
         float tip = profile.VisualMuzzleTipPx;
-        Color body = profile.MuzzleColor;
-        Color accent = profile.AccentColor;
-        Color shade = body.Darkened(0.18f);
-        float barrelBore = length * 0.18f;
 
-        return new List<Block>
+        // The pistol's blocks, all in one toy colour. RealPistol builds the slide first, and
+        // this cuts the front off that slide and puts the red muzzle section in its place —
+        // rather than parking a red box on top of a green one. Two earlier passes did that and
+        // the red still read as "covered" (owner bug 2026-08-22): a box laid over the slide
+        // only ever shows the player its *front* face, and a front face points away from every
+        // light in both the icon rig and the room, so it renders near-black beside the lit
+        // green top of the slide. With the green gone from that stretch, every lit face at the
+        // muzzle — top, sides, front — is red, and nothing green is left in front of it.
+        List<Block> blocks = RealPistol(profile, profile.MuzzleColor);
+        Block slide = blocks[0];
+        float muzzleLength = tip * 0.24f;
+        blocks[0] = slide with
         {
-            // Shell: bulky on purpose, and the widest thing on the gun.
-            new(
-                new Vector3(length * 0.36f, 0.0f, 0.0f),
-                new Vector3(length * 0.56f, length * 0.36f, length * 0.28f),
-                body),
-            // The raised rail along the top, and the front sight post standing off it.
-            new(
-                new Vector3(length * 0.42f, length * 0.20f, 0.0f),
-                new Vector3(length * 0.46f, length * 0.07f, length * 0.11f),
-                accent),
-            new(
-                new Vector3(length * 0.60f, length * 0.25f, 0.0f),
-                new Vector3(length * 0.05f, length * 0.08f, length * 0.06f),
-                shade),
-            // Barrel on the bore line, capped by the wide bright ring every foam blaster has.
-            new(
-                new Vector3(length * 0.76f, 0.0f, 0.0f),
-                new Vector3(length * 0.34f, barrelBore, barrelBore),
-                body),
-            new(
-                new Vector3(tip - (length * 0.04f), 0.0f, 0.0f),
-                new Vector3(length * 0.09f, barrelBore * 1.5f, barrelBore * 1.5f),
-                accent),
-            // The dart drum slung under the barrel.
-            new(
-                new Vector3(length * 0.62f, -length * 0.16f, 0.0f),
-                new Vector3(length * 0.26f, length * 0.17f, length * 0.23f),
-                accent),
-            // Trigger guard and the trigger inside it.
-            new(
-                new Vector3(length * 0.21f, -length * 0.18f, 0.0f),
-                new Vector3(length * 0.17f, length * 0.05f, length * 0.11f),
-                body),
-            new(
-                new Vector3(length * 0.21f, -length * 0.12f, 0.0f),
-                new Vector3(length * 0.04f, length * 0.08f, length * 0.05f),
-                shade),
-            // Grip, its colour band, and the butt cap.
-            new(
-                new Vector3(length * 0.14f, -length * 0.34f, 0.0f),
-                new Vector3(length * 0.20f, length * 0.36f, length * 0.20f),
-                body),
-            new(
-                new Vector3(length * 0.14f, -length * 0.30f, 0.0f),
-                new Vector3(length * 0.21f, length * 0.06f, length * 0.21f),
-                accent),
-            new(
-                new Vector3(length * 0.14f, -length * 0.50f, 0.0f),
-                new Vector3(length * 0.21f, length * 0.07f, length * 0.21f),
-                accent),
+            Centre = new Vector3((tip - muzzleLength) * 0.5f, slide.Centre.Y, slide.Centre.Z),
+            Size = new Vector3(tip - muzzleLength, slide.Size.Y, slide.Size.Z),
         };
+        blocks.Add(new Block(
+            new Vector3(tip - (muzzleLength * 0.5f), slide.Centre.Y, slide.Centre.Z),
+            // Proud of the slide on both remaining axes, so the joint is a visible step and no
+            // two faces of the two colours ever share a plane to z-fight over.
+            new Vector3(muzzleLength, slide.Size.Y * 1.25f, slide.Size.Z * 1.25f),
+            profile.AccentColor));
+        return blocks;
     }
 
     /// <summary>
-    /// The real one: slide over frame, trigger guard, raked grip. Compact where the toy
-    /// is bulky, and dark where the toy is bright.
+    /// The real one: slide over frame, trigger guard, raked grip. The blaster borrows this
+    /// same block list, so <paramref name="gripOverride"/> exists only for it.
     /// </summary>
-    private static List<Block> RealPistol(GunProfile profile)
+    private static List<Block> RealPistol(GunProfile profile, Color? gripOverride = null)
     {
         float length = profile.VisualLengthPx;
         float tip = profile.VisualMuzzleTipPx;
         Color body = profile.MuzzleColor;
-        Color grip = profile.AccentColor;
+        Color grip = gripOverride ?? profile.AccentColor;
 
         return new List<Block>
         {

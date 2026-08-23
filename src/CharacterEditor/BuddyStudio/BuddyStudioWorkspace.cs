@@ -192,9 +192,6 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         long milli = liked * BuddyStyleTastes.CreditsPerLikedStyle;
         _economy.DepositPassive(milli);
         LastLikedStyleBonusMilliCredits = milli;
-        SetStatus(liked == 1
-            ? $"He likes that one — {ContentDisplayName.Credits(milli)} bonus."
-            : $"He likes {liked} of those — {ContentDisplayName.Credits(milli)} bonus.");
     }
 
     /// <summary>
@@ -401,6 +398,15 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             GetViewport().SetInputAsHandled();
         }
     }
+
+    /// <summary>
+    /// Window face grey behind the whole workspace. Only the panes paint themselves, so every
+    /// pixel between them — the category strip's row above all — showed whatever the editor was
+    /// covering (owner report 2026-08-23). A Control's own drawing lands behind its children, so
+    /// this is the whole fix: no wrapper panel, no layout change.
+    /// </summary>
+    public override void _Draw() =>
+        DrawRect(new Rect2(Vector2.Zero, Size), Win98ThemeFactory.Face);
 
     public void SelectCategory(CharacterFeatureSlot slot)
     {

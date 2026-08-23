@@ -80,6 +80,7 @@
 [ext_resource type="Script" path="res://src/Tools/FireVisual2D.cs" id="62_fire_visual_2d"]
 [ext_resource type="Script" path="res://src/Presentation3D/FireVisual3D.cs" id="63_fire_visual_3d"]
 [ext_resource type="Script" path="res://src/Presentation3D/KnockoutStarsVisual3D.cs" id="63_knockout_stars_3d"]
+[ext_resource type="Script" path="res://src/Presentation3D/TreatSparklesVisual3D.cs" id="64_treat_sparkles_3d"]
 [ext_resource type="Script" path="res://src/Tools/FireAudioComponent.cs" id="64_fire_audio"]
 [ext_resource type="Script" path="res://src/Presentation3D/CursorSprayerVisual3D.cs" id="65_sprayer_visual"]
 [ext_resource type="Script" path="res://src/Tools/ScorchPresenter.cs" id="66_scorch"]
@@ -142,7 +143,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Ropes", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "KnockoutStars", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "CareCursorVisual", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Ropes", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "KnockoutStars", "TreatSparkles", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "CareCursorVisual", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_sandbox")
 Window = NodePath("DesktopWindowController")
 Shell = NodePath("DesktopShellController")
@@ -167,6 +168,7 @@ FireSprayer = NodePath("FireSprayerComponent")
 FireVisualLegacy = NodePath("FireVisual2D")
 FireVisual = NodePath("FireVisual3D")
 KnockoutStars = NodePath("KnockoutStarsVisual3D")
+TreatSparkles = NodePath("TreatSparklesVisual3D")
 FireAudio = NodePath("FireAudioComponent")
 SprayerVisual = NodePath("CursorSprayerVisual3D")
 Scorch = NodePath("ScorchPresenter")
@@ -253,6 +255,9 @@ script = ExtResource("62_fire_visual_2d")
 
 [node name="FireVisual3D" type="Node3D" parent="."]
 script = ExtResource("63_fire_visual_3d")
+
+[node name="TreatSparklesVisual3D" type="Node3D" parent="."]
+script = ExtResource("64_treat_sparkles_3d")
 
 [node name="KnockoutStarsVisual3D" type="Node3D" parent="."]
 script = ExtResource("63_knockout_stars_3d")

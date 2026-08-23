@@ -38,7 +38,15 @@ public readonly record struct GunConstants(
     /// a buffer: its stroke plus its interval is long enough that a player mashing primary
     /// spends most presses into a dead gun and reads it as the gun jamming.
     /// </summary>
-    int PressBufferTicks = 0)
+    int PressBufferTicks = 0,
+
+    /// <summary>
+    /// A gun that never runs out: the magazine is never spent, so it never dry-fires and
+    /// never reloads. Authored for the Shotgun, whose whole cadence is meant to be pump and
+    /// shoot with nothing else in it (owner instruction 2026-08-22). Everything else about
+    /// the gun is unchanged, including the pump it still owes between shots.
+    /// </summary>
+    bool InfiniteMagazine = false)
 {
     public bool IsWellFormed() =>
         MagazineCapacity > 0 &&
@@ -268,14 +276,14 @@ public static class GunMachine
                 // which is the whole point of it surviving the window.
                 buffered = pressEdge ? constants.PressBufferTicks : buffered;
             }
-            else if (phase.Rounds > 0)
+            else if (constants.InfiniteMagazine || phase.Rounds > 0)
             {
                 buffered = 0;
                 fired = true;
                 projectiles = constants.ProjectilesPerShot;
                 phase = phase with
                 {
-                    Rounds = phase.Rounds - 1,
+                    Rounds = constants.InfiniteMagazine ? phase.Rounds : phase.Rounds - 1,
                     TicksSinceShot = 0,
                     ShotEpoch = Advance(phase.ShotEpoch),
                     ChamberEmpty = constants.RequiresPumpBetweenShots,

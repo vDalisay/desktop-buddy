@@ -55,7 +55,13 @@ public sealed class PainKnockoutModel
     /// <see cref="PainAcceptance.ConsciousnessAtAcceptance"/> — not the post-transition
     /// state — feeds the reward multiplier.
     /// </summary>
-    public PainAcceptance RegisterPain(float pain, double now)
+    /// <param name="countsTowardKnockout">
+    /// False for a source that may hurt but may never knock anyone out — the toy gun (owner
+    /// instruction 2026-08-22). Such pain still pays, still moves mood and still reads its
+    /// consciousness here; it simply never enters the window, so it can neither trigger a
+    /// knockout on its own nor top up one another tool started.
+    /// </param>
+    public PainAcceptance RegisterPain(float pain, double now, bool countsTowardKnockout = true)
     {
         WakeIfElapsed(now);
 
@@ -64,7 +70,7 @@ public sealed class PainKnockoutModel
             : DamageConsciousness.Conscious;
         bool knockoutTriggered = false;
 
-        if (!_unconscious)
+        if (!_unconscious && countsTowardKnockout)
         {
             PruneOldEvents(now);
             _events.Add((now, pain));

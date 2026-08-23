@@ -180,8 +180,8 @@ public sealed class WorkPlayWindowBehaviorScenario : IScenario
                 computer.Size.IsEqualApprox(new Vector2(460, 460)) &&
                 generatedProps is null &&
                 GodotObject.IsInstanceValid(counter) &&
-                counter!.Position.IsEqualApprox(new Vector2(418, 102)) &&
-                counter.Size.IsEqualApprox(new Vector2(121, 92)) &&
+                counter!.Position.IsEqualApprox(new Vector2(442, 111)) &&
+                counter.Size.IsEqualApprox(new Vector2(145, 105)) &&
                 GodotObject.IsInstanceValid(rig);
             checks.Add(new StartupCheck(
                 "work_companion_uses_smaller_pc_without_generated_furniture",

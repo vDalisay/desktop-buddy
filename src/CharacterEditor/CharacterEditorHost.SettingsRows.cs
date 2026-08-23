@@ -141,6 +141,12 @@ public partial class CharacterEditorHost
             value => edit(s => s with { ModernUiMotion = value }),
             DisplayGroup);
         _settingsPanel.AddToggle(
+            "Work Mode Retro Filter",
+            "Gives Work Mode's buddy and computer a chunky CRT look: coarser pixels, fewer colours and scanlines.",
+            settings.WorkRetroFilter,
+            value => edit(s => s with { WorkRetroFilter = value }),
+            DisplayGroup);
+        _settingsPanel.AddToggle(
             "Always On Top",
             "Keeps Buddy's window above your other windows.",
             settings.AlwaysOnTop,

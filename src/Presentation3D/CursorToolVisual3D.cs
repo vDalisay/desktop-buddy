@@ -14,14 +14,6 @@ namespace DesktopBuddy.Presentation3D;
 [GlobalClass]
 public partial class CursorToolVisual3D : Node3D
 {
-    // Reuse the pistol's authored steering feel rather than maintaining another cursor-follow
-    // approximation for the glove. Wheel pitch is intentionally not used by the glove.
-    private static readonly CursorAimConstants GloveAimConstants = new(
-        SmoothingHalfLifeTicks: 14.0f,
-        MinimumAimSpeed: 0.35f,
-        MaxTurnDegreesPerTick: 6.0f,
-        DegreesPerWheelStep: 5.0f,
-        MaximumOffsetDegrees: 60.0f);
     private const float SwingGuideOffsetPx = 28.0f;
 
     private Body2DVisual3D _slot = null!;
@@ -29,9 +21,6 @@ public partial class CursorToolVisual3D : Node3D
     private bool _presentationActive;
     private float _gloveFacingAngle;
     private bool _hasGloveFacing;
-    private Vector2 _previousGloveCursor;
-    private bool _hasGloveCursorSample;
-    private CursorAimState _gloveAimState = CursorAimState.Initial;
 
     public bool IsInitialized { get; private set; }
     public bool IsAttached => IsInitialized && _slot.IsAttached;
@@ -94,12 +83,6 @@ public partial class CursorToolVisual3D : Node3D
     {
         _slot.Attach(target);
         ResetGloveAim();
-        if (ActiveKind == CursorToolVisual3DKind.BoxingGlove &&
-            target.GetParent() is CursorToolController controller && controller.HasCursor)
-        {
-            _previousGloveCursor = controller.Cursor;
-            _hasGloveCursorSample = true;
-        }
         Visible = _presentationActive && _slot.IsAttached;
     }
 
@@ -131,26 +114,13 @@ public partial class CursorToolVisual3D : Node3D
             return;
         }
 
-        Vector2 cursor = controller.Cursor;
-        if (!_hasGloveCursorSample)
-        {
-            _previousGloveCursor = cursor;
-            _hasGloveCursorSample = true;
-            return;
-        }
-
-        Vector2 motion = cursor - _previousGloveCursor;
-        _previousGloveCursor = cursor;
-        CursorAimResult aim = CursorAim.Tick(new CursorAimInput(
-            _gloveAimState,
-            new System.Numerics.Vector2(motion.X, motion.Y),
-            WheelSteps: 0,
-            GloveAimConstants));
-        _gloveAimState = aim.State;
-        if (!aim.IsValid)
+        // The controller owns this direction, because it is not only a drawing: the wind-up
+        // punch travels along it (owner instruction 2026-08-22), and a facing the presentation
+        // derived for itself could point somewhere the punch does not go.
+        if (!controller.HasToolFacing)
             return;
 
-        _gloveFacingAngle = MathF.Atan2(aim.Forward.Y, aim.Forward.X);
+        _gloveFacingAngle = controller.ToolFacingAngle;
         _hasGloveFacing = true;
     }
 
@@ -182,9 +152,6 @@ public partial class CursorToolVisual3D : Node3D
     {
         _gloveFacingAngle = 0.0f;
         _hasGloveFacing = false;
-        _previousGloveCursor = Vector2.Zero;
-        _hasGloveCursorSample = false;
-        _gloveAimState = CursorAimState.Initial;
     }
 
     private void UpdateSwingGuide(CursorToolController controller)
@@ -267,7 +234,7 @@ internal static class CursorToolVisualFactory
         // putting one down changes where it is, not what it looks like.
         ArrayMesh? mesh = profile.WorldDropGunVisual is not null &&
                           GodotObject.IsInstanceValid(profile.WorldDropGunVisual)
-            ? GunMeshBuilder.Build(profile.WorldDropGunVisual)
+            ? GunMeshBuilder.BuildCentred(profile.WorldDropGunVisual)
             : profile.WorldDropSprayerVisual is not null &&
               GodotObject.IsInstanceValid(profile.WorldDropSprayerVisual)
                 ? SprayerMeshBuilder.Build(profile.WorldDropSprayerVisual)

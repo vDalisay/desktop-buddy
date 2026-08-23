@@ -83,6 +83,7 @@ public partial class SandboxRoot : Node2D
     [Export] public FireVisual2D FireVisualLegacy { get; set; } = null!;
     [Export] public FireVisual3D FireVisual { get; set; } = null!;
     [Export] public KnockoutStarsVisual3D KnockoutStars { get; set; } = null!;
+    [Export] public TreatSparklesVisual3D TreatSparkles { get; set; } = null!;
     [Export] public FireAudioComponent FireAudio { get; set; } = null!;
     [Export] public CursorSprayerVisual3D SprayerVisual { get; set; } = null!;
     [Export] public ScorchPresenter Scorch { get; set; } = null!;
@@ -145,6 +146,7 @@ public partial class SandboxRoot : Node2D
             !GodotObject.IsInstanceValid(FireVisualLegacy) ||
             !GodotObject.IsInstanceValid(FireVisual) ||
             !GodotObject.IsInstanceValid(KnockoutStars) ||
+            !GodotObject.IsInstanceValid(TreatSparkles) ||
             !GodotObject.IsInstanceValid(FireAudio) ||
             !GodotObject.IsInstanceValid(SprayerVisual) ||
             !GodotObject.IsInstanceValid(Scorch) ||
@@ -228,6 +230,9 @@ public partial class SandboxRoot : Node2D
         ImpactVisualOffset.Care = CareStroke;
         ToolReactions.Initialize();
         Reactions.Initialize();
+        // Behind the head rather than in front of it, which is the whole look: the glisten
+        // comes out from around the buddy (owner instruction 2026-08-22).
+        TreatSparkles.Initialize(Buddy, Reactions, FireSprayer.Profile.VisualDepthOffset - 4.0f);
         ReactionAudio.Initialize();
         SwingHitLag.Initialize();
         ImpactVisualOffset.Initialize();
@@ -606,6 +611,7 @@ public partial class SandboxRoot : Node2D
         CareCursorVisual.ApplyEffectsSettings(settings.ReducedParticles);
         FireVisual.ApplyEffectsSettings(settings);
         KnockoutStars.ApplyEffectsSettings(settings);
+        TreatSparkles.ApplyEffectsSettings(settings);
         SprayerVisual.ApplyEffectsSettings(settings);
         FireVisualLegacy.ApplyEffectsSettings(settings);
         CameraKick.ApplyEffectsSettings(settings);
@@ -854,6 +860,7 @@ public partial class SandboxRoot : Node2D
         // fire seen two ways, never both at once.
         FireVisual.SetPresentationActive(show3D);
         KnockoutStars.SetPresentationActive(show3D);
+        TreatSparkles.SetPresentationActive(show3D);
         FireVisualLegacy.SetPresentationActive(!show3D);
         // One flamethrower per cursor: the frontal model and the flat silhouette are the
         // same weapon seen two ways, never both at once.

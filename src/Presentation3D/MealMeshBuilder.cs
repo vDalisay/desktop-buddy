@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 
 namespace DesktopBuddy.Presentation3D;
@@ -13,76 +14,65 @@ public static class MealMeshBuilder
     /// <summary>Maximum distance from origin in collider-radius units, with test headroom.</summary>
     public const float EnvelopeRadiusFactor = 1.50f;
 
-    private static readonly Color PlateColor = new(0.90f, 0.91f, 0.88f, 1.0f);
+    private const int RadialSegments = 20;
 
-    public static ArrayMesh PlatedSandwich(float radius, Color bread, Color filling)
+    /// <summary>
+    /// A plain hamburger: domed top bun, patty, flat-bottomed lower bun. Built as a stack of
+    /// rings lathed around Y, so the silhouette reads as a burger from any angle the loose
+    /// object tumbles to. <paramref name="bun"/> is the bread, <paramref name="patty"/> the
+    /// filling; no seeds, wrapper, branding or garnish.
+    /// </summary>
+    public static ArrayMesh Burger(float radius, Color bun, Color patty)
     {
         if (!float.IsFinite(radius) || radius <= 0.0f)
             throw new ArgumentOutOfRangeException(nameof(radius));
 
+        Color topBun = bun.Lightened(0.16f);
+        // Height, ring radius, and the colour of the band running up from it.
+        var rings = new List<(float Y, float Radius, Color Tint)>
+        {
+            (-0.62f, 0.00f, bun),  // Underside, closed at the pole.
+            (-0.60f, 0.60f, bun),
+            (-0.50f, 0.88f, bun),  // Bottom bun, sitting flat.
+            (-0.30f, 0.96f, patty),
+            (-0.26f, 1.00f, patty), // Patty, deliberately proud of the bread.
+            (-0.04f, 1.00f, topBun),
+            (0.00f, 0.96f, topBun),
+            (0.26f, 0.88f, topBun),
+            (0.46f, 0.70f, topBun), // Dome.
+            (0.60f, 0.42f, topBun),
+            (0.68f, 0.00f, topBun),
+        };
+
         var tool = new SurfaceTool();
         tool.Begin(Mesh.PrimitiveType.Triangles);
+        for (int index = 0; index < rings.Count - 1; index++)
+        {
+            (float lowerY, float lowerRadius, Color tint) = rings[index];
+            (float upperY, float upperRadius, _) = rings[index + 1];
+            for (int segment = 0; segment < RadialSegments; segment++)
+            {
+                float start = Mathf.Tau * segment / RadialSegments;
+                float end = Mathf.Tau * (segment + 1) / RadialSegments;
+                Vector3 a = Ring(lowerRadius * radius, lowerY * radius, start);
+                Vector3 b = Ring(lowerRadius * radius, lowerY * radius, end);
+                Vector3 c = Ring(upperRadius * radius, upperY * radius, end);
+                Vector3 d = Ring(upperRadius * radius, upperY * radius, start);
 
-        // Plate: deliberately shallow so it reads as a support rather than changing the
-        // apparent gameplay footprint. All dimensions derive from the existing collider radius.
-        AddBox(
-            tool,
-            new Vector3(-1.18f * radius, -0.62f * radius, -0.48f * radius),
-            new Vector3(1.18f * radius, -0.47f * radius, 0.48f * radius),
-            PlateColor);
-
-        // Three simple stacked layers read as a sandwich from the frontal game camera. No logo,
-        // package, garnish, or branded food silhouette is authored here.
-        AddBox(
-            tool,
-            new Vector3(-0.88f * radius, -0.40f * radius, -0.36f * radius),
-            new Vector3(0.88f * radius, -0.10f * radius, 0.36f * radius),
-            bread);
-        AddBox(
-            tool,
-            new Vector3(-0.82f * radius, -0.08f * radius, -0.38f * radius),
-            new Vector3(0.82f * radius, 0.12f * radius, 0.38f * radius),
-            filling);
-        AddBox(
-            tool,
-            new Vector3(-0.88f * radius, 0.14f * radius, -0.36f * radius),
-            new Vector3(0.88f * radius, 0.44f * radius, 0.36f * radius),
-            bread.Lightened(0.08f));
+                // Degenerate where a ring has collapsed to the pole.
+                if (lowerRadius > 0.0f)
+                    AddTriangle(tool, a, b, c, tint);
+                if (upperRadius > 0.0f)
+                    AddTriangle(tool, a, c, d, tint);
+            }
+        }
 
         tool.GenerateNormals();
         return tool.Commit();
     }
 
-    private static void AddBox(SurfaceTool tool, Vector3 min, Vector3 max, Color color)
-    {
-        Vector3 p000 = new(min.X, min.Y, min.Z);
-        Vector3 p001 = new(min.X, min.Y, max.Z);
-        Vector3 p010 = new(min.X, max.Y, min.Z);
-        Vector3 p011 = new(min.X, max.Y, max.Z);
-        Vector3 p100 = new(max.X, min.Y, min.Z);
-        Vector3 p101 = new(max.X, min.Y, max.Z);
-        Vector3 p110 = new(max.X, max.Y, min.Z);
-        Vector3 p111 = new(max.X, max.Y, max.Z);
-
-        AddQuad(tool, p001, p101, p111, p011, color); // front
-        AddQuad(tool, p100, p000, p010, p110, color); // back
-        AddQuad(tool, p000, p001, p011, p010, color); // left
-        AddQuad(tool, p101, p100, p110, p111, color); // right
-        AddQuad(tool, p010, p011, p111, p110, color); // top
-        AddQuad(tool, p000, p100, p101, p001, color); // bottom
-    }
-
-    private static void AddQuad(
-        SurfaceTool tool,
-        Vector3 a,
-        Vector3 b,
-        Vector3 c,
-        Vector3 d,
-        Color color)
-    {
-        AddTriangle(tool, a, b, c, color);
-        AddTriangle(tool, a, c, d, color);
-    }
+    private static Vector3 Ring(float radius, float y, float angle) =>
+        new(Mathf.Cos(angle) * radius, y, Mathf.Sin(angle) * radius);
 
     private static void AddTriangle(
         SurfaceTool tool,

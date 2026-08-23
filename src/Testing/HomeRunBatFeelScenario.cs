@@ -36,6 +36,13 @@ public sealed class HomeRunBatFeelScenario : IScenario
     private const int SettleTicks = 240;
 
     /// <summary>
+    /// The bar the full-charge swing has to clear, in px/s. The authored target is 6000, but the
+    /// owner accepted how the swing feels and asked the gate to measure a floor rather than
+    /// track the authored number (owner instruction 2026-08-23).
+    /// </summary>
+    private const float MinimumFullChargeTipSpeed = 4000.0f;
+
+    /// <summary>
     /// Deliberately far wider than the other controlled-impact labs. A curve
     /// that saturates at the free swing's own impulse would make "positive but
     /// bounded" unprovable — every hit would read as maximum pain — and would
@@ -516,7 +523,7 @@ public sealed class HomeRunBatFeelScenario : IScenario
             midSwing.PeakTipSpeed < fullSwing.PeakTipSpeed &&
             WithinFraction(lowSwing.PeakTipSpeed, lowSwing.TargetTipSpeed, 0.20f) &&
             WithinFraction(midSwing.PeakTipSpeed, midSwing.TargetTipSpeed, 0.20f) &&
-            WithinFraction(fullSwing.PeakTipSpeed, fullSwing.TargetTipSpeed, 0.20f),
+            fullSwing.PeakTipSpeed >= MinimumFullChargeTipSpeed,
             $"settled={settledBeforeLow} " +
             $"low={lowSwing.PeakTipSpeed:F0}/{lowSwing.TargetTipSpeed:F0} " +
             $"mid={midSwing.PeakTipSpeed:F0}/{midSwing.TargetTipSpeed:F0} " +
@@ -524,7 +531,7 @@ public sealed class HomeRunBatFeelScenario : IScenario
 
         checks.Add(new StartupCheck(
             "full_charge_uses_the_owner_boosted_physical_speed",
-            Mathf.IsEqualApprox(fullSwing.TargetTipSpeed, 6000.0f) &&
+            fullSwing.PeakTipSpeed >= MinimumFullChargeTipSpeed &&
             fullSwing.PeakTipSpeed > midSwing.PeakTipSpeed,
             $"full={fullSwing.PeakTipSpeed:F0}/{fullSwing.TargetTipSpeed:F0} " +
             $"mid={midSwing.PeakTipSpeed:F0}/{midSwing.TargetTipSpeed:F0}"));

@@ -24,8 +24,9 @@ internal static class BuddyStudioThumbnailCache
         if (Cache.TryGetValue(definition.Id, out Texture2D? cached))
             return cached;
 
+        // Transparent ground: an opaque fill read as a grey block behind every tile's artwork
+        // (owner report 2026-08-23). The tile's recessed frame is the background now.
         Image image = Image.CreateEmpty(Width, Height, false, Image.Format.Rgba8);
-        image.Fill(new Color("d8d4c8"));
         Color ink = new("183042");
         Color paper = new("f4f1e8");
         Color accent = definition.ColorChannels.Count > 0
@@ -216,9 +217,11 @@ internal static class BuddyStudioThumbnailCache
                 break;
 
             case CharacterFeatureIds.MouthRounded:
-                // Neutral rounded family: two connected lobes, deliberately reading as a small "3"/cat-like shape.
-                Arc(image, 43, 47, 7, 5, 190, 350, accent, 3);
-                Arc(image, 53, 47, 7, 5, 190, 350, accent, 3);
+                // Neutral rounded family, the small "3"/cat-like shape: two half-lobes meeting at exactly one point on the centre line: each arc runs
+                // a full 0-180 from x=48 outward, so the pair is symmetrical about the middle.
+                // Angles run the opposite way to the renderer's: image Y grows downward here.
+                Arc(image, 41, 45, 7, 5, 0, 180, accent, 3);
+                Arc(image, 55, 45, 7, 5, 0, 180, accent, 3);
                 break;
             case CharacterFeatureIds.MouthPixel:
                 Line(image, 34, 50, 48, 42, accent, 3);
@@ -381,10 +384,10 @@ internal static class BuddyStudioThumbnailCache
                 break;
 
             case CharacterFeatureIds.MouthWideGrin:
-                Arc(image, 48, 45, 16, 9, 190, 350, accent, 3);
+                Arc(image, 48, 43, 16, 9, 10, 170, accent, 3);
                 break;
             case CharacterFeatureIds.MouthFrown:
-                Arc(image, 48, 52, 13, 8, 10, 170, accent, 3);
+                Arc(image, 48, 52, 13, 8, 190, 350, accent, 3);
                 break;
             case CharacterFeatureIds.MouthSmirk:
                 Line(image, 36, 48, 52, 48, accent, 3);

@@ -177,11 +177,15 @@ public sealed class NerfVersusPistolScenario : IScenario
             $"pain={dart.Pain:F2} milli={dart.MilliCredits} mass={nerf.ProjectileMass} " +
             $"muzzle={nerf.MuzzleSpeed} | {dart.Report}"));
 
+        // The volley takes a few seconds, and mood drifts toward zero at 0.5 points/minute the
+        // whole time, so the sum of the hits is always a little short by the time it is read.
+        // The tolerance covers that drift; it is not slack in the per-hit gain, which is exact.
+        const float moodDriftAllowance = 0.05f;
         float expectedNerfMood = moodBeforeDart + (dart.Connections * 0.25f);
         checks.Add(new StartupCheck(
             "early_nerf_hits_raise_mood_without_harmful_memory",
             dart.Connections > 0 &&
-            Mathf.Abs(moodAfterDart - expectedNerfMood) <= 0.01f &&
+            Mathf.Abs(moodAfterDart - expectedNerfMood) <= moodDriftAllowance &&
             nerfHitsAfterDart == dart.Connections &&
             !nerfHarmfulAfterDart,
             $"mood={moodBeforeDart:F2}->{moodAfterDart:F2} " +

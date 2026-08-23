@@ -47,6 +47,7 @@ public static class ScenarioCatalog
         ["m3_presentation"] = () => new M3PresentationScenario(),
         ["tool_feel_reactions"] = () => new ToolFeelReactionScenario(),
         ["glove_critical_head_impact"] = () => new GloveCriticalHeadImpactScenario(),
+        ["glove_punch"] = () => new GlovePunchScenario(),
         ["presentation_3d"] = () => new Presentation3DScenario(),
         ["presentation_look"] = () => new PresentationLookScenario(),
         ["character_rig_view"] = () => new CharacterRigViewScenario(),

@@ -116,24 +116,42 @@ public partial class EnvironmentBackgroundPresenter : Node3D
     {
         if (!GodotObject.IsInstanceValid(_boundaries))
         {
-            Layout(480, 360);
+            Layout(480, 360, new Rect2(0, 0, 480, 360));
             return;
         }
         _boundaries!.LayoutApplied -= OnLayoutApplied;
         _boundaries.LayoutApplied += OnLayoutApplied;
         if (_boundaries.IsInitialized)
-            Layout((float)_boundaries.CurrentLayout.RoomWidth, (float)_boundaries.CurrentLayout.RoomHeight);
+        {
+            Layout(
+                (float)_boundaries.CurrentLayout.RoomWidth,
+                (float)_boundaries.CurrentLayout.RoomHeight,
+                _boundaries.InnerBounds);
+        }
     }
 
     private void OnLayoutApplied(DesktopBuddy.Domain.Physics.RoomLayout layout, Rect2 innerBounds) =>
-        Layout((float)layout.RoomWidth, (float)layout.RoomHeight);
+        Layout((float)layout.RoomWidth, (float)layout.RoomHeight, innerBounds);
 
-    private void Layout(float width, float height)
+    /// <summary>
+    /// The base quad fills the whole room; the paint quad only fills the playable inside of it.
+    /// The strip between the wall line and the window edge therefore stays the plain backdrop
+    /// instead of taking paint, which is the grey border the room is framed by (owner
+    /// instruction 2026-08-22). Painting keeps mapping onto the quad it is drawn on, so the
+    /// canonical 0..1 canvas now covers exactly the room the buddy can reach.
+    /// </summary>
+    private void Layout(float width, float height, Rect2 inner)
     {
         if (!GodotObject.IsInstanceValid(_quad) || width <= 0 || height <= 0) return;
-        ((QuadMesh)_quad.Mesh).Size = new Vector2(width, height);
-        _quad.Position = new Vector3(width * .5f, -height * .5f, PaintZ);
         ((QuadMesh)_base.Mesh).Size = new Vector2(width, height);
         _base.Position = new Vector3(width * .5f, -height * .5f, BackdropZ);
+
+        bool usable = inner.Size.X > 0.0f && inner.Size.Y > 0.0f;
+        Vector2 paintSize = usable ? inner.Size : new Vector2(width, height);
+        Vector2 paintCentre = usable
+            ? inner.Position + (inner.Size * 0.5f)
+            : new Vector2(width, height) * 0.5f;
+        ((QuadMesh)_quad.Mesh).Size = paintSize;
+        _quad.Position = new Vector3(paintCentre.X, -paintCentre.Y, PaintZ);
     }
 }

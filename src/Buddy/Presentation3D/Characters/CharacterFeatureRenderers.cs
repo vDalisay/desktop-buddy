@@ -461,8 +461,8 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
                     fill, trustedOutlineColor, transform);
                 break;
             case FaceMouthPose.CatSmile:
-                AddPath(commands, CharacterGeometry.Arc(center + new Vector2(-0.09f, 0.04f), 0.10f, 0.08f, Mathf.Pi, Mathf.Tau), fill, trustedOutlineColor, transform);
-                AddPath(commands, CharacterGeometry.Arc(center + new Vector2(0.09f, 0.04f), 0.10f, 0.08f, Mathf.Pi, Mathf.Tau), fill, trustedOutlineColor, transform);
+                AddPath(commands, DoubleArc(center + new Vector2(0.0f, 0.03f), 0.26f, 0.095f),
+                    fill, trustedOutlineColor, transform);
                 break;
             case FaceMouthPose.Frown:
                 AddPath(commands, CharacterGeometry.Arc(center - new Vector2(0.0f, 0.05f), 0.18f, 0.12f, 0.0f, Mathf.Pi), fill, trustedOutlineColor, transform);
@@ -502,11 +502,7 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
         switch (_variant)
         {
             case MouthVariant.Rounded:
-                AddPath(commands,
-                    CharacterGeometry.Arc(center + new Vector2(-0.07f, 0.035f), 0.085f, 0.065f, Mathf.Pi, Mathf.Tau),
-                    fill, outline, transform);
-                AddPath(commands,
-                    CharacterGeometry.Arc(center + new Vector2(0.07f, 0.035f), 0.085f, 0.065f, Mathf.Pi, Mathf.Tau),
+                AddPath(commands, DoubleArc(center + new Vector2(0.0f, 0.03f), 0.26f, 0.095f),
                     fill, outline, transform);
                 break;
             case MouthVariant.Pixel:
@@ -568,6 +564,30 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
 
         float width = _variant == MouthVariant.Line ? 0.025f : 0.04f;
         ProceduralEyeRenderer.AddStroke(commands, path, width, fill, outline, transform);
+    }
+
+    /// <summary>
+    /// The ':3' silhouette as one continuous symmetric path, proportioned like the Studio tile
+    /// the player picks it from (owner report 2026-08-23): two equal lobes meeting on the centre
+    /// line, wide enough that the outline pass cannot swallow the notch between them.
+    ///
+    /// <para>The lobes stop <see cref="JoinTrimRadians"/> short of vertical and are joined by a
+    /// short segment. Running them into a true cusp made the stroke double back on itself in one
+    /// point, and the polyline renderer answered that with a spike.</para>
+    /// </summary>
+    private const float JoinTrimRadians = 0.35f;
+
+    private static Vector2[] DoubleArc(Vector2 center, float halfWidth, float depth)
+    {
+        float lobe = halfWidth * 0.5f;
+        Vector2[] left = CharacterGeometry.Arc(
+            center + new Vector2(-lobe, 0.0f), lobe, depth, Mathf.Pi, Mathf.Tau - JoinTrimRadians);
+        Vector2[] right = CharacterGeometry.Arc(
+            center + new Vector2(lobe, 0.0f), lobe, depth, Mathf.Pi + JoinTrimRadians, Mathf.Tau);
+        var path = new Vector2[left.Length + right.Length];
+        Array.Copy(left, path, left.Length);
+        Array.Copy(right, 0, path, left.Length, right.Length);
+        return path;
     }
 
     private static Vector2[] Closed(Vector2[] path)

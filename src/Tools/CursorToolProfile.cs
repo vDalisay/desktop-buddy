@@ -86,6 +86,13 @@ public partial class CursorToolProfile : GameResource
     [Export] public SwingToolProfile? Swing { get; set; }
 
     /// <summary>
+    /// Wind-up-and-lash-out tuning, or null for a tool that has none. Authored for the Boxing
+    /// Glove (owner instruction 2026-08-22); a tool cannot author both this and
+    /// <see cref="Swing"/>, since both want the same secondary button.
+    /// </summary>
+    [Export] public PunchToolProfile? Punch { get; set; }
+
+    /// <summary>
     /// Optional registry-backed physical form used when this owned cursor tool is dropped into
     /// the room. Null means the tool cannot be dropped. Its content ID must be exactly the tool
     /// content ID so ownership/re-equip never depends on a second identity vocabulary.
@@ -108,6 +115,9 @@ public partial class CursorToolProfile : GameResource
     /// <summary>True when this tool can be gripped, charged, and swung.</summary>
     public bool IsSwingCapable =>
         Swing is not null && GodotObject.IsInstanceValid(Swing) && IsElongated;
+
+    /// <summary>True when secondary winds this tool back and releasing lashes it out.</summary>
+    public bool IsPunchCapable => Punch is not null && GodotObject.IsInstanceValid(Punch);
 
     /// <summary>
     /// The grip point in body-local coordinates: the centre of the capsule's
@@ -269,6 +279,23 @@ public partial class CursorToolProfile : GameResource
             // The arc's feasibility depends on this collider's shape and mass, so
             // the cross-checks live here where both halves are in hand.
             Swing.ValidateAgainstCollider(errors, this);
+        }
+
+        if (Punch is not null && GodotObject.IsInstanceValid(Punch))
+        {
+            foreach (string error in Punch.Validate())
+            {
+                errors.Add($"{nameof(Punch)}: {error}");
+            }
+
+            // One secondary button, one meaning: a tool that both charged a swing and wound up
+            // a punch would have to pick one at the input layer, out of sight of this data.
+            if (IsSwingCapable)
+            {
+                errors.Add(
+                    $"{nameof(Punch)} and {nameof(Swing)} cannot both be authored: they share " +
+                    "the secondary button");
+            }
         }
 
         if (WorldDrop is not null)

@@ -132,7 +132,8 @@ public partial class WorkCompanionCoordinator : Node
                 _sandbox,
                 settings.WorkShowLifetimeCounter,
                 settings.WorkAnimationsEnabled,
-                appearance);
+                appearance,
+                settings.WorkRetroFilter);
             _view.ExitRequested += OnExitRequested;
             _view.CounterModeToggleRequested += OnCounterModeToggleRequested;
             _view.AnimationPreferenceChanged += OnAnimationPreferenceChanged;

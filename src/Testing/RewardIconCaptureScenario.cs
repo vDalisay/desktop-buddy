@@ -117,8 +117,8 @@ public sealed class RewardIconCaptureScenario : IScenario
         bool headless = DisplayServer.GetName() == "headless";
         checks.Add(new StartupCheck(
             "reward_icons_rendered_from_shipped_meshes",
-            headless || written.Count == 16,
-            $"headless={headless} written={written.Count}/16 [{string.Join(',', written)}]"));
+            headless || written.Count == 17,
+            $"headless={headless} written={written.Count}/17 [{string.Join(',', written)}]"));
         bool passed = true;
         foreach (StartupCheck check in checks) passed &= check.Passed;
         return new ScenarioResult(passed, checks, messages);
@@ -143,17 +143,18 @@ public sealed class RewardIconCaptureScenario : IScenario
     [
         new Shot("grab", new Vector3(0.0f, 0.0f, 0.0f)),
         new Shot("power_grab", new Vector3(0.0f, 0.0f, 0.0f)),
+        new Shot("rope_suspender", new Vector3(0.0f, 0.0f, 0.0f)),
         new Shot("pet", new Vector3(0.0f, -28.0f, 0.0f)),
         new Shot("tickle", new Vector3(0.0f, -28.0f, 0.0f)),
         new Shot("baseball_bat", new Vector3(0.0f, -8.0f, 38.0f)),
-        new Shot("boxing_glove", new Vector3(-10.0f, 44.0f, 0.0f)),
+        new Shot("boxing_glove", new Vector3(0.0f, 0.0f, 0.0f)),
         new Shot("baseball", new Vector3(-14.0f, 26.0f, 0.0f)),
         new Shot("soccer_ball", new Vector3(-14.0f, 26.0f, 0.0f)),
-        new Shot("meal", new Vector3(-34.0f, 22.0f, 0.0f)),
+        new Shot("meal", new Vector3(-16.0f, 22.0f, 0.0f)),
         new Shot("drink", new Vector3(-12.0f, 24.0f, 0.0f)),
         new Shot("repair_kit", new Vector3(-16.0f, 28.0f, 0.0f)),
         new Shot("grenade", new Vector3(-10.0f, 26.0f, 0.0f)),
-        new Shot("nerf_blaster", new Vector3(-8.0f, -22.0f, 8.0f)),
+        new Shot("nerf_blaster", new Vector3(-8.0f, -22.0f, 0.0f)),
         new Shot("pistol", new Vector3(-8.0f, -22.0f, 0.0f)),
         new Shot("shotgun", new Vector3(-8.0f, -22.0f, 0.0f)),
         new Shot("fire_sprayer", new Vector3(-8.0f, -22.0f, 0.0f)),
@@ -166,6 +167,8 @@ public sealed class RewardIconCaptureScenario : IScenario
         // and red (owner instruction 2026-08-20).
         "grab" => RopeMesh(radius: 3.2f, new Color("8a8f98")),
         "power_grab" => RopeMesh(radius: 5.6f, new Color("c0392b")),
+        // The same rope as Power Grab's, in the orange the suspended rope is actually drawn in.
+        "rope_suspender" => RopeMesh(radius: 5.6f, new Color("e88c28")),
         "pet" => CareToolMeshBuilder.BuildBrush(),
         "tickle" => CareToolMeshBuilder.BuildFeatherDuster(worldForm: true),
         "baseball_bat" => BatMeshBuilder.Build(
@@ -203,7 +206,7 @@ public sealed class RewardIconCaptureScenario : IScenario
                 profile.Radius, profile.FillColor, profile.OutlineColor),
             LooseObjectVisualKind.Baseball => LooseObjectMeshBuilder.Baseball(
                 profile.Radius, profile.FillColor, profile.OutlineColor),
-            LooseObjectVisualKind.Meal => MealMeshBuilder.PlatedSandwich(
+            LooseObjectVisualKind.Meal => MealMeshBuilder.Burger(
                 profile.Radius, profile.FillColor, profile.OutlineColor),
             _ => null,
         };

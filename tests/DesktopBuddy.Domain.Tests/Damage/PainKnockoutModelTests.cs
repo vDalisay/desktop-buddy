@@ -19,6 +19,25 @@ public sealed class PainKnockoutModelTests
     }
 
     [Fact]
+    public void RegisterPain_NotCountingTowardKnockout_NeverKnocksOut()
+    {
+        var model = new PainKnockoutModel();
+
+        // Far past the threshold, and it still may not put anyone under: the toy gun's darts.
+        PainAcceptance result = model.RegisterPain(500.0f, 0.0, countsTowardKnockout: false);
+        PainAcceptance next = model.RegisterPain(90.0f, 1.0, countsTowardKnockout: false);
+
+        Assert.False(result.KnockoutTriggered);
+        Assert.False(next.KnockoutTriggered);
+        Assert.Equal(DamageConsciousness.Conscious, next.State.Consciousness);
+        Assert.Equal(0.0f, next.State.RollingPain);
+        Assert.Equal(0, model.KnockoutCount);
+
+        // And it did not quietly top up the window a real tool then finishes.
+        Assert.False(model.RegisterPain(99.0f, 2.0).KnockoutTriggered);
+    }
+
+    [Fact]
     public void RegisterPain_ReachingThreshold_KnocksOutOnce()
     {
         var model = new PainKnockoutModel();

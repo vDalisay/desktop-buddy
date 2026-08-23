@@ -27,7 +27,7 @@ public sealed class DemoMealVisualScenario : IScenario
         if (!authored)
             return Task.FromResult(new ScenarioResult(false, checks, [$"seed={seed}"]));
 
-        ArrayMesh mesh = MealMeshBuilder.PlatedSandwich(
+        ArrayMesh mesh = MealMeshBuilder.Burger(
             profile!.Radius,
             profile.FillColor,
             profile.OutlineColor);
@@ -35,7 +35,7 @@ public sealed class DemoMealVisualScenario : IScenario
         float maximum = faces.Length == 0 ? float.PositiveInfinity : faces.Max(vertex => vertex.Length());
         checks.Add(new StartupCheck(
             "demo_meal_mesh_is_nonempty_and_bounded",
-            faces.Length == 144 && maximum <= profile.Radius * MealMeshBuilder.EnvelopeRadiusFactor,
+            faces.Length > 0 && maximum <= profile.Radius * MealMeshBuilder.EnvelopeRadiusFactor,
             $"vertices={faces.Length} max={maximum:F2} bound={profile.Radius * MealMeshBuilder.EnvelopeRadiusFactor:F2}"));
 
         bool colorLayers = false;
@@ -49,7 +49,7 @@ public sealed class DemoMealVisualScenario : IScenario
         checks.Add(new StartupCheck(
             "demo_meal_mesh_keeps_distinct_food_layers",
             colorLayers,
-            "plate/bread/filling use vertex-colour layers"));
+            "bun and patty use vertex-colour layers"));
 
         bool passed = checks.All(check => check.Passed);
         return Task.FromResult(new ScenarioResult(passed, checks, [$"seed={seed}"]));

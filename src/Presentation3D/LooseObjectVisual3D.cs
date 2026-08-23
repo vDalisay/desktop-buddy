@@ -231,7 +231,7 @@ public partial class LooseObjectVisual3D : Node3D
                 profile.Radius, profile.FillColor, profile.OutlineColor),
             LooseObjectVisualKind.Baseball => LooseObjectMeshBuilder.Baseball(
                 profile.Radius, profile.FillColor, profile.OutlineColor),
-            LooseObjectVisualKind.Meal => MealMeshBuilder.PlatedSandwich(
+            LooseObjectVisualKind.Meal => MealMeshBuilder.Burger(
                 profile.Radius, profile.FillColor, profile.OutlineColor),
             _ => throw new InvalidOperationException(
                 $"No loose-object mesh for {profile.Visual3D}."),

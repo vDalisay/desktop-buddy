@@ -392,6 +392,9 @@ public sealed record LocalSettingsSave
     public bool WorkAnimationsEnabled { get; init; } = true;
     public bool WorkShowLifetimeCounter { get; init; }
 
+    /// <summary>The CRT pass over Work Mode's buddy and PC. On by default: it is the look.</summary>
+    public bool WorkRetroFilter { get; init; } = true;
+
     // Environment editor preferences are local UX state, not room progression. Reset Progress must
     // preserve them exactly like window placement and Work presentation preferences.
     public bool EnvironmentSnapToGrid { get; init; }

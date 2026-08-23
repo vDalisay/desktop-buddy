@@ -45,6 +45,28 @@ public partial class CursorToolController : Node2D
     private float _alignTarget;
     private bool _hasAlignTarget;
 
+    // --- Wind-up-and-lash-out (PunchToolProfile) ---
+    // Reuses the pistol's steering feel for the facing rather than keeping a second
+    // cursor-follow approximation: it is the direction the tool is drawn pointing, so the
+    // punch goes where the player can see the fist is aimed.
+    private static readonly CursorAimConstants PunchAimConstants = new(
+        SmoothingHalfLifeTicks: 14.0f,
+        MinimumAimSpeed: 0.35f,
+        MaxTurnDegreesPerTick: 6.0f,
+        DegreesPerWheelStep: 5.0f,
+        MaximumOffsetDegrees: 60.0f);
+
+    /// <summary>Wind-up rattle rate: a little under half a cycle a tick, so it reads as a shake.</summary>
+    private const float ShakeRadiansPerTick = 1.9f;
+
+    private CursorAimState _punchAimState = CursorAimState.Initial;
+    private float _punchFacingAngle;
+    private bool _hasPunchFacing;
+    private bool _chargeHeld;
+    private int _punchChargeTicks;
+    private int _punchLungeTicks;
+    private float _punchReleasedCharge;
+
     public event Action<CursorToolBody>? BodySpawned;
     public event Action<CursorToolBody>? BodyDespawned;
     public event Action<LooseObjectSwingHit>? LooseObjectSwingHit;
@@ -127,7 +149,57 @@ public partial class CursorToolController : Node2D
     public void SetGrip(bool held) => _swing.SetGrip(held);
 
     /// <summary>Secondary button while gripped: charge, and on release, swing.</summary>
-    public void SetChargeHeld(bool held) => _swing.SetChargeHeld(held);
+    public void SetChargeHeld(bool held)
+    {
+        _swing.SetChargeHeld(held);
+        if (held == _chargeHeld)
+            return;
+
+        _chargeHeld = held;
+        // The release edge is the punch: what was wound up is spent, and the lunge runs on
+        // its own clock from here whatever the player does with the button.
+        if (!held && _punchChargeTicks > 0 && _activeProfile?.Punch is PunchToolProfile punch)
+        {
+            _punchReleasedCharge = PunchCharge;
+            _punchLungeTicks = punch.LungeTicks;
+            PunchCount++;
+        }
+
+        if (!held)
+            _punchChargeTicks = 0;
+    }
+
+    /// <summary>How far the wind-up has come, 0..1. Zero for a tool that cannot punch.</summary>
+    public float PunchCharge
+    {
+        get
+        {
+            if (_activeProfile?.Punch is not PunchToolProfile punch)
+                return 0.0f;
+            return Mathf.Clamp(_punchChargeTicks / (float)Mathf.Max(1, punch.MaxChargeTicks), 0.0f, 1.0f);
+        }
+    }
+
+    /// <summary>True while the tool is being wound back.</summary>
+    public bool IsPunchCharging => _punchChargeTicks > 0 && _chargeHeld;
+
+    /// <summary>True while a released punch is still reaching out.</summary>
+    public bool IsPunchLunging => _punchLungeTicks > 0;
+
+    /// <summary>Lifetime punches thrown, so a scenario can assert the release fired.</summary>
+    public int PunchCount { get; private set; }
+
+    /// <summary>
+    /// Where the tool is pointing, and so which way a punch travels. Only meaningful for a
+    /// punch-capable tool; the glove's own visual reads this rather than deriving its own, so
+    /// the fist the player sees and the direction the punch takes are one value.
+    /// </summary>
+    public float ToolFacingAngle => _punchFacingAngle;
+
+    public bool HasToolFacing => _hasPunchFacing;
+
+    /// <summary>True when the selected tool winds back on secondary rather than swinging.</summary>
+    public bool IsPunchCapableTool(ToolId tool) => ProfileFor(tool)?.IsPunchCapable == true;
 
     /// <summary>The grip/charge/swing state of the live tool.</summary>
     public ChargedSwingState SwingState => _swing.State;
@@ -282,6 +354,7 @@ public partial class CursorToolController : Node2D
         }
 
         Vector2 cursorVelocity = dt > 0.0f ? (_cursor - _previousCursor) / dt : Vector2.Zero;
+        TickPunch(profile, _cursor - _previousCursor);
         ChargedSwingDrive drive = _swing.Tick(body, _cursor, cursorVelocity, dt);
         body.SetSwingContext(drive.Context);
         body.ContinuousCd = drive.State == ChargedSwingState.Swinging
@@ -300,7 +373,7 @@ public partial class CursorToolController : Node2D
         }
         else
         {
-            Vector2 error = _cursor - body.GlobalPosition;
+            Vector2 error = PunchAnchor(profile) - body.GlobalPosition;
             Vector2 relativeVelocity = body.LinearVelocity - cursorVelocity;
             GrabTetherResult result = GrabTether.Evaluate(new GrabTetherInput(
                 ToNumerics(error),
@@ -354,6 +427,72 @@ public partial class CursorToolController : Node2D
     /// pause in the swing, and the half-turn symmetry of a two-ended tool is folded
     /// out so it never spins around to present its other end.
     /// </summary>
+    /// <summary>
+    /// Advances the wind-up and the facing it will be spent along. Nothing here touches the
+    /// body: the anchor this produces is fed to the same tether every tool follows, so a
+    /// punch is the tool being dragged somewhere else rather than a second way to move it.
+    /// </summary>
+    private void TickPunch(CursorToolProfile profile, Vector2 cursorMotion)
+    {
+        if (profile.Punch is not PunchToolProfile punch)
+        {
+            _punchChargeTicks = 0;
+            _punchLungeTicks = 0;
+            _hasPunchFacing = false;
+            _punchAimState = CursorAimState.Initial;
+            return;
+        }
+
+        CursorAimResult aim = CursorAim.Tick(new CursorAimInput(
+            _punchAimState,
+            new NumericsVector2(cursorMotion.X, cursorMotion.Y),
+            WheelSteps: 0,
+            PunchAimConstants));
+        _punchAimState = aim.State;
+        if (aim.IsValid)
+        {
+            _punchFacingAngle = Mathf.Atan2(aim.Forward.Y, aim.Forward.X);
+            _hasPunchFacing = true;
+        }
+
+        if (_chargeHeld)
+            _punchChargeTicks = Math.Min(_punchChargeTicks + 1, punch.MaxChargeTicks);
+        else if (_punchLungeTicks > 0)
+            _punchLungeTicks--;
+    }
+
+    /// <summary>
+    /// Where the tether is told to hold the tool this tick: behind the cursor while winding
+    /// up, past it while lashing out, and the cursor itself the rest of the time.
+    /// </summary>
+    private Vector2 PunchAnchor(CursorToolProfile profile)
+    {
+        if (profile.Punch is not PunchToolProfile punch || !_hasPunchFacing)
+            return _cursor;
+
+        var facing = Vector2.FromAngle(_punchFacingAngle);
+        if (_punchLungeTicks > 0)
+        {
+            // One half sine across the window: out and back, with no second timer to keep in
+            // step with this one.
+            float progress = 1.0f - (_punchLungeTicks / (float)Mathf.Max(1, punch.LungeTicks));
+            float reach = Mathf.Sin(progress * Mathf.Pi) * punch.LungePx * _punchReleasedCharge;
+            return _cursor + (facing * reach);
+        }
+
+        if (_punchChargeTicks > 0)
+        {
+            // A held wind-up rattles harder the longer it is held (owner instruction
+            // 2026-08-23). It is a tick-driven oscillation, not noise, so the same hold always
+            // looks the same and nothing needs a random source.
+            Vector2 shake = facing.Orthogonal() *
+                (Mathf.Sin(_punchChargeTicks * ShakeRadiansPerTick) * punch.ChargeShakePx * PunchCharge);
+            return _cursor - (facing * (punch.PullBackPx * PunchCharge)) + shake;
+        }
+
+        return _cursor;
+    }
+
     private void ApplyAlignment(CursorToolBody body, CursorToolProfile profile, Vector2 cursorVelocity)
     {
         if (profile.AlignStiffness <= 0.0f)

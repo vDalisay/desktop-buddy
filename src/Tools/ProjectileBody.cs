@@ -194,17 +194,13 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
 
         Freeze = false;
         Sleeping = false;
-        GlobalPosition = position;
-        // Cleared with the rest of the transform rather than carried over: a reused pool
-        // slot starts every shot square, so Rotation reads as this flight's own spin.
-        Rotation = 0.0f;
+        // Rotation is cleared with the rest of the transform rather than carried over: a
+        // reused pool slot starts every shot square, so it reads as this flight's own spin.
+        PooledBodyPlacement.Launch(this, position, 0.0f, velocity, 0.0f);
         LaunchRotation = Rotation;
-        LinearVelocity = velocity;
-        AngularVelocity = 0.0f;
         CollisionLayer = CollisionLayers.Projectiles;
         CollisionMask = CollisionLayers.MaskProjectiles;
         Visible = true;
-        ResetPhysicsInterpolation();
         QueueRedraw();
     }
 

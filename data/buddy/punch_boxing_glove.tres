@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="PunchToolProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/PunchToolProfile.cs" id="1_punch"]
+
+[resource]
+resource_name = "ProvisionalGlovePunch"
+script = ExtResource("1_punch")
+MaxChargeTicks = 120
+PullBackPx = 30.0
+LungePx = 290.0
+ChargeShakePx = 6.0
+LungeTicks = 14

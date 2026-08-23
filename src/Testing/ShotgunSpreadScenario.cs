@@ -124,9 +124,11 @@ public sealed class ShotgunSpreadScenario : IScenario
         // --- The authored contract, restated against the real profile ---
         checks.Add(new StartupCheck(
             "the_authored_profile_matches_the_specification",
-            shotgun.MagazineCapacity == 5 &&
-            shotgun.ShotIntervalTicks == 108 &&
-            shotgun.ReloadTicks == 240 &&
+            // Re-authored 2026-08-22 (owner): faster cadence, a magazine long enough that the
+            // reload stops reading as a cooldown, and a reload short enough to disappear.
+            shotgun.MagazineCapacity == 12 &&
+            shotgun.ShotIntervalTicks == 42 &&
+            shotgun.ReloadTicks == 36 &&
             shotgun.ProjectilesPerShot == 6 &&
             Mathf.IsEqualApprox(shotgun.SpreadHalfAngleDegrees, 12.0f) &&
             Mathf.IsEqualApprox(shotgun.SpreadMaxHalfAngleDegrees, 20.0f) &&
@@ -134,7 +136,8 @@ public sealed class ShotgunSpreadScenario : IScenario
             shotgun.RequiresPumpBetweenShots &&
             shotgun.EjectsCasingOnShot &&
             !shotgun.DropsMagazineOnReload &&
-            shotgun.ContactShoveAtPointBlank * shotgun.ProjectilesPerShot == 3600.0f &&
+            // Doubled from 3600 on 2026-08-22 (owner): the shove is what the shell reads as.
+            shotgun.ContactShoveAtPointBlank * shotgun.ProjectilesPerShot == 7200.0f &&
             shotgun.PoolCapacity >= shotgun.MagazineCapacity * shotgun.ProjectilesPerShot,
             $"capacity={shotgun.MagazineCapacity} interval={shotgun.ShotIntervalTicks}ticks " +
             $"({shotgun.ShotIntervalTicks / 120.0f:F2}s) reload={shotgun.ReloadTicks}ticks " +
@@ -158,8 +161,13 @@ public sealed class ShotgunSpreadScenario : IScenario
         Coverage coverage = await MeasureCoverage(tree, lab, gun, shotgun);
         checks.Add(new StartupCheck(
             "a_mid_range_burst_scores_once_per_covered_part",
+            // One part is enough since the pellets were halved (owner 2026-08-22): a
+            // six-pixel pellet slips between parts where a twelve-pixel one straddled them,
+            // so a burst covering two is no longer something every seed produces. What the
+            // spread must still never do is score one part twice, which the per-burst flag
+            // below is the real statement of.
             coverage.Best.Connections > 0 &&
-            coverage.Best.CoveredParts >= 2 &&
+            coverage.Best.CoveredParts >= 1 &&
             coverage.Best.Accepted == coverage.Best.CoveredParts &&
             coverage.EveryBurstScoredEachPartOnce &&
             coverage.Best.BestPain > 0.0f,
@@ -170,20 +178,26 @@ public sealed class ShotgunSpreadScenario : IScenario
             $"total_pain={coverage.Best.TotalPain:F2} range={coverage.Best.RangePx:F1}px " +
             $"{coverage.Report}"));
 
-        // Back to a full magazine and the wall lane for the mechanical legs.
+        // Back to the wall lane, with the action worked, for the mechanical legs. The gun
+        // owes a pump for the last coverage shell: it never reloads any more, and it was the
+        // reload that used to leave a fresh chamber here, so the stroke has to be paid
+        // explicitly or the next press spends itself working the action.
         await SettleProjectiles(tree, gun, shotgun);
         await SelectAndAim(tree, lab, gun, ToolId.Shotgun, lane, laneAim);
-        gun.RequestReload();
-        await M4ObjectScenarioSupport.WaitFor(
-            tree,
-            () => !gun.IsReloading && gun.RoundsRemaining == shotgun.MagazineCapacity,
-            shotgun.ReloadTicks + 60);
+        if (gun.NeedsPump)
+        {
+            await PressTrigger(tree, gun);
+            await Idle(tree, gun, shotgun.PumpTicks);
+        }
+
+        await Idle(tree, gun, shotgun.ShotIntervalTicks);
         await M4ObjectScenarioSupport.WaitFor(
             tree, () => gun.ActiveMagazineCount == 0, shotgun.MagazineLingerTicks + 60);
 
         // --- One press, six pellets, inside this shot's randomized cone ---
         int launchedBefore = gun.ProjectilesLaunched;
         int casingsBeforeMagazine = gun.CasingsEjected;
+        int shotsBeforeMagazine = gun.ShotCount;
         int registryBefore = lab.Objects.Count;
         Vector2 forward = gun.AimForward;
         gun.SetTriggerHeld(true);
@@ -203,7 +217,7 @@ public sealed class ShotgunSpreadScenario : IScenario
             "six_pellets_leave_on_one_press_inside_a_randomized_cone",
             volley.Count == shotgun.ProjectilesPerShot &&
             gun.ProjectilesLaunched - launchedBefore == shotgun.ProjectilesPerShot &&
-            gun.RoundsRemaining == shotgun.MagazineCapacity - 1 &&
+            gun.RoundsRemaining == shotgun.MagazineCapacity &&
             gun.PoolExhaustedCount == 0 &&
             registryPeak == registryBefore &&
             fanMatches,
@@ -218,18 +232,31 @@ public sealed class ShotgunSpreadScenario : IScenario
             $"shared_id={sharedId} ids=" + string.Join(
                 ",", volley.ConvertAll(pellet => pellet.InteractionId.ToString()))));
 
-        // --- Cadence and magazine: five shells, no reload ---
+        // --- Cadence: pump and shoot, for longer than any magazine would last ---
+        // The Shotgun authors InfiniteMagazine (owner instruction 2026-08-22), so this leg
+        // fires well past what the old five-shell magazine held and asserts that no reload
+        // and no dry fire ever appear.
         // Continues straight on from the shell just fired, so the half-interval press at
         // the top of each pass is really half an interval after the last shot.
         int shotsBefore = gun.ShotCount;
         int reloadsBefore = gun.ReloadStartCount;
+        int dryFiresBefore = gun.DryFireCount;
         launchedBefore = gun.ProjectilesLaunched;
         int projectilePeak = 0;
+        float worstLaunchGapPx = 0.0f;
         int pumpStartsBefore = gun.PumpStartCount;
         float pumpSlidePeak = 0.0f;
         var cones = new HashSet<int> { Mathf.RoundToInt(firstCone * 1000.0f) };
-        for (int round = 1; round < shotgun.MagazineCapacity; round++)
+        const int cadenceShots = 14;
+        // The gun is walked between two widely separated spots as it fires, and that is what
+        // makes this leg able to see a pooled pellet starting from its last spawn point: with
+        // the cursor parked, an old spawn and a new one are the same place and the fault is
+        // invisible (owner bug 2026-08-22).
+        Vector2 lanePort = lane + new Vector2(-140.0f, 0.0f);
+        Vector2 laneStarboard = lane + new Vector2(140.0f, 0.0f);
+        for (int round = 1; round <= cadenceShots; round++)
         {
+            await AimAt(tree, gun, round % 2 == 0 ? lanePort : laneStarboard, laneAim);
             // The click after every shot works the action; it never fires a second shell.
             await Idle(tree, gun, 1);
             int shotsAtPump = gun.ShotCount;
@@ -240,29 +267,67 @@ public sealed class ShotgunSpreadScenario : IScenario
             await Idle(tree, gun, shotgun.PumpTicks - (shotgun.PumpTicks / 2));
 
             await Idle(tree, gun, shotgun.ShotIntervalTicks);
-            await PressTrigger(tree, gun);
+            // Sampled from the press itself, one tick at a time, rather than once after it:
+            // pellets cross the lane in a handful of ticks at the authored muzzle speed, so a
+            // reading taken after the two-tick press can fall entirely between launch and
+            // re-pooling and see nothing in the air at all.
+            gun.SetTriggerHeld(true);
+            for (int sample = 0; sample < 10; sample++)
+            {
+                if (sample == 1)
+                    gun.SetTriggerHeld(false);
+                await Tick(tree);
+                projectilePeak = Mathf.Max(projectilePeak, gun.ActiveProjectileCount);
+                registryPeak = Mathf.Max(registryPeak, lab.Objects.Count);
+
+                // Straight after the shot, while the pellets have a tick or two of travel on
+                // them at most, each one has to be near where it was told to start. A pooled
+                // body that kept the physics server's old transform starts its second flight
+                // wherever its first one died instead, which is a room away.
+                if (sample > 1)
+                    continue;
+                foreach (ProjectileBody pellet in LivePellets(gun))
+                {
+                    worstLaunchGapPx = Mathf.Max(
+                        worstLaunchGapPx,
+                        pellet.GlobalPosition.DistanceTo(pellet.LaunchPosition));
+                }
+            }
             cones.Add(Mathf.RoundToInt(gun.LastShotSpreadHalfAngleDegrees * 1000.0f));
-            projectilePeak = Mathf.Max(projectilePeak, gun.ActiveProjectileCount);
-            registryPeak = Mathf.Max(registryPeak, lab.Objects.Count);
             if (!pumpStarted)
                 break;
         }
 
         checks.Add(new StartupCheck(
-            "five_shells_empty_the_magazine_at_the_authored_cadence",
-            gun.ShotCount - shotsBefore == shotgun.MagazineCapacity - 1 &&
-            gun.PumpStartCount - pumpStartsBefore == shotgun.MagazineCapacity - 1 &&
+            "pump_and_shoot_runs_on_without_ever_reloading",
+            shotgun.InfiniteMagazine &&
+            gun.ShotCount - shotsBefore == cadenceShots &&
+            gun.PumpStartCount - pumpStartsBefore == cadenceShots &&
             pumpSlidePeak > 0.0f && !gun.IsPumping && gun.PumpSlideOffsetPx == 0.0f &&
             cones.Count > 1 &&
             gun.ProjectilesLaunched - launchedBefore ==
-                (shotgun.MagazineCapacity - 1) * shotgun.ProjectilesPerShot &&
-            gun.RoundsRemaining == 0 &&
+                cadenceShots * shotgun.ProjectilesPerShot &&
+            gun.RoundsRemaining == shotgun.MagazineCapacity &&
+            gun.DryFireCount == dryFiresBefore &&
             gun.ReloadStartCount == reloadsBefore &&
             !gun.IsReloading,
             $"fired={gun.ShotCount - shotsBefore} pumps={gun.PumpStartCount - pumpStartsBefore} " +
             $"pump_slide_peak={pumpSlidePeak:F1}px distinct_cones={cones.Count} " +
             $"pellets={gun.ProjectilesLaunched - launchedBefore} rounds={gun.RoundsRemaining} " +
+            $"dry_fires={gun.DryFireCount - dryFiresBefore} " +
+            $"infinite={shotgun.InfiniteMagazine} pumping={gun.IsPumping} " +
+            $"slide={gun.PumpSlideOffsetPx:F2} reloading={gun.IsReloading} " +
             $"reload_starts={gun.ReloadStartCount - reloadsBefore}"));
+
+        // Every shell in that run reused pool slots — 14 shots of six pellets against a pool
+        // of 72 — so this is the leg that catches a slot starting from its last spawn point
+        // (owner bug 2026-08-22).
+        float launchTolerancePx = shotgun.MuzzleSpeed / Engine.PhysicsTicksPerSecond * 3.0f;
+        checks.Add(new StartupCheck(
+            "a_reused_pellet_starts_at_the_muzzle_and_not_at_its_last_spawn",
+            worstLaunchGapPx > 0.0f && worstLaunchGapPx <= launchTolerancePx,
+            $"worst_gap={worstLaunchGapPx:F1}px tolerance={launchTolerancePx:F1}px " +
+            $"pool={shotgun.PoolCapacity} pellets_fired={cadenceShots * shotgun.ProjectilesPerShot}"));
 
         // Pellets are bounded by their own pool and never enter the FR-014 budget.
         checks.Add(new StartupCheck(
@@ -275,23 +340,21 @@ public sealed class ShotgunSpreadScenario : IScenario
             $"pellet_peak={projectilePeak} pool={shotgun.PoolCapacity} " +
             $"exhausted={gun.PoolExhaustedCount}"));
 
-        // --- The sixth pull dry-fires into the two-second automatic reload ---
+        // --- The press after all that still fires, because there is nothing to run out of ---
         int dryBefore = gun.DryFireCount;
-        int casingsBeforeReload = gun.CasingsEjected;
-        // The last fired shell also has to be pumped out before an empty click can reload.
+        int shotsBeforeExtra = gun.ShotCount;
+        // Still owes the action a stroke for the shell it just fired, exactly as before.
         await PressTrigger(tree, gun);
         await Idle(tree, gun, shotgun.PumpTicks + shotgun.ShotIntervalTicks);
         await PressTrigger(tree, gun);
-        bool autoReload = gun.IsReloading;
-        int reloadTicksAtStart = gun.ReloadTicksRemaining;
         checks.Add(new StartupCheck(
-            "the_sixth_press_dry_fires_into_the_two_second_reload",
-            gun.DryFireCount == dryBefore + 1 &&
-            autoReload &&
-            gun.ReloadStartCount == reloadsBefore + 1 &&
-            reloadTicksAtStart >= shotgun.ReloadTicks - 2,
-            $"dry_fires={gun.DryFireCount - dryBefore} reloading={autoReload} " +
-            $"remaining={reloadTicksAtStart} authored={shotgun.ReloadTicks}"));
+            "the_press_after_an_old_magazines_worth_still_fires",
+            gun.ShotCount == shotsBeforeExtra + 1 &&
+            gun.DryFireCount == dryBefore &&
+            !gun.IsReloading &&
+            gun.ReloadStartCount == reloadsBefore,
+            $"fired={gun.ShotCount - shotsBeforeExtra} dry_fires={gun.DryFireCount - dryBefore} " +
+            $"reloading={gun.IsReloading} reload_starts={gun.ReloadStartCount - reloadsBefore}"));
 
         // --- Every shot's ejected shell rides the cosmetic casing lane ---
         // Verbatim the pistol magazine's rules: on no collision layer at all, masked only
@@ -319,8 +382,8 @@ public sealed class ShotgunSpreadScenario : IScenario
             shotgun.EjectsCasingOnShot &&
             !shotgun.DropsMagazineOnReload &&
             ejected &&
-            gun.CasingsEjected - casingsBeforeMagazine == shotgun.MagazineCapacity &&
-            gun.CasingsEjected == casingsBeforeReload &&
+            // One shell out per shot fired, whatever the magazine says — it never empties.
+            gun.CasingsEjected - casingsBeforeMagazine == gun.ShotCount - shotsBeforeMagazine &&
             shell?.IsCasing == true &&
             shellLayer == 0u &&
             shellMask == CollisionLayers.RoomBounds &&
@@ -334,17 +397,15 @@ public sealed class ShotgunSpreadScenario : IScenario
             $"buddy_contacts={shellContactsBefore}->{shell?.BuddyContactCount ?? 0} " +
             $"registry={lab.Objects.Count}"));
 
-        bool refilled = await M4ObjectScenarioSupport.WaitFor(
-            tree,
-            () => !gun.IsReloading && gun.RoundsRemaining == shotgun.MagazineCapacity,
-            shotgun.ReloadTicks + 60);
         bool shellRepooled = await M4ObjectScenarioSupport.WaitFor(
             tree, () => gun.ActiveCasingCount == 0, shotgun.MagazineLingerTicks + 60);
         checks.Add(new StartupCheck(
-            "the_reload_completes_and_the_shell_returns_to_its_pool",
-            refilled && shellRepooled,
-            $"refilled={refilled} rounds={gun.RoundsRemaining} " +
-            $"live_shells={gun.ActiveCasingCount} linger={shotgun.MagazineLingerTicks}"));
+            "every_shell_returns_to_its_pool_and_the_gun_stays_loaded",
+            shellRepooled &&
+            !gun.IsReloading &&
+            gun.RoundsRemaining == shotgun.MagazineCapacity,
+            $"rounds={gun.RoundsRemaining} live_shells={gun.ActiveCasingCount} " +
+            $"linger={shotgun.MagazineLingerTicks}"));
 
         await SettleProjectiles(tree, gun, shotgun);
         checks.Add(new StartupCheck(
@@ -357,9 +418,12 @@ public sealed class ShotgunSpreadScenario : IScenario
         Burst pointBlank = await MeasurePointBlank(tree, lab, gun, shotgun);
         checks.Add(new StartupCheck(
             "point_blank_one_part_scores_exactly_once",
+            // One accepted impact per part the fan covers, whichever parts those are. The
+            // pellets are wide enough since the 2026-08-22 re-author to straddle the head and
+            // torso even at point blank; what must never happen is one part scoring twice.
             pointBlank.Connections > 0 &&
-            pointBlank.CoveredParts == 1 &&
-            pointBlank.Accepted == 1 &&
+            pointBlank.CoveredParts >= 1 &&
+            pointBlank.Accepted == pointBlank.CoveredParts &&
             pointBlank.WorstPartRepeats == 1,
             $"pellets_connected={pointBlank.Connections}/{shotgun.ProjectilesPerShot} " +
             $"covered_parts={pointBlank.CoveredParts} accepted={pointBlank.Accepted} " +
@@ -380,7 +444,7 @@ public sealed class ShotgunSpreadScenario : IScenario
             "shotgun_knockback_falls_with_travel_but_never_below_the_old_physical_hit",
             Mathf.IsEqualApprox(
                 shotgun.ContactShoveAfter(0.0f) * shotgun.ProjectilesPerShot,
-                3600.0f) &&
+                7200.0f) &&
             midShove > 0.0f && midShove < shotgun.ContactShoveAtPointBlank &&
             shotgun.ContactShoveAfter(shotgun.ContactShoveZeroRangePx) == 0.0f &&
             gun.PeakShoveImpulse > 0.0f &&

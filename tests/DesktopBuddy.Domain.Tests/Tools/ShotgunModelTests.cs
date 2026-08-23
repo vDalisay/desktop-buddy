@@ -5,10 +5,13 @@ using Xunit;
 namespace DesktopBuddy.Domain.Tests.Tools;
 
 /// <summary>
-/// The Shotgun's authored contract from RAGDOLL §9.2 (FR-010.2), stated in routed ticks
+/// The Shotgun's original contract from RAGDOLL §9.2 (FR-010.2), stated in routed ticks
 /// at the project's fixed 120 Hz: magazine 5, minimum shot interval 0.9 s (108 ticks),
 /// reload 2.0 s (240 ticks), six pellets per shot, unlimited reserve, one shot per
-/// primary press.
+/// primary press. The shipped profile has since been re-authored faster and given an
+/// infinite magazine (owner 2026-08-22, see gun_shotgun.tres and the shotgun_spread
+/// scenario, which measure what actually ships); these rows keep the original numbers on
+/// purpose, as the pump-gun cadence table the machine has to satisfy at any tuning.
 ///
 /// <para>The whole point of these rows is that they are a <b>profile table</b> and not a
 /// second state machine: every rule below is the same <see cref="GunMachine"/> the Pistol
@@ -41,6 +44,35 @@ public sealed class ShotgunModelTests
         Assert.Equal(6, Shotgun.ProjectilesPerShot);
         Assert.True(Shotgun.RequiresPumpBetweenShots);
         Assert.Equal(PumpTicks, Shotgun.PumpTicks);
+    }
+
+    /// <summary>
+    /// The shipped Shotgun authors <see cref="GunConstants.InfiniteMagazine"/> (owner
+    /// instruction 2026-08-22): pump and shoot, with no magazine break in it at all. Fired
+    /// well past what the magazine holds, the rounds never come down, and neither the dry
+    /// fire nor the reload that used to end a magazine ever appears.
+    /// </summary>
+    [Fact]
+    public void AnInfiniteMagazineNeverEmptiesDryFiresOrReloads()
+    {
+        var gun = new Gun(Shotgun with { InfiniteMagazine = true });
+
+        int fired = 0;
+        int dryFires = 0;
+        int reloads = 0;
+        for (int shot = 0; shot < Capacity * 4; shot++)
+        {
+            GunResult result = gun.PullWhenReady();
+            fired += result.Fired ? 1 : 0;
+            dryFires += result.DryFired ? 1 : 0;
+            reloads += result.ReloadStarted ? 1 : 0;
+        }
+
+        Assert.Equal(Capacity * 4, fired);
+        Assert.Equal(0, dryFires);
+        Assert.Equal(0, reloads);
+        Assert.Equal(Capacity, gun.Rounds);
+        Assert.False(gun.Phase.IsReloading);
     }
 
     [Fact]

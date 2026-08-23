@@ -381,6 +381,14 @@ public partial class LabPointerGrabComponent : Node2D
                          GodotObject.IsInstanceValid(CursorTools) &&
                          CursorTools.IsSwingCapableTool(tool);
 
+        // The Boxing Glove winds back on the same button the bat charges on (owner instruction
+        // 2026-08-22). Only the grip below stays bat-only: a glove has no handle to hold.
+        bool chargeTool = swingTool ||
+                          (_sawPointerInput &&
+                           CursorTools is not null &&
+                           GodotObject.IsInstanceValid(CursorTools) &&
+                           CursorTools.IsPunchCapableTool(tool));
+
         // Charging is guarded on the grab and aim being idle, and that is not
         // redundant with the launcher branch below. CanAimCurrentGrab inspects
         // only the current grab and is not tied to the selected tool, so grabbing
@@ -389,7 +397,7 @@ public partial class LabPointerGrabComponent : Node2D
         // unconditionally would swallow the RequestRelease that fires the
         // launcher and strand the aim with no way to release it. The bat simply
         // refuses to charge while a grab or aim is outstanding.
-        bool swingOwnsSecondary = swingTool &&
+        bool swingOwnsSecondary = chargeTool &&
                                   !Grab.IsGrabbing &&
                                   (LauncherTool is null ||
                                    !GodotObject.IsInstanceValid(LauncherTool) ||
@@ -467,7 +475,7 @@ public partial class LabPointerGrabComponent : Node2D
         if (_pendingSecondaryRelease)
         {
             _pendingSecondaryRelease = false;
-            if (swingTool)
+            if (chargeTool)
             {
                 // Always released, even when the press was swallowed by an
                 // outstanding aim: a charge that could be started but never let
