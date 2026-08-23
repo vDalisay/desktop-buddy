@@ -282,7 +282,7 @@ public partial class Win98PaintUxPolishBootstrap : Node
         if (titleBar.FindChild("UnsavedPromptTitle", true, false) is Label title)
         {
             title.Text = "Are you sure?";
-            title.AddThemeColorOverride("font_color", Win98ThemeFactory.Light);
+            Win98ThemeFactory.TitleLabel(title);
         }
         Move(box, titleBar, 0);
 

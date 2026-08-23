@@ -51,7 +51,7 @@ public static class Win98Dialog
             Text = title,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        label.AddThemeColorOverride("font_color", Win98ThemeFactory.Light);
+        Win98ThemeFactory.TitleLabel(label);
         titleRow.AddChild(label);
 
         if (onClose is not null)

@@ -42,6 +42,8 @@ public partial class DesktopShellController
     {
         ApplyAudioSettings();
         Win98ThemeFactory.ApplyScale(_settings.UiScalePercent / 100.0f);
+        Win98ThemeFactory.ApplyPalette(Win98Palette.Parse(
+            _settings.UiFaceColor, _settings.UiBarColor, _settings.UiTextColor));
         Window.ApplyFrameSettings(_settings.VSync, _settings.MaxFps);
         Window.SetAlwaysOnTop(_settings.AlwaysOnTop);
         ApplyZoom(_settings.ZoomPercent / 100.0);

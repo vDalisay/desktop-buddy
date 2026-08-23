@@ -34,6 +34,7 @@ public partial class CharacterEditorHost
     private static readonly string[] StartupModeLabels = ["Remember", "Work", "Play"];
 
     private PanelContainer? _resetPrompt;
+    private UI.Win98.Win98PaletteSettings? _paletteSettings;
 
     private void ComposePresentationRows()
     {
@@ -47,6 +48,7 @@ public partial class CharacterEditorHost
 
         ComposeSoundRows(settings, Save, Edit);
         ComposeDisplayRows(settings, Edit);
+        ComposeColorRows(settings);
         ComposeEffectsRows(settings, Edit);
         ComposeBehaviourRows(settings, Edit);
         ComposeDataRows();
@@ -171,6 +173,31 @@ public partial class CharacterEditorHost
                 },
                 DisplayGroup);
         }
+    }
+
+    /// <summary>
+    /// The interface palette rows. They persist only through the confirmation the controller
+    /// runs, so an unconfirmed preview is never written down: whatever the settings file holds
+    /// is a palette the player said yes to.
+    /// </summary>
+    private void ComposeColorRows(LocalSettingsSave settings)
+    {
+        _paletteSettings = new UI.Win98.Win98PaletteSettings { Name = "UiPaletteSettings" };
+        AddChild(_paletteSettings);
+        _paletteSettings.Compose(
+            _settingsPanel,
+            GetNode<Control>("CharacterEditorUiRoot"),
+            UI.Win98.Win98Palette.Parse(settings.UiFaceColor, settings.UiBarColor, settings.UiTextColor),
+            palette =>
+            {
+                _sandbox.Shell.EditSettings(s => s with
+                {
+                    UiFaceColor = palette.FaceHex,
+                    UiBarColor = palette.BarHex,
+                    UiTextColor = palette.TextHex,
+                });
+                _ = _sandbox.Shell.SavePresentationSettingsAsync();
+            });
     }
 
     private void ComposeEffectsRows(

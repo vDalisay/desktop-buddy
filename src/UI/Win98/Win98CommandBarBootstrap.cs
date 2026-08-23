@@ -298,7 +298,7 @@ public partial class Win98CommandBarBootstrap : Node
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        _flyoutTitle.AddThemeColorOverride("font_color", Colors.White);
+        Win98ThemeFactory.TitleLabel(_flyoutTitle);
         titleRow.AddChild(_flyoutTitle);
         var close = AddMenuCommand(titleRow, "×", "Close this menu.", CloseFlyout);
         close.Name = "CloseBox";

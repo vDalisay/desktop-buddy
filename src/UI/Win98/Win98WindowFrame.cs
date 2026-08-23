@@ -225,7 +225,7 @@ public partial class Win98WindowFrame : PanelContainer
             VerticalAlignment = VerticalAlignment.Center,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        icon.AddThemeColorOverride("font_color", Colors.White);
+        Win98ThemeFactory.TitleLabel(icon);
         row.AddChild(icon);
 
         _titleLabel = new Label
@@ -236,7 +236,7 @@ public partial class Win98WindowFrame : PanelContainer
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
             MouseFilter = MouseFilterEnum.Ignore,
         };
-        _titleLabel.AddThemeColorOverride("font_color", Colors.White);
+        Win98ThemeFactory.TitleLabel(_titleLabel);
         _titleLabel.AddThemeFontSizeOverride("font_size", 14);
         row.AddChild(_titleLabel);
 

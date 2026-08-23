@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 
 namespace DesktopBuddy.UI.Win98;
@@ -6,17 +7,35 @@ namespace DesktopBuddy.UI.Win98;
 /// <summary>Original clean-room late-1990s desktop theme used by all game UI.</summary>
 public static class Win98ThemeFactory
 {
-    public static readonly Color Face = Color.Color8(192, 192, 192);
-    public static readonly Color Light = Color.Color8(255, 255, 255);
-    public static readonly Color Highlight = Color.Color8(223, 223, 223);
-    public static readonly Color Shadow = Color.Color8(128, 128, 128);
-    public static readonly Color Dark = Color.Color8(0, 0, 0);
-    public static readonly Color ActiveTitle = Color.Color8(0, 0, 128);
-    public static readonly Color InactiveTitle = Color.Color8(128, 128, 128);
-    public static readonly Color Selection = Color.Color8(0, 0, 128);
+    // The nine shades the interface is drawn from. Three are the player's (the face, the bar
+    // and the text); the rest are derived, so picking light pink brings its own bevels and
+    // greys along instead of leaving grey edges around pink panels (owner instruction
+    // 2026-08-23). They change only through ApplyPalette, and the default palette derives back
+    // to the exact values that shipped.
+    public static Color Face { get; private set; } = Win98Palette.Default.Face;
+    public static Color Light { get; private set; } = Color.Color8(255, 255, 255);
+    public static Color Highlight { get; private set; } = Color.Color8(223, 223, 223);
+    public static Color Shadow { get; private set; } = Color.Color8(128, 128, 128);
+    public static Color Dark { get; private set; } = Win98Palette.Default.Text;
+    public static Color ActiveTitle { get; private set; } = Win98Palette.Default.Bar;
+    public static Color InactiveTitle { get; private set; } = Color.Color8(128, 128, 128);
+    public static Color Selection { get; private set; } = Win98Palette.Default.Bar;
     /// <summary>Deliberately non-period hover blue: complements the navy selection without
     /// being mistaken for it, and keeps white hover text readable.</summary>
-    public static readonly Color HoverSelection = Color.Color8(72, 132, 208);
+    public static Color HoverSelection { get; private set; } = Color.Color8(72, 132, 208);
+
+    /// <summary>Text drawn on top of <see cref="ActiveTitle"/>, light or dark to stay legible.</summary>
+    public static Color TitleText { get; private set; } = Color.Color8(255, 255, 255);
+
+    private static readonly Color AuthoredHover = Color.Color8(72, 132, 208);
+
+    /// <summary>Bevel and grey ratios of the face colour: 255/192, 223/192 and 128/192.</summary>
+    private const float LightFactor = 255.0f / 192.0f;
+    private const float HighlightFactor = 223.0f / 192.0f;
+    private const float ShadowFactor = 128.0f / 192.0f;
+
+    /// <summary>The three colours currently in force.</summary>
+    public static Win98Palette Palette { get; private set; } = Win98Palette.Default;
 
     public const int Border = 2;
     public const int TitleBarHeight = 32;
@@ -71,6 +90,34 @@ public static class Win98ThemeFactory
             return;
 
         Scale = clamped;
+        Populate(Create());
+    }
+
+    /// <summary>
+    /// Re-skins the whole interface. The shared theme is repopulated and every style box the
+    /// factory ever handed out is re-tinted in place, so panels built long ago follow along
+    /// without being rebuilt: the same trick that makes <see cref="ApplyScale"/> live.
+    /// </summary>
+    public static void ApplyPalette(Win98Palette palette)
+    {
+        Palette = palette;
+        Face = palette.Face;
+        Light = Win98Palette.Scaled(palette.Face, LightFactor);
+        Highlight = Win98Palette.Scaled(palette.Face, HighlightFactor);
+        Shadow = Win98Palette.Scaled(palette.Face, ShadowFactor);
+        Dark = palette.Text;
+        ActiveTitle = palette.Bar;
+        Selection = palette.Bar;
+        // The shipped hover blue is hand-picked rather than a shade of the navy, so it is kept
+        // literally for the default bar and derived for anything the player chooses.
+        HoverSelection = palette.Bar == Win98Palette.Default.Bar
+            ? AuthoredHover
+            : palette.Bar.Lightened(0.4f);
+        InactiveTitle = Shadow;
+        TitleText = Win98Palette.WantsLightText(palette.Bar) ? Light : palette.Text;
+
+        RetintRegisteredBoxes();
+        RecolorTrackedTitleLabels();
         Populate(Create());
     }
 
@@ -297,16 +344,16 @@ public static class Win98ThemeFactory
 
     public static StyleBoxFlat Raised(Color fill, int width = Border)
     {
-        var box = Flat(fill);
+        StyleBoxFlat box = NewFlat(fill);
         ConfigureBorder(box, width, Shadow, Light, new Vector2(-1, -1));
-        return box;
+        return Register(box, BoxKind.Raised, fill, width);
     }
 
     public static StyleBoxFlat Recessed(Color fill, int width = Border)
     {
-        var box = Flat(fill);
+        StyleBoxFlat box = NewFlat(fill);
         ConfigureBorder(box, width, Dark, Shadow, new Vector2(1, 1));
-        return box;
+        return Register(box, BoxKind.Recessed, fill, width);
     }
 
     /// <summary>
@@ -343,7 +390,9 @@ public static class Win98ThemeFactory
         return box;
     }
 
-    public static StyleBoxFlat Flat(Color fill)
+    public static StyleBoxFlat Flat(Color fill) => Register(NewFlat(fill), BoxKind.Flat, fill, 0);
+
+    private static StyleBoxFlat NewFlat(Color fill)
     {
         return new StyleBoxFlat
         {
@@ -378,6 +427,117 @@ public static class Win98ThemeFactory
         theme.SetColor("font_pressed_color", type, normal);
         theme.SetColor("font_hover_pressed_color", type, normal);
         theme.SetColor("font_focus_color", type, focus);
+    }
+
+    // --- Live re-tinting -------------------------------------------------------------------
+    // Style boxes are resources: every control handed one keeps a reference to that exact
+    // object, so changing its colours repaints it. The factory therefore remembers what each
+    // box it made was asked for - which palette shade, which bevel, which width - and rebuilds
+    // those colours on demand. References are weak, so a freed panel's boxes are not kept
+    // alive by this list.
+
+    private enum BoxKind { Flat, Raised, Recessed }
+
+    private enum Shade
+    {
+        None, Face, Light, Highlight, Shadow, Dark, ActiveTitle, InactiveTitle, Selection, HoverSelection,
+    }
+
+    private sealed record TintedBox(WeakReference<StyleBoxFlat> Box, BoxKind Kind, Shade Fill, int Width);
+
+    private static readonly List<TintedBox> Tinted = new();
+    private static readonly List<WeakReference<Label>> TitleLabels = new();
+
+    /// <summary>
+    /// A label drawn on a title bar. Registered rather than merely coloured, so a palette
+    /// change moves it with the bar underneath it instead of leaving white text on a pale one.
+    /// </summary>
+    public static Label TitleLabel(Label label)
+    {
+        ArgumentNullException.ThrowIfNull(label);
+        label.AddThemeColorOverride("font_color", TitleText);
+        TitleLabels.Add(new WeakReference<Label>(label));
+        if (TitleLabels.Count > 128)
+            TitleLabels.RemoveAll(entry => !entry.TryGetTarget(out _));
+        return label;
+    }
+
+    private static StyleBoxFlat Register(StyleBoxFlat box, BoxKind kind, Color fill, int width)
+    {
+        Shade shade = ShadeOf(fill);
+        if (shade == Shade.None)
+            return box;
+
+        Tinted.Add(new TintedBox(new WeakReference<StyleBoxFlat>(box), kind, shade, width));
+        if (Tinted.Count > 512)
+            Tinted.RemoveAll(entry => !entry.Box.TryGetTarget(out _));
+        return box;
+    }
+
+    /// <summary>
+    /// Which palette shade a caller asked for, by value. Call sites pass the factory's own
+    /// colours, so an exact match is the whole test; anything else - a paint swatch, a
+    /// transparent focus box - is not palette-driven and is left exactly as its owner built it.
+    /// </summary>
+    private static Shade ShadeOf(Color fill)
+    {
+        if (fill == Face) return Shade.Face;
+        if (fill == Light) return Shade.Light;
+        if (fill == Highlight) return Shade.Highlight;
+        if (fill == Shadow) return Shade.Shadow;
+        if (fill == Dark) return Shade.Dark;
+        if (fill == ActiveTitle) return Shade.ActiveTitle;
+        if (fill == InactiveTitle) return Shade.InactiveTitle;
+        if (fill == Selection) return Shade.Selection;
+        if (fill == HoverSelection) return Shade.HoverSelection;
+        return Shade.None;
+    }
+
+    private static Color ColorOf(Shade shade) => shade switch
+    {
+        Shade.Face => Face,
+        Shade.Light => Light,
+        Shade.Highlight => Highlight,
+        Shade.Shadow => Shadow,
+        Shade.Dark => Dark,
+        Shade.ActiveTitle => ActiveTitle,
+        Shade.InactiveTitle => InactiveTitle,
+        Shade.Selection => Selection,
+        Shade.HoverSelection => HoverSelection,
+        _ => Face,
+    };
+
+    private static void RetintRegisteredBoxes()
+    {
+        Tinted.RemoveAll(entry => !entry.Box.TryGetTarget(out _));
+        foreach (TintedBox entry in Tinted)
+        {
+            if (!entry.Box.TryGetTarget(out StyleBoxFlat? box) || !GodotObject.IsInstanceValid(box))
+                continue;
+
+            // Only the colours are rebuilt. Owners that adjusted a box after taking it - a
+            // squared-off title button, an outline with no centre - keep those adjustments.
+            box.BgColor = ColorOf(entry.Fill);
+            switch (entry.Kind)
+            {
+                case BoxKind.Raised:
+                    ConfigureBorder(box, entry.Width, Shadow, Light, new Vector2(-1, -1));
+                    break;
+                case BoxKind.Recessed:
+                    ConfigureBorder(box, entry.Width, Dark, Shadow, new Vector2(1, 1));
+                    break;
+            }
+        }
+    }
+
+    private static void RecolorTrackedTitleLabels()
+    {
+        TitleLabels.RemoveAll(entry => !entry.TryGetTarget(out _));
+        foreach (WeakReference<Label> entry in TitleLabels)
+        {
+            if (entry.TryGetTarget(out Label? label) && GodotObject.IsInstanceValid(label))
+                label.AddThemeColorOverride("font_color", TitleText);
+        }
     }
 
     private static void ConfigureBorder(

@@ -160,6 +160,33 @@ public partial class SettingsPanel : PanelContainer
         return toggle;
     }
 
+    /// <summary>
+    /// A colour row: the period swatch button opens Godot's picker. It reports every change so
+    /// the caller can stage it, and stages only - nothing here applies anything.
+    /// </summary>
+    public ColorPickerButton AddColor(
+        string label,
+        string description,
+        Color value,
+        Action<Color> changed,
+        string? group = null)
+    {
+        ArgumentNullException.ThrowIfNull(changed);
+        var swatch = new ColorPickerButton
+        {
+            Name = ControlName(label),
+            Color = value,
+            TooltipText = description,
+            EditAlpha = false,
+            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(64), Win98ThemeFactory.Px(20)),
+            SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
+        };
+        swatch.ColorChanged += picked => changed(picked);
+        DescribedRow(group, label, new Label(), swatch, description);
+        _controls.Add(label, swatch);
+        return swatch;
+    }
+
     /// <summary>A row that picks one of a fixed set of values.</summary>
     public OptionButton AddChoice(
         string label,

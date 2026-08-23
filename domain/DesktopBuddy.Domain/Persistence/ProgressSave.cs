@@ -395,6 +395,12 @@ public sealed record LocalSettingsSave
     /// <summary>The CRT pass over Work Mode's buddy and PC. On by default: it is the look.</summary>
     public bool WorkRetroFilter { get; init; } = true;
 
+    // The player's interface palette, as "rrggbb" hex. Empty or unparseable values fall back to
+    // the shipped grey/navy/black, so a hand-edited settings file cannot leave the UI unreadable.
+    public string UiFaceColor { get; init; } = "c0c0c0";
+    public string UiBarColor { get; init; } = "000080";
+    public string UiTextColor { get; init; } = "000000";
+
     // Environment editor preferences are local UX state, not room progression. Reset Progress must
     // preserve them exactly like window placement and Work presentation preferences.
     public bool EnvironmentSnapToGrid { get; init; }
