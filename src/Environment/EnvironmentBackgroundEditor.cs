@@ -309,7 +309,10 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     private static void AddColorPickerIcon(ColorPickerButton picker)
     {
-        var background = new ColorRect { Color = Win98ThemeFactory.Face, MouseFilter = Control.MouseFilterEnum.Ignore };
+        // A themed panel rather than a ColorRect: a ColorRect's colour is a snapshot, and this
+        // one sat behind the paint bucket icon in the old grey after a palette change.
+        var background = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
+        background.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.Face));
         picker.AddChild(background);
         background.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         var icon = new TextureRect
