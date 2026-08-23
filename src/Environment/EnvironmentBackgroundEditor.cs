@@ -117,7 +117,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 {
                     ClearCurveGuide();
                     _painting = false;
-                    _panel.Visible = true;
+                    SetToolsVisible(true);
                     SetStatus("Curved Line cancelled.");
                     Refresh();
                 }
@@ -307,6 +307,22 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         return button;
     }
 
+    /// <summary>
+    /// The tool panel gets out of the way for the duration of a stroke - but only while it is
+    /// docked over the canvas. Detached, it is its own desktop window that the stroke never
+    /// touches, and hiding it there made it vanish and reappear on every click (owner report
+    /// 2026-08-23).
+    /// </summary>
+    private void SetToolsVisible(bool visible)
+    {
+        if (GodotObject.IsInstanceValid(_panelPin) && _panelPin.IsFloating)
+        {
+            _panel.Visible = true;
+            return;
+        }
+        _panel.Visible = visible;
+    }
+
     private static void AddColorPickerIcon(ColorPickerButton picker)
     {
         // A themed panel rather than a ColorRect: a ColorRect's colour is a snapshot, and this
@@ -453,7 +469,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 {
                     ClearCurveGuide();
                     _painting = false;
-                    _panel.Visible = true;
+                    SetToolsVisible(true);
                     SetStatus("Curved Line cancelled.");
                     Refresh();
                 }
@@ -464,7 +480,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } click when TryCanonical(click.Position, out double x, out double y):
                 _painting = true;
                 _sprayPulseAccumulator = 0;
-                _panel.Visible = false;
+                SetToolsVisible(false);
                 TrackCurvePress(Canvas.CurvePhase, x, y);
                 if (Canvas.Tool == EnvironmentPaintTool.PickColor) PickColor(click.Position);
                 else Canvas.Begin(x, y);
@@ -483,7 +499,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 }
                 _painting = false;
                 _sprayPulseAccumulator = 0;
-                _panel.Visible = true;
+                SetToolsVisible(true);
                 if (!Canvas.CurvePending)
                     ClearCurveGuide();
                 else

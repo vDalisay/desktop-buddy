@@ -442,6 +442,45 @@ public sealed class PaintWorkspace
         }
     }
 
+    /// <summary>
+    /// Puts one texel down per supplied hit — the spray pulse. The scatter is chosen in SCREEN
+    /// space by the caller for the same reason <see cref="StampScreenDab"/> exists, but each dot
+    /// is a single pixel, so the buddy's airbrush dusts exactly the way Paint Room's does
+    /// (owner instruction 2026-08-23).
+    /// </summary>
+    public void StampScreenDots(IReadOnlyList<PaintHit> hits)
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+        if (!_gestureActive || hits.Count == 0 || _selectedTool != PaintTool.Spray)
+            return;
+
+        var samples = new List<PaintHit>(hits.Count);
+        foreach (PaintHit hit in hits)
+        {
+            if (hit.IsValid)
+                ApplyToVariants(hit, samples.Add);
+        }
+
+        // Undo is captured per part over the union of the dots, before any of them lands: a
+        // pulse is one gesture step whether it wrote three texels or three hundred.
+        var boundsByPart = new Dictionary<PaintPart, PaintRect>();
+        foreach (PaintHit sample in samples)
+        {
+            PaintUvRegion region = PaintUvRegion.For(sample);
+            PaintRect bounds = PaintSurface.StampBounds(
+                sample.Uv,
+                PaintPolicy.MinBrushDiameter,
+                region: region);
+            boundsByPart[sample.Part] = boundsByPart.TryGetValue(sample.Part, out PaintRect prior)
+                ? PaintRect.Union(prior, bounds)
+                : bounds;
+        }
+        foreach ((PaintPart part, PaintRect bounds) in boundsByPart)
+            CaptureBefore(_gestureBefore, part, bounds);
+        foreach (PaintHit sample in samples)
+            _surfaces[sample.Part].Dot(sample.Uv, SelectedColor, PaintUvRegion.For(sample));
+    }
+
     /// <summary>The next spray pulse's seed, stepped exactly as the internal pulse does.</summary>
     public ulong NextSprayPulseSeed() =>
         _sprayGestureSeed + (_sprayPulseOrdinal++ * 0x9E3779B97F4A7C15UL);

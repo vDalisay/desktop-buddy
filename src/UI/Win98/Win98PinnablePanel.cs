@@ -88,7 +88,11 @@ public partial class Win98PinnablePanel : Node
     {
         if (!_configured || !IsFloating) return;
         if (_panel.Visible == _window.Visible) return;
-        if (_panel.Visible) DockWindow.ShowOwned(_window);
+        // Mirrored visibility only, never focus. The panel this follows is hidden and shown by
+        // its own owner - Paint Room hides its tools for the duration of every stroke - and
+        // grabbing focus each time it came back pulled the player out of the window they were
+        // painting in, on every single click (owner report 2026-08-23).
+        if (_panel.Visible) DockWindow.ShowOwned(_window, takeFocus: false);
         else _window.Hide();
     }
 

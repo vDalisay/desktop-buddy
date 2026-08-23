@@ -59,7 +59,16 @@ public partial class DockWindow : Window
     }
 
     /// <summary>Shows a registered owned window and asks for focus once, on the next frame.</summary>
-    public static void ShowOwned(Window window)
+    public static void ShowOwned(Window window) => ShowOwned(window, takeFocus: true);
+
+    /// <summary>
+    /// Shows a registered owned window, optionally without taking the keyboard focus away from
+    /// whatever the player is working in. An owned window is above its owner either way, so
+    /// "on top" and "focused" are separate things: a panel that reappears on its own - because
+    /// the docked panel it mirrors became visible again - must not steal the pointer's window
+    /// mid-gesture (owner report 2026-08-23).
+    /// </summary>
+    public static void ShowOwned(Window window, bool takeFocus)
     {
         window.Show();
         Callable.From(() =>
@@ -67,7 +76,8 @@ public partial class DockWindow : Window
             if (!GodotObject.IsInstanceValid(window) || !window.Visible)
                 return;
             AdoptNativeOwner(window);
-            window.GrabFocus();
+            if (takeFocus)
+                window.GrabFocus();
         }).CallDeferred();
     }
 

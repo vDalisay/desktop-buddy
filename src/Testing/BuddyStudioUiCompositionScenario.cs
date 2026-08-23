@@ -441,8 +441,13 @@ public sealed class BuddyStudioUiCompositionScenario : IScenario
                 session.SetFeatureId(likedSlot, likedId);
             workspace.DetachPreview();
             long bonus = workspace.LastLikedStyleBonusMilliCredits;
+            // One whole bonus per liked style worn, and the ledger moves by exactly what was
+            // reported. Not pinned to a single style: the tastes are rolled from the clock, so
+            // anything the visit equipped earlier - a double-clicked tile, say - may happen to
+            // be liked too, and the rule being checked is "each liked style pays once".
             bool paid = rolled && resolvedLiked &&
-                bonus == BuddyStyleTastes.CreditsPerLikedStyle &&
+                bonus >= BuddyStyleTastes.CreditsPerLikedStyle &&
+                bonus % BuddyStyleTastes.CreditsPerLikedStyle == 0 &&
                 economy.BalanceMilliCredits == balanceBeforeBonus + bonus;
             workspace.AttachPreview();
             checks.Add(new StartupCheck(

@@ -69,7 +69,12 @@ public partial class PaintCanvasControl
         return centers;
     }
 
-    private bool TryMapExpandedConnector(PaintPoint point, double yaw, out PaintHit hit)
+    /// <summary>
+    /// Maps a point in the gap between the torso and one limb onto that limb's connector lane.
+    /// It serves both poses: the spread-out Show limbs pose and the ordinary one, where the
+    /// connector is the visible neck or the join beside a hand.
+    /// </summary>
+    private bool TryMapLimbConnector(PaintPoint point, double yaw, out PaintHit hit)
     {
         PaintPartShape torso = default;
         bool hasTorso = false;
@@ -126,7 +131,7 @@ public partial class PaintCanvasControl
         return false;
     }
 
-    private bool TryGetExpandedConnectorAxis(PaintPart part, double yaw, out PaintPoint start, out PaintPoint end)
+    private bool TryGetLimbConnectorAxis(PaintPart part, double yaw, out PaintPoint start, out PaintPoint end)
     {
         PaintPartShape torso = default;
         PaintPartShape limb = default;

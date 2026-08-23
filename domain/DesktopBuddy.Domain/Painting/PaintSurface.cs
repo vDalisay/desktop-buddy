@@ -85,6 +85,28 @@ public sealed class PaintSurface
         return dirty;
     }
 
+    /// <summary>
+    /// Writes one texel. This is what a spray dot is: Paint Room dusts single pixels, and the
+    /// buddy's spray stamped a whole minimum-diameter dab per dot instead, which came out as a
+    /// spatter of blobs rather than an airbrush (owner report 2026-08-23). The caller owns the
+    /// scatter and the undo bounds; this only puts the colour down.
+    /// </summary>
+    public bool Dot(PaintPoint uv, PaintColor color, PaintUvRegion region = default)
+    {
+        region = ValidRegion(region);
+        int y = (int)Math.Round(uv.Y * (PaintPolicy.SurfaceSize - 1));
+        if (y < 0 || y >= PaintPolicy.SurfaceSize)
+            return false;
+
+        int x = region.WrapPixelX((int)Math.Round(region.PixelX(uv.X)));
+        int index = ((y * PaintPolicy.SurfaceSize) + x) * PaintPolicy.BytesPerPixel;
+        if (!Write(index, color.R, color.G, color.B, byte.MaxValue))
+            return false;
+
+        Revision++;
+        return true;
+    }
+
     public PaintRect Stamp(
         PaintPoint uv,
         int diameter,

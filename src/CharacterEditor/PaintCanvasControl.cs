@@ -409,7 +409,7 @@ public partial class PaintCanvasControl : Control
             if (Map(point) is PaintHit hit)
                 hits.Add(hit);
         }
-        Workspace.StampScreenDab(hits, PaintPolicy.MinBrushDiameter, PaintTool.Brush);
+        Workspace.StampScreenDots(hits);
     }
 
     private bool TryBucketFillConnector(PaintHit? hit)
@@ -724,7 +724,11 @@ public partial class PaintCanvasControl : Control
             }
         }
 
-        if (hit is null && ExpandedLimbPose && TryMapExpandedConnector(point, yaw, out PaintHit connector))
+        // Whatever is under the cursor is what gets painted. The connectors between the torso
+        // and each limb are drawn in every pose, but they only accepted paint while Show limbs
+        // was ticked, so the neck and the gaps beside the hands stayed the base colour no matter
+        // how carefully they were clicked (owner report 2026-08-23).
+        if (hit is null && TryMapLimbConnector(point, yaw, out PaintHit connector))
             hit = connector;
 
         // Generated foot hits already map their mesh UV into the limb-end half of the persistent
