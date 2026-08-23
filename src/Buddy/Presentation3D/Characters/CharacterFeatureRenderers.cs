@@ -452,7 +452,12 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
                 AddIdleSignature(commands, center, fill, trustedOutlineColor, transform);
                 break;
             case FaceMouthPose.Smile:
-                AddPath(commands, CharacterGeometry.Arc(center + new Vector2(0.0f, 0.06f), 0.18f, 0.12f, Mathf.Pi, Mathf.Tau), fill, trustedOutlineColor, transform);
+                // The style the player equipped, lifted into a smile rather than replaced by a
+                // generic arc. A calm buddy is ":)" and nothing in the world ever produces ":|",
+                // so the neutral silhouette was the one face the style owned and the one face
+                // nobody saw: every mouth in the shop looked identical on the buddy itself
+                // (owner report 2026-08-23). Strong expressions below still overrule it.
+                AddIdleSignature(commands, center + new Vector2(0.0f, 0.025f), fill, trustedOutlineColor, transform);
                 break;
             case FaceMouthPose.OpenSmile:
             case FaceMouthPose.ChewOpen:
@@ -487,6 +492,11 @@ internal sealed class ProceduralMouthRenderer : ICharacterMouthRenderer
     }
 
     /// <summary>
+    /// The mouth the equipped style draws when nothing stronger is happening — the neutral
+    /// band and the calm smile both come here, so this is the silhouette the player actually
+    /// lives with. Reaction poses (pain, fear, anger, chewing) stay generic on purpose: those
+    /// have to read as themselves from across the desktop.
+    ///
     /// Neutral/closed mouths deliberately carry a strong family silhouette. User testing showed
     /// the old variants differed mostly by line width, so they were hard to distinguish in Studio.
     /// The three shipped families now read as rounded "3"-like, angular caret, and flat line while
