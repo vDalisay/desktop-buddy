@@ -15,11 +15,11 @@ namespace DesktopBuddy.Platform.Steam;
 public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport, ISteamAvailability
 {
     private const int SteamResultOk = 1;
-    private readonly SemaphoreSlim _publishGate = new(1, 1);
     private readonly object _callbackGate = new();
-    private readonly Dictionary<ulong, TaskCompletionSource<DownloadCallback>> _downloads = new();
+    private readonly Dictionary<ulong, PendingDownload> _downloads = new();
     private Node? _bridge;
     private uint _appId;
+    private int _mainThreadId;
     private TaskCompletionSource<CreateCallback>? _pendingCreate;
     private TaskCompletionSource<UpdateCallback>? _pendingUpdate;
     private long _activeUpdateHandle;
@@ -28,7 +28,14 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
 
     private readonly record struct CreateCallback(int Result, ulong FileId, bool NeedsAgreement);
     private readonly record struct UpdateCallback(int Result, bool NeedsAgreement);
-    private readonly record struct DownloadCallback(int Result, uint AppId, ulong FileId);
+
+    private sealed class PendingDownload
+    {
+        public required ulong PublishedFileId { get; init; }
+        public required TaskCompletionSource<WorkshopInstalledItemResult> Completion { get; init; }
+        public IProgress<WorkshopTransferProgress>? Progress { get; init; }
+        public CancellationTokenRegistration CancellationRegistration { get; set; }
+    }
 
     public bool IsAvailable => IsInitialized && GodotObject.IsInstanceValid(_bridge);
     public bool IsInstalled => GodotObject.IsInstanceValid(_bridge);
@@ -38,24 +45,40 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
 
     public override void _Ready()
     {
+        _mainThreadId = Environment.CurrentManagedThreadId;
         ProcessMode = ProcessModeEnum.Always;
         SetProcess(true);
     }
 
     public override void _Process(double delta)
     {
-        if (!IsAvailable || _activeUpdateHandle <= 0 || _activeUploadProgress is null)
-            return;
-        Godot.Collections.Dictionary info = CallDictionary("get_item_update_progress", _activeUpdateHandle);
-        ulong processed = ReadUInt64(info, "processed", "bytes_processed", "current");
-        ulong total = ReadUInt64(info, "total", "bytes_total");
-        if (total > 0)
-            _activeUploadProgress.Report(new WorkshopTransferProgress(processed, total, "Uploading"));
+        if (!IsAvailable) return;
+
+        if (_activeUpdateHandle > 0 && _activeUploadProgress is not null)
+        {
+            Godot.Collections.Dictionary info = CallDictionary("get_item_update_progress", _activeUpdateHandle);
+            ulong processed = ReadUInt64(info, "processed", "bytes_processed", "current");
+            ulong total = ReadUInt64(info, "total", "bytes_total");
+            if (total > 0)
+                _activeUploadProgress.Report(new WorkshopTransferProgress(processed, total, "Uploading"));
+        }
+
+        PendingDownload[] downloads;
+        lock (_callbackGate) downloads = _downloads.Values.ToArray();
+        foreach (PendingDownload pending in downloads)
+        {
+            Godot.Collections.Dictionary info = CallDictionary("get_item_download_info", checked((long)pending.PublishedFileId));
+            ulong current = ReadUInt64(info, "downloaded", "bytes_downloaded", "current");
+            ulong total = ReadUInt64(info, "total", "bytes_total");
+            if (total > 0)
+                pending.Progress?.Report(new WorkshopTransferProgress(current, total, "Downloading"));
+        }
     }
 
     public bool Initialize(Node bridge, uint appId)
     {
         ArgumentNullException.ThrowIfNull(bridge);
+        _mainThreadId = Environment.CurrentManagedThreadId;
         if (appId == 0)
         {
             SetUnavailable("No Steam AppID is configured.");
@@ -78,52 +101,56 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         return true;
     }
 
-    public Task<WorkshopCreateRemoteResult> CreateItemAsync(CancellationToken token) =>
-        SerializePublishAsync(async () =>
-        {
-            token.ThrowIfCancellationRequested();
-            TaskCompletionSource<CreateCallback> completion = NewCompletion<CreateCallback>();
-            lock (_callbackGate)
-            {
-                if (_pendingCreate is not null)
-                    return new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Failed, 0, false, Detail: "Another create operation is already pending.");
-                _pendingCreate = completion;
-            }
+    public Task<WorkshopCreateRemoteResult> CreateItemAsync(CancellationToken token)
+    {
+        if (!IsAvailable)
+            return Task.FromResult(new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Unavailable, 0, false, Detail: UnavailableReason));
+        if (!IsOnMainThread)
+            return Task.FromResult(new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Failed, 0, false, Detail: "Steam Workshop create must start on the Godot main thread."));
+        if (token.IsCancellationRequested)
+            return Task.FromResult(new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Cancelled, 0, false));
 
-            try
-            {
-                if (!CallBool("create_item", (long)_appId))
-                    return new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Failed, 0, false, Detail: "GodotSteam rejected CreateItem.");
-                CreateCallback callback = await WaitAsync(completion.Task, token).ConfigureAwait(false);
-                return callback.Result == SteamResultOk
-                    ? new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Success, callback.FileId, callback.NeedsAgreement, callback.Result)
-                    : new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Failed, callback.FileId, callback.NeedsAgreement, callback.Result, $"Steam CreateItem failed with EResult {callback.Result}.");
-            }
-            catch (OperationCanceledException)
-            {
-                return new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Cancelled, 0, false, Detail: "Workshop create cancelled while waiting for Steam.");
-            }
-            finally
-            {
-                lock (_callbackGate)
-                    if (ReferenceEquals(_pendingCreate, completion)) _pendingCreate = null;
-            }
-        }, token);
+        TaskCompletionSource<CreateCallback> completion = NewCompletion<CreateCallback>();
+        lock (_callbackGate)
+        {
+            if (_pendingCreate is not null || _pendingUpdate is not null)
+                return Task.FromResult(new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Failed, 0, false, Detail: "Another Workshop publish operation is pending."));
+            _pendingCreate = completion;
+        }
+
+        if (!CallBool("create_item", (long)_appId))
+        {
+            lock (_callbackGate)
+                if (ReferenceEquals(_pendingCreate, completion)) _pendingCreate = null;
+            return Task.FromResult(new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Failed, 0, false, Detail: "GodotSteam rejected CreateItem."));
+        }
+
+        return AwaitCreateAsync(completion, token);
+    }
 
     public Task<WorkshopSubmitRemoteResult> SubmitUpdateAsync(
         WorkshopRemoteUpdate update,
         IProgress<WorkshopTransferProgress>? progress,
-        CancellationToken token) => SerializePublishAsync(async () =>
+        CancellationToken token)
     {
         if (!IsAvailable)
-            return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Unavailable, update.PublishedFileId, false, Detail: UnavailableReason);
+            return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Unavailable, update.PublishedFileId, false, Detail: UnavailableReason));
+        if (!IsOnMainThread)
+            return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Steam Workshop update must start on the Godot main thread."));
         if (update.PublishedFileId == 0)
-            return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, 0, false, Detail: "Published file ID is required.");
-        token.ThrowIfCancellationRequested();
+            return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, 0, false, Detail: "Published file ID is required."));
+        if (token.IsCancellationRequested)
+            return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Cancelled, update.PublishedFileId, false));
+
+        lock (_callbackGate)
+        {
+            if (_pendingCreate is not null || _pendingUpdate is not null)
+                return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Another Workshop publish operation is pending."));
+        }
 
         long handle = CallInt64("start_item_update", (long)_appId, checked((long)update.PublishedFileId));
         if (handle <= 0)
-            return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Steam returned an invalid UGC update handle.");
+            return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Steam returned an invalid UGC update handle."));
 
         if (!CallBool("set_item_title", handle, update.Title) ||
             !CallBool("set_item_description", handle, update.Description) ||
@@ -133,39 +160,18 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
             !CallBool("set_item_content", handle, update.ContentFolder) ||
             (!string.IsNullOrWhiteSpace(update.PreviewFile) && !CallBool("set_item_preview", handle, update.PreviewFile!)))
         {
-            return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Steam rejected one or more Workshop update fields.");
+            return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Steam rejected one or more Workshop update fields."));
         }
 
         TaskCompletionSource<UpdateCallback> completion = NewCompletion<UpdateCallback>();
         lock (_callbackGate)
         {
-            if (_pendingUpdate is not null)
-                return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Another Workshop update is already pending.");
             _pendingUpdate = completion;
             _activeUpdateHandle = handle;
             _activeUploadProgress = progress;
         }
 
-        try
-        {
-            if (!CallBool("submit_item_update", handle, update.ChangeNote))
-                return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "GodotSteam rejected SubmitItemUpdate.");
-
-            // Steam does not expose cancellation for an upload once submitted. Cancellation only
-            // stops this caller waiting; the bridge continues pumping and consumes the callback.
-            UpdateCallback callback = await WaitAsync(completion.Task, token).ConfigureAwait(false);
-            if (callback.Result == SteamResultOk)
-            {
-                progress?.Report(new WorkshopTransferProgress(1, 1, "Complete"));
-                return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Success, update.PublishedFileId, callback.NeedsAgreement, callback.Result);
-            }
-            return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, callback.NeedsAgreement, callback.Result, $"Steam SubmitItemUpdate failed with EResult {callback.Result}.");
-        }
-        catch (OperationCanceledException)
-        {
-            return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Cancelled, update.PublishedFileId, false, Detail: "Stopped waiting for Workshop upload; Steam may still finish it.");
-        }
-        finally
+        if (!CallBool("submit_item_update", handle, update.ChangeNote))
         {
             lock (_callbackGate)
             {
@@ -173,14 +179,19 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
                 _activeUpdateHandle = 0;
                 _activeUploadProgress = null;
             }
+            return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "GodotSteam rejected SubmitItemUpdate."));
         }
-    }, token);
+
+        return AwaitUpdateAsync(completion, update.PublishedFileId, token);
+    }
 
     public Task<IReadOnlyList<PublishedWorkshopItem>> GetSubscribedItemsAsync(CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
-        if (!IsAvailable)
+        if (token.IsCancellationRequested)
+            return Task.FromCanceled<IReadOnlyList<PublishedWorkshopItem>>(token);
+        if (!IsAvailable || !IsOnMainThread)
             return Task.FromResult<IReadOnlyList<PublishedWorkshopItem>>(Array.Empty<PublishedWorkshopItem>());
+
         Variant raw = _bridge!.Call("get_subscribed_items");
         long[] ids = raw.VariantType == Variant.Type.PackedInt64Array ? raw.AsInt64Array() : [];
         var items = new List<PublishedWorkshopItem>(ids.Length);
@@ -200,79 +211,113 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         return Task.FromResult<IReadOnlyList<PublishedWorkshopItem>>(items);
     }
 
-    public async Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
+    public Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
         ulong publishedFileId,
         IProgress<WorkshopTransferProgress>? progress,
         CancellationToken token)
     {
         if (!IsAvailable)
-            return new WorkshopInstalledItemResult(WorkshopRemoteStatus.Unavailable, publishedFileId, null, 0, Detail: UnavailableReason);
+            return Task.FromResult(new WorkshopInstalledItemResult(WorkshopRemoteStatus.Unavailable, publishedFileId, null, 0, Detail: UnavailableReason));
+        if (!IsOnMainThread)
+            return Task.FromResult(new WorkshopInstalledItemResult(WorkshopRemoteStatus.Failed, publishedFileId, null, 0, Detail: "Steam Workshop download must start on the Godot main thread."));
         if (publishedFileId == 0)
-            return new WorkshopInstalledItemResult(WorkshopRemoteStatus.Failed, 0, null, 0, Detail: "Published file ID is required.");
-        token.ThrowIfCancellationRequested();
+            return Task.FromResult(new WorkshopInstalledItemResult(WorkshopRemoteStatus.Failed, 0, null, 0, Detail: "Published file ID is required."));
+        if (token.IsCancellationRequested)
+            return Task.FromResult(new WorkshopInstalledItemResult(WorkshopRemoteStatus.Cancelled, publishedFileId, null, 0));
 
         long rawId = checked((long)publishedFileId);
         WorkshopItemState state = (WorkshopItemState)checked((uint)Math.Max(0, CallInt64("get_item_state", rawId)));
         if ((state & WorkshopItemState.Installed) != 0 && (state & WorkshopItemState.NeedsUpdate) == 0)
-            return InstalledInfo(publishedFileId);
+            return Task.FromResult(InstalledInfo(publishedFileId));
 
-        TaskCompletionSource<DownloadCallback> completion = NewCompletion<DownloadCallback>();
+        var pending = new PendingDownload
+        {
+            PublishedFileId = publishedFileId,
+            Completion = NewCompletion<WorkshopInstalledItemResult>(),
+            Progress = progress,
+        };
         lock (_callbackGate)
         {
             if (_downloads.ContainsKey(publishedFileId))
-                return new WorkshopInstalledItemResult(WorkshopRemoteStatus.Failed, publishedFileId, null, 0, Detail: "A download for this Workshop item is already pending.");
-            _downloads.Add(publishedFileId, completion);
+                return Task.FromResult(new WorkshopInstalledItemResult(WorkshopRemoteStatus.Failed, publishedFileId, null, 0, Detail: "A download for this Workshop item is already pending."));
+            _downloads.Add(publishedFileId, pending);
         }
-        try
-        {
-            if (!CallBool("download_item", rawId, false))
-                return new WorkshopInstalledItemResult(WorkshopRemoteStatus.Failed, publishedFileId, null, 0, Detail: "Steam could not start the Workshop download.");
 
-            while (!completion.Task.IsCompleted)
-            {
-                token.ThrowIfCancellationRequested();
-                Godot.Collections.Dictionary info = CallDictionary("get_item_download_info", rawId);
-                ulong current = ReadUInt64(info, "downloaded", "bytes_downloaded", "current");
-                ulong total = ReadUInt64(info, "total", "bytes_total");
-                if (total > 0) progress?.Report(new WorkshopTransferProgress(current, total, "Downloading"));
-                Task delay = Task.Delay(100, token);
-                Task winner = await Task.WhenAny(completion.Task, delay).ConfigureAwait(false);
-                if (winner == completion.Task) break;
-            }
+        if (token.CanBeCanceled)
+        {
+            pending.CancellationRegistration = token.Register(() => CancelDownload(pending));
+            if (pending.Completion.Task.IsCompleted)
+                return pending.Completion.Task;
+        }
 
-            DownloadCallback callback = await completion.Task.ConfigureAwait(false);
-            if (callback.AppId != _appId || callback.FileId != publishedFileId)
-                return new WorkshopInstalledItemResult(WorkshopRemoteStatus.Failed, publishedFileId, null, 0, callback.Result, "Steam returned a mismatched download callback.");
-            if (callback.Result != SteamResultOk)
-                return new WorkshopInstalledItemResult(WorkshopRemoteStatus.Failed, publishedFileId, null, 0, callback.Result, $"Steam Workshop download failed with EResult {callback.Result}.");
-            return InstalledInfo(publishedFileId);
-        }
-        catch (OperationCanceledException)
+        if (!CallBool("download_item", rawId, false))
         {
-            return new WorkshopInstalledItemResult(WorkshopRemoteStatus.Cancelled, publishedFileId, null, 0, Detail: "Workshop download wait cancelled.");
+            RemoveDownload(pending);
+            pending.Completion.TrySetResult(new WorkshopInstalledItemResult(
+                WorkshopRemoteStatus.Failed,
+                publishedFileId,
+                null,
+                0,
+                Detail: "Steam could not start the Workshop download."));
         }
-        finally
-        {
-            lock (_callbackGate) _downloads.Remove(publishedFileId);
-        }
+        return pending.Completion.Task;
     }
 
     public void OpenWorkshopBrowser()
     {
-        if (IsAvailable) _bridge!.Call("open_workshop_browser", (long)_appId);
+        if (IsAvailable && IsOnMainThread) _bridge!.Call("open_workshop_browser", (long)_appId);
     }
 
     public void OpenWorkshopItem(ulong publishedFileId)
     {
-        if (IsAvailable && publishedFileId != 0)
+        if (IsAvailable && IsOnMainThread && publishedFileId != 0)
             _bridge!.Call("open_workshop_item", checked((long)publishedFileId));
     }
 
     public override void _ExitTree()
     {
-        if (GodotObject.IsInstanceValid(_bridge)) _bridge!.Call("shutdown");
+        if (GodotObject.IsInstanceValid(_bridge) && IsOnMainThread) _bridge!.Call("shutdown");
         IsInitialized = false;
         base._ExitTree();
+    }
+
+    private async Task<WorkshopCreateRemoteResult> AwaitCreateAsync(
+        TaskCompletionSource<CreateCallback> completion,
+        CancellationToken token)
+    {
+        try
+        {
+            CreateCallback callback = await WaitAsync(completion.Task, token);
+            return callback.Result == SteamResultOk
+                ? new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Success, callback.FileId, callback.NeedsAgreement, callback.Result)
+                : new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Failed, callback.FileId, callback.NeedsAgreement, callback.Result, $"Steam CreateItem failed with EResult {callback.Result}.");
+        }
+        catch (OperationCanceledException)
+        {
+            // Steam has no cancellation for CreateItem. The callback remains registered and will
+            // release the publish lane when Steam eventually answers; a later create cannot race it.
+            return new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Cancelled, 0, false, Detail: "Stopped waiting for Workshop item creation; Steam may still complete it.");
+        }
+    }
+
+    private async Task<WorkshopSubmitRemoteResult> AwaitUpdateAsync(
+        TaskCompletionSource<UpdateCallback> completion,
+        ulong publishedFileId,
+        CancellationToken token)
+    {
+        try
+        {
+            UpdateCallback callback = await WaitAsync(completion.Task, token);
+            return callback.Result == SteamResultOk
+                ? new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Success, publishedFileId, callback.NeedsAgreement, callback.Result)
+                : new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, publishedFileId, callback.NeedsAgreement, callback.Result, $"Steam SubmitItemUpdate failed with EResult {callback.Result}.");
+        }
+        catch (OperationCanceledException)
+        {
+            // SubmitItemUpdate cannot be cancelled remotely. Do not clear _pendingUpdate here;
+            // the Steam callback owns cleanup so another update cannot consume the wrong callback.
+            return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Cancelled, publishedFileId, false, Detail: "Stopped waiting for Workshop upload; Steam may still finish it.");
+        }
     }
 
     private WorkshopInstalledItemResult InstalledInfo(ulong publishedFileId)
@@ -298,49 +343,102 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
     private void OnItemCreated(long result, long fileId, bool needsAgreement)
     {
         TaskCompletionSource<CreateCallback>? pending;
-        lock (_callbackGate) pending = _pendingCreate;
-        if (pending is null || fileId <= 0) return;
-        pending.TrySetResult(new CreateCallback(checked((int)result), checked((ulong)fileId), needsAgreement));
+        lock (_callbackGate)
+        {
+            pending = _pendingCreate;
+            _pendingCreate = null;
+        }
+        pending?.TrySetResult(new CreateCallback(
+            checked((int)result),
+            fileId <= 0 ? 0UL : checked((ulong)fileId),
+            needsAgreement));
     }
 
     private void OnItemUpdated(long result, bool needsAgreement)
     {
         TaskCompletionSource<UpdateCallback>? pending;
-        lock (_callbackGate) pending = _pendingUpdate;
+        IProgress<WorkshopTransferProgress>? progress;
+        lock (_callbackGate)
+        {
+            pending = _pendingUpdate;
+            progress = _activeUploadProgress;
+            _pendingUpdate = null;
+            _activeUpdateHandle = 0;
+            _activeUploadProgress = null;
+        }
+        if (result == SteamResultOk)
+            progress?.Report(new WorkshopTransferProgress(1, 1, "Complete"));
         pending?.TrySetResult(new UpdateCallback(checked((int)result), needsAgreement));
     }
 
     private void OnItemDownloaded(long result, long appId, long fileId)
     {
-        if (appId < 0 || fileId <= 0) return;
-        TaskCompletionSource<DownloadCallback>? pending;
-        lock (_callbackGate) _downloads.TryGetValue(checked((ulong)fileId), out pending);
-        pending?.TrySetResult(new DownloadCallback(checked((int)result), checked((uint)appId), checked((ulong)fileId)));
+        if (fileId <= 0) return;
+        ulong publishedFileId = checked((ulong)fileId);
+        PendingDownload? pending;
+        lock (_callbackGate)
+        {
+            if (!_downloads.TryGetValue(publishedFileId, out pending)) return;
+            _downloads.Remove(publishedFileId);
+        }
+        pending.CancellationRegistration.Dispose();
+
+        WorkshopInstalledItemResult final;
+        if (appId < 0 || checked((uint)appId) != _appId)
+        {
+            final = new WorkshopInstalledItemResult(
+                WorkshopRemoteStatus.Failed,
+                publishedFileId,
+                null,
+                0,
+                checked((int)result),
+                "Steam returned a mismatched AppID for the Workshop download.");
+        }
+        else if (result != SteamResultOk)
+        {
+            final = new WorkshopInstalledItemResult(
+                WorkshopRemoteStatus.Failed,
+                publishedFileId,
+                null,
+                0,
+                checked((int)result),
+                $"Steam Workshop download failed with EResult {result}.");
+        }
+        else
+        {
+            final = InstalledInfo(publishedFileId);
+            if (final.IsSuccess)
+                pending.Progress?.Report(new WorkshopTransferProgress(1, 1, "Installed"));
+        }
+        pending.Completion.TrySetResult(final);
     }
 
-    private async Task<T> SerializePublishAsync<T>(Func<Task<T>> action, CancellationToken token)
+    private void CancelDownload(PendingDownload pending)
     {
-        if (!IsAvailable)
+        bool removed;
+        lock (_callbackGate)
         {
-            if (typeof(T) == typeof(WorkshopCreateRemoteResult))
-                return (T)(object)new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Unavailable, 0, false, Detail: UnavailableReason);
-            if (typeof(T) == typeof(WorkshopSubmitRemoteResult))
-                return (T)(object)new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Unavailable, 0, false, Detail: UnavailableReason);
+            removed = _downloads.TryGetValue(pending.PublishedFileId, out PendingDownload? current) &&
+                ReferenceEquals(current, pending);
+            if (removed) _downloads.Remove(pending.PublishedFileId);
         }
-        try
+        if (!removed) return;
+        pending.Completion.TrySetResult(new WorkshopInstalledItemResult(
+            WorkshopRemoteStatus.Cancelled,
+            pending.PublishedFileId,
+            null,
+            0,
+            Detail: "Stopped waiting for Workshop download; Steam may continue caching it."));
+    }
+
+    private void RemoveDownload(PendingDownload pending)
+    {
+        lock (_callbackGate)
         {
-            await _publishGate.WaitAsync(token).ConfigureAwait(false);
+            if (_downloads.TryGetValue(pending.PublishedFileId, out PendingDownload? current) && ReferenceEquals(current, pending))
+                _downloads.Remove(pending.PublishedFileId);
         }
-        catch (OperationCanceledException)
-        {
-            if (typeof(T) == typeof(WorkshopCreateRemoteResult))
-                return (T)(object)new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Cancelled, 0, false);
-            if (typeof(T) == typeof(WorkshopSubmitRemoteResult))
-                return (T)(object)new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Cancelled, 0, false);
-            throw;
-        }
-        try { return await action().ConfigureAwait(false); }
-        finally { _publishGate.Release(); }
+        pending.CancellationRegistration.Dispose();
     }
 
     private Godot.Collections.Dictionary CallDictionary(string method, params Variant[] args)
@@ -396,16 +494,18 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         UnavailableReason = reason;
     }
 
+    private bool IsOnMainThread => _mainThreadId == 0 || Environment.CurrentManagedThreadId == _mainThreadId;
+
     private static TaskCompletionSource<T> NewCompletion<T>() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private static async Task<T> WaitAsync<T>(Task<T> task, CancellationToken token)
     {
-        if (!token.CanBeCanceled) return await task.ConfigureAwait(false);
+        if (!token.CanBeCanceled) return await task;
         TaskCompletionSource<bool> cancellation = NewCompletion<bool>();
         using CancellationTokenRegistration registration = token.Register(() => cancellation.TrySetResult(true));
-        Task winner = await Task.WhenAny(task, cancellation.Task).ConfigureAwait(false);
+        Task winner = await Task.WhenAny(task, cancellation.Task);
         if (winner != task) throw new OperationCanceledException(token);
-        return await task.ConfigureAwait(false);
+        return await task;
     }
 }
