@@ -111,6 +111,8 @@ public partial class RopeSuspensionComponent : Node2D
 
     public void CutAll()
     {
+        if (_ropes.Count == 0)
+            return;
         _ropes.Clear();
         QueueRedraw();
     }
@@ -118,12 +120,21 @@ public partial class RopeSuspensionComponent : Node2D
     /// <summary>Called only from the owning root's routed fixed tick.</summary>
     public void PhysicsTick(double delta)
     {
-        if (!IsInitialized || delta <= 0.0)
+        if (!IsInitialized || delta <= 0.0 || _ropes.Count == 0)
             return;
 
-        _ropes.RemoveAll(rope => !GodotObject.IsInstanceValid(rope.Body));
-        foreach (SuspensionRope rope in _ropes)
+        // Runtime bodies may disappear through reset/eviction. Prune in-place instead of invoking
+        // a predicate over the list every 120 Hz tick; more importantly, the empty-rope path above
+        // now performs no redraw work at all.
+        for (int index = _ropes.Count - 1; index >= 0; index--)
         {
+            if (!GodotObject.IsInstanceValid(_ropes[index].Body))
+                _ropes.RemoveAt(index);
+        }
+
+        for (int index = 0; index < _ropes.Count; index++)
+        {
+            SuspensionRope rope = _ropes[index];
             Vector2 held = rope.Body.ToGlobal(rope.LocalPoint);
             Vector2 offset = rope.Anchor - held;
             Vector2 force = (offset * Stiffness * rope.Body.Mass) -
