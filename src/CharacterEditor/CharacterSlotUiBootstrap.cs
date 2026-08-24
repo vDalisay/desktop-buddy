@@ -245,12 +245,12 @@ public partial class CharacterSlotUiBootstrap : Node
 
         int count = _cachedDiskOccupied;
         // A freshly-created/duplicated working copy has not reached disk yet but already reserves
-        // the next available slot for this editor session.
+        // the next available slot for this editor session. Dirty edits to an existing character
+        // do not consume another slot.
         if (working is not null && workingDirty)
         {
             bool persisted = _characters is not null
-                ? _characters.Paths.TryParseDirectory(_characters.Paths.Directory(working.Id), out _) &&
-                  _cachedDiskOccupied > 0 && CharacterExistsInInjectedStore(working.Id)
+                ? _characters.ContainsStoredCharacter(working.Id)
                 : File.Exists(Path.Combine(
                     ProjectSettings.GlobalizePath("user://characters"),
                     working.Id.ToString("N"),
@@ -259,14 +259,6 @@ public partial class CharacterSlotUiBootstrap : Node
                 count++;
         }
         return count;
-    }
-
-    private bool CharacterExistsInInjectedStore(Guid id)
-    {
-        // CountStoredCharacters intentionally keeps the filesystem implementation private. The
-        // editor session's saved/dirty transition tells us whether this working copy was minted in
-        // memory; a clean working document has already been persisted by the authoritative store.
-        return !_observedWorkingDirty;
     }
 
     private static int ScanOccupiedSlotsFallback(string root)
