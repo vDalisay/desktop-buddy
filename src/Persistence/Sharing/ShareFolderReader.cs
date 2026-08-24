@@ -22,6 +22,9 @@ public sealed record ShareFolderReadResult(
 /// </summary>
 public sealed class ShareFolderReader
 {
+    private const int MaximumWalkEntries = 32;
+    private const int MaximumWalkDepth = 4;
+
     public ShareFolderReadResult Read(string sourceRoot, ShareContentType expectedType)
     {
         var issues = new List<ShareValidationIssue>();
@@ -48,20 +51,9 @@ public sealed class ShareFolderReader
                 ShareManifestPolicy.ManifestFileName,
             };
 
-            foreach (string directory in EnumerateDirectoriesSafe(root))
-            {
-                if (IsLinked(directory))
-                    issues.Add(new ShareValidationIssue(ShareValidationCode.LinkedPath, Relative(root, directory), "Linked directories are not allowed."));
-            }
-
-            foreach (string actual in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            foreach (string actual in EnumerateFilesNoLinks(root, issues))
             {
                 string relative = Relative(root, actual);
-                if (IsLinked(actual))
-                {
-                    issues.Add(new ShareValidationIssue(ShareValidationCode.LinkedPath, relative, "Linked files are not allowed."));
-                    continue;
-                }
                 if (!declared.Contains(relative))
                     issues.Add(new ShareValidationIssue(ShareValidationCode.UnexpectedFile, relative, "Undeclared files are not allowed in Workshop content."));
             }
@@ -138,8 +130,48 @@ public sealed class ShareFolderReader
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
     }
 
-    private static IEnumerable<string> EnumerateDirectoriesSafe(string root) =>
-        Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories);
+    private static IReadOnlyList<string> EnumerateFilesNoLinks(
+        string root,
+        ICollection<ShareValidationIssue> issues)
+    {
+        var files = new List<string>();
+        var pending = new Stack<(string Directory, int Depth)>();
+        pending.Push((root, 0));
+        int entries = 0;
+
+        while (pending.Count > 0)
+        {
+            (string directory, int depth) = pending.Pop();
+            foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+            {
+                if (++entries > MaximumWalkEntries)
+                    throw new InvalidDataException($"Workshop content contains more than {MaximumWalkEntries} filesystem entries.");
+
+                FileAttributes attributes = File.GetAttributes(entry);
+                string relative = Relative(root, entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    issues.Add(new ShareValidationIssue(ShareValidationCode.LinkedPath, relative, "Linked paths are not allowed."));
+                    continue;
+                }
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    if (depth >= MaximumWalkDepth)
+                    {
+                        issues.Add(new ShareValidationIssue(ShareValidationCode.InvalidPath, relative, "Workshop directory nesting is too deep."));
+                        continue;
+                    }
+                    pending.Push((entry, depth + 1));
+                }
+                else
+                {
+                    files.Add(entry);
+                }
+            }
+        }
+        return files;
+    }
 
     private static byte[] ReadBounded(string path, int maximumBytes)
     {
