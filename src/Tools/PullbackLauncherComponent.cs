@@ -166,7 +166,8 @@ public partial class PullbackLauncherComponent : Node2D
     public void MovePointer(Vector2 worldPosition)
     {
         _pointer = worldPosition;
-        QueueRedraw();
+        if (IsAiming)
+            QueueRedraw();
     }
 
     public void RequestSpawn(string contentId, Vector2 worldPosition)
@@ -243,7 +244,11 @@ public partial class PullbackLauncherComponent : Node2D
             FinishAimRelease();
         }
 
-        QueueRedraw();
+        // Transition methods already redraw when aiming begins/ends. Between transitions only the
+        // active trajectory changes, so the default idle launcher no longer invalidates CanvasItem
+        // drawing on every routed physics tick.
+        if (IsAiming)
+            QueueRedraw();
     }
 
     public override void _Draw()
