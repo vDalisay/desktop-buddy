@@ -58,8 +58,8 @@ public static class DemoScope
         slot is not (CharacterFeatureSlot.Tops or CharacterFeatureSlot.Shoes or
             CharacterFeatureSlot.Accessories);
 
-    /// <summary>Work Mode is a headline feature of every public build, including itch.io.</summary>
-    public static bool IncludesWorkMode => true;
+    /// <summary>The reduced itch.io build omits Work Mode entirely.</summary>
+    public static bool IncludesWorkMode => !IsItchIo;
 
     /// <summary>The itch.io build omits the Paint Background / Paint Room workspace entirely.</summary>
     public static bool IncludesPaintRoom => !IsItchIo;
