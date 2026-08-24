@@ -77,11 +77,22 @@ public sealed class CharacterStore
                 continue;
             }
 
-            string primary = _paths.Primary(id);
-            if (_fileSystem.FileExists(primary) && !_fileSystem.IsReparsePoint(primary))
+            if (ContainsStoredCharacter(id))
                 count++;
         }
         return count;
+    }
+
+    /// <summary>Whether the canonical primary document for this character currently exists.</summary>
+    public bool ContainsStoredCharacter(Guid id)
+    {
+        if (id == Guid.Empty)
+            return false;
+        string directory = _paths.Directory(id);
+        if (!_fileSystem.DirectoryExists(directory) || _fileSystem.IsReparsePoint(directory))
+            return false;
+        string primary = _paths.Primary(id);
+        return _fileSystem.FileExists(primary) && !_fileSystem.IsReparsePoint(primary);
     }
 
     public Task<CharacterLoadResult> LoadAsync(Guid id, CancellationToken token) =>
@@ -118,7 +129,6 @@ public sealed class CharacterStore
             foreach (string directory in _fileSystem.EnumerateDirectories(_paths.Root))
             {
                 token.ThrowIfCancellationRequested();
-                // Anything that is not a character directory is not ours to delete.
                 if (!_paths.TryParseDirectory(directory, out Guid id) || id == Guid.Empty)
                     continue;
                 if (DeleteCore(id, token).Status == CharacterDeleteStatus.Deleted)
