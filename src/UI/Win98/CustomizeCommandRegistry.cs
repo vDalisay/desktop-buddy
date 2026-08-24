@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 
 namespace DesktopBuddy.UI.Win98;
@@ -65,22 +66,19 @@ public sealed class CustomizeCommandRegistry
     }
 
     /// <summary>
-    /// Returns the stable authored order while evaluating visibility/enabled policy at read time.
-    /// Registration is rare; snapshots may be requested every frame, so sorting belongs on the
-    /// mutation path rather than the presentation hot path.
+    /// Returns a lightweight view over the stable authored order while evaluating
+    /// visibility/enabled policy at read time. Registration is rare and sorting belongs on the
+    /// mutation path; steady-state command-bar refreshes therefore allocate no snapshot array.
     /// </summary>
-    public IReadOnlyList<CustomizeCommandSnapshot> Snapshot()
+    public SnapshotView Snapshot() => new(this);
+
+    private CustomizeCommandSnapshot SnapshotAt(int index)
     {
-        var snapshots = new CustomizeCommandSnapshot[_orderedEntries.Count];
-        for (int index = 0; index < _orderedEntries.Count; index++)
-        {
-            Entry entry = _orderedEntries[index];
-            snapshots[index] = new CustomizeCommandSnapshot(
-                entry.Definition,
-                entry.IsVisible?.Invoke() ?? true,
-                entry.IsEnabled?.Invoke() ?? true);
-        }
-        return snapshots;
+        Entry entry = _orderedEntries[index];
+        return new CustomizeCommandSnapshot(
+            entry.Definition,
+            entry.IsVisible?.Invoke() ?? true,
+            entry.IsEnabled?.Invoke() ?? true);
     }
 
     public bool TryInvoke(string id)
@@ -108,6 +106,60 @@ public sealed class CustomizeCommandRegistry
         return byOrder != 0
             ? byOrder
             : StringComparer.Ordinal.Compare(left.Definition.Id, right.Definition.Id);
+    }
+
+    /// <summary>
+    /// Allocation-free enumerable/indexable snapshot view for hot presentation paths. The view
+    /// deliberately does not copy registry state: visibility/enabled delegates are evaluated
+    /// when each entry is read, matching the old <c>Snapshot()</c> semantics.
+    /// </summary>
+    public readonly struct SnapshotView : IReadOnlyList<CustomizeCommandSnapshot>
+    {
+        private readonly CustomizeCommandRegistry _owner;
+
+        internal SnapshotView(CustomizeCommandRegistry owner) => _owner = owner;
+
+        public int Count => _owner._orderedEntries.Count;
+
+        public CustomizeCommandSnapshot this[int index] => _owner.SnapshotAt(index);
+
+        public Enumerator GetEnumerator() => new(_owner);
+
+        IEnumerator<CustomizeCommandSnapshot> IEnumerable<CustomizeCommandSnapshot>.GetEnumerator() =>
+            GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    public struct Enumerator : IEnumerator<CustomizeCommandSnapshot>
+    {
+        private readonly CustomizeCommandRegistry _owner;
+        private int _index;
+
+        internal Enumerator(CustomizeCommandRegistry owner)
+        {
+            _owner = owner;
+            _index = -1;
+        }
+
+        public CustomizeCommandSnapshot Current => _owner.SnapshotAt(_index);
+
+        object IEnumerator.Current => Current;
+
+        public bool MoveNext()
+        {
+            int next = _index + 1;
+            if (next >= _owner._orderedEntries.Count)
+                return false;
+            _index = next;
+            return true;
+        }
+
+        public void Reset() => _index = -1;
+
+        public void Dispose()
+        {
+        }
     }
 
     private sealed record Entry(
