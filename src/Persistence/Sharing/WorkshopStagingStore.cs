@@ -26,6 +26,8 @@ public sealed class WorkshopStagingStore
 {
     public const long MaximumIncomingBytes = 16L * 1024 * 1024;
     public const int MaximumIncomingFiles = 16;
+    private const int MaximumIncomingDirectories = 12;
+    private const int MaximumIncomingDepth = 4;
 
     private readonly string _root;
 
@@ -131,31 +133,52 @@ public sealed class WorkshopStagingStore
     private static void CopyBoundedTree(string sourceRoot, string destinationRoot)
     {
         long aggregate = 0;
-        int count = 0;
-        foreach (string directory in Directory.EnumerateDirectories(sourceRoot, "*", SearchOption.AllDirectories))
-            RejectLink(directory);
+        int fileCount = 0;
+        int directoryCount = 0;
+        var pending = new Stack<(string Source, string Destination, int Depth)>();
+        pending.Push((sourceRoot, destinationRoot, 0));
 
-        foreach (string sourceFile in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        while (pending.Count > 0)
         {
-            RejectLink(sourceFile);
-            if (++count > MaximumIncomingFiles)
-                throw new InvalidDataException($"Workshop item contains more than {MaximumIncomingFiles} files.");
-            var info = new FileInfo(sourceFile);
-            aggregate = checked(aggregate + info.Length);
-            if (aggregate > MaximumIncomingBytes)
-                throw new InvalidDataException("Workshop item exceeds the 16 MiB incoming copy budget.");
+            (string sourceDirectory, string destinationDirectory, int depth) = pending.Pop();
+            foreach (string entry in Directory.EnumerateFileSystemEntries(sourceDirectory))
+            {
+                FileAttributes attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0)
+                    throw new InvalidDataException($"Linked Workshop path is not allowed: {entry}");
 
-            string relative = Path.GetRelativePath(sourceRoot, sourceFile).Replace(Path.DirectorySeparatorChar, '/');
-            if (!ShareManifestPolicy.IsCanonicalRelativePath(relative) && relative != ShareManifestPolicy.ManifestFileName)
-                throw new InvalidDataException($"Unsafe Workshop path '{relative}'.");
-            string destination = ShareFolderReader.ResolveUnder(destinationRoot, relative);
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-            using FileStream input = new(sourceFile, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using FileStream output = new(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            input.CopyTo(output);
-            aggregate += Math.Max(0, input.Length - info.Length);
-            if (aggregate > MaximumIncomingBytes)
-                throw new InvalidDataException("Workshop item changed while being copied or exceeds its copy budget.");
+                string relative = Path.GetRelativePath(sourceRoot, entry).Replace(Path.DirectorySeparatorChar, '/');
+                if (!ShareManifestPolicy.IsCanonicalRelativePath(relative) && relative != ShareManifestPolicy.ManifestFileName)
+                    throw new InvalidDataException($"Unsafe Workshop path '{relative}'.");
+
+                if ((attributes & FileAttributes.Directory) != 0)
+                {
+                    if (++directoryCount > MaximumIncomingDirectories)
+                        throw new InvalidDataException($"Workshop item contains more than {MaximumIncomingDirectories} directories.");
+                    if (depth >= MaximumIncomingDepth)
+                        throw new InvalidDataException("Workshop item directory nesting is too deep.");
+                    string destination = ShareFolderReader.ResolveUnder(destinationRoot, relative);
+                    Directory.CreateDirectory(destination);
+                    pending.Push((entry, destination, depth + 1));
+                    continue;
+                }
+
+                if (++fileCount > MaximumIncomingFiles)
+                    throw new InvalidDataException($"Workshop item contains more than {MaximumIncomingFiles} files.");
+                var before = new FileInfo(entry);
+                aggregate = checked(aggregate + before.Length);
+                if (aggregate > MaximumIncomingBytes)
+                    throw new InvalidDataException("Workshop item exceeds the 16 MiB incoming copy budget.");
+
+                string target = ShareFolderReader.ResolveUnder(destinationRoot, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                using FileStream input = new(entry, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using FileStream output = new(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                input.CopyTo(output);
+                long copied = output.Length;
+                if (copied != before.Length)
+                    throw new InvalidDataException("Workshop item changed size while being copied.");
+            }
         }
     }
 
