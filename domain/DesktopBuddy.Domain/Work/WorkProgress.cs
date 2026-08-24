@@ -259,6 +259,8 @@ public sealed class WorkProgressState
 public sealed class WorkSessionState
 {
     private readonly HashSet<string> _earnedSession = new(StringComparer.Ordinal);
+    private IReadOnlyList<string> _earnedSessionSnapshot = Array.Empty<string>();
+    private bool _earnedSessionSnapshotDirty = true;
 
     public WorkSessionState(Guid? sessionId = null)
     {
@@ -289,7 +291,7 @@ public sealed class WorkSessionState
 
     /// <summary>
     /// Live, allocation-free membership view for presentation and milestone evaluation. Durable
-    /// persistence still uses <see cref="Snapshot"/>, which returns a sorted detached copy.
+    /// persistence still uses <see cref="Snapshot"/>, which exposes a sorted immutable view.
     /// </summary>
     public IReadOnlyCollection<string> EarnedRepeatPerSessionMilestoneIds => _earnedSession;
 
@@ -298,7 +300,7 @@ public sealed class WorkSessionState
     public WorkSessionSnapshot Snapshot() => new(
         SessionId,
         Counters,
-        _earnedSession.OrderBy(id => id, StringComparer.Ordinal).ToArray());
+        EarnedSnapshot());
 
     public IReadOnlyList<WorkMilestoneEarned> Evaluate(
         WorkProgressState lifetime,
@@ -306,7 +308,7 @@ public sealed class WorkSessionState
     {
         ArgumentNullException.ThrowIfNull(lifetime);
         ArgumentNullException.ThrowIfNull(catalogue);
-        var newlyEarned = new List<WorkMilestoneEarned>();
+        List<WorkMilestoneEarned>? newlyEarned = null;
         foreach (WorkMilestoneDefinition definition in catalogue.Definitions)
         {
             long value = definition.Scope == WorkMilestoneScope.CurrentSession
@@ -315,20 +317,41 @@ public sealed class WorkSessionState
             if (value < definition.Threshold)
                 continue;
 
-            bool claimable = definition.RepeatPolicy switch
+            bool claimable;
+            switch (definition.RepeatPolicy)
             {
-                WorkMilestoneRepeatPolicy.OnceLifetime => lifetime.ClaimLifetimeMilestone(definition.Id),
-                WorkMilestoneRepeatPolicy.RepeatPerSession => _earnedSession.Add(definition.Id),
-                _ => false,
-            };
+                case WorkMilestoneRepeatPolicy.OnceLifetime:
+                    claimable = lifetime.ClaimLifetimeMilestone(definition.Id);
+                    break;
+                case WorkMilestoneRepeatPolicy.RepeatPerSession:
+                    claimable = _earnedSession.Add(definition.Id);
+                    if (claimable)
+                        _earnedSessionSnapshotDirty = true;
+                    break;
+                default:
+                    claimable = false;
+                    break;
+            }
             if (!claimable)
                 continue;
 
+            newlyEarned ??= new List<WorkMilestoneEarned>();
             newlyEarned.Add(new WorkMilestoneEarned(
                 definition.Id,
                 definition.RewardMilliCredits,
                 definition.RepeatPolicy));
         }
-        return newlyEarned;
+        return newlyEarned ?? Array.Empty<WorkMilestoneEarned>();
+    }
+
+    private IReadOnlyList<string> EarnedSnapshot()
+    {
+        if (!_earnedSessionSnapshotDirty)
+            return _earnedSessionSnapshot;
+
+        string[] sorted = _earnedSession.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+        _earnedSessionSnapshot = Array.AsReadOnly(sorted);
+        _earnedSessionSnapshotDirty = false;
+        return _earnedSessionSnapshot;
     }
 }
