@@ -481,12 +481,7 @@ public sealed class EnvironmentCanvas
     {
         int dx = Math.Abs(x1 - x0);
         int dy = Math.Abs(y1 - y0);
-        // Buddy paint already spaces surface stamps by a fraction of the brush diameter. Room
-        // paint used to stamp every single canvas pixel regardless of brush size, which made a
-        // 96px pen/brush redraw almost the same footprint dozens of times. Reuse the shared
-        // spacing factor, while keeping a one-pixel floor so the 2px room brush is unchanged.
-        double spacing = Math.Max(1.0, BrushDiameter * PaintSurface.StampSpacingFactor);
-        int steps = Math.Max(1, (int)Math.Ceiling(Math.Max(dx, dy) / spacing));
+        int steps = Math.Max(1, Math.Max(dx, dy));
         for (int step = 0; step <= steps; step++)
         {
             double t = step / (double)steps;
