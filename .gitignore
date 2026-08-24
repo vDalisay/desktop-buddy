@@ -31,6 +31,11 @@ mono_crash.*.json
 # Development Steam app id — never committed; ships only via the release export path
 steam_appid.txt
 
+# GodotSteam is a verified local/depot dependency. Native Valve/GodotSteam binaries never enter
+# source control; tools/install_godotsteam.ps1 reconstructs addons/godotsteam from the pinned build.
+/.deps/
+/addons/godotsteam/
+
 # Vendored Godot MCP runtime server with its own .git, node_modules, and dist/.
 # Dev-only tooling; only the Godot scan marker is tracked in this repo.
 /Mcp/*
