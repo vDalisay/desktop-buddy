@@ -104,7 +104,7 @@ public partial class WorkMilestoneProgressBootstrap : Node
         WorkSessionState session = coordinator.Session!;
         WorkCounterSnapshot sessionCounters = session.Counters;
         WorkCounterSnapshot lifetimeCounters = coordinator.Progress.Lifetime;
-        IReadOnlyList<string> sessionClaims = session.Snapshot().EarnedRepeatPerSessionMilestoneIds;
+        IReadOnlyCollection<string> sessionClaims = session.EarnedRepeatPerSessionMilestoneIds;
         IReadOnlyCollection<string> lifetimeClaims = coordinator.Progress.ClaimedLifetimeMilestoneIds;
 
         WorkMilestoneScope wantedScope = lifetime
@@ -127,7 +127,7 @@ public partial class WorkMilestoneProgressBootstrap : Node
             WorkCounterSnapshot counters = lifetime ? lifetimeCounters : sessionCounters;
             long current = counters.Value(definition.CounterKind);
             if (current >= definition.Threshold)
-                continue; // Award settlement occurs on the same main-thread drain; don't show stale 100%.
+                continue;
 
             long rewardCredits = definition.RewardMilliCredits / 1000;
             return $"{CounterTag(definition.CounterKind)} {Compact(current)}/{Compact(definition.Threshold)} +{rewardCredits}C";
