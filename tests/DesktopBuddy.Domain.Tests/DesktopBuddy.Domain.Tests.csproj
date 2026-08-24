@@ -41,6 +41,15 @@
     <Compile Include="..\..\src\Persistence\Characters\PaintPngCodec.cs" Link="RuntimePersistence\PaintPngCodec.cs" />
     <Compile Include="..\..\src\App\ProgressReset.cs" Link="RuntimePersistence\ProgressReset.cs" />
     <Compile Include="..\..\src\Work\WorkFirstEntryRewardService.cs" Link="RuntimeWork\WorkFirstEntryRewardService.cs" />
+
+    <!-- Workshop's validation/staging/emulator layer is deliberately managed-only. Linking it
+         here proves hostile-content and async-social behavior without Steam or Godot. -->
+    <Compile Include="..\..\src\Persistence\Sharing\ShareFolderReader.cs" Link="RuntimeSharing\ShareFolderReader.cs" />
+    <Compile Include="..\..\src\Persistence\Sharing\WorkshopStagingStore.cs" Link="RuntimeSharing\WorkshopStagingStore.cs" />
+    <Compile Include="..\..\src\Persistence\Sharing\WorkshopProvenanceStore.cs" Link="RuntimeSharing\WorkshopProvenanceStore.cs" />
+    <Compile Include="..\..\src\Persistence\Sharing\RoomPaintingLibraryStore.cs" Link="RuntimeSharing\RoomPaintingLibraryStore.cs" />
+    <Compile Include="..\..\src\Platform\Steam\SteamWorkshopContracts.cs" Link="RuntimeSharing\SteamWorkshopContracts.cs" />
+    <Compile Include="..\..\src\Platform\Steam\DirectoryWorkshopTransport.cs" Link="RuntimeSharing\DirectoryWorkshopTransport.cs" />
   </ItemGroup>
 
 </Project>
