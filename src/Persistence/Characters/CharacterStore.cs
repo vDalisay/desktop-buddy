@@ -45,6 +45,13 @@ public sealed class CharacterStore
     public long SaveCount { get; private set; }
     public long DeleteCount { get; private set; }
 
+    /// <summary>
+    /// Creates the paint-aware transaction boundary over this exact document store. Keeping this
+    /// factory beside the injected filesystem/catalogue prevents consumers from silently creating
+    /// a second store with different validation policy.
+    /// </summary>
+    public CharacterPaintStore CreatePaintStore() => new(_fileSystem, this);
+
     public Task<CharacterLoadResult> LoadAsync(Guid id, CancellationToken token) =>
         Task.Run(() => LoadCore(id, token), CancellationToken.None);
 
