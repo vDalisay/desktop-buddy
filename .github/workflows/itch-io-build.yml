@@ -281,7 +281,7 @@ jobs:
           "$EMSDK/emsdk" activate "$EMSDK_VERSION"
           echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
 
-      - name: Build single-threaded C# Web template
+      - name: Build and install single-threaded C# Web template
         shell: bash
         run: |
           set -euo pipefail
@@ -295,13 +295,25 @@ jobs:
             lto=none \
             disable_crash_handler=yes \
             threads=no
+
           WEB_TEMPLATE="$(find "$GODOT_WEB_SRC/bin" -maxdepth 1 -type f -name 'godot.web.template_release.wasm32.nothreads.mono.zip' | head -n 1)"
           if [ -z "$WEB_TEMPLATE" ]; then
             echo "Expected single-threaded Mono Web template was not produced." >&2
             find "$GODOT_WEB_SRC/bin" -maxdepth 1 -type f -printf '%f\n' || true
             exit 1
           fi
+
+          # Keep the standard template names in sync with the diagnostic workflow. The
+          # exporter validates these even though the release ZIP is also project-local.
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/4.7.beta.mono"
+          mkdir -p "$TEMPLATE_DIR"
+          cp "$WEB_TEMPLATE" "$TEMPLATE_DIR/web_nothreads_release.zip"
+          cp "$WEB_TEMPLATE" "$TEMPLATE_DIR/web_nothreads_debug.zip"
+          test -s "$TEMPLATE_DIR/web_nothreads_release.zip"
+          test -s "$TEMPLATE_DIR/web_nothreads_debug.zip"
+
           echo "GODOT_WEB_TEMPLATE=$WEB_TEMPLATE" >> "$GITHUB_ENV"
+          echo "GODOT_WEB_TEMPLATE_DIR=$TEMPLATE_DIR" >> "$GITHUB_ENV"
 
       - name: Prepare disposable Desktop Buddy Web project
         shell: bash
