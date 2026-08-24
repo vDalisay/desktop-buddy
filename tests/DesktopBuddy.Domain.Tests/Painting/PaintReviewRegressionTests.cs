@@ -28,7 +28,7 @@ public sealed class PaintReviewRegressionTests
     }
 
     [Fact]
-    public void EnvironmentLargePenStrokeRemainsContinuousWithSharedStampSpacing()
+    public void EnvironmentLargePenStrokeRemainsContinuousAfterHotPathChanges()
     {
         var canvas = new EnvironmentCanvas
         {
@@ -41,8 +41,7 @@ public sealed class PaintReviewRegressionTests
         canvas.Continue(.95, .5);
         canvas.End(.95, .5);
 
-        // The performance optimization is allowed to reduce redundant overlapping stamps, but
-        // not to turn a Win98-style drag into a dotted line.
+        // Inner-loop optimizations must not turn a Win98-style drag into a dotted line.
         for (int x = 32; x < EnvironmentCanvasPolicy.Size - 32; x++)
         {
             Assert.True(canvas.TryPick(x / (double)(EnvironmentCanvasPolicy.Size - 1), .5, out EnvironmentColor color));
