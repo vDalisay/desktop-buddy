@@ -66,7 +66,7 @@ public sealed class CharacterPaintStore
 
     private CharacterPaintLoadResult LoadCore(Guid id, CancellationToken token)
     {
-        CharacterLoadResult character = _documents.LoadAsync(id, token).GetAwaiter().GetResult();
+        CharacterLoadResult character = _documents.LoadForPaint(id, token);
         if (!character.IsSuccess || character.Document is null)
             return new CharacterPaintLoadResult(character, new Dictionary<PaintPart, byte[]>(), character.Detail);
 
