@@ -36,11 +36,23 @@ public sealed class CharacterPaintStore
     private readonly CharacterPaths _paths;
     private readonly CharacterStore _documents;
 
+    /// <summary>
+    /// Standalone convenience constructor for isolated tools/tests. Production composition should
+    /// prefer <see cref="CharacterStore.CreatePaintStore"/> so document validation, filesystem
+    /// policy and feature catalog remain identical across document-only and paint-aware loads.
+    /// </summary>
     public CharacterPaintStore(ICharacterFileSystem fileSystem, string resolvedRoot)
+        : this(
+            fileSystem ?? throw new ArgumentNullException(nameof(fileSystem)),
+            new CharacterStore(fileSystem, resolvedRoot))
+    {
+    }
+
+    internal CharacterPaintStore(ICharacterFileSystem fileSystem, CharacterStore documents)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        _paths = new CharacterPaths(resolvedRoot);
-        _documents = new CharacterStore(fileSystem, resolvedRoot);
+        _documents = documents ?? throw new ArgumentNullException(nameof(documents));
+        _paths = documents.Paths;
     }
 
     public Task<CharacterPaintLoadResult> LoadAsync(Guid id, CancellationToken token = default) =>
