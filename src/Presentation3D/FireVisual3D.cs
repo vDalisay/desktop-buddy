@@ -24,7 +24,9 @@ namespace DesktopBuddy.Presentation3D;
 public partial class FireVisual3D : Node3D
 {
     private const int PuffsPerPart = 5;
+    private const int BuddyPartCount = 6;
     private readonly List<BurnPuff> _puffs = new();
+    private readonly PuppetPartBody?[] _partsByIndex = new PuppetPartBody?[BuddyPartCount];
 
     private FireSprayerProfile _profile = null!;
     private FireSprayerComponent _sprayer = null!;
@@ -63,10 +65,20 @@ public partial class FireVisual3D : Node3D
         _profile = profile;
         PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off;
 
+        // The six physical Buddy parts are stable for the lifetime of the rig. Resolve them once
+        // instead of making every one of the 30 flame puffs scan Rig.Parts every rendered frame.
+        IReadOnlyList<PuppetPartBody> parts = sprayer.Pipeline.Buddy.Rig.Parts;
+        for (int index = 0; index < parts.Count; index++)
+        {
+            int partIndex = (int)parts[index].PartId;
+            if ((uint)partIndex < BuddyPartCount)
+                _partsByIndex[partIndex] = parts[index];
+        }
+
         Shader shader = GD.Load<Shader>("res://shaders/sprayer_cloud.gdshader") ??
                         throw new InvalidOperationException("The sprayer cloud shader is missing.");
         var quad = new QuadMesh { Size = Vector2.One };
-        for (int partIndex = 0; partIndex < 6; partIndex++)
+        for (int partIndex = 0; partIndex < BuddyPartCount; partIndex++)
         {
             for (int slot = 0; slot < PuffsPerPart; slot++)
             {
@@ -142,11 +154,14 @@ public partial class FireVisual3D : Node3D
                 continue;
             }
 
-            PuppetPartBody? part = FindPart(partId);
-            if (part is null)
+            PuppetPartBody? part = _partsByIndex[puff.PartIndex];
+            if (!GodotObject.IsInstanceValid(part))
+            {
+                puff.Mesh.Visible = false;
                 continue;
+            }
 
-            float radius = part.Radius;
+            float radius = part!.Radius;
             float life = core
                 ? 0.05f + (puff.Slot * 0.12f)
                 : ((_ticks + (trailIndex * cycle / 3) + (puff.PartIndex * 11)) % cycle) /
@@ -194,17 +209,4 @@ public partial class FireVisual3D : Node3D
         VisiblePuffCount = 0;
         Visible = false;
     }
-
-    private PuppetPartBody? FindPart(BuddyPartId partId)
-    {
-        IReadOnlyList<PuppetPartBody> parts = _sprayer.Pipeline.Buddy.Rig.Parts;
-        for (int index = 0; index < parts.Count; index++)
-        {
-            if (parts[index].PartId == partId)
-                return parts[index];
-        }
-
-        return null;
-    }
-
 }

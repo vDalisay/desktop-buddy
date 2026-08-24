@@ -41,11 +41,13 @@ public partial class RewardPopup : CanvasLayer
     private const int MoneyLineHeight = 42;
 
     private readonly Queue<Request> _queue = new();
+    private readonly LocalSettingsSave _fallbackSettings = new();
 
     private PanelContainer? _panel;
     private GlowIcon _glow = null!;
     private Label _title = null!;
     private Label _amount = null!;
+    private SandboxRoot? _sandbox;
 
     private double _elapsed;
     private Phase _phase = Phase.Idle;
@@ -178,10 +180,11 @@ public partial class RewardPopup : CanvasLayer
 
     private LocalSettingsSave ResolveSettings()
     {
-        SandboxRoot? sandbox = GetTree().Root.FindChild(nameof(SandboxRoot), true, false) as SandboxRoot;
-        return GodotObject.IsInstanceValid(sandbox) && sandbox!.Settings is { } settings
+        if (!GodotObject.IsInstanceValid(_sandbox))
+            _sandbox = GetTree().Root.FindChild(nameof(SandboxRoot), true, false) as SandboxRoot;
+        return GodotObject.IsInstanceValid(_sandbox) && _sandbox!.Settings is { } settings
             ? settings
-            : new LocalSettingsSave();
+            : _fallbackSettings;
     }
 
     private void Begin()

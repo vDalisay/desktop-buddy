@@ -45,8 +45,65 @@ public sealed class CharacterStore
     public long SaveCount { get; private set; }
     public long DeleteCount { get; private set; }
 
+    /// <summary>
+    /// Raised after the authoritative document library changes. Persistence operations run on a
+    /// worker thread, so UI subscribers should treat this as invalidation only and perform Godot
+    /// work on their normal main-thread route.
+    /// </summary>
+    public event Action? LibraryChanged;
+
+    /// <summary>
+    /// Creates the paint-aware transaction boundary over this exact document store. Keeping this
+    /// factory beside the injected filesystem/catalogue prevents consumers from silently creating
+    /// a second store with different validation policy.
+    /// </summary>
+    public CharacterPaintStore CreatePaintStore() => new(_fileSystem, this);
+
+    /// <summary>
+    /// Counts canonical, non-linked character documents through the injected filesystem policy.
+    /// Presentation code uses this instead of reaching directly into user:// with System.IO.
+    /// </summary>
+    public int CountStoredCharacters()
+    {
+        if (!_fileSystem.DirectoryExists(_paths.Root))
+            return 0;
+
+        int count = 0;
+        foreach (string directory in _fileSystem.EnumerateDirectories(_paths.Root))
+        {
+            if (!_paths.TryParseDirectory(directory, out Guid id) || id == Guid.Empty ||
+                _fileSystem.IsReparsePoint(directory))
+            {
+                continue;
+            }
+
+            if (ContainsStoredCharacter(id))
+                count++;
+        }
+        return count;
+    }
+
+    /// <summary>Whether the canonical primary document for this character currently exists.</summary>
+    public bool ContainsStoredCharacter(Guid id)
+    {
+        if (id == Guid.Empty)
+            return false;
+        string directory = _paths.Directory(id);
+        if (!_fileSystem.DirectoryExists(directory) || _fileSystem.IsReparsePoint(directory))
+            return false;
+        string primary = _paths.Primary(id);
+        return _fileSystem.FileExists(primary) && !_fileSystem.IsReparsePoint(primary);
+    }
+
     public Task<CharacterLoadResult> LoadAsync(Guid id, CancellationToken token) =>
         Task.Run(() => LoadCore(id, token), CancellationToken.None);
+
+    /// <summary>
+    /// Synchronous persistence-core seam for another store that already owns the worker task.
+    /// Keeping the blocking file work here avoids queueing a second ThreadPool work item and then
+    /// synchronously waiting for it from <see cref="CharacterPaintStore"/>.
+    /// </summary>
+    internal CharacterLoadResult LoadForPaint(Guid id, CancellationToken token) => LoadCore(id, token);
 
     public Task<CharacterSaveResult> SaveAsync(
         CharacterDocument document,
@@ -72,8 +129,7 @@ public sealed class CharacterStore
             foreach (string directory in _fileSystem.EnumerateDirectories(_paths.Root))
             {
                 token.ThrowIfCancellationRequested();
-                // Anything that is not a character directory is not ours to delete.
-                if (!Guid.TryParse(Path.GetFileName(directory), out Guid id) || id == Guid.Empty)
+                if (!_paths.TryParseDirectory(directory, out Guid id) || id == Guid.Empty)
                     continue;
                 if (DeleteCore(id, token).Status == CharacterDeleteStatus.Deleted)
                     removed++;
@@ -113,13 +169,6 @@ public sealed class CharacterStore
             }
             LoadAttempt backup = TryLoadFile(_paths.Backup(id), id, token);
 
-            // Never rename away the only copy. A character's first save writes no backup — the
-            // backup appears on the second save — so quarantining the primary turned one bad
-            // read into permanent loss: the next load found nothing at all and reported
-            // NotFound, which reads as "you never had this character" rather than "this file
-            // would not parse" (owner report 2026-08-21). With a backup present, quarantine is
-            // still right: it clears the way for the copy that can be recovered, or for two
-            // junk files to be swept aside together.
             if (primary.Status == AttemptStatus.Invalid && backup.Status != AttemptStatus.Missing)
                 quarantinedPrimary = Quarantine(_paths.Primary(id));
 
@@ -216,6 +265,7 @@ public sealed class CharacterStore
             }
 
             SaveCount++;
+            LibraryChanged?.Invoke();
             return new CharacterSaveResult(CharacterSaveStatus.Saved, normalized.Document);
         }
         catch (OperationCanceledException)
@@ -267,6 +317,7 @@ public sealed class CharacterStore
 
             _fileSystem.DeleteDirectory(directory, recursive: true);
             DeleteCount++;
+            LibraryChanged?.Invoke();
             return new CharacterDeleteResult(CharacterDeleteStatus.Deleted, id);
         }
         catch (OperationCanceledException)
@@ -326,7 +377,6 @@ public sealed class CharacterStore
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // Preserve the original operation result. A stale .tmp is never a load source.
         }
     }
 

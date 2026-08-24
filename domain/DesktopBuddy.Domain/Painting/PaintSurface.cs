@@ -123,37 +123,52 @@ public sealed class PaintSurface
         double centerY = uv.Y * (PaintPolicy.SurfaceSize - 1);
         double radiusX = diameter / 2.0;
         double radiusY = radiusX * verticalScale;
+        double inverseRadiusX = 1.0 / radiusX;
+        double inverseRadiusY = 1.0 / radiusY;
         int minX = (int)Math.Floor(centerX - radiusX);
         int maxX = (int)Math.Ceiling(centerX + radiusX);
         int minY = Math.Clamp((int)Math.Floor(centerY - radiusY), 0, PaintPolicy.SurfaceSize - 1);
         int maxY = Math.Clamp((int)Math.Ceiling(centerY + radiusY), 0, PaintPolicy.SurfaceSize - 1);
+        int regionStart = region.StartPixel;
+        int regionEnd = regionStart + region.PixelWidth - 1;
+        bool wrapsRegion = minX < regionStart || maxX > regionEnd;
         bool changed = false;
 
         // The eraser is a square block, the way a Win98 eraser is; every other tool lays down
-        // a round footprint (owner instruction 2026-08-19).
+        // a round footprint (owner instruction 2026-08-19). Resolve the mutation colour once per
+        // dab rather than once per pixel: Pen/Eraser screen dabs can invoke this hundreds of
+        // times per visible nib, so tiny inner-loop costs multiply quickly.
         bool square = tool == PaintTool.Eraser;
+        byte r = square ? (byte)0 : color.R;
+        byte g = square ? (byte)0 : color.G;
+        byte b = square ? (byte)0 : color.B;
+        byte a = square ? (byte)0 : byte.MaxValue;
         for (int y = minY; y <= maxY; y++)
         {
+            double dy = ((y + 0.5) - centerY) * inverseRadiusY;
+            double dySquared = dy * dy;
             for (int x = minX; x <= maxX; x++)
             {
-                double dx = ((x + 0.5) - centerX) / radiusX;
-                double dy = ((y + 0.5) - centerY) / radiusY;
-                if (square ? Math.Abs(dx) > 1.0 || Math.Abs(dy) > 1.0 : (dx * dx) + (dy * dy) > 1.0)
+                double dx = ((x + 0.5) - centerX) * inverseRadiusX;
+                if (square ? Math.Abs(dx) > 1.0 || Math.Abs(dy) > 1.0 : (dx * dx) + dySquared > 1.0)
                     continue;
 
-                int wrappedX = region.WrapPixelX(x);
+                // Most dabs do not cross a UV seam. Avoid two modulo operations per painted
+                // pixel on that common path; only wrap the few samples that actually leave the
+                // hit's atlas lane.
+                int wrappedX = x >= regionStart && x <= regionEnd ? x : region.WrapPixelX(x);
                 int index = ((y * PaintPolicy.SurfaceSize) + wrappedX) * PaintPolicy.BytesPerPixel;
-                byte r = tool == PaintTool.Eraser ? (byte)0 : color.R;
-                byte g = tool == PaintTool.Eraser ? (byte)0 : color.G;
-                byte b = tool == PaintTool.Eraser ? (byte)0 : color.B;
-                byte a = tool == PaintTool.Eraser ? (byte)0 : byte.MaxValue;
                 changed |= Write(index, r, g, b, a);
             }
         }
 
         if (!changed) return default;
         Revision++;
-        return StampBounds(uv, diameter, verticalScale, region);
+        // These are the same bounds StampBounds would calculate. Reuse the values already paid
+        // for above instead of repeating all radius/region arithmetic for every micro-dab.
+        return wrapsRegion
+            ? new PaintRect(regionStart, minY, region.PixelWidth, (maxY - minY) + 1)
+            : new PaintRect(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1);
     }
 
     /// <summary>Sparse selected-colour dots in a circular envelope. U wraps; V clips.</summary>

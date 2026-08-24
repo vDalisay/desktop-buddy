@@ -16,6 +16,12 @@ public partial class DesktopWindowController
     public Rect2I WorkCompanionRect => _lastAppliedRect;
 
     /// <summary>
+    /// Raised only when the window enters or leaves Work-companion presentation. Consumers that
+    /// only need presentation visibility should subscribe here instead of polling every frame.
+    /// </summary>
+    public event Action<bool>? WorkCompanionActiveChanged;
+
+    /// <summary>
     /// Temporarily replaces the normal compact app window with a small transparent,
     /// borderless Work companion. The normal compact bounds remain untouched and are
     /// restored exactly on exit.
@@ -66,6 +72,7 @@ public partial class DesktopWindowController
 
         ApplyCurrentInputPolicy();
         _suppressClientBoundsChanged = false;
+        WorkCompanionActiveChanged?.Invoke(true);
         ClientBoundsChanged?.Invoke(recovered);
     }
 
@@ -168,6 +175,7 @@ public partial class DesktopWindowController
 
         ApplyCurrentInputPolicy();
         _suppressClientBoundsChanged = false;
+        WorkCompanionActiveChanged?.Invoke(false);
         ClientBoundsChanged?.Invoke(restore.Rect);
     }
 

@@ -90,7 +90,7 @@ public sealed class CaptureHomeRunBatFlingScenario : IScenario
         checks.Add(new StartupCheck(
             "capture_recovery_contact_cannot_reuse_stale_home_run_charge",
             whiff.RestingContactEpisodes > 0 && whiff.RestingPositiveImpacts == 0,
-            $"resting_episodes={whiff.RestingContactEpisodes} resting_positive={whiff.RestingPositiveImpacts}"));
+            $"resting_episodes={whiff.RestingContactEpisodes} stale_home_run_impacts={whiff.RestingPositiveImpacts}"));
         checks.Add(new StartupCheck(
             "capture_whiff_has_only_charge_and_release_audio",
             whiff.AudioPlayCount == 3 &&
@@ -163,6 +163,7 @@ public sealed class CaptureHomeRunBatFlingScenario : IScenario
         await Ticks(tree, profile.Swing.MaxChargeTicks);
 
         bool restingContactPhase = false;
+        int releasedWhiffEpoch = 0;
         int whiffPositive = 0;
         int restingPositive = 0;
         int restingEpisodes = 0;
@@ -171,7 +172,14 @@ public sealed class CaptureHomeRunBatFlingScenario : IScenario
             if (impact.ContentId != ContentIds.ToolBaseballBat)
                 return;
             if (restingContactPhase)
-                restingPositive++;
+            {
+                // Gripped deliberately admits the weak free swing: once recovery has completed,
+                // dragging the bat into Buddy may therefore score ordinary bat damage. This gate
+                // is specifically about stale Home Run attribution, so only an impact carrying
+                // the released whiff's immutable epoch/charge is a failure.
+                if (impact.SwingEpoch == releasedWhiffEpoch && impact.SwingCharge > 0.0f)
+                    restingPositive++;
+            }
             else
                 whiffPositive++;
         }
@@ -187,11 +195,13 @@ public sealed class CaptureHomeRunBatFlingScenario : IScenario
         lab.CursorTools.SetChargeHeld(false);
         bool sawSwing = await WaitForState(tree, lab.CursorTools, ChargedSwingState.Swinging, 3);
         int epoch = lab.CursorTools.SwingEpoch;
+        releasedWhiffEpoch = epoch;
         bool sawRecovery = await WaitForState(tree, lab.CursorTools, ChargedSwingState.Recovery, 120);
         await WaitForState(tree, lab.CursorTools, ChargedSwingState.Gripped, 120);
 
-        // Now deliberately create a quiet gripped contact. It should produce a contact episode but
-        // cannot carry the finished swing's charge/epoch into damage or the home-run audio lane.
+        // Now deliberately create a quiet gripped contact. It should produce a contact episode.
+        // Ordinary weak-free-swing damage is permitted in Gripped; what must not survive is the
+        // completed whiff's immutable Home Run epoch/charge or its impact-audio lane.
         restingContactPhase = true;
         lab.CursorTools.MoveCursor(torso);
         await Ticks(tree, 180);

@@ -140,6 +140,14 @@ public sealed class EnvironmentCanvas
         }
         if (!TryPixel(x, y, out int px, out int py)) return;
 
+        // Picking is read-only. Keeping it outside the gesture/undo path avoids cloning the full
+        // 512x512 canvas just to throw the snapshot away at End().
+        if (_tool == EnvironmentPaintTool.PickColor)
+        {
+            if (TrySample(px, py, out EnvironmentColor picked)) Color = picked;
+            return;
+        }
+
         byte[] snapshot = (byte[])_pixels.Clone();
         _stroking = true;
         _originX = px;
@@ -165,11 +173,10 @@ public sealed class EnvironmentCanvas
             case EnvironmentPaintTool.Fill:
                 Fill(px, py, Color);
                 break;
-            case EnvironmentPaintTool.PickColor:
-                if (TrySample(px, py, out EnvironmentColor picked)) Color = picked;
-                break;
             default:
-                _strokeBase = (byte[])_pixels.Clone();
+                // Shape previews need the same pre-gesture image as undo. Share the immutable
+                // snapshot instead of cloning another megabyte at the start of every shape drag.
+                _strokeBase = snapshot;
                 break;
         }
         PushUndo(snapshot);
@@ -491,6 +498,8 @@ public sealed class EnvironmentCanvas
         double radiusY = footprint == EnvironmentBrushFootprint.Flat
             ? radiusX
             : radiusX * PixelAspect;
+        double inverseRadiusX = 1.0 / radiusX;
+        double inverseRadiusY = 1.0 / radiusY;
         bool square = footprint == EnvironmentBrushFootprint.Square;
         int minX = Math.Max(0, (int)Math.Floor(centerX - radiusX));
         int maxX = Math.Min(EnvironmentCanvasPolicy.Size - 1, (int)Math.Ceiling(centerX + radiusX));
@@ -498,17 +507,20 @@ public sealed class EnvironmentCanvas
         int maxY = Math.Min(EnvironmentCanvasPolicy.Size - 1, (int)Math.Ceiling(centerY + radiusY));
         bool changed = false;
         for (int y = minY; y <= maxY; y++)
-        for (int x = minX; x <= maxX; x++)
         {
-            double offsetX = (x - centerX) / radiusX;
-            double offsetY = (y - centerY) / radiusY;
-            if (square
-                ? Math.Abs(offsetX) > 1.0 || Math.Abs(offsetY) > 1.0
-                : (offsetX * offsetX) + (offsetY * offsetY) > 1.0)
+            double offsetY = (y - centerY) * inverseRadiusY;
+            double offsetYSquared = offsetY * offsetY;
+            for (int x = minX; x <= maxX; x++)
             {
-                continue;
+                double offsetX = (x - centerX) * inverseRadiusX;
+                if (square
+                    ? Math.Abs(offsetX) > 1.0 || Math.Abs(offsetY) > 1.0
+                    : (offsetX * offsetX) + offsetYSquared > 1.0)
+                {
+                    continue;
+                }
+                changed |= Write(x, y, color);
             }
-            changed |= Write(x, y, color);
         }
         if (changed) Revision++;
     }
@@ -536,21 +548,48 @@ public sealed class EnvironmentCanvas
     private void Fill(int startX, int startY, EnvironmentColor color)
     {
         if (!TrySample(startX, startY, out EnvironmentColor target) || target == color) return;
+
+        // Scanline flood fill preserves the same 4-neighbour result as the old pixel stack but
+        // queues contiguous spans instead of four entries per painted pixel. A full-room bucket
+        // fill therefore stays bounded instead of growing a very large duplicate-heavy stack.
         var pending = new Stack<(int X, int Y)>();
         pending.Push((startX, startY));
+        bool changed = false;
         while (pending.Count > 0)
         {
-            (int x, int y) = pending.Pop();
-            if (x < 0 || y < 0 || x >= EnvironmentCanvasPolicy.Size || y >= EnvironmentCanvasPolicy.Size) continue;
-            if (!TrySample(x, y, out EnvironmentColor current) || current != target) continue;
-            Write(x, y, color);
-            pending.Push((x + 1, y));
-            pending.Push((x - 1, y));
-            pending.Push((x, y + 1));
-            pending.Push((x, y - 1));
+            (int seedX, int y) = pending.Pop();
+            if (!Matches(seedX, y, target)) continue;
+
+            int left = seedX;
+            while (left > 0 && Matches(left - 1, y, target)) left--;
+            int right = seedX;
+            while (right < EnvironmentCanvasPolicy.Size - 1 && Matches(right + 1, y, target)) right++;
+
+            bool queuedUp = false;
+            bool queuedDown = false;
+            for (int x = left; x <= right; x++)
+            {
+                changed |= Write(x, y, color);
+
+                if (y > 0)
+                {
+                    bool matchUp = Matches(x, y - 1, target);
+                    if (matchUp && !queuedUp) pending.Push((x, y - 1));
+                    queuedUp = matchUp;
+                }
+                if (y < EnvironmentCanvasPolicy.Size - 1)
+                {
+                    bool matchDown = Matches(x, y + 1, target);
+                    if (matchDown && !queuedDown) pending.Push((x, y + 1));
+                    queuedDown = matchDown;
+                }
+            }
         }
-        Revision++;
+        if (changed) Revision++;
     }
+
+    private bool Matches(int x, int y, EnvironmentColor color) =>
+        TrySample(x, y, out EnvironmentColor current) && current == color;
 
     private bool Write(int x, int y, EnvironmentColor color)
     {

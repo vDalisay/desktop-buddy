@@ -26,7 +26,21 @@ public partial class EnvironmentCustomizationBootstrap : Node
     private EnvironmentDecorationLayer? _decorationLayer;
     private EnvironmentDecorator? _decorator;
     private readonly EnvironmentPresentationVisibility _presentationVisibility = new();
+    private bool _workCompanionSubscribed;
     internal EnvironmentPaintStore? PaintStore => _paintStore;
+
+    /// <summary>
+    /// Supplies the normal-run composition root directly. Autoload startup can precede the
+    /// sandbox entering the scene tree, so this seam avoids using the scene tree as a service
+    /// locator during normal boot. Isolated scenarios may still use the discovery fallback.
+    /// </summary>
+    public void Configure(SandboxRoot sandbox)
+    {
+        ArgumentNullException.ThrowIfNull(sandbox);
+        if (GodotObject.IsInstanceValid(_sandbox) && !ReferenceEquals(_sandbox, sandbox))
+            throw new InvalidOperationException("Environment customization is already bound to another sandbox.");
+        _sandbox = sandbox;
+    }
 
     /// <summary>Reset Progress wipes the painted room along with the rest of the save.</summary>
     public void ClearPaintedBackground()
@@ -39,22 +53,32 @@ public partial class EnvironmentCustomizationBootstrap : Node
     internal bool HasPaintBackgroundRegistration => _registration is not null;
     internal bool HasDecorateRoomRegistration => _decoratorRegistration is not null;
 
-    public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
+    public override void _Ready()
+    {
+        ProcessMode = ProcessModeEnum.Always;
+        SetProcess(true);
+    }
 
     public override void _Process(double delta)
     {
         if (DisplayServer.GetName() == "headless") return;
+
+        // Startup-test scenes do not pass through Bootstrap, so retain discovery as a narrow
+        // compatibility fallback. Normal boot injects this reference before the sandbox enters.
         if (!GodotObject.IsInstanceValid(_sandbox))
             _sandbox = FindFirst<SandboxRoot>(GetTree().Root);
 
         if (_registration is not null)
         {
-            if (GodotObject.IsInstanceValid(_sandbox))
-                _presentationVisibility.SetWorkCompanionActive(_sandbox!.Window.WorkCompanionActive);
+            SubscribeWorkCompanionState();
+            SetProcess(false);
             return;
         }
 
-        var commandBar = FindFirst<Win98CommandBarBootstrap>(GetTree().Root);
+        Win98CommandBarBootstrap? commandBar = GetNodeOrNull<Win98CommandBarBootstrap>(
+            "/root/Win98CommandBarBootstrap");
+        if (!GodotObject.IsInstanceValid(commandBar))
+            commandBar = FindFirst<Win98CommandBarBootstrap>(GetTree().Root);
         EnvironmentProgressState? state = _sandbox?.Saves.EnvironmentProgress;
         if (!GodotObject.IsInstanceValid(_sandbox) || !GodotObject.IsInstanceValid(commandBar) || state is null) return;
 
@@ -103,6 +127,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
             _decorator.ConfigurePreferences(_sandbox.Shell);
             GetTree().Root.AddChild(_decorator);
             RegisterDecorator(commandBar, _decorator);
+            SubscribeWorkCompanionState();
         }
         _registration = commandBar.RegisterCustomizeCommand(
             new CustomizeCommandDefinition(
@@ -111,8 +136,23 @@ public partial class EnvironmentCustomizationBootstrap : Node
                 "Paint the room background.",
                 CustomizeCommandIds.PaintBackgroundOrder),
             _backgroundEditor.Open);
+        SetProcess(false);
         Log.Info(LogCategory, "Paint Background registered in the Paint menu.");
     }
+
+    private void SubscribeWorkCompanionState()
+    {
+        if (_workCompanionSubscribed || !GodotObject.IsInstanceValid(_sandbox) ||
+            !GodotObject.IsInstanceValid(_sandbox!.Window))
+            return;
+
+        _sandbox.Window.WorkCompanionActiveChanged += OnWorkCompanionActiveChanged;
+        _workCompanionSubscribed = true;
+        _presentationVisibility.SetWorkCompanionActive(_sandbox.Window.WorkCompanionActive);
+    }
+
+    private void OnWorkCompanionActiveChanged(bool active) =>
+        _presentationVisibility.SetWorkCompanionActive(active);
 
     /// <summary>
     /// Registers the command whatever this build's scope is. The scenario that proves the
@@ -146,6 +186,12 @@ public partial class EnvironmentCustomizationBootstrap : Node
 
     public override void _ExitTree()
     {
+        if (_workCompanionSubscribed && GodotObject.IsInstanceValid(_sandbox) &&
+            GodotObject.IsInstanceValid(_sandbox!.Window))
+        {
+            _sandbox.Window.WorkCompanionActiveChanged -= OnWorkCompanionActiveChanged;
+        }
+        _workCompanionSubscribed = false;
         _registration?.Dispose();
         _registration = null;
         _decoratorRegistration?.Dispose();
