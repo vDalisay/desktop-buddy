@@ -80,7 +80,8 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 
 1. **FR-004.1:** WHEN the buddy is rendered THEN it SHALL use an original minimalist robot/mannequin design with a readable six-circle silhouette and simple emoticons, including expressions such as `:)` and `:(`, drawn directly on the head circle.
 2. **FR-004.2:** WHILE the physical head rotates THEN its emoticon SHALL remain upright in world/screen space without constraining the head body's rotation.
-3. **FR-004.3:** WHILE physical interactions occur, the buddy SHALL remain immortal and SHALL NOT die, dismember, or display blood or realistic wounds.
+3. **FR-004.3:** WHILE physical interactions occur, the buddy SHALL remain immortal and SHALL NOT die, dismember, or display realistic wounds.
+3. **FR-004.3a:** WHERE the build ships Gore Mode AND the player has enabled it, piercing hits MAY open non-realistic bleeding wounds that stain the buddy and the room; WHILE Gore Mode is disabled, or in a build that does not ship it, no blood SHALL be displayed. Gore Mode SHALL remain presentation-only and SHALL NOT alter pain, payout, mood, knockout, or any other simulated outcome, and the buddy SHALL remain immortal with it enabled (owner instruction 2026-08-24).
 4. **FR-004.4:** WHEN the buddy is struck, burned, grabbed, knocked down, or knocked unconscious THEN feedback SHALL remain non-graphic and slapstick.
 5. **FR-004.5:** WHEN the buddy interacts autonomously THEN it SHALL NOT directly attack the player.
 
@@ -438,7 +439,7 @@ The first Steam release includes:
 
 ## 9. Explicitly Out of Scope
 
-- Blood, bleeding, realistic injury, death, or dismemberment.
+- Realistic injury, death, or dismemberment. Non-realistic bleeding moved into scope as the opt-in Gore Mode (owner instruction 2026-08-24); see FR-004.3a.
 - Copied *Interactive Buddy* art, audio, dialogue, skins, branding, or other expressive content.
 - Written dialogue or voice acting.
 - Multiple buddies, multiple save slots/profiles, multiplayer, controller requirements, or touch requirements.
@@ -450,7 +451,6 @@ The first Steam release includes:
 
 ## 10. Future Scope (Not a Launch Commitment)
 
-- Optional non-realistic bleeding, subject to a separate product and presentation specification.
 - Buddy coloring and paint interactions as content padding.
 - Cosmetic progression capable of extending the progression curve beyond the current 209-minute catalogue target.
 - Steam Workshop support for custom buddies; architecture may avoid needless lock-in, but no Workshop API, mod format, compatibility contract, or custom-buddy tooling is required now.

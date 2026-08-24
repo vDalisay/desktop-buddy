@@ -451,7 +451,7 @@ implementation of every M4 task is unblocked.
 ## Presentation, Accessibility, and Performance
 
 - **Art style:** Crisp anti-aliased vector/shape art with flat colors, dark outlines, simple circular forms, restrained shading, and an original modernized Flash-era interface.
-- **Excluded presentation:** No pixel-art treatment, copied reference assets, realistic wounds, or current-scope blood effects.
+- **Excluded presentation:** No pixel-art treatment, copied reference assets, or realistic wounds. Non-realistic blood ships behind Gore Mode, off by default (owner instruction 2026-08-24).
 - **Settings:** Master volume, SFX volume, mute while in Work Mode, reduced motion, screen-shake toggle, reduced particles, photosensitivity-safe effects, UI/world zoom, anti-aliasing, V-sync, and a remappable global mode hotkey.
 - **Default presentation settings:** V-sync On, `2x` MSAA, Master volume `50%`, SFX volume `50%`, Mute in Work Mode On, Screen Shake On, Reduced Motion Off, Reduced Particles Off, and Photosensitivity-Safe Effects On.
 - **Graphics choices:** V-sync exposes On/Off; anti-aliasing exposes Off/`2x`/`4x`/`8x` MSAA.
@@ -468,7 +468,7 @@ implementation of every M4 task is unblocked.
 - **Visual identity:** An original minimalist robot/mannequin using the readable six-circle silhouette.
 - **Face:** Simple emoticons such as `:)` and `:(` appear directly on the head circle.
 - **Mortality:** The buddy is immortal. It may be hurt or knocked unconscious, but it cannot die or be dismembered.
-- **Violence scope:** The current release uses non-graphic slapstick feedback. An optional bleeding system may be considered later and is explicitly out of scope now.
+- **Violence scope:** The default presentation is non-graphic slapstick feedback. **Gore Mode** (owner instruction 2026-08-24) is an opt-in layer over it: piercing hits — the Sword and the two real guns — open bleeding wounds that stain the buddy and the room, and the Sword can be left impaled in the part it struck. Two independent gates guard it. The build must ship it, through the positive `gore` export feature carried by the Steam Demo and Full Release presets and deliberately absent from the itch.io preset, so a preset that forgets its tag ships less rather than more; and the player must switch it on, through Settings, where it is off by default. It is presentation-only: the same seed simulates identically with it on or off, and the buddy stays immortal (FR-004.3/FR-004.3a).
 - **Object behavior:** The buddy can catch and inspect safe objects, consume food and drinks, and toss objects according to mood. It drops or flees hazardous objects and does not directly attack the player.
 - **Autonomy:** The player does not directly control locomotion. The buddy autonomously idles, approaches, flees, walks, jumps, catches, holds, consumes, and tosses objects.
 - **Experience memory:** Per-tool experience and learned hazard recognition persist across save files. Positive care can restore trust after harmful treatment.

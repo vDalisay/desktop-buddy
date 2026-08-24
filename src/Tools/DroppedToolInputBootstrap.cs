@@ -13,6 +13,7 @@ public partial class DroppedToolInputBootstrap : Node
 {
     private SandboxRoot? _sandbox;
     private DroppedToolInteractionComponent? _droppedTools;
+    private SwordImpalementComponent? _impalement;
     private bool _dropPending;
     private bool _reequipPending;
     private bool _bindingApplied;
@@ -80,6 +81,7 @@ public partial class DroppedToolInputBootstrap : Node
         {
             _sandbox = null;
             _droppedTools = null;
+            _impalement = null;
             _bindingApplied = false;
         }
         if (_droppedTools is not null && GodotObject.IsInstanceValid(_droppedTools) &&
@@ -115,6 +117,23 @@ public partial class DroppedToolInputBootstrap : Node
             _sandbox.CursorTools,
             _sandbox.Grab,
             _sandbox.Buddy);
+
+        // The Sword's impalement rides along here because this is the one place that holds a
+        // live dropped-tool component: an impaled blade is a dropped blade that has been
+        // pinned, so it needs the very transaction this bootstrap owns.
+        if (_sandbox.Gore.IsInitialized)
+        {
+            _impalement = new SwordImpalementComponent { Name = nameof(SwordImpalementComponent) };
+            _sandbox.AddChild(_impalement);
+            _impalement.Initialize(
+                _sandbox.Pipeline,
+                _sandbox.Buddy,
+                _sandbox.CursorTools,
+                _droppedTools,
+                _sandbox.Grab,
+                _sandbox.Gore);
+        }
+
         return true;
     }
 }

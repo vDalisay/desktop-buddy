@@ -19,6 +19,7 @@ public partial class CharacterEditorHost
     private const string SoundGroup = "Sound";
     private const string DisplayGroup = "Display";
     private const string EffectsGroup = "Accessibility";
+    private const string ContentGroup = "Content";
     private const string BehaviourGroup = "Startup and Behaviour";
     private const string DataGroup = "Saved Data";
 
@@ -50,6 +51,7 @@ public partial class CharacterEditorHost
         ComposeDisplayRows(settings, Edit);
         ComposeColorRows(settings);
         ComposeEffectsRows(settings, Edit);
+        ComposeContentRows(settings, Edit);
         ComposeBehaviourRows(settings, Edit);
         ComposeDataRows();
     }
@@ -248,6 +250,34 @@ public partial class CharacterEditorHost
                 ApplyEffects();
             },
             EffectsGroup);
+    }
+
+    /// <summary>
+    /// Content-sensitivity rows. The Gore Mode row exists only in a build that ships the
+    /// feature: <see cref="DemoScope.IncludesGore"/> is false for the itch.io preset, and a
+    /// settings row for something the build cannot do would advertise a deferred feature.
+    /// The presenters ask the same question again, so the absent row is a courtesy rather
+    /// than the gate.
+    /// </summary>
+    private void ComposeContentRows(
+        LocalSettingsSave settings,
+        Action<Func<LocalSettingsSave, LocalSettingsSave>> edit)
+    {
+        if (!DemoScope.IncludesGore)
+            return;
+
+        _settingsPanel.AddToggle(
+            "Gore Mode",
+            "Lets stabs and bullet wounds bleed, staining Buddy and the room. " +
+            "Buddy is unharmed either way - this changes nothing but the look.",
+            settings.GoreEnabled,
+            value =>
+            {
+                edit(s => s with { GoreEnabled = value });
+                _sandbox.ApplyEffectsSettings(
+                    EffectsSettings.FromSave(_sandbox.Shell.CurrentLocalSettings));
+            },
+            ContentGroup);
     }
 
     private void ComposeBehaviourRows(

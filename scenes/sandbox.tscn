@@ -17,6 +17,8 @@
 [ext_resource type="Script" path="res://src/Tools/CursorToolController.cs" id="14_cursor_tools"]
 [ext_resource type="Resource" path="res://data/buddy/lab_cursor_tool_boxing_glove.tres" id="15_glove_profile"]
 [ext_resource type="Resource" path="res://data/buddy/lab_cursor_tool_baseball_bat.tres" id="15_bat_profile"]
+[ext_resource type="Resource" path="res://data/tools/cursor_tool_sword.tres" id="15_sword_profile"]
+[ext_resource type="Script" path="res://src/Interaction/GoreComponent.cs" id="15_gore"]
 [ext_resource type="Script" path="res://src/Tools/CareStrokeComponent.cs" id="16_care"]
 [ext_resource type="Script" path="res://src/Buddy/Presentation/BuddyReactionComponent.cs" id="17_reactions"]
 [ext_resource type="Resource" path="res://data/buddy/lab_reaction.tres" id="18_reaction_profile"]
@@ -143,7 +145,7 @@ corner_radius_top_right = 5
 corner_radius_bottom_right = 5
 corner_radius_bottom_left = 5
 
-[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Ropes", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "KnockoutStars", "TreatSparkles", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "CareCursorVisual", "Reactions", "ReactionAudio", "ImpactFeedback", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
+[node name="Sandbox" type="Node2D" node_paths=PackedStringArray("Window", "Shell", "Boundaries", "Buddy", "Grab", "Ropes", "Pointer", "Containment", "Pipeline", "Objects", "Launcher", "CursorTools", "CursorGuns", "CursorGunVisual", "Grenades", "GrenadeVisual", "LooseObjectVisual", "GrenadeVisualLegacy", "GrenadeAudio", "FireSprayer", "FireVisualLegacy", "FireVisual", "KnockoutStars", "TreatSparkles", "FireAudio", "SprayerVisual", "Scorch", "CameraKick", "CareStroke", "ToolReactions", "CareCursor", "CareCursorVisual", "Reactions", "ReactionAudio", "ImpactFeedback", "Gore", "SwingHitLag", "ImpactVisualOffset", "SwingAudio", "MoneyHud", "VisualPresenter", "LightingRig", "PosePipeline", "Facing", "Activities", "HeadLookAt", "Face", "CursorToolVisual")]
 script = ExtResource("1_sandbox")
 Window = NodePath("DesktopWindowController")
 Shell = NodePath("DesktopShellController")
@@ -180,6 +182,7 @@ CareCursorVisual = NodePath("CareToolVisual3D")
 Reactions = NodePath("BuddyReactionComponent")
 ReactionAudio = NodePath("ReactionAudioPresenter")
 ImpactFeedback = NodePath("ImpactFeedbackPresenter")
+Gore = NodePath("GoreComponent")
 SwingHitLag = NodePath("SwingHitLagComponent")
 ImpactVisualOffset = NodePath("ImpactVisualOffsetComponent")
 SwingAudio = NodePath("SwingAudioComponent")
@@ -416,7 +419,7 @@ Profile = ExtResource("52_grenade_profile")
 
 [node name="CursorToolController" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Boundaries")]
 script = ExtResource("14_cursor_tools")
-Profiles = Array[Resource]([ExtResource("15_glove_profile"), ExtResource("15_bat_profile")])
+Profiles = Array[Resource]([ExtResource("15_glove_profile"), ExtResource("15_bat_profile"), ExtResource("15_sword_profile")])
 Pipeline = NodePath("../InteractionPipeline")
 Boundaries = NodePath("../RoomBounds")
 
@@ -539,6 +542,11 @@ Pipeline = NodePath("../InteractionPipeline")
 CursorTools = NodePath("../CursorToolController")
 HitLag = NodePath("../SwingHitLagComponent")
 Profile = ExtResource("26_impact_feedback_profile")
+
+[node name="GoreComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Buddy")]
+script = ExtResource("15_gore")
+Pipeline = NodePath("../InteractionPipeline")
+Buddy = NodePath("../Buddy")
 
 [node name="PuppetRoomContainmentComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Recovery")]
 script = ExtResource("11_containment")

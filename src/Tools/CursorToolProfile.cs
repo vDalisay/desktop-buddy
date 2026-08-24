@@ -15,6 +15,9 @@ public enum CursorToolVisual3DKind
     /// <summary>The tickle feather. Only ever seen on its dropped world form; the equipped
     /// feather rides the pointer through CareToolVisual3D instead.</summary>
     FeatherDuster = 3,
+
+    /// <summary>The Sword: a flat blade, a crossguard, a grip and a pommel.</summary>
+    Sword = 4,
 }
 
 /// <summary>
@@ -257,10 +260,11 @@ public partial class CursorToolProfile : GameResource
             errors.Add($"{nameof(Visual3DKind)} must name a supported visual kind");
         }
 
-        if (Visual3DKind == CursorToolVisual3DKind.LathedBat && !IsSwingCapable)
+        if (Visual3DKind is CursorToolVisual3DKind.LathedBat or CursorToolVisual3DKind.Sword &&
+            !IsSwingCapable)
         {
             errors.Add(
-                $"{nameof(Visual3DKind)} LathedBat requires an elongated swing-capable profile");
+                $"{nameof(Visual3DKind)} {Visual3DKind} requires an elongated swing-capable profile");
         }
 
         if (Visual3DKind == CursorToolVisual3DKind.BoxingGlove && IsElongated)

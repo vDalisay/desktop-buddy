@@ -1,0 +1,71 @@
+[gd_resource type="Resource" script_class="CursorToolProfile" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://src/Tools/CursorToolProfile.cs" id="1_cursor_tool"]
+[ext_resource type="Script" path="res://src/Tools/SwingToolProfile.cs" id="2_swing_tool"]
+[ext_resource type="Resource" path="res://data/objects/dropped_sword.tres" id="3_world_drop"]
+
+[sub_resource type="Resource" id="Resource_swing_sword"]
+resource_name = "SteamDemoSwordSwing"
+script = ExtResource("2_swing_tool")
+MaxChargeTicks = 600
+LeanDegrees = 28.0
+WindupTicks = 10
+WindupDegrees = 62.0
+SweepDegrees = 230.0
+FollowThroughDegrees = 18.0
+FollowThroughTicks = 8
+TipSpeedUncharged = 2200.0
+TipSpeedFull = 6600.0
+MinimumSweepTicks = 3
+MaximumSweepTicks = 48
+RecoveryTicks = 30
+SwingAnchorForceCap = 3000000.0
+FreeSwingAnchorSpeedCap = 2400.0
+FreeSwingForceCap = 120000.0
+ContactObservationGraceTicks = 2
+ShakeMaxAmplitudePx = 2.4
+ShakePrimaryHz = 33.0
+ShakeSecondaryHz = 41.0
+GlintSeconds = 0.30
+OneSecondGlintSizePx = 8.0
+ThreeSecondGlintSizePx = 14.0
+FiveSecondGlintSizePx = 20.0
+DirectionTravelThreshold = 0.5
+GripColor = Color(0.156863, 0.117647, 0.086275, 1)
+HitLagMinTicks = 4
+HitLagMaxTicks = 44
+AudioVolumeDb = -6.0
+GripStiffness = 900000.0
+GripDamping = 120000.0
+SwingAnchorStiffness = 240000.0
+SwingAnchorDamping = 1000.0
+SwingServoStiffness = 50000.0
+SwingServoDamping = 120000.0
+SwingTorqueCap = 70000000.0
+FullChargeBuddyShoveImpulse = 4200.0
+BuddyShoveChargeExponent = 3.0
+
+[resource]
+resource_name = "SteamDemoSword"
+script = ExtResource("1_cursor_tool")
+ContentId = "tool.sword"
+Radius = 6.0
+Length = 116.0
+Mass = 6.0
+Stiffness = 5200.0
+Damping = 250.0
+MaximumForce = 120000.0
+LinearDamp = 0.5
+AngularDamp = 1.0
+AlignStiffness = 420000.0
+AlignDamping = 68000.0
+MaximumAlignTorque = 500000.0
+MinimumAlignSpeed = 60.0
+MinimumArmingTravel = 8.0
+WallClearance = 2.0
+VisualColor = Color(0.741176, 0.776471, 0.815686, 1)
+OutlineColor = Color(0.239216, 0.262745, 0.301961, 1)
+VisualDepthOffset = 144.0
+Visual3DKind = 4
+Swing = SubResource("Resource_swing_sword")
+WorldDrop = ExtResource("3_world_drop")

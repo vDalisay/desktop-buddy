@@ -376,6 +376,13 @@ public sealed record LocalSettingsSave
     public bool ScreenShake { get; init; } = true;
     public bool ReducedParticles { get; init; }
     public bool PhotosensitivitySafe { get; init; } = true;
+
+    /// <summary>
+    /// Gore Mode: piercing hits open bleeding wounds that stain the room. Off by default,
+    /// like every other content-sensitivity default here — the player opts in. Builds that
+    /// do not ship the feature ignore this value entirely rather than trusting the file.
+    /// </summary>
+    public bool GoreEnabled { get; init; }
     public int Msaa { get; init; } = 2;
     public bool VSync { get; init; } = true;
     public bool AlwaysOnTop { get; init; } = true;

@@ -95,6 +95,7 @@ public partial class SandboxRoot : Node2D
     [Export] public BuddyReactionComponent Reactions { get; set; } = null!;
     [Export] public ReactionAudioPresenter ReactionAudio { get; set; } = null!;
     [Export] public ImpactFeedbackPresenter ImpactFeedback { get; set; } = null!;
+    [Export] public GoreComponent Gore { get; set; } = null!;
     [Export] public SwingHitLagComponent SwingHitLag { get; set; } = null!;
     [Export] public ImpactVisualOffsetComponent ImpactVisualOffset { get; set; } = null!;
     [Export] public SwingAudioComponent SwingAudio { get; set; } = null!;
@@ -238,6 +239,7 @@ public partial class SandboxRoot : Node2D
         ImpactVisualOffset.Initialize();
         SwingAudio.Initialize();
         ImpactFeedback.Initialize();
+        Gore.Initialize();
         MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();
         // After the visual presenter: the scorch driver writes through that presenter's own
@@ -616,6 +618,7 @@ public partial class SandboxRoot : Node2D
         FireVisualLegacy.ApplyEffectsSettings(settings);
         CameraKick.ApplyEffectsSettings(settings);
         ImpactFeedback.ApplyEffectsSettings(settings);
+        Gore.ApplyEffectsSettings(settings);
     }
 
     /// <summary>The effect settings currently in force.</summary>
@@ -693,6 +696,9 @@ public partial class SandboxRoot : Node2D
 
         Pipeline.ClearRollingPain();
         FireSprayer.ClearBurning();
+        // The Repair Kit patches the wounds up with everything else it fixes: a kit that
+        // put out a fire but left him bleeding would read as broken.
+        Gore.ClearAll();
         Buddy.Arbiter.SetStatusHazard(false, 0.0f);
     }
 
@@ -705,6 +711,7 @@ public partial class SandboxRoot : Node2D
         // DECISIONS "Fail-safe cleanup" already promises a hard reposition clears Burning;
         // this is the one call that makes that sentence true.
         FireSprayer.ClearBurning();
+        Gore.ClearAll();
         Buddy.Arbiter.SetStatusHazard(false, 0.0f);
         if (Grab.IsGrabbing) Grab.Release(countsAsThrow: false);
     }

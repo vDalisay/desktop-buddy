@@ -147,11 +147,12 @@ public sealed class CataloguePolicyTests
     }
 
     [Fact]
-    public void TheLaunchCatalogueIsTheSeventeenConfirmedEntries()
+    public void TheLaunchCatalogueIsTheEighteenConfirmedEntries()
     {
         // FR-013.2 by count and by ID, so an entry cannot be quietly added or dropped.
-        // Seventeen since the Rope Suspender joined them (owner instruction 2026-08-22).
-        Assert.Equal(17, CataloguePolicy.LaunchContentIds.Count);
+        // Eighteen since the Sword joined them for Gore Mode (owner instruction 2026-08-24);
+        // seventeen before that, when the Rope Suspender did (owner instruction 2026-08-22).
+        Assert.Equal(18, CataloguePolicy.LaunchContentIds.Count);
         Assert.Equal(
             CataloguePolicy.LaunchContentIds.Count,
             CataloguePolicy.LaunchContentIds.Distinct().Count());

@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="ToolDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/Content/ToolDefinition.cs" id="1"]
+
+[resource]
+resource_name = "CatalogueSword"
+script = ExtResource("1")
+ContentId = "tool.sword"
+Kind = 1
+PriceCredits = 12000
+ProgressionOrder = 85
+Visible = true
+NameKey = "shop.tool.sword.name"
+DescriptionKey = "shop.tool.sword.description"
+RequiresLaunchScene = false
+RequiresIcon = false
