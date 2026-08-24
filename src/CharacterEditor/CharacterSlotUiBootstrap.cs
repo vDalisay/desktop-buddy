@@ -38,7 +38,9 @@ public partial class CharacterSlotUiBootstrap : Node
 
     /// <summary>
     /// Normal-run composition seam. The store owns character filesystem policy and emits library
-    /// invalidation, so this UI does not need to rescan user://characters on a timer.
+    /// invalidation, so this UI does not need to rescan user://characters on a timer. The sandbox
+    /// has not entered the tree yet when Bootstrap calls this, so entitlement binding remains on
+    /// the first process tick after SandboxRoot has initialized its run context.
     /// </summary>
     public void Configure(SandboxRoot sandbox, CharacterStore characters)
     {
@@ -51,7 +53,7 @@ public partial class CharacterSlotUiBootstrap : Node
         _characters = characters;
         _characters.LibraryChanged -= OnCharacterLibraryChanged;
         _characters.LibraryChanged += OnCharacterLibraryChanged;
-        _slots = new CharacterSlotEntitlementState(sandbox.Progress, sandbox.Economy);
+        _slots = null;
         _characterLibraryInvalidated = true;
         _untilRefresh = 0.0;
     }
