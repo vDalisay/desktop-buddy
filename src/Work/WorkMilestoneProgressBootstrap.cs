@@ -35,9 +35,19 @@ public partial class WorkMilestoneProgressBootstrap : Node
             return;
         _untilRefresh = RefreshIntervalSeconds;
 
-        ResolveRuntime();
+        ResolveCoordinator();
         if (!GodotObject.IsInstanceValid(_coordinator) || !_coordinator!.IsActive ||
-            _coordinator.Session is null || !GodotObject.IsInstanceValid(_view))
+            _coordinator.Session is null)
+        {
+            // The companion view is intentionally short-lived. Do not recursively search the
+            // entire scene tree for a node that cannot exist while the long-lived coordinator
+            // says Work mode is inactive.
+            RemoveLabel();
+            return;
+        }
+
+        ResolveActiveView();
+        if (!GodotObject.IsInstanceValid(_view))
         {
             RemoveLabel();
             return;
@@ -54,10 +64,14 @@ public partial class WorkMilestoneProgressBootstrap : Node
         _label!.Text = text;
     }
 
-    private void ResolveRuntime()
+    private void ResolveCoordinator()
     {
         if (!GodotObject.IsInstanceValid(_coordinator))
             _coordinator = GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
+    }
+
+    private void ResolveActiveView()
+    {
         if (!GodotObject.IsInstanceValid(_view))
             _view = GetTree().Root.FindChild(nameof(WorkCompanionView), true, false) as WorkCompanionView;
     }
