@@ -55,6 +55,13 @@ public sealed class CharacterStore
     public Task<CharacterLoadResult> LoadAsync(Guid id, CancellationToken token) =>
         Task.Run(() => LoadCore(id, token), CancellationToken.None);
 
+    /// <summary>
+    /// Synchronous persistence-core seam for another store that already owns the worker task.
+    /// Keeping the blocking file work here avoids queueing a second ThreadPool work item and then
+    /// synchronously waiting for it from <see cref="CharacterPaintStore"/>.
+    /// </summary>
+    internal CharacterLoadResult LoadForPaint(Guid id, CancellationToken token) => LoadCore(id, token);
+
     public Task<CharacterSaveResult> SaveAsync(
         CharacterDocument document,
         CancellationToken token) =>
@@ -120,13 +127,6 @@ public sealed class CharacterStore
             }
             LoadAttempt backup = TryLoadFile(_paths.Backup(id), id, token);
 
-            // Never rename away the only copy. A character's first save writes no backup — the
-            // backup appears on the second save — so quarantining the primary turned one bad
-            // read into permanent loss: the next load found nothing at all and reported
-            // NotFound, which reads as "you never had this character" rather than "this file
-            // would not parse" (owner report 2026-08-21). With a backup present, quarantine is
-            // still right: it clears the way for the copy that can be recovered, or for two
-            // junk files to be swept aside together.
             if (primary.Status == AttemptStatus.Invalid && backup.Status != AttemptStatus.Missing)
                 quarantinedPrimary = Quarantine(_paths.Primary(id));
 
@@ -333,7 +333,6 @@ public sealed class CharacterStore
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // Preserve the original operation result. A stale .tmp is never a load source.
         }
     }
 
