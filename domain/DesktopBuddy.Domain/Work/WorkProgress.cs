@@ -287,6 +287,12 @@ public sealed class WorkSessionState
     public Guid SessionId { get; }
     public WorkCounterSnapshot Counters { get; private set; }
 
+    /// <summary>
+    /// Live, allocation-free membership view for presentation and milestone evaluation. Durable
+    /// persistence still uses <see cref="Snapshot"/>, which returns a sorted detached copy.
+    /// </summary>
+    public IReadOnlyCollection<string> EarnedRepeatPerSessionMilestoneIds => _earnedSession;
+
     public void Record(WorkActivityKind kind, long count = 1) => Counters = Counters.Add(kind, count);
 
     public WorkSessionSnapshot Snapshot() => new(
