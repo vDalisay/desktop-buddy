@@ -209,11 +209,11 @@ jobs:
 
   experimental-web:
     # Godot PR #118976 is experimental and currently targets .NET browser-wasm through a
-    # custom editor/SDK/template. Pin the exact fork commit so this job cannot silently change.
+    # custom editor/SDK/template. Pin the exact PR head so this job cannot silently change.
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
-      GODOT_WEB_PR_SHA: f680cb44a1dee7673b2678f628478e1b6c01c8a1
+      GODOT_WEB_PR_SHA: f680cb44eb18c9b354678a487e43e07efb56d9be
       EMSDK_VERSION: 3.1.56
     steps:
       - uses: actions/checkout@v4
@@ -233,19 +233,23 @@ jobs:
             libx11-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev \
             libasound2-dev libpulse-dev libudev-dev libxi-dev libxrandr-dev \
             libwayland-dev libxkbcommon-dev libfontconfig1-dev libdbus-1-dev
-          dotnet workload install wasm-tools
+          (cd "$RUNNER_TEMP" && dotnet workload install wasm-tools)
 
-      - name: Fetch pinned Godot C# Web fork
+      - name: Fetch pinned Godot C# Web PR
         shell: bash
         run: |
           set -euo pipefail
           SRC="$RUNNER_TEMP/godot-csharp-web"
           rm -rf "$SRC"
           git init "$SRC"
-          git -C "$SRC" remote add origin https://github.com/NoctemCat/godot.git
-          git -C "$SRC" fetch --depth=1 origin "$GODOT_WEB_PR_SHA"
+          git -C "$SRC" remote add origin https://github.com/godotengine/godot.git
+          git -C "$SRC" fetch --depth=1 origin pull/118976/head
           git -C "$SRC" checkout --detach FETCH_HEAD
-          test "$(git -C "$SRC" rev-parse HEAD)" = "$GODOT_WEB_PR_SHA"
+          ACTUAL_SHA="$(git -C "$SRC" rev-parse HEAD)"
+          if [ "$ACTUAL_SHA" != "$GODOT_WEB_PR_SHA" ]; then
+            echo "PR #118976 moved: expected $GODOT_WEB_PR_SHA, fetched $ACTUAL_SHA" >&2
+            exit 1
+          fi
           echo "GODOT_WEB_SRC=$SRC" >> "$GITHUB_ENV"
 
       - name: Build experimental Godot editor and .NET SDK
