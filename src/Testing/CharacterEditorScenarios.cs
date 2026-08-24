@@ -11,6 +11,7 @@ using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
@@ -43,7 +44,7 @@ internal static class CharacterEditorScenarioSupport
         var preview = new BuddyVisualRigView { Name = "EditorPreview", ProcessMode = Node.ProcessModeEnum.Always };
         lab.AddChild(preview);
         preview.Initialize(lab.Buddy.VisualProfile, source);
-        preview.ApplyPose(Frame(source));
+        preview.ApplyPose(Frame(source, preview));
         var library = new CharacterLibraryIndex(new CharacterFileSystem(), root);
         int nextGuid = 100;
         var session = new CharacterEditorSession(
@@ -64,14 +65,16 @@ internal static class CharacterEditorScenarioSupport
     public static ScenarioResult Result(IReadOnlyList<StartupCheck> checks, ulong seed) =>
         new(checks.All(static check => check.Passed), checks, [$"seed={seed}"]);
 
-    private static BuddyVisualPoseFrame Frame(StaticBuddyVisualTransformSource source)
+    private static BuddyVisualPoseFrame Frame(
+        StaticBuddyVisualTransformSource source,
+        BuddyVisualRigView preview)
     {
         BuddyVisualPartPose Pose(BuddyPartId id)
         {
             BuddyVisualTransform transform = source.ReadTransform(id);
             return new BuddyVisualPartPose(
                 transform,
-                WorldPlaneMapping.To3D(transform.Position),
+                preview.LanePosition(id, transform.Position),
                 Vector3.Zero);
         }
         return new BuddyVisualPoseFrame(
@@ -263,6 +266,24 @@ public sealed class EditorPreviewHasNoPhysicsScenario : IScenario
             checks.Add(new StartupCheck("a8_preview_has_no_physics_authority", isolated,
                 $"physics={physics} preview={context.Preview.ActiveAppearance?.CharacterId} " +
                 $"live={context.Lab.VisualPresenter.RigView.ActiveAppearance?.CharacterId}"));
+
+            // The preview must stand in the same depth lanes the paint mapper sorts by. Posed
+            // flat, the torso's forward bulge wins the depth test in bands the mapper hands to
+            // the head, the hands and the feet, and that surface can be seen and clicked but
+            // never painted - the neck strip the owner reported on 2026-08-24.
+            var lanes = new List<string>();
+            bool laned = true;
+            foreach (PaintPartShape shape in FrontalPaintMapper.CreateDefault().Shapes)
+            {
+                var partId = (BuddyPartId)shape.Part;
+                float socketDepth = context.Preview.GetPartSocket(partId).Position.Z;
+                laned &= Mathf.IsEqualApprox(socketDepth, (float)shape.Depth);
+                lanes.Add($"{shape.Part}={socketDepth}/{shape.Depth}");
+            }
+            checks.Add(new StartupCheck(
+                "preview_parts_stand_in_the_paint_mappers_depth_lanes",
+                laned,
+                string.Join(" ", lanes)));
         }
         finally
         {

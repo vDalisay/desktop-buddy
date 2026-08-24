@@ -182,6 +182,10 @@ public sealed class PaintWorkspace
     private readonly Dictionary<PaintPart, GesturePatchBuilder> _gestureBefore = new();
     private readonly Dictionary<PaintPart, GesturePatchBuilder> _previewBefore = new();
     private readonly Dictionary<PaintPart, byte[]> _snapshotScratch = new();
+    // Pen/Eraser/Spray screen dabs are frequent and can contain hundreds of micro-hits. Reuse
+    // their transient collections so a drag does not create two managed allocations per nib.
+    private readonly List<PaintHit> _screenDabSamples = new();
+    private readonly Dictionary<PaintPart, PaintRect> _screenDabBounds = new();
     private PaintHit? _lastHit;
     private bool _gestureActive;
     private bool _previewActive;
@@ -409,28 +413,34 @@ public sealed class PaintWorkspace
             PaintPolicy.MinBrushDiameter,
             PaintPolicy.MaxBrushDiameter);
 
-        var samples = new List<PaintHit>(hits.Count);
+        _screenDabSamples.Clear();
+        _screenDabBounds.Clear();
         foreach (PaintHit hit in hits)
         {
-            if (hit.IsValid)
-                ApplyToVariants(hit, samples.Add);
+            if (!hit.IsValid) continue;
+            _screenDabSamples.Add(TransformHit(hit, mirror: false, backside: false));
+            if (_mirrorEnabled)
+                _screenDabSamples.Add(TransformHit(hit, mirror: true, backside: false));
+            if (_paintBacksideEnabled)
+                _screenDabSamples.Add(TransformHit(hit, mirror: false, backside: true));
+            if (_mirrorEnabled && _paintBacksideEnabled)
+                _screenDabSamples.Add(TransformHit(hit, mirror: true, backside: true));
         }
 
-        var boundsByPart = new Dictionary<PaintPart, PaintRect>();
-        foreach (PaintHit sample in samples)
+        foreach (PaintHit sample in _screenDabSamples)
         {
             PaintUvRegion region = PaintUvRegion.For(sample);
             PaintRect bounds = PaintSurface.StampBounds(
                 sample.Uv,
                 sampleDiameter,
                 region: region);
-            boundsByPart[sample.Part] = boundsByPart.TryGetValue(sample.Part, out PaintRect prior)
+            _screenDabBounds[sample.Part] = _screenDabBounds.TryGetValue(sample.Part, out PaintRect prior)
                 ? PaintRect.Union(prior, bounds)
                 : bounds;
         }
-        foreach ((PaintPart part, PaintRect bounds) in boundsByPart)
+        foreach ((PaintPart part, PaintRect bounds) in _screenDabBounds)
             CaptureBefore(_gestureBefore, part, bounds);
-        foreach (PaintHit sample in samples)
+        foreach (PaintHit sample in _screenDabSamples)
         {
             PaintUvRegion region = PaintUvRegion.For(sample);
             _surfaces[sample.Part].Stamp(
@@ -440,6 +450,45 @@ public sealed class PaintWorkspace
                 SelectedColor,
                 region: region);
         }
+    }
+
+    /// <summary>
+    /// Puts one texel down per supplied hit — the spray pulse. The scatter is chosen in SCREEN
+    /// space by the caller for the same reason <see cref="StampScreenDab"/> exists, but each dot
+    /// is a single pixel, so the buddy's airbrush dusts exactly the way Paint Room's does
+    /// (owner instruction 2026-08-23).
+    /// </summary>
+    public void StampScreenDots(IReadOnlyList<PaintHit> hits)
+    {
+        ArgumentNullException.ThrowIfNull(hits);
+        if (!_gestureActive || hits.Count == 0 || _selectedTool != PaintTool.Spray)
+            return;
+
+        var samples = new List<PaintHit>(hits.Count);
+        foreach (PaintHit hit in hits)
+        {
+            if (hit.IsValid)
+                ApplyToVariants(hit, samples.Add);
+        }
+
+        // Undo is captured per part over the union of the dots, before any of them lands: a
+        // pulse is one gesture step whether it wrote three texels or three hundred.
+        var boundsByPart = new Dictionary<PaintPart, PaintRect>();
+        foreach (PaintHit sample in samples)
+        {
+            PaintUvRegion region = PaintUvRegion.For(sample);
+            PaintRect bounds = PaintSurface.StampBounds(
+                sample.Uv,
+                PaintPolicy.MinBrushDiameter,
+                region: region);
+            boundsByPart[sample.Part] = boundsByPart.TryGetValue(sample.Part, out PaintRect prior)
+                ? PaintRect.Union(prior, bounds)
+                : bounds;
+        }
+        foreach ((PaintPart part, PaintRect bounds) in boundsByPart)
+            CaptureBefore(_gestureBefore, part, bounds);
+        foreach (PaintHit sample in samples)
+            _surfaces[sample.Part].Dot(sample.Uv, SelectedColor, PaintUvRegion.For(sample));
     }
 
     /// <summary>The next spray pulse's seed, stepped exactly as the internal pulse does.</summary>

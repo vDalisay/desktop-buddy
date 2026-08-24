@@ -117,7 +117,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 {
                     ClearCurveGuide();
                     _painting = false;
-                    _panel.Visible = true;
+                    SetToolsVisible(true);
                     SetStatus("Curved Line cancelled.");
                     Refresh();
                 }
@@ -283,7 +283,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         confirmBody.AddChild(confirmActions);
         Win98Dialog.Action(confirmActions, "Save and Exit", Save).Name = "PaintConfirmSaveButton";
         Win98Dialog.Action(confirmActions, "Discard", Discard).Name = "PaintDiscardButton";
-        Win98Dialog.Action(confirmActions, "Keep Editing", () => _confirm.Visible = false).Name = "PaintKeepEditingButton";
+        Win98Dialog.Action(confirmActions, "Keep Editing", () => SetConfirmVisible(false)).Name = "PaintKeepEditingButton";
     }
 
     private Button ToolButton(string name, string text, EnvironmentPaintTool tool)
@@ -307,9 +307,40 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         return button;
     }
 
+    /// <summary>
+    /// The tool panel gets out of the way for the duration of a stroke - but only while it is
+    /// docked over the canvas. Detached, it is its own desktop window that the stroke never
+    /// touches, and hiding it there made it vanish and reappear on every click (owner report
+    /// 2026-08-23).
+    /// </summary>
+    private void SetToolsVisible(bool visible)
+    {
+        if (GodotObject.IsInstanceValid(_panelPin) && _panelPin.IsFloating)
+        {
+            _panel.Visible = !_confirm.Visible;
+            return;
+        }
+        _panel.Visible = visible;
+    }
+
+    /// <summary>
+    /// Shows or hides the unsaved prompt. The prompt is drawn inside the game window and a
+    /// detached tool window is a desktop window on top of it, so the tools step aside for as
+    /// long as the question is on screen (owner report 2026-08-24).
+    /// </summary>
+    private void SetConfirmVisible(bool visible)
+    {
+        _confirm.Visible = visible;
+        if (GodotObject.IsInstanceValid(_panelPin) && _panelPin.IsFloating)
+            _panel.Visible = !visible;
+    }
+
     private static void AddColorPickerIcon(ColorPickerButton picker)
     {
-        var background = new ColorRect { Color = Win98ThemeFactory.Face, MouseFilter = Control.MouseFilterEnum.Ignore };
+        // A themed panel rather than a ColorRect: a ColorRect's colour is a snapshot, and this
+        // one sat behind the paint bucket icon in the old grey after a palette change.
+        var background = new Panel { MouseFilter = Control.MouseFilterEnum.Ignore };
+        background.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.Face));
         picker.AddChild(background);
         background.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         var icon = new TextureRect
@@ -450,7 +481,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 {
                     ClearCurveGuide();
                     _painting = false;
-                    _panel.Visible = true;
+                    SetToolsVisible(true);
                     SetStatus("Curved Line cancelled.");
                     Refresh();
                 }
@@ -461,7 +492,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             case InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true } click when TryCanonical(click.Position, out double x, out double y):
                 _painting = true;
                 _sprayPulseAccumulator = 0;
-                _panel.Visible = false;
+                SetToolsVisible(false);
                 TrackCurvePress(Canvas.CurvePhase, x, y);
                 if (Canvas.Tool == EnvironmentPaintTool.PickColor) PickColor(click.Position);
                 else Canvas.Begin(x, y);
@@ -480,7 +511,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
                 }
                 _painting = false;
                 _sprayPulseAccumulator = 0;
-                _panel.Visible = true;
+                SetToolsVisible(true);
                 if (!Canvas.CurvePending)
                     ClearCurveGuide();
                 else
@@ -661,7 +692,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         catch (Exception exception)
         {
             SetStatus($"Save failed: {exception.Message}");
-            _confirm.Visible = false;
+            SetConfirmVisible(false);
         }
         finally { _saving = false; }
     }
@@ -672,7 +703,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         if (Canvas.CancelPendingCurve()) ClearCurveGuide();
         if (Canvas.IsDirty)
         {
-            _confirm.Visible = true;
+            SetConfirmVisible(true);
             return;
         }
         Close();

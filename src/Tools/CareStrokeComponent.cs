@@ -146,12 +146,22 @@ public partial class CareStrokeComponent : Node
         ContactPart = null;
 
         ToolId selected = Pipeline.SelectedTool;
-        TickFeatherAim();
+        bool petSelected = selected == ToolId.Pet;
+        bool tickleSelected = selected == ToolId.Tickle;
+
+        // Feather aiming is moderately math-heavy and this component is routed at 120 Hz even
+        // while another tool is equipped. Only Tickle consumes the feather orientation.
+        if (tickleSelected)
+            TickFeatherAim();
+
         // The tool can be reselected between strokes, so re-derive rather than trusting the
-        // point stamped by the last SetStroke.
-        _contactPoint = ContactPointFor(selected, _cursor);
+        // point stamped by the last SetStroke. Likewise, do not scan all six Buddy bodies for
+        // contact when no care tool is selected.
+        _contactPoint = tickleSelected
+            ? ContactPointFor(selected, _cursor)
+            : _cursor;
         PuppetPartBody? part = null;
-        bool valid = _held && TryFindContactPart(_contactPoint, out part);
+        bool valid = (petSelected || tickleSelected) && _held && TryFindContactPart(_contactPoint, out part);
         if (valid)
         {
             LastContactValid = true;
@@ -159,7 +169,7 @@ public partial class CareStrokeComponent : Node
             ContactPart = (BuddyPart)(int)part!.PartId;
         }
 
-        if (selected == ToolId.Pet && valid)
+        if (petSelected && valid)
         {
             IsPetRubbing = true;
             double distance = _hadPetContact
@@ -176,8 +186,10 @@ public partial class CareStrokeComponent : Node
             _hadPetContact = false;
         }
 
-        bool tickleValid = selected == ToolId.Tickle && valid;
+        bool tickleValid = tickleSelected && valid;
         IsTickleContact = tickleValid;
+        // Advance the domain model even when another tool is equipped: this is also the anger /
+        // cooldown recovery clock, so only contact geometry—not semantic time—can be skipped.
         TickleCareResult tickle = Pipeline.TickTickle(tickleValid, delta);
         TickleHopRequested = tickle.HopRequested;
         TickleBecameAngryThisTick = tickle.BecameAngry;

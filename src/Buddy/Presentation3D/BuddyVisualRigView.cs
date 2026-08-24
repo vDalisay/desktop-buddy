@@ -252,6 +252,25 @@ public partial class BuddyVisualRigView : Node3D
         return _sockets[index];
     }
 
+    /// <summary>
+    /// Where a part sits in the depth lanes at rest, for previews that pose the rig by hand.
+    /// The runtime presenter routes every part through the same lane offsets. A preview that
+    /// skips them renders the parts coplanar, and then the torso's forward bulge wins the depth
+    /// test in bands the paint mapper hands to the head, the hands and the feet: the strip of
+    /// neck under the chin and the joins beside the hands could be seen and clicked, but the
+    /// paint landed on the part in front of them and never showed (owner report 2026-08-24).
+    /// </summary>
+    public Vector3 LanePosition(BuddyPartId partId, Vector2 worldPosition)
+    {
+        int index = CheckedPartIndex(partId);
+        EnsureInitialized();
+        return ResolveLanePosition(
+            worldPosition,
+            _partDefinitions[index].DepthOffset,
+            0.0f,
+            Vector2.Zero);
+    }
+
     public Node3D GetConnectorVisual(int index)
     {
         EnsureInitialized();

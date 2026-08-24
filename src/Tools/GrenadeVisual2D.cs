@@ -111,6 +111,10 @@ public partial class GrenadeVisual2D : Node2D
         if (!IsInitialized)
             return;
 
+        // Remember whether an effect was visible before decrementing so its final tick still
+        // queues the redraw that clears cached CanvasItem draw commands.
+        bool hadBlast = _flashTicks > 0 || _fireballTicks > 0 || _emberTicks > 0 || _ringTicks > 0;
+
         if (_flashTicks > 0)
             _flashTicks--;
         if (_fireballTicks > 0)
@@ -130,10 +134,15 @@ public partial class GrenadeVisual2D : Node2D
             RingRadiusPx = 0.0f;
         }
 
-        // The grenade tumbles and flies, so its silhouette is redrawn every routed tick
-        // whether or not anything about the blast changed.
-        ApplyBodyVisibility();
-        QueueRedraw();
+        bool hasBlast = _flashTicks > 0 || _fireballTicks > 0 || _emberTicks > 0 || _ringTicks > 0;
+        bool bodyVisibleHere = _presentationActive && GodotObject.IsInstanceValid(_body);
+        if (bodyVisibleHere)
+            ApplyBodyVisibility();
+
+        // A live grenade tumbles and a live blast animates, so those states redraw every routed
+        // tick. The default 3D/no-grenade state now does no CanvasItem redraw work at all.
+        if (_presentationActive && (bodyVisibleHere || hadBlast || hasBlast))
+            QueueRedraw();
     }
 
     public override void _Draw()
@@ -273,10 +282,6 @@ public partial class GrenadeVisual2D : Node2D
         }
     }
 
-    /// <summary>
-    /// While this presenter is drawing the grenade, the body must not also draw itself —
-    /// the same handover the 3D slot performs.
-    /// </summary>
     /// <summary>
     /// Only the presenter that is actually drawing the grenade may speak for the collider's
     /// own flat circle. This one used to claim it whichever way round it was switched, so in

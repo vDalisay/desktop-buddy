@@ -489,11 +489,10 @@ public partial class Win98CatalogGrid : ScrollContainer
             return;
         }
 
-        var border = new StyleBoxFlat
-        {
-            BgColor = Win98ThemeFactory.Face,
-            BorderColor = Win98ThemeFactory.ActiveTitle,
-        };
+        // Through the factory so the tile face follows a palette change with every other
+        // panel; only the accent border is a snapshot, and it is redrawn on the next refresh.
+        StyleBoxFlat border = Win98ThemeFactory.Flat(Win98ThemeFactory.Face);
+        border.BorderColor = Win98ThemeFactory.ActiveTitle;
         border.SetBorderWidthAll(4);
         button.AddThemeStyleboxOverride("normal", border);
         button.AddThemeStyleboxOverride("hover", (StyleBoxFlat)border.Duplicate());

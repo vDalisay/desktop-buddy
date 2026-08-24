@@ -62,6 +62,8 @@ public sealed partial class DemoTutorialCharacterPresenter : ITutorialCharacterP
             QueueRedraw();
         }
 
+        public override void _EnterTree() => Win98ThemeFactory.RepaintOnPaletteChange(this);
+
         public override void _Draw()
         {
             Rect2 rect = new(Vector2.Zero, Size);

@@ -53,13 +53,13 @@ public sealed class CharacterSelectionCoordinator
         CharacterFeatureCatalog? catalog = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _paintStore = new CharacterPaintStore(new CharacterFileSystem(), store.Paths.Root);
+        _paintStore = store.CreatePaintStore();
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _rigView = rigView ?? throw new ArgumentNullException(nameof(rigView));
         ArgumentNullException.ThrowIfNull(saves);
         if (!ReferenceEquals(saves.CharacterSelection, selection))
             throw new ArgumentException("Coordinator requires the same character selection state.", nameof(saves));
-        _catalog = catalog ?? CharacterFeatureCatalog.Shipped;
+        _catalog = catalog ?? store.FeatureCatalog;
     }
 
     /// <summary>

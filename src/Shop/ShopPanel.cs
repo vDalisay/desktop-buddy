@@ -73,7 +73,14 @@ public partial class ShopPanel : PanelContainer
             _economy.BalanceChanged -= OnBalanceChanged;
     }
 
-    private void OnBalanceChanged(long _) => Refresh();
+    private void OnBalanceChanged(long _)
+    {
+        // Both the native shop window and the integrated command-bar flyout call Refresh when
+        // opened. Rebuilding every row, tooltip and affordability string for each gameplay hit
+        // while the shop is parked/hidden only creates garbage the player can never see.
+        if (IsVisibleInTree())
+            Refresh();
+    }
 
     private Row BuildRow(VBoxContainer list, CatalogueEntry entry, ToolId tool)
     {

@@ -408,6 +408,8 @@ public partial class BuddyStudioWorkspace : VBoxContainer
     public override void _Draw() =>
         DrawRect(new Rect2(Vector2.Zero, Size), Win98ThemeFactory.Face);
 
+    public override void _EnterTree() => Win98ThemeFactory.RepaintOnPaletteChange(this);
+
     public void SelectCategory(CharacterFeatureSlot slot)
     {
         if (!CategoryOrder.Contains(slot))
@@ -1018,12 +1020,20 @@ public partial class BuddyStudioWorkspace : VBoxContainer
         Handle(_session.PreviewCosmetic(_slot, cosmeticId));
     }
 
+    /// <summary>
+    /// Double-clicking a tile is the whole transaction: buy it if it is not owned, equip it, and
+    /// write the character down. It used to leave the character unsaved, so a player who picked
+    /// a style by double-click and closed the window lost it (owner instruction 2026-08-23).
+    /// </summary>
     private async Task ActivateCosmeticAsync(string cosmeticId)
     {
         CharacterEditorActionResult preview = _session.PreviewCosmetic(_slot, cosmeticId);
         Handle(preview);
-        if (preview.Completed)
-            await PurchaseOrEquipAsync();
+        if (!preview.Completed)
+            return;
+
+        await PurchaseOrEquipAsync();
+        await SaveAsync();
     }
 
     private async Task PurchaseOrEquipAsync()

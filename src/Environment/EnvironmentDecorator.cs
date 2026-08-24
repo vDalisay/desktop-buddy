@@ -316,7 +316,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         confirmBody.AddChild(confirmActions);
         Win98Dialog.Action(confirmActions, "Save Room", Save).Name = "EnvironmentConfirmSaveButton";
         Win98Dialog.Action(confirmActions, "Revert Room", Discard).Name = "EnvironmentDiscardButton";
-        Win98Dialog.Action(confirmActions, "Keep Editing", () => _confirm.Visible = false).Name = "EnvironmentKeepEditingButton";
+        Win98Dialog.Action(confirmActions, "Keep Editing", () => SetConfirmVisible(false)).Name = "EnvironmentKeepEditingButton";
 
         _placementChrome = new PanelContainer
         {
@@ -819,7 +819,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         catch (Exception exception)
         {
             _status.Text = $"Save failed: {exception.Message}";
-            _confirm.Visible = false;
+            SetConfirmVisible(false);
         }
         finally { _saving = false; }
     }
@@ -829,11 +829,23 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_saving || _session is null) return;
         if (_session.IsDirty)
         {
-            _confirm.Visible = true;
+            SetConfirmVisible(true);
             _confirm.MoveToFront();
             return;
         }
         Close();
+    }
+
+    /// <summary>
+    /// Shows or hides the unsaved prompt. The prompt is drawn inside the game window and a
+    /// detached tool window is a desktop window on top of it, so the tools step aside for as
+    /// long as the question is on screen (owner report 2026-08-24).
+    /// </summary>
+    private void SetConfirmVisible(bool visible)
+    {
+        _confirm.Visible = visible;
+        if (GodotObject.IsInstanceValid(_pinnable) && _pinnable.IsFloating)
+            _panel.Visible = !visible;
     }
 
     private void Discard()

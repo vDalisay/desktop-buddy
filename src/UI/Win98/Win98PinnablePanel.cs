@@ -49,6 +49,7 @@ public partial class Win98PinnablePanel : Node
         DockWindow.ApplyOwnedWindowFlags(_window);
         AddChild(_window);
         _window.CloseRequested += Dock;
+        _window.WindowInput += OnFloatingWindowInput;
 
         PanelContainer titleBar = panel.FindChild("TitleBar", true, false) as PanelContainer
             ?? throw new InvalidOperationException("A pinnable panel requires a Win98 title bar.");
@@ -87,9 +88,28 @@ public partial class Win98PinnablePanel : Node
     public override void _Process(double delta)
     {
         if (!_configured || !IsFloating) return;
-        if (_panel.Visible == _window.Visible) return;
-        if (_panel.Visible) DockWindow.ShowOwned(_window);
-        else _window.Hide();
+        if (_panel.Visible != _window.Visible)
+        {
+            // Mirrored visibility only, never focus. The panel this follows is hidden and shown
+            // by its own owner - Paint Room hides its tools for the duration of every stroke -
+            // and grabbing focus each time it came back pulled the player out of the window they
+            // were painting in, on every single click (owner report 2026-08-23).
+            if (_panel.Visible) DockWindow.ShowOwned(_window, takeFocus: false);
+            else _window.Hide();
+        }
+
+        // The panel's own minimum is not final when it is detached - the layout has not run in
+        // its new parent yet - and it grows again whenever the interface scale or palette
+        // changes. A window narrower than its panel clips the right edge off, taking half the
+        // close button with it (owner report 2026-08-24).
+        Vector2 minimum = _panel.GetCombinedMinimumSize();
+        var wanted = new Vector2I(Mathf.CeilToInt(minimum.X), Mathf.CeilToInt(minimum.Y));
+        if (_window.MinSize != wanted)
+            _window.MinSize = wanted;
+        if (_window.Size.X < wanted.X || _window.Size.Y < wanted.Y)
+            _window.Size = new Vector2I(
+                Math.Max(_window.Size.X, wanted.X),
+                Math.Max(_window.Size.Y, wanted.Y));
     }
 
     public void Toggle()
@@ -121,11 +141,14 @@ public partial class Win98PinnablePanel : Node
         _offsetTop = _panel.OffsetTop;
         _offsetRight = _panel.OffsetRight;
         _offsetBottom = _panel.OffsetBottom;
+        // Size the window first, then anchor the panel to it with zero offsets. Setting the
+        // panel's own size afterwards would bake that size into the offsets, and the panel then
+        // keeps overhanging a smaller window for as long as it floats - which is how the close
+        // button ended up sliced off the right edge on the first detach (owner report
+        // 2026-08-24). Anchored flush, the panel is exactly the window, always.
+        _window.Size = wantedSize;
         _panel.Reparent(_window, false);
         _panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _panel.Position = Vector2.Zero;
-        _panel.Size = wantedSize;
-        _window.Size = wantedSize;
         Vector2I wantedPosition = mainPosition + new Vector2I(
             Mathf.RoundToInt(screenRect.Position.X),
             Mathf.RoundToInt(screenRect.Position.Y));
@@ -155,6 +178,29 @@ public partial class Win98PinnablePanel : Node
         _panel.OffsetBottom = _offsetBottom;
         IsFloating = false;
         _pin.TooltipText = "Detach this panel into a desktop window. Press again to return it.";
+    }
+
+    /// <summary>
+    /// Hands focus back to the game after every click in the detached window. A floating tool
+    /// panel is somewhere to reach for a tool, never somewhere to work: leaving it focused meant
+    /// the next keystroke or stroke went to the wrong window (owner instruction 2026-08-24).
+    /// </summary>
+    private void OnFloatingWindowInput(InputEvent input)
+    {
+        if (!IsFloating || input is not InputEventMouseButton { Pressed: false })
+            return;
+
+        // Deferred: the button under the cursor still has to handle this release.
+        Callable.From(ReturnFocusToGame).CallDeferred();
+    }
+
+    private void ReturnFocusToGame()
+    {
+        if (!_configured || !IsFloating)
+            return;
+        Window game = GetWindow();
+        if (GodotObject.IsInstanceValid(game) && game.Visible)
+            game.GrabFocus();
     }
 
     private void OnTitleInput(InputEvent input)

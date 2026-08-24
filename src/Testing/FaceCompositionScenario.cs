@@ -3,6 +3,8 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
+using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Interaction;
@@ -46,6 +48,7 @@ public sealed class FaceCompositionScenario : IScenario
         checks.Add(new StartupCheck("calm_default_face_is_smile",
             lab.Reactions.CurrentFace == ":)",
             $"face={lab.Reactions.CurrentFace}"));
+        checks.Add(CheckEquippedMouthIsWhatACalmBuddyWears());
         checks.Add(await CheckRerenderOnChangeOnly(tree, lab, seed, messages));
         checks.Add(await CheckBlinkRunsAndSuppresses(tree, lab, seed, messages));
         checks.Add(await CheckChewOverlay(tree, lab, messages));
@@ -69,6 +72,49 @@ public sealed class FaceCompositionScenario : IScenario
     /// authoritative list is exactly the resolver's ten, and the composed scene carries the
     /// accepted style with a live render key.
     /// </summary>
+    /// <summary>
+    /// The calm face is ":)" and nothing in the world produces ":|", so if the smile ignores the
+    /// equipped style then every mouth in the shop looks the same on the buddy and only differs
+    /// in Buddy Studio (owner report 2026-08-23). Two families are enough to prove the smile
+    /// follows the style: they must differ from each other and match their own neutral mouth.
+    /// The frown stays generic — a reaction has to read as itself whatever is equipped.
+    /// </summary>
+    private static readonly CharacterFeatureRendererRegistry Renderers = new();
+
+    private static StartupCheck CheckEquippedMouthIsWhatACalmBuddyWears()
+    {
+        Vector2[] roundedSmile = MouthPath(CharacterFeatureIds.MouthRounded, FaceMouthPose.Smile);
+        Vector2[] roundedNeutral = MouthPath(CharacterFeatureIds.MouthRounded, FaceMouthPose.Flat);
+        Vector2[] linePath = MouthPath(CharacterFeatureIds.MouthLine, FaceMouthPose.Smile);
+        Vector2[] roundedFrown = MouthPath(CharacterFeatureIds.MouthRounded, FaceMouthPose.Frown);
+        Vector2[] lineFrown = MouthPath(CharacterFeatureIds.MouthLine, FaceMouthPose.Frown);
+
+        bool smileFollowsStyle =
+            roundedSmile.Length == roundedNeutral.Length &&
+            roundedSmile.Length != linePath.Length &&
+            roundedFrown.Length == lineFrown.Length;
+
+        return new StartupCheck(
+            "a_calm_buddy_smiles_in_the_mouth_style_it_wears",
+            smileFollowsStyle,
+            $"rounded_smile={roundedSmile.Length} rounded_neutral={roundedNeutral.Length} " +
+            $"line_smile={linePath.Length} frowns={roundedFrown.Length}/{lineFrown.Length}");
+    }
+
+    /// <summary>The point path one equipped mouth style draws for one pose.</summary>
+    private static Vector2[] MouthPath(string featureId, FaceMouthPose pose)
+    {
+        ICharacterMouthRenderer renderer = Renderers.Mouth(featureId);
+        var appearance = new CompiledFeatureAppearance(
+            featureId, NormalizedFeatureTransform.Identity, Rgba32.Parse("#183042"));
+        IReadOnlyList<CharacterDrawCommand> commands =
+            renderer.Build(appearance, pose, Colors.Black);
+        var points = new List<Vector2>();
+        foreach (CharacterDrawCommand command in commands)
+            points.AddRange(command.Points);
+        return points.ToArray();
+    }
+
     private static StartupCheck CheckExpressionMapCoverage(BuddyLab lab)
     {
         bool allResolve = true;

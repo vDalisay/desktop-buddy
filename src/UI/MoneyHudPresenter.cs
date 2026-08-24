@@ -47,7 +47,8 @@ public partial class MoneyHudPresenter : PanelContainer
             !GodotObject.IsInstanceValid(BalanceLabel) || !GodotObject.IsInstanceValid(RewardLabel))
             throw new InvalidOperationException("MoneyHudPresenter requires an initialized pipeline and labels.");
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
-        Pipeline.ImpactAccepted += OnImpact;
+        // EconomyService is the sole balance mutator. Listening to both ImpactAccepted and
+        // BalanceChanged refreshed/formatted the same balance twice for every paid hit.
         Pipeline.RewardFeedbackEmitted += OnFeedback;
         _economy.BalanceChanged += OnBalanceChanged;
         RewardLabel.Visible = false;
@@ -70,11 +71,9 @@ public partial class MoneyHudPresenter : PanelContainer
         if (_economy is not null)
             _economy.BalanceChanged -= OnBalanceChanged;
         if (!GodotObject.IsInstanceValid(Pipeline)) return;
-        Pipeline.ImpactAccepted -= OnImpact;
         Pipeline.RewardFeedbackEmitted -= OnFeedback;
     }
 
-    private void OnImpact(AcceptedImpact impact) => RefreshBalance();
     private void OnBalanceChanged(long _) => RefreshBalance();
 
     private void OnFeedback(RewardFeedback feedback)
@@ -93,5 +92,6 @@ public partial class MoneyHudPresenter : PanelContainer
         _remaining = FeedbackSeconds;
     }
 
-    private void RefreshBalance() => BalanceLabel.Text = "$" + Pipeline.BalanceCredits.ToString(CultureInfo.InvariantCulture);
+    private void RefreshBalance() =>
+        BalanceLabel.Text = "$" + _economy.BalanceCredits.ToString(CultureInfo.InvariantCulture);
 }
