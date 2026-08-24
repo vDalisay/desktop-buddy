@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Economy;
+using DesktopBuddy.Persistence.Characters;
 using Godot;
 
 namespace DesktopBuddy.CharacterEditor;
@@ -16,9 +17,10 @@ namespace DesktopBuddy.CharacterEditor;
 public partial class CharacterSlotUiBootstrap : Node
 {
     private const double RefreshSeconds = 0.15;
-    private const double DiskScanSeconds = 0.75;
+    private const double FallbackDiskScanSeconds = 0.75;
 
     private SandboxRoot? _sandbox;
+    private CharacterStore? _characters;
     private CharacterEditorHost? _host;
     private Button? _newButton;
     private Button? _buyButton;
@@ -32,6 +34,27 @@ public partial class CharacterSlotUiBootstrap : Node
     private bool _purchaseBusy;
     private string? _transientStatus;
     private double _statusSeconds;
+    private volatile bool _characterLibraryInvalidated = true;
+
+    /// <summary>
+    /// Normal-run composition seam. The store owns character filesystem policy and emits library
+    /// invalidation, so this UI does not need to rescan user://characters on a timer.
+    /// </summary>
+    public void Configure(SandboxRoot sandbox, CharacterStore characters)
+    {
+        ArgumentNullException.ThrowIfNull(sandbox);
+        ArgumentNullException.ThrowIfNull(characters);
+        if (_characters is not null && !ReferenceEquals(_characters, characters))
+            _characters.LibraryChanged -= OnCharacterLibraryChanged;
+
+        _sandbox = sandbox;
+        _characters = characters;
+        _characters.LibraryChanged -= OnCharacterLibraryChanged;
+        _characters.LibraryChanged += OnCharacterLibraryChanged;
+        _slots = new CharacterSlotEntitlementState(sandbox.Progress, sandbox.Economy);
+        _characterLibraryInvalidated = true;
+        _untilRefresh = 0.0;
+    }
 
     public override void _Ready()
     {
@@ -68,8 +91,18 @@ public partial class CharacterSlotUiBootstrap : Node
         RefreshState();
     }
 
+    public override void _ExitTree()
+    {
+        if (_characters is not null)
+            _characters.LibraryChanged -= OnCharacterLibraryChanged;
+    }
+
+    private void OnCharacterLibraryChanged() => _characterLibraryInvalidated = true;
+
     private void ResolveRuntime()
     {
+        // Startup/scenario fixtures can bypass Bootstrap, so keep discovery as a compatibility
+        // fallback. Normal boot supplies the sandbox and CharacterStore explicitly.
         if (!GodotObject.IsInstanceValid(_sandbox))
         {
             _sandbox = GetTree().Root.FindChild("Sandbox", true, false) as SandboxRoot;
@@ -84,6 +117,7 @@ public partial class CharacterSlotUiBootstrap : Node
             _observedWorkingCharacterId = null;
             _observedWorkingDirty = false;
             _untilDiskScan = 0.0;
+            _characterLibraryInvalidated = true;
         }
         if (_slots is null && GodotObject.IsInstanceValid(_sandbox) &&
             _sandbox!.Progress is not null && _sandbox.Economy is not null)
@@ -179,23 +213,34 @@ public partial class CharacterSlotUiBootstrap : Node
 
     private int CountOccupiedSlots()
     {
-        string root = ProjectSettings.GlobalizePath("user://characters");
         var working = _host?.Session.WorkingDocument;
         Guid? workingId = working?.Id;
         bool workingDirty = _host?.Session.IsDirty ?? false;
 
         // Character creation/selection/deletion changes the working ID; saving a new character
         // changes dirty -> clean and creates character.json. Both transitions invalidate the
-        // cached disk count immediately so capacity can never be undercounted between scans.
+        // cached count immediately so capacity can never be undercounted between refreshes.
         if (_observedWorkingCharacterId != workingId || (_observedWorkingDirty && !workingDirty))
+        {
             _untilDiskScan = 0.0;
+            _characterLibraryInvalidated = true;
+        }
         _observedWorkingCharacterId = workingId;
         _observedWorkingDirty = workingDirty;
 
-        if (_untilDiskScan <= 0.0)
+        if (_characters is not null)
         {
-            _cachedDiskOccupied = ScanOccupiedSlots(root);
-            _untilDiskScan = DiskScanSeconds;
+            if (_characterLibraryInvalidated)
+            {
+                _cachedDiskOccupied = _characters.CountStoredCharacters();
+                _characterLibraryInvalidated = false;
+            }
+        }
+        else if (_untilDiskScan <= 0.0)
+        {
+            // Compatibility path only for isolated scenes that did not receive normal-run DI.
+            _cachedDiskOccupied = ScanOccupiedSlotsFallback(ProjectSettings.GlobalizePath("user://characters"));
+            _untilDiskScan = FallbackDiskScanSeconds;
         }
 
         int count = _cachedDiskOccupied;
@@ -203,14 +248,28 @@ public partial class CharacterSlotUiBootstrap : Node
         // the next available slot for this editor session.
         if (working is not null && workingDirty)
         {
-            string expected = Path.Combine(root, working.Id.ToString("N"), "character.json");
-            if (!File.Exists(expected))
+            bool persisted = _characters is not null
+                ? _characters.Paths.TryParseDirectory(_characters.Paths.Directory(working.Id), out _) &&
+                  _cachedDiskOccupied > 0 && CharacterExistsInInjectedStore(working.Id)
+                : File.Exists(Path.Combine(
+                    ProjectSettings.GlobalizePath("user://characters"),
+                    working.Id.ToString("N"),
+                    "character.json"));
+            if (!persisted)
                 count++;
         }
         return count;
     }
 
-    private static int ScanOccupiedSlots(string root)
+    private bool CharacterExistsInInjectedStore(Guid id)
+    {
+        // CountStoredCharacters intentionally keeps the filesystem implementation private. The
+        // editor session's saved/dirty transition tells us whether this working copy was minted in
+        // memory; a clean working document has already been persisted by the authoritative store.
+        return !_observedWorkingDirty;
+    }
+
+    private static int ScanOccupiedSlotsFallback(string root)
     {
         if (!Directory.Exists(root))
             return 0;
