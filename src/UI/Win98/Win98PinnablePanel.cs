@@ -87,13 +87,28 @@ public partial class Win98PinnablePanel : Node
     public override void _Process(double delta)
     {
         if (!_configured || !IsFloating) return;
-        if (_panel.Visible == _window.Visible) return;
-        // Mirrored visibility only, never focus. The panel this follows is hidden and shown by
-        // its own owner - Paint Room hides its tools for the duration of every stroke - and
-        // grabbing focus each time it came back pulled the player out of the window they were
-        // painting in, on every single click (owner report 2026-08-23).
-        if (_panel.Visible) DockWindow.ShowOwned(_window, takeFocus: false);
-        else _window.Hide();
+        if (_panel.Visible != _window.Visible)
+        {
+            // Mirrored visibility only, never focus. The panel this follows is hidden and shown
+            // by its own owner - Paint Room hides its tools for the duration of every stroke -
+            // and grabbing focus each time it came back pulled the player out of the window they
+            // were painting in, on every single click (owner report 2026-08-23).
+            if (_panel.Visible) DockWindow.ShowOwned(_window, takeFocus: false);
+            else _window.Hide();
+        }
+
+        // The panel's own minimum is not final when it is detached - the layout has not run in
+        // its new parent yet - and it grows again whenever the interface scale or palette
+        // changes. A window narrower than its panel clips the right edge off, taking half the
+        // close button with it (owner report 2026-08-24).
+        Vector2 minimum = _panel.GetCombinedMinimumSize();
+        var wanted = new Vector2I(Mathf.CeilToInt(minimum.X), Mathf.CeilToInt(minimum.Y));
+        if (_window.MinSize != wanted)
+            _window.MinSize = wanted;
+        if (_window.Size.X < wanted.X || _window.Size.Y < wanted.Y)
+            _window.Size = new Vector2I(
+                Math.Max(_window.Size.X, wanted.X),
+                Math.Max(_window.Size.Y, wanted.Y));
     }
 
     public void Toggle()

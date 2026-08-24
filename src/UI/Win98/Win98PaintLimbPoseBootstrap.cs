@@ -110,7 +110,7 @@ public partial class Win98PaintLimbPoseBootstrap : Node
             var rendered = home with { Position = position };
             return new BuddyVisualPartPose(
                 rendered,
-                WorldPlaneMapping.To3D(position),
+                rig.LanePosition(buddyPart, position),
                 new Vector3(0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(home.Rotation)));
         }
 

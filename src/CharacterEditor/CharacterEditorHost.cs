@@ -614,7 +614,7 @@ public partial class CharacterEditorHost : CanvasLayer
             BuddyVisualTransform transform = _previewSource.ReadTransform(id);
             return new BuddyVisualPartPose(
                 transform,
-                WorldPlaneMapping.To3D(transform.Position),
+                _preview.LanePosition(id, transform.Position),
                 Vector3.Zero);
         }
         _preview.ApplyPose(new BuddyVisualPoseFrame(

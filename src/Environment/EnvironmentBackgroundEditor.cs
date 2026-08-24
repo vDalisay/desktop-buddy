@@ -283,7 +283,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         confirmBody.AddChild(confirmActions);
         Win98Dialog.Action(confirmActions, "Save and Exit", Save).Name = "PaintConfirmSaveButton";
         Win98Dialog.Action(confirmActions, "Discard", Discard).Name = "PaintDiscardButton";
-        Win98Dialog.Action(confirmActions, "Keep Editing", () => _confirm.Visible = false).Name = "PaintKeepEditingButton";
+        Win98Dialog.Action(confirmActions, "Keep Editing", () => SetConfirmVisible(false)).Name = "PaintKeepEditingButton";
     }
 
     private Button ToolButton(string name, string text, EnvironmentPaintTool tool)
@@ -317,10 +317,22 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     {
         if (GodotObject.IsInstanceValid(_panelPin) && _panelPin.IsFloating)
         {
-            _panel.Visible = true;
+            _panel.Visible = !_confirm.Visible;
             return;
         }
         _panel.Visible = visible;
+    }
+
+    /// <summary>
+    /// Shows or hides the unsaved prompt. The prompt is drawn inside the game window and a
+    /// detached tool window is a desktop window on top of it, so the tools step aside for as
+    /// long as the question is on screen (owner report 2026-08-24).
+    /// </summary>
+    private void SetConfirmVisible(bool visible)
+    {
+        _confirm.Visible = visible;
+        if (GodotObject.IsInstanceValid(_panelPin) && _panelPin.IsFloating)
+            _panel.Visible = !visible;
     }
 
     private static void AddColorPickerIcon(ColorPickerButton picker)
@@ -680,7 +692,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         catch (Exception exception)
         {
             SetStatus($"Save failed: {exception.Message}");
-            _confirm.Visible = false;
+            SetConfirmVisible(false);
         }
         finally { _saving = false; }
     }
@@ -691,7 +703,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         if (Canvas.CancelPendingCurve()) ClearCurveGuide();
         if (Canvas.IsDirty)
         {
-            _confirm.Visible = true;
+            SetConfirmVisible(true);
             return;
         }
         Close();
