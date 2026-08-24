@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using DesktopBuddy.Persistence.Characters;
 
 namespace DesktopBuddy.CharacterEditor;
 
@@ -15,9 +14,10 @@ public partial class CharacterEditorHost
             return;
 
         _paintPersistenceAttached = true;
-        var store = new CharacterPaintStore(
-            new CharacterFileSystem(),
-            _context.Characters.Paths.Root);
+        // The runtime CharacterStore owns the filesystem/root/catalogue policy. Ask that boundary
+        // for its paint transaction store rather than constructing a parallel persistence graph
+        // inside this UI host.
+        var store = _context.Characters.CreatePaintStore();
         await _session.AttachPaintingAsync(store, canvas.Workspace);
         _session.Changed += QueuePaintAfterSessionChange;
         // Save and Reset read Session.IsDirty, which folds in the paint workspace. Painting
