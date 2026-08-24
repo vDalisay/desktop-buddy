@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DesktopBuddy.Domain.Painting;
@@ -193,12 +192,12 @@ public static class ShareManifestPolicy
     {
         if (string.IsNullOrWhiteSpace(path) || path.Length > 160 || path[0] is '/' or '\\' || path.Contains('\\'))
             return false;
-        if (path.Contains("//", StringComparison.Ordinal) || path.EndsWith('/', StringComparison.Ordinal))
+        if (path.Contains("//", StringComparison.Ordinal) || path.EndsWith("/", StringComparison.Ordinal))
             return false;
         string[] segments = path.Split('/');
         foreach (string segment in segments)
         {
-            if (segment.Length == 0 || segment is "." or ".." || segment.IndexOfAny(['\0', ':']) >= 0)
+            if (segment.Length == 0 || segment is "." or ".." || segment.IndexOf('\0') >= 0 || segment.IndexOf(':') >= 0)
                 return false;
             foreach (char c in segment)
                 if (char.IsControl(c)) return false;
