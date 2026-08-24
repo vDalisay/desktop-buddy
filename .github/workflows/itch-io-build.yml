@@ -40,7 +40,7 @@ env:
   DOTNET_NOLOGO: "1"
   GODOT_WEB_PR_SHA: f680cb44eb18c9b354678a487e43e07efb56d9be
   EMSDK_VERSION: 3.1.56
-  GODOT_WEB_CACHE_VERSION: v1
+  GODOT_WEB_CACHE_VERSION: v2
 
 jobs:
   windows-itch-protected:
@@ -260,6 +260,23 @@ jobs:
             echo "PR #118976 moved: expected $GODOT_WEB_PR_SHA, fetched $ACTUAL_SHA" >&2
             exit 1
           fi
+
+          # PR #118976 reports its experimental-status notice through the export
+          # configuration error channel. The GUI can display that as a warning, but
+          # headless --export treats any text in that channel as a fatal configuration
+          # error. Remove only that known notice and fail if upstream changes it.
+          python3 - "$SRC/platform/web/export/export_plugin.cpp" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
+          needle = '\t// Web export is still a work in progress, keep a message as a warning.\n\terr += TTR("Exporting to Web when using C#/.NET is experimental.") + "\\n";\n'
+          replacement = '\t// Desktop Buddy CI: experimental status is tracked by the workflow; do not return it as a headless export error.\n'
+          if needle not in text:
+              raise SystemExit("Pinned Godot Web PR no longer contains the expected experimental export warning; review the upstream change before rebuilding the cache.")
+          path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+          PY
 
           cd "$SRC"
           scons -j2 module_mono_enabled=yes
