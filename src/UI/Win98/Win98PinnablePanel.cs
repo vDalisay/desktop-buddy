@@ -49,6 +49,7 @@ public partial class Win98PinnablePanel : Node
         DockWindow.ApplyOwnedWindowFlags(_window);
         AddChild(_window);
         _window.CloseRequested += Dock;
+        _window.WindowInput += OnFloatingWindowInput;
 
         PanelContainer titleBar = panel.FindChild("TitleBar", true, false) as PanelContainer
             ?? throw new InvalidOperationException("A pinnable panel requires a Win98 title bar.");
@@ -140,11 +141,14 @@ public partial class Win98PinnablePanel : Node
         _offsetTop = _panel.OffsetTop;
         _offsetRight = _panel.OffsetRight;
         _offsetBottom = _panel.OffsetBottom;
+        // Size the window first, then anchor the panel to it with zero offsets. Setting the
+        // panel's own size afterwards would bake that size into the offsets, and the panel then
+        // keeps overhanging a smaller window for as long as it floats - which is how the close
+        // button ended up sliced off the right edge on the first detach (owner report
+        // 2026-08-24). Anchored flush, the panel is exactly the window, always.
+        _window.Size = wantedSize;
         _panel.Reparent(_window, false);
         _panel.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _panel.Position = Vector2.Zero;
-        _panel.Size = wantedSize;
-        _window.Size = wantedSize;
         Vector2I wantedPosition = mainPosition + new Vector2I(
             Mathf.RoundToInt(screenRect.Position.X),
             Mathf.RoundToInt(screenRect.Position.Y));
@@ -174,6 +178,29 @@ public partial class Win98PinnablePanel : Node
         _panel.OffsetBottom = _offsetBottom;
         IsFloating = false;
         _pin.TooltipText = "Detach this panel into a desktop window. Press again to return it.";
+    }
+
+    /// <summary>
+    /// Hands focus back to the game after every click in the detached window. A floating tool
+    /// panel is somewhere to reach for a tool, never somewhere to work: leaving it focused meant
+    /// the next keystroke or stroke went to the wrong window (owner instruction 2026-08-24).
+    /// </summary>
+    private void OnFloatingWindowInput(InputEvent input)
+    {
+        if (!IsFloating || input is not InputEventMouseButton { Pressed: false })
+            return;
+
+        // Deferred: the button under the cursor still has to handle this release.
+        Callable.From(ReturnFocusToGame).CallDeferred();
+    }
+
+    private void ReturnFocusToGame()
+    {
+        if (!_configured || !IsFloating)
+            return;
+        Window game = GetWindow();
+        if (GodotObject.IsInstanceValid(game) && game.Visible)
+            game.GrabFocus();
     }
 
     private void OnTitleInput(InputEvent input)

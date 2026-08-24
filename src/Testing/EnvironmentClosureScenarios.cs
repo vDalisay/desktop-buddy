@@ -179,6 +179,27 @@ public sealed class EnvironmentBackgroundEditorClosureScenario : IScenario
                 detachable,
                 $"panel={panelWindow?.Size}"));
 
+            // A detached panel has to be exactly its window. Sized independently it overhangs,
+            // and the overhang is clipped by the window edge - which took half the close button
+            // with it at any interface scale above 1 (owner report 2026-08-24). The scale is
+            // raised for the check because at 1 the authored floating size happens to be the
+            // larger of the two and hides the fault.
+            float scale = Win98ThemeFactory.Scale;
+            Win98ThemeFactory.ApplyScale(1.6f);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            panelPin?.Float();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            Vector2 floatingPanel = panel?.Size ?? Vector2.Zero;
+            Vector2 floatingWindow = panelWindow?.Size ?? Vector2I.Zero;
+            bool flush = panelWindow is not null && panel is not null && floatingPanel == floatingWindow;
+            panelPin?.Dock();
+            Win98ThemeFactory.ApplyScale(scale);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            checks.Add(new StartupCheck(
+                "environment_background_detached_panel_fills_its_window_exactly",
+                flush,
+                $"panel={floatingPanel} window={floatingWindow}"));
+
             EnvironmentCanvas canvas = presenter.Canvas;
             canvas.Color = new EnvironmentColor(210, 40, 60);
             canvas.Tool = EnvironmentPaintTool.Brush;
