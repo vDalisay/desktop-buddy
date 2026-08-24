@@ -46,11 +46,43 @@ public sealed class CharacterStore
     public long DeleteCount { get; private set; }
 
     /// <summary>
+    /// Raised after the authoritative document library changes. Persistence operations run on a
+    /// worker thread, so UI subscribers should treat this as invalidation only and perform Godot
+    /// work on their normal main-thread route.
+    /// </summary>
+    public event Action? LibraryChanged;
+
+    /// <summary>
     /// Creates the paint-aware transaction boundary over this exact document store. Keeping this
     /// factory beside the injected filesystem/catalogue prevents consumers from silently creating
     /// a second store with different validation policy.
     /// </summary>
     public CharacterPaintStore CreatePaintStore() => new(_fileSystem, this);
+
+    /// <summary>
+    /// Counts canonical, non-linked character documents through the injected filesystem policy.
+    /// Presentation code uses this instead of reaching directly into user:// with System.IO.
+    /// </summary>
+    public int CountStoredCharacters()
+    {
+        if (!_fileSystem.DirectoryExists(_paths.Root))
+            return 0;
+
+        int count = 0;
+        foreach (string directory in _fileSystem.EnumerateDirectories(_paths.Root))
+        {
+            if (!_paths.TryParseDirectory(directory, out Guid id) || id == Guid.Empty ||
+                _fileSystem.IsReparsePoint(directory))
+            {
+                continue;
+            }
+
+            string primary = _paths.Primary(id);
+            if (_fileSystem.FileExists(primary) && !_fileSystem.IsReparsePoint(primary))
+                count++;
+        }
+        return count;
+    }
 
     public Task<CharacterLoadResult> LoadAsync(Guid id, CancellationToken token) =>
         Task.Run(() => LoadCore(id, token), CancellationToken.None);
@@ -87,7 +119,7 @@ public sealed class CharacterStore
             {
                 token.ThrowIfCancellationRequested();
                 // Anything that is not a character directory is not ours to delete.
-                if (!Guid.TryParse(Path.GetFileName(directory), out Guid id) || id == Guid.Empty)
+                if (!_paths.TryParseDirectory(directory, out Guid id) || id == Guid.Empty)
                     continue;
                 if (DeleteCore(id, token).Status == CharacterDeleteStatus.Deleted)
                     removed++;
@@ -223,6 +255,7 @@ public sealed class CharacterStore
             }
 
             SaveCount++;
+            LibraryChanged?.Invoke();
             return new CharacterSaveResult(CharacterSaveStatus.Saved, normalized.Document);
         }
         catch (OperationCanceledException)
@@ -274,6 +307,7 @@ public sealed class CharacterStore
 
             _fileSystem.DeleteDirectory(directory, recursive: true);
             DeleteCount++;
+            LibraryChanged?.Invoke();
             return new CharacterDeleteResult(CharacterDeleteStatus.Deleted, id);
         }
         catch (OperationCanceledException)
