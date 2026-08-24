@@ -84,7 +84,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TEMPLATE_VERSION="${GODOT_VERSION/-/.}"
+          # Mono editors include `.mono` in their template directory even though the public
+          # release/tag and template archive do not. Ask the editor's expected convention
+          # explicitly so CI installs the Windows templates where this exact binary looks.
+          TEMPLATE_VERSION="${GODOT_VERSION/-/.}.mono"
           URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz"
           curl -fL --retry 3 -o export-templates.tpz "$URL"
           rm -rf "$RUNNER_TEMP/godot-export-templates"
