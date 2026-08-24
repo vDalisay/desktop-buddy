@@ -1,0 +1,164 @@
+name: itch.io build
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/itch-io-build.yml"
+      - "export_presets.cfg"
+      - "project.godot"
+      - "DesktopBuddy.csproj"
+      - "Directory.Build.props"
+      - "global.json"
+      - "src/**"
+      - "domain/**"
+      - "assets/**"
+      - "data/**"
+      - "scenes/**"
+      - "shaders/**"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload this build to itch.io with Butler"
+        required: true
+        default: false
+        type: boolean
+      version:
+        description: "Optional itch.io build version (defaults to the commit SHA)"
+        required: false
+        type: string
+
+concurrency:
+  group: itch-io-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.6.1-stable
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  windows-itch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build solution
+        run: dotnet build DesktopBuddy.sln -c Release
+
+      - name: Domain unit tests
+        run: dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Release --no-build
+
+      - name: Verify itch scope wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'custom_features="itch_io"' export_presets.cfg
+          grep -Fq 'name="Windows itch.io"' export_presets.cfg
+          grep -Fq 'public static bool IncludesWorkMode => true;' src/App/DemoScope.cs
+          grep -Fq 'public static bool IncludesPaintRoom => !IsItchIo;' src/App/DemoScope.cs
+          grep -Fq 'public static bool IncludesBuddyStudio => !IsItchIo;' src/App/DemoScope.cs
+          grep -Fq 'if (!DemoScope.IncludesPaintRoom)' src/Environment/EnvironmentCustomizationBootstrap.cs
+          grep -Fq 'if (!DemoScope.IncludesBuddyStudio)' src/CharacterEditor/BuddyStudio/BuddyStudioBootstrap.cs
+          grep -Fq 'if (!DemoScope.IncludesBuddyStudio || !IsInitialized)' src/CharacterEditor/BuddyStudio/CharacterEditorHost.BuddyStudio.cs
+
+      - name: Download pinned Godot .NET editor
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          curl -fL --retry 3 -o godot.zip "$URL"
+          unzip -q godot.zip
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+      - name: Install pinned export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMPLATE_VERSION="${GODOT_VERSION/-/.}"
+          URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_export_templates.tpz"
+          curl -fL --retry 3 -o export-templates.tpz "$URL"
+          rm -rf "$RUNNER_TEMP/godot-export-templates"
+          mkdir -p "$RUNNER_TEMP/godot-export-templates"
+          unzip -q export-templates.tpz -d "$RUNNER_TEMP/godot-export-templates"
+          DEST="$HOME/.local/share/godot/export_templates/$TEMPLATE_VERSION"
+          mkdir -p "$DEST"
+          cp -R "$RUNNER_TEMP/godot-export-templates/templates/." "$DEST/"
+          test -f "$DEST/windows_release_x86_64.exe"
+
+      - name: Import project
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
+
+      - name: Export Windows itch.io build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf build/itch
+          mkdir -p build/itch
+          xvfb-run -a "$GODOT_BIN" --headless --path . \
+            --export-release "Windows itch.io" build/itch/DesktopBuddy.exe
+          test -f build/itch/DesktopBuddy.exe
+          test -f build/itch/DesktopBuddy.pck
+
+      - name: Package Windows build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f build/DesktopBuddy-itch-windows.zip
+          (cd build/itch && zip -q -r ../DesktopBuddy-itch-windows.zip .)
+          test -s build/DesktopBuddy-itch-windows.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DesktopBuddy-itch-windows
+          path: build/DesktopBuddy-itch-windows.zip
+          if-no-files-found: error
+
+      - name: Install Butler
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUTLER_DIR="$RUNNER_TEMP/butler"
+          mkdir -p "$BUTLER_DIR"
+          curl -fL --retry 3 \
+            -o "$RUNNER_TEMP/butler.zip" \
+            "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default"
+          unzip -q "$RUNNER_TEMP/butler.zip" -d "$BUTLER_DIR"
+          chmod +x "$BUTLER_DIR/butler"
+          echo "$BUTLER_DIR" >> "$GITHUB_PATH"
+
+      - name: Publish to itch.io
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCHIO_TARGET: ${{ vars.ITCHIO_TARGET }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BUTLER_API_KEY:-}" ]; then
+            echo "Missing repository secret BUTLER_API_KEY." >&2
+            exit 1
+          fi
+          if [ -z "${ITCHIO_TARGET:-}" ]; then
+            echo "Missing repository variable ITCHIO_TARGET (expected format: username/game:windows)." >&2
+            exit 1
+          fi
+
+          VERSION="${REQUESTED_VERSION:-}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${GITHUB_SHA::12}"
+          fi
+
+          butler push build/itch "$ITCHIO_TARGET" --userversion "$VERSION"
