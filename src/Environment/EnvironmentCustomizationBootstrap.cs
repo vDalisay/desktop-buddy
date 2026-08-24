@@ -56,6 +56,16 @@ public partial class EnvironmentCustomizationBootstrap : Node
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
+        if (!DemoScope.IncludesPaintRoom)
+        {
+            // The itch.io build has no environment workspace at all. The normal Demo already
+            // hides Room Decorator, so stopping this bootstrap also avoids constructing the
+            // Paint Background canvas/editor and their supporting runtime nodes.
+            SetProcess(false);
+            Log.Info(LogCategory, "Paint Room omitted by the active distribution scope.");
+            return;
+        }
+
         SetProcess(true);
     }
 
