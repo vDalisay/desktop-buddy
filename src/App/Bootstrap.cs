@@ -14,6 +14,7 @@ using DesktopBuddy.Onboarding;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
+using DesktopBuddy.Sharing;
 using DesktopBuddy.Testing;
 using Godot;
 
@@ -234,6 +235,12 @@ public partial class Bootstrap : Node
             "/root/EnvironmentCustomizationBootstrap")?.Configure(sandbox);
         GetNodeOrNull<DesktopBuddy.CharacterEditor.CharacterSlotUiBootstrap>(
             "/root/CharacterSlotUiBootstrap")?.Configure(sandbox, characters);
+
+        // Workshop is an optional outer platform adapter. It receives only the persistence seams
+        // it needs; missing Steam/GodotSteam/AppID selects a null transport and never blocks boot.
+        var workshop = new WorkshopBootstrap { Name = nameof(WorkshopBootstrap) };
+        workshop.Configure(characters, characterSelection);
+        AddChild(workshop);
 
         var characterRuntime = new CharacterSelectionRuntime
         {
