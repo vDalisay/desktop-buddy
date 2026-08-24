@@ -12,6 +12,16 @@
     <AssemblyName>DesktopBuddy</AssemblyName>
   </PropertyGroup>
 
+  <!--
+    Godot's experimental static-LibGodot Web exporter publishes the game as a browser-wasm
+    application. Keep the native/desktop project unchanged, but enable the fork's required
+    Web AOT path whenever Godot targets Web.
+  -->
+  <PropertyGroup Condition=" '$(GodotTargetPlatform)' == 'web' ">
+    <EnableDynamicLoading>false</EnableDynamicLoading>
+    <RunAOTCompilation>true</RunAOTCompilation>
+  </PropertyGroup>
+
   <PropertyGroup>
     <!-- Developer tooling/source trees must never enter the shipping game assembly. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);domain/**/*;tests/DesktopBuddy.Domain.Tests/**/*;devtools/**/*;authoring/**/*;shared/**/*</DefaultItemExcludes>
