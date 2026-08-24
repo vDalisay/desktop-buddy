@@ -12,6 +12,7 @@ on:
       - "global.json"
       - "src/**"
       - "domain/**"
+      - "shared/**"
       - "assets/**"
       - "data/**"
       - "scenes/**"
@@ -65,12 +66,14 @@ jobs:
           grep -Fq 'dotnet/include_scripts_content=false' export_presets.cfg
           grep -Fq 'dotnet/include_debug_symbols=false' export_presets.cfg
           grep -Fq 'debug/export_console_wrapper=0' export_presets.cfg
-          grep -Fq 'public static bool IncludesWorkMode => true;' src/App/DemoScope.cs
+          grep -Fq 'public static bool IncludesWorkMode => !IsItchIo;' src/App/DemoScope.cs
           grep -Fq 'public static bool IncludesPaintRoom => !IsItchIo;' src/App/DemoScope.cs
           grep -Fq 'public static bool IncludesBuddyStudio => !IsItchIo;' src/App/DemoScope.cs
           grep -Fq 'if (!DemoScope.IncludesPaintRoom)' src/Environment/EnvironmentCustomizationBootstrap.cs
           grep -Fq 'if (!DemoScope.IncludesBuddyStudio)' src/CharacterEditor/BuddyStudio/BuddyStudioBootstrap.cs
           grep -Fq 'if (!DemoScope.IncludesBuddyStudio || !IsInitialized)' src/CharacterEditor/BuddyStudio/CharacterEditorHost.BuddyStudio.cs
+          grep -Fq 'ItchDistributionScopeBootstrap="*res://src/App/ItchDistributionScopeBootstrap.cs"' project.godot
+          grep -Fq 'InputMap.ActionEraseEvents("toggle_input_mode")' src/App/ItchDistributionScopeBootstrap.cs
           test -f tools/protection/obfuscate_export.ps1
 
       - name: Download pinned Godot .NET editor
@@ -203,3 +206,250 @@ jobs:
           fi
 
           butler push build/itch "$ITCHIO_TARGET" --userversion "$VERSION"
+
+  experimental-web:
+    # Godot PR #118976 is experimental and currently targets .NET browser-wasm through a
+    # custom editor/SDK/template. Pin the exact fork commit so this job cannot silently change.
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      GODOT_WEB_PR_SHA: f680cb44a1dee7673b2678f628478e1b6c01c8a1
+      EMSDK_VERSION: 3.1.56
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10 for experimental browser-wasm
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install native build dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential scons pkg-config git unzip zip rsync python3 python3-dev \
+            libx11-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev \
+            libasound2-dev libpulse-dev libudev-dev libxi-dev libxrandr-dev \
+            libwayland-dev libxkbcommon-dev libfontconfig1-dev libdbus-1-dev
+          dotnet workload install wasm-tools
+
+      - name: Fetch pinned Godot C# Web fork
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="$RUNNER_TEMP/godot-csharp-web"
+          rm -rf "$SRC"
+          git init "$SRC"
+          git -C "$SRC" remote add origin https://github.com/NoctemCat/godot.git
+          git -C "$SRC" fetch --depth=1 origin "$GODOT_WEB_PR_SHA"
+          git -C "$SRC" checkout --detach FETCH_HEAD
+          test "$(git -C "$SRC" rev-parse HEAD)" = "$GODOT_WEB_PR_SHA"
+          echo "GODOT_WEB_SRC=$SRC" >> "$GITHUB_ENV"
+
+      - name: Build experimental Godot editor and .NET SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$GODOT_WEB_SRC"
+          scons -j2 module_mono_enabled=yes
+          GODOT_WEB_EDITOR="$(find "$GODOT_WEB_SRC/bin" -maxdepth 1 -type f -executable -name 'godot.*editor*mono*' | head -n 1)"
+          if [ -z "$GODOT_WEB_EDITOR" ]; then
+            echo "Could not locate the fork's Mono editor binary." >&2
+            find "$GODOT_WEB_SRC/bin" -maxdepth 1 -type f -printf '%f\n' || true
+            exit 1
+          fi
+          "$GODOT_WEB_EDITOR" --headless --generate-mono-glue modules/mono/glue
+          python3 modules/mono/build_scripts/build_assemblies.py \
+            --godot-output-dir ./bin \
+            --push-nupkgs-local "$RUNNER_TEMP/godot-web-nuget"
+          test -d "$GODOT_WEB_SRC/bin/GodotSharp/Tools/nupkgs"
+          echo "GODOT_WEB_EDITOR=$GODOT_WEB_EDITOR" >> "$GITHUB_ENV"
+
+      - name: Install Emscripten SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          EMSDK="$RUNNER_TEMP/emsdk"
+          git clone --depth=1 https://github.com/emscripten-core/emsdk.git "$EMSDK"
+          "$EMSDK/emsdk" install "$EMSDK_VERSION"
+          "$EMSDK/emsdk" activate "$EMSDK_VERSION"
+          echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
+
+      - name: Build single-threaded C# Web template
+        shell: bash
+        run: |
+          set -euo pipefail
+          source "$EMSDK/emsdk_env.sh"
+          cd "$GODOT_WEB_SRC"
+          scons -j2 \
+            target=template_release \
+            platform=web \
+            library_type=static_library \
+            module_mono_enabled=yes \
+            lto=none \
+            disable_crash_handler=yes \
+            threads=no
+          WEB_TEMPLATE="$(find "$GODOT_WEB_SRC/bin" -maxdepth 1 -type f -name 'godot.web.template_release.wasm32.nothreads.mono.zip' | head -n 1)"
+          if [ -z "$WEB_TEMPLATE" ]; then
+            echo "Expected single-threaded Mono Web template was not produced." >&2
+            find "$GODOT_WEB_SRC/bin" -maxdepth 1 -type f -printf '%f\n' || true
+            exit 1
+          fi
+          echo "GODOT_WEB_TEMPLATE=$WEB_TEMPLATE" >> "$GITHUB_ENV"
+
+      - name: Prepare disposable Desktop Buddy Web project
+        shell: bash
+        run: |
+          set -euo pipefail
+          WEB_WORK="$RUNNER_TEMP/desktop-buddy-web"
+          rm -rf "$WEB_WORK"
+          mkdir -p "$WEB_WORK"
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.godot/' \
+            --exclude='build/' \
+            --exclude='.protected/' \
+            ./ "$WEB_WORK/"
+          rm -f "$WEB_WORK/global.json"
+
+          NUPKG_DIR="$GODOT_WEB_SRC/bin/GodotSharp/Tools/nupkgs"
+          SDK_PACKAGE="$(find "$NUPKG_DIR" -maxdepth 1 -type f -name 'Godot.NET.Sdk.*.nupkg' | sort | tail -n 1)"
+          if [ -z "$SDK_PACKAGE" ]; then
+            echo "Fork build did not produce a Godot.NET.Sdk package." >&2
+            find "$NUPKG_DIR" -maxdepth 1 -type f -printf '%f\n' || true
+            exit 1
+          fi
+          SDK_FILE="$(basename "$SDK_PACKAGE")"
+          SDK_VERSION="${SDK_FILE#Godot.NET.Sdk.}"
+          SDK_VERSION="${SDK_VERSION%.nupkg}"
+          echo "Using experimental Godot.NET.Sdk/$SDK_VERSION"
+
+          python3 - "$WEB_WORK" "$SDK_VERSION" <<'PY'
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          version = sys.argv[2]
+          for relative in (
+              "DesktopBuddy.csproj",
+              "shared/DesktopBuddy.Visuals/DesktopBuddy.Visuals.csproj",
+          ):
+              path = root / relative
+              text = path.read_text(encoding="utf-8")
+              text = text.replace("Godot.NET.Sdk/4.6.1", f"Godot.NET.Sdk/{version}")
+              text = text.replace("<TargetFramework>net8.0</TargetFramework>", "<TargetFramework>net10.0</TargetFramework>")
+              text = text.replace("<EnableDynamicLoading>true</EnableDynamicLoading>", "<EnableDynamicLoading>false</EnableDynamicLoading>")
+              path.write_text(text, encoding="utf-8")
+
+          domain = root / "domain/DesktopBuddy.Domain/DesktopBuddy.Domain.csproj"
+          text = domain.read_text(encoding="utf-8")
+          text = text.replace("<TargetFramework>net8.0</TargetFramework>", "<TargetFramework>net10.0</TargetFramework>")
+          domain.write_text(text, encoding="utf-8")
+          PY
+
+          cat > "$WEB_WORK/nuget.config" <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="godot-web-fork" value="$NUPKG_DIR" />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+          </configuration>
+          EOF
+
+          mkdir -p "$WEB_WORK/.web-build"
+          cp "$GODOT_WEB_TEMPLATE" "$WEB_WORK/.web-build/godot.web.template_release.wasm32.nothreads.mono.zip"
+          echo "WEB_WORK=$WEB_WORK" >> "$GITHUB_ENV"
+
+      - name: Import disposable Web project
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$GODOT_WEB_EDITOR" --headless --path "$WEB_WORK" --import
+
+      - name: Export experimental C# Web build
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$WEB_WORK/build/itch-web"
+          mkdir -p "$WEB_WORK/build/itch-web"
+          "$GODOT_WEB_EDITOR" --headless --path "$WEB_WORK" \
+            --export-release "Web itch.io experimental" "$WEB_WORK/build/itch-web/index.html"
+          test -f "$WEB_WORK/build/itch-web/index.html"
+          test -n "$(find "$WEB_WORK/build/itch-web" -type f -name '*.wasm' -print -quit)"
+          test -d "$WEB_WORK/build/itch-web/_framework"
+
+      - name: Browser smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          WEB_DIR="$WEB_WORK/build/itch-web"
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory "$WEB_DIR" > "$RUNNER_TEMP/itch-web-http.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID >/dev/null 2>&1 || true' EXIT
+
+          cd "$RUNNER_TEMP"
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+          cat > smoke.mjs <<'JS'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch({headless: true});
+          const page = await browser.newPage({ viewport: { width: 1280, height: 940 } });
+          const pageErrors = [];
+          const consoleErrors = [];
+          page.on('pageerror', error => pageErrors.push(String(error)));
+          page.on('console', message => {
+            if (message.type() === 'error') consoleErrors.push(message.text());
+          });
+          const response = await page.goto('http://127.0.0.1:8123/index.html', {
+            waitUntil: 'domcontentloaded',
+            timeout: 120000,
+          });
+          if (!response || !response.ok()) throw new Error(`HTTP load failed: ${response?.status()}`);
+          await page.waitForSelector('canvas', { timeout: 120000 });
+          await page.waitForTimeout(20000);
+          const canvas = await page.locator('canvas').first().evaluate(el => ({
+            width: el.width,
+            height: el.height,
+            clientWidth: el.clientWidth,
+            clientHeight: el.clientHeight,
+          }));
+          await page.screenshot({ path: process.env.RUNNER_TEMP + '/desktop-buddy-web-smoke.png', fullPage: true });
+          console.log('Canvas:', JSON.stringify(canvas));
+          if (canvas.width <= 0 || canvas.height <= 0 || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) {
+            throw new Error(`Canvas did not render: ${JSON.stringify(canvas)}`);
+          }
+          if (pageErrors.length) {
+            throw new Error(`Browser page errors:\n${pageErrors.join('\n')}`);
+          }
+          const fatalConsole = consoleErrors.filter(line => /abort|exception|uncaught|failed to instantiate|runtimeerror/i.test(line));
+          if (fatalConsole.length) {
+            throw new Error(`Fatal browser console errors:\n${fatalConsole.join('\n')}`);
+          }
+          await browser.close();
+          JS
+
+          node smoke.mjs
+
+      - name: Package experimental Web build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          rm -f build/DesktopBuddy-itch-web-experimental.zip
+          (cd "$WEB_WORK/build/itch-web" && zip -q -r "$GITHUB_WORKSPACE/build/DesktopBuddy-itch-web-experimental.zip" .)
+          test -s build/DesktopBuddy-itch-web-experimental.zip
+
+      - name: Upload experimental Web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: DesktopBuddy-itch-web-experimental
+          path: |
+            build/DesktopBuddy-itch-web-experimental.zip
+            ${{ runner.temp }}/desktop-buddy-web-smoke.png
+          if-no-files-found: error
