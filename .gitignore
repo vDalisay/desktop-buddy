@@ -16,6 +16,10 @@ mono_crash.*.json
 /build/
 /export/
 
+# Public-build protection cache. Never commit generated obfuscator state or encryption keys.
+/.protected/
+*.gdkey
+
 # Diagnostics: logs and headless runner artifacts
 *.log
 /logs/
