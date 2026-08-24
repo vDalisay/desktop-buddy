@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -21,6 +22,13 @@ public partial class BuddyStudioBootstrap : Node
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
+        if (!DemoScope.IncludesBuddyStudio)
+        {
+            SetProcess(false);
+            Log.Info(Category, "Buddy Studio omitted by the active distribution scope.");
+            return;
+        }
+
         SetProcess(true);
         Log.Info(Category, $"Autoload ready at {GetPath()}.");
     }
