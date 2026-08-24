@@ -341,7 +341,7 @@ public sealed class WorkSessionState
                 definition.RewardMilliCredits,
                 definition.RepeatPolicy));
         }
-        return newlyEarned ?? Array.Empty<WorkMilestoneEarned>();
+        return newlyEarned is null ? Array.Empty<WorkMilestoneEarned>() : newlyEarned;
     }
 
     private IReadOnlyList<string> EarnedSnapshot()
