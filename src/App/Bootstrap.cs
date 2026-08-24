@@ -227,6 +227,12 @@ public partial class Bootstrap : Node
         sandbox.Shell.ConfigureRuntime(settings, saves);
         sandbox.Configure(context);
 
+        // Feature autoloads may exist before the sandbox enters the tree. Give them the
+        // composition-root reference directly so normal boot does not discover runtime services
+        // by recursively walking the scene tree.
+        GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
+            "/root/EnvironmentCustomizationBootstrap")?.Configure(sandbox);
+
         var characterRuntime = new CharacterSelectionRuntime
         {
             Name = nameof(CharacterSelectionRuntime),
