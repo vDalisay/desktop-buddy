@@ -228,10 +228,12 @@ public partial class Bootstrap : Node
         sandbox.Configure(context);
 
         // Feature autoloads may exist before the sandbox enters the tree. Give them the
-        // composition-root reference directly so normal boot does not discover runtime services
-        // by recursively walking the scene tree.
+        // composition-root references directly so normal boot does not discover runtime services
+        // by recursively walking the scene tree or bypass the injected persistence policy.
         GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
             "/root/EnvironmentCustomizationBootstrap")?.Configure(sandbox);
+        GetNodeOrNull<DesktopBuddy.CharacterEditor.CharacterSlotUiBootstrap>(
+            "/root/CharacterSlotUiBootstrap")?.Configure(sandbox, characters);
 
         var characterRuntime = new CharacterSelectionRuntime
         {
