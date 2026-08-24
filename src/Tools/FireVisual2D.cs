@@ -24,10 +24,14 @@ namespace DesktopBuddy.Tools;
 [GlobalClass]
 public partial class FireVisual2D : Node2D
 {
+    private const int BuddyPartCount = 6;
+    private readonly PuppetPartBody?[] _partsByIndex = new PuppetPartBody?[BuddyPartCount];
+
     private FireSprayerProfile _profile = null!;
     private FireSprayerComponent _sprayer = null!;
     private EffectsSettings _settings = EffectsSettings.Default;
     private bool _presentationActive;
+    private bool _wasBurningVisible;
     private int _ticks;
 
     public bool IsInitialized { get; private set; }
@@ -53,6 +57,17 @@ public partial class FireVisual2D : Node2D
         ArgumentNullException.ThrowIfNull(profile);
         _sprayer = sprayer;
         _profile = profile;
+
+        // Rig membership is stable for the run. The visual used to scan all six bodies again for
+        // every burning part on every draw, so resolve the semantic IDs once up front instead.
+        System.Collections.Generic.IReadOnlyList<PuppetPartBody> parts = sprayer.Pipeline.Buddy.Rig.Parts;
+        for (int index = 0; index < parts.Count; index++)
+        {
+            int partIndex = (int)parts[index].PartId;
+            if ((uint)partIndex < BuddyPartCount)
+                _partsByIndex[partIndex] = parts[index];
+        }
+
         IsInitialized = true;
         QueueRedraw();
     }
@@ -60,13 +75,15 @@ public partial class FireVisual2D : Node2D
     public void ApplyEffectsSettings(EffectsSettings settings)
     {
         _settings = settings;
-        QueueRedraw();
+        if (IsBurningVisible)
+            QueueRedraw();
     }
 
     public void SetPresentationActive(bool active)
     {
         _presentationActive = active;
         Visible = active;
+        _wasBurningVisible = active && IsInitialized && _sprayer.IsBurning;
         QueueRedraw();
     }
 
@@ -76,6 +93,18 @@ public partial class FireVisual2D : Node2D
         if (!IsInitialized)
             return;
 
+        bool burningVisible = _presentationActive && _sprayer.IsBurning;
+        if (!burningVisible)
+        {
+            // Draw commands are cached by CanvasItem, so the transition from burning to clean
+            // needs one final redraw. Every subsequent idle/3D-only routed tick is free.
+            if (_wasBurningVisible)
+                QueueRedraw();
+            _wasBurningVisible = false;
+            return;
+        }
+
+        _wasBurningVisible = true;
         _ticks++;
         QueueRedraw();
     }
@@ -87,15 +116,15 @@ public partial class FireVisual2D : Node2D
         if (!IsInitialized || !_presentationActive || !_sprayer.IsBurning)
             return;
 
-        for (int partIndex = 0; partIndex < 6; partIndex++)
+        for (int partIndex = 0; partIndex < BuddyPartCount; partIndex++)
         {
             var partId = (BuddyPartId)partIndex;
             if (!_sprayer.IsPartBurning(partId))
                 continue;
 
-            PuppetPartBody? part = FindPart(partId);
-            if (part is not null)
-                DrawPartCloud(part, partIndex);
+            PuppetPartBody? part = _partsByIndex[partIndex];
+            if (GodotObject.IsInstanceValid(part))
+                DrawPartCloud(part!, partIndex);
         }
     }
 
@@ -157,18 +186,5 @@ public partial class FireVisual2D : Node2D
                 true, -1.0f, true);
             DrawnEmberCount++;
         }
-    }
-
-    private PuppetPartBody? FindPart(BuddyPartId partId)
-    {
-        System.Collections.Generic.IReadOnlyList<PuppetPartBody> parts =
-            _sprayer.Pipeline.Buddy.Rig.Parts;
-        for (int index = 0; index < parts.Count; index++)
-        {
-            if (parts[index].PartId == partId)
-                return parts[index];
-        }
-
-        return null;
     }
 }
