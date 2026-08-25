@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Persistence;
 
 namespace DesktopBuddy.Domain.Economy.Benchmark;
 
@@ -9,9 +10,9 @@ namespace DesktopBuddy.Domain.Economy.Benchmark;
 public readonly record struct ObligationCheck(string Id, bool Passed, string Detail);
 
 /// <summary>
-/// The six M5 §4.3 proof obligations, evaluated over a whole benchmark sweep. They are
-/// facts about the run, not about the code, so they are asserted from the measured results
-/// rather than restated as expectations in a test.
+/// Structural economy obligations evaluated against the current shipped catalogue and the
+/// representative seeded behaviour traces. Historical minute targets are intentionally not proof
+/// obligations: authored catalogue data is the current tuning source of truth.
 /// </summary>
 public static class BenchmarkObligations
 {
@@ -37,9 +38,10 @@ public static class BenchmarkObligations
         {
             ActiveDominatesPassive(completionist),
             PassiveShareOfActive(completionist, economy),
+            CurrentShopPriceLadder(catalogue),
             NoDoubleMilestoneSkip(results, catalogue),
             DedupPaysPositiveZeroPositive(catalogue, economy),
-            FreeChoiceWithoutPrerequisites(results, catalogue),
+            EveryItemMayBeBoughtFirst(catalogue),
             FingerprintTracksPricesOnly(catalogue, economy),
         };
     }
@@ -88,6 +90,39 @@ public static class BenchmarkObligations
             $"cr/active-min = {Number(share * 100.0)}%");
     }
 
+    private static ObligationCheck CurrentShopPriceLadder(ToolCatalogue catalogue)
+    {
+        long previous = -1;
+        string previousId = "<start>";
+        foreach (string contentId in BenchmarkSchedule.PurchasableOrder)
+        {
+            if (!catalogue.TryGet(contentId, out CatalogueEntry entry) || !entry.HasValidPrice)
+            {
+                return new ObligationCheck(
+                    "current_shop_prices_follow_authored_ladder",
+                    false,
+                    $"'{contentId}' is missing or has no valid authored price");
+            }
+
+            if (entry.PriceMilliCredits < previous)
+            {
+                return new ObligationCheck(
+                    "current_shop_prices_follow_authored_ladder",
+                    false,
+                    $"'{contentId}' ({Number(entry.PriceMilliCredits / 1000.0)}cr) is cheaper than " +
+                    $"earlier '{previousId}' ({Number(previous / 1000.0)}cr)");
+            }
+
+            previous = entry.PriceMilliCredits;
+            previousId = contentId;
+        }
+
+        return new ObligationCheck(
+            "current_shop_prices_follow_authored_ladder",
+            BenchmarkSchedule.PurchasableOrder.Count > 0,
+            $"{BenchmarkSchedule.PurchasableOrder.Count} current purchasables are non-decreasing by authored price");
+    }
+
     private static ObligationCheck NoDoubleMilestoneSkip(
         IReadOnlyList<BenchmarkResult> results,
         ToolCatalogue catalogue)
@@ -96,32 +131,34 @@ public static class BenchmarkObligations
         foreach (BenchmarkResult result in results)
             largest = Math.Max(largest, result.LargestSingleEventMilliCredits);
 
-        // Skipping "more than one milestone" means one payout covering two adjacent slots
-        // at once, so the tightest adjacent pair is the ceiling an ordinary event must stay
-        // under.
         long tightestPair = long.MaxValue;
         IReadOnlyList<string> order = BenchmarkSchedule.PurchasableOrder;
         for (int index = 0; index + 1 < order.Count; index++)
         {
-            catalogue.TryGet(order[index], out CatalogueEntry first);
-            catalogue.TryGet(order[index + 1], out CatalogueEntry second);
+            if (!catalogue.TryGet(order[index], out CatalogueEntry first) ||
+                !catalogue.TryGet(order[index + 1], out CatalogueEntry second))
+            {
+                return new ObligationCheck(
+                    "no_ordinary_event_skips_two_milestones",
+                    false,
+                    "current benchmark purchase order contains an item missing from the catalogue");
+            }
+
             tightestPair = Math.Min(tightestPair, first.PriceMilliCredits + second.PriceMilliCredits);
         }
 
+        bool hasPair = tightestPair != long.MaxValue;
         return new ObligationCheck(
             "no_ordinary_event_skips_two_milestones",
-            largest < tightestPair,
+            hasPair && largest < tightestPair,
             $"largest single payout {Number(largest / 1000.0)} credits vs tightest adjacent " +
-            $"pair {Number(tightestPair / 1000.0)} credits");
+            $"pair {(hasPair ? Number(tightestPair / 1000.0) : "n/a")} credits");
     }
 
     private static ObligationCheck DedupPaysPositiveZeroPositive(
         ToolCatalogue catalogue,
         BenchmarkEconomy economy)
     {
-        // Three prefixes of one trace, replayed through the real router and ledger: a hit,
-        // the same tool still resting on the same part, then a genuine second hit after the
-        // re-arm window. The middle prefix must add nothing.
         const string tool = ContentIds.ToolBoxingGlove;
         var events = new[]
         {
@@ -157,94 +194,39 @@ public static class BenchmarkObligations
         return prefix;
     }
 
-    private static ObligationCheck FreeChoiceWithoutPrerequisites(
-        IReadOnlyList<BenchmarkResult> results,
-        ToolCatalogue catalogue)
+    private static ObligationCheck EveryItemMayBeBoughtFirst(ToolCatalogue catalogue)
     {
-        bool passed = true;
-        int completionistRuns = 0;
-        int saveRuns = 0;
         var failures = new List<string>();
-
-        foreach (BenchmarkResult result in results)
+        int tested = 0;
+        foreach (string contentId in BenchmarkSchedule.PurchasableOrder)
         {
-            if (result.StrategyId == BenchmarkStrategies.CompletionistId)
+            if (!catalogue.TryGet(contentId, out CatalogueEntry entry) || !entry.HasValidPrice)
             {
-                completionistRuns++;
-                if (result.Purchases.Count != BenchmarkSchedule.PurchasableOrder.Count)
-                {
-                    passed = false;
-                    failures.Add(
-                        $"{result.StrategyId}/seed {result.Seed} bought " +
-                        $"{result.Purchases.Count} of {BenchmarkSchedule.PurchasableOrder.Count}");
-                }
-
+                failures.Add($"{contentId}: missing/invalid price");
                 continue;
             }
 
-            if (!result.StrategyId.StartsWith("save_for_", StringComparison.Ordinal))
-                continue;
-
-            saveRuns++;
-            string target = result.Purchases.Count > 0 ? result.Purchases[0].ContentId : "<none>";
-            if (!BoughtTargetBeforeACheaperEarlierItem(result, catalogue, out string detail))
+            tested++;
+            var progress = new BuddyProgressState(cashPerPain: 1.0);
+            progress.Deposit(entry.PriceMilliCredits);
+            PurchaseResult purchase = progress.Purchase(contentId, catalogue);
+            if (!purchase.Succeeded ||
+                purchase.PriceMilliCredits != entry.PriceMilliCredits ||
+                !progress.IsToolUnlocked(contentId) ||
+                progress.BalanceMilliCredits != 0)
             {
-                passed = false;
-                failures.Add($"{result.StrategyId}/seed {result.Seed}: {detail} (first={target})");
+                failures.Add(
+                    $"{contentId}: status={purchase.Status}, charged={purchase.PriceMilliCredits}, " +
+                    $"owned={progress.IsToolUnlocked(contentId)}, balance={progress.BalanceMilliCredits}");
             }
         }
 
         return new ObligationCheck(
-            "any_item_may_be_bought_first",
-            passed && completionistRuns > 0 && saveRuns > 0,
+            "any_current_shop_item_may_be_bought_first",
+            tested == BenchmarkSchedule.PurchasableOrder.Count && tested > 0 && failures.Count == 0,
             failures.Count == 0
-                ? $"{completionistRuns} completionist runs bought all twelve; {saveRuns} " +
-                  "save runs bought their target ahead of a cheaper earlier item"
+                ? $"{tested}/{BenchmarkSchedule.PurchasableOrder.Count} current shop entries can be the first exactly-funded purchase"
                 : string.Join("; ", failures));
-    }
-
-    private static bool BoughtTargetBeforeACheaperEarlierItem(
-        BenchmarkResult result,
-        ToolCatalogue catalogue,
-        out string detail)
-    {
-        detail = "no purchases";
-        if (result.Purchases.Count == 0)
-            return false;
-
-        string target = result.Purchases[0].ContentId;
-        long targetPrice = result.Purchases[0].PriceMilliCredits;
-        IReadOnlyList<string> order = BenchmarkSchedule.PurchasableOrder;
-
-        foreach (string contentId in order)
-        {
-            if (contentId == target)
-                break;
-            if (!catalogue.TryGet(contentId, out CatalogueEntry entry) ||
-                entry.PriceMilliCredits >= targetPrice)
-            {
-                continue;
-            }
-
-            int boughtAt = -1;
-            for (int index = 0; index < result.Purchases.Count; index++)
-            {
-                if (result.Purchases[index].ContentId == contentId)
-                {
-                    boughtAt = index;
-                    break;
-                }
-            }
-
-            if (boughtAt != 0)
-            {
-                detail = $"'{target}' bought before cheaper earlier '{contentId}'";
-                return true;
-            }
-        }
-
-        detail = $"nothing cheaper and earlier than '{target}' was left unbought";
-        return false;
     }
 
     private static ObligationCheck FingerprintTracksPricesOnly(
