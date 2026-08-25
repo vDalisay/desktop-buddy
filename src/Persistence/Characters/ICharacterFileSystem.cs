@@ -6,7 +6,8 @@ namespace DesktopBuddy.Persistence.Characters;
 
 /// <summary>
 /// Godot-free character-library filesystem boundary. The resolved absolute root is supplied
-/// by the main thread; every operation thereafter is safe to execute on a worker thread.
+/// by the main thread; every operation thereafter is safe to execute on a worker thread on
+/// native builds and inline on single-threaded browser-WASM builds.
 /// </summary>
 public interface ICharacterFileSystem
 {
@@ -86,6 +87,14 @@ public sealed class CharacterFileSystem : ICharacterFileSystem
 
     public void WriteAllBytesDurable(string path, ReadOnlySpan<byte> content)
     {
+        if (OperatingSystem.IsBrowser())
+        {
+            // Emscripten's virtual filesystem does not provide native fsync/WriteThrough
+            // semantics. Godot owns persistence of user:// to browser storage.
+            File.WriteAllBytes(path, content.ToArray());
+            return;
+        }
+
         using var stream = new FileStream(
             path,
             FileMode.Create,
@@ -104,7 +113,20 @@ public sealed class CharacterFileSystem : ICharacterFileSystem
     {
         if (File.Exists(backupPath))
             File.Delete(backupPath);
-        File.Replace(temporaryPath, primaryPath, backupPath, ignoreMetadataErrors: true);
+
+        if (!OperatingSystem.IsBrowser())
+        {
+            File.Replace(temporaryPath, primaryPath, backupPath, ignoreMetadataErrors: true);
+            return;
+        }
+
+        // File.Replace is not implemented consistently by browser-WASM virtual filesystems.
+        // Reproduce the rolling backup contract using copy/delete/move instead.
+        if (File.Exists(primaryPath))
+            File.Copy(primaryPath, backupPath);
+        if (File.Exists(primaryPath))
+            File.Delete(primaryPath);
+        File.Move(temporaryPath, primaryPath);
     }
 
     public void MoveFile(string sourcePath, string destinationPath) =>
@@ -129,6 +151,11 @@ public sealed class CharacterFileSystem : ICharacterFileSystem
 
     public bool IsReparsePoint(string path)
     {
+        // The browser user filesystem is an isolated Emscripten/Godot virtual filesystem and
+        // exposes no host symlinks/reparse points. LinkTarget and some attribute APIs are not
+        // implemented by browser-WASM, so do not probe them there.
+        if (OperatingSystem.IsBrowser())
+            return false;
         if (!File.Exists(path) && !Directory.Exists(path))
             return false;
 
