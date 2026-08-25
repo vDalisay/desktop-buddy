@@ -17,7 +17,8 @@ public static class SteamAppIdentityResolver
 {
     public const uint DesktopBuddyBaseAppId = 5_114_950;
 
-    public const string RuntimeProjectSetting = "steam/initialization/app_id";
+    // GodotSteam v4.20+ stores the primary application ID under app_data/app_id.
+    public const string RuntimeProjectSetting = "steam/initialization/app_data/app_id";
     public const string WorkshopOwnerProjectSetting = "desktop_buddy/steam/workshop_owner_app_id";
 
     public const string RuntimeEnvironmentVariable = "DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID";
@@ -54,9 +55,8 @@ public static class SteamAppIdentityResolver
 
     private static uint ReadProject(string setting)
     {
-        // GodotSteam 4.22 owns steam/initialization/app_id as a String project setting and
-        // migrates older integer-form values at startup. Parse the Variant text so both the
-        // current String form and pre-migration integer form remain compatible.
+        // Parse via text so the resolver remains tolerant of either integer or textual project
+        // values while GodotSteam itself owns the canonical setting registration.
         Variant configured = ProjectSettings.GetSetting(setting, 0);
         string value = configured.ToString();
         return uint.TryParse(value, out uint parsed) && parsed != 0 ? parsed : 0;
