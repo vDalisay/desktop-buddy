@@ -430,7 +430,6 @@ jobs:
               text = path.read_text(encoding="utf-8")
               text = text.replace("Godot.NET.Sdk/4.6.1", f"Godot.NET.Sdk/{version}")
               text = text.replace("<TargetFramework>net8.0</TargetFramework>", "<TargetFramework>net10.0</TargetFramework>")
-              text = text.replace("<EnableDynamicLoading>true</EnableDynamicLoading>", "<EnableDynamicLoading>false</EnableDynamicLoading>")
               path.write_text(text, encoding="utf-8")
 
           domain = root / "domain/DesktopBuddy.Domain/DesktopBuddy.Domain.csproj"
@@ -461,9 +460,20 @@ jobs:
           set -o pipefail
           {
             cd "$WEB_WORK"
-            dotnet restore DesktopBuddy.csproj --configfile nuget.config -p:GodotTargetPlatform=web
+            # The exporter itself targets browser-wasm later. The editor import is a native
+            # process and must first have a native project assembly so Godot can register C#
+            # classes, exported properties and autoloads correctly instead of packing a scene
+            # database built while every C# script is reported as "not compiling".
+            dotnet restore DesktopBuddy.csproj --configfile nuget.config
+            dotnet build DesktopBuddy.csproj -c Debug --no-restore
             "$GODOT_WEB_EDITOR" --headless --verbose --path "$WEB_WORK" --import
           } 2>&1 | tee "$RUNNER_TEMP/desktop-buddy-web-import.log"
+
+          if grep -Eq '\.NET: Failed to load project assembly|Failed to create an autoload.*not compiling' \
+              "$RUNNER_TEMP/desktop-buddy-web-import.log"; then
+            echo "Disposable Web project was imported without a valid native C# assembly." >&2
+            exit 1
+          fi
 
       - name: Export experimental C# Web build
         shell: bash
@@ -527,41 +537,68 @@ jobs:
           npx playwright install --with-deps chromium
 
           cat > smoke.mjs <<'JS'
+          import fs from 'node:fs';
           import { chromium } from 'playwright';
+
           const browser = await chromium.launch({headless: true});
           const page = await browser.newPage({ viewport: { width: 1280, height: 940 } });
           const pageErrors = [];
+          const consoleLines = [];
           const consoleErrors = [];
+          let runtimeReady = false;
+
           page.on('pageerror', error => pageErrors.push(String(error)));
           page.on('console', message => {
-            if (message.type() === 'error') consoleErrors.push(message.text());
+            const text = message.text();
+            consoleLines.push(`[${message.type()}] ${text}`);
+            if (message.type() === 'error') consoleErrors.push(text);
+            if (text.includes('DESKTOP_BUDDY_WEB_RUNTIME_READY')) runtimeReady = true;
           });
-          const response = await page.goto('http://127.0.0.1:8123/index.html', {
-            waitUntil: 'domcontentloaded',
-            timeout: 120000,
-          });
-          if (!response || !response.ok()) throw new Error(`HTTP load failed: ${response?.status()}`);
-          await page.waitForSelector('canvas', { timeout: 120000 });
-          await page.waitForTimeout(20000);
-          const canvas = await page.locator('canvas').first().evaluate(el => ({
-            width: el.width,
-            height: el.height,
-            clientWidth: el.clientWidth,
-            clientHeight: el.clientHeight,
-          }));
-          await page.screenshot({ path: process.env.RUNNER_TEMP + '/desktop-buddy-web-smoke.png', fullPage: true });
-          console.log('Canvas:', JSON.stringify(canvas));
-          if (canvas.width <= 0 || canvas.height <= 0 || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) {
-            throw new Error(`Canvas did not render: ${JSON.stringify(canvas)}`);
+
+          try {
+            const response = await page.goto('http://127.0.0.1:8123/index.html', {
+              waitUntil: 'domcontentloaded',
+              timeout: 120000,
+            });
+            if (!response || !response.ok()) throw new Error(`HTTP load failed: ${response?.status()}`);
+            await page.waitForSelector('canvas', { timeout: 120000 });
+
+            const deadline = Date.now() + 30000;
+            while (!runtimeReady && Date.now() < deadline && pageErrors.length === 0) {
+              await page.waitForTimeout(250);
+            }
+
+            const canvas = await page.locator('canvas').first().evaluate(el => ({
+              width: el.width,
+              height: el.height,
+              clientWidth: el.clientWidth,
+              clientHeight: el.clientHeight,
+            }));
+            await page.screenshot({ path: process.env.RUNNER_TEMP + '/desktop-buddy-web-smoke.png', fullPage: true });
+            console.log('Canvas:', JSON.stringify(canvas));
+
+            if (canvas.width <= 0 || canvas.height <= 0 || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) {
+              throw new Error(`Canvas did not render: ${JSON.stringify(canvas)}`);
+            }
+            if (pageErrors.length) {
+              throw new Error(`Browser page errors:\n${pageErrors.join('\n')}`);
+            }
+            const fatalConsole = consoleErrors.filter(line => /abort|exception|uncaught|failed to instantiate|runtimeerror/i.test(line));
+            if (fatalConsole.length) {
+              throw new Error(`Fatal browser console errors:\n${fatalConsole.join('\n')}`);
+            }
+            if (!runtimeReady) {
+              throw new Error(
+                'Desktop Buddy never reached DESKTOP_BUDDY_WEB_RUNTIME_READY. Last browser logs:\n' +
+                consoleLines.slice(-80).join('\n'));
+            }
+          } finally {
+            fs.writeFileSync(
+              process.env.RUNNER_TEMP + '/desktop-buddy-web-console.log',
+              consoleLines.join('\n') + '\n',
+              'utf8');
+            await browser.close();
           }
-          if (pageErrors.length) {
-            throw new Error(`Browser page errors:\n${pageErrors.join('\n')}`);
-          }
-          const fatalConsole = consoleErrors.filter(line => /abort|exception|uncaught|failed to instantiate|runtimeerror/i.test(line));
-          if (fatalConsole.length) {
-            throw new Error(`Fatal browser console errors:\n${fatalConsole.join('\n')}`);
-          }
-          await browser.close();
           JS
 
           node smoke.mjs
@@ -573,6 +610,7 @@ jobs:
           name: DesktopBuddy-web-smoke-diagnostics
           path: |
             ${{ runner.temp }}/itch-web-http.log
+            ${{ runner.temp }}/desktop-buddy-web-console.log
             ${{ runner.temp }}/desktop-buddy-web-smoke.png
           if-no-files-found: warn
           retention-days: 7
