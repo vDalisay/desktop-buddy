@@ -89,6 +89,9 @@ jobs:
       - name: Headless editor import
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
 
+      - name: Workshop emulator roundtrip scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=workshop_emulator_roundtrip --seed=1
+
       - name: Inventory purchase scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=shop_panel_purchase --seed=1
 
