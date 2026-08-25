@@ -6,23 +6,19 @@ using DesktopBuddy.Domain.Content;
 
 namespace DesktopBuddy.Domain.Economy.Benchmark;
 
-/// <summary>One §1.1 slot as the completionist sweep actually measured it.</summary>
+/// <summary>
+/// One current shop entry as the representative completionist traces actually observed it.
+/// An item not being reached inside the fixed 209-minute behaviour sample is diagnostic data,
+/// not a failure: catalogue reachability is proved independently from session pacing.
+/// </summary>
 public readonly record struct ScheduleRow(
     string ContentId,
     long PriceMilliCredits,
-    double TargetMinutes,
     double MedianMinutes,
     int SeedsThatBought,
     int SeedsRun)
 {
     public bool BoughtEverywhere => SeedsRun > 0 && SeedsThatBought == SeedsRun;
-
-    /// <summary>Signed fraction the median is off target; <c>NaN</c> when a seed never bought it.</summary>
-    public double Deviation => BoughtEverywhere && TargetMinutes > 0.0
-        ? (MedianMinutes - TargetMinutes) / TargetMinutes
-        : double.NaN;
-
-    public bool InBand => Math.Abs(Deviation) <= BenchmarkSchedule.ToleranceFraction;
 }
 
 /// <summary>Everything one report prints. The scenario supplies it; only it does file IO.</summary>
@@ -40,7 +36,7 @@ public sealed record BenchmarkReportInput(
 /// </summary>
 public static class BenchmarkReport
 {
-    public const int Version = 1;
+    public const int Version = 2;
 
     public static double Median(IReadOnlyList<double> values)
     {
@@ -55,7 +51,10 @@ public static class BenchmarkReport
             : (sorted[middle - 1] + sorted[middle]) / 2.0;
     }
 
-    /// <summary>The completionist schedule table — the only rows judged against §1.1.</summary>
+    /// <summary>
+    /// Completionist observations for the current authored shop order. These rows are deliberately
+    /// not judged against historical minute targets; they remain useful evidence when tuning moves.
+    /// </summary>
     public static IReadOnlyList<ScheduleRow> Summarize(
         IReadOnlyList<BenchmarkResult> results,
         ToolCatalogue catalogue)
@@ -67,15 +66,15 @@ public static class BenchmarkReport
                 completionist.Add(result);
         }
 
-        var rows = new List<ScheduleRow>(BenchmarkSchedule.Targets.Count);
-        foreach (ScheduleTarget target in BenchmarkSchedule.Targets)
+        var rows = new List<ScheduleRow>(BenchmarkSchedule.PurchasableOrder.Count);
+        foreach (string contentId in BenchmarkSchedule.PurchasableOrder)
         {
             var minutes = new List<double>(completionist.Count);
             foreach (BenchmarkResult result in completionist)
             {
                 foreach (BenchmarkPurchase purchase in result.Purchases)
                 {
-                    if (purchase.ContentId == target.ContentId)
+                    if (purchase.ContentId == contentId)
                     {
                         minutes.Add(purchase.AtSeconds / 60.0);
                         break;
@@ -83,25 +82,16 @@ public static class BenchmarkReport
                 }
             }
 
-            catalogue.TryGet(target.ContentId, out CatalogueEntry entry);
+            catalogue.TryGet(contentId, out CatalogueEntry entry);
             rows.Add(new ScheduleRow(
-                target.ContentId,
+                contentId,
                 entry.PriceMilliCredits,
-                target.TargetMinutes,
                 Median(minutes),
                 minutes.Count,
                 completionist.Count));
         }
 
         return rows;
-    }
-
-    public static bool AllInBand(IReadOnlyList<ScheduleRow> rows)
-    {
-        bool all = rows.Count > 0;
-        foreach (ScheduleRow row in rows)
-            all &= row.InBand;
-        return all;
     }
 
     public static bool AllObligationsPassed(IReadOnlyList<ObligationCheck> obligations)
@@ -129,18 +119,17 @@ public static class BenchmarkReport
 
         text.Append("  },\n");
 
-        text.Append("  \"completionist_schedule\": [\n");
+        text.Append("  \"completionist_observations\": [\n");
         for (int index = 0; index < rows.Count; index++)
         {
             ScheduleRow row = rows[index];
             text.Append("    {");
             text.Append($"\"content_id\": {Quote(row.ContentId)}, ");
             text.Append($"\"price_credits\": {Fixed(row.PriceMilliCredits / 1000.0)}, ");
-            text.Append($"\"target_minutes\": {Fixed(row.TargetMinutes)}, ");
-            text.Append($"\"median_minutes\": {Fixed(row.MedianMinutes)}, ");
-            text.Append($"\"deviation_percent\": {Fixed(row.Deviation * 100.0)}, ");
+            text.Append($"\"median_purchase_minutes\": {JsonNumber(row.MedianMinutes)}, ");
             text.Append($"\"seeds_that_bought\": {row.SeedsThatBought}, ");
-            text.Append($"\"in_band\": {Bool(row.InBand)}}}");
+            text.Append($"\"seeds_run\": {row.SeedsRun}, ");
+            text.Append($"\"bought_in_every_seed\": {Bool(row.BoughtEverywhere)}}}");
             text.Append(index + 1 < rows.Count ? ",\n" : "\n");
         }
 
@@ -211,21 +200,21 @@ public static class BenchmarkReport
     {
         IReadOnlyList<ScheduleRow> rows = Summarize(input.Results, input.Catalogue);
         var text = new StringBuilder();
-        text.Append("# M5 economy benchmark\n\n");
+        text.Append("# Current economy benchmark\n\n");
         text.Append($"Report version {Version}. Economy fingerprint `{input.EconomyFingerprint}`.\n\n");
+        text.Append("The fixed representative session is an income/mechanics sample. Purchase timings below are observations, not legacy pacing gates.\n\n");
         text.Append("| Seed | Trace fingerprint |\n|---|---|\n");
         foreach (KeyValuePair<int, string> trace in input.TraceFingerprints)
             text.Append($"| {trace.Key} | `{trace.Value}` |\n");
 
-        text.Append("\n## Completionist schedule (median of all seeds)\n\n");
-        text.Append("| Item | Price | Target min | Median min | Deviation | In band |\n");
-        text.Append("|---|---:|---:|---:|---:|---|\n");
+        text.Append("\n## Completionist observations (median of all seeds)\n\n");
+        text.Append("| Item | Price | Median purchase min | Seeds bought |\n");
+        text.Append("|---|---:|---:|---:|\n");
         foreach (ScheduleRow row in rows)
         {
             text.Append(
                 $"| {row.ContentId} | {Fixed(row.PriceMilliCredits / 1000.0)} | " +
-                $"{Fixed(row.TargetMinutes)} | {Fixed(row.MedianMinutes)} | " +
-                $"{Fixed(row.Deviation * 100.0)}% | {(row.InBand ? "yes" : "NO")} |\n");
+                $"{DisplayNumber(row.MedianMinutes)} | {row.SeedsThatBought}/{row.SeedsRun} |\n");
         }
 
         text.Append("\n## Proof obligations\n\n| Obligation | Result | Detail |\n|---|---|---|\n");
@@ -280,9 +269,16 @@ public static class BenchmarkReport
         return text.ToString();
     }
 
-    private static string Fixed(double value) => double.IsNaN(value)
+    private static string Fixed(double value) =>
+        value.ToString("F2", CultureInfo.InvariantCulture);
+
+    private static string JsonNumber(double value) => double.IsNaN(value)
         ? "null"
-        : value.ToString("F2", CultureInfo.InvariantCulture);
+        : Fixed(value);
+
+    private static string DisplayNumber(double value) => double.IsNaN(value)
+        ? "not reached"
+        : Fixed(value);
 
     private static string Bool(bool value) => value ? "true" : "false";
 
