@@ -27,6 +27,7 @@ public sealed record CharacterPaintSaveResult(
 /// <summary>
 /// Paint-aware transaction boundary. A complete staged directory is validated before the
 /// active directory is swapped, so character.json never points at missing newly-written PNGs.
+/// Native builds offload blocking work; single-threaded browser-WASM executes it inline.
 /// </summary>
 public sealed class CharacterPaintStore
 {
@@ -56,13 +57,13 @@ public sealed class CharacterPaintStore
     }
 
     public Task<CharacterPaintLoadResult> LoadAsync(Guid id, CancellationToken token = default) =>
-        Task.Run(() => LoadCore(id, token), CancellationToken.None);
+        PersistenceWork.Run(() => LoadCore(id, token), CancellationToken.None);
 
     public Task<CharacterPaintSaveResult> SaveAsync(
         CharacterDocument document,
         IReadOnlyDictionary<PaintPart, ReadOnlyMemory<byte>> surfaces,
         CancellationToken token = default) =>
-        Task.Run(() => SaveCore(document, surfaces, token), CancellationToken.None);
+        PersistenceWork.Run(() => SaveCore(document, surfaces, token), CancellationToken.None);
 
     private CharacterPaintLoadResult LoadCore(Guid id, CancellationToken token)
     {
