@@ -60,8 +60,20 @@ public partial class DesktopShellController : Node
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
         _saves.RegisterSettings(_settings);
-        _mode = new InputModeStateMachine(WindowInteractionSettings.ReadInputMode(_settings));
-        HotkeyBinding.Apply(InputActions.ToggleInputMode, _settings.GlobalHotkey);
+
+        // The reduced itch.io distribution does not contain Work Mode. A fresh settings file
+        // remembers Work by default, so honoring it here would boot an itch/Web build directly
+        // into a mode the distribution intentionally removed. Pin that scope to Play before the
+        // shell ever enters the tree, and reject later Work-mode transitions in Apply().
+        DomainInputMode initialMode = DemoScope.IncludesWorkMode
+            ? WindowInteractionSettings.ReadInputMode(_settings)
+            : DomainInputMode.Play;
+        _mode = new InputModeStateMachine(initialMode);
+
+        if (DemoScope.IncludesWorkMode)
+            HotkeyBinding.Apply(InputActions.ToggleInputMode, _settings.GlobalHotkey);
+        else if (InputMap.HasAction(InputActions.ToggleInputMode))
+            InputMap.ActionEraseEvents(InputActions.ToggleInputMode);
         _runtimeConfigured = true;
     }
 
@@ -209,6 +221,12 @@ public partial class DesktopShellController : Node
     private void Apply(ShellInputEvent input)
     {
         if (EditorBoundaryIsolationActive)
+            return;
+
+        // Work Mode is not merely hidden in the itch build; it is outside that distribution's
+        // feature surface. Escape, stale settings, tray recovery, or a synthesized hotkey must
+        // therefore never move the runtime back into Work after startup.
+        if (!DemoScope.IncludesWorkMode)
             return;
 
         if (_mode.Apply(input))
