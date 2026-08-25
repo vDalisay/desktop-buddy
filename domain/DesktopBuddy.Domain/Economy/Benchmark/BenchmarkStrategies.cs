@@ -1,20 +1,19 @@
+using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Content;
 
 namespace DesktopBuddy.Domain.Economy.Benchmark;
 
 /// <summary>
-/// The seven benchmark shoppers (M5 Tasks 11–13 §4.3). Only
-/// <see cref="CompletionistId"/> is judged against the §1.1 target times; the rest exist to
-/// prove the shop has no prerequisite graph — any visible item may be saved for, and
-/// earlier cheaper ones may be skipped forever.
+/// Benchmark shoppers built from the current authored shop catalogue. Only the completionist
+/// trace is used for income/pacing telemetry; the alternative shoppers exercise the no-
+/// prerequisite/free-choice rule without maintaining a second hard-coded progression list.
 /// </summary>
 public static class BenchmarkStrategies
 {
     public const string CompletionistId = "completionist_in_order";
 
-    /// <summary>The high-value items each <c>save_for_*</c> strategy heads straight for.</summary>
-    public static readonly IReadOnlyList<string> SaveTargets = new[]
+    private static readonly IReadOnlyList<string> PreferredSaveTargets = new[]
     {
         ContentIds.ToolPistol,
         ContentIds.ToolGrenade,
@@ -22,69 +21,82 @@ public static class BenchmarkStrategies
         ContentIds.ToolShotgun,
     };
 
-    /// <summary>
-    /// The regulars <c>skip_regulars</c> never buys, and the single earlier regular
-    /// <c>power_grab_preference</c> walks past — a completed run that still does not own it
-    /// is the evidence that ownership is not a chain.
-    /// </summary>
-    public static readonly IReadOnlyList<string> SkippedRegulars = new[]
+    private static readonly IReadOnlyList<string> PreferredSkippedRegulars = new[]
     {
         ContentIds.ToolBaseball,
         ContentIds.ToolMeal,
         ContentIds.ToolSoccerBall,
     };
 
-    public static readonly IReadOnlyList<BenchmarkStrategy> All = Build();
-
-    private static IReadOnlyList<BenchmarkStrategy> Build()
+    /// <summary>Builds strategies against exactly the entries the current shop exposes.</summary>
+    public static IReadOnlyList<BenchmarkStrategy> ForCatalogue(ToolCatalogue catalogue)
     {
+        ArgumentNullException.ThrowIfNull(catalogue);
+        IReadOnlyList<string> order = BenchmarkSchedule.PurchaseOrder(catalogue);
         var all = new List<BenchmarkStrategy>
         {
-            new(CompletionistId, BenchmarkSchedule.PurchasableOrder),
+            new(CompletionistId, order),
         };
 
-        foreach (string target in SaveTargets)
+        foreach (string target in PreferredSaveTargets)
         {
-            all.Add(new BenchmarkStrategy($"save_for_{Suffix(target)}", First(target)));
+            if (Contains(order, target))
+                all.Add(new BenchmarkStrategy($"save_for_{Suffix(target)}", First(order, target)));
         }
 
-        all.Add(new BenchmarkStrategy("skip_regulars", Without(SkippedRegulars)));
-        all.Add(new BenchmarkStrategy(
-            "power_grab_preference",
-            First(ContentIds.ToolPowerGrab, skip: ContentIds.ToolMeal)));
+        all.Add(new BenchmarkStrategy("skip_regulars", Without(order, PreferredSkippedRegulars)));
+        if (Contains(order, ContentIds.ToolPowerGrab))
+        {
+            all.Add(new BenchmarkStrategy(
+                "power_grab_preference",
+                First(order, ContentIds.ToolPowerGrab, skip: ContentIds.ToolMeal)));
+        }
+
         return all;
     }
 
-    /// <summary>The §1.1 order with one entry pulled to the front, and optionally one dropped.</summary>
-    private static IReadOnlyList<string> First(string contentId, string? skip = null)
+    private static IReadOnlyList<string> First(
+        IReadOnlyList<string> order,
+        string contentId,
+        string? skip = null)
     {
-        var order = new List<string> { contentId };
-        foreach (string id in BenchmarkSchedule.PurchasableOrder)
+        var result = new List<string>(order.Count) { contentId };
+        foreach (string id in order)
         {
             if (id != contentId && id != skip)
-                order.Add(id);
+                result.Add(id);
         }
 
-        return order;
+        return result;
     }
 
-    private static IReadOnlyList<string> Without(IReadOnlyList<string> excluded)
+    private static IReadOnlyList<string> Without(
+        IReadOnlyList<string> order,
+        IReadOnlyList<string> excluded)
     {
-        var order = new List<string>(BenchmarkSchedule.PurchasableOrder.Count);
-        foreach (string id in BenchmarkSchedule.PurchasableOrder)
+        var result = new List<string>(order.Count);
+        foreach (string id in order)
         {
-            bool drop = false;
-            foreach (string skip in excluded)
-                drop |= id == skip;
-            if (!drop)
-                order.Add(id);
+            if (!Contains(excluded, id))
+                result.Add(id);
         }
 
-        return order;
+        return result;
+    }
+
+    private static bool Contains(IReadOnlyList<string> values, string value)
+    {
+        foreach (string candidate in values)
+        {
+            if (string.Equals(candidate, value, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     private static string Suffix(string contentId) =>
-        contentId.StartsWith("tool.", System.StringComparison.Ordinal)
+        contentId.StartsWith("tool.", StringComparison.Ordinal)
             ? contentId["tool.".Length..]
             : contentId;
 }
