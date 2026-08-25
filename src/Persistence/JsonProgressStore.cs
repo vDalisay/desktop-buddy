@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Persistence;
-using Godot;
 
 namespace DesktopBuddy.Persistence;
 
@@ -47,77 +46,10 @@ public sealed class AtomicSaveFileSystem : IAtomicSaveFileSystem
 }
 
 /// <summary>
-/// Browser implementation of the atomic-save boundary. Godot's Web platform owns the
-/// persistent user filesystem and its JavaScript synchronization; going around that layer
-/// through System.IO can stall the experimental single-threaded .NET runtime during writes.
-/// Keep the same temp/backup contract, but perform the actual filesystem operations through
-/// Godot's Web-aware FileAccess/DirAccess APIs.
-/// </summary>
-internal sealed class GodotBrowserAtomicSaveFileSystem : IAtomicSaveFileSystem
-{
-    public bool Exists(string path) => Godot.FileAccess.FileExists(path);
-
-    public string ReadAllText(string path)
-    {
-        using var file = Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Read);
-        if (file is null)
-            throw new IOException($"Could not open browser save for reading: {path} ({Godot.FileAccess.GetOpenError()}).");
-        return file.GetAsText();
-    }
-
-    public void CreateDirectory(string path)
-    {
-        Error error = DirAccess.MakeDirRecursiveAbsolute(path);
-        if (error != Error.Ok && DirAccess.Open(path) is null)
-            throw new IOException($"Could not create browser save directory: {path} ({error}).");
-    }
-
-    public void WriteDurable(string path, string contents)
-    {
-        using var file = Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Write);
-        if (file is null)
-            throw new IOException($"Could not open browser save for writing: {path} ({Godot.FileAccess.GetOpenError()}).");
-        file.StoreString(contents);
-        Error error = file.GetError();
-        if (error != Error.Ok)
-            throw new IOException($"Could not write browser save: {path} ({error}).");
-        // Closing the FileAccess commits the browser virtual-file write. Avoid forcing an
-        // additional synchronous flush here: this Web target is deliberately single-threaded.
-    }
-
-    public void Replace(string temporary, string primary, string backup)
-    {
-        if (Exists(backup))
-            Remove(backup);
-        if (Exists(primary))
-        {
-            // Preserve the rolling-backup behavior without relying on File.Replace, which is
-            // a host-filesystem primitive and is not portable to the browser virtual filesystem.
-            WriteDurable(backup, ReadAllText(primary));
-            Remove(primary);
-        }
-        Move(temporary, primary);
-    }
-
-    public void Move(string source, string destination)
-    {
-        Error error = DirAccess.RenameAbsolute(source, destination);
-        if (error != Error.Ok)
-            throw new IOException($"Could not move browser save {source} -> {destination} ({error}).");
-    }
-
-    private static void Remove(string path)
-    {
-        Error error = DirAccess.RemoveAbsolute(path);
-        if (error != Error.Ok)
-            throw new IOException($"Could not remove browser save: {path} ({error}).");
-    }
-}
-
-/// <summary>
 /// Durable versioned JSON store. Paths must already be resolved on Godot's main
 /// thread; this class contains no native Godot object and serializes off-thread on native builds.
 /// Single-threaded browser-WASM executes the same work inline through <see cref="PersistenceWork"/>.
+/// A browser build injects its Godot-backed filesystem adapter from the composition root.
 /// </summary>
 public sealed class JsonProgressStore : IProgressStore
 {
@@ -139,9 +71,7 @@ public sealed class JsonProgressStore : IProgressStore
             throw new ArgumentException("Resolved progress and settings paths are required.");
         _progressPath = Path.GetFullPath(progressPath);
         _settingsPath = Path.GetFullPath(settingsPath);
-        _files = files ?? (OperatingSystem.IsBrowser()
-            ? new GodotBrowserAtomicSaveFileSystem()
-            : new AtomicSaveFileSystem());
+        _files = files ?? new AtomicSaveFileSystem();
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
     }
 
@@ -153,17 +83,10 @@ public sealed class JsonProgressStore : IProgressStore
 
     public async Task SaveProgressAsync(ProgressSave data, CancellationToken token)
     {
-        bool browser = OperatingSystem.IsBrowser();
-        if (browser)
-            GD.Print("[INFO] [WebPersistence] Serializing progress.");
         string json = await PersistenceWork.Run(() => ProgressSavePolicy.Serialize(data), token)
             .ConfigureAwait(false);
-        if (browser)
-            GD.Print($"[INFO] [WebPersistence] Writing progress bytes={Encoding.UTF8.GetByteCount(json)}.");
         await PersistenceWork.Run(() => SaveAtomic(_progressPath, json, token), token)
             .ConfigureAwait(false);
-        if (browser)
-            GD.Print("[INFO] [WebPersistence] Progress write completed.");
     }
 
     public async Task SaveSettingsAsync(LocalSettingsSave data, CancellationToken token)
