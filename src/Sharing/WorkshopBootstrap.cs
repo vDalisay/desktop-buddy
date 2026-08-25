@@ -17,7 +17,6 @@ public partial class WorkshopBootstrap : Node
 {
     private const string Category = "Workshop";
     private const string BridgeScriptPath = "res://src/Platform/Steam/GodotSteamBridge.gd";
-    private const string SteamAppIdProjectSetting = "steam/initialization/app_id";
     private CharacterStore? _characters;
     private CharacterSelectionState? _selection;
     private WorkshopSharingCoordinator? _sharing;
@@ -131,11 +130,11 @@ public partial class WorkshopBootstrap : Node
             return new DirectoryWorkshopTransport(emulatorRoot);
         }
 
-        uint appId = ResolveSteamAppId();
-        if (appId == 0)
+        SteamAppIdentity identity = SteamAppIdentityResolver.Resolve();
+        if (!identity.IsConfigured)
         {
             return new NullSteamWorkshopTransport(
-                $"No Steam AppID is configured. Set DESKTOP_BUDDY_STEAM_APP_ID for development/CI or provide the canonical GodotSteam project setting '{SteamAppIdProjectSetting}' in the Steam release/depot configuration.");
+                $"Steam identity is incomplete. Configure '{SteamAppIdentityResolver.RuntimeProjectSetting}' for the running app and '{SteamAppIdentityResolver.WorkshopOwnerProjectSetting}' for the base Workshop owner, or use the development environment overrides.");
         }
 
         try
@@ -151,12 +150,16 @@ public partial class WorkshopBootstrap : Node
 
             var transport = new GodotSteamWorkshopTransport { Name = nameof(GodotSteamWorkshopTransport) };
             AddChild(transport);
-            if (!transport.Initialize(bridge, appId))
+            if (!transport.Initialize(bridge, identity))
             {
                 string reason = transport.UnavailableReason ?? "GodotSteam initialization failed.";
                 Log.Warn(Category, reason);
                 return new NullSteamWorkshopTransport(reason);
             }
+
+            Log.Info(
+                Category,
+                $"Steam Workshop initialized; runtimeAppId={identity.RuntimeAppId} workshopOwnerAppId={identity.WorkshopOwnerAppId} crossApp={identity.IsCrossApp}.");
             return transport;
         }
         catch (Exception exception)
@@ -164,22 +167,6 @@ public partial class WorkshopBootstrap : Node
             Log.Warn(Category, $"Steam integration disabled: {exception.Message}");
             return new NullSteamWorkshopTransport(exception.Message);
         }
-    }
-
-    /// <summary>
-    /// Development/CI can override the AppID without changing project files. Release builds may
-    /// instead materialize GodotSteam's canonical project setting through their depot/export
-    /// configuration. The AppID is not a secret, but it must not be hard-coded into this branch.
-    /// </summary>
-    internal static uint ResolveSteamAppId()
-    {
-        string environment = OS.GetEnvironment("DESKTOP_BUDDY_STEAM_APP_ID");
-        if (uint.TryParse(environment, out uint environmentId) && environmentId != 0)
-            return environmentId;
-
-        Variant configured = ProjectSettings.GetSetting(SteamAppIdProjectSetting, 0);
-        long projectId = configured.AsInt64();
-        return projectId is > 0 and <= uint.MaxValue ? checked((uint)projectId) : 0;
     }
 
     private static string ResolveAppVersion()

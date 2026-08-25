@@ -15,7 +15,7 @@ namespace DesktopBuddy.Testing;
 /// Headless integration gate for the complete offline Workshop seam. It deliberately exercises
 /// the same exporter, immutable emulator snapshot, installed-folder import boundary, manifest/hash
 /// validation, PNG codec, provenance, and local room library used by the Steam-backed flow.
-/// No Steam client, AppID, network connection, or native GodotSteam binary is required.
+/// No Steam client, network connection, or native GodotSteam binary is required.
 /// </summary>
 public sealed class WorkshopEmulatorRoundtripScenario : IScenario
 {
@@ -32,6 +32,17 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
 
         try
         {
+            SteamAppIdentity identity = SteamAppIdentityResolver.Resolve();
+            bool identityOk = identity.RuntimeAppId == SteamAppIdentityResolver.DesktopBuddyBaseAppId &&
+                identity.WorkshopOwnerAppId == SteamAppIdentityResolver.DesktopBuddyBaseAppId &&
+                !identity.IsCrossApp;
+            checks.Add(new StartupCheck(
+                "workshop_base_app_identity_is_configured",
+                identityOk,
+                $"runtime={identity.RuntimeAppId} owner={identity.WorkshopOwnerAppId} crossApp={identity.IsCrossApp}"));
+            if (!identityOk)
+                return Result(checks, $"seed={seed}");
+
             var staging = new WorkshopStagingStore(Path.Combine(root, "sharing"));
             var transport = new DirectoryWorkshopTransport(Path.Combine(root, "emulator"), firstId: 9100);
             var library = new RoomPaintingLibraryStore(Path.Combine(root, "room-library"));

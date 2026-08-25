@@ -13,9 +13,16 @@ const EXPECTED_GODOTSTEAM := "4.22"
 const WORKSHOP_FILE_TYPE_COMMUNITY := 0
 const OVERLAY_TO_WEB_PAGE_MODE_DEFAULT := 0
 
+const INTERNAL_ROOM_TAG := "DesktopBuddy.RoomPainting"
+const INTERNAL_BUDDY_TAG := "DesktopBuddy.BuddyCharacter"
+const INTERNAL_FORMAT_V1_TAG := "FormatVersion.1"
+const PUBLIC_ROOM_TAG := "Room Painting"
+const PUBLIC_BUDDY_TAG := "Buddy"
+
 var _steam: Object
 var _initialized := false
 var _app_id := 0
+var _workshop_app_id := 0
 var _reason := "GodotSteam has not been initialized."
 
 var _required_methods := PackedStringArray([
@@ -86,10 +93,17 @@ func initialize(app_id: int) -> Dictionary:
         return _fail(str(response.get("verbal", "Steam initialization failed.")), status)
 
     _app_id = app_id
+    _workshop_app_id = app_id
     _initialized = true
     _reason = ""
     bridge_state_changed.emit(true, "")
     return {"status": 0, "verbal": str(response.get("verbal", "Steam initialized.")), "version": EXPECTED_GODOTSTEAM}
+
+func configure_workshop_app_id(app_id: int) -> bool:
+    if not is_available() or app_id <= 0:
+        return false
+    _workshop_app_id = app_id
+    return true
 
 func is_available() -> bool:
     return _initialized and _steam != null
@@ -100,6 +114,9 @@ func unavailable_reason() -> String:
 func app_id() -> int:
     return _app_id
 
+func workshop_app_id() -> int:
+    return _workshop_app_id
+
 func _process(_delta: float) -> void:
     if _initialized and _steam != null:
         _steam.call("run_callbacks")
@@ -109,15 +126,16 @@ func shutdown() -> void:
         _steam.call("steamShutdown")
     _initialized = false
     _app_id = 0
+    _workshop_app_id = 0
 
 func create_item(app_id: int) -> bool:
-    if not is_available() or app_id != _app_id:
+    if not is_available() or app_id != _workshop_app_id:
         return false
     _steam.call("createItem", app_id, WORKSHOP_FILE_TYPE_COMMUNITY)
     return true
 
 func start_item_update(app_id: int, file_id: int) -> int:
-    if not is_available() or app_id != _app_id or file_id <= 0:
+    if not is_available() or app_id != _workshop_app_id or file_id <= 0:
         return 0
     return int(_steam.call("startItemUpdate", app_id, file_id))
 
@@ -132,10 +150,13 @@ func set_item_visibility(update_handle: int, visibility: int) -> bool:
 
 func set_item_tags(update_handle: int, tags: PackedStringArray) -> bool:
     # GodotSteam 4.22 exposes SteamUGC::SetItemTags as (handle, Array, allow_admin_tags).
-    # Convert deliberately instead of leaking a version-specific binding shape into C#.
+    # The application uses stable internal discriminators; this adapter maps them onto the
+    # human-readable Ready-to-Use Item Tags configured in Steamworks App Admin.
     var tag_array: Array = []
     for tag in tags:
-        tag_array.append(tag)
+        var public_tag := _to_public_workshop_tag(tag)
+        if not public_tag.is_empty() and not tag_array.has(public_tag):
+            tag_array.append(public_tag)
     return _call_bool("setItemTags", [update_handle, tag_array, false])
 
 func set_item_metadata(update_handle: int, metadata: String) -> bool:
@@ -195,7 +216,7 @@ func get_item_install_info(file_id: int) -> Dictionary:
     return value if typeof(value) == TYPE_DICTIONARY else {}
 
 func open_workshop_browser(app_id: int) -> void:
-    if not is_available() or app_id != _app_id:
+    if not is_available() or app_id != _workshop_app_id:
         return
     _steam.call(
         "activateGameOverlayToWebPage",
@@ -209,6 +230,18 @@ func open_workshop_item(file_id: int) -> void:
         "activateGameOverlayToWebPage",
         "steam://url/CommunityFilePage/%d" % file_id,
         OVERLAY_TO_WEB_PAGE_MODE_DEFAULT)
+
+func _to_public_workshop_tag(tag: String) -> String:
+    match tag:
+        INTERNAL_ROOM_TAG:
+            return PUBLIC_ROOM_TAG
+        INTERNAL_BUDDY_TAG:
+            return PUBLIC_BUDDY_TAG
+        INTERNAL_FORMAT_V1_TAG:
+            # Schema version remains in item metadata + manifest; it is not useful as a public tag.
+            return ""
+        _:
+            return tag
 
 func _find_steam() -> Object:
     if Engine.has_singleton("Steam"):
@@ -249,6 +282,8 @@ func _on_download_item_result(app_id: int, file_id: int, result: int) -> void:
 
 func _fail(message: String, status: int = -1) -> Dictionary:
     _initialized = false
+    _app_id = 0
+    _workshop_app_id = 0
     _reason = message
     bridge_state_changed.emit(false, message)
     return {"status": status, "verbal": message, "version": EXPECTED_GODOTSTEAM}
