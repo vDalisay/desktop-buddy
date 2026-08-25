@@ -1,72 +1,33 @@
+using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Content;
 
 namespace DesktopBuddy.Domain.Economy.Benchmark;
 
-/// <summary>The official cumulative unlock time for one benchmarked purchasable, in running minutes.</summary>
-public readonly record struct ScheduleTarget(string ContentId, double TargetMinutes);
-
 /// <summary>
-/// The existing owner-accepted 209-minute M5 completionist benchmark remains the calibration
-/// baseline for the twelve established paid tools while the Demo progression pass introduces
-/// Pet, Tickle, and Boxing Glove as new early purchasables. Those three have provisional Demo
-/// prices and are deliberately kept outside this legacy benchmark until the final Demo pacing
-/// gate approves a replacement whole-catalogue schedule.
+/// Current benchmark purchase order. The launch catalogue is the source of truth: the benchmark
+/// deliberately derives its purchasables from <see cref="CataloguePolicy.LaunchContentIds"/>
+/// instead of carrying a second, historical progression schedule.
 ///
-/// <para>This separation is intentional: changing the fresh-save ownership contract must not
-/// silently redefine the previously accepted 209-minute targets. The Demo implementation can
-/// become structurally correct first, then the owner can judge the materially subjective final
-/// pacing with benchmark evidence instead of receiving hidden price changes.</para>
+/// <para>The old M5 209-minute target table was a tuning snapshot, not a permanent gameplay
+/// contract. Authored catalogue prices/order may evolve; benchmark reports fingerprint and observe
+/// those changes without rejecting the current game for disagreeing with an obsolete target.</para>
 /// </summary>
 public static class BenchmarkSchedule
 {
-    /// <summary>Each median cumulative purchase time must land inside ±15% of its target.</summary>
-    public const double ToleranceFraction = 0.15;
+    /// <summary>Every current non-starting launch tool, in the same order as the shipped shop.</summary>
+    public static readonly IReadOnlyList<string> PurchasableOrder = BuildPurchasableOrder();
 
-    private static readonly double[] TargetMinutes =
+    private static IReadOnlyList<string> BuildPurchasableOrder()
     {
-        3.0, 13.0, 21.0, 41.0, 52.0, 76.0, 104.0, 120.0, 138.0, 184.0, 209.0,
-    };
-
-    /// <summary>
-    /// The entries covered by the accepted M5 schedule. Pet, Tickle, and Boxing Glove are paid
-    /// Demo entries held outside this schedule until DEMO-9 pacing, and the Baseball Bat joined
-    /// them when it became the tutorial's token-priced first purchase: a 1-credit item cannot
-    /// meaningfully hold a 7-minute progression target. The remaining targets are unchanged.
-    /// </summary>
-    public static readonly IReadOnlyList<string> PurchasableOrder = new[]
-    {
-        ContentIds.ToolBaseball,
-        ContentIds.ToolMeal,
-        ContentIds.ToolNerfBlaster,
-        ContentIds.ToolPistol,
-        ContentIds.ToolSoccerBall,
-        ContentIds.ToolGrenade,
-        ContentIds.ToolFireSprayer,
-        ContentIds.ToolPowerGrab,
-        ContentIds.ToolRepairKit,
-        ContentIds.ToolShotgun,
-        ContentIds.ToolDrink,
-    };
-
-    /// <summary>The benchmarked purchasables paired with their cumulative minute targets.</summary>
-    public static readonly IReadOnlyList<ScheduleTarget> Targets = BuildTargets();
-
-    private static IReadOnlyList<ScheduleTarget> BuildTargets()
-    {
-        if (PurchasableOrder.Count != TargetMinutes.Length)
+        var starting = new HashSet<string>(CataloguePolicy.NewSaveUnlockedContentIds, StringComparer.Ordinal);
+        var purchasable = new List<string>(CataloguePolicy.LaunchContentIds.Count);
+        foreach (string contentId in CataloguePolicy.LaunchContentIds)
         {
-            throw new System.InvalidOperationException(
-                $"The accepted M5 benchmark has {PurchasableOrder.Count} entries but " +
-                $"{TargetMinutes.Length} time targets.");
+            if (!starting.Contains(contentId))
+                purchasable.Add(contentId);
         }
 
-        var targets = new List<ScheduleTarget>(TargetMinutes.Length);
-        for (int index = 0; index < PurchasableOrder.Count; index++)
-        {
-            targets.Add(new ScheduleTarget(PurchasableOrder[index], TargetMinutes[index]));
-        }
-
-        return targets;
+        return purchasable;
     }
 }
