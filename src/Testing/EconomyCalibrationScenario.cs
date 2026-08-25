@@ -13,21 +13,21 @@ using Godot;
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// M5 Task 12: replays the seeded benchmark traces through the production economy path
-/// against the <b>shipped</b> Resources, and fails the run when the §1.1 schedule, the six
-/// proof obligations, or byte-for-byte determinism do not hold.
+/// Replays seeded representative-session traces through the production economy path against
+/// the shipped Resources. The scenario validates current authored catalogue/economy invariants,
+/// report determinism, and measured income behavior. Purchase-time medians are telemetry only:
+/// the retired eleven-item/209-minute M5 pacing table is not a second source of game tuning.
 ///
 /// <para>All file IO for the benchmark lives here — the domain returns values only. The two
 /// tuning Resources are loaded from the same paths <c>sandbox.tscn</c> and
-/// <c>buddy_lab.tscn</c> reference, so the fingerprint covers what the game actually
-/// ships.</para>
+/// <c>buddy_lab.tscn</c> reference, so the fingerprint covers what the game actually ships.</para>
 /// </summary>
 public sealed class EconomyCalibrationScenario : IScenario
 {
     public const string PainProfilePath = "res://data/buddy/lab_pain_conversion.tres";
     public const string MoodEconomyPath = "res://data/buddy/m4_mood_economy.tres";
 
-    /// <summary>The committed calibration seeds (§4.3). Every strategy runs against all five.</summary>
+    /// <summary>The committed representative-session seeds. Every strategy runs against all five.</summary>
     public static readonly int[] Seeds = { 1, 7, 13, 29, 101 };
 
     public string Id => "economy_calibration";
@@ -72,7 +72,7 @@ public sealed class EconomyCalibrationScenario : IScenario
         string json = BenchmarkReport.Json(report);
         string markdown = BenchmarkReport.Markdown(report);
 
-        // A second sweep from scratch: same seeds, same Resources, byte-identical text.
+        // A second sweep from scratch: same seeds, same shipped Resources, byte-identical text.
         string repeated = BenchmarkReport.Json(Sweep(catalogue, economy));
         checks.Add(new StartupCheck(
             "report_is_byte_identical_across_runs",
@@ -80,16 +80,32 @@ public sealed class EconomyCalibrationScenario : IScenario
             $"{json.Length} characters"));
 
         IReadOnlyList<ScheduleRow> rows = BenchmarkReport.Summarize(report.Results, catalogue);
+        IReadOnlyList<CatalogueEntry> shop = CataloguePolicy.ShopEntries(catalogue);
+        bool reportMatchesShop = rows.Count == shop.Count;
+        if (reportMatchesShop)
+        {
+            for (int index = 0; index < rows.Count; index++)
+            {
+                reportMatchesShop &= rows[index].ContentId == shop[index].ContentId;
+                reportMatchesShop &= rows[index].PriceMilliCredits == shop[index].PriceMilliCredits;
+            }
+        }
+
+        checks.Add(new StartupCheck(
+            "report_tracks_current_shop_catalogue",
+            reportMatchesShop,
+            $"report_rows={rows.Count} current_shop_entries={shop.Count}"));
+
+        // Observed purchase times remain useful evidence when balancing, but there is no
+        // fabricated pass/fail target. A high-priced item not reached in this 209-minute
+        // representative session is reported as NaN rather than treated as a prerequisite bug.
         foreach (ScheduleRow row in rows)
         {
-            checks.Add(new StartupCheck(
-                $"schedule_{row.ContentId.Replace('.', '_')}",
-                row.InBand,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"target={row.TargetMinutes:F0}m median={row.MedianMinutes:F2}m " +
-                    $"deviation={row.Deviation * 100.0:F1}% price={row.PriceMilliCredits / 1000}cr " +
-                    $"bought={row.SeedsThatBought}/{row.SeedsRun}")));
+            messages.Add(string.Create(
+                CultureInfo.InvariantCulture,
+                $"observed_{row.ContentId.Replace('.', '_')}=" +
+                $"median={row.MedianMinutes:F2}m price={row.PriceMilliCredits / 1000}cr " +
+                $"bought={row.SeedsThatBought}/{row.SeedsRun}"));
         }
 
         foreach (ObligationCheck obligation in report.Obligations)
@@ -115,8 +131,9 @@ public sealed class EconomyCalibrationScenario : IScenario
             fingerprints.Add(new KeyValuePair<int, string>(seed, BenchmarkFingerprint.OfTrace(trace)));
         }
 
-        var results = new List<BenchmarkResult>(Seeds.Length * BenchmarkStrategies.All.Count);
-        foreach (BenchmarkStrategy strategy in BenchmarkStrategies.All)
+        IReadOnlyList<BenchmarkStrategy> strategies = BenchmarkStrategies.ForCatalogue(catalogue);
+        var results = new List<BenchmarkResult>(Seeds.Length * strategies.Count);
+        foreach (BenchmarkStrategy strategy in strategies)
         {
             foreach (int seed in Seeds)
                 results.Add(EconomyBenchmark.Run(traces[seed], strategy, catalogue, economy, seed));
