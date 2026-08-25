@@ -107,7 +107,7 @@ public partial class ActivityAnimator : Node3D
         library.AddAnimation(ClipNameFor(ActivityId.Wave), BuildWaveClip(tuning));
         library.AddAnimation(ClipNameFor(ActivityId.Eat), BuildEatClip(tuning));
         Animation refuse = BuildRefuseClip(tuning);
-        _refuseClipLength = refuse.Length;
+        _refuseClipLength = (float)refuse.Length;
         library.AddAnimation(ClipNameFor(ActivityId.Refuse), refuse);
         _player.AddAnimationLibrary(string.Empty, library);
 
