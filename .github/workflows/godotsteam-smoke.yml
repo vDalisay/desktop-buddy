@@ -1,0 +1,62 @@
+name: GodotSteam Native Smoke
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: godotsteam-native-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.6.1-stable
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  addon-present-offline-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build solution before native dependency materialization
+        run: dotnet build DesktopBuddy.sln -c Debug
+
+      - name: Materialize verified GodotSteam 4.22 addon
+        shell: pwsh
+        run: ./tools/install_godotsteam.ps1 -Force
+
+      - name: Verify addon is local-only and project-ready
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f addons/godotsteam/godotsteam.gdextension
+          if git ls-files addons/godotsteam | grep -q .; then
+            echo "GodotSteam materialization must remain untracked."; exit 1
+          fi
+          echo "Materialized descriptor: addons/godotsteam/godotsteam.gdextension"
+
+      - name: Download pinned Godot (.NET/mono, Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          curl -fL --retry 3 -o godot.zip "$URL"
+          unzip -q godot.zip
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+      - name: Import project with native GodotSteam addon present
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
+
+      - name: Verify GodotSteam 4.22 capability surface and offline fallback
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=workshop_godotsteam_addon_smoke --seed=1

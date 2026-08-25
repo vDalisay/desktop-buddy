@@ -108,6 +108,10 @@ func configure_workshop_app_id(app_id: int) -> bool:
 func is_available() -> bool:
     return _initialized and _steam != null
 
+## Test/diagnostic capability probe that does not initialize Steam or require a logged-in client.
+func is_godotsteam_present() -> bool:
+    return _find_steam() != null
+
 func unavailable_reason() -> String:
     return _reason
 

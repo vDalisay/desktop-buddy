@@ -19,10 +19,13 @@ if ($ExpectedSha256 -notmatch '^[0-9A-F]{64}$') {
     throw 'Expected GodotSteam SHA-256 must contain exactly 64 hexadecimal characters.'
 }
 
-$Deps = Join-Path $RepoRoot '.deps\godotsteam'
+$Deps = Join-Path $RepoRoot '.deps/godotsteam'
 $Archive = Join-Path $Deps ("godotsteam-{0}.zip" -f $Manifest.version)
 $Extract = Join-Path $Deps 'extract'
-$Target = Join-Path $RepoRoot ([string]$Manifest.expectedAddonDirectory -replace '/', '\')
+# Preserve the manifest's portable forward-slash relative path. PowerShell's filesystem provider
+# resolves it correctly on Windows and Unix, which lets the same verified installer back local
+# Windows development and the Linux native-addon CI smoke gate.
+$Target = Join-Path $RepoRoot ([string]$Manifest.expectedAddonDirectory)
 
 New-Item -ItemType Directory -Force $Deps | Out-Null
 if ($Force -or -not (Test-Path $Archive)) {
