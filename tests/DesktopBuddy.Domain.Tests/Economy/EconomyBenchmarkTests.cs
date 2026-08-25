@@ -8,7 +8,7 @@ namespace DesktopBuddy.Domain.Tests.Economy;
 
 /// <summary>
 /// The benchmark runner against a tiny hand-built trace and synthetic tuning — never the
-/// shipped catalogue, whose prices are calibration output and move without notice.
+/// shipped catalogue, whose authored prices are allowed to move independently of these mechanics.
 /// </summary>
 public sealed class EconomyBenchmarkTests
 {
@@ -77,7 +77,6 @@ public sealed class EconomyBenchmarkTests
     [Fact]
     public void Run_AnAlreadyOwnedEntryIsNeverChargedTwice()
     {
-        // The cheap entry is listed twice: the runner must still buy it exactly once.
         BenchmarkResult result = EconomyBenchmark.Run(
             Trace(), Strategy(Cheap, Cheap), Catalogue(cheapCredits: 100), Economy());
 
@@ -91,7 +90,6 @@ public sealed class EconomyBenchmarkTests
         BenchmarkResult result = EconomyBenchmark.Run(
             Trace(), Strategy(), Catalogue(), Economy());
 
-        // Three offered contacts, one of them inside the re-arm window: two payouts.
         Assert.Equal(1, result.DuplicateContactRejections);
         Assert.Equal(240_000, result.ActiveIncomeMilliCredits);
         Assert.Equal(120_000, result.LargestSingleEventMilliCredits);
@@ -156,28 +154,25 @@ public sealed class EconomyBenchmarkTests
         Assert.Equal(209.0 * 60.0, result.RunningSeconds, 1.0);
         Assert.Equal(120.0 * 60.0, result.ActiveSeconds, 1.0);
         Assert.Equal(89.0 * 60.0, result.BackgroundSeconds, 1.0);
-        // Misses and follow-through contacts are both present, or the trace is not
-        // exercising the router at all.
         Assert.True(result.DuplicateContactRejections > 0);
     }
 
     [Fact]
-    public void Schedule_PairsTheBenchmarkedPurchasablesWithTheOwnerLockedTargets()
+    public void Schedule_IsDerivedFromTheCurrentLaunchCatalogue()
     {
-        Assert.Equal(11, BenchmarkSchedule.Targets.Count);
-        Assert.Equal(ContentIds.ToolBaseball, BenchmarkSchedule.Targets[0].ContentId);
-        Assert.Equal(3.0, BenchmarkSchedule.Targets[0].TargetMinutes);
-        Assert.Equal(ContentIds.ToolDrink, BenchmarkSchedule.Targets[^1].ContentId);
-        Assert.Equal(209.0, BenchmarkSchedule.Targets[^1].TargetMinutes);
+        Assert.Equal(
+            CataloguePolicy.LaunchContentIds.Count - CataloguePolicy.NewSaveUnlockedContentIds.Count,
+            BenchmarkSchedule.PurchasableOrder.Count);
+        Assert.Equal(ContentIds.ToolBaseballBat, BenchmarkSchedule.PurchasableOrder[0]);
+        Assert.Equal(ContentIds.ToolFireSprayer, BenchmarkSchedule.PurchasableOrder[^1]);
+        Assert.DoesNotContain(ContentIds.ToolGrab, BenchmarkSchedule.PurchasableOrder);
 
-        // The bat became the tutorial's 1-credit first purchase and left the progression
-        // schedule; the surviving targets keep their accepted minute values.
-        Assert.DoesNotContain(ContentIds.ToolBaseballBat, BenchmarkSchedule.PurchasableOrder);
-        Assert.Equal(13.0, BenchmarkSchedule.Targets[1].TargetMinutes);
+        for (int index = 0; index < BenchmarkSchedule.PurchasableOrder.Count; index++)
+            Assert.Equal(CataloguePolicy.LaunchContentIds[index + 1], BenchmarkSchedule.PurchasableOrder[index]);
     }
 
     [Fact]
-    public void Strategies_AreSevenAndBuyOnlyLaunchCatalogueEntries()
+    public void Strategies_AreSevenAndBuyOnlyCurrentLaunchPurchasables()
     {
         Assert.Equal(7, BenchmarkStrategies.All.Count);
         foreach (BenchmarkStrategy strategy in BenchmarkStrategies.All)
