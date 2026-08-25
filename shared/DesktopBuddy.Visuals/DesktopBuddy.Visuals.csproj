@@ -5,4 +5,10 @@
     <RootNamespace>DesktopBuddy</RootNamespace>
     <AssemblyName>DesktopBuddy.Visuals</AssemblyName>
   </PropertyGroup>
+
+  <!-- The experimental static-LibGodot exporter needs static browser linking, while the
+       native editor import still needs to load this project normally before export. -->
+  <PropertyGroup Condition=" '$(GodotTargetPlatform)' == 'web' ">
+    <EnableDynamicLoading>false</EnableDynamicLoading>
+  </PropertyGroup>
 </Project>
