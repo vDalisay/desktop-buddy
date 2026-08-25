@@ -55,6 +55,12 @@ public partial class GoreComponent : Node2D
     /// <summary>Radius of the stain left on the part by the opening hit, at full severity.</summary>
     private const float OpeningStainRadius = 7.0f;
 
+    /// <summary>
+    /// Drops allowed in flight at once across every wound. Each one is a node that draws
+    /// and raycasts every physics tick, so this is the real cost of a heavy bleed.
+    /// </summary>
+    private const int MaximumLiveDroplets = 22;
+
     private static readonly string[] PiercingContentIds =
     [
         ContentIds.ToolSword,
@@ -65,6 +71,7 @@ public partial class GoreComponent : Node2D
     private readonly BleedWound[] _wounds = new BleedWound[6];
 
     private BleedingConstants _constants = BleedingConstants.Default;
+    private int _liveDroplets;
     private EffectsSettings _effects = EffectsSettings.Default;
     private BloodStainLayer2D _stains = null!;
 
@@ -148,6 +155,14 @@ public partial class GoreComponent : Node2D
         for (int index = 0; index < _wounds.Length; index++)
             _wounds[index] = BleedingStatus.Clear(_wounds[index]);
 
+        // Drops already in the air are part of "no trace left behind". Each one gives its
+        // slot back through its own _ExitTree, so the live count needs no bookkeeping here.
+        foreach (Node child in GetChildren())
+        {
+            if (child is BloodDroplet2D or BloodSpray2D)
+                child.QueueFree();
+        }
+
         if (GodotObject.IsInstanceValid(_stains))
             _stains.Clear();
     }
@@ -222,7 +237,18 @@ public partial class GoreComponent : Node2D
             return;
         }
 
+        // Every drop in flight is a node that draws and raycasts each tick, so six wounds
+        // bleeding at once had six unbounded streams of them (owner report 2026-08-25). Past
+        // the cap the drop is simply not spawned: the cadence is the wound's business and
+        // silently thinning it here is cheaper than any pool.
+        if (_liveDroplets >= MaximumLiveDroplets)
+        {
+            DripsEmitted++;
+            return;
+        }
+
         DripsEmitted++;
+        _liveDroplets++;
 
         Vector2 origin = body!.GlobalPosition + new Vector2(
             (float)GD.RandRange(-body.Radius * 0.5, body.Radius * 0.5),
@@ -235,7 +261,8 @@ public partial class GoreComponent : Node2D
             _stains,
             // Inherited part motion, damped: a drop is flung, not welded to the limb.
             (body.LinearVelocity * 0.35f) + new Vector2((float)GD.RandRange(-18.0, 18.0), 0.0f),
-            1.4f + (1.6f * Mathf.Clamp(intensity, 0.0f, 1.0f)));
+            1.4f + (1.6f * Mathf.Clamp(intensity, 0.0f, 1.0f)),
+            () => _liveDroplets--);
     }
 
     private void SpawnSpray(Vector2 worldPoint, Vector2 direction, float severity)

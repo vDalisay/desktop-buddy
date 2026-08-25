@@ -29,9 +29,16 @@ public readonly record struct BleedingConstants(
     /// </summary>
     int SlowestDripIntervalTicks)
 {
-    /// <summary>The shipped provisional: 6 s per wound, 15 s cap, drips every 0.15–0.6 s.</summary>
+    /// <summary>
+    /// The shipped provisional: 6 s per wound, 15 s cap, drips every 0.3–1 s.
+    ///
+    /// <para>The cadence was 0.15–0.6 s in the first version, which is nearly seven drops a
+    /// second from a single wound and read as a running tap rather than bleeding (owner
+    /// report 2026-08-25). Each drop is also a node that draws and raycasts every tick, so
+    /// the rate is a cost as well as a look.</para>
+    /// </summary>
     public static BleedingConstants Default => new(
-        WoundTicks: 720, CapTicks: 1800, DripIntervalTicks: 18, SlowestDripIntervalTicks: 72);
+        WoundTicks: 720, CapTicks: 1800, DripIntervalTicks: 36, SlowestDripIntervalTicks: 120);
 
     /// <summary>
     /// Ill-formed constants make the model inert rather than clamped: a wound that silently
@@ -84,6 +91,50 @@ public readonly record struct BleedWound(
         !IsBleeding || !constants.IsWellFormed()
             ? 0.0f
             : Severity * Math.Min(1.0f, TicksRemaining / (float)constants.WoundTicks);
+}
+
+/// <summary>
+/// How a landed stain dries out. Engine-free so the rule that stains <b>do not last
+/// forever</b> is unit-testable — the first version had no lifetime at all and blood piled
+/// up for as long as the application stayed open (owner report 2026-08-25). Checking that
+/// through the renderer would mean a scenario sitting through a stain's whole life.
+/// </summary>
+public static class StainFade
+{
+    /// <summary>Fraction of a stain's life spent at full strength before it starts fading.</summary>
+    public const float SolidFraction = 0.55f;
+
+    /// <summary>
+    /// Opacity multiplier for a stain of this age, <c>0..1</c>: full while it is fresh, then
+    /// easing linearly to nothing over the tail of its life. Nonsense inputs read as gone
+    /// rather than as a stain that never fades.
+    /// </summary>
+    public static float AlphaFor(double age, double lifetime)
+    {
+        if (!double.IsFinite(age) || !double.IsFinite(lifetime) || lifetime <= 0.0 || age < 0.0)
+        {
+            return 0.0f;
+        }
+
+        float progress = (float)(age / lifetime);
+        if (progress >= 1.0f)
+        {
+            return 0.0f;
+        }
+
+        return progress <= SolidFraction
+            ? 1.0f
+            : 1.0f - ((progress - SolidFraction) / (1.0f - SolidFraction));
+    }
+
+    /// <summary>
+    /// Whether a stain this old has dried away and its slot may be reused. Nonsense reads
+    /// as dried, exactly as <see cref="AlphaFor"/> reads it as invisible: the two must agree,
+    /// or a stain nobody can see would hold a slot for the rest of the session.
+    /// </summary>
+    public static bool HasDried(double age, double lifetime) =>
+        !double.IsFinite(age) || !double.IsFinite(lifetime) ||
+        lifetime <= 0.0 || age < 0.0 || age >= lifetime;
 }
 
 /// <summary>Allocation-free result of one bleeding tick.</summary>

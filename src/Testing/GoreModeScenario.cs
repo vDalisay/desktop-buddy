@@ -88,10 +88,24 @@ public sealed class GoreModeScenario : IScenario
         if (!wired)
             return;
 
+        CursorToolProfile? sword = SwordProfile(sandbox);
         checks.Add(new StartupCheck(
             "the_sword_is_an_authored_cursor_tool",
-            HasSwordProfile(sandbox),
+            sword is not null,
             $"profiles={(sandbox.CursorTools.Profiles is { } authored ? authored.Count : 0)}"));
+
+        // The Sword is wielded, not charged and swung (owner instruction 2026-08-25). Both
+        // halves matter: authoring a Swing back onto it would silently restore the charged
+        // bat behaviour, and the two cannot coexist because they want the same button.
+        checks.Add(new StartupCheck(
+            "the_sword_is_wielded_point_first_rather_than_swung",
+            sword is { IsThrustCapable: true, IsSwingCapable: false, IsPunchCapable: false },
+            $"thrust={sword?.IsThrustCapable} swing={sword?.IsSwingCapable} punch={sword?.IsPunchCapable}"));
+
+        checks.Add(new StartupCheck(
+            "the_sword_profile_is_valid",
+            sword is not null && sword.Validate().Count == 0,
+            sword is null ? "no profile" : string.Join("; ", sword.Validate())));
 
         // --- the build gate: an untagged storefront build refuses gore outright ---
         DemoScope.GoreOverride = false;
@@ -144,7 +158,7 @@ public sealed class GoreModeScenario : IScenario
         // --- an open wound drips, and what lands stains ---
         int drips = gore.DripsEmitted;
         int stains = gore.Stains.TotalStainsAdded;
-        await Ticks(tree, 240);
+        await Ticks(tree, 900);
         checks.Add(new StartupCheck(
             "an_open_wound_keeps_dripping",
             gore.DripsEmitted > drips,
@@ -153,6 +167,15 @@ public sealed class GoreModeScenario : IScenario
             "the_opening_hit_stained_the_buddy",
             gore.Stains.TotalStainsAdded > stains,
             $"stains={gore.Stains.TotalStainsAdded} (was {stains})"));
+
+        // The owner's report: blood "seems to infinitely stay". Live stains are bounded by
+        // the caps, by merging into the pools already there, and by drying out — so a long
+        // bleed adds far more stains than it is ever holding at once.
+        checks.Add(new StartupCheck(
+            "a_long_bleed_does_not_grow_the_stain_set_without_bound",
+            gore.Stains.StainCount <= 100 &&
+            gore.Stains.TotalStainsAdded > gore.Stains.StainCount,
+            $"live={gore.Stains.StainCount} added={gore.Stains.TotalStainsAdded}"));
 
         // --- patching him up closes every wound and wipes every mark ---
         gore.ClearAll();
@@ -179,19 +202,19 @@ public sealed class GoreModeScenario : IScenario
             WoundingImpulse,
             sandbox.Buddy.Rig.GetPart(Buddy.Physics.BuddyPartId.Head).GlobalPosition);
 
-    private static bool HasSwordProfile(SandboxRoot sandbox)
+    private static CursorToolProfile? SwordProfile(SandboxRoot sandbox)
     {
         Godot.Collections.Array<CursorToolProfile>? profiles = sandbox.CursorTools.Profiles;
         if (profiles is null)
-            return false;
+            return null;
 
         foreach (CursorToolProfile profile in profiles)
         {
             if (GodotObject.IsInstanceValid(profile) && profile.ContentId == ContentIds.ToolSword)
-                return true;
+                return profile;
         }
 
-        return false;
+        return null;
     }
 
     private static async Task Ticks(SceneTree tree, int ticks)

@@ -112,6 +112,25 @@ public partial class CursorToolProfile : GameResource
     /// <summary>As <see cref="WorldDropGunVisual"/>, for the Fire Sprayer.</summary>
     [Export] public FireSprayerProfile? WorldDropSprayerVisual { get; set; }
 
+    /// <summary>
+    /// Wield this tool by the hilt and lead with its point. Authored for the Sword (owner
+    /// instruction 2026-08-25) and the alternative to <see cref="Swing"/> for an elongated
+    /// tool: a bat is charged and released, a blade is simply held and driven.
+    ///
+    /// <para>It is one flag rather than three because it names one thing the player can
+    /// see, and the three behaviours behind it are not separable. While secondary is held,
+    /// the tether holds <see cref="HandleLocalOffset"/> — the hilt — at the cursor rather
+    /// than the tool's centre, and the alignment servo steers the <b>tip</b> along the
+    /// direction of travel instead of holding the barrel square to it, taking the plain
+    /// wrapped error so a blade can never settle hilt-first. Wield the tool by its middle
+    /// and the point stops leading; fold the half-turn out and it points backwards. There
+    /// is no useful build with only some of them.</para>
+    ///
+    /// <para>A tool cannot author both this and <see cref="Swing"/>: they want the same
+    /// button, and the swing owns rotation outright while it runs.</para>
+    /// </summary>
+    [Export] public bool WieldsPointFirst { get; set; }
+
     /// <summary>True when this tool's collider is elongated rather than circular.</summary>
     public bool IsElongated => Length > 0.0f;
 
@@ -121,6 +140,9 @@ public partial class CursorToolProfile : GameResource
 
     /// <summary>True when secondary winds this tool back and releasing lashes it out.</summary>
     public bool IsPunchCapable => Punch is not null && GodotObject.IsInstanceValid(Punch);
+
+    /// <summary>True when secondary wields this tool by the hilt with its point leading.</summary>
+    public bool IsThrustCapable => WieldsPointFirst && IsElongated;
 
     /// <summary>
     /// The grip point in body-local coordinates: the centre of the capsule's
@@ -260,11 +282,25 @@ public partial class CursorToolProfile : GameResource
             errors.Add($"{nameof(Visual3DKind)} must name a supported visual kind");
         }
 
-        if (Visual3DKind is CursorToolVisual3DKind.LathedBat or CursorToolVisual3DKind.Sword &&
-            !IsSwingCapable)
+        if (Visual3DKind == CursorToolVisual3DKind.LathedBat && !IsSwingCapable)
         {
             errors.Add(
-                $"{nameof(Visual3DKind)} {Visual3DKind} requires an elongated swing-capable profile");
+                $"{nameof(Visual3DKind)} LathedBat requires an elongated swing-capable profile");
+        }
+
+        // A sword is elongated but not swung: it is wielded, so its own flag is what the
+        // mesh needs rather than the bat's swing profile.
+        if (Visual3DKind == CursorToolVisual3DKind.Sword && !IsThrustCapable)
+        {
+            errors.Add(
+                $"{nameof(Visual3DKind)} Sword requires an elongated {nameof(WieldsPointFirst)} profile");
+        }
+
+        if (IsThrustCapable && (IsSwingCapable || IsPunchCapable))
+        {
+            errors.Add(
+                $"{nameof(WieldsPointFirst)} cannot be combined with {nameof(Swing)} or " +
+                $"{nameof(Punch)}: all three want the secondary button");
         }
 
         if (Visual3DKind == CursorToolVisual3DKind.BoxingGlove && IsElongated)

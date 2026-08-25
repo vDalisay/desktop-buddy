@@ -25,8 +25,10 @@ public sealed class BleedingStatusTests
     {
         Assert.Equal(720, Constants.WoundTicks);
         Assert.Equal(1800, Constants.CapTicks);
-        Assert.Equal(18, Constants.DripIntervalTicks);
-        Assert.Equal(72, Constants.SlowestDripIntervalTicks);
+        // 0.3 s to 1 s between drops. Slowed from 0.15-0.6 s, which read as a running tap
+        // and cost a drawing node per drop (owner report 2026-08-25).
+        Assert.Equal(36, Constants.DripIntervalTicks);
+        Assert.Equal(120, Constants.SlowestDripIntervalTicks);
         Assert.True(Constants.IsWellFormed());
     }
 
@@ -184,8 +186,8 @@ public sealed class BleedingStatusTests
             }
         }
 
-        // Six seconds between the 0.15 s and 0.6 s cadences can never yield fewer than ten.
-        Assert.InRange(drips, 10, Constants.WoundTicks / Constants.DripIntervalTicks);
+        // Six seconds between the 0.3 s and 1 s cadences can never yield fewer than six.
+        Assert.InRange(drips, 6, Constants.WoundTicks / Constants.DripIntervalTicks);
     }
 
     [Fact]
@@ -232,6 +234,46 @@ public sealed class BleedingStatusTests
         Assert.False(after.Expired);
         Assert.False(after.DripDue);
         Assert.Equal(last.Wound, after.Wound);
+    }
+
+    [Fact]
+    public void AStainHoldsFullStrengthAndThenFadesOut()
+    {
+        const double life = 20.0;
+        Assert.Equal(1.0f, StainFade.AlphaFor(0.0, life));
+        Assert.Equal(1.0f, StainFade.AlphaFor(life * StainFade.SolidFraction, life));
+
+        // Halfway through the fading tail.
+        float mid = StainFade.AlphaFor(life * (StainFade.SolidFraction + ((1.0f - StainFade.SolidFraction) * 0.5f)), life);
+        Assert.InRange(mid, 0.45f, 0.55f);
+    }
+
+    /// <summary>
+    /// The bug this exists for: the first version had no lifetime, so blood accumulated for
+    /// as long as the application stayed open (owner report 2026-08-25).
+    /// </summary>
+    [Fact]
+    public void AStainDoesNotLastForever()
+    {
+        const double life = 20.0;
+        Assert.False(StainFade.HasDried(life - 0.01, life));
+        Assert.True(StainFade.HasDried(life, life));
+        Assert.True(StainFade.HasDried(life * 3.0, life));
+        Assert.Equal(0.0f, StainFade.AlphaFor(life, life));
+        Assert.Equal(0.0f, StainFade.AlphaFor(life * 3.0, life));
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.0)]
+    [InlineData(1.0, 0.0)]
+    [InlineData(1.0, -5.0)]
+    [InlineData(double.NaN, 20.0)]
+    [InlineData(-1.0, 20.0)]
+    [InlineData(1.0, double.PositiveInfinity)]
+    public void ANonsenseStainReadsAsGoneRatherThanAsOneThatNeverFades(double age, double lifetime)
+    {
+        Assert.Equal(0.0f, StainFade.AlphaFor(age, lifetime));
+        Assert.True(StainFade.HasDried(age, lifetime));
     }
 
     [Fact]

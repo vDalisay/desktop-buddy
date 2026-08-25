@@ -229,6 +229,9 @@ public partial class CursorToolController : Node2D
     /// <summary>True when the named tool would be gripped and swung rather than only dragged.</summary>
     public bool IsSwingCapableTool(ToolId tool) => ProfileFor(tool)?.IsSwingCapable == true;
 
+    /// <summary>Whether the authored tool is wielded by the hilt with its point leading.</summary>
+    public bool IsThrustCapableTool(ToolId tool) => ProfileFor(tool)?.IsThrustCapable == true;
+
     /// <summary>Fires once on the routed tick that charging begins.</summary>
     public event Action? ChargeStarted
     {
@@ -373,7 +376,15 @@ public partial class CursorToolController : Node2D
         }
         else
         {
-            Vector2 error = PunchAnchor(profile) - body.GlobalPosition;
+            // A wielded blade is held by its hilt, so that is the point the tether closes
+            // to the cursor — not the tool's centre, which would leave the sword balanced
+            // on the pointer like a see-saw. The force is still applied at the centre of
+            // mass: rotation belongs to the alignment servo alone, and an offset force
+            // would fight it for the angle.
+            Vector2 held = HeldByHilt(profile)
+                ? body.ToGlobal(profile.HandleLocalOffset)
+                : body.GlobalPosition;
+            Vector2 error = PunchAnchor(profile) - held;
             Vector2 relativeVelocity = body.LinearVelocity - cursorVelocity;
             GrabTetherResult result = GrabTether.Evaluate(new GrabTetherInput(
                 ToNumerics(error),
@@ -493,6 +504,21 @@ public partial class CursorToolController : Node2D
         return _cursor;
     }
 
+    /// <summary>
+    /// A blade hangs from its hilt whether or not it is being braced — that is simply where
+    /// it is held. Keying this on the button too would snap the sword from hilt-held to
+    /// centre-held the instant it was released.
+    /// </summary>
+    private static bool HeldByHilt(CursorToolProfile profile) => profile.IsThrustCapable;
+
+    /// <summary>
+    /// Whether the point is being driven this tick: an authored blade, with the player
+    /// holding secondary. Let go and the blade stops steering and simply trails from the
+    /// hilt, which is what "hold right mouse button" means (owner instruction 2026-08-25).
+    /// </summary>
+    private bool PointsFirst(CursorToolProfile profile) =>
+        profile.IsThrustCapable && _chargeHeld;
+
     private void ApplyAlignment(CursorToolBody body, CursorToolProfile profile, Vector2 cursorVelocity)
     {
         if (profile.AlignStiffness <= 0.0f)
@@ -500,8 +526,20 @@ public partial class CursorToolController : Node2D
             return;
         }
 
-        (float angle, bool hasTarget) = AlignmentTorque.SwingAngleFor(
-            cursorVelocity.X, cursorVelocity.Y, profile.MinimumAlignSpeed);
+        bool wielded = PointsFirst(profile);
+        if (profile.IsThrustCapable && !wielded)
+        {
+            // An unbraced blade holds no angle of its own. Letting the previous target keep
+            // steering would make releasing the button do nothing visible.
+            _hasAlignTarget = false;
+            return;
+        }
+
+        (float angle, bool hasTarget) = wielded
+            ? AlignmentTorque.ThrustAngleFor(
+                cursorVelocity.X, cursorVelocity.Y, profile.MinimumAlignSpeed)
+            : AlignmentTorque.SwingAngleFor(
+                cursorVelocity.X, cursorVelocity.Y, profile.MinimumAlignSpeed);
         if (hasTarget)
         {
             _alignTarget = angle;
@@ -515,8 +553,13 @@ public partial class CursorToolController : Node2D
 
         // CapsuleShape2D runs along its own local Y, so the barrel points a quarter
         // turn from the body's rotation. The servo steers the barrel, not the frame.
+        // A wielded blade steers its far end instead — local -Y, the end opposite the
+        // authored hilt — and takes the plain wrapped error, because a sword pointing
+        // backwards is wrong in a way a bat held upside down is not.
         float longAxisAngle = body.GlobalRotation + (Mathf.Pi * 0.5f);
-        float alignError = AlignmentTorque.SymmetricError(_alignTarget, longAxisAngle);
+        float alignError = wielded
+            ? Domain.Physics.HangFrame.WrapAngle(_alignTarget - (longAxisAngle - Mathf.Pi))
+            : AlignmentTorque.SymmetricError(_alignTarget, longAxisAngle);
         AlignmentTorqueResult torque = AlignmentTorque.Evaluate(new AlignmentTorqueInput(
             alignError,
             body.AngularVelocity,

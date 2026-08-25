@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Domain.Damage;
 using Godot;
 
 namespace DesktopBuddy.Interaction;
@@ -121,17 +122,39 @@ internal sealed partial class BloodDroplet2D : Node2D
     private const float MaximumLifetimeSeconds = 4.0f;
 
     private BloodStainLayer2D _stains = null!;
+    private Action? _retired;
     private Vector2 _velocity;
     private float _radius = 2.0f;
     private float _age;
+    private bool _reported;
 
-    public void Start(BloodStainLayer2D stains, Vector2 velocity, float radius)
+    /// <param name="retired">
+    /// Called exactly once when this drop is done, however it ended. The component that
+    /// spawned it keeps a live count off this so a heavy bleed cannot fill the room with
+    /// drawing nodes.
+    /// </param>
+    public void Start(BloodStainLayer2D stains, Vector2 velocity, float radius, Action? retired)
     {
         _stains = stains;
         _velocity = velocity;
         _radius = radius;
+        _retired = retired;
         ZAsRelative = false;
         ZIndex = 151;
+    }
+
+    /// <summary>
+    /// Retirement is reported from <see cref="Node._ExitTree"/> rather than beside each
+    /// <c>QueueFree</c>, so a drop that leaves by any route — landing, timing out, or the
+    /// whole layer being cleared out from under it — still gives its slot back.
+    /// </summary>
+    public override void _ExitTree()
+    {
+        if (_reported)
+            return;
+
+        _reported = true;
+        _retired?.Invoke();
     }
 
     public override void _PhysicsProcess(double delta)
@@ -187,52 +210,103 @@ internal sealed partial class BloodDroplet2D : Node2D
 }
 
 /// <summary>
-/// Everything blood has already landed on. Two kinds of stain live here and they are
-/// different in exactly one way: a world stain is a point in the room and never moves, and
-/// a part stain is fixed to a buddy part and rides it, so blood on the chest stays on the
-/// chest while the buddy is thrown around.
+/// Everything blood has already landed on. Two kinds of stain live here and they differ in
+/// exactly one way: a world stain is a point in the room and never moves, and a part stain
+/// is fixed to a buddy part and rides it, so blood on the chest stays on the chest while
+/// the buddy is thrown around.
 ///
-/// <para>Both are capped by one ring buffer. A stain layer that grew without limit would
-/// turn a long session into a redraw cost that scales with how much fun the player has
-/// had, so the oldest stain is overwritten instead — the room keeps the marks of what just
-/// happened rather than everything that ever did.</para>
+/// <para><b>Three rules keep this cheap, and the first version shipped with none of them</b>
+/// (owner report 2026-08-25: the blood "looks a bit bad and tanks the performance a lot,
+/// also it seems to infinitely stay").</para>
+///
+/// <list type="number">
+///   <item><b>Stains dry up.</b> Every stain has a lifetime and fades over the last of it,
+///   so the room cleans itself instead of accumulating for as long as the application is
+///   open.</item>
+///   <item><b>Nearby stains merge instead of stacking.</b> A drip landing on wet blood
+///   grows and re-wets the pool it landed in rather than taking a slot of its own. That is
+///   what stops the mound of identical overlapping blobs under a bleeding buddy, and it
+///   bounds the count by the <i>area</i> bled on rather than by how long the bleeding has
+///   been going on.</item>
+///   <item><b>Only what moves redraws every frame.</b> Part stains ride a ragdoll and need
+///   the frame rate; world stains only ever fade, which nobody can see happening faster
+///   than <see cref="FadeRedrawHz"/>. The first version redrew all two hundred stains every
+///   frame — a thousand <c>DrawCircle</c> calls — because one of them was on a moving
+///   arm.</item>
+/// </list>
 /// </summary>
 [GlobalClass]
 public partial class BloodStainLayer2D : Node2D
 {
     /// <summary>
-    /// How many stains are kept. Two hundred blobs is a thoroughly bloody room and still
-    /// one cheap <see cref="_Draw"/>.
+    /// Marks on the room. Because they merge, this is a budget for bled-on <i>area</i>, and
+    /// eighty pools is far more ground than one buddy covers before the first ones dry.
     /// </summary>
-    private const int Capacity = 200;
+    private const int WorldCapacity = 80;
 
-    /// <summary>Lobes per blob. Enough to break the circle, few enough to stay cheap.</summary>
-    private const int LobesPerStain = 4;
+    /// <summary>
+    /// Marks on the buddy. Deliberately small and kept apart from the room's: these are the
+    /// ones that cost a redraw every frame, and six parts cannot wear more than a handful
+    /// legibly anyway.
+    /// </summary>
+    private const int PartCapacity = 20;
 
-    private readonly Stain[] _stains = new Stain[Capacity];
-    private int _next;
+    /// <summary>Lobes per blob, beyond the body circle. Two is enough to break the disc.</summary>
+    private const int LobesPerStain = 2;
+
+    /// <summary>How long a stain lasts before it has faded away entirely.</summary>
+    private const double LifetimeSeconds = 26.0;
+
+    /// <summary>
+    /// A landing drip joins an existing pool whose centre is within this many of that
+    /// pool's radii. Above one, so drips that only just touch still run together.
+    /// </summary>
+    private const float MergeRadiiFactor = 1.35f;
+
+    /// <summary>How much of the incoming radius a merge adds. Pools spread, slowly.</summary>
+    private const float MergeGrowth = 0.28f;
+
+    /// <summary>Ceiling on a merged pool, so a long bleed spreads rather than domes.</summary>
+    private const float MaximumPoolRadius = 19.0f;
+
+    /// <summary>Redraws per second while nothing is happening but drying.</summary>
+    private const double FadeRedrawHz = 8.0;
+
+    private readonly Stain[] _world = new Stain[WorldCapacity];
+    private readonly Stain[] _part = new Stain[PartCapacity];
+    private int _nextWorld;
+    private int _nextPart;
+    private double _sinceFadeRedraw;
 
     private PuppetRig? _rig;
 
-    /// <summary>True while any stain is fixed to a part, so the layer must redraw as it moves.</summary>
-    private bool _hasPartStains;
+    /// <summary>
+    /// The room's stains draw here rather than on this node. They never move, so they need a
+    /// redraw only when one is added or has visibly faded; part stains ride a ragdoll and
+    /// need every frame. Sharing one canvas would mean the moving handful dragged all
+    /// hundred through a full redraw at frame rate, which is the cost that was reported.
+    /// </summary>
+    private BloodStainCanvas2D _worldCanvas = null!;
 
     public int StainCount { get; private set; }
 
-    /// <summary>Total stains ever added, including those the ring buffer has since dropped.</summary>
+    /// <summary>Total stains ever added, including merges and those since dried away.</summary>
     public int TotalStainsAdded { get; private set; }
 
     private struct Stain
     {
         public bool Used;
-        public bool OnPart;
         public BuddyPartId Part;
 
         /// <summary>World point for a room stain; part-local offset for a part stain.</summary>
         public Vector2 Point;
         public float Radius;
+
+        /// <summary>Vertical squash. A pool on the floor lies flat; a mark on a limb is rounder.</summary>
+        public float Flatten;
         public Color Color;
         public ulong Seed;
+        public double Age;
     }
 
     /// <summary>
@@ -242,48 +316,76 @@ public partial class BloodStainLayer2D : Node2D
     public void Initialize(PuppetRig? rig)
     {
         _rig = rig;
+        _worldCanvas = new BloodStainCanvas2D { Name = "RoomStains", Painter = DrawWorldStains };
+        AddChild(_worldCanvas);
         ZAsRelative = false;
         // Under the impact feedback ring and the droplets, over the buddy: blood is on him,
         // not in front of the effects that punctuate the hit that drew it.
         ZIndex = 149;
     }
 
-    public void AddWorldStain(Vector2 worldPoint, float radius) =>
-        Add(new Stain
-        {
-            Used = true,
-            OnPart = false,
-            Point = worldPoint,
-            Radius = Mathf.Clamp(radius, 1.5f, 26.0f),
-            Color = BloodLook.Dried,
-            Seed = GD.Randi(),
-        });
-
-    /// <summary>A mark left on the buddy himself, in the struck part's own local space.</summary>
-    public void AddPartStain(BuddyPartId part, Vector2 localPoint, float radius)
+    /// <summary>
+    /// A drop landed in the room. It joins the pool it landed in if there is one, and only
+    /// takes a slot of its own otherwise.
+    /// </summary>
+    public void AddWorldStain(Vector2 worldPoint, float radius)
     {
-        _hasPartStains = true;
-        Add(new Stain
+        radius = Mathf.Clamp(radius, 1.5f, 14.0f);
+        TotalStainsAdded++;
+
+        for (int index = 0; index < _world.Length; index++)
+        {
+            ref Stain pool = ref _world[index];
+            if (!pool.Used || pool.Point.DistanceTo(worldPoint) > pool.Radius * MergeRadiiFactor)
+                continue;
+
+            pool.Radius = MathF.Min(MaximumPoolRadius, pool.Radius + (radius * MergeGrowth));
+            // Fresh blood re-wets the pool: its clock restarts, so a wound that keeps
+            // dripping keeps its puddle alive and one that stops leaves it to dry.
+            pool.Age = 0.0;
+            _worldCanvas.QueueRedraw();
+            return;
+        }
+
+        Put(_world, ref _nextWorld, new Stain
         {
             Used = true,
-            OnPart = true,
-            Part = part,
-            Point = localPoint,
-            Radius = Mathf.Clamp(radius, 1.5f, 20.0f),
-            Color = BloodLook.Fresh.Lerp(BloodLook.Dried, 0.35f),
+            Point = worldPoint,
+            Radius = radius,
+            // Blood pools onto a surface rather than sitting on it as a ball.
+            Flatten = 0.42f,
+            Color = BloodLook.Dried,
             Seed = GD.Randi(),
         });
     }
 
-    private void Add(in Stain stain)
+    /// <summary>A mark left on the buddy himself, in the struck part's own local space.</summary>
+    public void AddPartStain(BuddyPartId part, Vector2 localPoint, float radius)
     {
-        if (!_stains[_next].Used)
+        TotalStainsAdded++;
+        Put(_part, ref _nextPart, new Stain
+        {
+            Used = true,
+            Part = part,
+            Point = localPoint,
+            Radius = Mathf.Clamp(radius, 1.5f, 11.0f),
+            Flatten = 0.85f,
+            Color = BloodLook.Fresh.Lerp(BloodLook.Dried, 0.45f),
+            Seed = GD.Randi(),
+        });
+    }
+
+    private void Put(Stain[] into, ref int next, in Stain stain)
+    {
+        if (!into[next].Used)
             StainCount++;
 
-        _stains[_next] = stain;
-        _next = (_next + 1) % Capacity;
-        TotalStainsAdded++;
-        QueueRedraw();
+        into[next] = stain;
+        next = (next + 1) % into.Length;
+        if (ReferenceEquals(into, _world))
+            _worldCanvas.QueueRedraw();
+        else
+            QueueRedraw();
     }
 
     /// <summary>
@@ -292,73 +394,118 @@ public partial class BloodStainLayer2D : Node2D
     /// </summary>
     public void Clear()
     {
-        Array.Clear(_stains);
-        _next = 0;
+        Array.Clear(_world);
+        Array.Clear(_part);
+        _nextWorld = 0;
+        _nextPart = 0;
         StainCount = 0;
-        _hasPartStains = false;
+        _worldCanvas.QueueRedraw();
         QueueRedraw();
     }
 
     public override void _Process(double delta)
     {
-        // Only part stains move. A room full of floor stains and no blood on the buddy
-        // costs nothing per frame.
-        if (_hasPartStains && StainCount > 0)
+        if (StainCount == 0)
+            return;
+
+        double step = Math.Max(0.0, delta);
+        bool anyPart = Age(_part, step);
+        bool anyWorld = Age(_world, step);
+
+        // Part stains ride the ragdoll, so they need every frame.
+        if (anyPart)
             QueueRedraw();
+
+        // The room only ever dries, and drying is not something anyone can see at frame
+        // rate. This split is the whole point of the second canvas.
+        if (!anyWorld)
+            return;
+
+        _sinceFadeRedraw += step;
+        if (_sinceFadeRedraw >= 1.0 / FadeRedrawHz)
+        {
+            _sinceFadeRedraw = 0.0;
+            _worldCanvas.QueueRedraw();
+        }
     }
 
-    public override void _Draw()
+    /// <summary>Advances a set and frees what has dried. True if any slot is still in use.</summary>
+    private bool Age(Stain[] stains, double delta)
     {
-        for (int index = 0; index < _stains.Length; index++)
+        bool any = false;
+        for (int index = 0; index < stains.Length; index++)
         {
-            ref Stain stain = ref _stains[index];
+            ref Stain stain = ref stains[index];
             if (!stain.Used)
                 continue;
 
-            if (!TryResolve(in stain, out Vector2 local))
+            stain.Age += delta;
+            if (StainFade.HasDried(stain.Age, LifetimeSeconds))
+            {
+                stain = default;
+                StainCount--;
                 continue;
+            }
 
-            DrawBlob(local, stain.Radius, stain.Color, stain.Seed);
+            any = true;
+        }
+
+        return any;
+    }
+
+    /// <summary>The room's stains, painted onto <see cref="_worldCanvas"/> on its own clock.</summary>
+    private void DrawWorldStains(BloodStainCanvas2D canvas)
+    {
+        for (int index = 0; index < _world.Length; index++)
+        {
+            ref readonly Stain stain = ref _world[index];
+            if (stain.Used)
+                DrawStain(canvas, in stain, canvas.ToLocal(stain.Point));
         }
     }
 
-    /// <summary>Where this stain is in the layer's own space right now.</summary>
-    private bool TryResolve(in Stain stain, out Vector2 local)
+    /// <summary>Only what rides the buddy. The room is the other canvas's business.</summary>
+    public override void _Draw()
     {
-        if (!stain.OnPart)
-        {
-            local = ToLocal(stain.Point);
-            return true;
-        }
-
-        local = Vector2.Zero;
         if (_rig is null || !GodotObject.IsInstanceValid(_rig) || !_rig.IsInitialized)
-            return false;
+            return;
 
-        PuppetPartBody body = _rig.GetPart(stain.Part);
-        if (!GodotObject.IsInstanceValid(body))
-            return false;
+        for (int index = 0; index < _part.Length; index++)
+        {
+            ref readonly Stain stain = ref _part[index];
+            if (!stain.Used)
+                continue;
 
-        local = ToLocal(body.ToGlobal(stain.Point));
-        return true;
+            PuppetPartBody body = _rig.GetPart(stain.Part);
+            if (GodotObject.IsInstanceValid(body))
+                DrawStain(this, in stain, ToLocal(body.ToGlobal(stain.Point)));
+        }
     }
 
     /// <summary>
-    /// A blob is a few overlapping circles rather than one, so stains read as splatter. The
-    /// offsets come from the stain's own stored seed, which is what keeps a stain the same
-    /// shape on every frame it is redrawn.
+    /// A blob is the body circle plus a couple of overlapping lobes, squashed toward the
+    /// surface it is lying on. The lobe offsets come from the stain's own stored seed,
+    /// which is what keeps a stain the same shape on every frame it is redrawn.
     /// </summary>
-    private void DrawBlob(Vector2 center, float radius, Color color, ulong seed)
+    private static void DrawStain(CanvasItem canvas, in Stain stain, Vector2 center)
     {
-        DrawCircle(center, radius, color);
+        float alpha = StainFade.AlphaFor(stain.Age, LifetimeSeconds);
+        if (alpha <= 0.01f)
+            return;
+
+        Color color = stain.Color with { A = stain.Color.A * alpha };
+        canvas.DrawSetTransform(center, 0.0f, new Vector2(1.0f, stain.Flatten));
+        canvas.DrawCircle(Vector2.Zero, stain.Radius, color);
         for (int lobe = 0; lobe < LobesPerStain; lobe++)
         {
-            ulong hash = Hash(seed + (ulong)lobe);
+            ulong hash = Hash(stain.Seed + (ulong)lobe);
             float angle = (hash % 3600) / 3600.0f * Mathf.Tau;
-            float distance = radius * (0.45f + (((hash >> 12) % 100) / 100.0f * 0.75f));
-            float lobeRadius = radius * (0.3f + (((hash >> 24) % 100) / 100.0f * 0.45f));
-            DrawCircle(center + Vector2.FromAngle(angle) * distance, lobeRadius, color);
+            float distance = stain.Radius * (0.5f + (((hash >> 12) % 100) / 100.0f * 0.7f));
+            float lobeRadius = stain.Radius * (0.34f + (((hash >> 24) % 100) / 100.0f * 0.4f));
+            canvas.DrawCircle(Vector2.FromAngle(angle) * distance, lobeRadius, color);
         }
+
+        canvas.DrawSetTransform(Vector2.Zero, 0.0f, Vector2.One);
     }
 
     /// <summary>Cheap deterministic mixer; the shape of a stain must never flicker.</summary>
@@ -369,4 +516,16 @@ public partial class BloodStainLayer2D : Node2D
         value ^= value >> 33;
         return value;
     }
+}
+
+/// <summary>
+/// A bare canvas the stain layer paints the room's marks onto. It exists purely so those
+/// marks can carry their own redraw clock, independent of the part stains that have to
+/// follow a moving ragdoll every frame.
+/// </summary>
+internal sealed partial class BloodStainCanvas2D : Node2D
+{
+    public Action<BloodStainCanvas2D>? Painter { get; set; }
+
+    public override void _Draw() => Painter?.Invoke(this);
 }

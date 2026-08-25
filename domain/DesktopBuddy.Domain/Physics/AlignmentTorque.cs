@@ -93,6 +93,41 @@ public static class AlignmentTorque
     }
 
     /// <summary>
+    /// The angle a <b>pointed</b> tool should hold to lead with its tip while travelling
+    /// along <paramref name="velocityX"/>/<paramref name="velocityY"/>: along the direction
+    /// of travel, not square to it. The counterpart of <see cref="SwingAngleFor"/>, and the
+    /// difference between the two is the difference between a bat and a sword — a bat
+    /// presents its barrel, a sword presents its point.
+    ///
+    /// <para>Unlike the swing angle there is <b>no half-turn ambiguity to fold out</b>: a
+    /// blade reversed is a blade held by the wrong end, so the caller must use the plain
+    /// wrapped error and never <see cref="SymmetricError"/>, or the sword would happily
+    /// settle hilt-first.</para>
+    ///
+    /// <para>Below <paramref name="minimumSpeed"/> there is no direction to speak of and
+    /// the caller must hold its previous angle, which <c>hasTarget = false</c> reports.</para>
+    /// </summary>
+    public static (float Angle, bool HasTarget) ThrustAngleFor(
+        float velocityX,
+        float velocityY,
+        float minimumSpeed)
+    {
+        if (!float.IsFinite(velocityX) || !float.IsFinite(velocityY) ||
+            !IsFiniteNonNegative(minimumSpeed))
+        {
+            return (0.0f, false);
+        }
+
+        float speedSquared = (velocityX * velocityX) + (velocityY * velocityY);
+        if (speedSquared <= minimumSpeed * minimumSpeed)
+        {
+            return (0.0f, false);
+        }
+
+        return (MathF.Atan2(velocityY, velocityX), true);
+    }
+
+    /// <summary>
     /// Folds the half-turn symmetry of a two-ended tool into the error, so a bat
     /// that is "upside down" is already aligned and never spins 180° to prove it.
     /// </summary>

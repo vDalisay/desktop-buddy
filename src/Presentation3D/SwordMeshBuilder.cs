@@ -37,15 +37,16 @@ public static class SwordMeshBuilder
     public static ArrayMesh Build(CursorToolProfile profile)
     {
         ArgumentNullException.ThrowIfNull(profile);
-        if (!GodotObject.IsInstanceValid(profile) ||
-            !profile.IsElongated ||
-            profile.Swing is not { } swing ||
-            !GodotObject.IsInstanceValid(swing))
+        if (!GodotObject.IsInstanceValid(profile) || !profile.IsElongated)
         {
             throw new ArgumentException(
-                "A sword requires a live elongated swing profile.",
+                "A sword requires a live elongated profile.",
                 nameof(profile));
         }
+
+        // The hilt takes the profile's own outline colour rather than a swing profile's
+        // grip colour: a sword is wielded, not swung, so it authors no swing to read from.
+        Color hilt = profile.OutlineColor;
 
         float halfLength = profile.Length * 0.5f;
         float radius = profile.Radius;
@@ -92,8 +93,8 @@ public static class SwordMeshBuilder
         {
             Section from = sections[index];
             Section to = sections[index + 1];
-            Color fromColor = from.Hilt ? swing.GripColor : profile.VisualColor;
-            Color toColor = to.Hilt ? swing.GripColor : profile.VisualColor;
+            Color fromColor = from.Hilt ? hilt : profile.VisualColor;
+            Color toColor = to.Hilt ? hilt : profile.VisualColor;
 
             for (int radial = 0; radial < RadialSegments; radial++)
             {
