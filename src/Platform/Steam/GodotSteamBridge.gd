@@ -11,6 +11,7 @@ signal workshop_item_downloaded(result: int, app_id: int, file_id: int)
 
 const EXPECTED_GODOTSTEAM := "4.22"
 const WORKSHOP_FILE_TYPE_COMMUNITY := 0
+const OVERLAY_TO_WEB_PAGE_MODE_DEFAULT := 0
 
 var _steam: Object
 var _initialized := false
@@ -65,8 +66,8 @@ func initialize(app_id: int) -> Dictionary:
     if not _connect_required_signal("item_updated", Callable(self, "_on_item_updated")):
         return _fail("GodotSteam is missing the item_updated signal.")
 
-    # GodotSteam has historically exposed DownloadItemResult_t as item_downloaded. Keep one
-    # compatibility alias for builds that expose the SDK callback name instead.
+    # GodotSteam exposes DownloadItemResult_t as item_downloaded. Keep one compatibility alias
+    # for older builds that exposed the SDK callback name instead.
     if _steam.has_signal("item_downloaded"):
         _connect_once("item_downloaded", Callable(self, "_on_item_downloaded"))
     elif _steam.has_signal("download_item_result"):
@@ -130,7 +131,12 @@ func set_item_visibility(update_handle: int, visibility: int) -> bool:
     return _call_bool("setItemVisibility", [update_handle, visibility])
 
 func set_item_tags(update_handle: int, tags: PackedStringArray) -> bool:
-    return _call_bool("setItemTags", [update_handle, tags])
+    # GodotSteam 4.22 exposes SteamUGC::SetItemTags as (handle, Array, allow_admin_tags).
+    # Convert deliberately instead of leaking a version-specific binding shape into C#.
+    var tag_array: Array = []
+    for tag in tags:
+        tag_array.append(tag)
+    return _call_bool("setItemTags", [update_handle, tag_array, false])
 
 func set_item_metadata(update_handle: int, metadata: String) -> bool:
     return _call_bool("setItemMetadata", [update_handle, metadata])
@@ -191,12 +197,18 @@ func get_item_install_info(file_id: int) -> Dictionary:
 func open_workshop_browser(app_id: int) -> void:
     if not is_available() or app_id != _app_id:
         return
-    _steam.call("activateGameOverlayToWebPage", "https://steamcommunity.com/app/%d/workshop/" % app_id)
+    _steam.call(
+        "activateGameOverlayToWebPage",
+        "https://steamcommunity.com/app/%d/workshop/" % app_id,
+        OVERLAY_TO_WEB_PAGE_MODE_DEFAULT)
 
 func open_workshop_item(file_id: int) -> void:
     if not is_available() or file_id <= 0:
         return
-    _steam.call("activateGameOverlayToWebPage", "steam://url/CommunityFilePage/%d" % file_id)
+    _steam.call(
+        "activateGameOverlayToWebPage",
+        "steam://url/CommunityFilePage/%d" % file_id,
+        OVERLAY_TO_WEB_PAGE_MODE_DEFAULT)
 
 func _find_steam() -> Object:
     if Engine.has_singleton("Steam"):
