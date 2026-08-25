@@ -136,6 +136,10 @@ public partial class Bootstrap : Node
         string characterRoot = ProjectSettings.GlobalizePath("user://characters");
         var store = new JsonProgressStore(progressPath, settingsPath);
 
+        Log.Info(
+            Category,
+            $"Loading persistence browser={OperatingSystem.IsBrowser()} progress={progressPath} settings={settingsPath}");
+
         LoadResult<ProgressSave> progressLoad;
         LoadResult<LocalSettingsSave> settingsLoad;
         try
@@ -154,6 +158,10 @@ public partial class Bootstrap : Node
             QuitSafely(3);
             return;
         }
+
+        Log.Info(
+            Category,
+            $"Persistence loaded progress={progressLoad.Status} settings={settingsLoad.Status}");
 
         if (progressLoad.Status == SaveLoadStatus.UnsupportedFutureVersion)
         {
@@ -205,6 +213,7 @@ public partial class Bootstrap : Node
             try
             {
                 await saves.FlushProgressAsync(force: true);
+                Log.Info(Category, "Initial progress save completed.");
             }
             catch (Exception exception)
             {
@@ -260,6 +269,10 @@ public partial class Bootstrap : Node
         };
         inputBridge.Configure(sandbox);
         sandbox.AddChild(inputBridge);
+
+        Log.Info(Category, "Sandbox boot completed and gameplay scene is attached.");
+        if (OperatingSystem.IsBrowser())
+            GD.Print("DESKTOP_BUDDY_WEB_READY");
     }
 
     private void QuitSafely(int exitCode)
