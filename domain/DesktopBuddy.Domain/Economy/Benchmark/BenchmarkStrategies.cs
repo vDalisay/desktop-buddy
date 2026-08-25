@@ -4,16 +4,16 @@ using DesktopBuddy.Domain.Content;
 namespace DesktopBuddy.Domain.Economy.Benchmark;
 
 /// <summary>
-/// The seven benchmark shoppers (M5 Tasks 11–13 §4.3). Only
-/// <see cref="CompletionistId"/> is judged against the §1.1 target times; the rest exist to
-/// prove the shop has no prerequisite graph — any visible item may be saved for, and
-/// earlier cheaper ones may be skipped forever.
+/// Representative benchmark shoppers. The completionist follows the current authored shop order;
+/// the alternatives exercise different saving/skipping patterns for diagnostic traces. Free-choice
+/// itself is proved directly against every current purchasable by <see cref="BenchmarkObligations"/>,
+/// so an expensive item does not have to be reachable inside the fixed representative session.
 /// </summary>
 public static class BenchmarkStrategies
 {
     public const string CompletionistId = "completionist_in_order";
 
-    /// <summary>The high-value items each <c>save_for_*</c> strategy heads straight for.</summary>
+    /// <summary>High-value items whose save-first behaviour is useful in benchmark reports.</summary>
     public static readonly IReadOnlyList<string> SaveTargets = new[]
     {
         ContentIds.ToolPistol,
@@ -22,11 +22,7 @@ public static class BenchmarkStrategies
         ContentIds.ToolShotgun,
     };
 
-    /// <summary>
-    /// The regulars <c>skip_regulars</c> never buys, and the single earlier regular
-    /// <c>power_grab_preference</c> walks past — a completed run that still does not own it
-    /// is the evidence that ownership is not a chain.
-    /// </summary>
+    /// <summary>Regular entries omitted by the skip strategy.</summary>
     public static readonly IReadOnlyList<string> SkippedRegulars = new[]
     {
         ContentIds.ToolBaseball,
@@ -55,7 +51,6 @@ public static class BenchmarkStrategies
         return all;
     }
 
-    /// <summary>The §1.1 order with one entry pulled to the front, and optionally one dropped.</summary>
     private static IReadOnlyList<string> First(string contentId, string? skip = null)
     {
         var order = new List<string> { contentId };
