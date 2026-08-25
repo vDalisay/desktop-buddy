@@ -49,6 +49,10 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private bool _painting;
     private bool _saving;
     private int _selectedSwatch = -1;
+    private const double HoldToEditSeconds = 0.4;
+    private int _holdSwatch = -1;
+    private int _editSwatch = -1;
+    private double _holdSeconds;
     private double _sprayPulseAccumulator;
     private Vector2? _curveStart;
     private Vector2? _curveEnd;
@@ -82,6 +86,17 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
 
     public override void _Process(double delta)
     {
+        if (_holdSwatch >= 0)
+        {
+            _holdSeconds += Math.Max(0, delta);
+            if (_holdSeconds >= HoldToEditSeconds)
+            {
+                int held = _holdSwatch;
+                _holdSwatch = -1;
+                OpenSwatchInPicker(held);
+            }
+        }
+
         if (!IsOpen || !_painting || Canvas.Tool != EnvironmentPaintTool.Spray)
         {
             _sprayPulseAccumulator = 0;
@@ -253,7 +268,10 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             EditAlpha = false,
             TooltipText = "Choose a custom color.",
         };
-        _picker.ColorChanged += SelectColor;
+        _picker.ColorChanged += EditColor;
+        // Closing the picker ends whatever block it was opened to edit; the next time it opens
+        // on its own it is the plain custom-colour picker again.
+        _picker.PopupClosed += () => _editSwatch = -1;
         paletteRow.AddChild(_picker);
         AddColorPickerIcon(_picker);
 
@@ -370,7 +388,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             var cell = new Button
             {
                 Name = $"PaintSwatch{index}", ToggleMode = true, ButtonPressed = index == _selectedSwatch,
-                CustomMinimumSize = new Vector2(20, 18), TooltipText = "Click to select. Right-click or press Delete to remove.",
+                CustomMinimumSize = new Vector2(20, 18),
+                TooltipText = "Click to select, hold to edit. Right-click or press Delete to remove.",
             };
             ApplySwatchStyle(cell, swatch);
             int captured = index;
@@ -379,11 +398,19 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             {
                 // Same rule as the character palette: while a prompt is asking for a colour,
                 // the swatches can be picked but not edited away.
-                if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true } &&
-                    TutorialInputGate.AllowsPaletteEditing)
+                if (input is not InputEventMouseButton click || !TutorialInputGate.AllowsPaletteEditing)
+                    return;
+                if (click is { ButtonIndex: MouseButton.Right, Pressed: true })
                 {
                     RemoveSwatch(captured);
+                    return;
                 }
+                if (click.ButtonIndex != MouseButton.Left)
+                    return;
+                // Press and hold opens this block in the colour picker (owner instruction
+                // 2026-08-25); a plain click still just selects it.
+                _holdSwatch = click.Pressed ? captured : -1;
+                _holdSeconds = 0.0;
             };
             _swatchGrid.AddChild(cell);
         }
@@ -431,6 +458,34 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         _selectedSwatch = _swatches.Count - 1;
         RebuildSwatches();
         SelectColor(_picker.Color);
+    }
+
+    /// <summary>Picker edits rewrite the block the picker was opened on, or just the brush.</summary>
+    private void EditColor(Color color)
+    {
+        if (_editSwatch >= 0 && _editSwatch < _swatches.Count)
+        {
+            _swatches[_editSwatch] = color;
+            if (_swatchGrid.GetChild(_editSwatch) is Button block)
+                ApplySwatchStyle(block, color);
+        }
+        SelectColor(color);
+    }
+
+    private void OpenSwatchInPicker(int index)
+    {
+        if (index < 0 || index >= _swatches.Count) return;
+        SelectSwatch(index);
+        _editSwatch = index;
+        // Asked of the popup directly: toggling the button programmatically does not open a
+        // ColorPickerButton, so the hold looked like it did nothing (owner report 2026-08-25).
+        _picker.GetPicker().Color = _swatches[index];
+        PopupPanel popup = _picker.GetPopup();
+        Control anchor = _swatchGrid.GetChild(index) as Control ?? _picker;
+        var at = new Vector2I(
+            Mathf.RoundToInt(anchor.GetScreenPosition().X),
+            Mathf.RoundToInt(anchor.GetScreenPosition().Y + anchor.Size.Y));
+        popup.Popup(new Rect2I(at, popup.Size));
     }
 
     private void SelectColor(Color color)
