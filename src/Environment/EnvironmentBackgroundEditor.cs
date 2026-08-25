@@ -511,7 +511,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         {
             if (_confirm.Visible && _confirm.GetGlobalRect().HasPoint(mouse.GlobalPosition))
                 return;
-            if (_panel.Visible && _panel.GetGlobalRect().HasPoint(mouse.GlobalPosition))
+            if (PanelCoversPoint(mouse.GlobalPosition))
                 return;
         }
         if (_confirm.Visible)
@@ -578,6 +578,17 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         }
         _blocker.AcceptEvent();
     }
+
+    /// <summary>
+    /// True when the tool panel is sitting over this point of the room and the stroke has to be
+    /// let through to it instead. Detached, the panel is a Control in its own window, so its
+    /// global rect is that window's coordinates - measured against the room it masked a
+    /// panel-sized block in the corner that took neither paint nor the brush cursor (owner
+    /// report 2026-08-25).
+    /// </summary>
+    internal bool PanelCoversPoint(Vector2 point) =>
+        _panel.Visible && !(GodotObject.IsInstanceValid(_panelPin) && _panelPin.IsFloating) &&
+        _panel.GetGlobalRect().HasPoint(point);
 
     private void TrackCurvePress(EnvironmentCurvePhase phase, double x, double y)
     {

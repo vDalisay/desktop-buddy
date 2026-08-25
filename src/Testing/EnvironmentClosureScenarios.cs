@@ -200,6 +200,21 @@ public sealed class EnvironmentBackgroundEditorClosureScenario : IScenario
                 flush,
                 $"panel={floatingPanel} window={floatingWindow}"));
 
+            // The panel masks the room under it only while it is docked over it. Detached, its
+            // rect belongs to its own window, and measuring it against the room blocked a
+            // panel-sized corner of the canvas (owner report 2026-08-25).
+            Vector2 underPanel = panel?.GetGlobalRect().GetCenter() ?? Vector2.Zero;
+            bool masksDocked = editor.PanelCoversPoint(underPanel);
+            panelPin?.Float();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            bool masksFloating = editor.PanelCoversPoint(underPanel);
+            panelPin?.Dock();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            checks.Add(new StartupCheck(
+                "environment_background_detached_panel_masks_no_part_of_the_room",
+                masksDocked && !masksFloating,
+                $"docked={masksDocked} floating={masksFloating} point={underPanel}"));
+
             EnvironmentCanvas canvas = presenter.Canvas;
             canvas.Color = new EnvironmentColor(210, 40, 60);
             canvas.Tool = EnvironmentPaintTool.Brush;
