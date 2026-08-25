@@ -75,7 +75,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
             else if (Time.GetTicksMsec() >= _browserBootDeadlineMsec)
             {
                 _browserBootWatchdogArmed = false;
-                GD.PushError(
+                throw new InvalidOperationException(
                     "RuntimeError: Desktop Buddy browser boot did not attach SandboxRoot within 15 seconds. " +
                     "Treat the Web smoke test as failed even if the Godot canvas exists.");
             }
@@ -166,7 +166,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
             return;
 
         _browserRuntimeWatchdogArmed = false;
-        GD.PushError(
+        throw new InvalidOperationException(
             "RuntimeError: Desktop Buddy browser runtime did not reach the shipping itch surface " +
             $"within {BrowserRuntimeTimeoutMsec / 1000} seconds. " +
             $"lifecycleReady={lifecycleReady} trayReady={trayReady} " +
