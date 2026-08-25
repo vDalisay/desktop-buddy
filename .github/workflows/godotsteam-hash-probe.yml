@@ -1,0 +1,20 @@
+name: GodotSteam Hash Probe
+
+on:
+  push:
+    branches:
+      - plan/godotsteam-workshop-social-features
+
+jobs:
+  hash:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download exact Asset Library revision and report SHA-256
+        run: |
+          set -euo pipefail
+          URL="https://codeberg.org/godotsteam/godotsteam/archive/ac5fc8bbc3d34c203e832864e2ebab4b21f3efd9.zip"
+          curl -fL --retry 3 --retry-delay 2 -o godotsteam-4.22.zip "$URL"
+          test -s godotsteam-4.22.zip
+          echo "ARCHIVE_BYTES=$(stat -c%s godotsteam-4.22.zip)"
+          echo "ARCHIVE_SHA256=$(sha256sum godotsteam-4.22.zip | awk '{print toupper($1)}')"
+          unzip -l godotsteam-4.22.zip | grep -E 'addons/godotsteam/godotsteam\.gdextension$'
