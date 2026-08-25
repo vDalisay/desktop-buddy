@@ -14,7 +14,7 @@ if errorlevel 1 (
 if not exist "%PROJECT_ROOT%\addons\godotsteam\godotsteam.gdextension" (
     echo [Steam Workshop Diagnostics] Installing verified GodotSteam 4.22 locally...
     powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%\tools\install_godotsteam.ps1"
-    if errorlevel 1 exit /b %ERRORLEVEL%
+    if errorlevel 1 exit /b 1
 )
 
 tasklist /FI "IMAGENAME eq steam.exe" 2>nul | find /I "steam.exe" >nul
@@ -61,7 +61,7 @@ echo   DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5114950
 echo   DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID=5114950
 echo.
 echo A future demo test can override only DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID while retaining
- echo Workshop ownership at 5114950, once that cross-app Steamworks configuration exists.
+echo Workshop ownership at 5114950, once that cross-app Steamworks configuration exists.
 echo.
 echo No steam_appid.txt or Valve/GodotSteam binary is written to source control.
 exit /b 0
