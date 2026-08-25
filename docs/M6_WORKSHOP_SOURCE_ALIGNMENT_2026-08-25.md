@@ -1,6 +1,6 @@
 # Milestone 6 — Steam Workshop Source Alignment
 
-Status: **AUTHORIZED — implementation in verification on draft PR #41**
+Status: **AUTHORIZED — source-controlled implementation verified on draft PR #41; live Steam validation remains external**
 Date: 2026-08-25
 Branch: `plan/godotsteam-workshop-social-features`
 
@@ -55,15 +55,17 @@ The implementation branch has reached the following source-controlled gates:
 - Godot 4.6.1 headless editor import passes with GodotSteam physically absent, proving the optional bridge does not become a boot/import dependency.
 - `workshop_emulator_roundtrip` passes under Godot. It exercises room pixels → versioned share package → directory Workshop publish snapshot → subscription/install → hostile-input staging/validation → local room library import, including exact 1,048,576-byte RGBA pixel roundtrip and Workshop-item provenance.
 - The GodotSteam 4.22 bridge call shapes were checked against the current binding; version-specific details such as the third `setItemTags` argument are contained in the GDScript anti-corruption bridge.
+- The exact official Godot Asset Library 4.22 archive for revision `ac5fc8bbc3d34c203e832864e2ebab4b21f3efd9` was downloaded on a clean GitHub Actions runner and pinned at 32,103,117 bytes with SHA-256 `9ED28D9FE8CA43E769BD8E1160C0F7806B7C6337FD672F919A9103DC84829777`.
+- The verified archive contains `addons/godotsteam/godotsteam.gdextension`, both Windows x86_64 GodotSteam debug/release DLLs, and `win64/steam_api64.dll`; `tools/install_godotsteam.ps1` verifies the pinned hash before copying the complete addon into the gitignored local dependency directory.
+- The independent Asset Forge PR workflow passes all verification steps, including game import/boot, presentation captures, generated Buddy Studio replacements, environment fixtures, and standalone Asset Forge boot.
 - The broader PR CI advances through the Workshop scenario and the existing demo/work-mode gates, then stops at the pre-existing deterministic `economy_calibration` failure. An unrelated PR (#40) on the same `main` base fails at the same scenario with the same calibration fingerprint, so economy tuning is not part of this Workshop change.
 
-## Remaining external/dependency gates
+## Remaining external gates
 
-These are not evidence of a single-player/Workshop architecture failure, but they still block claiming live Steam verification:
+The source-controlled dependency and offline Workshop path are verified. Live Steam verification still requires:
 
-1. Pin and verify the exact official GodotSteam 4.22 Asset Library archive SHA-256, then prove `tools/install_godotsteam.ps1` materializes the expected project-ready `addons/godotsteam` dependency without tracking it.
-2. Configure the production/test Steam AppID in Steamworks (ISteamUGC file transfer, Workshop visibility/tags, preview-image Cloud quota, Workshop page metadata, and legal-agreement path).
-3. Run the manual two-account/depot matrix against the configured AppID: publish, legal-agreement handling, subscribe/download, import, offline reuse, update, and malformed/removed-item behavior.
+1. Configure the production/test Steam AppID in Steamworks (ISteamUGC file transfer, Workshop visibility/tags, preview-image Cloud quota, Workshop page metadata, and legal-agreement path).
+2. Run the manual two-account/depot matrix against the configured AppID: publish, legal-agreement handling, subscribe/download, import, offline reuse, update, and malformed/removed-item behavior.
 
 ## Definition of done
 
@@ -76,3 +78,5 @@ Implementation is acceptable when:
 5. room and buddy imports never auto-apply/auto-activate;
 6. the official GodotSteam dependency is pinned/materializable with integrity verification; and
 7. the only remaining unverified items after that are Steamworks Partner configuration and the manual two-account depot matrix that cannot be performed from source control.
+
+Items 1–6 are satisfied on draft PR #41. Item 7 is the remaining release gate and requires the configured Steamworks environment rather than additional source-only implementation.
