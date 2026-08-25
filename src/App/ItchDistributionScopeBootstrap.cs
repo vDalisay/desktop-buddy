@@ -1,6 +1,8 @@
 using System;
+using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Platform;
+using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Presentation3D;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -10,19 +12,23 @@ namespace DesktopBuddy.App;
 /// <summary>
 /// Applies distribution-only shell removals that cannot be expressed by catalogue filtering.
 /// The itch build intentionally has no Work Mode: remove its hotkey, status autoload and both
-/// legacy/current shell buttons. In browser-WASM it also keeps a small startup watchdog alive so
-/// CI cannot mistake an allocated but permanently grey canvas for a successful game boot.
+/// legacy/current shell buttons. Browser-WASM also owns a runtime-readiness watchdog: a canvas
+/// is not considered healthy until the shipping 3D presentation, room bounds and command bar
+/// have all actually composed.
 /// </summary>
 public sealed partial class ItchDistributionScopeBootstrap : Node
 {
     private const ulong BrowserBootTimeoutMsec = 15_000;
+    private const ulong BrowserRuntimeTimeoutMsec = 12_000;
 
     private bool _workCommandRemoved;
     private bool _legacyWorkCommandRemoved;
     private bool _browserBootWatchdogArmed;
     private ulong _browserBootDeadlineMsec;
+    private bool _browserRuntimeWatchdogArmed;
+    private ulong _browserRuntimeDeadlineMsec;
     private Vector2I _lastBrowserViewportSize = new(-1, -1);
-    private bool _browserPresentationReported;
+    private bool _browserRuntimeReadyReported;
 
     public override void _Ready()
     {
@@ -42,8 +48,11 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
 
         if (OperatingSystem.IsBrowser())
         {
+            ulong now = Time.GetTicksMsec();
             _browserBootWatchdogArmed = true;
-            _browserBootDeadlineMsec = Time.GetTicksMsec() + BrowserBootTimeoutMsec;
+            _browserBootDeadlineMsec = now + BrowserBootTimeoutMsec;
+            _browserRuntimeWatchdogArmed = true;
+            _browserRuntimeDeadlineMsec = now + BrowserRuntimeTimeoutMsec;
         }
     }
 
@@ -55,7 +64,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
             _legacyWorkCommandRemoved = HideControl("DockInteractionModeButton");
 
         if (OperatingSystem.IsBrowser())
-            MaintainBrowserSandbox();
+            MaintainBrowserRuntime();
 
         if (_browserBootWatchdogArmed)
         {
@@ -73,8 +82,8 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
         }
 
         // Native itch builds can go idle once their one-shot removals are done. Browser play
-        // keeps this node alive because the DOM canvas can resize independently of Godot's
-        // desktop Window abstraction (itch iframe resize, DevTools docking, browser resize).
+        // remains live because the DOM canvas can resize independently of Godot's desktop
+        // Window abstraction (itch iframe resize, DevTools docking, browser resize).
         if (_workCommandRemoved && _legacyWorkCommandRemoved && !_browserBootWatchdogArmed &&
             !OperatingSystem.IsBrowser())
         {
@@ -82,57 +91,125 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
         }
     }
 
-    private void MaintainBrowserSandbox()
+    private void MaintainBrowserRuntime()
     {
         SandboxRoot? sandbox = GetTree().Root.FindChild("Sandbox", true, false) as SandboxRoot;
-        if (!GodotObject.IsInstanceValid(sandbox) || !sandbox!.Boundaries.IsInitialized)
+        if (!GodotObject.IsInstanceValid(sandbox))
             return;
 
-        // The shipping game is Mii3D. The experimental Web/AOT path has been observed to
-        // materialize the exported enum at its zero value (LegacyCircles), despite the C#
-        // initializer. Make the itch browser contract explicit instead of relying on that
-        // experimental property-default path. The underlying 2D bodies remain the simulation;
-        // only their presentation is switched, exactly as on the native shipping build.
-        if (sandbox.Mode != PresentationMode.Mii3D)
-            sandbox.SetPresentationMode(PresentationMode.Mii3D);
-        if (!_browserPresentationReported)
+        Vector2I expectedRoom = ResolveExpectedBrowserRoom(sandbox!);
+        if (sandbox!.Boundaries.IsInitialized && expectedRoom.X > 0 && expectedRoom.Y > 0)
         {
-            _browserPresentationReported = true;
-            GD.Print("DESKTOP_BUDDY_WEB_PRESENTATION:Mii3D");
+            RoomLayout current = sandbox.Boundaries.CurrentLayout;
+            bool roomMatches = current.ClientWidth == expectedRoom.X &&
+                               current.ClientHeight == expectedRoom.Y;
+            if (!roomMatches && expectedRoom != _lastBrowserViewportSize)
+            {
+                _lastBrowserViewportSize = expectedRoom;
+                double storedZoom = sandbox.Shell.CurrentLocalSettings.ZoomPercent / 100.0;
+                sandbox.Boundaries.RequestLayout(expectedRoom, storedZoom);
+                GD.Print($"DESKTOP_BUDDY_WEB_ROOM_REQUEST:{expectedRoom.X}x{expectedRoom.Y}");
+            }
+            else if (roomMatches)
+            {
+                _lastBrowserViewportSize = expectedRoom;
+            }
         }
 
+        bool lifecycleReady = GodotObject.IsInstanceValid(sandbox.Lifecycle);
+        bool trayReady = GodotObject.IsInstanceValid(sandbox.TrayCommands);
+        bool visualInitialized = GodotObject.IsInstanceValid(sandbox.VisualPresenter) &&
+                                 sandbox.VisualPresenter.IsInitialized;
+        bool legacyVisible = AnyLegacyBuddyPartVisible(sandbox);
+
+        // Only reconcile after the root has reached its late composition seam. Calling the
+        // presentation switch earlier can touch presenters that SandboxRoot has not initialized
+        // yet and would hide the exception we are trying to diagnose.
+        if (lifecycleReady && trayReady && visualInitialized &&
+            (sandbox.Mode != PresentationMode.Mii3D || !sandbox.VisualPresenter.Visible || legacyVisible))
+        {
+            sandbox.SetPresentationMode(PresentationMode.Mii3D);
+            legacyVisible = AnyLegacyBuddyPartVisible(sandbox);
+        }
+
+        CharacterSelectionRuntime? selectionRuntime =
+            sandbox.GetNodeOrNull<CharacterSelectionRuntime>(nameof(CharacterSelectionRuntime));
+        CharacterEditorHost? host =
+            sandbox.GetNodeOrNull<CharacterEditorHost>(nameof(CharacterEditorHost));
+        Control? commandBar = GetTree().Root.FindChild("Win98CommandBar", true, false) as Control;
+
+        bool roomReady = sandbox.Boundaries.IsInitialized && expectedRoom.X > 0 && expectedRoom.Y > 0 &&
+                         sandbox.Boundaries.CurrentLayout.ClientWidth == expectedRoom.X &&
+                         sandbox.Boundaries.CurrentLayout.ClientHeight == expectedRoom.Y;
+        bool presentationReady = visualInitialized && sandbox.VisualPresenter.Visible &&
+                                 sandbox.Mode == PresentationMode.Mii3D && !legacyVisible;
+        bool characterRuntimeReady = selectionRuntime?.Coordinator is not null;
+        bool characterUiReady = host is { IsInitialized: true };
+        bool commandBarReady = GodotObject.IsInstanceValid(commandBar) && commandBar!.Visible;
+
+        bool ready = lifecycleReady && trayReady && roomReady && presentationReady &&
+                     characterRuntimeReady && characterUiReady && commandBarReady;
+        if (ready)
+        {
+            _browserRuntimeWatchdogArmed = false;
+            if (!_browserRuntimeReadyReported)
+            {
+                _browserRuntimeReadyReported = true;
+                GD.Print(
+                    $"DESKTOP_BUDDY_WEB_RUNTIME_READY room={expectedRoom.X}x{expectedRoom.Y} " +
+                    "presentation=Mii3D characterUi=True commandBar=True");
+            }
+            return;
+        }
+
+        if (!_browserRuntimeWatchdogArmed || Time.GetTicksMsec() < _browserRuntimeDeadlineMsec)
+            return;
+
+        _browserRuntimeWatchdogArmed = false;
+        GD.PushError(
+            "RuntimeError: Desktop Buddy browser runtime did not reach the shipping itch surface " +
+            $"within {BrowserRuntimeTimeoutMsec / 1000} seconds. " +
+            $"lifecycleReady={lifecycleReady} trayReady={trayReady} " +
+            $"visualInitialized={visualInitialized} visualVisible={sandbox.VisualPresenter.Visible} " +
+            $"mode={sandbox.Mode} legacyVisible={legacyVisible} roomReady={roomReady} " +
+            $"room={sandbox.Boundaries.CurrentLayout.ClientWidth}x{sandbox.Boundaries.CurrentLayout.ClientHeight} " +
+            $"expectedRoom={expectedRoom.X}x{expectedRoom.Y} " +
+            $"characterRuntimeReady={characterRuntimeReady} hostPresent={host is not null} " +
+            $"characterUiReady={characterUiReady} commandBarReady={commandBarReady}.");
+    }
+
+    private static Vector2I ResolveExpectedBrowserRoom(SandboxRoot sandbox)
+    {
         Vector2 visible = sandbox.GetViewport().GetVisibleRect().Size;
-        var viewportSize = new Vector2I(
+        var client = new Vector2I(
             Math.Max(1, (int)Math.Round(visible.X)),
             Math.Max(1, (int)Math.Round(visible.Y)));
-        if (viewportSize == _lastBrowserViewportSize)
-            return;
-        _lastBrowserViewportSize = viewportSize;
 
-        // Native DesktopWindowController owns an OS window rect. In Web there is only the DOM
-        // canvas, and its dimensions can change without a meaningful desktop-window resize.
-        // Feed the real canvas size directly back into the same room-layout policy used by
-        // native Compact mode so floor, walls, grab containment and both cameras fill the page.
-        Vector2I roomClientSize = viewportSize;
         if (sandbox.Window.LayoutMode == WindowLayoutMode.Compact &&
             !sandbox.Window.WorkCompanionActive)
         {
-            roomClientSize.Y -= Win98ThemeFactory.ChromeHeight;
+            client.Y -= Win98ThemeFactory.ChromeHeight;
         }
 
-        if (roomClientSize.X < RoomLayoutPolicy.MinimumRoomWidth ||
-            roomClientSize.Y < RoomLayoutPolicy.MinimumRoomHeight)
+        if (client.X < RoomLayoutPolicy.MinimumRoomWidth ||
+            client.Y < RoomLayoutPolicy.MinimumRoomHeight)
         {
-            roomClientSize = new Vector2I(
+            client = new Vector2I(
                 RoomLayoutPolicy.DefaultClientWidth,
                 RoomLayoutPolicy.DefaultClientHeight);
         }
 
-        double storedZoom = sandbox.Shell.CurrentLocalSettings.ZoomPercent / 100.0;
-        sandbox.Boundaries.RequestLayout(roomClientSize, storedZoom);
-        GD.Print(
-            $"DESKTOP_BUDDY_WEB_ROOM_REQUEST:{roomClientSize.X}x{roomClientSize.Y} " +
-            $"viewport={viewportSize.X}x{viewportSize.Y}");
+        return client;
+    }
+
+    private static bool AnyLegacyBuddyPartVisible(SandboxRoot sandbox)
+    {
+        foreach (var part in sandbox.Buddy.Rig.Parts)
+        {
+            if (part.Visible)
+                return true;
+        }
+        return false;
     }
 
     private bool HasBootedSandbox()
