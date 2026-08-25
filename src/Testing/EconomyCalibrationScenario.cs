@@ -13,21 +13,24 @@ using Godot;
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// M5 Task 12: replays the seeded benchmark traces through the production economy path
-/// against the <b>shipped</b> Resources, and fails the run when the §1.1 schedule, the six
-/// proof obligations, or byte-for-byte determinism do not hold.
+/// Replays seeded representative behaviour through the production economy path against the
+/// <b>shipped</b> Resources. The current authored catalogue is the tuning source of truth.
 ///
-/// <para>All file IO for the benchmark lives here — the domain returns values only. The two
-/// tuning Resources are loaded from the same paths <c>sandbox.tscn</c> and
-/// <c>buddy_lab.tscn</c> reference, so the fingerprint covers what the game actually
-/// ships.</para>
+/// <para>The fixed 209-minute trace remains valuable as a deterministic income/mechanics sample,
+/// but it is no longer treated as a promise that every currently priced shop item must be bought
+/// inside the historical M5 timing table. Current shop reachability/free choice is proved directly
+/// by the benchmark obligations instead.</para>
+///
+/// <para>All file IO for the benchmark lives here — the domain returns values only. The tuning
+/// Resources are loaded from the same paths the game references, so the fingerprint covers what
+/// the game actually ships.</para>
 /// </summary>
 public sealed class EconomyCalibrationScenario : IScenario
 {
     public const string PainProfilePath = "res://data/buddy/lab_pain_conversion.tres";
     public const string MoodEconomyPath = "res://data/buddy/m4_mood_economy.tres";
 
-    /// <summary>The committed calibration seeds (§4.3). Every strategy runs against all five.</summary>
+    /// <summary>The committed calibration seeds. Every strategy runs against all five.</summary>
     public static readonly int[] Seeds = { 1, 7, 13, 29, 101 };
 
     public string Id => "economy_calibration";
@@ -79,22 +82,17 @@ public sealed class EconomyCalibrationScenario : IScenario
             repeated == json,
             $"{json.Length} characters"));
 
-        IReadOnlyList<ScheduleRow> rows = BenchmarkReport.Summarize(report.Results, catalogue);
-        foreach (ScheduleRow row in rows)
-        {
-            checks.Add(new StartupCheck(
-                $"schedule_{row.ContentId.Replace('.', '_')}",
-                row.InBand,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"target={row.TargetMinutes:F0}m median={row.MedianMinutes:F2}m " +
-                    $"deviation={row.Deviation * 100.0:F1}% price={row.PriceMilliCredits / 1000}cr " +
-                    $"bought={row.SeedsThatBought}/{row.SeedsRun}")));
-        }
-
         foreach (ObligationCheck obligation in report.Obligations)
             checks.Add(new StartupCheck(obligation.Id, obligation.Passed, obligation.Detail));
 
+        IReadOnlyList<ScheduleRow> observations = BenchmarkReport.Summarize(report.Results, catalogue);
+        int reachedEverywhere = 0;
+        foreach (ScheduleRow row in observations)
+            reachedEverywhere += row.BoughtEverywhere ? 1 : 0;
+
+        messages.Add(string.Create(
+            CultureInfo.InvariantCulture,
+            $"representative_session_observed={reachedEverywhere}/{observations.Count} current shop entries in every seed; timings are diagnostic only"));
         messages.Add($"economy_fingerprint={report.EconomyFingerprint}");
         messages.Add(Write(json, markdown));
 
