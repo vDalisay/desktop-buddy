@@ -43,29 +43,32 @@ These choices close the policy gate without requiring a custom moderation backen
 
 The repository intentionally contains no production AppID. Live Steam validation therefore remains an external release gate. Before the real-account matrix can pass, the owner must configure the production/test AppID in Steamworks with ISteamUGC file transfer enabled, Workshop visibility/tags, preview-image Cloud quota, Workshop page metadata, and legal-agreement testing.
 
-The code must accept the AppID through a non-secret runtime/project/depot configuration and must never require `steam_appid.txt` to be tracked.
+The code accepts the AppID through the `DESKTOP_BUDDY_STEAM_APP_ID` development/runtime override or GodotSteam's canonical `steam/initialization/app_id` project/depot setting and never requires `steam_appid.txt` to be tracked.
 
 ## Verification snapshot — 2026-08-25
 
 The implementation branch has reached the following source-controlled gates:
 
 - `dotnet build DesktopBuddy.sln -c Debug` passes.
-- Domain test suite passes with 1,421 tests and zero failures.
+- Domain test suite passes with zero failures.
 - The repository Steam-binary guard passes; no Valve runtime binary or `steam_appid.txt` is tracked.
 - Godot 4.6.1 headless editor import passes with GodotSteam physically absent, proving the optional bridge does not become a boot/import dependency.
 - `workshop_emulator_roundtrip` passes under Godot. It exercises room pixels → versioned share package → directory Workshop publish snapshot → subscription/install → hostile-input staging/validation → local room library import, including exact 1,048,576-byte RGBA pixel roundtrip and Workshop-item provenance.
 - The GodotSteam 4.22 bridge call shapes were checked against the current binding; version-specific details such as the third `setItemTags` argument are contained in the GDScript anti-corruption bridge.
 - The exact official Godot Asset Library 4.22 archive for revision `ac5fc8bbc3d34c203e832864e2ebab4b21f3efd9` was downloaded on a clean GitHub Actions runner and pinned at 32,103,117 bytes with SHA-256 `9ED28D9FE8CA43E769BD8E1160C0F7806B7C6337FD672F919A9103DC84829777`.
 - The verified archive contains `addons/godotsteam/godotsteam.gdextension`, both Windows x86_64 GodotSteam debug/release DLLs, and `win64/steam_api64.dll`; `tools/install_godotsteam.ps1` verifies the pinned hash before copying the complete addon into the gitignored local dependency directory.
-- The independent Asset Forge PR workflow passes all verification steps, including game import/boot, presentation captures, generated Buddy Studio replacements, environment fixtures, and standalone Asset Forge boot.
-- The broader PR CI advances through the Workshop scenario and the existing demo/work-mode gates, then stops at the pre-existing deterministic `economy_calibration` failure. An unrelated PR (#40) on the same `main` base fails at the same scenario with the same calibration fingerprint, so economy tuning is not part of this Workshop change.
+- The economy benchmark now derives its current purchasable order from `CataloguePolicy.LaunchContentIds` instead of carrying the obsolete M5 11-item timing table. The fixed 209-minute seeded trace remains a deterministic income/mechanics observation, while price order, every-item-first-purchase reachability, deduplication, active/passive balance, and fingerprint behavior are validated against the current authored catalogue.
+- PR #41's full `build-test` job passes every substantive gate end-to-end, including Workshop roundtrip, current-catalogue economy calibration, three-minute idle soak, dual-profile stability, and the final M3 full tool-feel journey.
+- The independent Asset Forge workflow covers its own game/import/presentation/generated-content/standalone project gates separately.
 
 ## Remaining external gates
 
 The source-controlled dependency and offline Workshop path are verified. Live Steam verification still requires:
 
-1. Configure the production/test Steam AppID in Steamworks (ISteamUGC file transfer, Workshop visibility/tags, preview-image Cloud quota, Workshop page metadata, and legal-agreement path).
+1. Configure the base game's production/test Steam AppID in Steamworks (ISteamUGC file transfer, Workshop visibility/tags, preview-image Cloud quota, Workshop page metadata, and legal-agreement path).
 2. Run the manual two-account/depot matrix against the configured AppID: publish, legal-agreement handling, subscribe/download, import, offline reuse, update, and malformed/removed-item behavior.
+
+If the Steam demo AppID must publish into or consume the base game's Workshop, treat that as an explicit cross-app integration requirement rather than assuming the demo and base game share Workshop context automatically.
 
 ## Definition of done
 
