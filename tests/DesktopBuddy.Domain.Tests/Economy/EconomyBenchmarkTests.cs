@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Damage;
@@ -8,7 +9,7 @@ namespace DesktopBuddy.Domain.Tests.Economy;
 
 /// <summary>
 /// The benchmark runner against a tiny hand-built trace and synthetic tuning — never the
-/// shipped catalogue, whose prices are calibration output and move without notice.
+/// shipped catalogue, whose authored prices may change as game balancing changes.
 /// </summary>
 public sealed class EconomyBenchmarkTests
 {
@@ -39,7 +40,7 @@ public sealed class EconomyBenchmarkTests
 
     private static BenchmarkStrategy Strategy(params string[] order) => new("test", order);
 
-    /// <summary>Five events: four head contacts (one of them a suppressed repeat) and a care award.</summary>
+    /// <summary>Five events: four head contacts (one suppressed repeat) and a care award.</summary>
     private static IReadOnlyList<BenchmarkEvent> Trace() => new[]
     {
         new BenchmarkEvent(0.0, BenchmarkEventKind.ActiveStart, string.Empty, 0f, 0),
@@ -77,7 +78,6 @@ public sealed class EconomyBenchmarkTests
     [Fact]
     public void Run_AnAlreadyOwnedEntryIsNeverChargedTwice()
     {
-        // The cheap entry is listed twice: the runner must still buy it exactly once.
         BenchmarkResult result = EconomyBenchmark.Run(
             Trace(), Strategy(Cheap, Cheap), Catalogue(cheapCredits: 100), Economy());
 
@@ -91,7 +91,6 @@ public sealed class EconomyBenchmarkTests
         BenchmarkResult result = EconomyBenchmark.Run(
             Trace(), Strategy(), Catalogue(), Economy());
 
-        // Three offered contacts, one of them inside the re-arm window: two payouts.
         Assert.Equal(1, result.DuplicateContactRejections);
         Assert.Equal(240_000, result.ActiveIncomeMilliCredits);
         Assert.Equal(120_000, result.LargestSingleEventMilliCredits);
@@ -156,35 +155,43 @@ public sealed class EconomyBenchmarkTests
         Assert.Equal(209.0 * 60.0, result.RunningSeconds, 1.0);
         Assert.Equal(120.0 * 60.0, result.ActiveSeconds, 1.0);
         Assert.Equal(89.0 * 60.0, result.BackgroundSeconds, 1.0);
-        // Misses and follow-through contacts are both present, or the trace is not
-        // exercising the router at all.
         Assert.True(result.DuplicateContactRejections > 0);
     }
 
     [Fact]
-    public void Schedule_PairsTheBenchmarkedPurchasablesWithTheOwnerLockedTargets()
+    public void Schedule_DerivesPurchaseOrderFromTheSuppliedCatalogue()
     {
-        Assert.Equal(11, BenchmarkSchedule.Targets.Count);
-        Assert.Equal(ContentIds.ToolBaseball, BenchmarkSchedule.Targets[0].ContentId);
-        Assert.Equal(3.0, BenchmarkSchedule.Targets[0].TargetMinutes);
-        Assert.Equal(ContentIds.ToolDrink, BenchmarkSchedule.Targets[^1].ContentId);
-        Assert.Equal(209.0, BenchmarkSchedule.Targets[^1].TargetMinutes);
+        IReadOnlyList<string> order = BenchmarkSchedule.PurchaseOrder(Catalogue());
 
-        // The bat became the tutorial's 1-credit first purchase and left the progression
-        // schedule; the surviving targets keep their accepted minute values.
-        Assert.DoesNotContain(ContentIds.ToolBaseballBat, BenchmarkSchedule.PurchasableOrder);
-        Assert.Equal(13.0, BenchmarkSchedule.Targets[1].TargetMinutes);
+        Assert.Equal(new[] { Cheap, Dear }, order);
+        Assert.DoesNotContain(ContentIds.ToolGrab, order);
+        Assert.DoesNotContain(ContentIds.ToolPet, order);
     }
 
     [Fact]
-    public void Strategies_AreSevenAndBuyOnlyLaunchCatalogueEntries()
+    public void Schedule_LegacyTimingTargetsAreExplicitlyRetired()
     {
-        Assert.Equal(7, BenchmarkStrategies.All.Count);
-        foreach (BenchmarkStrategy strategy in BenchmarkStrategies.All)
+        Assert.NotEmpty(BenchmarkSchedule.Targets);
+        Assert.All(BenchmarkSchedule.Targets, target => Assert.True(double.IsNaN(target.TargetMinutes)));
+    }
+
+    [Fact]
+    public void Strategies_UseOnlyEntriesFromTheSuppliedCurrentShop()
+    {
+        ToolCatalogue catalogue = Catalogue();
+        IReadOnlyList<CatalogueEntry> shop = CataloguePolicy.ShopEntries(catalogue);
+        IReadOnlyList<BenchmarkStrategy> strategies = BenchmarkStrategies.ForCatalogue(catalogue);
+
+        Assert.NotEmpty(strategies);
+        Assert.Equal(BenchmarkStrategies.CompletionistId, strategies[0].Id);
+        Assert.Equal(new[] { Cheap, Dear }, strategies[0].PurchaseOrder);
+        foreach (BenchmarkStrategy strategy in strategies)
         {
             Assert.NotEmpty(strategy.PurchaseOrder);
             foreach (string contentId in strategy.PurchaseOrder)
-                Assert.Contains(contentId, BenchmarkSchedule.PurchasableOrder);
+            {
+                Assert.Contains(shop, entry => entry.ContentId == contentId);
+            }
         }
     }
 
