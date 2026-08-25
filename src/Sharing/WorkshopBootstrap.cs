@@ -17,6 +17,7 @@ public partial class WorkshopBootstrap : Node
 {
     private const string Category = "Workshop";
     private const string BridgeScriptPath = "res://src/Platform/Steam/GodotSteamBridge.gd";
+    private const string SteamAppIdProjectSetting = "steam/initialization/app_id";
     private CharacterStore? _characters;
     private CharacterSelectionState? _selection;
     private WorkshopSharingCoordinator? _sharing;
@@ -130,11 +131,11 @@ public partial class WorkshopBootstrap : Node
             return new DirectoryWorkshopTransport(emulatorRoot);
         }
 
-        string appIdText = OS.GetEnvironment("DESKTOP_BUDDY_STEAM_APP_ID");
-        if (!uint.TryParse(appIdText, out uint appId) || appId == 0)
+        uint appId = ResolveSteamAppId();
+        if (appId == 0)
         {
             return new NullSteamWorkshopTransport(
-                "No Steam AppID is configured. Set DESKTOP_BUDDY_STEAM_APP_ID in development; release depots supply the production AppID configuration.");
+                $"No Steam AppID is configured. Set DESKTOP_BUDDY_STEAM_APP_ID for development/CI or provide the canonical GodotSteam project setting '{SteamAppIdProjectSetting}' in the Steam release/depot configuration.");
         }
 
         try
@@ -163,6 +164,22 @@ public partial class WorkshopBootstrap : Node
             Log.Warn(Category, $"Steam integration disabled: {exception.Message}");
             return new NullSteamWorkshopTransport(exception.Message);
         }
+    }
+
+    /// <summary>
+    /// Development/CI can override the AppID without changing project files. Release builds may
+    /// instead materialize GodotSteam's canonical project setting through their depot/export
+    /// configuration. The AppID is not a secret, but it must not be hard-coded into this branch.
+    /// </summary>
+    internal static uint ResolveSteamAppId()
+    {
+        string environment = OS.GetEnvironment("DESKTOP_BUDDY_STEAM_APP_ID");
+        if (uint.TryParse(environment, out uint environmentId) && environmentId != 0)
+            return environmentId;
+
+        Variant configured = ProjectSettings.GetSetting(SteamAppIdProjectSetting, 0);
+        long projectId = configured.AsInt64();
+        return projectId is > 0 and <= uint.MaxValue ? checked((uint)projectId) : 0;
     }
 
     private static string ResolveAppVersion()
