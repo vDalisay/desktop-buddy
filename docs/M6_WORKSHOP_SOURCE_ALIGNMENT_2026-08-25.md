@@ -1,6 +1,6 @@
 # Milestone 6 — Steam Workshop Source Alignment
 
-Status: **AUTHORIZED**
+Status: **AUTHORIZED — implementation in verification on draft PR #41**
 Date: 2026-08-25
 Branch: `plan/godotsteam-workshop-social-features`
 
@@ -45,6 +45,26 @@ The repository intentionally contains no production AppID. Live Steam validation
 
 The code must accept the AppID through a non-secret runtime/project/depot configuration and must never require `steam_appid.txt` to be tracked.
 
+## Verification snapshot — 2026-08-25
+
+The implementation branch has reached the following source-controlled gates:
+
+- `dotnet build DesktopBuddy.sln -c Debug` passes.
+- Domain test suite passes with 1,421 tests and zero failures.
+- The repository Steam-binary guard passes; no Valve runtime binary or `steam_appid.txt` is tracked.
+- Godot 4.6.1 headless editor import passes with GodotSteam physically absent, proving the optional bridge does not become a boot/import dependency.
+- `workshop_emulator_roundtrip` passes under Godot. It exercises room pixels → versioned share package → directory Workshop publish snapshot → subscription/install → hostile-input staging/validation → local room library import, including exact 1,048,576-byte RGBA pixel roundtrip and Workshop-item provenance.
+- The GodotSteam 4.22 bridge call shapes were checked against the current binding; version-specific details such as the third `setItemTags` argument are contained in the GDScript anti-corruption bridge.
+- The broader PR CI advances through the Workshop scenario and the existing demo/work-mode gates, then stops at the pre-existing deterministic `economy_calibration` failure. An unrelated PR (#40) on the same `main` base fails at the same scenario with the same calibration fingerprint, so economy tuning is not part of this Workshop change.
+
+## Remaining external/dependency gates
+
+These are not evidence of a single-player/Workshop architecture failure, but they still block claiming live Steam verification:
+
+1. Pin and verify the exact official GodotSteam 4.22 Asset Library archive SHA-256, then prove `tools/install_godotsteam.ps1` materializes the expected project-ready `addons/godotsteam` dependency without tracking it.
+2. Configure the production/test Steam AppID in Steamworks (ISteamUGC file transfer, Workshop visibility/tags, preview-image Cloud quota, Workshop page metadata, and legal-agreement path).
+3. Run the manual two-account/depot matrix against the configured AppID: publish, legal-agreement handling, subscribe/download, import, offline reuse, update, and malformed/removed-item behavior.
+
 ## Definition of done
 
 Implementation is acceptable when:
@@ -54,4 +74,5 @@ Implementation is acceptable when:
 3. normal game bootstrap works with GodotSteam absent;
 4. no Valve runtime binary or `steam_appid.txt` is tracked;
 5. room and buddy imports never auto-apply/auto-activate;
-6. the only remaining unverified items are Steamworks Partner configuration and the manual two-account depot matrix that cannot be performed from source control.
+6. the official GodotSteam dependency is pinned/materializable with integrity verification; and
+7. the only remaining unverified items after that are Steamworks Partner configuration and the manual two-account depot matrix that cannot be performed from source control.
