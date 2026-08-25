@@ -45,7 +45,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
 
     public override void _Ready()
     {
-        _mainThreadId = Environment.CurrentManagedThreadId;
+        _mainThreadId = System.Environment.CurrentManagedThreadId;
         ProcessMode = ProcessModeEnum.Always;
         SetProcess(true);
     }
@@ -78,7 +78,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
     public bool Initialize(Node bridge, uint appId)
     {
         ArgumentNullException.ThrowIfNull(bridge);
-        _mainThreadId = Environment.CurrentManagedThreadId;
+        _mainThreadId = System.Environment.CurrentManagedThreadId;
         if (appId == 0)
         {
             SetUnavailable("No Steam AppID is configured.");
@@ -494,7 +494,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         UnavailableReason = reason;
     }
 
-    private bool IsOnMainThread => _mainThreadId == 0 || Environment.CurrentManagedThreadId == _mainThreadId;
+    private bool IsOnMainThread => _mainThreadId == 0 || System.Environment.CurrentManagedThreadId == _mainThreadId;
 
     private static TaskCompletionSource<T> NewCompletion<T>() =>
         new(TaskCreationOptions.RunContinuationsAsynchronously);
