@@ -54,8 +54,11 @@ public static class SteamAppIdentityResolver
 
     private static uint ReadProject(string setting)
     {
+        // GodotSteam 4.22 owns steam/initialization/app_id as a String project setting and
+        // migrates older integer-form values at startup. Parse the Variant text so both the
+        // current String form and pre-migration integer form remain compatible.
         Variant configured = ProjectSettings.GetSetting(setting, 0);
-        long value = configured.AsInt64();
-        return value is > 0 and <= uint.MaxValue ? checked((uint)value) : 0;
+        string value = configured.ToString();
+        return uint.TryParse(value, out uint parsed) && parsed != 0 ? parsed : 0;
     }
 }
