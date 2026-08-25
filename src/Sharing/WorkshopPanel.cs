@@ -31,6 +31,8 @@ public partial class WorkshopPanel : Window
     private VBoxContainer _subscriptions = null!;
     private VBoxContainer _roomLibrary = null!;
     private Button _publishBuddy = null!;
+    private Button _cancel = null!;
+    private CancellationTokenSource? _activeOperation;
     private bool _built;
     private bool _busy;
 
@@ -62,7 +64,7 @@ public partial class WorkshopPanel : Window
         Transient = false;
         AlwaysOnTop = true;
         Theme = Win98ThemeFactory.Create();
-        CloseRequested += Hide;
+        CloseRequested += OnCloseRequested;
         Build();
         _built = true;
         RefreshAvailability();
@@ -72,6 +74,10 @@ public partial class WorkshopPanel : Window
     public override void _ExitTree()
     {
         if (_selection is not null) _selection.Changed -= OnCharacterSelectionChanged;
+        CloseRequested -= OnCloseRequested;
+        _activeOperation?.Cancel();
+        _activeOperation?.Dispose();
+        _activeOperation = null;
         base._ExitTree();
     }
 
@@ -142,7 +148,7 @@ public partial class WorkshopPanel : Window
         var split = new HSplitContainer
         {
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            SplitOffset = 365,
+            SplitOffsets = [365],
         };
         column.AddChild(split);
 
@@ -170,6 +176,8 @@ public partial class WorkshopPanel : Window
         roomScroll.AddChild(_roomLibrary);
         split.AddChild(roomColumn);
 
+        var progressRow = new HBoxContainer();
+        column.AddChild(progressRow);
         _progress = new ProgressBar
         {
             MinValue = 0,
@@ -177,8 +185,18 @@ public partial class WorkshopPanel : Window
             Value = 0,
             ShowPercentage = false,
             CustomMinimumSize = new Vector2(0, 14),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        column.AddChild(_progress);
+        progressRow.AddChild(_progress);
+        _cancel = new Button
+        {
+            Text = "Cancel",
+            Disabled = true,
+            TooltipText = "Stop waiting for the current Workshop operation. Steam may finish an already-submitted upload in the background.",
+        };
+        _cancel.Pressed += CancelActiveOperation;
+        progressRow.AddChild(_cancel);
+
         _status = new Label
         {
             Text = "Ready.",
@@ -287,6 +305,9 @@ public partial class WorkshopPanel : Window
                 case WorkshopImportStatus.ImportedBuddy:
                     SetStatus("Buddy imported as a new local character. It was not activated automatically; select it in Buddy Studio/Paint Buddy when wanted.");
                     break;
+                case WorkshopImportStatus.Cancelled:
+                    SetStatus(result.Detail ?? "Workshop import was cancelled.");
+                    break;
                 case WorkshopImportStatus.UnsupportedContent:
                     SetStatus(result.Detail ?? "This subscribed item is not a supported Desktop Buddy share.");
                     break;
@@ -347,12 +368,18 @@ public partial class WorkshopPanel : Window
     private async Task RunBusyAsync(Func<IProgress<WorkshopTransferProgress>, CancellationToken, Task> operation)
     {
         if (_busy) return;
+        var cancellation = new CancellationTokenSource();
+        _activeOperation = cancellation;
         SetBusy(true);
         _progress.Value = 0;
         var progress = new Progress<WorkshopTransferProgress>(OnProgress);
         try
         {
-            await operation(progress, CancellationToken.None);
+            await operation(progress, cancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            SetStatus("Workshop operation cancelled.");
         }
         catch (Exception exception)
         {
@@ -360,8 +387,24 @@ public partial class WorkshopPanel : Window
         }
         finally
         {
+            if (ReferenceEquals(_activeOperation, cancellation)) _activeOperation = null;
+            cancellation.Dispose();
             SetBusy(false);
         }
+    }
+
+    private void CancelActiveOperation()
+    {
+        if (!_busy || _activeOperation is null || _activeOperation.IsCancellationRequested) return;
+        SetStatus("Cancelling Workshop operation...");
+        _cancel.Disabled = true;
+        _activeOperation.Cancel();
+    }
+
+    private void OnCloseRequested()
+    {
+        CancelActiveOperation();
+        Hide();
     }
 
     private void OnProgress(WorkshopTransferProgress progress)
@@ -393,6 +436,8 @@ public partial class WorkshopPanel : Window
         _publishBuddy.Disabled = !available || _selection?.ActiveCharacterId is null || _busy;
         foreach (Button button in _operationButtons)
             button.Disabled = _busy || (!available && button.Text != "Browse Workshop...");
+        if (GodotObject.IsInstanceValid(_cancel))
+            _cancel.Disabled = !_busy || _activeOperation is null || _activeOperation.IsCancellationRequested;
         RefreshRoomLibrary();
     }
 
