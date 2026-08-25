@@ -37,8 +37,8 @@ project/assembly_name="DesktopBuddy"
 
 ; Public Steamworks product identity for the current base-game build. A future Steam demo may
 ; override only this runtime identity while continuing to use the base game's Workshop owner.
-; GodotSteam 4.22 owns this setting as a String and migrates older integer-form values at startup.
-initialization/app_id="5114950"
+; GodotSteam v4.20+ registers the primary AppID under initialization/app_data/app_id.
+initialization/app_data/app_id=5114950
 
 [desktop_buddy]
 
