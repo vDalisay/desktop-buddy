@@ -77,9 +77,12 @@ internal sealed class GodotBrowserAtomicSaveFileSystem : IAtomicSaveFileSystem
         using var file = Godot.FileAccess.Open(path, Godot.FileAccess.ModeFlags.Write);
         if (file is null)
             throw new IOException($"Could not open browser save for writing: {path} ({Godot.FileAccess.GetOpenError()}).");
-        if (!file.StoreString(contents))
-            throw new IOException($"Could not write browser save: {path}.");
-        file.Flush();
+        file.StoreString(contents);
+        Error error = file.GetError();
+        if (error != Error.Ok)
+            throw new IOException($"Could not write browser save: {path} ({error}).");
+        // Closing the FileAccess commits the browser virtual-file write. Avoid forcing an
+        // additional synchronous flush here: this Web target is deliberately single-threaded.
     }
 
     public void Replace(string temporary, string primary, string backup)
