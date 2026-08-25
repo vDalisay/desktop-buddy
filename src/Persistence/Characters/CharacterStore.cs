@@ -46,9 +46,9 @@ public sealed class CharacterStore
     public long DeleteCount { get; private set; }
 
     /// <summary>
-    /// Raised after the authoritative document library changes. Persistence operations run on a
-    /// worker thread, so UI subscribers should treat this as invalidation only and perform Godot
-    /// work on their normal main-thread route.
+    /// Raised after the authoritative document library changes. Native persistence operations run
+    /// on a worker thread; browser-WASM persistence runs inline because the itch build is
+    /// intentionally single-threaded. UI subscribers should treat this as invalidation only.
     /// </summary>
     public event Action? LibraryChanged;
 
@@ -96,7 +96,7 @@ public sealed class CharacterStore
     }
 
     public Task<CharacterLoadResult> LoadAsync(Guid id, CancellationToken token) =>
-        Task.Run(() => LoadCore(id, token), CancellationToken.None);
+        PersistenceWork.Run(() => LoadCore(id, token), CancellationToken.None);
 
     /// <summary>
     /// Synchronous persistence-core seam for another store that already owns the worker task.
@@ -108,10 +108,10 @@ public sealed class CharacterStore
     public Task<CharacterSaveResult> SaveAsync(
         CharacterDocument document,
         CancellationToken token) =>
-        Task.Run(() => SaveCore(document, token), CancellationToken.None);
+        PersistenceWork.Run(() => SaveCore(document, token), CancellationToken.None);
 
     public Task<CharacterDeleteResult> DeleteAsync(Guid id, CancellationToken token) =>
-        Task.Run(() => DeleteCore(id, token), CancellationToken.None);
+        PersistenceWork.Run(() => DeleteCore(id, token), CancellationToken.None);
 
     /// <summary>
     /// Removes every stored character. Reset Progress means a first run, and a first run has
@@ -119,7 +119,7 @@ public sealed class CharacterStore
     /// behind made the reset look like it had done nothing at all.
     /// </summary>
     /// <returns>How many character directories were removed.</returns>
-    public Task<int> DeleteAllAsync(CancellationToken token) => Task.Run(
+    public Task<int> DeleteAllAsync(CancellationToken token) => PersistenceWork.Run(
         () =>
         {
             if (!_fileSystem.DirectoryExists(_paths.Root))
