@@ -131,14 +131,18 @@ public partial class Bootstrap : Node
 
         var sandbox = packed.Instantiate<SandboxRoot>();
         double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
+        bool browser = OperatingSystem.IsBrowser();
         string progressPath = ProjectSettings.GlobalizePath("user://progress.json");
         string settingsPath = ProjectSettings.GlobalizePath("user://settings.json");
         string characterRoot = ProjectSettings.GlobalizePath("user://characters");
-        var store = new JsonProgressStore(progressPath, settingsPath);
+        IAtomicSaveFileSystem saveFileSystem = browser
+            ? new GodotBrowserAtomicSaveFileSystem()
+            : new AtomicSaveFileSystem();
+        var store = new JsonProgressStore(progressPath, settingsPath, saveFileSystem);
 
         Log.Info(
             Category,
-            $"Loading persistence browser={OperatingSystem.IsBrowser()} progress={progressPath} settings={settingsPath}");
+            $"Loading persistence browser={browser} progress={progressPath} settings={settingsPath}");
 
         LoadResult<ProgressSave> progressLoad;
         LoadResult<LocalSettingsSave> settingsLoad;
@@ -208,7 +212,7 @@ public partial class Bootstrap : Node
         if (settingsLoad.QuarantinedPath is not null)
             Log.Warn(Category, $"Corrupt settings quarantined at {settingsLoad.QuarantinedPath}.");
 
-        if (newSemanticState)
+        if (newSemanticState && !browser)
         {
             try
             {
@@ -219,6 +223,14 @@ public partial class Bootstrap : Node
             {
                 Log.Error(Category, $"Initial progress save failed; state remains dirty: {exception.Message}");
             }
+        }
+        else if (newSemanticState)
+        {
+            // A first-run browser build must never gate its first rendered frame on durable
+            // filesystem synchronization. The state stays dirty and the normal autosave path
+            // persists it after gameplay is alive. This also protects experimental single-threaded
+            // Web runtimes from turning a save backend regression into a permanent grey boot page.
+            Log.Info(Category, "Browser first-run save deferred until normal autosave; continuing boot.");
         }
 
         var context = new RunContext(
@@ -271,7 +283,7 @@ public partial class Bootstrap : Node
         sandbox.AddChild(inputBridge);
 
         Log.Info(Category, "Sandbox boot completed and gameplay scene is attached.");
-        if (OperatingSystem.IsBrowser())
+        if (browser)
             GD.Print("DESKTOP_BUDDY_WEB_READY");
     }
 
