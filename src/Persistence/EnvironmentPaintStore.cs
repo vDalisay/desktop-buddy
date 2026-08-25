@@ -31,10 +31,10 @@ public sealed class EnvironmentPaintStore
     public string PaintPath => Path.GetFullPath(Path.Combine(Root, EnvironmentCanvasPolicy.RelativePath));
 
     public Task SaveAsync(ReadOnlyMemory<byte> pixels, CancellationToken token = default) =>
-        Task.Run(() => SaveCore(pixels.Span), CancellationToken.None);
+        PersistenceWork.Run(() => SaveCore(pixels.Span), CancellationToken.None);
 
     public Task<byte[]?> LoadAsync(CancellationToken token = default) =>
-        Task.Run(() => Load(), CancellationToken.None);
+        PersistenceWork.Run(Load, CancellationToken.None);
 
     /// <summary>Returns the stored 512x512 RGBA8 pixels, or null when there is nothing usable.</summary>
     public byte[]? Load()
