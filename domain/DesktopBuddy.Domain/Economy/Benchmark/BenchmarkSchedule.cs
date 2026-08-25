@@ -20,6 +20,12 @@ public readonly record struct ScheduleTarget(string ContentId, double TargetMinu
 public static class BenchmarkSchedule
 {
     /// <summary>
+    /// Retained only for the legacy report row's <c>InBand</c> calculation. Current targets are
+    /// NaN, so this tolerance cannot turn observed telemetry into a pass/fail pacing contract.
+    /// </summary>
+    public const double ToleranceFraction = 0.15;
+
+    /// <summary>
     /// Compatibility snapshot for report rendering. The IDs come from the authoritative launch
     /// catalogue contract and carry no fabricated timing target.
     /// </summary>
