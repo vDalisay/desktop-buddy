@@ -27,6 +27,14 @@ public sealed class AtomicSaveFileSystem : IAtomicSaveFileSystem
     public void WriteDurable(string path, string contents)
     {
         byte[] bytes = new UTF8Encoding(false).GetBytes(contents);
+        if (OperatingSystem.IsBrowser())
+        {
+            // Browser-WASM uses the host virtual filesystem. WriteThrough/fsync are not
+            // meaningful there and may be unsupported, so let the host persistence layer flush.
+            File.WriteAllBytes(path, bytes);
+            return;
+        }
+
         using var stream = new FileStream(
             path,
             FileMode.Create,
@@ -38,8 +46,24 @@ public sealed class AtomicSaveFileSystem : IAtomicSaveFileSystem
         stream.Flush(flushToDisk: true);
     }
 
-    public void Replace(string temporary, string primary, string backup) =>
-        File.Replace(temporary, primary, backup, ignoreMetadataErrors: true);
+    public void Replace(string temporary, string primary, string backup)
+    {
+        if (!OperatingSystem.IsBrowser())
+        {
+            File.Replace(temporary, primary, backup, ignoreMetadataErrors: true);
+            return;
+        }
+
+        // File.Replace is not portable to the browser virtual filesystem. Preserve the same
+        // rolling-backup contract using operations supported by browser-WASM.
+        if (File.Exists(backup))
+            File.Delete(backup);
+        if (File.Exists(primary))
+            File.Copy(primary, backup);
+        if (File.Exists(primary))
+            File.Delete(primary);
+        File.Move(temporary, primary);
+    }
 
     public void Move(string source, string destination) =>
         File.Move(source, destination);
@@ -47,7 +71,8 @@ public sealed class AtomicSaveFileSystem : IAtomicSaveFileSystem
 
 /// <summary>
 /// Durable versioned JSON store. Paths must already be resolved on Godot's main
-/// thread; this class contains no native Godot object and serializes off-thread.
+/// thread; this class contains no native Godot object and serializes off-thread on native builds.
+/// Single-threaded browser-WASM executes the same work inline through <see cref="PersistenceWork"/>.
 /// </summary>
 public sealed class JsonProgressStore : IProgressStore
 {
@@ -74,25 +99,25 @@ public sealed class JsonProgressStore : IProgressStore
     }
 
     public Task<LoadResult<ProgressSave>> LoadProgressAsync(CancellationToken token) =>
-        Task.Run(() => LoadProgress(token), token);
+        PersistenceWork.Run(() => LoadProgress(token), token);
 
     public Task<LoadResult<LocalSettingsSave>> LoadSettingsAsync(CancellationToken token) =>
-        Task.Run(() => LoadSettings(token), token);
+        PersistenceWork.Run(() => LoadSettings(token), token);
 
     public async Task SaveProgressAsync(ProgressSave data, CancellationToken token)
     {
-        string json = await Task.Run(() => ProgressSavePolicy.Serialize(data), token)
+        string json = await PersistenceWork.Run(() => ProgressSavePolicy.Serialize(data), token)
             .ConfigureAwait(false);
-        await Task.Run(() => SaveAtomic(_progressPath, json, token), token)
+        await PersistenceWork.Run(() => SaveAtomic(_progressPath, json, token), token)
             .ConfigureAwait(false);
     }
 
     public async Task SaveSettingsAsync(LocalSettingsSave data, CancellationToken token)
     {
         ValidateSettings(data);
-        string json = await Task.Run(
+        string json = await PersistenceWork.Run(
             () => JsonSerializer.Serialize(data, JsonOptions), token).ConfigureAwait(false);
-        await Task.Run(() => SaveAtomic(_settingsPath, json, token), token)
+        await PersistenceWork.Run(() => SaveAtomic(_settingsPath, json, token), token)
             .ConfigureAwait(false);
     }
 
