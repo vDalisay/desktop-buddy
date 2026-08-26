@@ -48,8 +48,8 @@ internal sealed class GodotBrowserCharacterFileSystem : ICharacterFileSystem
             throw new ArgumentOutOfRangeException(nameof(maximumBytes));
 
         using var file = Open(path, Godot.FileAccess.ModeFlags.Read, "reading metadata");
-        long length = Math.Min(file.GetLength(), maximumBytes);
-        return file.GetBuffer(length);
+        ulong length = Math.Min(file.GetLength(), (ulong)maximumBytes);
+        return file.GetBuffer((long)length);
     }
 
     public byte[] ReadAllBytes(string path, int maximumBytes)
@@ -58,10 +58,10 @@ internal sealed class GodotBrowserCharacterFileSystem : ICharacterFileSystem
             throw new ArgumentOutOfRangeException(nameof(maximumBytes));
 
         using var file = Open(path, Godot.FileAccess.ModeFlags.Read, "reading bytes");
-        long length = file.GetLength();
-        if (length > maximumBytes)
+        ulong length = file.GetLength();
+        if (length > (ulong)maximumBytes)
             throw new InvalidDataException($"File exceeds the {maximumBytes}-byte limit.");
-        return file.GetBuffer(length);
+        return file.GetBuffer((long)length);
     }
 
     public void WriteAllTextDurable(string path, string content)
@@ -85,7 +85,7 @@ internal sealed class GodotBrowserCharacterFileSystem : ICharacterFileSystem
         if (FileExists(primaryPath))
         {
             using var source = Open(primaryPath, Godot.FileAccess.ModeFlags.Read, "reading backup source");
-            byte[] existing = source.GetBuffer(source.GetLength());
+            byte[] existing = source.GetBuffer((long)source.GetLength());
             WriteAllBytesDurable(backupPath, existing);
             DeleteFile(primaryPath);
         }
