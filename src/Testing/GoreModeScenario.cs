@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
@@ -106,6 +107,19 @@ public sealed class GoreModeScenario : IScenario
             "the_sword_profile_is_valid",
             sword is not null && sword.Validate().Count == 0,
             sword is null ? "no profile" : string.Join("; ", sword.Validate())));
+
+        // The bug behind "pistols and shotguns still can't trigger blood easily": a contact
+        // under the pain curve's floor publishes an episode and no impact at all, so a
+        // listener on impacts alone never hears a light hit however low its own threshold
+        // goes. This cannot be staged through ApplyBlastImpulse — that entry returns early
+        // at zero pain, which is the very case in question — so the guard is that the
+        // subscription exists.
+        checks.Add(new StartupCheck(
+            "gore_listens_to_every_contact_not_only_the_painful_ones",
+            HasSubscriber(sandbox.Pipeline, "EpisodeAccepted") &&
+            HasSubscriber(sandbox.Pipeline, "ImpactAccepted"),
+            $"episode={HasSubscriber(sandbox.Pipeline, "EpisodeAccepted")} " +
+            $"impact={HasSubscriber(sandbox.Pipeline, "ImpactAccepted")}"));
 
         // --- the build gate: an untagged storefront build refuses gore outright ---
         DemoScope.GoreOverride = false;
@@ -240,6 +254,19 @@ public sealed class GoreModeScenario : IScenario
             BuddyPart.Head,
             WoundingImpulse,
             sandbox.Buddy.Rig.GetPart(Buddy.Physics.BuddyPartId.Head).GlobalPosition);
+
+    /// <summary>
+    /// Whether anything is subscribed to one of the pipeline's field-like events. Read off
+    /// the compiler-generated backing field, because an event exposes no way to ask.
+    /// </summary>
+    private static bool HasSubscriber(InteractionDamageComponent pipeline, string eventName)
+    {
+        System.Reflection.FieldInfo? field = typeof(InteractionDamageComponent).GetField(
+            eventName,
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        return field?.GetValue(pipeline) is Delegate handler &&
+               handler.GetInvocationList().Length > 0;
+    }
 
     /// <summary>
     /// Whether the blood layer still has any way to stick a mark to a buddy part. Checked

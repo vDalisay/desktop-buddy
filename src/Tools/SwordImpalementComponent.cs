@@ -28,6 +28,15 @@ namespace DesktopBuddy.Tools;
 /// sword and can be carried on it. Let go and the blade stays in him, as an ordinary dropped
 /// tool pinned to the part, and the wound it opened goes on bleeding.</para>
 ///
+/// <para><b>A wielded blade does not collide with him at all.</b> It is excepted from every
+/// part for as long as it is being wielded, not just once it is in — a point that shoves him
+/// away before it can enter is the "too much knockback ... no knockback should be in the
+/// pointy part" the owner reported (2026-08-25). Because there is then no solver contact to
+/// score, the stab reports its own pain through
+/// <see cref="InteractionDamageComponent.ApplyBlastImpulse"/>, the same entry the grenade
+/// uses for a source with no contact of its own. It goes through the shared curve, so a stab
+/// pays what its depth is worth and there is still no per-tool multiplier anywhere.</para>
+///
 /// <para><b>Impaling is the Sword's mechanic, not Gore Mode's.</b> It is deliberately not
 /// behind the Gore toggle: holding the buddy on the blade moves him, and anything gated on
 /// <see cref="Domain.Presentation.EffectsSettings"/> must not be able to change what a run
@@ -51,8 +60,12 @@ public partial class SwordImpalementComponent : Node2D
     /// </summary>
     private const float EntryDepthFraction = 0.95f;
 
-    /// <summary>Severity of the wound a skewer opens, before Gore Mode decides to draw it.</summary>
-    private const float SkewerWoundSeverity = 0.85f;
+    /// <summary>
+    /// Impulse a fully driven stab reports, in the units the solver would have produced.
+    /// Fed through the shared pain curve like everything else, so this sets what a stab is
+    /// worth without inventing a second scoring path.
+    /// </summary>
+    private const float StabImpulse = 1600.0f;
 
     // The spring that holds a skewered part on the blade. Firm enough to carry the buddy's
     // weight, bounded so the solver can never be handed an impulse it cannot integrate.
@@ -76,11 +89,15 @@ public partial class SwordImpalementComponent : Node2D
     // Composed in code rather than authored: the dropped-tool component this depends on is
     // itself built by DroppedToolInputBootstrap once the sandbox has finished composing, so
     // there is no scene-time node for an [Export] to point at.
+    private InteractionDamageComponent _pipeline = null!;
     private BuddyRoot _buddy = null!;
     private CursorToolController _cursorTools = null!;
+    private CursorToolVisual3D? _visual;
     private DroppedToolInteractionComponent _droppedTools = null!;
     private GrabTetherController _grab = null!;
-    private GoreComponent _gore = null!;
+
+    /// <summary>True while the live blade is excepted from colliding with the buddy.</summary>
+    private bool _passingThrough;
 
     public bool IsInitialized { get; private set; }
 
@@ -96,27 +113,34 @@ public partial class SwordImpalementComponent : Node2D
     /// <summary>Which part currently holds the blade. Only meaningful while skewered.</summary>
     public BuddyPart SkeweredPart => (BuddyPart)(int)_skewered;
 
+    /// <param name="visual">
+    /// The live tool's 3D slot, so a buried blade can be sunk into the buddy's depth range
+    /// and occluded by the part it is in. Optional: without it the blade still goes in, it
+    /// just draws in front of him.
+    /// </param>
     public void Initialize(
+        InteractionDamageComponent pipeline,
         BuddyRoot buddy,
         CursorToolController cursorTools,
         DroppedToolInteractionComponent droppedTools,
         GrabTetherController grab,
-        GoreComponent gore)
+        CursorToolVisual3D? visual = null)
     {
-        if (!GodotObject.IsInstanceValid(buddy) ||
+        if (!GodotObject.IsInstanceValid(pipeline) || !pipeline.IsInitialized ||
+            !GodotObject.IsInstanceValid(buddy) ||
             !GodotObject.IsInstanceValid(cursorTools) ||
             !GodotObject.IsInstanceValid(droppedTools) ||
-            !GodotObject.IsInstanceValid(grab) ||
-            !GodotObject.IsInstanceValid(gore))
+            !GodotObject.IsInstanceValid(grab))
         {
             throw new InvalidOperationException("SwordImpalementComponent dependencies are incomplete.");
         }
 
+        _pipeline = pipeline;
         _buddy = buddy;
         _cursorTools = cursorTools;
         _droppedTools = droppedTools;
         _grab = grab;
-        _gore = gore;
+        _visual = visual;
         IsInitialized = true;
     }
 
@@ -140,6 +164,7 @@ public partial class SwordImpalementComponent : Node2D
             // despawned. Nothing stays skewered on a blade that is not there.
             _isSkewered = false;
             _hasPreviousTip = false;
+            _passingThrough = false;
             return;
         }
 
@@ -155,9 +180,15 @@ public partial class SwordImpalementComponent : Node2D
             // Letting go of the button is how a blade is left in him.
             if (_isSkewered)
                 LeaveItIn(blade);
+            else
+                SetPassThrough(blade, false);
 
             return;
         }
+
+        // A wielded blade never collides with him. This is set every tick it is wielded
+        // rather than only on entry, so the point cannot shove him away before it goes in.
+        SetPassThrough(blade, true);
 
         if (_isSkewered)
             HoldOnBlade(hilt, tip, blade);
@@ -212,12 +243,52 @@ public partial class SwordImpalementComponent : Node2D
         float depth = (part.GlobalPosition - hilt).Dot(along);
         _bladeDepth = Mathf.Clamp(depth, part.Radius, bladeLength);
 
-        // Through, not into: without this the capsule keeps colliding with him and shoves
-        // him off the point instead of running him onto it.
-        PassThroughParts(blade, except: true);
+        // The stab reports its own pain, because there is no solver contact to report one:
+        // the blade has been excepted from him since the moment it was wielded. Everything
+        // downstream — the curve, the payout, harmful memory, and Gore Mode's wound — keys
+        // off this one event exactly as it would off a bullet.
+        _pipeline.ApplyBlastImpulse(
+            blade.InteractionId,
+            ContentIds.ToolSword,
+            (BuddyPart)(int)partId,
+            StabImpulse,
+            tip);
 
-        // The blade opened him up. Gore Mode decides whether that is drawn.
-        _gore.OpenWound((BuddyPart)(int)partId, SkewerWoundSeverity, tip);
+        SinkIntoPart(partId);
+    }
+
+    /// <summary>
+    /// Drops the blade's drawing into the depth lane of the part it is in, so that part's
+    /// mesh occludes the length that went in and only what is still outside him is drawn.
+    /// How much disappears therefore follows how far it was pushed, with no extra state.
+    /// </summary>
+    private void SinkIntoPart(BuddyPartId partId)
+    {
+        if (_visual is null || !GodotObject.IsInstanceValid(_visual))
+            return;
+
+        Godot.Collections.Array<Buddy.Presentation3D.PartVisualDefinition>? parts =
+            GodotObject.IsInstanceValid(_buddy.VisualProfile) ? _buddy.VisualProfile.Parts : null;
+        int index = (int)partId;
+        if (parts is null || index < 0 || index >= parts.Count ||
+            !GodotObject.IsInstanceValid(parts[index]))
+        {
+            return;
+        }
+
+        _visual.SetDepthOverride(parts[index]!.DepthOffset);
+    }
+
+    /// <summary>Turns the pass-through exception on or off, and only when it changes.</summary>
+    private void SetPassThrough(PhysicsBody2D blade, bool through)
+    {
+        if (_passingThrough == through)
+            return;
+
+        _passingThrough = through;
+        PassThroughParts(blade, through);
+        if (!through)
+            _visual?.SetDepthOverride(null);
     }
 
     /// <summary>
@@ -277,6 +348,10 @@ public partial class SwordImpalementComponent : Node2D
         dropped.FreezeMode = RigidBody2D.FreezeModeEnum.Kinematic;
         dropped.Freeze = true;
         PassThroughParts(dropped, except: true);
+
+        // The live blade is gone; its exception and its sunken depth go with it.
+        _passingThrough = false;
+        _visual?.SetDepthOverride(null);
 
         _embeddedOffset = part!.GlobalTransform.AffineInverse() * bladeTransform;
         _embedded = dropped;

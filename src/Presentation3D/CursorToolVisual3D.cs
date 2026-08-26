@@ -19,6 +19,9 @@ public partial class CursorToolVisual3D : Node3D
     private Body2DVisual3D _slot = null!;
     private MeshInstance3D _swingGuide = null!;
     private bool _presentationActive;
+
+    /// <summary>The profile driving the live visual, kept so a depth override can be undone.</summary>
+    private CursorToolProfile? _activeProfile;
     private float _gloveFacingAngle;
     private bool _hasGloveFacing;
 
@@ -59,6 +62,7 @@ public partial class CursorToolVisual3D : Node3D
             throw new InvalidOperationException("CursorToolVisual3D used before initialization.");
 
         ValidateProfile(profile);
+        _activeProfile = profile;
         ActiveKind = profile.Visual3DKind;
         ResetGloveAim();
         _slot.Mesh.Rotation = Vector3.Zero;
@@ -77,6 +81,20 @@ public partial class CursorToolVisual3D : Node3D
         }
 
         _slot.SetVisual(visual.Value.Mesh, visual.Value.Material, profile.VisualDepthOffset);
+    }
+
+    /// <summary>
+    /// Sinks the live tool into the frontal depth stack, or restores its authored depth
+    /// when given <c>null</c>. Only the Sword uses it, and only while it is buried in a
+    /// part: at its authored depth the blade sits in front of every part of the buddy and
+    /// reads as pasted on top of him rather than run through him.
+    /// </summary>
+    public void SetDepthOverride(float? depth)
+    {
+        if (!IsInitialized || _activeProfile is null)
+            return;
+
+        _slot.SetDepthOffset(depth ?? _activeProfile.VisualDepthOffset);
     }
 
     public void Attach(RigidBody2D target)

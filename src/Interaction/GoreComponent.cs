@@ -41,19 +41,18 @@ namespace DesktopBuddy.Interaction;
 public partial class GoreComponent : Node2D
 {
     /// <summary>
-    /// Pain that counts as a full-severity wound. Well under the curve's 100 ceiling: a
-    /// solid pistol shot should open a proper wound without needing a maximum-pain hit,
-    /// and everything past this simply pins at full.
+    /// Contact impulse that counts as a full-severity wound. Roughly where the shared pain
+    /// curve reaches 55 of its 100, so a solid shot opens a proper wound and anything
+    /// harder simply pins at full.
     /// </summary>
-    private const float FullSeverityPain = 55.0f;
+    private const float FullSeverityImpulse = 1500.0f;
 
     /// <summary>
-    /// Pain below which a piercing hit is a graze that draws no blood. Just above the
-    /// curve's own zero-pain floor: a sharp thing that broke the skin at all should bleed
-    /// (owner instruction 2026-08-25, "the pistol and shotgun should cause blood easier"),
-    /// and all this now excludes is a spent round rolling into a foot.
+    /// The least a piercing hit can bleed. A bullet is a bullet: even a graze from one
+    /// breaks the skin, so severity starts here rather than at nothing (owner instruction
+    /// 2026-08-25 — blood "should do it on every shot hit").
     /// </summary>
-    private const float MinimumWoundingPain = 0.5f;
+    private const float MinimumSeverity = 0.35f;
 
     /// <summary>
     /// Share of a shot's spray that comes back out of the entry side. A bullet mostly
@@ -69,6 +68,13 @@ public partial class GoreComponent : Node2D
     ];
 
     private readonly BleedWound[] _wounds = new BleedWound[6];
+
+    /// <summary>
+    /// The interaction that last wounded each part. One bullet raises both an episode and
+    /// an impact, and the sword's stab raises an impact of its own; without this a single
+    /// hit would open the same wound twice and double-count it.
+    /// </summary>
+    private readonly int[] _lastWoundSource = [-1, -1, -1, -1, -1, -1];
 
     private BleedingConstants _constants = BleedingConstants.Default;
     private EffectsSettings _effects = EffectsSettings.Default;
@@ -131,14 +137,26 @@ public partial class GoreComponent : Node2D
 
         ZAsRelative = false;
         ZIndex = 151;
+
+        // Both, and for one reason. ImpactAccepted is suppressed entirely when the shared
+        // curve scores zero pain, so a bullet under the curve's floor publishes an episode
+        // and no impact at all — which is why lowering a pain threshold could never make
+        // light hits bleed (owner report 2026-08-25). EpisodeAccepted fires for every
+        // contact the router accepts, painful or not, and that is what "every shot hit"
+        // needs. The impact path stays for sources that have no solver contact to raise an
+        // episode: the grenade's blast and the sword's stab.
+        Pipeline.EpisodeAccepted += OnEpisodeAccepted;
         Pipeline.ImpactAccepted += OnImpactAccepted;
         IsInitialized = true;
     }
 
     public override void _ExitTree()
     {
-        if (GodotObject.IsInstanceValid(Pipeline))
-            Pipeline.ImpactAccepted -= OnImpactAccepted;
+        if (!GodotObject.IsInstanceValid(Pipeline))
+            return;
+
+        Pipeline.EpisodeAccepted -= OnEpisodeAccepted;
+        Pipeline.ImpactAccepted -= OnImpactAccepted;
     }
 
     /// <summary>
@@ -161,7 +179,10 @@ public partial class GoreComponent : Node2D
     public void ClearAll()
     {
         for (int index = 0; index < _wounds.Length; index++)
+        {
             _wounds[index] = BleedingStatus.Clear(_wounds[index]);
+            _lastWoundSource[index] = -1;
+        }
 
         // Sprays still playing are part of "no trace left behind". Drops in the air are
         // cleared by the layer itself, which owns them as data rather than as nodes.
@@ -175,52 +196,46 @@ public partial class GoreComponent : Node2D
             _stains.Clear();
     }
 
+    private void OnEpisodeAccepted(AcceptedContactEpisode episode) =>
+        Wound(episode.InteractionId, episode.ContentId, episode.Part, episode.Impulse, episode.Point);
+
+    private void OnImpactAccepted(AcceptedImpact impact) =>
+        Wound(impact.InteractionId, impact.ContentId, impact.Part, impact.Impulse, impact.Point);
+
     /// <summary>
-    /// Opens a wound that did not come through the damage pipeline. The Sword's skewer is
-    /// the caller: running a blade into someone is a matter of geometry, so it never
-    /// produces the impulse an accepted impact would have carried, but it very much
-    /// produces a wound.
-    ///
-    /// <para>Gated like everything else here, so a build or a player without Gore Mode gets
-    /// the blade going in and no blood — impaling is the Sword's mechanic, the blood is
-    /// this component's.</para>
+    /// Opens or deepens the wound one piercing contact leaves. Severity comes from the
+    /// contact impulse rather than from scored pain, because pain is exactly what a light
+    /// hit does not have — and a light hit from something sharp should still bleed.
     /// </summary>
-    public void OpenWound(BuddyPart part, float severity, Vector2 worldPoint)
+    private void Wound(int interactionId, string contentId, BuddyPart part, float impulse, Vector2 point)
     {
-        if (!IsActive)
+        if (!IsActive || !IsPiercing(contentId))
             return;
 
         int slot = (int)part;
         if (slot < 0 || slot >= _wounds.Length)
             return;
 
+        // One hit, one wound: the same contact arrives here as both an episode and an
+        // impact whenever it scored pain.
+        if (_lastWoundSource[slot] == interactionId)
+            return;
+
+        float severity = float.IsFinite(impulse)
+            ? Mathf.Clamp(
+                MinimumSeverity + ((1.0f - MinimumSeverity) * (impulse / FullSeverityImpulse)),
+                MinimumSeverity,
+                1.0f)
+            : MinimumSeverity;
+
         BleedOpenResult opened = BleedingStatus.Open(_wounds[slot], severity, _constants);
         if (!opened.IsValid)
             return;
 
         _wounds[slot] = opened.Wound;
+        _lastWoundSource[slot] = interactionId;
         WoundsOpened++;
-        SprayThrough(part, worldPoint, severity);
-    }
-
-    private void OnImpactAccepted(AcceptedImpact impact)
-    {
-        if (!IsActive || impact.Pain < MinimumWoundingPain || !IsPiercing(impact.ContentId))
-            return;
-
-        int slot = (int)impact.Part;
-        if (slot < 0 || slot >= _wounds.Length)
-            return;
-
-        float severity = Mathf.Clamp(impact.Pain / FullSeverityPain, 0.0f, 1.0f);
-        BleedOpenResult opened = BleedingStatus.Open(_wounds[slot], severity, _constants);
-        if (!opened.IsValid)
-            return;
-
-        _wounds[slot] = opened.Wound;
-        WoundsOpened++;
-
-        SprayThrough(impact.Part, impact.Point, severity);
+        SprayThrough(part, point, severity);
     }
 
     /// <summary>

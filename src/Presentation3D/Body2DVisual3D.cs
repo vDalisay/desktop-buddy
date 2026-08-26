@@ -126,6 +126,29 @@ public partial class Body2DVisual3D : Node3D
         _mesh.MaterialOverride = material;
     }
 
+    /// <summary>
+    /// Moves this visual through the frontal depth stack without touching its mesh. The
+    /// Sword uses it to sink into the buddy: a blade buried in him has to sit <b>inside</b>
+    /// the depth range his parts occupy, so their meshes occlude the length that went in
+    /// and only the protruding part is drawn (owner report 2026-08-25 — a blade at the
+    /// tools' usual 144 is in front of every part and reads as pasted on top of him).
+    /// </summary>
+    public void SetDepthOffset(float depthOffset)
+    {
+        if (!IsInitialized)
+        {
+            throw new InvalidOperationException("Body2DVisual3D used before initialization.");
+        }
+
+        if (!float.IsFinite(depthOffset))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(depthOffset), "Body2DVisual3D depth must be finite.");
+        }
+
+        _depthOffset = depthOffset;
+    }
+
     private static Mesh BuildMesh(float radius, float length) =>
         length > radius * 2.0f
             ? new CapsuleMesh { Radius = radius, Height = length }
