@@ -13,7 +13,8 @@ namespace DesktopBuddy.Interaction;
 
 /// <summary>
 /// Gore Mode: piercing hits open bleeding wounds, wounds spray and drip, and what lands
-/// stains the buddy and the room.
+/// stains the room. Blood on the buddy himself is the spray passing over him and gone —
+/// deliberately not a decal riding his parts (owner instruction 2026-08-25).
 ///
 /// <para><b>This is presentation and only presentation.</b> It is a listener on
 /// <see cref="InteractionDamageComponent.ImpactAccepted"/>, downstream of every decision
@@ -47,14 +48,18 @@ public partial class GoreComponent : Node2D
     private const float FullSeverityPain = 55.0f;
 
     /// <summary>
-    /// Pain below which a piercing hit is a graze that draws no blood. It sits above the
-    /// curve's own zero-pain floor so that a spent bullet rolling into a foot cannot open
-    /// a wound.
+    /// Pain below which a piercing hit is a graze that draws no blood. Just above the
+    /// curve's own zero-pain floor: a sharp thing that broke the skin at all should bleed
+    /// (owner instruction 2026-08-25, "the pistol and shotgun should cause blood easier"),
+    /// and all this now excludes is a spent round rolling into a foot.
     /// </summary>
-    private const float MinimumWoundingPain = 4.0f;
+    private const float MinimumWoundingPain = 0.5f;
 
-    /// <summary>Radius of the stain left on the part by the opening hit, at full severity.</summary>
-    private const float OpeningStainRadius = 7.0f;
+    /// <summary>
+    /// Share of a shot's spray that comes back out of the entry side. A bullet mostly
+    /// carries blood on through; the entry is a puff by comparison.
+    /// </summary>
+    private const float EntrySpraySeverityShare = 0.35f;
 
     private static readonly string[] PiercingContentIds =
     [
@@ -122,9 +127,7 @@ public partial class GoreComponent : Node2D
 
         _stains = new BloodStainLayer2D { Name = "BloodStainLayer" };
         AddChild(_stains);
-        _stains.Initialize(
-            Buddy.Rig,
-            GodotObject.IsInstanceValid(Boundaries) ? Boundaries : null);
+        _stains.Initialize(GodotObject.IsInstanceValid(Boundaries) ? Boundaries : null);
 
         ZAsRelative = false;
         ZIndex = 151;
@@ -197,20 +200,7 @@ public partial class GoreComponent : Node2D
 
         _wounds[slot] = opened.Wound;
         WoundsOpened++;
-        SpawnSpray(worldPoint, Vector2.Up, severity);
-        StainPart(part, worldPoint, severity);
-    }
-
-    /// <summary>The mark the opening hit leaves on the buddy, in the struck part's space.</summary>
-    private void StainPart(BuddyPart part, Vector2 worldPoint, float severity)
-    {
-        if (!TryPart(part, out PuppetPartBody? body))
-            return;
-
-        _stains.AddPartStain(
-            (BuddyPartId)(int)part,
-            body!.ToLocal(worldPoint),
-            OpeningStainRadius * (0.55f + (0.45f * severity)));
+        SprayThrough(part, worldPoint, severity);
     }
 
     private void OnImpactAccepted(AcceptedImpact impact)
@@ -230,13 +220,42 @@ public partial class GoreComponent : Node2D
         _wounds[slot] = opened.Wound;
         WoundsOpened++;
 
-        // Out of the wound, not into it: the spray follows the contact normal back the way
-        // the weapon came, with a little lift so it arcs rather than hugging the surface.
-        Vector2 outward = impact.Normal.LengthSquared() > 0.001f
-            ? -impact.Normal.Normalized()
-            : Vector2.Up;
-        SpawnSpray(impact.Point, (outward + (Vector2.Up * 0.4f)).Normalized(), severity);
-        StainPart(impact.Part, impact.Point, severity);
+        SprayThrough(impact.Part, impact.Point, severity);
+    }
+
+    /// <summary>
+    /// Blood leaves the way the weapon was going. A round through the chest throws most of
+    /// it out of the <b>far</b> side (owner instruction 2026-08-25), with a smaller puff
+    /// back out of the entry.
+    ///
+    /// <para>The through-line is taken from the struck part's own centre rather than from
+    /// the contact normal: the geometry says which way is "further in" without depending on
+    /// which way round a normal happens to point, and it gives the exit point for free.</para>
+    /// </summary>
+    private void SprayThrough(BuddyPart part, Vector2 entry, float severity)
+    {
+        if (!TryPart(part, out PuppetPartBody? body))
+        {
+            SpawnSpray(entry, Vector2.Up, severity);
+            return;
+        }
+
+        Vector2 toCentre = body!.GlobalPosition - entry;
+        if (toCentre.LengthSquared() < 0.01f)
+        {
+            SpawnSpray(entry, Vector2.Up, severity);
+            return;
+        }
+
+        Vector2 through = toCentre.Normalized();
+        Vector2 exit = body.GlobalPosition + (through * body.Radius);
+
+        // The exit spray is the one the player is meant to notice.
+        SpawnSpray(exit, through, severity);
+
+        // A smaller kick back out of the entry, angled away from the body so it does not
+        // just wash over the part it came from.
+        SpawnSpray(entry, (-through + (Vector2.Up * 0.5f)).Normalized(), severity * EntrySpraySeverityShare);
     }
 
     public override void _PhysicsProcess(double delta)

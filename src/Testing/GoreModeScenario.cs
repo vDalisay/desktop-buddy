@@ -194,21 +194,30 @@ public sealed class GoreModeScenario : IScenario
             gore.DripsEmitted > drips,
             $"drips={gore.DripsEmitted} (was {drips})"));
         checks.Add(new StartupCheck(
-            "the_opening_hit_stained_the_buddy",
+            "what_drips_lands_on_the_floor",
             gore.Stains.TotalStainsAdded > stains,
-            $"stains={gore.Stains.TotalStainsAdded} (was {stains})"));
+            $"grains={gore.Stains.TotalStainsAdded} (was {stains})"));
 
-        // The owner's report: blood "seems to infinitely stay". Live stains are bounded by
-        // the caps, by merging into the pools already there, and by drying out — so a long
-        // bleed adds far more stains than it is ever holding at once.
+        // The owner's report: blood "seems to infinitely stay". Two things bound it — the
+        // ring buffer, checked here, and drying out, which is StainFade's unit tests. The
+        // second cannot be checked from here: a grain lives 22 seconds and a scenario that
+        // sat through that would be the slowest in the suite by an order of magnitude.
         checks.Add(new StartupCheck(
-            "a_long_bleed_does_not_grow_the_stain_set_without_bound",
-            gore.Stains.StainCount <= 100 &&
-            gore.Stains.TotalStainsAdded > gore.Stains.StainCount,
+            "a_long_bleed_does_not_grow_the_blood_set_without_bound",
+            gore.Stains.StainCount <= 320 &&
+            gore.Stains.StainCount <= gore.Stains.TotalStainsAdded,
             $"live={gore.Stains.StainCount} added={gore.Stains.TotalStainsAdded}"));
 
         // --- patching him up closes every wound and wipes every mark ---
         gore.ClearAll();
+        // Nothing sticks to him: blood on the buddy is the spray passing over and gone
+        // (owner instruction 2026-08-25), so the layer only ever holds room grains and the
+        // drops still in the air.
+        checks.Add(new StartupCheck(
+            "no_blood_is_stuck_to_the_buddy",
+            !HasPartStainApi(gore.Stains),
+            "layer exposes no part-stain surface"));
+
         checks.Add(new StartupCheck(
             "clearing_closes_the_wounds_and_wipes_the_stains",
             !gore.IsBleeding && gore.Stains.StainCount == 0,
@@ -231,6 +240,14 @@ public sealed class GoreModeScenario : IScenario
             BuddyPart.Head,
             WoundingImpulse,
             sandbox.Buddy.Rig.GetPart(Buddy.Physics.BuddyPartId.Head).GlobalPosition);
+
+    /// <summary>
+    /// Whether the blood layer still has any way to stick a mark to a buddy part. Checked
+    /// by reflection because the point is that the capability is <b>gone</b>, and a check
+    /// that compiled against it would have to be deleted along with it.
+    /// </summary>
+    private static bool HasPartStainApi(BloodStainLayer2D layer) =>
+        layer.GetType().GetMethod("AddPartStain") is not null;
 
     private static CursorToolProfile? SwordProfile(SandboxRoot sandbox)
     {

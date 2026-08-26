@@ -1,6 +1,4 @@
 using System;
-using DesktopBuddy.Buddy.Physics;
-using DesktopBuddy.Domain.Damage;
 using DesktopBuddy.Sandbox;
 using Godot;
 
@@ -15,73 +13,36 @@ internal static class BloodLook
     /// <summary>Fresh, straight out of the wound.</summary>
     internal static readonly Color Fresh = new("9e1420");
 
-    /// <summary>What a stain settles to once it has landed and dried a little.</summary>
-    internal static readonly Color Dried = new("5f0f18");
+    /// <summary>What a grain settles to once it has landed and dried a little.</summary>
+    internal static readonly Color Dried = new("6b0f18");
 
-    /// <summary>
-    /// How many splat shapes exist. Blood that lands as the same disc every time reads as
-    /// clumps of identical blobs — the owner's "clumpy" (report 2026-08-25) — so a stain
-    /// picks one of these and a random rotation on top of it.
-    /// </summary>
-    internal const int SplatVariants = 6;
-
-    /// <summary>Atlas layout. Six cells, three across and two down.</summary>
-    internal const int AtlasColumns = 3;
-    internal const int AtlasRows = 2;
-
-    private const int CellSize = 64;
-
-    private static ImageTexture? _atlas;
+    private static ImageTexture? _grain;
     private static ImageTexture? _teardrop;
 
     /// <summary>
-    /// Where variant <paramref name="variant"/> sits in the atlas, as a UV offset. Handed to
-    /// the batch as per-instance custom data so six shapes still cost one draw call — a
-    /// texture per shape would mean a batch per shape, which is the cost being avoided.
+    /// One round grain of blood.
+    ///
+    /// <para>This replaced an atlas of six irregular splats picked per instance by a vertex
+    /// shader. The splats were built from angular harmonics, and the owner's word for the
+    /// result was <b>"shards"</b> — the ragged outline that was supposed to read as spread
+    /// liquid read as broken glass instead, and sampling across the atlas cells made them
+    /// flicker on the way out (report 2026-08-25). A plain round grain has neither problem,
+    /// needs no shader, and is what "like sand but red" actually asks for: the liquid look
+    /// comes from many small grains piling up, not from one clever shape.</para>
     /// </summary>
-    internal static Vector2 AtlasOffset(int variant)
+    internal static ImageTexture Grain()
     {
-        variant = Math.Clamp(variant, 0, SplatVariants - 1);
-        return new Vector2(
-            (variant % AtlasColumns) / (float)AtlasColumns,
-            (variant / AtlasColumns) / (float)AtlasRows);
-    }
+        if (GodotObject.IsInstanceValid(_grain))
+            return _grain!;
 
-    /// <summary>
-    /// Six irregular splats on one sheet. Each is a radial falloff whose <b>radius varies
-    /// with angle</b>, rather than a circle with lobes stuck on it: the edge itself is
-    /// ragged, which is what makes it read as something that hit a surface and spread
-    /// instead of a blob dropped on top of one.
-    /// </summary>
-    internal static ImageTexture SplatAtlas()
-    {
-        if (GodotObject.IsInstanceValid(_atlas))
-            return _atlas!;
-
-        Image image = Image.CreateEmpty(
-            CellSize * AtlasColumns, CellSize * AtlasRows, false, Image.Format.Rgba8);
+        const int size = 32;
+        Image image = Image.CreateEmpty(size, size, false, Image.Format.Rgba8);
         image.Fill(Colors.Transparent);
+        float center = (size - 1) * 0.5f;
 
-        for (int variant = 0; variant < SplatVariants; variant++)
+        for (int y = 0; y < size; y++)
         {
-            int originX = (variant % AtlasColumns) * CellSize;
-            int originY = (variant / AtlasColumns) * CellSize;
-            PaintSplat(image, originX, originY, variant);
-        }
-
-        _atlas = ImageTexture.CreateFromImage(image);
-        return _atlas;
-    }
-
-    private static void PaintSplat(Image image, int originX, int originY, int variant)
-    {
-        float center = (CellSize - 1) * 0.5f;
-        float detune = 1.0f + (variant * 0.41f);
-        float phase = variant * 2.3f;
-
-        for (int y = 0; y < CellSize; y++)
-        {
-            for (int x = 0; x < CellSize; x++)
+            for (int x = 0; x < size; x++)
             {
                 float nx = (x - center) / center;
                 float ny = (y - center) / center;
@@ -89,56 +50,20 @@ internal static class BloodLook
                 if (distance >= 1.0f)
                     continue;
 
-                float angle = MathF.Atan2(ny, nx);
-
-                // Three detuned harmonics: a lopsided body, a few bulges, and a fine
-                // ripple. Together they give an outline with no symmetry to spot.
-                float edge =
-                    0.74f +
-                    (0.16f * MathF.Sin((angle * 2.0f * detune) + phase)) +
-                    (0.09f * MathF.Sin((angle * 5.0f) - (phase * 1.7f))) +
-                    (0.05f * MathF.Sin((angle * 9.0f * detune) + (phase * 0.5f)));
-
-                if (distance > edge)
-                    continue;
-
-                // Solid nearly to the rim, then a short soft edge: blood has a meniscus,
-                // it does not fade out like smoke.
-                float t = distance / edge;
-                float alpha = t < 0.82f ? 1.0f : 1.0f - ((t - 0.82f) / 0.18f);
-                image.SetPixel(
-                    originX + x,
-                    originY + y,
-                    new Color(1.0f, 1.0f, 1.0f, Mathf.Clamp(alpha, 0.0f, 1.0f)));
+                // Solid nearly to the rim with a short soft edge. Blood beads; it has a
+                // meniscus rather than fading out like smoke.
+                float alpha = distance < 0.74f ? 1.0f : 1.0f - ((distance - 0.74f) / 0.26f);
+                image.SetPixel(x, y, new Color(1.0f, 1.0f, 1.0f, Mathf.Clamp(alpha, 0.0f, 1.0f)));
             }
         }
+
+        _grain = ImageTexture.CreateFromImage(image);
+        return _grain;
     }
 
     /// <summary>
-    /// Picks this instance's atlas cell in the vertex stage. The only reason a shader is
-    /// involved at all: <see cref="MultiMesh"/> has no per-instance texture, so the shape
-    /// has to come out of one sheet.
-    /// </summary>
-    internal static ShaderMaterial SplatMaterial()
-    {
-        var shader = new Shader
-        {
-            Code =
-                """
-                shader_type canvas_item;
-
-                void vertex() {
-                    UV = UV * vec2(1.0 / 3.0, 0.5) + INSTANCE_CUSTOM.xy;
-                }
-                """,
-        };
-        return new ShaderMaterial { Shader = shader };
-    }
-
-    /// <summary>
-    /// A falling drop: round at the heavy end, drawn to a point at the tail. The old drip
-    /// was a stretched circle, which reads as a smear rather than something falling (owner
-    /// report 2026-08-25). Local +Y is the heavy end.
+    /// A falling drop: round at the heavy end, drawn to a point at the tail. Local +Y is the
+    /// heavy end, so a drop rotated to face its travel leads with its weight.
     /// </summary>
     internal static ImageTexture Teardrop()
     {
@@ -179,8 +104,8 @@ internal static class BloodLook
 }
 
 /// <summary>
-/// The spray thrown out of a wound at the moment it opens. One short-lived one-shot particle
-/// node per hit that frees itself, so the pool is bounded by construction.
+/// The spray thrown out of a wound. One short-lived one-shot particle node per burst that
+/// frees itself, so the pool is bounded by construction.
 /// </summary>
 internal sealed partial class BloodSpray2D : Node2D
 {
@@ -188,10 +113,7 @@ internal sealed partial class BloodSpray2D : Node2D
 
     private float _remaining = NodeLifetimeSeconds;
 
-    /// <param name="direction">
-    /// Which way the spray goes: back along the contact normal, so a bullet through the
-    /// chest sprays out of the chest rather than into it.
-    /// </param>
+    /// <param name="direction">Which way the blood goes.</param>
     /// <param name="intensity">Wound strength <c>0..1</c>; scales count, speed and size.</param>
     /// <param name="particleStride">
     /// The Reduced Particles divisor. Gore Mode still honours the accessibility settings:
@@ -202,7 +124,7 @@ internal sealed partial class BloodSpray2D : Node2D
         intensity = Mathf.Clamp(intensity, 0.05f, 1.0f);
         Vector2 spray = direction.LengthSquared() > 0.001f ? direction.Normalized() : Vector2.Up;
 
-        int amount = Math.Max(3, (int)(GD.RandRange(8, 16) * intensity) / Math.Max(1, particleStride));
+        int amount = Math.Max(4, (int)(GD.RandRange(14, 26) * intensity) / Math.Max(1, particleStride));
         var particles = new CpuParticles2D
         {
             Name = "BloodSprayParticles",
@@ -213,18 +135,18 @@ internal sealed partial class BloodSpray2D : Node2D
             Explosiveness = 0.95f,
             Randomness = 0.8f,
             Direction = spray,
-            Spread = (float)GD.RandRange(24.0, 46.0),
+            Spread = (float)GD.RandRange(22.0, 42.0),
             // Real gravity, so the spray arcs down instead of hanging like smoke.
             Gravity = new Vector2(0.0f, 1100.0f),
-            InitialVelocityMin = 80.0f * intensity,
-            InitialVelocityMax = (float)GD.RandRange(260.0, 430.0) * intensity,
-            ScaleAmountMin = 0.06f + (0.05f * intensity),
-            ScaleAmountMax = 0.14f + (0.16f * intensity),
+            InitialVelocityMin = 90.0f * intensity,
+            InitialVelocityMax = (float)GD.RandRange(280.0, 460.0) * intensity,
+            // Small: a spray is a shower of grains, not a handful of blobs.
+            ScaleAmountMin = 0.05f + (0.04f * intensity),
+            ScaleAmountMax = 0.11f + (0.10f * intensity),
             AngleMin = -180.0f,
             AngleMax = 180.0f,
             Color = BloodLook.Fresh,
-            // Flecks, not discs: the same teardrop the falling drips use, tumbling.
-            Texture = BloodLook.Teardrop(),
+            Texture = BloodLook.Grain(),
             LocalCoords = false,
             Emitting = true,
         };
@@ -240,103 +162,83 @@ internal sealed partial class BloodSpray2D : Node2D
 }
 
 /// <summary>
-/// Every drop and every mark Gore Mode has put in the world, drawn as three
-/// <see cref="MultiMeshInstance2D"/> batches.
+/// Every drop in the air and every grain of blood on the floor, drawn as two
+/// <see cref="MultiMeshInstance2D"/> batches — one draw call each, whatever the count.
 ///
-/// <para><b>This replaced a node-per-drop, circles-per-stain design the owner reported twice
-/// as tanking the frame rate</b> (2026-08-25). Three things were wrong with it, and all
-/// three were structural rather than tuning:</para>
+/// <para><b>Blood lands in the room and nowhere else.</b> An earlier version also stuck
+/// marks to the buddy's parts, which the owner did not want: blood on him should be the
+/// spray passing over him and gone, not a decal riding his chest (report 2026-08-25). That
+/// removal also took the per-frame batch and the rig dependency with it, so what is left
+/// only ever dries.</para>
 ///
-/// <list type="number">
-///   <item><b>Every drop was a <see cref="Node2D"/></b> with its own <c>_PhysicsProcess</c>,
-///   its own <c>_Draw</c>, and a physics raycast every tick. Drops are now plain structs in
-///   one array stepped by one loop, and they find the floor by testing the room's own
-///   rectangle rather than asking the physics server — no query at all.</item>
-///   <item><b>Every stain was five <c>DrawCircle</c> calls</b>, so a bloody room cost a
-///   thousand draw calls a frame. All the stains in a set are now instances of one quad in
-///   one batch: <b>one</b> draw call each, whatever the count.</item>
-///   <item><b>Overlapping discs read as clumps.</b> A stain is now a single irregular splat
-///   with its own rotation and squash, so blood looks spread rather than piled.</item>
-/// </list>
+/// <para><b>Grains, not splats.</b> Each mark is one small round grain. A pool is what
+/// happens when a wound drips on the same spot for a while and the grains pile up, which is
+/// both cheaper and closer to how liquid actually reads than trying to draw a clever
+/// outline for it.</para>
 ///
-/// <para>The three batches exist because they change at different rates: the room's stains
-/// only ever dry, the buddy's ride a ragdoll, and drops move every tick.</para>
+/// <para><b>Drops are data, not nodes.</b> They live in one array stepped by one loop and
+/// find the floor by testing the room's own rectangle — no node, no <c>_Draw</c>, and no
+/// physics query per drop per tick.</para>
 /// </summary>
 [GlobalClass]
 public partial class BloodStainLayer2D : Node2D
 {
     /// <summary>
-    /// Marks on the room. Because they merge, this is a budget for bled-on <i>area</i>, and
-    /// well past what one buddy covers before the first ones dry.
+    /// Grains of blood kept on the floor. Generous because they are small and batched: this
+    /// is the budget that decides how large a pool can get before its oldest edge dries.
     /// </summary>
-    private const int WorldCapacity = 96;
-
-    /// <summary>Marks on the buddy. Six parts cannot wear more than a handful legibly.</summary>
-    private const int PartCapacity = 24;
+    private const int GrainCapacity = 320;
 
     /// <summary>Drops in the air at once, across every wound.</summary>
-    private const int DropletCapacity = 48;
+    private const int DropletCapacity = 64;
 
-    /// <summary>How long a stain lasts before it has faded away entirely.</summary>
-    private const double LifetimeSeconds = 24.0;
+    /// <summary>How long a grain lasts before it has faded away entirely.</summary>
+    private const double LifetimeSeconds = 22.0;
 
-    /// <summary>
-    /// A landing drip joins an existing pool whose centre is within this many of that
-    /// pool's radii. Above one, so drips that only just touch still run together.
-    /// </summary>
-    private const float MergeRadiiFactor = 1.3f;
-
-    /// <summary>How much of the incoming radius a merge adds. Pools spread, slowly.</summary>
-    private const float MergeGrowth = 0.3f;
-
-    /// <summary>Ceiling on a merged pool, so a long bleed spreads rather than domes.</summary>
-    private const float MaximumPoolRadius = 22.0f;
-
-    /// <summary>Rebuilds per second of the room batch while it is only drying.</summary>
-    private const double FadeRebuildHz = 8.0;
+    /// <summary>Rebuilds per second of the floor batch while it is only drying.</summary>
+    private const double FadeRebuildHz = 10.0;
 
     private const float DropletGravity = 1500.0f;
 
     /// <summary>Seconds a drop may fall before it is retired unlanded.</summary>
     private const float DropletMaxAgeSeconds = 3.5f;
 
-    private readonly Stain[] _world = new Stain[WorldCapacity];
-    private readonly Stain[] _part = new Stain[PartCapacity];
+    /// <summary>
+    /// Grains one landing drop scatters. More than one so a drop splashes rather than
+    /// stamping a single dot, which is what makes a run of drips read as spreading liquid.
+    /// </summary>
+    private const int GrainsPerLanding = 3;
+
+    private readonly Grain[] _grains = new Grain[GrainCapacity];
     private readonly Droplet[] _droplets = new Droplet[DropletCapacity];
 
-    private int _nextWorld;
-    private int _nextPart;
+    private int _nextGrain;
     private double _sinceFadeRebuild;
-    private bool _worldDirty;
+    private bool _grainsDirty;
 
-    private PuppetRig? _rig;
     private BoundaryController? _bounds;
 
-    private MultiMeshInstance2D _worldBatch = null!;
-    private MultiMeshInstance2D _partBatch = null!;
+    private MultiMeshInstance2D _grainBatch = null!;
     private MultiMeshInstance2D _dropletBatch = null!;
 
+    /// <summary>Grains of blood currently on the floor.</summary>
     public int StainCount { get; private set; }
 
-    /// <summary>Total stains ever added, including merges and those since dried away.</summary>
+    /// <summary>Total grains ever laid down, including those since dried away.</summary>
     public int TotalStainsAdded { get; private set; }
 
     /// <summary>Drops currently in the air.</summary>
     public int LiveDroplets { get; private set; }
 
-    private struct Stain
+    private struct Grain
     {
         public bool Used;
-        public BuddyPartId Part;
-
-        /// <summary>World point for a room stain; part-local offset for a part stain.</summary>
         public Vector2 Point;
         public float Radius;
 
-        /// <summary>Vertical squash. A pool on the floor lies flat; a mark on a limb is rounder.</summary>
+        /// <summary>Vertical squash. Blood on a surface lies flatter than it is wide.</summary>
         public float Flatten;
         public float Rotation;
-        public int Variant;
         public Color Color;
         public double Age;
     }
@@ -351,37 +253,31 @@ public partial class BloodStainLayer2D : Node2D
     }
 
     /// <summary>
-    /// <paramref name="rig"/> places part stains and <paramref name="bounds"/> is where drops
-    /// land. Both are optional: without the rig the layer keeps only room stains, and without
-    /// the bounds drops expire instead of pooling, which is what an isolated test composition
-    /// should get rather than a crash.
+    /// <paramref name="bounds"/> is where drops land. Optional: without it drops expire in
+    /// the air instead of pooling, which is what an isolated test composition should get
+    /// rather than a crash.
     /// </summary>
-    public void Initialize(PuppetRig? rig, BoundaryController? bounds = null)
+    public void Initialize(BoundaryController? bounds = null)
     {
-        _rig = rig;
         _bounds = bounds;
         ZAsRelative = false;
-        // Under the impact feedback ring, over the buddy: blood is on him, not in front of
-        // the effects that punctuate the hit that drew it.
+        // Under the impact feedback ring, over the buddy.
         ZIndex = 149;
 
-        _worldBatch = Batch("RoomStains", WorldCapacity, 149, splats: true);
-        _partBatch = Batch("BuddyStains", PartCapacity, 150, splats: true);
-        _dropletBatch = Batch("Droplets", DropletCapacity, 151, splats: false);
+        _grainBatch = Batch("RoomBlood", GrainCapacity, 149, BloodLook.Grain());
+        _dropletBatch = Batch("Droplets", DropletCapacity, 151, BloodLook.Teardrop());
     }
 
     /// <summary>
     /// One batch: a unit quad instanced per mark. <c>UseColors</c> is what lets a single
-    /// batch hold marks at different stages of drying without splitting the draw call, and
-    /// <c>UseCustomData</c> carries the atlas cell for the splat batches.
+    /// batch hold marks at different stages of drying without splitting the draw call.
     /// </summary>
-    private MultiMeshInstance2D Batch(string name, int capacity, int zIndex, bool splats)
+    private MultiMeshInstance2D Batch(string name, int capacity, int zIndex, Texture2D texture)
     {
         var multi = new MultiMesh
         {
             TransformFormat = MultiMesh.TransformFormatEnum.Transform2D,
             UseColors = true,
-            UseCustomData = splats,
             Mesh = new QuadMesh { Size = Vector2.One },
             InstanceCount = capacity,
             VisibleInstanceCount = 0,
@@ -390,8 +286,7 @@ public partial class BloodStainLayer2D : Node2D
         {
             Name = name,
             Multimesh = multi,
-            Texture = splats ? BloodLook.SplatAtlas() : BloodLook.Teardrop(),
-            Material = splats ? BloodLook.SplatMaterial() : null,
+            Texture = texture,
             ZAsRelative = false,
             ZIndex = zIndex,
         };
@@ -400,57 +295,32 @@ public partial class BloodStainLayer2D : Node2D
     }
 
     /// <summary>
-    /// A drop landed in the room. It joins the pool it landed in if there is one, and only
-    /// takes a slot of its own otherwise — which bounds the count by the area bled on rather
-    /// than by how long the bleeding has gone on.
+    /// Lays down one scatter of grains where a drop landed. The oldest grains are recycled
+    /// once the floor is full, so a long bleed keeps the marks of what just happened rather
+    /// than everything that ever did.
     /// </summary>
     public void AddWorldStain(Vector2 worldPoint, float radius)
     {
-        radius = Mathf.Clamp(radius, 2.0f, 13.0f);
-        TotalStainsAdded++;
-        _worldDirty = true;
-
-        for (int index = 0; index < _world.Length; index++)
+        radius = Mathf.Clamp(radius, 1.2f, 7.0f);
+        for (int grain = 0; grain < GrainsPerLanding; grain++)
         {
-            ref Stain pool = ref _world[index];
-            if (!pool.Used || pool.Point.DistanceTo(worldPoint) > pool.Radius * MergeRadiiFactor)
-                continue;
+            // The first grain lands where the drop did; the rest scatter around it.
+            Vector2 scatter = grain == 0
+                ? Vector2.Zero
+                : new Vector2(
+                    (float)GD.RandRange(-radius * 1.6, radius * 1.6),
+                    (float)GD.RandRange(-radius * 0.5, radius * 0.5));
 
-            pool.Radius = MathF.Min(MaximumPoolRadius, pool.Radius + (radius * MergeGrowth));
-            // Fresh blood re-wets the pool: its clock restarts, so a wound that keeps
-            // dripping keeps its puddle alive and one that stops leaves it to dry.
-            pool.Age = 0.0;
-            return;
+            Put(new Grain
+            {
+                Used = true,
+                Point = worldPoint + scatter,
+                Radius = radius * (float)GD.RandRange(0.5, 1.0),
+                Flatten = (float)GD.RandRange(0.45, 0.75),
+                Rotation = (float)GD.RandRange(0.0, Mathf.Tau),
+                Color = BloodLook.Dried,
+            });
         }
-
-        Put(_world, ref _nextWorld, new Stain
-        {
-            Used = true,
-            Point = worldPoint,
-            Radius = radius,
-            // Blood pools onto a surface rather than sitting on it as a ball.
-            Flatten = (float)GD.RandRange(0.34, 0.5),
-            Rotation = (float)GD.RandRange(0.0, Mathf.Tau),
-            Variant = GD.RandRange(0, BloodLook.SplatVariants - 1),
-            Color = BloodLook.Dried,
-        });
-    }
-
-    /// <summary>A mark left on the buddy himself, in the struck part's own local space.</summary>
-    public void AddPartStain(BuddyPartId part, Vector2 localPoint, float radius)
-    {
-        TotalStainsAdded++;
-        Put(_part, ref _nextPart, new Stain
-        {
-            Used = true,
-            Part = part,
-            Point = localPoint,
-            Radius = Mathf.Clamp(radius, 2.0f, 10.0f),
-            Flatten = (float)GD.RandRange(0.75, 1.0),
-            Rotation = (float)GD.RandRange(0.0, Mathf.Tau),
-            Variant = GD.RandRange(0, BloodLook.SplatVariants - 1),
-            Color = BloodLook.Fresh.Lerp(BloodLook.Dried, 0.4f),
-        });
     }
 
     /// <summary>
@@ -477,31 +347,29 @@ public partial class BloodStainLayer2D : Node2D
         }
     }
 
-    private void Put(Stain[] into, ref int next, in Stain stain)
+    private void Put(in Grain grain)
     {
-        if (!into[next].Used)
+        if (!_grains[_nextGrain].Used)
             StainCount++;
 
-        into[next] = stain;
-        next = (next + 1) % into.Length;
-        if (ReferenceEquals(into, _world))
-            _worldDirty = true;
+        _grains[_nextGrain] = grain;
+        _nextGrain = (_nextGrain + 1) % _grains.Length;
+        TotalStainsAdded++;
+        _grainsDirty = true;
     }
 
     /// <summary>
-    /// Wipes the room and the buddy clean, drops in the air included. Turning Gore Mode off
-    /// must leave no trace of it, and the Repair Kit patches the buddy up the same way.
+    /// Wipes the room clean, drops in the air included. Turning Gore Mode off must leave no
+    /// trace of it, and the Repair Kit patches the buddy up the same way.
     /// </summary>
     public void Clear()
     {
-        Array.Clear(_world);
-        Array.Clear(_part);
+        Array.Clear(_grains);
         Array.Clear(_droplets);
-        _nextWorld = 0;
-        _nextPart = 0;
+        _nextGrain = 0;
         StainCount = 0;
         LiveDroplets = 0;
-        _worldDirty = true;
+        _grainsDirty = true;
     }
 
     public override void _PhysicsProcess(double delta)
@@ -534,8 +402,8 @@ public partial class BloodStainLayer2D : Node2D
 
     /// <summary>
     /// Whether this drop has reached the edge of the room, staining where it hit if so. The
-    /// room is an axis-aligned rectangle, so this is four comparisons — the old version
-    /// asked the physics server for a raycast per drop per tick instead.
+    /// room is an axis-aligned rectangle, so this is four comparisons rather than a physics
+    /// raycast per drop per tick.
     /// </summary>
     private bool TryLand(in Droplet droplet, Rect2? room)
     {
@@ -570,49 +438,44 @@ public partial class BloodStainLayer2D : Node2D
         if (!landed)
             return false;
 
-        AddWorldStain(landing, droplet.Radius * (float)GD.RandRange(1.5, 2.4));
+        AddWorldStain(landing, droplet.Radius * (float)GD.RandRange(1.1, 1.7));
         return true;
     }
 
     public override void _Process(double delta)
     {
         double step = Math.Max(0.0, delta);
+        bool anyGrain = Age(step);
 
-        bool anyPart = Age(_part, step);
-        bool anyWorld = Age(_world, step);
-
-        // The room only ever dries, and drying is not something anyone can see at frame
-        // rate. Rebuilding its batch on a slow clock is the point of keeping it separate.
+        // The floor only ever dries, and drying is not something anyone can see at frame
+        // rate. Rebuilding on a slow clock is why this is a separate batch.
         _sinceFadeRebuild += step;
-        if (_worldDirty || (anyWorld && _sinceFadeRebuild >= 1.0 / FadeRebuildHz))
+        if (_grainsDirty || (anyGrain && _sinceFadeRebuild >= 1.0 / FadeRebuildHz))
         {
             _sinceFadeRebuild = 0.0;
-            _worldDirty = false;
-            RebuildWorld();
+            _grainsDirty = false;
+            RebuildGrains();
         }
 
-        // These two ride a ragdoll and fall under gravity, so they need every frame.
-        RebuildPart(anyPart);
         RebuildDroplets();
     }
 
-    /// <summary>Advances a set and frees what has dried. True if any slot is still in use.</summary>
-    private bool Age(Stain[] stains, double delta)
+    /// <summary>Advances the floor and frees what has dried. True if any grain remains.</summary>
+    private bool Age(double delta)
     {
-        bool world = ReferenceEquals(stains, _world);
         bool any = false;
-        for (int index = 0; index < stains.Length; index++)
+        for (int index = 0; index < _grains.Length; index++)
         {
-            ref Stain stain = ref stains[index];
-            if (!stain.Used)
+            ref Grain grain = ref _grains[index];
+            if (!grain.Used)
                 continue;
 
-            stain.Age += delta;
-            if (StainFade.HasDried(stain.Age, LifetimeSeconds))
+            grain.Age += delta;
+            if (grain.Age >= LifetimeSeconds)
             {
-                stain = default;
+                grain = default;
                 StainCount--;
-                _worldDirty |= world;
+                _grainsDirty = true;
                 continue;
             }
 
@@ -622,44 +485,26 @@ public partial class BloodStainLayer2D : Node2D
         return any;
     }
 
-    private void RebuildWorld()
+    private void RebuildGrains()
     {
-        MultiMesh multi = _worldBatch.Multimesh;
+        MultiMesh multi = _grainBatch.Multimesh;
         int visible = 0;
-        for (int index = 0; index < _world.Length; index++)
+        for (int index = 0; index < _grains.Length; index++)
         {
-            ref readonly Stain stain = ref _world[index];
-            if (stain.Used && Write(multi, visible, in stain, ToLocal(stain.Point)))
-                visible++;
-        }
-
-        multi.VisibleInstanceCount = visible;
-    }
-
-    private void RebuildPart(bool any)
-    {
-        MultiMesh multi = _partBatch.Multimesh;
-        if (!any || _rig is null || !GodotObject.IsInstanceValid(_rig) || !_rig.IsInitialized)
-        {
-            multi.VisibleInstanceCount = 0;
-            return;
-        }
-
-        int visible = 0;
-        for (int index = 0; index < _part.Length; index++)
-        {
-            ref readonly Stain stain = ref _part[index];
-            if (!stain.Used)
+            ref readonly Grain grain = ref _grains[index];
+            if (!grain.Used)
                 continue;
 
-            PuppetPartBody body = _rig.GetPart(stain.Part);
-            if (!GodotObject.IsInstanceValid(body))
-                continue;
-
-            // The mark rides the part's rotation as well as its position, or blood on a
-            // tumbling limb would slide around it.
-            if (Write(multi, visible, in stain, ToLocal(body.ToGlobal(stain.Point)), body.GlobalRotation))
-                visible++;
+            // Fade to nothing rather than winking out: an instance dropped at a visible
+            // alpha is the "glitch just before it fades" the owner saw (report 2026-08-25).
+            float alpha = Fade(grain.Age);
+            multi.SetInstanceTransform2D(visible, new Transform2D(
+                grain.Rotation,
+                new Vector2(grain.Radius * 2.0f, grain.Radius * 2.0f * grain.Flatten),
+                0.0f,
+                ToLocal(grain.Point)));
+            multi.SetInstanceColor(visible, grain.Color with { A = grain.Color.A * alpha });
+            visible++;
         }
 
         multi.VisibleInstanceCount = visible;
@@ -683,7 +528,7 @@ public partial class BloodStainLayer2D : Node2D
 
             // A drop points the way it is going and stretches as it picks up speed, so it
             // reads as falling rather than as a bead sliding down the screen.
-            float stretch = Mathf.Clamp(droplet.Velocity.Length() / 520.0f, 1.0f, 2.8f);
+            float stretch = Mathf.Clamp(droplet.Velocity.Length() / 520.0f, 1.0f, 2.6f);
             Vector2 along = droplet.Velocity.LengthSquared() > 1.0f
                 ? droplet.Velocity.Normalized()
                 : Vector2.Down;
@@ -701,30 +546,12 @@ public partial class BloodStainLayer2D : Node2D
     }
 
     /// <summary>
-    /// Places one stain into a batch. False when it has faded past visibility, so a drying
-    /// stain stops costing an instance before its slot is freed.
+    /// Full strength, then a smooth dry-out over the tail of the grain's life. Squared so
+    /// it thins slowly at first and vanishes without a step at the end.
     /// </summary>
-    private static bool Write(
-        MultiMesh multi,
-        int slot,
-        in Stain stain,
-        Vector2 center,
-        float extraRotation = 0.0f)
+    private static float Fade(double age)
     {
-        float alpha = StainFade.AlphaFor(stain.Age, LifetimeSeconds);
-        if (alpha <= 0.02f)
-            return false;
-
-        multi.SetInstanceTransform2D(slot, new Transform2D(
-            stain.Rotation + extraRotation,
-            new Vector2(stain.Radius * 2.0f, stain.Radius * 2.0f * stain.Flatten),
-            0.0f,
-            center));
-        multi.SetInstanceColor(slot, stain.Color with { A = stain.Color.A * alpha });
-
-        // Which of the six shapes this stain wears. The shader reads it as a UV offset.
-        Vector2 cell = BloodLook.AtlasOffset(stain.Variant);
-        multi.SetInstanceCustomData(slot, new Color(cell.X, cell.Y, 0.0f, 0.0f));
-        return true;
+        float remaining = Domain.Damage.StainFade.AlphaFor(age, LifetimeSeconds);
+        return remaining * remaining;
     }
 }

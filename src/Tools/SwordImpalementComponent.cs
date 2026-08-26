@@ -38,13 +38,18 @@ namespace DesktopBuddy.Tools;
 public partial class SwordImpalementComponent : Node2D
 {
     /// <summary>
-    /// How fast the point must be travelling to go in, in px/s. Low enough that a deliberate
-    /// push works and high enough that a blade resting against him does not.
+    /// How fast the point must be travelling to go in, in px/s. Deliberately tiny: this is a
+    /// sharp blade, so almost any deliberate push should bury it (owner instruction
+    /// 2026-08-25). All the threshold still rules out is a blade resting against him while
+    /// the cursor is not moving at all.
     /// </summary>
-    private const float MinimumEntrySpeed = 220.0f;
+    private const float MinimumEntrySpeed = 45.0f;
 
-    /// <summary>How far into a part the tip must reach, as a fraction of the part's radius.</summary>
-    private const float EntryDepthFraction = 0.55f;
+    /// <summary>
+    /// How far into a part the tip must reach, as a fraction of the part's radius. Nearly
+    /// the whole radius: touching the surface with a point is enough for a blade.
+    /// </summary>
+    private const float EntryDepthFraction = 0.95f;
 
     /// <summary>Severity of the wound a skewer opens, before Gore Mode decides to draw it.</summary>
     private const float SkewerWoundSeverity = 0.85f;
