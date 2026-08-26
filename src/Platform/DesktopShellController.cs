@@ -91,6 +91,28 @@ public partial class DesktopShellController : Node
         Window.LayoutModeChanged += OnWindowLayoutChanged;
         Boundaries.LayoutApplied += OnLayoutApplied;
 
+        // Browser play has no movable/restorable native desktop window. Running the Windows
+        // placement/fullscreen choreography against the root Web window has been leaving the
+        // shell before BoundaryController.Initialize: the canvas renders, but CurrentLayout
+        // remains 0x0, the old 2D puppet stays visible, and grab/recovery use construction-time
+        // bounds. In Web the DOM canvas is the one authoritative client rectangle, so compose
+        // the room directly from the viewport and then apply the already-scoped Play input mode.
+        if (OperatingSystem.IsBrowser())
+        {
+            _storedZoom = _settings.ZoomPercent / 100.0;
+            Vector2I browserClientSize = ResolveClientSize();
+            GD.Print(
+                $"DESKTOP_BUDDY_WEB_SHELL_INITIALIZING client={browserClientSize.X}x{browserClientSize.Y} zoom={_storedZoom:F2}");
+            Boundaries.Initialize(browserClientSize, _storedZoom);
+            ApplyMode(force: true);
+            Log.Info(Category,
+                $"Browser shell composed (layout={Window.LayoutMode} mode={_mode.Current} " +
+                $"room={Boundaries.CurrentLayout.RoomWidth}x{Boundaries.CurrentLayout.RoomHeight}).");
+            GD.Print(
+                $"DESKTOP_BUDDY_WEB_SHELL_READY room={Boundaries.CurrentLayout.RoomWidth}x{Boundaries.CurrentLayout.RoomHeight}");
+            return;
+        }
+
         Rect2I? storedRect = _runtimeConfigured && _settings.Revision > 0
             ? WindowInteractionSettings.CompactRect(_settings)
             : null;
