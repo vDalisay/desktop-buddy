@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.App;
 using DesktopBuddy.Persistence.Characters;
 using Godot;
 
@@ -40,13 +41,13 @@ public partial class CharacterEditorHost
             BuildPreview();
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:preview-ready");
 
-            // CharacterEditorModeCoordinator owns native desktop window transitions (restore
-            // geometry, transparency, topmost/fullscreen state). The browser has one embedded
-            // canvas and no desktop window state to capture. More importantly, constructing the
-            // native coordinator is the exact point where the experimental static-WASM runtime
-            // aborts this managed callback. Browser editor entry uses its canvas-only path; keep
-            // the native coordinator entirely out of browser startup.
-            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:mode-browser-skip");
+            // The native coordinator captures/restores OS-window geometry and transparency.
+            // Browser play has one embedded canvas, so it only needs the shared lifecycle pause
+            // while Paint Buddy owns the screen. Supplying this lightweight adapter keeps the
+            // existing OpenEditorAsync/CloseEditorImmediately contract intact without touching
+            // the native desktop APIs that previously stopped the static-WASM startup callback.
+            _mode = new BrowserCharacterEditorModeCoordinator(_sandbox.Lifecycle);
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:mode-browser-ready");
 
             var library = new CharacterLibraryIndex(
                 new CharacterFileSystem(),
@@ -108,6 +109,42 @@ public partial class CharacterEditorHost
         _browserInitializationPump!.SetProcess(false);
         _browserInitializationPump.QueueFree();
         _browserInitializationPump = null;
+    }
+}
+
+/// <summary>
+/// Canvas-only counterpart of CharacterEditorModeCoordinator. Web has no native desktop-window
+/// state to transition; the only semantic requirement is to freeze gameplay/lifecycle mutation
+/// while the editor overlay is open and resume it when the editor closes.
+/// </summary>
+internal sealed class BrowserCharacterEditorModeCoordinator : CharacterEditorModeCoordinator
+{
+    private readonly LifecycleCoordinator _lifecycle;
+    private bool _active;
+
+    public BrowserCharacterEditorModeCoordinator(LifecycleCoordinator lifecycle)
+    {
+        _lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
+    }
+
+    public override bool Enter()
+    {
+        if (_active)
+            return false;
+        _lifecycle.SetEditorMode(true);
+        _active = true;
+        GD.Print("DESKTOP_BUDDY_WEB_PAINT_MODE_ENTERED");
+        return true;
+    }
+
+    public override bool Exit()
+    {
+        if (!_active)
+            return false;
+        _active = false;
+        _lifecycle.SetEditorMode(false);
+        GD.Print("DESKTOP_BUDDY_WEB_PAINT_MODE_EXITED");
+        return true;
     }
 }
 
