@@ -40,11 +40,13 @@ public partial class CharacterEditorHost
             BuildPreview();
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:preview-ready");
 
-            _mode = new CharacterEditorModeCoordinator(
-                _sandbox.Window,
-                _sandbox.Shell,
-                _sandbox.Lifecycle);
-            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:mode-ready");
+            // CharacterEditorModeCoordinator owns native desktop window transitions (restore
+            // geometry, transparency, topmost/fullscreen state). The browser has one embedded
+            // canvas and no desktop window state to capture. More importantly, constructing the
+            // native coordinator is the exact point where the experimental static-WASM runtime
+            // aborts this managed callback. Browser editor entry uses its canvas-only path; keep
+            // the native coordinator entirely out of browser startup.
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:mode-browser-skip");
 
             var library = new CharacterLibraryIndex(
                 new CharacterFileSystem(),
