@@ -36,20 +36,28 @@ public partial class CharacterEditorHost
         {
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_INITIALIZING");
 
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:preview-begin");
             BuildPreview();
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:preview-ready");
+
             _mode = new CharacterEditorModeCoordinator(
                 _sandbox.Window,
                 _sandbox.Shell,
                 _sandbox.Lifecycle);
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:mode-ready");
+
             var library = new CharacterLibraryIndex(
                 new CharacterFileSystem(),
                 _context.Characters.Paths.Root);
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:library-ready");
+
             _session = new CharacterEditorSession(
                 _context.Characters,
                 library,
                 _selectionRuntime.Coordinator,
                 _preview,
                 economy: _context.Economy);
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:session-ready");
             _session.Changed += RefreshAll;
             _session.LibraryChanged += RefreshLibrary;
             _session.CloseResolved += closed =>
@@ -58,9 +66,12 @@ public partial class CharacterEditorHost
                     CloseEditorImmediately();
             };
 
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:build-ui-begin");
             BuildUi();
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:build-ui-ready");
             IsInitialized = true;
             RefreshAll();
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:refresh-ready");
             CallDeferred(MethodName.RefreshDockHitRegions);
             StopBrowserInitializationPump();
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_READY");
