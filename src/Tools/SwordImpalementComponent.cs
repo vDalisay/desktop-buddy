@@ -76,6 +76,20 @@ public partial class SwordImpalementComponent : Node2D
     /// <summary>Closest to the hilt he may slide, so he never ends up inside the grip.</summary>
     private const float MinimumDepthFromHilt = 18.0f;
 
+    /// <summary>
+    /// The depth lane a buried blade is drawn in: <b>behind the whole buddy</b>, between him
+    /// and the room behind him (owner instruction 2026-08-25).
+    ///
+    /// <para>His parts occupy -48 to 96 and the room's paint sits at -70, so -60 is the gap
+    /// between the two. Every part therefore occludes the length of blade inside his
+    /// silhouette and only what sticks out past it is drawn — from any angle, in any pose.
+    /// The previous attempt put the blade in the struck part's own lane, which meant a blade
+    /// in the head still drew in front of the torso and the result was, in the owner's word,
+    /// inconsistent. There is no per-pixel depth inside the buddy to do better with; putting
+    /// the blade behind all of him sidesteps needing one.</para>
+    /// </summary>
+    private const float BuriedBladeDepth = -60.0f;
+
     private DroppedCursorToolBody? _embedded;
 
     /// <summary>Where the embedded blade sits in the part it is in, in that part's space.</summary>
@@ -254,7 +268,7 @@ public partial class SwordImpalementComponent : Node2D
             StabImpulse,
             tip);
 
-        SinkIntoPart(partId);
+        SinkIntoBuddy();
     }
 
     /// <summary>
@@ -262,30 +276,10 @@ public partial class SwordImpalementComponent : Node2D
     /// mesh occludes the length that went in and only what is still outside him is drawn.
     /// How much disappears therefore follows how far it was pushed, with no extra state.
     /// </summary>
-    private void SinkIntoPart(BuddyPartId partId)
+    private void SinkIntoBuddy()
     {
-        if (_visual is not null && GodotObject.IsInstanceValid(_visual) &&
-            TryPartDepth(partId, out float depth))
-        {
-            _visual.SetDepthOverride(depth);
-        }
-    }
-
-    /// <summary>The frontal depth lane the given part is drawn in.</summary>
-    private bool TryPartDepth(BuddyPartId partId, out float depth)
-    {
-        depth = 0.0f;
-        Godot.Collections.Array<Buddy.Presentation3D.PartVisualDefinition>? parts =
-            GodotObject.IsInstanceValid(_buddy.VisualProfile) ? _buddy.VisualProfile.Parts : null;
-        int index = (int)partId;
-        if (parts is null || index < 0 || index >= parts.Count ||
-            !GodotObject.IsInstanceValid(parts[index]))
-        {
-            return false;
-        }
-
-        depth = parts[index]!.DepthOffset;
-        return true;
+        if (_visual is not null && GodotObject.IsInstanceValid(_visual))
+            _visual.SetDepthOverride(BuriedBladeDepth);
     }
 
     /// <summary>Turns the pass-through exception on or off, and only when it changes.</summary>
@@ -403,11 +397,8 @@ public partial class SwordImpalementComponent : Node2D
         // Re-applied every frame rather than once on release: the dropped-object visual
         // pools its slots and re-authors their depth whenever one is re-attached, so a
         // one-shot override would be lost the first time the blade left and re-entered view.
-        if (_looseVisual is not null && GodotObject.IsInstanceValid(_looseVisual) &&
-            TryPartDepth(_skewered, out float depth))
-        {
-            _looseVisual.TrySetDepthOverride(_embedded.RuntimeId, depth);
-        }
+        if (_looseVisual is not null && GodotObject.IsInstanceValid(_looseVisual))
+            _looseVisual.TrySetDepthOverride(_embedded.RuntimeId, BuriedBladeDepth);
     }
 
     private void ReleaseEmbeddedIfTakenHold()
