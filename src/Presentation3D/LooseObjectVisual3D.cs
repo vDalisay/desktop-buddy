@@ -55,6 +55,28 @@ public partial class LooseObjectVisual3D : Node3D
     public Mesh? MeshFor(int runtimeId) =>
         _slots.TryGetValue(runtimeId, out Body2DVisual3D? slot) ? slot.Mesh.Mesh : null;
 
+    /// <summary>
+    /// Moves one drawn object through the frontal depth stack, away from the depth its
+    /// profile authored. The Sword left in the buddy is the only caller: a blade buried in
+    /// him has to sit inside the depth range his parts occupy, or it draws in front of all
+    /// of them and reads as sitting on top of him (owner report 2026-08-25).
+    ///
+    /// <para>False when this object is not currently drawn. Slots are pooled and re-authored
+    /// on attach, so a caller that needs the override to stick must re-apply it rather than
+    /// setting it once.</para>
+    /// </summary>
+    public bool TrySetDepthOverride(int runtimeId, float depthOffset)
+    {
+        if (!_slots.TryGetValue(runtimeId, out Body2DVisual3D? slot) ||
+            !GodotObject.IsInstanceValid(slot))
+        {
+            return false;
+        }
+
+        slot.SetDepthOffset(depthOffset);
+        return true;
+    }
+
     public void Initialize(LooseObjectRegistry registry)
     {
         if (IsInitialized)

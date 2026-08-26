@@ -73,15 +73,15 @@ public partial class SwordImpalementComponent : Node2D
     private const float HoldDamping = 90.0f;
     private const float HoldMaximumForce = 90000.0f;
 
+    /// <summary>Closest to the hilt he may slide, so he never ends up inside the grip.</summary>
+    private const float MinimumDepthFromHilt = 18.0f;
+
     private DroppedCursorToolBody? _embedded;
 
     /// <summary>Where the embedded blade sits in the part it is in, in that part's space.</summary>
     private Transform2D _embeddedOffset = Transform2D.Identity;
     private BuddyPartId _skewered;
     private bool _isSkewered;
-
-    /// <summary>Distance from the hilt along the blade at which the part sits.</summary>
-    private float _bladeDepth;
 
     private Vector2 _previousTip;
     private bool _hasPreviousTip;
@@ -90,6 +90,7 @@ public partial class SwordImpalementComponent : Node2D
     // itself built by DroppedToolInputBootstrap once the sandbox has finished composing, so
     // there is no scene-time node for an [Export] to point at.
     private InteractionDamageComponent _pipeline = null!;
+    private LooseObjectVisual3D? _looseVisual;
     private BuddyRoot _buddy = null!;
     private CursorToolController _cursorTools = null!;
     private CursorToolVisual3D? _visual;
@@ -118,13 +119,19 @@ public partial class SwordImpalementComponent : Node2D
     /// and occluded by the part it is in. Optional: without it the blade still goes in, it
     /// just draws in front of him.
     /// </param>
+    /// <param name="looseVisual">
+    /// The dropped-object slots, for the same reason once the blade has been let go of. A
+    /// blade left in him is a dropped tool, and dropped tools draw at their authored depth
+    /// — which is why letting go used to pop it back on top of him.
+    /// </param>
     public void Initialize(
         InteractionDamageComponent pipeline,
         BuddyRoot buddy,
         CursorToolController cursorTools,
         DroppedToolInteractionComponent droppedTools,
         GrabTetherController grab,
-        CursorToolVisual3D? visual = null)
+        CursorToolVisual3D? visual = null,
+        LooseObjectVisual3D? looseVisual = null)
     {
         if (!GodotObject.IsInstanceValid(pipeline) || !pipeline.IsInitialized ||
             !GodotObject.IsInstanceValid(buddy) ||
@@ -141,6 +148,7 @@ public partial class SwordImpalementComponent : Node2D
         _droppedTools = droppedTools;
         _grab = grab;
         _visual = visual;
+        _looseVisual = looseVisual;
         IsInitialized = true;
     }
 
@@ -235,14 +243,6 @@ public partial class SwordImpalementComponent : Node2D
         _isSkewered = true;
         ImpalementCount++;
 
-        // Where along the blade he ends up: his centre projected onto the blade axis, so he
-        // is threaded on at the depth the point actually reached him rather than snapping to
-        // the tip. Kept off the hilt itself so he cannot end up inside the player's hand.
-        float bladeLength = hilt.DistanceTo(tip);
-        Vector2 along = bladeLength > 0.01f ? (tip - hilt) / bladeLength : Vector2.Right;
-        float depth = (part.GlobalPosition - hilt).Dot(along);
-        _bladeDepth = Mathf.Clamp(depth, part.Radius, bladeLength);
-
         // The stab reports its own pain, because there is no solver contact to report one:
         // the blade has been excepted from him since the moment it was wielded. Everything
         // downstream — the curve, the payout, harmful memory, and Gore Mode's wound — keys
@@ -264,19 +264,28 @@ public partial class SwordImpalementComponent : Node2D
     /// </summary>
     private void SinkIntoPart(BuddyPartId partId)
     {
-        if (_visual is null || !GodotObject.IsInstanceValid(_visual))
-            return;
+        if (_visual is not null && GodotObject.IsInstanceValid(_visual) &&
+            TryPartDepth(partId, out float depth))
+        {
+            _visual.SetDepthOverride(depth);
+        }
+    }
 
+    /// <summary>The frontal depth lane the given part is drawn in.</summary>
+    private bool TryPartDepth(BuddyPartId partId, out float depth)
+    {
+        depth = 0.0f;
         Godot.Collections.Array<Buddy.Presentation3D.PartVisualDefinition>? parts =
             GodotObject.IsInstanceValid(_buddy.VisualProfile) ? _buddy.VisualProfile.Parts : null;
         int index = (int)partId;
         if (parts is null || index < 0 || index >= parts.Count ||
             !GodotObject.IsInstanceValid(parts[index]))
         {
-            return;
+            return false;
         }
 
-        _visual.SetDepthOverride(parts[index]!.DepthOffset);
+        depth = parts[index]!.DepthOffset;
+        return true;
     }
 
     /// <summary>Turns the pass-through exception on or off, and only when it changes.</summary>
@@ -304,9 +313,34 @@ public partial class SwordImpalementComponent : Node2D
             return;
         }
 
-        Vector2 along = (tip - hilt).Normalized();
-        Vector2 anchor = hilt + (along * _bladeDepth);
-        Vector2 error = anchor - part!.GlobalPosition;
+        float bladeLength = hilt.DistanceTo(tip);
+        if (bladeLength < 0.01f)
+            return;
+
+        Vector2 along = (tip - hilt) / bladeLength;
+
+        // He is threaded onto the blade, not pinned to a point on it. The anchor is
+        // wherever he currently sits <b>along</b> the blade, so the correction below is
+        // purely perpendicular and he is free to slide up and down it — which is what lets
+        // the player keep pushing the blade further in once it is already through him
+        // (owner report 2026-08-25). Pinning a fixed depth made a push drag him along
+        // instead of running him further onto the point.
+        float depth = (part!.GlobalPosition - hilt).Dot(along);
+
+        // Off the end of the point and he is free. Withdrawing the blade is therefore how
+        // it comes back out, with no separate gesture.
+        if (depth > bladeLength + part.Radius)
+        {
+            _isSkewered = false;
+            _visual?.SetDepthOverride(null);
+            return;
+        }
+
+        // Never into the hand: the hilt end stops at the guard.
+        depth = Mathf.Max(depth, MinimumDepthFromHilt);
+
+        Vector2 anchor = hilt + (along * depth);
+        Vector2 error = anchor - part.GlobalPosition;
         Vector2 relativeVelocity = part.LinearVelocity - blade.LinearVelocity;
 
         GrabTetherResult result = GrabTether.Evaluate(new GrabTetherInput(
@@ -365,6 +399,15 @@ public partial class SwordImpalementComponent : Node2D
             return;
 
         _embedded!.GlobalTransform = part!.GlobalTransform * _embeddedOffset;
+
+        // Re-applied every frame rather than once on release: the dropped-object visual
+        // pools its slots and re-authors their depth whenever one is re-attached, so a
+        // one-shot override would be lost the first time the blade left and re-entered view.
+        if (_looseVisual is not null && GodotObject.IsInstanceValid(_looseVisual) &&
+            TryPartDepth(_skewered, out float depth))
+        {
+            _looseVisual.TrySetDepthOverride(_embedded.RuntimeId, depth);
+        }
     }
 
     private void ReleaseEmbeddedIfTakenHold()
