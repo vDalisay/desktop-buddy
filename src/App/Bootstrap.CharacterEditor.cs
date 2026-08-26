@@ -84,6 +84,17 @@ public partial class Bootstrap
             sandbox.AddChild(host);
             Log.Info(CharacterEditorStartupCategory,
                 $"CharacterEditorHost added successfully: path={host.GetPath()} insideTree={host.IsInsideTree()}.");
+
+            if (OperatingSystem.IsBrowser())
+            {
+                // The experimental single-threaded Web runtime has shown that early Timer signal
+                // delivery can stall even though CallDeferred keeps advancing. Hand the host an
+                // explicit browser composition gate so Shop/Tools/Settings/Paint Buddy are not
+                // left waiting forever after CharacterSelectionRuntime becomes ready.
+                host.EnsureBrowserInitialized();
+                Log.Info(CharacterEditorStartupCategory,
+                    "Browser CharacterEditorHost initialization gate armed.");
+            }
         }
         catch (Exception exception)
         {
