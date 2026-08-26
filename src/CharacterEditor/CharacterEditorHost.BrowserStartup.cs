@@ -6,42 +6,36 @@ namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
 /// Browser-only startup bridge for the experimental itch.io Web build. The custom single-threaded
-/// runtime has proven reliable for CallDeferred but not for Timer signal delivery during early
-/// composition, so browser UI initialization retries through deferred calls instead of depending
-/// on the native-oriented timer path in CharacterEditorHost._Ready(). Native builds never enter
-/// this path.
+/// runtime advances normal Node processing reliably during startup, while early Timer/deferred
+/// continuations have both been observed to stall. A tiny processing pump therefore waits for the
+/// character coordinator and enters the existing UI composition path synchronously. Native builds
+/// never enter this path.
 /// </summary>
 public partial class CharacterEditorHost
 {
-    private const int BrowserInitializationMaxDeferredAttempts = 120;
+    private BrowserCharacterUiStartupPump? _browserInitializationPump;
+    private bool _browserInitializationFailed;
 
     public void EnsureBrowserInitialized()
     {
-        if (!OperatingSystem.IsBrowser() || IsInitialized)
+        if (!OperatingSystem.IsBrowser() || IsInitialized || _browserInitializationFailed)
             return;
 
         // _Ready may already have armed the browser Timer before the character coordinator was
-        // published. Disable that competing path: deferred calls are known to execute correctly
-        // in the Web runtime and keep the entire initialization sequence on the Godot main loop.
+        // published. Disable that competing path. The smoke runner proves Node._Process continues
+        // to advance even when that Timer/deferred startup work does not.
         StopBrowserInitializationTimer();
 
         if (_context.Characters is null || _selectionRuntime.Coordinator is null)
         {
-            _browserInitializationAttempts++;
-            if (_browserInitializationAttempts >= BrowserInitializationMaxDeferredAttempts)
-            {
-                GD.PushError(
-                    "Character editor could not initialize its character services within " +
-                    $"{BrowserInitializationMaxDeferredAttempts} deferred browser frames.");
-                return;
-            }
-
-            Callable.From(EnsureBrowserInitialized).CallDeferred();
+            EnsureBrowserInitializationPump();
             return;
         }
 
         try
         {
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_INITIALIZING");
+
             BuildPreview();
             _mode = new CharacterEditorModeCoordinator(
                 _sandbox.Window,
@@ -68,11 +62,71 @@ public partial class CharacterEditorHost
             IsInitialized = true;
             RefreshAll();
             CallDeferred(MethodName.RefreshDockHitRegions);
+            StopBrowserInitializationPump();
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_READY");
         }
         catch (Exception exception)
         {
+            _browserInitializationFailed = true;
+            StopBrowserInitializationPump();
             GD.PushError($"Character editor browser initialization failed: {exception}");
+        }
+    }
+
+    private void EnsureBrowserInitializationPump()
+    {
+        if (GodotObject.IsInstanceValid(_browserInitializationPump))
+            return;
+
+        _browserInitializationPump = new BrowserCharacterUiStartupPump
+        {
+            Name = "BrowserCharacterUiStartupPump",
+            ProcessMode = ProcessModeEnum.Always,
+        };
+        _browserInitializationPump.Configure(this);
+        AddChild(_browserInitializationPump);
+    }
+
+    private void StopBrowserInitializationPump()
+    {
+        if (!GodotObject.IsInstanceValid(_browserInitializationPump))
+            return;
+
+        _browserInitializationPump!.SetProcess(false);
+        _browserInitializationPump.QueueFree();
+        _browserInitializationPump = null;
+    }
+}
+
+/// <summary>
+/// Uses the same render-frame callback that already drives CharacterEditorHost diagnostics in the
+/// browser. It exists only until the host has either composed or reported a concrete failure.
+/// </summary>
+internal sealed partial class BrowserCharacterUiStartupPump : Node
+{
+    private CharacterEditorHost _host = null!;
+
+    public void Configure(CharacterEditorHost host)
+    {
+        if (IsInsideTree())
+            throw new InvalidOperationException("Browser startup pump must be configured before entering the tree.");
+        _host = host ?? throw new ArgumentNullException(nameof(host));
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!GodotObject.IsInstanceValid(_host))
+        {
+            SetProcess(false);
+            QueueFree();
+            return;
+        }
+
+        _host.EnsureBrowserInitialized();
+        if (_host.IsInitialized)
+        {
+            SetProcess(false);
+            QueueFree();
         }
     }
 }
