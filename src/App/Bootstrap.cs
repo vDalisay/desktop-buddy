@@ -190,8 +190,11 @@ public partial class Bootstrap : Node
             : loadedProgress?.Environment?.CreateState() ?? new EnvironmentProgressState();
         var characterSelection = new CharacterSelectionState(
             newSemanticState ? null : loadedProgress?.ActiveCharacterId);
+        ICharacterFileSystem characterFileSystem = browser
+            ? new GodotBrowserCharacterFileSystem()
+            : new CharacterFileSystem();
         var characters = new CharacterStore(
-            new CharacterFileSystem(),
+            characterFileSystem,
             characterRoot,
             featureCatalog: BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
         var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
