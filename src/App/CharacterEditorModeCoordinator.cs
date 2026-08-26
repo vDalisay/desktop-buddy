@@ -18,7 +18,7 @@ public readonly record struct CharacterEditorModeSnapshot(
 /// accounting through the single pause owner, and prevents editor resizes from reaching
 /// gameplay boundaries.
 /// </summary>
-public sealed class CharacterEditorModeCoordinator
+public class CharacterEditorModeCoordinator
 {
     private readonly DesktopWindowController _window;
     private readonly DesktopShellController _shell;
@@ -35,6 +35,18 @@ public sealed class CharacterEditorModeCoordinator
         _lifecycle = lifecycle ?? throw new ArgumentNullException(nameof(lifecycle));
     }
 
+    /// <summary>
+    /// Browser adapters override only Enter/Exit and deliberately do not construct the native
+    /// desktop-window transition state. The experimental static-WASM runtime has no OS window
+    /// geometry to capture or restore, but the editor still needs the shared lifecycle pause.
+    /// </summary>
+    protected CharacterEditorModeCoordinator()
+    {
+        _window = null!;
+        _shell = null!;
+        _lifecycle = null!;
+    }
+
     public event Action<bool>? ModeChanged;
 
     public bool IsActive => _snapshot.HasValue;
@@ -42,7 +54,7 @@ public sealed class CharacterEditorModeCoordinator
     public int ExitCount { get; private set; }
     public CharacterEditorModeSnapshot? CapturedSnapshot => _snapshot;
 
-    public bool Enter()
+    public virtual bool Enter()
     {
         if (IsActive)
             return false;
@@ -77,7 +89,7 @@ public sealed class CharacterEditorModeCoordinator
         return true;
     }
 
-    public bool Exit()
+    public virtual bool Exit()
     {
         if (_snapshot is not CharacterEditorModeSnapshot captured)
             return false;
