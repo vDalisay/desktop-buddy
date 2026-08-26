@@ -116,6 +116,7 @@ public partial class ImpactFeedbackPresenter : Node2D
     public override void _Process(double delta)
     {
         ulong now = Time.GetTicksUsec();
+        bool visualExpired = false;
         if (IsHitStopActive)
         {
             double elapsed = (now - _hitStopStartedUsec) / 1_000_000.0;
@@ -134,17 +135,26 @@ public partial class ImpactFeedbackPresenter : Node2D
         {
             double elapsed = (now - _feedbackStartedUsec) / 1_000_000.0;
             if (elapsed >= Profile.RingSeconds)
+            {
                 IsFeedbackActive = false;
+                visualExpired = true;
+            }
         }
 
         if (IsHomeRunBurstActive)
         {
             double elapsed = (now - _homeRunBurstStartedUsec) / 1_000_000.0;
             if (elapsed >= Profile.HomeRunBurstSeconds)
+            {
                 IsHomeRunBurstActive = false;
+                visualExpired = true;
+            }
         }
 
-        if (IsFeedbackActive || IsHomeRunBurstActive)
+        // CanvasItem drawing is retained until the next redraw. Queue one final frame when an
+        // effect expires so WebGL does not keep the last starburst/ring cached on screen until
+        // another impact happens to invalidate the canvas.
+        if (IsFeedbackActive || IsHomeRunBurstActive || visualExpired)
         {
             QueueRedraw();
         }
