@@ -114,11 +114,18 @@ public sealed class RewardIconCaptureScenario : IScenario
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
         }
 
+        // Against the shot list rather than a literal, so adding a tool cannot make this
+        // fail for having done exactly what was asked. It still catches the case that
+        // matters: a shot whose mesh failed to build and was silently skipped.
+        int expected = 0;
+        foreach (Shot _ in Shots())
+            expected++;
+
         bool headless = DisplayServer.GetName() == "headless";
         checks.Add(new StartupCheck(
             "reward_icons_rendered_from_shipped_meshes",
-            headless || written.Count == 17,
-            $"headless={headless} written={written.Count}/17 [{string.Join(',', written)}]"));
+            headless || written.Count == expected,
+            $"headless={headless} written={written.Count}/{expected} [{string.Join(',', written)}]"));
         bool passed = true;
         foreach (StartupCheck check in checks) passed &= check.Passed;
         return new ScenarioResult(passed, checks, messages);
@@ -147,6 +154,9 @@ public sealed class RewardIconCaptureScenario : IScenario
         new Shot("pet", new Vector3(0.0f, -28.0f, 0.0f)),
         new Shot("tickle", new Vector3(0.0f, -28.0f, 0.0f)),
         new Shot("baseball_bat", new Vector3(0.0f, -8.0f, 38.0f)),
+        // A little more yaw than the bat: the blade is flat, so face-on it would read as a
+        // stick and edge-on it would nearly vanish.
+        new Shot("sword", new Vector3(0.0f, -18.0f, 38.0f)),
         new Shot("boxing_glove", new Vector3(0.0f, 0.0f, 0.0f)),
         new Shot("baseball", new Vector3(-14.0f, 26.0f, 0.0f)),
         new Shot("soccer_ball", new Vector3(-14.0f, 26.0f, 0.0f)),
@@ -173,6 +183,8 @@ public sealed class RewardIconCaptureScenario : IScenario
         "tickle" => CareToolMeshBuilder.BuildFeatherDuster(worldForm: true),
         "baseball_bat" => BatMeshBuilder.Build(
             GD.Load<CursorToolProfile>("res://data/buddy/lab_cursor_tool_baseball_bat.tres")),
+        "sword" => SwordMeshBuilder.Build(
+            GD.Load<CursorToolProfile>("res://data/tools/cursor_tool_sword.tres")),
         "boxing_glove" => BoxingGloveMeshBuilder.Build(
             GD.Load<CursorToolProfile>("res://data/buddy/lab_cursor_tool_boxing_glove.tres")),
         "baseball" => LooseMesh("res://data/objects/baseball.tres"),
