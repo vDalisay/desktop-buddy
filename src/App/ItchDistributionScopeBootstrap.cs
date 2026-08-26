@@ -20,6 +20,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
 {
     private const ulong BrowserBootTimeoutMsec = 15_000;
     private const ulong BrowserRuntimeTimeoutMsec = 12_000;
+    private const ulong BrowserRuntimeTimeoutFrames = 900;
 
     private bool _workCommandRemoved;
     private bool _legacyWorkCommandRemoved;
@@ -27,6 +28,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
     private ulong _browserBootDeadlineMsec;
     private bool _browserRuntimeWatchdogArmed;
     private ulong _browserRuntimeDeadlineMsec;
+    private ulong _browserRuntimeFrame;
     private Vector2I _lastBrowserViewportSize = new(-1, -1);
     private bool _browserRuntimeReadyReported;
 
@@ -97,6 +99,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
         if (!GodotObject.IsInstanceValid(sandbox))
             return;
 
+        _browserRuntimeFrame++;
         Vector2I expectedRoom = ResolveExpectedBrowserRoom(sandbox!);
         if (sandbox!.Boundaries.IsInitialized && expectedRoom.X > 0 && expectedRoom.Y > 0)
         {
@@ -162,13 +165,36 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
             return;
         }
 
-        if (!_browserRuntimeWatchdogArmed || Time.GetTicksMsec() < _browserRuntimeDeadlineMsec)
+        if (_browserRuntimeFrame is 1 or 30 or 120 or 300 or 600)
+        {
+            GD.Print(
+                $"DESKTOP_BUDDY_WEB_RUNTIME_WAIT frame={_browserRuntimeFrame} " +
+                $"lifecycleReady={lifecycleReady} trayReady={trayReady} " +
+                $"visualInitialized={visualInitialized} visualVisible={sandbox.VisualPresenter.Visible} " +
+                $"mode={sandbox.Mode} legacyVisible={legacyVisible} roomReady={roomReady} " +
+                $"room={sandbox.Boundaries.CurrentLayout.ClientWidth}x{sandbox.Boundaries.CurrentLayout.ClientHeight} " +
+                $"expectedRoom={expectedRoom.X}x{expectedRoom.Y} " +
+                $"characterRuntimeReady={characterRuntimeReady} hostPresent={host is not null} " +
+                $"characterUiReady={characterUiReady} commandBarReady={commandBarReady}");
+        }
+
+        if (!_browserRuntimeWatchdogArmed)
+            return;
+
+        // The experimental browser runtime has shown that Time.GetTicksMsec can fail to
+        // advance consistently even while render-frame callbacks keep running. Keep the
+        // monotonic deadline for normal browsers, but also enforce the watchdog by rendered
+        // frames so CI can never sit on a healthy-looking canvas without explaining which
+        // shipping-surface condition is still missing.
+        bool timedOut = Time.GetTicksMsec() >= _browserRuntimeDeadlineMsec ||
+                        _browserRuntimeFrame >= BrowserRuntimeTimeoutFrames;
+        if (!timedOut)
             return;
 
         _browserRuntimeWatchdogArmed = false;
         throw new InvalidOperationException(
             "RuntimeError: Desktop Buddy browser runtime did not reach the shipping itch surface " +
-            $"within {BrowserRuntimeTimeoutMsec / 1000} seconds. " +
+            $"within {BrowserRuntimeTimeoutMsec / 1000} seconds / {BrowserRuntimeTimeoutFrames} rendered frames. " +
             $"lifecycleReady={lifecycleReady} trayReady={trayReady} " +
             $"visualInitialized={visualInitialized} visualVisible={sandbox.VisualPresenter.Visible} " +
             $"mode={sandbox.Mode} legacyVisible={legacyVisible} roomReady={roomReady} " +
