@@ -6,6 +6,7 @@ using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Damage;
 using DesktopBuddy.Domain.Presentation;
+using DesktopBuddy.Sandbox;
 using Godot;
 
 namespace DesktopBuddy.Interaction;
@@ -55,12 +56,6 @@ public partial class GoreComponent : Node2D
     /// <summary>Radius of the stain left on the part by the opening hit, at full severity.</summary>
     private const float OpeningStainRadius = 7.0f;
 
-    /// <summary>
-    /// Drops allowed in flight at once across every wound. Each one is a node that draws
-    /// and raycasts every physics tick, so this is the real cost of a heavy bleed.
-    /// </summary>
-    private const int MaximumLiveDroplets = 22;
-
     private static readonly string[] PiercingContentIds =
     [
         ContentIds.ToolSword,
@@ -71,12 +66,17 @@ public partial class GoreComponent : Node2D
     private readonly BleedWound[] _wounds = new BleedWound[6];
 
     private BleedingConstants _constants = BleedingConstants.Default;
-    private int _liveDroplets;
     private EffectsSettings _effects = EffectsSettings.Default;
     private BloodStainLayer2D _stains = null!;
 
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public BuddyRoot Buddy { get; set; } = null!;
+
+    /// <summary>
+    /// The room drops land in. Optional: without it drips simply expire in the air, which
+    /// is what an isolated composition should get rather than a crash.
+    /// </summary>
+    [Export] public BoundaryController Boundaries { get; set; } = null!;
 
     public bool IsInitialized { get; private set; }
 
@@ -85,6 +85,9 @@ public partial class GoreComponent : Node2D
 
     /// <summary>Drips emitted since the run started.</summary>
     public int DripsEmitted { get; private set; }
+
+    /// <summary>Drops currently in the air.</summary>
+    public int LiveDroplets => GodotObject.IsInstanceValid(_stains) ? _stains.LiveDroplets : 0;
 
     /// <summary>Where blood that has landed is kept.</summary>
     public BloodStainLayer2D Stains => _stains;
@@ -119,7 +122,9 @@ public partial class GoreComponent : Node2D
 
         _stains = new BloodStainLayer2D { Name = "BloodStainLayer" };
         AddChild(_stains);
-        _stains.Initialize(Buddy.Rig);
+        _stains.Initialize(
+            Buddy.Rig,
+            GodotObject.IsInstanceValid(Boundaries) ? Boundaries : null);
 
         ZAsRelative = false;
         ZIndex = 151;
@@ -155,16 +160,57 @@ public partial class GoreComponent : Node2D
         for (int index = 0; index < _wounds.Length; index++)
             _wounds[index] = BleedingStatus.Clear(_wounds[index]);
 
-        // Drops already in the air are part of "no trace left behind". Each one gives its
-        // slot back through its own _ExitTree, so the live count needs no bookkeeping here.
+        // Sprays still playing are part of "no trace left behind". Drops in the air are
+        // cleared by the layer itself, which owns them as data rather than as nodes.
         foreach (Node child in GetChildren())
         {
-            if (child is BloodDroplet2D or BloodSpray2D)
+            if (child is BloodSpray2D)
                 child.QueueFree();
         }
 
         if (GodotObject.IsInstanceValid(_stains))
             _stains.Clear();
+    }
+
+    /// <summary>
+    /// Opens a wound that did not come through the damage pipeline. The Sword's skewer is
+    /// the caller: running a blade into someone is a matter of geometry, so it never
+    /// produces the impulse an accepted impact would have carried, but it very much
+    /// produces a wound.
+    ///
+    /// <para>Gated like everything else here, so a build or a player without Gore Mode gets
+    /// the blade going in and no blood — impaling is the Sword's mechanic, the blood is
+    /// this component's.</para>
+    /// </summary>
+    public void OpenWound(BuddyPart part, float severity, Vector2 worldPoint)
+    {
+        if (!IsActive)
+            return;
+
+        int slot = (int)part;
+        if (slot < 0 || slot >= _wounds.Length)
+            return;
+
+        BleedOpenResult opened = BleedingStatus.Open(_wounds[slot], severity, _constants);
+        if (!opened.IsValid)
+            return;
+
+        _wounds[slot] = opened.Wound;
+        WoundsOpened++;
+        SpawnSpray(worldPoint, Vector2.Up, severity);
+        StainPart(part, worldPoint, severity);
+    }
+
+    /// <summary>The mark the opening hit leaves on the buddy, in the struck part's space.</summary>
+    private void StainPart(BuddyPart part, Vector2 worldPoint, float severity)
+    {
+        if (!TryPart(part, out PuppetPartBody? body))
+            return;
+
+        _stains.AddPartStain(
+            (BuddyPartId)(int)part,
+            body!.ToLocal(worldPoint),
+            OpeningStainRadius * (0.55f + (0.45f * severity)));
     }
 
     private void OnImpactAccepted(AcceptedImpact impact)
@@ -190,14 +236,7 @@ public partial class GoreComponent : Node2D
             ? -impact.Normal.Normalized()
             : Vector2.Up;
         SpawnSpray(impact.Point, (outward + (Vector2.Up * 0.4f)).Normalized(), severity);
-
-        if (TryPart(impact.Part, out PuppetPartBody? body))
-        {
-            _stains.AddPartStain(
-                (BuddyPartId)slot,
-                body!.ToLocal(impact.Point),
-                OpeningStainRadius * (0.55f + (0.45f * severity)));
-        }
+        StainPart(impact.Part, impact.Point, severity);
     }
 
     public override void _PhysicsProcess(double delta)
@@ -237,32 +276,20 @@ public partial class GoreComponent : Node2D
             return;
         }
 
-        // Every drop in flight is a node that draws and raycasts each tick, so six wounds
-        // bleeding at once had six unbounded streams of them (owner report 2026-08-25). Past
-        // the cap the drop is simply not spawned: the cadence is the wound's business and
-        // silently thinning it here is cheaper than any pool.
-        if (_liveDroplets >= MaximumLiveDroplets)
-        {
-            DripsEmitted++;
-            return;
-        }
-
         DripsEmitted++;
-        _liveDroplets++;
 
-        Vector2 origin = body!.GlobalPosition + new Vector2(
-            (float)GD.RandRange(-body.Radius * 0.5, body.Radius * 0.5),
-            body.Radius * 0.75f);
+        // A drop leaves the underside of the part, offset around it so a wound does not
+        // emit a single vertical thread of beads. The layer silently drops it if the air is
+        // already full; the cadence is the wound's business, not the renderer's.
+        float lean = (float)GD.RandRange(-body!.Radius * 0.55, body.Radius * 0.55);
+        Vector2 origin = body.GlobalPosition + new Vector2(lean, body.Radius * 0.7f);
 
-        var droplet = new BloodDroplet2D { Name = "BloodDroplet", GlobalPosition = origin };
-        AddChild(droplet);
-        droplet.GlobalPosition = origin;
-        droplet.Start(
-            _stains,
-            // Inherited part motion, damped: a drop is flung, not welded to the limb.
-            (body.LinearVelocity * 0.35f) + new Vector2((float)GD.RandRange(-18.0, 18.0), 0.0f),
-            1.4f + (1.6f * Mathf.Clamp(intensity, 0.0f, 1.0f)),
-            () => _liveDroplets--);
+        _stains.AddDroplet(
+            origin,
+            // Inherited part motion, damped, plus a little sideways scatter: a drop is
+            // flung off a moving limb, not welded to it.
+            (body.LinearVelocity * 0.35f) + new Vector2((float)GD.RandRange(-22.0, 22.0), 0.0f),
+            1.3f + (1.5f * Mathf.Clamp(intensity, 0.0f, 1.0f)));
     }
 
     private void SpawnSpray(Vector2 worldPoint, Vector2 direction, float severity)

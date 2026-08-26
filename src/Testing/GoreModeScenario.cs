@@ -141,19 +141,49 @@ public sealed class GoreModeScenario : IScenario
             $"wounds={gore.WoundsOpened} bleeding={gore.IsBleeding} " +
             $"remaining={gore.WoundOn(BuddyPart.Head).TicksRemaining}"));
 
-        // --- a blunt tool never draws blood, however hard it lands ---
-        before = gore.WoundsOpened;
-        sandbox.Pipeline.ApplyBlastImpulse(
-            InteractionIds.Next(),
-            ContentIds.ToolBaseballBat,
-            BuddyPart.Torso,
-            WoundingImpulse,
-            sandbox.Buddy.Rig.Torso.GlobalPosition);
+        // --- the guns bleed him too ---
+        // pistol_fire proves the pipeline publishes a real bullet hit as tool.pistol with
+        // pain 53.8; this proves Gore Mode wounds on exactly that. Together they cover the
+        // whole path without a scenario having to aim a gun, which is bounded-rate pursuit
+        // and cannot be done by teleporting a cursor.
+        foreach (string gun in new[] { ContentIds.ToolPistol, ContentIds.ToolShotgun })
+        {
+            gore.ClearAll();
+            before = gore.WoundsOpened;
+            sandbox.Pipeline.ApplyBlastImpulse(
+                InteractionIds.Next(),
+                gun,
+                BuddyPart.Torso,
+                WoundingImpulse,
+                sandbox.Buddy.Rig.Torso.GlobalPosition);
+            await Ticks(tree, 2);
+            checks.Add(new StartupCheck(
+                $"a_hit_from_{gun.Replace("tool.", string.Empty)}_opens_a_wound",
+                gore.WoundsOpened == before + 1 && gore.WoundOn(BuddyPart.Torso).IsBleeding,
+                $"wounds={gore.WoundsOpened} (was {before})"));
+        }
+
+        // --- blunt and toy weapons never draw blood, however hard they land ---
+        foreach (string blunt in new[] { ContentIds.ToolBaseballBat, ContentIds.ToolNerfBlaster })
+        {
+            gore.ClearAll();
+            before = gore.WoundsOpened;
+            sandbox.Pipeline.ApplyBlastImpulse(
+                InteractionIds.Next(),
+                blunt,
+                BuddyPart.Torso,
+                WoundingImpulse,
+                sandbox.Buddy.Rig.Torso.GlobalPosition);
+            await Ticks(tree, 2);
+            checks.Add(new StartupCheck(
+                $"{blunt.Replace("tool.", string.Empty)}_draws_no_blood",
+                gore.WoundsOpened == before && !gore.WoundOn(BuddyPart.Torso).IsBleeding,
+                $"wounds={gore.WoundsOpened} (was {before})"));
+        }
+
+        // Back to a bleeding head for the drip checks below.
+        Wound(sandbox);
         await Ticks(tree, 2);
-        checks.Add(new StartupCheck(
-            "a_blunt_tool_draws_no_blood",
-            gore.WoundsOpened == before && !gore.WoundOn(BuddyPart.Torso).IsBleeding,
-            $"wounds={gore.WoundsOpened} (was {before})"));
 
         // --- an open wound drips, and what lands stains ---
         int drips = gore.DripsEmitted;

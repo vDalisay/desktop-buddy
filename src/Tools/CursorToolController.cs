@@ -232,6 +232,13 @@ public partial class CursorToolController : Node2D
     /// <summary>Whether the authored tool is wielded by the hilt with its point leading.</summary>
     public bool IsThrustCapableTool(ToolId tool) => ProfileFor(tool)?.IsThrustCapable == true;
 
+    /// <summary>
+    /// True while the live tool is a blade and the player is bracing it. The impalement
+    /// component reads this rather than the raw button, so "wielding" means one thing.
+    /// </summary>
+    public bool IsWieldingPointFirst =>
+        IsActive && _activeProfile is not null && PointsFirst(_activeProfile);
+
     /// <summary>Fires once on the routed tick that charging begins.</summary>
     public event Action? ChargeStarted
     {

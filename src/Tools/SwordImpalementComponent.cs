@@ -3,61 +3,74 @@ using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using Godot;
+using NumericsVector2 = System.Numerics.Vector2;
 
 namespace DesktopBuddy.Tools;
 
 /// <summary>
-/// Leaves the Sword buried in whatever it was driven into.
+/// Runs the Sword through the buddy and leaves it there.
 ///
-/// <para><b>It reuses the drop path rather than inventing a held state.</b> An impaled
-/// sword is an ordinary <see cref="DroppedCursorToolBody"/> — the same world form the D key
-/// produces — that happens to be pinned to a part. That is what makes pulling it back out
-/// free: the existing Grab picker already picks up dropped tools, the registry already owns
-/// its identity, cap and eviction, and double-clicking it already re-equips it. A bespoke
-/// "impaled" object would have had to re-earn every one of those.</para>
+/// <para><b>Driven by the blade's own tip, not by the damage pipeline.</b> The first version
+/// waited for an <c>ImpactAccepted</c> carrying enough impulse, and in practice that never
+/// arrived: the capsule bounced off before it could build one, so the owner could not impale
+/// the buddy at all (report 2026-08-25). Now the component watches where the point actually
+/// is each tick. If it has crossed into a part while the player is driving it, that is a
+/// skewer — no impulse threshold, because a sword going in is a matter of geometry rather
+/// than of how hard it was swung.</para>
 ///
-/// <para><b>Why it is driven and not jointed.</b> A <see cref="PinJoint2D"/> would let the
-/// sword's mass fight the ragdoll solver, so a blade left in the chest would change how the
-/// buddy falls — a presentation feature altering the simulation, which is exactly what
-/// Gore Mode is not allowed to do. Instead the blade is frozen, driven kinematically from
-/// the part's own transform, and excepted from collision with every part, so it rides the
-/// buddy and exerts nothing on him. This is the same reason blood droplets are drawn rather
-/// than simulated.</para>
+/// <para><b>Three stages.</b> The tip enters a part; the blade is excepted from colliding
+/// with every part so it passes <i>through</i> rather than shoving him; and the part is held
+/// on the blade by the same bounded spring the Grab tether uses, so the buddy hangs off the
+/// sword and can be carried on it. Let go and the blade stays in him, as an ordinary dropped
+/// tool pinned to the part, and the wound it opened goes on bleeding.</para>
 ///
-/// <para>Gated with the rest of Gore Mode: a build or a player without it gets a sword that
-/// swings and hurts exactly as it does here, and simply bounces off instead of sticking.</para>
+/// <para><b>Impaling is the Sword's mechanic, not Gore Mode's.</b> It is deliberately not
+/// behind the Gore toggle: holding the buddy on the blade moves him, and anything gated on
+/// <see cref="Domain.Presentation.EffectsSettings"/> must not be able to change what a run
+/// simulates (FR-004.3a). So the blade goes in whatever the build and whatever the setting;
+/// only the <b>blood</b> it draws is Gore Mode's business.</para>
 /// </summary>
 [GlobalClass]
 public partial class SwordImpalementComponent : Node2D
 {
     /// <summary>
-    /// How close to the point of the blade a contact must land to count as a stab, as a
-    /// fraction of the blade's half-length. A hit further down is the flat of the sword and
-    /// swats rather than pierces.
+    /// How fast the point must be travelling to go in, in px/s. Low enough that a deliberate
+    /// push works and high enough that a blade resting against him does not.
     /// </summary>
-    private const float TipFraction = 0.42f;
+    private const float MinimumEntrySpeed = 220.0f;
 
-    /// <summary>
-    /// Closing speed the tip must carry to bury itself, in px/s. Well above a careless
-    /// nudge: resting the blade against the buddy must never impale him.
-    /// </summary>
-    private const float MinimumStabSpeed = 900.0f;
+    /// <summary>How far into a part the tip must reach, as a fraction of the part's radius.</summary>
+    private const float EntryDepthFraction = 0.55f;
 
-    /// <summary>Pain floor for a stab, so a glancing tip contact does not stick.</summary>
-    private const float MinimumStabPain = 6.0f;
+    /// <summary>Severity of the wound a skewer opens, before Gore Mode decides to draw it.</summary>
+    private const float SkewerWoundSeverity = 0.85f;
 
-    private DroppedCursorToolBody? _impaled;
-    private BuddyPartId _anchorPart;
-    private Vector2 _anchorOffset;
-    private float _anchorRotation;
+    // The spring that holds a skewered part on the blade. Firm enough to carry the buddy's
+    // weight, bounded so the solver can never be handed an impulse it cannot integrate.
+    private const float HoldStiffness = 2600.0f;
+    private const float HoldDamping = 90.0f;
+    private const float HoldMaximumForce = 90000.0f;
+
+    private DroppedCursorToolBody? _embedded;
+
+    /// <summary>Where the embedded blade sits in the part it is in, in that part's space.</summary>
+    private Transform2D _embeddedOffset = Transform2D.Identity;
+    private BuddyPartId _skewered;
+    private bool _isSkewered;
+
+    /// <summary>Distance from the hilt along the blade at which the part sits.</summary>
+    private float _bladeDepth;
+
+    private Vector2 _previousTip;
+    private bool _hasPreviousTip;
 
     // Composed in code rather than authored: the dropped-tool component this depends on is
     // itself built by DroppedToolInputBootstrap once the sandbox has finished composing, so
     // there is no scene-time node for an [Export] to point at.
-    private InteractionDamageComponent _pipeline = null!;
     private BuddyRoot _buddy = null!;
     private CursorToolController _cursorTools = null!;
     private DroppedToolInteractionComponent _droppedTools = null!;
@@ -66,179 +79,264 @@ public partial class SwordImpalementComponent : Node2D
 
     public bool IsInitialized { get; private set; }
 
-    /// <summary>How many times a blade has been left in the buddy this run.</summary>
+    /// <summary>How many times a blade has gone into the buddy this run.</summary>
     public int ImpalementCount { get; private set; }
 
-    /// <summary>True while a sword is buried in the buddy.</summary>
-    public bool IsImpaled => GodotObject.IsInstanceValid(_impaled);
+    /// <summary>True while the player is holding the buddy on the blade.</summary>
+    public bool IsSkewered => _isSkewered;
 
-    /// <summary>Which part currently holds a blade. Only meaningful while impaled.</summary>
-    public BuddyPart ImpaledPart => (BuddyPart)(int)_anchorPart;
+    /// <summary>True while a blade has been left in him.</summary>
+    public bool IsEmbedded => GodotObject.IsInstanceValid(_embedded);
+
+    /// <summary>Which part currently holds the blade. Only meaningful while skewered.</summary>
+    public BuddyPart SkeweredPart => (BuddyPart)(int)_skewered;
 
     public void Initialize(
-        InteractionDamageComponent pipeline,
         BuddyRoot buddy,
         CursorToolController cursorTools,
         DroppedToolInteractionComponent droppedTools,
         GrabTetherController grab,
         GoreComponent gore)
     {
-        if (!GodotObject.IsInstanceValid(pipeline) || !pipeline.IsInitialized ||
-            !GodotObject.IsInstanceValid(buddy) ||
+        if (!GodotObject.IsInstanceValid(buddy) ||
             !GodotObject.IsInstanceValid(cursorTools) ||
             !GodotObject.IsInstanceValid(droppedTools) ||
             !GodotObject.IsInstanceValid(grab) ||
-            !GodotObject.IsInstanceValid(gore) || !gore.IsInitialized)
+            !GodotObject.IsInstanceValid(gore))
         {
             throw new InvalidOperationException("SwordImpalementComponent dependencies are incomplete.");
         }
 
-        _pipeline = pipeline;
         _buddy = buddy;
         _cursorTools = cursorTools;
         _droppedTools = droppedTools;
         _grab = grab;
         _gore = gore;
-        _pipeline.ImpactAccepted += OnImpactAccepted;
         IsInitialized = true;
     }
 
-    public override void _ExitTree()
+    public override void _PhysicsProcess(double delta)
     {
-        if (GodotObject.IsInstanceValid(_pipeline))
-            _pipeline.ImpactAccepted -= OnImpactAccepted;
-    }
-
-    private void OnImpactAccepted(AcceptedImpact impact)
-    {
-        if (!_gore.IsActive || IsImpaled ||
-            impact.ContentId != ContentIds.ToolSword ||
-            impact.Pain < MinimumStabPain ||
-            impact.RelativeSpeed < MinimumStabSpeed)
-        {
+        if (!IsInitialized)
             return;
-        }
+
+        ReleaseEmbeddedIfTakenHold();
 
         CursorToolProfile? profile = _cursorTools.ActiveProfile;
         CursorToolBody? blade = _cursorTools.Body;
-        if (profile is null || blade is null ||
-            !GodotObject.IsInstanceValid(profile) || !GodotObject.IsInstanceValid(blade) ||
-            profile.ContentId != ContentIds.ToolSword || !profile.IsElongated)
+        bool live =
+            profile is not null && blade is not null &&
+            GodotObject.IsInstanceValid(profile) && GodotObject.IsInstanceValid(blade) &&
+            profile!.ContentId == ContentIds.ToolSword && profile.IsElongated;
+
+        if (!live)
         {
+            // The sword went away without being let go of deliberately — tool switched, or
+            // despawned. Nothing stays skewered on a blade that is not there.
+            _isSkewered = false;
+            _hasPreviousTip = false;
             return;
         }
 
-        if (!StruckWithTheTip(profile, blade, impact.Point))
+        Vector2 hilt = blade!.ToGlobal(profile!.HandleLocalOffset);
+        Vector2 tip = blade.ToGlobal(-profile.HandleLocalOffset);
+        float step = (float)Math.Max(0.0001, delta);
+        Vector2 tipVelocity = _hasPreviousTip ? (tip - _previousTip) / step : Vector2.Zero;
+        _previousTip = tip;
+        _hasPreviousTip = true;
+
+        if (!_cursorTools.IsWieldingPointFirst)
+        {
+            // Letting go of the button is how a blade is left in him.
+            if (_isSkewered)
+                LeaveItIn(blade);
+
+            return;
+        }
+
+        if (_isSkewered)
+            HoldOnBlade(hilt, tip, blade);
+        else
+            TryEnter(tip, tipVelocity, hilt, blade);
+    }
+
+    /// <summary>
+    /// Whether the point has crossed into a part hard enough to go in. Geometry plus
+    /// intent: the tip must be inside the part and travelling into it, which is what stops
+    /// a blade being dragged sideways past him from skewering anything.
+    /// </summary>
+    private void TryEnter(Vector2 tip, Vector2 tipVelocity, Vector2 hilt, CursorToolBody blade)
+    {
+        if (tipVelocity.Length() < MinimumEntrySpeed)
             return;
 
-        Impale(impact.Part, blade);
+        for (int index = 0; index < 6; index++)
+        {
+            if (!TryPart((BuddyPart)index, out PuppetPartBody? part))
+                continue;
+
+            Vector2 toCentre = part!.GlobalPosition - tip;
+            if (toCentre.Length() > part.Radius * EntryDepthFraction)
+                continue;
+
+            // Travelling into the part, not away from it or across it.
+            if (tipVelocity.Normalized().Dot(toCentre.Normalized()) < 0.0f)
+                continue;
+
+            Enter((BuddyPartId)index, part, hilt, tip, blade);
+            return;
+        }
+    }
+
+    private void Enter(
+        BuddyPartId partId,
+        PuppetPartBody part,
+        Vector2 hilt,
+        Vector2 tip,
+        CursorToolBody blade)
+    {
+        _skewered = partId;
+        _isSkewered = true;
+        ImpalementCount++;
+
+        // Where along the blade he ends up: his centre projected onto the blade axis, so he
+        // is threaded on at the depth the point actually reached him rather than snapping to
+        // the tip. Kept off the hilt itself so he cannot end up inside the player's hand.
+        float bladeLength = hilt.DistanceTo(tip);
+        Vector2 along = bladeLength > 0.01f ? (tip - hilt) / bladeLength : Vector2.Right;
+        float depth = (part.GlobalPosition - hilt).Dot(along);
+        _bladeDepth = Mathf.Clamp(depth, part.Radius, bladeLength);
+
+        // Through, not into: without this the capsule keeps colliding with him and shoves
+        // him off the point instead of running him onto it.
+        PassThroughParts(blade, except: true);
+
+        // The blade opened him up. Gore Mode decides whether that is drawn.
+        _gore.OpenWound((BuddyPart)(int)partId, SkewerWoundSeverity, tip);
     }
 
     /// <summary>
-    /// Whether the contact landed near the point. The tip is the end opposite the authored
-    /// handle offset, which is the same end the swing glint and the collider cap use.
+    /// Holds the skewered part at its depth along the blade with a bounded spring — the
+    /// same shape as the Grab tether, and bounded for the same reason: a hard transform
+    /// write would fight the ragdoll solver and could throw him across the room.
     /// </summary>
-    private static bool StruckWithTheTip(CursorToolProfile profile, CursorToolBody blade, Vector2 worldPoint)
+    private void HoldOnBlade(Vector2 hilt, Vector2 tip, CursorToolBody blade)
     {
-        Vector2 tipLocal = -profile.HandleLocalOffset;
-        float distance = blade.ToLocal(worldPoint).DistanceTo(tipLocal);
-        return distance <= MathF.Max(profile.Radius * 2.0f, profile.Length * TipFraction);
+        if (!TryPart(SkeweredPart, out PuppetPartBody? part))
+        {
+            _isSkewered = false;
+            return;
+        }
+
+        Vector2 along = (tip - hilt).Normalized();
+        Vector2 anchor = hilt + (along * _bladeDepth);
+        Vector2 error = anchor - part!.GlobalPosition;
+        Vector2 relativeVelocity = part.LinearVelocity - blade.LinearVelocity;
+
+        GrabTetherResult result = GrabTether.Evaluate(new GrabTetherInput(
+            new NumericsVector2(error.X, error.Y),
+            new NumericsVector2(relativeVelocity.X, relativeVelocity.Y),
+            HoldStiffness,
+            HoldDamping,
+            HoldMaximumForce));
+        var force = new Vector2(result.Force.X, result.Force.Y);
+        if (force.IsFinite())
+            part.ApplyForce(force);
     }
 
     /// <summary>
-    /// Turns the held blade into a dropped one pinned to the struck part, capturing the
-    /// pose first so the sword stays exactly where it landed rather than snapping.
+    /// The player let go with the blade still in him. It becomes an ordinary dropped tool
+    /// pinned to the part it went into, so the existing Grab picker can pull it back out
+    /// and the registry owns its identity, cap and eviction unchanged.
     /// </summary>
-    private void Impale(BuddyPart part, CursorToolBody blade)
+    private void LeaveItIn(CursorToolBody blade)
     {
-        if (!TryPart(part, out PuppetPartBody? body))
+        _isSkewered = false;
+        if (!TryPart(SkeweredPart, out PuppetPartBody? part))
             return;
 
         Transform2D bladeTransform = blade.GlobalTransform;
         if (!_droppedTools.TryDropSelected())
+        {
+            PassThroughParts(blade, except: false);
             return;
+        }
 
         DroppedCursorToolBody? dropped = _droppedTools.FindDropped(ContentIds.ToolSword);
         if (dropped is null || !GodotObject.IsInstanceValid(dropped))
             return;
 
-        // The drop lands the body at the held pose already; this re-states it so the anchor
-        // below is taken from exactly the transform the player saw the blade in.
         dropped.GlobalTransform = bladeTransform;
-
-        _anchorPart = (BuddyPartId)(int)part;
-        Transform2D partToBlade = body!.GlobalTransform.AffineInverse() * bladeTransform;
-        _anchorOffset = partToBlade.Origin;
-        _anchorRotation = partToBlade.Rotation;
-
         dropped.LinearVelocity = Vector2.Zero;
         dropped.AngularVelocity = 0.0f;
         dropped.FreezeMode = RigidBody2D.FreezeModeEnum.Kinematic;
         dropped.Freeze = true;
+        PassThroughParts(dropped, except: true);
 
-        // The blade must not push the body it is buried in, nor catch on the other limbs on
-        // the way past. Excepting every part is what keeps an impaled sword inert.
-        for (int index = 0; index < 6; index++)
-        {
-            if (TryPart((BuddyPart)index, out PuppetPartBody? other))
-                dropped.AddCollisionExceptionWith(other);
-        }
-
-        _impaled = dropped;
-        ImpalementCount++;
+        _embeddedOffset = part!.GlobalTransform.AffineInverse() * bladeTransform;
+        _embedded = dropped;
     }
 
-    public override void _PhysicsProcess(double delta)
+    public override void _Process(double _delta)
     {
-        if (!IsImpaled)
+        // The embedded blade rides the part it is in. Driven kinematically rather than
+        // jointed, so its mass never fights the ragdoll solver for how the buddy falls.
+        if (!IsEmbedded || !TryPart(SkeweredPart, out PuppetPartBody? part))
             return;
 
-        // Released the moment anything takes hold of it — the Grab tether, an eviction, or
-        // Gore Mode being switched off underneath it.
-        if (!_gore.IsActive || WasTakenHold())
-        {
-            Release();
-            return;
-        }
-
-        if (!TryPart(ImpaledPart, out PuppetPartBody? body))
-        {
-            Release();
-            return;
-        }
-
-        _impaled!.GlobalTransform =
-            body!.GlobalTransform * new Transform2D(_anchorRotation, _anchorOffset);
+        _embedded!.GlobalTransform = part!.GlobalTransform * _embeddedOffset;
     }
 
-    private bool WasTakenHold()
+    private void ReleaseEmbeddedIfTakenHold()
     {
+        if (!IsEmbedded)
+            return;
+
         GrabState grab = _grab.CurrentGrab;
-        return grab.Active && ReferenceEquals(grab.Target, _impaled);
+        if (grab.Active && ReferenceEquals(grab.Target, _embedded))
+            PullOut();
     }
 
     /// <summary>
-    /// Pulls the blade out: it becomes an ordinary loose object again, wherever it was. Also
-    /// the entry point for the Repair Kit and for a hard reposition.
+    /// Pulls the blade back out: it becomes an ordinary loose object again, wherever it is.
+    /// Also the entry point for the Repair Kit and for a hard reposition.
     /// </summary>
-    public void Release()
+    public void PullOut()
     {
-        if (!GodotObject.IsInstanceValid(_impaled))
+        _isSkewered = false;
+        if (!GodotObject.IsInstanceValid(_embedded))
         {
-            _impaled = null;
+            _embedded = null;
             return;
         }
 
-        DroppedCursorToolBody blade = _impaled!;
-        for (int index = 0; index < 6; index++)
-        {
-            if (TryPart((BuddyPart)index, out PuppetPartBody? other))
-                blade.RemoveCollisionExceptionWith(other);
-        }
-
+        DroppedCursorToolBody blade = _embedded!;
+        PassThroughParts(blade, except: false);
         blade.Freeze = false;
         blade.Sleeping = false;
-        _impaled = null;
+        _embedded = null;
+    }
+
+    /// <summary>
+    /// Turns collision between the blade and every buddy part on or off. Every part, not
+    /// just the skewered one, so a blade run through the chest does not catch on an arm on
+    /// its way through.
+    /// </summary>
+    private void PassThroughParts(PhysicsBody2D blade, bool except)
+    {
+        if (!GodotObject.IsInstanceValid(blade))
+            return;
+
+        for (int index = 0; index < 6; index++)
+        {
+            if (!TryPart((BuddyPart)index, out PuppetPartBody? part))
+                continue;
+
+            if (except)
+                blade.AddCollisionExceptionWith(part);
+            else
+                blade.RemoveCollisionExceptionWith(part);
+        }
     }
 
     private bool TryPart(BuddyPart part, out PuppetPartBody? body)

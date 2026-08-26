@@ -543,10 +543,11 @@ CursorTools = NodePath("../CursorToolController")
 HitLag = NodePath("../SwingHitLagComponent")
 Profile = ExtResource("26_impact_feedback_profile")
 
-[node name="GoreComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Buddy")]
+[node name="GoreComponent" type="Node2D" parent="." node_paths=PackedStringArray("Pipeline", "Buddy", "Boundaries")]
 script = ExtResource("15_gore")
 Pipeline = NodePath("../InteractionPipeline")
 Buddy = NodePath("../Buddy")
+Boundaries = NodePath("../RoomBounds")
 
 [node name="PuppetRoomContainmentComponent" type="Node" parent="." node_paths=PackedStringArray("Rig", "Recovery")]
 script = ExtResource("11_containment")

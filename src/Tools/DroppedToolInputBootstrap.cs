@@ -126,7 +126,6 @@ public partial class DroppedToolInputBootstrap : Node
             _impalement = new SwordImpalementComponent { Name = nameof(SwordImpalementComponent) };
             _sandbox.AddChild(_impalement);
             _impalement.Initialize(
-                _sandbox.Pipeline,
                 _sandbox.Buddy,
                 _sandbox.CursorTools,
                 _droppedTools,
