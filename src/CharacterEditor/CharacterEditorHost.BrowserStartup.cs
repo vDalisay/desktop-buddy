@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Persistence.Characters;
 using Godot;
 
@@ -15,6 +16,7 @@ namespace DesktopBuddy.CharacterEditor;
 public partial class CharacterEditorHost
 {
     private BrowserCharacterUiStartupPump? _browserInitializationPump;
+    private BrowserCharacterEditorRuntimeBridge? _browserRuntimeBridge;
     private bool _browserInitializationFailed;
 
     public void EnsureBrowserInitialized()
@@ -49,8 +51,11 @@ public partial class CharacterEditorHost
             _mode = new BrowserCharacterEditorModeCoordinator(_sandbox.Lifecycle);
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:mode-browser-ready");
 
+            // The runtime CharacterStore is backed by GodotBrowserCharacterFileSystem. The library
+            // must use the same browser-safe boundary: constructing CharacterFileSystem here would
+            // quietly reintroduce System.IO as soon as a saved character is enumerated.
             var library = new CharacterLibraryIndex(
-                new CharacterFileSystem(),
+                new GodotBrowserCharacterFileSystem(),
                 _context.Characters.Paths.Root);
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:library-ready");
 
@@ -74,6 +79,7 @@ public partial class CharacterEditorHost
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:build-ui-ready");
             IsInitialized = true;
             RefreshAll();
+            EnsureBrowserRuntimeBridge();
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_STAGE:refresh-ready");
             CallDeferred(MethodName.RefreshDockHitRegions);
             StopBrowserInitializationPump();
@@ -99,6 +105,20 @@ public partial class CharacterEditorHost
         };
         _browserInitializationPump.Configure(this);
         AddChild(_browserInitializationPump);
+    }
+
+    private void EnsureBrowserRuntimeBridge()
+    {
+        if (GodotObject.IsInstanceValid(_browserRuntimeBridge))
+            return;
+
+        _browserRuntimeBridge = new BrowserCharacterEditorRuntimeBridge
+        {
+            Name = "BrowserCharacterEditorRuntimeBridge",
+            ProcessMode = ProcessModeEnum.Always,
+        };
+        _browserRuntimeBridge.Configure(this);
+        AddChild(_browserRuntimeBridge);
     }
 
     private void StopBrowserInitializationPump()
@@ -145,6 +165,85 @@ internal sealed class BrowserCharacterEditorModeCoordinator : CharacterEditorMod
         _lifecycle.SetEditorMode(false);
         GD.Print("DESKTOP_BUDDY_WEB_PAINT_MODE_EXITED");
         return true;
+    }
+}
+
+/// <summary>
+/// Browser-only interaction corrections that should not leak into the native editor. The built-in
+/// buddy is synthesized when no character has ever been selected, so its blank paint workspace is
+/// technically a new unsaved document. Treating that untouched bootstrap document like user work
+/// made the first + New Character click open an irrelevant save/discard prompt. When that exact
+/// untouched state requests NewPrompt, discard the synthesized document automatically; the normal
+/// Win98 UX then opens its name dialog on the following frame. Any actual edits keep the prompt.
+/// </summary>
+internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
+{
+    private CharacterEditorHost _host = null!;
+    private bool _resolvingBootstrapNewPrompt;
+
+    public void Configure(CharacterEditorHost host)
+    {
+        if (IsInsideTree())
+            throw new InvalidOperationException("Browser runtime bridge must be configured before entering the tree.");
+        _host = host ?? throw new ArgumentNullException(nameof(host));
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_resolvingBootstrapNewPrompt || !GodotObject.IsInstanceValid(_host) ||
+            !_host.IsEditorOpen || _host.Session.PendingAction != CharacterEditorPendingAction.NewPrompt ||
+            !IsUntouchedBuiltIn())
+        {
+            return;
+        }
+
+        ResolveBootstrapNewPrompt();
+    }
+
+    private bool IsUntouchedBuiltIn()
+    {
+        CharacterDocument? working = _host.Session.WorkingDocument;
+        if (working is null || !string.Equals(working.DisplayName, "Built-in Buddy", StringComparison.Ordinal))
+            return false;
+
+        CharacterDocument baseline = CharacterDocument.CreateDefault(working.Id, "Built-in Buddy");
+        if (!string.Equals(
+                CharacterDocumentEditor.Canonical(working),
+                CharacterDocumentEditor.Canonical(baseline),
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!_host.IsPaintMode)
+            return true;
+
+        foreach (var surface in _host.PaintWorkspace.Surfaces.Values)
+        {
+            if (surface.Pixels.Span.IndexOfAnyExcept((byte)0) >= 0)
+                return false;
+        }
+        return true;
+    }
+
+    private async void ResolveBootstrapNewPrompt()
+    {
+        _resolvingBootstrapNewPrompt = true;
+        try
+        {
+            GD.Print("DESKTOP_BUDDY_WEB_NEW_CHARACTER_BOOTSTRAP_DISCARD");
+            CharacterEditorActionResult result = await _host.Session.ResolveUnsavedAsync(UnsavedDecision.Discard);
+            if (!result.Completed)
+                GD.PushWarning(result.Detail ?? "Could not clear untouched browser bootstrap character.");
+        }
+        catch (Exception exception)
+        {
+            GD.PushError($"Browser new-character bootstrap resolution failed: {exception}");
+        }
+        finally
+        {
+            _resolvingBootstrapNewPrompt = false;
+        }
     }
 }
 
