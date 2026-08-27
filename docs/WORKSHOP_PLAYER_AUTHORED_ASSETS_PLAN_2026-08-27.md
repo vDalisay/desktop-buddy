@@ -1,1148 +1,1707 @@
-# Desktop Buddy — Player-Authored Workshop Assets Plan
+# Desktop Buddy — Workshop UGC Platform Implementation Plan
 
-Status: **Owner-requested research / implementation proposal — not yet an implementation authorization**  
+Status: **Owner-directed, agent-ready implementation plan — implementation not started on this branch**  
 Date: **2026-08-27**  
 Planning branch: `plan/workshop-player-authored-assets`  
-Base: Workshop v1 draft branch at `9308476e29937dc6fab18fa540f73ce88f72255b`  
+Base: Steam Workshop v1 draft branch `plan/godotsteam-workshop-social-features` at `9308476e29937dc6fab18fa540f73ce88f72255b`  
 Base-game / Workshop-owner AppID: **5114950**
 
-This plan answers the owner request to support player-created Desktop Buddy content through Steam Workshop, including:
+This document supersedes the earlier conservative player-authored-asset proposal on this branch.
 
-- models generated with Asset Forge;
-- player-owned external 3D models that are mapped into Desktop Buddy;
-- Buddy Studio cosmetics;
-- Environment Decorator models;
-- eventually every Buddy Studio customization slot, including face-detail content that is not naturally represented as a 3D mesh.
+The owner clarified that Steam Workshop is intended to be a primary long-term content pillar, in the spirit of physics-sandbox communities such as People Playground and Mutilate-a-Doll 2. Player content must therefore be capable of doing substantially more than replacing visuals.
 
-It deliberately does **not** authorize arbitrary mods, scripts, scenes, PCKs, DLLs, shaders, gameplay logic, collision, custom physics, or executable Workshop content.
+The product direction is:
 
-The central design decision is:
+> **Give creators broad control over models, collisions, mass, friction, bounce, gravity, grabbing, joints, lights, damage interactions, spawning, triggers, and custom behavior, while keeping the default Workshop path isolated from the host OS and from arbitrary Godot/.NET execution.**
 
-> **Players may author arbitrary source content in a separate creator tool, but the shipped game consumes only a narrow canonical Desktop Buddy UGC format.**
+Desktop Buddy should be moddable as a sandbox, not merely skinnable.
 
-The game should never load arbitrary Godot Resources or arbitrary third-party scene trees from Workshop.
+The implementation must still protect the player's machine, save files, Steam credentials, game process, progression, and future leaderboards from an untrusted Workshop item.
 
 ---
 
-## 1. Executive decision
+# 1. Product principles
 
-### 1.1 Yes, the game needs changes
+## 1.1 Workshop is a first-class product system
 
-The existing Workshop v1 cannot safely be extended by merely adding `.glb` to its path whitelist.
+Workshop is not an afterthought attached to Paint Room or Buddy Studio.
 
-Today:
+It should eventually support:
 
-- Workshop v1 intentionally accepts only JSON + PNG data packages;
-- `BuddyGeneratedCosmeticRegistry` loads generated cosmetics as trusted `res://` Godot Resources;
-- `GeneratedBuddyCosmeticResource` stores trusted `PackedScene`, `Texture2D`, and thumbnail Resource references;
-- `BuddyVisualRigView` instantiates those trusted PackedScenes;
-- `EnvironmentDecorationResource` likewise stores trusted generated `PackedScene`/`Texture2D` references;
-- Asset Forge exports directly into trusted repository `assets/` and `data/` roots;
-- the feature catalogues are composed from static trusted content at startup;
-- Asset Forge v1 only has complete generated Buddy model paths for Glasses, Tops and Shoes; Hair, Headwear and generic Accessories remain planned category seams;
-- eyes, brows and mouths use the `ParametricFaceCompositor` and renderer registry rather than the generated-mesh path.
+- room paintings;
+- complete Buddy configurations and paint;
+- player-authored Buddy cosmetics;
+- player-authored 3D models;
+- physics props;
+- room decorations;
+- lights;
+- weapons and tools built from reusable behavior components;
+- multi-body contraptions;
+- joints and links;
+- reactive objects;
+- scripted objects;
+- reactive face cosmetics;
+- packs containing several related assets;
+- local creator testing before publication;
+- Steam Workshop subscription/update workflows;
+- future demo -> base-game cross-app consumption.
 
-Those assumptions are correct for developer-authored content, but they are the wrong trust model for Workshop models.
+Do not design the runtime catalogue as if the number of UGC entries will remain small.
 
-### 1.2 Do not ship the internal repository exporter as the player tool
+## 1.2 Maximum useful power, not arbitrary host access
 
-The current Asset Forge application is a developer tool with repository-writing/export/maintenance behavior. Keep it.
+Creators should be able to implement sophisticated gameplay behavior.
 
-Create a **player-facing Desktop Buddy Creator** application that reuses the deterministic generation pieces from `AssetForge.Core` but does not expose:
+They do **not** need unrestricted access to:
 
-- repository root selection;
-- repository mutation;
-- trusted `.tres` generation;
-- catalogue patching;
-- Verify All/Delete Asset operations against source control;
-- developer-only maintenance paths.
+- the player's filesystem;
+- network sockets;
+- environment variables;
+- process launching;
+- Steam credentials;
+- arbitrary reflection;
+- arbitrary Godot scene-tree traversal;
+- arbitrary CLR assemblies;
+- arbitrary GDScript;
+- native libraries.
 
-The two applications should share generation/canonicalization code but have separate outer shells:
+Those capabilities are unrelated to making a good sandbox item and turn a subscribed Workshop item into arbitrary code execution.
 
-```text
-                     shared deterministic core
-                     +------------------------+
-                     | AssetForge.Core        |
-                     | canonical mesh format  |
-                     | image codecs           |
-                     | validation/budgets     |
-                     +-----------+------------+
-                                 |
-                  +--------------+--------------+
-                  |                             |
-                  v                             v
-      Developer Asset Forge          Desktop Buddy Creator
-      repository authoring           player-facing UGC tool
-      trusted .tres export            safe package + Workshop publish
-```
+The default Workshop ecosystem should therefore expose a large, versioned **Desktop Buddy UGC API** rather than the host process itself.
 
-### 1.3 Never consume a player's original model directly in the game
+## 1.3 Two creator layers
 
-A player may select an arbitrary model in Desktop Buddy Creator, but the Creator must **canonicalize** it before publishing.
+The platform should deliberately support both non-programmers and programmers.
 
-The game consumes only the canonical output.
+### Layer A — Components + Behavior Graph
 
-This has two large benefits:
+A visual editor exposes physics and gameplay components:
 
-1. Asset Forge-generated and externally-authored models converge on one runtime format.
-2. The game does not need to support every glTF/FBX feature, material system, animation system, extension, hierarchy or DCC quirk.
+- body type;
+- collision shapes;
+- mass;
+- damping;
+- friction;
+- restitution;
+- gravity scale;
+- continuous collision detection;
+- grabbable state;
+- lights;
+- emitters;
+- damage response;
+- health/destruction;
+- timers;
+- collision triggers;
+- use/activate triggers;
+- force/impulse actions;
+- spawn actions;
+- status effects;
+- links/signals;
+- joints;
+- simple conditions;
+- state variables.
+
+This is the MaD2-like path: powerful behavior is assembled without source code.
+
+### Layer B — Sandboxed Lua
+
+Advanced creators may author `*.lua` behavior scripts.
+
+Lua receives only Desktop Buddy host APIs and immutable event data. It must not receive raw Godot `Node`, `GodotObject`, `SceneTree`, `RigidBody2D`, filesystem, network, CLR, or Steam objects.
+
+The initial scripting implementation should use a managed Lua runtime behind `IUgcScriptEngine`. The preferred first implementation is MoonSharp configured as a hard sandbox, subject to a dependency/license/version spike in UGC-1. If that spike fails, keep the interface and implement the same contract with another embeddable interpreter rather than exposing CLR scripting.
+
+The script API must be powerful enough to create weapons, traps, thrusters, timers, reactive props, simple AI-like controllers, projectile systems and contraptions.
+
+## 1.4 An explicitly unsafe full-code tier is not part of the first implementation
+
+People Playground's ecosystem demonstrates the creative reach of unrestricted C# mods, but in-process CLR mods can also read files, open sockets and execute arbitrary host code.
+
+Do not accidentally make every Ready-to-Use Workshop subscription equivalent to downloading an executable.
+
+If the owner later wants an explicit **Unsafe Code Mods** tier, treat it as a separate product feature with one of:
+
+- a separately sandboxed/out-of-process host; or
+- a very explicit user opt-in model that clearly states it grants arbitrary local-code execution.
+
+Do not mix that future tier into the default UGC loader.
 
 ---
 
-## 2. Existing architecture we should reuse
+# 2. Lessons from comparable sandbox Workshops
 
-### 2.1 Canonical Asset Forge GLB is already an excellent UGC target
+## 2.1 People Playground
 
-`devtools/AssetForge.Core/GlbWriter.cs` already emits a deliberately tiny glTF 2.0 binary shape:
+People Playground's Workshop demonstrates the scale possible when user content is a central product system. Steam currently exposes hundreds of thousands of ready-to-use entries, including a dedicated Mods category.
+
+Its community ecosystem includes contraptions and code mods capable of altering behavior substantially.
+
+Desktop Buddy should borrow the **product lesson** — a broad, documented creator surface compounds replayability — without requiring the same unrestricted in-process code model for the default Workshop path.
+
+Reference:
+
+- https://steamcommunity.com/workshop/about/?appid=1118200
+- https://steamcommunity.com/app/1118200/workshop/
+
+## 2.2 Mutilate-a-Doll 2
+
+MaD2 demonstrates another valuable pattern: many useful custom behaviors can be represented as item properties and composable triggers rather than bespoke code.
+
+Its public patch notes document trigger-style behaviors for forces, item spawning, radius effects, joints, lights, timers and linked behavior.
+
+Desktop Buddy should expose the same kind of creator-friendly vocabulary through a typed component/behavior model, then let Lua fill the gaps for genuinely custom logic.
+
+References:
+
+- https://steamcommunity.com/workshop/about/?appid=665370
+- https://steamcommunity.com/app/665370/allnews/
+
+These references are design evidence only. Do not copy item names, code, UI, assets or implementation details.
+
+---
+
+# 3. Existing Desktop Buddy architecture to reuse
+
+## 3.1 Asset Forge Core remains valuable
+
+`devtools/AssetForge.Core` already owns deterministic source-image processing, canonical geometry, UV generation, GLB writing, recipe hashing, thumbnails and validation.
+
+The UGC system should reuse its **pure generation/canonicalization logic**, not its repository-mutating exporter.
+
+## 3.2 Existing canonical GLB is the preferred runtime model contract
+
+`GlbWriter` already emits a deliberately small glTF 2.0 subset:
 
 - one scene;
 - one node;
 - one mesh;
-- one triangle primitive;
-- `POSITION`;
-- `NORMAL`;
-- `TEXCOORD_0`;
+- one primitive;
+- triangles only;
+- POSITION;
+- NORMAL;
+- TEXCOORD_0;
 - indices;
-- one embedded binary buffer;
-- no scripts;
-- no Godot Resources;
-- no scene logic.
+- embedded binary buffer.
 
-This is much safer and simpler than accepting arbitrary Godot scenes.
+Formalize that subset as `DesktopBuddyCanonicalMeshV1`.
 
-The UGC format should formalize and strengthen this existing contract rather than replace it.
+Player input may begin as a complex Blender/Blockbench/glTF model in the Creator, but publication must rewrite the selected geometry into this canonical subset.
 
-### 2.2 Current generated runtime already overrides model materials
+## 3.3 Do not use Godot Resource loading for Workshop content
 
-`BuddyVisualRigView.AddGeneratedAsset` currently instantiates the trusted generated model, finds exactly one `MeshInstance3D`, and replaces its material with a Desktop Buddy-controlled material using the separately-authored albedo texture.
+Trusted developer Asset Forge content currently uses `.tres`, `PackedScene`, `Texture2D` Resource references and static `res://` catalogues.
 
-That behavior should become the runtime UGC rule:
+Workshop content must use a separate runtime path.
 
-> UGC geometry supplies geometry + UVs only. Desktop Buddy supplies the actual runtime material/shader policy.
+Never call `GD.Load`, `ResourceLoader.Load`, `PackedScene.Instantiate`, or load `.tres` / `.tscn` from a Workshop/local UGC directory.
 
-Player models must not be able to bring arbitrary shaders or Godot materials into the game.
+## 3.4 Prefer a canonical GLB reader over runtime scene import
 
-### 2.3 Existing Workshop staging remains the first boundary
+Because the canonical GLB subset is intentionally tiny, the game should implement a pure `CanonicalGlbReader` that returns validated arrays:
 
-Keep the Workshop v1 rule:
+- positions;
+- normals;
+- UV0;
+- indices;
+- bounds;
+- triangle/vertex counts.
+
+The main-thread presentation adapter then creates an `ArrayMesh` from already-validated arrays.
+
+This is safer and more deterministic than handing a Workshop GLB to Godot's general scene importer and then trying to reject unexpected generated nodes after the fact.
+
+The **Creator** may use Godot's general glTF/FBX import facilities as an authoring convenience before canonicalization. The game runtime does not.
+
+## 3.5 Existing 2D physics remains authoritative
+
+Desktop Buddy's physical sandbox is 2D while its current presentation is 3D.
+
+UGC follows the same split:
+
+```text
+2D RigidBody/StaticBody + explicit 2D collision shapes
+                      |
+                      v
+              runtime entity identity
+                      |
+                      v
+              3D visual presentation
+```
+
+A creator's 3D mesh does not automatically become a physics collision mesh.
+
+## 3.6 Existing grab and impact seams are useful
+
+The current game already:
+
+- grabs general `RigidBody2D` bodies through the grab tether;
+- uses collision layers/picking rather than hard-coded tool classes for every contact;
+- attributes impacts through `IImpactSource`;
+- centralizes pain/economy/mood application in `InteractionDamageComponent`;
+- stores physical values such as mass, damping and bounce in authored data for shipped loose objects.
+
+UGC should join those seams rather than create a second physics engine.
+
+---
+
+# 4. Repository architecture
+
+Introduce a shared pure managed project:
+
+```text
+domain/
+  DesktopBuddy.Ugc.Core/
+    DesktopBuddy.Ugc.Core.csproj
+    Packages/
+    Models/
+    Physics/
+    Behavior/
+    Validation/
+    Identity/
+    Hashing/
+```
+
+It is referenced by:
+
+```text
+DesktopBuddy game
+Desktop Buddy Creator
+UGC unit tests
+```
+
+It must not depend on Godot.
+
+Game-side adapters live under:
+
+```text
+src/Ugc/
+  Catalog/
+  Persistence/
+  Runtime/
+  Physics/
+  Presentation/
+  Behavior/
+  Workshop/
+  Ui/
+```
+
+Creator-side code lives under:
+
+```text
+devtools/DesktopBuddyCreator/
+```
+
+Do not add UGC responsibilities to `BuddyGeneratedCosmeticRegistry`, `EnvironmentDecorationRegistry`, `WorkshopBootstrap`, `LooseObjectProfile`, or `InteractionDamageComponent` directly when a focused adapter/service can own them.
+
+---
+
+# 5. Package model
+
+## 5.1 Package container
+
+Steam content remains folder-based.
+
+One Workshop item may contain one asset or a pack of assets.
+
+Recommended v2 layout:
+
+```text
+content/
+  manifest.json
+  package.json
+  assets/
+    <asset-key>/
+      asset.json
+      model.glb              # optional by content type
+      albedo.png             # optional
+      thumbnail.png
+      collision.json         # optional
+      behavior.json          # optional
+      face_atlas.png         # optional face/decal content
+      audio/                 # optional approved audio payloads in later phase
+  prefabs/
+    <prefab-key>.json         # optional contraptions
+  scripts/
+    <script-key>.lua         # optional
+preview.png
+```
+
+Do not allow arbitrary additional files.
+
+## 5.2 Runtime identity
+
+Never trust an author-supplied global ID to be unique.
+
+Runtime identity is derived from Steam provenance:
+
+```text
+ugc:<PublishedFileId>:<asset-key>
+ugc:<PublishedFileId>:prefab:<prefab-key>
+```
+
+Rules:
+
+- `asset-key` is package-local, normalized ASCII identifier;
+- one Workshop item can update while retaining the same runtime IDs;
+- Workshop content can never shadow built-in or trusted Asset Forge IDs;
+- local pre-publication Creator testing uses a separate `localugc:<package-guid>:<asset-key>` namespace;
+- character/environment save documents preserve the UGC identity even if the item is temporarily unavailable.
+
+## 5.3 Versioning
+
+Separate versions:
+
+- package schema version;
+- UGC runtime API version;
+- canonical mesh version;
+- behavior-graph version;
+- Lua host API version;
+- per-asset semantic version optional for creator diagnostics.
+
+Unsupported future major versions fail closed and remain visible as incompatible content rather than disappearing silently.
+
+---
+
+# 6. Asset kinds
+
+Initial architecture recognizes:
+
+```text
+BuddyCosmetic
+FaceCosmetic
+RoomDecoration
+PhysicsProp
+Contraption
+AssetPack
+```
+
+One package may contain several compatible entries.
+
+Future asset kinds must be added through schema evolution, not magic string interpretation in UI code.
+
+---
+
+# 7. Creator application
+
+## 7.1 Do not ship the developer repository exporter as the public tool
+
+Keep current Asset Forge for trusted source-control authoring.
+
+Create **Desktop Buddy Creator** as a separate player-facing executable that reuses shared core libraries.
+
+It must not contain:
+
+- repository-root editing;
+- `.tres` catalogue mutation;
+- project source deletion;
+- source-control maintenance commands;
+- developer-only Verify All against repository roots.
+
+## 7.2 Creator home
+
+Player chooses:
+
+```text
+Create Cosmetic
+Create Face Cosmetic
+Create Prop / Decoration
+Create Contraption
+Create Pack
+Import Existing Creator Project
+```
+
+## 7.3 Model creation paths
+
+### Generate from image
+
+Reuse Asset Forge templates/generation.
+
+### Import my model
+
+Initial external authoring support:
+
+- `.glb`;
+- `.gltf`.
+
+Add FBX only after the glTF mapper is stable.
+
+The Creator imports external content into an isolated authoring preview, then canonicalizes it.
+
+Reject or strip:
+
+- animation;
+- skinning;
+- skeletons;
+- cameras;
+- scene lights from the source file;
+- scripts;
+- custom extensions;
+- external URIs in the published form;
+- unsupported materials.
+
+Creator lets the user select/combine relevant mesh data, then emits one canonical mesh per UGC asset.
+
+## 7.4 Model mapper
+
+For each model expose:
+
+- orientation;
+- scale;
+- visual origin;
+- Buddy anchor / room pivot;
+- paired mirroring where appropriate;
+- albedo preview;
+- runtime triangle/vertex statistics;
+- collision editor;
+- physics inspector;
+- light editor;
+- interaction editor;
+- behavior editor;
+- Lua editor for advanced creators;
+- local sandbox test button.
+
+## 7.5 Collision editor
+
+Supported dynamic shapes:
+
+- circle;
+- rectangle;
+- capsule;
+- convex polygon.
+
+Static-only content may additionally use bounded concave polygon segments after a dedicated performance spike.
+
+Creator provides:
+
+- auto front-silhouette convex hull;
+- simplified hull;
+- multiple collider creation;
+- manual vertex editing;
+- collider enable/disable;
+- collision preview over the 3D visual projection;
+- mass-centre preview.
+
+Do not generate a dynamic concave collision polygon from arbitrary mesh geometry.
+
+---
+
+# 8. UGC physics component model
+
+Define pure records such as:
+
+```text
+UgcPhysicsDefinition
+UgcCollisionShapeDefinition
+UgcGrabDefinition
+UgcImpactDefinition
+UgcHealthDefinition
+UgcJointDefinition
+UgcLightDefinition
+UgcBehaviorBinding
+```
+
+## 8.1 Body modes
+
+Support:
+
+```text
+DecorationOnly
+Static
+Rigid
+```
+
+A later version may add controlled kinematic bodies if concrete creator use-cases require them.
+
+## 8.2 Physical properties
+
+Rigid bodies may author:
+
+- mass;
+- gravity scale;
+- centre-of-mass offset within validated bounds;
+- linear damping;
+- angular damping;
+- friction;
+- bounce/restitution;
+- lock rotation;
+- continuous collision detection mode;
+- initial linear/angular velocity for spawned projectiles;
+- collision layer category chosen from UGC-safe semantic categories.
+
+Values are finite and bounded by hard engine-safety limits.
+
+Recommended values are soft guidance, not reasons to reject creative content.
+
+## 8.3 Grabbing
+
+UGC physics props can author:
+
+- grabbable yes/no;
+- grab point(s);
+- grab-strength multiplier;
+- optional maximum tether force;
+- whether rotation follows the drag interaction;
+- whether secondary/use input is accepted while grabbed.
+
+Do not special-case Workshop items in pointer UI. Extend the current picking/grab contracts so UGC bodies participate through typed capability metadata.
+
+## 8.4 Impact attribution
+
+Every UGC physics body that can collide with Buddy implements the same semantic `IImpactSource` path as shipped loose objects/tools.
+
+The source identifier is the UGC runtime ID.
+
+Do not let Lua fabricate a trusted official content ID.
+
+---
+
+# 9. Joints, links and contraptions
+
+## 9.1 Joint types
+
+Support declarative Godot 2D equivalents for:
+
+- pin joint;
+- damped spring;
+- groove/slider where the game's Godot version supports the required behavior reliably.
+
+Creator exposes anchors visually.
+
+## 9.2 Contraptions
+
+A contraption is a prefab containing:
+
+- multiple asset/body instances;
+- local transforms;
+- joints;
+- named signal links;
+- behavior bindings;
+- optional initial state.
+
+Contraptions must instantiate through one transaction so partial failure cannot leave half a machine in the sandbox.
+
+## 9.3 Linking
+
+Objects expose named signal endpoints.
+
+Examples:
+
+```text
+trigger
+activate
+power
+open
+close
+fire
+reset
+custom:<name>
+```
+
+The underlying runtime uses IDs/handles, not NodePaths supplied by Workshop data.
+
+This lets non-programmers build button -> timer -> launcher and similar systems.
+
+---
+
+# 10. Player-authored lights
+
+Player-authored lights are explicitly supported.
+
+Expose a declarative light component using the same visual principles as current generated lamps.
+
+Fields include:
+
+- enabled;
+- color;
+- energy/brightness;
+- range;
+- local emitter position;
+- optional spot direction/cone after a focused Godot presentation spike;
+- emission strength on the visual material;
+- shadow casting toggle.
+
+Rules:
+
+- finite values only;
+- soft warnings for expensive light setups;
+- a generous hard global safety cap prevents accidental thousands-of-lights crashes;
+- shadow-casting lights are allowed but clearly marked as expensive;
+- users may enable a local "allow heavy Workshop content" preference to raise soft runtime budgets, while absolute crash-safety bounds remain.
+
+Do not prohibit lights merely because they may affect performance. Surface cost to the creator/player and enforce only safety bounds.
+
+---
+
+# 11. Damage, status and gameplay interactions
+
+## 11.1 UGC may hurt the Buddy
+
+Physics props and scripts may generate real Buddy pain/status interactions.
+
+Supported host actions eventually include:
+
+- physical impact through ordinary collision;
+- direct bounded pain event;
+- impulse to a Buddy part;
+- approved status application (for example Burning when that status exists as a public capability);
+- approved status clearing/healing;
+- mood events;
+- care-like events where explicitly supported.
+
+Do not expose direct mutation of private Buddy rig tuning, constraints, collision geometry or save objects.
+
+## 11.2 Progression integrity
+
+UGC must not become a "spawn infinite money" exploit.
+
+Introduce explicit impact/reward provenance:
+
+```text
+Official
+CommunityVisualOnly
+CommunityGameplay
+```
+
+Community-generated pain can affect Buddy reaction/mood/knockout as designed, but **community-authored damage pays zero credits by default**.
+
+Scripts cannot set payout multipliers or emit trusted economy events.
+
+Future challenge/leaderboard submissions are disabled or marked modded when gameplay UGC is active.
+
+Pure visual cosmetics/room paint do not mark a session modded.
+
+This preserves Workshop freedom without making progression/leaderboards meaningless.
+
+---
+
+# 12. Behavior Graph
+
+Behavior Graph is the default custom-logic authoring route.
+
+## 12.1 Events
+
+Initial event vocabulary:
+
+```text
+OnSpawn
+OnDespawn
+OnCollisionEnter
+OnCollisionExit
+OnImpactBuddy
+OnGrabbed
+OnReleased
+OnUsePrimary
+OnUseSecondary
+OnSignal
+OnTimer
+OnHealthChanged
+OnDestroyed
+OnJointBroken
+OnTickInterval
+```
+
+Do not expose a required per-frame event when an interval/event can express the behavior.
+
+## 12.2 Conditions
+
+Examples:
+
+- compare state variable;
+- speed threshold;
+- angular-speed threshold;
+- timer elapsed;
+- collision target category;
+- Buddy part category;
+- probability using deterministic per-instance RNG;
+- distance/radius query result;
+- grabbed state;
+- health threshold.
+
+## 12.3 Actions
+
+Initial host actions:
+
+- apply force;
+- apply impulse;
+- apply torque;
+- set velocity within capability policy;
+- toggle gravity;
+- toggle collision shape;
+- change color/emission;
+- change light parameters;
+- start/stop timer;
+- spawn a package asset/prefab;
+- despawn self/child;
+- create/break an allowed joint;
+- send named signal;
+- play approved sound payload;
+- spawn approved particle preset;
+- damage/heal Buddy through UGC provenance;
+- apply/clear approved status;
+- perform bounded raycast/area query;
+- store/read typed local variables.
+
+Graph nodes and fields are typed/versioned; unknown nodes fail validation with a useful Creator error.
+
+---
+
+# 13. Sandboxed Lua
+
+## 13.1 Script model
+
+Workshop packages may contain whitelisted `scripts/*.lua` files only when declared in the manifest.
+
+A script binds to one or more behavior events.
+
+Example conceptual API:
+
+```lua
+function on_use_primary(ctx)
+    ctx:apply_impulse(0, 1400)
+    ctx:play_sound("fire")
+    ctx:spawn("projectile", 0, -18)
+end
+```
+
+The exact API is defined by typed host proxies, not raw Godot objects.
+
+## 13.2 Hard sandbox
+
+The Lua environment must not expose:
+
+- `io`;
+- `os`;
+- CLR interop;
+- reflection;
+- filesystem;
+- process creation;
+- networking;
+- environment variables;
+- arbitrary package loading;
+- raw threads;
+- raw Godot objects;
+- Steam objects;
+- save-store objects.
+
+Scripts receive only:
+
+- event data;
+- their own state;
+- typed entity handles;
+- package-local asset IDs;
+- versioned UGC host functions.
+
+## 13.3 Scheduling and denial-of-service protection
+
+Custom logic runs through one `UgcBehaviorScheduler` on the routed simulation clock.
+
+Requirements:
+
+- per-event instruction budget;
+- per-instance and per-Workshop-item time budget;
+- bounded queued actions;
+- bounded spawn rate;
+- bounded timers;
+- bounded query results;
+- no unbounded recursion/coroutine proliferation;
+- repeated budget violations suspend that script instance and surface a user-visible warning;
+- one bad mod cannot stop the owning physics tick or crash the game loop.
+
+Do not call arbitrary Lua directly inside a Godot contact callback.
+
+Queue semantic events, execute through the scheduler, then apply validated commands at the controlled simulation boundary.
+
+## 13.4 Versioned host API
+
+Scripts declare a `ugcApiVersion`.
+
+Maintain compatibility shims across minor versions where reasonable.
+
+Breaking API changes require a new major version and explicit incompatible-item presentation.
+
+---
+
+# 14. Runtime entity architecture
+
+Introduce:
+
+```text
+UgcRuntimeEntity
+UgcRuntimeEntityFactory
+UgcPhysicsBodyAdapter
+UgcPresentationAdapter
+UgcBehaviorInstance
+UgcEntityRegistry
+UgcRuntimeHandle
+```
+
+One runtime entity owns no arbitrary Workshop object references after validation; it owns typed validated definitions and local cached asset paths/decoded data.
+
+## 14.1 Registry and budgets
+
+Current shipped loose-object registry policy must be generalized or composed with a UGC registry so UGC cannot bypass object-count/eviction accounting.
+
+Preferred direction:
+
+- extract a general sandbox entity-budget service from the existing loose-object registry;
+- shipped loose objects and UGC entities both register through it;
+- retain compatibility wrappers for existing `LooseObjectRegistry` call sites during migration.
+
+Do not create an unrelated second object cap that can be exceeded independently.
+
+## 14.2 Scene-tree ownership
+
+UGC definitions do not receive NodePaths.
+
+Runtime adapters create known Desktop Buddy node types from validated definitions.
+
+The only nodes generated from UGC data are nodes the game itself constructs, e.g.:
+
+- `RigidBody2D`;
+- `StaticBody2D`;
+- `CollisionShape2D`;
+- known joint types;
+- `MeshInstance3D` using game-created `ArrayMesh`;
+- known light types;
+- known audio/particle components.
+
+No Workshop scene is instantiated.
+
+---
+
+# 15. Dynamic UGC catalogues
+
+## 15.1 Current problem
+
+Current generated cosmetic/environment registries are static trusted `res://` catalogues loaded at startup.
+
+Workshop subscriptions require runtime catalogues that can change without rebuilding the game.
+
+## 15.2 Catalogue service
+
+Introduce a versioned immutable snapshot service:
+
+```text
+IUgcCatalog
+UgcCatalogService
+UgcCatalogSnapshot
+```
+
+Sources:
+
+```text
+Built-in trusted content
+Trusted developer Asset Forge content
+Validated installed Workshop content
+Local Creator test content
+```
+
+Each refresh creates a new immutable snapshot.
+
+UI/session code receives the service/snapshot; it must stop reaching directly for global `BuddyGeneratedCosmeticRegistry.Current` where that would prevent runtime UGC.
+
+## 15.3 Missing content
+
+Save files retain requested UGC IDs.
+
+When unavailable:
+
+- Buddy cosmetic -> built-in slot fallback;
+- room decoration/prop -> missing-content placeholder in editing UI, no arbitrary replacement;
+- contraption -> keep serialized reference and show incomplete state rather than silently substituting a different item.
+
+When the same Workshop item becomes available again, the original ID resolves again.
+
+---
+
+# 16. Buddy Studio UGC
+
+## 16.1 3D slots
+
+Support canonical-model UGC for appropriate slots, including:
+
+- Hair;
+- Nose;
+- Ears;
+- Accessories;
+- Glasses;
+- Headwear;
+- Tops;
+- Shoes.
+
+Face shape can receive a dedicated replacement contract later if needed.
+
+## 16.2 Attachment modes
+
+Creator selects one of validated semantic modes:
+
+```text
+VisualAttachment
+PartVisualReplacement
+PairedPartVisualReplacement
+PhysicsAttachment
+PairedPhysicsAttachment
+```
+
+Physics attachments may add their own rigid body/colliders and attach to an approved Buddy socket/joint.
+
+They do not directly rewrite `BuddyVisualProfile`, Buddy mass, part collision shapes or puppet-drive tuning.
+
+Their mass/forces can nevertheless affect the Buddy naturally through the attached physics system, which is the intended sandbox behavior.
+
+## 16.3 Reactive face content
+
+Eyes, brows and mouths are not naturally GLB assets in the current renderer.
+
+Define a separate `FaceCosmetic` package contract using PNG atlases plus semantic state metadata.
+
+Examples:
+
+Eyes may author states such as:
+
+```text
+open
+blink
+hurt
+optional alternate
+```
+
+Mouth content may author:
+
+```text
+neutral
+happy
+hurt
+unconscious
+```
+
+The exact state contract must follow the current face-state model so Workshop art preserves Buddy reactions.
+
+Do not force reactive 2D face art through the 3D model loader.
+
+---
+
+# 17. Room Decorator and physics props
+
+UGC room content can be:
+
+### DecorationOnly
+
+Placed and persisted like existing visual decorations.
+
+### Static
+
+Has collision but does not move.
+
+### Rigid
+
+Participates in physics, can be grabbed when enabled, can hit Buddy, can contain lights and behavior.
+
+Room placement persistence stores:
+
+- UGC runtime ID;
+- transform;
+- creator-exposed configurable instance parameters;
+- stable instance ID where behavior state must persist.
+
+Do not serialize arbitrary Lua VM internals. Scripts explicitly mark small primitive state keys as persistent if/when persistence is added.
+
+---
+
+# 18. Creator-authored audio and particles
+
+Not required for the first Glasses/physics slice, but the architecture must leave room for them.
+
+Recommended later payloads:
+
+- OGG Vorbis for audio;
+- PNG textures for particle visuals;
+- game-owned particle/material templates with creator-set parameters.
+
+Do not accept arbitrary shaders.
+
+The Creator can expose rich effects by parameterizing trusted game shaders/particle systems rather than loading Workshop shader source.
+
+---
+
+# 19. Performance policy — power with transparency
+
+Do not make conservative performance limits the product's creative ceiling.
+
+Use **soft budgets + hard safety limits**.
+
+## 19.1 Soft budgets
+
+Creator shows warnings such as:
+
+- high triangle count;
+- many colliders;
+- many rigid bodies;
+- many joints;
+- many lights;
+- shadow-heavy setup;
+- high script event rate;
+- high spawn rate.
+
+Publishing may still be allowed when only soft budgets are exceeded.
+
+## 19.2 Heavy-content preference
+
+Game settings include:
+
+```text
+Allow Heavy Workshop Content
+```
+
+When off, content above recommended budgets requires explicit user confirmation before activation.
+
+When on, soft budget warnings do not block activation.
+
+## 19.3 Hard limits
+
+Absolute limits protect against crashes/resource exhaustion.
+
+Initial provisional upper bounds to validate during implementation:
+
+- package: 512 MiB;
+- individual canonical mesh: 64 MiB;
+- individual texture: 32 MiB;
+- Lua source: 1 MiB per script;
+- canonical mesh: 1,000,000 triangles absolute;
+- collision shapes: 128 per entity;
+- rigid bodies: 128 per contraption;
+- joints: 256 per contraption;
+- active UGC lights: 64 per contraption, plus global safety ceiling;
+- spawn commands: bounded per simulation second;
+- behavior event queues: bounded per entity/package.
+
+These values are **provisional engineering limits**, not owner-facing gameplay rules. Benchmark and adjust them on representative low/mid/high PCs before release.
+
+NaN/Infinity, invalid indices, out-of-range references, decompression bombs, path traversal and malformed formats always reject regardless of user preference.
+
+---
+
+# 20. Workshop trust pipeline
+
+The required path is:
 
 ```text
 Steam install/cache
         |
         v
-bounded immutable incoming snapshot
+ONE bounded immutable incoming snapshot
         |
         v
-package validation
+manifest/hash/path validation
         |
         v
-local UGC library/cache
+package/schema validation
         |
         v
-runtime loader
-```
-
-The current design-review finding that content-type detection reads directly from Steam's mutable cache should be fixed before player-model scope is built. The expanded system must snapshot exactly once and route/validate from that immutable snapshot.
-
-### 2.4 Existing unknown-feature fallback is useful
-
-Character compilation already resolves unknown feature IDs to a slot fallback and reports a warning. Preserve the original requested feature ID in the character document.
-
-That gives UGC a desirable missing-content behavior:
-
-- subscribed cosmetic available -> render it;
-- UGC temporarily unavailable -> render safe built-in fallback;
-- cosmetic becomes available again -> original character can resolve to it again without destructive migration.
-
----
-
-## 3. Player-facing creator workflows
-
-Desktop Buddy Creator should expose three authoring paths.
-
-### 3.1 Generate from image — Asset Forge mode
-
-Existing deterministic workflow, made player-safe:
-
-```text
-1024x1024 transparent PNG
+canonical GLB structural validation
         |
         v
-choose Desktop Buddy category/template
+physics/behavior/script validation
         |
         v
-AssetForge.Core generation
+project-owned UGC library/cache
         |
         v
-preview against real Buddy / room reference
+runtime catalogue snapshot
         |
         v
-canonical model + albedo
-        |
-        v
-UGC package validation
-        |
-        v
-Publish to Workshop
+explicit activation/spawn/equip
 ```
 
-This is the easiest path for players and should be the first creator release.
+Never inspect one version of a mutable Steam folder to determine content type and then copy a potentially different version later.
 
-### 3.2 Import my own model — Model Mapper mode
-
-Players can use Blender, Maya, Blockbench, etc., then select their model in Desktop Buddy Creator.
-
-Recommended input formats in the **creator tool only**:
-
-- `.glb` / `.gltf` first;
-- optional `.fbx` later.
-
-Godot supports runtime glTF loading through `GLTFDocument` / `GLTFState`, and runtime FBX loading through `FBXDocument` / `FBXState`. This should be used only inside the Creator/importer boundary, not as permission for arbitrary Workshop scenes.
-
-Creator workflow:
-
-```text
-external model
-    |
-    v
-Creator imports into isolated preview
-    |
-    +-- reject animation/rig/lights/cameras
-    +-- choose relevant mesh(es)
-    +-- validate finite geometry
-    +-- triangulate/flatten transforms
-    +-- normalize orientation
-    +-- normalize unit scale
-    +-- require/generate UV0
-    +-- choose/bake one albedo texture
-    +-- choose Desktop Buddy slot/category
-    +-- map anchor/pivot/size
-    |
-    v
-convert to Desktop Buddy CanonicalMesh
-    |
-    v
-re-export through project-owned GlbWriter
-    |
-    v
-canonical GLB + PNG + JSON only
-```
-
-Important: even if the original source is an arbitrary glTF/FBX hierarchy, the published output is **not** that original hierarchy. It is a sanitized Desktop Buddy canonical asset.
-
-### 3.3 Face Detail / Decal mode
-
-Eyes, brows and mouths currently use 2D parametric rendering into the face compositor. Do not force these through 3D models.
-
-Provide a separate safe PNG/decal authoring path.
-
-Initial decal candidates:
-
-- Brows;
-- Face details;
-- Torso Accessories/accents.
-
-Eyes and Mouth should be a later semantic-frame contract because the current game changes them based on blink/expression state.
-
-Possible future package semantics:
-
-```text
-eyes/
-  open.png
-  blink.png
-  optional_pupil_mask.png
-
-mouth/
-  neutral.png
-  happy.png
-  hurt.png
-  optional_open.png
-```
-
-The exact expression-state contract must be explicitly defined before enabling those slots. A static image that destroys Buddy's reactions would be a regression.
+This explicitly incorporates the PR #41 design-review finding.
 
 ---
 
-## 4. Canonical model contract
+# 21. Local UGC library
 
-The game should accept only a project-defined subset of GLB.
+Validated subscribed content is copied into a project-owned content-addressed/local library.
 
-### 4.1 Canonical GLB v1
-
-Required:
-
-- glTF 2.0 binary (`.glb`);
-- exactly one scene;
-- exactly one node;
-- exactly one mesh;
-- exactly one primitive;
-- primitive mode = triangles;
-- indexed geometry;
-- `POSITION` float VEC3;
-- `NORMAL` float VEC3;
-- `TEXCOORD_0` float VEC2;
-- exactly one binary buffer contained in the GLB;
-- all values finite;
-- all indices in range;
-- non-empty geometry;
-- bounded world-space coordinates after canonicalization.
-
-Forbidden in canonical UGC GLB v1:
-
-- external URIs;
-- external buffers;
-- embedded images;
-- materials;
-- textures;
-- samplers;
-- skins;
-- joints;
-- morph targets;
-- animations;
-- cameras;
-- lights;
-- physics metadata;
-- extras used as executable/config channels;
-- arbitrary glTF extensions;
-- multiple nodes/hierarchies;
-- multiple primitives/material slots.
-
-The current `GlbWriter` is already close to this output. `ValidateSingleMesh` must be upgraded from only checking one mesh/node to fully validating the canonical subset above.
-
-### 4.2 Why material-free GLB
-
-Keep albedo as an independent whitelisted PNG:
+Recommended storage:
 
 ```text
-model.glb
-albedo.png
+user://ugc/
+  workshop/
+    <published-file-id>/
+      current/
+      provenance.json
+      package-state.json
+  local/
+    <package-guid>/
 ```
 
-At runtime Desktop Buddy creates a known `StandardMaterial3D`/look-library material, applies the validated albedo and any allowed player tint, and ignores the original author's material model entirely.
+Update transaction:
 
-That keeps:
-
-- rendering consistent with Desktop Buddy;
-- shaders trusted;
-- render priority trusted;
-- transparency rules trusted;
-- outline policy trusted;
-- lighting policy trusted.
-
-### 4.3 Recommended initial model budgets
-
-These should be treated as engineering defaults to profile before lock-in, not owner-fixed tuning yet.
-
-Suggested first budgets:
-
-| Content | Triangles | Vertices | GLB bytes | Runtime albedo |
-| --- | ---: | ---: | ---: | ---: |
-| face/head attachment | 20,000 | 30,000 | 4 MiB | max 1024x1024 PNG |
-| torso/paired foot replacement | 30,000 | 45,000 | 6 MiB | max 1024x1024 PNG |
-| environment decoration | 40,000 | 60,000 | 8 MiB | max 1024x1024 PNG |
-
-Keep the complete Workshop package inside the existing **16 MiB incoming snapshot budget** initially if profiling shows that is practical.
-
-The Creator should warn well below the hard game-side limits.
-
-The game remains authoritative: hand-editing a published package must not bypass limits.
+1. download new Workshop revision;
+2. immutable incoming snapshot;
+3. full validation;
+4. stage new local revision;
+5. atomically switch `current`;
+6. refresh catalogue;
+7. keep prior known-good revision until switch completes;
+8. quarantine rejected revision without destroying the last valid local copy.
 
 ---
 
-## 5. Workshop package types
+# 22. Workshop UX
 
-Do not use `.tres` or `.tscn` in player packages.
+Workshop UI evolves into a content manager rather than only import buttons.
 
-### 5.1 Buddy model cosmetic
-
-```text
-content/
-  manifest.json
-  asset.json
-  model.glb
-  albedo.png
-  thumbnail.png
-preview.png              # Steam preview, outside imported content root as today
-```
-
-`asset.json` should contain only typed data such as:
-
-```json
-{
-  "schemaVersion": 1,
-  "assetKind": "buddy-model-cosmetic",
-  "displayName": "Round Glasses",
-  "slot": "glasses",
-  "applicationMode": "attachment",
-  "anchor": "eye-group",
-  "secondaryAnchor": null,
-  "defaultScale": 1.0,
-  "defaultOffsetX": 0.0,
-  "defaultOffsetY": 0.0,
-  "mirrorSecondary": false,
-  "hidesHair": false,
-  "allowPlayerTint": true,
-  "canonicalAssetHash": "..."
-}
-```
-
-Do **not** trust a player-provided feature/content ID.
-
-The runtime identity should be derived from Workshop provenance, for example:
+Views:
 
 ```text
-ugc.<PublishedFileId>.asset
+Browse Workshop
+Installed
+Updates
+Creator / My Items
+Missing Content
+Disabled / Incompatible
+Local Creator Projects
 ```
 
-If future packages contain multiple assets, add a validated package-local slug:
+Each installed item shows capabilities:
 
 ```text
-ugc.<PublishedFileId>.<assetSlug>
+Visual
+Physics
+Collision
+Grab
+Lights
+Behavior Graph
+Lua Script
+Contraption
 ```
 
-This makes collision with shipped/trusted content structurally impossible.
+Scripted content is clearly indicated.
 
-### 5.2 Environment decoration
+Do not show a frightening arbitrary-code warning for sandboxed Lua; it does not have host access. Show capability/performance information instead.
 
-Same model/albedo structure with an environment definition:
-
-```json
-{
-  "schemaVersion": 1,
-  "assetKind": "environment-decoration",
-  "displayName": "Beanbag",
-  "category": "sofa",
-  "anchorKind": "floor",
-  "renderBand": "behind-buddy-floor",
-  "allowsRotation": true,
-  "rotationStepDegrees": 15,
-  "pivotX": 0.5,
-  "pivotY": 1.0,
-  "defaultScale": 1.0,
-  "canonicalAssetHash": "..."
-}
-```
-
-UGC decorations remain visual-only:
-
-- no collision;
-- no rigid body;
-- no grab component;
-- no damage;
-- no scripts;
-- no gameplay signals.
-
-Player-authored light sources should be deferred until a separate bounded light-profile policy is tested. An unrestricted light range/count is an easy performance abuse path.
-
-### 5.3 Face/decal cosmetic
-
-Data-only JSON + PNG; no GLB.
-
-For static decal-compatible slots:
-
-```text
-content/
-  manifest.json
-  asset.json
-  decal.png
-  thumbnail.png
-```
-
-Eyes/Mouth receive a separate semantic-frame schema later rather than pretending a static decal is equivalent to their current reactive renderer.
+If a future unsafe full-code tier exists, that tier gets a separate explicit warning/enable flow.
 
 ---
 
-## 6. Runtime loading — no `GD.Load` for UGC
+# 23. Steam Workshop tags for the expanded platform
 
-The existing prohibition against `GD.Load` / `ResourceLoader` on Workshop content should remain.
+Do not change the currently configured v1 tags until the new content system is implemented and the Steamworks settings are ready to publish.
 
-After the canonical GLB has passed byte-level structural validation, load it with the runtime glTF API rather than Godot's imported-project Resource pipeline.
-
-Recommended service boundary:
+Future Ready-to-Use tag design should include a **Content Type** category such as:
 
 ```text
-IPlayerAssetGeometryLoader
-    LoadCanonicalModelAsync(ValidatedCanonicalModel model)
-        -> RuntimeModelHandle
+Room Painting
+Buddy
+Cosmetic
+Prop
+Contraption
+Pack
 ```
 
-Godot implementation:
-
-1. receive only an already validated local canonical GLB;
-2. use `GLTFDocument` + `GLTFState` from the trusted game assembly;
-3. generate the scene;
-4. require the result to contain exactly the expected single `MeshInstance3D`;
-5. discard/reject anything else defensively;
-6. apply the trusted Desktop Buddy material;
-7. disable shadows/collision/processing as appropriate;
-8. never attach imported scripts or imported game behavior.
-
-For PNGs, use bounded byte reads + `Image.LoadPngFromBuffer` / project-owned texture creation rather than loading an arbitrary Godot Resource from disk.
-
----
-
-## 7. Dynamic runtime catalogue — the largest game architecture change
-
-The current trusted catalogues are effectively static.
-
-Player Workshop content needs a runtime-composed content layer.
-
-### 7.1 Buddy Studio catalogue provider
-
-Introduce an interface such as:
+And useful feature/filter tags such as:
 
 ```text
-ICharacterFeatureCatalogProvider
-    Current -> immutable CharacterFeatureCatalog snapshot
-    Changed event
+Physics
+Scripted
+Lights
+Destructible
 ```
 
-Composition:
+Exact strings must be configured in Steamworks before the game submits them.
+
+Keep internal schema/version identifiers in metadata rather than exposing them as ugly public tags.
+
+---
+
+# 24. Current Workshop v1 pre-merge findings
+
+The expanded UGC work should **not** be built on top of unresolved orchestration defects in PR #41.
+
+Before PR #41 is considered merge-ready, address the following source issues found during the 2026-08-27 review.
+
+## M1 — snapshot before content-type detection — BLOCKER
+
+Current coordinator can inspect `manifest.json` directly from Steam's mutable install directory before the importer takes its immutable snapshot.
+
+Fix:
+
+- take one incoming staging snapshot first;
+- detect content type from that snapshot;
+- pass the same `WorkshopIncomingStaging` to the selected importer;
+- never validate/read package payload directly from Steam cache.
+
+## M2 — `CreateItem` cancellation orphan — BLOCKER
+
+Current Steam create request can continue remotely after caller cancellation while the returned PublishedFileId is discarded, potentially leaving an empty/orphan Workshop item.
+
+Fix:
+
+- model remote operation state separately from caller wait cancellation;
+- once `CreateItem` is submitted, do not abandon its result;
+- reconcile late callback and either continue the pending publish or surface recoverable item state;
+- add deterministic tests for cancellation-before-callback and late callback.
+
+## M3 — extract/test Steam callback operation state — BLOCKER
+
+The hardest concurrency behavior currently lives inside the Godot transport and is not covered deeply enough by pure unit tests.
+
+Fix:
+
+- extract a pure callback/operation coordinator where practical;
+- test duplicate callbacks;
+- late callbacks;
+- cancellation;
+- mismatched AppID/item ID;
+- concurrent publish rejection;
+- shutdown with pending operation.
+
+## M4 — remove changing `_appId` semantics — REQUIRED
+
+Keep runtime AppID and Workshop-owner AppID in distinct fields for the complete transport lifetime.
+
+Never repurpose one field after initialization.
+
+## M5 — cancellation semantics — REQUIRED
+
+Use one application-level cancellation model.
+
+Persistence/export stages should normally propagate `OperationCanceledException`; the Workshop application coordinator converts it exactly once into `Cancelled`.
+
+Do not infer cancellation from failure strings.
+
+## M6 — heavy Buddy package work off main thread — REQUIRED
+
+Character share import/export performs hashing, JSON, PNG and filesystem work before/after awaits in ways that can execute on the Godot main thread.
+
+Move pure file/decode/validation work to deliberate workers.
+
+GodotSteam calls and Godot object creation remain on the main thread.
+
+## M7 — bootstrap/service coupling — REQUIRED BEFORE UGC EXPANSION
+
+Workshop UI currently discovers other root/autoload services and uses concrete bootstrap classes as application services.
+
+Before dynamic UGC catalogues are introduced:
+
+- introduce narrow room snapshot/apply contracts;
+- introduce command-registration contract;
+- explicitly wire them from composition root;
+- stop polling the scene tree for service availability.
+
+This may be completed in PR #41 or as the first prerequisite commit of the UGC branch, but do not build the UGC catalogue system on the existing polling pattern.
+
+## M8 — typed transport availability/query result — REQUIRED BEFORE CROSS-APP/UGC
+
+Do not make "zero subscriptions" indistinguishable from "Steam unavailable".
+
+Return typed query status and expose transport availability through the actual interface consumed by the application.
+
+## M9 — cleanup failed native transport composition — REQUIRED
+
+If real Steam transport initialization fails and bootstrap falls back to Null transport, free/disconnect temporary bridge/transport nodes.
+
+## M10 — live Steam smoke — RELEASE GATE
+
+Source-controlled CI is green on PR #41, including the real GodotSteam addon smoke, but GitHub runners do not have an authenticated Steam client.
+
+Before release — and preferably before merging the Steam foundation — run at least one developer-account live smoke on AppID `5114950`:
+
+- initialize Steam;
+- publish a private/developer Workshop item;
+- handle legal agreement if applicable;
+- subscribe/download;
+- import;
+- update same item;
+- verify offline reuse.
+
+The complete second-account matrix may remain a release gate if a second account is not immediately available, but the first-account create/publish path should be proven before treating the platform adapter as production-ready.
+
+---
+
+# 25. Implementation phases
+
+The following phases are ordered. Agents must not jump directly to scripting/contraptions before the foundation gates pass.
+
+## UGC-0 — source alignment + PR #41 prerequisite fixes
+
+Deliverables:
+
+- close M1-M9 above;
+- update `AGENTS.md`, architecture/source-alignment docs to authorize the expanded UGC platform when implementation is explicitly started;
+- keep real-time multiplayer and arbitrary host-code mods separate;
+- all PR #41 tests green.
+
+Exit:
+
+- Workshop foundation is mergeable independently;
+- no known callback/staging/threading defect is knowingly inherited.
+
+## UGC-1 — shared UGC Core + dependency spike
+
+Deliverables:
+
+- `DesktopBuddy.Ugc.Core`;
+- package/version/identity models;
+- canonical GLB parser/validator;
+- physics definition models;
+- behavior definition models;
+- pure validators;
+- MoonSharp dependency/license/security spike behind `IUgcScriptEngine`.
+
+Tests:
+
+- malformed GLB corpus;
+- invalid indices;
+- NaN/Infinity;
+- duplicate IDs;
+- schema future-version refusal;
+- identifier normalization;
+- script engine proves no filesystem/CLR/OS access.
+
+## UGC-2 — local UGC library + immutable catalogue
+
+Deliverables:
+
+- local Workshop/local Creator library;
+- atomic revision switch;
+- provenance;
+- immutable `UgcCatalogSnapshot`;
+- update/missing/incompatible states;
+- directory emulator package installation.
+
+Exit:
+
+- a validated fake package can be installed/updated/rolled back without rendering it.
+
+## UGC-3 — canonical visual runtime vertical slice
+
+First asset: **Glasses**.
+
+Deliverables:
+
+- canonical mesh -> `ArrayMesh` adapter;
+- albedo -> trusted Desktop Buddy material;
+- runtime UGC cosmetic definition;
+- dynamic Buddy Studio catalogue entry;
+- equip/save/restart/missing-content fallback;
+- no physics yet.
+
+Exit journey:
 
 ```text
-Shipped definitions
-    + trusted repository Asset Forge definitions
-    + validated active Workshop cosmetic definitions
-        = current immutable runtime snapshot
+install local UGC glasses
+-> appears in Buddy Studio
+-> equip
+-> save
+-> restart
+-> still equipped
+-> remove package
+-> safe fallback
+-> reinstall
+-> original UGC selection resolves again
 ```
 
-Do not make `CharacterFeatureCatalog` itself a mutable global dictionary. Preserve immutable snapshots and replace the snapshot when UGC changes.
+## UGC-4 — Desktop Buddy Creator visual publishing slice
 
-Update consumers that currently hold a one-time catalogue:
+Deliverables:
 
-- `CharacterStore`;
-- character editor/session/compiler composition;
-- `BuddyGeneratedCosmeticRegistry` replacement/composition seam;
-- `BuddyCosmeticVisualCatalog`;
-- Buddy Studio tile population;
-- character preview/runtime selection.
+- player-facing Creator shell;
+- generate-from-image Glasses path using AssetForge.Core;
+- external GLB/glTF mapper;
+- canonicalize output;
+- local test;
+- package generation;
+- Workshop publish using existing transport;
+- preview/thumbnail generation.
 
-### 7.2 Visual registry
+Exit:
 
-Do not force a `GeneratedBuddyCosmeticResource` to represent untrusted runtime assets.
+- a non-developer can make and publish Glasses without touching repository files.
 
-Create a neutral runtime model:
+## UGC-5 — single-body physics prop
+
+Deliverables:
+
+- collision editor;
+- Rigid/Static/Decoration modes;
+- mass/damping/friction/bounce/gravity/CCD;
+- runtime physics factory;
+- presentation follows physics body;
+- spawn/remove UI;
+- entity budget registration.
+
+Exit journey:
 
 ```text
-BuddyVisualAssetDefinition
-    Id
-    Slot
-    Anchor
-    SecondaryAnchor
-    ApplicationMode
-    DisplayName
-    Thumbnail
-    RuntimeModelHandle / geometry reference
-    Trusted-vs-UGC provenance
+Creator imports model
+-> adds collider + mass
+-> local test
+-> publishes
+-> subscriber spawns prop
+-> prop falls/collides/bounces
 ```
 
-Then compose visual providers:
+## UGC-6 — grabbing + Buddy impacts + progression provenance
 
-```text
-BuiltInProceduralBuddyVisualProvider
-TrustedGeneratedBuddyVisualProvider
-WorkshopBuddyVisualProvider
-```
+Deliverables:
 
-`BuddyCosmeticVisualCatalog` should consume the composed provider rather than directly referencing `BuddyGeneratedCosmeticRegistry.Current`.
+- grabbable capability;
+- pointer selection integration;
+- grab metadata;
+- UGC `IImpactSource`;
+- Buddy pain/mood integration;
+- zero-credit community-impact policy;
+- modded-session marker for future competitive features.
 
-### 7.3 Environment registry
+Exit:
 
-Similarly replace the static `Launch + Generated` composition assumption with:
+- player can grab/throw UGC prop into Buddy and receive real reaction without minting credits.
 
-```text
-Launch
-+ Trusted Asset Forge generated
-+ Active validated Workshop decorations
-= Runtime Environment catalogue snapshot
-```
+## UGC-7 — player lights
 
-The Room Decorator should not need separate UGC browse/purchase code once the definitions are represented through its normal domain catalogue.
+Deliverables:
 
----
+- Creator light editor;
+- runtime light component;
+- emission control;
+- shadow toggle;
+- soft performance reporting;
+- hard safety accounting.
 
-## 8. Buddy Studio slot roadmap
+Exit:
 
-“All cosmetics” should be supported, but not all slots should use the same asset representation.
+- published lamp/light follows prop transform and survives save/load where relevant.
 
-| Slot | Player format | Mapping | Recommended phase |
-| --- | --- | --- | --- |
-| Glasses | model | EyeGroup attachment | first |
-| Hair | model | HeadCrown attachment | first model expansion |
-| Headwear | model | HeadCrown attachment | first model expansion |
-| Nose | model | HeadFront attachment | first model expansion |
-| Ears | model | paired LeftEar/RightEar | first model expansion |
-| Tops | model | TorsoBody part replacement | first |
-| Shoes | model | paired foot replacement | first |
-| Accessories | model or decal | explicit torso/head anchor policy | second |
-| Face | decal/model overlay policy | HeadFront | second |
-| Brows | decal | face compositor | decal phase |
-| Eyes | semantic decal frames | face compositor + blink/look behavior | later |
-| Mouth | semantic decal frames | face compositor + mood/pain behavior | later |
+## UGC-8 — Behavior Graph
 
-Asset Forge v1 currently has complete generated model authoring for Glasses/Tops/Shoes and explicitly leaves Hair/Headwear/Accessories as post-v1 seams. Player UGC is a good reason to finish those category templates, but it should happen through the same canonical model contract rather than bespoke Workshop rendering code.
+Deliverables:
 
----
+- typed events/conditions/actions;
+- graph editor;
+- host command queue;
+- deterministic timers/RNG;
+- collision/use/grab/signal events;
+- forces/spawn/light/damage actions.
 
-## 9. Player UGC ownership/economy
+Exit examples:
 
-Recommended rule:
+- button toggles a light;
+- impact launches another prop;
+- timer pulses force;
+- thrown object triggers an effect.
 
-> **Subscribed/active Workshop cosmetics are free to equip; they do not enter the credits economy.**
+## UGC-9 — sandboxed Lua
 
-Reasons:
+Deliverables:
 
-- player-created content should not invent prices in the game's progression economy;
-- allowing Workshop metadata to create economy entries would make untrusted data affect progression;
-- user-authored IDs must never enter the trusted generated commerce catalogue;
-- Workshop subscription is the availability boundary.
+- hard-sandbox interpreter;
+- versioned host API;
+- event bindings;
+- instruction/time/spawn/query budgets;
+- script suspension diagnostics;
+- Creator code editor/docs;
+- no raw Godot/CLR access.
 
-Official/first-party Asset Forge content continues using the current permanent-credit-unlock path.
+Required hostile tests:
 
-This keeps a clean distinction:
+- infinite loop;
+- recursive call storm;
+- attempted filesystem access;
+- attempted CLR reflection;
+- massive spawn loop;
+- invalid entity handle;
+- script exception;
+- script from removed package;
+- two mods throwing simultaneously.
 
-```text
-first-party cosmetic -> trusted catalogue + credits ownership
-Workshop cosmetic    -> validated subscription/local UGC availability
-```
+## UGC-10 — joints + contraptions
 
-If the owner wants Workshop cosmetics to cost credits later, define one fixed game-controlled price policy by category. Never accept player-specified prices as authoritative.
+Deliverables:
 
----
+- joint authoring;
+- multi-body prefab schema;
+- link/signal editor;
+- transactional spawn;
+- save/restore;
+- missing dependency presentation.
 
-## 10. Subscription and offline semantics
+Exit examples:
 
-Player assets should behave differently from imported Buddy/room snapshots.
+- spring toy;
+- hinged trap;
+- button -> timer -> launcher machine.
 
-Recommended:
+## UGC-11 — full 3D Buddy cosmetic expansion
 
-- Buddy/room shares remain **explicit imported copies** as Workshop v1 currently defines.
-- reusable model/decal assets become **subscription-scoped UGC library entries**.
-- after successful validation, cache a verified canonical copy under `user://ugc/...` so subscribed assets continue working offline.
-- while Steam is offline, use the last verified subscription state/cache.
-- after a confirmed unsubscribe, deactivate the UGC definition; optionally retain cache bytes for a bounded cleanup period.
-- characters/environments that reference missing UGC retain their IDs but use a safe visual fallback/placeholder.
-- resubscribing restores the content without rewriting character saves.
-
-Do not silently leave an unsubscribed cosmetic permanently active merely because its old bytes still exist locally.
-
----
-
-## 11. Character packages that use UGC cosmetics
-
-A shared Buddy configuration can eventually depend on player cosmetic Workshop items.
-
-Add to the Buddy share manifest/payload:
-
-```text
-requiredWorkshopItems: [123..., 456...]
-```
-
-Import flow:
-
-1. validate Buddy package;
-2. inspect referenced UGC IDs;
-3. if dependencies are installed/validated, compile normally;
-4. if dependencies are missing, import the Buddy anyway with safe built-in fallbacks and show “Missing Workshop cosmetics”; 
-5. offer the Steam item pages/subscription flow.
-
-Future polish can mirror these relations into Steam Workshop item dependencies (`AddDependency`) so the web page also exposes required items. Steam documents Workshop-item dependencies as soft dependencies; the game still owns actual validation/use policy.
-
-Do not embed arbitrary external cosmetic models inside a Buddy character share by default. Reusable assets should remain reusable Workshop items.
-
----
-
-## 12. Steam Workshop taxonomy
-
-Keep `Ready-to-Use` Workshop.
-
-Recommended visible tag categories:
-
-### Creation Type
-
-- `Room Painting`
-- `Buddy`
-- `Cosmetic`
-- `Decoration`
-
-### Cosmetic Slot
-
-- `Glasses`
-- `Hair`
-- `Headwear`
-- `Nose`
-- `Ears`
-- `Top`
-- `Shoes`
-- `Accessory`
-- `Face Detail`
-- `Brows`
-- `Eyes`
-- `Mouth`
-
-### Decoration Type
-
-- `Lamp`
-- `Sofa`
-- `Table`
-- `Plant`
-- `Painting`
-- `Other Decoration` only if a safe generic placement policy exists.
-
-Keep schema/generator information in developer metadata/manifest, not as public-facing version tags.
-
-Steam requires configured browsing tags to exactly match tags submitted by the game/tool.
-
----
-
-## 13. Creator distribution on Steam
-
-Valve explicitly supports an upload/editor application separate from the game and allows its AppID under the base game's Workshop **App Publish Permissions**.
-
-Two viable shipping models:
-
-### Recommended initial model — creator executable in the Desktop Buddy depot
-
-Ship a separate executable/launch option with Desktop Buddy:
-
-```text
-Desktop Buddy
-Desktop Buddy Creator
-```
-
-Advantages:
-
-- no second creator AppID required initially;
-- same entitlement/application identity;
-- easiest developer/test setup;
-- still process-isolated from the game;
-- internal developer Asset Forge remains unshipped.
-
-### Later model — separate Steam Tool/App
-
-If Creator deserves its own Steam application later:
-
-- create Creator AppID;
-- add it under base AppID `5114950` -> Workshop Configuration -> App Publish Permissions;
-- configure Cloud quota for both AppIDs;
-- initialize Steam under Creator AppID;
-- create/publish Workshop items against owner `5114950`.
-
-The existing runtime-AppID vs Workshop-owner split from PR #41 already anticipates this architecture.
-
-The future Demo can use the same pattern once its AppID exists.
-
----
-
-## 14. Security model
-
-Player models are untrusted even if they were produced by Desktop Buddy Creator, because authors can modify the Workshop files after export.
-
-Game-side validation is mandatory on every install/update.
-
-### 14.1 Package rules
-
-Reject:
-
-- path traversal;
-- absolute paths;
-- links/reparse points;
-- undeclared files;
-- duplicate paths;
-- wrong hashes;
-- byte-limit violations;
-- unsupported schemas;
-- unknown asset kinds;
-- invalid/unsupported slot mappings;
-- non-finite transform values;
-- model/decal dimensions outside policy.
-
-### 14.2 Model rules
-
-Reject canonical GLB containing any feature outside Section 4.
-
-Do the byte-level GLB/JSON validation **before** asking Godot to build a runtime scene.
-
-After Godot generates the scene, validate the resulting node tree again before attaching it.
-
-### 14.3 Runtime authority rules
-
-UGC may never create or change:
-
-- collision shapes;
-- RigidBody2D/RigidBody3D;
-- mass;
-- joints;
-- buddy rig sizes;
-- connectors;
-- pain/damage values;
-- economy prices/balances;
-- tool behavior;
-- scripts;
-- shaders;
-- native extensions;
-- network behavior;
-- save paths;
-- process callbacks from author code.
-
-This remains a **visual-content system**, not a generalized mod API.
-
----
-
-## 15. Performance policy
-
-A subscribed Workshop library can contain many assets, so do not instantiate every model at startup.
-
-Recommended runtime model:
-
-- validate metadata on Worker threads;
-- catalogue stores lightweight definitions;
-- thumbnails are lazy/cached;
-- model geometry loads only when selected/equipped/placed;
-- maintain an LRU cache of decoded runtime model handles;
-- unload unused UGC geometry after a memory budget is exceeded;
-- never decode model/PNG data on the physics tick;
-- Godot texture/mesh object creation remains on the main thread.
-
-Room Decorator should instantiate only placed decorations plus currently-previewed catalogue item(s), not an entire subscribed model library.
-
----
-
-## 16. Required refactors before player-model implementation
-
-The design review of Workshop v1 identified issues that should be fixed first because UGC models amplify them:
-
-1. **Snapshot once before content detection.** Never inspect Steam's mutable install folder to determine package type.
-2. **Fix CreateItem cancellation semantics.** Do not allow caller cancellation to create orphan empty Workshop items.
-3. **Separate runtime and Workshop-owner AppID fields.** Do not repurpose `_appId` during transport initialization.
-4. **Move heavy import/export hashing/PNG/JSON/model work off the Godot main thread.**
-5. **Add pure tests for callback state/cancellation/late callbacks.**
-6. **Replace Workshop UI scene-tree polling with explicit/narrow composition interfaces.**
-7. **Make transport availability/error state typed rather than returning “empty subscriptions” on failure.**
-
-These are not cosmetic cleanups for player UGC; they are prerequisites for a larger Workshop surface.
-
----
-
-## 17. Proposed implementation architecture
-
-Suggested new boundaries (names are illustrative):
-
-```text
-Domain/UGC
-  PlayerAssetKind
-  PlayerAssetDescriptor
-  BuddyUgcCosmeticDefinition
-  EnvironmentUgcDecorationDefinition
-  CanonicalModelPolicy
-  PlayerAssetValidationResult
-
-Persistence/UGC
-  PlayerAssetPackageReader
-  PlayerAssetLibraryStore
-  PlayerAssetSubscriptionStateStore
-  PlayerAssetProvenanceStore
-
-Sharing
-  PlayerAssetShareExporter
-  PlayerAssetShareImporter
-  WorkshopPlayerAssetCoordinator
-
-Platform/Rendering
-  IPlayerAssetGeometryLoader
-  GodotCanonicalGlbLoader
-  PlayerAssetTextureLoader
-
-Character runtime
-  ICharacterFeatureCatalogProvider
-  RuntimeCharacterFeatureCatalogProvider
-  IVisualAssetProvider
-  WorkshopBuddyVisualProvider
-
-Environment runtime
-  IEnvironmentDecorationCatalogProvider
-  RuntimeEnvironmentDecorationCatalogProvider
-  WorkshopEnvironmentVisualProvider
-
-Creator
-  DesktopBuddy.Creator.Core / shared AssetForge.Core pieces
-  GeneratedImageAssetWorkflow
-  ExternalModelMapperWorkflow
-  DecalWorkflow
-  UGC package preview/validator
-  Workshop publisher
-```
-
-Do not introduce a global service locator. Compose providers explicitly from `Bootstrap` / feature composition roots.
-
----
-
-## 18. Implementation phases
-
-### UGC-0 — owner/source-of-truth gate
-
-Before production code:
-
-- authorize the new canonical model/decal Workshop formats;
-- supersede the current “no Workshop meshes” rule only for the exact canonical format;
-- confirm Workshop-cosmetic economy policy;
-- confirm Creator distribution model;
-- confirm first public UGC categories.
-
-### UGC-1 — canonical model format + hostile validator
-
-- strengthen `GlbWriter.ValidateSingleMesh` into full canonical validation or add `CanonicalGlbPolicy`;
-- validate finite floats, accessors, indices, buffer bounds and forbidden glTF sections;
-- add size/triangle/vertex budgets;
-- package schema + exact whitelist;
-- fuzz/adversarial fixtures.
-
-No Workshop/UI yet.
-
-### UGC-2 — runtime GLB loader
-
-- `GLTFDocument` runtime loader behind `IPlayerAssetGeometryLoader`;
-- require exactly one generated `MeshInstance3D`;
-- trusted material override;
-- no scripts/physics/lights;
-- lazy model cache;
-- headless/runtime scenarios.
-
-### UGC-3 — local UGC library + dynamic catalogues
-
-- validated local asset store;
-- runtime catalogue snapshot providers;
-- collision-free `ugc.<WorkshopId>...` IDs;
-- add/remove/reload behavior;
-- missing-content fallbacks;
-- no Steam dependency yet.
-
-### UGC-4 — first Buddy model vertical slice
-
-Recommended first slice: **Glasses**.
-
-- Creator package export;
-- local package import;
-- Buddy Studio tile;
-- equip/save/restart;
-- missing subscription fallback;
-- re-enable after asset returns.
-
-Then Tops/Shoes because the trusted Asset Forge model path already exists for them.
-
-### UGC-5 — Environment decoration vertical slice
-
-Recommended first slice: Sofa/Table generic static floor decoration.
-
-- no lights;
-- no collision;
-- subscription-scoped catalogue entry;
-- placement/save/restart/missing-content placeholder behavior.
-
-### UGC-6 — Desktop Buddy Creator player mode
-
-- separate safe application shell;
-- image-generation workflow using AssetForge.Core;
-- UGC package export;
-- no repository-writing tools;
-- safe preview against trusted Buddy/room reference;
-- publish title/description/tags/legal-agreement flow.
-
-### UGC-7 — external model mapper
-
-- creator-only arbitrary glTF import;
-- model selection/flattening;
-- canonicalization;
-- mapping UI for anchor/pivot/scale/orientation;
-- re-export via project-owned canonical GLB writer;
-- same package/runtime validator as generated models.
-
-### UGC-8 — remaining 3D Buddy slots
+Deliverables:
 
 - Hair;
-- Headwear;
 - Nose;
 - Ears;
-- Accessories where a clear model anchor policy exists.
+- Accessories;
+- Headwear;
+- Tops;
+- Shoes;
+- paired/attachment/replacement policies;
+- optional physics attachments through approved Buddy sockets.
 
-Extend trusted Asset Forge templates at the same time so first-party and player authoring share contracts.
+Do not mutate trusted Buddy rig definition files.
 
-### UGC-9 — decal slots
+## UGC-12 — reactive face Workshop content
 
-- face/accessory static decals first;
-- brows;
-- eyes only after blink/look semantic frame contract;
-- mouth only after expression/pain semantic frame contract.
+Deliverables:
 
-### UGC-10 — Workshop subscription integration
+- face atlas schema;
+- Eyes/Brows/Mouth semantic states;
+- runtime renderer adapter;
+- Creator face preview;
+- missing-state fallback;
+- content update compatibility.
 
-- new Creation Type tags;
-- Workshop item query/detail metadata sufficient to identify player assets;
-- auto-refresh active subscribed asset catalogue;
-- update/revalidation;
-- offline cached operation;
-- unsubscribe/deactivate flow.
+## UGC-13 — Room Decorator deep integration
 
-### UGC-11 — Buddy package dependencies
+Deliverables:
 
-- `requiredWorkshopItems` in Buddy shares;
-- missing dependency UX;
-- optional Steam Workshop `AddDependency` integration.
+- UGC Decoration/Static/Rigid entries in decorator/spawn browser;
+- placement persistence;
+- lights;
+- behavior;
+- physics activation semantics;
+- missing-content placeholders.
 
-### UGC-12 — hardening/release matrix
+## UGC-14 — Workshop content manager + discovery polish
 
-- malformed/crafted GLBs;
-- decompression/image bombs;
-- huge coordinate bounds;
-- NaN/Infinity geometry;
-- invalid indices;
-- update while equipped/placed;
-- unsubscribe while referenced;
-- offline startup;
-- hundreds of subscribed metadata entries;
-- memory/cache budgets;
-- two-account author/consumer flow;
-- Creator AppID/demo cross-app flows when those AppIDs exist.
+Deliverables:
 
----
+- capability badges;
+- installed/update/incompatible/missing views;
+- enable/disable item;
+- heavy-content warnings/preferences;
+- local Creator projects;
+- public Workshop tag/filter integration;
+- update rollback diagnostics.
 
-## 19. Testing requirements
+## UGC-15 — release hardening
 
-### Pure/domain tests
+Deliverables:
 
-- canonical GLB accepts only project writer output;
-- reject every forbidden glTF top-level feature;
-- buffer/accessor overflow and out-of-range indices;
-- finite coordinate/UV/normal checks;
-- triangle/vertex/byte limits;
-- package path/hash/size/schema validation;
-- UGC ID derivation cannot collide with trusted IDs;
-- slot/anchor/application-mode combinations are closed enums;
-- player metadata cannot create prices/gameplay values.
-
-### Persistence tests
-
-- Steam folder -> one immutable snapshot -> validation;
-- update creates new verified revision atomically;
-- corrupt update keeps last good cached version unavailable/available according to explicit policy;
-- unsubscribe deactivates definition without corrupting character/environment saves;
-- stale caches clean safely.
-
-### Godot runtime tests
-
-- canonical GLB creates exactly one trusted-rendered mesh;
-- material is always game-owned;
-- no imported node can process or collide;
-- Glasses/Hair/Headwear/Nose/Ears anchor placement;
-- Torso/foot replacement preserves physics and paint hide/restore contract;
-- Environment UGC stays visual-only;
-- lazy loading/cache release;
-- face/decal compositing.
-
-### End-to-end Workshop tests
-
-- player generates asset in Creator;
-- publishes;
-- second account subscribes;
-- game validates and displays item;
-- equip/place;
-- save/restart;
-- offline reuse;
-- author updates item;
-- subscriber receives/revalidates update;
-- unsubscribe -> safe fallback;
-- resubscribe -> restoration;
-- maliciously modified Workshop payload -> quarantine/disable, never runtime load.
+- fuzz/property tests;
+- package corruption corpus;
+- script hostile corpus;
+- performance soaks with many bodies/joints/lights;
+- Workshop update rollback soak;
+- low/mid/high hardware profiling;
+- Steam two-account matrix;
+- creator documentation;
+- UGC API documentation;
+- sample Workshop items made only through public APIs.
 
 ---
 
-## 20. Steamworks changes when this is implemented
+# 26. Required automated scenarios
 
-Current base Workshop settings can stay Ready-to-Use.
-
-Add visible tags before live testing player assets:
-
-- `Cosmetic`
-- `Decoration`
-- slot/category tags for the public categories enabled in that release.
-
-If Desktop Buddy Creator later receives its own AppID:
-
-- add Creator AppID under AppID `5114950` -> Workshop Configuration -> App Publish Permissions;
-- configure Cloud quota for Creator AppID as well as base game;
-- publish the Steamworks setting changes.
-
-Valve explicitly supports a separate editing/publishing application publishing into a base application's Workshop.
-
----
-
-## 21. Recommendation
-
-Build this feature, but **do not turn Workshop into a general mod loader**.
-
-The best long-term architecture is:
+At minimum add these journeys/scenarios as the relevant phase lands:
 
 ```text
-Player source
-  PNG generated in Creator
-  OR external Blender/glTF model
-        |
-        v
-Desktop Buddy Creator
-  import / map / sanitize / canonicalize
-        |
-        v
-Desktop Buddy canonical UGC package
-  JSON + canonical GLB + PNG only
-        |
-        v
-Steam Workshop
-        |
-        v
-immutable snapshot
-        |
-        v
-strict game-side validation again
-        |
-        v
-runtime UGC catalogue
-        |
-        +--> Buddy Studio visual provider
-        |
-        +--> Environment Decorator visual provider
+ugc_visual_glasses_roundtrip
+ugc_missing_cosmetic_fallback
+ugc_model_parser_hostile
+ugc_physics_prop_collision
+ugc_physics_prop_grab_throw
+ugc_impact_zero_credit
+ugc_light_follow
+ugc_behavior_graph_trigger
+ugc_lua_sandbox_denies_host_access
+ugc_lua_budget_suspends
+ugc_lua_spawn_budget
+ugc_joint_contraption
+ugc_contraption_transaction_failure
+ugc_workshop_update_atomic_swap
+ugc_bad_update_keeps_last_good
+ugc_missing_room_asset_placeholder
+ugc_catalogue_refresh_no_restart
+ugc_many_entities_budget
+ugc_many_lights_budget
 ```
 
-This gives players substantial creative freedom while preserving the most important existing Desktop Buddy architectural guarantee:
+Creator CI additionally needs:
 
-> **Untrusted player content may change appearance, but never game code, physics, economy authority, save paths, or gameplay behavior.**
-
-It also lets first-party Asset Forge content and community content converge on the same canonical geometry format instead of maintaining two rendering systems.
+```text
+creator_assetforge_glasses_publish_package
+creator_external_glb_canonicalization
+creator_collision_roundtrip
+creator_physics_metadata_roundtrip
+creator_behavior_graph_roundtrip
+creator_lua_validation
+creator_package_verify
+```
 
 ---
 
-## 22. Owner decisions required before UGC-0 closes
+# 27. Design rules for agents
 
-Recommended defaults are shown in **bold**.
+1. **Do not create a second physics engine.** Use Godot 2D physics through typed UGC factories.
+2. **Do not load Workshop Godot Resources/scenes.** Construct known runtime nodes from validated data.
+3. **Do not expose raw Godot objects to Lua.** Use handles/proxies and queued commands.
+4. **Do not make community item IDs trusted global IDs.** Derive identity from Workshop provenance.
+5. **Do not let UGC mint credits or trusted leaderboard scores.** Track provenance.
+6. **Do not use hard-coded checks for each Workshop item.** Add capabilities/components.
+7. **Do not put UGC logic into `Bootstrap`.** Bootstrap composes services only.
+8. **Do not make `BuddyGeneratedCosmeticRegistry.Current` the UGC registry.** Introduce a runtime catalogue service.
+9. **Do not let one mod own unbounded callbacks/timers/entities/lights.** Central scheduler/registry owns budgets.
+10. **Do not treat expensive content as invalid merely because it is expensive.** Use warnings/opt-in until a hard safety boundary is crossed.
+11. **Do not silently downgrade or rewrite a creator package in the game.** Creator canonicalizes; runtime validates.
+12. **Do not delete the last known-good local UGC revision until its replacement validates and atomically activates.**
+13. **Do not make Workshop subscription automatically activate scripted/physics content in an existing room.** Subscription makes content available; spawning/equipping remains explicit.
+14. **Do not add arbitrary full-code mods by accident.** Any future host-code tier requires separate owner authorization and UX/security design.
 
-1. Workshop cosmetics economy:
-   - **free while subscribed/active**;
-   - or fixed game-controlled category price.
+---
 
-2. Creator distribution:
-   - **separate `Desktop Buddy Creator` executable shipped in the main Desktop Buddy depot first**;
-   - later separate Steam Tool/App if useful.
+# 28. Definition of done for the UGC platform
 
-3. First public player-model categories:
-   - **Glasses + Tops + Shoes + one static Environment category first**;
-   - then Hair/Headwear/Nose/Ears/Accessories.
+The UGC platform is not complete merely because one GLB can render.
 
-4. Unsubscribe behavior:
-   - **deactivate UGC definition after confirmed unsubscribe, preserve character/reference IDs and use fallback; retain cache only as implementation/offline cache**;
-   - or permanently import/copy every UGC asset like current room shares.
+The target is satisfied when:
 
-5. External model support:
-   - **only through Creator canonicalization; raw arbitrary Workshop GLB is never accepted**.
+- players can create content without repository/dev tooling;
+- Asset Forge-generated and externally modeled assets converge on one canonical format;
+- Workshop packages can contain interactive physics objects;
+- collision, mass, damping, friction, bounce and gravity are creator-controlled;
+- objects may be grabbed when configured;
+- player-authored lights work;
+- objects can affect Buddy physically;
+- behavior graphs support useful no-code interactions;
+- Lua supports genuine custom behavior without host-machine access;
+- joints/contraptions work;
+- 3D Buddy cosmetics dynamically appear from Workshop;
+- reactive face content has its own correct 2D contract;
+- room content supports decorative/static/rigid modes;
+- installed Workshop updates are transactional;
+- missing content degrades safely and non-destructively;
+- UGC cannot impersonate official content/economy events;
+- heavy content is user-manageable rather than arbitrarily forbidden;
+- a bad script/package cannot take down the main simulation;
+- live Steam publish/subscribe/update flows pass with real accounts;
+- public creator/API documentation is sufficient to build content without reverse-engineering Desktop Buddy internals.
 
-6. Reactive face content:
-   - **defer player Eyes/Mouth until semantic blink/expression frames are specified**;
-   - static Brows/face decals can arrive earlier.
+---
+
+# 29. Immediate next decision / execution order
+
+Do **not** open an implementation PR for this player-UGC plan until PR #41's pre-merge source findings M1-M9 are fixed or deliberately split into a prerequisite branch.
+
+Recommended repository sequence:
+
+```text
+1. Finish PR #41 cleanup/review findings
+2. Run first-account live Steam smoke on AppID 5114950
+3. Mark PR #41 ready and merge it
+4. Rebase/create UGC implementation branch from the merged Workshop foundation
+5. Start UGC-0/UGC-1
+6. Open the UGC implementation PR after the shared-core/package foundation is coherent
+```
+
+The current `plan/workshop-player-authored-assets` branch is documentation/planning only and should not be merged as production code by itself unless the owner wants the plan/source-alignment history preserved in `main` first.
