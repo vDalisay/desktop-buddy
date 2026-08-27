@@ -137,23 +137,27 @@ public partial class WorkshopBootstrap : Node
                 $"Steam identity is incomplete. Configure '{SteamAppIdentityResolver.RuntimeProjectSetting}' for the running app and '{SteamAppIdentityResolver.WorkshopOwnerProjectSetting}' for the base Workshop owner, or use the development environment overrides.");
         }
 
+        Node? bridge = null;
+        GodotSteamWorkshopTransport? transport = null;
         try
         {
             GDScript? script = GD.Load<GDScript>(BridgeScriptPath);
             if (script is null)
                 return new NullSteamWorkshopTransport("The project-owned GodotSteam bridge script could not be loaded.");
             GodotObject instance = (GodotObject)script.New();
-            if (instance is not Node bridge)
+            if (instance is not Node bridgeNode)
                 return new NullSteamWorkshopTransport("The GodotSteam bridge did not instantiate as a Node.");
+            bridge = bridgeNode;
             bridge.Name = "GodotSteamBridge";
             AddChild(bridge);
 
-            var transport = new GodotSteamWorkshopTransport { Name = nameof(GodotSteamWorkshopTransport) };
+            transport = new GodotSteamWorkshopTransport { Name = nameof(GodotSteamWorkshopTransport) };
             AddChild(transport);
             if (!transport.Initialize(bridge, identity))
             {
                 string reason = transport.UnavailableReason ?? "GodotSteam initialization failed.";
                 Log.Warn(Category, reason);
+                DisposeFailedTransport(bridge, transport);
                 return new NullSteamWorkshopTransport(reason);
             }
 
@@ -164,8 +168,23 @@ public partial class WorkshopBootstrap : Node
         }
         catch (Exception exception)
         {
+            DisposeFailedTransport(bridge, transport);
             Log.Warn(Category, $"Steam integration disabled: {exception.Message}");
             return new NullSteamWorkshopTransport(exception.Message);
+        }
+    }
+
+    private void DisposeFailedTransport(Node? bridge, GodotSteamWorkshopTransport? transport)
+    {
+        if (GodotObject.IsInstanceValid(transport))
+        {
+            if (ReferenceEquals(transport!.GetParent(), this)) RemoveChild(transport);
+            transport.QueueFree();
+        }
+        if (GodotObject.IsInstanceValid(bridge))
+        {
+            if (ReferenceEquals(bridge!.GetParent(), this)) RemoveChild(bridge);
+            bridge.QueueFree();
         }
     }
 
