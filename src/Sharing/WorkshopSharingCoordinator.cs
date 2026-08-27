@@ -141,7 +141,7 @@ public sealed class WorkshopSharingCoordinator
         }
     }
 
-    public Task<IReadOnlyList<PublishedWorkshopItem>> GetSubscriptionsAsync(CancellationToken token = default) =>
+    public Task<WorkshopSubscriptionQueryResult> GetSubscriptionsAsync(CancellationToken token = default) =>
         _transport.GetSubscribedItemsAsync(token);
 
     public async Task<WorkshopImportResult> ImportSubscribedAsync(
@@ -179,7 +179,7 @@ public sealed class WorkshopSharingCoordinator
             if (string.Equals(contentType, ShareContentTypes.RoomPainting, StringComparison.Ordinal))
             {
                 RoomShareImportResult imported = await _roomImporter.ImportStagedAsync(incoming.Value, source, token);
-                incoming = null; // importer owns cleanup/quarantine from this point.
+                incoming = null;
                 return imported.Success && imported.Entry is not null
                     ? new WorkshopImportResult(WorkshopImportStatus.ImportedRoom, item.PublishedFileId, imported.Entry.Id, Detail: imported.Detail)
                     : new WorkshopImportResult(WorkshopImportStatus.Failed, item.PublishedFileId, null, imported.QuarantinePath, imported.Detail);
@@ -188,7 +188,7 @@ public sealed class WorkshopSharingCoordinator
             if (string.Equals(contentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal))
             {
                 CharacterShareImportResult imported = await _characterImporter.ImportStagedAsync(incoming.Value, source, token);
-                incoming = null; // importer owns cleanup/quarantine from this point.
+                incoming = null;
                 return imported.Success && imported.LocalCharacterId.HasValue
                     ? new WorkshopImportResult(WorkshopImportStatus.ImportedBuddy, item.PublishedFileId, imported.LocalCharacterId, Detail: imported.Detail)
                     : new WorkshopImportResult(WorkshopImportStatus.Failed, item.PublishedFileId, null, imported.QuarantinePath, imported.Detail);
