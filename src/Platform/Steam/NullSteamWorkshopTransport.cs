@@ -1,11 +1,10 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace DesktopBuddy.Platform.Steam;
 
-public sealed class NullSteamWorkshopTransport : ISteamWorkshopTransport, ISteamAvailability
+public sealed class NullSteamWorkshopTransport : ISteamWorkshopTransport
 {
     public NullSteamWorkshopTransport(string? reason = null) =>
         UnavailableReason = string.IsNullOrWhiteSpace(reason) ? "Steam Workshop is unavailable." : reason;
@@ -24,8 +23,11 @@ public sealed class NullSteamWorkshopTransport : ISteamWorkshopTransport, ISteam
         CancellationToken token) =>
         Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Unavailable, update.PublishedFileId, false, Detail: UnavailableReason));
 
-    public Task<IReadOnlyList<PublishedWorkshopItem>> GetSubscribedItemsAsync(CancellationToken token) =>
-        Task.FromResult<IReadOnlyList<PublishedWorkshopItem>>(Array.Empty<PublishedWorkshopItem>());
+    public Task<WorkshopSubscriptionQueryResult> GetSubscribedItemsAsync(CancellationToken token) =>
+        Task.FromResult(new WorkshopSubscriptionQueryResult(
+            WorkshopRemoteStatus.Unavailable,
+            Array.Empty<PublishedWorkshopItem>(),
+            UnavailableReason));
 
     public Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
         ulong publishedFileId,
