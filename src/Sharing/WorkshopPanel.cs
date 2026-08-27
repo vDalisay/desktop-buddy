@@ -20,7 +20,7 @@ public partial class WorkshopPanel : Window
 {
     private WorkshopSharingCoordinator? _sharing;
     private RoomPaintingLibraryStore? _rooms;
-    private EnvironmentCustomizationBootstrap? _environment;
+    private IRoomPaintingSharingHost? _environment;
     private CharacterSelectionState? _selection;
     private readonly List<Button> _operationButtons = [];
     private LineEdit _title = null!;
@@ -41,7 +41,7 @@ public partial class WorkshopPanel : Window
     public void Configure(
         WorkshopSharingCoordinator sharing,
         RoomPaintingLibraryStore rooms,
-        EnvironmentCustomizationBootstrap environment,
+        IRoomPaintingSharingHost environment,
         CharacterSelectionState selection)
     {
         _sharing = sharing ?? throw new ArgumentNullException(nameof(sharing));
@@ -248,20 +248,31 @@ public partial class WorkshopPanel : Window
     {
         if (_busy || _sharing is null) return;
         SetStatus("Refreshing Workshop subscriptions...");
-        IReadOnlyList<PublishedWorkshopItem> items;
+        WorkshopSubscriptionQueryResult query;
         try
         {
-            items = await _sharing.GetSubscriptionsAsync();
-        }
-        catch (OperationCanceledException)
-        {
-            return;
+            query = await _sharing.GetSubscriptionsAsync();
         }
         catch (Exception exception)
         {
+            RebuildSubscriptions(Array.Empty<PublishedWorkshopItem>());
             SetStatus($"Could not refresh subscriptions: {exception.Message}");
             return;
         }
+
+        if (!query.IsSuccess)
+        {
+            RebuildSubscriptions(Array.Empty<PublishedWorkshopItem>());
+            SetStatus(query.Detail ?? query.Status switch
+            {
+                WorkshopRemoteStatus.Unavailable => "Steam Workshop is unavailable.",
+                WorkshopRemoteStatus.Cancelled => "Workshop subscription refresh cancelled.",
+                _ => "Could not refresh Workshop subscriptions.",
+            });
+            return;
+        }
+
+        IReadOnlyList<PublishedWorkshopItem> items = query.Items;
         RebuildSubscriptions(items);
         SetStatus(items.Count == 0 ? "No subscribed Desktop Buddy items found." : $"Found {items.Count} subscribed Workshop item(s).");
     }
