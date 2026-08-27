@@ -53,11 +53,25 @@ public sealed class CharacterShareExporter
         if (!loaded.IsSuccess || loaded.Character.Document is null)
             return new ShareExportResult(false, null, null, loaded.Detail ?? loaded.Character.Detail ?? "Character could not be loaded.");
 
+        // JSON serialization, PNG encoding, hashing, validation and file writes are deliberately
+        // kept off Godot's main thread. The persistence load above already follows the same rule.
+        return await Task.Run(
+            () => ExportLoaded(loaded, operationId, previewPng, token),
+            CancellationToken.None);
+    }
+
+    private ShareExportResult ExportLoaded(
+        CharacterPaintLoadResult loaded,
+        Guid operationId,
+        ReadOnlyMemory<byte>? previewPng,
+        CancellationToken token)
+    {
         WorkshopPublishStaging staging = _staging.CreatePublish(operationId);
         try
         {
             token.ThrowIfCancellationRequested();
-            CharacterDocument document = loaded.Character.Document;
+            CharacterDocument document = loaded.Character.Document
+                ?? throw new InvalidDataException("Character share load returned no document.");
             CharacterValidationResult domainValidation = CharacterDocumentValidator.Validate(document, _featureCatalog);
             if (!domainValidation.IsValid)
                 throw new InvalidDataException(string.Join("; ", domainValidation.Errors.Select(error => $"{error.Path}: {error.Message}")));
@@ -73,6 +87,7 @@ public sealed class CharacterShareExporter
             WriteEntry(staging.ContentRoot, ShareManifestPolicy.CharacterFileName, characterBytes, entries);
             foreach ((PaintPart part, string path) in document.Paint.Declared())
             {
+                token.ThrowIfCancellationRequested();
                 if (!loaded.Surfaces.TryGetValue(part, out byte[]? pixels))
                     throw new InvalidDataException($"Character declares paint for {part} but no decoded surface was loaded.");
                 byte[] encoded = PaintPngCodec.Encode(pixels);
@@ -94,6 +109,7 @@ public sealed class CharacterShareExporter
                 File.WriteAllBytes(staging.PreviewPath, preview.ToArray());
             }
 
+            token.ThrowIfCancellationRequested();
             ShareFolderReadResult folder = new ShareFolderReader().Read(staging.ContentRoot, ShareContentType.BuddyCharacter);
             CharacterSharePayloadResult verified = _payloadValidator.Validate(folder);
             if (!verified.IsSuccess)
@@ -107,7 +123,7 @@ public sealed class CharacterShareExporter
         catch (OperationCanceledException)
         {
             _staging.Cleanup(operationId);
-            return new ShareExportResult(false, null, null, "Buddy share export cancelled.");
+            throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException or JsonException)
         {
