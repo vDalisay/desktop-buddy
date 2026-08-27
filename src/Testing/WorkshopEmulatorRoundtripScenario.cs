@@ -80,7 +80,7 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
                     "Workshop emulator roundtrip scenario",
                     publish.ContentRoot,
                     publish.PreviewPath,
-                    ["DesktopBuddy.RoomPainting", "FormatVersion.1"],
+                    ["Room Painting"],
                     "desktop-buddy:room:1"),
                 progress: null,
                 CancellationToken.None);
@@ -99,8 +99,17 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
                 !Directory.Exists(publish.OperationRoot),
                 publish.OperationRoot));
 
-            IReadOnlyList<PublishedWorkshopItem> subscriptions =
+            WorkshopSubscriptionQueryResult subscriptionQuery =
                 await transport.GetSubscribedItemsAsync(CancellationToken.None);
+            bool queryOk = subscriptionQuery.IsSuccess;
+            checks.Add(new StartupCheck(
+                "workshop_emulator_subscription_query_succeeds",
+                queryOk,
+                $"status={subscriptionQuery.Status} detail={subscriptionQuery.Detail}"));
+            if (!queryOk)
+                return Result(checks, $"seed={seed}");
+
+            IReadOnlyList<PublishedWorkshopItem> subscriptions = subscriptionQuery.Items;
             PublishedWorkshopItem? subscribed = subscriptions.Count == 1 ? subscriptions[0] : null;
             bool subscriptionOk = subscribed is not null &&
                 subscribed.PublishedFileId == created.PublishedFileId &&
