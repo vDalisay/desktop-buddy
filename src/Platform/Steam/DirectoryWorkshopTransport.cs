@@ -14,7 +14,7 @@ namespace DesktopBuddy.Platform.Steam;
 /// immutable submitted snapshots, subscription enumeration and installed-content lookup without a
 /// Steam client. It is never selected automatically in release builds.
 /// </summary>
-public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport, ISteamAvailability
+public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
 {
     private const string MetadataFileName = "item.json";
     private readonly string _root;
@@ -147,25 +147,42 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport, ISteam
         }
     }, CancellationToken.None);
 
-    public Task<IReadOnlyList<PublishedWorkshopItem>> GetSubscribedItemsAsync(CancellationToken token) => Task.Run<IReadOnlyList<PublishedWorkshopItem>>(() =>
+    public Task<WorkshopSubscriptionQueryResult> GetSubscribedItemsAsync(CancellationToken token) => Task.Run(() =>
     {
-        var items = new List<PublishedWorkshopItem>();
-        foreach (string directory in Directory.EnumerateDirectories(_root))
+        try
         {
-            token.ThrowIfCancellationRequested();
-            string name = Path.GetFileName(directory);
-            if (!ulong.TryParse(name, out ulong id) || IsLinked(directory)) continue;
-            ItemMetadata? metadata = TryReadMetadata(directory);
-            if (metadata is null || !metadata.Subscribed) continue;
-            string? contentType = ParseContentType(metadata.Metadata, metadata.Tags);
-            items.Add(new PublishedWorkshopItem(
-                id,
-                WorkshopItemState.Subscribed | WorkshopItemState.Installed,
-                metadata.Title.Length == 0 ? $"Workshop Item {id}" : metadata.Title,
-                metadata.TimeUpdated,
-                contentType));
+            var items = new List<PublishedWorkshopItem>();
+            foreach (string directory in Directory.EnumerateDirectories(_root))
+            {
+                token.ThrowIfCancellationRequested();
+                string name = Path.GetFileName(directory);
+                if (!ulong.TryParse(name, out ulong id) || IsLinked(directory)) continue;
+                ItemMetadata? metadata = TryReadMetadata(directory);
+                if (metadata is null || !metadata.Subscribed) continue;
+                string? contentType = ParseContentType(metadata.Metadata, metadata.Tags);
+                items.Add(new PublishedWorkshopItem(
+                    id,
+                    WorkshopItemState.Subscribed | WorkshopItemState.Installed,
+                    metadata.Title.Length == 0 ? $"Workshop Item {id}" : metadata.Title,
+                    metadata.TimeUpdated,
+                    contentType));
+            }
+            return WorkshopSubscriptionQueryResult.Success(items.OrderBy(item => item.PublishedFileId).ToArray());
         }
-        return items.OrderBy(item => item.PublishedFileId).ToArray();
+        catch (OperationCanceledException)
+        {
+            return new WorkshopSubscriptionQueryResult(
+                WorkshopRemoteStatus.Cancelled,
+                Array.Empty<PublishedWorkshopItem>(),
+                "Directory Workshop subscription query cancelled.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return new WorkshopSubscriptionQueryResult(
+                WorkshopRemoteStatus.Failed,
+                Array.Empty<PublishedWorkshopItem>(),
+                exception.Message);
+        }
     }, CancellationToken.None);
 
     public Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
@@ -286,8 +303,8 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport, ISteam
 
     private static string? ParseContentType(string metadata, IReadOnlyCollection<string> tags)
     {
-        if (metadata.Contains("desktop-buddy:room:1", StringComparison.Ordinal) || tags.Contains("DesktopBuddy.RoomPainting")) return "room-painting";
-        if (metadata.Contains("desktop-buddy:buddy:1", StringComparison.Ordinal) || tags.Contains("DesktopBuddy.BuddyCharacter")) return "buddy-character";
+        if (metadata.Contains("desktop-buddy:room:1", StringComparison.Ordinal) || tags.Contains("Room Painting")) return "room-painting";
+        if (metadata.Contains("desktop-buddy:buddy:1", StringComparison.Ordinal) || tags.Contains("Buddy")) return "buddy-character";
         return null;
     }
 
