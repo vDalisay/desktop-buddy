@@ -271,12 +271,19 @@ public partial class Bootstrap : Node
         // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
-        var guidance = new FirstSessionGuidanceController
+        if (!DemoScope.IsItchIo)
         {
-            Name = nameof(FirstSessionGuidanceController),
-        };
-        guidance.Configure(sandbox, context);
-        AddChild(guidance);
+            var guidance = new FirstSessionGuidanceController
+            {
+                Name = nameof(FirstSessionGuidanceController),
+            };
+            guidance.Configure(sandbox, context);
+            AddChild(guidance);
+        }
+        else
+        {
+            Log.Info(Category, "First-session tutorial omitted by the active itch.io distribution scope.");
+        }
 
         var inputBridge = new GameplayInputModeBridge
         {
