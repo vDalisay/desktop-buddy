@@ -30,6 +30,10 @@ public sealed class CharacterShareImporter
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
     }
 
+    /// <summary>
+    /// Compatibility entrypoint for callers that still own Steam's mutable install directory.
+    /// The copy and every expensive decode/hash/validation step run away from the Godot main thread.
+    /// </summary>
     public async Task<CharacterShareImportResult> ImportAsync(
         string steamInstallFolder,
         WorkshopImportSource source,
@@ -39,16 +43,40 @@ public sealed class CharacterShareImporter
         WorkshopIncomingStaging incoming;
         try
         {
-            token.ThrowIfCancellationRequested();
-            incoming = _staging.SnapshotIncoming(steamInstallFolder, operationId);
+            incoming = await Task.Run(
+                () => _staging.SnapshotIncoming(steamInstallFolder, operationId, token),
+                CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
             return Failure(exception.Message);
         }
 
+        return await ImportStagedAsync(incoming, source, token);
+    }
+
+    /// <summary>
+    /// Authoritative import path. The supplied package is already an immutable project-owned
+    /// snapshot, so no validation step ever races Steam mutating its Workshop cache.
+    /// </summary>
+    public Task<CharacterShareImportResult> ImportStagedAsync(
+        WorkshopIncomingStaging incoming,
+        WorkshopImportSource source,
+        CancellationToken token = default) =>
+        Task.Run(() => ImportStagedCoreAsync(incoming, source, token), CancellationToken.None);
+
+    private async Task<CharacterShareImportResult> ImportStagedCoreAsync(
+        WorkshopIncomingStaging incoming,
+        WorkshopImportSource source,
+        CancellationToken token)
+    {
         try
         {
+            token.ThrowIfCancellationRequested();
             ShareFolderReadResult folder = new ShareFolderReader().Read(incoming.ContentRoot, ShareContentType.BuddyCharacter);
             CharacterSharePayloadResult payloadResult = _payloadValidator.Validate(folder);
             if (!payloadResult.IsSuccess || payloadResult.Payload is null)
@@ -63,11 +91,13 @@ public sealed class CharacterShareImporter
             foreach ((PaintPart part, byte[] pixels) in payload.Surfaces)
                 surfaces.Add(part, pixels);
 
+            token.ThrowIfCancellationRequested();
             var localDocument = payload.Document with { Id = localId };
             CharacterPaintSaveResult saved = await _paintStore.SaveAsync(localDocument, surfaces, token);
             if (!saved.IsSuccess)
                 return Quarantine(incoming, "save-failed", saved.Detail ?? saved.Character.Detail ?? "Imported buddy could not be saved.");
 
+            token.ThrowIfCancellationRequested();
             string manifestPath = Path.Combine(incoming.ContentRoot, ShareManifestPolicy.ManifestFileName);
             byte[] manifestBytes = File.ReadAllBytes(manifestPath);
             WorkshopProvenance provenance = WorkshopProvenanceStore.Create(
@@ -88,7 +118,7 @@ public sealed class CharacterShareImporter
                 provenanceWarning = $"Imported successfully, but provenance could not be written: {exception.Message}";
             }
 
-            _staging.Cleanup(operationId);
+            _staging.Cleanup(incoming.OperationId);
             return new CharacterShareImportResult(
                 true,
                 localId,
@@ -97,8 +127,8 @@ public sealed class CharacterShareImporter
         }
         catch (OperationCanceledException)
         {
-            _staging.Cleanup(operationId);
-            return Failure("Buddy import cancelled.");
+            _staging.Cleanup(incoming.OperationId);
+            throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
