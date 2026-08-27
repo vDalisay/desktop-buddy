@@ -12,6 +12,8 @@ namespace DesktopBuddy.Sharing;
 /// <summary>
 /// Optional Steam social composition root. Failure to find GodotSteam, Steam, an AppID, or a
 /// network connection only selects the null transport; it never participates in sandbox startup.
+/// UI/application dependencies are injected by the main composition root rather than discovered
+/// by polling absolute scene-tree paths.
 /// </summary>
 public partial class WorkshopBootstrap : Node
 {
@@ -19,6 +21,8 @@ public partial class WorkshopBootstrap : Node
     private const string BridgeScriptPath = "res://src/Platform/Steam/GodotSteamBridge.gd";
     private CharacterStore? _characters;
     private CharacterSelectionState? _selection;
+    private IRoomPaintingSharingHost? _environment;
+    private ITopLevelCommandRegistrar? _commandRegistrar;
     private WorkshopSharingCoordinator? _sharing;
     private WorkshopStagingStore? _staging;
     private RoomPaintingLibraryStore? _rooms;
@@ -31,51 +35,25 @@ public partial class WorkshopBootstrap : Node
     internal ISteamWorkshopTransport? Transport => _transport;
     internal RoomPaintingLibraryStore? RoomLibrary => _rooms;
 
-    public void Configure(CharacterStore characters, CharacterSelectionState selection)
+    public void Configure(
+        CharacterStore characters,
+        CharacterSelectionState selection,
+        IRoomPaintingSharingHost? environment = null,
+        ITopLevelCommandRegistrar? commandRegistrar = null)
     {
         _characters = characters ?? throw new ArgumentNullException(nameof(characters));
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
+        _environment = environment;
+        _commandRegistrar = commandRegistrar;
     }
 
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
         ComposeServices();
-        SetProcess(true);
-    }
-
-    public override void _Process(double delta)
-    {
-        if (!_servicesComposed || DisplayServer.GetName() == "headless")
-        {
-            if (_servicesComposed) SetProcess(false);
-            return;
-        }
-        if (_commandRegistration is not null)
-        {
-            SetProcess(false);
-            return;
-        }
-
-        Win98CommandBarBootstrap? commandBar = GetNodeOrNull<Win98CommandBarBootstrap>("/root/Win98CommandBarBootstrap");
-        EnvironmentCustomizationBootstrap? environment = GetNodeOrNull<EnvironmentCustomizationBootstrap>("/root/EnvironmentCustomizationBootstrap");
-        if (!GodotObject.IsInstanceValid(commandBar) || !GodotObject.IsInstanceValid(environment) ||
-            _sharing is null || _rooms is null || _selection is null)
-            return;
-
-        _panel = new WorkshopPanel { Name = nameof(WorkshopPanel) };
-        _panel.Configure(_sharing, _rooms, environment!, _selection);
-        AddChild(_panel);
-        _commandRegistration = commandBar!.RegisterTopLevelCommand(
-            new TopLevelCommandDefinition(
-                TopLevelCommandIds.Workshop,
-                "Workshop",
-                "Share and import room paintings and buddies through Steam Workshop.",
-                TopLevelCommandIds.WorkshopOrder),
-            _panel.Open,
-            isEnabled: () => GodotObject.IsInstanceValid(_panel) && !_panel!.IsOpen);
+        if (DisplayServer.GetName() != "headless")
+            ComposeUi();
         SetProcess(false);
-        Log.Info(Category, $"Workshop UI composed; transport={_transport?.GetType().Name ?? "none"} available={_sharing.IsAvailable}.");
     }
 
     public override void _ExitTree()
@@ -85,6 +63,30 @@ public partial class WorkshopBootstrap : Node
         if (GodotObject.IsInstanceValid(_panel)) _panel!.QueueFree();
         _panel = null;
         base._ExitTree();
+    }
+
+    private void ComposeUi()
+    {
+        if (_sharing is null || _rooms is null || _selection is null)
+            return;
+        if (_environment is null || _commandRegistrar is null)
+        {
+            Log.Warn(Category, "Workshop services are available, but UI hosts were not injected; leaving the in-game Workshop window uncomposed.");
+            return;
+        }
+
+        _panel = new WorkshopPanel { Name = nameof(WorkshopPanel) };
+        _panel.Configure(_sharing, _rooms, _environment, _selection);
+        AddChild(_panel);
+        _commandRegistration = _commandRegistrar.RegisterTopLevelCommand(
+            new TopLevelCommandDefinition(
+                TopLevelCommandIds.Workshop,
+                "Workshop",
+                "Share and import room paintings and buddies through Steam Workshop.",
+                TopLevelCommandIds.WorkshopOrder),
+            _panel.Open,
+            isEnabled: () => GodotObject.IsInstanceValid(_panel) && !_panel!.IsOpen);
+        Log.Info(Category, $"Workshop UI composed; transport={_transport?.GetType().Name ?? "none"} available={_sharing.IsAvailable}.");
     }
 
     private void ComposeServices()
