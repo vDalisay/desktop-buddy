@@ -271,19 +271,18 @@ public partial class Bootstrap : Node
         // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
-        if (DemoScope.IncludesTutorial)
-        {
-            var guidance = new FirstSessionGuidanceController
-            {
-                Name = nameof(FirstSessionGuidanceController),
-            };
-            guidance.Configure(sandbox, context);
-            AddChild(guidance);
-        }
-        else
-        {
+        // Keep the reusable contextual ? Help surface in every distribution, but make the authored
+        // first-session walkthrough session-complete in itch.io without writing a durable skip.
+        TutorialProgressState.RuntimeDisabled = !DemoScope.IncludesTutorial;
+        if (!DemoScope.IncludesTutorial)
             Log.Info(Category, "First-session tutorial omitted by the active itch.io distribution scope.");
-        }
+
+        var guidance = new FirstSessionGuidanceController
+        {
+            Name = nameof(FirstSessionGuidanceController),
+        };
+        guidance.Configure(sandbox, context);
+        AddChild(guidance);
 
         var inputBridge = new GameplayInputModeBridge
         {
