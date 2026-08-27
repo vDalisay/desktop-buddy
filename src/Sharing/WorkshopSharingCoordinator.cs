@@ -87,18 +87,26 @@ public sealed class WorkshopSharingCoordinator
     {
         if (!_transport.IsAvailable)
             return new WorkshopPublishResult(WorkshopPublishStatus.Unavailable, 0, "Steam Workshop is unavailable; the local room is unchanged.");
-        Guid operationId = Guid.NewGuid();
-        ShareExportResult exported = await _roomExporter.ExportAsync(pixels, operationId, token);
-        if (!exported.Success || exported.Staging is null)
-            return new WorkshopPublishResult(WorkshopPublishStatus.Failed, 0, exported.Detail);
-        return await PublishStagedAsync(
-            exported.Staging.Value,
-            title,
-            description,
-            ["DesktopBuddy.RoomPainting", "FormatVersion.1"],
-            "desktop-buddy:room:1",
-            progress,
-            token);
+
+        try
+        {
+            Guid operationId = Guid.NewGuid();
+            ShareExportResult exported = await _roomExporter.ExportAsync(pixels, operationId, token);
+            if (!exported.Success || exported.Staging is null)
+                return new WorkshopPublishResult(WorkshopPublishStatus.Failed, 0, exported.Detail);
+            return await PublishStagedAsync(
+                exported.Staging.Value,
+                title,
+                description,
+                ["Room Painting"],
+                "desktop-buddy:room:1",
+                progress,
+                token);
+        }
+        catch (OperationCanceledException)
+        {
+            return new WorkshopPublishResult(WorkshopPublishStatus.Cancelled, 0, "Room publish cancelled before Steam committed an item.");
+        }
     }
 
     public async Task<WorkshopPublishResult> PublishCharacterAsync(
@@ -111,18 +119,26 @@ public sealed class WorkshopSharingCoordinator
     {
         if (!_transport.IsAvailable)
             return new WorkshopPublishResult(WorkshopPublishStatus.Unavailable, 0, "Steam Workshop is unavailable; the local buddy is unchanged.");
-        Guid operationId = Guid.NewGuid();
-        ShareExportResult exported = await _characterExporter.ExportAsync(characterId, operationId, previewPng, token);
-        if (!exported.Success || exported.Staging is null)
-            return new WorkshopPublishResult(WorkshopPublishStatus.Failed, 0, exported.Detail);
-        return await PublishStagedAsync(
-            exported.Staging.Value,
-            title,
-            description,
-            ["DesktopBuddy.BuddyCharacter", "FormatVersion.1"],
-            "desktop-buddy:buddy:1",
-            progress,
-            token);
+
+        try
+        {
+            Guid operationId = Guid.NewGuid();
+            ShareExportResult exported = await _characterExporter.ExportAsync(characterId, operationId, previewPng, token);
+            if (!exported.Success || exported.Staging is null)
+                return new WorkshopPublishResult(WorkshopPublishStatus.Failed, 0, exported.Detail);
+            return await PublishStagedAsync(
+                exported.Staging.Value,
+                title,
+                description,
+                ["Buddy"],
+                "desktop-buddy:buddy:1",
+                progress,
+                token);
+        }
+        catch (OperationCanceledException)
+        {
+            return new WorkshopPublishResult(WorkshopPublishStatus.Cancelled, 0, "Buddy publish cancelled before Steam committed an item.");
+        }
     }
 
     public Task<IReadOnlyList<PublishedWorkshopItem>> GetSubscriptionsAsync(CancellationToken token = default) =>
@@ -136,41 +152,66 @@ public sealed class WorkshopSharingCoordinator
         if (!_transport.IsAvailable)
             return new WorkshopImportResult(WorkshopImportStatus.Unavailable, item.PublishedFileId, null, Detail: "Steam Workshop is unavailable.");
 
-        WorkshopInstalledItemResult installed = await _transport.EnsureInstalledAsync(item.PublishedFileId, progress, token);
-        if (!installed.IsSuccess || installed.InstallFolder is null)
+        WorkshopIncomingStaging? incoming = null;
+        try
         {
-            WorkshopImportStatus status = installed.Status == WorkshopRemoteStatus.Cancelled
-                ? WorkshopImportStatus.Cancelled
-                : WorkshopImportStatus.Failed;
-            return new WorkshopImportResult(status, item.PublishedFileId, null, Detail: installed.Detail);
+            WorkshopInstalledItemResult installed = await _transport.EnsureInstalledAsync(item.PublishedFileId, progress, token);
+            if (!installed.IsSuccess || installed.InstallFolder is null)
+            {
+                WorkshopImportStatus status = installed.Status == WorkshopRemoteStatus.Cancelled
+                    ? WorkshopImportStatus.Cancelled
+                    : WorkshopImportStatus.Failed;
+                return new WorkshopImportResult(status, item.PublishedFileId, null, Detail: installed.Detail);
+            }
+
+            // Steam's install/cache directory is mutable hostile input. Copy it once, then perform
+            // content detection and all validation against the exact same owned snapshot.
+            Guid operationId = Guid.NewGuid();
+            incoming = await Task.Run(
+                () => _staging.SnapshotIncoming(installed.InstallFolder, operationId, token),
+                CancellationToken.None);
+
+            string? contentType = item.ContentType;
+            if (contentType is null)
+                contentType = DetectContentType(incoming.Value.ContentRoot);
+            var source = new WorkshopImportSource(item.PublishedFileId, installed.TimeUpdated, item.DisplayName);
+
+            if (string.Equals(contentType, ShareContentTypes.RoomPainting, StringComparison.Ordinal))
+            {
+                RoomShareImportResult imported = await _roomImporter.ImportStagedAsync(incoming.Value, source, token);
+                incoming = null; // importer owns cleanup/quarantine from this point.
+                return imported.Success && imported.Entry is not null
+                    ? new WorkshopImportResult(WorkshopImportStatus.ImportedRoom, item.PublishedFileId, imported.Entry.Id, Detail: imported.Detail)
+                    : new WorkshopImportResult(WorkshopImportStatus.Failed, item.PublishedFileId, null, imported.QuarantinePath, imported.Detail);
+            }
+
+            if (string.Equals(contentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal))
+            {
+                CharacterShareImportResult imported = await _characterImporter.ImportStagedAsync(incoming.Value, source, token);
+                incoming = null; // importer owns cleanup/quarantine from this point.
+                return imported.Success && imported.LocalCharacterId.HasValue
+                    ? new WorkshopImportResult(WorkshopImportStatus.ImportedBuddy, item.PublishedFileId, imported.LocalCharacterId, Detail: imported.Detail)
+                    : new WorkshopImportResult(WorkshopImportStatus.Failed, item.PublishedFileId, null, imported.QuarantinePath, imported.Detail);
+            }
+
+            _staging.Cleanup(incoming.Value.OperationId);
+            incoming = null;
+            return new WorkshopImportResult(
+                WorkshopImportStatus.UnsupportedContent,
+                item.PublishedFileId,
+                null,
+                Detail: "Subscribed item is not a supported Desktop Buddy room or buddy share.");
         }
-
-        string? contentType = item.ContentType;
-        if (contentType is null)
-            contentType = DetectContentType(installed.InstallFolder);
-        var source = new WorkshopImportSource(item.PublishedFileId, installed.TimeUpdated, item.DisplayName);
-
-        if (string.Equals(contentType, ShareContentTypes.RoomPainting, StringComparison.Ordinal))
+        catch (OperationCanceledException)
         {
-            RoomShareImportResult imported = await _roomImporter.ImportAsync(installed.InstallFolder, source, token);
-            return imported.Success && imported.Entry is not null
-                ? new WorkshopImportResult(WorkshopImportStatus.ImportedRoom, item.PublishedFileId, imported.Entry.Id, Detail: imported.Detail)
-                : new WorkshopImportResult(WorkshopImportStatus.Failed, item.PublishedFileId, null, imported.QuarantinePath, imported.Detail);
+            if (incoming.HasValue) _staging.Cleanup(incoming.Value.OperationId);
+            return new WorkshopImportResult(WorkshopImportStatus.Cancelled, item.PublishedFileId, null, Detail: "Workshop import cancelled.");
         }
-
-        if (string.Equals(contentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal))
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
-            CharacterShareImportResult imported = await _characterImporter.ImportAsync(installed.InstallFolder, source, token);
-            return imported.Success && imported.LocalCharacterId.HasValue
-                ? new WorkshopImportResult(WorkshopImportStatus.ImportedBuddy, item.PublishedFileId, imported.LocalCharacterId, Detail: imported.Detail)
-                : new WorkshopImportResult(WorkshopImportStatus.Failed, item.PublishedFileId, null, imported.QuarantinePath, imported.Detail);
+            if (incoming.HasValue) _staging.Cleanup(incoming.Value.OperationId);
+            return new WorkshopImportResult(WorkshopImportStatus.Failed, item.PublishedFileId, null, Detail: exception.Message);
         }
-
-        return new WorkshopImportResult(
-            WorkshopImportStatus.UnsupportedContent,
-            item.PublishedFileId,
-            null,
-            Detail: "Subscribed item is not a supported Desktop Buddy room or buddy share.");
     }
 
     public void OpenWorkshopBrowser() => _transport.OpenWorkshopBrowser();
@@ -194,6 +235,7 @@ public sealed class WorkshopSharingCoordinator
             return FromRemote(created.Status, created.PublishedFileId, created.Detail);
         }
 
+        bool cancellationArrivedBeforeInitialSubmit = token.IsCancellationRequested;
         bool hasPreview = File.Exists(staging.PreviewPath);
         var update = new WorkshopRemoteUpdate(
             created.PublishedFileId,
@@ -204,7 +246,16 @@ public sealed class WorkshopSharingCoordinator
             tags,
             metadata,
             WorkshopVisibility.Public);
-        WorkshopSubmitRemoteResult submitted = await _transport.SubmitUpdateAsync(update, progress, token);
+
+        // CreateItem is persistent and Steam has no remote cancellation for it. If cancellation
+        // arrived while waiting for CreateItem's callback, complete the first update anyway so we
+        // never knowingly abandon an empty/orphaned Workshop item. If cancellation arrives only
+        // after SubmitItemUpdate starts, the transport may stop the caller waiting while Steam
+        // safely continues consuming the retained staging snapshot.
+        CancellationToken submitToken = cancellationArrivedBeforeInitialSubmit
+            ? CancellationToken.None
+            : token;
+        WorkshopSubmitRemoteResult submitted = await _transport.SubmitUpdateAsync(update, progress, submitToken);
 
         // SubmitItemUpdate cannot be cancelled remotely. Preserve an operation snapshot if the
         // caller stops waiting so startup recovery/debugging can reconcile it instead of deleting
@@ -225,7 +276,10 @@ public sealed class WorkshopSharingCoordinator
                 "Steam requires acceptance of the Workshop Legal Agreement before the item is fully published.");
         }
 
-        return new WorkshopPublishResult(WorkshopPublishStatus.Published, created.PublishedFileId);
+        string? detail = cancellationArrivedBeforeInitialSubmit
+            ? "Cancellation arrived after Steam created the item; Desktop Buddy completed the initial upload to avoid leaving an empty Workshop item."
+            : null;
+        return new WorkshopPublishResult(WorkshopPublishStatus.Published, created.PublishedFileId, detail);
     }
 
     private static WorkshopPublishResult FromRemote(WorkshopRemoteStatus status, ulong id, string? detail) => new(
