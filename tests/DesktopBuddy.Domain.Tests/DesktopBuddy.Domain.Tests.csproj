@@ -50,6 +50,8 @@
     <Compile Include="..\..\src\Persistence\Sharing\RoomPaintingLibraryStore.cs" Link="RuntimeSharing\RoomPaintingLibraryStore.cs" />
     <Compile Include="..\..\src\Platform\Steam\SteamWorkshopContracts.cs" Link="RuntimeSharing\SteamWorkshopContracts.cs" />
     <Compile Include="..\..\src\Platform\Steam\DirectoryWorkshopTransport.cs" Link="RuntimeSharing\DirectoryWorkshopTransport.cs" />
+    <Compile Include="..\..\src\Sharing\ShareTransferModels.cs" Link="RuntimeSharing\ShareTransferModels.cs" />
+    <Compile Include="..\..\src\Sharing\RoomShareImporter.cs" Link="RuntimeSharing\RoomShareImporter.cs" />
   </ItemGroup>
 
 </Project>
