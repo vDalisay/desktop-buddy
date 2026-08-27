@@ -6,8 +6,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Sharing;
+using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Persistence.Sharing;
 using DesktopBuddy.Platform.Steam;
+using DesktopBuddy.Sharing;
 using Xunit;
 
 namespace DesktopBuddy.Domain.Tests.Sharing;
@@ -74,6 +76,51 @@ public sealed class WorkshopManagedPipelineTests : IDisposable
     }
 
     [Fact]
+    public void Cancelled_incoming_snapshot_leaves_no_owned_operation()
+    {
+        string source = CreateRoomShare("cancelled-snapshot", [1, 2, 3]);
+        var staging = new WorkshopStagingStore(Path.Combine(_root, "cancelled-staging"));
+        Guid operationId = Guid.NewGuid();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() =>
+            staging.SnapshotIncoming(source, operationId, cancellation.Token));
+
+        Assert.False(Directory.Exists(Path.Combine(staging.IncomingRoot, operationId.ToString("D"))));
+    }
+
+    [Fact]
+    public void Room_import_from_staging_never_rereads_mutated_source()
+    {
+        byte[] pixels = new byte[EnvironmentCanvasPolicy.Bytes];
+        pixels[0] = 17;
+        pixels[1] = 34;
+        pixels[2] = 51;
+        pixels[3] = 255;
+        byte[] png = PaintPngCodec.Encode(pixels);
+        string source = CreateRoomShare("staged-room-import", png);
+        var staging = new WorkshopStagingStore(Path.Combine(_root, "room-import-staging"));
+        var library = new RoomPaintingLibraryStore(Path.Combine(_root, "room-import-library"));
+        var importer = new RoomShareImporter(staging, library, () => DateTimeOffset.UnixEpoch);
+        WorkshopIncomingStaging snapshot = staging.SnapshotIncoming(source, Guid.NewGuid());
+
+        // Simulate Steam replacing the mutable install cache after Desktop Buddy has snapshotted it.
+        File.WriteAllBytes(Path.Combine(source, "environment", "background.png"), [9, 9, 9]);
+        File.Delete(Path.Combine(source, ShareManifestPolicy.ManifestFileName));
+
+        RoomShareImportResult result = importer.ImportStaged(
+            snapshot,
+            new WorkshopImportSource(42, 1234, "Snapshot Room"),
+            CancellationToken.None);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.NotNull(result.Entry);
+        Assert.Equal(pixels, library.LoadPixels(result.Entry!.Id));
+        Assert.False(Directory.Exists(snapshot.OperationRoot));
+    }
+
+    [Fact]
     public async Task Directory_transport_models_create_submit_subscribe_install_and_unsubscribe()
     {
         string emulatorRoot = Path.Combine(_root, "emulator");
@@ -91,14 +138,15 @@ public sealed class WorkshopManagedPipelineTests : IDisposable
                 "Description",
                 content,
                 null,
-                ["DesktopBuddy.RoomPainting", "FormatVersion.1"],
+                ["Room Painting"],
                 "desktop-buddy:room:1"),
             progress: null,
             CancellationToken.None);
         Assert.True(submitted.IsSuccess);
 
-        var subscribed = await transport.GetSubscribedItemsAsync(CancellationToken.None);
-        PublishedWorkshopItem item = Assert.Single(subscribed);
+        WorkshopSubscriptionQueryResult subscribed = await transport.GetSubscribedItemsAsync(CancellationToken.None);
+        Assert.True(subscribed.IsSuccess);
+        PublishedWorkshopItem item = Assert.Single(subscribed.Items);
         Assert.Equal(ShareContentTypes.RoomPainting, item.ContentType);
         Assert.True(item.State.HasFlag(WorkshopItemState.Installed));
 
@@ -110,7 +158,23 @@ public sealed class WorkshopManagedPipelineTests : IDisposable
         Assert.True(File.Exists(Path.Combine(installed.InstallFolder!, "manifest.json")));
 
         Assert.True(transport.SetSubscribed(item.PublishedFileId, false));
-        Assert.Empty(await transport.GetSubscribedItemsAsync(CancellationToken.None));
+        WorkshopSubscriptionQueryResult empty = await transport.GetSubscribedItemsAsync(CancellationToken.None);
+        Assert.True(empty.IsSuccess);
+        Assert.Empty(empty.Items);
+    }
+
+    [Fact]
+    public async Task Directory_transport_reports_cancelled_subscription_query_separately_from_zero_items()
+    {
+        var transport = new DirectoryWorkshopTransport(Path.Combine(_root, "cancelled-query"));
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        WorkshopSubscriptionQueryResult result = await transport.GetSubscribedItemsAsync(cancellation.Token);
+
+        Assert.Equal(WorkshopRemoteStatus.Cancelled, result.Status);
+        Assert.False(result.IsSuccess);
+        Assert.Empty(result.Items);
     }
 
     [Fact]
