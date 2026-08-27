@@ -4,21 +4,13 @@ namespace DesktopBuddy.Platform.Steam;
 
 public partial class GodotSteamWorkshopTransport
 {
-    private uint _runtimeAppId;
-
-    /// <summary>The AppID Steam itself was initialized for (base game today, future demo later).</summary>
-    public uint RuntimeAppId => _runtimeAppId == 0 ? AppId : _runtimeAppId;
-
-    /// <summary>The consumer AppID that owns Desktop Buddy's Workshop items.</summary>
-    public uint WorkshopOwnerAppId => AppId;
-
     public bool Initialize(Node bridge, SteamAppIdentity identity) =>
         Initialize(bridge, identity.RuntimeAppId, identity.WorkshopOwnerAppId);
 
     /// <summary>
     /// Initializes Steam under the running application, then points UGC create/update/browser
-    /// operations at the Workshop owner. The existing two-argument initializer remains the
-    /// same-app compatibility path used when both identities are identical.
+    /// operations at the distinct Workshop owner. Runtime and Workshop identity remain separate
+    /// fields for the lifetime of the transport; a future demo never changes the meaning of either.
     /// </summary>
     public bool Initialize(Node bridge, uint runtimeAppId, uint workshopOwnerAppId)
     {
@@ -28,7 +20,7 @@ public partial class GodotSteamWorkshopTransport
             return false;
         }
 
-        if (!Initialize(bridge, runtimeAppId))
+        if (!InitializeSteam(bridge, runtimeAppId))
             return false;
 
         if (!GodotObject.IsInstanceValid(_bridge) ||
@@ -40,12 +32,7 @@ public partial class GodotSteamWorkshopTransport
             return false;
         }
 
-        _runtimeAppId = runtimeAppId;
-
-        // The original adapter intentionally centralizes every UGC API call through _appId.
-        // After Steam itself is initialized, that field becomes the UGC consumer/owner identity.
-        // Callback correlation therefore also expects the AppID associated with the Workshop item.
-        _appId = workshopOwnerAppId;
+        _workshopOwnerAppId = workshopOwnerAppId;
         return true;
     }
 }
