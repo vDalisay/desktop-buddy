@@ -231,15 +231,19 @@ public partial class Bootstrap : Node
         // Feature autoloads may exist before the sandbox enters the tree. Give them the
         // composition-root references directly so normal boot does not discover runtime services
         // by recursively walking the scene tree or bypass the injected persistence policy.
-        GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
-            "/root/EnvironmentCustomizationBootstrap")?.Configure(sandbox);
+        var environmentCustomization = GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
+            "/root/EnvironmentCustomizationBootstrap");
+        environmentCustomization?.Configure(sandbox);
         GetNodeOrNull<DesktopBuddy.CharacterEditor.CharacterSlotUiBootstrap>(
             "/root/CharacterSlotUiBootstrap")?.Configure(sandbox, characters);
+        var commandRegistrar = GetNodeOrNull<DesktopBuddy.UI.Win98.Win98CommandBarBootstrap>(
+            "/root/Win98CommandBarBootstrap");
 
-        // Workshop is an optional outer platform adapter. It receives only the persistence seams
-        // it needs; missing Steam/GodotSteam/AppID selects a null transport and never blocks boot.
+        // Workshop is an optional outer platform adapter. The main composition root injects the
+        // narrow feature hosts it needs; Workshop itself never polls or locates peer services.
+        // Missing Steam/GodotSteam/AppID still selects a null transport and never blocks boot.
         var workshop = new WorkshopBootstrap { Name = nameof(WorkshopBootstrap) };
-        workshop.Configure(characters, characterSelection);
+        workshop.Configure(characters, characterSelection, environmentCustomization, commandRegistrar);
         AddChild(workshop);
 
         var characterRuntime = new CharacterSelectionRuntime
