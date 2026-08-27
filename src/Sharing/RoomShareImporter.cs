@@ -27,14 +27,11 @@ public sealed class RoomShareImporter
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
     }
 
-    public Task<RoomShareImportResult> ImportAsync(
-        string steamInstallFolder,
-        WorkshopImportSource source,
-        CancellationToken token = default) => Task.Run(
-        () => Import(steamInstallFolder, source, token),
-        CancellationToken.None);
-
-    public RoomShareImportResult Import(
+    /// <summary>
+    /// Compatibility entrypoint for callers that still own a mutable Steam/install directory.
+    /// It snapshots exactly once on a worker and then delegates to the immutable-staging path.
+    /// </summary>
+    public async Task<RoomShareImportResult> ImportAsync(
         string steamInstallFolder,
         WorkshopImportSource source,
         CancellationToken token = default)
@@ -43,16 +40,51 @@ public sealed class RoomShareImporter
         WorkshopIncomingStaging incoming;
         try
         {
-            token.ThrowIfCancellationRequested();
-            incoming = _staging.SnapshotIncoming(steamInstallFolder, operationId);
+            incoming = await Task.Run(
+                () => _staging.SnapshotIncoming(steamInstallFolder, operationId, token),
+                CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
             return new RoomShareImportResult(false, null, null, exception.Message);
         }
 
+        return await ImportStagedAsync(incoming, source, token);
+    }
+
+    /// <summary>
+    /// Authoritative import path. The supplied directory is project-owned immutable staging,
+    /// never Steam's live Workshop cache.
+    /// </summary>
+    public Task<RoomShareImportResult> ImportStagedAsync(
+        WorkshopIncomingStaging incoming,
+        WorkshopImportSource source,
+        CancellationToken token = default) => Task.Run(
+        () => ImportStaged(incoming, source, token),
+        CancellationToken.None);
+
+    public RoomShareImportResult Import(
+        string steamInstallFolder,
+        WorkshopImportSource source,
+        CancellationToken token = default)
+    {
+        Guid operationId = Guid.NewGuid();
+        WorkshopIncomingStaging incoming = _staging.SnapshotIncoming(steamInstallFolder, operationId, token);
+        return ImportStaged(incoming, source, token);
+    }
+
+    public RoomShareImportResult ImportStaged(
+        WorkshopIncomingStaging incoming,
+        WorkshopImportSource source,
+        CancellationToken token = default)
+    {
         try
         {
+            token.ThrowIfCancellationRequested();
             ShareFolderReadResult folder = _reader.Read(incoming.ContentRoot, ShareContentType.RoomPainting);
             if (!folder.IsSuccess || folder.Manifest is null)
                 return Quarantine(incoming, folder.Validation.Issues.Count == 0 ? "invalid" : folder.Validation.Issues[0].Code.ToString(), string.Join("; ", folder.Validation.Issues));
@@ -71,6 +103,7 @@ public sealed class RoomShareImporter
                 return Quarantine(incoming, "invalid-png", exception.Message);
             }
 
+            token.ThrowIfCancellationRequested();
             byte[] manifestBytes = File.ReadAllBytes(Path.Combine(incoming.ContentRoot, ShareManifestPolicy.ManifestFileName));
             WorkshopProvenance provenance = WorkshopProvenanceStore.Create(
                 source.PublishedFileId,
@@ -80,15 +113,18 @@ public sealed class RoomShareImporter
                 ShareContentTypes.RoomPainting);
             RoomPaintingImportResult imported = _library.Import(source.DisplayName, pixels, provenance, token);
             if (!imported.Success)
+            {
+                _staging.Cleanup(incoming.OperationId);
                 return new RoomShareImportResult(false, null, null, imported.Detail);
+            }
 
-            _staging.Cleanup(operationId);
+            _staging.Cleanup(incoming.OperationId);
             return new RoomShareImportResult(true, imported.Entry);
         }
         catch (OperationCanceledException)
         {
-            _staging.Cleanup(operationId);
-            return new RoomShareImportResult(false, null, null, "Room import cancelled.");
+            _staging.Cleanup(incoming.OperationId);
+            throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
