@@ -69,7 +69,7 @@ public sealed class RoomShareExporter
         catch (OperationCanceledException)
         {
             _staging.Cleanup(operationId);
-            return new ShareExportResult(false, null, null, "Room share export cancelled.");
+            throw;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
         {
