@@ -271,7 +271,7 @@ public partial class Bootstrap : Node
         // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
-        if (!DemoScope.IsItchIo)
+        if (DemoScope.IncludesTutorial)
         {
             var guidance = new FirstSessionGuidanceController
             {
