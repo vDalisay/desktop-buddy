@@ -5,7 +5,7 @@ using DesktopBuddy.Domain.Environment;
 
 namespace DesktopBuddy.Environment;
 
-public partial class EnvironmentCustomizationBootstrap
+public partial class EnvironmentCustomizationBootstrap : IRoomPaintingSharingHost
 {
     /// <summary>
     /// Returns an immutable snapshot for Workshop export. It never exposes the mutable canvas and
