@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using DesktopBuddy.Domain.Sharing;
 
 namespace DesktopBuddy.Persistence.Sharing;
@@ -53,9 +54,13 @@ public sealed class WorkshopStagingStore
         return new WorkshopPublishStaging(operationId, operation, content, Path.Combine(operation, "preview.png"));
     }
 
-    public WorkshopIncomingStaging SnapshotIncoming(string sourceRoot, Guid operationId)
+    public WorkshopIncomingStaging SnapshotIncoming(
+        string sourceRoot,
+        Guid operationId,
+        CancellationToken token = default)
     {
         if (operationId == Guid.Empty) throw new ArgumentException("Operation ID cannot be empty.", nameof(operationId));
+        token.ThrowIfCancellationRequested();
         string source = ShareFolderReader.CanonicalRoot(sourceRoot);
         if (!Directory.Exists(source)) throw new DirectoryNotFoundException(source);
         RejectLink(source);
@@ -67,7 +72,8 @@ public sealed class WorkshopStagingStore
 
         try
         {
-            CopyBoundedTree(source, content);
+            CopyBoundedTree(source, content, token);
+            token.ThrowIfCancellationRequested();
             return new WorkshopIncomingStaging(operationId, operation, content);
         }
         catch
@@ -130,7 +136,10 @@ public sealed class WorkshopStagingStore
         File.WriteAllBytes(path, bytes.ToArray());
     }
 
-    private static void CopyBoundedTree(string sourceRoot, string destinationRoot)
+    private static void CopyBoundedTree(
+        string sourceRoot,
+        string destinationRoot,
+        CancellationToken token)
     {
         long aggregate = 0;
         int fileCount = 0;
@@ -140,9 +149,11 @@ public sealed class WorkshopStagingStore
 
         while (pending.Count > 0)
         {
+            token.ThrowIfCancellationRequested();
             (string sourceDirectory, string destinationDirectory, int depth) = pending.Pop();
             foreach (string entry in Directory.EnumerateFileSystemEntries(sourceDirectory))
             {
+                token.ThrowIfCancellationRequested();
                 FileAttributes attributes = File.GetAttributes(entry);
                 if ((attributes & FileAttributes.ReparsePoint) != 0)
                     throw new InvalidDataException($"Linked Workshop path is not allowed: {entry}");
@@ -174,7 +185,13 @@ public sealed class WorkshopStagingStore
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 using FileStream input = new(entry, FileMode.Open, FileAccess.Read, FileShare.Read);
                 using FileStream output = new(target, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                input.CopyTo(output);
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    token.ThrowIfCancellationRequested();
+                    output.Write(buffer, 0, read);
+                }
                 long copied = output.Length;
                 if (copied != before.Length)
                     throw new InvalidDataException("Workshop item changed size while being copied.");
