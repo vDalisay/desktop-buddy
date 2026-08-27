@@ -67,6 +67,12 @@ public static class DemoScope
     /// <summary>The itch.io build omits Buddy Studio entirely.</summary>
     public static bool IncludesBuddyStudio => !IsItchIo;
 
+    /// <summary>
+    /// The itch.io build omits the first-session tutorial because its authored walkthrough covers
+    /// Work Mode, Paint Room and Buddy Studio, all of which are intentionally absent there.
+    /// </summary>
+    public static bool IncludesTutorial => !IsItchIo;
+
     /// <summary>Whether the Room Decorator command is offered at all.</summary>
     public static bool IncludesRoomDecorator => IsFullRelease && !IsItchIo;
 }
