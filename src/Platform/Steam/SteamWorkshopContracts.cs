@@ -87,6 +87,17 @@ public sealed record PublishedWorkshopItem(
     long TimeUpdated = 0,
     string? ContentType = null);
 
+public readonly record struct WorkshopSubscriptionQueryResult(
+    WorkshopRemoteStatus Status,
+    IReadOnlyList<PublishedWorkshopItem> Items,
+    string? Detail = null)
+{
+    public bool IsSuccess => Status == WorkshopRemoteStatus.Success;
+
+    public static WorkshopSubscriptionQueryResult Success(IReadOnlyList<PublishedWorkshopItem> items) =>
+        new(WorkshopRemoteStatus.Success, items ?? Array.Empty<PublishedWorkshopItem>());
+}
+
 public readonly record struct WorkshopInstalledItemResult(
     WorkshopRemoteStatus Status,
     ulong PublishedFileId,
@@ -98,7 +109,7 @@ public readonly record struct WorkshopInstalledItemResult(
     public bool IsSuccess => Status == WorkshopRemoteStatus.Success && !string.IsNullOrWhiteSpace(InstallFolder);
 }
 
-public interface ISteamWorkshopTransport
+public interface ISteamWorkshopTransport : ISteamAvailability
 {
     bool IsAvailable { get; }
 
@@ -109,7 +120,7 @@ public interface ISteamWorkshopTransport
         IProgress<WorkshopTransferProgress>? progress,
         CancellationToken token);
 
-    Task<IReadOnlyList<PublishedWorkshopItem>> GetSubscribedItemsAsync(CancellationToken token);
+    Task<WorkshopSubscriptionQueryResult> GetSubscribedItemsAsync(CancellationToken token);
 
     Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
         ulong publishedFileId,
