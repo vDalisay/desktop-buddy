@@ -56,7 +56,13 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
 
     public Task<WorkshopCreateRemoteResult> CreateItemAsync(CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
+        if (token.IsCancellationRequested)
+            return Task.FromResult(new WorkshopCreateRemoteResult(
+                WorkshopRemoteStatus.Cancelled,
+                0,
+                false,
+                Detail: "Directory Workshop create cancelled."));
+
         ulong id;
         lock (_gate)
         {
@@ -73,14 +79,14 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
     {
         if (update.PublishedFileId == 0)
             return new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, 0, false, Detail: "Published file ID is required.");
-        token.ThrowIfCancellationRequested();
-        ValidateSource(update.ContentFolder, update.PreviewFile);
 
         string item = ItemRoot(update.PublishedFileId);
         string staging = item + ".staging";
         string previous = item + ".previous";
         try
         {
+            token.ThrowIfCancellationRequested();
+            ValidateSource(update.ContentFolder, update.PreviewFile);
             SafeDelete(staging);
             SafeDelete(previous);
             Directory.CreateDirectory(staging);
@@ -151,6 +157,7 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
     {
         try
         {
+            token.ThrowIfCancellationRequested();
             var items = new List<PublishedWorkshopItem>();
             foreach (string directory in Directory.EnumerateDirectories(_root))
             {
@@ -190,7 +197,14 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
         IProgress<WorkshopTransferProgress>? progress,
         CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
+        if (token.IsCancellationRequested)
+            return Task.FromResult(new WorkshopInstalledItemResult(
+                WorkshopRemoteStatus.Cancelled,
+                publishedFileId,
+                null,
+                0,
+                Detail: "Directory Workshop install lookup cancelled."));
+
         string item = ItemRoot(publishedFileId);
         ItemMetadata? metadata = TryReadMetadata(item);
         string content = Path.Combine(item, "content");
