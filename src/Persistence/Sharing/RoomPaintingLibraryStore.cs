@@ -20,7 +20,8 @@ public sealed record RoomPaintingLibraryEntry(
 public sealed record RoomPaintingImportResult(
     bool Success,
     RoomPaintingLibraryEntry? Entry,
-    string? Detail = null);
+    string? Detail = null,
+    bool IsCancelled = false);
 
 /// <summary>
 /// Imported Workshop rooms are independent local presets. Import never changes the active room;
@@ -84,7 +85,7 @@ public sealed class RoomPaintingLibraryStore
         catch (OperationCanceledException)
         {
             SafeDelete(staging);
-            return new RoomPaintingImportResult(false, null, "Import cancelled.");
+            return new RoomPaintingImportResult(false, null, "Import cancelled.", IsCancelled: true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
