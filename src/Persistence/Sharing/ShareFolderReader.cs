@@ -105,6 +105,13 @@ public sealed class ShareFolderReader
                 return new ShareFolderReadResult(null, files, new ShareValidationResult(issues));
             return new ShareFolderReadResult(manifest, files, ShareValidationResult.Valid);
         }
+        catch (InvalidDataException exception)
+        {
+            // Malformed/oversized hostile content is an invalid package, not an exceptional control
+            // path. Keep it inside the validation boundary so detection/import never leaks it into
+            // application orchestration as an unhandled filesystem exception.
+            return Failure(ShareValidationCode.InvalidEncodedSize, sourceRoot, exception.Message);
+        }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             return Failure(ShareValidationCode.IoFailure, sourceRoot, exception.Message);
