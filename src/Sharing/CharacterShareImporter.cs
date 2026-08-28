@@ -91,12 +91,9 @@ public sealed class CharacterShareImporter
             foreach ((PaintPart part, byte[] pixels) in payload.Surfaces)
                 surfaces.Add(part, pixels);
 
-            token.ThrowIfCancellationRequested();
-            var localDocument = payload.Document with { Id = localId };
-            CharacterPaintSaveResult saved = await _paintStore.SaveAsync(localDocument, surfaces, token);
-            if (!saved.IsSuccess)
-                return Quarantine(incoming, "save-failed", saved.Detail ?? saved.Character.Detail ?? "Imported buddy could not be saved.");
-
+            // Prepare all authoritative provenance input before the local character transaction.
+            // Once CharacterPaintStore swaps staging into the active character directory, the
+            // import has crossed its local commit point and must no longer be reported as cancelled.
             token.ThrowIfCancellationRequested();
             string manifestPath = Path.Combine(incoming.ContentRoot, ShareManifestPolicy.ManifestFileName);
             byte[] manifestBytes = File.ReadAllBytes(manifestPath);
@@ -106,16 +103,34 @@ public sealed class CharacterShareImporter
                 _utcNow(),
                 manifestBytes,
                 ShareContentTypes.BuddyCharacter);
-            string? provenanceWarning = null;
+
+            var localDocument = payload.Document with { Id = localId };
+            CharacterPaintSaveResult saved = await _paintStore.SaveAsync(localDocument, surfaces, token);
+            if (!saved.IsSuccess)
+            {
+                if (saved.Character.Status == CharacterSaveStatus.Cancelled)
+                {
+                    _staging.Cleanup(incoming.OperationId);
+                    throw new OperationCanceledException(saved.Detail ?? "Imported buddy save was cancelled before commit.", token);
+                }
+
+                return Quarantine(incoming, "save-failed", saved.Detail ?? saved.Character.Detail ?? "Imported buddy could not be saved.");
+            }
+
+            // The character transaction succeeded. Provenance is non-authoritative and cancellation
+            // after this point cannot roll back the committed local buddy, so finish bookkeeping and
+            // return success rather than lying to the caller with a post-commit Cancelled result.
+            string? detail = token.IsCancellationRequested
+                ? "Cancellation arrived after the local buddy was committed; import completed."
+                : null;
             try
             {
                 WorkshopProvenanceStore.Write(_characters.Paths.Directory(localId), provenance);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                // The character transaction already succeeded. Provenance is non-authoritative;
-                // losing it must not roll back or corrupt the new local character.
-                provenanceWarning = $"Imported successfully, but provenance could not be written: {exception.Message}";
+                string warning = $"Imported successfully, but provenance could not be written: {exception.Message}";
+                detail = string.IsNullOrWhiteSpace(detail) ? warning : $"{detail} {warning}";
             }
 
             _staging.Cleanup(incoming.OperationId);
@@ -123,7 +138,7 @@ public sealed class CharacterShareImporter
                 true,
                 localId,
                 payload.Warnings,
-                Detail: provenanceWarning);
+                Detail: detail);
         }
         catch (OperationCanceledException)
         {
@@ -145,6 +160,7 @@ public sealed class CharacterShareImporter
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            _staging.Cleanup(incoming.OperationId);
             return Failure($"{detail}; quarantine failed: {exception.Message}");
         }
     }
