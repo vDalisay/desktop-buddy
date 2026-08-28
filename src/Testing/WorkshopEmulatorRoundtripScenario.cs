@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Domain.Sharing;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Persistence.Sharing;
@@ -209,11 +210,19 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
 
         Guid sourceId = Guid.Parse("91000000-0000-4000-8000-000000000001");
         CharacterDocument sourceDocument = CharacterDocument.CreateDefault(sourceId, "Headless Buddy");
-        CharacterSaveResult sourceSaved = await sourceCharacters.SaveAsync(sourceDocument, CancellationToken.None);
+        byte[] sourceHeadPaint = CreateDeterministicBuddyPaint();
+        var sourceSurfaces = new Dictionary<PaintPart, ReadOnlyMemory<byte>>
+        {
+            [PaintPart.Head] = sourceHeadPaint,
+        };
+        CharacterPaintSaveResult sourceSaved = await sourceCharacters.CreatePaintStore().SaveAsync(
+            sourceDocument,
+            sourceSurfaces,
+            CancellationToken.None);
         checks.Add(new StartupCheck(
-            "workshop_emulator_buddy_source_saved",
+            "workshop_emulator_buddy_source_saved_with_paint",
             sourceSaved.IsSuccess,
-            $"status={sourceSaved.Status} detail={sourceSaved.Detail}"));
+            $"status={sourceSaved.Character.Status} detail={sourceSaved.Detail}"));
         if (!sourceSaved.IsSuccess) return false;
 
         var exporter = new CharacterShareExporter(staging, sourceCharacters, "headless-scenario");
@@ -225,9 +234,10 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
             previewPng: null,
             CancellationToken.None);
         bool exportOk = exported.Success && exported.Staging is not null && exported.Manifest is not null &&
-            exported.Manifest.ContentType == ShareContentTypes.BuddyCharacter;
+            exported.Manifest.ContentType == ShareContentTypes.BuddyCharacter &&
+            exported.Manifest.Files.Any(file => file.Path == PaintPolicy.WhitelistedPaths[PaintPart.Head]);
         checks.Add(new StartupCheck(
-            "workshop_emulator_buddy_export_is_valid",
+            "workshop_emulator_buddy_export_is_valid_with_declared_paint",
             exportOk,
             exported.Detail ?? $"operation={publishOperation:D}"));
         if (!exportOk) return false;
@@ -306,16 +316,25 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
             imported.Detail ?? $"source={sourceId:D} local={imported.LocalCharacterId}"));
         if (!freshIdentity || imported.LocalCharacterId is not Guid importedId) return false;
 
-        CharacterLoadResult loaded = await importedCharacters.LoadAsync(importedId, CancellationToken.None);
+        CharacterPaintLoadResult loaded = await importedCharacters.CreatePaintStore().LoadAsync(
+            importedId,
+            CancellationToken.None);
         bool documentRoundtrip = loaded.IsSuccess &&
-            loaded.Document is not null &&
-            loaded.Document.Id == importedId &&
-            loaded.Document.DisplayName == sourceDocument.DisplayName &&
+            loaded.Character.Document is not null &&
+            loaded.Character.Document.Id == importedId &&
+            loaded.Character.Document.DisplayName == sourceDocument.DisplayName &&
             importedCharacters.CountStoredCharacters() == 1;
         checks.Add(new StartupCheck(
             "workshop_emulator_buddy_document_roundtrips_as_local_copy",
             documentRoundtrip,
-            $"status={loaded.Status} id={loaded.Document?.Id} name={loaded.Document?.DisplayName}"));
+            $"status={loaded.Character.Status} id={loaded.Character.Document?.Id} name={loaded.Character.Document?.DisplayName}"));
+
+        bool paintRoundtrip = loaded.Surfaces.TryGetValue(PaintPart.Head, out byte[]? importedHeadPaint) &&
+            sourceHeadPaint.AsSpan().SequenceEqual(importedHeadPaint);
+        checks.Add(new StartupCheck(
+            "workshop_emulator_buddy_paint_roundtrips_exactly",
+            paintRoundtrip,
+            $"expectedBytes={sourceHeadPaint.Length} loadedBytes={importedHeadPaint?.Length ?? 0}"));
 
         WorkshopProvenance? provenance = WorkshopProvenanceStore.TryRead(importedCharacters.Paths.Directory(importedId));
         bool provenanceKept = provenance is not null &&
@@ -326,7 +345,7 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
             provenanceKept,
             $"workshopId={provenance?.PublishedFileId} type={provenance?.ContentType}"));
 
-        return documentRoundtrip && provenanceKept;
+        return documentRoundtrip && paintRoundtrip && provenanceKept;
     }
 
     private static byte[] CreateDeterministicRoom(ulong seed)
@@ -339,6 +358,21 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
             pixels[index] = (byte)(state >> 24);
             pixels[index + 1] = (byte)(state >> 16);
             pixels[index + 2] = (byte)(state >> 8);
+            pixels[index + 3] = 255;
+        }
+        return pixels;
+    }
+
+    private static byte[] CreateDeterministicBuddyPaint()
+    {
+        byte[] pixels = new byte[PaintPolicy.SurfaceBytes];
+        for (int y = 0; y < 24; y++)
+        for (int x = 0; x < 24; x++)
+        {
+            int index = ((y * PaintPolicy.SurfaceSize) + x) * PaintPolicy.BytesPerPixel;
+            pixels[index] = (byte)(40 + x);
+            pixels[index + 1] = (byte)(90 + y);
+            pixels[index + 2] = 180;
             pixels[index + 3] = 255;
         }
         return pixels;
