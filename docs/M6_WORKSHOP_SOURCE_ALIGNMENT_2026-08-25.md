@@ -1,7 +1,8 @@
 # Milestone 6 — Steam Workshop Source Alignment
 
-Status: **AUTHORIZED — source-controlled implementation verified on draft PR #41; live Steam validation remains external**
-Date: 2026-08-25
+Status: **AUTHORIZED — source-controlled implementation is CI-gated on draft PR #41; live Steam validation remains external**
+Authorization date: 2026-08-25
+Latest source hardening: 2026-08-28
 Branch: `plan/godotsteam-workshop-social-features`
 Base-game Steam AppID / Workshop owner: **5114950**
 
@@ -57,16 +58,30 @@ V1 Workshop content is hostile **data**, never trusted project content.
 - Room packages contain only the versioned manifest plus the 512×512 RGBA8 `environment/background.png` payload and a generated preview outside the imported content payload.
 - Buddy packages contain only the versioned manifest, `character.json`, and declared whitelisted 512×512 RGBA8 paint PNGs.
 - Manifest paths are exact-whitelist relative paths. Absolute paths, traversal, duplicates, links/reparse points, undeclared files, size-cap violations, hash mismatches, malformed/future schemas, and invalid image dimensions are rejected before local import.
-- Workshop folders are copied into project-owned incoming staging and validated before entering local stores.
+- Steam install/cache folders are copied **once** into project-owned incoming staging. Content detection and final import validate that same immutable snapshot; no later stage rereads Steam's mutable cache.
+- Hostile-data validation failures remain typed validation results. Expected malformed/oversized Workshop data does not escape the validation boundary as exception-driven application control flow.
 - Imported characters always receive a fresh local GUID; remote/source identity is provenance only.
 - Successfully imported content is locally owned and remains usable offline. Subscription removal must not silently delete the imported local copy.
 - No Workshop `.tscn`, `.tres`, arbitrary Godot Resource, script, shader, DLL, native library, mesh, or executable payload is loaded.
 
+## Async, callback, and cancellation contract
+
+Steam persistence has explicit commit points; cancellation must never claim an operation was undone when a persistent side effect already exists.
+
+- A project-owned `WorkshopPublishCallbackLane` owns the single in-flight Create/Update callback lane. GodotSteam's update callback does not carry a request token, so concurrent publishes are rejected until the callback owner completes, is synchronously rejected before submission, or the transport shuts down.
+- Duplicate/late CreateItem and SubmitItemUpdate callbacks are ignored after their owner has released the lane.
+- `CreateItem` is the remote publish commit point. Once Steam accepts it, Desktop Buddy waits for the real PublishedFileId and completes the initial item update even if caller cancellation arrives while waiting; this avoids knowingly abandoning an empty Workshop item.
+- If cancellation arrives after `SubmitItemUpdate` begins, the caller may stop waiting while Steam continues. The callback lane stays owned until Steam's real callback, and the immutable publish staging is retained rather than deleting bytes Steam may still consume.
+- Room and buddy imports distinguish pre-commit cancellation from generic failure. They clean owned staging on pre-commit cancellation rather than quarantining otherwise-valid content.
+- A successful `CharacterPaintStore` transaction is the local buddy-import commit point. Cancellation after that swap cannot be reported as `Cancelled`; bookkeeping/provenance is completed best-effort and the result remains a successful local import.
+- Subscription enumeration returns a typed `Success / Unavailable / Failed / Cancelled` result. There is no public raw-list API that can collapse Steam-unavailable into a legitimate zero-subscription result.
+- The deterministic directory transport follows the same typed cancellation contract as the real transport.
+
 ## Steamworks App Admin gate
 
-The base-game AppID is now known and source-controlled as public product configuration: **5114950**. It is not a secret and the main game is not yet released.
+The base-game AppID is source-controlled as public product configuration: **5114950**. It is not a secret and the main game is not yet released.
 
-Live Workshop verification still requires the Steamworks configuration for AppID `5114950` to be published and available to the developer/test accounts. Before the real-account matrix can pass, confirm:
+Live Workshop verification still requires the Steamworks configuration for AppID `5114950` to be published and available to developer/test accounts. Before the real-account matrix can pass, confirm:
 
 1. ISteamUGC file transfer is enabled and the App Admin changes are published.
 2. Workshop visibility is appropriate for developer/test access.
@@ -84,24 +99,26 @@ Desktop Buddy resolves Steam identity in this order:
 
 No tracked `steam_appid.txt` is required.
 
-## Verification snapshot — 2026-08-25
+## Source-controlled verification — refreshed 2026-08-28
 
-The implementation branch has reached the following source-controlled gates:
+PR #41's verification contract now includes all of the following on one exact head before handoff:
 
-- `dotnet build DesktopBuddy.sln -c Debug` passes.
-- Domain test suite passes with zero failures.
-- The repository Steam-binary guard passes; no Valve runtime binary, GodotSteam runtime binary, or `steam_appid.txt` is tracked.
-- Godot 4.6.1 headless editor import passes with GodotSteam physically absent, proving the optional bridge does not become a boot/import dependency.
-- `workshop_emulator_roundtrip` passes under Godot. It exercises room pixels → versioned share package → directory Workshop publish snapshot → subscription/install → hostile-input staging/validation → local room library import, including exact 1,048,576-byte RGBA pixel roundtrip and Workshop-item provenance.
-- The exact official Godot Asset Library 4.22 archive for revision `ac5fc8bbc3d34c203e832864e2ebab4b21f3efd9` is pinned at 32,103,117 bytes with SHA-256 `9ED28D9FE8CA43E769BD8E1160C0F7806B7C6337FD672F919A9103DC84829777`.
-- `tools/install_godotsteam.ps1` verifies that hash before materializing the complete addon into the gitignored local dependency directory.
-- The verified archive contains `addons/godotsteam/godotsteam.gdextension`, Windows x86_64 GodotSteam debug/release DLLs, and `win64/steam_api64.dll`.
-- The dedicated `GodotSteam Native Smoke` workflow installs the real pinned addon, imports it with Godot 4.6.1, dynamically discovers the native Steam API, verifies the expected 4.22 Workshop capability/signal surface, and reaches `steamInitEx`.
-- That native smoke resolves **runtime=5114950 / Workshop owner=5114950**.
-- On the GitHub-hosted Linux runner, `steamInitEx` then fails for the expected external reason that no Steam client/`~/.steam/sdk64/steamclient.so` exists. The bridge classifies this as Steam unavailable/offline and the scenario passes, proving addon-present/no-Steam fallback rather than masking a binding failure.
-- The previous GodotSteam `Found older app ID project setting, converting it` warning is gone because Desktop Buddy now uses the canonical v4.20+ AppID key.
-- The economy benchmark derives its current purchasable order from `CataloguePolicy.LaunchContentIds` instead of carrying the obsolete M5 11-item timing table. The fixed 209-minute seeded trace remains a deterministic income/mechanics observation, while price order, every-item-first-purchase reachability, deduplication, active/passive balance, and fingerprint behavior are validated against the current authored catalogue.
-- Earlier PR #41 Workshop heads completed the full `build-test` suite. The current source-alignment/AppID-correction head is rerunning the same full suite; it must be green before final branch handoff.
+- `dotnet build DesktopBuddy.sln -c Debug`.
+- Complete domain/managed test suite, including callback-lane state transitions, typed transport cancellation, immutable incoming staging, hostile-data validation boundaries, and local room cancellation behavior.
+- Repository Steam-binary guard; no Valve runtime binary, GodotSteam runtime binary, or `steam_appid.txt` may be tracked.
+- Godot 4.6.1 headless editor import with GodotSteam physically absent, proving the optional bridge does not become a boot/import dependency.
+- `workshop_emulator_roundtrip` under Godot for **both authorized content types**:
+  - room: exact 1,048,576-byte RGBA pixels → versioned package → emulator publish snapshot → subscription/install → immutable hostile-input staging/validation → locally owned room preset + provenance;
+  - buddy: character configuration plus a real declared non-blank `paint/head.png` surface → versioned package → emulator publish snapshot → subscription/install → immutable hostile-input staging/validation → fresh local GUID → exact decoded paint roundtrip + Workshop provenance.
+- Full existing gameplay/scenario suite after the Workshop gate so the optional platform feature cannot regress normal single-player behavior.
+- Asset Forge CI, including its deterministic core tests, generated fixture validation, game import/boot, capture gates, generated customization assets, and standalone project checks.
+- Dedicated `GodotSteam Native Smoke`, which installs the real pinned addon, imports it with Godot 4.6.1, dynamically discovers the native Steam API, verifies the required 4.22 Workshop capability/signal surface, and reaches `steamInitEx`.
+
+The exact official Godot Asset Library 4.22 archive for revision `ac5fc8bbc3d34c203e832864e2ebab4b21f3efd9` is pinned at 32,103,117 bytes with SHA-256 `9ED28D9FE8CA43E769BD8E1160C0F7806B7C6337FD672F919A9103DC84829777`. `tools/install_godotsteam.ps1` verifies that hash before materializing the complete addon into the gitignored local dependency directory. The verified archive contains `addons/godotsteam/godotsteam.gdextension`, Windows x86_64 GodotSteam debug/release DLLs, and `win64/steam_api64.dll`.
+
+The native smoke resolves **runtime=5114950 / Workshop owner=5114950**. On a GitHub-hosted Linux runner, `steamInitEx` then fails for the expected external reason that no Steam client/`~/.steam/sdk64/steamclient.so` exists. The bridge must classify this as Steam unavailable/offline and the scenario must pass, proving addon-present/no-Steam fallback rather than masking a binding failure.
+
+A PR head is not considered source-verified merely because an earlier head passed. The final handoff head must have the PR `CI`, `GodotSteam Native Smoke`, and `Asset Forge CI` workflows green.
 
 ## Local Windows live-test entrypoint
 
@@ -114,9 +131,11 @@ The implementation branch has reached the following source-controlled gates:
 5. permits a future demo runtime AppID override without changing Workshop ownership; and
 6. does not create or track `steam_appid.txt`.
 
+`devtools/play_game_steam_diagnostics.bat` provides the same verified dependency/environment setup with persistent build/runtime diagnostics for a live Steam session.
+
 ## Remaining external gates
 
-The source-controlled dependency, package pipeline, emulator path, addon-present capability path, and offline fallbacks are verified. Live Steam verification still requires:
+The source-controlled dependency, package pipeline, emulator path, addon-present capability path, and offline fallbacks are CI-verifiable. Live Steam verification still requires:
 
 1. confirm/publish the Steamworks configuration listed above for AppID `5114950`;
 2. run Desktop Buddy through `devtools/play_game_steam.bat` with Steam signed in to an account that has developer/test access;
@@ -128,13 +147,13 @@ If the future Steam demo AppID must publish into or consume the base game's Work
 
 Implementation is acceptable when:
 
-1. local/domain tests prove hostile-input validation and identity isolation;
-2. headless scenarios work with the directory/fake transport;
+1. local/domain tests prove hostile-input validation, callback ownership/cancellation behavior, and identity isolation;
+2. headless scenarios prove room and buddy share roundtrips with the directory/fake transport;
 3. normal game bootstrap works with GodotSteam absent;
 4. the real pinned GodotSteam addon imports and its required Workshop capability surface is verified;
 5. addon-present/no-Steam initialization fails safely into the offline path;
 6. no Valve/GodotSteam runtime binary or `steam_appid.txt` is tracked;
 7. room and buddy imports never auto-apply/auto-activate; and
-8. the only remaining unverified items after those gates are Steamworks Partner configuration and the manual real-account/depot matrix that cannot be performed from source-controlled CI.
+8. the only remaining unverified items after those source gates are Steamworks Partner configuration and the manual real-account/depot matrix that cannot be performed from source-controlled CI.
 
-Items 1–7 are satisfied on draft PR #41. Item 8 is the remaining release gate and requires the configured Steamworks/Steam-client environment rather than additional source-only implementation.
+Once the final PR head passes all three required workflows, items 1–7 are source-verified. Item 8 remains a release gate requiring the configured Steamworks/Steam-client environment rather than additional source-only implementation.
