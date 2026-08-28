@@ -115,6 +115,8 @@ public sealed class RoomShareImporter
             if (!imported.Success)
             {
                 _staging.Cleanup(incoming.OperationId);
+                if (imported.IsCancelled)
+                    throw new OperationCanceledException(imported.Detail ?? "Room import was cancelled before commit.", token);
                 return new RoomShareImportResult(false, null, null, imported.Detail);
             }
 
@@ -141,6 +143,7 @@ public sealed class RoomShareImporter
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            _staging.Cleanup(incoming.OperationId);
             return new RoomShareImportResult(false, null, null, $"{detail}; quarantine failed: {exception.Message}");
         }
     }
