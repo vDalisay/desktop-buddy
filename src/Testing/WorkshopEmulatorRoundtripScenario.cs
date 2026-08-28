@@ -257,7 +257,7 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
                 "Headless Buddy",
                 "Workshop emulator buddy roundtrip scenario",
                 publish.ContentRoot,
-                previewFile: null,
+                PreviewFile: null,
                 ["Buddy"],
                 "desktop-buddy:buddy:1"),
             progress: null,
