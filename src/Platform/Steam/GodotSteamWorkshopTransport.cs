@@ -182,32 +182,6 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         return AwaitUpdateAsync(callback, update.PublishedFileId, token);
     }
 
-    public Task<IReadOnlyList<PublishedWorkshopItem>> GetSubscribedItemsAsync(CancellationToken token)
-    {
-        if (token.IsCancellationRequested)
-            return Task.FromCanceled<IReadOnlyList<PublishedWorkshopItem>>(token);
-        if (!IsAvailable || !IsOnMainThread)
-            return Task.FromResult<IReadOnlyList<PublishedWorkshopItem>>(Array.Empty<PublishedWorkshopItem>());
-
-        Variant raw = _bridge!.Call("get_subscribed_items");
-        long[] ids = raw.VariantType == Variant.Type.PackedInt64Array ? raw.AsInt64Array() : [];
-        var items = new List<PublishedWorkshopItem>(ids.Length);
-        foreach (long rawId in ids)
-        {
-            if (rawId <= 0) continue;
-            ulong id = checked((ulong)rawId);
-            uint state = checked((uint)Math.Max(0, CallInt64("get_item_state", rawId)));
-            long timestamp = 0;
-            if (((WorkshopItemState)state & WorkshopItemState.Installed) != 0)
-            {
-                Godot.Collections.Dictionary install = CallDictionary("get_item_install_info", rawId);
-                timestamp = checked((long)Math.Min(long.MaxValue, ReadUInt64(install, "timestamp", "time_stamp")));
-            }
-            items.Add(new PublishedWorkshopItem(id, (WorkshopItemState)state, $"Workshop Item {id}", timestamp));
-        }
-        return Task.FromResult<IReadOnlyList<PublishedWorkshopItem>>(items);
-    }
-
     public Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
         ulong publishedFileId,
         IProgress<WorkshopTransferProgress>? progress,
