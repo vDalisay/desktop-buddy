@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Persistence.Characters;
@@ -169,17 +170,35 @@ internal sealed class BrowserCharacterEditorModeCoordinator : CharacterEditorMod
 }
 
 /// <summary>
-/// Browser-only interaction corrections that should not leak into the native editor. The built-in
-/// buddy is synthesized when no character has ever been selected, so its blank paint workspace is
-/// technically a new unsaved document. Treating that untouched bootstrap document like user work
-/// made the first + New Character click open an irrelevant save/discard prompt. When that exact
-/// untouched state requests NewPrompt, discard the synthesized document automatically; the normal
-/// Win98 UX then opens its name dialog on the following frame. Any actual edits keep the prompt.
+/// Browser-only interaction corrections that should not leak into the native editor. The static
+/// single-threaded runtime has already shown that an async continuation from a Godot signal can be
+/// stranded even though Node._Process keeps advancing. Paint Buddy's persistence actions therefore
+/// start their existing Tasks from ordinary button callbacks and observe completion from _Process.
+/// Native builds keep the original event path untouched.
 /// </summary>
 internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
 {
+    private enum BrowserPaintAction
+    {
+        None,
+        Save,
+        Use,
+        UnsavedSave,
+        UnsavedDiscard,
+        UnsavedCancel,
+        BootstrapNewPromptDiscard,
+    }
+
     private CharacterEditorHost _host = null!;
-    private bool _resolvingBootstrapNewPrompt;
+    private bool _wasEditorOpen;
+    private bool _footerActionsInstalled;
+    private bool _unsavedActionsInstalled;
+    private Button? _saveProxy;
+    private Button? _useProxy;
+    private Button? _exitProxy;
+    private Task<CharacterEditorActionResult>? _actionTask;
+    private BrowserPaintAction _actionKind;
+    private Label? _status;
 
     public void Configure(CharacterEditorHost host)
     {
@@ -190,15 +209,281 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
 
     public override void _Process(double delta)
     {
-        if (_resolvingBootstrapNewPrompt || !GodotObject.IsInstanceValid(_host) ||
-            !_host.IsEditorOpen || _host.Session.PendingAction != CharacterEditorPendingAction.NewPrompt ||
-            !IsUntouchedBuiltIn())
+        if (!GodotObject.IsInstanceValid(_host))
+            return;
+
+        if (!_host.IsEditorOpen)
+        {
+            _wasEditorOpen = false;
+            return;
+        }
+
+        // Reset at the actual browser editor-open boundary instead of relying on the later
+        // presentation bootstrap to notice paint visibility. That timing race is what allowed a
+        // previous quarter-turn to survive into Paint Buddy in the itch build.
+        if (!_wasEditorOpen)
+        {
+            _wasEditorOpen = true;
+            _host.ResetPreviewRotationToFront();
+            GD.Print("DESKTOP_BUDDY_WEB_PAINT_FRONT_RESET");
+        }
+
+        EnsureFooterActionProxies();
+        EnsureUnsavedActionProxies();
+        MirrorFooterActionState();
+        PumpAction();
+
+        if (_actionTask is null &&
+            _host.Session.PendingAction == CharacterEditorPendingAction.NewPrompt &&
+            IsUntouchedBuiltIn())
+        {
+            BeginAction(
+                BrowserPaintAction.BootstrapNewPromptDiscard,
+                _host.Session.ResolveUnsavedAsync(UnsavedDecision.Discard),
+                "DESKTOP_BUDDY_WEB_NEW_CHARACTER_BOOTSTRAP_DISCARD");
+        }
+    }
+
+    private void EnsureFooterActionProxies()
+    {
+        if (_footerActionsInstalled ||
+            !GodotObject.IsInstanceValid(_host.SaveButton) ||
+            !GodotObject.IsInstanceValid(_host.UseButton) ||
+            !GodotObject.IsInstanceValid(_host.CloseButton) ||
+            _host.SaveButton.GetParent() is not HBoxContainer actions ||
+            !string.Equals(actions.Name.ToString(), "PaintPrimaryActions", StringComparison.Ordinal))
         {
             return;
         }
 
-        ResolveBootstrapNewPrompt();
+        _saveProxy = ReplaceWithBrowserProxy(
+            _host.SaveButton,
+            () => BeginAction(
+                BrowserPaintAction.Save,
+                _host.Session.SaveAsync(),
+                "DESKTOP_BUDDY_WEB_PAINT_ACTION:save:begin"));
+        _useProxy = ReplaceWithBrowserProxy(
+            _host.UseButton,
+            () => BeginAction(
+                BrowserPaintAction.Use,
+                _host.Session.UseCharacterAsync(),
+                "DESKTOP_BUDDY_WEB_PAINT_ACTION:use:begin"));
+        _exitProxy = ReplaceWithBrowserProxy(_host.CloseButton, RequestBrowserExit);
+        _footerActionsInstalled = true;
+        GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION_PROXIES_READY");
     }
+
+    private void EnsureUnsavedActionProxies()
+    {
+        if (_unsavedActionsInstalled ||
+            _host.FindChild("UnsavedChangesPrompt", true, false) is not PanelContainer prompt)
+        {
+            return;
+        }
+
+        Button? save = null;
+        Button? discard = null;
+        Button? cancel = null;
+        foreach (Node node in prompt.FindChildren("*", nameof(Button), true, false))
+        {
+            if (node is not Button button || !GodotObject.IsInstanceValid(button))
+                continue;
+            switch (button.Text)
+            {
+                case "Save": save ??= button; break;
+                case "Discard": discard ??= button; break;
+                case "Cancel": cancel ??= button; break;
+            }
+        }
+        if (!GodotObject.IsInstanceValid(save) ||
+            !GodotObject.IsInstanceValid(discard) ||
+            !GodotObject.IsInstanceValid(cancel))
+        {
+            return;
+        }
+
+        ReplaceWithBrowserProxy(
+            save!,
+            () => BeginAction(
+                BrowserPaintAction.UnsavedSave,
+                _host.Session.ResolveUnsavedAsync(UnsavedDecision.Save),
+                "DESKTOP_BUDDY_WEB_PAINT_ACTION:unsaved-save:begin"));
+        ReplaceWithBrowserProxy(
+            discard!,
+            () => BeginAction(
+                BrowserPaintAction.UnsavedDiscard,
+                _host.Session.ResolveUnsavedAsync(UnsavedDecision.Discard),
+                "DESKTOP_BUDDY_WEB_PAINT_ACTION:unsaved-discard:begin"));
+        ReplaceWithBrowserProxy(
+            cancel!,
+            () => BeginAction(
+                BrowserPaintAction.UnsavedCancel,
+                _host.Session.ResolveUnsavedAsync(UnsavedDecision.Cancel),
+                "DESKTOP_BUDDY_WEB_PAINT_ACTION:unsaved-cancel:begin"));
+        _unsavedActionsInstalled = true;
+    }
+
+    private Button ReplaceWithBrowserProxy(Button source, Action pressed)
+    {
+        if (source.GetParent() is not Control parent)
+            throw new InvalidOperationException($"Browser action source '{source.Name}' has no Control parent.");
+
+        int sourceIndex = source.GetIndex();
+        string sourceName = source.Name.ToString();
+        var proxy = new Button
+        {
+            Name = sourceName,
+            Text = source.Text,
+            TooltipText = source.TooltipText,
+            FocusMode = Control.FocusModeEnum.All,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            CustomMinimumSize = source.CustomMinimumSize,
+            SizeFlagsHorizontal = source.SizeFlagsHorizontal,
+            SizeFlagsVertical = source.SizeFlagsVertical,
+        };
+        proxy.Pressed += pressed;
+
+        source.Name = $"{sourceName}NativeBrowserHandler";
+        source.Visible = false;
+        source.FocusMode = Control.FocusModeEnum.None;
+        source.MouseFilter = Control.MouseFilterEnum.Ignore;
+        parent.AddChild(proxy);
+        parent.MoveChild(proxy, sourceIndex);
+        return proxy;
+    }
+
+    private void MirrorFooterActionState()
+    {
+        if (!_footerActionsInstalled)
+            return;
+
+        bool busy = _actionTask is not null;
+        if (GodotObject.IsInstanceValid(_saveProxy))
+            _saveProxy!.Disabled = busy || _host.SaveButton.Disabled;
+        if (GodotObject.IsInstanceValid(_useProxy))
+            _useProxy!.Disabled = busy || _host.UseButton.Disabled;
+        if (GodotObject.IsInstanceValid(_exitProxy))
+            _exitProxy!.Disabled = busy || _host.CloseButton.Disabled;
+    }
+
+    private void RequestBrowserExit()
+    {
+        if (_actionTask is not null)
+            return;
+
+        try
+        {
+            GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:exit:begin");
+            CharacterEditorActionResult result = _host.Session.RequestClose();
+            if (result.Completed)
+            {
+                if (_host.IsEditorOpen)
+                    _host.CloseEditorImmediately();
+                GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:exit:complete");
+            }
+            else if (result.NeedsUnsavedDecision)
+            {
+                GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:exit:awaiting-unsaved-decision");
+            }
+            else
+            {
+                ReportFailure("exit", result.Detail ?? "Paint Buddy could not close.");
+            }
+        }
+        catch (Exception exception)
+        {
+            ReportFailure("exit", exception.ToString());
+        }
+    }
+
+    private void BeginAction(
+        BrowserPaintAction kind,
+        Task<CharacterEditorActionResult> task,
+        string marker)
+    {
+        if (_actionTask is not null)
+            return;
+        _actionKind = kind;
+        _actionTask = task;
+        GD.Print(marker);
+        PumpAction();
+    }
+
+    private void PumpAction()
+    {
+        if (_actionTask is null || !_actionTask.IsCompleted)
+            return;
+
+        Task<CharacterEditorActionResult> completed = _actionTask;
+        BrowserPaintAction kind = _actionKind;
+        _actionTask = null;
+        _actionKind = BrowserPaintAction.None;
+
+        CharacterEditorActionResult result;
+        try
+        {
+            result = completed.GetAwaiter().GetResult();
+        }
+        catch (Exception exception)
+        {
+            ReportFailure(ActionName(kind), exception.ToString());
+            return;
+        }
+
+        if (kind == BrowserPaintAction.UnsavedCancel)
+        {
+            GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:unsaved-cancel:complete");
+            return;
+        }
+
+        if (!result.Completed)
+        {
+            ReportFailure(ActionName(kind), result.Detail ?? $"{ActionName(kind)} did not complete.");
+            return;
+        }
+
+        switch (kind)
+        {
+            case BrowserPaintAction.Save:
+                GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:save:complete");
+                break;
+            case BrowserPaintAction.Use:
+                GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:use:complete");
+                if (_host.IsEditorOpen)
+                    _host.CloseEditorImmediately();
+                break;
+            case BrowserPaintAction.UnsavedSave:
+                GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:unsaved-save:complete");
+                break;
+            case BrowserPaintAction.UnsavedDiscard:
+                GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:unsaved-discard:complete");
+                break;
+            case BrowserPaintAction.BootstrapNewPromptDiscard:
+                GD.Print("DESKTOP_BUDDY_WEB_NEW_CHARACTER_BOOTSTRAP_DISCARD_COMPLETE");
+                break;
+        }
+    }
+
+    private void ReportFailure(string action, string detail)
+    {
+        string message = $"Browser Paint Buddy {action} failed: {detail}";
+        GD.PushError(message);
+        _status ??= _host.FindChild("CharacterEditorStatus", true, false) as Label;
+        if (GodotObject.IsInstanceValid(_status))
+            _status!.Text = message;
+        GD.Print($"DESKTOP_BUDDY_WEB_PAINT_ACTION:{action}:failed");
+    }
+
+    private static string ActionName(BrowserPaintAction kind) => kind switch
+    {
+        BrowserPaintAction.Save => "save",
+        BrowserPaintAction.Use => "use",
+        BrowserPaintAction.UnsavedSave => "unsaved-save",
+        BrowserPaintAction.UnsavedDiscard => "unsaved-discard",
+        BrowserPaintAction.UnsavedCancel => "unsaved-cancel",
+        BrowserPaintAction.BootstrapNewPromptDiscard => "new-character-bootstrap-discard",
+        _ => "action",
+    };
 
     private bool IsUntouchedBuiltIn()
     {
@@ -224,26 +509,6 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
                 return false;
         }
         return true;
-    }
-
-    private async void ResolveBootstrapNewPrompt()
-    {
-        _resolvingBootstrapNewPrompt = true;
-        try
-        {
-            GD.Print("DESKTOP_BUDDY_WEB_NEW_CHARACTER_BOOTSTRAP_DISCARD");
-            CharacterEditorActionResult result = await _host.Session.ResolveUnsavedAsync(UnsavedDecision.Discard);
-            if (!result.Completed)
-                GD.PushWarning(result.Detail ?? "Could not clear untouched browser bootstrap character.");
-        }
-        catch (Exception exception)
-        {
-            GD.PushError($"Browser new-character bootstrap resolution failed: {exception}");
-        }
-        finally
-        {
-            _resolvingBootstrapNewPrompt = false;
-        }
     }
 }
 
