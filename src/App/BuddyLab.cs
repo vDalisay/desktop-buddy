@@ -392,7 +392,9 @@ public partial class BuddyLab : Node2D
                 grabbedBody?.PartId,
                 grab.CursorAnchor,
                 Pointer.WorldCursor,
-                Pointer.HasPointerInput);
+                Pointer.HasPointerInput,
+                GodotObject.IsInstanceValid(Pointer.RopeTool) &&
+                    Pointer.RopeTool!.HoldsAny(Buddy.Rig.Parts));
 
             // ARCHITECTURE §7 steps 7-8: the pipeline consumes the previous
             // step's authoritative contacts after the buddy routed its tick.
