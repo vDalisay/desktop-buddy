@@ -329,7 +329,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
                 case BrowserPaintSmokeStage.OpeningFirstEditor:
                     if (!BrowserOpenCompleted(host))
                         break;
-                    if (FindVisibleButton(host, "SaveCharacterButton") is not Button firstSave)
+                    if (FindVisibleButton(host, "SaveButton") is not Button firstSave)
                         break;
                     GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:save-built-in");
                     firstSave.EmitSignal(Button.SignalName.Pressed);
@@ -345,7 +345,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
                         FailBrowserPaintSmoke(created.Detail ?? "Could not create a second smoke-test character.");
                         break;
                     }
-                    if (FindVisibleButton(host, "SaveCharacterButton") is not Button newSave)
+                    if (FindVisibleButton(host, "SaveButton") is not Button newSave)
                         break;
                     GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:save-new-character");
                     newSave.EmitSignal(Button.SignalName.Pressed);
@@ -403,7 +403,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
                         FailBrowserPaintSmoke(renamed.Detail ?? "Could not dirty the smoke-test character before Exit.");
                         break;
                     }
-                    if (FindVisibleButton(host, "CloseCharacterEditorButton") is not Button exit)
+                    if (FindVisibleButton(host, "CloseButton") is not Button exit)
                         break;
                     GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:exit-dirty");
                     exit.EmitSignal(Button.SignalName.Pressed);
