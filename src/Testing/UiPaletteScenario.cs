@@ -1,6 +1,11 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using DesktopBuddy.App;
+using DesktopBuddy.Content;
+using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Economy;
+using DesktopBuddy.Persistence;
 using DesktopBuddy.Shop;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -147,6 +152,8 @@ public sealed class UiPaletteScenario : IScenario
                 clock.ElapsedMilliseconds < 250,
                 $"elapsed={clock.ElapsedMilliseconds}ms controls=600"));
 
+            checks.Add(await BootAppliesStoredPalette(tree));
+
             Win98Palette recovered = Win98Palette.Parse("not a color", null, "#ff8800");
             checks.Add(new StartupCheck(
                 "a_corrupt_stored_color_falls_back_instead_of_breaking_the_ui",
@@ -166,6 +173,49 @@ public sealed class UiPaletteScenario : IScenario
             checks.All(static check => check.Passed),
             checks,
             [$"seed={seed}"]);
+    }
+
+    /// <summary>
+    /// A stored palette has to be on screen at boot, before anything is edited. Only an edited
+    /// settings row used to apply one, so the saved colours sat in settings.json and every
+    /// launch came up in the shipped grey (owner report 2026-08-25).
+    /// </summary>
+    private static async Task<StartupCheck> BootAppliesStoredPalette(SceneTree tree)
+    {
+        Win98ThemeFactory.ApplyPalette(Win98Palette.Default);
+        var packed = GD.Load<PackedScene>("res://scenes/sandbox.tscn");
+        if (packed is null || packed.Instantiate() is not SandboxRoot sandbox)
+            return new StartupCheck("boot_applies_the_stored_interface_palette", false, "sandbox");
+
+        var stored = new Win98Palette(Pink, Green, Cocoa);
+        var progress = new BuddyProgressState(sandbox.Pipeline.RequirePainProfile().CashPerPain);
+        var store = new InMemoryProgressStore();
+        var saves = new SaveCoordinator(progress, store);
+        var settings = new LocalSettingsSave
+        {
+            UiFaceColor = stored.FaceHex,
+            UiBarColor = stored.BarHex,
+            UiTextColor = stored.TextHex,
+        };
+        sandbox.Shell.ConfigureRuntime(settings, saves);
+        sandbox.Configure(new RunContext(
+            progress,
+            new EconomyService(progress, CatalogueLoader.Catalogue),
+            store,
+            saves,
+            settings,
+            SaveLoadStatus.NewSave));
+        tree.Root.AddChild(sandbox);
+        await Frame(tree);
+
+        Win98Palette booted = Win98ThemeFactory.Palette;
+        sandbox.QueueFree();
+        await Frame(tree);
+        return new StartupCheck(
+            "boot_applies_the_stored_interface_palette",
+            booted == stored,
+            $"booted={booted.FaceHex}/{booted.BarHex}/{booted.TextHex} " +
+            $"stored={stored.FaceHex}/{stored.BarHex}/{stored.TextHex}");
     }
 
     /// <summary>Six hundred themed controls, standing in for the real interface.</summary>
