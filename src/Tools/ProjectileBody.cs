@@ -65,7 +65,12 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
     private Vector2 _lastSample;
     private Vector2 _launchVelocity;
     private Vector2 _approachVelocity;
+    private Vector2 _headingBeforeLastStep;
+    private Vector2 _positionBeforeLastStep;
+    private Vector2 _lastIntegratedPosition;
     private bool _contactObserved;
+    private Vector2 _impactPosition;
+    private Vector2 _impactHeading;
     private int _contactTicks;
     private float _deliveredImpulse;
     private ulong _hitBodyId;
@@ -116,7 +121,41 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
     /// body's local space, so any body rotation swings the drawn shot away from the
     /// direction it is actually travelling.
     /// </summary>
-    public Vector2 VisualForward => LocalStreakForward().Rotated(Rotation);
+    public Vector2 VisualForward => WorldStreakForward();
+
+    /// <summary>
+    /// Where along its own path the shot got to. The body's position at the step a contact
+    /// becomes visible has already been shoved off the flight line by the collision - nine
+    /// to fourteen pixels sideways on an ordinary hit - so drawing the round there flicks it
+    /// off its own line on the one frame the player reads the hit (owner report 2026-08-26).
+    /// The travel since the last clean step is projected back onto the heading, which keeps
+    /// how far it got into what it hit and drops the sideways kick.
+    /// </summary>
+    private Vector2 ImpactPointOnTheFlightLine(Vector2 resolvedPosition)
+    {
+        if (_positionBeforeLastStep == Vector2.Zero || _impactHeading == Vector2.Zero)
+            return resolvedPosition;
+
+        Vector2 heading = _impactHeading.Normalized();
+        float along = (resolvedPosition - _positionBeforeLastStep).Dot(heading);
+        return _positionBeforeLastStep + (heading * Mathf.Max(0.0f, along));
+    }
+
+    /// <summary>
+    /// The heading the shot was really carrying when it struck - the last read taken before
+    /// the collision bent it. Everything that means "the way the shot was going" wants this
+    /// one, not the live velocity, which by the time a contact is visible has already been
+    /// turned by the impact.
+    /// </summary>
+    internal Vector2 ImpactHeading =>
+        _impactHeading != Vector2.Zero ? _impactHeading : _approachVelocity;
+
+    /// <summary>
+    /// Where in the world the shot is actually drawn. Once it has connected this is the
+    /// point it struck, not the body's current position: the body keeps being simulated
+    /// through the settling window and the drawing no longer follows it.
+    /// </summary>
+    public Vector2 VisualOrigin => ToGlobal(LocalDrawOrigin());
 
     /// <summary>
     /// The largest contact impulse the solver has actually applied to this projectile.
@@ -182,6 +221,11 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         _launchVelocity = velocity;
         _approachVelocity = velocity;
         _contactObserved = false;
+        _impactPosition = Vector2.Zero;
+        _impactHeading = Vector2.Zero;
+        _headingBeforeLastStep = Vector2.Zero;
+        _positionBeforeLastStep = Vector2.Zero;
+        _lastIntegratedPosition = Vector2.Zero;
         _contactTicks = 0;
         _deliveredImpulse = 0.0f;
         _hitBodyId = 0;
@@ -279,6 +323,11 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         TicksInState = 0;
         TravelledPx = 0.0f;
         _contactObserved = false;
+        _impactPosition = Vector2.Zero;
+        _impactHeading = Vector2.Zero;
+        _headingBeforeLastStep = Vector2.Zero;
+        _positionBeforeLastStep = Vector2.Zero;
+        _lastIntegratedPosition = Vector2.Zero;
         _contactTicks = 0;
         _deliveredImpulse = 0.0f;
         _hitBodyId = 0;
@@ -305,12 +354,35 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         // every step before the contacts are examined, because a resolved contact has
         // already reversed and shrunk it, and the shove has to push the way the shot was
         // going rather than the way it bounced.
+        // ... and one step of history behind it. The contacts this step reports were
+        // resolved during the last one, so by the time a contact is visible here the
+        // velocity has already been bent by it - 23 degrees on a clean point-blank hit,
+        // and most of a half-turn on a hard one. The step before is the last clean read.
         if (state.LinearVelocity.LengthSquared() > MinimumStreakSpeed * MinimumStreakSpeed)
+        {
+            _headingBeforeLastStep = _approachVelocity;
+            _positionBeforeLastStep = _lastIntegratedPosition;
             _approachVelocity = state.LinearVelocity;
+        }
+
+        _lastIntegratedPosition = state.Transform.Origin;
 
         // Observation only: what happens to a projectile that connected is decided on
         // the owning component's routed tick, never inside a solver callback.
         int contactCount = state.GetContactCount();
+        // The pose the shot struck at, latched on the first contact of this flight. The
+        // body goes on being simulated for the settling window the impulse needs, and in
+        // those few steps it bounces, slides and spins - 121 degrees while still visible.
+        // The drawing stops following it here, so a landed shot stays put and stays
+        // pointing the way it came in (owner report 2026-08-26).
+        if (contactCount > 0 && !_contactObserved)
+        {
+            _impactHeading = _headingBeforeLastStep != Vector2.Zero
+                ? _headingBeforeLastStep
+                : _launchVelocity;
+            _impactPosition = ImpactPointOnTheFlightLine(state.Transform.Origin);
+        }
+
         for (int index = 0; index < contactCount; index++)
         {
             _contactObserved = true;
@@ -368,17 +440,26 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         if (profile.ShovesLooseObjectsOnly && target is not Objects.LooseObjectBody)
             return 0.0f;
 
-        Vector2 heading = _approachVelocity != Vector2.Zero ? _approachVelocity : _launchVelocity;
+        // The heading from before the collision bent it. Read live, this is the velocity the
+        // contact has already turned - a fifth of a turn on a clean hit, most of a half-turn
+        // on a hard one - so the knockback was pushed the way the shot bounced rather than
+        // the way it was going, which is the one thing this is documented not to do
+        // (owner instruction 2026-08-26).
+        Vector2 heading = ImpactHeading != Vector2.Zero ? ImpactHeading : _launchVelocity;
         if (heading == Vector2.Zero)
             return 0.0f;
 
-        target.ApplyCentralImpulse(heading.Normalized() * magnitude);
+        LastShoveHeading = heading.Normalized();
+        target.ApplyCentralImpulse(LastShoveHeading * magnitude);
         LastShoveImpulse = magnitude;
         return magnitude;
     }
 
     /// <summary>The extra knockback this flight delivered, for test readouts and telemetry.</summary>
     public float LastShoveImpulse { get; private set; }
+
+    /// <summary>Which way that knockback pushed, for the same readouts.</summary>
+    public Vector2 LastShoveHeading { get; private set; }
 
     /// <summary>
     /// The body this flight connected with, handed out once. The owning component drains it on
@@ -405,11 +486,12 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
 
         // A short trail back along the flight direction: at these speeds a two-pixel dot
         // renders as an invisible flicker, and the streak is what reads as a shot.
+        Vector2 origin = LocalDrawOrigin();
         Vector2 forward = LocalStreakForward();
         if (forward != Vector2.Zero)
-            DrawLine(Vector2.Zero, -forward * (Radius * 6.0f), _trailColor, Radius * 1.2f, true);
+            DrawLine(origin, origin - (forward * (Radius * 6.0f)), _trailColor, Radius * 1.2f, true);
 
-        DrawCircle(Vector2.Zero, Radius, _fillColor, true, -1.0f, true);
+        DrawCircle(origin, Radius, _fillColor, true, -1.0f, true);
     }
 
     /// <summary>
@@ -424,12 +506,39 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
     /// <see cref="Configure"/> for why it must stay free). Any future projectile visual —
     /// a dart, a tracer mesh — has to be oriented from velocity the same way.</para>
     /// </summary>
-    private Vector2 LocalStreakForward()
+    private Vector2 LocalStreakForward() => WorldStreakForward().Rotated(-Rotation);
+
+    /// <summary>
+    /// The heading the shot is drawn along, in world space. Nothing about the body's own
+    /// spin enters it: the body is free to tumble (that freedom is what the pain pipeline
+    /// measures its impulse from) and the drawing must not inherit a degree of it.
+    /// </summary>
+    private Vector2 WorldStreakForward()
     {
-        Vector2 velocity = LinearVelocity;
-        // Stopped, or barely moving: the launch direction is the last thing it did that
-        // the player could read as a direction.
-        Vector2 world = velocity.Length() > MinimumStreakSpeed ? velocity : _launchVelocity;
-        return world == Vector2.Zero ? Vector2.Zero : world.Normalized().Rotated(-Rotation);
+        Vector2 world;
+        if (_contactObserved && _impactHeading != Vector2.Zero)
+        {
+            // Landed. It points the way it came in, and stays there: the velocity of a
+            // body being resolved out of what it hit whips through every direction there
+            // is, and drawing along it made a hit look like the round tumbling in place.
+            world = _impactHeading;
+        }
+        else
+        {
+            Vector2 velocity = LinearVelocity;
+            // Stopped, or barely moving: the launch direction is the last thing it did
+            // that the player could read as a direction.
+            world = velocity.Length() > MinimumStreakSpeed ? velocity : _launchVelocity;
+        }
+
+        return world == Vector2.Zero ? Vector2.Zero : world.Normalized();
     }
+
+    /// <summary>
+    /// Where the shot is drawn, in this body's own space: its centre while it flies, and
+    /// the point it struck once it has landed. A canvas item draws in local space, so
+    /// pinning the drawing to a world point is a matter of undoing the body's own drift.
+    /// </summary>
+    private Vector2 LocalDrawOrigin() =>
+        _contactObserved ? ToLocal(_impactPosition) : Vector2.Zero;
 }
