@@ -75,6 +75,29 @@ public partial class RopeSuspensionComponent : Node2D
         return true;
     }
 
+    /// <summary>
+    /// Whether a rope currently holds any of <paramref name="bodies"/>. The buddy asks this of
+    /// its own parts: hanging from a rope is the same passive state as an airborne grab, and
+    /// treating it as ordinary failed standing let the recovery clock run out and re-pose the
+    /// buddy on the floor, over and over, while the rope hauled it back (owner report 2026-08-25).
+    /// </summary>
+    public bool HoldsAny(IReadOnlyList<RigidBody2D> bodies)
+    {
+        if (_ropes.Count == 0 || bodies is null)
+            return false;
+
+        foreach (SuspensionRope rope in _ropes)
+        {
+            for (int index = 0; index < bodies.Count; index++)
+            {
+                if (rope.Body == bodies[index])
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Cuts the rope the pointer is over, if any. Returns whether one was cut.</summary>
     public bool TryCutAt(Vector2 world)
     {
