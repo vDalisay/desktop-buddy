@@ -442,18 +442,26 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
 
     private bool BrowserOpenCompleted(CharacterEditorHost host)
     {
-        if (_browserPaintOpenTask is null)
-            return false;
-        if (_browserPaintOpenTask.IsFaulted)
+        if (_browserPaintOpenTask is { IsFaulted: true })
         {
             FailBrowserPaintSmoke(_browserPaintOpenTask.Exception?.ToString() ?? "Paint editor open task faulted.");
             return false;
         }
-        if (!_browserPaintOpenTask.IsCompleted || !host.IsEditorOpen)
+
+        // The experimental single-threaded Web runtime can strand the tail of
+        // OpenWin98PaintEditorAsync on a ProcessFrame await even though the editor is already
+        // fully visible and its shipping controls are live. For the interaction smoke, visible
+        // shipping state is the authoritative completion boundary. Requiring Task.IsCompleted
+        // here made the smoke stop before it ever clicked Save, which hid the exact user path we
+        // need CI to exercise.
+        if (!host.IsEditorOpen ||
+            host.FindChild("PaintPrimaryActions", true, false) is not HBoxContainer)
+        {
             return false;
+        }
 
         _browserPaintOpenTask = null;
-        return host.FindChild("PaintPrimaryActions", true, false) is HBoxContainer;
+        return true;
     }
 
     private static Button? FindVisibleButton(CharacterEditorHost host, string name)
