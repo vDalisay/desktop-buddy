@@ -54,6 +54,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private int _editSwatch = -1;
     private double _holdSeconds;
     private double _sprayPulseAccumulator;
+    private PaintStrokeAudio _strokeAudio = null!;
     private Vector2? _curveStart;
     private Vector2? _curveEnd;
     private Vector2? _curveFirstBend;
@@ -81,11 +82,16 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     {
         ProcessMode = ProcessModeEnum.Always;
         Layer = 120;
+        _strokeAudio = new PaintStrokeAudio { Name = nameof(PaintStrokeAudio) };
+        AddChild(_strokeAudio);
         Build();
     }
 
     public override void _Process(double delta)
     {
+        _strokeAudio.Set(IsOpen && _painting
+            ? PaintStrokeAudio.For(Canvas.Tool)
+            : PaintStrokeSound.None);
         if (_holdSwatch >= 0)
         {
             _holdSeconds += Math.Max(0, delta);
