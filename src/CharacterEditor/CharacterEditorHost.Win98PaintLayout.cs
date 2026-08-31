@@ -377,6 +377,7 @@ public partial class CharacterEditorHost
         if (_paintRotationQuarterTurns < 0)
             _paintRotationQuarterTurns += 4;
         _preview.RotationDegrees = new Vector3(0, _paintRotationQuarterTurns * 90f, 0);
+        ApplyStaticPreviewPose();
     }
 
     private void ApplyPaintScrollbarPan()

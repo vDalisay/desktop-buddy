@@ -607,28 +607,7 @@ public partial class CharacterEditorHost : CanvasLayer
         }
     }
 
-    private void ApplyStaticPreviewPose()
-    {
-        BuddyVisualPartPose Pose(BuddyPartId id)
-        {
-            BuddyVisualTransform transform = _previewSource.ReadTransform(id);
-            return new BuddyVisualPartPose(
-                transform,
-                _preview.LanePosition(id, transform.Position),
-                Vector3.Zero);
-        }
-        _preview.ApplyPose(new BuddyVisualPoseFrame(
-            Pose(BuddyPartId.Head),
-            Pose(BuddyPartId.Torso),
-            Pose(BuddyPartId.LeftHand),
-            Pose(BuddyPartId.RightHand),
-            Pose(BuddyPartId.LeftFoot),
-            Pose(BuddyPartId.RightFoot),
-            0.0f,
-            BuiltInCharacterAppearance.NeutralFaceState,
-            string.Empty,
-            0.0f));
-    }
+    private void ApplyStaticPreviewPose() => _preview.ApplyRestPose();
 
     private async Task ResolveUnsaved(UnsavedDecision decision)
     {

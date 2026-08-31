@@ -29,6 +29,7 @@ public partial class PaintCanvasControl : Control
     private bool _sampling;
     private PaintColor _sampledColor;
     private double _sprayPulseAccumulator;
+    private PaintStrokeAudio _strokeAudio = null!;
 
     private BuddyPaintCurvePhase _curvePhase;
     private PaintPoint _curveStart;
@@ -75,6 +76,8 @@ public partial class PaintCanvasControl : Control
         MouseFilter = MouseFilterEnum.Stop;
         FocusMode = FocusModeEnum.All;
         ClipContents = true;
+        _strokeAudio = new PaintStrokeAudio { Name = nameof(PaintStrokeAudio) };
+        AddChild(_strokeAudio);
         Node? ancestor = GetParent();
         while (ancestor is not null && ancestor is not CharacterEditorHost)
             ancestor = ancestor.GetParent();
@@ -276,6 +279,7 @@ public partial class PaintCanvasControl : Control
 
     public override void _Process(double delta)
     {
+        _strokeAudio.Set(_painting ? PaintStrokeAudio.For(Workspace.SelectedTool) : PaintStrokeSound.None);
         if (!_painting || Workspace.SelectedTool == PaintTool.Curve) return;
         if (Workspace.SelectedTool != PaintTool.Spray)
         {

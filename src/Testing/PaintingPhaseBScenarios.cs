@@ -104,6 +104,12 @@ public sealed class PaintFrontalUvMappingScenario : IScenario
     /// <summary>
     /// The engine-free mapper hard-codes the trusted rest anatomy, so this is the one check that
     /// fails if `lab_puppet_rig.tres` or the torso capsule height ever drifts away from it.
+    ///
+    /// <para>Depth is the one field that deliberately does not follow the resource. The trusted
+    /// profile's lanes layer the runtime buddy for the single view the game shows; the editor
+    /// preview the player paints on can be turned to any angle, where those lanes tear the body
+    /// apart, so it stands flat and the mapper stands flat with it (owner reports 2026-08-25).
+    /// The preview's own agreement with this plane is pinned by editor_preview_has_no_physics.</para>
     /// </summary>
     private static StartupCheck CheckShapesMatchTrustedRig(FrontalPaintMapper mapper)
     {
@@ -131,7 +137,7 @@ public sealed class PaintFrontalUvMappingScenario : IScenario
                 !Approximately(shape.Center.Y, part.RestPosition.Y) ||
                 !Approximately(shape.Radius, radius) ||
                 !Approximately(shape.HalfHeight, expectedHalfHeight) ||
-                !Approximately(shape.Depth, appearance.DepthOffset))
+                !Approximately(shape.Depth, 0.0))
             {
                 detail.Add($"{shape.Part}=drifted");
             }
