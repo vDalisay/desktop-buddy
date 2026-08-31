@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Platform;
@@ -21,6 +22,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
     private const ulong BrowserBootTimeoutMsec = 15_000;
     private const ulong BrowserRuntimeTimeoutMsec = 12_000;
     private const ulong BrowserRuntimeTimeoutFrames = 900;
+    private const ulong BrowserPaintSmokeTimeoutFrames = 2_400;
 
     private bool _workCommandRemoved;
     private bool _legacyWorkCommandRemoved;
@@ -31,6 +33,29 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
     private ulong _browserRuntimeFrame;
     private Vector2I _lastBrowserViewportSize = new(-1, -1);
     private bool _browserRuntimeReadyReported;
+    private BrowserWasmProcessSynchronizationContext? _browserSynchronizationContext;
+    private bool _browserChromeGlyphsNormalized;
+    private bool _browserPaintGlyphsNormalized;
+    private bool _browserPaintSmokeEnabled;
+    private BrowserPaintSmokeStage _browserPaintSmokeStage;
+    private Task? _browserPaintOpenTask;
+    private ulong _browserPaintSmokeFrame;
+    private int _browserPaintSettleFrames;
+
+    private enum BrowserPaintSmokeStage
+    {
+        None,
+        OpeningFirstEditor,
+        WaitingForFirstSave,
+        WaitingForNewCharacterSave,
+        WaitingForUseClose,
+        SettlingAfterUse,
+        OpeningDirtyExitEditor,
+        WaitingForDirtyExitPrompt,
+        WaitingForUnsavedSaveClose,
+        Complete,
+        Failed,
+    }
 
     public override void _Ready()
     {
@@ -55,11 +80,20 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
             _browserBootDeadlineMsec = now + BrowserBootTimeoutMsec;
             _browserRuntimeWatchdogArmed = true;
             _browserRuntimeDeadlineMsec = now + BrowserRuntimeTimeoutMsec;
+            _browserPaintSmokeEnabled = BrowserPaintSmokeRequested();
+            if (_browserPaintSmokeEnabled)
+                GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE_ARMED");
         }
     }
 
     public override void _Process(double delta)
     {
+        if (_browserSynchronizationContext is not null)
+        {
+            _browserSynchronizationContext.Install();
+            _browserSynchronizationContext.Drain();
+        }
+
         if (!_workCommandRemoved)
             _workCommandRemoved = HideControl("Win98WorkCommand");
         if (!_legacyWorkCommandRemoved)
@@ -155,6 +189,10 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
         if (ready)
         {
             _browserRuntimeWatchdogArmed = false;
+            EnsureBrowserSynchronizationContext();
+            NormalizeBrowserGlyphs(host!);
+            RunBrowserPaintSmoke(host!);
+
             if (!_browserRuntimeReadyReported)
             {
                 _browserRuntimeReadyReported = true;
@@ -202,6 +240,266 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
             $"expectedRoom={expectedRoom.X}x{expectedRoom.Y} " +
             $"characterRuntimeReady={characterRuntimeReady} hostPresent={host is not null} " +
             $"characterUiReady={characterUiReady} commandBarReady={commandBarReady}.");
+    }
+
+    private void EnsureBrowserSynchronizationContext()
+    {
+        if (_browserSynchronizationContext is null)
+        {
+            _browserSynchronizationContext = new BrowserWasmProcessSynchronizationContext();
+            GD.Print("DESKTOP_BUDDY_WEB_PROCESS_SYNC_CONTEXT_READY");
+        }
+
+        _browserSynchronizationContext.Install();
+        _browserSynchronizationContext.Drain();
+    }
+
+    private void NormalizeBrowserGlyphs(CharacterEditorHost host)
+    {
+        if (!_browserChromeGlyphsNormalized)
+        {
+            bool paintReady = false;
+            bool maximizeReady = false;
+
+            if (GetTree().Root.FindChild("Win98PaintCommand", true, false) is MenuButton paint)
+            {
+                paint.Text = "Paint >";
+                paintReady = true;
+            }
+
+            Win98WindowFrame? frame =
+                GetTree().Root.FindChild(nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
+            if (GodotObject.IsInstanceValid(frame))
+            {
+                foreach (Node child in frame!.TitleBarCommands.GetChildren())
+                {
+                    if (child is Button button &&
+                        string.Equals(button.TooltipText, "Maximize or restore", StringComparison.Ordinal))
+                    {
+                        button.Text = "[]";
+                        maximizeReady = true;
+                        break;
+                    }
+                }
+            }
+
+            _browserChromeGlyphsNormalized = paintReady && maximizeReady;
+            if (_browserChromeGlyphsNormalized)
+                GD.Print("DESKTOP_BUDDY_WEB_ASCII_CHROME_GLYPHS_READY");
+        }
+
+        if (!_browserPaintGlyphsNormalized && host.IsEditorOpen &&
+            host.FindChild("PaintRotateRow", true, false) is HBoxContainer rotateRow &&
+            rotateRow.GetChildCount() >= 2 &&
+            rotateRow.GetChild(0) is Button rotateLeft &&
+            rotateRow.GetChild(1) is Button rotateRight)
+        {
+            rotateLeft.Text = "<";
+            rotateRight.Text = ">";
+            _browserPaintGlyphsNormalized = true;
+            GD.Print("DESKTOP_BUDDY_WEB_ASCII_PAINT_GLYPHS_READY");
+        }
+    }
+
+    private void RunBrowserPaintSmoke(CharacterEditorHost host)
+    {
+        if (!_browserPaintSmokeEnabled ||
+            _browserPaintSmokeStage is BrowserPaintSmokeStage.Complete or BrowserPaintSmokeStage.Failed)
+        {
+            return;
+        }
+
+        _browserPaintSmokeFrame++;
+        if (_browserPaintSmokeFrame >= BrowserPaintSmokeTimeoutFrames)
+        {
+            FailBrowserPaintSmoke("Timed out while exercising Paint Buddy Save/Use/Exit.");
+            return;
+        }
+
+        try
+        {
+            switch (_browserPaintSmokeStage)
+            {
+                case BrowserPaintSmokeStage.None:
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:open-first");
+                    _browserPaintOpenTask = host.OpenWin98PaintEditorAsync();
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.OpeningFirstEditor;
+                    break;
+
+                case BrowserPaintSmokeStage.OpeningFirstEditor:
+                    if (!BrowserOpenCompleted(host))
+                        break;
+                    if (FindVisibleButton(host, "SaveCharacterButton") is not Button firstSave)
+                        break;
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:save-built-in");
+                    firstSave.EmitSignal(Button.SignalName.Pressed);
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.WaitingForFirstSave;
+                    break;
+
+                case BrowserPaintSmokeStage.WaitingForFirstSave:
+                    if (host.Session.IsDirty)
+                        break;
+                    CharacterEditorActionResult created = host.Session.NewCharacter("Browser Smoke Character");
+                    if (!created.Completed)
+                    {
+                        FailBrowserPaintSmoke(created.Detail ?? "Could not create a second smoke-test character.");
+                        break;
+                    }
+                    if (FindVisibleButton(host, "SaveCharacterButton") is not Button newSave)
+                        break;
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:save-new-character");
+                    newSave.EmitSignal(Button.SignalName.Pressed);
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.WaitingForNewCharacterSave;
+                    break;
+
+                case BrowserPaintSmokeStage.WaitingForNewCharacterSave:
+                    if (host.Session.IsDirty)
+                        break;
+                    if (host.Session.SelectedCharacterId is not Guid selected ||
+                        !host.Session.CurrentPage.Exists(entry => entry.CharacterId == selected))
+                    {
+                        break;
+                    }
+                    if (FindVisibleButton(host, "UseCharacterButton") is not Button use)
+                        break;
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:use-character");
+                    use.EmitSignal(Button.SignalName.Pressed);
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.WaitingForUseClose;
+                    break;
+
+                case BrowserPaintSmokeStage.WaitingForUseClose:
+                    if (host.IsEditorOpen)
+                        break;
+                    _browserPaintSettleFrames = 8;
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.SettlingAfterUse;
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:use-closed");
+                    break;
+
+                case BrowserPaintSmokeStage.SettlingAfterUse:
+                    if (_browserPaintSettleFrames-- > 0)
+                        break;
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:open-dirty-exit");
+                    _browserPaintOpenTask = host.OpenWin98PaintEditorAsync();
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.OpeningDirtyExitEditor;
+                    break;
+
+                case BrowserPaintSmokeStage.OpeningDirtyExitEditor:
+                    if (!BrowserOpenCompleted(host))
+                        break;
+                    NormalizeBrowserGlyphs(host);
+                    if (!_browserChromeGlyphsNormalized || !_browserPaintGlyphsNormalized)
+                        break;
+                    if (host.FindChild("PaintRotateRow", true, false) is HBoxContainer smokeRotate &&
+                        smokeRotate.GetChildCount() >= 2 &&
+                        smokeRotate.GetChild(0) is Button smokeLeft &&
+                        smokeRotate.GetChild(1) is Button smokeRight)
+                    {
+                        smokeRight.EmitSignal(Button.SignalName.Pressed);
+                        smokeLeft.EmitSignal(Button.SignalName.Pressed);
+                    }
+                    CharacterEditorActionResult renamed = host.Session.Rename("Browser Smoke Character Edited");
+                    if (!renamed.Completed || !host.Session.IsDirty)
+                    {
+                        FailBrowserPaintSmoke(renamed.Detail ?? "Could not dirty the smoke-test character before Exit.");
+                        break;
+                    }
+                    if (FindVisibleButton(host, "CloseCharacterEditorButton") is not Button exit)
+                        break;
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:exit-dirty");
+                    exit.EmitSignal(Button.SignalName.Pressed);
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.WaitingForDirtyExitPrompt;
+                    break;
+
+                case BrowserPaintSmokeStage.WaitingForDirtyExitPrompt:
+                    if (host.Session.PendingAction != CharacterEditorPendingAction.Close)
+                        break;
+                    if (host.FindChild("UnsavedChangesPrompt", true, false) is not PanelContainer prompt ||
+                        !prompt.Visible)
+                    {
+                        break;
+                    }
+                    Button? promptSave = FindVisibleButtonByText(prompt, "Save");
+                    if (!GodotObject.IsInstanceValid(promptSave))
+                        break;
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE:unsaved-save");
+                    promptSave!.EmitSignal(Button.SignalName.Pressed);
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.WaitingForUnsavedSaveClose;
+                    break;
+
+                case BrowserPaintSmokeStage.WaitingForUnsavedSaveClose:
+                    if (host.IsEditorOpen)
+                        break;
+                    _browserPaintSmokeStage = BrowserPaintSmokeStage.Complete;
+                    GD.Print("DESKTOP_BUDDY_WEB_PAINT_SMOKE_COMPLETE");
+                    break;
+            }
+        }
+        catch (Exception exception)
+        {
+            FailBrowserPaintSmoke(exception.ToString());
+        }
+    }
+
+    private bool BrowserOpenCompleted(CharacterEditorHost host)
+    {
+        if (_browserPaintOpenTask is null)
+            return false;
+        if (_browserPaintOpenTask.IsFaulted)
+        {
+            FailBrowserPaintSmoke(_browserPaintOpenTask.Exception?.ToString() ?? "Paint editor open task faulted.");
+            return false;
+        }
+        if (!_browserPaintOpenTask.IsCompleted || !host.IsEditorOpen)
+            return false;
+
+        _browserPaintOpenTask = null;
+        return host.FindChild("PaintPrimaryActions", true, false) is HBoxContainer;
+    }
+
+    private static Button? FindVisibleButton(CharacterEditorHost host, string name)
+    {
+        foreach (Node node in host.FindChildren(name, nameof(Button), true, false))
+        {
+            if (node is Button button && button.Visible && !button.Disabled)
+                return button;
+        }
+        return null;
+    }
+
+    private static Button? FindVisibleButtonByText(Node root, string text)
+    {
+        foreach (Node node in root.FindChildren("*", nameof(Button), true, false))
+        {
+            if (node is Button button && button.Visible && !button.Disabled &&
+                string.Equals(button.Text, text, StringComparison.Ordinal))
+            {
+                return button;
+            }
+        }
+        return null;
+    }
+
+    private void FailBrowserPaintSmoke(string detail)
+    {
+        _browserPaintSmokeStage = BrowserPaintSmokeStage.Failed;
+        GD.PushError($"RuntimeError: Browser Paint Buddy smoke failed: {detail}");
+        GD.Print($"DESKTOP_BUDDY_WEB_PAINT_SMOKE_FAILED:{detail}");
+    }
+
+    private static bool BrowserPaintSmokeRequested()
+    {
+        try
+        {
+            Variant requested = JavaScriptBridge.Eval(
+                "new URLSearchParams(globalThis.location.search).get('desktop_buddy_smoke') === '1'",
+                useGlobalExecutionContext: true);
+            return requested.AsBool();
+        }
+        catch (Exception exception)
+        {
+            GD.Print($"DESKTOP_BUDDY_WEB_PAINT_SMOKE_QUERY_UNAVAILABLE:{exception.Message}");
+            return false;
+        }
     }
 
     private static Vector2I ResolveExpectedBrowserRoom(SandboxRoot sandbox)
