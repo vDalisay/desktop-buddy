@@ -5,6 +5,7 @@ using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -130,6 +131,8 @@ public sealed class GrenadeMultiCaptureScenario : IScenario
             !grenades.TryGetPresentationState(secondRuntimeId, out _),
             $"detonations={detonationsBefore}->{grenades.DetonationCount} ticks=({firstBlastTick},{secondBlastTick}) tracked={grenades.TrackedCount}"));
 
+        checks.Add(HandoverKeepsTheFlatBodyHidden(tree));
+
         checks.Add(new StartupCheck(
             "staggered_detonations_overlap_pooled_3d_blast_accents",
             lab.Mode != PresentationMode.Mii3D || maxCaptureBursts >= 2,
@@ -209,6 +212,43 @@ public sealed class GrenadeMultiCaptureScenario : IScenario
                   state.Stage == GrenadeFuseStage.Live && state.FuseTicksRemaining > 0,
             InputTimeoutTicks);
         return pinOut && live;
+    }
+
+    /// <summary>
+    /// A grenade changes hands between render slots - the pooled extras hold it, then the
+    /// primary slot takes it over when the grenade in front of it detonates. The new owner
+    /// hides the flat body before the old one lets go, and handing it back on that release
+    /// left the flat green disc drawn over the mesh for good (owner report 2026-08-25).
+    /// </summary>
+    private static StartupCheck HandoverKeepsTheFlatBodyHidden(SceneTree tree)
+    {
+        var probe = new Node2D { Name = "SlotHandoverProbe" };
+        tree.Root.AddChild(probe);
+        var body = new RigidBody2D { Name = "HandoverBody", Freeze = true };
+        probe.AddChild(body);
+
+        var pooled = new Body2DVisual3D { Name = "PooledSlot" };
+        var primary = new Body2DVisual3D { Name = "PrimarySlot" };
+        probe.AddChild(pooled);
+        probe.AddChild(primary);
+        pooled.Initialize(8.0f, Colors.White, 0.0f);
+        primary.Initialize(8.0f, Colors.White, 0.0f);
+        pooled.SetPresentationActive(true);
+        primary.SetPresentationActive(true);
+
+        pooled.Attach(body);
+        primary.Attach(body);
+        pooled.Detach(body);
+        bool hiddenThroughHandover = !body.Visible;
+
+        primary.Detach(body);
+        bool restoredByTheLastSlot = body.Visible;
+
+        probe.QueueFree();
+        return new StartupCheck(
+            "a_body_handed_between_render_slots_stays_hidden_until_the_last_lets_go",
+            hiddenThroughHandover && restoredByTheLastSlot,
+            $"hidden_through_handover={hiddenThroughHandover} restored={restoredByTheLastSlot}");
     }
 
     private static async Task Idle(SceneTree tree, int ticks)

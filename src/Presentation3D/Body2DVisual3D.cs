@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Godot;
 
 namespace DesktopBuddy.Presentation3D;
@@ -23,6 +24,18 @@ public partial class Body2DVisual3D : Node3D
     private float _currentRotation;
     private float _depthOffset;
     private bool _presentationActive;
+    private bool _hidesTarget;
+    private ulong _hiddenTargetId;
+
+    /// <summary>
+    /// How many render slots are currently hiding a given flat body, by instance id. A body
+    /// changes hands between slots - a grenade the pooled extras were drawing becomes the
+    /// primary the moment it is grabbed - and the new owner hides it before the old one lets
+    /// go. Restoring on every detach then flashed the flat green disc back over the mesh and
+    /// left it there (owner report 2026-08-25). The flat body comes back only once the last
+    /// slot has released it.
+    /// </summary>
+    private static readonly Dictionary<ulong, int> HiddenTargetClaims = new();
 
     public bool IsInitialized { get; private set; }
     public bool IsAttached => GodotObject.IsInstanceValid(_target);
@@ -146,7 +159,7 @@ public partial class Body2DVisual3D : Node3D
 
         if (GodotObject.IsInstanceValid(_target) && _target != target)
         {
-            _target!.Visible = true;
+            ReleaseTargetClaim();
         }
 
         _target = target;
@@ -162,7 +175,7 @@ public partial class Body2DVisual3D : Node3D
             return;
         }
 
-        _target!.Visible = true;
+        ReleaseTargetClaim();
         _target = null;
         _pulseSource = null;
         Visible = false;
@@ -175,13 +188,14 @@ public partial class Body2DVisual3D : Node3D
     /// </summary>
     public void DetachAny()
     {
-        if (GodotObject.IsInstanceValid(_target))
-            _target!.Visible = true;
-
+        ReleaseTargetClaim();
         _target = null;
         _pulseSource = null;
         Visible = false;
     }
+
+    /// <summary>A freed slot must not keep a body hidden behind a claim nobody can release.</summary>
+    public override void _ExitTree() => ReleaseTargetClaim();
 
     public void SetPresentationActive(bool active)
     {
@@ -248,9 +262,48 @@ public partial class Body2DVisual3D : Node3D
     {
         bool attached = GodotObject.IsInstanceValid(_target);
         Visible = _presentationActive && attached;
-        if (attached)
+        if (_presentationActive && attached)
+            ClaimTarget();
+        else
+            ReleaseTargetClaim();
+    }
+
+    /// <summary>Hides the flat body while this slot draws it, counting the claim.</summary>
+    private void ClaimTarget()
+    {
+        ulong id = _target!.GetInstanceId();
+        if (_hidesTarget && _hiddenTargetId == id)
         {
-            _target!.Visible = !_presentationActive;
+            _target.Visible = false;
+            return;
+        }
+
+        ReleaseTargetClaim();
+        HiddenTargetClaims[id] = HiddenTargetClaims.GetValueOrDefault(id) + 1;
+        _hidesTarget = true;
+        _hiddenTargetId = id;
+        _target.Visible = false;
+    }
+
+    /// <summary>Hands the flat body back, but only once no other slot is still drawing it.</summary>
+    private void ReleaseTargetClaim()
+    {
+        if (!_hidesTarget)
+            return;
+
+        _hidesTarget = false;
+        int remaining = HiddenTargetClaims.GetValueOrDefault(_hiddenTargetId) - 1;
+        if (remaining > 0)
+        {
+            HiddenTargetClaims[_hiddenTargetId] = remaining;
+            return;
+        }
+
+        HiddenTargetClaims.Remove(_hiddenTargetId);
+        if (GodotObject.InstanceFromId(_hiddenTargetId) is RigidBody2D body &&
+            GodotObject.IsInstanceValid(body))
+        {
+            body.Visible = true;
         }
     }
 
