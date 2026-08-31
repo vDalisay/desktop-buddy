@@ -522,19 +522,40 @@ public partial class ActivityAnimator : Node3D
         return animation;
     }
 
-    /// <summary>One-shot right-hand wave: raise, two side beats, settle.</summary>
+    /// <summary>
+    /// One-shot right-hand wave: hello to someone across a distance. The arm reaches well
+    /// overhead and the body stretches up with it, two side beats, then settle.
+    /// </summary>
     private static Animation BuildWaveClip(in ActivityTuningData tuning)
     {
         float amplitude = tuning.WaveAmplitude;
+        // The reach and the stretch are proportions of the authored amplitude, so the profile
+        // stays the one tuning knob for how big a wave is.
+        float reach = amplitude * 2.8f;
+        float lift = amplitude * 0.5f;
         double length = tuning.WaveSeconds;
         var animation = new Animation { Length = (float)length };
         int hand = AddPositionTrack(animation, BuddyPartId.RightHand);
         Key(animation, hand, 0.0, 0.0f, 0.0f);
-        Key(animation, hand, length * 0.25, amplitude * 0.3f, amplitude);
-        Key(animation, hand, length * 0.45, amplitude * 0.8f, amplitude);
-        Key(animation, hand, length * 0.65, amplitude * -0.2f, amplitude);
-        Key(animation, hand, length * 0.8, amplitude * 0.5f, amplitude);
+        Key(animation, hand, length * 0.25, amplitude * 0.3f, reach);
+        Key(animation, hand, length * 0.45, amplitude * 0.8f, reach);
+        Key(animation, hand, length * 0.65, amplitude * -0.2f, reach);
+        Key(animation, hand, length * 0.8, amplitude * 0.5f, reach);
         Key(animation, hand, length, 0.0f, 0.0f);
+
+        // Torso and head rise together, a shade less than the arm, so the stretch reads as the
+        // whole body reaching rather than a floating shoulder (the jump clip keys them apart
+        // for the same reason: parts are composed independently).
+        int torso = AddPositionTrack(animation, BuddyPartId.Torso);
+        Key(animation, torso, 0.0, 0.0f, 0.0f);
+        Key(animation, torso, length * 0.25, 0.0f, lift);
+        Key(animation, torso, length * 0.8, 0.0f, lift);
+        Key(animation, torso, length, 0.0f, 0.0f);
+        int head = AddPositionTrack(animation, BuddyPartId.Head);
+        Key(animation, head, 0.0, 0.0f, 0.0f);
+        Key(animation, head, length * 0.25, 0.0f, lift);
+        Key(animation, head, length * 0.8, 0.0f, lift);
+        Key(animation, head, length, 0.0f, 0.0f);
         return animation;
     }
 

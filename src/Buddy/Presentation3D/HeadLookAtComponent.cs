@@ -198,8 +198,11 @@ public partial class HeadLookAtComponent : Node
             Mathf.IsZeroApprox(Buddy.CurrentDriveIntent.WalkDirection),
             // A refusal owns the head exactly like a high-priority reaction face does: the gaze
             // rests dead ahead — at the player the buddy is saying no to — so an ambient glance
-            // cannot wander off mid-shake (owner instruction 2026-07-29).
-            Profile.SuppressesLookAt(Reactions.CurrentFace) || Buddy.Activity.IsRefusing,
+            // cannot wander off mid-shake (owner instruction 2026-07-29). A wave is the same
+            // shape of gesture pointed the other way: it is aimed at the player, so the gaze
+            // holds straight out of the screen instead of following the cursor.
+            Profile.SuppressesLookAt(Reactions.CurrentFace) ||
+            Buddy.Activity.IsRefusing || Buddy.Activity.Current == ActivityId.Wave,
             head.X, head.Y);
         LookAtAngles angles = _model.Update(inputs, ticksElapsed, deltaSeconds);
         LookAtSource after = _model.CurrentSource;

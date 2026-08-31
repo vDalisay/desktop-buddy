@@ -169,8 +169,10 @@ public partial class FacingController : Node
         }
 
         // Eating faces front, and so does refusing: the point of the head-shake is that it is
-        // aimed at the player who offered the food (owner instruction 2026-07-29).
-        bool facesFront = Buddy.Activity.Current is ActivityId.Eat or ActivityId.Refuse;
+        // aimed at the player who offered the food (owner instruction 2026-07-29). A wave is
+        // aimed at the player too, so it faces front rather than turning to the cursor.
+        bool facesFront = Buddy.Activity.Current is
+            ActivityId.Eat or ActivityId.Refuse or ActivityId.Wave;
         var inputs = new FacingInputs(
             engaged,
             side,
