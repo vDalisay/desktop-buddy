@@ -3,12 +3,11 @@ using Godot;
 namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
-/// Keeps the browser Paint Buddy unsaved-changes overlay derived from session state.
-/// The experimental single-threaded Web runtime can strand the async signal callback that
-/// normally hides/shows this panel, while the session itself has already moved on. Re-deriving
-/// visibility from PendingAction on the physics callback prevents Exit, Save/Discard and Cancel
-/// from leaving the browser editor behind a stale or missing modal. Native builds never compose
-/// BrowserCharacterEditorRuntimeBridge, so their normal event path remains unchanged.
+/// Keeps browser Paint Buddy state derived from the editor session and its authored static pose.
+/// The experimental single-threaded Web runtime can strand async signal continuations even while
+/// process callbacks keep advancing. Re-deriving the modal and preview pose here prevents stale
+/// save/exit UI and keeps artificial depth lanes from turning into screen-space offsets at 90°.
+/// Native builds never compose BrowserCharacterEditorRuntimeBridge.
 /// </summary>
 internal sealed partial class BrowserCharacterEditorRuntimeBridge
 {
@@ -26,6 +25,12 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge
             _lastUnsavedPromptState = null;
             return;
         }
+
+        // Rotate the authored 2D pose first, then add its camera-depth lanes. The normal paint
+        // controls still own the quarter-turn value and root yaw used by hit mapping; this pass
+        // only corrects socket placement so a side view cannot explode the buddy into separated
+        // head/torso/limb pieces in browser play.
+        _host.ReapplyBrowserPaintPreviewPose();
 
         if (_host.FindChild("UnsavedChangesPrompt", true, false) is not Control prompt)
             return;
