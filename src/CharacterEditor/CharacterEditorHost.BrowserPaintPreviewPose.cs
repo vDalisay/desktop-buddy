@@ -11,6 +11,9 @@ namespace DesktopBuddy.CharacterEditor;
 
 public partial class CharacterEditorHost
 {
+    private int _browserAppliedPaintQuarterTurns = int.MinValue;
+    private bool _browserAppliedExpandedLimbPose;
+
     /// <summary>
     /// Re-applies the browser Paint Buddy's static editor pose without rotating its artificial
     /// depth lanes into the screen plane. The legacy paint controls keep the rig root yaw as the
@@ -28,6 +31,14 @@ public partial class CharacterEditorHost
             return;
         }
 
+        bool expandedLimbPose =
+            GodotObject.IsInstanceValid(_paintCanvas) && _paintCanvas.ExpandedLimbPose;
+        if (_browserAppliedPaintQuarterTurns == _paintRotationQuarterTurns &&
+            _browserAppliedExpandedLimbPose == expandedLimbPose)
+        {
+            return;
+        }
+
         float yawRadians = _paintRotationQuarterTurns * Mathf.Pi * 0.5f;
         float yawDegrees = Mathf.RadToDeg(yawRadians);
         _preview.RotationDegrees = new Vector3(0.0f, yawDegrees, 0.0f);
@@ -39,7 +50,7 @@ public partial class CharacterEditorHost
         {
             BuddyPartId part = ToBuddyPart(paintPart);
             BuddyVisualTransform home = _previewSource.ReadTransform(part);
-            PaintPoint offset = GodotObject.IsInstanceValid(_paintCanvas) && _paintCanvas.ExpandedLimbPose
+            PaintPoint offset = expandedLimbPose
                 ? PaintCanvasControl.LimbPoseOffsetFor(paintPart)
                 : default;
             Vector2 position = home.Position + new Vector2((float)offset.X, (float)offset.Y);
@@ -64,6 +75,9 @@ public partial class CharacterEditorHost
             BuiltInCharacterAppearance.NeutralFaceState,
             string.Empty,
             0.0f));
+
+        _browserAppliedPaintQuarterTurns = _paintRotationQuarterTurns;
+        _browserAppliedExpandedLimbPose = expandedLimbPose;
     }
 
     private static BuddyPartId ToBuddyPart(PaintPart part) => part switch
