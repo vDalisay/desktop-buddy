@@ -12,7 +12,7 @@ namespace DesktopBuddy.Shop;
 
 /// <summary>
 /// Picks the active tool (FR-019). It offers every selectable catalogue entry that has passed
-/// its gate; unowned ones show their shop price and stay disabled, so the picker doubles as
+/// its gate; unowned ones show their Inventory price and stay disabled, so the picker doubles as
 /// the "what am I saving for" view. Selection routes through the pipeline's single
 /// <see cref="InteractionDamageComponent.SelectTool"/> seam — this panel owns no rules.
 /// </summary>
@@ -117,7 +117,7 @@ public partial class ToolSelectionPanel : PanelContainer
                 ? $"{name} is currently equipped."
                 : owned
                     ? $"Equip {name}."
-                    : $"Buy {name} in the Shop for {price} before equipping it.";
+                    : $"Buy {name} in the Inventory for {price} before equipping it.";
         }
     }
 
