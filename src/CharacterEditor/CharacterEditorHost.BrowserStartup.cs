@@ -201,6 +201,7 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
     private BrowserPaintAction _queuedAction;
     private string? _queuedMarker;
     private Label? _status;
+    private BrowserWasmProcessSynchronizationContext? _actionSynchronizationContext;
 
     public void Configure(CharacterEditorHost host)
     {
@@ -213,6 +214,14 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
     {
         if (!GodotObject.IsInstanceValid(_host))
             return;
+
+        // Godot may restore its own SynchronizationContext between engine callbacks. Install and
+        // drain an action-owned context in the exact _Process callback that starts Save/Use tasks,
+        // so every browser persistence continuation is guaranteed to return to this live process
+        // loop rather than the experimental runtime context that stranded the Web smoke after
+        // DESKTOP_BUDDY_WEB_PAINT_ACTION_TASK_STARTED:save.
+        EnsureActionSynchronizationContext();
+        PumpAction();
 
         if (!_host.IsEditorOpen)
         {
@@ -245,6 +254,18 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
                 BrowserPaintAction.BootstrapNewPromptDiscard,
                 "DESKTOP_BUDDY_WEB_NEW_CHARACTER_BOOTSTRAP_DISCARD");
         }
+    }
+
+    private void EnsureActionSynchronizationContext()
+    {
+        if (_actionSynchronizationContext is null)
+        {
+            _actionSynchronizationContext = new BrowserWasmProcessSynchronizationContext();
+            GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION_SYNC_CONTEXT_READY");
+        }
+
+        _actionSynchronizationContext.Install();
+        _actionSynchronizationContext.Drain();
     }
 
     private void EnsureFooterActionProxies()
@@ -416,6 +437,10 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
 
         try
         {
+            // Re-install immediately before invoking the async state machine. Some Godot Web
+            // callbacks restore the engine context after nested signals, and the action must
+            // capture our process-backed continuation queue at its first incomplete await.
+            EnsureActionSynchronizationContext();
             _actionKind = kind;
             _actionTask = kind switch
             {
