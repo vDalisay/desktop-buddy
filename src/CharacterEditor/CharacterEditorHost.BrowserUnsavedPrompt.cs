@@ -20,7 +20,19 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge
 
     public override void _PhysicsProcess(double delta)
     {
-        if (!GodotObject.IsInstanceValid(_host) || !_host.IsEditorOpen)
+        if (!GodotObject.IsInstanceValid(_host))
+        {
+            _lastUnsavedPromptState = null;
+            return;
+        }
+
+        // This callback is proven to keep advancing in the experimental browser runtime. Use it to
+        // repair the runtime's incomplete Task wrapper after CharacterEditorSession's browser-only
+        // synchronous body has already committed Save/Use/unsaved-resolution state. Do this before
+        // checking IsEditorOpen because an unsaved Save may have synchronously closed the editor.
+        RecoverStrandedBrowserActionTask();
+
+        if (!_host.IsEditorOpen)
         {
             _lastUnsavedPromptState = null;
             return;
