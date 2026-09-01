@@ -6,26 +6,22 @@ namespace DesktopBuddy.CharacterEditor;
 
 /// <summary>
 /// The experimental single-threaded WASM runtime can leave an async Task incomplete even after the
-/// browser-specific synchronous body of CharacterEditorSession has already run to completion. That
-/// is exactly what the Chromium smoke observed: SaveAsync returned to the caller (so the synchronous
-/// save and its state mutations had finished), but the Task never transitioned to IsCompleted.
+/// browser-specific synchronous body of CharacterEditorSession has already run to completion. The
+/// public browser wrappers therefore have already committed their state by the time they hand the
+/// runtime bridge the stranded Task.
 ///
-/// Do not invoke private session methods through UnsafeAccessor here. NativeAOT/Web proved that
-/// accessor itself can stall before the bridge gets a completion marker. Instead, let the public
-/// browser wrapper execute its synchronous body normally, then on the next fixed tick replace only
-/// the stranded Task with a result derived from the session state that body already committed.
+/// Recovery is invoked by BrowserUnsavedPrompt.cs from its proven-live _PhysicsProcess callback.
+/// Do not use _Notification for this runtime: Chromium smoke showed the process callbacks continue
+/// while the expected physics notification never reaches this C# script override. Do not use
+/// UnsafeAccessor either; NativeAOT/Web previously stalled inside that accessor before completion.
 /// </summary>
 internal sealed partial class BrowserCharacterEditorRuntimeBridge
 {
-    // Godot Node.NOTIFICATION_PHYSICS_PROCESS. This partial cannot declare a second
-    // _PhysicsProcess override because BrowserUnsavedPrompt.cs already owns it.
-    private const int PhysicsProcessNotification = 16;
     private bool _asyncCompletionRecoveryReported;
 
-    public override void _Notification(int what)
+    private void RecoverStrandedBrowserActionTask()
     {
-        if (what != PhysicsProcessNotification ||
-            !OperatingSystem.IsBrowser() ||
+        if (!OperatingSystem.IsBrowser() ||
             !GodotObject.IsInstanceValid(_host) ||
             _actionTask is not { IsCompleted: false } ||
             _actionKind == BrowserPaintAction.None)
@@ -50,8 +46,8 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge
         CharacterEditorSession session = _host.Session;
 
         // Browser implementations run synchronously before their public async wrappers return.
-        // A real failure is therefore already reflected in LastError / dirty state by the time the
-        // wrapper hands us the stranded Task. Do not manufacture success over an authored error.
+        // A real failure is already reflected in LastError / dirty state by this point, so never
+        // manufacture success over an authored persistence or validation error.
         if (!string.IsNullOrWhiteSpace(session.LastError))
             return new CharacterEditorActionResult(false, Detail: session.LastError);
 
