@@ -68,7 +68,7 @@ public partial class CharacterEditorHost
             SoundGroup);
         _settingsPanel.AddSlider(
             "Sound Effects",
-            "Controls gameplay sounds, think of hits, gunfire and explosions.",
+            "Controls gameplay sounds such as hits, gunfire and explosions.",
             settings.SfxVolume,
             value => _sandbox.Shell.EditSettings(s => s with { SfxVolume = value }),
             save,
@@ -106,7 +106,7 @@ public partial class CharacterEditorHost
             DisplayGroup);
         _settingsPanel.AddChoice(
             "Frame Limit",
-            "Sets the maximum frame rate of your game.",
+            "Sets the game's maximum frame rate.",
             FrameLimitLabels,
             Math.Max(0, Array.IndexOf(FrameLimits, settings.MaxFps)),
             index => edit(s => s with { MaxFps = FrameLimits[index] }),
@@ -144,7 +144,7 @@ public partial class CharacterEditorHost
             DisplayGroup);
         _settingsPanel.AddToggle(
             "Work Mode Retro Filter",
-            "Gives Work Mode's buddy and computer a chunky CRT look: coarser pixels, fewer colours and scanlines.",
+            "Gives Buddy and the computer in Work Mode a chunky CRT look: coarser pixels, fewer colours and scanlines.",
             settings.WorkRetroFilter,
             value => edit(s => s with { WorkRetroFilter = value }),
             DisplayGroup);
