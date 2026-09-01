@@ -22,7 +22,7 @@ namespace DesktopBuddy.CharacterEditor;
 /// Production Phase A editor host. The editor is a same-window overlay containing one
 /// physics-free BuddyVisualRigView preview.
 ///
-/// It also composes the interim dock: a top toolbar whose Shop, Tools and Settings entries
+/// It also composes the interim dock: a top toolbar whose Inventory, Tools and Settings entries
 /// each open a free-floating desktop window. ponytail: that dock belongs to FR-003.2 and
 /// should move to its own host once the approved dock design lands — it lives here only
 /// because this is the node already composed over the sandbox.
@@ -210,7 +210,7 @@ public partial class CharacterEditorHost : CanvasLayer
         // the buddy box and the player can park them anywhere.
         _shopPanel = new ShopPanel();
         _shopPanel.Configure(_context.Progress, _context.Economy, CatalogueLoader.Catalogue, _sandbox.Pipeline);
-        _shopWindow = OpenableWindow("Shop", _shopPanel, _shopPanel.Refresh);
+        _shopWindow = OpenableWindow("Inventory", _shopPanel, _shopPanel.Refresh);
 
         _toolPanel = new ToolSelectionPanel();
         _toolPanel.Configure(_context.Progress, _sandbox.Pipeline, CatalogueLoader.Catalogue);
@@ -223,7 +223,7 @@ public partial class CharacterEditorHost : CanvasLayer
         // Buying a tool immediately makes it selectable, so keep the picker honest.
         _shopPanel.Purchased += _toolPanel.Refresh;
 
-        ShopButton = Button("Shop", "DockShopButton");
+        ShopButton = Button("Inventory", "DockShopButton");
         ShopButton.Pressed += () => _shopWindow.Toggle(WindowAnchor(0));
         dock.AddChild(ShopButton);
 
@@ -238,7 +238,7 @@ public partial class CharacterEditorHost : CanvasLayer
         // Owner decision 2026-08-03: the editor gets its own bar button rather than a
         // Settings row, so entering it is one click.
         OpenCharacterEditorButton = Button("Character Editor", "DockCharacterEditorButton");
-        OpenCharacterEditorButton.TooltipText = "Create and edit the buddy's appearance.";
+        OpenCharacterEditorButton.TooltipText = "Create and edit Buddy's appearance.";
         OpenCharacterEditorButton.Pressed += async () => await OpenEditorAsync();
         dock.AddChild(OpenCharacterEditorButton);
     }
@@ -670,7 +670,7 @@ public partial class CharacterEditorHost : CanvasLayer
         }
         // The sandbox owns the Work-Mode region list (it rebuilds it from the moving
         // buddy bodies every frame); the dock only contributes its own rectangles.
-        // Only in-window controls need hit regions. The shop and tool windows are separate
+        // Only in-window controls need hit regions. The Inventory and tool windows are separate
         // desktop windows with their own hit testing, so they are deliberately absent.
         var regions = new List<Rect2>
         {
