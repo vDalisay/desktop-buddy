@@ -112,7 +112,7 @@ public partial class CharacterEditorHost
         AddChild(_desktopToolbar);
         _sandbox.Shell.RegisterOwnedWindow(_desktopToolbar);
         _desktopToolbar.AddAction("Editor", "FullscreenEditorButton", () => _ = OpenEditorAsync());
-        _desktopToolbar.AddAction("Shop", "FullscreenShopButton", () =>
+        _desktopToolbar.AddAction("Inventory", "FullscreenShopButton", () =>
             _shopWindow.Toggle(WindowAnchor(0)));
         _desktopToolbar.AddAction("Tools", "FullscreenToolsButton", () =>
             _toolWindow.Toggle(WindowAnchor(1)));
