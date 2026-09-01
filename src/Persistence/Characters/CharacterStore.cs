@@ -114,6 +114,22 @@ public sealed class CharacterStore
         PersistenceWork.Run(() => DeleteCore(id, token), CancellationToken.None);
 
     /// <summary>
+    /// Browser-WASM action paths must not enter an async state machine merely to run work that is
+    /// already required to execute inline. These seams keep native callers on the asynchronous
+    /// API while allowing the browser editor to run the exact same validated persistence cores.
+    /// </summary>
+    internal CharacterLoadResult LoadBrowserSynchronously(Guid id, CancellationToken token) =>
+        LoadCore(id, token);
+
+    internal CharacterSaveResult SaveBrowserSynchronously(
+        CharacterDocument document,
+        CancellationToken token) =>
+        SaveCore(document, token);
+
+    internal CharacterDeleteResult DeleteBrowserSynchronously(Guid id, CancellationToken token) =>
+        DeleteCore(id, token);
+
+    /// <summary>
     /// Removes every stored character. Reset Progress means a first run, and a first run has
     /// no buddy the player made earlier (owner instruction 2026-08-21) — leaving the documents
     /// behind made the reset look like it had done nothing at all.
