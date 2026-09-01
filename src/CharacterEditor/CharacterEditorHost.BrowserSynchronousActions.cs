@@ -22,6 +22,10 @@ namespace DesktopBuddy.CharacterEditor;
 /// </summary>
 internal sealed partial class BrowserCharacterEditorRuntimeBridge
 {
+    // Godot Node.NOTIFICATION_PHYSICS_PROCESS. Use the stable engine notification value here
+    // because this partial already owns _PhysicsProcess in BrowserUnsavedPrompt.cs and C# cannot
+    // declare a second override for the same partial type.
+    private const int PhysicsProcessNotification = 16;
     private bool _syncRecoveryReported;
 
     public override void _EnterTree()
@@ -31,10 +35,14 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge
         ProcessPhysicsPriority = 1000;
     }
 
-    public override void _PhysicsProcess(double delta)
+    public override void _Notification(int what)
     {
-        if (!OperatingSystem.IsBrowser() || !GodotObject.IsInstanceValid(_host))
+        if (what != PhysicsProcessNotification ||
+            !OperatingSystem.IsBrowser() ||
+            !GodotObject.IsInstanceValid(_host))
+        {
             return;
+        }
 
         if (_actionTask is null && _queuedAction != BrowserPaintAction.None)
         {
