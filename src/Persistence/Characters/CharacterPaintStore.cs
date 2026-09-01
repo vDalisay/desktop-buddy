@@ -65,6 +65,17 @@ public sealed class CharacterPaintStore
         CancellationToken token = default) =>
         PersistenceWork.Run(() => SaveCore(document, surfaces, token), CancellationToken.None);
 
+    internal CharacterPaintLoadResult LoadBrowserSynchronously(
+        Guid id,
+        CancellationToken token = default) =>
+        LoadCore(id, token);
+
+    internal CharacterPaintSaveResult SaveBrowserSynchronously(
+        CharacterDocument document,
+        IReadOnlyDictionary<PaintPart, ReadOnlyMemory<byte>> surfaces,
+        CancellationToken token = default) =>
+        SaveCore(document, surfaces, token);
+
     private CharacterPaintLoadResult LoadCore(Guid id, CancellationToken token)
     {
         CharacterLoadResult character = _documents.LoadForPaint(id, token);
