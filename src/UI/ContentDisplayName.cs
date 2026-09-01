@@ -52,8 +52,8 @@ public static class ContentDisplayName
     public static string Usage(string contentId) => contentId switch
     {
         ContentIds.ToolGrab =>
-            "Click and hold Buddy with the left mouse button to drag him. Release while moving " +
-            "to fling him.",
+            "Click and hold Buddy with the left mouse button to drag it. Release while moving " +
+            "to fling it.",
         ContentIds.ToolPowerGrab =>
             "Drag Buddy with the left mouse button, just like Grab, but with much more pull and " +
             "a harder throw.",
