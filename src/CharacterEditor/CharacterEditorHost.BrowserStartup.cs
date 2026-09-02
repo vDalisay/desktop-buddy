@@ -221,10 +221,6 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
         // loop rather than the experimental runtime context that stranded the Web smoke after
         // DESKTOP_BUDDY_WEB_PAINT_ACTION_TASK_STARTED:save.
         EnsureActionSynchronizationContext();
-
-        // The Chromium smoke proves idle _Process continues while the editor is open even when the
-        // fixed-tick phase stops advancing after lifecycle.SetEditorMode(true). Recover a wrapper
-        // whose browser-specific synchronous body already returned before polling it here.
         RecoverStrandedBrowserActionTask();
         PumpAction();
 
@@ -524,6 +520,16 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
         }
     }
 
+    private void ReportFailure(string action, string detail)
+    {
+        string message = $"Browser Paint Buddy {action} failed: {detail}";
+        GD.PushError(message);
+        _status ??= _host.FindChild("CharacterEditorStatus", true, false) as Label;
+        if (GodotObject.IsInstanceValid(_status))
+            _status!.Text = message;
+        GD.Print($"DESKTOP_BUDDY_WEB_PAINT_ACTION:{action}:failed");
+    }
+
     private static string ActionName(BrowserPaintAction kind) => kind switch
     {
         BrowserPaintAction.Save => "save",
@@ -531,23 +537,66 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
         BrowserPaintAction.UnsavedSave => "unsaved-save",
         BrowserPaintAction.UnsavedDiscard => "unsaved-discard",
         BrowserPaintAction.UnsavedCancel => "unsaved-cancel",
-        BrowserPaintAction.BootstrapNewPromptDiscard => "bootstrap-new-discard",
-        _ => "none",
+        BrowserPaintAction.BootstrapNewPromptDiscard => "new-character-bootstrap-discard",
+        _ => "action",
     };
-
-    private void ReportFailure(string action, string detail)
-    {
-        GD.PushError($"DESKTOP_BUDDY_WEB_PAINT_ACTION_FAILED:{action}:{detail}");
-        if (GodotObject.IsInstanceValid(_status))
-            _status!.Text = detail;
-    }
 
     private bool IsUntouchedBuiltIn()
     {
-        CharacterDocument? document = _host.Session.WorkingDocument;
-        if (document is null)
+        CharacterDocument? working = _host.Session.WorkingDocument;
+        if (working is null || !string.Equals(working.DisplayName, "Built-in Buddy", StringComparison.Ordinal))
             return false;
 
-        return document.IsBuiltIn && !_host.Session.IsDirty;
+        CharacterDocument baseline = CharacterDocument.CreateDefault(working.Id, "Built-in Buddy");
+        if (!string.Equals(
+                CharacterDocumentEditor.Canonical(working),
+                CharacterDocumentEditor.Canonical(baseline),
+                StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!_host.IsPaintMode)
+            return true;
+
+        foreach (var surface in _host.PaintWorkspace.Surfaces.Values)
+        {
+            if (surface.Pixels.Span.IndexOfAnyExcept((byte)0) >= 0)
+                return false;
+        }
+        return true;
+    }
+}
+
+/// <summary>
+/// Uses the same render-frame callback that already drives CharacterEditorHost diagnostics in the
+/// browser. It exists only until the host has either composed or reported a concrete failure.
+/// </summary>
+internal sealed partial class BrowserCharacterUiStartupPump : Node
+{
+    private CharacterEditorHost _host = null!;
+
+    public void Configure(CharacterEditorHost host)
+    {
+        if (IsInsideTree())
+            throw new InvalidOperationException("Browser startup pump must be configured before entering the tree.");
+        _host = host ?? throw new ArgumentNullException(nameof(host));
+    }
+
+    public override void _Process(double delta)
+    {
+        if (!GodotObject.IsInstanceValid(_host))
+        {
+            SetProcess(false);
+            QueueFree();
+            return;
+        }
+
+        _host.EnsureBrowserInitialized();
+        if (_host.IsInitialized)
+        {
+            SetProcess(false);
+            QueueFree();
+        }
     }
 }
