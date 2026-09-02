@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Persistence.Characters;
 
 namespace DesktopBuddy.CharacterEditor;
 
@@ -204,14 +205,21 @@ public static class CharacterDocumentEditor
         return Decode(root);
     }
 
-    public static string Canonical(CharacterDocument document) =>
-        CharacterDocumentPolicy.Serialize(
-            CharacterDocumentNormalizer.Normalize(document).Document);
+    public static string Canonical(CharacterDocument document)
+    {
+        CharacterDocument normalized = CharacterDocumentNormalizer.Normalize(document).Document;
+        return OperatingSystem.IsBrowser()
+            ? BrowserCharacterJson.Serialize(normalized)
+            : CharacterDocumentPolicy.Serialize(normalized);
+    }
 
     private static JsonObject Root(CharacterDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        return JsonNode.Parse(CharacterDocumentPolicy.Serialize(document))?.AsObject()
+        string json = OperatingSystem.IsBrowser()
+            ? BrowserCharacterJson.Serialize(document)
+            : CharacterDocumentPolicy.Serialize(document);
+        return JsonNode.Parse(json)?.AsObject()
             ?? throw new InvalidOperationException("Character document serialized to no JSON object.");
     }
 
@@ -223,7 +231,10 @@ public static class CharacterDocumentEditor
 
     private static CharacterDocument Decode(JsonObject root)
     {
-        CharacterDecodeResult decoded = CharacterDocumentPolicy.DecodeAndMigrate(root.ToJsonString());
+        string json = root.ToJsonString();
+        CharacterDecodeResult decoded = OperatingSystem.IsBrowser()
+            ? BrowserCharacterJson.DecodeCurrentOrFallback(json)
+            : CharacterDocumentPolicy.DecodeAndMigrate(json);
         if (!decoded.IsSuccess || decoded.Document is null)
         {
             throw new InvalidOperationException(
