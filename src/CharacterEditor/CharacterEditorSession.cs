@@ -542,7 +542,7 @@ public sealed class CharacterEditorSession
     /// the already-inline persistence cores synchronously and return through the public Task API
     /// without ever yielding. Native builds retain the existing worker-thread/async behavior.
     /// </summary>
-    private CharacterEditorActionResult SaveBrowserSynchronously(CancellationToken token)
+    internal CharacterEditorActionResult SaveBrowserSynchronously(CancellationToken token)
     {
         CancelTransientPaintPreview();
         if (WorkingDocument is null) return Failure("There is no working character to save.");
@@ -577,7 +577,7 @@ public sealed class CharacterEditorSession
         return new CharacterEditorActionResult(true);
     }
 
-    private CharacterEditorActionResult UseCharacterBrowserSynchronously(CancellationToken token)
+    internal CharacterEditorActionResult UseCharacterBrowserSynchronously(CancellationToken token)
     {
         CancelTransientPaintPreview();
         CommitOwnedCosmeticPreviews();
@@ -613,7 +613,7 @@ public sealed class CharacterEditorSession
         return new CharacterEditorActionResult(true);
     }
 
-    private CharacterEditorActionResult ResolveUnsavedBrowserSynchronously(
+    internal CharacterEditorActionResult ResolveUnsavedBrowserSynchronously(
         UnsavedDecision decision,
         CancellationToken token)
     {
