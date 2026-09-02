@@ -201,12 +201,16 @@ public sealed class CharacterPaintStore
                 Paint = CharacterPaintManifest.ForNonBlank(nonBlank),
             }).Document;
             BrowserMarker("normalize-complete");
-            string json = CharacterDocumentPolicy.Serialize(normalized);
+            string json = OperatingSystem.IsBrowser()
+                ? BrowserCharacterJson.Serialize(normalized)
+                : CharacterDocumentPolicy.Serialize(normalized);
             BrowserMarker("serialize-complete");
             _fileSystem.WriteAllTextDurable(Path.Combine(staging, CharacterPaths.PrimaryFileName), json);
             BrowserMarker("document-write-complete");
-            CharacterDecodeResult staged = CharacterDocumentPolicy.DecodeAndMigrate(
-                _fileSystem.ReadAllText(Path.Combine(staging, CharacterPaths.PrimaryFileName)));
+            string stagedJson = _fileSystem.ReadAllText(Path.Combine(staging, CharacterPaths.PrimaryFileName));
+            CharacterDecodeResult staged = OperatingSystem.IsBrowser()
+                ? BrowserCharacterJson.DecodeCurrentOrFallback(stagedJson)
+                : CharacterDocumentPolicy.DecodeAndMigrate(stagedJson);
             BrowserMarker("document-readback-complete");
             if (!staged.IsSuccess || staged.Document is null)
                 throw new InvalidDataException(staged.Detail ?? "Staged character document is invalid.");
