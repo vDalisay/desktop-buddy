@@ -171,10 +171,10 @@ internal sealed class BrowserCharacterEditorModeCoordinator : CharacterEditorMod
 
 /// <summary>
 /// Browser-only interaction corrections that should not leak into the native editor. The static
-/// single-threaded runtime has already shown that an async continuation from a Godot signal can be
-/// stranded even though Node._Process keeps advancing. Paint Buddy's signal callbacks therefore
-/// enqueue persistence actions only; the actual Tasks are started and observed from _Process.
-/// Native builds keep the original event path untouched.
+/// single-threaded runtime has already shown that an async Task wrapper can strand even when its
+/// synchronous browser body is viable. Paint Buddy's signal callbacks therefore enqueue actions;
+/// the bridge executes the browser-only synchronous session implementations from its live _Process
+/// callback and never enters the problematic async state machine. Native builds are untouched.
 /// </summary>
 internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
 {
@@ -215,11 +215,6 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
         if (!GodotObject.IsInstanceValid(_host))
             return;
 
-        // Godot may restore its own SynchronizationContext between engine callbacks. Install and
-        // drain an action-owned context in the exact _Process callback that starts Save/Use tasks,
-        // so every browser persistence continuation is guaranteed to return to this live process
-        // loop rather than the experimental runtime context that stranded the Web smoke after
-        // DESKTOP_BUDDY_WEB_PAINT_ACTION_TASK_STARTED:save.
         EnsureActionSynchronizationContext();
         RecoverStrandedBrowserActionTask();
         PumpAction();
@@ -438,24 +433,30 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
 
         try
         {
-            // Re-install immediately before invoking the async state machine. Some Godot Web
-            // callbacks restore the engine context after nested signals, and the action must
-            // capture our process-backed continuation queue at its first incomplete await.
+            // Do not call SaveAsync/UseCharacterAsync/ResolveUnsavedAsync here. In the experimental
+            // single-threaded static-WASM runtime the async method builder can return a permanently
+            // incomplete Task before running a browser branch which contains no awaits. Execute the
+            // exact synchronous browser cores directly from this known-live process callback.
             EnsureActionSynchronizationContext();
             _actionKind = kind;
-            _actionTask = kind switch
+            GD.Print($"DESKTOP_BUDDY_WEB_PAINT_ACTION_SYNC_STARTED:{ActionName(kind)}");
+            CharacterEditorActionResult result = kind switch
             {
-                BrowserPaintAction.Save => _host.Session.SaveAsync(),
-                BrowserPaintAction.Use => _host.Session.UseCharacterAsync(),
-                BrowserPaintAction.UnsavedSave => _host.Session.ResolveUnsavedAsync(UnsavedDecision.Save),
-                BrowserPaintAction.UnsavedDiscard => _host.Session.ResolveUnsavedAsync(UnsavedDecision.Discard),
-                BrowserPaintAction.UnsavedCancel => _host.Session.ResolveUnsavedAsync(UnsavedDecision.Cancel),
+                BrowserPaintAction.Save => _host.Session.SaveBrowserSynchronously(default),
+                BrowserPaintAction.Use => _host.Session.UseCharacterBrowserSynchronously(default),
+                BrowserPaintAction.UnsavedSave =>
+                    _host.Session.ResolveUnsavedBrowserSynchronously(UnsavedDecision.Save, default),
+                BrowserPaintAction.UnsavedDiscard =>
+                    _host.Session.ResolveUnsavedBrowserSynchronously(UnsavedDecision.Discard, default),
+                BrowserPaintAction.UnsavedCancel =>
+                    _host.Session.ResolveUnsavedBrowserSynchronously(UnsavedDecision.Cancel, default),
                 BrowserPaintAction.BootstrapNewPromptDiscard =>
-                    _host.Session.ResolveUnsavedAsync(UnsavedDecision.Discard),
+                    _host.Session.ResolveUnsavedBrowserSynchronously(UnsavedDecision.Discard, default),
                 _ => throw new InvalidOperationException($"Unsupported browser Paint Buddy action: {kind}."),
             };
-            GD.Print($"DESKTOP_BUDDY_WEB_PAINT_ACTION_TASK_STARTED:{ActionName(kind)}");
-            PumpAction();
+            GD.Print($"DESKTOP_BUDDY_WEB_PAINT_ACTION_SYNC_RETURNED:{ActionName(kind)}");
+            _actionKind = BrowserPaintAction.None;
+            HandleCompletedAction(kind, result);
         }
         catch (Exception exception)
         {
@@ -486,6 +487,11 @@ internal sealed partial class BrowserCharacterEditorRuntimeBridge : Node
             return;
         }
 
+        HandleCompletedAction(kind, result);
+    }
+
+    private void HandleCompletedAction(BrowserPaintAction kind, CharacterEditorActionResult result)
+    {
         if (kind == BrowserPaintAction.UnsavedCancel)
         {
             GD.Print("DESKTOP_BUDDY_WEB_PAINT_ACTION:unsaved-cancel:complete");
