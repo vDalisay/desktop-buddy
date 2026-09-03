@@ -53,6 +53,14 @@ public sealed record WorkshopImportResult(
 /// </summary>
 public sealed class WorkshopSharingCoordinator
 {
+    private const int SteamResultBusy = 10;
+    private static readonly TimeSpan[] CreateBusyRetryDelays =
+    [
+        TimeSpan.FromSeconds(2),
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(10),
+    ];
+
     private readonly ISteamWorkshopTransport _transport;
     private readonly WorkshopStagingStore _staging;
     private readonly RoomShareExporter _roomExporter;
@@ -228,7 +236,7 @@ public sealed class WorkshopSharingCoordinator
     {
         string safeTitle = NormalizeTitle(title);
         string safeDescription = NormalizeDescription(description);
-        WorkshopCreateRemoteResult created = await _transport.CreateItemAsync(token);
+        WorkshopCreateRemoteResult created = await CreateItemWithBusyRetryAsync(progress, token);
         if (!created.IsSuccess)
         {
             _staging.Cleanup(staging.OperationId);
@@ -280,6 +288,35 @@ public sealed class WorkshopSharingCoordinator
             ? "Cancellation arrived after Steam created the item; Desktop Buddy completed the initial upload to avoid leaving an empty Workshop item."
             : null;
         return new WorkshopPublishResult(WorkshopPublishStatus.Published, created.PublishedFileId, detail);
+    }
+
+    private async Task<WorkshopCreateRemoteResult> CreateItemWithBusyRetryAsync(
+        IProgress<WorkshopTransferProgress>? progress,
+        CancellationToken token)
+    {
+        WorkshopCreateRemoteResult created = default;
+        for (int attempt = 0; attempt <= CreateBusyRetryDelays.Length; attempt++)
+        {
+            created = await _transport.CreateItemAsync(token);
+            if (created.IsSuccess || created.NativeResult != SteamResultBusy)
+                return created;
+
+            if (attempt == CreateBusyRetryDelays.Length)
+                break;
+
+            TimeSpan delay = CreateBusyRetryDelays[attempt];
+            progress?.Report(new WorkshopTransferProgress(
+                0,
+                0,
+                $"Steam Workshop is busy; retrying CreateItem in {delay.TotalSeconds:0}s"));
+            await Task.Delay(delay, token);
+        }
+
+        return created with
+        {
+            Detail = "Steam Workshop is busy (EResult 10) and did not create an item after several retries. " +
+                "Verify that Steam Cloud quota and ISteamUGC file-transfer changes are published in Steamworks, then retry shortly.",
+        };
     }
 
     private static WorkshopPublishResult FromRemote(WorkshopRemoteStatus status, ulong id, string? detail) => new(
