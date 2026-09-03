@@ -95,7 +95,7 @@ public partial class WorkshopPreviewCapture : Node
             rig.ApplyAppearance(compiled.Appearance);
             paint = new RuntimePaintTextureBridge(rig);
             paint.Apply(loaded.Surfaces);
-            rig.ApplyCanonicalPreviewPose();
+            rig.ApplyRestPose();
 
             Camera3D camera = CreateFramedBuddyCamera(rig);
             world.AddChild(camera);
