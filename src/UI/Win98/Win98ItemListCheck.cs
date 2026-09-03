@@ -1,3 +1,4 @@
+using System;
 using Godot;
 
 namespace DesktopBuddy.UI.Win98;
