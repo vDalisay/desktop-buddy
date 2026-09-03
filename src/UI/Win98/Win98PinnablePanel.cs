@@ -59,7 +59,7 @@ public partial class Win98PinnablePanel : Node
         _pin = new Button
         {
             Name = "PinBox",
-            Text = "📌",
+            Text = OperatingSystem.IsBrowser() ? "P" : "📌",
             TooltipText = "Detach this panel into a desktop window. Press again to return it.",
             FocusMode = Control.FocusModeEnum.All,
         };
