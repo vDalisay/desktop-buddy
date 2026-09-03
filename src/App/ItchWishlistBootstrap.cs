@@ -79,8 +79,15 @@ public sealed partial class ItchWishlistBootstrap : Node
     {
         Win98WindowFrame? frame = GetTree().Root.FindChild(
             nameof(Win98WindowFrame), true, false) as Win98WindowFrame;
-        if (!GodotObject.IsInstanceValid(frame) || frame!.GetParent() is not Control overlay)
+        if (!GodotObject.IsInstanceValid(frame))
             return;
+
+        // Win98WindowFrame is parented directly under Win98BuddyShellController, which is a
+        // CanvasLayer rather than a Control. The old code required the frame's parent to be a
+        // Control, so this method returned forever even though the wishlist command itself had
+        // already registered successfully. The frame is the full in-scene shell and is the
+        // correct Control host for a modal blocker.
+        Control overlay = frame!;
 
         if (overlay.FindChild("ItchWishlistWelcomeBlocker", false, false) is Control)
         {
@@ -132,5 +139,6 @@ public sealed partial class ItchWishlistBootstrap : Node
         blocker.Visible = true;
         dialog.Visible = true;
         _welcomeShown = true;
+        GD.Print("DESKTOP_BUDDY_ITCH_WELCOME_SHOWN");
     }
 }
