@@ -27,21 +27,35 @@ if errorlevel 1 (
 if not defined DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID set "DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5114950"
 if not defined DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID set "DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID=5114950"
 
+rem Steamworks needs an AppID hint when the editor/game is launched directly instead of by Steam.
+rem Keep it development-only: .gitignore excludes it and this launcher deletes the file it creates.
+set "STEAM_APPID_FILE=%PROJECT_ROOT%\steam_appid.txt"
+set "CREATED_STEAM_APPID_FILE=0"
+if not exist "%STEAM_APPID_FILE%" (
+    >"%STEAM_APPID_FILE%" echo %DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID%
+    set "CREATED_STEAM_APPID_FILE=1"
+)
+
 set "STAMP_FILE=%PROJECT_ROOT%\artifacts\logs\play_game-steam-environment.txt"
 if not exist "%PROJECT_ROOT%\artifacts\logs" mkdir "%PROJECT_ROOT%\artifacts\logs" >nul 2>&1
 >"%STAMP_FILE%" echo runtime_app_id=%DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID%
 >>"%STAMP_FILE%" echo workshop_owner_app_id=%DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID%
 >>"%STAMP_FILE%" echo godotsteam=4.22
 >>"%STAMP_FILE%" echo base_game_app_id=5114950
+>>"%STAMP_FILE%" echo steam_appid_hint=%STEAM_APPID_FILE%
 
 echo [Steam Workshop Diagnostics] Runtime AppID:   %DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID%
 echo [Steam Workshop Diagnostics] Workshop owner: %DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID%
+echo [Steam Workshop Diagnostics] Development AppID hint: %STEAM_APPID_FILE%
 echo [Steam Workshop Diagnostics] Environment:    %STAMP_FILE%
 echo [Steam Workshop Diagnostics] Runtime log will be written by play_game_diagnostics.bat.
 echo.
 
 call "%~dp0play_game_diagnostics.bat" %*
-exit /b %ERRORLEVEL%
+set "RESULT=%ERRORLEVEL%"
+
+if "%CREATED_STEAM_APPID_FILE%"=="1" del /q "%STEAM_APPID_FILE%" >nul 2>&1
+exit /b %RESULT%
 
 :help
 echo Builds and launches Desktop Buddy with verified GodotSteam 4.22 and persistent Steam-test diagnostics.
@@ -60,8 +74,9 @@ echo Defaults:
 echo   DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5114950
 echo   DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID=5114950
 echo.
-echo A future demo test can override only DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID while retaining
-echo Workshop ownership at 5114950, once that cross-app Steamworks configuration exists.
+echo A gitignored steam_appid.txt development hint is created for the session and removed again
+echo when the game exits. A future demo test can override only DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID
+echo while retaining Workshop ownership at 5114950, once that cross-app Steamworks configuration exists.
 echo.
-echo No steam_appid.txt or Valve/GodotSteam binary is written to source control.
+echo Valve/GodotSteam binaries and steam_appid.txt are never committed or shipped by this launcher.
 exit /b 0
