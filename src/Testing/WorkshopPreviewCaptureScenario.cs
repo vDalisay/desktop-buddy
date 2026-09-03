@@ -41,12 +41,19 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
 
             byte[] buddyPng = await capture.CaptureBuddyAsync(id, CancellationToken.None);
             Image buddy = Decode(buddyPng);
-            bool buddyOk = saved.IsSuccess && buddy.GetSize() == new Vector2I(420, 360) &&
-                SampleDistinctColors(buddy) >= 3;
+            Rect2I foreground = ForegroundBounds(buddy);
+            bool buddyFramed = foreground.Size.Y >= 700 &&
+                foreground.Size.X >= 280 &&
+                foreground.Position.X >= 20 &&
+                foreground.Position.Y >= 20 &&
+                foreground.Position.X + foreground.Size.X <= buddy.GetWidth() - 20 &&
+                foreground.Position.Y + foreground.Size.Y <= buddy.GetHeight() - 20;
+            bool buddyOk = saved.IsSuccess && buddy.GetSize() == new Vector2I(1920, 1080) &&
+                SampleDistinctColors(buddy) >= 3 && buddyFramed;
             checks.Add(new StartupCheck(
-                "workshop_buddy_preview_is_rendered_front_view",
+                "workshop_buddy_preview_is_framed_full_hd_front_view",
                 buddyOk,
-                $"saved={saved.Status} size={buddy.GetSize()} bytes={buddyPng.Length}"));
+                $"saved={saved.Status} size={buddy.GetSize()} foreground={foreground} bytes={buddyPng.Length}"));
 
             bool buddyWasVisible = lab.Buddy.Visible;
             bool presenterWasVisible = lab.VisualPresenter.Visible;
@@ -113,6 +120,36 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
         if (loaded != Error.Ok || image.IsEmpty())
             throw new InvalidDataException($"Generated Workshop preview is not a valid PNG ({loaded}).");
         return image;
+    }
+
+    private static Rect2I ForegroundBounds(Image image)
+    {
+        int width = image.GetWidth();
+        int height = image.GetHeight();
+        Color background = image.GetPixel(0, 0);
+        int minX = width;
+        int minY = height;
+        int maxX = -1;
+        int maxY = -1;
+
+        for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+        {
+            Color pixel = image.GetPixel(x, y);
+            float difference = MathF.Abs(pixel.R - background.R) +
+                MathF.Abs(pixel.G - background.G) +
+                MathF.Abs(pixel.B - background.B) +
+                MathF.Abs(pixel.A - background.A);
+            if (difference < 0.08f) continue;
+            minX = Math.Min(minX, x);
+            minY = Math.Min(minY, y);
+            maxX = Math.Max(maxX, x);
+            maxY = Math.Max(maxY, y);
+        }
+
+        return maxX < minX || maxY < minY
+            ? new Rect2I()
+            : new Rect2I(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
 
     private static int SampleDistinctColors(Image image)
