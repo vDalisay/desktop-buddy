@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Buddy;
@@ -15,6 +16,10 @@ public partial class WorkshopPreviewCapture : Node
 {
     private const int MaximumRoomPreviewDimension = 800;
     private const int MaximumRoomPreviewPixels = 500_000;
+    private const int BuddyPreviewWidth = 1920;
+    private const int BuddyPreviewHeight = 1080;
+    private const float BuddyFrameFill = 0.80f;
+    private const float MinimumBuddyCameraSize = 32.0f;
     private readonly CharacterPaintStore _paintStore;
     private readonly CharacterFeatureCatalog _featureCatalog;
     private readonly BuddyRoot _buddy;
@@ -68,7 +73,7 @@ public partial class WorkshopPreviewCapture : Node
         var viewport = new SubViewport
         {
             Name = "WorkshopBuddyPreviewViewport",
-            Size = new Vector2I(420, 360),
+            Size = new Vector2I(BuddyPreviewWidth, BuddyPreviewHeight),
             TransparentBg = false,
             RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
             OwnWorld3D = true,
@@ -91,18 +96,16 @@ public partial class WorkshopPreviewCapture : Node
             paint = new RuntimePaintTextureBridge(rig);
             paint.Apply(loaded.Surfaces);
             rig.ApplyCanonicalPreviewPose();
-            world.AddChild(new Camera3D
-            {
-                Position = new Vector3(0, 0, 600),
-                Projection = Camera3D.ProjectionType.Orthogonal,
-                Size = 400,
-                Current = true,
-            });
+
+            Camera3D camera = CreateFramedBuddyCamera(rig);
+            world.AddChild(camera);
             world.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-30, -20, 0) });
 
             await WaitForRenderAsync(token);
             Image image = viewport.GetTexture().GetImage();
             if (image.IsEmpty()) throw new InvalidOperationException("The active buddy did not produce a Workshop preview.");
+            if (image.GetWidth() != BuddyPreviewWidth || image.GetHeight() != BuddyPreviewHeight)
+                image.Resize(BuddyPreviewWidth, BuddyPreviewHeight, Image.Interpolation.Lanczos);
             return image.SavePngToBuffer();
         }
         finally
@@ -110,6 +113,71 @@ public partial class WorkshopPreviewCapture : Node
             paint?.Dispose();
             viewport.QueueFree();
         }
+    }
+
+    private static Camera3D CreateFramedBuddyCamera(BuddyVisualRigView rig)
+    {
+        if (!TryGetVisibleMeshBounds(rig, out Vector2 minimum, out Vector2 maximum))
+        {
+            return new Camera3D
+            {
+                Position = new Vector3(0, 0, 600),
+                Projection = Camera3D.ProjectionType.Orthogonal,
+                Size = 180,
+                Current = true,
+            };
+        }
+
+        Vector2 size = maximum - minimum;
+        Vector2 center = (minimum + maximum) * 0.5f;
+        float aspect = BuddyPreviewWidth / (float)BuddyPreviewHeight;
+        float requiredVerticalSpan = MathF.Max(size.Y, size.X / aspect);
+        float cameraSize = MathF.Max(MinimumBuddyCameraSize, requiredVerticalSpan / BuddyFrameFill);
+        return new Camera3D
+        {
+            Position = new Vector3(center.X, center.Y, 600),
+            Projection = Camera3D.ProjectionType.Orthogonal,
+            Size = cameraSize,
+            Current = true,
+        };
+    }
+
+    private static bool TryGetVisibleMeshBounds(Node root, out Vector2 minimum, out Vector2 maximum)
+    {
+        minimum = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+        maximum = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+        bool found = false;
+        var pending = new Stack<Node>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
+        {
+            Node node = pending.Pop();
+            if (node is MeshInstance3D mesh && mesh.Visible && mesh.Mesh is not null)
+            {
+                Aabb localBounds = mesh.GetAabb();
+                Vector3 start = localBounds.Position;
+                Vector3 end = localBounds.End;
+                for (int corner = 0; corner < 8; corner++)
+                {
+                    Vector3 local = new(
+                        (corner & 1) == 0 ? start.X : end.X,
+                        (corner & 2) == 0 ? start.Y : end.Y,
+                        (corner & 4) == 0 ? start.Z : end.Z);
+                    Vector3 world = mesh.GlobalTransform * local;
+                    minimum.X = MathF.Min(minimum.X, world.X);
+                    minimum.Y = MathF.Min(minimum.Y, world.Y);
+                    maximum.X = MathF.Max(maximum.X, world.X);
+                    maximum.Y = MathF.Max(maximum.Y, world.Y);
+                    found = true;
+                }
+            }
+
+            foreach (Node child in node.GetChildren())
+                pending.Push(child);
+        }
+
+        return found && maximum.X > minimum.X && maximum.Y > minimum.Y;
     }
 
     private async Task WaitForRenderAsync(CancellationToken token)
