@@ -22,6 +22,36 @@
     <RunAOTCompilation>true</RunAOTCompilation>
   </PropertyGroup>
 
+  <!--
+    The disposable itch.io Web project is rewritten to net10.0 by CI. Harden only that browser
+    build: keep AOT + full trimming, remove managed IL bodies after AOT, suppress browser/native
+    debug maps and symbols, and keep WebCIL packaging. This cannot make client-delivered WASM
+    secret, but it removes the easy managed-code/debugging path without changing native builds.
+  -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>full</TrimMode>
+    <TrimmerRemoveSymbols>true</TrimmerRemoveSymbols>
+    <WasmStripILAfterAOT>true</WasmStripILAfterAOT>
+    <WasmNativeStrip>true</WasmNativeStrip>
+    <WasmNativeDebugSymbols>false</WasmNativeDebugSymbols>
+    <WasmEmitSourceMap>false</WasmEmitSourceMap>
+    <WasmEmitSymbolMap>false</WasmEmitSymbolMap>
+    <WasmEnableWebcil>true</WasmEnableWebcil>
+    <DebuggerSupport>false</DebuggerSupport>
+    <EnableDiagnostics>false</EnableDiagnostics>
+    <EventSourceSupport>false</EventSourceSupport>
+    <MetricsSupport>false</MetricsSupport>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Developer-only scenarios must not be compiled into the public browser assembly. -->
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
+    <Compile Remove="src/Testing/**/*.cs" />
+  </ItemGroup>
+
   <PropertyGroup>
     <!-- Developer tooling/source trees must never enter the shipping game assembly. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);domain/**/*;tests/DesktopBuddy.Domain.Tests/**/*;devtools/**/*;authoring/**/*;shared/**/*</DefaultItemExcludes>
