@@ -11,7 +11,6 @@ signal workshop_item_downloaded(result: int, app_id: int, file_id: int)
 
 const EXPECTED_GODOTSTEAM := "4.22"
 const WORKSHOP_FILE_TYPE_COMMUNITY := 0
-const OVERLAY_TO_WEB_PAGE_MODE_DEFAULT := 0
 const INVALID_UGC_UPDATE_HANDLE := -1
 
 const INTERNAL_ROOM_TAG := "DesktopBuddy.RoomPainting"
@@ -45,7 +44,6 @@ var _required_methods := PackedStringArray([
     "downloadItem",
     "getItemDownloadInfo",
     "getItemInstallInfo",
-    "activateGameOverlayToWebPage",
 ])
 
 func _ready() -> void:
@@ -223,18 +221,16 @@ func get_item_install_info(file_id: int) -> Dictionary:
 func open_workshop_browser(app_id: int) -> void:
     if not is_available() or app_id != _workshop_app_id:
         return
-    _steam.call(
-        "activateGameOverlayToWebPage",
-        "https://steamcommunity.com/app/%d/workshop/" % app_id,
-        OVERLAY_TO_WEB_PAGE_MODE_DEFAULT)
+    # The Steam overlay adds an unnecessary second UI layer when the Workshop is already a web
+    # experience. Open the canonical Workshop URL in the player's normal browser instead.
+    OS.shell_open("https://steamcommunity.com/app/%d/workshop/" % app_id)
 
 func open_workshop_item(file_id: int) -> void:
     if not is_available() or file_id <= 0:
         return
-    _steam.call(
-        "activateGameOverlayToWebPage",
-        "steam://url/CommunityFilePage/%d" % file_id,
-        OVERLAY_TO_WEB_PAGE_MODE_DEFAULT)
+    # This is also used for the post-publish item page / legal-agreement path. The ordinary HTTPS
+    # page lets Steam handle login/agreement in the browser without forcing Shift+Tab overlay UI.
+    OS.shell_open("https://steamcommunity.com/sharedfiles/filedetails/?id=%d" % file_id)
 
 func _to_public_workshop_tag(tag: String) -> String:
     match tag:
