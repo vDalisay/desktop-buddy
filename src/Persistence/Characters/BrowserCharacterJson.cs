@@ -186,7 +186,7 @@ internal static class BrowserCharacterJson
         if (!hasFeatures)
             return defaults;
 
-        JsonElement feature;
+        JsonElement feature = default;
         bool found = legacyPreferredName is not null && features.TryGetProperty(legacyPreferredName, out feature);
         if (!found)
             found = features.TryGetProperty(canonicalName, out feature);
