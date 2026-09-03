@@ -45,6 +45,7 @@
     <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_PUBLIC_WEB</DefineConstants>
   </PropertyGroup>
 
   <!-- Developer-only scenarios must not be compiled into the public browser assembly. -->

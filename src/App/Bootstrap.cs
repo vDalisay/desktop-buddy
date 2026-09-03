@@ -14,7 +14,9 @@ using DesktopBuddy.Onboarding;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
+#if !DESKTOP_BUDDY_PUBLIC_WEB
 using DesktopBuddy.Testing;
+#endif
 using Godot;
 
 namespace DesktopBuddy.App;
@@ -53,7 +55,15 @@ public partial class Bootstrap : Node
         {
             case RunnerMode.Scenario:
             case RunnerMode.Journey:
+#if DESKTOP_BUDDY_PUBLIC_WEB
+                // Public Web exports intentionally omit the entire developer scenario tree.
+                // A crafted browser argument must therefore fall back to normal gameplay rather
+                // than retaining TestRunner and hundreds of scenario symbols in the shipped WASM.
+                Log.Warn(Category, "Scenario/journey runner is unavailable in the public browser build; starting normal sandbox.");
+                await BootSandboxAsync();
+#else
                 BootTestRunner(args);
+#endif
                 break;
 
             default:
@@ -62,6 +72,7 @@ public partial class Bootstrap : Node
         }
     }
 
+#if !DESKTOP_BUDDY_PUBLIC_WEB
     private void BootTestRunner(RunnerArguments args)
     {
         var packed = GD.Load<PackedScene>("res://scenes/test_runner.tscn");
@@ -76,6 +87,7 @@ public partial class Bootstrap : Node
         host.Configure(args);
         AddChild(host);
     }
+#endif
 
     private void ComposeAutomation(RunnerArguments args)
     {
