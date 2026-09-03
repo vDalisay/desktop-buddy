@@ -99,6 +99,8 @@ public partial class Win98PaintLimbPoseBootstrap : Node
             return;
 
         BuddyVisualRigView rig = _host!.PreviewRig;
+        float yaw = Mathf.DegToRad(rig.RotationDegrees.Y);
+        Vector2 pivot = rig.GeometrySource.ReadTransform(BuddyPartId.Torso).Position;
         BuddyVisualPartPose Pose(PaintPart part)
         {
             BuddyPartId buddyPart = ToBuddyPart(part);
@@ -110,12 +112,10 @@ public partial class Win98PaintLimbPoseBootstrap : Node
             var rendered = home with { Position = position };
             return new BuddyVisualPartPose(
                 rendered,
-                rig.LanePosition(buddyPart, position),
-                new Vector3(0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(home.Rotation)));
+                rig.PreviewPosition(position, yaw, pivot),
+                new Vector3(0.0f, yaw, WorldPlaneMapping.To3DRotationZ(home.Rotation)));
         }
 
-        Vector3 rotation = rig.Rotation;
-        rig.Rotation = Vector3.Zero;
         rig.ApplyPose(new BuddyVisualPoseFrame(
             Pose(PaintPart.Head),
             Pose(PaintPart.Torso),
@@ -123,11 +123,10 @@ public partial class Win98PaintLimbPoseBootstrap : Node
             Pose(PaintPart.RightHand),
             Pose(PaintPart.LeftFoot),
             Pose(PaintPart.RightFoot),
-            0.0f,
+            yaw,
             BuiltInCharacterAppearance.NeutralFaceState,
             string.Empty,
             0.0f));
-        rig.Rotation = rotation;
     }
 
     private static BuddyPartId ToBuddyPart(PaintPart part) => part switch
