@@ -112,6 +112,7 @@ CharacterSlotUiBootstrap="*res://src/CharacterEditor/CharacterSlotUiBootstrap.cs
 Win98ShellBootstrap="*res://src/UI/Win98/Win98ShellBootstrap.cs"
 Win98CommandBarBootstrap="*res://src/UI/Win98/Win98CommandBarBootstrap.cs"
 ItchDistributionScopeBootstrap="*res://src/App/ItchDistributionScopeBootstrap.cs"
+ItchWishlistBootstrap="*res://src/App/ItchWishlistBootstrap.cs"
 ; Reserved now so the environment and Buddy Studio branches can compose independently
 ; without both editing this shared file during parallel development.
 EnvironmentCustomizationBootstrap="*res://src/Environment/EnvironmentCustomizationBootstrap.cs"
