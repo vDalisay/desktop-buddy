@@ -6,7 +6,7 @@ on:
       source_branch:
         description: "Branch whose latest successful itch.io public build should be published"
         required: true
-        default: "feature/itch-io-limited-build"
+        default: "main"
         type: string
       run_id:
         description: "Optional exact itch.io public build run ID; leave blank to use the latest successful run on source_branch"
