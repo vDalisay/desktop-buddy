@@ -1,0 +1,54 @@
+name: itch.io Butler connection check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/itch-io-butler-check.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  butler-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate configured itch.io credentials and target
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCHIO_WEB_TARGET: ${{ vars.ITCHIO_WEB_TARGET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${BUTLER_API_KEY:-}" ]; then
+            echo "Missing repository secret BUTLER_API_KEY." >&2
+            exit 1
+          fi
+          if [ -z "${ITCHIO_WEB_TARGET:-}" ]; then
+            echo "Missing repository variable ITCHIO_WEB_TARGET." >&2
+            exit 1
+          fi
+          if [ "$ITCHIO_WEB_TARGET" != "vvoiddev/desktop-buddy:html5-demo" ]; then
+            echo "ITCHIO_WEB_TARGET is set, but it is not the expected vvoiddev/desktop-buddy:html5-demo value." >&2
+            exit 1
+          fi
+
+          BUTLER_DIR="$RUNNER_TEMP/butler"
+          mkdir -p "$BUTLER_DIR"
+          curl -fL --retry 3 \
+            -o "$RUNNER_TEMP/butler.zip" \
+            "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default"
+          unzip -q "$RUNNER_TEMP/butler.zip" -d "$BUTLER_DIR"
+          chmod +x "$BUTLER_DIR/butler"
+
+          "$BUTLER_DIR/butler" version
+
+          mkdir -p "$RUNNER_TEMP/butler-preview"
+          printf 'Desktop Buddy Butler connection check\n' > "$RUNNER_TEMP/butler-preview/README.txt"
+
+          # push-preview authenticates and resolves the exact project/channel, but never creates
+          # or updates a build. This validates the secret + target without publishing anything.
+          "$BUTLER_DIR/butler" push-preview --changes-only \
+            "$RUNNER_TEMP/butler-preview" \
+            "$ITCHIO_WEB_TARGET"
