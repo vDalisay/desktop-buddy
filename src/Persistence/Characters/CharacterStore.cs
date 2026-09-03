@@ -307,6 +307,8 @@ public sealed class CharacterStore
             throw new ArgumentException(detail, nameof(document));
         }
         CharacterDocumentPolicy.ValidatePaintManifest(document.Paint);
+        if (OperatingSystem.IsBrowser())
+            return BrowserCharacterJson.Serialize(document);
         return JsonSerializer.Serialize(
             document with { SchemaVersion = CharacterDocumentPolicy.CurrentSchemaVersion },
             SerializeOptions);
@@ -355,7 +357,9 @@ public sealed class CharacterStore
 
         token.ThrowIfCancellationRequested();
         string json = _fileSystem.ReadAllText(path);
-        CharacterDecodeResult decoded = CharacterDocumentPolicy.DecodeAndMigrate(json);
+        CharacterDecodeResult decoded = OperatingSystem.IsBrowser()
+            ? BrowserCharacterJson.DecodeCurrentOrFallback(json)
+            : CharacterDocumentPolicy.DecodeAndMigrate(json);
         if (decoded.Status == CharacterDecodeStatus.UnsupportedFutureVersion)
             return LoadAttempt.Future(decoded.Detail ?? "Character document uses a newer schema.");
         if (!decoded.IsSuccess || decoded.Document is null)

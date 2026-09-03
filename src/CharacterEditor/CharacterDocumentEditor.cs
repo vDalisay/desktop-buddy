@@ -19,9 +19,9 @@ public enum CharacterPartSlot
 }
 
 /// <summary>
-/// Immutable editor mutations over the authoritative schema-v1 JSON boundary. Using the
-/// document policy for every mutation keeps UI code independent of persistence DTO internals
-/// and guarantees the same normalization/migration/validation path as disk loading.
+/// Immutable editor mutations over the authoritative schema-v1 JSON boundary. Native builds keep
+/// the authored JSON round-trip; browser-WASM applies the same immutable mutations directly so the
+/// static runtime never has to enter System.Text.Json object serialization while editing.
 /// </summary>
 public static class CharacterDocumentEditor
 {
@@ -56,6 +56,9 @@ public static class CharacterDocumentEditor
     public static CharacterDocument Rename(CharacterDocument document, string displayName)
     {
         ArgumentNullException.ThrowIfNull(document);
+        if (OperatingSystem.IsBrowser())
+            return NormalizeAndValidate(document with { DisplayName = displayName });
+
         JsonObject root = Root(document);
         SetProperty(root, "displayName", JsonValue.Create(displayName));
         return Decode(root);
@@ -66,9 +69,26 @@ public static class CharacterDocumentEditor
         CharacterPartSlot slot,
         Rgba32 color)
     {
+        if (OperatingSystem.IsBrowser())
+        {
+            ArgumentNullException.ThrowIfNull(document);
+            CharacterPartColors colors = document.PartColors;
+            CharacterPartColors updated = slot switch
+            {
+                CharacterPartSlot.Head => colors with { Head = color },
+                CharacterPartSlot.Torso => colors with { Torso = color },
+                CharacterPartSlot.LeftHand => colors with { LeftHand = color },
+                CharacterPartSlot.RightHand => colors with { RightHand = color },
+                CharacterPartSlot.LeftFoot => colors with { LeftFoot = color },
+                CharacterPartSlot.RightFoot => colors with { RightFoot = color },
+                _ => throw new ArgumentOutOfRangeException(nameof(slot), slot, null),
+            };
+            return NormalizeAndValidate(document with { PartColors = updated });
+        }
+
         JsonObject root = Root(document);
-        JsonObject colors = RequiredObject(root, "partColors");
-        SetProperty(colors, PartNames[slot], JsonValue.Create(color.ToHex()));
+        JsonObject jsonColors = RequiredObject(root, "partColors");
+        SetProperty(jsonColors, PartNames[slot], JsonValue.Create(color.ToHex()));
         return Decode(root);
     }
 
@@ -78,10 +98,16 @@ public static class CharacterDocumentEditor
         string featureId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(featureId);
-        JsonObject feature = Feature(root: Root(document), slot);
-        string idProperty = FindProperty(feature, "featureId", "id");
-        feature[idProperty] = featureId;
-        return Decode(feature.GetRoot().AsObject());
+        if (OperatingSystem.IsBrowser())
+        {
+            CharacterFeatureDocument feature = ReadFeature(document, slot) with { FeatureId = featureId };
+            return NormalizeAndValidate(SetFeatureDocument(document, slot, feature));
+        }
+
+        JsonObject jsonFeature = Feature(root: Root(document), slot);
+        string idProperty = FindProperty(jsonFeature, "featureId", "id");
+        jsonFeature[idProperty] = featureId;
+        return Decode(jsonFeature.GetRoot().AsObject());
     }
 
     public static CharacterDocument SetFeatureTransform(
@@ -89,11 +115,22 @@ public static class CharacterDocumentEditor
         CharacterFeatureSlot slot,
         in NormalizedFeatureTransform transform)
     {
-        JsonObject feature = Feature(Root(document), slot);
-        SetProperty(feature, "offsetX", JsonValue.Create(transform.OffsetX));
-        SetProperty(feature, "offsetY", JsonValue.Create(transform.OffsetY));
-        SetProperty(feature, "scale", JsonValue.Create(transform.Scale));
-        return Decode(feature.GetRoot().AsObject());
+        if (OperatingSystem.IsBrowser())
+        {
+            CharacterFeatureDocument feature = ReadFeature(document, slot) with
+            {
+                OffsetX = transform.OffsetX,
+                OffsetY = transform.OffsetY,
+                Scale = transform.Scale,
+            };
+            return NormalizeAndValidate(SetFeatureDocument(document, slot, feature));
+        }
+
+        JsonObject jsonFeature = Feature(Root(document), slot);
+        SetProperty(jsonFeature, "offsetX", JsonValue.Create(transform.OffsetX));
+        SetProperty(jsonFeature, "offsetY", JsonValue.Create(transform.OffsetY));
+        SetProperty(jsonFeature, "scale", JsonValue.Create(transform.Scale));
+        return Decode(jsonFeature.GetRoot().AsObject());
     }
 
     public static Rgba32 ReadPartColor(CharacterDocument document, CharacterPartSlot slot)
@@ -185,11 +222,22 @@ public static class CharacterDocumentEditor
         CharacterFeatureSlot slot,
         Rgba32 color)
     {
-        JsonObject feature = Feature(Root(document), slot);
-        SetProperty(feature, "color", JsonValue.Create(color.ToHex()));
-        if (feature["colors"] is JsonObject colors)
+        if (OperatingSystem.IsBrowser())
+        {
+            CharacterFeatureDocument current = ReadFeature(document, slot);
+            var channels = new Dictionary<string, Rgba32>(current.Colors, StringComparer.Ordinal)
+            {
+                [CosmeticDefinition.PrimaryColorChannel] = color,
+            };
+            CharacterFeatureDocument feature = current with { Color = color, Colors = channels };
+            return NormalizeAndValidate(SetFeatureDocument(document, slot, feature));
+        }
+
+        JsonObject jsonFeature = Feature(Root(document), slot);
+        SetProperty(jsonFeature, "color", JsonValue.Create(color.ToHex()));
+        if (jsonFeature["colors"] is JsonObject colors)
             colors[CosmeticDefinition.PrimaryColorChannel] = color.ToHex();
-        return Decode(feature.GetRoot().AsObject());
+        return Decode(jsonFeature.GetRoot().AsObject());
     }
 
     public static CharacterDocument WithIdentity(
@@ -199,6 +247,9 @@ public static class CharacterDocumentEditor
     {
         if (id == Guid.Empty)
             throw new ArgumentOutOfRangeException(nameof(id));
+        if (OperatingSystem.IsBrowser())
+            return NormalizeAndValidate(document with { Id = id, DisplayName = displayName });
+
         JsonObject root = Root(document);
         SetProperty(root, "id", JsonValue.Create(id.ToString("D")));
         SetProperty(root, "displayName", JsonValue.Create(displayName));
@@ -213,12 +264,20 @@ public static class CharacterDocumentEditor
             : CharacterDocumentPolicy.Serialize(normalized);
     }
 
+    private static CharacterDocument NormalizeAndValidate(CharacterDocument document)
+    {
+        CharacterNormalizationResult normalized = CharacterDocumentNormalizer.Normalize(document);
+        CharacterValidationResult validation = CharacterDocumentValidator.Validate(normalized.Document);
+        if (!validation.IsValid)
+            throw new ArgumentException(string.Join("; ", validation.Errors));
+        CharacterDocumentPolicy.ValidatePaintManifest(normalized.Document.Paint);
+        return normalized.Document;
+    }
+
     private static JsonObject Root(CharacterDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
-        string json = OperatingSystem.IsBrowser()
-            ? BrowserCharacterJson.Serialize(document)
-            : CharacterDocumentPolicy.Serialize(document);
+        string json = CharacterDocumentPolicy.Serialize(document);
         return JsonNode.Parse(json)?.AsObject()
             ?? throw new InvalidOperationException("Character document serialized to no JSON object.");
     }
@@ -231,25 +290,13 @@ public static class CharacterDocumentEditor
 
     private static CharacterDocument Decode(JsonObject root)
     {
-        string json = root.ToJsonString();
-        CharacterDecodeResult decoded = OperatingSystem.IsBrowser()
-            ? BrowserCharacterJson.DecodeCurrentOrFallback(json)
-            : CharacterDocumentPolicy.DecodeAndMigrate(json);
+        CharacterDecodeResult decoded = CharacterDocumentPolicy.DecodeAndMigrate(root.ToJsonString());
         if (!decoded.IsSuccess || decoded.Document is null)
         {
             throw new InvalidOperationException(
                 decoded.Detail ?? "Edited character document could not be decoded.");
         }
-
-        CharacterNormalizationResult normalized =
-            CharacterDocumentNormalizer.Normalize(decoded.Document);
-        CharacterValidationResult validation =
-            CharacterDocumentValidator.Validate(normalized.Document);
-        if (!validation.IsValid)
-        {
-            throw new ArgumentException(string.Join("; ", validation.Errors));
-        }
-        return normalized.Document;
+        return NormalizeAndValidate(decoded.Document);
     }
 
     private static JsonObject RequiredObject(JsonObject owner, params string[] expectedNames)
