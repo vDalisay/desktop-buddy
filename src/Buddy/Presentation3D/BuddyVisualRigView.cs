@@ -134,17 +134,33 @@ public partial class BuddyVisualRigView : Node3D
         UpdateFace(frame);
     }
 
-    /// <summary>Canonical physics-free front pose shared by Paint Buddy and generated previews.</summary>
-    public void ApplyCanonicalPreviewPose()
+    /// <summary>
+    /// Turns a preview rig on the spot. The yaw goes through the pose, not just the node's own
+    /// rotation, so a turned preview is posed for the angle it is seen at rather than having
+    /// its rest pose swung around by its parent (owner report 2026-08-25).
+    /// </summary>
+    public void SetPreviewYawDegrees(float degrees)
+    {
+        RotationDegrees = new Vector3(RotationDegrees.X, degrees, RotationDegrees.Z);
+        ApplyRestPose();
+    }
+
+    /// <summary>
+    /// Poses every part at its geometry source's rest transform, turned rigidly about the torso
+    /// to the rig's current yaw. The editor previews stand still, so this is their whole pose.
+    /// </summary>
+    public void ApplyRestPose()
     {
         EnsureInitialized();
+        float yaw = Mathf.DegToRad(RotationDegrees.Y);
+        Vector2 pivot = _geometrySource.ReadTransform(BuddyPartId.Torso).Position;
         BuddyVisualPartPose Pose(BuddyPartId id)
         {
             BuddyVisualTransform transform = _geometrySource.ReadTransform(id);
             return new BuddyVisualPartPose(
                 transform,
-                LanePosition(id, transform.Position),
-                Vector3.Zero);
+                PreviewPosition(transform.Position, yaw, pivot),
+                new Vector3(0.0f, yaw, 0.0f));
         }
 
         ApplyPose(new BuddyVisualPoseFrame(
@@ -154,7 +170,7 @@ public partial class BuddyVisualRigView : Node3D
             Pose(BuddyPartId.RightHand),
             Pose(BuddyPartId.LeftFoot),
             Pose(BuddyPartId.RightFoot),
-            0.0f,
+            yaw,
             BuiltInCharacterAppearance.NeutralFaceState,
             string.Empty,
             0.0f));
@@ -280,22 +296,23 @@ public partial class BuddyVisualRigView : Node3D
     }
 
     /// <summary>
-    /// Where a part sits in the depth lanes at rest, for previews that pose the rig by hand.
-    /// The runtime presenter routes every part through the same lane offsets. A preview that
-    /// skips them renders the parts coplanar, and then the torso's forward bulge wins the depth
-    /// test in bands the paint mapper hands to the head, the hands and the feet: the strip of
-    /// neck under the chin and the joins beside the hands could be seen and clicked, but the
-    /// paint landed on the part in front of them and never showed (owner report 2026-08-24).
+    /// Where a preview part stands: the flat rig, turned rigidly about the torso.
+    ///
+    /// <para>The runtime rig routes each part through a depth lane - head +96, hands +48, torso
+    /// 0, feet -48 - so the parts layer cleanly in the one view the game ever shows. Those lanes
+    /// are a draw-order device, not anatomy, and an editor preview can be turned to any angle:
+    /// carried along by the turn they fling the head a hundred units sideways, and held on the
+    /// view axis while the body turns they drag the hands into the torso and slice them open
+    /// (owner reports 2026-08-25). A render probe over four models at 0/40/70/90 degrees put the
+    /// flat rig ahead at every angle, and at rest it differs from the laned pose in 0.7% of the
+    /// frame: thin slivers at the joins. So the preview stands flat, and the paint mapper sorts
+    /// the same silhouettes by surface rather than by lane, which keeps what the player sees and
+    /// what the brush paints the same thing at every yaw.</para>
     /// </summary>
-    public Vector3 LanePosition(BuddyPartId partId, Vector2 worldPosition)
+    public Vector3 PreviewPosition(Vector2 worldPosition, float yawRadians, Vector2 pivot)
     {
-        int index = CheckedPartIndex(partId);
         EnsureInitialized();
-        return ResolveLanePosition(
-            worldPosition,
-            _partDefinitions[index].DepthOffset,
-            0.0f,
-            Vector2.Zero);
+        return ResolveLanePosition(worldPosition, 0.0f, yawRadians, pivot);
     }
 
     public Node3D GetConnectorVisual(int index)

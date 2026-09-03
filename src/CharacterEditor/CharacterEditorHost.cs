@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Persistence.Characters;
@@ -500,7 +501,7 @@ public partial class CharacterEditorHost : CanvasLayer
         // The preview rig is built detached and has no parent yet, so this is its first
         // entry into the tree — Reparent would fail and leave it orphaned and invisible.
         world.AddChild(_preview);
-        _preview.ApplyCanonicalPreviewPose();
+        ApplyStaticPreviewPose();
         var camera = new Camera3D
         {
             Position = new Vector3(0, 0, 600),
@@ -605,6 +606,8 @@ public partial class CharacterEditorHost : CanvasLayer
                 _libraryList.Select(index);
         }
     }
+
+    private void ApplyStaticPreviewPose() => _preview.ApplyRestPose();
 
     private async Task ResolveUnsaved(UnsavedDecision decision)
     {

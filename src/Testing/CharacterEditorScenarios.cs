@@ -44,7 +44,7 @@ internal static class CharacterEditorScenarioSupport
         var preview = new BuddyVisualRigView { Name = "EditorPreview", ProcessMode = Node.ProcessModeEnum.Always };
         lab.AddChild(preview);
         preview.Initialize(lab.Buddy.VisualProfile, source);
-        preview.ApplyCanonicalPreviewPose();
+        preview.ApplyPose(Frame(source, preview));
         var library = new CharacterLibraryIndex(new CharacterFileSystem(), root);
         int nextGuid = 100;
         var session = new CharacterEditorSession(
@@ -64,6 +64,33 @@ internal static class CharacterEditorScenarioSupport
 
     public static ScenarioResult Result(IReadOnlyList<StartupCheck> checks, ulong seed) =>
         new(checks.All(static check => check.Passed), checks, [$"seed={seed}"]);
+
+    private static BuddyVisualPoseFrame Frame(
+        IBuddyVisualTransformSource source,
+        BuddyVisualRigView preview,
+        float yawRadians = 0.0f)
+    {
+        Vector2 pivot = source.ReadTransform(BuddyPartId.Torso).Position;
+        BuddyVisualPartPose Pose(BuddyPartId id)
+        {
+            BuddyVisualTransform transform = source.ReadTransform(id);
+            return new BuddyVisualPartPose(
+                transform,
+                preview.PreviewPosition(transform.Position, yawRadians, pivot),
+                new Vector3(0.0f, yawRadians, 0.0f));
+        }
+        return new BuddyVisualPoseFrame(
+            Pose(BuddyPartId.Head),
+            Pose(BuddyPartId.Torso),
+            Pose(BuddyPartId.LeftHand),
+            Pose(BuddyPartId.RightHand),
+            Pose(BuddyPartId.LeftFoot),
+            Pose(BuddyPartId.RightFoot),
+            yawRadians,
+            BuiltInCharacterAppearance.NeutralFaceState,
+            string.Empty,
+            0.0f);
+    }
 
     private static Guid GuidFromInt(int value)
     {
@@ -242,10 +269,9 @@ public sealed class EditorPreviewHasNoPhysicsScenario : IScenario
                 $"physics={physics} preview={context.Preview.ActiveAppearance?.CharacterId} " +
                 $"live={context.Lab.VisualPresenter.RigView.ActiveAppearance?.CharacterId}"));
 
-            // The preview must stand in the same depth lanes the paint mapper sorts by. Posed
-            // flat, the torso's forward bulge wins the depth test in bands the mapper hands to
-            // the head, the hands and the feet, and that surface can be seen and clicked but
-            // never painted - the neck strip the owner reported on 2026-08-24.
+            // The preview must stand in the plane the paint mapper sorts, or the eye and the
+            // brush disagree: the part the mapper hands the click to can sit behind the one the
+            // player can see there, and the paint lands out of sight (owner report 2026-08-24).
             var lanes = new List<string>();
             bool laned = true;
             foreach (PaintPartShape shape in FrontalPaintMapper.CreateDefault().Shapes)
@@ -256,15 +282,57 @@ public sealed class EditorPreviewHasNoPhysicsScenario : IScenario
                 lanes.Add($"{shape.Part}={socketDepth}/{shape.Depth}");
             }
             checks.Add(new StartupCheck(
-                "preview_parts_stand_in_the_paint_mappers_depth_lanes",
+                "preview_parts_stand_in_the_paint_mappers_plane",
                 laned,
                 string.Join(" ", lanes)));
+
+            // Turning the preview must move the body as one piece. Carried through the rig
+            // node's own rotation, the runtime depth lanes swung with it and flung the head
+            // across the canvas; pinned to the view axis instead, they dragged the hands into
+            // the torso and the renderer sliced them open (owner reports 2026-08-25). A rigid
+            // turn rules out both: every part keeps its distance to every other part.
+            Vector3[] rest = PartCentres(context.Preview);
+            // The one seam both previews turn through - Paint Buddy's quarter turns and Buddy
+            // Studio's rotisserie drag alike.
+            context.Preview.SetPreviewYawDegrees(90.0f);
+            Vector3[] turned = PartCentres(context.Preview);
+            float worstDrift = 0.0f;
+            for (int a = 0; a < rest.Length; a++)
+            {
+                for (int b = a + 1; b < rest.Length; b++)
+                {
+                    worstDrift = Mathf.Max(
+                        worstDrift,
+                        Mathf.Abs(rest[a].DistanceTo(rest[b]) - turned[a].DistanceTo(turned[b])));
+                }
+            }
+
+            // Side-on, a flat body stands edge-on: every part sits on the torso's column.
+            float pivotX = context.Preview.GeometrySource
+                .ReadTransform(BuddyPartId.Torso).Position.X;
+            float worstSideOnX = 0.0f;
+            foreach (Vector3 centre in turned)
+                worstSideOnX = Mathf.Max(worstSideOnX, Mathf.Abs(centre.X - pivotX));
+
+            context.Preview.SetPreviewYawDegrees(0.0f);
+            checks.Add(new StartupCheck(
+                "turning_the_preview_is_a_rigid_turn",
+                worstDrift < 0.01f && worstSideOnX < 0.01f,
+                $"worst_pair_drift={worstDrift:0.###} worst_side_on_x={worstSideOnX:0.###}"));
         }
         finally
         {
             await CharacterEditorScenarioSupport.Cleanup(tree, context);
         }
         return CharacterEditorScenarioSupport.Result(checks, seed);
+    }
+
+    private static Vector3[] PartCentres(BuddyVisualRigView preview)
+    {
+        var centres = new Vector3[PuppetRigProfile.RequiredPartCount];
+        for (int index = 0; index < centres.Length; index++)
+            centres[index] = preview.GetPartSocket((BuddyPartId)index).GlobalPosition;
+        return centres;
     }
 
     private static int CountPhysics(Node node)
