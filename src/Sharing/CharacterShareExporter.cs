@@ -18,6 +18,7 @@ namespace DesktopBuddy.Sharing;
 
 public sealed class CharacterShareExporter
 {
+    private const int MaximumPrimaryPreviewBytes = 8 * 1024 * 1024;
     private static readonly JsonSerializerOptions CharacterJson = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
@@ -104,8 +105,11 @@ public sealed class CharacterShareExporter
 
             if (previewPng is { } preview && preview.Length > 0)
             {
-                if (preview.Length > 2 * 1024 * 1024)
-                    throw new InvalidDataException("Workshop preview exceeds the 2 MiB local preview budget.");
+                // SetItemPreview is the primary Workshop image and Steam documents PNG/JPG/GIF
+                // without the 1 MiB limit that applies to additional preview files. Keep a bounded
+                // local guard while allowing the generated 1920x1080 Buddy preview to remain full HD.
+                if (preview.Length > MaximumPrimaryPreviewBytes)
+                    throw new InvalidDataException("Workshop primary preview exceeds the 8 MiB local preview budget.");
                 File.WriteAllBytes(staging.PreviewPath, preview.ToArray());
             }
 
