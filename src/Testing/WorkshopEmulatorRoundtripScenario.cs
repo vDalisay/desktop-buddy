@@ -84,9 +84,13 @@ public sealed class WorkshopEmulatorRoundtripScenario : IScenario
             () => new DateTimeOffset(2026, 8, 25, 8, 0, 0, TimeSpan.Zero));
 
         byte[] original = CreateDeterministicRoom(seed);
+        byte[] preview = [137, 80, 78, 71, 13, 10, 26, 10, 42];
         Guid publishOperation = Guid.NewGuid();
-        ShareExportResult exported = exporter.Export(original, publishOperation, CancellationToken.None);
-        bool exportOk = exported.Success && exported.Staging is not null && exported.Manifest is not null;
+        ShareExportResult exported = exporter.Export(original, publishOperation, preview, CancellationToken.None);
+        bool exportOk = exported.Success && exported.Staging is not null && exported.Manifest is not null &&
+            File.ReadAllBytes(exported.Staging.Value.PreviewPath).SequenceEqual(preview) &&
+            !File.ReadAllBytes(Path.Combine(exported.Staging.Value.ContentRoot, ShareManifestPolicy.RoomBackgroundPath))
+                .SequenceEqual(preview);
         checks.Add(new StartupCheck(
             "workshop_emulator_room_export_is_valid",
             exportOk,

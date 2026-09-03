@@ -44,7 +44,7 @@ internal static class CharacterEditorScenarioSupport
         var preview = new BuddyVisualRigView { Name = "EditorPreview", ProcessMode = Node.ProcessModeEnum.Always };
         lab.AddChild(preview);
         preview.Initialize(lab.Buddy.VisualProfile, source);
-        preview.ApplyPose(Frame(source, preview));
+        preview.ApplyCanonicalPreviewPose();
         var library = new CharacterLibraryIndex(new CharacterFileSystem(), root);
         int nextGuid = 100;
         var session = new CharacterEditorSession(
@@ -64,31 +64,6 @@ internal static class CharacterEditorScenarioSupport
 
     public static ScenarioResult Result(IReadOnlyList<StartupCheck> checks, ulong seed) =>
         new(checks.All(static check => check.Passed), checks, [$"seed={seed}"]);
-
-    private static BuddyVisualPoseFrame Frame(
-        StaticBuddyVisualTransformSource source,
-        BuddyVisualRigView preview)
-    {
-        BuddyVisualPartPose Pose(BuddyPartId id)
-        {
-            BuddyVisualTransform transform = source.ReadTransform(id);
-            return new BuddyVisualPartPose(
-                transform,
-                preview.LanePosition(id, transform.Position),
-                Vector3.Zero);
-        }
-        return new BuddyVisualPoseFrame(
-            Pose(BuddyPartId.Head),
-            Pose(BuddyPartId.Torso),
-            Pose(BuddyPartId.LeftHand),
-            Pose(BuddyPartId.RightHand),
-            Pose(BuddyPartId.LeftFoot),
-            Pose(BuddyPartId.RightFoot),
-            0.0f,
-            BuiltInCharacterAppearance.NeutralFaceState,
-            string.Empty,
-            0.0f);
-    }
 
     private static Guid GuidFromInt(int value)
     {

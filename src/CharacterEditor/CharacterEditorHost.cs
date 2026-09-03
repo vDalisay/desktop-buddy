@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
-using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Persistence.Characters;
@@ -501,7 +500,7 @@ public partial class CharacterEditorHost : CanvasLayer
         // The preview rig is built detached and has no parent yet, so this is its first
         // entry into the tree — Reparent would fail and leave it orphaned and invisible.
         world.AddChild(_preview);
-        ApplyStaticPreviewPose();
+        _preview.ApplyCanonicalPreviewPose();
         var camera = new Camera3D
         {
             Position = new Vector3(0, 0, 600),
@@ -605,29 +604,6 @@ public partial class CharacterEditorHost : CanvasLayer
             if (entry.CharacterId == _session.SelectedCharacterId)
                 _libraryList.Select(index);
         }
-    }
-
-    private void ApplyStaticPreviewPose()
-    {
-        BuddyVisualPartPose Pose(BuddyPartId id)
-        {
-            BuddyVisualTransform transform = _previewSource.ReadTransform(id);
-            return new BuddyVisualPartPose(
-                transform,
-                _preview.LanePosition(id, transform.Position),
-                Vector3.Zero);
-        }
-        _preview.ApplyPose(new BuddyVisualPoseFrame(
-            Pose(BuddyPartId.Head),
-            Pose(BuddyPartId.Torso),
-            Pose(BuddyPartId.LeftHand),
-            Pose(BuddyPartId.RightHand),
-            Pose(BuddyPartId.LeftFoot),
-            Pose(BuddyPartId.RightFoot),
-            0.0f,
-            BuiltInCharacterAppearance.NeutralFaceState,
-            string.Empty,
-            0.0f));
     }
 
     private async Task ResolveUnsaved(UnsavedDecision decision)

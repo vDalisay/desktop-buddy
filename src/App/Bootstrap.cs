@@ -243,7 +243,7 @@ public partial class Bootstrap : Node
         // narrow feature hosts it needs; Workshop itself never polls or locates peer services.
         // Missing Steam/GodotSteam/AppID still selects a null transport and never blocks boot.
         var workshop = new WorkshopBootstrap { Name = nameof(WorkshopBootstrap) };
-        workshop.Configure(characters, characterSelection, environmentCustomization, commandRegistrar);
+        workshop.Configure(characters, characterSelection, sandbox, environmentCustomization, commandRegistrar);
         AddChild(workshop);
 
         var characterRuntime = new CharacterSelectionRuntime

@@ -6,12 +6,13 @@ extends Node
 
 signal bridge_state_changed(available: bool, reason: String)
 signal workshop_item_created(result: int, file_id: int, needs_legal_agreement: bool)
-signal workshop_item_updated(result: int, needs_legal_agreement: bool)
+signal workshop_item_updated(result: int, needs_legal_agreement: bool, file_id: int)
 signal workshop_item_downloaded(result: int, app_id: int, file_id: int)
 
 const EXPECTED_GODOTSTEAM := "4.22"
 const WORKSHOP_FILE_TYPE_COMMUNITY := 0
 const OVERLAY_TO_WEB_PAGE_MODE_DEFAULT := 0
+const INVALID_UGC_UPDATE_HANDLE := -1
 
 const INTERNAL_ROOM_TAG := "DesktopBuddy.RoomPainting"
 const INTERNAL_BUDDY_TAG := "DesktopBuddy.BuddyCharacter"
@@ -140,7 +141,7 @@ func create_item(app_id: int) -> bool:
 
 func start_item_update(app_id: int, file_id: int) -> int:
     if not is_available() or app_id != _workshop_app_id or file_id <= 0:
-        return 0
+        return INVALID_UGC_UPDATE_HANDLE
     return int(_steam.call("startItemUpdate", app_id, file_id))
 
 func set_item_title(update_handle: int, title: String) -> bool:
@@ -175,13 +176,13 @@ func set_item_preview(update_handle: int, absolute_file: String) -> bool:
     return _call_bool("setItemPreview", [update_handle, absolute_file])
 
 func submit_item_update(update_handle: int, change_note: String) -> bool:
-    if not is_available() or update_handle <= 0:
+    if not is_available() or update_handle == INVALID_UGC_UPDATE_HANDLE:
         return false
     _steam.call("submitItemUpdate", update_handle, change_note)
     return true
 
 func get_item_update_progress(update_handle: int) -> Dictionary:
-    if not is_available() or update_handle <= 0:
+    if not is_available() or update_handle == INVALID_UGC_UPDATE_HANDLE:
         return {}
     var value: Variant = _steam.call("getItemUpdateProgress", update_handle)
     return value if typeof(value) == TYPE_DICTIONARY else {}
@@ -275,8 +276,8 @@ func _connect_once(signal_name: StringName, callable: Callable) -> void:
 func _on_item_created(result: int, file_id: int, needs_legal_agreement: bool) -> void:
     workshop_item_created.emit(result, file_id, needs_legal_agreement)
 
-func _on_item_updated(result: int, needs_legal_agreement: bool) -> void:
-    workshop_item_updated.emit(result, needs_legal_agreement)
+func _on_item_updated(result: int, needs_legal_agreement: bool, file_id: int) -> void:
+    workshop_item_updated.emit(result, needs_legal_agreement, file_id)
 
 func _on_item_downloaded(result: int, app_id: int, file_id: int) -> void:
     workshop_item_downloaded.emit(result, app_id, file_id)

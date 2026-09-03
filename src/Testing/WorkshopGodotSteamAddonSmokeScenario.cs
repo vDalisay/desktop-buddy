@@ -64,6 +64,19 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
             if (!addonPresent)
                 return Task.FromResult(Result(checks, $"seed={seed}"));
 
+            bool updateForwarded = false;
+            bridge.Connect(
+                "workshop_item_updated",
+                Callable.From<long, bool, long>((result, needsAgreement, fileId) =>
+                    updateForwarded = result == 1 && !needsAgreement && fileId == 99));
+            bridge.Call("_on_item_updated", 1L, false, 99L);
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_item_updated_callback_shape_matches",
+                updateForwarded,
+                updateForwarded
+                    ? "GodotSteam 4.22 result/legal-agreement/file-ID callback is forwarded."
+                    : "Bridge did not forward the three-argument GodotSteam 4.22 item_updated callback."));
+
             SteamAppIdentity identity = SteamAppIdentityResolver.Resolve();
             bool identityOk = identity.IsConfigured &&
                 identity.RuntimeAppId == SteamAppIdentityResolver.DesktopBuddyBaseAppId &&

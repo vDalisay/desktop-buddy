@@ -90,6 +90,7 @@ public sealed class WorkshopSharingCoordinator
         ReadOnlyMemory<byte> pixels,
         string title,
         string description,
+        ReadOnlyMemory<byte>? previewPng = null,
         IProgress<WorkshopTransferProgress>? progress = null,
         CancellationToken token = default)
     {
@@ -99,7 +100,7 @@ public sealed class WorkshopSharingCoordinator
         try
         {
             Guid operationId = Guid.NewGuid();
-            ShareExportResult exported = await _roomExporter.ExportAsync(pixels, operationId, token);
+            ShareExportResult exported = await _roomExporter.ExportAsync(pixels, operationId, previewPng, token);
             if (!exported.Success || exported.Staging is null)
                 return new WorkshopPublishResult(WorkshopPublishStatus.Failed, 0, exported.Detail);
             return await PublishStagedAsync(

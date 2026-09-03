@@ -99,6 +99,7 @@ public static class ScenarioCatalog
         ["repair_kit"] = () => new RepairKitScenario(),
         ["economy_calibration"] = () => new EconomyCalibrationScenario(),
         ["workshop_emulator_roundtrip"] = () => new WorkshopEmulatorRoundtripScenario(),
+        ["workshop_preview_capture"] = () => new WorkshopPreviewCaptureScenario(),
         ["workshop_godotsteam_addon_smoke"] = () => new WorkshopGodotSteamAddonSmokeScenario(),
     };
 

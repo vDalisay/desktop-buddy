@@ -92,6 +92,9 @@ jobs:
       - name: Workshop emulator roundtrip scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=workshop_emulator_roundtrip --seed=1
 
+      - name: Workshop preview and publish-confirmation scenario
+        run: xvfb-run -a "$GODOT_BIN" --path . -- --scenario=workshop_preview_capture --seed=1
+
       - name: Inventory purchase scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=shop_panel_purchase --seed=1
 

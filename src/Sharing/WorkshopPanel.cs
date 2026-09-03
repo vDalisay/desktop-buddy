@@ -22,6 +22,7 @@ public partial class WorkshopPanel : Window
     private RoomPaintingLibraryStore? _rooms;
     private IRoomPaintingSharingHost? _environment;
     private CharacterSelectionState? _selection;
+    private WorkshopPreviewCapture? _previews;
     private readonly List<Button> _operationButtons = [];
     private LineEdit _title = null!;
     private TextEdit _description = null!;
@@ -32,6 +33,11 @@ public partial class WorkshopPanel : Window
     private VBoxContainer _roomLibrary = null!;
     private Button _publishBuddy = null!;
     private Button _cancel = null!;
+    private Control _publishSuccessBlocker = null!;
+    private PanelContainer _publishSuccessPanel = null!;
+    private Label _publishSuccessMessage = null!;
+    private Button _openPublishedItem = null!;
+    private ulong _publishedFileId;
     private CancellationTokenSource? _activeOperation;
     private bool _built;
     private bool _busy;
@@ -42,12 +48,14 @@ public partial class WorkshopPanel : Window
         WorkshopSharingCoordinator sharing,
         RoomPaintingLibraryStore rooms,
         IRoomPaintingSharingHost environment,
-        CharacterSelectionState selection)
+        CharacterSelectionState selection,
+        WorkshopPreviewCapture previews)
     {
         _sharing = sharing ?? throw new ArgumentNullException(nameof(sharing));
         _rooms = rooms ?? throw new ArgumentNullException(nameof(rooms));
         _environment = environment ?? throw new ArgumentNullException(nameof(environment));
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
+        _previews = previews ?? throw new ArgumentNullException(nameof(previews));
         _selection.Changed -= OnCharacterSelectionChanged;
         _selection.Changed += OnCharacterSelectionChanged;
         if (_built) RefreshAvailability();
@@ -85,7 +93,9 @@ public partial class WorkshopPanel : Window
     {
         if (!_built || _sharing is null) return;
         RefreshAvailability();
-        PopupCentered();
+        Rect2I usable = DisplayServer.ScreenGetUsableRect(DisplayServer.WindowGetCurrentScreen());
+        Position = usable.Position + ((usable.Size - Size) / 2);
+        Show();
         _ = RefreshAsync();
     }
 
@@ -204,18 +214,46 @@ public partial class WorkshopPanel : Window
             CustomMinimumSize = new Vector2(0, 34),
         };
         column.AddChild(_status);
+
+        var overlay = new Control { Name = "WorkshopModalOverlay", MouseFilter = Control.MouseFilterEnum.Ignore };
+        root.AddChild(overlay);
+        overlay.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _publishSuccessBlocker = Win98Dialog.Blocker(overlay, "WorkshopPublishSuccessBlocker");
+        _publishSuccessPanel = Win98Dialog.Create(
+            "WorkshopPublishSuccessDialog",
+            "Published!",
+            new Vector2(390, 170),
+            out VBoxContainer successBody,
+            HidePublishSuccess,
+            draggable: false);
+        overlay.AddChild(_publishSuccessPanel);
+        _publishSuccessMessage = new Label
+        {
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        successBody.AddChild(_publishSuccessMessage);
+        var successActions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+        successBody.AddChild(successActions);
+        _openPublishedItem = Win98Dialog.Action(successActions, "Open Workshop Page...", OpenPublishedItem);
+        _openPublishedItem.TooltipText = "Open this Steam Workshop item so you can edit its details and images.";
+        Win98Dialog.Action(successActions, "Done", HidePublishSuccess);
     }
 
     private async Task PublishRoomAsync()
     {
-        if (_busy || _sharing is null || _environment is null) return;
+        if (_busy || _sharing is null || _environment is null || _previews is null) return;
         byte[] pixels = _environment.SnapshotRoomPaintingForSharing();
+        SetStatus("Preparing room preview...");
         await RunBusyAsync(async (progress, token) =>
         {
+            byte[] preview = await _previews.CaptureRoomAsync(token);
+            SetStatus("Publishing room painting...");
             WorkshopPublishResult result = await _sharing.PublishRoomAsync(
                 pixels,
                 _title.Text,
                 _description.Text,
+                preview,
                 progress,
                 token);
             SetPublishStatus(result, "Room painting");
@@ -224,14 +262,17 @@ public partial class WorkshopPanel : Window
 
     private async Task PublishBuddyAsync()
     {
-        if (_busy || _sharing is null || _selection?.ActiveCharacterId is not Guid id) return;
+        if (_busy || _sharing is null || _previews is null || _selection?.ActiveCharacterId is not Guid id) return;
+        SetStatus("Preparing buddy preview...");
         await RunBusyAsync(async (progress, token) =>
         {
+            byte[] preview = await _previews.CaptureBuddyAsync(id, token);
+            SetStatus("Publishing active buddy...");
             WorkshopPublishResult result = await _sharing.PublishCharacterAsync(
                 id,
                 _title.Text,
                 _description.Text,
-                previewPng: null,
+                preview,
                 progress,
                 token);
             SetPublishStatus(result, "Buddy");
@@ -255,10 +296,15 @@ public partial class WorkshopPanel : Window
         }
         catch (Exception exception)
         {
-            RebuildSubscriptions(Array.Empty<PublishedWorkshopItem>());
-            SetStatus($"Could not refresh subscriptions: {exception.Message}");
+            if (!_busy)
+            {
+                RebuildSubscriptions(Array.Empty<PublishedWorkshopItem>());
+                SetStatus($"Could not refresh subscriptions: {exception.Message}");
+            }
             return;
         }
+
+        if (_busy) return;
 
         if (!query.IsSuccess)
         {
@@ -415,6 +461,7 @@ public partial class WorkshopPanel : Window
     private void OnCloseRequested()
     {
         CancelActiveOperation();
+        HidePublishSuccess();
         Hide();
     }
 
@@ -436,6 +483,29 @@ public partial class WorkshopPanel : Window
             _ => result.Detail ?? $"{noun} could not be published.",
         };
         SetStatus(text);
+        if (result.Status == WorkshopPublishStatus.Published)
+            ShowPublishSuccess(noun, result.PublishedFileId);
+    }
+
+    private void ShowPublishSuccess(string noun, ulong publishedFileId)
+    {
+        _publishedFileId = publishedFileId;
+        _publishSuccessMessage.Text = $"{noun} published successfully. Open its Steam Workshop page to edit the title, description, or images.";
+        _publishSuccessBlocker.Visible = true;
+        _publishSuccessPanel.Visible = true;
+        Callable.From(_openPublishedItem.GrabFocus).CallDeferred();
+    }
+
+    private void HidePublishSuccess()
+    {
+        if (GodotObject.IsInstanceValid(_publishSuccessBlocker)) _publishSuccessBlocker.Visible = false;
+        if (GodotObject.IsInstanceValid(_publishSuccessPanel)) _publishSuccessPanel.Visible = false;
+    }
+
+    private void OpenPublishedItem()
+    {
+        if (_publishedFileId != 0) _sharing?.OpenWorkshopItem(_publishedFileId);
+        HidePublishSuccess();
     }
 
     private void RefreshAvailability()

@@ -26,11 +26,16 @@ public sealed class RoomShareExporter
     public Task<ShareExportResult> ExportAsync(
         ReadOnlyMemory<byte> pixels,
         Guid operationId,
+        ReadOnlyMemory<byte>? previewPng = null,
         CancellationToken token = default) => Task.Run(
-        () => Export(pixels.Span, operationId, token),
+        () => Export(pixels.Span, operationId, previewPng, token),
         CancellationToken.None);
 
-    public ShareExportResult Export(ReadOnlySpan<byte> pixels, Guid operationId, CancellationToken token = default)
+    public ShareExportResult Export(
+        ReadOnlySpan<byte> pixels,
+        Guid operationId,
+        ReadOnlyMemory<byte>? previewPng = null,
+        CancellationToken token = default)
     {
         if (pixels.Length != EnvironmentCanvasPolicy.Bytes)
             return new ShareExportResult(false, null, null, "Room canvas must be exactly 512x512 RGBA8.");
@@ -54,8 +59,10 @@ public sealed class RoomShareExporter
             WorkshopStagingStore.WriteOwnedFile(staging.ContentRoot, entry.Path, png);
             WorkshopStagingStore.WriteOwnedFile(staging.ContentRoot, ShareManifestPolicy.ManifestFileName, manifestBytes);
 
-            // For a 2D room painting the content itself is a valid and faithful Workshop preview.
-            File.WriteAllBytes(staging.PreviewPath, png);
+            ReadOnlyMemory<byte> preview = previewPng is { Length: > 0 } supplied ? supplied : png;
+            if (preview.Length > 2 * 1024 * 1024)
+                throw new InvalidDataException("Workshop preview exceeds the 2 MiB local preview budget.");
+            File.WriteAllBytes(staging.PreviewPath, preview.ToArray());
             token.ThrowIfCancellationRequested();
 
             ShareFolderReadResult verified = _reader.Read(staging.ContentRoot, ShareContentType.RoomPainting);

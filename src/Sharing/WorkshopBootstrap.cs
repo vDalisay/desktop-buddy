@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Environment;
 using DesktopBuddy.Persistence.Characters;
@@ -22,6 +23,7 @@ public partial class WorkshopBootstrap : Node
     private CharacterStore? _characters;
     private CharacterSelectionState? _selection;
     private IRoomPaintingSharingHost? _environment;
+    private SandboxRoot? _sandbox;
     private ITopLevelCommandRegistrar? _commandRegistrar;
     private WorkshopSharingCoordinator? _sharing;
     private WorkshopStagingStore? _staging;
@@ -38,11 +40,13 @@ public partial class WorkshopBootstrap : Node
     public void Configure(
         CharacterStore characters,
         CharacterSelectionState selection,
+        SandboxRoot sandbox,
         IRoomPaintingSharingHost? environment = null,
         ITopLevelCommandRegistrar? commandRegistrar = null)
     {
         _characters = characters ?? throw new ArgumentNullException(nameof(characters));
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
+        _sandbox = sandbox ?? throw new ArgumentNullException(nameof(sandbox));
         _environment = environment;
         _commandRegistrar = commandRegistrar;
     }
@@ -67,7 +71,7 @@ public partial class WorkshopBootstrap : Node
 
     private void ComposeUi()
     {
-        if (_sharing is null || _rooms is null || _selection is null)
+        if (_sharing is null || _rooms is null || _selection is null || _characters is null || _sandbox is null)
             return;
         if (_environment is null || _commandRegistrar is null)
         {
@@ -75,8 +79,13 @@ public partial class WorkshopBootstrap : Node
             return;
         }
 
+        var previews = new WorkshopPreviewCapture(_characters, _sandbox.Buddy, _sandbox.VisualPresenter)
+        {
+            Name = nameof(WorkshopPreviewCapture),
+        };
+        AddChild(previews);
         _panel = new WorkshopPanel { Name = nameof(WorkshopPanel) };
-        _panel.Configure(_sharing, _rooms, _environment, _selection);
+        _panel.Configure(_sharing, _rooms, _environment, _selection, previews);
         AddChild(_panel);
         _commandRegistration = _commandRegistrar.RegisterTopLevelCommand(
             new TopLevelCommandDefinition(

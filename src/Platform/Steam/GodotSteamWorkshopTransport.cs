@@ -15,6 +15,7 @@ namespace DesktopBuddy.Platform.Steam;
 public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
 {
     private const int SteamResultOk = 1;
+    private const long InvalidUgcUpdateHandle = -1;
     private readonly object _callbackGate = new();
     private readonly WorkshopPublishCallbackLane _publishCallbacks = new();
     private readonly Dictionary<ulong, PendingDownload> _downloads = new();
@@ -156,7 +157,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
             return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Another Workshop publish operation is pending."));
 
         long handle = CallInt64("start_item_update", (long)_workshopOwnerAppId, checked((long)update.PublishedFileId));
-        if (handle <= 0)
+        if (handle == InvalidUgcUpdateHandle)
             return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Steam returned an invalid UGC update handle."));
 
         if (!CallBool("set_item_title", handle, update.Title) ||
@@ -170,7 +171,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
             return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Steam rejected one or more Workshop update fields."));
         }
 
-        if (!_publishCallbacks.TryBeginUpdate(handle, progress, out Task<WorkshopUpdateCallbackSignal> callback))
+        if (!_publishCallbacks.TryBeginUpdate(handle, update.PublishedFileId, progress, out Task<WorkshopUpdateCallbackSignal> callback))
             return Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Failed, update.PublishedFileId, false, Detail: "Another Workshop publish operation became pending."));
 
         if (!CallBool("submit_item_update", handle, update.ChangeNote))
@@ -336,7 +337,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
     {
         if (_signalsConnected || !GodotObject.IsInstanceValid(_bridge)) return;
         _bridge!.Connect("workshop_item_created", Callable.From<long, long, bool>(OnItemCreated));
-        _bridge.Connect("workshop_item_updated", Callable.From<long, bool>(OnItemUpdated));
+        _bridge.Connect("workshop_item_updated", Callable.From<long, bool, long>(OnItemUpdated));
         _bridge.Connect("workshop_item_downloaded", Callable.From<long, long, long>(OnItemDownloaded));
         _signalsConnected = true;
     }
@@ -349,10 +350,11 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
             needsAgreement);
     }
 
-    private void OnItemUpdated(long result, bool needsAgreement)
+    private void OnItemUpdated(long result, bool needsAgreement, long fileId)
     {
         if (!_publishCallbacks.CompleteUpdate(
                 checked((int)result),
+                fileId <= 0 ? 0UL : checked((ulong)fileId),
                 needsAgreement,
                 out IProgress<WorkshopTransferProgress>? progress))
             return;

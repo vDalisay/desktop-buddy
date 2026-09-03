@@ -57,6 +57,8 @@ V1 Workshop content is hostile **data**, never trusted project content.
 
 - Room packages contain only the versioned manifest plus the 512×512 RGBA8 `environment/background.png` payload and a generated preview outside the imported content payload.
 - Buddy packages contain only the versioned manifest, `character.json`, and declared whitelisted 512×512 RGBA8 paint PNGs.
+- A room preview is a complete capture of the current Win98 Play window with its painted background visible and the buddy omitted. A buddy preview uses the canonical frontal Paint Buddy rig/camera without editor controls.
+- A successful publish shows an in-game confirmation with an explicit action that opens the new Steam Workshop item page for editing.
 - Manifest paths are exact-whitelist relative paths. Absolute paths, traversal, duplicates, links/reparse points, undeclared files, size-cap violations, hash mismatches, malformed/future schemas, and invalid image dimensions are rejected before local import.
 - Steam install/cache folders are copied **once** into project-owned incoming staging. Content detection and final import validate that same immutable snapshot; no later stage rereads Steam's mutable cache.
 - Hostile-data validation failures remain typed validation results. Expected malformed/oversized Workshop data does not escape the validation boundary as exception-driven application control flow.
@@ -89,6 +91,11 @@ Live Workshop verification still requires the Steamworks configuration for AppID
 4. Steam Cloud quota required for Workshop preview images is configured.
 5. Workshop page metadata/branding is configured sufficiently for the intended visibility.
 6. The Workshop Legal Agreement path can be exercised with an account that has not yet accepted the current agreement.
+
+The 2026-09-03 Windows live-publish attempt confirmed that item 1 is still open: Steam created
+the remote item, then `workshop_log.txt` rejected its upload with `no workshop depot found`.
+The Workshop file-transfer/depot configuration must be corrected and published before rerunning
+the real-account matrix.
 
 Desktop Buddy resolves Steam identity in this order:
 

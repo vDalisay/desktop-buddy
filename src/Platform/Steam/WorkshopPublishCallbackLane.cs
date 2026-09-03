@@ -24,6 +24,7 @@ internal sealed class WorkshopPublishCallbackLane
     private TaskCompletionSource<WorkshopCreateCallbackSignal>? _create;
     private TaskCompletionSource<WorkshopUpdateCallbackSignal>? _update;
     private long _updateHandle;
+    private ulong _updatePublishedFileId;
     private IProgress<WorkshopTransferProgress>? _uploadProgress;
 
     public bool HasPendingPublish
@@ -77,10 +78,12 @@ internal sealed class WorkshopPublishCallbackLane
 
     public bool TryBeginUpdate(
         long updateHandle,
+        ulong publishedFileId,
         IProgress<WorkshopTransferProgress>? uploadProgress,
         out Task<WorkshopUpdateCallbackSignal> callback)
     {
-        if (updateHandle <= 0) throw new ArgumentOutOfRangeException(nameof(updateHandle));
+        if (updateHandle == -1) throw new ArgumentOutOfRangeException(nameof(updateHandle));
+        if (publishedFileId == 0) throw new ArgumentOutOfRangeException(nameof(publishedFileId));
         lock (_gate)
         {
             if (_create is not null || _update is not null)
@@ -91,6 +94,7 @@ internal sealed class WorkshopPublishCallbackLane
 
             _update = NewCompletion<WorkshopUpdateCallbackSignal>();
             _updateHandle = updateHandle;
+            _updatePublishedFileId = publishedFileId;
             _uploadProgress = uploadProgress;
             callback = _update.Task;
             return true;
@@ -106,6 +110,7 @@ internal sealed class WorkshopPublishCallbackLane
             pending = _update;
             _update = null;
             _updateHandle = 0;
+            _updatePublishedFileId = 0;
             _uploadProgress = null;
         }
         pending?.TrySetResult(new WorkshopUpdateCallbackSignal(-1, false));
@@ -119,12 +124,13 @@ internal sealed class WorkshopPublishCallbackLane
         {
             updateHandle = _updateHandle;
             progress = _uploadProgress;
-            return _update is not null && updateHandle > 0 && progress is not null;
+            return _update is not null && updateHandle != -1 && progress is not null;
         }
     }
 
     public bool CompleteUpdate(
         int nativeResult,
+        ulong publishedFileId,
         bool needsLegalAgreement,
         out IProgress<WorkshopTransferProgress>? progress)
     {
@@ -132,7 +138,7 @@ internal sealed class WorkshopPublishCallbackLane
         lock (_gate)
         {
             pending = _update;
-            if (pending is null)
+            if (pending is null || publishedFileId != _updatePublishedFileId)
             {
                 progress = null;
                 return false;
@@ -141,6 +147,7 @@ internal sealed class WorkshopPublishCallbackLane
             progress = _uploadProgress;
             _update = null;
             _updateHandle = 0;
+            _updatePublishedFileId = 0;
             _uploadProgress = null;
         }
         pending.TrySetResult(new WorkshopUpdateCallbackSignal(nativeResult, needsLegalAgreement));
@@ -162,6 +169,7 @@ internal sealed class WorkshopPublishCallbackLane
             _create = null;
             _update = null;
             _updateHandle = 0;
+            _updatePublishedFileId = 0;
             _uploadProgress = null;
         }
 

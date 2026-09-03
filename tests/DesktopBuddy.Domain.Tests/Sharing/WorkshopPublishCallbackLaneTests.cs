@@ -15,7 +15,7 @@ public sealed class WorkshopPublishCallbackLaneTests
         Assert.True(lane.TryBeginCreate(out Task<WorkshopCreateCallbackSignal> first));
         Assert.True(lane.HasPendingPublish);
         Assert.False(lane.TryBeginCreate(out _));
-        Assert.False(lane.TryBeginUpdate(41, uploadProgress: null, out _));
+        Assert.False(lane.TryBeginUpdate(41, 9001, uploadProgress: null, out _));
 
         Assert.True(lane.CompleteCreate(nativeResult: 1, publishedFileId: 9001, needsLegalAgreement: true));
         WorkshopCreateCallbackSignal signal = await first;
@@ -26,8 +26,8 @@ public sealed class WorkshopPublishCallbackLaneTests
         Assert.False(lane.HasPendingPublish);
         Assert.False(lane.CompleteCreate(nativeResult: 1, publishedFileId: 9999, needsLegalAgreement: false));
 
-        Assert.True(lane.TryBeginUpdate(42, uploadProgress: null, out Task<WorkshopUpdateCallbackSignal> update));
-        Assert.True(lane.CompleteUpdate(1, false, out _));
+        Assert.True(lane.TryBeginUpdate(42, 9001, uploadProgress: null, out Task<WorkshopUpdateCallbackSignal> update));
+        Assert.True(lane.CompleteUpdate(1, 9001, false, out _));
         Assert.Equal(1, (await update).NativeResult);
     }
 
@@ -52,14 +52,17 @@ public sealed class WorkshopPublishCallbackLaneTests
         var lane = new WorkshopPublishCallbackLane();
         var progress = new RecordingProgress();
 
-        Assert.True(lane.TryBeginUpdate(77, progress, out Task<WorkshopUpdateCallbackSignal> callback));
+        const long signedUnsignedHandle = -1095108834080843230;
+        Assert.True(lane.TryBeginUpdate(signedUnsignedHandle, 7007, progress, out Task<WorkshopUpdateCallbackSignal> callback));
         Assert.True(lane.HasPendingPublish);
         Assert.False(lane.TryBeginCreate(out _));
         Assert.True(lane.TryGetUploadProgress(out long handle, out IProgress<WorkshopTransferProgress>? capturedProgress));
-        Assert.Equal(77, handle);
+        Assert.Equal(signedUnsignedHandle, handle);
         Assert.Same(progress, capturedProgress);
 
-        Assert.True(lane.CompleteUpdate(nativeResult: 1, needsLegalAgreement: false, out IProgress<WorkshopTransferProgress>? completedProgress));
+        Assert.False(lane.CompleteUpdate(nativeResult: 1, publishedFileId: 7008, needsLegalAgreement: false, out _));
+        Assert.True(lane.HasPendingPublish);
+        Assert.True(lane.CompleteUpdate(nativeResult: 1, publishedFileId: 7007, needsLegalAgreement: false, out IProgress<WorkshopTransferProgress>? completedProgress));
         WorkshopUpdateCallbackSignal signal = await callback;
 
         Assert.Equal(1, signal.NativeResult);
@@ -67,7 +70,8 @@ public sealed class WorkshopPublishCallbackLaneTests
         Assert.Same(progress, completedProgress);
         Assert.False(lane.HasPendingPublish);
         Assert.False(lane.TryGetUploadProgress(out _, out _));
-        Assert.False(lane.CompleteUpdate(nativeResult: 1, needsLegalAgreement: false, out _));
+        Assert.False(lane.CompleteUpdate(nativeResult: 1, publishedFileId: 7007, needsLegalAgreement: false, out _));
+        Assert.Throws<ArgumentOutOfRangeException>(() => lane.TryBeginUpdate(-1, 7007, uploadProgress: null, out _));
     }
 
     [Fact]
@@ -75,7 +79,7 @@ public sealed class WorkshopPublishCallbackLaneTests
     {
         var lane = new WorkshopPublishCallbackLane();
         var progress = new RecordingProgress();
-        Assert.True(lane.TryBeginUpdate(88, progress, out Task<WorkshopUpdateCallbackSignal> callback));
+        Assert.True(lane.TryBeginUpdate(88, 8008, progress, out Task<WorkshopUpdateCallbackSignal> callback));
 
         lane.RejectUpdateStart();
 
@@ -98,12 +102,12 @@ public sealed class WorkshopPublishCallbackLaneTests
         Assert.False(lane.HasPendingPublish);
         Assert.False(lane.CompleteCreate(1, 1234, false));
 
-        Assert.True(lane.TryBeginUpdate(99, uploadProgress: null, out Task<WorkshopUpdateCallbackSignal> update));
+        Assert.True(lane.TryBeginUpdate(99, 9009, uploadProgress: null, out Task<WorkshopUpdateCallbackSignal> update));
         lane.Shutdown();
 
         Assert.Equal(-1, (await update).NativeResult);
         Assert.False(lane.HasPendingPublish);
-        Assert.False(lane.CompleteUpdate(1, false, out _));
+        Assert.False(lane.CompleteUpdate(1, 9009, false, out _));
     }
 
     private sealed class RecordingProgress : IProgress<WorkshopTransferProgress>

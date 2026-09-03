@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Domain.Painting;
@@ -131,6 +132,32 @@ public partial class BuddyVisualRigView : Node3D
 
         UpdateConnectors(frame);
         UpdateFace(frame);
+    }
+
+    /// <summary>Canonical physics-free front pose shared by Paint Buddy and generated previews.</summary>
+    public void ApplyCanonicalPreviewPose()
+    {
+        EnsureInitialized();
+        BuddyVisualPartPose Pose(BuddyPartId id)
+        {
+            BuddyVisualTransform transform = _geometrySource.ReadTransform(id);
+            return new BuddyVisualPartPose(
+                transform,
+                LanePosition(id, transform.Position),
+                Vector3.Zero);
+        }
+
+        ApplyPose(new BuddyVisualPoseFrame(
+            Pose(BuddyPartId.Head),
+            Pose(BuddyPartId.Torso),
+            Pose(BuddyPartId.LeftHand),
+            Pose(BuddyPartId.RightHand),
+            Pose(BuddyPartId.LeftFoot),
+            Pose(BuddyPartId.RightFoot),
+            0.0f,
+            BuiltInCharacterAppearance.NeutralFaceState,
+            string.Empty,
+            0.0f));
     }
 
     /// <summary>
