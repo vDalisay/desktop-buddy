@@ -15,7 +15,7 @@ using Godot;
 
 namespace DesktopBuddy.Testing;
 
-/// <summary>Rendered regression gate for both locally generated Workshop preview images.</summary>
+/// <summary>Rendered regression gate for both locally generated Workshop preview images and Workshop window UX.</summary>
 public sealed class WorkshopPreviewCaptureScenario : IScenario
 {
     public string Id => "workshop_preview_capture";
@@ -69,8 +69,9 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
             string sharingRoot = Path.Combine(root, "sharing");
             var staging = new WorkshopStagingStore(sharingRoot);
             var rooms = new RoomPaintingLibraryStore(Path.Combine(root, "rooms"));
+            var transport = new DirectoryWorkshopTransport(Path.Combine(root, "emulator"), firstId: 9200);
             var sharing = new WorkshopSharingCoordinator(
-                new DirectoryWorkshopTransport(Path.Combine(root, "emulator"), firstId: 9200),
+                transport,
                 staging,
                 new RoomShareExporter(staging, "scenario"),
                 new RoomShareImporter(staging, rooms),
@@ -80,6 +81,16 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
             panel.Configure(sharing, rooms, new RoomHost(), new CharacterSelectionState(id), capture);
             tree.Root.AddChild(panel);
             panel.Open();
+
+            bool win98Chrome = panel.Borderless &&
+                panel.FindChild("TitleBar", true, false) is PanelContainer &&
+                panel.FindChild("CloseBox", true, false) is Button &&
+                panel.FindChild("Win98StatusBar", true, false) is PanelContainer;
+            checks.Add(new StartupCheck(
+                "workshop_window_uses_owned_win98_chrome",
+                win98Chrome,
+                $"borderless={panel.Borderless} title={panel.FindChild("TitleBar", true, false) is not null} status={panel.FindChild("Win98StatusBar", true, false) is not null}"));
+
             Button publish = panel.FindChildren("*", nameof(Button), true, false)
                 .OfType<Button>()
                 .Single(button => button.Text == "Publish Active Buddy");
@@ -100,6 +111,40 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
                 "workshop_publish_success_offers_item_page",
                 popupOk && !success.Visible,
                 $"shown={popupOk} dismissed={!success.Visible}"));
+
+            Button refresh = panel.FindChildren("*", nameof(Button), true, false)
+                .OfType<Button>()
+                .Single(button => button.Text == "Refresh Subscriptions");
+            for (int frame = 0; frame < 30 && refresh.Disabled; frame++)
+                await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            refresh.EmitSignal(Button.SignalName.Pressed);
+
+            Button? unsubscribe = null;
+            for (int frame = 0; frame < 180 && unsubscribe is null; frame++)
+            {
+                await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+                unsubscribe = panel.FindChildren("*", nameof(Button), true, false)
+                    .OfType<Button>()
+                    .FirstOrDefault(button => button.Text == "Unsubscribe");
+            }
+            bool unsubscribeComposed = unsubscribe is not null &&
+                unsubscribe.TooltipText.Contains("Imported local copies are kept", StringComparison.Ordinal);
+            if (unsubscribe is not null)
+            {
+                unsubscribe.EmitSignal(Button.SignalName.Pressed);
+                for (int frame = 0; frame < 180 && panel.FindChild("Unsubscribe9200", true, false) is not null; frame++)
+                    await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            }
+
+            WorkshopSubscriptionQueryResult remaining =
+                await transport.GetSubscribedItemsAsync(CancellationToken.None);
+            bool unsubscribeOk = unsubscribeComposed && remaining.IsSuccess &&
+                remaining.Items.All(item => item.PublishedFileId != 9200UL);
+            checks.Add(new StartupCheck(
+                "workshop_subscription_row_can_unsubscribe_without_touching_local_content",
+                unsubscribeOk,
+                $"button={unsubscribeComposed} remaining={remaining.Items.Count} localCharacter={store.Paths.Directory(id)}"));
+
             panel.QueueFree();
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
