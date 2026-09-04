@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Platform.Steam;
@@ -19,7 +21,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
 
     public string Id => "workshop_godotsteam_addon_smoke";
 
-    public Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
+    public async Task<ScenarioResult> RunAsync(SceneTree tree, ulong seed)
     {
         var checks = new List<StartupCheck>();
         Node? bridge = null;
@@ -34,7 +36,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                 scriptLoaded,
                 scriptLoaded ? BridgeScriptPath : "Bridge script could not be loaded."));
             if (script is null)
-                return Task.FromResult(Result(checks, $"seed={seed}"));
+                return Result(checks, $"seed={seed}");
 
             GodotObject instance = (GodotObject)script.New();
             if (instance is not Node bridgeNode)
@@ -43,7 +45,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     "workshop_godotsteam_bridge_instantiates",
                     false,
                     "Bridge script did not instantiate as a Node."));
-                return Task.FromResult(Result(checks, $"seed={seed}"));
+                return Result(checks, $"seed={seed}");
             }
 
             bridge = bridgeNode;
@@ -62,7 +64,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     ? "GodotSteam Steam API object is discoverable."
                     : "Pinned GodotSteam addon was materialized but no Steam API object is discoverable."));
             if (!addonPresent)
-                return Task.FromResult(Result(checks, $"seed={seed}"));
+                return Result(checks, $"seed={seed}");
 
             bool updateForwarded = false;
             bridge.Connect(
@@ -77,6 +79,19 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     ? "GodotSteam 4.22 result/legal-agreement/file-ID callback is forwarded."
                     : "Bridge did not forward the three-argument GodotSteam 4.22 item_updated callback."));
 
+            bool queryForwarded = false;
+            bridge.Connect(
+                "workshop_query_completed",
+                Callable.From<long, long, long>((handle, result, returned) =>
+                    queryForwarded = handle == 7 && result == 1 && returned == 2));
+            bridge.Call("_on_ugc_query_completed", 7L, 1L, 2L, 2L, false, string.Empty);
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_query_callback_shape_matches",
+                queryForwarded,
+                queryForwarded
+                    ? "GodotSteam 4.22 query handle/result/count callback is forwarded."
+                    : "Bridge did not forward the GodotSteam 4.22 ugc_query_completed callback."));
+
             SteamAppIdentity identity = SteamAppIdentityResolver.Resolve();
             bool identityOk = identity.IsConfigured &&
                 identity.RuntimeAppId == SteamAppIdentityResolver.DesktopBuddyBaseAppId &&
@@ -86,7 +101,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                 identityOk,
                 $"runtime={identity.RuntimeAppId} owner={identity.WorkshopOwnerAppId}"));
             if (!identityOk)
-                return Task.FromResult(Result(checks, $"seed={seed}"));
+                return Result(checks, $"seed={seed}");
 
             transport = new GodotSteamWorkshopTransport { Name = "GodotSteamAddonSmokeTransport" };
             tree.Root.AddChild(transport);
@@ -110,9 +125,18 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     "workshop_godotsteam_transport_keeps_app_identities",
                     identitiesKept,
                     $"runtime={transport.RuntimeAppId} owner={transport.WorkshopOwnerAppId}"));
+
+                WorkshopSubscriptionQueryResult subscriptions =
+                    await ((ISteamWorkshopTransport)transport).GetSubscribedItemsAsync(CancellationToken.None);
+                bool metadataLoaded = subscriptions.IsSuccess && subscriptions.Items.All(item =>
+                    !string.Equals(item.DisplayName, $"Workshop Item {item.PublishedFileId}", StringComparison.Ordinal));
+                checks.Add(new StartupCheck(
+                    "workshop_godotsteam_subscription_metadata_loads",
+                    metadataLoaded,
+                    $"status={subscriptions.Status} items={subscriptions.Items.Count}"));
             }
 
-            return Task.FromResult(Result(checks, $"seed={seed} initialized={initialized}"));
+            return Result(checks, $"seed={seed} initialized={initialized}");
         }
         catch (Exception exception)
         {
@@ -120,7 +144,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                 "workshop_godotsteam_smoke_has_no_unhandled_exception",
                 false,
                 $"{exception.GetType().Name}: {exception.Message}"));
-            return Task.FromResult(Result(checks, $"seed={seed}"));
+            return Result(checks, $"seed={seed}");
         }
         finally
         {

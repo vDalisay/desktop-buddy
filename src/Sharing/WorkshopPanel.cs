@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Environment;
@@ -25,10 +26,11 @@ public partial class WorkshopPanel : Window
     private CharacterSelectionState? _selection;
     private WorkshopPreviewCapture? _previews;
     private readonly List<Button> _operationButtons = [];
+    private readonly Dictionary<ulong, PublishedWorkshopItem> _itemMetadata = [];
     private LineEdit _title = null!;
     private TextEdit _description = null!;
     private Label _availability = null!;
-    private Label _status = null!;
+    private LineEdit _status = null!;
     private ProgressBar _progress = null!;
     private VBoxContainer _subscriptions = null!;
     private VBoxContainer _roomLibrary = null!;
@@ -244,21 +246,17 @@ public partial class WorkshopPanel : Window
         _cancel.Pressed += CancelActiveOperation;
         progressRow.AddChild(_cancel);
 
-        var statusPanel = new PanelContainer
+        _status = new LineEdit
         {
-            Name = "Win98StatusBar",
-            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(36)),
-        };
-        statusPanel.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
-        chrome.AddChild(statusPanel);
-        _status = new Label
-        {
+            Name = "WorkshopStatusText",
             Text = "Ready.",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            Editable = false,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(24)),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        statusPanel.AddChild(_status);
+        _status.AddThemeColorOverride("font_uneditable_color", Win98ThemeFactory.Dark);
+        column.AddChild(_status);
 
         var resizeGrip = new Control
         {
@@ -448,7 +446,25 @@ public partial class WorkshopPanel : Window
 
         IReadOnlyList<PublishedWorkshopItem> items = query.Items;
         RebuildSubscriptions(items);
+        await RefreshImportedRoomMetadataAsync();
         SetStatus(items.Count == 0 ? "No subscribed Desktop Buddy items found." : $"Found {items.Count} subscribed Workshop item(s).");
+    }
+
+    private async Task RefreshImportedRoomMetadataAsync()
+    {
+        if (_rooms is null || _sharing is null) return;
+        ulong[] missingIds = _rooms.List()
+            .Where(room => room.WorkshopItemId.HasValue && !_itemMetadata.ContainsKey(room.WorkshopItemId.Value))
+            .Select(room => room.WorkshopItemId!.Value)
+            .Distinct()
+            .ToArray();
+        if (missingIds.Length == 0) return;
+
+        WorkshopSubscriptionQueryResult query = await _sharing.GetItemDetailsAsync(missingIds);
+        if (!query.IsSuccess) return;
+        foreach (PublishedWorkshopItem item in query.Items)
+            _itemMetadata[item.PublishedFileId] = item;
+        RefreshRoomLibrary();
     }
 
     private void RebuildSubscriptions(IReadOnlyList<PublishedWorkshopItem> items)
@@ -456,15 +472,18 @@ public partial class WorkshopPanel : Window
         Clear(_subscriptions);
         foreach (PublishedWorkshopItem item in items)
         {
+            _itemMetadata[item.PublishedFileId] = item;
             var row = new HBoxContainer { Name = $"SubscriptionRow{item.PublishedFileId}" };
-            var label = new Label
+            var itemButton = new Button
             {
                 Text = item.DisplayName,
                 TooltipText = $"Steam Workshop item {item.PublishedFileId}",
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+                Alignment = HorizontalAlignment.Left,
             };
-            row.AddChild(label);
+            itemButton.Pressed += () => ShowDescription(item.DisplayName, item.Description);
+            row.AddChild(itemButton);
             Button open = new() { Text = "Open", TooltipText = "Open this item in your browser." };
             open.Pressed += () => _sharing?.OpenWorkshopItem(item.PublishedFileId);
             row.AddChild(open);
@@ -481,6 +500,7 @@ public partial class WorkshopPanel : Window
             row.AddChild(unsubscribe);
             _subscriptions.AddChild(row);
         }
+        RefreshRoomLibrary();
     }
 
     private async Task UnsubscribeAsync(PublishedWorkshopItem item)
@@ -553,18 +573,50 @@ public partial class WorkshopPanel : Window
         IReadOnlyList<RoomPaintingLibraryEntry> rooms = _rooms.List();
         foreach (RoomPaintingLibraryEntry room in rooms)
         {
-            var row = new HBoxContainer();
-            var label = new Label
+            var row = new VBoxContainer();
+            PublishedWorkshopItem? item = room.WorkshopItemId is ulong itemId &&
+                _itemMetadata.TryGetValue(itemId, out PublishedWorkshopItem? metadata)
+                    ? metadata
+                    : null;
+            string displayName = item?.DisplayName ?? room.DisplayName;
+            string description = item?.Description ?? room.Description;
+            var itemButton = new Button
             {
-                Text = room.DisplayName,
-                TooltipText = "Local imported copy. It remains available if you unsubscribe from the Workshop item.",
+                Name = $"ImportedRoom{room.Id:N}",
+                Text = displayName,
+                TooltipText = $"{displayName}\nLocal imported copy. It remains available if you unsubscribe from the Workshop item.",
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+                Alignment = HorizontalAlignment.Left,
             };
-            row.AddChild(label);
+            itemButton.Pressed += () => ShowDescription(displayName, description);
+            row.AddChild(itemButton);
+            var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+            row.AddChild(actions);
+            if (room.WorkshopItemId is ulong workshopItemId)
+            {
+                PublishedWorkshopItem remote = item ?? new PublishedWorkshopItem(
+                    workshopItemId,
+                    WorkshopItemState.None,
+                    displayName,
+                    Description: description);
+                Button open = new() { Text = "Open", TooltipText = "Open this item in your browser." };
+                open.Pressed += () => _sharing?.OpenWorkshopItem(workshopItemId);
+                actions.AddChild(open);
+                Button import = new() { Text = "Import", TooltipText = "Import the latest Workshop version as another local copy." };
+                import.Pressed += () => RequestImport(remote);
+                actions.AddChild(import);
+                Button unsubscribe = new()
+                {
+                    Text = "Unsubscribe",
+                    TooltipText = "Stop following this Workshop item in Steam. Imported local copies are kept.",
+                };
+                unsubscribe.Pressed += () => _ = UnsubscribeAsync(remote);
+                actions.AddChild(unsubscribe);
+            }
             Button apply = new() { Text = "Apply" };
             apply.Pressed += () => _ = ApplyRoomAsync(room);
-            row.AddChild(apply);
+            actions.AddChild(apply);
             _roomLibrary.AddChild(row);
         }
     }
@@ -709,6 +761,11 @@ public partial class WorkshopPanel : Window
     {
         if (GodotObject.IsInstanceValid(_status)) _status.Text = text;
     }
+
+    private void ShowDescription(string displayName, string description) =>
+        SetStatus(string.IsNullOrWhiteSpace(description)
+            ? $"'{displayName}' has no description."
+            : $"Description: {description}");
 
     private Button AddOperationButton(Container parent, string text, Action action)
     {

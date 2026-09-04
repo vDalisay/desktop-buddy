@@ -82,18 +82,23 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
             tree.Root.AddChild(panel);
             panel.Open();
 
+            TextEdit description = panel.FindChildren("*", nameof(TextEdit), true, false)
+                .OfType<TextEdit>()
+                .Single(edit => edit.PlaceholderText == "Optional description");
+            description.Text = "Scenario Workshop description.";
+
             bool win98Chrome = panel.Borderless &&
                 panel.FindChild("TitleBar", true, false) is PanelContainer &&
                 panel.FindChild("CloseBox", true, false) is Button &&
-                panel.FindChild("Win98StatusBar", true, false) is PanelContainer;
+                panel.FindChild("WorkshopStatusText", true, false) is LineEdit;
             checks.Add(new StartupCheck(
                 "workshop_window_uses_owned_win98_chrome",
                 win98Chrome,
-                $"borderless={panel.Borderless} title={panel.FindChild("TitleBar", true, false) is not null} status={panel.FindChild("Win98StatusBar", true, false) is not null}"));
+                $"borderless={panel.Borderless} title={panel.FindChild("TitleBar", true, false) is not null} status={panel.FindChild("WorkshopStatusText", true, false) is not null}"));
 
             Button publish = panel.FindChildren("*", nameof(Button), true, false)
                 .OfType<Button>()
-                .Single(button => button.Text == "Publish Active Buddy");
+                .Single(button => button.Text == "Publish Room Painting");
             publish.EmitSignal(Button.SignalName.Pressed);
             Control success = panel.FindChild("WorkshopPublishSuccessDialog", true, false) as Control
                 ?? throw new InvalidOperationException("Workshop success confirmation was not composed.");
@@ -129,6 +134,51 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
             }
             bool unsubscribeComposed = unsubscribe is not null &&
                 unsubscribe.TooltipText.Contains("Imported local copies are kept", StringComparison.Ordinal);
+            Button subscription = panel.FindChildren("*", nameof(Button), true, false)
+                .OfType<Button>()
+                .Single(button => button.Text == "My Desktop Buddy Creation");
+            subscription.EmitSignal(Button.SignalName.Pressed);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            await tree.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            LineEdit status = panel.FindChild("WorkshopStatusText", true, false) as LineEdit
+                ?? throw new InvalidOperationException("Workshop status text was not composed.");
+            Rect2 statusRect = status.GetGlobalRect();
+            bool descriptionVisible = status.IsVisibleInTree() &&
+                status.Text == "Description: Scenario Workshop description." &&
+                statusRect.Size.Y >= 16 &&
+                statusRect.End.Y <= panel.Size.Y;
+            checks.Add(new StartupCheck(
+                "workshop_selected_subscription_description_is_visible",
+                descriptionVisible,
+                $"visible={status.IsVisibleInTree()} rect={statusRect} window={panel.Size} text={status.Text}"));
+
+            Button import = panel.FindChildren("*", nameof(Button), true, false)
+                .OfType<Button>()
+                .Single(button => button.Text == "Import");
+            import.EmitSignal(Button.SignalName.Pressed);
+            Button? importedRoom = null;
+            for (int frame = 0; frame < 300 && importedRoom is null; frame++)
+            {
+                await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+                importedRoom = panel.FindChildren("ImportedRoom*", nameof(Button), true, false)
+                    .OfType<Button>()
+                    .SingleOrDefault();
+            }
+            importedRoom?.EmitSignal(Button.SignalName.Pressed);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            await tree.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            string[] roomActions = importedRoom?.GetParent().FindChildren("*", nameof(Button), true, false)
+                .OfType<Button>()
+                .Select(button => button.Text)
+                .ToArray() ?? [];
+            bool importedRoomDetailsVisible = importedRoom?.Text == "My Desktop Buddy Creation" &&
+                status.Text == "Description: Scenario Workshop description." &&
+                new[] { "Open", "Import", "Unsubscribe", "Apply" }.All(roomActions.Contains);
+            byte[] descriptionPng = panel.GetTexture().GetImage().SavePngToBuffer();
+            checks.Add(new StartupCheck(
+                "workshop_imported_room_uses_title_and_clickable_description",
+                importedRoomDetailsVisible,
+                $"button={importedRoom?.Text ?? "missing"} actions={string.Join(',', roomActions)} text={status.Text}"));
             if (unsubscribe is not null)
             {
                 unsubscribe.EmitSignal(Button.SignalName.Pressed);
@@ -148,7 +198,7 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
             panel.QueueFree();
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
-            SaveArtifacts(buddyPng, roomPng, dialogPng);
+            SaveArtifacts(buddyPng, roomPng, dialogPng, descriptionPng);
         }
         finally
         {
@@ -206,7 +256,7 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
         return colors.Count;
     }
 
-    private static void SaveArtifacts(byte[] buddyPng, byte[] roomPng, byte[] dialogPng)
+    private static void SaveArtifacts(byte[] buddyPng, byte[] roomPng, byte[] dialogPng, byte[] descriptionPng)
     {
         if (string.IsNullOrWhiteSpace(ScenarioArtifacts.Directory)) return;
         string directory = Path.GetFullPath(ScenarioArtifacts.Directory);
@@ -214,6 +264,7 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
         File.WriteAllBytes(Path.Combine(directory, "workshop_buddy_preview.png"), buddyPng);
         File.WriteAllBytes(Path.Combine(directory, "workshop_room_preview.png"), roomPng);
         File.WriteAllBytes(Path.Combine(directory, "workshop_publish_success.png"), dialogPng);
+        File.WriteAllBytes(Path.Combine(directory, "workshop_subscription_description.png"), descriptionPng);
     }
 
     private sealed class RoomHost : IRoomPaintingSharingHost

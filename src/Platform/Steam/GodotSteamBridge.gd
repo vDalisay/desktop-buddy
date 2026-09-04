@@ -8,6 +8,7 @@ signal bridge_state_changed(available: bool, reason: String)
 signal workshop_item_created(result: int, file_id: int, needs_legal_agreement: bool)
 signal workshop_item_updated(result: int, needs_legal_agreement: bool, file_id: int)
 signal workshop_item_downloaded(result: int, app_id: int, file_id: int)
+signal workshop_query_completed(handle: int, result: int, results_returned: int)
 
 const EXPECTED_GODOTSTEAM := "4.22"
 const WORKSHOP_FILE_TYPE_COMMUNITY := 0
@@ -40,6 +41,11 @@ var _required_methods := PackedStringArray([
     "submitItemUpdate",
     "getItemUpdateProgress",
     "getSubscribedItems",
+    "createQueryUGCDetailsRequest",
+    "setReturnLongDescription",
+    "sendQueryUGCRequest",
+    "getQueryUGCResult",
+    "releaseQueryUGCRequest",
     "unsubscribeItem",
     "getItemState",
     "downloadItem",
@@ -72,6 +78,8 @@ func initialize(app_id: int) -> Dictionary:
         return _fail("GodotSteam is missing the item_created signal.")
     if not _connect_required_signal("item_updated", Callable(self, "_on_item_updated")):
         return _fail("GodotSteam is missing the item_updated signal.")
+    if not _connect_required_signal("ugc_query_completed", Callable(self, "_on_ugc_query_completed")):
+        return _fail("GodotSteam is missing the UGC query completion signal.")
 
     # GodotSteam exposes DownloadItemResult_t as item_downloaded. Keep one compatibility alias
     # for older builds that exposed the SDK callback name instead.
@@ -199,6 +207,28 @@ func get_subscribed_items() -> PackedInt64Array:
         return ids
     return PackedInt64Array()
 
+func query_item_details(file_ids: PackedInt64Array) -> int:
+    if not is_available() or file_ids.is_empty():
+        return -1
+    var handle := int(_steam.call("createQueryUGCDetailsRequest", file_ids))
+    if handle < 0:
+        return -1
+    if not bool(_steam.call("setReturnLongDescription", handle, true)):
+        _steam.call("releaseQueryUGCRequest", handle)
+        return -1
+    _steam.call("sendQueryUGCRequest", handle)
+    return handle
+
+func get_query_item_result(handle: int, index: int) -> Dictionary:
+    if not is_available() or handle < 0 or index < 0:
+        return {}
+    var value: Variant = _steam.call("getQueryUGCResult", handle, index)
+    return value if typeof(value) == TYPE_DICTIONARY else {}
+
+func release_query(handle: int) -> void:
+    if is_available() and handle >= 0:
+        _steam.call("releaseQueryUGCRequest", handle)
+
 func unsubscribe_item(file_id: int) -> bool:
     if not is_available() or file_id <= 0:
         return false
@@ -286,6 +316,9 @@ func _on_item_updated(result: int, needs_legal_agreement: bool, file_id: int) ->
 
 func _on_item_downloaded(result: int, app_id: int, file_id: int) -> void:
     workshop_item_downloaded.emit(result, app_id, file_id)
+
+func _on_ugc_query_completed(handle: int, result: int, results_returned: int, _total_matching: int, _cached: bool, _next_cursor: String) -> void:
+    workshop_query_completed.emit(handle, result, results_returned)
 
 func _on_download_item_result(app_id: int, file_id: int, result: int) -> void:
     workshop_item_downloaded.emit(result, app_id, file_id)

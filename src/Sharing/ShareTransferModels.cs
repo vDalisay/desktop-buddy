@@ -10,7 +10,8 @@ namespace DesktopBuddy.Sharing;
 public readonly record struct WorkshopImportSource(
     ulong PublishedFileId,
     long SteamTimeUpdated,
-    string DisplayName);
+    string DisplayName,
+    string Description = "");
 
 public sealed record ShareExportResult(
     bool Success,

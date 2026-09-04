@@ -111,7 +111,12 @@ public sealed class RoomShareImporter
                 _utcNow(),
                 manifestBytes,
                 ShareContentTypes.RoomPainting);
-            RoomPaintingImportResult imported = _library.Import(source.DisplayName, pixels, provenance, token);
+            RoomPaintingImportResult imported = _library.Import(
+                source.DisplayName,
+                pixels,
+                provenance,
+                token,
+                source.Description);
             if (!imported.Success)
             {
                 _staging.Cleanup(incoming.OperationId);

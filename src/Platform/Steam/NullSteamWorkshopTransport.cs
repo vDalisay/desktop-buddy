@@ -29,6 +29,10 @@ public sealed class NullSteamWorkshopTransport : ISteamWorkshopTransport
             Array.Empty<PublishedWorkshopItem>(),
             UnavailableReason));
 
+    public Task<WorkshopSubscriptionQueryResult> GetItemDetailsAsync(
+        System.Collections.Generic.IReadOnlyList<ulong> publishedFileIds,
+        CancellationToken token) => GetSubscribedItemsAsync(token);
+
     public Task<WorkshopSubscriptionChangeResult> UnsubscribeAsync(
         ulong publishedFileId,
         CancellationToken token) =>

@@ -111,12 +111,13 @@ public sealed class WorkshopManagedPipelineTests : IDisposable
 
         RoomShareImportResult result = importer.ImportStaged(
             snapshot,
-            new WorkshopImportSource(42, 1234, "Snapshot Room"),
+            new WorkshopImportSource(42, 1234, "Snapshot Room", "A calm blue room."),
             CancellationToken.None);
 
         Assert.True(result.Success, result.Detail);
         Assert.NotNull(result.Entry);
         Assert.Equal(pixels, library.LoadPixels(result.Entry!.Id));
+        Assert.Equal("A calm blue room.", Assert.Single(library.List()).Description);
         Assert.False(Directory.Exists(snapshot.OperationRoot));
     }
 
@@ -147,6 +148,8 @@ public sealed class WorkshopManagedPipelineTests : IDisposable
         WorkshopSubscriptionQueryResult subscribed = await transport.GetSubscribedItemsAsync(CancellationToken.None);
         Assert.True(subscribed.IsSuccess);
         PublishedWorkshopItem item = Assert.Single(subscribed.Items);
+        Assert.Equal("Room One", item.DisplayName);
+        Assert.Equal("Description", item.Description);
         Assert.Equal(ShareContentTypes.RoomPainting, item.ContentType);
         Assert.True(item.State.HasFlag(WorkshopItemState.Installed));
 
@@ -166,6 +169,13 @@ public sealed class WorkshopManagedPipelineTests : IDisposable
         WorkshopSubscriptionQueryResult empty = await transport.GetSubscribedItemsAsync(CancellationToken.None);
         Assert.True(empty.IsSuccess);
         Assert.Empty(empty.Items);
+
+        PublishedWorkshopItem retainedDetails = Assert.Single((await transport.GetItemDetailsAsync(
+            [item.PublishedFileId],
+            CancellationToken.None)).Items);
+        Assert.Equal("Room One", retainedDetails.DisplayName);
+        Assert.Equal("Description", retainedDetails.Description);
+        Assert.False(retainedDetails.State.HasFlag(WorkshopItemState.Subscribed));
 
         // Unsubscribing affects Steam subscription state, not Desktop Buddy's already-imported
         // local copies or, in the emulator, the immutable remote snapshot itself.

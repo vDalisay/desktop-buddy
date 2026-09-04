@@ -30,6 +30,9 @@ public static class DemoScope
 
     public static bool IsFullRelease => FullReleaseOverride ?? OS.HasFeature("full_release");
 
+    /// <summary>Workshop ships only in Steam exports; editor runs keep it for development and verification.</summary>
+    public static bool IncludesWorkshop => OS.HasFeature("editor") || OS.HasFeature("steam");
+
     /// <summary>False for catalogue entries this build holds back.</summary>
     public static bool Includes(string? contentId) =>
         IsFullRelease || contentId is null ||

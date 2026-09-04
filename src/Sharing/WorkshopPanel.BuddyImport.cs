@@ -42,7 +42,7 @@ public partial class WorkshopPanel
         _buddyImportPanel = Win98Dialog.Create(
             "WorkshopBuddyImportDialog",
             "Import Buddy",
-            new Vector2(500, 245),
+            new Vector2(500, 200),
             out VBoxContainer body,
             HideBuddyImportDialog,
             draggable: false);
@@ -170,9 +170,7 @@ public partial class WorkshopPanel
         bool canReplaceCurrent = currentId.HasValue && _characterStore.ContainsStoredCharacter(currentId.Value);
 
         string itemName = _pendingBuddyImport?.DisplayName ?? "this Workshop buddy";
-        _buddyImportMessage!.Text =
-            $"How should '{itemName}' be imported?\n\n" +
-            "Apply to Current Buddy keeps the current buddy's slot and name, but replaces its visual configuration and paint.";
+        _buddyImportMessage!.Text = $"How should '{itemName}' be imported?";
         _buddySlotStatus!.Text = canCreateNew
             ? $"{occupied}/{capacity} buddy slots used  •  {remaining} free"
             : $"{occupied}/{capacity} buddy slots used  •  no free slots";

@@ -161,6 +161,10 @@ public sealed class WorkshopSharingCoordinator
     public Task<WorkshopSubscriptionQueryResult> GetSubscriptionsAsync(CancellationToken token = default) =>
         _transport.GetSubscribedItemsAsync(token);
 
+    public Task<WorkshopSubscriptionQueryResult> GetItemDetailsAsync(
+        IReadOnlyList<ulong> publishedFileIds,
+        CancellationToken token = default) => _transport.GetItemDetailsAsync(publishedFileIds, token);
+
     public Task<WorkshopSubscriptionChangeResult> UnsubscribeAsync(
         ulong publishedFileId,
         CancellationToken token = default) =>
@@ -253,7 +257,11 @@ public sealed class WorkshopSharingCoordinator
             string? contentType = item.ContentType;
             if (contentType is null)
                 contentType = DetectContentType(incoming.Value.ContentRoot);
-            var source = new WorkshopImportSource(item.PublishedFileId, installed.TimeUpdated, item.DisplayName);
+            var source = new WorkshopImportSource(
+                item.PublishedFileId,
+                installed.TimeUpdated,
+                item.DisplayName,
+                item.Description);
 
             if (string.Equals(contentType, ShareContentTypes.RoomPainting, StringComparison.Ordinal))
             {

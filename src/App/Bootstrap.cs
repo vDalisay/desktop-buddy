@@ -239,13 +239,6 @@ public partial class Bootstrap : Node
         var commandRegistrar = GetNodeOrNull<DesktopBuddy.UI.Win98.Win98CommandBarBootstrap>(
             "/root/Win98CommandBarBootstrap");
 
-        // Workshop is an optional outer platform adapter. The main composition root injects the
-        // narrow feature hosts it needs; Workshop itself never polls or locates peer services.
-        // Missing Steam/GodotSteam/AppID still selects a null transport and never blocks boot.
-        var workshop = new WorkshopBootstrap { Name = nameof(WorkshopBootstrap) };
-        workshop.Configure(characters, characterSelection, sandbox, environmentCustomization, commandRegistrar);
-        AddChild(workshop);
-
         var characterRuntime = new CharacterSelectionRuntime
         {
             Name = nameof(CharacterSelectionRuntime),
@@ -257,6 +250,18 @@ public partial class Bootstrap : Node
         // bridge is added afterwards so its initial Work-mode application cannot be undone
         // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
+
+        if (DemoScope.IncludesWorkshop)
+        {
+            // Steam exports and editor runs compose Workshop; itch.io omits its services and menu command.
+            var workshop = new WorkshopBootstrap { Name = nameof(WorkshopBootstrap) };
+            workshop.Configure(characters, characterSelection, sandbox, environmentCustomization, commandRegistrar);
+            AddChild(workshop);
+        }
+        else
+        {
+            Log.Info(Category, "Steam Workshop excluded by this build's distribution scope.");
+        }
 
         var guidance = new FirstSessionGuidanceController
         {

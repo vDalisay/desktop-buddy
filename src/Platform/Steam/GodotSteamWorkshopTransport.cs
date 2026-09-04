@@ -249,6 +249,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
     public override void _ExitTree()
     {
         _publishCallbacks.Shutdown();
+        ShutdownSubscriptionQuery();
 
         PendingDownload[] downloads;
         lock (_callbackGate)
@@ -339,6 +340,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         _bridge!.Connect("workshop_item_created", Callable.From<long, long, bool>(OnItemCreated));
         _bridge.Connect("workshop_item_updated", Callable.From<long, bool, long>(OnItemUpdated));
         _bridge.Connect("workshop_item_downloaded", Callable.From<long, long, long>(OnItemDownloaded));
+        _bridge.Connect("workshop_query_completed", Callable.From<long, long, long>(OnQueryCompleted));
         _signalsConnected = true;
     }
 

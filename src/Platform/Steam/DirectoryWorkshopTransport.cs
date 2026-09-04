@@ -167,12 +167,14 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
                 ItemMetadata? metadata = TryReadMetadata(directory);
                 if (metadata is null || !metadata.Subscribed) continue;
                 string? contentType = ParseContentType(metadata.Metadata, metadata.Tags);
+                string title = Normalize(metadata.Title, 128);
                 items.Add(new PublishedWorkshopItem(
                     id,
                     WorkshopItemState.Subscribed | WorkshopItemState.Installed,
-                    metadata.Title.Length == 0 ? $"Workshop Item {id}" : metadata.Title,
+                    title.Length == 0 ? $"Workshop Item {id}" : title,
                     metadata.TimeUpdated,
-                    contentType));
+                    contentType,
+                    Normalize(metadata.Description, 8000)));
             }
             return WorkshopSubscriptionQueryResult.Success(items.OrderBy(item => item.PublishedFileId).ToArray());
         }
@@ -182,6 +184,46 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
                 WorkshopRemoteStatus.Cancelled,
                 Array.Empty<PublishedWorkshopItem>(),
                 "Directory Workshop subscription query cancelled.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return new WorkshopSubscriptionQueryResult(
+                WorkshopRemoteStatus.Failed,
+                Array.Empty<PublishedWorkshopItem>(),
+                exception.Message);
+        }
+    }, CancellationToken.None);
+
+    public Task<WorkshopSubscriptionQueryResult> GetItemDetailsAsync(
+        IReadOnlyList<ulong> publishedFileIds,
+        CancellationToken token) => Task.Run(() =>
+    {
+        try
+        {
+            var items = new List<PublishedWorkshopItem>();
+            foreach (ulong id in publishedFileIds.Distinct())
+            {
+                token.ThrowIfCancellationRequested();
+                string directory = ItemRoot(id);
+                ItemMetadata? metadata = TryReadMetadata(directory);
+                if (metadata is null) continue;
+                string title = Normalize(metadata.Title, 128);
+                items.Add(new PublishedWorkshopItem(
+                    id,
+                    (metadata.Subscribed ? WorkshopItemState.Subscribed : WorkshopItemState.None) | WorkshopItemState.Installed,
+                    title.Length == 0 ? $"Workshop Item {id}" : title,
+                    metadata.TimeUpdated,
+                    ParseContentType(metadata.Metadata, metadata.Tags),
+                    Normalize(metadata.Description, 8000)));
+            }
+            return WorkshopSubscriptionQueryResult.Success(items);
+        }
+        catch (OperationCanceledException)
+        {
+            return new WorkshopSubscriptionQueryResult(
+                WorkshopRemoteStatus.Cancelled,
+                Array.Empty<PublishedWorkshopItem>(),
+                "Directory Workshop item query cancelled.");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {

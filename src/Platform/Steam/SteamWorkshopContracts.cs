@@ -85,7 +85,8 @@ public sealed record PublishedWorkshopItem(
     WorkshopItemState State,
     string DisplayName,
     long TimeUpdated = 0,
-    string? ContentType = null);
+    string? ContentType = null,
+    string Description = "");
 
 public readonly record struct WorkshopSubscriptionQueryResult(
     WorkshopRemoteStatus Status,
@@ -130,6 +131,10 @@ public interface ISteamWorkshopTransport : ISteamAvailability
         CancellationToken token);
 
     Task<WorkshopSubscriptionQueryResult> GetSubscribedItemsAsync(CancellationToken token);
+
+    Task<WorkshopSubscriptionQueryResult> GetItemDetailsAsync(
+        IReadOnlyList<ulong> publishedFileIds,
+        CancellationToken token);
 
     Task<WorkshopSubscriptionChangeResult> UnsubscribeAsync(
         ulong publishedFileId,

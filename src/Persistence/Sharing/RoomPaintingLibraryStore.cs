@@ -15,7 +15,8 @@ public sealed record RoomPaintingLibraryEntry(
     Guid Id,
     string DisplayName,
     DateTimeOffset ImportedUtc,
-    ulong? WorkshopItemId);
+    ulong? WorkshopItemId,
+    string Description = "");
 
 public sealed record RoomPaintingImportResult(
     bool Success,
@@ -51,15 +52,17 @@ public sealed class RoomPaintingLibraryStore
         string displayName,
         ReadOnlyMemory<byte> pixels,
         WorkshopProvenance? provenance,
-        CancellationToken token = default) => Task.Run(
-        () => Import(displayName, pixels.Span, provenance, token),
+        CancellationToken token = default,
+        string description = "") => Task.Run(
+        () => Import(displayName, pixels.Span, provenance, token, description),
         CancellationToken.None);
 
     public RoomPaintingImportResult Import(
         string displayName,
         ReadOnlySpan<byte> pixels,
         WorkshopProvenance? provenance = null,
-        CancellationToken token = default)
+        CancellationToken token = default,
+        string description = "")
     {
         if (pixels.Length != EnvironmentCanvasPolicy.Bytes)
             return new RoomPaintingImportResult(false, null, "Room painting must be exactly 512x512 RGBA8.");
@@ -75,7 +78,12 @@ public sealed class RoomPaintingLibraryStore
             Directory.CreateDirectory(staging);
             byte[] png = PaintPngCodec.Encode(pixels);
             File.WriteAllBytes(Path.Combine(staging, BackgroundFileName), png);
-            var entry = new RoomPaintingLibraryEntry(id, name, DateTimeOffset.UtcNow, provenance?.PublishedFileId);
+            var entry = new RoomPaintingLibraryEntry(
+                id,
+                name,
+                DateTimeOffset.UtcNow,
+                provenance?.PublishedFileId,
+                NormalizeDescription(description));
             File.WriteAllText(Path.Combine(staging, MetadataFileName), JsonSerializer.Serialize(entry, Options));
             if (provenance is not null) WorkshopProvenanceStore.Write(staging, provenance);
             token.ThrowIfCancellationRequested();
@@ -158,6 +166,13 @@ public sealed class RoomPaintingLibraryStore
         if (name.Length == 0) return "Imported Room Painting";
         if (name.Length > 80) name = name[..80];
         return string.Concat(name.Select(c => char.IsControl(c) ? ' ' : c)).Trim();
+    }
+
+    private static string NormalizeDescription(string value)
+    {
+        string description = (value ?? string.Empty).Trim();
+        if (description.Length > 8000) description = description[..8000];
+        return string.Concat(description.Select(c => char.IsControl(c) && c is not '\r' and not '\n' and not '\t' ? ' ' : c));
     }
 
     private static byte[] ReadBounded(string path, int max)
