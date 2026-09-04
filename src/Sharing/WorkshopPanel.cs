@@ -301,6 +301,8 @@ public partial class WorkshopPanel : Window
         _openPublishedItem = Win98Dialog.Action(successActions, "Open Workshop Page...", OpenPublishedItem);
         _openPublishedItem.TooltipText = "Open this Steam Workshop item so you can edit its details and images.";
         Win98Dialog.Action(successActions, "Done", HidePublishSuccess);
+
+        BuildBuddyImportDialog(overlay);
     }
 
     private PanelContainer BuildTitleBar()
@@ -467,7 +469,7 @@ public partial class WorkshopPanel : Window
             open.Pressed += () => _sharing?.OpenWorkshopItem(item.PublishedFileId);
             row.AddChild(open);
             Button import = new() { Text = "Import", TooltipText = "Import this item as a local Desktop Buddy copy." };
-            import.Pressed += () => _ = ImportAsync(item);
+            import.Pressed += () => RequestImport(item);
             row.AddChild(import);
             Button unsubscribe = new()
             {
@@ -507,20 +509,29 @@ public partial class WorkshopPanel : Window
             await RefreshSubscriptionsAsync();
     }
 
-    private async Task ImportAsync(PublishedWorkshopItem item)
+    private async Task ImportAsync(PublishedWorkshopItem item, Guid? replaceCharacterId = null)
     {
         if (_busy || _sharing is null) return;
         await RunBusyAsync(async (progress, token) =>
         {
-            WorkshopImportResult result = await _sharing.ImportSubscribedAsync(item, progress, token);
+            WorkshopImportResult result = await _sharing.ImportSubscribedAsync(
+                item,
+                replaceCharacterId,
+                progress,
+                token);
             switch (result.Status)
             {
                 case WorkshopImportStatus.ImportedRoom:
                     SetStatus("Room painting imported. It was not applied automatically; choose Apply in Imported Room Paintings.");
                     RefreshRoomLibrary();
                     break;
+                case WorkshopImportStatus.ImportedBuddy when replaceCharacterId.HasValue:
+                    SetStatus(result.Detail ?? "Workshop skin applied to the current buddy without using another slot.");
+                    if (result.LocalId is Guid replacedId)
+                        await RefreshReplacedBuddyAsync(replacedId, token);
+                    break;
                 case WorkshopImportStatus.ImportedBuddy:
-                    SetStatus("Buddy imported as a new local character. It was not activated automatically; select it in Buddy Studio/Paint Buddy when wanted.");
+                    SetStatus("Buddy imported into a new local slot. It was not activated automatically; select it in Buddy Studio/Paint Buddy when wanted.");
                     break;
                 case WorkshopImportStatus.Cancelled:
                     SetStatus(result.Detail ?? "Workshop import was cancelled.");
@@ -623,6 +634,7 @@ public partial class WorkshopPanel : Window
     {
         CancelActiveOperation();
         HidePublishSuccess();
+        HideBuddyImportDialog();
         Hide();
     }
 
@@ -680,6 +692,8 @@ public partial class WorkshopPanel : Window
             button.Disabled = _busy || (!available && button.Text != "Browse Workshop...");
         if (GodotObject.IsInstanceValid(_cancel))
             _cancel.Disabled = !_busy || _activeOperation is null || _activeOperation.IsCancellationRequested;
+        if (GodotObject.IsInstanceValid(_buddyImportPanel) && _buddyImportPanel!.Visible)
+            RefreshBuddyImportDialogState();
         RefreshRoomLibrary();
     }
 
