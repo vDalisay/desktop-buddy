@@ -47,6 +47,14 @@ public sealed record WorkshopImportResult(
     public bool IsSuccess => Status is WorkshopImportStatus.ImportedRoom or WorkshopImportStatus.ImportedBuddy;
 }
 
+public readonly record struct WorkshopContentTypeResult(
+    WorkshopRemoteStatus Status,
+    string? ContentType,
+    string? Detail = null)
+{
+    public bool IsSuccess => Status == WorkshopRemoteStatus.Success && !string.IsNullOrWhiteSpace(ContentType);
+}
+
 /// <summary>
 /// Application service for asynchronous social sharing. It owns workflow/state transitions only;
 /// Steam transports do not know room/character types and importers do not know Steam callbacks.
@@ -157,6 +165,51 @@ public sealed class WorkshopSharingCoordinator
         ulong publishedFileId,
         CancellationToken token = default) =>
         _transport.UnsubscribeAsync(publishedFileId, token);
+
+    /// <summary>
+    /// Resolves a subscription's data type before the UI asks how to import it. Real Steam's
+    /// lightweight subscription enumeration only returns PublishedFileIds, so ContentType can be
+    /// null even though the installed package is valid. This preflight never commits local content;
+    /// the actual import still snapshots and validates the package again as hostile input.
+    /// </summary>
+    public async Task<WorkshopContentTypeResult> ResolveContentTypeAsync(
+        PublishedWorkshopItem item,
+        IProgress<WorkshopTransferProgress>? progress = null,
+        CancellationToken token = default)
+    {
+        if (!string.IsNullOrWhiteSpace(item.ContentType))
+            return new WorkshopContentTypeResult(WorkshopRemoteStatus.Success, item.ContentType);
+        if (!_transport.IsAvailable)
+            return new WorkshopContentTypeResult(WorkshopRemoteStatus.Unavailable, null, "Steam Workshop is unavailable.");
+
+        try
+        {
+            WorkshopInstalledItemResult installed = await _transport.EnsureInstalledAsync(
+                item.PublishedFileId,
+                progress,
+                token);
+            if (!installed.IsSuccess || installed.InstallFolder is null)
+                return new WorkshopContentTypeResult(installed.Status, null, installed.Detail);
+
+            string? contentType = await Task.Run(
+                () => DetectContentType(installed.InstallFolder),
+                CancellationToken.None);
+            return contentType is null
+                ? new WorkshopContentTypeResult(
+                    WorkshopRemoteStatus.Unsupported,
+                    null,
+                    "This Workshop item is not a supported Desktop Buddy room or buddy share.")
+                : new WorkshopContentTypeResult(WorkshopRemoteStatus.Success, contentType);
+        }
+        catch (OperationCanceledException)
+        {
+            return new WorkshopContentTypeResult(WorkshopRemoteStatus.Cancelled, null, "Workshop item check cancelled.");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        {
+            return new WorkshopContentTypeResult(WorkshopRemoteStatus.Failed, null, exception.Message);
+        }
+    }
 
     public Task<WorkshopImportResult> ImportSubscribedAsync(
         PublishedWorkshopItem item,
