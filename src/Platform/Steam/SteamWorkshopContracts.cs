@@ -98,6 +98,15 @@ public readonly record struct WorkshopSubscriptionQueryResult(
         new(WorkshopRemoteStatus.Success, items ?? Array.Empty<PublishedWorkshopItem>());
 }
 
+public readonly record struct WorkshopSubscriptionChangeResult(
+    WorkshopRemoteStatus Status,
+    ulong PublishedFileId,
+    int NativeResult = 0,
+    string? Detail = null)
+{
+    public bool IsSuccess => Status == WorkshopRemoteStatus.Success;
+}
+
 public readonly record struct WorkshopInstalledItemResult(
     WorkshopRemoteStatus Status,
     ulong PublishedFileId,
@@ -121,6 +130,10 @@ public interface ISteamWorkshopTransport : ISteamAvailability
         CancellationToken token);
 
     Task<WorkshopSubscriptionQueryResult> GetSubscribedItemsAsync(CancellationToken token);
+
+    Task<WorkshopSubscriptionChangeResult> UnsubscribeAsync(
+        ulong publishedFileId,
+        CancellationToken token);
 
     Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
         ulong publishedFileId,
