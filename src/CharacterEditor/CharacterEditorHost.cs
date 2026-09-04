@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
@@ -54,6 +53,8 @@ public partial class CharacterEditorHost : CanvasLayer
     private Button _nextPage = null!;
     private bool _refreshing;
     private int _page;
+    private Timer? _browserInitializationTimer;
+    private int _browserInitializationAttempts;
 
     public bool IsInitialized { get; private set; }
     public bool IsEditorOpen => IsInitialized && _editorRoot.Visible;
@@ -94,7 +95,66 @@ public partial class CharacterEditorHost : CanvasLayer
         ProcessMode = ProcessModeEnum.Always;
     }
 
-    public override void _Ready() => CallDeferred(MethodName.InitializeDeferred);
+    public override void _Ready()
+    {
+        if (!OperatingSystem.IsBrowser())
+        {
+            CallDeferred(MethodName.InitializeDeferred);
+            return;
+        }
+
+        // The experimental single-threaded browser runtime can strand an async continuation
+        // waiting on SceneTree.ProcessFrame. Poll with a Godot Timer instead, and only enter the
+        // existing initialization path once CharacterSelectionRuntime has published its
+        // coordinator. This keeps the native startup contract unchanged while making the Web
+        // command bar / inventory / Paint Buddy UI deterministic.
+        _browserInitializationTimer = new Timer
+        {
+            Name = "BrowserCharacterUiInitializationTimer",
+            WaitTime = 1.0 / 60.0,
+            OneShot = false,
+            ProcessCallback = Timer.TimerProcessCallback.Idle,
+            ProcessMode = ProcessModeEnum.Always,
+        };
+        _browserInitializationTimer.Timeout += TryInitializeBrowser;
+        AddChild(_browserInitializationTimer);
+        _browserInitializationTimer.Start();
+        TryInitializeBrowser();
+    }
+
+    private void TryInitializeBrowser()
+    {
+        if (IsInitialized)
+        {
+            StopBrowserInitializationTimer();
+            return;
+        }
+
+        if (_selectionRuntime.Coordinator is null)
+        {
+            _browserInitializationAttempts++;
+            if (_browserInitializationAttempts < 120)
+                return;
+
+            StopBrowserInitializationTimer();
+            GD.PushError(
+                "Character editor could not initialize its character services within 120 browser frames.");
+            return;
+        }
+
+        StopBrowserInitializationTimer();
+        InitializeDeferred();
+    }
+
+    private void StopBrowserInitializationTimer()
+    {
+        if (!GodotObject.IsInstanceValid(_browserInitializationTimer))
+            return;
+        _browserInitializationTimer!.Stop();
+        _browserInitializationTimer.Timeout -= TryInitializeBrowser;
+        _browserInitializationTimer.QueueFree();
+        _browserInitializationTimer = null;
+    }
 
     public async Task OpenEditorAsync()
     {
@@ -123,8 +183,14 @@ public partial class CharacterEditorHost : CanvasLayer
 
     private async void InitializeDeferred()
     {
+        if (IsInitialized)
+            return;
+
         for (int frame = 0; frame < 120 && _selectionRuntime.Coordinator is null; frame++)
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+
+        if (IsInitialized)
+            return;
 
         if (_context.Characters is null || _selectionRuntime.Coordinator is null)
         {
@@ -158,6 +224,8 @@ public partial class CharacterEditorHost : CanvasLayer
         IsInitialized = true;
         RefreshAll();
         CallDeferred(MethodName.RefreshDockHitRegions);
+        if (OperatingSystem.IsBrowser())
+            GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_READY");
     }
 
     private void BuildPreview()

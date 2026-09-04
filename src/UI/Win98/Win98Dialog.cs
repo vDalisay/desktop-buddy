@@ -59,7 +59,7 @@ public static class Win98Dialog
             var close = new Button
             {
                 Name = "CloseBox",
-                Text = "✕",
+                Text = OperatingSystem.IsBrowser() ? "X" : "✕",
                 TooltipText = "Close this window.",
                 FocusMode = Control.FocusModeEnum.All,
             };

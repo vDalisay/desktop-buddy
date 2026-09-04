@@ -90,6 +90,20 @@ public sealed class CharacterSelectionCoordinator
         return await PrepareAsync(characterId.Value, sequence, persistSelection: true, token);
     }
 
+    internal CharacterActivationResult QueueUseCharacterBrowserSynchronously(
+        Guid? characterId,
+        CancellationToken token)
+    {
+        if (characterId == Guid.Empty) throw new ArgumentOutOfRangeException(nameof(characterId));
+        long sequence = Interlocked.Increment(ref _nextSequence);
+        if (characterId is null)
+        {
+            Queue(BuiltIn(sequence, persistSelection: true));
+            return new CharacterActivationResult(CharacterActivationStatus.BuiltInQueued, null);
+        }
+        return PrepareBrowserSynchronously(characterId.Value, sequence, persistSelection: true, token);
+    }
+
     public async Task<CharacterActivationResult> LoadStartupAsync(CancellationToken token)
     {
         Guid? selected = _selection.ActiveCharacterId;
@@ -105,6 +119,16 @@ public sealed class CharacterSelectionCoordinator
     public async Task<CharacterDeleteResult> DeleteCharacterAsync(Guid characterId, CancellationToken token)
     {
         CharacterDeleteResult result = await _store.DeleteAsync(characterId, token).ConfigureAwait(false);
+        if (result.IsSuccess && _selection.ActiveCharacterId == characterId)
+            Queue(BuiltIn(Interlocked.Increment(ref _nextSequence), persistSelection: true));
+        return result;
+    }
+
+    internal CharacterDeleteResult DeleteCharacterBrowserSynchronously(
+        Guid characterId,
+        CancellationToken token)
+    {
+        CharacterDeleteResult result = _store.DeleteBrowserSynchronously(characterId, token);
         if (result.IsSuccess && _selection.ActiveCharacterId == characterId)
             Queue(BuiltIn(Interlocked.Increment(ref _nextSequence), persistSelection: true));
         return result;
@@ -149,6 +173,25 @@ public sealed class CharacterSelectionCoordinator
         CancellationToken token)
     {
         CharacterPaintLoadResult loaded = await _paintStore.LoadAsync(characterId, token).ConfigureAwait(false);
+        return CompletePreparedActivation(characterId, sequence, persistSelection, loaded);
+    }
+
+    private CharacterActivationResult PrepareBrowserSynchronously(
+        Guid characterId,
+        long sequence,
+        bool persistSelection,
+        CancellationToken token)
+    {
+        CharacterPaintLoadResult loaded = _paintStore.LoadBrowserSynchronously(characterId, token);
+        return CompletePreparedActivation(characterId, sequence, persistSelection, loaded);
+    }
+
+    private CharacterActivationResult CompletePreparedActivation(
+        Guid characterId,
+        long sequence,
+        bool persistSelection,
+        CharacterPaintLoadResult loaded)
+    {
         if (loaded.Character.Status == CharacterLoadStatus.Cancelled)
             return new CharacterActivationResult(CharacterActivationStatus.Cancelled, characterId);
         if (!loaded.IsSuccess || loaded.Character.Document is null)

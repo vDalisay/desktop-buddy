@@ -97,6 +97,20 @@ public partial class BuddyVisualPresenter : Node3D
         SnapSnapshots();
         IsInitialized = true;
         TrySubscribeToRecovery();
+
+        // The experimental single-threaded C# Web runtime can re-enter the render loop while
+        // SandboxRoot is still inside _Ready. Performing the first full live pose upload here
+        // then strands the rest of SandboxRoot composition: the rig reports initialized, but
+        // boundaries, lifecycle, tray commands and the final Mii3D visibility switch are never
+        // reached. Browser frames already call UpdateVisuals through _Process, so let the first
+        // rendered frame perform this upload after the composition stack has unwound. Native
+        // builds retain the immediate first pose used by the existing startup/test contract.
+        if (OperatingSystem.IsBrowser())
+        {
+            GD.Print("DESKTOP_BUDDY_WEB_LIVE_PRESENTATION_DEFERRED");
+            return;
+        }
+
         UpdateVisuals(0.0, 1.0f);
     }
 

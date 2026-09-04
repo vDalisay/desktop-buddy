@@ -129,6 +129,14 @@ public sealed class TutorialProgressState
     public const string LegacyExtensionKey = "demo.onboarding.v1";
     private const string SkippedToken = "skip";
 
+    /// <summary>
+    /// Process-local distribution gate. The itch.io composition sets this before the guidance
+    /// controller enters the tree. Disabled means the walkthrough behaves as complete for this run
+    /// without writing a permanent skip token, so the same progress can still receive onboarding
+    /// in a distribution that actually ships the complete tutorial feature set.
+    /// </summary>
+    public static bool RuntimeDisabled { get; set; }
+
     private readonly BuddyProgressState _progress;
 
     public TutorialProgressState(BuddyProgressState progress) =>
@@ -136,6 +144,9 @@ public sealed class TutorialProgressState
 
     public TutorialProgressSnapshot Snapshot()
     {
+        if (RuntimeDisabled)
+            return new TutorialProgressSnapshot(Array.Empty<string>(), true);
+
         string? encoded = null;
         if (_progress.Extensions?.Values is { } values)
             values.TryGetValue(ExtensionKey, out encoded);
@@ -155,7 +166,7 @@ public sealed class TutorialProgressState
     }
 
     public bool HasPersistedRecord =>
-        _progress.Extensions?.Values?.ContainsKey(ExtensionKey) == true;
+        RuntimeDisabled || _progress.Extensions?.Values?.ContainsKey(ExtensionKey) == true;
 
     public bool HasLegacyRecord =>
         _progress.Extensions?.Values?.ContainsKey(LegacyExtensionKey) == true;
@@ -204,13 +215,15 @@ public sealed class TutorialProgressState
         return _progress.SetExtensionValue(ExtensionKey, encoded);
     }
 
-    public bool Skip() => _progress.SetExtensionValue(ExtensionKey, SkippedToken);
+    public bool Skip() =>
+        !RuntimeDisabled && _progress.SetExtensionValue(ExtensionKey, SkippedToken);
 
     /// <summary>
     /// Replay from the first step. This writes an empty record rather than removing the key, so a
     /// replay is never mistaken for the "existing player, no v2 record" auto-skip case.
     /// </summary>
-    public bool Restart() => _progress.SetExtensionValue(ExtensionKey, string.Empty);
+    public bool Restart() =>
+        !RuntimeDisabled && _progress.SetExtensionValue(ExtensionKey, string.Empty);
 
     private static int IndexOf(string id)
     {

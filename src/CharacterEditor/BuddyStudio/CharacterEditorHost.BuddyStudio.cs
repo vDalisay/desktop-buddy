@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Threading.Tasks;
+using DesktopBuddy.App;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
 using Godot;
 
@@ -14,7 +15,7 @@ public partial class CharacterEditorHost
 
     public bool EnsureBuddyStudioReady()
     {
-        if (!IsInitialized)
+        if (!DemoScope.IncludesBuddyStudio || !IsInitialized)
             return false;
         if (GodotObject.IsInstanceValid(_buddyStudio))
             return true;

@@ -30,7 +30,7 @@ public sealed class AtomicSaveFileSystem : IAtomicSaveFileSystem
         using var stream = new FileStream(
             path,
             FileMode.Create,
-            FileAccess.Write,
+            System.IO.FileAccess.Write,
             FileShare.None,
             16_384,
             FileOptions.WriteThrough);
@@ -47,7 +47,9 @@ public sealed class AtomicSaveFileSystem : IAtomicSaveFileSystem
 
 /// <summary>
 /// Durable versioned JSON store. Paths must already be resolved on Godot's main
-/// thread; this class contains no native Godot object and serializes off-thread.
+/// thread; this class contains no native Godot object and serializes off-thread on native builds.
+/// Single-threaded browser-WASM executes the same work inline through <see cref="PersistenceWork"/>.
+/// A browser build injects its Godot-backed filesystem adapter from the composition root.
 /// </summary>
 public sealed class JsonProgressStore : IProgressStore
 {
@@ -74,25 +76,25 @@ public sealed class JsonProgressStore : IProgressStore
     }
 
     public Task<LoadResult<ProgressSave>> LoadProgressAsync(CancellationToken token) =>
-        Task.Run(() => LoadProgress(token), token);
+        PersistenceWork.Run(() => LoadProgress(token), token);
 
     public Task<LoadResult<LocalSettingsSave>> LoadSettingsAsync(CancellationToken token) =>
-        Task.Run(() => LoadSettings(token), token);
+        PersistenceWork.Run(() => LoadSettings(token), token);
 
     public async Task SaveProgressAsync(ProgressSave data, CancellationToken token)
     {
-        string json = await Task.Run(() => ProgressSavePolicy.Serialize(data), token)
+        string json = await PersistenceWork.Run(() => ProgressSavePolicy.Serialize(data), token)
             .ConfigureAwait(false);
-        await Task.Run(() => SaveAtomic(_progressPath, json, token), token)
+        await PersistenceWork.Run(() => SaveAtomic(_progressPath, json, token), token)
             .ConfigureAwait(false);
     }
 
     public async Task SaveSettingsAsync(LocalSettingsSave data, CancellationToken token)
     {
         ValidateSettings(data);
-        string json = await Task.Run(
+        string json = await PersistenceWork.Run(
             () => JsonSerializer.Serialize(data, JsonOptions), token).ConfigureAwait(false);
-        await Task.Run(() => SaveAtomic(_settingsPath, json, token), token)
+        await PersistenceWork.Run(() => SaveAtomic(_settingsPath, json, token), token)
             .ConfigureAwait(false);
     }
 

@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Persistence;
 
 namespace DesktopBuddy.Persistence.Characters;
 
@@ -38,13 +39,30 @@ public sealed class CharacterLibraryIndex
         int count,
         CancellationToken token)
     {
+        ValidatePage(offset, count);
+
+        // Native builds keep this bounded filesystem work off the render thread. The
+        // experimental itch Web build is single-threaded, so Task.Run has no worker to make
+        // progress and can freeze the Paint Buddy library the first time it is opened.
+        return PersistenceWork.Run<IReadOnlyList<CharacterIndexEntry>>(
+            () => ReadPageCore(offset, count, token), token);
+    }
+
+    internal IReadOnlyList<CharacterIndexEntry> ReadPageBrowserSynchronously(
+        int offset,
+        int count,
+        CancellationToken token)
+    {
+        ValidatePage(offset, count);
+        return ReadPageCore(offset, count, token);
+    }
+
+    private static void ValidatePage(int offset, int count)
+    {
         if (offset < 0)
             throw new ArgumentOutOfRangeException(nameof(offset));
         if (count < 1 || count > 200)
             throw new ArgumentOutOfRangeException(nameof(count));
-
-        return Task.Run<IReadOnlyList<CharacterIndexEntry>>(
-            () => ReadPageCore(offset, count, token), token);
     }
 
     private IReadOnlyList<CharacterIndexEntry> ReadPageCore(

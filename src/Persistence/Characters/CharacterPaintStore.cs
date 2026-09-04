@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Painting;
+using Godot;
 
 namespace DesktopBuddy.Persistence.Characters;
 
@@ -27,6 +28,7 @@ public sealed record CharacterPaintSaveResult(
 /// <summary>
 /// Paint-aware transaction boundary. A complete staged directory is validated before the
 /// active directory is swapped, so character.json never points at missing newly-written PNGs.
+/// Native builds offload blocking work; single-threaded browser-WASM executes it inline.
 /// </summary>
 public sealed class CharacterPaintStore
 {
@@ -56,13 +58,29 @@ public sealed class CharacterPaintStore
     }
 
     public Task<CharacterPaintLoadResult> LoadAsync(Guid id, CancellationToken token = default) =>
-        Task.Run(() => LoadCore(id, token), CancellationToken.None);
+        PersistenceWork.Run(() => LoadCore(id, token), CancellationToken.None);
 
     public Task<CharacterPaintSaveResult> SaveAsync(
         CharacterDocument document,
         IReadOnlyDictionary<PaintPart, ReadOnlyMemory<byte>> surfaces,
         CancellationToken token = default) =>
-        Task.Run(() => SaveCore(document, surfaces, token), CancellationToken.None);
+        PersistenceWork.Run(() => SaveCore(document, surfaces, token), CancellationToken.None);
+
+    internal CharacterPaintLoadResult LoadBrowserSynchronously(
+        Guid id,
+        CancellationToken token = default) =>
+        LoadCore(id, token);
+
+    internal CharacterPaintSaveResult SaveBrowserSynchronously(
+        CharacterDocument document,
+        IReadOnlyDictionary<PaintPart, ReadOnlyMemory<byte>> surfaces,
+        CancellationToken token = default)
+    {
+        BrowserMarker("paint-store-enter");
+        CharacterPaintSaveResult result = SaveCore(document, surfaces, token);
+        BrowserMarker("paint-store-return");
+        return result;
+    }
 
     private CharacterPaintLoadResult LoadCore(Guid id, CancellationToken token)
     {
@@ -112,6 +130,7 @@ public sealed class CharacterPaintStore
     {
         ArgumentNullException.ThrowIfNull(document);
         ArgumentNullException.ThrowIfNull(surfaces);
+        BrowserMarker("core-enter");
         if (document.Id == Guid.Empty)
             return Failure(CharacterSaveStatus.RejectedPath, "Empty character ID.");
 
@@ -121,49 +140,78 @@ public sealed class CharacterPaintStore
         try
         {
             token.ThrowIfCancellationRequested();
+            BrowserMarker("path-check-begin");
             if ((_fileSystem.DirectoryExists(active) && _fileSystem.IsReparsePoint(active)) ||
                 (_fileSystem.DirectoryExists(staging) && _fileSystem.IsReparsePoint(staging)))
             {
                 return Failure(CharacterSaveStatus.RejectedPath, "Character transaction directory is linked.");
             }
+            BrowserMarker("path-check-complete");
 
             _fileSystem.CreateDirectory(_paths.Root);
+            BrowserMarker("root-ready");
             _fileSystem.DeleteDirectory(staging, recursive: true);
+            BrowserMarker("staging-cleared");
             _fileSystem.DeleteDirectory(previous, recursive: true);
+            BrowserMarker("previous-cleared");
             _fileSystem.CreateDirectory(staging);
+            BrowserMarker("staging-ready");
             _fileSystem.CreateDirectory(Path.Combine(staging, "paint"));
+            BrowserMarker("paint-dir-ready");
 
             var nonBlank = new List<PaintPart>();
             long aggregate = 0;
             foreach (PaintPart part in Enum.GetValues<PaintPart>())
             {
+                BrowserMarker($"surface-{part}-begin");
                 if (!surfaces.TryGetValue(part, out ReadOnlyMemory<byte> memory))
+                {
+                    BrowserMarker($"surface-{part}-missing");
                     continue;
+                }
                 if (memory.Length != PaintPolicy.SurfaceBytes)
                     throw new InvalidDataException($"Paint surface for {part} is not 512x512 RGBA8.");
+                BrowserMarker($"surface-{part}-scan");
                 if (memory.Span.IndexOfAnyExcept((byte)0) < 0)
+                {
+                    BrowserMarker($"surface-{part}-blank");
                     continue;
+                }
+                BrowserMarker($"surface-{part}-encode-begin");
                 byte[] encoded = PaintPngCodec.Encode(memory.Span);
+                BrowserMarker($"surface-{part}-encode-complete");
                 aggregate += encoded.LongLength;
                 if (aggregate > PaintPolicy.MaximumAggregateEncodedBytes)
                     throw new InvalidDataException("Aggregate paint payload exceeds 12 MiB.");
                 string relative = PaintPolicy.WhitelistedPaths[part];
                 string target = ResolveUnder(staging, relative);
                 _fileSystem.WriteAllBytesDurable(target, encoded);
+                BrowserMarker($"surface-{part}-write-complete");
                 byte[] verified = _fileSystem.ReadAllBytes(target, PaintPolicy.MaximumEncodedPngBytes);
+                BrowserMarker($"surface-{part}-readback-complete");
                 if (!PaintPngCodec.Decode(verified).AsSpan().SequenceEqual(memory.Span))
                     throw new InvalidDataException($"Staged paint verification failed for {part}.");
+                BrowserMarker($"surface-{part}-verify-complete");
                 nonBlank.Add(part);
             }
+            BrowserMarker("surfaces-complete");
 
             CharacterDocument normalized = CharacterDocumentNormalizer.Normalize(document with
             {
                 Paint = CharacterPaintManifest.ForNonBlank(nonBlank),
             }).Document;
-            string json = CharacterDocumentPolicy.Serialize(normalized);
+            BrowserMarker("normalize-complete");
+            string json = OperatingSystem.IsBrowser()
+                ? BrowserCharacterJson.Serialize(normalized)
+                : CharacterDocumentPolicy.Serialize(normalized);
+            BrowserMarker("serialize-complete");
             _fileSystem.WriteAllTextDurable(Path.Combine(staging, CharacterPaths.PrimaryFileName), json);
-            CharacterDecodeResult staged = CharacterDocumentPolicy.DecodeAndMigrate(
-                _fileSystem.ReadAllText(Path.Combine(staging, CharacterPaths.PrimaryFileName)));
+            BrowserMarker("document-write-complete");
+            string stagedJson = _fileSystem.ReadAllText(Path.Combine(staging, CharacterPaths.PrimaryFileName));
+            CharacterDecodeResult staged = OperatingSystem.IsBrowser()
+                ? BrowserCharacterJson.DecodeCurrentOrFallback(stagedJson)
+                : CharacterDocumentPolicy.DecodeAndMigrate(stagedJson);
+            BrowserMarker("document-readback-complete");
             if (!staged.IsSuccess || staged.Document is null)
                 throw new InvalidDataException(staged.Detail ?? "Staged character document is invalid.");
             foreach ((PaintPart part, string path) in staged.Document.Paint.Declared())
@@ -171,14 +219,22 @@ public sealed class CharacterPaintStore
                 if (!PaintPolicy.IsWhitelistedPath(part, path) || !_fileSystem.FileExists(ResolveUnder(staging, path)))
                     throw new InvalidDataException($"Staged paint reference for {part} is invalid.");
             }
+            BrowserMarker("manifest-verify-complete");
 
             token.ThrowIfCancellationRequested();
             if (_fileSystem.DirectoryExists(active))
+            {
+                BrowserMarker("active-move-previous-begin");
                 _fileSystem.MoveDirectory(active, previous);
+                BrowserMarker("active-move-previous-complete");
+            }
             try
             {
+                BrowserMarker("staging-move-active-begin");
                 _fileSystem.MoveDirectory(staging, active);
+                BrowserMarker("staging-move-active-complete");
                 _fileSystem.DeleteDirectory(previous, recursive: true);
+                BrowserMarker("previous-delete-complete");
             }
             catch
             {
@@ -187,6 +243,7 @@ public sealed class CharacterPaintStore
                 throw;
             }
 
+            BrowserMarker("core-success");
             return new CharacterPaintSaveResult(
                 new CharacterSaveResult(CharacterSaveStatus.Saved, normalized));
         }
@@ -221,5 +278,11 @@ public sealed class CharacterPaintStore
     {
         try { _fileSystem.DeleteDirectory(path, recursive: true); }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException) { }
+    }
+
+    private static void BrowserMarker(string stage)
+    {
+        if (OperatingSystem.IsBrowser())
+            GD.Print($"DESKTOP_BUDDY_WEB_PAINT_SAVE_STAGE:{stage}");
     }
 }

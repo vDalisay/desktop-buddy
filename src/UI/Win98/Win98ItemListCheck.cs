@@ -1,3 +1,4 @@
+using System;
 using Godot;
 
 namespace DesktopBuddy.UI.Win98;
@@ -9,20 +10,26 @@ namespace DesktopBuddy.UI.Win98;
 /// </summary>
 public static class Win98ItemListCheck
 {
-    private const string Mark = "✓ ";
+    private const string NativeMark = "✓ ";
+    private const string BrowserMark = "> ";
     private const string Blank = "  ";
 
     public static void Attach(ItemList list) => list.Draw += () => Apply(list);
 
     private static void Apply(ItemList list)
     {
+        string mark = OperatingSystem.IsBrowser() ? BrowserMark : NativeMark;
         for (int index = 0; index < list.ItemCount; index++)
         {
             string text = list.GetItemText(index);
-            string bare = text.StartsWith(Mark) || text.StartsWith(Blank)
-                ? text[Mark.Length..]
-                : text;
-            string wanted = (list.IsSelected(index) ? Mark : Blank) + bare;
+            string bare = text.StartsWith(NativeMark)
+                ? text[NativeMark.Length..]
+                : text.StartsWith(BrowserMark)
+                    ? text[BrowserMark.Length..]
+                    : text.StartsWith(Blank)
+                        ? text[Blank.Length..]
+                        : text;
+            string wanted = (list.IsSelected(index) ? mark : Blank) + bare;
             if (text != wanted)
                 list.SetItemText(index, wanted);
         }

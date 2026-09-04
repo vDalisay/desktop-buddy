@@ -1,72 +1,70 @@
+using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Content;
 
 namespace DesktopBuddy.Domain.Economy.Benchmark;
 
-/// <summary>The official cumulative unlock time for one benchmarked purchasable, in running minutes.</summary>
+/// <summary>
+/// One current shop row. <see cref="TargetMinutes"/> is intentionally <see cref="double.NaN"/>:
+/// the former 209-minute M5 targets were retired when the Demo catalogue was repriced and
+/// expanded, and CI must not invent replacement pacing targets that the game does not author.
+/// </summary>
 public readonly record struct ScheduleTarget(string ContentId, double TargetMinutes);
 
 /// <summary>
-/// The existing owner-accepted 209-minute M5 completionist benchmark remains the calibration
-/// baseline for the twelve established paid tools while the Demo progression pass introduces
-/// Pet, Tickle, and Boxing Glove as new early purchasables. Those three have provisional Demo
-/// prices and are deliberately kept outside this legacy benchmark until the final Demo pacing
-/// gate approves a replacement whole-catalogue schedule.
-///
-/// <para>This separation is intentional: changing the fresh-save ownership contract must not
-/// silently redefine the previously accepted 209-minute targets. The Demo implementation can
-/// become structurally correct first, then the owner can judge the materially subjective final
-/// pacing with benchmark evidence instead of receiving hidden price changes.</para>
+/// Resolves benchmark purchase order from the same catalogue projection the running shop uses.
+/// The old M5 benchmark hard-coded an eleven-item/209-minute schedule; that stopped representing
+/// the game after the Demo economy pass. Current benchmark code reads authored catalogue data
+/// and treats purchase times as telemetry rather than owner-approved targets.
 /// </summary>
 public static class BenchmarkSchedule
 {
-    /// <summary>Each median cumulative purchase time must land inside ±15% of its target.</summary>
+    /// <summary>
+    /// Retained only for the legacy report row's <c>InBand</c> calculation. Current targets are
+    /// NaN, so this tolerance cannot turn observed telemetry into a pass/fail pacing contract.
+    /// </summary>
     public const double ToleranceFraction = 0.15;
 
-    private static readonly double[] TargetMinutes =
-    {
-        3.0, 13.0, 21.0, 41.0, 52.0, 76.0, 104.0, 120.0, 138.0, 184.0, 209.0,
-    };
-
     /// <summary>
-    /// The entries covered by the accepted M5 schedule. Pet, Tickle, and Boxing Glove are paid
-    /// Demo entries held outside this schedule until DEMO-9 pacing, and the Baseball Bat joined
-    /// them when it became the tutorial's token-priced first purchase: a 1-credit item cannot
-    /// meaningfully hold a 7-minute progression target. The remaining targets are unchanged.
+    /// Compatibility snapshot for report rendering. The IDs come from the authoritative launch
+    /// catalogue contract and carry no fabricated timing target.
     /// </summary>
-    public static readonly IReadOnlyList<string> PurchasableOrder = new[]
-    {
-        ContentIds.ToolBaseball,
-        ContentIds.ToolMeal,
-        ContentIds.ToolNerfBlaster,
-        ContentIds.ToolPistol,
-        ContentIds.ToolSoccerBall,
-        ContentIds.ToolGrenade,
-        ContentIds.ToolFireSprayer,
-        ContentIds.ToolPowerGrab,
-        ContentIds.ToolRepairKit,
-        ContentIds.ToolShotgun,
-        ContentIds.ToolDrink,
-    };
+    public static readonly IReadOnlyList<string> PurchasableOrder = BuildLaunchOrder();
 
-    /// <summary>The benchmarked purchasables paired with their cumulative minute targets.</summary>
+    /// <summary>Current purchasables with no hard-coded timing target.</summary>
     public static readonly IReadOnlyList<ScheduleTarget> Targets = BuildTargets();
+
+    /// <summary>Current visible purchasable tools, in their authored runtime shop order.</summary>
+    public static IReadOnlyList<string> PurchaseOrder(ToolCatalogue catalogue)
+    {
+        ArgumentNullException.ThrowIfNull(catalogue);
+        IReadOnlyList<CatalogueEntry> entries = CataloguePolicy.ShopEntries(catalogue);
+        var order = new List<string>(entries.Count);
+        foreach (CatalogueEntry entry in entries)
+            order.Add(entry.ContentId);
+        return order;
+    }
+
+    private static IReadOnlyList<string> BuildLaunchOrder()
+    {
+        var order = new List<string>();
+        foreach (string contentId in CataloguePolicy.LaunchContentIds)
+        {
+            bool starting = false;
+            foreach (string startingId in CataloguePolicy.NewSaveUnlockedContentIds)
+                starting |= string.Equals(contentId, startingId, StringComparison.Ordinal);
+            if (!starting)
+                order.Add(contentId);
+        }
+
+        return order;
+    }
 
     private static IReadOnlyList<ScheduleTarget> BuildTargets()
     {
-        if (PurchasableOrder.Count != TargetMinutes.Length)
-        {
-            throw new System.InvalidOperationException(
-                $"The accepted M5 benchmark has {PurchasableOrder.Count} entries but " +
-                $"{TargetMinutes.Length} time targets.");
-        }
-
-        var targets = new List<ScheduleTarget>(TargetMinutes.Length);
-        for (int index = 0; index < PurchasableOrder.Count; index++)
-        {
-            targets.Add(new ScheduleTarget(PurchasableOrder[index], TargetMinutes[index]));
-        }
-
+        var targets = new List<ScheduleTarget>(PurchasableOrder.Count);
+        foreach (string contentId in PurchasableOrder)
+            targets.Add(new ScheduleTarget(contentId, double.NaN));
         return targets;
     }
 }

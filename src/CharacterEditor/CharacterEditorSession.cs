@@ -103,12 +103,23 @@ public sealed class CharacterEditorSession
         _paintStore = paintStore ?? throw new ArgumentNullException(nameof(paintStore));
         _paintWorkspace = workspace ?? throw new ArgumentNullException(nameof(workspace));
         if (WorkingDocument is not null)
-            await LoadPaintAsync(WorkingDocument.Id, token);
+        {
+            if (OperatingSystem.IsBrowser())
+                LoadPaintBrowserSynchronously(WorkingDocument.Id, token);
+            else
+                await LoadPaintAsync(WorkingDocument.Id, token);
+        }
         Changed?.Invoke();
     }
 
     public async Task RefreshPageAsync(int offset, int count = 24, CancellationToken token = default)
     {
+        if (OperatingSystem.IsBrowser())
+        {
+            RefreshPageBrowserSynchronously(offset, count, token);
+            return;
+        }
+
         CurrentPage = await _library.ReadPageAsync(offset, count, token);
         PageOffset = offset;
         PageSize = count;
@@ -119,6 +130,8 @@ public sealed class CharacterEditorSession
     {
         CancelTransientPaintPreview();
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Select, characterId);
+        if (OperatingSystem.IsBrowser())
+            return SelectCoreBrowserSynchronously(characterId, token);
         return await SelectCoreAsync(characterId, token);
     }
 
@@ -135,6 +148,8 @@ public sealed class CharacterEditorSession
                 return new CharacterEditorActionResult(true);
             if (IsDirty)
                 return RequireDecision(CharacterEditorPendingAction.Select, activeCharacterId);
+            if (OperatingSystem.IsBrowser())
+                return SelectCoreBrowserSynchronously(activeCharacterId.Value, token);
             return await SelectCoreAsync(activeCharacterId.Value, token);
         }
 
@@ -387,6 +402,9 @@ public sealed class CharacterEditorSession
 
     public async Task<CharacterEditorActionResult> SaveAsync(CancellationToken token = default)
     {
+        if (OperatingSystem.IsBrowser())
+            return SaveBrowserSynchronously(token);
+
         CancelTransientPaintPreview();
         if (WorkingDocument is null) return Failure("There is no working character to save.");
         CancelCosmeticPreviews();
@@ -426,6 +444,9 @@ public sealed class CharacterEditorSession
 
     public async Task<CharacterEditorActionResult> UseCharacterAsync(CancellationToken token = default)
     {
+        if (OperatingSystem.IsBrowser())
+            return UseCharacterBrowserSynchronously(token);
+
         CancelTransientPaintPreview();
         CommitOwnedCosmeticPreviews();
         CancelCosmeticPreviews();
@@ -439,6 +460,9 @@ public sealed class CharacterEditorSession
 
     public async Task<CharacterEditorActionResult> DeleteAsync(CancellationToken token = default)
     {
+        if (OperatingSystem.IsBrowser())
+            return DeleteBrowserSynchronously(token);
+
         CancelTransientPaintPreview();
         if (WorkingDocument is null) return Failure("Select a character before deleting it.");
         if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Delete, WorkingDocument.Id);
@@ -469,6 +493,9 @@ public sealed class CharacterEditorSession
         UnsavedDecision decision,
         CancellationToken token = default)
     {
+        if (OperatingSystem.IsBrowser())
+            return ResolveUnsavedBrowserSynchronously(decision, token);
+
         CancelTransientPaintPreview();
         CharacterEditorPendingAction action = _pendingAction;
         Guid? characterId = _pendingCharacterId;
@@ -507,6 +534,169 @@ public sealed class CharacterEditorSession
             CharacterEditorPendingAction.NewPrompt => new CharacterEditorActionResult(true),
             _ => new CharacterEditorActionResult(true),
         };
+    }
+
+    /// <summary>
+    /// The experimental single-threaded browser runtime has repeatedly stranded continuations
+    /// immediately after a completed persistence await. Browser editor actions therefore execute
+    /// the already-inline persistence cores synchronously and return through the public Task API
+    /// without ever yielding. Native builds retain the existing worker-thread/async behavior.
+    /// </summary>
+    internal CharacterEditorActionResult SaveBrowserSynchronously(CancellationToken token)
+    {
+        CancelTransientPaintPreview();
+        if (WorkingDocument is null) return Failure("There is no working character to save.");
+        CancelCosmeticPreviews();
+
+        CharacterSaveResult saved;
+        if (_paintStore is not null && _paintWorkspace is not null)
+        {
+            var surfaces = _paintWorkspace.Surfaces.ToDictionary(
+                pair => pair.Key,
+                pair => (ReadOnlyMemory<byte>)pair.Value.ClonePixels());
+            CharacterPaintSaveResult paintSaved =
+                _paintStore.SaveBrowserSynchronously(WorkingDocument, surfaces, token);
+            saved = paintSaved.Character;
+        }
+        else
+        {
+            saved = _store.SaveBrowserSynchronously(WorkingDocument, token);
+        }
+
+        if (!saved.IsSuccess || saved.Document is null)
+            return Failure(saved.Detail ?? $"Character save failed: {saved.Status}.");
+
+        CaptureSavedPaint();
+        _paintWorkspace?.MarkSaved();
+        SetWorking(saved.Document, saved.Document, clearPreviews: true);
+
+        if (_selection.ActiveCharacterId == saved.Document.Id)
+            _selection.QueueUseCharacterBrowserSynchronously(saved.Document.Id, token);
+
+        RefreshPageBrowserSynchronously(PageOffset, PageSize, token);
+        return new CharacterEditorActionResult(true);
+    }
+
+    internal CharacterEditorActionResult UseCharacterBrowserSynchronously(CancellationToken token)
+    {
+        CancelTransientPaintPreview();
+        CommitOwnedCosmeticPreviews();
+        CancelCosmeticPreviews();
+        CharacterEditorActionResult saved = IsDirty
+            ? SaveBrowserSynchronously(token)
+            : new CharacterEditorActionResult(true);
+        if (!saved.Completed || WorkingDocument is null) return saved;
+
+        CharacterActivationResult activation =
+            _selection.QueueUseCharacterBrowserSynchronously(WorkingDocument.Id, token);
+        return activation.WasQueued
+            ? new CharacterEditorActionResult(true)
+            : Failure(activation.Detail ?? $"Character activation failed: {activation.Status}.");
+    }
+
+    private CharacterEditorActionResult DeleteBrowserSynchronously(CancellationToken token)
+    {
+        CancelTransientPaintPreview();
+        if (WorkingDocument is null) return Failure("Select a character before deleting it.");
+        if (IsDirty) return RequireDecision(CharacterEditorPendingAction.Delete, WorkingDocument.Id);
+        Guid id = WorkingDocument.Id;
+        CharacterDeleteResult deleted = _selection.DeleteCharacterBrowserSynchronously(id, token);
+        if (!deleted.IsSuccess) return Failure(deleted.Detail ?? $"Character deletion failed: {deleted.Status}.");
+        WorkingDocument = null;
+        _savedDocument = null;
+        _unownedPreviews.Clear();
+        _ownedPreviews.Clear();
+        ClearPaint(saved: true);
+        RefreshPreview();
+        Changed?.Invoke();
+        RefreshPageBrowserSynchronously(PageOffset, PageSize, token);
+        return new CharacterEditorActionResult(true);
+    }
+
+    internal CharacterEditorActionResult ResolveUnsavedBrowserSynchronously(
+        UnsavedDecision decision,
+        CancellationToken token)
+    {
+        CancelTransientPaintPreview();
+        CharacterEditorPendingAction action = _pendingAction;
+        Guid? characterId = _pendingCharacterId;
+        _pendingAction = CharacterEditorPendingAction.None;
+        _pendingCharacterId = null;
+
+        if (decision == UnsavedDecision.Cancel) return new CharacterEditorActionResult(false);
+        if (decision == UnsavedDecision.Save)
+        {
+            CharacterEditorActionResult saved = SaveBrowserSynchronously(token);
+            if (!saved.Completed) return saved;
+        }
+        else if (_savedDocument is not null)
+        {
+            RestoreSavedPaint();
+            SetWorking(_savedDocument, _savedDocument, clearPreviews: true);
+        }
+        else
+        {
+            WorkingDocument = null;
+            _savedDocument = null;
+            _unownedPreviews.Clear();
+            _ownedPreviews.Clear();
+            ClearPaint(saved: true);
+            RefreshPreview();
+            Changed?.Invoke();
+        }
+
+        return action switch
+        {
+            CharacterEditorPendingAction.Close => ResolveClose(),
+            CharacterEditorPendingAction.Select when characterId.HasValue =>
+                SelectCoreBrowserSynchronously(characterId.Value, token),
+            CharacterEditorPendingAction.New => NewCharacter(),
+            CharacterEditorPendingAction.Duplicate => Duplicate(),
+            CharacterEditorPendingAction.Delete => DeleteBrowserSynchronously(token),
+            CharacterEditorPendingAction.NewPrompt => new CharacterEditorActionResult(true),
+            _ => new CharacterEditorActionResult(true),
+        };
+    }
+
+    private CharacterEditorActionResult SelectCoreBrowserSynchronously(Guid characterId, CancellationToken token)
+    {
+        CharacterLoadResult loaded;
+        if (_paintStore is not null && _paintWorkspace is not null)
+        {
+            CharacterPaintLoadResult paintLoaded = _paintStore.LoadBrowserSynchronously(characterId, token);
+            loaded = paintLoaded.Character;
+            if (loaded.IsSuccess && loaded.Document is not null)
+                ApplyLoadedPaint(paintLoaded.Surfaces);
+        }
+        else
+        {
+            loaded = _store.LoadBrowserSynchronously(characterId, token);
+        }
+        if (!loaded.IsSuccess || loaded.Document is null)
+            return Failure(loaded.Detail ?? $"Character load failed: {loaded.Status}.");
+        SetWorking(loaded.Document, loaded.Document, clearPreviews: true);
+        return new CharacterEditorActionResult(true);
+    }
+
+    private void LoadPaintBrowserSynchronously(Guid characterId, CancellationToken token)
+    {
+        if (_paintStore is null || _paintWorkspace is null) return;
+        CharacterPaintLoadResult result = _paintStore.LoadBrowserSynchronously(characterId, token);
+        if (!result.IsSuccess)
+        {
+            LastError = result.Detail ?? result.Character.Detail;
+            ClearPaint(saved: true);
+            return;
+        }
+        ApplyLoadedPaint(result.Surfaces);
+    }
+
+    private void RefreshPageBrowserSynchronously(int offset, int count, CancellationToken token)
+    {
+        CurrentPage = _library.ReadPageBrowserSynchronously(offset, count, token);
+        PageOffset = offset;
+        PageSize = count;
+        LibraryChanged?.Invoke();
     }
 
     private async Task<CharacterEditorActionResult> SelectCoreAsync(Guid characterId, CancellationToken token)

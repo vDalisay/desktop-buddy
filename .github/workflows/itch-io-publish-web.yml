@@ -1,0 +1,143 @@
+name: Publish hardened Web build to itch.io
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: "Branch whose latest successful itch.io public build should be published"
+        required: true
+        default: "main"
+        type: string
+      run_id:
+        description: "Optional exact itch.io public build run ID; leave blank to use the latest successful run on source_branch"
+        required: false
+        type: string
+      version:
+        description: "Optional itch.io user version; defaults to the source build commit SHA"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: itch-io-web-publish
+  cancel-in-progress: false
+
+jobs:
+  publish-web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve validated source build
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+          REQUESTED_RUN_ID: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+
+          RUN_ID="${REQUESTED_RUN_ID:-}"
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/itch-io-build.yml/runs" \
+              -f branch="$SOURCE_BRANCH" \
+              -f status=success \
+              -f per_page=20 \
+              --jq '.workflow_runs[0].id // empty')"
+          fi
+
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful itch.io public build found for branch '$SOURCE_BRANCH'." >&2
+            exit 1
+          fi
+
+          RUN_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
+          RUN_NAME="$(jq -r '.name' <<<"$RUN_JSON")"
+          CONCLUSION="$(jq -r '.conclusion' <<<"$RUN_JSON")"
+          HEAD_BRANCH="$(jq -r '.head_branch' <<<"$RUN_JSON")"
+          HEAD_SHA="$(jq -r '.head_sha' <<<"$RUN_JSON")"
+          HEAD_REPO="$(jq -r '.head_repository.full_name // empty' <<<"$RUN_JSON")"
+
+          if [ "$RUN_NAME" != "itch.io public build" ]; then
+            echo "Run $RUN_ID is '$RUN_NAME', not the itch.io public build workflow." >&2
+            exit 1
+          fi
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "Run $RUN_ID is not successful (conclusion=$CONCLUSION)." >&2
+            exit 1
+          fi
+          if [ "$HEAD_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "Run $RUN_ID came from '$HEAD_REPO', not '$GITHUB_REPOSITORY'." >&2
+            exit 1
+          fi
+          if [ -n "$SOURCE_BRANCH" ] && [ "$HEAD_BRANCH" != "$SOURCE_BRANCH" ]; then
+            echo "Run $RUN_ID belongs to branch '$HEAD_BRANCH', expected '$SOURCE_BRANCH'." >&2
+            exit 1
+          fi
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "Publishing validated build run $RUN_ID from $HEAD_BRANCH@$HEAD_SHA"
+
+      - name: Download hardened browser site
+        uses: actions/download-artifact@v4
+        with:
+          name: DesktopBuddy-itch-web-site
+          path: build/itch-web
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Validate downloaded browser artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f build/itch-web/index.html
+          test -n "$(find build/itch-web -type f -name '*.wasm' -print -quit)"
+          test -d build/itch-web/_framework
+          if find build/itch-web -type f \( -name '*.pdb' -o -name '*.map' -o -name '*.cs' \) -print -quit | grep -q .; then
+            echo "Refusing to publish: debug/source material exists in the Web artifact." >&2
+            exit 1
+          fi
+
+      - name: Install Butler
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUTLER_DIR="$RUNNER_TEMP/butler"
+          mkdir -p "$BUTLER_DIR"
+          curl -fL --retry 3 \
+            -o "$RUNNER_TEMP/butler.zip" \
+            "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default"
+          unzip -q "$RUNNER_TEMP/butler.zip" -d "$BUTLER_DIR"
+          chmod +x "$BUTLER_DIR/butler"
+          echo "$BUTLER_DIR" >> "$GITHUB_PATH"
+
+      - name: Publish hardened Web build to itch.io
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCHIO_WEB_TARGET: ${{ vars.ITCHIO_WEB_TARGET }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ steps.source.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${BUTLER_API_KEY:-}" ]; then
+            echo "Missing repository secret BUTLER_API_KEY." >&2
+            exit 1
+          fi
+          if [ -z "${ITCHIO_WEB_TARGET:-}" ]; then
+            echo "Missing repository variable ITCHIO_WEB_TARGET (expected format: username/game:html5-demo)." >&2
+            exit 1
+          fi
+
+          VERSION="${REQUESTED_VERSION:-}"
+          if [ -z "$VERSION" ]; then
+            VERSION="${SOURCE_SHA::12}"
+          fi
+
+          butler push build/itch-web "$ITCHIO_WEB_TARGET" --userversion "$VERSION"

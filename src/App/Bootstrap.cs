@@ -14,7 +14,9 @@ using DesktopBuddy.Onboarding;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
+#if !DESKTOP_BUDDY_PUBLIC_WEB
 using DesktopBuddy.Testing;
+#endif
 using Godot;
 
 namespace DesktopBuddy.App;
@@ -53,7 +55,15 @@ public partial class Bootstrap : Node
         {
             case RunnerMode.Scenario:
             case RunnerMode.Journey:
+#if DESKTOP_BUDDY_PUBLIC_WEB
+                // Public Web exports intentionally omit the entire developer scenario tree.
+                // A crafted browser argument must therefore fall back to normal gameplay rather
+                // than retaining TestRunner and hundreds of scenario symbols in the shipped WASM.
+                Log.Warn(Category, "Scenario/journey runner is unavailable in the public browser build; starting normal sandbox.");
+                await BootSandboxAsync();
+#else
                 BootTestRunner(args);
+#endif
                 break;
 
             default:
@@ -62,6 +72,7 @@ public partial class Bootstrap : Node
         }
     }
 
+#if !DESKTOP_BUDDY_PUBLIC_WEB
     private void BootTestRunner(RunnerArguments args)
     {
         var packed = GD.Load<PackedScene>("res://scenes/test_runner.tscn");
@@ -76,6 +87,7 @@ public partial class Bootstrap : Node
         host.Configure(args);
         AddChild(host);
     }
+#endif
 
     private void ComposeAutomation(RunnerArguments args)
     {
@@ -131,10 +143,18 @@ public partial class Bootstrap : Node
 
         var sandbox = packed.Instantiate<SandboxRoot>();
         double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
+        bool browser = OperatingSystem.IsBrowser();
         string progressPath = ProjectSettings.GlobalizePath("user://progress.json");
         string settingsPath = ProjectSettings.GlobalizePath("user://settings.json");
         string characterRoot = ProjectSettings.GlobalizePath("user://characters");
-        var store = new JsonProgressStore(progressPath, settingsPath);
+        IAtomicSaveFileSystem saveFileSystem = browser
+            ? new GodotBrowserAtomicSaveFileSystem()
+            : new AtomicSaveFileSystem();
+        var store = new JsonProgressStore(progressPath, settingsPath, saveFileSystem);
+
+        Log.Info(
+            Category,
+            $"Loading persistence browser={browser} progress={progressPath} settings={settingsPath}");
 
         LoadResult<ProgressSave> progressLoad;
         LoadResult<LocalSettingsSave> settingsLoad;
@@ -154,6 +174,10 @@ public partial class Bootstrap : Node
             QuitSafely(3);
             return;
         }
+
+        Log.Info(
+            Category,
+            $"Persistence loaded progress={progressLoad.Status} settings={settingsLoad.Status}");
 
         if (progressLoad.Status == SaveLoadStatus.UnsupportedFutureVersion)
         {
@@ -178,8 +202,11 @@ public partial class Bootstrap : Node
             : loadedProgress?.Environment?.CreateState() ?? new EnvironmentProgressState();
         var characterSelection = new CharacterSelectionState(
             newSemanticState ? null : loadedProgress?.ActiveCharacterId);
+        ICharacterFileSystem characterFileSystem = browser
+            ? new GodotBrowserCharacterFileSystem()
+            : new CharacterFileSystem();
         var characters = new CharacterStore(
-            new CharacterFileSystem(),
+            characterFileSystem,
             characterRoot,
             featureCatalog: BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
         var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
@@ -200,16 +227,25 @@ public partial class Bootstrap : Node
         if (settingsLoad.QuarantinedPath is not null)
             Log.Warn(Category, $"Corrupt settings quarantined at {settingsLoad.QuarantinedPath}.");
 
-        if (newSemanticState)
+        if (newSemanticState && !browser)
         {
             try
             {
                 await saves.FlushProgressAsync(force: true);
+                Log.Info(Category, "Initial progress save completed.");
             }
             catch (Exception exception)
             {
                 Log.Error(Category, $"Initial progress save failed; state remains dirty: {exception.Message}");
             }
+        }
+        else if (newSemanticState)
+        {
+            // A first-run browser build must never gate its first rendered frame on durable
+            // filesystem synchronization. The state stays dirty and the normal autosave path
+            // persists it after gameplay is alive. This also protects experimental single-threaded
+            // Web runtimes from turning a save backend regression into a permanent grey boot page.
+            Log.Info(Category, "Browser first-run save deferred until normal autosave; continuing boot.");
         }
 
         var context = new RunContext(
@@ -247,6 +283,12 @@ public partial class Bootstrap : Node
         // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
+        // Keep the reusable contextual ? Help surface in every distribution, but make the authored
+        // first-session walkthrough session-complete in itch.io without writing a durable skip.
+        TutorialProgressState.RuntimeDisabled = !DemoScope.IncludesTutorial;
+        if (!DemoScope.IncludesTutorial)
+            Log.Info(Category, "First-session tutorial omitted by the active itch.io distribution scope.");
+
         var guidance = new FirstSessionGuidanceController
         {
             Name = nameof(FirstSessionGuidanceController),
@@ -260,6 +302,10 @@ public partial class Bootstrap : Node
         };
         inputBridge.Configure(sandbox);
         sandbox.AddChild(inputBridge);
+
+        Log.Info(Category, "Sandbox boot completed and gameplay scene is attached.");
+        if (browser)
+            GD.Print("DESKTOP_BUDDY_WEB_READY");
     }
 
     private void QuitSafely(int exitCode)

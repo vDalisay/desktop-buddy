@@ -322,12 +322,16 @@ public partial class CharacterEditorHost
             RequestProgressReset,
             DataGroup,
             buttonText: "Reset...");
-        _settingsPanel.AddAction(
-            "Show Tutorial Again",
-            "Restarts the first-session tutorial. Nothing else is reset.",
-            RestartTutorial,
-            DataGroup,
-            buttonText: "Show");
+
+        if (DemoScope.IncludesTutorial)
+        {
+            _settingsPanel.AddAction(
+                "Show Tutorial Again",
+                "Restarts the first-session tutorial. Nothing else is reset.",
+                RestartTutorial,
+                DataGroup,
+                buttonText: "Show");
+        }
     }
 
     /// <summary>

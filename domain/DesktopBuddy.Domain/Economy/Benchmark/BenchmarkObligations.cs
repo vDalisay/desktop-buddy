@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Persistence;
 
 namespace DesktopBuddy.Domain.Economy.Benchmark;
 
@@ -9,9 +10,10 @@ namespace DesktopBuddy.Domain.Economy.Benchmark;
 public readonly record struct ObligationCheck(string Id, bool Passed, string Detail);
 
 /// <summary>
-/// The six M5 §4.3 proof obligations, evaluated over a whole benchmark sweep. They are
-/// facts about the run, not about the code, so they are asserted from the measured results
-/// rather than restated as expectations in a test.
+/// Economy invariants evaluated against the shipped catalogue and production economy path.
+/// These deliberately avoid owning a second set of prices or unlock-time targets: authored
+/// catalogue data is the source of truth, while the representative trace measures income,
+/// passive share, event size, deduplication, and determinism.
 /// </summary>
 public static class BenchmarkObligations
 {
@@ -39,7 +41,7 @@ public static class BenchmarkObligations
             PassiveShareOfActive(completionist, economy),
             NoDoubleMilestoneSkip(results, catalogue),
             DedupPaysPositiveZeroPositive(catalogue, economy),
-            FreeChoiceWithoutPrerequisites(results, catalogue),
+            FreeChoiceWithoutPrerequisites(catalogue, economy),
             FingerprintTracksPricesOnly(catalogue, economy),
         };
     }
@@ -96,23 +98,23 @@ public static class BenchmarkObligations
         foreach (BenchmarkResult result in results)
             largest = Math.Max(largest, result.LargestSingleEventMilliCredits);
 
-        // Skipping "more than one milestone" means one payout covering two adjacent slots
-        // at once, so the tightest adjacent pair is the ceiling an ordinary event must stay
-        // under.
+        // Compare a normal payout with two adjacent CURRENT shop prices. This keeps the guard
+        // tied to the real progression ladder even when items are added or repriced.
+        IReadOnlyList<CatalogueEntry> shop = CataloguePolicy.ShopEntries(catalogue);
         long tightestPair = long.MaxValue;
-        IReadOnlyList<string> order = BenchmarkSchedule.PurchasableOrder;
-        for (int index = 0; index + 1 < order.Count; index++)
+        for (int index = 0; index + 1 < shop.Count; index++)
         {
-            catalogue.TryGet(order[index], out CatalogueEntry first);
-            catalogue.TryGet(order[index + 1], out CatalogueEntry second);
-            tightestPair = Math.Min(tightestPair, first.PriceMilliCredits + second.PriceMilliCredits);
+            tightestPair = Math.Min(
+                tightestPair,
+                shop[index].PriceMilliCredits + shop[index + 1].PriceMilliCredits);
         }
 
+        bool passed = shop.Count >= 2 && tightestPair != long.MaxValue && largest < tightestPair;
         return new ObligationCheck(
             "no_ordinary_event_skips_two_milestones",
-            largest < tightestPair,
+            passed,
             $"largest single payout {Number(largest / 1000.0)} credits vs tightest adjacent " +
-            $"pair {Number(tightestPair / 1000.0)} credits");
+            $"current-shop pair {Number(tightestPair / 1000.0)} credits");
     }
 
     private static ObligationCheck DedupPaysPositiveZeroPositive(
@@ -158,93 +160,41 @@ public static class BenchmarkObligations
     }
 
     private static ObligationCheck FreeChoiceWithoutPrerequisites(
-        IReadOnlyList<BenchmarkResult> results,
-        ToolCatalogue catalogue)
+        ToolCatalogue catalogue,
+        BenchmarkEconomy economy)
     {
-        bool passed = true;
-        int completionistRuns = 0;
-        int saveRuns = 0;
+        IReadOnlyList<CatalogueEntry> shop = CataloguePolicy.ShopEntries(catalogue);
         var failures = new List<string>();
 
-        foreach (BenchmarkResult result in results)
+        // This is the actual gameplay rule we care about. Give a fresh save exactly one item's
+        // authored price and attempt that item directly through BuddyProgressState.Purchase.
+        // A 209-minute synthetic trace no longer decides whether a 10,000-credit item has a
+        // prerequisite; affordability and prerequisite freedom are separate concerns.
+        foreach (CatalogueEntry entry in shop)
         {
-            if (result.StrategyId == BenchmarkStrategies.CompletionistId)
+            var progress = new BuddyProgressState(
+                economy.CashPerPain,
+                initialBalanceMilliCredits: entry.PriceMilliCredits);
+            PurchaseResult result = progress.Purchase(entry.ContentId, catalogue);
+            bool bought = result.Succeeded &&
+                          result.PriceMilliCredits == entry.PriceMilliCredits &&
+                          result.BalanceMilliCredits == 0 &&
+                          progress.IsToolUnlocked(entry.ContentId);
+            if (!bought)
             {
-                completionistRuns++;
-                if (result.Purchases.Count != BenchmarkSchedule.PurchasableOrder.Count)
-                {
-                    passed = false;
-                    failures.Add(
-                        $"{result.StrategyId}/seed {result.Seed} bought " +
-                        $"{result.Purchases.Count} of {BenchmarkSchedule.PurchasableOrder.Count}");
-                }
-
-                continue;
-            }
-
-            if (!result.StrategyId.StartsWith("save_for_", StringComparison.Ordinal))
-                continue;
-
-            saveRuns++;
-            string target = result.Purchases.Count > 0 ? result.Purchases[0].ContentId : "<none>";
-            if (!BoughtTargetBeforeACheaperEarlierItem(result, catalogue, out string detail))
-            {
-                passed = false;
-                failures.Add($"{result.StrategyId}/seed {result.Seed}: {detail} (first={target})");
+                failures.Add(
+                    $"{entry.ContentId}: status={result.Status} authored={entry.PriceMilliCredits} " +
+                    $"charged={result.PriceMilliCredits} balance={result.BalanceMilliCredits}");
             }
         }
 
         return new ObligationCheck(
             "any_item_may_be_bought_first",
-            passed && completionistRuns > 0 && saveRuns > 0,
+            shop.Count > 0 && failures.Count == 0,
             failures.Count == 0
-                ? $"{completionistRuns} completionist runs bought all twelve; {saveRuns} " +
-                  "save runs bought their target ahead of a cheaper earlier item"
+                ? $"all {shop.Count} current shop entries independently buy from a fresh save " +
+                  "at their authored price with no prerequisite ownership"
                 : string.Join("; ", failures));
-    }
-
-    private static bool BoughtTargetBeforeACheaperEarlierItem(
-        BenchmarkResult result,
-        ToolCatalogue catalogue,
-        out string detail)
-    {
-        detail = "no purchases";
-        if (result.Purchases.Count == 0)
-            return false;
-
-        string target = result.Purchases[0].ContentId;
-        long targetPrice = result.Purchases[0].PriceMilliCredits;
-        IReadOnlyList<string> order = BenchmarkSchedule.PurchasableOrder;
-
-        foreach (string contentId in order)
-        {
-            if (contentId == target)
-                break;
-            if (!catalogue.TryGet(contentId, out CatalogueEntry entry) ||
-                entry.PriceMilliCredits >= targetPrice)
-            {
-                continue;
-            }
-
-            int boughtAt = -1;
-            for (int index = 0; index < result.Purchases.Count; index++)
-            {
-                if (result.Purchases[index].ContentId == contentId)
-                {
-                    boughtAt = index;
-                    break;
-                }
-            }
-
-            if (boughtAt != 0)
-            {
-                detail = $"'{target}' bought before cheaper earlier '{contentId}'";
-                return true;
-            }
-        }
-
-        detail = $"nothing cheaper and earlier than '{target}' was left unbought";
-        return false;
     }
 
     private static ObligationCheck FingerprintTracksPricesOnly(

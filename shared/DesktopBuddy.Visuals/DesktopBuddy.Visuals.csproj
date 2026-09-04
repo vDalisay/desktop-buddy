@@ -5,4 +5,18 @@
     <RootNamespace>DesktopBuddy</RootNamespace>
     <AssemblyName>DesktopBuddy.Visuals</AssemblyName>
   </PropertyGroup>
+
+  <!-- The experimental static-LibGodot exporter needs static browser linking, while the
+       native editor import still needs to load this project normally before export. -->
+  <PropertyGroup Condition=" '$(GodotTargetPlatform)' == 'web' ">
+    <EnableDynamicLoading>false</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <!-- The disposable itch.io Web project is rewritten to net10.0. Keep its generated
+       visual assembly free of portable debugging/documentation metadata. -->
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
 </Project>

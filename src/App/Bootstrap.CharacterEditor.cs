@@ -50,14 +50,27 @@ public partial class Bootstrap
                 return;
             }
 
-            var workCoordinator = new WorkCompanionCoordinator
+            // Work Mode is outside the itch/browser distribution. Do not instantiate its
+            // coordinator merely as a side effect of composing the Character Editor: on Web
+            // this needlessly constructs a native-desktop subsystem before the inventory and
+            // Paint Buddy UI can exist. The normal Windows demo/full build keeps the exact
+            // existing coordinator path.
+            if (DemoScope.IncludesWorkMode)
             {
-                Name = nameof(WorkCompanionCoordinator),
-            };
-            workCoordinator.Configure(sandbox, selectionRuntime.Context);
-            sandbox.AddChild(workCoordinator);
-            Log.Info(CharacterEditorStartupCategory,
-                $"WorkCompanionCoordinator added successfully: path={workCoordinator.GetPath()} insideTree={workCoordinator.IsInsideTree()}.");
+                var workCoordinator = new WorkCompanionCoordinator
+                {
+                    Name = nameof(WorkCompanionCoordinator),
+                };
+                workCoordinator.Configure(sandbox, selectionRuntime.Context);
+                sandbox.AddChild(workCoordinator);
+                Log.Info(CharacterEditorStartupCategory,
+                    $"WorkCompanionCoordinator added successfully: path={workCoordinator.GetPath()} insideTree={workCoordinator.IsInsideTree()}.");
+            }
+            else
+            {
+                Log.Info(CharacterEditorStartupCategory,
+                    "WorkCompanionCoordinator omitted by the active distribution scope.");
+            }
 
             var host = new CharacterEditorHost
             {
@@ -71,6 +84,17 @@ public partial class Bootstrap
             sandbox.AddChild(host);
             Log.Info(CharacterEditorStartupCategory,
                 $"CharacterEditorHost added successfully: path={host.GetPath()} insideTree={host.IsInsideTree()}.");
+
+            if (OperatingSystem.IsBrowser())
+            {
+                // The experimental single-threaded Web runtime has shown that early Timer signal
+                // delivery can stall even though CallDeferred keeps advancing. Hand the host an
+                // explicit browser composition gate so Shop/Tools/Settings/Paint Buddy are not
+                // left waiting forever after CharacterSelectionRuntime becomes ready.
+                host.EnsureBrowserInitialized();
+                Log.Info(CharacterEditorStartupCategory,
+                    "Browser CharacterEditorHost initialization gate armed.");
+            }
         }
         catch (Exception exception)
         {

@@ -7,6 +7,8 @@ namespace DesktopBuddy.UI.Win98;
 /// <summary>
 /// W1 integration controller for the in-scene Win98 shell. The controller owns only
 /// presentation/input routing; native window policy remains in DesktopWindowController.
+/// Browser builds keep this visual shell inside one opaque canvas instead of trying to
+/// reproduce Desktop Buddy's native transparent/topmost window composition.
 /// </summary>
 public partial class Win98BuddyShellController : CanvasLayer
 {
@@ -23,6 +25,8 @@ public partial class Win98BuddyShellController : CanvasLayer
     private Vector2I _resizeStartPointer;
     private Rect2I _resizeStartWindowRect;
     private WorldEnvironment _backdrop = null!;
+
+    private static bool BrowserCanvas => System.OperatingSystem.IsBrowser();
 
     public override void _Ready()
     {
@@ -50,6 +54,7 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     /// <summary>A maximized window has no free rect to move or resize; only restored windows do.</summary>
     private bool CanReshapeWindow =>
+        !BrowserCanvas &&
         Window.LayoutMode == WindowLayoutMode.Compact &&
         !Window.WorkCompanionActive &&
         DisplayServer.GetName() != "headless" &&
@@ -71,7 +76,7 @@ public partial class Win98BuddyShellController : CanvasLayer
 
         // Focus-driven title colour, sampled rather than event-driven: Work Mode takes and
         // returns the window without a focus-lost/gained pair, which used to strand the bar grey.
-        if (DisplayServer.GetName() != "headless")
+        if (!BrowserCanvas && DisplayServer.GetName() != "headless")
             Frame.SetActive(GetWindow().HasFocus());
     }
 
@@ -98,7 +103,7 @@ public partial class Win98BuddyShellController : CanvasLayer
             },
         };
         GetTree().Root.AddChild(_backdrop);
-        ApplyBackdropOpacity(Win98WindowFrame.CompactOpacity);
+        ApplyBackdropOpacity(BrowserCanvas ? 1.0f : Win98WindowFrame.CompactOpacity);
     }
 
     private void ApplyBackdropOpacity(float opacity)
@@ -116,6 +121,21 @@ public partial class Win98BuddyShellController : CanvasLayer
     {
         if (DisplayServer.GetName() == "headless")
             return;
+
+        // The Web platform renders into a DOM canvas, not a composited desktop window.
+        // The old per-frame compact-opacity path re-enabled Window.Transparent and
+        // Viewport.TransparentBg after the browser-specific launch settings had disabled them,
+        // leaving the exported WebGL framebuffer as the uniform Godot clear colour. Keep the
+        // browser presentation opaque for the lifetime of the page.
+        if (BrowserCanvas)
+        {
+            ApplyBackdropOpacity(1.0f);
+            if (GetWindow().Transparent)
+                GetWindow().Transparent = false;
+            if (GetViewport().TransparentBg)
+                GetViewport().TransparentBg = false;
+            return;
+        }
 
         if (Window.WorkCompanionActive)
         {
@@ -138,6 +158,12 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void OnMinimizeRequested()
     {
+        if (BrowserCanvas)
+        {
+            Frame.StatusText = "Minimize is unavailable in browser play.";
+            return;
+        }
+
         if (DisplayServer.GetName() != "headless")
             GetWindow().Mode = Godot.Window.ModeEnum.Minimized;
     }
@@ -146,6 +172,12 @@ public partial class Win98BuddyShellController : CanvasLayer
     // The transparent full-screen overlay is F11 only.
     private void OnMaximizeRestoreRequested()
     {
+        if (BrowserCanvas)
+        {
+            Frame.StatusText = "Window maximize is unavailable in browser play.";
+            return;
+        }
+
         if (DisplayServer.GetName() == "headless")
             return;
 
@@ -172,6 +204,12 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void ToggleFullscreenOverlay()
     {
+        if (BrowserCanvas)
+        {
+            Frame.StatusText = "Desktop overlay mode is unavailable in browser play.";
+            return;
+        }
+
         bool entering = Window.LayoutMode == WindowLayoutMode.Compact;
         bool headless = DisplayServer.GetName() == "headless";
         if (entering && !headless)
@@ -191,6 +229,12 @@ public partial class Win98BuddyShellController : CanvasLayer
 
     private void OnCloseRequested()
     {
+        if (BrowserCanvas)
+        {
+            Frame.StatusText = "Close the browser tab to exit.";
+            return;
+        }
+
         if (DisplayServer.GetName() != "headless")
             GetWindow().EmitSignal(Godot.Window.SignalName.CloseRequested);
     }
@@ -270,12 +314,12 @@ public partial class Win98BuddyShellController : CanvasLayer
         if (mode == WindowLayoutMode.FullscreenOverlay)
         {
             Frame.Visible = false;
-            ApplyBackdropOpacity(0.0f);
+            ApplyBackdropOpacity(BrowserCanvas ? 1.0f : 0.0f);
         }
         else
         {
             Frame.Visible = true;
-            ApplyBackdropOpacity(Frame.ViewportOpacity);
+            ApplyBackdropOpacity(BrowserCanvas ? 1.0f : Frame.ViewportOpacity);
         }
         ApplyWindowTransparency(mode, Frame.ViewportOpacity);
     }
