@@ -33,6 +33,10 @@
     <Compile Include="..\..\src\Persistence\JsonProgressStore.cs" Link="RuntimePersistence\JsonProgressStore.cs" />
     <Compile Include="..\..\src\Persistence\SaveCoordinator.cs" Link="RuntimePersistence\SaveCoordinator.cs" />
     <Compile Include="..\..\src\Persistence\Characters\CharacterSelectionState.cs" Link="RuntimePersistence\CharacterSelectionState.cs" />
+    <Compile Include="..\..\src\Persistence\Characters\CharacterPaths.cs" Link="RuntimePersistence\CharacterPaths.cs" />
+    <Compile Include="..\..\src\Persistence\Characters\CharacterStoreResults.cs" Link="RuntimePersistence\CharacterStoreResults.cs" />
+    <Compile Include="..\..\src\Persistence\Characters\CharacterStore.cs" Link="RuntimePersistence\CharacterStore.cs" />
+    <Compile Include="..\..\src\Persistence\Characters\CharacterPaintStore.cs" Link="RuntimePersistence\CharacterPaintStore.cs" />
     <Compile Include="..\..\src\App\GameClock.cs" Link="RuntimeLifecycle\GameClock.cs" />
     <Compile Include="..\..\src\Economy\EconomyService.cs" Link="RuntimeEconomy\EconomyService.cs" />
     <Compile Include="..\..\src\CharacterEditor\CharacterSlotEntitlementState.cs" Link="RuntimeCharacterEditor\CharacterSlotEntitlementState.cs" />
@@ -53,6 +57,9 @@
     <Compile Include="..\..\src\Platform\Steam\WorkshopPublishCallbackLane.cs" Link="RuntimeSharing\WorkshopPublishCallbackLane.cs" />
     <Compile Include="..\..\src\Sharing\ShareTransferModels.cs" Link="RuntimeSharing\ShareTransferModels.cs" />
     <Compile Include="..\..\src\Sharing\RoomShareImporter.cs" Link="RuntimeSharing\RoomShareImporter.cs" />
+    <Compile Include="..\..\src\Sharing\CharacterShareExporter.cs" Link="RuntimeSharing\CharacterShareExporter.cs" />
+    <Compile Include="..\..\src\Sharing\CharacterShareImporter.cs" Link="RuntimeSharing\CharacterShareImporter.cs" />
+    <Compile Include="..\..\src\Sharing\CharacterSharePayloadValidator.cs" Link="RuntimeSharing\CharacterSharePayloadValidator.cs" />
   </ItemGroup>
 
 </Project>
