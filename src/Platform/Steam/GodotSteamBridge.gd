@@ -40,6 +40,7 @@ var _required_methods := PackedStringArray([
     "submitItemUpdate",
     "getItemUpdateProgress",
     "getSubscribedItems",
+    "unsubscribeItem",
     "getItemState",
     "downloadItem",
     "getItemDownloadInfo",
@@ -197,6 +198,14 @@ func get_subscribed_items() -> PackedInt64Array:
             ids.append(int(item))
         return ids
     return PackedInt64Array()
+
+func unsubscribe_item(file_id: int) -> bool:
+    if not is_available() or file_id <= 0:
+        return false
+    # ISteamUGC::UnsubscribeItem is asynchronous. The C# adapter verifies completion by polling
+    # the item's Subscribed state, so this bridge only confirms that the call was dispatched.
+    _steam.call("unsubscribeItem", file_id)
+    return true
 
 func get_item_state(file_id: int) -> int:
     if not is_available() or file_id <= 0:
