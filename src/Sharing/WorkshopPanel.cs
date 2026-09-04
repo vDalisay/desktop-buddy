@@ -6,13 +6,14 @@ using DesktopBuddy.Environment;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Persistence.Sharing;
 using DesktopBuddy.Platform.Steam;
+using DesktopBuddy.Ui;
 using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Sharing;
 
 /// <summary>
-/// Small in-game Workshop surface. Full discovery remains in the Steam overlay; this window owns
+/// Small in-game Workshop surface. Full discovery opens in the player's browser; this window owns
 /// publishing, subscriptions, validation/import, and explicit application of imported rooms.
 /// Remote preview images are deliberately not rendered here.
 /// </summary>
@@ -64,13 +65,12 @@ public partial class WorkshopPanel : Window
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
-        Title = "Desktop Buddy Workshop";
-        Size = new Vector2I(760, 680);
-        MinSize = new Vector2I(620, 520);
+        Title = string.Empty;
+        Size = new Vector2I(900, 700);
+        MinSize = new Vector2I(720, 560);
+        Borderless = true;
         Unresizable = false;
-        Exclusive = false;
-        Transient = false;
-        AlwaysOnTop = true;
+        DockWindow.ApplyOwnedWindowFlags(this);
         Theme = Win98ThemeFactory.Create();
         CloseRequested += OnCloseRequested;
         Build();
@@ -95,7 +95,7 @@ public partial class WorkshopPanel : Window
         RefreshAvailability();
         Rect2I usable = DisplayServer.ScreenGetUsableRect(DisplayServer.WindowGetCurrentScreen());
         Position = usable.Position + ((usable.Size - Size) / 2);
-        Show();
+        DockWindow.ShowOwned(this);
         _ = RefreshAsync();
     }
 
@@ -103,26 +103,48 @@ public partial class WorkshopPanel : Window
     {
         var root = new PanelContainer { Name = "WorkshopRoot" };
         root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        root.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face));
+        root.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
         AddChild(root);
 
-        var margin = new MarginContainer();
-        margin.AddThemeConstantOverride("margin_left", 10);
-        margin.AddThemeConstantOverride("margin_top", 10);
-        margin.AddThemeConstantOverride("margin_right", 10);
-        margin.AddThemeConstantOverride("margin_bottom", 10);
-        root.AddChild(margin);
+        var chrome = new VBoxContainer
+        {
+            Name = "WorkshopChrome",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        chrome.AddThemeConstantOverride("separation", 0);
+        root.AddChild(chrome);
+        chrome.AddChild(BuildTitleBar());
 
-        var column = new VBoxContainer { SizeFlagsVertical = Control.SizeFlags.ExpandFill };
-        column.AddThemeConstantOverride("separation", 8);
+        var margin = new MarginContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        margin.AddThemeConstantOverride("margin_left", Win98ThemeFactory.Px(8));
+        margin.AddThemeConstantOverride("margin_top", Win98ThemeFactory.Px(8));
+        margin.AddThemeConstantOverride("margin_right", Win98ThemeFactory.Px(8));
+        margin.AddThemeConstantOverride("margin_bottom", Win98ThemeFactory.Px(8));
+        chrome.AddChild(margin);
+
+        var column = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        column.AddThemeConstantOverride("separation", Win98ThemeFactory.Px(6));
         margin.AddChild(column);
 
+        var availabilityPanel = new PanelContainer();
+        availabilityPanel.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
+        column.AddChild(availabilityPanel);
         _availability = new Label
         {
             Text = "Steam Workshop: checking...",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            VerticalAlignment = VerticalAlignment.Center,
         };
-        column.AddChild(_availability);
+        availabilityPanel.AddChild(_availability);
 
         var browseRow = new HBoxContainer();
         column.AddChild(browseRow);
@@ -130,8 +152,12 @@ public partial class WorkshopPanel : Window
         AddOperationButton(browseRow, "Refresh Subscriptions", () => _ = RefreshSubscriptionsAsync());
         var spacer = new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         browseRow.AddChild(spacer);
-        var legal = new Label { Text = "Publishing is subject to the Steam Workshop Legal Agreement." };
-        legal.AddThemeFontSizeOverride("font_size", 11);
+        var legal = new Label
+        {
+            Text = "Publishing is subject to the Steam Workshop Legal Agreement.",
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        legal.AddThemeFontSizeOverride("font_size", Win98ThemeFactory.Px(11));
         browseRow.AddChild(legal);
 
         column.AddChild(SectionLabel("Publish"));
@@ -145,7 +171,7 @@ public partial class WorkshopPanel : Window
         _description = new TextEdit
         {
             PlaceholderText = "Optional description",
-            CustomMinimumSize = new Vector2(0, 78),
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(78)),
             WrapMode = TextEdit.LineWrappingMode.Boundary,
         };
         column.AddChild(_description);
@@ -157,15 +183,21 @@ public partial class WorkshopPanel : Window
 
         var split = new HSplitContainer
         {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            SplitOffsets = [365],
+            SplitOffsets = [545],
         };
         column.AddChild(split);
 
-        var subscriptionColumn = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var subscriptionColumn = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
         subscriptionColumn.AddChild(SectionLabel("My Subscriptions"));
         var subscriptionScroll = new ScrollContainer
         {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
@@ -174,10 +206,15 @@ public partial class WorkshopPanel : Window
         subscriptionScroll.AddChild(_subscriptions);
         split.AddChild(subscriptionColumn);
 
-        var roomColumn = new VBoxContainer { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        var roomColumn = new VBoxContainer
+        {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
         roomColumn.AddChild(SectionLabel("Imported Room Paintings"));
         var roomScroll = new ScrollContainer
         {
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
             HorizontalScrollMode = ScrollContainer.ScrollMode.Disabled,
         };
@@ -194,7 +231,7 @@ public partial class WorkshopPanel : Window
             MaxValue = 100,
             Value = 0,
             ShowPercentage = false,
-            CustomMinimumSize = new Vector2(0, 14),
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(14)),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         progressRow.AddChild(_progress);
@@ -207,13 +244,39 @@ public partial class WorkshopPanel : Window
         _cancel.Pressed += CancelActiveOperation;
         progressRow.AddChild(_cancel);
 
+        var statusPanel = new PanelContainer
+        {
+            Name = "Win98StatusBar",
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(36)),
+        };
+        statusPanel.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
+        chrome.AddChild(statusPanel);
         _status = new Label
         {
             Text = "Ready.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(0, 34),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
         };
-        column.AddChild(_status);
+        statusPanel.AddChild(_status);
+
+        var resizeGrip = new Control
+        {
+            Name = "ResizeGrip",
+            MouseFilter = Control.MouseFilterEnum.Stop,
+            MouseDefaultCursorShape = Control.CursorShape.Fdiagsize,
+            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(14), Win98ThemeFactory.Px(14)),
+            Size = new Vector2(Win98ThemeFactory.Px(14), Win98ThemeFactory.Px(14)),
+            FocusMode = Control.FocusModeEnum.None,
+        };
+        resizeGrip.SetAnchorsPreset(Control.LayoutPreset.BottomRight);
+        resizeGrip.Position = -resizeGrip.Size;
+        resizeGrip.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true })
+                StartResize(DisplayServer.WindowResizeEdge.BottomRight);
+        };
+        AddChild(resizeGrip);
 
         var overlay = new Control { Name = "WorkshopModalOverlay", MouseFilter = Control.MouseFilterEnum.Ignore };
         root.AddChild(overlay);
@@ -238,6 +301,69 @@ public partial class WorkshopPanel : Window
         _openPublishedItem = Win98Dialog.Action(successActions, "Open Workshop Page...", OpenPublishedItem);
         _openPublishedItem.TooltipText = "Open this Steam Workshop item so you can edit its details and images.";
         Win98Dialog.Action(successActions, "Done", HidePublishSuccess);
+    }
+
+    private PanelContainer BuildTitleBar()
+    {
+        var titleBar = new PanelContainer
+        {
+            Name = "TitleBar",
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(Win98ThemeFactory.TitleBarHeight)),
+            MouseDefaultCursorShape = Control.CursorShape.Move,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+        };
+        titleBar.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Flat(Win98ThemeFactory.ActiveTitle));
+        titleBar.GuiInput += OnTitleBarInput;
+
+        var row = new HBoxContainer
+        {
+            Name = "TitleBarRow",
+            MouseFilter = Control.MouseFilterEnum.Pass,
+        };
+        row.AddThemeConstantOverride("separation", Win98ThemeFactory.Px(Win98ThemeFactory.TitleButtonGap));
+        titleBar.AddChild(row);
+
+        var icon = new Label
+        {
+            Text = "▣",
+            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(18), 0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        Win98ThemeFactory.TitleLabel(icon);
+        row.AddChild(icon);
+
+        var title = new Label
+        {
+            Text = "Desktop Buddy Workshop",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            VerticalAlignment = VerticalAlignment.Center,
+            TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        Win98ThemeFactory.TitleLabel(title);
+        title.AddThemeFontSizeOverride("font_size", Win98ThemeFactory.Px(14));
+        row.AddChild(title);
+
+        var close = new Button
+        {
+            Name = "CloseBox",
+            Text = "×",
+            TooltipText = "Close this window.",
+            FocusMode = Control.FocusModeEnum.All,
+            MouseFilter = Control.MouseFilterEnum.Stop,
+        };
+        Win98ThemeFactory.StyleTitleButton(close);
+        close.Pressed += OnCloseRequested;
+        row.AddChild(close);
+        return titleBar;
+    }
+
+    private void OnTitleBarInput(InputEvent input)
+    {
+        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: true })
+            StartDrag();
     }
 
     private async Task PublishRoomAsync()
@@ -328,7 +454,7 @@ public partial class WorkshopPanel : Window
         Clear(_subscriptions);
         foreach (PublishedWorkshopItem item in items)
         {
-            var row = new HBoxContainer();
+            var row = new HBoxContainer { Name = $"SubscriptionRow{item.PublishedFileId}" };
             var label = new Label
             {
                 Text = item.DisplayName,
@@ -337,14 +463,48 @@ public partial class WorkshopPanel : Window
                 TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
             };
             row.AddChild(label);
-            Button open = new() { Text = "Open" };
+            Button open = new() { Text = "Open", TooltipText = "Open this item in your browser." };
             open.Pressed += () => _sharing?.OpenWorkshopItem(item.PublishedFileId);
             row.AddChild(open);
-            Button import = new() { Text = "Import" };
+            Button import = new() { Text = "Import", TooltipText = "Import this item as a local Desktop Buddy copy." };
             import.Pressed += () => _ = ImportAsync(item);
             row.AddChild(import);
+            Button unsubscribe = new()
+            {
+                Name = $"Unsubscribe{item.PublishedFileId}",
+                Text = "Unsubscribe",
+                TooltipText = "Stop following this Workshop item in Steam. Imported local copies are kept.",
+            };
+            unsubscribe.Pressed += () => _ = UnsubscribeAsync(item);
+            row.AddChild(unsubscribe);
             _subscriptions.AddChild(row);
         }
+    }
+
+    private async Task UnsubscribeAsync(PublishedWorkshopItem item)
+    {
+        if (_busy || _sharing is null) return;
+        bool refresh = false;
+        await RunBusyAsync(async (_, token) =>
+        {
+            SetStatus($"Unsubscribing from '{item.DisplayName}'...");
+            WorkshopSubscriptionChangeResult result = await _sharing.UnsubscribeAsync(item.PublishedFileId, token);
+            if (result.IsSuccess)
+            {
+                refresh = true;
+                SetStatus($"Unsubscribed from '{item.DisplayName}'. Imported local copies are unchanged.");
+                return;
+            }
+
+            SetStatus(result.Detail ?? (result.Status == WorkshopRemoteStatus.Cancelled
+                ? "Workshop unsubscribe cancelled."
+                : "Could not unsubscribe from the Workshop item."));
+        });
+
+        // RunBusyAsync intentionally blocks refreshes while a remote operation owns the UI. Wait
+        // until it has released that ownership before rebuilding the subscription list.
+        if (refresh)
+            await RefreshSubscriptionsAsync();
     }
 
     private async Task ImportAsync(PublishedWorkshopItem item)
@@ -386,6 +546,7 @@ public partial class WorkshopPanel : Window
             var label = new Label
             {
                 Text = room.DisplayName,
+                TooltipText = "Local imported copy. It remains available if you unsubscribe from the Workshop item.",
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
                 TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
             };
@@ -547,7 +708,7 @@ public partial class WorkshopPanel : Window
     private static Label SectionLabel(string text)
     {
         var label = new Label { Text = text };
-        label.AddThemeFontSizeOverride("font_size", 13);
+        label.AddThemeFontSizeOverride("font_size", Win98ThemeFactory.Px(13));
         return label;
     }
 
