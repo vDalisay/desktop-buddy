@@ -83,22 +83,77 @@ public partial class WorkshopPanel
     {
         if (_busy) return;
 
-        if (string.Equals(item.ContentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal) &&
-            _characterStore is not null && _characterSlots is not null &&
-            GodotObject.IsInstanceValid(_buddyImportPanel))
+        if (string.Equals(item.ContentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal))
         {
-            _pendingBuddyImport = item;
-            HidePublishSuccess();
-            RefreshBuddyImportDialogState();
-            _buddyImportBlocker!.Visible = true;
-            _buddyImportPanel!.Visible = true;
-            Button focus = _applyCurrentBuddyButton!.Disabled ? _useNewBuddyButton! : _applyCurrentBuddyButton;
-            if (!focus.Disabled)
-                Callable.From(focus.GrabFocus).CallDeferred();
+            ShowBuddyImportDialog(item);
             return;
         }
 
-        _ = ImportAsync(item);
+        if (string.Equals(item.ContentType, ShareContentTypes.RoomPainting, StringComparison.Ordinal))
+        {
+            _ = ImportAsync(item);
+            return;
+        }
+
+        // Real Steam's GetSubscribedItems path gives us PublishedFileIds, not Desktop Buddy's
+        // content discriminator. Resolve the installed package first so Buddy imports never bypass
+        // this choice simply because their subscription row arrived with ContentType == null.
+        _ = ResolveAndRequestImportAsync(item);
+    }
+
+    private async Task ResolveAndRequestImportAsync(PublishedWorkshopItem item)
+    {
+        if (_busy || _sharing is null) return;
+        WorkshopContentTypeResult resolved = new(
+            WorkshopRemoteStatus.Failed,
+            null,
+            "Could not determine the Workshop item type.");
+
+        await RunBusyAsync(async (progress, token) =>
+        {
+            SetStatus($"Checking '{item.DisplayName}'...");
+            resolved = await _sharing.ResolveContentTypeAsync(item, progress, token);
+        });
+
+        if (!resolved.IsSuccess)
+        {
+            SetStatus(resolved.Detail ?? "This Workshop item could not be identified as a supported room or buddy.");
+            return;
+        }
+
+        PublishedWorkshopItem typed = item with { ContentType = resolved.ContentType };
+        if (string.Equals(resolved.ContentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal))
+        {
+            ShowBuddyImportDialog(typed);
+            return;
+        }
+
+        if (string.Equals(resolved.ContentType, ShareContentTypes.RoomPainting, StringComparison.Ordinal))
+        {
+            await ImportAsync(typed);
+            return;
+        }
+
+        SetStatus("This Workshop item is not a supported Desktop Buddy room or buddy share.");
+    }
+
+    private void ShowBuddyImportDialog(PublishedWorkshopItem item)
+    {
+        if (_characterStore is null || _characterSlots is null ||
+            !GodotObject.IsInstanceValid(_buddyImportPanel))
+        {
+            SetStatus("Buddy import options are unavailable because the character slot service is not ready.");
+            return;
+        }
+
+        _pendingBuddyImport = item;
+        HidePublishSuccess();
+        RefreshBuddyImportDialogState();
+        _buddyImportBlocker!.Visible = true;
+        _buddyImportPanel!.Visible = true;
+        Button focus = _applyCurrentBuddyButton!.Disabled ? _useNewBuddyButton! : _applyCurrentBuddyButton;
+        if (!focus.Disabled)
+            Callable.From(focus.GrabFocus).CallDeferred();
     }
 
     private void RefreshBuddyImportDialogState()
