@@ -1,0 +1,142 @@
+name: Temporary merge main into itch Web branch
+
+on:
+  push:
+    branches:
+      - feature/itch-io-limited-build
+    paths:
+      - .github/workflows/temp-merge-main.yml
+
+permissions:
+  contents: write
+
+jobs:
+  merge-main:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/itch-io-limited-build
+          fetch-depth: 0
+
+      - name: Merge current main and resolve known conflicts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+
+          set +e
+          git merge --no-commit --no-ff origin/main
+          merge_status=$?
+          set -e
+
+          if [ "$merge_status" -ne 0 ]; then
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+            expected=(
+              "src/Buddy/Presentation3D/ActivityAnimator.cs"
+              "src/CharacterEditor/CharacterEditorHost.cs"
+              "src/Platform/DesktopShellController.cs"
+              "src/UI/Win98/Win98PaintLimbPoseBootstrap.cs"
+              "src/UI/Win98/Win98PinnablePanel.cs"
+            )
+            mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+            if [ "$(printf '%s\n' "${conflicts[@]}")" != "$(printf '%s\n' "${expected_sorted[@]}")" ]; then
+              echo "Unexpected merge conflicts:" >&2
+              printf '  %s\n' "${conflicts[@]}" >&2
+              exit 1
+            fi
+
+            # Preserve current-main animation work and keep the Web SDK compatibility cast.
+            git checkout --theirs -- src/Buddy/Presentation3D/ActivityAnimator.cs
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path("src/Buddy/Presentation3D/ActivityAnimator.cs")
+          text = path.read_text(encoding="utf-8")
+          old = "        _refuseClipLength = refuse.Length;"
+          new = "        _refuseClipLength = (float)refuse.Length;"
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected one ActivityAnimator cast site, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
+            # Preserve the tested browser startup path, while taking main's newer rest-pose helper.
+            git checkout --ours -- src/CharacterEditor/CharacterEditorHost.cs
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path = Path("src/CharacterEditor/CharacterEditorHost.cs")
+          text = path.read_text(encoding="utf-8")
+          pattern = re.compile(
+              r"    private void ApplyStaticPreviewPose\(\)\n"
+              r"    \{\n.*?\n"
+              r"    \}\n\n"
+              r"    private async Task ResolveUnsaved",
+              re.DOTALL,
+          )
+          replacement = (
+              "    private void ApplyStaticPreviewPose() => _preview.ApplyRestPose();\n\n"
+              "    private async Task ResolveUnsaved"
+          )
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"Expected one CharacterEditorHost rest-pose block, replaced {count}")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+            # Preserve the tested browser shell path and main's boot-time presentation settings fix.
+            git checkout --ours -- src/Platform/DesktopShellController.cs
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path("src/Platform/DesktopShellController.cs")
+          text = path.read_text(encoding="utf-8")
+          browser_old = "            ApplyMode(force: true);\n            Log.Info(Category,"
+          browser_new = "            ApplyMode(force: true);\n            ApplyPresentationSettings();\n            Log.Info(Category,"
+          native_old = "        ApplyMode(force: true);\n\n        Log.Info(Category,"
+          native_new = "        ApplyMode(force: true);\n        ApplyPresentationSettings();\n\n        Log.Info(Category,"
+          if browser_old not in text:
+              raise SystemExit("Browser shell ApplyMode anchor not found")
+          if native_old not in text:
+              raise SystemExit("Native shell ApplyMode anchor not found")
+          text = text.replace(browser_old, browser_new, 1)
+          text = text.replace(native_old, native_new, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+            # Main contains the newer generalized paint-preview yaw/limb implementation.
+            git checkout --theirs -- src/UI/Win98/Win98PaintLimbPoseBootstrap.cs
+
+            # Preserve main's detached-panel fixes and the browser-safe glyph fallback.
+            git checkout --theirs -- src/UI/Win98/Win98PinnablePanel.cs
+            python3 - <<'PY'
+          from pathlib import Path
+          path = Path("src/UI/Win98/Win98PinnablePanel.cs")
+          text = path.read_text(encoding="utf-8")
+          old = '            Text = "📌",'
+          new = '            Text = OperatingSystem.IsBrowser() ? "P" : "📌",'
+          if text.count(old) != 1:
+              raise SystemExit(f"Expected one pin glyph site, found {text.count(old)}")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          fi
+
+          unresolved="$(git diff --name-only --diff-filter=U)"
+          if [ -n "$unresolved" ]; then
+            echo "Unresolved conflicts remain:" >&2
+            echo "$unresolved" >&2
+            exit 1
+          fi
+
+          # Do not keep the one-shot resolver in the branch history after its merge commit.
+          git rm -f .github/workflows/temp-merge-main.yml
+          git add -A
+
+          if git grep -n -E '^(<<<<<<<|=======|>>>>>>>)' -- '*.cs' '*.yml' '*.yaml'; then
+            echo "Conflict markers remain after resolution." >&2
+            exit 1
+          fi
+
+          git status --short
+          git commit -m "Merge main into itch Web branch"
+          git push origin HEAD:feature/itch-io-limited-build
