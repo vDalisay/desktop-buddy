@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.App;
+using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Environment;
 using DesktopBuddy.Persistence.Characters;
@@ -24,6 +25,7 @@ public partial class WorkshopBootstrap : Node
     private CharacterSelectionState? _selection;
     private IRoomPaintingSharingHost? _environment;
     private SandboxRoot? _sandbox;
+    private CharacterSlotEntitlementState? _slots;
     private ITopLevelCommandRegistrar? _commandRegistrar;
     private WorkshopSharingCoordinator? _sharing;
     private WorkshopStagingStore? _staging;
@@ -47,6 +49,7 @@ public partial class WorkshopBootstrap : Node
         _characters = characters ?? throw new ArgumentNullException(nameof(characters));
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _sandbox = sandbox ?? throw new ArgumentNullException(nameof(sandbox));
+        _slots = new CharacterSlotEntitlementState(sandbox.Progress, sandbox.Economy);
         _environment = environment;
         _commandRegistrar = commandRegistrar;
     }
@@ -71,7 +74,7 @@ public partial class WorkshopBootstrap : Node
 
     private void ComposeUi()
     {
-        if (_sharing is null || _rooms is null || _selection is null || _characters is null || _sandbox is null)
+        if (_sharing is null || _rooms is null || _selection is null || _characters is null || _slots is null || _sandbox is null)
             return;
         if (_environment is null || _commandRegistrar is null)
         {
@@ -86,6 +89,7 @@ public partial class WorkshopBootstrap : Node
         AddChild(previews);
         _panel = new WorkshopPanel { Name = nameof(WorkshopPanel) };
         _panel.Configure(_sharing, _rooms, _environment, _selection, previews);
+        _panel.ConfigureBuddyImportPolicy(_characters, _slots);
         AddChild(_panel);
         _commandRegistration = _commandRegistrar.RegisterTopLevelCommand(
             new TopLevelCommandDefinition(
@@ -120,7 +124,10 @@ public partial class WorkshopBootstrap : Node
         var roomExporter = new RoomShareExporter(_staging, appVersion);
         var roomImporter = new RoomShareImporter(_staging, _rooms);
         var characterExporter = new CharacterShareExporter(_staging, _characters, appVersion);
-        var characterImporter = new CharacterShareImporter(_staging, _characters);
+        var characterImporter = new CharacterShareImporter(
+            _staging,
+            _characters,
+            canCreateNewCharacter: () => _slots is null || _characters.CountStoredCharacters() < _slots.Capacity);
         _sharing = new WorkshopSharingCoordinator(
             _transport,
             _staging,
