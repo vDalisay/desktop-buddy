@@ -21,7 +21,7 @@ namespace DesktopBuddy.CharacterEditor;
 /// Production Phase A editor host. The editor is a same-window overlay containing one
 /// physics-free BuddyVisualRigView preview.
 ///
-/// It also composes the interim dock: a top toolbar whose Shop, Tools and Settings entries
+/// It also composes the interim dock: a top toolbar whose Inventory, Tools and Settings entries
 /// each open a free-floating desktop window. ponytail: that dock belongs to FR-003.2 and
 /// should move to its own host once the approved dock design lands — it lives here only
 /// because this is the node already composed over the sandbox.
@@ -278,7 +278,7 @@ public partial class CharacterEditorHost : CanvasLayer
         // the buddy box and the player can park them anywhere.
         _shopPanel = new ShopPanel();
         _shopPanel.Configure(_context.Progress, _context.Economy, CatalogueLoader.Catalogue, _sandbox.Pipeline);
-        _shopWindow = OpenableWindow("Shop", _shopPanel, _shopPanel.Refresh);
+        _shopWindow = OpenableWindow("Inventory", _shopPanel, _shopPanel.Refresh);
 
         _toolPanel = new ToolSelectionPanel();
         _toolPanel.Configure(_context.Progress, _sandbox.Pipeline, CatalogueLoader.Catalogue);
@@ -291,7 +291,7 @@ public partial class CharacterEditorHost : CanvasLayer
         // Buying a tool immediately makes it selectable, so keep the picker honest.
         _shopPanel.Purchased += _toolPanel.Refresh;
 
-        ShopButton = Button("Shop", "DockShopButton");
+        ShopButton = Button("Inventory", "DockShopButton");
         ShopButton.Pressed += () => _shopWindow.Toggle(WindowAnchor(0));
         dock.AddChild(ShopButton);
 

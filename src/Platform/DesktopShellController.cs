@@ -58,6 +58,7 @@ public partial class DesktopShellController : Node
         if (IsInsideTree())
             throw new InvalidOperationException("Desktop shell runtime must be configured before _Ready.");
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        TranslationServer.SetLocale(_settings.Language is "ru" ? "ru" : "en");
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
         _saves.RegisterSettings(_settings);
 

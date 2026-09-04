@@ -117,7 +117,7 @@ public partial class ToolSelectionPanel : PanelContainer
                 ? $"{name} is currently equipped."
                 : owned
                     ? $"Equip {name}."
-                    : $"Buy {name} in the Shop for {price} before equipping it.";
+                    : $"Buy {name} in the Inventory for {price} before equipping it.";
         }
     }
 

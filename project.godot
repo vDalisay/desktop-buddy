@@ -56,6 +56,10 @@ initialization/app_data/app_id=5114950
 ; publishes/consumes content through Steamworks cross-app permissions.
 steam/workshop_owner_app_id=5114950
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://localization/desktop_buddy.ru.po")
+
 [input]
 
 buddy_primary={

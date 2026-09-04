@@ -41,6 +41,7 @@ public partial class DesktopShellController
     private void ApplyPresentationSettings()
     {
         ApplyAudioSettings();
+        TranslationServer.SetLocale(_settings.Language is "ru" ? "ru" : "en");
         Win98ThemeFactory.ApplyScale(_settings.UiScalePercent / 100.0f);
         Win98ThemeFactory.ApplyPalette(Win98Palette.Parse(
             _settings.UiFaceColor, _settings.UiBarColor, _settings.UiTextColor));
@@ -86,6 +87,7 @@ public partial class DesktopShellController
         StartupInputMode = settings.StartupInputMode is "work" or "play" or "remember"
             ? settings.StartupInputMode
             : "remember",
+        Language = settings.Language is "ru" ? "ru" : "en",
     };
 
     private static float Clamp01(float value) =>

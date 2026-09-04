@@ -16,11 +16,15 @@ namespace DesktopBuddy.CharacterEditor;
 /// </summary>
 public partial class CharacterEditorHost
 {
+    private const string LanguageGroup = "Language";
     private const string SoundGroup = "Sound";
     private const string DisplayGroup = "Display";
     private const string EffectsGroup = "Accessibility";
     private const string BehaviourGroup = "Startup and Behaviour";
     private const string DataGroup = "Saved Data";
+
+    private static readonly string[] LanguageCodes = ["en", "ru"];
+    private static readonly string[] LanguageLabels = ["English", "Русский"];
 
     private static readonly int[] FrameLimits = [0, 30, 60, 120];
     private static readonly string[] FrameLimitLabels = ["V-Sync", "30", "60", "120"];
@@ -46,12 +50,27 @@ public partial class CharacterEditorHost
             Save();
         }
 
+        ComposeLanguageRows(settings, Edit);
         ComposeSoundRows(settings, Save, Edit);
         ComposeDisplayRows(settings, Edit);
         ComposeColorRows(settings);
         ComposeEffectsRows(settings, Edit);
         ComposeBehaviourRows(settings, Edit);
         ComposeDataRows();
+    }
+
+    private void ComposeLanguageRows(
+        LocalSettingsSave settings,
+        Action<Func<LocalSettingsSave, LocalSettingsSave>> edit)
+    {
+        int selected = Math.Max(0, Array.IndexOf(LanguageCodes, settings.Language));
+        _settingsPanel.AddChoice(
+            "Language",
+            "Changes the language used by menus, tutorials and other game text.",
+            LanguageLabels,
+            selected,
+            index => edit(s => s with { Language = LanguageCodes[index] }),
+            LanguageGroup);
     }
 
     private void ComposeSoundRows(
@@ -68,7 +87,7 @@ public partial class CharacterEditorHost
             SoundGroup);
         _settingsPanel.AddSlider(
             "Sound Effects",
-            "Controls gameplay sounds, think of hits, gunfire and explosions.",
+            "Controls gameplay sounds such as hits, gunfire and explosions.",
             settings.SfxVolume,
             value => _sandbox.Shell.EditSettings(s => s with { SfxVolume = value }),
             save,
@@ -106,7 +125,7 @@ public partial class CharacterEditorHost
             DisplayGroup);
         _settingsPanel.AddChoice(
             "Frame Limit",
-            "Sets the maximum frame rate of your game.",
+            "Sets the game's maximum frame rate.",
             FrameLimitLabels,
             Math.Max(0, Array.IndexOf(FrameLimits, settings.MaxFps)),
             index => edit(s => s with { MaxFps = FrameLimits[index] }),
@@ -144,7 +163,7 @@ public partial class CharacterEditorHost
             DisplayGroup);
         _settingsPanel.AddToggle(
             "Work Mode Retro Filter",
-            "Gives Work Mode's buddy and computer a chunky CRT look: coarser pixels, fewer colours and scanlines.",
+            "Gives Buddy and the computer in Work Mode a chunky CRT look: coarser pixels, fewer colours and scanlines.",
             settings.WorkRetroFilter,
             value => edit(s => s with { WorkRetroFilter = value }),
             DisplayGroup);

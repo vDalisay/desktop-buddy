@@ -344,6 +344,9 @@ public sealed record LocalSettingsSave
 
     /// <summary>Interface and font scale: 100, 125, 150, 175, or 200 percent.</summary>
     public int UiScalePercent { get; init; } = 100;
+
+    /// <summary>UI language code. English is the source/fallback language.</summary>
+    public string Language { get; init; } = "en";
     public float MasterVolume { get; init; } = 1.0f;
     public float SfxVolume { get; init; } = 1.0f;
     public float UiVolume { get; init; } = 1.0f;

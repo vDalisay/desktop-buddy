@@ -9,7 +9,7 @@ using Godot;
 namespace DesktopBuddy.UI.Win98;
 
 /// <summary>
-/// Hosts Shop, Tools, Settings, Customize and Work in the classic menu strip directly beneath
+/// Hosts Inventory, Tools, Settings, Customize and Work in the classic menu strip directly beneath
 /// the Win98 title bar. Feature workspaces register Customize commands through the public
 /// registry seam instead of editing this shared shell file.
 /// </summary>
@@ -202,7 +202,7 @@ public partial class Win98CommandBarBootstrap : Node
         _commandRow.AddThemeConstantOverride("separation", 0);
         _bar.AddChild(_commandRow);
 
-        _shopButton = AddMenuCommand(_commandRow, "Shop", "Open the shop.", () => OpenSection(_shopButton, _shop, "Shop"));
+        _shopButton = AddMenuCommand(_commandRow, "Inventory", "Open the Inventory.", () => OpenSection(_shopButton, _shop, "Inventory"));
         _toolsButton = AddMenuCommand(_commandRow, "Tools", "Choose the active tool.", () => OpenSection(_toolsButton, _tools, "Tools"));
         _settingsButton = AddMenuCommand(_commandRow, "Settings", "Open game and window settings.", () => OpenSection(_settingsButton, _settings, "Settings"));
         _customizeButton = AddMenuPopup(_commandRow, "Paint ▸", "Paint the buddy or the room background.");

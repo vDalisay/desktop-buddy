@@ -112,7 +112,7 @@ public partial class CharacterEditorHost
         AddChild(_desktopToolbar);
         _sandbox.Shell.RegisterOwnedWindow(_desktopToolbar);
         _desktopToolbar.AddAction("Editor", "FullscreenEditorButton", () => _ = OpenEditorAsync());
-        _desktopToolbar.AddAction("Shop", "FullscreenShopButton", () =>
+        _desktopToolbar.AddAction("Inventory", "FullscreenShopButton", () =>
             _shopWindow.Toggle(WindowAnchor(0)));
         _desktopToolbar.AddAction("Tools", "FullscreenToolsButton", () =>
             _toolWindow.Toggle(WindowAnchor(1)));
@@ -330,7 +330,7 @@ public partial class CharacterEditorHost
                 $"Compact dock is outside the viewport: dock={dockRect} viewport={viewportRect}.");
         }
 
-        WarnIfButtonUnavailable(ShopButton, "Shop");
+        WarnIfButtonUnavailable(ShopButton, "Inventory");
         WarnIfButtonUnavailable(ToolsButton, "Tools");
         WarnIfButtonUnavailable(SettingsButton, "Settings");
         WarnIfButtonUnavailable(OpenCharacterEditorButton, "Character Editor");

@@ -1,0 +1,470 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Desktop Buddy\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+
+msgid "Inventory"
+msgstr "Инвентарь"
+
+msgid "Open the Inventory."
+msgstr "Открыть инвентарь."
+
+msgid "Tools"
+msgstr "Инструменты"
+
+msgid "Choose the active tool."
+msgstr "Выбрать активный инструмент."
+
+msgid "Settings"
+msgstr "Настройки"
+
+msgid "Open game and window settings."
+msgstr "Открыть настройки игры и окна."
+
+msgid "Paint ▸"
+msgstr "Рисование ▸"
+
+msgid "Paint the buddy or the room background."
+msgstr "Раскрасить приятеля или фон комнаты."
+
+msgid "Buddy"
+msgstr "Приятель"
+
+msgid "Open the direct-paint character workspace."
+msgstr "Открыть редактор для рисования прямо по приятелю."
+
+msgid "Buddy Studio"
+msgstr "Студия приятеля"
+
+msgid "Customize your buddy's appearance."
+msgstr "Настроить внешний вид приятеля."
+
+msgid "Work"
+msgstr "Работа"
+
+msgid "Play"
+msgstr "Игра"
+
+msgid "Switch between Play and Work input modes."
+msgstr "Переключаться между режимами игры и работы."
+
+msgid "Current credit balance."
+msgstr "Текущий баланс кредитов."
+
+msgid "Language"
+msgstr "Язык"
+
+msgid "Changes the language used by menus, tutorials and other game text."
+msgstr "Меняет язык меню, обучения и другого текста игры."
+
+msgid "Sound"
+msgstr "Звук"
+
+msgid "Display"
+msgstr "Экран"
+
+msgid "Accessibility"
+msgstr "Доступность"
+
+msgid "Startup and Behaviour"
+msgstr "Запуск и поведение"
+
+msgid "Saved Data"
+msgstr "Сохранённые данные"
+
+msgid "Master Volume"
+msgstr "Общая громкость"
+
+msgid "Sound Effects"
+msgstr "Звуковые эффекты"
+
+msgid "Interface Sounds"
+msgstr "Звуки интерфейса"
+
+msgid "Mute While Working"
+msgstr "Без звука во время работы"
+
+msgid "Mute Work Typing"
+msgstr "Отключить звук печати"
+
+msgid "V-Sync"
+msgstr "Вертикальная синхронизация"
+
+msgid "Frame Limit"
+msgstr "Ограничение FPS"
+
+msgid "Background Frame Limit"
+msgstr "Фоновое ограничение FPS"
+
+msgid "UI Scale"
+msgstr "Масштаб интерфейса"
+
+msgid "Buddy Size"
+msgstr "Размер приятеля"
+
+msgid "Modern UI Motion"
+msgstr "Плавная анимация интерфейса"
+
+msgid "Work Mode Retro Filter"
+msgstr "Ретро-фильтр режима работы"
+
+msgid "Always On Top"
+msgstr "Поверх остальных окон"
+
+msgid "Reduced Motion"
+msgstr "Меньше движения"
+
+msgid "Screen Shake"
+msgstr "Тряска экрана"
+
+msgid "Reduced Particles"
+msgstr "Меньше частиц"
+
+msgid "Photosensitivity Safe"
+msgstr "Безопасно для светочувствительности"
+
+msgid "Start In"
+msgstr "Режим при запуске"
+
+msgid "Hide For Full-Screen Apps"
+msgstr "Скрывать при полноэкранных приложениях"
+
+msgid "Start With Windows"
+msgstr "Запускать вместе с Windows"
+
+msgid "Work/Play Hotkey"
+msgstr "Клавиша Работа/Игра"
+
+msgid "Drop Tool Hotkey"
+msgstr "Клавиша броска инструмента"
+
+msgid "Save Folder"
+msgstr "Папка сохранений"
+
+msgid "Reset Progress"
+msgstr "Сбросить прогресс"
+
+msgid "Show Tutorial Again"
+msgstr "Повторить обучение"
+
+msgid "Open"
+msgstr "Открыть"
+
+msgid "Reset..."
+msgstr "Сбросить..."
+
+msgid "Show"
+msgstr "Показать"
+
+msgid "Buy"
+msgstr "Купить"
+
+msgid "Equip"
+msgstr "Экипировать"
+
+msgid "Equipped"
+msgstr "Экипировано"
+
+msgid "Save"
+msgstr "Сохранить"
+
+msgid "Exit"
+msgstr "Выйти"
+
+msgid "Cancel"
+msgstr "Отмена"
+
+msgid "Continue"
+msgstr "Продолжить"
+
+msgid "Skip Tutorial"
+msgstr "Пропустить обучение"
+
+msgid "Goodbye"
+msgstr "До встречи"
+
+msgid "Help"
+msgstr "Помощь"
+
+msgid "Exit Help Mode"
+msgstr "Выйти из режима помощи"
+
+msgid "Preview"
+msgstr "Предпросмотр"
+
+msgid "Move"
+msgstr "Переместить"
+
+msgid "Reset"
+msgstr "Сбросить"
+
+msgid "Randomize"
+msgstr "Случайно"
+
+msgid "Styles"
+msgstr "Стили"
+
+msgid "Style"
+msgstr "Стиль"
+
+msgid "Color"
+msgstr "Цвет"
+
+msgid "Colour"
+msgstr "Цвет"
+
+msgid "Recently used"
+msgstr "Недавние цвета"
+
+msgid "Ink"
+msgstr "Чернила"
+
+msgid "Cocoa"
+msgstr "Какао"
+
+msgid "Berry"
+msgstr "Ягодный"
+
+msgid "Gold"
+msgstr "Золотой"
+
+msgid "Sky"
+msgstr "Небесный"
+
+msgid "Slate"
+msgstr "Сланцевый"
+
+msgid "Moss"
+msgstr "Мох"
+
+msgid "Plum"
+msgstr "Сливовый"
+
+msgid "Cream"
+msgstr "Кремовый"
+
+msgid "Grab"
+msgstr "Захват"
+
+msgid "Power Grab"
+msgstr "Мощный захват"
+
+msgid "Brush"
+msgstr "Щётка"
+
+msgid "Feather"
+msgstr "Перо"
+
+msgid "Baseball Bat"
+msgstr "Бейсбольная бита"
+
+msgid "Boxing Glove"
+msgstr "Боксёрская перчатка"
+
+msgid "Baseball"
+msgstr "Бейсбольный мяч"
+
+msgid "Soccer Ball"
+msgstr "Футбольный мяч"
+
+msgid "Meal"
+msgstr "Еда"
+
+msgid "Drink"
+msgstr "Напиток"
+
+msgid "Repair Kit"
+msgstr "Ремкомплект"
+
+msgid "Grenade"
+msgstr "Граната"
+
+msgid "Toy Gun"
+msgstr "Игрушечный бластер"
+
+msgid "Pistol"
+msgstr "Пистолет"
+
+msgid "Shotgun"
+msgstr "Дробовик"
+
+msgid "Flamethrower"
+msgstr "Огнемёт"
+
+msgid "Click and hold Buddy with the left mouse button to drag it. Release while moving to fling it."
+msgstr "Зажмите левую кнопку мыши на приятеле, чтобы тащить его. Отпустите во время движения, чтобы швырнуть."
+
+msgid "Drag Buddy with the left mouse button, just like Grab, but with much more pull and a harder throw."
+msgstr "Тащите приятеля левой кнопкой мыши, как обычным захватом, но намного сильнее — и бросок получится мощнее."
+
+msgid "Click and hold the left mouse button, then brush your Buddy slowly. It should have a favourite spot..."
+msgstr "Зажмите левую кнопку мыши и медленно расчёсывайте приятеля щёткой. Где-то у него наверняка есть любимое местечко..."
+
+msgid "Click and hold the left mouse button to wiggle the Feather over Buddy. Keep going too long and it will get grumpy."
+msgstr "Зажмите левую кнопку мыши и щекочите приятеля пером. Не увлекайтесь слишком долго — ему это надоест."
+
+msgid "Hold the right mouse button to charge it, then release to swing."
+msgstr "Зажмите правую кнопку мыши, чтобы замахнуться, затем отпустите для удара."
+
+msgid "Right-click to drop a treat, though I'm not sure what it's made of..."
+msgstr "Щёлкните правой кнопкой, чтобы бросить еду. Правда, из чего она сделана — лучше не спрашивать..."
+
+msgid "Right-click to drop a drink. It also makes for a good projectile."
+msgstr "Щёлкните правой кнопкой, чтобы бросить напиток. Метательный снаряд из него тоже неплохой."
+
+msgid "Left-click to have some friendly fire."
+msgstr "Левая кнопка — немного дружеского огня. Совсем игрушечного."
+
+msgid "Left-click to have some less friendly fire."
+msgstr "Левая кнопка — огонь уже не такой дружеский."
+
+msgid "Hold the left mouse button to spray burning fuel. Anything it touches catches fire."
+msgstr "Зажмите левую кнопку мыши, чтобы распылять горящее топливо. Всё, чего оно коснётся, загорится."
+
+msgid "character_editor.paint.open"
+msgstr "Рисование"
+
+msgid "character_editor.paint.open_tooltip"
+msgstr "Рисовать прямо по телу приятеля."
+
+msgid "character_editor.paint.appearance_controls"
+msgstr "Настройки внешности"
+
+msgid "character_editor.paint.tool.brush"
+msgstr "Кисть"
+
+msgid "character_editor.paint.tool.eraser"
+msgstr "Ластик"
+
+msgid "character_editor.paint.color_tooltip"
+msgstr "Выберите непрозрачный цвет краски."
+
+msgid "character_editor.paint.brush_size"
+msgstr "Размер кисти"
+
+msgid "character_editor.paint.undo"
+msgstr "Отменить"
+
+msgid "character_editor.paint.erase_all"
+msgstr "Стереть всё"
+
+msgid "character_editor.paint.zoom_out"
+msgstr "Масштаб −"
+
+msgid "character_editor.paint.zoom_in"
+msgstr "Масштаб +"
+
+msgid "character_editor.paint.reset_view"
+msgstr "Сбросить вид"
+
+msgid "character_editor.paint.hover_help"
+msgstr "Наведите на часть тела, чтобы рисовать."
+
+msgid "character_editor.paint.input_help"
+msgstr "ЛКМ и движение: рисовать • Колесо: размер кисти • Средняя кнопка или Пробел+движение: панорама • Ctrl+колесо: масштаб"
+
+msgid "character_editor.paint.erase_all.title"
+msgstr "Стереть всю краску?"
+
+msgid "character_editor.paint.erase_all.body"
+msgstr "Краска будет удалена со всех шести частей тела. После подтверждения это можно отменить один раз."
+
+msgid "character_editor.paint.canvas"
+msgstr "Холст"
+
+msgid "character_editor.paint.status"
+msgstr "{0} • {1} • Масштаб {2:0.0}×"
+
+msgid "Hi! Let me introduce you to your Buddy. Click and hold the left mouse button on your Buddy to grab it."
+msgstr "Привет! Познакомьтесь со своим приятелем. Зажмите на нём левую кнопку мыши, чтобы схватить его."
+
+msgid "Now open the Inventory in the top-left corner. This is where you can buy and equip all sorts of different tools so you and your Buddy can play together."
+msgstr "Теперь откройте Инвентарь в левом верхнем углу. Здесь можно покупать и экипировать разные инструменты — всё, что нужно для игр с приятелем."
+
+msgid "You can use your Credits in the top-right to buy all kinds of things. You earn more by playing with your Buddy. For now, let's buy and equip the Baseball Bat."
+msgstr "Кредиты в правом верхнем углу можно тратить на всякие полезные вещи. Больше кредитов вы получите, играя с приятелем. А пока купим и экипируем бейсбольную биту."
+
+msgid "Nice stuff! Hold the right mouse button to charge your bat up for a big swing. Some other tools have extra interactions when you click or hold the right mouse button too. Try them out later, but for now hit Buddy with a charged swing."
+msgstr "Неплохо! Зажмите правую кнопку мыши, чтобы как следует замахнуться битой. У некоторых других инструментов на правой кнопке тоже есть дополнительные действия. С ними разберётесь позже, а сейчас ударьте приятеля мощным замахом."
+
+msgid "You can switch tools in the Inventory, or press 'D' to drop the one you have equipped. Double-click a dropped tool to equip it again. Try dropping the bat now."
+msgstr "Инструмент можно сменить в Инвентаре или бросить клавишей 'D'. Брошенный инструмент снова экипируется двойным щелчком. Попробуйте сейчас бросить биту."
+
+msgid "Your Buddy could use a little colour. Open Paint ▸ Buddy in the menu above to give it a new look."
+msgstr "Приятелю не помешает немного цвета. Откройте Рисование ▸ Приятель в меню сверху и придайте ему новый вид."
+
+msgid "There are plenty of tools to choose from. Let's start with my favourite: the Brush."
+msgstr "Инструментов тут хватает. Начнём с моего любимого — кисти."
+
+msgid "Here you can choose any colour you like. The big button on the right opens the advanced colour picker. Let's just choose one of these for now."
+msgstr "Здесь можно выбрать любой цвет. Большая кнопка справа открывает расширенный выбор цвета, но пока возьмём один из этих."
+
+msgid "Paint away! When you're happy with it, click Save below."
+msgstr "Рисуйте в своё удовольствие! Когда результат устроит, нажмите Сохранить внизу."
+
+msgid "Click Use Character to start playing with your new Buddy!"
+msgstr "Нажмите Использовать персонажа, чтобы начать играть с новым приятелем!"
+
+msgid "Beautiful! Buddy has never looked better."
+msgstr "Красота! Приятель ещё никогда не выглядел лучше."
+
+msgid "Your Buddy deserves a better room that matches its new style. Open Paint ▸ Background to start painting the room."
+msgstr "Такому приятелю нужна комната под стать. Откройте Рисование ▸ Фон и займитесь комнатой."
+
+msgid "Let's try something new but nostalgic: the Spray tool!"
+msgstr "Попробуем что-нибудь новое, но знакомое: распылитель!"
+
+msgid "Choose a nice matching colour from the Palette."
+msgstr "Выберите подходящий цвет на палитре."
+
+msgid "Click and drag anywhere on the room behind your Buddy to spray it."
+msgstr "Зажмите кнопку и ведите мышью по комнате за приятелем, чтобы распылять краску."
+
+msgid "Let's get a better look at your drawing. Drag any panel by its title bar and move it outside the game window. You can also click the red pin button."
+msgstr "Посмотрим на рисунок получше. Потяните любую панель за заголовок и вынесите её за пределы окна игры. Можно также нажать красную кнопку с булавкой."
+
+msgid "Looks good! Click Save and Exit to keep it."
+msgstr "Выглядит хорошо! Нажмите Сохранить и выйти, чтобы оставить результат."
+
+msgid "Now let's get your Buddy properly dressed up. Open Buddy Studio so we can customise it with some new apparel."
+msgstr "Теперь пора как следует нарядить приятеля. Откройте Студию приятеля — подберём ему что-нибудь новое."
+
+msgid "Let's see... your Buddy could use a new nose. Click the Nose category to see what we've got."
+msgstr "Так... приятелю не помешал бы новый нос. Откройте категорию Нос и посмотрим, что тут есть."
+
+msgid "This 'Button nose' could be fun! Click on it once to preview it without buying it."
+msgstr "Этот маленький круглый нос выглядит забавно! Щёлкните по нему один раз, чтобы примерить без покупки."
+
+msgid "It looks great! Click Buy. You can also double-click an item to buy it."
+msgstr "Смотрится отлично! Нажмите Купить. Можно также купить предмет двойным щелчком."
+
+msgid "Let's equip it for now. You can swap it later, or choose the default style to remove it."
+msgstr "Пока оставим его. Позже можно сменить нос или выбрать стандартный стиль, чтобы убрать его."
+
+msgid "Click on the 'Save' button to keep this beautiful nose."
+msgstr "Нажмите Сохранить, чтобы оставить этот прекрасный нос."
+
+msgid "Now that is what I call a nose. Your Buddy is looking mighty fine!"
+msgstr "Вот это я понимаю — нос. Приятель выглядит что надо!"
+
+msgid "Last but not least: Work Mode. Use it when you need to concentrate and want your Buddy sitting beside you."
+msgstr "И напоследок — режим работы. Включайте его, когда нужно сосредоточиться, а приятеля хочется оставить рядом."
+
+msgid "Click and hold Buddy with the left mouse button, then drag the companion wherever you want it."
+msgstr "Зажмите на приятеле левую кнопку мыши и перетащите компаньона куда удобно."
+
+msgid "Click and hold the resize button ↘ with the left mouse button, then drag to make your companion bigger or smaller."
+msgstr "Зажмите кнопку изменения размера ↘ левой кнопкой мыши и тяните, чтобы сделать компаньона больше или меньше."
+
+msgid "Your Buddy will earn Credits while you work. Click the screen to switch between this session's activity count and your lifetime total."
+msgstr "Пока вы работаете, приятель будет зарабатывать кредиты. Щёлкните по экрану, чтобы переключаться между счётчиком текущего сеанса и общим счётчиком."
+
+msgid "Ready to head back to Play Mode? Double-click your Buddy or click the 'X' button to return."
+msgstr "Готовы вернуться в режим игры? Дважды щёлкните по приятелю или нажмите 'X'."
+
+msgid "Well, that's it. I hope you'll become the best of buds! If you ever need help, click '?' in the title bar and hover over anything on screen for context, or restart the tutorial from Settings. Have fun with your Buddy!"
+msgstr "Вот и всё. Надеюсь, вы станете лучшими друзьями! Если понадобится помощь, нажмите '?' в заголовке окна и наведите курсор на нужный элемент, либо перезапустите обучение в Настройках. Веселитесь с приятелем!"
