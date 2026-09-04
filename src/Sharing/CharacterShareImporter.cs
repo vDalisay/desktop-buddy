@@ -17,26 +17,41 @@ public sealed class CharacterShareImporter
     private readonly CharacterPaintStore _paintStore;
     private readonly CharacterSharePayloadValidator _payloadValidator;
     private readonly Func<DateTimeOffset> _utcNow;
+    private readonly Func<bool>? _canCreateNewCharacter;
 
     public CharacterShareImporter(
         WorkshopStagingStore staging,
         CharacterStore characters,
-        Func<DateTimeOffset>? utcNow = null)
+        Func<DateTimeOffset>? utcNow = null,
+        Func<bool>? canCreateNewCharacter = null)
     {
         _staging = staging ?? throw new ArgumentNullException(nameof(staging));
         _characters = characters ?? throw new ArgumentNullException(nameof(characters));
         _paintStore = characters.CreatePaintStore();
         _payloadValidator = new CharacterSharePayloadValidator(characters.FeatureCatalog);
         _utcNow = utcNow ?? (() => DateTimeOffset.UtcNow);
+        _canCreateNewCharacter = canCreateNewCharacter;
     }
 
     /// <summary>
     /// Compatibility entrypoint for callers that still own Steam's mutable install directory.
     /// The copy and every expensive decode/hash/validation step run away from the Godot main thread.
     /// </summary>
+    public Task<CharacterShareImportResult> ImportAsync(
+        string steamInstallFolder,
+        WorkshopImportSource source,
+        CancellationToken token = default) =>
+        ImportAsync(steamInstallFolder, source, replaceCharacterId: null, token);
+
+    /// <summary>
+    /// Imports a buddy either into a new local slot or over one existing local buddy. Replacing an
+    /// existing buddy keeps that local buddy's identity and display name while replacing the visual
+    /// configuration and paint surfaces from the Workshop package.
+    /// </summary>
     public async Task<CharacterShareImportResult> ImportAsync(
         string steamInstallFolder,
         WorkshopImportSource source,
+        Guid? replaceCharacterId,
         CancellationToken token = default)
     {
         Guid operationId = Guid.NewGuid();
@@ -56,7 +71,7 @@ public sealed class CharacterShareImporter
             return Failure(exception.Message);
         }
 
-        return await ImportStagedAsync(incoming, source, token);
+        return await ImportStagedAsync(incoming, source, replaceCharacterId, token);
     }
 
     /// <summary>
@@ -67,11 +82,19 @@ public sealed class CharacterShareImporter
         WorkshopIncomingStaging incoming,
         WorkshopImportSource source,
         CancellationToken token = default) =>
-        Task.Run(() => ImportStagedCoreAsync(incoming, source, token), CancellationToken.None);
+        ImportStagedAsync(incoming, source, replaceCharacterId: null, token);
+
+    public Task<CharacterShareImportResult> ImportStagedAsync(
+        WorkshopIncomingStaging incoming,
+        WorkshopImportSource source,
+        Guid? replaceCharacterId,
+        CancellationToken token = default) =>
+        Task.Run(() => ImportStagedCoreAsync(incoming, source, replaceCharacterId, token), CancellationToken.None);
 
     private async Task<CharacterShareImportResult> ImportStagedCoreAsync(
         WorkshopIncomingStaging incoming,
         WorkshopImportSource source,
+        Guid? replaceCharacterId,
         CancellationToken token)
     {
         try
@@ -84,8 +107,42 @@ public sealed class CharacterShareImporter
 
             CharacterSharePayload payload = payloadResult.Payload;
             Guid localId;
-            do { localId = Guid.NewGuid(); }
-            while (_characters.ContainsStoredCharacter(localId));
+            string? preservedDisplayName = null;
+
+            if (replaceCharacterId.HasValue)
+            {
+                if (replaceCharacterId.Value == Guid.Empty)
+                {
+                    _staging.Cleanup(incoming.OperationId);
+                    return Failure("Cannot apply a Workshop skin to an empty character ID.");
+                }
+
+                CharacterLoadResult existing = await _characters.LoadAsync(replaceCharacterId.Value, token);
+                if (existing.Status == CharacterLoadStatus.Cancelled)
+                    throw new OperationCanceledException("Existing buddy lookup was cancelled.", token);
+                if (!existing.IsSuccess || existing.Document is null)
+                {
+                    _staging.Cleanup(incoming.OperationId);
+                    return Failure(existing.Detail ?? "The current buddy could not be loaded for Workshop replacement.");
+                }
+
+                localId = replaceCharacterId.Value;
+                preservedDisplayName = existing.Document.DisplayName;
+            }
+            else
+            {
+                // Capacity is a durable game rule, not only a disabled UI button. Re-check it at
+                // the import commit boundary so a stale dialog or concurrent creation cannot push
+                // the character library past the player's purchased slot entitlement.
+                if (_canCreateNewCharacter is not null && !_canCreateNewCharacter())
+                {
+                    _staging.Cleanup(incoming.OperationId);
+                    return Failure("No free buddy slot is available. Apply this Workshop skin to the current buddy or free/buy a character slot first.");
+                }
+
+                do { localId = Guid.NewGuid(); }
+                while (_characters.ContainsStoredCharacter(localId));
+            }
 
             var surfaces = new Dictionary<PaintPart, ReadOnlyMemory<byte>>();
             foreach ((PaintPart part, byte[] pixels) in payload.Surfaces)
@@ -104,7 +161,11 @@ public sealed class CharacterShareImporter
                 manifestBytes,
                 ShareContentTypes.BuddyCharacter);
 
-            var localDocument = payload.Document with { Id = localId };
+            var localDocument = payload.Document with
+            {
+                Id = localId,
+                DisplayName = preservedDisplayName ?? payload.Document.DisplayName,
+            };
             CharacterPaintSaveResult saved = await _paintStore.SaveAsync(localDocument, surfaces, token);
             if (!saved.IsSuccess)
             {
@@ -120,9 +181,17 @@ public sealed class CharacterShareImporter
             // The character transaction succeeded. Provenance is non-authoritative and cancellation
             // after this point cannot roll back the committed local buddy, so finish bookkeeping and
             // return success rather than lying to the caller with a post-commit Cancelled result.
-            string? detail = token.IsCancellationRequested
-                ? "Cancellation arrived after the local buddy was committed; import completed."
+            string? detail = replaceCharacterId.HasValue
+                ? $"Applied the Workshop appearance to '{preservedDisplayName}'."
                 : null;
+            if (token.IsCancellationRequested)
+            {
+                string cancellationDetail = replaceCharacterId.HasValue
+                    ? "Cancellation arrived after the current buddy was updated; the skin application completed."
+                    : "Cancellation arrived after the local buddy was committed; import completed.";
+                detail = string.IsNullOrWhiteSpace(detail) ? cancellationDetail : $"{detail} {cancellationDetail}";
+            }
+
             try
             {
                 WorkshopProvenanceStore.Write(_characters.Paths.Directory(localId), provenance);
