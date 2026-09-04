@@ -89,7 +89,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
             "/root/Win98CommandBarBootstrap");
         if (!GodotObject.IsInstanceValid(commandBar))
             commandBar = FindFirst<Win98CommandBarBootstrap>(GetTree().Root);
-        EnvironmentProgressState? state = _sandbox?.Saves.EnvironmentProgress;
+        EnvironmentProgressState? state = _sandbox?.Saves?.EnvironmentProgress;
         if (!GodotObject.IsInstanceValid(_sandbox) || !GodotObject.IsInstanceValid(commandBar) || state is null) return;
 
         Compose(state, _sandbox!.Saves, commandBar!);

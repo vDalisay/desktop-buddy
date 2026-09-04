@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Painting;
-using Godot;
 
 namespace DesktopBuddy.Persistence.Characters;
 
@@ -283,6 +282,6 @@ public sealed class CharacterPaintStore
     private static void BrowserMarker(string stage)
     {
         if (OperatingSystem.IsBrowser())
-            GD.Print($"DESKTOP_BUDDY_WEB_PAINT_SAVE_STAGE:{stage}");
+            Console.WriteLine($"DESKTOP_BUDDY_WEB_PAINT_SAVE_STAGE:{stage}");
     }
 }

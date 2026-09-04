@@ -4,6 +4,12 @@ Status: Living decision log for requirements and architecture planning.
 
 This file records only decisions explicitly confirmed by the project owner. Unresolved details belong in the requirements process and must not be inferred by implementation agents.
 
+## Workshop Distribution Scope — Owner Approved (2026-09-04)
+
+Steam Workshop is excluded from the itch.io build. It remains included in the Steam demo and
+the full Steam release. Export presets use the `steam` custom feature as the opt-in boundary;
+editor runs retain Workshop for development and automated verification.
+
 ## Activity Clip Cross-Fades — Owner Approved (2026-08-13)
 
 All ordinary activity-clip changes cross-fade instead of hard-cutting, including the

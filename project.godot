@@ -43,6 +43,19 @@ window/subwindows/embed_subwindows.web=true
 
 project/assembly_name="DesktopBuddy"
 
+[steam]
+
+; Public Steamworks product identity for the current base-game build. A future Steam demo may
+; override only this runtime identity while continuing to use the base game's Workshop owner.
+; GodotSteam v4.20+ registers the primary AppID under initialization/app_data/app_id.
+initialization/app_data/app_id=5114950
+
+[desktop_buddy]
+
+; Desktop Buddy's single canonical Workshop belongs to the base game even when a future demo
+; publishes/consumes content through Steamworks cross-app permissions.
+steam/workshop_owner_app_id=5114950
+
 [input]
 
 buddy_primary={

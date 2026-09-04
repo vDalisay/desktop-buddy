@@ -1,0 +1,57 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace DesktopBuddy.Platform.Steam;
+
+public sealed class NullSteamWorkshopTransport : ISteamWorkshopTransport
+{
+    public NullSteamWorkshopTransport(string? reason = null) =>
+        UnavailableReason = string.IsNullOrWhiteSpace(reason) ? "Steam Workshop is unavailable." : reason;
+
+    public bool IsAvailable => false;
+    public bool IsInstalled => false;
+    public bool IsInitialized => false;
+    public string? UnavailableReason { get; }
+
+    public Task<WorkshopCreateRemoteResult> CreateItemAsync(CancellationToken token) =>
+        Task.FromResult(new WorkshopCreateRemoteResult(WorkshopRemoteStatus.Unavailable, 0, false, Detail: UnavailableReason));
+
+    public Task<WorkshopSubmitRemoteResult> SubmitUpdateAsync(
+        WorkshopRemoteUpdate update,
+        IProgress<WorkshopTransferProgress>? progress,
+        CancellationToken token) =>
+        Task.FromResult(new WorkshopSubmitRemoteResult(WorkshopRemoteStatus.Unavailable, update.PublishedFileId, false, Detail: UnavailableReason));
+
+    public Task<WorkshopSubscriptionQueryResult> GetSubscribedItemsAsync(CancellationToken token) =>
+        Task.FromResult(new WorkshopSubscriptionQueryResult(
+            WorkshopRemoteStatus.Unavailable,
+            Array.Empty<PublishedWorkshopItem>(),
+            UnavailableReason));
+
+    public Task<WorkshopSubscriptionQueryResult> GetItemDetailsAsync(
+        System.Collections.Generic.IReadOnlyList<ulong> publishedFileIds,
+        CancellationToken token) => GetSubscribedItemsAsync(token);
+
+    public Task<WorkshopSubscriptionChangeResult> UnsubscribeAsync(
+        ulong publishedFileId,
+        CancellationToken token) =>
+        Task.FromResult(new WorkshopSubscriptionChangeResult(
+            WorkshopRemoteStatus.Unavailable,
+            publishedFileId,
+            Detail: UnavailableReason));
+
+    public Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
+        ulong publishedFileId,
+        IProgress<WorkshopTransferProgress>? progress,
+        CancellationToken token) =>
+        Task.FromResult(new WorkshopInstalledItemResult(
+            WorkshopRemoteStatus.Unavailable,
+            publishedFileId,
+            null,
+            0,
+            Detail: UnavailableReason));
+
+    public void OpenWorkshopBrowser() { }
+    public void OpenWorkshopItem(ulong publishedFileId) { }
+}

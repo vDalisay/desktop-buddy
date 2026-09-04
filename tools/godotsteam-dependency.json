@@ -1,0 +1,14 @@
+{
+  "name": "GodotSteam GDExtension 4.4+",
+  "version": "4.22",
+  "assetLibraryId": 2445,
+  "publishedUtc": "2026-08-22",
+  "minimumGodotVersion": "4.4.1",
+  "steamworksSdkVersion": "1.65",
+  "sourceRevision": "ac5fc8bbc3d34c203e832864e2ebab4b21f3efd9",
+  "sourceArchiveUrl": "https://codeberg.org/godotsteam/godotsteam/archive/ac5fc8bbc3d34c203e832864e2ebab4b21f3efd9.zip",
+  "expectedAddonDirectory": "addons/godotsteam",
+  "archiveBytes": 32103117,
+  "archiveSha256": "9ED28D9FE8CA43E769BD8E1160C0F7806B7C6337FD672F919A9103DC84829777",
+  "hashPolicy": "Pinned from the exact official Godot Asset Library 4.22 download (asset 2445 / source revision above) on a clean GitHub Actions ubuntu-24.04 runner on 2026-08-25. tools/install_godotsteam.ps1 must reject any archive whose SHA-256 differs."
+}

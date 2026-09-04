@@ -15,6 +15,7 @@ using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
 #if !DESKTOP_BUDDY_PUBLIC_WEB
+using DesktopBuddy.Sharing;
 using DesktopBuddy.Testing;
 #endif
 using Godot;
@@ -266,10 +267,13 @@ public partial class Bootstrap : Node
         // Feature autoloads may exist before the sandbox enters the tree. Give them the
         // composition-root references directly so normal boot does not discover runtime services
         // by recursively walking the scene tree or bypass the injected persistence policy.
-        GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
-            "/root/EnvironmentCustomizationBootstrap")?.Configure(sandbox);
+        var environmentCustomization = GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
+            "/root/EnvironmentCustomizationBootstrap");
+        environmentCustomization?.Configure(sandbox);
         GetNodeOrNull<DesktopBuddy.CharacterEditor.CharacterSlotUiBootstrap>(
             "/root/CharacterSlotUiBootstrap")?.Configure(sandbox, characters);
+        var commandRegistrar = GetNodeOrNull<DesktopBuddy.UI.Win98.Win98CommandBarBootstrap>(
+            "/root/Win98CommandBarBootstrap");
 
         var characterRuntime = new CharacterSelectionRuntime
         {
@@ -288,6 +292,20 @@ public partial class Bootstrap : Node
         TutorialProgressState.RuntimeDisabled = !DemoScope.IncludesTutorial;
         if (!DemoScope.IncludesTutorial)
             Log.Info(Category, "First-session tutorial omitted by the active itch.io distribution scope.");
+
+#if !DESKTOP_BUDDY_PUBLIC_WEB
+        if (DemoScope.IncludesWorkshop)
+        {
+            // Steam exports and editor runs compose Workshop; itch.io omits its services and menu command.
+            var workshop = new WorkshopBootstrap { Name = nameof(WorkshopBootstrap) };
+            workshop.Configure(characters, characterSelection, sandbox, environmentCustomization, commandRegistrar);
+            AddChild(workshop);
+        }
+        else
+        {
+            Log.Info(Category, "Steam Workshop excluded by this build's distribution scope.");
+        }
+#endif
 
         var guidance = new FirstSessionGuidanceController
         {
