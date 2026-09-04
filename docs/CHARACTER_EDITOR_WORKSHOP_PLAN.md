@@ -1,5 +1,7 @@
 # Character Editor, Custom Painting, and Steam Workshop — Agent Handoff Plan
 
+> **Historical scope note:** The Phase B/Phase C deferral below is superseded by the painting and Milestone 6 Workshop source-alignment supplements. Workshop v1 is authorized for the Steam Demo and full Steam release, and excluded from the itch.io build.
+
 Status: **Phase A is scheduled** as Roadmap Milestone 5.5 (owner, 2026-08-02) and runs
 after the Milestone 5 exit gate and before Milestone 6. Phase A has no Steam dependency.
 **Phase B (painting) and Phase C (Workshop) remain deferred and unschedulable.**

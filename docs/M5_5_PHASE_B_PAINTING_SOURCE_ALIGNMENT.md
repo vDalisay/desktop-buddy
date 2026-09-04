@@ -1,5 +1,7 @@
 # Milestone 5.6 Character Painting — Authoritative Source Alignment
 
+> **Historical scope note:** This document governs Phase B painting. Its Phase C Workshop deferral statements are superseded by `docs/M6_WORKSHOP_SOURCE_ALIGNMENT_2026-08-25.md`; Workshop v1 is included in the Steam Demo and full Steam release, and excluded from itch.io.
+
 Status: **Phase B Task B0 complete — implementation may begin at B1.**  
 Owner authorization date: **2026-08-03**.  
 Effective baseline: `main` after Character Editor Phase A and the merged Work/Play redesign.  

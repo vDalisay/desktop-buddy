@@ -18,8 +18,9 @@ The detailed task contracts and research are in `docs/GODOTSTEAM_WORKSHOP_AND_SO
 - Local/offline package validation and directory-based Workshop emulator for CI/development.
 - Steam unavailable/offline fallback; single-player must boot and function normally without Steam or without the GodotSteam addon installed.
 - A Win98-style Workshop surface for publish, browse, subscriptions, import, and explicit apply/use flows.
+- Workshop is enabled in the Steam Demo and full Steam release, and excluded from the itch.io build.
 - Base-game runtime AppID and Workshop-owner AppID are currently both `5114950`.
-- Runtime identity and Workshop ownership remain separate in code so a future demo can use its own runtime AppID while retaining base-game Workshop ownership if Steamworks cross-app configuration permits it.
+- Runtime identity and Workshop ownership remain separate in code. The Steam Demo currently uses `5114950`; if Valve assigns it a separate runtime AppID later, retaining base-game Workshop ownership requires explicit cross-app configuration and validation.
 
 ## Still deferred
 
@@ -135,7 +136,7 @@ A PR head is not considered source-verified merely because an earlier head passe
 2. checks that `steam.exe` is running;
 3. defaults runtime and Workshop-owner AppIDs to `5114950`;
 4. launches the normal game through `play_game.bat`;
-5. permits a future demo runtime AppID override without changing Workshop ownership; and
+5. permits a separate Steam Demo runtime AppID override without changing Workshop ownership if one is assigned; and
 6. does not create or track `steam_appid.txt`.
 
 `devtools/play_game_steam_diagnostics.bat` provides the same verified dependency/environment setup with persistent build/runtime diagnostics for a live Steam session.
@@ -148,7 +149,7 @@ The source-controlled dependency, package pipeline, emulator path, addon-present
 2. run Desktop Buddy through `devtools/play_game_steam.bat` with Steam signed in to an account that has developer/test access;
 3. run the manual two-account/depot matrix: publish, legal-agreement handling, subscribe/download, import, offline reuse, update, and malformed/removed-item behavior.
 
-If the future Steam demo AppID must publish into or consume the base game's Workshop, treat that as an explicit cross-app integration requirement and validate it once the demo AppID exists. No demo AppID is required for the current base-game implementation or its source-controlled verification.
+The Steam Demo currently uses AppID `5114950` and includes Workshop. If Valve assigns a separate demo AppID, publishing into or consuming the base game's Workshop becomes an explicit cross-app integration requirement that must be validated before release.
 
 ## Definition of done
 

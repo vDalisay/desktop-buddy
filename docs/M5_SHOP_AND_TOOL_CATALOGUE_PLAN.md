@@ -1,5 +1,7 @@
 # Milestone 5 — Shop and Full Tool Catalogue
 
+> **Historical scope note:** The Workshop deferral in this Milestone 5 plan is superseded by `docs/M6_WORKSHOP_SOURCE_ALIGNMENT_2026-08-25.md`; Workshop v1 is included in the Steam Demo and full Steam release, and excluded from itch.io.
+
 Status: **ACTIVE PLAN — written 2026-07-29, Tasks 11–13 resolved/refined 2026-08-02.**
 M4 is owner-accepted. Tasks 11–13 now have a complete architecture handoff in
 `docs/M5_TASK11_TO_13_HANDOFF_PLAN.md`. Power Grab replaces the former passive

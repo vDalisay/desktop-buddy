@@ -5,18 +5,18 @@ Recorded: 2026-08-11
 
 This roadmap collects the currently approved post-demo expansion directions into one sequence. Detailed implementation plans remain authoritative for the systems that already have them, especially Potion Shop, Environment Customization and Buddy Studio.
 
-The Steam demo is intentionally narrower: one room/profile, authored non-physical room items, the current Buddy Studio, Work Mode, Paint Buddy/Background and core tools. **Potion Shop temporary effects are now Full Release scope and must not be pulled back into the Steam Demo unless the owner explicitly reverses that decision.**
+The Steam demo is intentionally narrower: one room/profile, authored non-physical room items, the current Buddy Studio, Work Mode, Paint Buddy/Background, core tools, and data-only Workshop v1 sharing for room paintings and Buddy Studio configuration plus declared buddy paint. **Potion Shop temporary effects are now Full Release scope and must not be pulled back into the Steam Demo unless the owner explicitly reverses that decision.**
 
 ---
 
 ## RELEASE-0 — platform / data prerequisites
 
-Before user-generated or shareable content:
+Workshop v1 prerequisites were promoted into the Steam Demo program. Before expanding shareable content for the Full Release:
 
 - complete the Milestone 6 local/Steam platform abstraction during the Steam Demo program;
 - establish stable cloud/local data boundaries;
-- finish safe versioned package/import primitives before UGC work;
-- define Steam UGC/Workshop policy, moderation and failure behavior;
+- retain the safe versioned package/import primitives delivered for Workshop v1;
+- retain the approved Steam UGC/Workshop policy, moderation and failure behavior;
 - rehearse migrations from the Steam demo data formats;
 - ensure missing/unsubscribed shared content degrades safely without corrupting saves.
 

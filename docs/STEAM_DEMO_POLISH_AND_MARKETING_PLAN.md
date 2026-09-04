@@ -138,7 +138,7 @@ This phase adds distribution/platform infrastructure, not another gameplay syste
 Implement:
 
 - one platform abstraction with local and Steam implementations;
-- Steamworks.NET lifecycle/bootstrap and clean shutdown;
+- optional GodotSteam 4.22 lifecycle/bootstrap and clean shutdown;
 - graceful Steam-unavailable/offline/direct-launch behavior;
 - explicit cloud-safe progress boundary and machine-local settings separation;
 - queued/offline-safe achievements and stats;
@@ -147,9 +147,12 @@ Implement:
 - deterministic Windows release export/package automation;
 - SteamPipe/depot build configuration documentation and repeatable upload tooling;
 - installed-build, clean-install, restart and connectivity-transition checks;
-- enough diagnostics to distinguish platform failures from gameplay/save failures.
+- enough diagnostics to distinguish platform failures from gameplay/save failures;
+- data-only Workshop v1 publish/download/import for room paintings and Buddy Studio configuration plus declared buddy paint;
+- explicit apply/use only, local offline copies, strict hostile-data validation, and directory-backed CI/development emulation;
+- Workshop enabled in Steam Demo and full Steam builds, and excluded from itch.io builds.
 
-Do **not** add Steam Workshop/UGC, room sharing or custom-cosmetic sharing here.
+Do **not** extend Workshop v1 into arbitrary mods, custom Resources/scenes/scripts/native code, real-time multiplayer, complete room-profile sharing, or unapproved custom-cosmetic formats.
 
 Exit gate:
 
@@ -157,6 +160,8 @@ Exit gate:
 - direct local/non-Steam path remains usable where supported;
 - cloud-eligible progress and machine-local settings remain correctly separated;
 - Steam/save/stat/achievement lifecycle is restart-safe;
+- room-painting and buddy Workshop round trips pass online and offline without auto-activation;
+- the Steam Demo exposes Workshop while the itch.io build does not;
 - depot/build steps are repeatable.
 
 ---

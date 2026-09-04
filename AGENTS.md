@@ -26,7 +26,7 @@ If documents conflict, apply the order above. Stop and ask the project owner onl
 - Milestone 5.5 Character Editor Phase A Tasks A0–A9 are complete and merged. The engine-free character schema/compiler, shared trusted visual rig, feature renderers/compositors, failure-safe local character store, schema-7 active selection, editor lifecycle, working-copy UI, and Phase A exit journey are present on `main`.
 - The Work/Play and compact/full-screen redesign is merged. Painting and Workshop surfaces must preserve its input ownership and window restoration behavior.
 - Milestone 5.6 Character Painting Phase B source alignment remains binding for painting behavior, visual-only guarantees, persistence boundaries, and budgets.
-- **Steam Workshop v1 is owner-authorized as of 2026-08-25.** Draft PR #41 implements the source-controlled path for room paintings and Buddy Studio configuration + declared buddy paint through optional GodotSteam 4.22. Live Steamworks/two-account validation remains an external gate.
+- **Steam Workshop v1 is owner-authorized as of 2026-08-25.** The source-controlled path for room paintings and Buddy Studio configuration + declared buddy paint uses optional GodotSteam 4.22. Workshop is enabled in the Steam Demo and full Steam release through the `steam` build feature, and excluded from the itch.io build. Live Steamworks/two-account validation remains an external gate.
 - The Workshop is asynchronous social functionality only. There are no lobbies, P2P sessions, replicated players, RPCs, `MultiplayerPeer`, or shared live rooms.
 - The future 30-second friends Damage Sprint leaderboard remains deferred.
 - Target exactly Godot 4.6.1 .NET/C# and Windows 10/11 x86_64 for the first Steam release.

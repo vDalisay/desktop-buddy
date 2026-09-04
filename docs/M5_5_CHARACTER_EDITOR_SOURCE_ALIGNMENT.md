@@ -1,5 +1,7 @@
 # Milestone 5.5 Character Editor — Authoritative Source Alignment
 
+> **Historical scope note:** This document governs Phase A. Its Workshop deferral statements are superseded by `docs/M6_WORKSHOP_SOURCE_ALIGNMENT_2026-08-25.md`; Workshop v1 is included in the Steam Demo and full Steam release, and excluded from itch.io.
+
 Status: **A0 complete — implementation may begin at A1.**  
 Effective baseline: `main` after M5 Task 13 commit `7e4c88763e7afdf9e290b472920623b86786cfe4`.  
 Task-level implementation plan: `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`.

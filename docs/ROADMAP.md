@@ -17,8 +17,8 @@ Do not defer an observed user-testing defect into generic later polish unless th
 
 The project is split into two product targets:
 
-1. **Steam Demo** — close the current user-testing gate, perform the broad content-complete demo polish pass, integrate the Steam/release foundation, produce Steam marketing assets, then cut and validate the release candidate.
-2. **Full Release** — add Potion Shop temporary effects and expand Environment, Buddy Studio, accessories, tutorial/voice systems and Steam UGC after the demo ships.
+1. **Steam Demo** — close the current user-testing gate, perform the broad content-complete demo polish pass, integrate the Steam/release foundation and authorized Workshop v1, produce Steam marketing assets, then cut and validate the release candidate.
+2. **Full Release** — retain Workshop v1 and add Potion Shop temporary effects plus expanded Environment, Buddy Studio, accessories, tutorial/voice systems and separately approved sharing features after the demo ships.
 
 Milestones are sequential release gates unless a task is explicitly marked safe to parallelize.
 
@@ -78,7 +78,7 @@ Current Steam-demo Environment baseline includes one local room/profile, Paint B
 
 Reference: `docs/ENVIRONMENT_DEMO_CLOSURE_STATUS.md`.
 
-Full-release room profiles, Steam room sharing and furniture interactions remain deferred.
+Full-release room profiles and furniture interactions remain deferred. Data-only Workshop sharing for the current room painting is authorized for the Steam Demo under Milestone 6.
 
 ## Milestone 5.10 — Buddy Studio current-release implementation ✅ COMPLETE / OWNER ACCEPTED / MERGED
 
@@ -86,7 +86,7 @@ Current Buddy Studio includes trusted multi-category cosmetic definitions/render
 
 Reference: `docs/BUDDY_STUDIO_DEMO_CLOSURE_STATUS.md`.
 
-Player-drawn cosmetics, deformation/stretching, Steam sharing and the larger Studio redesign are full-release work.
+Player-drawn cosmetics, deformation/stretching and the larger Studio redesign are full-release work. Data-only Workshop sharing for the current Buddy Studio configuration and declared buddy paint is authorized for the Steam Demo under Milestone 6.
 
 ---
 
@@ -206,12 +206,12 @@ Exit gate:
 
 ## Milestone 6 — Steam Demo Platform and Release Foundation
 
-This milestone is **release plumbing, not a new gameplay feature set**. Build the minimum robust Steam/release layer required to distribute, install, save, verify and support the demo while preserving the direct local/non-Steam path.
+This milestone adds release plumbing and authorized asynchronous Workshop sharing, not a new gameplay system. Build the minimum robust Steam/release layer required to distribute, install, save, share, verify and support the demo while preserving the direct local/non-Steam path.
 
 Deliver:
 
 - one platform-facing abstraction used by gameplay, with local and Steam implementations behind it;
-- Steamworks.NET bootstrap/lifecycle and clean shutdown;
+- optional GodotSteam 4.22 bootstrap/lifecycle and clean shutdown;
 - graceful behavior when Steam is unavailable, offline, not initialized or launched outside Steam;
 - explicit save/cloud boundary: cloud-eligible player progress separated from machine-local window/settings state;
 - queued/offline-safe stats and achievements with retry/reconciliation behavior;
@@ -221,8 +221,11 @@ Deliver:
 - SteamPipe build/depot configuration documentation and repeatable upload tooling;
 - installed-build, clean-install and restart validation;
 - logging/diagnostics sufficient to distinguish platform failure from gameplay/save failure.
+- data-only Workshop v1 publish/download/import for room paintings and Buddy Studio configuration plus declared buddy paint;
+- explicit apply/use only, local offline copies, strict hostile-data validation, and a directory-backed CI/development emulator;
+- Workshop enabled in Steam Demo and full Steam builds, and excluded from itch.io builds.
 
-Do **not** start Steam Workshop/UGC, room sharing or custom-cosmetic sharing here. M6 supplies the platform seams those full-release systems can reuse later.
+Do **not** extend Workshop v1 into arbitrary mods, custom Resources/scenes/scripts/native code, real-time multiplayer, complete room-profile sharing, or unapproved custom-cosmetic formats.
 
 Exit gate:
 
@@ -231,6 +234,8 @@ Exit gate:
 - direct local/non-Steam launch remains usable where supported;
 - machine-local window/display preferences are not accidentally cloud-roamed as player progress;
 - achievement/stat/save behavior survives restart and connectivity transitions;
+- room-painting and buddy Workshop round trips pass online and offline without auto-activation;
+- the Steam Demo exposes Workshop while the itch.io build does not;
 - release/depot tooling can reproduce an installable build without manual mystery steps;
 - no proprietary Steam SDK files are committed improperly.
 

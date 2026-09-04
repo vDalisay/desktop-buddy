@@ -43,7 +43,7 @@ See [the roadmap](docs/ROADMAP.md) and [test plan](docs/TEST_PLAN.md) for the co
 
 ## Scope Boundary
 
-The current launch plan contains one buddy, one save, fourteen interactions/tools, a two-hour unlock curve, mood-scaled run-time passive income, and non-graphic slapstick feedback. Bleeding, painting, cosmetics, Workshop/custom buddies, multiple buddies, profiles, multiplayer, and non-Windows platforms are deferred.
+The current Steam launch plan contains one buddy, one save, fourteen interactions/tools, a two-hour unlock curve, mood-scaled run-time passive income, non-graphic slapstick feedback, painting, Buddy Studio cosmetics, and data-only Steam Workshop sharing for room paintings and buddy configurations/paint. Workshop is enabled in the Steam Demo and full Steam release, and excluded from the itch.io build. Bleeding, arbitrary mods, multiple simultaneous buddies, multiple profiles, multiplayer, and non-Windows platforms remain deferred.
 
 ## Toolchain Versions
 

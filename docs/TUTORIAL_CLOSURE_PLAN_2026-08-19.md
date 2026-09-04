@@ -166,7 +166,7 @@ tutorial-only `TUTORIAL_TEXT.md`.
 - final tutorial copy polish from the owner;
 - final tutorial-character art from the owner;
 - adding Room Decorator to the public Demo without the existing owner decision;
-- Workshop/UGC, Steamworks, or other explicitly deferred post-Demo work.
+- implementing or validating the authorized GodotSteam Workshop integration inside tutorial closure; that Steam Demo work belongs to DEMO-S2 / Milestone 6.
 
 ## Owner feedback, 2026-08-20 (third pass)
 

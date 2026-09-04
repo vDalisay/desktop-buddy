@@ -162,7 +162,7 @@ Deleting a custom cosmetic that is currently worn requires an explicit dependenc
 
 ### 3.1 Scope
 
-Steam sharing is **full release only** and depends on the Milestone 6 Steam/platform layer. The local custom-cosmetic format must be stable before publishing/downloading is implemented.
+Sharing the custom-cosmetic format described in this section is **full release only** and depends on the Milestone 6 Steam/platform layer. This does not defer Workshop v1 sharing of the existing Buddy Studio configuration plus declared buddy paint, which is included in the Steam Demo. The local custom-cosmetic format must be stable before its publishing/downloading is implemented.
 
 The share unit is one safe custom cosmetic package, not an arbitrary game mod.
 

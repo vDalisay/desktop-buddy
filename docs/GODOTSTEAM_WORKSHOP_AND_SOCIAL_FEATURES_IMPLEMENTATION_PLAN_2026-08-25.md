@@ -1,5 +1,7 @@
 # GodotSteam Workshop and Async Social Features — Implementation Plan
 
+> **Activation note:** `docs/M6_WORKSHOP_SOURCE_ALIGNMENT_2026-08-25.md` authorizes and corrects this plan. Workshop v1 is included in the Steam Demo and full Steam release, and excluded from the itch.io build; the future leaderboard remains deferred.
+
 Status: **research-complete implementation handoff; no Steam production code is authorized by this document alone**  
 Date: 2026-08-25  
 Base: `main` at `e1dad4934fa1259018e40b5dc552ee502b2e207f`  
@@ -7,7 +9,7 @@ Scope owner request: Steam Workshop sharing/downloading for **room paintings** a
 
 This plan deliberately does **not** introduce real-time multiplayer. There are no lobbies, replicated players, P2P packets, RPCs, matchmaking sessions, Steam Networking Sockets, Steam Datagram Relay, or Godot `MultiplayerPeer` requirements in the requested feature set. The architecture is asynchronous social functionality: user-generated content plus an optional future Steam leaderboard.
 
-`AGENTS.md` currently marks Phase C / Workshop / multiplayer as deferred and forbidden during the active implementation milestone. Therefore the first implementation task below is a source-of-truth gate. This branch is documentation/research only and does not override that gate by itself.
+At drafting time, `AGENTS.md` marked Phase C / Workshop / multiplayer as deferred, so the first implementation task below was a source-of-truth gate. The Milestone 6 source-alignment supplement subsequently authorized Workshop v1 while leaving multiplayer deferred.
 
 ---
 
