@@ -157,10 +157,19 @@ public sealed class WorkshopManagedPipelineTests : IDisposable
         Assert.True(installed.IsSuccess);
         Assert.True(File.Exists(Path.Combine(installed.InstallFolder!, "manifest.json")));
 
-        Assert.True(transport.SetSubscribed(item.PublishedFileId, false));
+        WorkshopSubscriptionChangeResult unsubscribed = await transport.UnsubscribeAsync(
+            item.PublishedFileId,
+            CancellationToken.None);
+        Assert.True(unsubscribed.IsSuccess, unsubscribed.Detail);
+        Assert.Equal(item.PublishedFileId, unsubscribed.PublishedFileId);
+
         WorkshopSubscriptionQueryResult empty = await transport.GetSubscribedItemsAsync(CancellationToken.None);
         Assert.True(empty.IsSuccess);
         Assert.Empty(empty.Items);
+
+        // Unsubscribing affects Steam subscription state, not Desktop Buddy's already-imported
+        // local copies or, in the emulator, the immutable remote snapshot itself.
+        Assert.True(File.Exists(Path.Combine(installed.InstallFolder!, "manifest.json")));
     }
 
     [Fact]
@@ -175,6 +184,37 @@ public sealed class WorkshopManagedPipelineTests : IDisposable
         Assert.Equal(WorkshopRemoteStatus.Cancelled, result.Status);
         Assert.False(result.IsSuccess);
         Assert.Empty(result.Items);
+    }
+
+    [Fact]
+    public async Task Directory_transport_reports_cancelled_unsubscribe_without_changing_subscription()
+    {
+        string content = CreateRoomShare("cancelled-unsubscribe-content", [7, 6, 5, 4]);
+        var transport = new DirectoryWorkshopTransport(Path.Combine(_root, "cancelled-unsubscribe"), firstId: 7100);
+        WorkshopCreateRemoteResult created = await transport.CreateItemAsync(CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        WorkshopSubmitRemoteResult submitted = await transport.SubmitUpdateAsync(
+            new WorkshopRemoteUpdate(
+                created.PublishedFileId,
+                "Keep Me",
+                string.Empty,
+                content,
+                null,
+                ["Room Painting"],
+                "desktop-buddy:room:1"),
+            null,
+            CancellationToken.None);
+        Assert.True(submitted.IsSuccess);
+
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        WorkshopSubscriptionChangeResult result = await transport.UnsubscribeAsync(
+            created.PublishedFileId,
+            cancellation.Token);
+
+        Assert.Equal(WorkshopRemoteStatus.Cancelled, result.Status);
+        WorkshopSubscriptionQueryResult stillSubscribed = await transport.GetSubscribedItemsAsync(CancellationToken.None);
+        Assert.Contains(stillSubscribed.Items, item => item.PublishedFileId == created.PublishedFileId);
     }
 
     [Fact]
