@@ -158,8 +158,20 @@ public sealed class WorkshopSharingCoordinator
         CancellationToken token = default) =>
         _transport.UnsubscribeAsync(publishedFileId, token);
 
+    public Task<WorkshopImportResult> ImportSubscribedAsync(
+        PublishedWorkshopItem item,
+        IProgress<WorkshopTransferProgress>? progress = null,
+        CancellationToken token = default) =>
+        ImportSubscribedAsync(item, replaceCharacterId: null, progress, token);
+
+    /// <summary>
+    /// Imports a subscribed item. Buddy shares may target one existing local character; room
+    /// imports ignore <paramref name="replaceCharacterId"/> because they always create a local
+    /// room-library copy.
+    /// </summary>
     public async Task<WorkshopImportResult> ImportSubscribedAsync(
         PublishedWorkshopItem item,
+        Guid? replaceCharacterId,
         IProgress<WorkshopTransferProgress>? progress = null,
         CancellationToken token = default)
     {
@@ -201,7 +213,11 @@ public sealed class WorkshopSharingCoordinator
 
             if (string.Equals(contentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal))
             {
-                CharacterShareImportResult imported = await _characterImporter.ImportStagedAsync(incoming.Value, source, token);
+                CharacterShareImportResult imported = await _characterImporter.ImportStagedAsync(
+                    incoming.Value,
+                    source,
+                    replaceCharacterId,
+                    token);
                 incoming = null;
                 return imported.Success && imported.LocalCharacterId.HasValue
                     ? new WorkshopImportResult(WorkshopImportStatus.ImportedBuddy, item.PublishedFileId, imported.LocalCharacterId, Detail: imported.Detail)
