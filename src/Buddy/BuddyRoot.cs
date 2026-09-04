@@ -101,7 +101,8 @@ public partial class BuddyRoot : Node2D
         BuddyPartId? grabbedPart = null,
         Vector2 grabWorldAnchor = default,
         Vector2 cursorWorldPosition = default,
-        bool socialTargetValid = false)
+        bool socialTargetValid = false,
+        bool ropeSuspended = false)
     {
         if (!IsInitialized)
         {
@@ -114,8 +115,14 @@ public partial class BuddyRoot : Node2D
         bool dangled = buddyPartGrabbed && Standing.Snapshot.SupportContactCount == 0;
         // An airborne grab is the same passive body state as unconsciousness while
         // leaving the buddy's awareness intact. Ground contact keeps normal drive.
+        // A rope holds the buddy up exactly the same way, and the recovery clock must
+        // stop for it too: left running it spent ten seconds pushing a hanging buddy to
+        // stand and then re-posed it on the floor, where the rope hauled it straight back
+        // up and the whole cycle repeated (owner report 2026-08-25).
+        bool hanging = dangled ||
+            (ropeSuspended && Standing.Snapshot.SupportContactCount == 0);
         int hardRecoveryCountBefore = Recovery.HardRecoveryCount;
-        Recovery.PhysicsTick(CurrentConsciousness == Consciousness.Conscious && !dangled);
+        Recovery.PhysicsTick(CurrentConsciousness == Consciousness.Conscious && !hanging);
         bool hardRecoveredThisTick = Recovery.HardRecoveryCount != hardRecoveryCountBefore;
         Activity.PhysicsTick();
         GrabResistance.PhysicsTick(CurrentConsciousness);

@@ -259,6 +259,31 @@ public sealed class PistolFireScenario : IScenario
             $"launch_rotation={Mathf.RadToDeg(pointBlank.LaunchRotationRadians):F3}deg " +
             $"body_spin={Mathf.RadToDeg(pointBlank.MaxSpinRadians):F1}deg"));
 
+        // ... and once it lands it holds still, where it struck and pointing the way it came
+        // in, for the settling window the impulse needs. Drawn from the body through that, the
+        // round tumbled, slid, and jumped off its own flight line at the moment of the hit -
+        // the one frame the shot is really read (owner reports 2026-08-26). The body still
+        // does all of it; only the drawing stops following.
+        checks.Add(new StartupCheck(
+            "a_landed_shot_holds_where_and_how_it_struck",
+            pointBlank.LandedSamples > 0 &&
+            pointBlank.ImpactTurnDeg < 2.0f &&
+            pointBlank.ImpactOffLinePx >= 0.0f &&
+            pointBlank.ImpactOffLinePx < 1.0f &&
+            pointBlank.LandedOriginDriftPx < 0.5f &&
+            pointBlank.LandedForwardDriftDeg < 0.5f,
+            $"samples={pointBlank.LandedSamples} " +
+            $"impact_turn={pointBlank.ImpactTurnDeg:F1}deg " +
+            $"off_line={pointBlank.ImpactOffLinePx:F1}px " +
+            $"origin_drift={pointBlank.LandedOriginDriftPx:F2}px " +
+            $"forward_drift={pointBlank.LandedForwardDriftDeg:F1}deg " +
+            $"body_spin={Mathf.RadToDeg(pointBlank.MaxSpinRadians):F1}deg"));
+
+        checks.Add(new StartupCheck(
+            "the_knockback_pushes_the_way_the_shot_was_going",
+            pointBlank.ShoveTurnDeg >= 0.0f && pointBlank.ShoveTurnDeg < 2.0f,
+            $"shove_turn={pointBlank.ShoveTurnDeg:F1}deg"));
+
         checks.Add(new StartupCheck(
             "harmful_history_and_statistics_name_the_pistol",
             lab.Progress.IsContentHarmful(ContentIds.ToolPistol) &&
@@ -542,10 +567,46 @@ public sealed class PistolFireScenario : IScenario
         public float LaunchRotationRadians { get; private set; }
 
         /// <summary>
-        /// The worst agreement, over the whole flight, between the direction the streak
-        /// is drawn along and the direction the bullet is actually travelling.
+        /// The worst agreement, over the flight up to the moment it lands, between the
+        /// direction the streak is drawn along and the direction the bullet is travelling.
         /// </summary>
         public float WorstVisualAlignment { get; private set; } = 1.0f;
+
+        /// <summary>How far the drawn shot wandered from where it struck, in pixels.</summary>
+        public float LandedOriginDriftPx { get; private set; }
+
+        /// <summary>How far the drawn shot turned after it struck, in degrees.</summary>
+        public float LandedForwardDriftDeg { get; private set; }
+
+        /// <summary>Ticks the landed shot was watched for, so a check cannot pass on no samples.</summary>
+        public int LandedSamples { get; private set; }
+
+        /// <summary>
+        /// How far the drawn shot's heading at the moment it landed differs from the heading
+        /// it was flying on just before. This is the one the eye reads: the round is only on
+        /// screen for a frame or two after it connects, and if that frame is turned, the hit
+        /// looks like the bullet pivoted on impact.
+        /// </summary>
+        public float ImpactTurnDeg { get; private set; }
+
+        /// <summary>
+        /// How far the knockback pushed from the heading the shot was flying on. The shove is
+        /// documented to push the way the shot was going rather than the way it bounced, and
+        /// the live velocity it used to read has already been turned by the impact.
+        /// </summary>
+        public float ShoveTurnDeg { get; private set; } = -1.0f;
+
+        private Vector2 _landedOrigin;
+        private Vector2 _landedForward;
+        /// <summary>
+        /// How far off its own flight line the drawn shot sits once it has landed. The body is
+        /// shoved sideways by the collision before a contact is ever visible to it, so drawing
+        /// the round where the body ended up flicks it off its path on the frame of the hit.
+        /// </summary>
+        public float ImpactOffLinePx { get; private set; } = -1.0f;
+
+        private Vector2 _lastFlyingForward;
+        private Vector2 _lastFlyingOrigin;
 
         public async Task<bool> FireAsync(SceneTree tree)
         {
@@ -596,10 +657,51 @@ public sealed class PistolFireScenario : IScenario
                 MaxSpinRadians = Mathf.Max(
                     MaxSpinRadians, Mathf.Abs(Mathf.Wrap(bullet.Rotation, -Mathf.Pi, Mathf.Pi)));
                 Vector2 velocity = bullet.LinearVelocity;
-                if (velocity.Length() > 1.0f)
+                if (!bullet.HasHit && velocity.Length() > 1.0f)
                 {
                     WorstVisualAlignment = Mathf.Min(
                         WorstVisualAlignment, bullet.VisualForward.Dot(velocity.Normalized()));
+                    _lastFlyingForward = bullet.VisualForward;
+                    _lastFlyingOrigin = bullet.VisualOrigin;
+                }
+
+                // Landed: the body goes on being resolved out of what it hit, and the
+                // drawing must stop following it. Both are sampled from the same body the
+                // player is looking at, over the whole settling window.
+                if (bullet.HasHit)
+                {
+                    if (LandedSamples == 0)
+                    {
+                        _landedOrigin = bullet.VisualOrigin;
+                        _landedForward = bullet.VisualForward;
+                        if (_lastFlyingForward != Vector2.Zero)
+                        {
+                            ImpactTurnDeg = Mathf.RadToDeg(
+                                Mathf.Abs(_lastFlyingForward.AngleTo(_landedForward)));
+                            Vector2 fromLine = _landedOrigin - _lastFlyingOrigin;
+                            ImpactOffLinePx = Mathf.Abs(
+                                fromLine.Cross(_lastFlyingForward.Normalized()));
+                        }
+                    }
+                    else
+                    {
+                        LandedOriginDriftPx = Mathf.Max(
+                            LandedOriginDriftPx, _landedOrigin.DistanceTo(bullet.VisualOrigin));
+                        LandedForwardDriftDeg = Mathf.Max(
+                            LandedForwardDriftDeg,
+                            Mathf.RadToDeg(Mathf.Abs(_landedForward.AngleTo(bullet.VisualForward))));
+                    }
+
+                    LandedSamples++;
+                }
+
+                if (ShoveTurnDeg < 0.0f &&
+                    bullet.LastShoveImpulse > 0.0f &&
+                    bullet.LastShoveHeading != Vector2.Zero &&
+                    _lastFlyingForward != Vector2.Zero)
+                {
+                    ShoveTurnDeg = Mathf.RadToDeg(
+                        Mathf.Abs(_lastFlyingForward.AngleTo(bullet.LastShoveHeading)));
                 }
                 if (!Connected && travel > FarSurfacePx)
                 {

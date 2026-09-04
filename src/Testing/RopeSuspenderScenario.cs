@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Content;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
 using Godot;
@@ -93,7 +96,61 @@ public sealed class RopeSuspenderScenario : IScenario
             $"missed={missed} hover={overRope} cut={cut} ropes={ropes.RopeCount} fell={fell}"));
 
         root.QueueFree();
+        checks.Add(await HangingBuddyKeepsItsRecoveryClockStopped(tree));
         return new ScenarioResult(checks.TrueForAll(check => check.Passed), checks, messages);
+    }
+
+    /// <summary>
+    /// A buddy hanging from a rope is held up, not failing to stand. Left running, the standing
+    /// recovery clock pushed a hanging buddy to its feet for ten seconds and then re-posed the
+    /// whole rig on the floor, which the rope immediately hauled back up (owner report 2026-08-25).
+    /// </summary>
+    private static async Task<StartupCheck> HangingBuddyKeepsItsRecoveryClockStopped(SceneTree tree)
+    {
+        var packed = GD.Load<PackedScene>("res://scenes/buddy_lab.tscn");
+        if (packed is null)
+            return new StartupCheck("a_hanging_buddy_stops_its_recovery_clock", false, "lab scene missing");
+
+        BuddyLab lab = packed.Instantiate<BuddyLab>();
+        tree.Root.AddChild(lab);
+        await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        try
+        {
+            for (int tick = 0; tick < 240 && !lab.Buddy.Standing.Snapshot.IsStable; tick++)
+                await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+
+            var ropes = new RopeSuspensionComponent { Name = "ScenarioRopes" };
+            lab.AddChild(ropes);
+            ropes.Initialize();
+            lab.Pointer.RopeTool = ropes;
+
+            PuppetPartBody torso = lab.Buddy.Rig.Torso;
+            ropes.Attach(torso, torso.GlobalPosition, torso.GlobalPosition - new Vector2(0.0f, 150.0f));
+
+            double step = 1.0 / Engine.PhysicsTicksPerSecond;
+            // Past the two-second assistance delay, so an unstopped clock is unmistakable.
+            for (int tick = 0; tick < 300; tick++)
+            {
+                ropes.PhysicsTick(step);
+                await tree.ToSignal(tree, SceneTree.SignalName.PhysicsFrame);
+            }
+
+            StandingSnapshot standing = lab.Buddy.Standing.Snapshot;
+            RecoveryClockState state = lab.Buddy.Recovery.State;
+            bool hanging = standing.SupportContactCount == 0;
+            bool stopped = state.UnableTicks == 0 && !state.AssistanceActive &&
+                lab.Buddy.Recovery.HardRecoveryCount == 0;
+            return new StartupCheck(
+                "a_hanging_buddy_stops_its_recovery_clock",
+                hanging && stopped,
+                $"supports={standing.SupportContactCount} unable={state.UnableTicks} " +
+                $"assist={state.AssistanceActive} hard={lab.Buddy.Recovery.HardRecoveryCount}");
+        }
+        finally
+        {
+            lab.QueueFree();
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+        }
     }
 }
 

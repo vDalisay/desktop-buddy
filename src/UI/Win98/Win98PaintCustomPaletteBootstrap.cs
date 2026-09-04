@@ -43,6 +43,9 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
     private bool _paletteLoaded;
     private bool _rebuildQueued;
     private int _editIndex = -1;
+    private const double HoldToEditSeconds = 0.4;
+    private int _holdIndex = -1;
+    private double _holdSeconds;
     private PaintColor _editOriginal;
 
     public override void _Ready() => ProcessMode = ProcessModeEnum.Always;
@@ -67,6 +70,16 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
             RebuildSwatches();
         UpdateGridColumns();
         RefreshSelection();
+
+        if (_holdIndex < 0)
+            return;
+        _holdSeconds += delta;
+        if (_holdSeconds < HoldToEditSeconds)
+            return;
+        int held = _holdIndex;
+        _holdIndex = -1;
+        if (TutorialInputGate.AllowsPaletteEditing)
+            OpenEditor(held);
     }
 
     /// <summary>
@@ -198,11 +211,14 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
             // The colour step wants one single click on a swatch; a double-click on that same
             // swatch used to open the block editor over the prompt. Blocked for the length of
             // the walkthrough only — TutorialInputGate reopens it when the prompt goes away.
-            if (input is InputEventMouseButton { DoubleClick: true, ButtonIndex: MouseButton.Left } &&
-                TutorialInputGate.AllowsPaletteEditing)
-            {
+            // Press-and-hold opens the same editor, for players who never think to double-click
+            // (owner instruction 2026-08-25).
+            if (input is not InputEventMouseButton { ButtonIndex: MouseButton.Left } click)
+                return;
+            if (click is { DoubleClick: true, Pressed: true } && TutorialInputGate.AllowsPaletteEditing)
                 OpenEditor(captured);
-            }
+            _holdIndex = click.Pressed ? captured : -1;
+            _holdSeconds = 0.0;
         };
         _palette!.AddChild(button);
         _palette.MoveChild(button, index);
@@ -370,7 +386,7 @@ public partial class Win98PaintCustomPaletteBootstrap : Node
     private static void ApplySwatchColor(Button button, PaintColor color)
     {
         string hex = ToHex(color);
-        button.TooltipText = $"Use #{hex} — double-click to edit, Delete to remove.";
+        button.TooltipText = $"Use #{hex} — double-click or hold to edit, Delete to remove.";
         button.AccessibilityDescription = $"Color #{hex}";
 
         var fill = new Color(color.R / 255f, color.G / 255f, color.B / 255f, 1f);

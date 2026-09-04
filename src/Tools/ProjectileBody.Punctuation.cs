@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.App;
+using DesktopBuddy.Diagnostics;
 using Godot;
 
 namespace DesktopBuddy.Tools;
@@ -48,12 +49,20 @@ public partial class ProjectileBody
         if (_trailGlow is not null)
         {
             bool live = State == ProjectileState.Live && Visible;
+            // The bright streak is what reads as the round - it is drawn eight radii long
+            // and three wide, against a four-pixel dot - so it is the one that has to stop
+            // where the shot struck. It rides on the body, which goes on being resolved out
+            // of what it hit for the settling window the impulse needs, so it is placed at
+            // the same pinned origin the body's own drawing uses (owner report 2026-08-26).
             _trailGlow.SetTrail(
-                live ? LocalStreakForward() : Vector2.Zero,
+                live ? WorldStreakForward() : Vector2.Zero,
+                live ? VisualOrigin : GlobalPosition,
                 Radius,
                 _trailColor,
                 live);
         }
+
+        TraceShot();
 
         if (HasHit && _smokeSpawnedForInteractionId != InteractionId)
         {
@@ -101,6 +110,27 @@ public partial class ProjectileBody
         SpawnImpactSmoke(point);
     }
 
+    /// <summary>
+    /// Every rendered frame of a live shot, from the muzzle to the moment it despawns: where
+    /// it is, which way the body has spun, and - the one that matters - which way the streak
+    /// the player sees is really pointing. Asked for by the owner 2026-08-26 to settle where
+    /// a hit's apparent twist comes from, and cheap enough to leave in: debug builds only, and
+    /// only while a shot is in the air.
+    /// </summary>
+    private void TraceShot()
+    {
+        if (!BuildInfo.IsDebugBuild || State != ProjectileState.Live)
+            return;
+
+        Log.Debug("ShotTrace",
+            $"shot={Name} id={InteractionId} hit={HasHit} " +
+            $"pos=({GlobalPosition.X:0.#},{GlobalPosition.Y:0.#}) " +
+            $"body_rot={Mathf.RadToDeg(Rotation):0.#}deg " +
+            $"streak={Mathf.RadToDeg(VisualForward.Angle()):0.#}deg " +
+            $"drawn_at=({VisualOrigin.X:0.#};{VisualOrigin.Y:0.#}) " +
+            $"speed={LinearVelocity.Length():0} travelled={TravelledPx:0}px");
+    }
+
     private void EnsurePunctuationVisual()
     {
         if (GodotObject.IsInstanceValid(_trailGlow))
@@ -126,21 +156,35 @@ public partial class ProjectileBody
         };
         parent.AddChild(smoke);
         smoke.GlobalPosition = worldPoint;
-        smoke.Start(_approachVelocity, _impactSmokeColor);
+        // The heading from before the collision bent it: aimed with the live velocity, the
+        // plume blew off in a different direction on every hit - sometimes sideways, sometimes
+        // back the way the shot came - because that value has already been turned by the
+        // impact it is describing.
+        smoke.Start(ImpactHeading, _impactSmokeColor);
     }
 }
 
 /// <summary>Layered emissive-looking 2D tracer. It is visual-only and follows the projectile.</summary>
 internal sealed partial class ProjectileTrailGlow2D : Node2D
 {
-    private Vector2 _forward;
+    private Vector2 _worldForward;
+    private Vector2 _worldOrigin;
     private float _radius;
     private Color _color;
     private bool _live;
 
-    public void SetTrail(Vector2 forward, float radius, Color color, bool live)
+    /// <summary>
+    /// Takes the streak in world terms - where it starts and which way it points - and does
+    /// the conversion into its own space at draw time. Handed a heading already turned into
+    /// this node's space instead, the streak would be drawn under whatever the body's
+    /// rotation happened to be at the draw, which is not the rotation it was converted for:
+    /// a body spinning out of an impact turns between the two, and the shot is drawn crooked
+    /// for exactly the frames the player is reading the hit.
+    /// </summary>
+    public void SetTrail(Vector2 worldForward, Vector2 worldOrigin, float radius, Color color, bool live)
     {
-        _forward = forward;
+        _worldForward = worldForward;
+        _worldOrigin = worldOrigin;
         _radius = radius;
         _color = color;
         _live = live;
@@ -150,15 +194,35 @@ internal sealed partial class ProjectileTrailGlow2D : Node2D
 
     public override void _Draw()
     {
-        if (!_live || _forward == Vector2.Zero)
+        if (!_live || _worldForward == Vector2.Zero)
             return;
 
+        // Converted here, under the transform the streak is really drawn with, so no spin
+        // the body picks up between one frame's bookkeeping and its draw can reach it.
+        Vector2 origin = ToLocal(_worldOrigin);
+        Vector2 forward = _worldForward.Rotated(-GlobalRotation);
+
+        // A tripwire rather than a running commentary: the conversion above cannot put the
+        // streak at an angle other than its world heading, so this stays silent unless
+        // something reintroduces the body's spin into the drawing.
+        if (BuildInfo.IsDebugBuild)
+        {
+            float drawn = forward.Rotated(GlobalRotation).Angle();
+            float intended = _worldForward.Angle();
+            if (Mathf.Abs(Mathf.AngleDifference(drawn, intended)) > 0.01f)
+            {
+                Log.Debug("ShotTrace",
+                    $"  DRAWN CROOKED parent_rot={GlobalRotationDegrees:0.#}deg " +
+                    $"drawn={Mathf.RadToDeg(drawn):0.#}deg intended={Mathf.RadToDeg(intended):0.#}deg");
+            }
+        }
+
         float length = _radius * 8.5f;
-        Vector2 tail = -_forward * length;
+        Vector2 tail = origin - (forward * length);
         Color halo = new(_color.R, _color.G, _color.B, 0.38f);
         Color core = _color.Lightened(0.48f);
-        DrawLine(Vector2.Zero, tail, halo, MathF.Max(2.4f, _radius * 3.5f), true);
-        DrawLine(Vector2.Zero, tail, core, MathF.Max(1.4f, _radius * 1.25f), true);
+        DrawLine(origin, tail, halo, MathF.Max(2.4f, _radius * 3.5f), true);
+        DrawLine(origin, tail, core, MathF.Max(1.4f, _radius * 1.25f), true);
     }
 }
 

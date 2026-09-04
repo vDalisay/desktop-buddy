@@ -12,7 +12,10 @@ public partial class CharacterEditorHost
     internal void ResetPreviewRotationToFront()
     {
         _paintRotationQuarterTurns = 0;
-        if (GodotObject.IsInstanceValid(_preview))
-            _preview.RotationDegrees = Vector3.Zero;
+        if (!GodotObject.IsInstanceValid(_preview))
+            return;
+        _preview.RotationDegrees = Vector3.Zero;
+        if (_preview.IsInitialized)
+            ApplyStaticPreviewPose();
     }
 }

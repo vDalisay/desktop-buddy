@@ -49,7 +49,12 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private bool _painting;
     private bool _saving;
     private int _selectedSwatch = -1;
+    private const double HoldToEditSeconds = 0.4;
+    private int _holdSwatch = -1;
+    private int _editSwatch = -1;
+    private double _holdSeconds;
     private double _sprayPulseAccumulator;
+    private PaintStrokeAudio _strokeAudio = null!;
     private Vector2? _curveStart;
     private Vector2? _curveEnd;
     private Vector2? _curveFirstBend;
@@ -77,11 +82,27 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     {
         ProcessMode = ProcessModeEnum.Always;
         Layer = 120;
+        _strokeAudio = new PaintStrokeAudio { Name = nameof(PaintStrokeAudio) };
+        AddChild(_strokeAudio);
         Build();
     }
 
     public override void _Process(double delta)
     {
+        _strokeAudio.Set(IsOpen && _painting
+            ? PaintStrokeAudio.For(Canvas.Tool)
+            : PaintStrokeSound.None);
+        if (_holdSwatch >= 0)
+        {
+            _holdSeconds += Math.Max(0, delta);
+            if (_holdSeconds >= HoldToEditSeconds)
+            {
+                int held = _holdSwatch;
+                _holdSwatch = -1;
+                OpenSwatchInPicker(held);
+            }
+        }
+
         if (!IsOpen || !_painting || Canvas.Tool != EnvironmentPaintTool.Spray)
         {
             _sprayPulseAccumulator = 0;
@@ -253,7 +274,10 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             EditAlpha = false,
             TooltipText = "Choose a custom color.",
         };
-        _picker.ColorChanged += SelectColor;
+        _picker.ColorChanged += EditColor;
+        // Closing the picker ends whatever block it was opened to edit; the next time it opens
+        // on its own it is the plain custom-colour picker again.
+        _picker.PopupClosed += () => _editSwatch = -1;
         paletteRow.AddChild(_picker);
         AddColorPickerIcon(_picker);
 
@@ -370,7 +394,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             var cell = new Button
             {
                 Name = $"PaintSwatch{index}", ToggleMode = true, ButtonPressed = index == _selectedSwatch,
-                CustomMinimumSize = new Vector2(20, 18), TooltipText = "Click to select. Right-click or press Delete to remove.",
+                CustomMinimumSize = new Vector2(20, 18),
+                TooltipText = "Click to select, hold to edit. Right-click or press Delete to remove.",
             };
             ApplySwatchStyle(cell, swatch);
             int captured = index;
@@ -379,11 +404,19 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             {
                 // Same rule as the character palette: while a prompt is asking for a colour,
                 // the swatches can be picked but not edited away.
-                if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: true } &&
-                    TutorialInputGate.AllowsPaletteEditing)
+                if (input is not InputEventMouseButton click || !TutorialInputGate.AllowsPaletteEditing)
+                    return;
+                if (click is { ButtonIndex: MouseButton.Right, Pressed: true })
                 {
                     RemoveSwatch(captured);
+                    return;
                 }
+                if (click.ButtonIndex != MouseButton.Left)
+                    return;
+                // Press and hold opens this block in the colour picker (owner instruction
+                // 2026-08-25); a plain click still just selects it.
+                _holdSwatch = click.Pressed ? captured : -1;
+                _holdSeconds = 0.0;
             };
             _swatchGrid.AddChild(cell);
         }
@@ -433,6 +466,34 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         SelectColor(_picker.Color);
     }
 
+    /// <summary>Picker edits rewrite the block the picker was opened on, or just the brush.</summary>
+    private void EditColor(Color color)
+    {
+        if (_editSwatch >= 0 && _editSwatch < _swatches.Count)
+        {
+            _swatches[_editSwatch] = color;
+            if (_swatchGrid.GetChild(_editSwatch) is Button block)
+                ApplySwatchStyle(block, color);
+        }
+        SelectColor(color);
+    }
+
+    private void OpenSwatchInPicker(int index)
+    {
+        if (index < 0 || index >= _swatches.Count) return;
+        SelectSwatch(index);
+        _editSwatch = index;
+        // Asked of the popup directly: toggling the button programmatically does not open a
+        // ColorPickerButton, so the hold looked like it did nothing (owner report 2026-08-25).
+        _picker.GetPicker().Color = _swatches[index];
+        PopupPanel popup = _picker.GetPopup();
+        Control anchor = _swatchGrid.GetChild(index) as Control ?? _picker;
+        var at = new Vector2I(
+            Mathf.RoundToInt(anchor.GetScreenPosition().X),
+            Mathf.RoundToInt(anchor.GetScreenPosition().Y + anchor.Size.Y));
+        popup.Popup(new Rect2I(at, popup.Size));
+    }
+
     private void SelectColor(Color color)
     {
         Canvas.Color = new EnvironmentColor((byte)color.R8, (byte)color.G8, (byte)color.B8);
@@ -456,7 +517,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         {
             if (_confirm.Visible && _confirm.GetGlobalRect().HasPoint(mouse.GlobalPosition))
                 return;
-            if (_panel.Visible && _panel.GetGlobalRect().HasPoint(mouse.GlobalPosition))
+            if (PanelCoversPoint(mouse.GlobalPosition))
                 return;
         }
         if (_confirm.Visible)
@@ -523,6 +584,17 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
         }
         _blocker.AcceptEvent();
     }
+
+    /// <summary>
+    /// True when the tool panel is sitting over this point of the room and the stroke has to be
+    /// let through to it instead. Detached, the panel is a Control in its own window, so its
+    /// global rect is that window's coordinates - measured against the room it masked a
+    /// panel-sized block in the corner that took neither paint nor the brush cursor (owner
+    /// report 2026-08-25).
+    /// </summary>
+    internal bool PanelCoversPoint(Vector2 point) =>
+        _panel.Visible && !(GodotObject.IsInstanceValid(_panelPin) && _panelPin.IsFloating) &&
+        _panel.GetGlobalRect().HasPoint(point);
 
     private void TrackCurvePress(EnvironmentCurvePhase phase, double x, double y)
     {

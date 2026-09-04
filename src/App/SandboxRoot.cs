@@ -358,7 +358,8 @@ public partial class SandboxRoot : Node2D
             grabbedBody?.PartId,
             grab.CursorAnchor,
             Pointer.WorldCursor,
-            Pointer.HasPointerInput);
+            Pointer.HasPointerInput,
+            Ropes.HoldsAny(Buddy.Rig.Parts));
         Pipeline.PhysicsTick();
         // After the pipeline, so a blast is scored against the same simulation clock
         // every contact this tick was scored against.

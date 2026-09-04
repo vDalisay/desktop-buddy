@@ -99,10 +99,8 @@ public partial class Win98PaintLimbPoseBootstrap : Node
             return;
 
         BuddyVisualRigView rig = _host!.PreviewRig;
-        float yawRadians = rig.Rotation.Y;
-        BuddyVisualTransform torsoHome = rig.GeometrySource.ReadTransform(BuddyPartId.Torso);
-        Vector2 torsoPosition = torsoHome.Position;
-
+        float yaw = Mathf.DegToRad(rig.RotationDegrees.Y);
+        Vector2 pivot = rig.GeometrySource.ReadTransform(BuddyPartId.Torso).Position;
         BuddyVisualPartPose Pose(PaintPart part)
         {
             BuddyPartId buddyPart = ToBuddyPart(part);
@@ -114,18 +112,10 @@ public partial class Win98PaintLimbPoseBootstrap : Node
             var rendered = home with { Position = position };
             return new BuddyVisualPartPose(
                 rendered,
-                rig.EditorLanePosition(buddyPart, position, yawRadians, torsoPosition),
-                new Vector3(
-                    0.0f,
-                    yawRadians,
-                    WorldPlaneMapping.To3DRotationZ(home.Rotation)));
+                rig.PreviewPosition(position, yaw, pivot),
+                new Vector3(0.0f, yaw, WorldPlaneMapping.To3DRotationZ(home.Rotation)));
         }
 
-        // Keep the root yaw in place because PaintCanvasControl uses it as the UV-mapping signal.
-        // Socket positions are written in global space after yawing the authored 2D pose, and the
-        // camera-only depth lane is added afterwards. Rotating a pre-laned root was the sideways
-        // preview bug: at 90 degrees the lane Z offsets became visible X offsets and tore the body
-        // into separated pieces.
         rig.ApplyPose(new BuddyVisualPoseFrame(
             Pose(PaintPart.Head),
             Pose(PaintPart.Torso),
@@ -133,7 +123,7 @@ public partial class Win98PaintLimbPoseBootstrap : Node
             Pose(PaintPart.RightHand),
             Pose(PaintPart.LeftFoot),
             Pose(PaintPart.RightFoot),
-            yawRadians,
+            yaw,
             BuiltInCharacterAppearance.NeutralFaceState,
             string.Empty,
             0.0f));

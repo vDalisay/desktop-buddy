@@ -24,6 +24,7 @@ public partial class Win98PinnablePanel : Node
     private float _offsetRight;
     private float _offsetBottom;
     private bool _configured;
+    private bool _focusPending;
 
     public bool IsFloating { get; private set; }
 
@@ -110,6 +111,9 @@ public partial class Win98PinnablePanel : Node
             _window.Size = new Vector2I(
                 Math.Max(_window.Size.X, wanted.X),
                 Math.Max(_window.Size.Y, wanted.Y));
+
+        if (_focusPending)
+            ReturnFocusToGame();
     }
 
     public void Toggle()
@@ -198,9 +202,30 @@ public partial class Win98PinnablePanel : Node
     {
         if (!_configured || !IsFloating)
             return;
+        // A popup opened from the panel - the Shapes list, the colour picker - is its own window
+        // stacked on the panel. Handing focus back while one is open drops it behind the panel
+        // before the player has chosen anything, so the hand-back waits for it to close (owner
+        // instruction 2026-08-25).
+        if (HasOpenPopup(_panel))
+        {
+            _focusPending = true;
+            return;
+        }
+        _focusPending = false;
         Window game = GetWindow();
         if (GodotObject.IsInstanceValid(game) && game.Visible)
             game.GrabFocus();
+    }
+
+    // Internal children included: a MenuButton's list and a ColorPickerButton's picker are both
+    // added internally, so the default GetChildren walks straight past the two popups this rule
+    // exists for (owner report 2026-08-25).
+    private static bool HasOpenPopup(Node node)
+    {
+        foreach (Node child in node.GetChildren(true))
+            if (child is Popup { Visible: true } || HasOpenPopup(child))
+                return true;
+        return false;
     }
 
     private void OnTitleInput(InputEvent input)

@@ -186,7 +186,7 @@ public partial class BuddyStudioWorkspace
 
         Vector3 rotation = _previewRig!.RotationDegrees;
         if (!Mathf.IsEqualApprox(rotation.Y, _previewSpinDegrees))
-            _previewRig.RotationDegrees = new Vector3(rotation.X, _previewSpinDegrees, rotation.Z);
+            _previewRig.SetPreviewYawDegrees(_previewSpinDegrees);
     }
 
     private float AssetForgeDefaultViewZoom() =>

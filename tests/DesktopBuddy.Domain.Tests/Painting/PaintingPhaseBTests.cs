@@ -39,7 +39,9 @@ public sealed class PaintingPhaseBTests
     [InlineData(24.0, -50.0, 0.25, 0.5)]      // head right silhouette
     [InlineData(-24.0, -50.0, 0.75, 0.5)]     // head left silhouette
     [InlineData(0.0, -74.0, 0.0, 0.0)]        // head top pole
-    [InlineData(0.0, -26.0, 0.0, 1.0)]        // head bottom pole
+    // The head's bottom pole is not on this list: the torso's top cap bulges in front of it, so
+    // frontally that pixel is torso. Nothing frontal can paint it, because nothing frontal shows
+    // it - the same reason the head's back is out of reach until the preview is turned.
     [InlineData(0.0, 0.0, 0.5, 0.5)]          // torso centre — capsule front, mid band
     [InlineData(28.0, 7.0, 0.75, 2.0 / 3.0)]  // torso right silhouette, below the hand
     [InlineData(0.0, -7.0, 0.5, 1.0 / 3.0)]   // torso cylinder/top-cap boundary
@@ -69,18 +71,33 @@ public sealed class PaintingPhaseBTests
         Assert.InRange(painted, oneStamp, oneStamp * 4);
     }
 
+    /// <summary>
+    /// Overlaps resolve to whichever part's surface is nearest the viewer there - the same test
+    /// the renderer runs - so the brush lands on the part the player can see. Resolving by lane
+    /// instead handed clicks to a part that was visibly behind another in these bands, and the
+    /// paint went on out of sight (owner report 2026-08-24).
+    /// </summary>
     [Fact]
-    public void OverlappingParts_ResolveToTheNearestDepthLane()
+    public void OverlappingParts_ResolveToWhicheverSurfaceIsInFront()
     {
         FrontalPaintMapper mapper = FrontalPaintMapper.CreateDefault();
 
-        // Inside both the torso and the left hand; the hand sits in the nearer lane.
-        Assert.True(mapper.TryMap(new PaintPoint(-25, -5), out PaintHit hit));
-        Assert.Equal(PaintPart.LeftHand, hit.Part);
+        // A hand's own middle is well in front of the torso beside it.
+        Assert.True(mapper.TryMap(new PaintPoint(-38, -5), out PaintHit hand));
+        Assert.Equal(PaintPart.LeftHand, hand.Part);
 
-        // The head covers the top of the torso, so that overlap paints the head.
+        // Nearer the torso's middle the hand has thinned to its edge and the torso bulges past
+        // it, which is exactly what the player sees there.
+        Assert.True(mapper.TryMap(new PaintPoint(-25, -5), out PaintHit join));
+        Assert.Equal(PaintPart.Torso, join.Part);
+
+        // The head bulges in front of the torso's top.
         Assert.True(mapper.TryMap(new PaintPoint(0, -35), out PaintHit covered));
         Assert.Equal(PaintPart.Head, covered.Part);
+
+        // ... and the strip under the chin is the torso's cap, so that is what takes the paint.
+        Assert.True(mapper.TryMap(new PaintPoint(0, -26), out PaintHit neck));
+        Assert.Equal(PaintPart.Torso, neck.Part);
     }
 
     [Fact]

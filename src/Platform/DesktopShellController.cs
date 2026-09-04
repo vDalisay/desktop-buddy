@@ -141,6 +141,11 @@ public partial class DesktopShellController : Node
         Vector2I clientSize = ResolveClientSize();
         Boundaries.Initialize(clientSize, _storedZoom);
         ApplyMode(force: true);
+        // Everything the Settings rows can change has to arrive at boot too. Only EditSettings
+        // used to apply these, so a saved interface palette or UI scale sat in settings.json and
+        // showed up as the shipped grey until the player touched a settings row (owner report
+        // 2026-08-25).
+        ApplyPresentationSettings();
 
         Log.Info(Category,
             $"Shell composed (layout={Window.LayoutMode} mode={_mode.Current} transparency={Window.TransparencyActive}).");

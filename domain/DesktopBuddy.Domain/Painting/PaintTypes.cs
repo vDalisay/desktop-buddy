@@ -189,20 +189,35 @@ public sealed class FrontalPaintMapper
     /// The `paint_frontal_uv_mapping` scenario fails if the trusted resources drift from this.
     /// Every part mesh is an unmirrored primitive, so left and right limbs share one UV
     /// convention: screen-symmetric points map to reversed U.
+    ///
+    /// <para>The shapes are coplanar. The runtime rig layers its parts in depth lanes - head
+    /// +96, hands +48, feet -48 - but those are a draw-order device for the one view the game
+    /// shows, and the editor preview the player paints on can be turned to any angle, where
+    /// lanes either fling the parts apart or slice them into each other. The preview therefore
+    /// stands flat, and this mapper stands flat with it: what the player sees under the cursor
+    /// is what the brush paints, at rest and at every yaw (owner reports 2026-08-24/25).</para>
     /// </summary>
     public static FrontalPaintMapper CreateDefault() => Create(new[]
     {
-        new PaintPartShape(PaintPart.Head, new PaintPoint(0.0, -50.0), 24.0, 24.0, PaintShapeKind.Sphere, 96.0),
-        new PaintPartShape(PaintPart.LeftHand, new PaintPoint(-38.0, -5.0), 15.0, 15.0, PaintShapeKind.Sphere, 48.0),
-        new PaintPartShape(PaintPart.RightHand, new PaintPoint(38.0, -5.0), 15.0, 15.0, PaintShapeKind.Sphere, 48.0),
+        new PaintPartShape(PaintPart.Head, new PaintPoint(0.0, -50.0), 24.0, 24.0, PaintShapeKind.Sphere, 0.0),
+        new PaintPartShape(PaintPart.LeftHand, new PaintPoint(-38.0, -5.0), 15.0, 15.0, PaintShapeKind.Sphere, 0.0),
+        new PaintPartShape(PaintPart.RightHand, new PaintPoint(38.0, -5.0), 15.0, 15.0, PaintShapeKind.Sphere, 0.0),
         new PaintPartShape(PaintPart.Torso, new PaintPoint(0.0, 0.0), 28.0, 35.0, PaintShapeKind.Capsule, 0.0),
-        new PaintPartShape(PaintPart.LeftFoot, new PaintPoint(-22.0, 55.0), 17.0, 17.0, PaintShapeKind.Sphere, -48.0),
-        new PaintPartShape(PaintPart.RightFoot, new PaintPoint(22.0, 55.0), 17.0, 17.0, PaintShapeKind.Sphere, -48.0),
+        new PaintPartShape(PaintPart.LeftFoot, new PaintPoint(-22.0, 55.0), 17.0, 17.0, PaintShapeKind.Sphere, 0.0),
+        new PaintPartShape(PaintPart.RightFoot, new PaintPoint(22.0, 55.0), 17.0, 17.0, PaintShapeKind.Sphere, 0.0),
     });
 
+    /// <summary>
+    /// The part whose surface is nearest the viewer at this point - the same test the renderer's
+    /// depth buffer runs, so the click lands on the part the player can see. Taking the first
+    /// shape in lane order instead let a part win a band where the one behind it visibly bulges
+    /// in front, and paint dropped there vanished behind the surface on screen.
+    /// </summary>
     public bool TryMap(PaintPoint point, out PaintHit hit)
     {
         if (!point.IsFinite) { hit = default; return false; }
+        bool found = false;
+        PaintHit nearest = default;
         foreach (PaintPartShape shape in _shapes)
         {
             double x = point.X - shape.Center.X;
@@ -211,12 +226,16 @@ public sealed class FrontalPaintMapper
                     ? TryMapCapsule(shape, x, yUp, out PaintPoint uv, out double z)
                     : TryMapSphere(shape, x, yUp, out uv, out z))
             {
-                hit = new PaintHit(shape.Part, uv, shape.Depth + z);
-                return true;
+                double depth = shape.Depth + z;
+                if (found && depth <= nearest.Depth)
+                    continue;
+                nearest = new PaintHit(shape.Part, uv, depth);
+                found = true;
             }
         }
-        hit = default;
-        return false;
+
+        hit = nearest;
+        return found;
     }
 
     private static bool TryMapSphere(PaintPartShape shape, double x, double yUp, out PaintPoint uv, out double z)
