@@ -192,6 +192,46 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
         }
     }, CancellationToken.None);
 
+    public Task<WorkshopSubscriptionChangeResult> UnsubscribeAsync(
+        ulong publishedFileId,
+        CancellationToken token)
+    {
+        if (token.IsCancellationRequested)
+        {
+            return Task.FromResult(new WorkshopSubscriptionChangeResult(
+                WorkshopRemoteStatus.Cancelled,
+                publishedFileId,
+                Detail: "Directory Workshop unsubscribe cancelled."));
+        }
+        if (publishedFileId == 0)
+        {
+            return Task.FromResult(new WorkshopSubscriptionChangeResult(
+                WorkshopRemoteStatus.Failed,
+                0,
+                Detail: "Published file ID is required."));
+        }
+
+        try
+        {
+            bool changed;
+            lock (_gate)
+                changed = SetSubscribed(publishedFileId, false);
+            return Task.FromResult(changed
+                ? new WorkshopSubscriptionChangeResult(WorkshopRemoteStatus.Success, publishedFileId)
+                : new WorkshopSubscriptionChangeResult(
+                    WorkshopRemoteStatus.Failed,
+                    publishedFileId,
+                    Detail: "Workshop item was not found."));
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            return Task.FromResult(new WorkshopSubscriptionChangeResult(
+                WorkshopRemoteStatus.Failed,
+                publishedFileId,
+                Detail: exception.Message));
+        }
+    }
+
     public Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
         ulong publishedFileId,
         IProgress<WorkshopTransferProgress>? progress,
