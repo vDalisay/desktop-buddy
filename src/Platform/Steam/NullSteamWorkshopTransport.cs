@@ -29,6 +29,14 @@ public sealed class NullSteamWorkshopTransport : ISteamWorkshopTransport
             Array.Empty<PublishedWorkshopItem>(),
             UnavailableReason));
 
+    public Task<WorkshopSubscriptionChangeResult> UnsubscribeAsync(
+        ulong publishedFileId,
+        CancellationToken token) =>
+        Task.FromResult(new WorkshopSubscriptionChangeResult(
+            WorkshopRemoteStatus.Unavailable,
+            publishedFileId,
+            Detail: UnavailableReason));
+
     public Task<WorkshopInstalledItemResult> EnsureInstalledAsync(
         ulong publishedFileId,
         IProgress<WorkshopTransferProgress>? progress,
