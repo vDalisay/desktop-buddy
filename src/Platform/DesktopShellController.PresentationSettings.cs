@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.UI.Win98;
+using Godot;
 using DomainInputMode = DesktopBuddy.Domain.Platform.InputMode;
 
 namespace DesktopBuddy.Platform;
