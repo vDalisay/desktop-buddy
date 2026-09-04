@@ -153,6 +153,11 @@ public sealed class WorkshopSharingCoordinator
     public Task<WorkshopSubscriptionQueryResult> GetSubscriptionsAsync(CancellationToken token = default) =>
         _transport.GetSubscribedItemsAsync(token);
 
+    public Task<WorkshopSubscriptionChangeResult> UnsubscribeAsync(
+        ulong publishedFileId,
+        CancellationToken token = default) =>
+        _transport.UnsubscribeAsync(publishedFileId, token);
+
     public async Task<WorkshopImportResult> ImportSubscribedAsync(
         PublishedWorkshopItem item,
         IProgress<WorkshopTransferProgress>? progress = null,
