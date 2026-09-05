@@ -148,3 +148,27 @@ public interface ISteamWorkshopTransport : ISteamAvailability
     void OpenWorkshopBrowser();
     void OpenWorkshopItem(ulong publishedFileId);
 }
+
+/// <summary>
+/// Optional extension for a Steam runtime that is allowed to publish Workshop items for more than
+/// one consumer AppID. Steam demos use this to create one item consumable by the demo and a second
+/// mirror consumable by the full game, while subscriptions/downloads remain scoped by Steam to the
+/// currently running application.
+/// </summary>
+public interface ITargetedSteamWorkshopTransport : ISteamWorkshopTransport
+{
+    uint RuntimeAppId { get; }
+    uint WorkshopOwnerAppId { get; }
+
+    Task<WorkshopCreateRemoteResult> CreateItemAsync(
+        uint consumerAppId,
+        CancellationToken token);
+
+    Task<WorkshopSubmitRemoteResult> SubmitUpdateAsync(
+        uint consumerAppId,
+        WorkshopRemoteUpdate update,
+        IProgress<WorkshopTransferProgress>? progress,
+        CancellationToken token);
+
+    void OpenWorkshopBrowser(uint consumerAppId);
+}
