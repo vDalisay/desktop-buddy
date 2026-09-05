@@ -382,12 +382,15 @@ public partial class LabPointerGrabComponent : Node2D
                          CursorTools.IsSwingCapableTool(tool);
 
         // The Boxing Glove winds back on the same button the bat charges on (owner instruction
-        // 2026-08-22). Only the grip below stays bat-only: a glove has no handle to hold.
+        // 2026-08-22), and the Sword is wielded on it (owner instruction 2026-08-25). Only the
+        // grip below stays bat-only: a glove has no handle to hold, and a blade is held by its
+        // hilt through the tether rather than through the swing machine's grip.
         bool chargeTool = swingTool ||
                           (_sawPointerInput &&
                            CursorTools is not null &&
                            GodotObject.IsInstanceValid(CursorTools) &&
-                           CursorTools.IsPunchCapableTool(tool));
+                           (CursorTools.IsPunchCapableTool(tool) ||
+                            CursorTools.IsThrustCapableTool(tool)));
 
         // Charging is guarded on the grab and aim being idle, and that is not
         // redundant with the launcher branch below. CanAimCurrentGrab inspects

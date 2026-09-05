@@ -8,7 +8,7 @@ This document defines the launch buddy simulation, behavior arbitration, interac
 
 Desktop Buddy uses a responsive six-circle active puppet inspired mechanically by the feel of *Interactive Buddy* v1.01. It is not a conventional articulated skeleton and must not become a realistic multi-bone ragdoll. The buddy should feel physically present, playful, readable at small window sizes, and consistent under repeated interactions.
 
-The buddy is an immortal original robot/mannequin. It may suffer transient pain, panic, Burning, and a fixed knockout, but it cannot die, dismember, or bleed in the current scope. Its face is drawn directly on the head circle using simple emoticons. Communication is limited to the face, body language, status icons, and original nonverbal robot sounds; there is no launch dialogue or voice acting.
+The buddy is an immortal original robot/mannequin. It may suffer transient pain, panic, Burning, a fixed knockout, and — where the build ships Gore Mode and the player has switched it on — bleeding wounds from piercing hits, but it cannot die or dismember. Bleeding is presentation only and changes nothing it simulates (DECISIONS "Violence scope", FR-004.3a). Its face is drawn directly on the head circle using simple emoticons. Communication is limited to the face, body language, status icons, and original nonverbal robot sounds; there is no launch dialogue or voice acting.
 
 The first implementation milestone is a physics laboratory. Economy and shop work must not be treated as production-ready until that laboratory proves standing, locomotion, jumping, grabbing, impacts, knockout, recovery, object handling, and repeated-run stability.
 
@@ -485,4 +485,4 @@ Exact timers are asserted within one `120 Hz` physics tick where the check cross
 
 Persist semantic progress: money, unlocks, selected tool, mood, harmful-history/per-tool memory, statistics, and settings. Do not persist live body transforms, loose objects, active projectiles, rolling pain events, knockout state, or temporary statuses. Every loaded session begins with a safe standing buddy while preserving its semantic mood and memory.
 
-Future buddy coloring/painting, cosmetics, blood, multiple buddies, profiles, multiplayer, and Steam Workshop custom buddies are out of scope. Current code should avoid needless coupling that blocks future content data, but no current feature, abstraction, file format, or UI may be added solely to implement those future systems.
+Future buddy coloring/painting, cosmetics, multiple buddies, profiles, multiplayer, and Steam Workshop custom buddies are out of scope. Current code should avoid needless coupling that blocks future content data, but no current feature, abstraction, file format, or UI may be added solely to implement those future systems.

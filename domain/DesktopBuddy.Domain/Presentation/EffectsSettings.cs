@@ -3,8 +3,9 @@ using DesktopBuddy.Domain.Persistence;
 namespace DesktopBuddy.Domain.Presentation;
 
 /// <summary>
-/// The four accessibility effect settings, snapshotted out of <see cref="LocalSettingsSave"/>
-/// and handed to presentation components (FR-017.3, FR-017.6).
+/// The accessibility and content-sensitivity effect settings, snapshotted out of
+/// <see cref="LocalSettingsSave"/> and handed to presentation components (FR-017.3,
+/// FR-017.6).
 ///
 /// <para><b>Gameplay never reads this.</b> It reaches presenters and nothing else, so
 /// flipping every toggle changes what a run looks and sounds like and cannot change one
@@ -26,21 +27,36 @@ public readonly record struct EffectsSettings(
     bool ReducedParticles,
 
     /// <summary>Cap flicker and strobing modulation. Default <b>on</b>: the safe look ships.</summary>
-    bool PhotosensitivitySafe)
+    bool PhotosensitivitySafe,
+
+    /// <summary>
+    /// Gore Mode: whether piercing hits open bleeding wounds and stain the room. Default
+    /// <b>off</b>, on the same principle as <see cref="PhotosensitivitySafe"/> — the mild
+    /// look ships and the player opts in.
+    ///
+    /// <para>This flag lives here precisely because bleeding is presentation. It reaches
+    /// presenters and nothing else, so the determinism rule above covers it: the same seed
+    /// with Gore Mode on and off produces the same pain, mood, and tick counts. A build
+    /// that does not ship the feature at all refuses it a second time at the composition
+    /// root, so a hand-edited settings file cannot switch it on.</para>
+    /// </summary>
+    bool Gore)
 {
     /// <summary>The FR-017.6 defaults, used before any save has been loaded.</summary>
     public static EffectsSettings Default => new(
         ReducedMotion: false,
         ScreenShake: true,
         ReducedParticles: false,
-        PhotosensitivitySafe: true);
+        PhotosensitivitySafe: true,
+        Gore: false);
 
     /// <summary>Everything a photosensitive, motion-sensitive player would turn on.</summary>
     public static EffectsSettings MostRestrictive => new(
         ReducedMotion: true,
         ScreenShake: false,
         ReducedParticles: true,
-        PhotosensitivitySafe: true);
+        PhotosensitivitySafe: true,
+        Gore: false);
 
     public static EffectsSettings FromSave(LocalSettingsSave? save) =>
         save is null
@@ -49,7 +65,8 @@ public readonly record struct EffectsSettings(
                 save.ReducedMotion,
                 save.ScreenShake,
                 save.ReducedParticles,
-                save.PhotosensitivitySafe);
+                save.PhotosensitivitySafe,
+                save.GoreEnabled);
 
     /// <summary>
     /// How many of every N candidate particles are actually drawn. One under reduced
