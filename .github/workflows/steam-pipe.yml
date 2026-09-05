@@ -1,0 +1,386 @@
+name: SteamPipe Windows Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Steam product to build
+        required: true
+        type: choice
+        options:
+          - full
+          - demo
+        default: full
+      upload:
+        description: Upload the exported build to SteamPipe
+        required: true
+        type: boolean
+        default: false
+      release_branch:
+        description: Optional Steam beta branch to set live after upload; leave blank to upload only
+        required: false
+        type: string
+        default: ""
+      build_description:
+        description: Optional internal Steam build description
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: steampipe-${{ github.ref }}-${{ inputs.target }}
+  cancel-in-progress: false
+
+env:
+  GODOT_VERSION: 4.6.1-stable
+  GODOT_TEMPLATE_VERSION: 4.6.1.stable.mono
+  DESKTOP_BUDDY_BASE_APP_ID: "5114950"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  build:
+    name: Export ${{ inputs.target }} Windows build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      app_id: ${{ steps.target.outputs.app_id }}
+      depot_id: ${{ steps.target.outputs.depot_id }}
+      preset: ${{ steps.target.outputs.preset }}
+      artifact_name: ${{ steps.target.outputs.artifact_name }}
+      build_description: ${{ steps.target.outputs.build_description }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Resolve Steam target
+        id: target
+        shell: bash
+        env:
+          TARGET: ${{ inputs.target }}
+          REQUESTED_DESCRIPTION: ${{ inputs.build_description }}
+          FULL_APP_ID: ${{ vars.STEAM_FULL_APP_ID }}
+          FULL_DEPOT_ID: ${{ vars.STEAM_FULL_WINDOWS_DEPOT_ID }}
+          DEMO_APP_ID: ${{ vars.STEAM_DEMO_APP_ID }}
+          DEMO_DEPOT_ID: ${{ vars.STEAM_DEMO_WINDOWS_DEPOT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ "$TARGET" = "full" ]; then
+            app_id="${FULL_APP_ID:-$DESKTOP_BUDDY_BASE_APP_ID}"
+            depot_id="$FULL_DEPOT_ID"
+            preset="Windows Full Release"
+            artifact_name="DesktopBuddy-Steam-Full-Windows"
+          else
+            if [ -z "$DEMO_APP_ID" ]; then
+              echo "STEAM_DEMO_APP_ID is not configured." >&2
+              echo "Create the associated Steam demo App ID first, then add it as a GitHub Actions repository variable." >&2
+              exit 1
+            fi
+            app_id="$DEMO_APP_ID"
+            depot_id="$DEMO_DEPOT_ID"
+            preset="Windows Steam Demo"
+            artifact_name="DesktopBuddy-Steam-Demo-Windows"
+          fi
+
+          description="$REQUESTED_DESCRIPTION"
+          description="${description//$'\n'/ }"
+          description="${description//$'\r'/ }"
+          if [ -z "$description" ]; then
+            description="$TARGET ${GITHUB_SHA::12}"
+          fi
+
+          echo "app_id=$app_id" >> "$GITHUB_OUTPUT"
+          echo "depot_id=$depot_id" >> "$GITHUB_OUTPUT"
+          echo "preset=$preset" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "build_description=$description" >> "$GITHUB_OUTPUT"
+
+          echo "Steam target: $TARGET"
+          echo "Runtime App ID: $app_id"
+          echo "Godot export preset: $preset"
+          if [ -n "$depot_id" ]; then
+            echo "Windows Depot ID: $depot_id"
+          else
+            echo "Windows Depot ID is not configured; build-only mode still works."
+          fi
+
+      - name: Build managed solution
+        run: dotnet build DesktopBuddy.sln -c Release
+
+      - name: Materialize verified GodotSteam 4.22 addon
+        shell: pwsh
+        run: ./tools/install_godotsteam.ps1 -Force
+
+      - name: Download pinned Godot editor and export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          GODOT_NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          GODOT_URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${GODOT_NAME}.zip"
+          TEMPLATE_NAME="Godot_v${GODOT_VERSION}_mono_export_templates.tpz"
+          TEMPLATE_URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${TEMPLATE_NAME}"
+
+          curl -fL --retry 3 -o "$RUNNER_TEMP/godot.zip" "$GODOT_URL"
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+
+          GODOT_BIN="$(find "$RUNNER_TEMP/godot/$GODOT_NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          if [ -z "$GODOT_BIN" ]; then
+            echo "Could not locate the pinned Godot Mono editor." >&2
+            exit 1
+          fi
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+          curl -fL --retry 3 -o "$RUNNER_TEMP/$TEMPLATE_NAME" "$TEMPLATE_URL"
+          rm -rf "$RUNNER_TEMP/godot-templates"
+          mkdir -p "$RUNNER_TEMP/godot-templates"
+          unzip -q "$RUNNER_TEMP/$TEMPLATE_NAME" -d "$RUNNER_TEMP/godot-templates"
+
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/$GODOT_TEMPLATE_VERSION"
+          rm -rf "$TEMPLATE_DIR"
+          mkdir -p "$TEMPLATE_DIR"
+          cp -a "$RUNNER_TEMP/godot-templates/templates/." "$TEMPLATE_DIR/"
+
+          test -n "$(find "$TEMPLATE_DIR" -maxdepth 1 -type f -name 'windows_release_x86_64.exe' -print -quit)"
+          echo "Pinned Godot editor and Windows Mono export templates are ready."
+
+      - name: Stamp runtime Steam App ID into disposable checkout
+        shell: bash
+        env:
+          STEAM_APP_ID: ${{ steps.target.outputs.app_id }}
+        run: |
+          set -euo pipefail
+          python3 - "$STEAM_APP_ID" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          app_id = sys.argv[1]
+          if not app_id.isdigit() or app_id == "0":
+              raise SystemExit(f"Invalid Steam App ID: {app_id!r}")
+
+          path = pathlib.Path("project.godot")
+          text = path.read_text(encoding="utf-8")
+          pattern = r"(?m)^initialization/app_data/app_id=\d+\s*$"
+          replacement = f"initialization/app_data/app_id={app_id}"
+          updated, count = re.subn(pattern, replacement, text, count=1)
+          if count != 1:
+              raise SystemExit("Could not find exactly one Steam runtime App ID setting in project.godot")
+          path.write_text(updated, encoding="utf-8")
+          PY
+
+          grep -n '^initialization/app_data/app_id=' project.godot
+
+      - name: Import project with native Steam addon
+        shell: bash
+        run: |
+          set -euo pipefail
+          xvfb-run -a "$GODOT_BIN" --headless --verbose --path . --import
+
+      - name: Export Steam Windows build
+        shell: bash
+        env:
+          PRESET: ${{ steps.target.outputs.preset }}
+        run: |
+          set -euo pipefail
+          OUTPUT="$GITHUB_WORKSPACE/build/steam-content"
+          rm -rf "$OUTPUT"
+          mkdir -p "$OUTPUT"
+
+          xvfb-run -a "$GODOT_BIN" --headless --verbose --path . \
+            --export-release "$PRESET" "$OUTPUT/DesktopBuddy.exe"
+
+          test -s "$OUTPUT/DesktopBuddy.exe"
+          test -s "$OUTPUT/DesktopBuddy.pck"
+
+      - name: Audit release payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT="$GITHUB_WORKSPACE/build/steam-content"
+
+          find "$OUTPUT" -type f -iname '*.pdb' -delete
+
+          if find "$OUTPUT" -type f -iname 'steam_appid.txt' -print -quit | grep -q .; then
+            echo "Development steam_appid.txt must never ship in a Steam depot." >&2
+            exit 1
+          fi
+
+          if ! find "$OUTPUT" -type f \( -iname 'steam_api64.dll' -o -iname '*godotsteam*.dll' \) -print -quit | grep -q .; then
+            echo "The exported Steam build does not contain a Windows Steam/GodotSteam runtime DLL." >&2
+            exit 1
+          fi
+
+          if find "$OUTPUT" -type f \( -iname '*.cs' -o -iname '*.csproj' -o -iname '*.sln' \) -print -quit | grep -q .; then
+            echo "Source/project files unexpectedly leaked into the release payload." >&2
+            exit 1
+          fi
+
+          echo "Release payload:"
+          find "$OUTPUT" -maxdepth 2 -type f -printf '%P\n' | sort
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.target.outputs.artifact_name }}
+          path: build/steam-content/
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+  upload:
+    name: Upload ${{ inputs.target }} build to SteamPipe
+    if: ${{ inputs.upload }}
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: steam-release
+    steps:
+      - name: Validate SteamPipe configuration
+        shell: bash
+        env:
+          APP_ID: ${{ needs.build.outputs.app_id }}
+          DEPOT_ID: ${{ needs.build.outputs.depot_id }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          set -euo pipefail
+
+          [ -n "$APP_ID" ] || { echo "Steam App ID is missing." >&2; exit 1; }
+          [ -n "$DEPOT_ID" ] || { echo "Windows Depot ID is missing. Configure the matching STEAM_*_WINDOWS_DEPOT_ID repository variable." >&2; exit 1; }
+          [ -n "$STEAM_USERNAME" ] || { echo "STEAM_USERNAME secret is missing." >&2; exit 1; }
+          [ -n "$STEAM_CONFIG_VDF" ] || { echo "STEAM_CONFIG_VDF secret is missing." >&2; exit 1; }
+
+          if [ "$RELEASE_BRANCH" = "default" ]; then
+            echo "SteamPipe cannot automatically set the default branch live. Leave release_branch blank and promote the build in Steamworks." >&2
+            exit 1
+          fi
+          if [ -n "$RELEASE_BRANCH" ] && ! [[ "$RELEASE_BRANCH" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "release_branch may contain only letters, numbers, dot, underscore, and dash." >&2
+            exit 1
+          fi
+
+      - name: Download exported Windows payload
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.artifact_name }}
+          path: build/steam-content
+
+      - name: Install Valve SteamCMD
+        shell: bash
+        run: |
+          set -euo pipefail
+          STEAMCMD_DIR="$RUNNER_TEMP/steamcmd"
+          rm -rf "$STEAMCMD_DIR"
+          mkdir -p "$STEAMCMD_DIR"
+
+          curl -fL --retry 3 \
+            -o "$RUNNER_TEMP/steamcmd_linux.tar.gz" \
+            https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
+          tar -xzf "$RUNNER_TEMP/steamcmd_linux.tar.gz" -C "$STEAMCMD_DIR"
+
+          (
+            cd "$STEAMCMD_DIR"
+            ./steamcmd.sh +quit
+          )
+
+          echo "STEAMCMD_DIR=$STEAMCMD_DIR" >> "$GITHUB_ENV"
+
+      - name: Restore Steam Guard session
+        shell: bash
+        env:
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$STEAMCMD_DIR/config"
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 --decode > "$STEAMCMD_DIR/config/config.vdf"
+          chmod 600 "$STEAMCMD_DIR/config/config.vdf"
+
+      - name: Generate SteamPipe app build script
+        id: steampipe
+        shell: bash
+        env:
+          APP_ID: ${{ needs.build.outputs.app_id }}
+          DEPOT_ID: ${{ needs.build.outputs.depot_id }}
+          BUILD_DESCRIPTION: ${{ needs.build.outputs.build_description }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+        run: |
+          set -euo pipefail
+          CONTENT_ROOT="$GITHUB_WORKSPACE/build/steam-content"
+          BUILD_OUTPUT="$RUNNER_TEMP/steampipe-output"
+          SCRIPT="$RUNNER_TEMP/app_build_${APP_ID}.vdf"
+
+          mkdir -p "$BUILD_OUTPUT"
+
+          python3 - "$SCRIPT" "$APP_ID" "$DEPOT_ID" "$BUILD_DESCRIPTION" "$CONTENT_ROOT" "$BUILD_OUTPUT" "$RELEASE_BRANCH" <<'PY'
+          import pathlib
+          import sys
+
+          script, app_id, depot_id, description, content_root, build_output, release_branch = sys.argv[1:]
+
+          def vdf(value: str) -> str:
+              return value.replace("\\", "\\\\").replace('"', '\\"')
+
+          lines = [
+              '"AppBuild"',
+              '{',
+              f'    "AppID" "{vdf(app_id)}"',
+              f'    "Desc" "{vdf(description)}"',
+              f'    "ContentRoot" "{vdf(content_root)}"',
+              f'    "BuildOutput" "{vdf(build_output)}"',
+          ]
+          if release_branch:
+              lines.append(f'    "SetLive" "{vdf(release_branch)}"')
+          lines += [
+              '    "Depots"',
+              '    {',
+              f'        "{vdf(depot_id)}"',
+              '        {',
+              '            "FileMapping"',
+              '            {',
+              '                "LocalPath" "*"',
+              '                "DepotPath" "."',
+              '                "Recursive" "1"',
+              '            }',
+              '            "FileExclusion" "*.pdb"',
+              '            "FileExclusion" "steam_appid.txt"',
+              '        }',
+              '    }',
+              '}',
+              '',
+          ]
+          pathlib.Path(script).write_text("\n".join(lines), encoding="utf-8")
+          PY
+
+          echo "script=$SCRIPT" >> "$GITHUB_OUTPUT"
+          echo "SteamPipe script generated for App $APP_ID / Depot $DEPOT_ID."
+          if [ -n "$RELEASE_BRANCH" ]; then
+            echo "Successful upload will set beta branch '$RELEASE_BRANCH' live."
+          else
+            echo "Successful upload will not change any live branch."
+          fi
+
+      - name: Upload build with SteamPipe
+        shell: bash
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAMPIPE_SCRIPT: ${{ steps.steampipe.outputs.script }}
+        run: |
+          set -euo pipefail
+          (
+            cd "$STEAMCMD_DIR"
+            ./steamcmd.sh \
+              +login "$STEAM_USERNAME" \
+              +run_app_build "$STEAMPIPE_SCRIPT" \
+              +quit
+          )
