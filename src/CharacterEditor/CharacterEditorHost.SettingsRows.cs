@@ -22,8 +22,9 @@ public partial class CharacterEditorHost
     private const string BehaviourGroup = "Startup and Behaviour";
     private const string DataGroup = "Saved Data";
 
-    private static readonly int[] FrameLimits = [0, 30, 60, 120];
-    private static readonly string[] FrameLimitLabels = ["V-Sync", "30", "60", "120"];
+    /// <summary>0 is Godot's "no engine limit"; V-Sync still caps it when V-Sync is on.</summary>
+    private static readonly int[] FrameLimits = [30, 60, 120, 165, 240, 0];
+    private static readonly string[] FrameLimitLabels = ["30", "60", "120", "165", "240", "Unlimited"];
     private static readonly int[] BackgroundFrameLimits = [0, 5, 10, 30];
     private static readonly string[] BackgroundFrameLimitLabels = ["Default", "5", "10", "30"];
     private static readonly int[] UiScaleSteps = [100, 125, 150, 175, 200];
