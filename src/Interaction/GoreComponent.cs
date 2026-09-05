@@ -1,0 +1,352 @@
+using System;
+using DesktopBuddy.App;
+using DesktopBuddy.Buddy;
+using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Domain.Buddy;
+using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Damage;
+using DesktopBuddy.Domain.Presentation;
+using DesktopBuddy.Sandbox;
+using Godot;
+
+namespace DesktopBuddy.Interaction;
+
+/// <summary>
+/// Gore Mode: piercing hits open bleeding wounds, wounds spray and drip, and what lands
+/// stains the room. Blood on the buddy himself is the spray passing over him and gone —
+/// deliberately not a decal riding his parts (owner instruction 2026-08-25).
+///
+/// <para><b>This is presentation and only presentation.</b> It is a listener on
+/// <see cref="InteractionDamageComponent.ImpactAccepted"/>, downstream of every decision
+/// that matters: pain, payout, mood, harmful memory and the knockout window have all
+/// already been applied by the time a wound is opened here, and nothing on this component
+/// is readable from the pipeline. Turning Gore Mode on cannot change one tick of what a
+/// run simulates, which is the same contract <see cref="EffectsSettings"/> carries and the
+/// reason the buddy stays immortal (FR-004.3) with it switched on.</para>
+///
+/// <para><b>Two gates, asked separately.</b> <see cref="DemoScope.IncludesGore"/> is
+/// whether the build ships the feature at all — false for the itch.io preset — and
+/// <see cref="EffectsSettings.Gore"/> is whether the player asked for it. Both are
+/// required. The build gate is asked here rather than trusted from the settings row, so a
+/// hand-edited <c>settings.json</c> carried onto a build without the feature stays
+/// inert.</para>
+///
+/// <para><b>What bleeds.</b> Piercing weapons only — the sword and the two real guns. A
+/// bat, a boxing glove, a football and a Nerf dart are blunt: they hurt exactly as much as
+/// they did before and they draw no blood, which is what keeps Gore Mode a thing the
+/// player turns on for the weapons it is about rather than a wash of red over every
+/// interaction in the game.</para>
+/// </summary>
+[GlobalClass]
+public partial class GoreComponent : Node2D
+{
+    /// <summary>
+    /// Contact impulse that counts as a full-severity wound. Roughly where the shared pain
+    /// curve reaches 55 of its 100, so a solid shot opens a proper wound and anything
+    /// harder simply pins at full.
+    /// </summary>
+    private const float FullSeverityImpulse = 1500.0f;
+
+    /// <summary>
+    /// The least a piercing hit can bleed. A bullet is a bullet: even a graze from one
+    /// breaks the skin, so severity starts here rather than at nothing (owner instruction
+    /// 2026-08-25 — blood "should do it on every shot hit").
+    /// </summary>
+    private const float MinimumSeverity = 0.35f;
+
+    /// <summary>
+    /// Share of a shot's spray that comes back out of the entry side. A bullet mostly
+    /// carries blood on through; the entry is a puff by comparison.
+    /// </summary>
+    private const float EntrySpraySeverityShare = 0.35f;
+
+    private static readonly string[] PiercingContentIds =
+    [
+        ContentIds.ToolSword,
+        ContentIds.ToolPistol,
+        ContentIds.ToolShotgun,
+    ];
+
+    private readonly BleedWound[] _wounds = new BleedWound[6];
+
+    /// <summary>
+    /// The interaction that last wounded each part. One bullet raises both an episode and
+    /// an impact, and the sword's stab raises an impact of its own; without this a single
+    /// hit would open the same wound twice and double-count it.
+    /// </summary>
+    private readonly int[] _lastWoundSource = [-1, -1, -1, -1, -1, -1];
+
+    private BleedingConstants _constants = BleedingConstants.Default;
+    private EffectsSettings _effects = EffectsSettings.Default;
+    private BloodStainLayer2D _stains = null!;
+
+    [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
+    [Export] public BuddyRoot Buddy { get; set; } = null!;
+
+    /// <summary>
+    /// The room drops land in. Optional: without it drips simply expire in the air, which
+    /// is what an isolated composition should get rather than a crash.
+    /// </summary>
+    [Export] public BoundaryController Boundaries { get; set; } = null!;
+
+    public bool IsInitialized { get; private set; }
+
+    /// <summary>Wounds opened since the run started. Scenario-observable, never gameplay.</summary>
+    public int WoundsOpened { get; private set; }
+
+    /// <summary>Drips emitted since the run started.</summary>
+    public int DripsEmitted { get; private set; }
+
+    /// <summary>Drops currently in the air.</summary>
+    public int LiveDroplets => GodotObject.IsInstanceValid(_stains) ? _stains.LiveDroplets : 0;
+
+    /// <summary>Where blood that has landed is kept.</summary>
+    public BloodStainLayer2D Stains => _stains;
+
+    /// <summary>Both gates: this build ships Gore Mode and the player has it switched on.</summary>
+    public bool IsActive => DemoScope.IncludesGore && _effects.Gore;
+
+    /// <summary>True while any part is bleeding.</summary>
+    public bool IsBleeding
+    {
+        get
+        {
+            for (int index = 0; index < _wounds.Length; index++)
+            {
+                if (_wounds[index].IsBleeding)
+                    return true;
+            }
+
+            return false;
+        }
+    }
+
+    public BleedWound WoundOn(BuddyPart part) => _wounds[(int)part];
+
+    public void Initialize()
+    {
+        if (!GodotObject.IsInstanceValid(Pipeline) || !Pipeline.IsInitialized ||
+            !GodotObject.IsInstanceValid(Buddy))
+        {
+            throw new InvalidOperationException("GoreComponent dependencies are incomplete.");
+        }
+
+        _stains = new BloodStainLayer2D { Name = "BloodStainLayer" };
+        AddChild(_stains);
+        _stains.Initialize(GodotObject.IsInstanceValid(Boundaries) ? Boundaries : null);
+
+        ZAsRelative = false;
+        ZIndex = 151;
+
+        // Both, and for one reason. ImpactAccepted is suppressed entirely when the shared
+        // curve scores zero pain, so a bullet under the curve's floor publishes an episode
+        // and no impact at all — which is why lowering a pain threshold could never make
+        // light hits bleed (owner report 2026-08-25). EpisodeAccepted fires for every
+        // contact the router accepts, painful or not, and that is what "every shot hit"
+        // needs. The impact path stays for sources that have no solver contact to raise an
+        // episode: the grenade's blast and the sword's stab.
+        Pipeline.EpisodeAccepted += OnEpisodeAccepted;
+        Pipeline.ImpactAccepted += OnImpactAccepted;
+        IsInitialized = true;
+    }
+
+    public override void _ExitTree()
+    {
+        if (!GodotObject.IsInstanceValid(Pipeline))
+            return;
+
+        Pipeline.EpisodeAccepted -= OnEpisodeAccepted;
+        Pipeline.ImpactAccepted -= OnImpactAccepted;
+    }
+
+    /// <summary>
+    /// Switching Gore Mode off stops the bleeding and wipes what is already there. A
+    /// setting the player turned off must leave nothing on screen, and leaving dried stains
+    /// behind would make the toggle look broken.
+    /// </summary>
+    public void ApplyEffectsSettings(EffectsSettings settings)
+    {
+        bool wasActive = IsActive;
+        _effects = settings;
+        if (wasActive && !IsActive)
+            ClearAll();
+    }
+
+    /// <summary>
+    /// Patches the buddy up: every wound closed and every mark gone. The Repair Kit's entry
+    /// point, and the fail-safe for a hard reposition.
+    /// </summary>
+    public void ClearAll()
+    {
+        for (int index = 0; index < _wounds.Length; index++)
+        {
+            _wounds[index] = BleedingStatus.Clear(_wounds[index]);
+            _lastWoundSource[index] = -1;
+        }
+
+        // Sprays still playing are part of "no trace left behind". Drops in the air are
+        // cleared by the layer itself, which owns them as data rather than as nodes.
+        foreach (Node child in GetChildren())
+        {
+            if (child is BloodSpray2D)
+                child.QueueFree();
+        }
+
+        if (GodotObject.IsInstanceValid(_stains))
+            _stains.Clear();
+    }
+
+    private void OnEpisodeAccepted(AcceptedContactEpisode episode) =>
+        Wound(episode.InteractionId, episode.ContentId, episode.Part, episode.Impulse, episode.Point);
+
+    private void OnImpactAccepted(AcceptedImpact impact) =>
+        Wound(impact.InteractionId, impact.ContentId, impact.Part, impact.Impulse, impact.Point);
+
+    /// <summary>
+    /// Opens or deepens the wound one piercing contact leaves. Severity comes from the
+    /// contact impulse rather than from scored pain, because pain is exactly what a light
+    /// hit does not have — and a light hit from something sharp should still bleed.
+    /// </summary>
+    private void Wound(int interactionId, string contentId, BuddyPart part, float impulse, Vector2 point)
+    {
+        if (!IsActive || !IsPiercing(contentId))
+            return;
+
+        int slot = (int)part;
+        if (slot < 0 || slot >= _wounds.Length)
+            return;
+
+        // One hit, one wound: the same contact arrives here as both an episode and an
+        // impact whenever it scored pain.
+        if (_lastWoundSource[slot] == interactionId)
+            return;
+
+        float severity = float.IsFinite(impulse)
+            ? Mathf.Clamp(
+                MinimumSeverity + ((1.0f - MinimumSeverity) * (impulse / FullSeverityImpulse)),
+                MinimumSeverity,
+                1.0f)
+            : MinimumSeverity;
+
+        BleedOpenResult opened = BleedingStatus.Open(_wounds[slot], severity, _constants);
+        if (!opened.IsValid)
+            return;
+
+        _wounds[slot] = opened.Wound;
+        _lastWoundSource[slot] = interactionId;
+        WoundsOpened++;
+        SprayThrough(part, point, severity);
+    }
+
+    /// <summary>
+    /// Blood leaves the way the weapon was going. A round through the chest throws most of
+    /// it out of the <b>far</b> side (owner instruction 2026-08-25), with a smaller puff
+    /// back out of the entry.
+    ///
+    /// <para>The through-line is taken from the struck part's own centre rather than from
+    /// the contact normal: the geometry says which way is "further in" without depending on
+    /// which way round a normal happens to point, and it gives the exit point for free.</para>
+    /// </summary>
+    private void SprayThrough(BuddyPart part, Vector2 entry, float severity)
+    {
+        if (!TryPart(part, out PuppetPartBody? body))
+        {
+            SpawnSpray(entry, Vector2.Up, severity);
+            return;
+        }
+
+        Vector2 toCentre = body!.GlobalPosition - entry;
+        if (toCentre.LengthSquared() < 0.01f)
+        {
+            SpawnSpray(entry, Vector2.Up, severity);
+            return;
+        }
+
+        Vector2 through = toCentre.Normalized();
+        Vector2 exit = body.GlobalPosition + (through * body.Radius);
+
+        // The exit spray is the one the player is meant to notice.
+        SpawnSpray(exit, through, severity);
+
+        // A smaller kick back out of the entry, angled away from the body so it does not
+        // just wash over the part it came from.
+        SpawnSpray(entry, (-through + (Vector2.Up * 0.5f)).Normalized(), severity * EntrySpraySeverityShare);
+    }
+
+    public override void _PhysicsProcess(double delta)
+    {
+        if (!IsActive)
+            return;
+
+        for (int slot = 0; slot < _wounds.Length; slot++)
+        {
+            if (!_wounds[slot].IsBleeding)
+                continue;
+
+            BleedTickResult result = BleedingStatus.Tick(_wounds[slot], _constants);
+            if (!result.IsValid)
+                continue;
+
+            _wounds[slot] = result.Wound;
+            if (result.DripDue)
+                Drip((BuddyPart)slot, result.Wound.Intensity(_constants));
+        }
+    }
+
+    /// <summary>
+    /// One drop leaves the wound. It starts at the underside of the part carrying the
+    /// part's own motion, so blood thrown from a swinging arm travels with the arm instead
+    /// of falling straight down out of a moving body.
+    /// </summary>
+    private void Drip(BuddyPart part, float intensity)
+    {
+        if (!TryPart(part, out PuppetPartBody? body))
+            return;
+
+        // Reduced Particles thins drips as it thins everything else: every third drop.
+        if (_effects.ParticleStride > 1 && DripsEmitted % _effects.ParticleStride != 0)
+        {
+            DripsEmitted++;
+            return;
+        }
+
+        DripsEmitted++;
+
+        // A drop leaves the underside of the part, offset around it so a wound does not
+        // emit a single vertical thread of beads. The layer silently drops it if the air is
+        // already full; the cadence is the wound's business, not the renderer's.
+        float lean = (float)GD.RandRange(-body!.Radius * 0.55, body.Radius * 0.55);
+        Vector2 origin = body.GlobalPosition + new Vector2(lean, body.Radius * 0.7f);
+
+        _stains.AddDroplet(
+            origin,
+            // Inherited part motion, damped, plus a little sideways scatter: a drop is
+            // flung off a moving limb, not welded to it.
+            (body.LinearVelocity * 0.35f) + new Vector2((float)GD.RandRange(-22.0, 22.0), 0.0f),
+            1.3f + (1.5f * Mathf.Clamp(intensity, 0.0f, 1.0f)));
+    }
+
+    private void SpawnSpray(Vector2 worldPoint, Vector2 direction, float severity)
+    {
+        var spray = new BloodSpray2D { Name = "BloodSpray", GlobalPosition = worldPoint };
+        AddChild(spray);
+        spray.GlobalPosition = worldPoint;
+        spray.Start(direction, severity, _effects.ParticleStride);
+    }
+
+    private bool TryPart(BuddyPart part, out PuppetPartBody? body)
+    {
+        body = null;
+        if (!GodotObject.IsInstanceValid(Buddy) || !GodotObject.IsInstanceValid(Buddy.Rig) ||
+            !Buddy.Rig.IsInitialized)
+        {
+            return false;
+        }
+
+        body = Buddy.Rig.GetPart((BuddyPartId)(int)part);
+        return GodotObject.IsInstanceValid(body);
+    }
+
+    private static bool IsPiercing(string contentId) =>
+        Array.IndexOf(PiercingContentIds, contentId) >= 0;
+}

@@ -78,4 +78,16 @@ public static class DemoScope
 
     /// <summary>Whether the Room Decorator command is offered at all.</summary>
     public static bool IncludesRoomDecorator => IsFullRelease && !IsItchIo;
+
+    /// <summary>
+    /// Whether this build ships Gore Mode at all — the Settings toggle, the bleeding, and the
+    /// blood the Sword and the guns draw. The Steam builds ship it and the itch.io build does
+    /// not (owner instruction 2026-08-24), which is the same shape as Work Mode, Paint Room
+    /// and Buddy Studio above rather than a mechanism of its own.
+    ///
+    /// <para>This is asked in addition to the player's setting, never instead of it, and it is
+    /// asked again at the composition root rather than trusted from the Settings row — so a
+    /// hand-edited <c>settings.json</c> carried onto the itch build stays inert.</para>
+    /// </summary>
+    public static bool IncludesGore => !IsItchIo;
 }

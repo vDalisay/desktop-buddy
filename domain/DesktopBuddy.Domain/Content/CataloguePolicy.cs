@@ -63,6 +63,10 @@ public static class CataloguePolicy
         ContentIds.ToolGrenade,
         ContentIds.ToolShotgun,
         ContentIds.ToolFireSprayer,
+
+        // Appended rather than filed next to the bat: the ladder is price order and the
+        // Sword is the most expensive thing in the shop.
+        ContentIds.ToolSword,
     };
 
     /// <summary>Tool entries the general shop may offer: visible, not starting, in order.</summary>

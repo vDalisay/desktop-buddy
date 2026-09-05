@@ -19,6 +19,9 @@ public partial class CursorToolVisual3D : Node3D
     private Body2DVisual3D _slot = null!;
     private MeshInstance3D _swingGuide = null!;
     private bool _presentationActive;
+
+    /// <summary>The profile driving the live visual, kept so a depth override can be undone.</summary>
+    private CursorToolProfile? _activeProfile;
     private float _gloveFacingAngle;
     private bool _hasGloveFacing;
 
@@ -59,6 +62,7 @@ public partial class CursorToolVisual3D : Node3D
             throw new InvalidOperationException("CursorToolVisual3D used before initialization.");
 
         ValidateProfile(profile);
+        _activeProfile = profile;
         ActiveKind = profile.Visual3DKind;
         ResetGloveAim();
         _slot.Mesh.Rotation = Vector3.Zero;
@@ -77,6 +81,20 @@ public partial class CursorToolVisual3D : Node3D
         }
 
         _slot.SetVisual(visual.Value.Mesh, visual.Value.Material, profile.VisualDepthOffset);
+    }
+
+    /// <summary>
+    /// Sinks the live tool into the frontal depth stack, or restores its authored depth
+    /// when given <c>null</c>. Only the Sword uses it, and only while it is buried in a
+    /// part: at its authored depth the blade sits in front of every part of the buddy and
+    /// reads as pasted on top of him rather than run through him.
+    /// </summary>
+    public void SetDepthOverride(float? depth)
+    {
+        if (!IsInitialized || _activeProfile is null)
+            return;
+
+        _slot.SetDepthOffset(depth ?? _activeProfile.VisualDepthOffset);
     }
 
     public void Attach(RigidBody2D target)
@@ -241,6 +259,7 @@ internal static class CursorToolVisualFactory
                 : profile.Visual3DKind switch
                 {
                     CursorToolVisual3DKind.LathedBat => BatMeshBuilder.Build(profile),
+                    CursorToolVisual3DKind.Sword => SwordMeshBuilder.Build(profile),
                     CursorToolVisual3DKind.BoxingGlove => BoxingGloveMeshBuilder.Build(profile),
                     // Only ever reached for the copy on the floor, which is why it is the
                     // world form: the held feather is drawn by CareToolVisual3D.
@@ -251,17 +270,28 @@ internal static class CursorToolVisualFactory
         if (mesh is null)
             return null;
 
-        string materialName = profile.Visual3DKind == CursorToolVisual3DKind.BoxingGlove
-            ? "CapturePolishBoxingGloveMaterial"
-            : "ProvisionalLathedBatMaterial";
+        // The sword is the only tool here made of steel, so it is the only one that gets a
+        // metallic response; everything else keeps the matte look it shipped with.
+        bool steel = profile.Visual3DKind == CursorToolVisual3DKind.Sword;
+        string materialName = profile.Visual3DKind switch
+        {
+            CursorToolVisual3DKind.BoxingGlove => "CapturePolishBoxingGloveMaterial",
+            CursorToolVisual3DKind.Sword => "SteamDemoSwordMaterial",
+            _ => "ProvisionalLathedBatMaterial",
+        };
         var material = new StandardMaterial3D
         {
             ResourceName = materialName,
             AlbedoColor = Colors.White,
             VertexColorUseAsAlbedo = true,
             ShadingMode = BaseMaterial3D.ShadingModeEnum.PerPixel,
-            Roughness = profile.Visual3DKind == CursorToolVisual3DKind.BoxingGlove ? 0.72f : 0.7f,
-            Metallic = 0.0f,
+            Roughness = profile.Visual3DKind switch
+            {
+                CursorToolVisual3DKind.BoxingGlove => 0.72f,
+                CursorToolVisual3DKind.Sword => 0.26f,
+                _ => 0.7f,
+            },
+            Metallic = steel ? 0.75f : 0.0f,
         };
         return new CursorToolVisual(mesh, material);
     }

@@ -42,6 +42,13 @@ public enum ToolId
     /// <see cref="Grab"/>: ordinals are persisted.
     /// </summary>
     RopeSuspender = 16,
+
+    /// <summary>
+    /// The blade. A swung elongated tool like the bat, but piercing rather than blunt: its
+    /// tip opens wounds under Gore Mode and can be left buried in the part it struck.
+    /// Appended rather than filed next to <see cref="BaseballBat"/>: ordinals are persisted.
+    /// </summary>
+    Sword = 17,
 }
 
 /// <summary>How a tool physically acts on the buddy (RAGDOLL §9).</summary>
@@ -66,7 +73,8 @@ public static class ToolCatalog
         // The Nerf Blaster is a damage tool by mechanism, not by outcome: it fires through
         // the same pipeline and its darts are authored to score next to nothing.
         ToolId.BoxingGlove or ToolId.BaseballBat or ToolId.NerfBlaster or ToolId.Pistol or
-            ToolId.Grenade or ToolId.FireSprayer or ToolId.Shotgun => ToolCategory.Damage,
+            ToolId.Grenade or ToolId.FireSprayer or ToolId.Shotgun or
+            ToolId.Sword => ToolCategory.Damage,
         ToolId.Baseball or ToolId.SoccerBall => ToolCategory.PhysicsToy,
         _ => throw new ArgumentOutOfRangeException(nameof(tool), tool, "Unknown tool."),
     };
