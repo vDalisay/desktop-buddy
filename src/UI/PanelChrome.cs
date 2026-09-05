@@ -21,11 +21,13 @@ public static class PanelChrome
     private static readonly Color ValueGreen = Color.Color8(0, 112, 0);
 
     /// <summary>
-    /// Six lines: three fitted the longest authored sentence but left every shorter one
-    /// crowded against the footer, and the box is fixed-height so it never jumps (owner
-    /// instruction 2026-08-21). Panels with room to spare pass their own count.
+    /// The floor, not the height. The box was fixed at six lines so it could never jump (owner
+    /// instruction 2026-08-21); at 150% UI scale that reserved a band of empty white under
+    /// every short sentence, so it now grows to its content and reserves only two lines
+    /// (owner instruction 2026-09-06). Two rather than one so the common two-line description
+    /// does not resize the footer as the player moves down a list.
     /// </summary>
-    private const int DescriptionLines = 6;
+    private const int MinimumDescriptionLines = 2;
     private const int DescriptionLineHeight = 18;
 
     public readonly record struct Parts(
@@ -40,7 +42,11 @@ public static class PanelChrome
     /// the player had just done back at them, which said nothing the row did not already show
     /// (owner instruction 2026-08-22).
     /// </summary>
-    public static Parts Build(PanelContainer panel, string listName, int descriptionLines = DescriptionLines, bool status = true)
+    public static Parts Build(
+        PanelContainer panel,
+        string listName,
+        int minimumDescriptionLines = MinimumDescriptionLines,
+        bool status = true)
     {
         var margin = new MarginContainer();
         margin.AddThemeConstantOverride("margin_left", Win98ThemeFactory.Px(12));
@@ -76,21 +82,28 @@ public static class PanelChrome
         // How the highlighted row is actually used. It reads far better here than in a tooltip
         // the player has to hover and wait for (owner feedback 2026-08-20).
         //
-        // The box is a fixed three lines tall so the footer does not jump as the player moves
-        // between a one-line tool and a three-line one, and it scrolls rather than clips when a
-        // larger UI scale or a longer sentence overflows it. Px() carries the scale, so the
-        // reserved height tracks the font instead of being pinned to one resolution.
-        ScrollContainer descriptionScroll = FramedScroll(column, expand: false);
-        descriptionScroll.Name = "PanelDescriptionScroll";
-        descriptionScroll.GetParent<Control>().CustomMinimumSize =
-            new Vector2(0, Win98ThemeFactory.Px(descriptionLines * DescriptionLineHeight));
+        // The box wraps its sentence and stops there. A PanelContainer takes its height from
+        // the Label's own wrapped minimum, so no scroll view is needed: text that would have
+        // overflowed a fixed box simply makes the box a line taller. Px() carries the UI scale,
+        // so the two-line floor tracks the font rather than one resolution.
+        var descriptionFrame = new PanelContainer
+        {
+            Name = "PanelDescriptionFrame",
+            SizeFlagsVertical = Control.SizeFlags.ShrinkEnd,
+            CustomMinimumSize =
+                new Vector2(0, Win98ThemeFactory.Px(minimumDescriptionLines * DescriptionLineHeight)),
+        };
+        descriptionFrame.AddThemeStyleboxOverride(
+            "panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Light, 2));
+        column.AddChild(descriptionFrame);
+
         var description = new Label
         {
             Name = "PanelDescription",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        descriptionScroll.AddChild(description);
+        descriptionFrame.AddChild(description);
 
         Label? statusLabel = null;
         if (status)

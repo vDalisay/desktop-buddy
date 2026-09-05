@@ -18,7 +18,7 @@ public sealed partial class CommunityLinksBootstrap : Node
 
     private const string WishlistCommandId = "command.wishlist_steam";
     private const int WishlistCommandOrder = 900;
-    private const string WishlistLabel = "Wishlist Desktop Buddy on Steam";
+    private const string WishlistLabel = "Wishlist Now";
     private const string WishlistTooltipReady = "Open the Desktop Buddy Steam store page in your browser.";
     private const string WishlistTooltipPending = "Steam store link coming soon.";
 
@@ -57,7 +57,8 @@ public sealed partial class CommunityLinksBootstrap : Node
                     WishlistCommandId,
                     WishlistLabel,
                     HasSteamStoreUrl ? WishlistTooltipReady : WishlistTooltipPending,
-                    WishlistCommandOrder),
+                    WishlistCommandOrder,
+                    DockRight: true),
                 OpenSteamStore,
                 isEnabled: () => HasSteamStoreUrl);
         }
@@ -67,7 +68,8 @@ public sealed partial class CommunityLinksBootstrap : Node
                 CommunityCommandId,
                 CommunityLabel,
                 CommunityTooltip,
-                CommunityCommandOrder),
+                CommunityCommandOrder,
+                DockRight: true),
             ShowCommunityDialog);
 
         if (!_welcomeShown)

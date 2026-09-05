@@ -47,12 +47,15 @@ public partial class Win98CommandBarBootstrap : Node
     private Button _legacyModeButton = null!;
     private IDisposable? _paintBuddyRegistration;
     private HBoxContainer _commandRow = null!;
+    /// <summary>Insertion point for right-docked commands: they go in front of this gutter.</summary>
+    private Control _rightGutter = null!;
     private Label _balance = null!;
     private Label _reward = null!;
     private Control? _legacyMoneyHud;
     private Label? _legacyBalanceLabel;
     private Label? _legacyRewardLabel;
 
+    private readonly HashSet<string> _rightDockedCommandIds = [];
     private readonly Dictionary<Button, Control> _sections = [];
     private Control? _activeSection;
     private bool _composed;
@@ -127,6 +130,13 @@ public partial class Win98CommandBarBootstrap : Node
         Func<bool>? isVisible = null,
         Func<bool>? isEnabled = null)
     {
+        // The shared customize registry has no side of the bar in it, and does not need one:
+        // only this strip lays commands out, so it remembers which ids dock right itself.
+        if (definition.DockRight)
+            _rightDockedCommandIds.Add(definition.Id);
+        else
+            _rightDockedCommandIds.Remove(definition.Id);
+
         return _topLevelCommands.Register(
             new CustomizeCommandDefinition(
                 definition.Id,
@@ -232,10 +242,15 @@ public partial class Win98CommandBarBootstrap : Node
         _customizeButton.Name = "Win98PaintCommand";
         _modeButton.Name = "Win98WorkCommand";
 
-        RebuildTopLevelCommands();
-
         // The balance lives at the far right of the strip; the old floating HUD panel is retired.
         _commandRow.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, MouseFilter = Control.MouseFilterEnum.Ignore });
+        _rightGutter = new Control
+        {
+            Name = "CommandRowRightGutter",
+            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(12), 0),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        _commandRow.AddChild(_rightGutter);
         _balance = new Label
         {
             Name = "Win98BalanceLabel",
@@ -247,6 +262,10 @@ public partial class Win98CommandBarBootstrap : Node
         _commandRow.AddChild(_balance);
         var balanceGutter = new Control { CustomMinimumSize = new Vector2(8, 0), MouseFilter = Control.MouseFilterEnum.Ignore };
         _commandRow.AddChild(balanceGutter);
+
+        // After the right-hand group exists, not before: right-docked commands are positioned
+        // relative to the gutter, so rebuilding earlier would have nowhere to put them.
+        RebuildTopLevelCommands();
 
         // The reward pop floats just under the balance, outside the strip's own layout.
         _reward = new Label
@@ -364,7 +383,8 @@ public partial class Win98CommandBarBootstrap : Node
         foreach (Button button in _topLevelButtons.Values)
             button.QueueFree();
         _topLevelButtons.Clear();
-        if (!GodotObject.IsInstanceValid(_commandRow) || !GodotObject.IsInstanceValid(_modeButton))
+        if (!GodotObject.IsInstanceValid(_commandRow) || !GodotObject.IsInstanceValid(_modeButton) ||
+            !GodotObject.IsInstanceValid(_rightGutter))
             return;
 
         foreach (CustomizeCommandSnapshot snapshot in _topLevelCommands.Snapshot())
@@ -380,7 +400,10 @@ public partial class Win98CommandBarBootstrap : Node
                     _topLevelCommands.TryInvoke(id);
                 });
             button.Name = $"TopLevelCommand_{id.Replace('.', '_')}";
-            _commandRow.MoveChild(button, _modeButton.GetIndex());
+            // Each insertion lands just in front of the anchor, so successive commands keep
+            // their registered order rather than reversing it.
+            Control anchor = _rightDockedCommandIds.Contains(id) ? _rightGutter : _modeButton;
+            _commandRow.MoveChild(button, anchor.GetIndex());
             _topLevelButtons.Add(id, button);
         }
         RefreshTopLevelCommands();

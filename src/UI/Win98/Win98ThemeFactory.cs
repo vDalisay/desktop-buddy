@@ -42,8 +42,21 @@ public static class Win98ThemeFactory
     public const int Border = 2;
     public const int TitleBarHeight = 32;
     public const int StatusBarHeight = 26;
-    /// <summary>Centered world inset that places its floor on the status bar's top edge.</summary>
+    /// <summary>
+    /// Centered world inset that places its floor on the status bar's top edge, at 100% UI
+    /// scale. Every part of the chrome it stands for is built through <see cref="Px"/>, so
+    /// callers subtracting it from a client box want <see cref="ScaledChromeHeight"/> instead —
+    /// this raw value only describes the unscaled case.
+    /// </summary>
     public const int ChromeHeight = 72;
+
+    /// <summary>
+    /// The chrome inset at the current UI scale. At 150% the title, command and status bars are
+    /// half again as tall, so a room measured with the raw constant reached about 36 px below
+    /// the visible floor: the buddy walked and stood in a strip of room hidden behind the status
+    /// bar, which is what made its legs stutter at the edges (owner report 2026-09-06).
+    /// </summary>
+    public static int ScaledChromeHeight => Px(ChromeHeight);
     public const int ControlHeight = 24;
 
     /// <summary>

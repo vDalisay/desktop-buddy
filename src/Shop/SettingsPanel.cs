@@ -42,6 +42,22 @@ public partial class SettingsPanel : PanelContainer
         return line;
     }
 
+    /// <summary>
+    /// The status line only speaks during a hotkey capture. An empty one still reserved a row
+    /// under the description, which is the band of dead space at the foot of the panel, so the
+    /// whole row goes away until there is something to say (owner instruction 2026-09-06).
+    /// The text itself is always written, so anything reading it sees the same value as before.
+    /// </summary>
+    private void SetStatus(string text)
+    {
+        if (!GodotObject.IsInstanceValid(_status))
+            return;
+
+        _status.Text = text;
+        if (_status.GetParent() is Control row)
+            row.Visible = !string.IsNullOrEmpty(text);
+    }
+
     /// <summary>Last row hovered wins, and it stays put on the way out.</summary>
     private void ShowDescription(string description)
     {
@@ -54,11 +70,12 @@ public partial class SettingsPanel : PanelContainer
         Name = "SettingsPanel";
         // No balance readout here, so the description takes the space the other panels give
         // to the money (owner instruction 2026-08-21).
-        PanelChrome.Parts parts = PanelChrome.Build(this, "SettingsActionList", descriptionLines: 10);
+        PanelChrome.Parts parts = PanelChrome.Build(this, "SettingsActionList");
         _list = parts.List;
         _status = parts.Status!;
         _description = parts.Description;
         _description.Text = DefaultDescription;
+        SetStatus(string.Empty);
         VisibilityChanged += OnVisibilityChanged;
         IsInitialized = true;
     }
@@ -251,7 +268,7 @@ public partial class SettingsPanel : PanelContainer
         // Pressing Ctrl/Shift/Alt is part of entering a chord, not a failed binding attempt.
         if (!HotkeyBinding.IsCompleteChord(key))
         {
-            _status.Text = $"Press the main key for {_captureLabel}; Escape cancels.";
+            SetStatus($"Press the main key for {_captureLabel}; Escape cancels.");
             return;
         }
 
@@ -262,7 +279,7 @@ public partial class SettingsPanel : PanelContainer
         ClearHotkeyCapture();
         button.Text = chord;
         callback?.Invoke(chord);
-        _status.Text = $"{label}: {chord}.";
+        SetStatus($"{label}: {chord}.");
     }
 
     /// <summary>The action button for one row (test observability).</summary>
@@ -283,7 +300,7 @@ public partial class SettingsPanel : PanelContainer
         _captureLabel = label;
         button.Text = "Press keys...";
         button.GrabFocus();
-        _status.Text = $"Press a shortcut for {label}; Escape cancels.";
+        SetStatus($"Press a shortcut for {label}; Escape cancels.");
     }
 
     private void CancelHotkeyCapture(string? status = null)
@@ -292,7 +309,7 @@ public partial class SettingsPanel : PanelContainer
             _capturing.Text = _captureOriginalChord;
         ClearHotkeyCapture();
         if (status is not null && GodotObject.IsInstanceValid(_status))
-            _status.Text = status;
+            SetStatus(status);
     }
 
     private void ClearHotkeyCapture()

@@ -57,12 +57,20 @@ public partial class DesktopShellController
     internal void ApplyAudioSettings() =>
         AudioMix.Apply(_settings, silenceAll: _settings.MuteInWorkMode && Mode == DomainInputMode.Work);
 
+    /// <summary>
+    /// Buddy Size and UI Scale both change the room: the first is the camera zoom, the second
+    /// changes how much of the client box the frame chrome eats. Only zoom used to re-request
+    /// the layout, so raising UI Scale alone left the walls where the smaller chrome had put
+    /// them (owner report 2026-09-06).
+    /// </summary>
     private void ApplyZoom(double zoom)
     {
-        if (Math.Abs(zoom - _storedZoom) < 0.001)
+        float chrome = UI.Win98.Win98ThemeFactory.ScaledChromeHeight;
+        if (Math.Abs(zoom - _storedZoom) < 0.001 && Math.Abs(chrome - _storedChromeHeight) < 0.5f)
             return;
 
         _storedZoom = zoom;
+        _storedChromeHeight = chrome;
         Boundaries.RequestLayout(RoomSizeFor(ResolveClientSize()), _storedZoom);
     }
 
