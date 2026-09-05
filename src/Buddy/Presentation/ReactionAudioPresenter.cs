@@ -168,7 +168,9 @@ public partial class ReactionAudioPresenter : Node
 
         _buddyImpact = BuildVariations(BuddyImpact1, BuddyImpact2);
         _buddyHardImpact = BuildVariations(BuddyHardImpact1, BuddyHardImpact2);
-        _itemFalling = IsValid(ItemFalling) ? ItemFalling : null;
+        // The generic fallback for every dropped item, so it repeats more than any other cue;
+        // it was the one stream still playing back identical every time.
+        _itemFalling = SfxRandomizer.Pick(1.5f, ItemFalling);
         _gloveImpact = BuildVariations(GloveImpact1, GloveImpact2, GloveImpact3, GloveImpact4);
         _gloveCriticalHeadImpact = BuildRandomized(GloveCriticalHeadImpact, 1.5f);
         _pistolShot = BuildVariations(PistolShot1, PistolShot2);

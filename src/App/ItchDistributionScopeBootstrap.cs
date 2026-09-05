@@ -520,7 +520,7 @@ public sealed partial class ItchDistributionScopeBootstrap : Node
         if (sandbox.Window.LayoutMode == WindowLayoutMode.Compact &&
             !sandbox.Window.WorkCompanionActive)
         {
-            client.Y -= Win98ThemeFactory.ChromeHeight;
+            client.Y -= Win98ThemeFactory.ScaledChromeHeight;
         }
 
         if (client.X < RoomLayoutPolicy.MinimumRoomWidth ||
