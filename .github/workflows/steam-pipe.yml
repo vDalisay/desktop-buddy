@@ -305,9 +305,39 @@ jobs:
           STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
         run: |
           set -euo pipefail
-          mkdir -p "$STEAMCMD_DIR/config"
-          printf '%s' "$STEAM_CONFIG_VDF" | base64 --decode > "$STEAMCMD_DIR/config/config.vdf"
-          chmod 600 "$STEAMCMD_DIR/config/config.vdf"
+
+          SESSION_FILE="$RUNNER_TEMP/steam-config.vdf"
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 --decode > "$SESSION_FILE"
+          test -s "$SESSION_FILE"
+          chmod 600 "$SESSION_FILE"
+
+          # Current Valve SteamCMD builds on GitHub's Linux runner keep their client state in
+          # $HOME/Steam even when steamcmd.sh itself lives elsewhere. Keep the executable-local
+          # path too for compatibility with older layouts. Never print the credential file.
+          for steam_root in \
+            "$HOME/Steam" \
+            "$HOME/.local/share/Steam" \
+            "$HOME/.steam/steam" \
+            "$STEAMCMD_DIR"; do
+            if [ -d "$steam_root" ] || [ "$steam_root" = "$HOME/Steam" ] || [ "$steam_root" = "$STEAMCMD_DIR" ]; then
+              mkdir -p "$steam_root/config"
+              cp "$SESSION_FILE" "$steam_root/config/config.vdf"
+              chmod 600 "$steam_root/config/config.vdf"
+            fi
+          done
+
+          echo "Steam Guard session restored to SteamCMD client-state locations."
+
+      - name: Verify cached Steam login
+        shell: bash
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+        run: |
+          set -euo pipefail
+          (
+            cd "$STEAMCMD_DIR"
+            ./steamcmd.sh +login "$STEAM_USERNAME" +quit
+          )
 
       - name: Generate SteamPipe app build script
         id: steampipe
