@@ -180,9 +180,11 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
                 "workshop_imported_room_uses_title_and_clickable_description",
                 importedRoomDetailsVisible,
                 $"button={importedRoom?.Text ?? "missing"} actions={string.Join(',', roomActions)} text={status.Text}"));
-            if (unsubscribe is not null)
+            // The subscription list is rebuilt whenever a refresh lands, so the row captured before
+            // the import may already be freed. Resolve the button again immediately before use.
+            if (panel.FindChild("Unsubscribe9200", true, false) is Button liveUnsubscribe)
             {
-                unsubscribe.EmitSignal(Button.SignalName.Pressed);
+                liveUnsubscribe.EmitSignal(Button.SignalName.Pressed);
                 for (int frame = 0; frame < 180 && panel.FindChild("Unsubscribe9200", true, false) is not null; frame++)
                     await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
             }

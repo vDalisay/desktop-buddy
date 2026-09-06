@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Environment;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Persistence.Sharing;
@@ -20,6 +21,8 @@ namespace DesktopBuddy.Sharing;
 /// </summary>
 public partial class WorkshopPanel : Window
 {
+    private const string Category = "Workshop";
+
     private WorkshopSharingCoordinator? _sharing;
     private RoomPaintingLibraryStore? _rooms;
     private IRoomPaintingSharingHost? _environment;
@@ -45,6 +48,8 @@ public partial class WorkshopPanel : Window
     private CancellationTokenSource? _activeOperation;
     private bool _built;
     private bool _busy;
+    private bool _subscriptionRefreshPending;
+    private ulong _statusRevision;
 
     public bool IsOpen => Visible;
 
@@ -379,10 +384,22 @@ public partial class WorkshopPanel : Window
         await RefreshSubscriptionsAsync();
     }
 
-    private async Task RefreshSubscriptionsAsync()
+    /// <summary>
+    /// A deferred refresh (announce: false) rebuilds the list quietly. It must never overwrite the
+    /// status line, which by then usually holds the result of whatever the player just did.
+    /// </summary>
+    private async Task RefreshSubscriptionsAsync(bool announce = true)
     {
-        if (_busy || _sharing is null) return;
-        SetStatus("Refreshing Workshop subscriptions...");
+        if (_sharing is null) return;
+        if (_busy)
+        {
+            // Another Workshop operation owns the UI. Dropping the refresh here used to leave the
+            // list stale with no explanation; remember it and run it when the operation finishes.
+            _subscriptionRefreshPending = true;
+            return;
+        }
+        if (announce) SetStatus("Refreshing Workshop subscriptions...");
+        ulong revision = _statusRevision;
         WorkshopSubscriptionQueryResult query;
         try
         {
@@ -398,7 +415,12 @@ public partial class WorkshopPanel : Window
             return;
         }
 
-        if (_busy) return;
+        if (_busy)
+        {
+            _subscriptionRefreshPending = true;
+            Log.Warn(Category, "Subscription refresh finished while another operation owned the panel; it will run again.");
+            return;
+        }
 
         if (!query.IsSuccess)
         {
@@ -413,9 +435,18 @@ public partial class WorkshopPanel : Window
         }
 
         IReadOnlyList<PublishedWorkshopItem> items = query.Items;
+        Log.Info(Category, $"Subscription refresh complete; shown={items.Count} detail={query.Detail ?? "none"}.");
         RebuildSubscriptions(items);
         await RefreshImportedRoomMetadataAsync();
-        SetStatus(items.Count == 0 ? "No subscribed Desktop Buddy items found." : $"Found {items.Count} subscribed Workshop item(s).");
+        // The refresh outlives its own status line: the player may have clicked an item and be
+        // reading its description by the time this lands. Never overwrite a newer message.
+        if (!announce || _statusRevision != revision) return;
+        SetStatus(items.Count switch
+        {
+            0 when !string.IsNullOrWhiteSpace(query.Detail) => query.Detail!,
+            0 => "No subscribed Desktop Buddy items found.",
+            _ => $"Found {items.Count} subscribed Workshop item(s).",
+        });
     }
 
     private async Task RefreshImportedRoomMetadataAsync()
@@ -664,6 +695,12 @@ public partial class WorkshopPanel : Window
             cancellation.Dispose();
             SetBusy(false);
         }
+
+        if (_subscriptionRefreshPending)
+        {
+            _subscriptionRefreshPending = false;
+            await RefreshSubscriptionsAsync(announce: false);
+        }
     }
 
     private void CancelActiveOperation()
@@ -751,6 +788,7 @@ public partial class WorkshopPanel : Window
 
     private void SetStatus(string text)
     {
+        _statusRevision++;
         if (GodotObject.IsInstanceValid(_status)) _status.Text = text;
     }
 

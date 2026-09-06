@@ -10,6 +10,14 @@ namespace DesktopBuddy.Platform.Steam;
 
 public partial class GodotSteamWorkshopTransport
 {
+    /// <summary>
+    /// Steam has no failure callback for a UGC details query it never answers, and the refresh
+    /// that waits for one used to hang with "Refreshing Workshop subscriptions..." on screen for
+    /// the rest of the session (owner report 2026-09-06). Frames, not seconds: the wait has to
+    /// stay on the Godot main thread.
+    /// </summary>
+    private const int SubscriptionQueryTimeoutFrames = 900;
+
     private PendingSubscriptionQuery? _pendingSubscriptionQuery;
 
     private sealed record PendingSubscriptionQuery(
@@ -93,6 +101,7 @@ public partial class GodotSteamWorkshopTransport
         token.ThrowIfCancellationRequested();
         Variant raw = _bridge!.Call("get_subscribed_items");
         long[] ids = raw.VariantType == Variant.Type.PackedInt64Array ? raw.AsInt64Array() : [];
+        Log.Info("Workshop", $"Steam returned {ids.Length} subscribed item(s): {string.Join(',', ids)}.");
         return await ReadItemsOnMainThreadAsync(ids, token);
     }
 
@@ -118,18 +127,53 @@ public partial class GodotSteamWorkshopTransport
         if (items.Count == 0)
             return items;
         if (_pendingSubscriptionQuery is not null)
-            return await WaitAsync(_pendingSubscriptionQuery.Completion.Task, token);
+            return await WaitForQueryAsync(_pendingSubscriptionQuery, token);
 
         long handle = CallInt64("query_item_details", ids);
         if (handle < 0)
+        {
+            Log.Warn("Workshop", $"Steam refused a details query for {ids.Length} subscribed item(s); titles and consumer AppIDs are unknown.");
             return items;
+        }
 
         var pending = new PendingSubscriptionQuery(
             handle,
             items,
             NewCompletion<IReadOnlyList<PublishedWorkshopItem>>());
         _pendingSubscriptionQuery = pending;
-        return await WaitAsync(pending.Completion.Task, token);
+        return await WaitForQueryAsync(pending, token);
+    }
+
+    /// <summary>
+    /// Waits for one details query without letting a silent Steam query strand the caller. The
+    /// items Steam already gave us are a usable fallback: ids and install state are known, only
+    /// the titles and consumer AppIDs are missing.
+    /// </summary>
+    private async Task<IReadOnlyList<PublishedWorkshopItem>> WaitForQueryAsync(
+        PendingSubscriptionQuery pending,
+        CancellationToken token)
+    {
+        for (int frame = 0; frame < SubscriptionQueryTimeoutFrames; frame++)
+        {
+            if (pending.Completion.Task.IsCompleted)
+                return await pending.Completion.Task;
+            token.ThrowIfCancellationRequested();
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+
+        if (ReferenceEquals(_pendingSubscriptionQuery, pending))
+        {
+            _pendingSubscriptionQuery = null;
+            if (GodotObject.IsInstanceValid(_bridge))
+                _bridge!.Call("release_query", pending.Handle);
+        }
+
+        Log.Warn(
+            "Workshop",
+            $"Steam never completed the details query for {pending.Items.Count} subscribed item(s) " +
+            $"({SubscriptionQueryTimeoutFrames} frames); showing them without titles.");
+        pending.Completion.TrySetResult(pending.Items);
+        return pending.Items;
     }
 
     private void OnQueryCompleted(long handle, long result, long resultsReturned)
@@ -143,6 +187,7 @@ public partial class GodotSteamWorkshopTransport
         {
             if (result != SteamResultOk)
             {
+                Log.Warn("Workshop", $"Subscription details query failed with EResult {result}; showing items without titles.");
                 pending.Completion.TrySetResult(pending.Items);
                 return;
             }
@@ -171,7 +216,12 @@ public partial class GodotSteamWorkshopTransport
                 };
             }
 
-            pending.Completion.TrySetResult(pending.Items.Select(item => byId[item.PublishedFileId]).ToArray());
+            PublishedWorkshopItem[] resolved = pending.Items.Select(item => byId[item.PublishedFileId]).ToArray();
+            Log.Info(
+                "Workshop",
+                $"Subscription details resolved; returned={resultsReturned} items=" +
+                string.Join(", ", resolved.Select(item => $"{item.PublishedFileId}:consumerAppId={item.ConsumerAppId}")) + ".");
+            pending.Completion.TrySetResult(resolved);
         }
         catch (Exception exception)
         {
