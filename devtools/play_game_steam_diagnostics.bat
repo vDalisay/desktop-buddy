@@ -20,11 +20,12 @@ if not exist "%PROJECT_ROOT%\addons\godotsteam\godotsteam.gdextension" (
 tasklist /FI "IMAGENAME eq steam.exe" 2>nul | find /I "steam.exe" >nul
 if errorlevel 1 (
     echo [Steam Workshop Diagnostics] Steam is not running.
-    echo Start the Steam client and sign in with an account that has developer/test access to Desktop Buddy AppID 5114950, then run this script again.
+    echo Start the Steam client and sign in with developer/test access to Desktop Buddy Demo AppID 5228990, then run this script again.
     exit /b 2
 )
 
-if not defined DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID set "DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5114950"
+rem Match the default source/demo scope at the Steam layer. Explicit caller-provided values still win.
+if not defined DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID set "DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5228990"
 if not defined DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID set "DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID=5114950"
 
 rem Steamworks needs an AppID hint when the editor/game is launched directly instead of by Steam.
@@ -41,11 +42,12 @@ if not exist "%PROJECT_ROOT%\artifacts\logs" mkdir "%PROJECT_ROOT%\artifacts\log
 >"%STAMP_FILE%" echo runtime_app_id=%DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID%
 >>"%STAMP_FILE%" echo workshop_owner_app_id=%DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID%
 >>"%STAMP_FILE%" echo godotsteam=4.22
+>>"%STAMP_FILE%" echo demo_app_id=5228990
 >>"%STAMP_FILE%" echo base_game_app_id=5114950
 >>"%STAMP_FILE%" echo steam_appid_hint=%STEAM_APPID_FILE%
 
 echo [Steam Workshop Diagnostics] Runtime AppID:   %DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID%
-echo [Steam Workshop Diagnostics] Workshop owner: %DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID%
+echo [Steam Workshop Diagnostics] Workshop mirror target: %DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID%
 echo [Steam Workshop Diagnostics] Development AppID hint: %STEAM_APPID_FILE%
 echo [Steam Workshop Diagnostics] Environment:    %STAMP_FILE%
 echo [Steam Workshop Diagnostics] Runtime log will be written by play_game_diagnostics.bat.
@@ -58,10 +60,10 @@ if "%CREATED_STEAM_APPID_FILE%"=="1" del /q "%STEAM_APPID_FILE%" >nul 2>&1
 exit /b %RESULT%
 
 :help
-echo Builds and launches Desktop Buddy with verified GodotSteam 4.22 and persistent Steam-test diagnostics.
+echo Builds and launches the default Desktop Buddy Demo scope with verified GodotSteam 4.22 and persistent Steam-test diagnostics.
 echo.
 echo Requirements:
-echo   - Steam client running and signed in with developer/test access to Desktop Buddy AppID 5114950
+echo   - Steam client running and signed in with developer/test access to Desktop Buddy Demo AppID 5228990
 echo   - pinned Godot 4.6.1 editor discoverable by the normal project tooling
 echo.
 echo Output:
@@ -71,12 +73,12 @@ echo   artifacts\logs\play_game-exit-code.txt
 echo   artifacts\logs\play_game-steam-environment.txt
 echo.
 echo Defaults:
-echo   DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5114950
+echo   DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5228990
 echo   DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID=5114950
 echo.
 echo A gitignored steam_appid.txt development hint is created for the session and removed again
-echo when the game exits. A future demo test can override only DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID
-echo while retaining Workshop ownership at 5114950, once that cross-app Steamworks configuration exists.
+ echo when the game exits. Set both AppID environment variables to 5114950 before launching if
+ echo you explicitly want a full-game Workshop smoke test instead.
 echo.
 echo Valve/GodotSteam binaries and steam_appid.txt are never committed or shipped by this launcher.
 exit /b 0
