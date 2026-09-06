@@ -29,6 +29,8 @@
   <!-- Persistence stores/coordinator are managed-only runtime code. Link them
        into the pure test assembly so fault injection needs no Godot process. -->
   <ItemGroup>
+    <Compile Include="..\..\src\Achievements\AchievementProgressStore.cs" Link="RuntimeAchievements\AchievementProgressStore.cs" />
+    <Compile Include="..\..\src\Achievements\AchievementCoordinator.cs" Link="RuntimeAchievements\AchievementCoordinator.cs" />
     <Compile Include="..\..\src\Persistence\InMemoryProgressStore.cs" Link="RuntimePersistence\InMemoryProgressStore.cs" />
     <Compile Include="..\..\src\Persistence\PersistenceWork.cs" Link="RuntimePersistence\PersistenceWork.cs" />
     <Compile Include="..\..\src\Persistence\JsonProgressStore.cs" Link="RuntimePersistence\JsonProgressStore.cs" />
