@@ -8,6 +8,7 @@ using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Interaction;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Environment;
@@ -46,6 +47,7 @@ public partial class AchievementBootstrap : Node
     private double _airborneSeconds;
     private bool _burnWasActive;
     private bool _characterRefreshRunning;
+    private int _observedRopeAttachCount;
 
     public AchievementCoordinator Coordinator => _coordinator;
 
@@ -73,6 +75,8 @@ public partial class AchievementBootstrap : Node
             throw new InvalidOperationException("AchievementBootstrap was not configured.");
 
         _sandbox.Pipeline.ImpactAccepted += OnImpactAccepted;
+        _sandbox.Pipeline.CareMoodChanged += OnCareMoodChanged;
+        _sandbox.Grab.Grabbed += OnGrabbed;
         _sandbox.FireSprayer.Ignited += OnIgnited;
         _sandbox.Buddy.ObjectInteraction.ConsumeSucceeded += OnCareItemTaken;
         _progress.Changed += OnProgressChanged;
@@ -85,6 +89,7 @@ public partial class AchievementBootstrap : Node
         if (_selection is not null)
             _selection.Changed += OnCharacterSelectionChanged;
 
+        _observedRopeAttachCount = _sandbox.Ropes.AttachCount;
         _coordinator.Store.Qualified += OnQualified;
         _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
         EvaluateEnvironment();
@@ -105,7 +110,12 @@ public partial class AchievementBootstrap : Node
         if (GodotObject.IsInstanceValid(_sandbox))
         {
             if (GodotObject.IsInstanceValid(_sandbox.Pipeline))
+            {
                 _sandbox.Pipeline.ImpactAccepted -= OnImpactAccepted;
+                _sandbox.Pipeline.CareMoodChanged -= OnCareMoodChanged;
+            }
+            if (GodotObject.IsInstanceValid(_sandbox.Grab))
+                _sandbox.Grab.Grabbed -= OnGrabbed;
             if (GodotObject.IsInstanceValid(_sandbox.FireSprayer))
                 _sandbox.FireSprayer.Ignited -= OnIgnited;
             if (GodotObject.IsInstanceValid(_sandbox.Buddy) &&
@@ -133,6 +143,7 @@ public partial class AchievementBootstrap : Node
 
         ObserveAirborne(delta);
         ObserveBaseballWallTouches();
+        ObserveRopeUse();
         if (!_sandbox.FireSprayer.IsBurning)
             _burnWasActive = false;
 
@@ -155,6 +166,7 @@ public partial class AchievementBootstrap : Node
 
     private void OnImpactAccepted(AcceptedImpact impact)
     {
+        _progress.RecordContentUse(impact.ContentId);
         _coordinator.RecordDamage(impact.ContentId, impact.Pain, impact.MilliCredits, impact.TimeSeconds);
         if (string.Equals(impact.ContentId, ContentIds.ToolBaseball, StringComparison.Ordinal) &&
             _baseballsThatTouchedWall.Remove(impact.InteractionId))
@@ -163,10 +175,51 @@ public partial class AchievementBootstrap : Node
         }
     }
 
-    private void OnIgnited(Vector2 _point) => _burnWasActive = true;
+    private void OnCareMoodChanged(CareKind kind, int _delta)
+    {
+        string? contentId = kind switch
+        {
+            CareKind.Pet => ContentIds.ToolPet,
+            CareKind.Tickle => ContentIds.ToolTickle,
+            _ => null,
+        };
+        if (contentId is not null)
+            _progress.RecordContentUse(contentId);
+    }
+
+    private void OnGrabbed(RigidBody2D _target)
+    {
+        string selected = _progress.SelectedToolId;
+        if (string.Equals(selected, ContentIds.ToolPowerGrab, StringComparison.Ordinal))
+            _progress.RecordContentUse(ContentIds.ToolPowerGrab);
+        else if (string.Equals(selected, ContentIds.ToolGrab, StringComparison.Ordinal))
+            _progress.RecordContentUse(ContentIds.ToolGrab);
+        // Rope Suspender gets its use only when a rope is actually attached, below.
+    }
+
+    private void ObserveRopeUse()
+    {
+        int current = _sandbox.Ropes.AttachCount;
+        while (_observedRopeAttachCount < current)
+        {
+            _progress.RecordContentUse(ContentIds.ToolRopeSuspender);
+            _observedRopeAttachCount++;
+        }
+        if (_observedRopeAttachCount > current)
+            _observedRopeAttachCount = current;
+    }
+
+    private void OnIgnited(Vector2 _point)
+    {
+        _burnWasActive = true;
+        _progress.RecordContentUse(ContentIds.ToolFireSprayer);
+    }
 
     private void OnCareItemTaken(LooseObjectBody item)
     {
+        if (GodotObject.IsInstanceValid(item) && !string.IsNullOrWhiteSpace(item.SemanticContentId))
+            _progress.RecordContentUse(item.SemanticContentId);
+
         if (_burnWasActive && GodotObject.IsInstanceValid(item) &&
             GodotObject.IsInstanceValid(item.Profile) &&
             item.Profile!.ClearsHarmfulStatuses)
