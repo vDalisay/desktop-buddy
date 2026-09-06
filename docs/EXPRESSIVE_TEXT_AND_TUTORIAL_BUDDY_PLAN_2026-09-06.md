@@ -2,11 +2,12 @@
 
 Date: 2026-09-06
 Branch: `expressive-text-tutorial-buddy-plan`
-Status: AUDITED TWICE — READY FOR IMPLEMENTATION AFTER ONE OPEN OWNER DECISION, NO FEATURE CODE STARTED
+Status: AUDITED TWICE — READY FOR IMPLEMENTATION, NO FEATURE CODE STARTED
 
 > **Read the second audit before implementing.** A code-verified audit on 2026-09-07 confirmed every
 > existing-code claim below but found that Godot 4.6 already ships most of System A's reveal and effect
-> machinery natively, and that one authoring decision is still open. See
+> machinery natively. The one authoring question it raised — inline semantic tags versus a slot/template
+> pipeline — was decided by the owner on 2026-09-07 in favour of inline tags. See
 > [Implementation audit — 2026-09-07](#implementation-audit--2026-09-07) at the end of this document; where
 > the two disagree, the audit wins.
 
@@ -735,7 +736,7 @@ facade for the tutorial (finding 6 gives it a second consumer, which is what ear
 `ITextTemplateSource` only when a second template source actually exists; until then it is a named
 placeholder for a feature this plan explicitly refuses to build.
 
-## Finding 3 — the slot/template pipeline is the largest cost, and its rationale is contestable (OPEN OWNER DECISION)
+## Finding 3 — the slot/template pipeline is the largest cost (DECIDED 2026-09-07: inline semantic tags)
 
 Section 1 forbids "effect syntax mixed directly into player-facing prose", and that single rule is what
 requires `ExpressiveMessageSpec` + `ExpressiveSlotValue` + `ExpressiveTextDocument` + a formatter + a
@@ -767,9 +768,34 @@ The genuine trade, stated plainly so it can be decided rather than assumed:
 
 **Recommendation: inline semantic tags**, on the grounds that no localization is planned, the failure
 mode is cosmetic, and the ~5 types can be introduced later without touching the renderer if a real
-translation pass ever arrives. **This is the one call left to the owner** — it is the difference between
-a small Phase 1 and a large one, and the rest of this audit's sequencing assumes the recommendation is
-taken. If slots are chosen instead, Phase 1 stands roughly as originally written.
+translation pass ever arrives.
+
+### Decision — owner, 2026-09-07: inline semantic tags
+
+Accepted. Authored tutorial copy carries its own semantic tags; the slot/template pipeline is not built.
+
+This **replaces** the Section 1 rule "no effect syntax mixed directly into player-facing prose", which is
+the only part of this plan the decision overturns. Everything else in Section 1 stands and is in fact
+what the tags deliver: no character offsets, no `IndexOf` phrase lookup, semantic names rather than
+visual ones, and a plain-text projection always available (`get_parsed_text()`).
+
+Consequences for implementation:
+
+- `ExpressiveMessageSpec`, `ExpressiveSlotValue`, `ExpressiveTextDocument`, the template formatter and the
+  slot validator are **not built**. Section A2's five-step pipeline collapses to: read the authored
+  string, substitute semantic tags for visual BBCode tags through the role table, assign `Text`.
+- Authored copy looks like `Hold [input]right mouse button[/input] to charge a [impact]big swing[/impact].`
+  Semantic tag names stay semantic — `[input]`, `[impact]`, `[money]`, `[playful]` — never `[wave]` or
+  `[shake]`. The role table owns the mapping from meaning to appearance, so retuning a treatment is one
+  table row and touches no copy.
+- Dynamic values still interpolate normally. The Drop Tool prompt becomes
+  `press [input]{chord}[/input] to drop it` with the chord from `LocalSettingsInputBindings.DropTool`,
+  which is the same fix as step 0 of the revised sequence.
+- A malformed tag must degrade to visible literal text and never throw. A tutorial line is not worth
+  crashing over; the stray bracket is the bug report.
+- The localization path is unchanged in substance: a translator reorders tagged spans freely and the
+  effects follow the phrase. If a real translation pass ever starts, the slot pipeline can be added then,
+  behind the same role table, without touching the renderer.
 
 ## Finding 4 — C1 as written sanctions a fourth copy
 
@@ -833,7 +859,7 @@ Supersedes the sequence above. Stop at any point where it feels finished; each s
    `UnequipTool` line. One string, no architecture, ship immediately.
 1. **Phase 5 as written** (rewards/WordArt), promoted to first, per finding 8.
 2. **Pure models + tests:** chirp cadence, punctuation pause policy, semantic-role-to-tag table.
-   No ports, no clock interface. Slot pipeline only if the owner rejects finding 3's recommendation.
+   No ports, no clock interface, and no slot/template pipeline (finding 3, decided).
 3. **Godot dialogue presenter:** one `RichTextLabel`; reveal via `visible_ratio` with a post-shaping
    `visible_characters_behavior`; roles resolved to built-in BBCode tags, static variants chosen when
    `Win98MotionPolicy.Allows` is false; `UiFeedbackAudioBootstrap` called directly.
@@ -862,4 +888,6 @@ Add:
   commented — not a fourth silent copy;
 - hidden-viewport suspension applies to Work, the character editor and Workshop capture, not only the
   tutorial portrait;
-- the `tutorial_guide.png` optional-art path is explicitly retired along with its loader.
+- the `tutorial_guide.png` optional-art path is explicitly retired along with its loader;
+- authored copy carries semantic tags (`[input]`, `[impact]`), never visual ones (`[wave]`, `[shake]`),
+  and a malformed tag renders as literal text rather than throwing.
