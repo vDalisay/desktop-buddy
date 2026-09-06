@@ -179,7 +179,7 @@ public sealed class AchievementCoordinator
             foreach (string item in saved.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 categories.Add(item);
         categories.Add(categoryId);
-        _store.SetValue(HomeCategoriesKey, string.Join("|", categories));
+        _store.SetValue(HomeCategoriesKey, string.Join('|', categories));
     }
 
     public void EvaluateHomeSweetHome(IEnumerable<string> requiredCategoryIds)
@@ -205,13 +205,25 @@ public sealed class AchievementCoordinator
     private void ObserveCharacterArc(Guid? activeCharacterId, float mood)
     {
         string current = CharacterKey(activeCharacterId);
+        string? lowCharacter = _store.Value(CharacterArcLowKey);
+
+        // The arc belongs to one continuous active character. Because mood is shared gameplay
+        // state, switching to another character and improving that shared mood must not let the
+        // old character inherit the high endpoint when selected again later.
+        if (!string.IsNullOrEmpty(lowCharacter) &&
+            !string.Equals(lowCharacter, current, StringComparison.Ordinal))
+        {
+            _store.SetValue(CharacterArcLowKey, string.Empty);
+            lowCharacter = null;
+        }
+
         if (mood <= -100.0f)
         {
             _store.SetValue(CharacterArcLowKey, current);
             return;
         }
 
-        if (mood >= 100.0f && string.Equals(_store.Value(CharacterArcLowKey), current, StringComparison.Ordinal))
+        if (mood >= 100.0f && string.Equals(lowCharacter, current, StringComparison.Ordinal))
             _store.Qualify(AchievementIds.CharacterArc);
     }
 
