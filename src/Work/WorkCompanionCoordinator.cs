@@ -367,7 +367,7 @@ public partial class WorkCompanionCoordinator : Node
             RewardIconProvider.For(icon),
             title,
             earned.RewardMilliCredits,
-            definition.Scope == WorkMilestoneScope.Lifetime
+            kind: definition.Scope == WorkMilestoneScope.Lifetime
                 ? RewardPresentationKind.WorkLifetimeMilestone
                 : RewardPresentationKind.WorkSessionMilestone);
     }
@@ -401,7 +401,7 @@ public partial class WorkCompanionCoordinator : Node
     private async Task<CompiledCharacterAppearance?> ResolveAppearanceAsync(CancellationToken token)
     {
         BuddyVisualRigView liveRig = _sandbox.VisualPresenter.RigView;
-        CompiledCharacterAppearance? liveAppearance = _appearanceOverride ?? liveRig.ActiveAppearance;
+        CompiledCharacterAppearance? liveAppearance = liveRig.ActiveAppearance;
         Guid? activeId = _context.CharacterSelection?.ActiveCharacterId;
 
         // CharacterId alone is not a freshness guarantee: Studio can save/equip another cosmetic
