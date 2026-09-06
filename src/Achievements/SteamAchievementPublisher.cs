@@ -7,8 +7,9 @@ namespace DesktopBuddy.Achievements;
 
 /// <summary>
 /// Thin platform publisher. Qualification is always local-first; this class merely mirrors the
-/// already-qualified set to Steam. Demo runtimes are hard-disabled and therefore cannot unlock a
-/// Steam achievement even when they share the same progress.json with a later full-game install.
+/// already-qualified set to Steam through the project-owned GodotSteam bridge. Demo runtimes are
+/// hard-disabled and therefore cannot unlock a Steam achievement even when they share the same
+/// progress.json with a later full-game install.
 /// </summary>
 public sealed class SteamAchievementPublisher
 {
@@ -29,44 +30,44 @@ public sealed class SteamAchievementPublisher
     public bool PublishingEnabled =>
         _identity.RuntimeAppId == SteamAppIdentityResolver.DesktopBuddyBaseAppId &&
         GodotObject.IsInstanceValid(_bridge) &&
-        (bool)_bridge!.Call("is_available") &&
-        Engine.HasSingleton("Steam");
+        _bridge!.Call("is_available").AsBool() &&
+        _bridge.Call("has_achievement_capabilities").AsBool();
 
     /// <summary>
     /// Idempotently mirrors every locally-qualified achievement. Re-sending SetAchievement is
-    /// intentional: if Steam was offline or StoreStats failed on an earlier run, the local save is
-    /// still authoritative and the next full-game run simply retries the whole small set.
+    /// intentional: if Steam was offline, stats had not arrived yet, or StoreStats failed on an
+    /// earlier run, the local save is still authoritative and a later retry sends the small set
+    /// again. GodotSteam itself stays behind the dynamic bridge so optional-addon and ClassDB
+    /// fallback behavior remains identical to the Workshop integration.
     /// </summary>
     public bool TrySynchronize()
     {
         if (!PublishingEnabled)
             return false;
 
-        GodotObject steam = Engine.GetSingleton("Steam");
-        if (!GodotObject.IsInstanceValid(steam) ||
-            !steam.HasMethod("setAchievement") ||
-            !steam.HasMethod("storeStats"))
-        {
-            return false;
-        }
-
         try
         {
-            if (steam.HasMethod("requestCurrentStats"))
-                steam.Call("requestCurrentStats");
+            // Requesting current stats is asynchronous. A first call may therefore be too early
+            // for SetAchievement; the bootstrap retries periodically and on every new qualification.
+            _bridge!.Call("request_current_stats");
 
-            bool any = false;
+            bool anyQualified = false;
+            bool anySet = false;
             foreach (AchievementDefinition definition in AchievementCatalog.Baseline)
             {
                 if (!_store.IsQualified(definition.Id))
                     continue;
-                steam.Call("setAchievement", definition.SteamApiName);
-                any = true;
+
+                anyQualified = true;
+                anySet |= _bridge.Call("set_achievement", definition.SteamApiName).AsBool();
             }
 
-            if (any)
-                steam.Call("storeStats");
-            return true;
+            if (!anyQualified)
+                return true;
+            if (!anySet)
+                return false;
+
+            return _bridge.Call("store_stats").AsBool();
         }
         catch (Exception)
         {
