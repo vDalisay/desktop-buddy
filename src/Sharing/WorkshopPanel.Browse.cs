@@ -11,15 +11,13 @@ using Godot;
 namespace DesktopBuddy.Sharing;
 
 /// <summary>
-/// Steam demos do not receive their own Community Hub, so their normal /app/&lt;id&gt;/workshop/
-/// page is not a reliable browser. This partial builds the Workshop experience in-game instead:
-/// SteamUGC supplies the items and preview URLs, while the presentation stays inside Desktop
-/// Buddy's configurable Win98 shell.
+/// Win98-styled in-game Workshop browser. Steam demos do not have their own Community Hub, so
+/// discovery has to use ISteamUGC directly instead of linking to /app/&lt;demo-id&gt;/workshop/.
 /// </summary>
 public partial class WorkshopPanel
 {
     private const int WorkshopQueryPageSize = 50;
-    private const long PreviewBodyLimitBytes = 5L * 1024 * 1024;
+    private const int PreviewBodyLimitBytes = 5 * 1024 * 1024;
 
     private bool _browserLayoutBuilt;
     private IWorkshopDiscoveryTransport? _discovery;
@@ -37,17 +35,19 @@ public partial class WorkshopPanel
     private int _previewGeneration;
     private readonly Dictionary<string, Texture2D> _previewCache = new(StringComparer.Ordinal);
 
-    /// <summary>Called from the panel's existing process hook after the legacy builder has run.</summary>
+    /// <summary>Rehomes the legacy controls into Browse Content / Upload Content once.</summary>
     private void EnsureWorkshopBrowserLayout()
     {
-        if (_browserLayoutBuilt || !_built || !GodotObject.IsInstanceValid(_root))
-            return;
+        if (_browserLayoutBuilt || !_built || !GodotObject.IsInstanceValid(_root)) return;
 
         VBoxContainer? chrome = _root.GetNodeOrNull<VBoxContainer>("WorkshopChrome");
-        if (chrome is null || chrome.GetChildCount() < 2 || chrome.GetChild(1) is not MarginContainer margin ||
-            margin.GetChildCount() == 0 || margin.GetChild(0) is not VBoxContainer column || column.GetChildCount() < 10)
+        if (chrome is null || chrome.GetChildCount() < 2 ||
+            chrome.GetChild(1) is not MarginContainer margin || margin.GetChildCount() == 0 ||
+            margin.GetChild(0) is not VBoxContainer column || column.GetChildCount() < 10)
             return;
 
+        // WorkshopBootstrap keeps the direct runtime transport as a sibling of the panel. In a
+        // Demo that transport is scoped to 5228990; the mirroring wrapper is only used for upload.
         _discovery = GetParent()?.GetNodeOrNull<GodotSteamWorkshopTransport>(nameof(GodotSteamWorkshopTransport));
 
         Control oldBrowseRow = (Control)column.GetChild(1);
@@ -55,7 +55,6 @@ public partial class WorkshopPanel
         Control publishHeading = (Control)column.GetChild(3);
         Control publishRow = (Control)column.GetChild(6);
         Control librarySplit = (Control)column.GetChild(7);
-
         oldBrowseRow.Visible = false;
 
         _workshopTabs = new TabContainer
@@ -64,7 +63,7 @@ public partial class WorkshopPanel
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
-        StyleWorkshopTabs(_workshopTabs);
+        StyleTabs(_workshopTabs);
         column.AddChild(_workshopTabs);
 
         VBoxContainer browseTab = NewTabPage("BrowseContent");
@@ -74,11 +73,10 @@ public partial class WorkshopPanel
         _workshopTabs.SetTabTitle(0, "Browse Content");
         _workshopTabs.SetTabTitle(1, "Upload Content");
 
-        BuildBrowseContent(browseTab, librarySplit);
+        BuildBrowseTab(browseTab, librarySplit);
 
         publishHeading.Reparent(uploadTab);
-        if (publishHeading is Label publishLabel)
-            publishLabel.Text = "Upload a new Workshop item";
+        if (publishHeading is Label heading) heading.Text = "Upload a new Workshop item";
         _title.Reparent(uploadTab);
         _description.Reparent(uploadTab);
         publishRow.Reparent(uploadTab);
@@ -87,7 +85,11 @@ public partial class WorkshopPanel
 
         column.MoveChild(_workshopTabs, Math.Min(2, column.GetChildCount() - 1));
         _browserLayoutBuilt = true;
-        _workshopTabs.TabChanged += OnWorkshopTabChanged;
+        _workshopTabs.TabChanged += tab =>
+        {
+            if (tab == 0 && _communityItems.Count == 0)
+                _ = RefreshCommunityAsync(resetPage: false);
+        };
         _ = RefreshCommunityAsync(resetPage: true);
     }
 
@@ -103,7 +105,7 @@ public partial class WorkshopPanel
         return page;
     }
 
-    private static void StyleWorkshopTabs(TabContainer tabs)
+    private static void StyleTabs(TabContainer tabs)
     {
         tabs.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
         TabBar bar = tabs.GetTabBar();
@@ -116,23 +118,23 @@ public partial class WorkshopPanel
         bar.AddThemeColorOverride("font_hovered_color", Win98ThemeFactory.Dark);
     }
 
-    private void BuildBrowseContent(VBoxContainer browseTab, Control librarySplit)
+    private void BuildBrowseTab(VBoxContainer browseTab, Control librarySplit)
     {
-        var innerTabs = new TabContainer
+        var sections = new TabContainer
         {
             Name = "BrowseSections",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
-        StyleWorkshopTabs(innerTabs);
-        browseTab.AddChild(innerTabs);
+        StyleTabs(sections);
+        browseTab.AddChild(sections);
 
         VBoxContainer community = NewTabPage("Community");
         VBoxContainer library = NewTabPage("MyLibrary");
-        innerTabs.AddChild(community);
-        innerTabs.AddChild(library);
-        innerTabs.SetTabTitle(0, "Community");
-        innerTabs.SetTabTitle(1, "My Library");
+        sections.AddChild(community);
+        sections.AddChild(library);
+        sections.SetTabTitle(0, "Community");
+        sections.SetTabTitle(1, "My Library");
 
         var toolbar = new HBoxContainer();
         community.AddChild(toolbar);
@@ -152,18 +154,14 @@ public partial class WorkshopPanel
         toolbar.AddChild(_contentFilter);
         toolbar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
 
-        var refresh = new Button { Text = "Refresh", TooltipText = "Reload this Workshop page from Steam." };
+        var refresh = new Button { Text = "Refresh", TooltipText = "Reload Workshop content from Steam." };
         refresh.Pressed += () => _ = RefreshCommunityAsync(resetPage: false);
         toolbar.AddChild(refresh);
 
         var summaryPanel = new PanelContainer();
         summaryPanel.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Face, 1));
         community.AddChild(summaryPanel);
-        _communitySummary = new Label
-        {
-            Text = "Loading Workshop content...",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
+        _communitySummary = new Label { Text = "Loading Workshop content...", AutowrapMode = TextServer.AutowrapMode.WordSmart };
         summaryPanel.AddChild(_communitySummary);
 
         var scroll = new ScrollContainer
@@ -189,11 +187,9 @@ public partial class WorkshopPanel
         _previousPage = new Button { Text = "< Previous" };
         _previousPage.Pressed += () =>
         {
-            if (_communityPage > 1)
-            {
-                _communityPage--;
-                _ = RefreshCommunityAsync(resetPage: false);
-            }
+            if (_communityPage <= 1) return;
+            _communityPage--;
+            _ = RefreshCommunityAsync(resetPage: false);
         };
         pager.AddChild(_previousPage);
         _nextPage = new Button { Text = "Next >" };
@@ -204,22 +200,15 @@ public partial class WorkshopPanel
         };
         pager.AddChild(_nextPage);
 
+        // Existing subscribed items + imported room paintings become the personal-library view.
         librarySplit.Reparent(library);
         librarySplit.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
     }
 
-    private void OnWorkshopTabChanged(long tab)
-    {
-        if (tab == 0 && _communityItems.Count == 0)
-            _ = RefreshCommunityAsync(resetPage: false);
-    }
-
     private async Task RefreshCommunityAsync(bool resetPage)
     {
-        if (!_browserLayoutBuilt || !GodotObject.IsInstanceValid(_communityGrid))
-            return;
-        if (resetPage)
-            _communityPage = 1;
+        if (!_browserLayoutBuilt || !GodotObject.IsInstanceValid(_communityGrid)) return;
+        if (resetPage) _communityPage = 1;
 
         _browseCancellation?.Cancel();
         _browseCancellation?.Dispose();
@@ -232,7 +221,7 @@ public partial class WorkshopPanel
             _communityItems = Array.Empty<WorkshopBrowseItem>();
             Clear(_communityGrid);
             _communitySummary.Text = _discovery?.DiscoveryUnavailableReason ??
-                "Community browsing requires the live Steam build. Your subscribed/local library remains available in My Library.";
+                "Community browsing requires the live Steam build. My Library remains available.";
             _previousPage.Disabled = true;
             _nextPage.Disabled = true;
             return;
@@ -241,8 +230,7 @@ public partial class WorkshopPanel
         _communitySummary.Text = "Loading Workshop content...";
         WorkshopBrowseSort sort = (WorkshopBrowseSort)_sortMode.GetSelectedId();
         WorkshopBrowsePage result = await _discovery.BrowseAsync(sort, _communityPage, token);
-        if (token.IsCancellationRequested || generation != _previewGeneration)
-            return;
+        if (token.IsCancellationRequested || generation != _previewGeneration) return;
 
         if (!result.IsSuccess)
         {
@@ -261,30 +249,26 @@ public partial class WorkshopPanel
 
     private void RebuildCommunityCards()
     {
-        if (!GodotObject.IsInstanceValid(_communityGrid))
-            return;
+        if (!GodotObject.IsInstanceValid(_communityGrid)) return;
         Clear(_communityGrid);
 
         int filter = (int)_contentFilter.GetSelectedId();
-        WorkshopBrowseItem[] visible = _communityItems
-            .Where(item => filter switch
-            {
-                1 => string.Equals(item.Item.ContentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal),
-                2 => string.Equals(item.Item.ContentType, ShareContentTypes.RoomPainting, StringComparison.Ordinal),
-                _ => true,
-            })
-            .ToArray();
+        WorkshopBrowseItem[] visible = _communityItems.Where(item => filter switch
+        {
+            1 => string.Equals(item.Item.ContentType, ShareContentTypes.BuddyCharacter, StringComparison.Ordinal),
+            2 => string.Equals(item.Item.ContentType, ShareContentTypes.RoomPainting, StringComparison.Ordinal),
+            _ => true,
+        }).ToArray();
 
         if (visible.Length == 0)
         {
-            var empty = new Label
+            _communityGrid.AddChild(new Label
             {
                 Text = _communityItems.Count == 0
                     ? "No Workshop items were returned for this page."
-                    : "No items on this page match the selected content filter.",
+                    : "No items on this page match the selected filter.",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            };
-            _communityGrid.AddChild(empty);
+            });
         }
         else
         {
@@ -312,7 +296,6 @@ public partial class WorkshopPanel
             SizeFlagsVertical = Control.SizeFlags.ShrinkBegin,
         };
         card.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
-
         var body = new VBoxContainer();
         body.AddThemeConstantOverride("separation", Win98ThemeFactory.Px(5));
         card.AddChild(body);
@@ -324,14 +307,9 @@ public partial class WorkshopPanel
         };
         previewFrame.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Recessed(Win98ThemeFactory.Dark, 1));
         body.AddChild(previewFrame);
-
-        var previewStack = new Control
-        {
-            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(145)),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        previewFrame.AddChild(previewStack);
-        previewStack.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        var stack = new Control { CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(145)) };
+        previewFrame.AddChild(stack);
+        stack.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
 
         var placeholder = new Label
         {
@@ -341,18 +319,17 @@ public partial class WorkshopPanel
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
         placeholder.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        previewStack.AddChild(placeholder);
-
-        var texture = new TextureRect
+        stack.AddChild(placeholder);
+        var image = new TextureRect
         {
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        texture.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        previewStack.AddChild(texture);
+        image.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        stack.AddChild(image);
         if (!string.IsNullOrWhiteSpace(browse.PreviewUrl))
-            _ = LoadPreviewIntoAsync(browse.PreviewUrl, texture, placeholder, generation);
+            _ = LoadPreviewIntoAsync(browse.PreviewUrl, image, placeholder, generation);
 
         var title = new Label
         {
@@ -370,15 +347,11 @@ public partial class WorkshopPanel
             ShareContentTypes.RoomPainting => "Room Painting",
             _ => "Desktop Buddy Item",
         };
-        var meta = new Label
-        {
-            Text = subscribed ? $"{type}  •  Subscribed" : type,
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-        };
+        var meta = new Label { Text = subscribed ? $"{type}  •  Subscribed" : type };
         meta.AddThemeFontSizeOverride("font_size", Win98ThemeFactory.Px(11));
         body.AddChild(meta);
 
-        var description = new Label
+        body.AddChild(new Label
         {
             Text = string.IsNullOrWhiteSpace(item.Description) ? "No description." : item.Description,
             TooltipText = item.Description,
@@ -386,46 +359,36 @@ public partial class WorkshopPanel
             CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(48)),
             MaxLinesVisible = 3,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-        };
-        body.AddChild(description);
+        });
 
         var actions = new GridContainer { Columns = 2, SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         body.AddChild(actions);
-
         var primary = new Button
         {
             Text = subscribed ? "Import" : "Subscribe",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            TooltipText = subscribed
-                ? "Import this subscribed item as a local Desktop Buddy copy."
-                : "Subscribe to this item through Steam, then you can import it.",
+            TooltipText = subscribed ? "Import this subscribed item." : "Subscribe through Steam.",
         };
         primary.Pressed += () =>
         {
-            if (subscribed)
-                RequestImport(item);
-            else
-                _ = SubscribeFromBrowserAsync(item);
+            if (subscribed) RequestImport(item);
+            else _ = SubscribeFromBrowserAsync(item);
         };
         actions.AddChild(primary);
-
         var open = new Button
         {
             Text = "Open Page",
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            TooltipText = "Open this individual Steam Workshop item page in your browser.",
+            TooltipText = "Open this individual Steam Workshop item page.",
         };
         open.Pressed += () => _sharing?.OpenWorkshopItem(item.PublishedFileId);
         actions.AddChild(open);
-
         return card;
     }
 
     private async Task SubscribeFromBrowserAsync(PublishedWorkshopItem item)
     {
-        if (_busy || _discovery is null)
-            return;
-
+        if (_busy || _discovery is null) return;
         WorkshopSubscriptionChangeResult result = default;
         await RunBusyAsync(async (progress, token) =>
         {
@@ -433,23 +396,18 @@ public partial class WorkshopPanel
             result = await _discovery.SubscribeAsync(item.PublishedFileId, token);
         });
 
-        if (result.IsSuccess)
-        {
-            SetStatus($"Subscribed to '{item.DisplayName}'. You can import it now.");
-            await RefreshSubscriptionsAsync();
-            await RefreshCommunityAsync(resetPage: false);
-        }
-        else
+        if (!result.IsSuccess)
         {
             SetStatus(result.Detail ?? $"Could not subscribe to '{item.DisplayName}'.");
+            return;
         }
+
+        SetStatus($"Subscribed to '{item.DisplayName}'. You can import it now.");
+        await RefreshSubscriptionsAsync();
+        await RefreshCommunityAsync(resetPage: false);
     }
 
-    private async Task LoadPreviewIntoAsync(
-        string url,
-        TextureRect target,
-        Label placeholder,
-        int generation)
+    private async Task LoadPreviewIntoAsync(string url, TextureRect target, Label placeholder, int generation)
     {
         if (_previewCache.TryGetValue(url, out Texture2D? cached) && GodotObject.IsInstanceValid(cached))
         {
@@ -470,37 +428,34 @@ public partial class WorkshopPanel
         AddChild(request);
         try
         {
-            Error started = request.Request(url);
-            if (started != Error.Ok)
+            if (request.Request(url) != Error.Ok)
             {
                 if (GodotObject.IsInstanceValid(placeholder)) placeholder.Text = "Preview unavailable";
                 return;
             }
 
             Variant[] response = await ToSignal(request, HttpRequest.SignalName.RequestCompleted);
-            if (generation != _previewGeneration || !GodotObject.IsInstanceValid(target))
-                return;
-
+            if (generation != _previewGeneration || !GodotObject.IsInstanceValid(target)) return;
             long result = response.Length > 0 ? response[0].AsInt64() : -1;
-            long responseCode = response.Length > 1 ? response[1].AsInt64() : 0;
+            long code = response.Length > 1 ? response[1].AsInt64() : 0;
             byte[] bytes = response.Length > 3 ? response[3].AsByteArray() : [];
-            if (result != (long)HttpRequest.Result.Success || responseCode is < 200 or >= 300 || bytes.Length == 0)
+            if (result != (long)HttpRequest.Result.Success || code is < 200 or >= 300 || bytes.Length == 0)
             {
                 if (GodotObject.IsInstanceValid(placeholder)) placeholder.Text = "Preview unavailable";
                 return;
             }
 
-            Image image = new();
-            Error decoded = image.LoadPngFromBuffer(bytes);
-            if (decoded != Error.Ok) decoded = image.LoadJpgFromBuffer(bytes);
-            if (decoded != Error.Ok) decoded = image.LoadWebpFromBuffer(bytes);
-            if (decoded != Error.Ok)
+            Image decoded = new();
+            Error error = decoded.LoadPngFromBuffer(bytes);
+            if (error != Error.Ok) error = decoded.LoadJpgFromBuffer(bytes);
+            if (error != Error.Ok) error = decoded.LoadWebpFromBuffer(bytes);
+            if (error != Error.Ok)
             {
                 if (GodotObject.IsInstanceValid(placeholder)) placeholder.Text = "Preview unavailable";
                 return;
             }
 
-            ImageTexture texture = ImageTexture.CreateFromImage(image);
+            ImageTexture texture = ImageTexture.CreateFromImage(decoded);
             _previewCache[url] = texture;
             target.Texture = texture;
             if (GodotObject.IsInstanceValid(placeholder)) placeholder.Visible = false;
