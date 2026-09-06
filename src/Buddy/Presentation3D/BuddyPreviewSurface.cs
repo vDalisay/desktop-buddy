@@ -59,7 +59,8 @@ public sealed partial class BuddyPreviewSurface : SubViewport
         if (!float.IsFinite(cameraSize) || cameraSize <= 0.0f)
             throw new ArgumentOutOfRangeException(nameof(cameraSize));
 
-        Name = string.IsNullOrWhiteSpace(Name) ? "BuddyPreviewSurface" : Name;
+        if (string.IsNullOrWhiteSpace(Name.ToString()))
+            Name = "BuddyPreviewSurface";
         Size = viewportSize;
         TransparentBg = transparentBackground;
         OwnWorld3D = true;
@@ -140,10 +141,7 @@ public sealed partial class BuddyPreviewSurface : SubViewport
     /// Enables one render for capture-only previews. Continuous visible previews immediately
     /// return to Always on the next process pass; hidden ones return to Disabled.
     /// </summary>
-    public void RequestSingleFrame()
-    {
-        RenderTargetUpdateMode = UpdateMode.Once;
-    }
+    public void RequestSingleFrame() => RenderTargetUpdateMode = UpdateMode.Once;
 
     /// <summary>
     /// Copies the current appearance and painted underlays from a trusted live visual rig. Work
