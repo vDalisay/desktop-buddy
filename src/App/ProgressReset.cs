@@ -17,10 +17,11 @@ namespace DesktopBuddy.App;
 /// <summary>
 /// "Reset Progress": everything the player has built goes back to a first run — the gameplay
 /// save, Work progression, the decorated room, and the characters they made (owner instruction
-/// 2026-08-21). Machine-local settings are the one thing kept, because they are preferences
-/// rather than progress. Account-like achievement qualification is also retained: a local reset
-/// cannot revoke an achievement Steam may already have awarded, and Demo-qualified achievements
-/// still need to reconcile when the player later launches the full game.
+/// 2026-08-21). Machine-local settings are kept because they are preferences rather than progress.
+/// Already-earned achievement qualification is also retained: a local reset cannot revoke an
+/// achievement Steam may already have awarded, and Demo-qualified achievements still need to
+/// reconcile when the player later launches the full game. Partial achievement counters and
+/// rule-specific working values reset with ordinary progress.
 /// </summary>
 public static class ProgressReset
 {
@@ -59,7 +60,7 @@ public static class ProgressReset
         WorkProgressSnapshot? workBefore = workProgress?.Snapshot();
         EnvironmentProgressSnapshot? environmentBefore = environmentProgress?.Snapshot();
         IReadOnlyDictionary<string, string> achievementValues =
-            AchievementProgressStore.PreserveAchievementValues(before.Extensions);
+            AchievementProgressStore.PreserveQualifiedAchievementValues(before.Extensions);
         ProgressSnapshot fresh = CreateNewProgress(progress.CashPerPain).Snapshot();
         progress.Adopt(fresh with
         {
