@@ -37,6 +37,7 @@ public partial class WorkshopPanel
         if (!_built || !Visible)
             return;
 
+        EnsureWorkshopBrowserLayout();
         EnsureWorkshopProgressStyle();
         AnimateBusyStatus(delta);
         KeepWorkshopInsideUsableScreen();
@@ -87,7 +88,6 @@ public partial class WorkshopPanel
         string current = _status.Text;
         if (current.Contains('%', StringComparison.Ordinal))
         {
-            // A real byte total exists now. Do not obscure the useful percentage with dot churn.
             _busyStatusBase = string.Empty;
             _lastAnimatedBusyStatus = current;
             _busyDotElapsed = 0;
@@ -95,8 +95,6 @@ public partial class WorkshopPanel
             return;
         }
 
-        // A SetStatus call from the operation replaces the animation text. Adopt the new message
-        // as the animation base; only text written by this method is treated as our own frame.
         if (!string.Equals(current, _lastAnimatedBusyStatus, StringComparison.Ordinal))
         {
             _busyStatusBase = current.TrimEnd().TrimEnd('.');
@@ -182,9 +180,6 @@ public partial class WorkshopPanel
             return;
         }
 
-        // The Demo item itself is already real at this point; only the extra full-game mirror
-        // failed. Keep the warning, but do not strand the author without a way to open the Demo
-        // item that Steamworks needs for the Workshop checklist.
         if (result.Status == WorkshopPublishStatus.Failed &&
             result.Detail?.StartsWith("Published to the Demo Workshop as item", StringComparison.OrdinalIgnoreCase) == true)
         {
@@ -200,10 +195,6 @@ public partial class WorkshopPanel
         if (usable.Size.X <= 0 || usable.Size.Y <= 0)
             return;
 
-        // A window narrower than its own content does not shrink that content - the overhang is
-        // simply clipped by the native surface, taking the right-hand buttons and part of the
-        // close box with it. So the minimum tracks the composed width, exactly as a detached
-        // Win98 panel does, and it re-tracks it after every interface scale change.
         Vector2 content = _root.GetCombinedMinimumSize();
         Vector2I minimum = new(
             Math.Clamp(Mathf.CeilToInt(content.X), 1, usable.Size.X),

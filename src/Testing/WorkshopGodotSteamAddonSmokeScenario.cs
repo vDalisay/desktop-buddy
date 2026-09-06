@@ -18,6 +18,7 @@ namespace DesktopBuddy.Testing;
 public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
 {
     private const string BridgeScriptPath = "res://src/Platform/Steam/GodotSteamBridge.gd";
+    private const string DiscoveryScriptPath = "res://src/Platform/Steam/GodotSteamWorkshopDiscovery.gd";
 
     public string Id => "workshop_godotsteam_addon_smoke";
 
@@ -25,6 +26,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
     {
         var checks = new List<StartupCheck>();
         Node? bridge = null;
+        Node? discovery = null;
         GodotSteamWorkshopTransport? transport = null;
 
         try
@@ -65,6 +67,45 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     : "Pinned GodotSteam addon was materialized but no Steam API object is discoverable."));
             if (!addonPresent)
                 return Result(checks, $"seed={seed}");
+
+            // Discovery is intentionally a separate optional bridge because demos need an in-game
+            // Workshop browser even though they have no Community Hub. Probe its exact 4.22 method
+            // surface here so createQueryAllUGCRequest / preview URL / subscribe support cannot
+            // silently regress while ordinary publishing continues to work.
+            GDScript? discoveryScript = GD.Load<GDScript>(DiscoveryScriptPath);
+            bool discoveryLoaded = discoveryScript is not null;
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_discovery_bridge_loads",
+                discoveryLoaded,
+                discoveryLoaded ? DiscoveryScriptPath : "Discovery bridge script could not be loaded."));
+            if (discoveryScript is not null)
+            {
+                GodotObject discoveryInstance = (GodotObject)discoveryScript.New();
+                if (discoveryInstance is Node discoveryNode)
+                {
+                    discovery = discoveryNode;
+                    discovery.Name = "GodotSteamDiscoverySmokeBridge";
+                    tree.Root.AddChild(discovery);
+                    Variant configured = discovery.Call(
+                        "configure",
+                        (long)SteamAppIdentityResolver.DesktopBuddyBaseAppId);
+                    bool discoverySupported = configured.VariantType == Variant.Type.Dictionary &&
+                        configured.AsGodotDictionary().TryGetValue("ok", out Variant ok) && ok.AsBool();
+                    checks.Add(new StartupCheck(
+                        "workshop_godotsteam_discovery_422_capabilities_match",
+                        discoverySupported,
+                        discoverySupported
+                            ? "GodotSteam exposes all UGC browse/preview/subscribe methods used by the in-game browser."
+                            : discovery.Call("unavailable_reason").AsString()));
+                }
+                else
+                {
+                    checks.Add(new StartupCheck(
+                        "workshop_godotsteam_discovery_422_capabilities_match",
+                        false,
+                        "Discovery bridge did not instantiate as a Node."));
+                }
+            }
 
             bool updateForwarded = false;
             bridge.Connect(
@@ -108,8 +149,6 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
             bool initialized = transport.Initialize(bridge, identity);
             string reason = transport.UnavailableReason ?? string.Empty;
 
-            // No Steam client/session exists on the hosted Linux runner. That is a valid runtime
-            // failure. Fail only when the bridge/addon contract itself is absent or incompatible.
             bool capabilityCompatible = initialized || !IsBindingFailure(reason);
             checks.Add(new StartupCheck(
                 "workshop_godotsteam_422_capabilities_match",
@@ -149,6 +188,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
         finally
         {
             if (GodotObject.IsInstanceValid(transport)) transport!.QueueFree();
+            if (GodotObject.IsInstanceValid(discovery)) discovery!.QueueFree();
             if (GodotObject.IsInstanceValid(bridge)) bridge!.QueueFree();
         }
     }
