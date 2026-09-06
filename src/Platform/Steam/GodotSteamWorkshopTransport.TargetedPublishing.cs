@@ -171,7 +171,12 @@ public partial class GodotSteamWorkshopTransport : ITargetedSteamWorkshopTranspo
     {
         if (!IsAvailable || !IsOnMainThread) return;
         if (!TrySelectPublishTarget(consumerAppId, out _)) return;
-        _bridge!.Call("open_workshop_browser", (long)consumerAppId);
+
+        // Steam demos have their own AppID/Workshop backend but no separate Community Hub. The
+        // /app/{id}/workshop route therefore redirects through the base game's community hub.
+        // Use Steam's app-scoped Workshop browser instead so Demo discovery remains filtered to
+        // the Demo consumer AppID rather than visually landing on the full game's Workshop.
+        Godot.OS.ShellOpen($"https://steamcommunity.com/workshop/browse/?appid={consumerAppId}");
     }
 
     private bool TrySelectPublishTarget(uint consumerAppId, out string? error)
