@@ -20,11 +20,14 @@ if not exist "%PROJECT_ROOT%\addons\godotsteam\godotsteam.gdextension" (
 tasklist /FI "IMAGENAME eq steam.exe" 2>nul | find /I "steam.exe" >nul
 if errorlevel 1 (
     echo [Steam Workshop] Steam is not running.
-    echo Start the Steam client and sign in with an account that has access to Desktop Buddy AppID 5114950, then run this script again.
+    echo Start the Steam client and sign in with an account that has access to Desktop Buddy Demo AppID 5228990, then run this script again.
     exit /b 2
 )
 
-if not defined DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID set "DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5114950"
+rem Local source runs use the public Demo scope by default. Match that scope at the Steam layer too:
+rem the running app is the Demo, while Demo publishes are mirrored to the full game's Workshop.
+rem A caller can still set both variables explicitly before invoking this script for another target.
+if not defined DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID set "DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5228990"
 if not defined DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID set "DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID=5114950"
 
 rem Steamworks needs an AppID hint when the editor/game is launched directly instead of by Steam.
@@ -37,7 +40,7 @@ if not exist "%STEAM_APPID_FILE%" (
 )
 
 echo [Steam Workshop] Runtime AppID:  %DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID%
-echo [Steam Workshop] Workshop owner: %DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID%
+echo [Steam Workshop] Workshop mirror target: %DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID%
 echo [Steam Workshop] Development AppID hint: %STEAM_APPID_FILE%
 echo [Steam Workshop] Launching Desktop Buddy with the verified local GodotSteam addon.
 
@@ -48,18 +51,21 @@ if "%CREATED_STEAM_APPID_FILE%"=="1" del /q "%STEAM_APPID_FILE%" >nul 2>&1
 exit /b %RESULT%
 
 :help
-echo Launches Desktop Buddy for a local Steam/GodotSteam Workshop development smoke test.
+echo Launches the default Desktop Buddy Demo scope for a local Steam/GodotSteam Workshop smoke test.
 echo.
 echo Requirements:
-echo   - Steam client running and signed in with access to Desktop Buddy AppID 5114950
+echo   - Steam client running and signed in with access to Desktop Buddy Demo AppID 5228990
 echo   - pinned Godot 4.6.1 editor discoverable by the normal play_game.bat rules
 echo.
-echo The script materializes the pinned GodotSteam 4.22 addon when missing and defaults both
-echo the runtime and Workshop-owner AppIDs to 5114950. It also creates the gitignored
-echo steam_appid.txt hint Steamworks requires for direct development launches, then deletes the
-echo file again when the game closes. Future demo testing can override:
-echo   DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=^<demo AppID^>
+echo Defaults:
+echo   DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5228990
 echo   DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID=5114950
+echo.
+echo This makes local Workshop testing match the Steam Demo: Demo items are primary and are
+ echo mirrored to the full-game Workshop. To test the full game's Steam identity instead, set:
+echo   DESKTOP_BUDDY_STEAM_RUNTIME_APP_ID=5114950
+echo   DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID=5114950
+echo before invoking this script.
 echo.
 echo For persistent logs during live Workshop verification, use play_game_steam_diagnostics.bat.
 echo Valve/GodotSteam binaries and steam_appid.txt are never committed or shipped by this launcher.
