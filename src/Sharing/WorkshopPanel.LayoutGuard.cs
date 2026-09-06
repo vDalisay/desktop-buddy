@@ -187,7 +187,7 @@ public partial class WorkshopPanel
 
         foreach (Node child in _subscriptions.GetChildren())
         {
-            if (child is not HBoxContainer oldRow || oldRow.GetMeta("responsive_workshop_row", false).AsBool())
+            if (child is not HBoxContainer oldRow || oldRow.HasMeta("responsive_workshop_row"))
                 continue;
 
             Button[] buttons = oldRow.GetChildren().OfType<Button>().ToArray();
