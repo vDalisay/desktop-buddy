@@ -127,6 +127,26 @@ func is_available() -> bool:
 func is_godotsteam_present() -> bool:
     return _find_steam() != null
 
+## Achievement/stat capability probe kept on this bridge so C# never reaches around the
+## anti-corruption boundary to GodotSteam's global/ClassDB object directly.
+func has_achievement_capabilities() -> bool:
+    var steam := _steam if _steam != null else _find_steam()
+    return steam != null \
+        and steam.has_method("requestCurrentStats") \
+        and steam.has_method("setAchievement") \
+        and steam.has_method("storeStats")
+
+func request_current_stats() -> bool:
+    return _call_bool("requestCurrentStats", [])
+
+func set_achievement(api_name: String) -> bool:
+    if api_name.is_empty():
+        return false
+    return _call_bool("setAchievement", [api_name])
+
+func store_stats() -> bool:
+    return _call_bool("storeStats", [])
+
 func unavailable_reason() -> String:
     return _reason
 
