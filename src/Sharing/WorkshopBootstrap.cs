@@ -179,6 +179,8 @@ public partial class WorkshopBootstrap : Node
                 return new NullSteamWorkshopTransport(reason);
             }
 
+            ConnectOverlayPause(bridge);
+
             ISteamWorkshopTransport composed = transport;
             if (identity.IsCrossApp)
             {
@@ -202,6 +204,27 @@ public partial class WorkshopBootstrap : Node
             Log.Warn(Category, $"Steam integration disabled: {exception.Message}");
             return new NullSteamWorkshopTransport(exception.Message);
         }
+    }
+
+    /// <summary>
+    /// Shift+Tab pauses the game. The bridge is the only live Steam object in the process, so
+    /// the overlay callback rides along with the Workshop transport rather than earning a second
+    /// initialization: no GodotSteam, no overlay, and nothing to pause for.
+    /// </summary>
+    private void ConnectOverlayPause(Node bridge)
+    {
+        if (_sandbox is null)
+            return;
+
+        SandboxRoot sandbox = _sandbox;
+        bridge.Connect(
+            "steam_overlay_toggled",
+            Callable.From<bool>(active =>
+            {
+                if (!GodotObject.IsInstanceValid(sandbox) || !sandbox.Lifecycle.IsInitialized)
+                    return;
+                sandbox.Lifecycle.PauseCoordinator.Set(GameplayPauseReason.SteamOverlay, active);
+            }));
     }
 
     private void DisposeFailedTransport(Node? bridge, GodotSteamWorkshopTransport? transport)
