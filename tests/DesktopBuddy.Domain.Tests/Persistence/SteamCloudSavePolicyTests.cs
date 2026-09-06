@@ -1,7 +1,9 @@
 using System;
 using System.IO;
 using System.Linq;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Persistence.Characters;
 using Xunit;
 
 namespace DesktopBuddy.Domain.Tests.Persistence;
@@ -95,11 +97,21 @@ public sealed class SteamCloudSavePolicyTests
     }
 
     [Fact]
+    public void Cloud_policy_matches_the_live_character_and_environment_paths()
+    {
+        Assert.Equal(SteamCloudSavePolicy.CharacterDocumentFileName, CharacterPaths.PrimaryFileName);
+        Assert.Equal(
+            $"{SteamCloudSavePolicy.EnvironmentDirectoryName}/{SteamCloudSavePolicy.EnvironmentBackgroundFileName}",
+            EnvironmentCanvasPolicy.RelativePath);
+    }
+
+    [Fact]
     public void Project_configuration_keeps_Demo_and_full_game_on_the_same_local_user_root()
     {
         string? root = FindRepositoryRoot(AppContext.BaseDirectory);
         Assert.NotNull(root);
         string project = File.ReadAllText(Path.Combine(root!, "project.godot"));
+        string bootstrap = File.ReadAllText(Path.Combine(root, "src", "App", "Bootstrap.cs"));
 
         Assert.Contains("config/use_custom_user_dir=true", project, StringComparison.Ordinal);
         Assert.Contains(
@@ -108,6 +120,10 @@ public sealed class SteamCloudSavePolicyTests
             StringComparison.Ordinal);
         Assert.DoesNotContain("config/custom_user_dir_name.demo", project, StringComparison.Ordinal);
         Assert.DoesNotContain("config/custom_user_dir_name.steam_demo", project, StringComparison.Ordinal);
+
+        Assert.Contains($"user://{SteamCloudSavePolicy.ProgressFileName}", bootstrap, StringComparison.Ordinal);
+        Assert.Contains($"user://{SteamCloudSavePolicy.SettingsFileName}", bootstrap, StringComparison.Ordinal);
+        Assert.Contains($"user://{SteamCloudSavePolicy.CharactersDirectoryName}", bootstrap, StringComparison.Ordinal);
     }
 
     private static string? FindRepositoryRoot(string start)
