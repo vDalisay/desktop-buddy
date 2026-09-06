@@ -19,9 +19,9 @@ namespace DesktopBuddy.Domain.Tests.Persistence;
 
 /// <summary>
 /// The M5 Task 13A reset matrix. Reset takes gameplay progress back to a first run, writes
-/// it, and touches nothing else — in particular it never writes the settings payload. Account-like
-/// achievement progress is retained because a local reset cannot revoke a Steam achievement and
-/// Demo qualification must remain available for full-game reconciliation.
+/// it, and touches nothing else — in particular it never writes the settings payload. Already
+/// earned achievement qualifications are retained because a local reset cannot revoke Steam and
+/// Demo qualification must remain available for full-game reconciliation; partial counters reset.
 /// </summary>
 public sealed class ProgressResetTests
 {
@@ -138,23 +138,23 @@ public sealed class ProgressResetTests
     }
 
     [Fact]
-    public async Task Reset_PreservesAchievementStateAndDropsUnrelatedExtensions()
+    public async Task Reset_PreservesEarnedAchievementsButDropsPartialAchievementProgress()
     {
         (BuddyProgressState progress, SaveCoordinator saves, _, EconomyService economy) = Played();
         var achievements = new AchievementProgressStore(progress);
         Assert.True(achievements.Qualify(AchievementIds.FirstImpression));
         achievements.SetCounter("boxing_glove_hits", 73);
+        achievements.SetValue("character_arc.low_character", "probe-character");
         progress.SetExtensionValue("future.unrelated.reset_probe", "discard-me");
 
         Assert.True(await ProgressReset.ResetAsync(progress, saves, economy));
 
         Assert.True(achievements.IsQualified(AchievementIds.FirstImpression));
-        Assert.Equal(73, achievements.Counter("boxing_glove_hits"));
+        Assert.Equal(0, achievements.Counter("boxing_glove_hits"));
+        Assert.Null(achievements.Value("character_arc.low_character"));
         Assert.NotNull(progress.Extensions?.Values);
         Assert.DoesNotContain("future.unrelated.reset_probe", progress.Extensions!.Values!.Keys);
-        Assert.All(
-            progress.Extensions.Values.Keys,
-            key => Assert.StartsWith(AchievementProgressStore.Prefix, key, StringComparison.Ordinal));
+        Assert.Single(progress.Extensions.Values);
     }
 
     /// <summary>
