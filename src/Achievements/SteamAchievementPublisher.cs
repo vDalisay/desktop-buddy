@@ -38,9 +38,10 @@ public sealed class SteamAchievementPublisher
 
     /// <summary>
     /// Idempotently mirrors every locally-qualified achievement. Re-sending SetAchievement is
-    /// intentional: if Steam was offline, stats had not arrived yet, or StoreStats failed on an
-    /// earlier run, the local save is still authoritative and a later retry sends the small set
-    /// again. GodotSteam itself stays behind the dynamic bridge so optional-addon and ClassDB
+    /// intentional: if Steam was offline or StoreStats failed on an earlier run, the local save is
+    /// still authoritative and a later retry sends the small set again. Steamworks SDK 1.61 removed
+    /// RequestCurrentStats because the Steam client now synchronizes stats/achievements before game
+    /// start. GodotSteam itself stays behind the dynamic bridge so optional-addon and ClassDB
     /// fallback behavior remains identical to the Workshop integration.
     /// </summary>
     public bool TrySynchronize()
@@ -50,10 +51,6 @@ public sealed class SteamAchievementPublisher
 
         try
         {
-            // Requesting current stats is asynchronous. A first call may therefore be too early
-            // for SetAchievement; the bootstrap retries periodically and on every new qualification.
-            _bridge!.Call("request_current_stats");
-
             bool anyQualified = false;
             bool anySet = false;
             foreach (AchievementDefinition definition in AchievementCatalog.Baseline)
@@ -62,7 +59,7 @@ public sealed class SteamAchievementPublisher
                     continue;
 
                 anyQualified = true;
-                anySet |= _bridge.Call("set_achievement", definition.SteamApiName).AsBool();
+                anySet |= _bridge!.Call("set_achievement", definition.SteamApiName).AsBool();
             }
 
             if (!anyQualified)
@@ -70,7 +67,7 @@ public sealed class SteamAchievementPublisher
             if (!anySet)
                 return false;
 
-            return _bridge.Call("store_stats").AsBool();
+            return _bridge!.Call("store_stats").AsBool();
         }
         catch (Exception)
         {
