@@ -58,7 +58,11 @@ public partial class FirstSessionGuidanceController
         {
             ExpressiveTextPresenter presenter = EnsureExpressivePresenter(
                 _workGuideBody!, ref _expressiveWorkBody, "TutorialWorkExpressiveBody");
-            PresentInto(presenter, $"work:{stepId}", stepId, _workGuideBody!.Text);
+            PresentInto(
+                presenter,
+                ResolveExpressiveIdentity("work", stepId),
+                stepId,
+                _workGuideBody!.Text);
             presenter.Visible = true;
             _workGuideBody.Visible = false;
             if (GodotObject.IsInstanceValid(_expressiveBody))
@@ -68,7 +72,11 @@ public partial class FirstSessionGuidanceController
         {
             ExpressiveTextPresenter presenter = EnsureExpressivePresenter(
                 _body, ref _expressiveBody, "TutorialExpressiveBody");
-            PresentInto(presenter, $"main:{stepId}", stepId, _body.Text);
+            PresentInto(
+                presenter,
+                ResolveExpressiveIdentity("main", stepId),
+                stepId,
+                _body.Text);
             presenter.Visible = true;
             _body.Visible = false;
             if (GodotObject.IsInstanceValid(_expressiveWorkBody))
@@ -81,6 +89,22 @@ public partial class FirstSessionGuidanceController
             _dismiss.Disabled = _expressiveBody is { IsRevealing: true };
         else if (GodotObject.IsInstanceValid(_dismiss))
             _dismiss.Disabled = false;
+    }
+
+    /// <summary>
+    /// Presentation identity is semantic rather than rendered-text equality. Only the two prompts
+    /// with genuine runtime variants need a suffix; their legacy TextFor comparison is retained
+    /// solely to notice that the runtime condition changed and ask this layer to render again.
+    /// </summary>
+    private string ResolveExpressiveIdentity(string surface, string stepId)
+    {
+        string variant = stepId switch
+        {
+            TutorialStepIds.CreateBuddy => CanCreateCharacter() ? "can-create" : "select-existing",
+            TutorialStepIds.ExitBuddyStudio => _studioNothingToSave ? "nothing-to-save" : "saved-item",
+            _ => "default",
+        };
+        return $"{surface}:{stepId}:{variant}";
     }
 
     internal bool CompleteMainExpressiveRevealAt(Vector2 viewportPosition)
