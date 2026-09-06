@@ -3,6 +3,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -15,7 +16,7 @@ namespace DesktopBuddy.Onboarding;
 /// copies only the live Buddy's appearance/paint, and owns its own blink/mouth state. No gameplay
 /// body, reaction component, autonomy state or clock is ever shared with the portrait.
 /// </summary>
-public sealed class LiveTutorialBuddyPresenter : ITutorialCharacterPresenter
+public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPresenter
 {
     private readonly FirstSessionGuidanceController _owner;
     private readonly SandboxRoot _sandbox;
