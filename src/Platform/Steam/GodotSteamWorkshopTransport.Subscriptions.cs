@@ -159,10 +159,15 @@ public partial class GodotSteamWorkshopTransport
                     continue;
                 string title = NormalizeRemoteText(ReadString(details, "title"), 128, allowLines: false);
                 string description = NormalizeRemoteText(ReadString(details, "description"), 8000, allowLines: true);
+                ulong rawConsumerAppId = ReadUInt64(details, "consumer_app_id", "consumer_appid", "consumer_id");
+                uint consumerAppId = rawConsumerAppId is > 0 and <= uint.MaxValue
+                    ? checked((uint)rawConsumerAppId)
+                    : 0;
                 byId[id] = item with
                 {
                     DisplayName = title.Length == 0 ? item.DisplayName : title,
                     Description = description,
+                    ConsumerAppId = consumerAppId,
                 };
             }
 

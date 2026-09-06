@@ -180,10 +180,23 @@ public partial class WorkshopBootstrap : Node
             }
 
             ConnectOverlayPause(bridge);
+
+            ISteamWorkshopTransport composed = transport;
+            if (identity.IsCrossApp)
+            {
+                // Steam does not let one Workshop item be consumed by both a demo and the full
+                // game. Publish two synchronized initial copies instead: the running Demo owns the
+                // primary item, while the canonical full-game Workshop receives a mirror.
+                composed = new MirroringSteamWorkshopTransport(
+                    transport,
+                    identity.RuntimeAppId,
+                    identity.WorkshopOwnerAppId);
+            }
+
             Log.Info(
                 Category,
-                $"Steam Workshop initialized; runtimeAppId={identity.RuntimeAppId} workshopOwnerAppId={identity.WorkshopOwnerAppId} crossApp={identity.IsCrossApp}.");
-            return transport;
+                $"Steam Workshop initialized; runtimeAppId={identity.RuntimeAppId} workshopOwnerAppId={identity.WorkshopOwnerAppId} crossApp={identity.IsCrossApp} transport={composed.GetType().Name}.");
+            return composed;
         }
         catch (Exception exception)
         {
