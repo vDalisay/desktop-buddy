@@ -48,10 +48,6 @@ public partial class WorkshopPanel
             margin.GetChildCount() == 0 || margin.GetChild(0) is not VBoxContainer column || column.GetChildCount() < 10)
             return;
 
-        // Resolve the live transport owned by the same WorkshopBootstrap. For the Demo the public
-        // sharing transport is a mirroring wrapper, but discovery intentionally talks to the inner
-        // runtime transport whose Workshop AppID is 5228990. The full game resolves the same node
-        // with 5114950.
         _discovery = GetParent()?.GetNodeOrNull<GodotSteamWorkshopTransport>(nameof(GodotSteamWorkshopTransport));
 
         Control oldBrowseRow = (Control)column.GetChild(1);
@@ -89,9 +85,6 @@ public partial class WorkshopPanel
         legal.Reparent(uploadTab);
         uploadTab.AddChild(new Control { SizeFlagsVertical = Control.SizeFlags.ExpandFill });
 
-        // Keep transfer progress and status shared below both tabs. The old browse row remains a
-        // hidden compatibility host for its button references so RefreshAvailability never touches
-        // freed controls.
         column.MoveChild(_workshopTabs, Math.Min(2, column.GetChildCount() - 1));
         _browserLayoutBuilt = true;
         _workshopTabs.TabChanged += OnWorkshopTabChanged;
@@ -147,7 +140,7 @@ public partial class WorkshopPanel
         _sortMode = new OptionButton { CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(130), 0) };
         _sortMode.AddItem("Most Popular", (int)WorkshopBrowseSort.MostPopular);
         _sortMode.AddItem("Newest", (int)WorkshopBrowseSort.MostRecent);
-        _sortMode.ItemSelected += _ => _ = RefreshCommunityAsync(resetPage: true);
+        _sortMode.ItemSelected += selected => { _ = RefreshCommunityAsync(resetPage: true); };
         toolbar.AddChild(_sortMode);
 
         toolbar.AddChild(new Label { Text = "Show:" });
@@ -155,7 +148,7 @@ public partial class WorkshopPanel
         _contentFilter.AddItem("All Content", 0);
         _contentFilter.AddItem("Buddies", 1);
         _contentFilter.AddItem("Room Paintings", 2);
-        _contentFilter.ItemSelected += _ => RebuildCommunityCards();
+        _contentFilter.ItemSelected += selected => RebuildCommunityCards();
         toolbar.AddChild(_contentFilter);
         toolbar.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
 
@@ -434,7 +427,7 @@ public partial class WorkshopPanel
             return;
 
         WorkshopSubscriptionChangeResult result = default;
-        await RunBusyAsync(async (_, token) =>
+        await RunBusyAsync(async (progress, token) =>
         {
             SetStatus($"Subscribing to '{item.DisplayName}'...");
             result = await _discovery.SubscribeAsync(item.PublishedFileId, token);
@@ -468,7 +461,7 @@ public partial class WorkshopPanel
             return;
         }
 
-        var request = new HTTPRequest
+        var request = new HttpRequest
         {
             Timeout = 12.0,
             BodySizeLimit = PreviewBodyLimitBytes,
@@ -484,14 +477,14 @@ public partial class WorkshopPanel
                 return;
             }
 
-            Variant[] response = await ToSignal(request, HTTPRequest.SignalName.RequestCompleted);
+            Variant[] response = await ToSignal(request, HttpRequest.SignalName.RequestCompleted);
             if (generation != _previewGeneration || !GodotObject.IsInstanceValid(target))
                 return;
 
             long result = response.Length > 0 ? response[0].AsInt64() : -1;
             long responseCode = response.Length > 1 ? response[1].AsInt64() : 0;
             byte[] bytes = response.Length > 3 ? response[3].AsByteArray() : [];
-            if (result != (long)HTTPRequest.Result.Success || responseCode is < 200 or >= 300 || bytes.Length == 0)
+            if (result != (long)HttpRequest.Result.Success || responseCode is < 200 or >= 300 || bytes.Length == 0)
             {
                 if (GodotObject.IsInstanceValid(placeholder)) placeholder.Text = "Preview unavailable";
                 return;
