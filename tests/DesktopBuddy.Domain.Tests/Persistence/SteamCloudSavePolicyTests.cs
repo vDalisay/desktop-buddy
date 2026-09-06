@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using DesktopBuddy.Persistence;
 using Xunit;
@@ -91,5 +92,33 @@ public sealed class SteamCloudSavePolicyTests
                 Assert.Equal("background.png", row.Pattern);
                 Assert.False(row.Recursive);
             });
+    }
+
+    [Fact]
+    public void Project_configuration_keeps_Demo_and_full_game_on_the_same_local_user_root()
+    {
+        string? root = FindRepositoryRoot(AppContext.BaseDirectory);
+        Assert.NotNull(root);
+        string project = File.ReadAllText(Path.Combine(root!, "project.godot"));
+
+        Assert.Contains("config/use_custom_user_dir=true", project, StringComparison.Ordinal);
+        Assert.Contains(
+            $"config/custom_user_dir_name=\"{SteamCloudSavePolicy.UserDataDirectoryName}\"",
+            project,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("config/custom_user_dir_name.demo", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("config/custom_user_dir_name.steam_demo", project, StringComparison.Ordinal);
+    }
+
+    private static string? FindRepositoryRoot(string start)
+    {
+        DirectoryInfo? current = new(start);
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "project.godot")))
+                return current.FullName;
+            current = current.Parent;
+        }
+        return null;
     }
 }
