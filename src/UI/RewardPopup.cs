@@ -10,10 +10,25 @@ using Godot;
 namespace DesktopBuddy.UI;
 
 /// <summary>
+/// Semantic reason a reward is being presented. Callers describe what happened; the popup owns
+/// how that meaning maps to late-90s WordArt-inspired presentation.
+/// </summary>
+public enum RewardPresentationKind
+{
+    Generic = 0,
+    ToolPurchase = 1,
+    WorkSessionMilestone = 2,
+    WorkLifetimeMilestone = 3,
+}
+
+/// <summary>
 /// The one reward popup: a centred Win98 dialog carrying the icon of whatever just arrived,
 /// its name, and the credit amount in the shell's money green. Purchases, Work milestones and
 /// lifetime milestones all come through <see cref="Show"/>; there is deliberately no second
-/// entry point, no notification framework and no per-source configuration.
+/// queue, no notification framework and no per-source visual configuration.
+///
+/// <para>Semantic reward kinds may use an original late-90s WordArt-inspired title treatment.
+/// The queue remains authoritative: WordArt is only a child view inside this popup.</para>
 ///
 /// <para>Timings, easings and the accessibility rules are documented in
 /// <c>docs/REWARD_FEEL_PLAN.md</c>. The breathing pulse reuses the tutorial spotlight's
@@ -29,6 +44,7 @@ public partial class RewardPopup : CanvasLayer
     private const double DwellSeconds = 2.40;
     private const double OutSeconds = 0.14;
     private const double BreathSeconds = 1.5;
+    private const double WordArtSettleSeconds = 0.48;
     private const float BreathScale = 0.12f;
     private const float EntryScale = 0.72f;
     private const float ExitScale = 0.94f;
@@ -36,9 +52,10 @@ public partial class RewardPopup : CanvasLayer
     private const float GlowAlphaSwing = 0.18f;
 
     private static readonly Color MoneyGreen = Color.Color8(0, 112, 0);
-    private static readonly Vector2 PanelSize = new(288, 268);
-    private const int HaloHeight = 150;
+    private static readonly Vector2 PanelSize = new(304, 280);
+    private const int HaloHeight = 142;
     private const int MoneyLineHeight = 42;
+    private const int WordArtHeight = 52;
 
     private readonly Queue<Request> _queue = new();
     private readonly LocalSettingsSave _fallbackSettings = new();
@@ -46,40 +63,73 @@ public partial class RewardPopup : CanvasLayer
     private PanelContainer? _panel;
     private GlowIcon _glow = null!;
     private Label _title = null!;
+    private Control _wordArt = null!;
+    private RichTextLabel[] _wordArtLayers = [];
     private Label _amount = null!;
     private SandboxRoot? _sandbox;
 
     private double _elapsed;
     private Phase _phase = Phase.Idle;
     private float _exitScale = 1.0f;
+    private string _currentTitle = string.Empty;
+    private RewardPresentationKind _currentKind;
+    private WordArtPreset _wordArtPreset;
+    private bool _wordArtMotionApplied;
 
     /// <summary>Every reward that has been shown, for scenarios and the demo.</summary>
     public int ShownCount { get; private set; }
 
     public bool IsShowing => _phase != Phase.Idle;
 
-    public string CurrentTitle => GodotObject.IsInstanceValid(_title) ? _title.Text : string.Empty;
+    public string CurrentTitle => _currentTitle;
+
+    public RewardPresentationKind CurrentPresentationKind => _currentKind;
+
+    public bool CurrentUsesWordArt => _currentKind != RewardPresentationKind.Generic;
 
     private enum Phase { Idle, In, Dwell, Out }
 
-    private readonly record struct Request(Texture2D Icon, string Title, long AmountMilliCredits);
+    private readonly record struct Request(
+        Texture2D Icon,
+        string Title,
+        long AmountMilliCredits,
+        RewardPresentationKind Kind);
+
+    private readonly record struct WordArtPreset(
+        Color Fill,
+        Color Outline,
+        Color Extrusion,
+        int FontSize,
+        float WaveAmplitude,
+        float WaveFrequency,
+        float EntryTiltDegrees);
 
     /// <summary>
     /// Queues one reward. <paramref name="amountMilliCredits"/> of zero hides the money line.
+    /// <paramref name="kind"/> is semantic; callers never choose raw WordArt parameters.
     /// Safe to call from any node in the tree; does nothing if the autoload is absent.
     /// </summary>
-    public static void Show(Node context, Texture2D icon, string title, long amountMilliCredits)
+    public static void Show(
+        Node context,
+        Texture2D icon,
+        string title,
+        long amountMilliCredits,
+        RewardPresentationKind kind = RewardPresentationKind.Generic)
     {
         if (!GodotObject.IsInstanceValid(context) || !context.IsInsideTree())
             return;
         if (context.GetTree().Root.GetNodeOrNull<RewardPopup>(nameof(RewardPopup)) is { } popup)
-            popup.Enqueue(icon, title, amountMilliCredits);
+            popup.Enqueue(icon, title, amountMilliCredits, kind);
     }
 
-    public void Enqueue(Texture2D icon, string title, long amountMilliCredits)
+    public void Enqueue(
+        Texture2D icon,
+        string title,
+        long amountMilliCredits,
+        RewardPresentationKind kind = RewardPresentationKind.Generic)
     {
         // Two milestones can cross on one Work drain, so rewards queue and play in order.
-        _queue.Enqueue(new Request(icon, title ?? string.Empty, amountMilliCredits));
+        _queue.Enqueue(new Request(icon, title ?? string.Empty, amountMilliCredits, kind));
         if (_phase == Phase.Idle)
             Begin();
     }
@@ -101,6 +151,7 @@ public partial class RewardPopup : CanvasLayer
         LocalSettingsSave settings = ResolveSettings();
         bool animate = Win98MotionPolicy.Allows(settings);
         EffectsSettings effects = EffectsSettings.FromSave(settings);
+        bool wordArt = _currentKind != RewardPresentationKind.Generic;
 
         float scale = 1.0f;
         float alpha = 1.0f;
@@ -122,7 +173,9 @@ public partial class RewardPopup : CanvasLayer
             }
 
             case Phase.Dwell:
-                scale = animate ? 1.0f + (BreathScale * PingPong(_elapsed)) : 1.0f;
+                // WordArt already supplies the personality motion. Keeping the old 12% whole-dialog
+                // breathing on top made the title feel seasick, so semantic WordArt rewards settle.
+                scale = animate && !wordArt ? 1.0f + (BreathScale * PingPong(_elapsed)) : 1.0f;
                 if (_elapsed >= DwellSeconds)
                 {
                     _exitScale = scale;
@@ -145,6 +198,8 @@ public partial class RewardPopup : CanvasLayer
                 break;
             }
         }
+
+        UpdateWordArtMotion(animate);
 
         // Photosensitivity Safe holds the halo flat; it is the one thing here that brightens
         // and dims, which is exactly what the setting exists to tame.
@@ -194,8 +249,21 @@ public partial class RewardPopup : CanvasLayer
 
         EnsurePanel();
         Request request = _queue.Dequeue();
+        _currentTitle = request.Title;
+        _currentKind = request.Kind;
         _glow.Icon = request.Icon;
+
+        bool wordArt = request.Kind != RewardPresentationKind.Generic;
         _title.Text = request.Title;
+        _title.Visible = !wordArt;
+        _wordArt.Visible = wordArt;
+        if (wordArt)
+        {
+            _wordArtPreset = ResolveWordArtPreset(request.Kind);
+            ApplyWordArtPreset(request.Title);
+            _wordArtMotionApplied = false;
+        }
+
         _amount.Text = "+" + ContentDisplayName.Credits(request.AmountMilliCredits);
         _amount.Visible = request.AmountMilliCredits > 0;
 
@@ -218,10 +286,17 @@ public partial class RewardPopup : CanvasLayer
     {
         _phase = Phase.Idle;
         _elapsed = 0.0;
+        _currentTitle = string.Empty;
+        _currentKind = RewardPresentationKind.Generic;
         if (GodotObject.IsInstanceValid(_panel))
         {
             _panel!.Visible = false;
             _panel.Scale = Vector2.One;
+        }
+        if (GodotObject.IsInstanceValid(_wordArt))
+        {
+            _wordArt.Scale = Vector2.One;
+            _wordArt.Rotation = 0.0f;
         }
         Begin();
     }
@@ -251,9 +326,139 @@ public partial class RewardPopup : CanvasLayer
 
         _title = CenteredLabel("RewardTitle", 16, Win98ThemeFactory.Dark);
         body.AddChild(_title);
+
+        _wordArt = BuildWordArtTitle();
+        _wordArt.Visible = false;
+        body.AddChild(_wordArt);
+
         _amount = CenteredLabel("RewardAmount", 22, MoneyGreen);
         body.AddChild(_amount);
     }
+
+    private Control BuildWordArtTitle()
+    {
+        var root = new Control
+        {
+            Name = "RewardWordArtTitle",
+            CustomMinimumSize = new Vector2(0, Win98ThemeFactory.Px(WordArtHeight)),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            ClipContents = false,
+        };
+
+        _wordArtLayers = new RichTextLabel[4];
+        for (int index = 0; index < _wordArtLayers.Length; index++)
+        {
+            var layer = new RichTextLabel
+            {
+                Name = index == _wordArtLayers.Length - 1 ? "WordArtFront" : $"WordArtDepth{index + 1}",
+                BbcodeEnabled = true,
+                FitContent = false,
+                ScrollActive = false,
+                MouseFilter = Control.MouseFilterEnum.Ignore,
+                AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            };
+            layer.SetAnchorsPreset(Control.LayoutPreset.FullRect);
+            int depth = _wordArtLayers.Length - 1 - index;
+            layer.OffsetLeft = Win98ThemeFactory.Px(depth);
+            layer.OffsetTop = Win98ThemeFactory.Px(depth);
+            layer.OffsetRight = Win98ThemeFactory.Px(depth);
+            layer.OffsetBottom = Win98ThemeFactory.Px(depth);
+            root.AddChild(layer);
+            _wordArtLayers[index] = layer;
+        }
+
+        return root;
+    }
+
+    private void ApplyWordArtPreset(string title)
+    {
+        string escaped = EscapeBbCode(title);
+        for (int index = 0; index < _wordArtLayers.Length; index++)
+        {
+            RichTextLabel layer = _wordArtLayers[index];
+            bool front = index == _wordArtLayers.Length - 1;
+            layer.AddThemeFontSizeOverride("normal_font_size", Win98ThemeFactory.Px(_wordArtPreset.FontSize));
+            layer.AddThemeColorOverride("default_color", front ? _wordArtPreset.Fill : _wordArtPreset.Extrusion);
+            layer.AddThemeColorOverride("font_outline_color", _wordArtPreset.Outline);
+            layer.AddThemeConstantOverride("outline_size", front ? Win98ThemeFactory.Px(2) : Win98ThemeFactory.Px(1));
+            layer.Text = $"[center]{escaped}[/center]";
+        }
+    }
+
+    private void UpdateWordArtMotion(bool animate)
+    {
+        if (_currentKind == RewardPresentationKind.Generic || !GodotObject.IsInstanceValid(_wordArt))
+            return;
+
+        bool active = animate &&
+            (_phase == Phase.In || (_phase == Phase.Dwell && _elapsed < WordArtSettleSeconds));
+        if (active != _wordArtMotionApplied)
+        {
+            string escaped = EscapeBbCode(_currentTitle);
+            string body = active
+                ? $"[wave amp={_wordArtPreset.WaveAmplitude:0.##} freq={_wordArtPreset.WaveFrequency:0.##} connected=1]{escaped}[/wave]"
+                : escaped;
+            foreach (RichTextLabel layer in _wordArtLayers)
+                layer.Text = $"[center]{body}[/center]";
+            _wordArtMotionApplied = active;
+        }
+
+        if (!active)
+        {
+            _wordArt.Scale = Vector2.One;
+            _wordArt.Rotation = 0.0f;
+            return;
+        }
+
+        float progress = _phase == Phase.In
+            ? Mathf.Clamp((float)(_elapsed / Math.Max(InSeconds, 0.001)), 0.0f, 1.0f)
+            : Mathf.Clamp((float)(_elapsed / WordArtSettleSeconds), 0.0f, 1.0f);
+        float remaining = 1.0f - progress;
+        float wobble = Mathf.Sin(progress * Mathf.Tau * 2.0f) * remaining;
+        _wordArt.PivotOffset = _wordArt.Size * 0.5f;
+        _wordArt.RotationDegrees = _wordArtPreset.EntryTiltDegrees * wobble;
+        float punch = 1.0f + (0.08f * remaining * Mathf.Abs(wobble));
+        _wordArt.Scale = new Vector2(punch, 1.0f + ((punch - 1.0f) * 0.55f));
+    }
+
+    private static WordArtPreset ResolveWordArtPreset(RewardPresentationKind kind) => kind switch
+    {
+        RewardPresentationKind.ToolPurchase => new WordArtPreset(
+            Color.Color8(255, 210, 32),
+            Color.Color8(20, 38, 126),
+            Color.Color8(92, 72, 0),
+            FontSize: 21,
+            WaveAmplitude: 9.0f,
+            WaveFrequency: 3.5f,
+            EntryTiltDegrees: -4.0f),
+        RewardPresentationKind.WorkSessionMilestone => new WordArtPreset(
+            Color.Color8(73, 225, 255),
+            Color.Color8(18, 42, 110),
+            Color.Color8(24, 92, 132),
+            FontSize: 19,
+            WaveAmplitude: 7.0f,
+            WaveFrequency: 3.0f,
+            EntryTiltDegrees: 3.0f),
+        RewardPresentationKind.WorkLifetimeMilestone => new WordArtPreset(
+            Color.Color8(255, 178, 38),
+            Color.Color8(112, 28, 38),
+            Color.Color8(116, 62, 18),
+            FontSize: 19,
+            WaveAmplitude: 10.0f,
+            WaveFrequency: 2.8f,
+            EntryTiltDegrees: -5.0f),
+        _ => new WordArtPreset(
+            Win98ThemeFactory.Dark,
+            Win98ThemeFactory.Dark,
+            Win98ThemeFactory.Shadow,
+            FontSize: 18,
+            WaveAmplitude: 0.0f,
+            WaveFrequency: 0.0f,
+            EntryTiltDegrees: 0.0f),
+    };
+
+    private static string EscapeBbCode(string text) =>
+        (text ?? string.Empty).Replace("[", "[lb]", StringComparison.Ordinal);
 
     private static Label CenteredLabel(string name, int fontSize, Color color)
     {
