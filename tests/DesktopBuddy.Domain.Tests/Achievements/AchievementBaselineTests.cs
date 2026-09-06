@@ -91,6 +91,32 @@ public sealed class AchievementBaselineTests
     }
 
     [Fact]
+    public void CharacterArc_RequiresOneContinuousActiveCharacter()
+    {
+        Guid first = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        Guid second = Guid.Parse("22222222-2222-4222-8222-222222222222");
+
+        var switchedProgress = new BuddyProgressState(CashPerPain);
+        var switched = new AchievementCoordinator(switchedProgress);
+        switchedProgress.ApplyCareMood(-200.0f);
+        switched.EvaluatePersistentState(first);
+        // Switching while at the low endpoint transfers/invalidates the in-progress arc; raising
+        // shared mood on another character may not be inherited by the original after switching back.
+        switched.EvaluatePersistentState(second);
+        switchedProgress.ApplyCareMood(200.0f);
+        switched.EvaluatePersistentState(first);
+        Assert.False(switched.Store.IsQualified(AchievementIds.CharacterArc));
+
+        var continuousProgress = new BuddyProgressState(CashPerPain);
+        var continuous = new AchievementCoordinator(continuousProgress);
+        continuousProgress.ApplyCareMood(-200.0f);
+        continuous.EvaluatePersistentState(first);
+        continuousProgress.ApplyCareMood(200.0f);
+        continuous.EvaluatePersistentState(first);
+        Assert.True(continuous.Store.IsQualified(AchievementIds.CharacterArc));
+    }
+
+    [Fact]
     public void MakeItYours_RequiresAllFourAreasForTheSameCharacter()
     {
         var achievements = new AchievementCoordinator(new BuddyProgressState(CashPerPain));
