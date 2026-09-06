@@ -115,7 +115,13 @@ public sealed partial class BuddyPreviewSurface : SubViewport
     {
         if (!_configured)
             throw new InvalidOperationException("BuddyPreviewSurface entered the tree before Configure.");
-        SyncRenderMode(force: true);
+
+        // Capture-only surfaces must stay idle until their caller explicitly requests the frame.
+        // Continuous surfaces, on the other hand, follow their visible container immediately.
+        if (_continuous)
+            SyncRenderMode(force: true);
+        else
+            RenderTargetUpdateMode = UpdateMode.Disabled;
     }
 
     public override void _Process(double delta)
@@ -138,10 +144,20 @@ public sealed partial class BuddyPreviewSurface : SubViewport
     }
 
     /// <summary>
-    /// Enables one render for capture-only previews. Continuous visible previews immediately
-    /// return to Always on the next process pass; hidden ones return to Disabled.
+    /// Requests presentation refresh without breaking the lifecycle policy. Capture-only surfaces
+    /// render exactly once. Continuous surfaces remain Always while visible and Disabled while
+    /// hidden; they never get stranded in Once by an appearance/camera refresh.
     /// </summary>
-    public void RequestSingleFrame() => RenderTargetUpdateMode = UpdateMode.Once;
+    public void RequestSingleFrame()
+    {
+        if (_continuous)
+        {
+            SyncRenderMode(force: true);
+            return;
+        }
+
+        RenderTargetUpdateMode = UpdateMode.Once;
+    }
 
     /// <summary>
     /// Copies the current appearance and painted underlays from a trusted live visual rig. Work
@@ -166,8 +182,7 @@ public sealed partial class BuddyPreviewSurface : SubViewport
 
     private void SyncRenderMode(bool force)
     {
-        bool visible = !_continuous ||
-            (GodotObject.IsInstanceValid(_visibilityOwner) && _visibilityOwner!.IsVisibleInTree());
+        bool visible = GodotObject.IsInstanceValid(_visibilityOwner) && _visibilityOwner!.IsVisibleInTree();
         if (!force && visible == _lastVisible)
             return;
         _lastVisible = visible;
